@@ -2054,9 +2054,9 @@ GUI's. Both mutating verbs answer the shared `MutationResult`.
 | Table | Fields |
 |-------|--------|
 | `ResolveListRequest` | `kind = ResolveList`; `revision` (ABSENT = `@`), `paths` (repo-relative PREFIXES; ABSENT or EMPTY = every conflict). |
-| `ResolveList` | `files: [ConflictedFile]`, the matched conflicts in tree order: `path`, `description` (the CLI's `--list` text of the simplified conflict), `num_sides`, `unresolvable` (ABSENT = `zanshin_resolve` can take it; else its `jj.conflict_not_resolvable` text), and for a file conflict `labels` (simplified, one per term; empty = unlabeled) and `hunks: [ConflictHunk { terms: [ConflictTerm { content }] }]` — `jj_lib::files::merge_hunks` over the simplified sides: a conflicting hunk's terms in `Merge` order (side 1, base 1, side 2, …), a resolved hunk one term. A non-file conflict has no labels and no hunks. |
-| `ResolveRequest` | `kind = Resolve`; `revision` (ABSENT = `@`), `paths` (as above; not with `Files`), `tool` (`Files` / `Ours` / `Theirs`), `files: [ResolvedFile { path, content }]` (`Files` only: the GUI merge editor's output, at least one, each path once, each a conflict at the revision — the files are the paths). |
-| `DiffeditRequest` | `kind = Diffedit`; `revision` (`-r`, against its parents; not with `from`/`to`), `from` / `to` (`to`, ABSENT `@`, against `from`'s own tree, ABSENT `@`), `tree: TreeSelection` (what `zanshin_select_tree` returned for that diff — with `SelectTreeRequest.from` = `from` in the `from`/`to` form — and its `left`), `restore_descendants`. |
+| `ResolveList` | `files: [ConflictedFile]`, the matched conflicts in tree order: `path`, `description` (the CLI's `--list` text of the simplified conflict), `num_sides`, `unresolvable` (ABSENT = `zanshin_resolve` can take it; else its `jj.conflict_not_resolvable` text), and for a file conflict `labels` (simplified, one per term; empty = unlabeled) and `hunks: [ConflictHunk { terms: [ConflictTerm { content }] }]` — `jj_lib::files::merge_hunks` over the simplified sides: a conflicting hunk's terms in `Merge` order (side 1, base 1, side 2, …), a resolved hunk one term, and `term_ids: [ConflictTermId { id }]` — the simplified file ids, one per term in `Merge` order (as `labels` and a conflicting hunk's terms), hex; an ABSENT `id` = no file on that term (an absent or deleted side). A non-file conflict has no labels, no hunks and no term ids. |
+| `ResolveRequest` | `kind = Resolve`; `revision` (ABSENT = `@`), `paths` (as above; not with `Files`), `tool` (`Files` / `Ours` / `Theirs`), `files: [ResolvedFile { path, content, term_ids }]` (`Files` only: the GUI merge editor's output, at least one, each path once, each a conflict at the revision — the files are the paths; `term_ids` the file's `ConflictedFile.term_ids` sent back unchanged, required). |
+| `DiffeditRequest` | `kind = Diffedit`; `revision` (`-r`, against its parents; not with `from`/`to`), `from` / `to` (`to`, ABSENT `@`, against `from`'s own tree, ABSENT `@`), `tree: TreeSelection` (what `zanshin_select_tree` returned for that diff — with `SelectTreeRequest.from` = `from` in the `from`/`to` form — and its `left`), `restore_descendants`, `right` (the target's `ShowEntry.tree_ids` the selection saw, hex in order; required). |
 
 - **`resolve`** follows the CLI's order: paths → revision → matching conflicts → unmatched-paths
   warning (`jj.paths_unmatched`) → `jj.no_conflicts` ("No conflicts found at this revision" /
@@ -2066,17 +2066,26 @@ GUI's. Both mutating verbs answer the shared `MutationResult`.
   :ours` / `:theirs`); `Files` writes each content as the builtin merge editor writes a file
   (resolved, never re-parsed for markers). A listed file that is not a conflict refuses
   `jj.stale_selection` (the CLI's "Couldn't find any conflicts at …" / "Couldn't find the path
-  …"). The operation is `Resolve conflicts in commit <hex>`, descendants rebased. A rewritten
+  …"), and so does — checked before `jj.conflict_not_resolvable` — a conflict whose term ids are
+  no longer the file's `term_ids`, or that is no longer a file conflict (staleness run: the
+  pre-verb snapshot or another client changed it since `zanshin_resolve_list`; the UI re-reads
+  and resolves again). `Ours` / `Theirs` take no token: they act on the current conflict, as the
+  CLI. A non-file conflict (empty `term_ids`, `unresolvable` set) cannot go through `Files`: an
+  empty token is `jj.invalid_input`, any other `jj.stale_selection`. The operation is `Resolve
+  conflicts in commit <hex>`, descendants rebased. A rewritten
   revision that is not `@` and still has conflicts warns `jj.resolve_conflicts_remain`; for `@`
   the finish's `jj.unresolved_conflicts` lists them. `Files` with `paths` or without files, an
-  invalid, root or duplicate file path, or files with `Ours` / `Theirs`: `jj.invalid_input` before
-  the snapshot.
+  invalid, root or duplicate file path, a file without `term_ids`, or files with `Ours` /
+  `Theirs`: `jj.invalid_input` before the snapshot.
 - **`diffedit`**: the target must be rewritable (`jj.immutable`), THEN a base tree that is no
-  longer `tree.left` is `jj.stale_selection`. A tree equal to the target's writes NO operation
+  longer `tree.left` is `jj.stale_selection`, THEN a target tree that is no longer `right` is
+  `jj.stale_selection` too (staleness run: diffedit replaces the whole tree, so an edit the
+  target received after the selection — an editor's autosave folded in by the snapshot — would
+  be lost; refused, it stays in the target). A tree equal to the target's writes NO operation
   ("Nothing changed.", the pre-call head in `new_op_id`); otherwise the target gets it, its
   descendants are rebased (reparented with `restore_descendants`) and the operation is `edit
-  commit <hex>`. `revision` with `from`/`to`, or a malformed tree: `jj.invalid_input` before the
-  snapshot.
+  commit <hex>`. `revision` with `from`/`to`, a malformed tree, or an absent or malformed `right`:
+  `jj.invalid_input` before the snapshot.
 
 Not ported: external merge/diff tools, `ui.merge-editor` / `ui.diff-editor`, `--tool <name>`
 other than `:ours` / `:theirs`, the external tools' partial-resolution error and "unchanged or

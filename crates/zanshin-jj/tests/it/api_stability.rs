@@ -1716,6 +1716,7 @@ fn resolve_and_diffedit_surface_resolves() {
             hunks: vec![zanshin_jj::ConflictHunk {
                 terms: vec![b"t".to_vec()],
             }],
+            term_ids: vec![Some("ab".to_owned()), None, Some("cd".to_owned())],
         }],
     };
     assert_eq!(list.clone(), list);
@@ -1725,6 +1726,7 @@ fn resolve_and_diffedit_surface_resolves() {
         zanshin_jj::ResolveTool::Files(vec![zanshin_jj::ResolvedFile {
             path: "c".to_owned(),
             content: b"x".to_vec(),
+            term_ids: vec![Some("ab".to_owned()), None, Some("cd".to_owned())],
         }]),
     ] {
         let options = zanshin_jj::ResolveOptions {
@@ -1739,10 +1741,12 @@ fn resolve_and_diffedit_surface_resolves() {
         from: Some(zanshin_jj::ChangeId("f".to_owned())),
         to: None,
         tree: sample_tree_selection(),
+        right: vec!["ab".to_owned()],
         restore_descendants: true,
     };
     assert_eq!(diffedit.clone(), diffedit);
     assert!(!zanshin_jj::DiffeditOptions::default().restore_descendants);
+    assert!(zanshin_jj::DiffeditOptions::default().right.is_empty());
     for err in [
         zanshin_jj::MutateError::NoConflicts {
             message: "m".to_owned(),

@@ -14,7 +14,7 @@ use zanshin_jj::{
     ChangeId, DiffeditOptions, FileChoice, FileSelection, HunkKey, MutateError, SelectTreeOptions, TreeSelection,
 };
 
-use crate::rebase::{add, assert_op, base, commit, hex, immutable, no_op, parents, reconfigure, refused, Fx};
+use crate::rebase::{add, assert_op, base, commit, head_op, hex, immutable, no_op, parents, reconfigure, refused, Fx};
 use crate::resolve::content;
 
 const LEFT: &str = "a\nb\nc\nd\ne\n";
@@ -61,11 +61,18 @@ fn shown(fx: &mut Fx, revision: &ChangeId) -> (Vec<String>, Vec<String>) {
     (entries[0].parent_tree_ids.clone(), entries[0].tree_ids.clone())
 }
 
-/// `select_tree` of `files` in `revision`, against `from`'s own tree or the parent tree.
-fn select(fx: &mut Fx, revision: &ChangeId, from: Option<&ChangeId>, files: Vec<FileSelection>) -> TreeSelection {
+/// `select_tree` of `files` in `revision`, against `from`'s own tree or the parent tree — and
+/// `revision`'s own tree ids, `diffedit`'s `right` for that target.
+fn select(
+    fx: &mut Fx,
+    revision: &ChangeId,
+    from: Option<&ChangeId>,
+    files: Vec<FileSelection>,
+) -> (TreeSelection, Vec<String>) {
+    let (parent_tree, right) = shown(fx, revision);
     let left = match from {
         Some(from) => shown(fx, from).1,
-        None => shown(fx, revision).0,
+        None => parent_tree,
     };
     let tree = fx
         .repo
@@ -76,7 +83,7 @@ fn select(fx: &mut Fx, revision: &ChangeId, from: Option<&ChangeId>, files: Vec<
             files,
         })
         .expect("select");
-    TreeSelection { tree, left }
+    (TreeSelection { tree, left }, right)
 }
 
 fn f_of(fx: &Fx, id: &ChangeId) -> String {
@@ -100,11 +107,12 @@ fn diffedit_takes_the_selected_tree_of_the_revision() {
     let mut fx = base();
     let (_, r) = history(&mut fx);
     let r_hex = hex(&fx.root, &r);
-    let tree = select(&mut fx, &r, None, vec![hunks("f.txt", &[S1, S3])]);
+    let (tree, right) = select(&mut fx, &r, None, vec![hunks("f.txt", &[S1, S3])]);
     let result = fx
         .repo
         .diffedit(&DiffeditOptions {
             tree,
+            right,
             ..Default::default()
         })
         .expect("diffedit");
@@ -129,12 +137,13 @@ fn diffedit_from_to_rebases_or_reparents_the_descendants() {
                 choice: FileChoice::Whole,
             },
         ];
-        let tree = select(&mut fx, &r, Some(&l), files);
+        let (tree, right) = select(&mut fx, &r, Some(&l), files);
         fx.repo
             .diffedit(&DiffeditOptions {
                 from: Some(l.clone()),
                 to: Some(r.clone()),
                 tree,
+                right,
                 restore_descendants,
                 ..Default::default()
             })
@@ -150,12 +159,13 @@ fn diffedit_from_to_rebases_or_reparents_the_descendants() {
 fn select_tree_from_resets_unselected_paths_to_froms_tree() {
     let mut fx = base();
     let (l, r) = history(&mut fx);
-    let selection = select(&mut fx, &r, Some(&l), vec![hunks("f.txt", &[S1])]);
+    let (selection, right) = select(&mut fx, &r, Some(&l), vec![hunks("f.txt", &[S1])]);
     fx.repo
         .diffedit(&DiffeditOptions {
             from: Some(l),
             to: Some(r.clone()),
             tree: selection,
+            right,
             ..Default::default()
         })
         .expect("diffedit");
@@ -176,12 +186,13 @@ fn from_alone_edits_at_against_froms_tree() {
             choice: FileChoice::Whole,
         },
     ];
-    let tree = select(&mut fx, &r, Some(&l), files);
+    let (tree, right) = select(&mut fx, &r, Some(&l), files);
     let result = fx
         .repo
         .diffedit(&DiffeditOptions {
             from: Some(l),
             tree,
+            right,
             ..Default::default()
         })
         .expect("diffedit");
@@ -198,11 +209,12 @@ fn to_alone_edits_to_against_ats_tree() {
     let (_, r) = history(&mut fx);
     let [m] = <[ChangeId; 1]>::try_from(parents(&fx.root, &r)).expect("one parent");
     // `M`'s `f.txt` is the left text, `@`'s the right one: section 1 takes `M`'s side there.
-    let tree = select(&mut fx, &m, Some(&r), vec![hunks("f.txt", &[S1])]);
+    let (tree, right) = select(&mut fx, &m, Some(&r), vec![hunks("f.txt", &[S1])]);
     fx.repo
         .diffedit(&DiffeditOptions {
             to: Some(m.clone()),
             tree,
+            right,
             ..Default::default()
         })
         .expect("diffedit");
@@ -215,14 +227,72 @@ fn to_alone_edits_to_against_ats_tree() {
 fn an_unchanged_tree_writes_no_operation() {
     let mut fx = base();
     let (_, r) = history(&mut fx);
-    let tree = select(&mut fx, &r, None, vec![hunks("f.txt", &[S1, S2, S3])]);
+    let (tree, right) = select(&mut fx, &r, None, vec![hunks("f.txt", &[S1, S2, S3])]);
     no_op(&mut fx, |repo| {
         repo.diffedit(&DiffeditOptions {
             revision: Some(r.clone()),
             tree,
+            right,
             ..Default::default()
         })
     });
+}
+
+/// `@` edited on disk after `select_tree`: the snapshot folds the edit in, so the target's tree
+/// is no longer `right` — refused stale, no operation beyond the snapshot's, the edit kept.
+#[test]
+fn a_target_edited_after_the_selection_is_stale_and_keeps_the_edit() {
+    let mut fx = base();
+    let (_, r) = history(&mut fx);
+    let (tree, right) = select(&mut fx, &r, None, vec![hunks("f.txt", &[S1, S3])]);
+    fs::write(fx.root.join("g.txt"), "edited\n").expect("edit @ on disk");
+    let err = fx
+        .repo
+        .diffedit(&DiffeditOptions {
+            tree,
+            right,
+            ..Default::default()
+        })
+        .expect_err("stale");
+    assert!(
+        matches!(&err, MutateError::StaleSelection { reason }
+            if reason == "The target's tree changed since the selection was made: re-read it and select again"),
+        "{err:?}"
+    );
+    assert_eq!(
+        head_op(&fx.root).1,
+        "snapshot working copy",
+        "only the snapshot's operation"
+    );
+    assert_eq!(f_of(&fx, &r), RIGHT);
+    assert_eq!(content(&commit(&fx.root, &r).tree(), "g.txt"), "edited\n");
+}
+
+/// An empty or malformed `right` refuses before the snapshot.
+#[test]
+fn a_missing_or_malformed_right_refuses_before_the_snapshot() {
+    let mut fx = base();
+    let (_, r) = history(&mut fx);
+    let (tree, _) = select(&mut fx, &r, None, vec![hunks("f.txt", &[S1])]);
+    fs::write(fx.root.join("dirty.txt"), "dirty\n").expect("dirty @");
+    for right in [
+        Vec::new(),
+        vec!["zz".to_owned()],
+        vec!["00".to_owned(), "00".to_owned()],
+    ] {
+        let err = refused(&mut fx, |repo| {
+            repo.diffedit(&DiffeditOptions {
+                tree: tree.clone(),
+                right,
+                ..Default::default()
+            })
+        });
+        assert!(
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("right")),
+            "{err:?}"
+        );
+        assert!(fx.repo.take_precondition().is_none(), "no snapshot ran");
+    }
 }
 
 /// A `left` that is not the base tree is stale — after the immutable check; `revision` with
@@ -231,12 +301,13 @@ fn an_unchanged_tree_writes_no_operation() {
 fn stale_left_immutable_target_and_bad_arguments_refuse() {
     let mut fx = base();
     let (l, r) = history(&mut fx);
-    let parent_selection = select(&mut fx, &r, None, vec![hunks("f.txt", &[S1])]);
+    let (parent_selection, right) = select(&mut fx, &r, None, vec![hunks("f.txt", &[S1])]);
     let err = refused(&mut fx, |repo| {
         repo.diffedit(&DiffeditOptions {
             from: Some(l.clone()),
             to: Some(r.clone()),
             tree: parent_selection.clone(),
+            right: right.clone(),
             ..Default::default()
         })
     });
@@ -258,6 +329,7 @@ fn stale_left_immutable_target_and_bad_arguments_refuse() {
             revision: Some(r.clone()),
             from: Some(l.clone()),
             tree: parent_selection.clone(),
+            right: right.clone(),
             ..Default::default()
         })
     });
@@ -273,6 +345,7 @@ fn stale_left_immutable_target_and_bad_arguments_refuse() {
             from: Some(c),
             to: Some(r.clone()),
             tree: parent_selection,
+            right,
             ..Default::default()
         })
     });

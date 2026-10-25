@@ -1862,18 +1862,20 @@ class ZanshinWorker {
   Future<repo_ffi_mutate.MutationResult> diffedit(
     int handleId, {
     required repo_ffi_select_tree.TreeSelection tree,
+    required List<String> right,
     String? revision,
     String? from,
     String? to,
     bool restoreDescendants = false,
   }) async {
     // See [bookmarkCreate] for why this guard is on the calling side.
-    repo_ffi_diffedit.rejectDiffeditNuls(revision, from, to, tree);
+    repo_ffi_diffedit.rejectDiffeditNuls(revision, from, to, tree, right);
     final Uint8List bytes = await send(
       DiffeditCommand(
         commandId: _correlator.allocateId(),
         handleId: handleId,
         tree: tree,
+        right: right,
         revision: revision,
         from: from,
         to: to,
@@ -4453,6 +4455,7 @@ void _workerEntry(_WorkerInit init) {
         case DiffeditCommand(
           :final int handleId,
           :final repo_ffi_select_tree.TreeSelection tree,
+          :final List<String> right,
           :final String? revision,
           :final String? from,
           :final String? to,
@@ -4467,6 +4470,7 @@ void _workerEntry(_WorkerInit init) {
             final Uint8List bytes = repo_ffi_diffedit.zanshinDiffedit(
               raw,
               tree: tree,
+              right: right,
               revision: revision,
               from: from,
               to: to,

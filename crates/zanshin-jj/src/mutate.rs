@@ -1149,20 +1149,20 @@ pub(crate) fn check_new_args(
 /// (Story 9.56); `drop_actions`' `Rows::new_change`, the rows' counterpart, resolves it itself
 /// after this plan.
 ///
-/// Either way, two or more resolved parents with the root commit among them refuse up front on a
-/// Git-backed store, with the Git backend's own text (Story 9.31): the CLI reaches it at the
-/// commit write. `-A`/`-B` yield that too — e.g. `-B` of a child of the root together with `-B`
-/// of a commit in another lineage takes the root and that commit's parent.
+/// The plan does not refuse a merge with the root commit (Story 9.17 staleness run): the CLI
+/// reaches the Git backend's refusal at the commit write, after its description template, so
+/// [`new_change`] refuses it right before its write and `Rows::new_change` right after this plan
+/// ([`refuse_git_root_merge`]). `-A`/`-B` can yield such parents too — e.g. `-B` of a child of
+/// the root together with `-B` of a commit in another lineage takes the root and that commit's
+/// parent.
 ///
 /// The lists' shape is [`check_new_args`]', which [`crate::Repo::new_change`] runs before the
 /// snapshot; every caller passes a valid one.
 ///
 /// # Errors
 ///
-/// - [`MutateError::InvalidInput`] — (Git backend) two or more parents — positional or computed
-///   by `-A`/`-B` — including the root commit ([`GIT_ROOT_MERGE`]); or the location would
-///   create a loop (`Refusing to create a loop: commit <12 hex> would be both an ancestor and a
-///   descendant of the new commit`).
+/// - [`MutateError::InvalidInput`] — the location would create a loop (`Refusing to create a
+///   loop: commit <12 hex> would be both an ancestor and a descendant of the new commit`).
 ///   `compute_commit_location`'s `No revisions found to use as parent` cannot happen here:
 ///   `-A` keeps its non-empty targets as parents, and `-B` finds none only for the root, which
 ///   the rewritability check refuses first as [`MutateError::Immutable`].
@@ -1183,7 +1183,6 @@ pub(crate) fn plan_new(
     let after = resolve_ordered(tx, given(insert_after))?;
     let before = resolve_ordered(tx, given(insert_before))?;
     if let Some(parents) = destination {
-        refuse_git_root_merge(tx.repo().store(), &parents)?;
         return Ok(NewLocation {
             parents,
             children: Vec::new(),
@@ -1192,7 +1191,6 @@ pub(crate) fn plan_new(
     let base: &ReadonlyRepo = tx.base_repo();
     let (parents, children) =
         compute_commit_location(base, templates, None, after.as_deref(), before.as_deref(), "new commit")?;
-    refuse_git_root_merge(tx.repo().store(), &parents)?;
     Ok(NewLocation { parents, children })
 }
 
@@ -1241,7 +1239,10 @@ pub(crate) fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — see [`plan_new`]; or (advance case) an
-///   `experimental-advance-branches` pattern does not parse.
+///   `experimental-advance-branches` pattern does not parse; or (Git backend) two or more parents
+///   — positional or computed by `-A`/`-B` — including the root commit ([`GIT_ROOT_MERGE`]),
+///   refused before anything is written, after the description template is parsed (as the
+///   CLI's backend write refuses it).
 /// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
 /// - [`MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is immutable.
 /// - [`MutateError::Config`] — in the CLI's order: the `immutable_heads()` alias does not resolve
@@ -1291,6 +1292,9 @@ pub(crate) fn new_change(
             builder.set_description(description);
         }
     }
+    // The Git backend refuses a root merge at the template's hidden write (`new.rs:221-222`,
+    // checked in `new_description`) or, with an empty template, at this write (`new.rs:237`).
+    refuse_git_root_merge(tx.repo().store(), &location.parents)?;
     let new_commit = pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
     // `new.rs:235-252`: replace each old parent that is a new parent by the new commit, then
     // append it — ordered and deduplicated, like the CLI's `IndexSet`.

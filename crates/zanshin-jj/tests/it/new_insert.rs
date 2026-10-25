@@ -498,6 +498,41 @@ fn an_insert_location_yielding_a_root_merge_is_refused_with_the_git_backend_text
     );
 }
 
+/// With a valid non-empty template (the CLI's hidden write reaches the backend) or only the
+/// alias broken, a root merge still refuses with the Git backend's text, nothing written.
+#[test]
+fn a_root_merge_refuses_with_the_git_backend_text_with_a_valid_template_or_only_the_alias_broken() {
+    let mut fx = base();
+    let (c, root) = (fx.c.clone(), root_change(&fx.root));
+    for config in ["[templates]\nnew_description = '\"x\"'\n", UNRESOLVABLE_ALIAS] {
+        set_repo_config(&mut fx, config);
+        let err = refused(&mut fx, &[c.clone(), root.clone()], &[], &[]);
+        assert!(
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason
+                == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
+            "{config}: {err:?}"
+        );
+    }
+}
+
+/// The CLI refuses a root merge at its commit write, after it parsed `templates.new_description`
+/// (`new.rs:217-221` @ v0.46.0): with the template broken — alone or together with the
+/// `immutable_heads()` alias — the template refusal wins, nothing written.
+#[test]
+fn a_broken_template_refuses_a_root_merge_before_the_git_backend() {
+    let mut fx = base();
+    let (c, root) = (fx.c.clone(), root_change(&fx.root));
+    let broken_template = "[templates]\nnew_description = '\"x\" ++'\n";
+    for config in [
+        broken_template.to_owned(),
+        format!("{UNRESOLVABLE_ALIAS}{broken_template}"),
+    ] {
+        set_repo_config(&mut fx, &config);
+        let err = refused(&mut fx, &[c.clone(), root.clone()], &[], &[]);
+        assert_config_class(&err, true, &config);
+    }
+}
+
 /// The CLI names the FIRST commit of `children::parents` as jj-lib streams it — the head of the
 /// range, C here (checked against the pinned `jj new -A C -B A`), not A.
 #[test]

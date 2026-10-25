@@ -1301,7 +1301,8 @@ impl Repo {
     ///   two or more parents — positional, or computed by `-A`/`-B` —
     ///   including the root commit, with the Git backend's own text, "The Git backend does not
     ///   support creating merge commits with the root commit as one of the parents." (Story
-    ///   9.31); (`-A`/`-B`) the location would create a loop (`Refusing to create a loop: commit
+    ///   9.31) — refused before anything is written, after the description template is parsed
+    ///   (as the CLI's backend write refuses it); the drop/card rows still preview it; (`-A`/`-B`) the location would create a loop (`Refusing to create a loop: commit
     ///   <12 hex> would be both an ancestor and a descendant of the new commit`); or (one
     ///   positional parent) an `experimental-advance-branches` pattern does not parse.
     /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or
@@ -3863,9 +3864,10 @@ impl Repo {
     /// conflicts under `paths` (repo-relative PREFIXES, empty = all) are listed in tree order, each
     /// with the CLI's `--list` description and side count of the simplified conflict, whether
     /// [`Repo::resolve`] can take it, and — for a conflict of files — its simplified labels and
-    /// `jj_lib::files::merge_hunks` hunks (each conflicting hunk's terms: side 1, base 1, side 2, …).
-    /// An explicitly named path that is absent warns `jj.paths_unmatched`. Writes NO operation
-    /// beyond the snapshot's.
+    /// `jj_lib::files::merge_hunks` hunks (each conflicting hunk's terms: side 1, base 1, side 2, …)
+    /// and its simplified term ids (hex, `None` = no file on that term — an absent or deleted
+    /// side), which [`Repo::resolve`] takes back as the staleness token. An explicitly named path
+    /// that is absent warns `jj.paths_unmatched`. Writes NO operation beyond the snapshot's.
     ///
     /// # Errors
     ///
@@ -3904,8 +3906,9 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::MutateError::InvalidInput`] — [`crate::ResolveTool::Files`] together with
-    ///   `paths`, without files, or with an invalid, root or duplicate path (before the snapshot,
-    ///   so nothing is written), or a `paths` entry is not a valid repo path.
+    ///   `paths`, without files, or with an invalid, root or duplicate path, or a file without its
+    ///   term ids (before the snapshot, so nothing is written), or a `paths` entry is not a valid
+    ///   repo path.
     /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE
     ///   commit, or divergent.
     /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
@@ -3913,7 +3916,10 @@ impl Repo {
     /// - [`crate::MutateError::NoConflicts`] — nothing matched (the CLI's two texts).
     /// - [`crate::MutateError::Immutable`] — the revision is inside the immutable set.
     /// - [`crate::MutateError::StaleSelection`] — a resolved file is not a conflict at the
-    ///   revision (the CLI's "Couldn't find any conflicts at …" / "Couldn't find the path …").
+    ///   revision (the CLI's "Couldn't find any conflicts at …" / "Couldn't find the path …"), or
+    ///   its conflict's term ids are no longer the file's `term_ids` (the conflict changed since
+    ///   [`Repo::resolve_list`]) — checked before the resolvability refusal. A non-file conflict
+    ///   (empty term ids) cannot go through [`crate::ResolveTool::Files`]: any token is stale.
     /// - [`crate::MutateError::ConflictNotResolvable`] — a conflict is not only normal files, has
     ///   more than two sides, or conflicts in the executable bit (the CLI's texts).
     /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
@@ -3933,11 +3939,13 @@ impl Repo {
     /// The target is `to` (or `@`) diffed against `from` (or `@`) when either is given, else
     /// `revision` (or `@`) diffed against its parents. `tree` is what [`Repo::select_tree`]
     /// returned for that diff (with [`crate::SelectTreeOptions::from`] = `from` in the `from`/`to`
-    /// form) and the `left` it was selected against. The target must be rewritable; then a base
-    /// tree that is no longer `tree.left` refuses as stale. A tree equal to the target's writes NO
-    /// operation ("Nothing changed."; `new_op_id` is the pre-call head). Otherwise the target gets
-    /// the tree, its descendants are rebased — or, with `restore_descendants`, reparented with
-    /// their content kept — and the operation is the CLI's `edit commit <hex>`.
+    /// form) and the `left` it was selected against; `right` is the target's tree ids the
+    /// selection saw ([`crate::ShowEntry::tree_ids`]). The target must be rewritable; then a base
+    /// tree that is no longer `tree.left`, or a target tree that is no longer `right` (an edit
+    /// folded in by the snapshot would be lost), refuses as stale. A tree equal to the target's
+    /// writes NO operation ("Nothing changed."; `new_op_id` is the pre-call head). Otherwise the
+    /// target gets the tree, its descendants are rebased — or, with `restore_descendants`,
+    /// reparented with their content kept — and the operation is the CLI's `edit commit <hex>`.
     ///
     /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
     ///
@@ -3945,13 +3953,15 @@ impl Repo {
     ///
     /// - [`crate::MutateError::InvalidInput`] — `revision` together with `from`/`to`, or a `tree`
     ///   of the wrong shape (malformed hex, an even or zero id count, a label count that is
-    ///   neither zero nor the id count) — before the snapshot, so nothing is written.
+    ///   neither zero nor the id count), or an empty or malformed `right` — before the snapshot,
+    ///   so nothing is written.
     /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
     ///   commit, or divergent.
     /// - [`crate::MutateError::RevsetResolutionError`] — an omitted id's `@` in a workspace with
     ///   no working-copy commit.
     /// - [`crate::MutateError::Immutable`] — the target is inside the immutable set.
-    /// - [`crate::MutateError::StaleSelection`] — the base tree is not `tree.left`.
+    /// - [`crate::MutateError::StaleSelection`] — the base tree is not `tree.left`, or then the
+    ///   target's tree is not `right`.
     /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.

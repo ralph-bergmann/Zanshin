@@ -51,7 +51,8 @@ fn read_resolve_list_request(data: *const u8, len: usize) -> Result<ResolveListO
 }
 
 /// Parse a `ResolveRequest` buffer into owned [`ResolveOptions`]; an absent `revision` is `@`,
-/// absent `paths` / `files` empty.
+/// absent `paths` / `files` / a file's `term_ids` empty (`zanshin_jj` refuses a file without term
+/// ids as `jj.invalid_input`), an absent term `id` no file on that term.
 ///
 /// `data`/`len` as for [`read_resolve_list_request`].
 ///
@@ -75,6 +76,10 @@ fn read_resolve_request(data: *const u8, len: usize) -> Result<ResolveOptions, F
                 .map(|file| ResolvedFile {
                     path: file.path().unwrap_or_default().to_owned(),
                     content: file.content().map(|c| c.bytes().to_vec()).unwrap_or_default(),
+                    term_ids: file
+                        .term_ids()
+                        .map(|ids| ids.iter().map(|id| id.id().map(ToOwned::to_owned)).collect())
+                        .unwrap_or_default(),
                 })
                 .collect()
         })
@@ -112,7 +117,8 @@ fn read_resolve_request(data: *const u8, len: usize) -> Result<ResolveOptions, F
 /// Returns a `FlatBuffers` `Envelope` carrying a `ResolveList` payload on success: per matched
 /// conflict, in tree order, its path, the CLI's `--list` description, its side count, why
 /// `zanshin_resolve` would refuse it (absent: it can take it) and — for a file conflict — its
-/// labels and merge hunks (each conflicting hunk's terms: side 1, base 1, side 2, …).
+/// labels, merge hunks (each conflicting hunk's terms: side 1, base 1, side 2, …) and term ids
+/// (hex, an absent `id` = no file on that term), which `zanshin_resolve`'s files send back.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -155,7 +161,8 @@ pub unsafe extern "C" fn zanshin_resolve_list(handle: u64, data: *const u8, len:
 /// The arguments cross as a `ResolveRequest` `FlatBuffers` request buffer: `revision` (absent:
 /// `@`), `paths` (repo-relative PREFIXES; absent or empty: every conflict) and `tool` — `Ours` /
 /// `Theirs` take side 1 / side 2 (`--tool :ours` / `:theirs`), `Files` writes each of `files` (the
-/// GUI merge editor's output; the files are the paths) as the builtin merge editor writes a file.
+/// GUI merge editor's output; the files are the paths) as the builtin merge editor writes a file,
+/// each carrying the `term_ids` `zanshin_resolve_list` reported (the staleness token).
 /// The revision must be rewritable; its descendants are rebased; the operation is `Resolve
 /// conflicts in commit <hex>`. A revision that is not `@` and still has conflicts warns
 /// `jj.resolve_conflicts_remain`.
@@ -168,14 +175,17 @@ pub unsafe extern "C" fn zanshin_resolve_list(handle: u64, data: *const u8, len:
 /// - `ffi.invalid_argument` — `data` does not verify as a `ResolveRequest` buffer, or its `kind`
 ///   is not `Resolve`.
 /// - `jj.invalid_input` — `files` with `Ours`/`Theirs`, `Files` with `paths` or without files, an
-///   invalid, root or duplicate file path (all before the snapshot: nothing written, no
-///   `precondition`), or a `paths` entry is not a valid repo path; detail in `context`.
+///   invalid, root or duplicate file path, a file without `term_ids` (all before the snapshot:
+///   nothing written, no `precondition`), or a `paths` entry is not a valid repo path; detail in
+///   `context`.
 /// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
 /// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
 ///   commit.
 /// - `jj.no_conflicts` — nothing matched; the CLI's text in `context`.
 /// - `jj.immutable` — the revision is inside the immutable set; its hex id in `context`.
-/// - `jj.stale_selection` — a file is not a conflict at the revision; the CLI's text in `context`.
+/// - `jj.stale_selection` — a file is not a conflict at the revision (the CLI's text in
+///   `context`), or its conflict's term ids are no longer the file's `term_ids`, or it is not a
+///   file conflict (a non-file conflict cannot go through `Files`).
 /// - `jj.conflict_not_resolvable` — a conflict a 3-way merge tool cannot take; the CLI's text in
 ///   `context`.
 /// - `jj.config_error` — the `immutable_heads()` alias does not resolve.
@@ -231,11 +241,16 @@ mod tests {
             .map(|&(path, content)| {
                 let path = b.create_string(path);
                 let content = b.create_vector(content);
+                let id = b.create_string("ab");
+                let present = fbs::ConflictTermId::create(&mut b, &fbs::ConflictTermIdArgs { id: Some(id) });
+                let absent = fbs::ConflictTermId::create(&mut b, &fbs::ConflictTermIdArgs { id: None });
+                let term_ids = b.create_vector(&[present, absent]);
                 fbs::ResolvedFile::create(
                     &mut b,
                     &fbs::ResolvedFileArgs {
                         path: Some(path),
                         content: Some(content),
+                        term_ids: Some(term_ids),
                     },
                 )
             })
@@ -275,6 +290,7 @@ mod tests {
         };
         assert_eq!(files[0].path, "c");
         assert_eq!(files[0].content, b"x\n");
+        assert_eq!(files[0].term_ids, [Some("ab".to_owned()), None]);
         assert!(options.revision.is_none() && options.paths.is_empty());
         for (wire, tool) in [
             (fbs::ResolveTool::Ours, ResolveTool::Ours),

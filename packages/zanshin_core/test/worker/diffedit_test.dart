@@ -73,16 +73,39 @@ void main() {
     }
 
     test('diffedit_with_sections_one_and_three_keeps_only_them', () async {
-      final List<String> left = (await show(at)).parentTreeIds;
+      final ShowEntry shown = await show(at);
+      final List<String> left = shown.parentTreeIds;
       final SelectedTree tree = await repo.selectTree(
         left: left,
         files: const [
           FileSelection.hunks('f.txt', [section1, section3]),
         ],
       );
-      final MutationResult result = await repo.diffedit(tree: TreeSelection.of(tree, left: left));
+      final MutationResult result = await repo.diffedit(
+        tree: TreeSelection.of(tree, left: left),
+        right: shown.treeIds,
+      );
       expect(result.workingCopyChangeId, at);
       expect(await fileAt(at), fOneAndThree);
+    });
+
+    test('a_target_edited_on_disk_after_the_selection_is_stale', () async {
+      final ShowEntry shown = await show(at);
+      final SelectedTree tree = await repo.selectTree(
+        left: shown.parentTreeIds,
+        files: const [
+          FileSelection.hunks('f.txt', [section1, section3]),
+        ],
+      );
+      File('${tempDir.path}/f.txt').writeAsStringSync('edited\n');
+      await expectLater(
+        repo.diffedit(
+          tree: TreeSelection.of(tree, left: shown.parentTreeIds),
+          right: shown.treeIds,
+        ),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.stale_selection')),
+      );
+      expect(await fileAt(at), 'edited\n', reason: 'the disk edit is kept');
     });
 
     /// A child `c` of `at` (g.txt), which becomes `@` — or, with [editBack],
@@ -113,6 +136,7 @@ void main() {
       );
       await repo.diffedit(
         tree: TreeSelection.of(tree, left: from.treeIds),
+        right: (await show(c)).treeIds,
         from: a,
         to: c,
       );
@@ -121,7 +145,8 @@ void main() {
     });
 
     Future<void> diffeditAtKeepingSectionsOneAndThree({required bool restoreDescendants}) async {
-      final List<String> left = (await show(at)).parentTreeIds;
+      final ShowEntry shown = await show(at);
+      final List<String> left = shown.parentTreeIds;
       final SelectedTree tree = await repo.selectTree(
         revision: at,
         left: left,
@@ -131,6 +156,7 @@ void main() {
       );
       await repo.diffedit(
         tree: TreeSelection.of(tree, left: left),
+        right: shown.treeIds,
         revision: at,
         restoreDescendants: restoreDescendants,
       );
@@ -150,18 +176,30 @@ void main() {
       expect(await fileAt(c), fRight, reason: 'the child keeps its content');
     });
 
-    test('a_stale_left_and_revision_with_from_are_refused', () async {
-      final List<String> left = (await show(at)).parentTreeIds;
+    test('a_stale_left_revision_with_from_and_an_empty_right_are_refused', () async {
+      final ShowEntry shown = await show(at);
+      final List<String> left = shown.parentTreeIds;
       final SelectedTree tree = await repo.selectTree(left: left, files: const [FileSelection.whole('f.txt')]);
       await expectLater(
-        repo.diffedit(tree: TreeSelection.of(tree, left: tree.treeIds)),
+        repo.diffedit(
+          tree: TreeSelection.of(tree, left: tree.treeIds),
+          right: shown.treeIds,
+        ),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.stale_selection')),
       );
       await expectLater(
         repo.diffedit(
           tree: TreeSelection.of(tree, left: left),
+          right: shown.treeIds,
           revision: at,
           from: a,
+        ),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+      await expectLater(
+        repo.diffedit(
+          tree: TreeSelection.of(tree, left: left),
+          right: const [],
         ),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
       );

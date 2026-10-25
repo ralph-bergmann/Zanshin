@@ -56,6 +56,8 @@ struct Fx {
     handle: u64,
     at: String,
     left: Vec<String>,
+    /// `@`'s own tree ids, `diffedit`'s `right`.
+    right: Vec<String>,
 }
 
 impl Drop for Fx {
@@ -89,7 +91,8 @@ fn base() -> Fx {
     fs::write(root.join("f.txt"), "A\nb\nC\nd\nE\n").expect("write");
     fs::write(root.join("new.txt"), "n\n").expect("write");
     let at = repo.status().expect("status").working_copy_change_id.expect("@");
-    let left = repo.show(None, None).expect("show").swap_remove(0).parent_tree_ids;
+    let shown = repo.show(None, None).expect("show").swap_remove(0);
+    let (left, right) = (shown.parent_tree_ids, shown.tree_ids);
     let path = CString::new(root.to_str().expect("UTF-8 path")).expect("no NUL");
     // SAFETY: `path` is a valid NUL-terminated C string alive for the call.
     let bytes = unsafe { read_and_free(zanshin_repo_open(path.as_ptr())) };
@@ -103,6 +106,7 @@ fn base() -> Fx {
         handle,
         at: at.0,
         left,
+        right,
     }
 }
 
@@ -247,10 +251,17 @@ fn file_at(root: &Path, change: &str, path: &str) -> String {
     String::from_utf8(shown.content).expect("utf-8")
 }
 
-/// `DiffeditRequest` for `@` with `tree` and `left`; `revision_and_from` sets both (refused).
-fn diffedit_request(tree: &(Vec<String>, Vec<String>), left: &[String], revision_and_from: bool) -> Vec<u8> {
+/// `DiffeditRequest` for `@` with `tree`, `left` and `right`; `revision_and_from` sets both
+/// (refused).
+fn diffedit_request(
+    tree: &(Vec<String>, Vec<String>),
+    left: &[String],
+    right: &[String],
+    revision_and_from: bool,
+) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let tree = tree_selection(&mut b, tree, left);
+    let right = strings(&mut b, right);
     let (revision, from) = if revision_and_from {
         (Some(b.create_string("r")), Some(b.create_string("f")))
     } else {
@@ -265,6 +276,7 @@ fn diffedit_request(tree: &(Vec<String>, Vec<String>), left: &[String], revision
             to: None,
             tree: Some(tree),
             restore_descendants: false,
+            right: Some(right),
         },
     );
     b.finish(req, None);
@@ -272,30 +284,35 @@ fn diffedit_request(tree: &(Vec<String>, Vec<String>), left: &[String], revision
 }
 
 /// Story 9.17: sections 1 and 3 through `zanshin_diffedit` — `@` holds exactly them; `revision`
-/// with `from` refuses before the snapshot, a stale `left` after it.
+/// with `from` (or an empty `right`) refuses before the snapshot, a stale `left` or `right` after
+/// it.
 #[test]
 fn select_tree_then_diffedit_keeps_sections_one_and_three() {
     let fx = base();
     let tree = select_one_and_three(&fx);
     let head = head_op(&fx.root);
 
-    let req = diffedit_request(&tree, &fx.left, true);
-    // SAFETY: `fx.handle` is open; `req` is a live buffer for the call.
-    let bytes = unsafe { read_and_free(zanshin_diffedit(fx.handle, req.as_ptr(), req.len())) };
-    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
-    assert!(
-        parse_envelope(&bytes).precondition().is_none(),
-        "refused before the snapshot"
-    );
+    for (revision_and_from, right) in [(true, fx.right.clone()), (false, Vec::new())] {
+        let req = diffedit_request(&tree, &fx.left, &right, revision_and_from);
+        // SAFETY: `fx.handle` is open; `req` is a live buffer for the call.
+        let bytes = unsafe { read_and_free(zanshin_diffedit(fx.handle, req.as_ptr(), req.len())) };
+        assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+        assert!(
+            parse_envelope(&bytes).precondition().is_none(),
+            "refused before the snapshot"
+        );
+    }
 
     let stale = vec!["0".repeat(40)];
-    let req = diffedit_request(&tree, &stale, false);
-    // SAFETY: as above.
-    let bytes = unsafe { read_and_free(zanshin_diffedit(fx.handle, req.as_ptr(), req.len())) };
-    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_STALE_SELECTION));
-    assert_eq!(head_op(&fx.root), head, "refusals write no operation");
+    for (left, right) in [(&stale, &fx.right), (&fx.left, &stale)] {
+        let req = diffedit_request(&tree, left, right, false);
+        // SAFETY: as above.
+        let bytes = unsafe { read_and_free(zanshin_diffedit(fx.handle, req.as_ptr(), req.len())) };
+        assert_eq!(error_code(&bytes).as_deref(), Some(JJ_STALE_SELECTION));
+        assert_eq!(head_op(&fx.root), head, "refusals write no operation");
+    }
 
-    let req = diffedit_request(&tree, &fx.left, false);
+    let req = diffedit_request(&tree, &fx.left, &fx.right, false);
     // SAFETY: as above.
     let bytes = unsafe { read_and_free(zanshin_diffedit(fx.handle, req.as_ptr(), req.len())) };
     let env = parse_envelope(&bytes);

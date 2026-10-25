@@ -432,10 +432,13 @@ enum ResolveTool : ubyte {
 
 /// One file the GUI merge editor resolved (Story 9.17): `path` repo-relative in jj's internal
 /// `/`-separated form (what `ConflictedFile.path` reports), `content` its resolved bytes, written
-/// as they are.
+/// as they are. `term_ids` (staleness run): the `ConflictedFile.term_ids` the content was composed
+/// from, sent back unchanged — required (absent or empty → `jj.invalid_input`); a conflict whose
+/// term ids differ now refuses `jj.stale_selection`.
 table ResolvedFile {
   path: string;
   content: [ubyte];
+  term_ids: [ConflictTermId];
 }
 
 /// Arguments of `zanshin_resolve` (Story 9.17) — the CLI's `jj resolve`.
@@ -463,6 +466,10 @@ table ResolveRequest {
 ///                      (absent → `@`)
 ///   tree               what `zanshin_select_tree` returned for that diff and its `left`
 ///   restore_descendants  `--restore-descendants`: descendants keep their content
+///   right              (staleness run) the target's tree ids the selection saw — its
+///                      `ShowEntry.tree_ids`, hex in order; required (absent / empty / even count
+///                      / non-hex → `jj.invalid_input`); a target tree that differs now refuses
+///                      `jj.stale_selection`, since diffedit replaces the whole tree
 table DiffeditRequest {
   kind: RequestKind;
   revision: string;
@@ -470,6 +477,7 @@ table DiffeditRequest {
   to: string;
   tree: TreeSelection;
   restore_descendants: bool;
+  right: [string];
 }
 
 /// Arguments of `zanshin_metaedit` (Story 9.9) — the CLI's `jj metaedit` flags, one field each.
@@ -2802,6 +2810,12 @@ table ConflictTerm {
   content: [ubyte];
 }
 
+/// One term's file id of a file conflict (staleness run): `id` hex; ABSENT = no file on that term
+/// (an absent or deleted side).
+table ConflictTermId {
+  id: string;
+}
+
 /// One merge hunk of a file conflict (Story 9.17) — `jj_lib::files::merge_hunks` over the
 /// simplified sides: a conflicting hunk's terms in jj's `Merge` order (side 1, base 1, side 2, …),
 /// or one term, the text every side shares.
@@ -2820,6 +2834,10 @@ table ConflictHunk {
 ///   labels             a file conflict's simplified conflict labels, one per term (empty =
 ///                      unlabeled, and for a conflict that is not a file conflict)
 ///   hunks              a file conflict's merge hunks; empty for any other conflict
+///   term_ids           (staleness run) a file conflict's simplified file ids, one per term in
+///                      `Merge` order (as `labels` and a conflicting hunk's `terms`); an ABSENT
+///                      `id` = no file on that term (an absent or deleted side); empty for any
+///                      other conflict. `ResolvedFile.term_ids` sends them back.
 table ConflictedFile {
   path: string;
   description: string;
@@ -2827,6 +2845,7 @@ table ConflictedFile {
   unresolvable: string;
   labels: [string];
   hunks: [ConflictHunk];
+  term_ids: [ConflictTermId];
 }
 
 /// `zanshin_resolve_list`'s answer (Story 9.17): the revision's matching conflicts, in tree

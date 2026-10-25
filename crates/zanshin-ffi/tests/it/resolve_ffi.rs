@@ -16,7 +16,7 @@ use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::resolve::{zanshin_resolve, zanshin_resolve_list};
-use zanshin_ffi::{FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_INVALID_INPUT, JJ_NO_CONFLICTS};
+use zanshin_ffi::{FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_INVALID_INPUT, JJ_NO_CONFLICTS, JJ_STALE_SELECTION};
 use zanshin_jj::{Backend, Repo};
 
 /// Copy bytes out of a `ZanshinBuf` token and free the token.
@@ -129,6 +129,80 @@ fn resolve_request(tool: fbs::ResolveTool, paths: &[&str]) -> Vec<u8> {
     b.finished_data().to_vec()
 }
 
+/// The first listed file's term ids, read from a `ResolveList` envelope.
+fn listed_term_ids(bytes: &[u8]) -> Vec<Option<String>> {
+    let files = parse_envelope(bytes)
+        .data_as_resolve_list()
+        .expect("ResolveList")
+        .files()
+        .expect("files");
+    files
+        .get(0)
+        .term_ids()
+        .expect("term ids")
+        .iter()
+        .map(|id| id.id().map(ToOwned::to_owned))
+        .collect()
+}
+
+/// A `Files` request resolving `c.txt` to `merged` with `term_ids`.
+fn files_request(term_ids: &[Option<String>]) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let ids: Vec<_> = term_ids
+        .iter()
+        .map(|id| {
+            let id = id.as_deref().map(|id| b.create_string(id));
+            fbs::ConflictTermId::create(&mut b, &fbs::ConflictTermIdArgs { id })
+        })
+        .collect();
+    let ids = b.create_vector(&ids);
+    let path = b.create_string("c.txt");
+    let content = b.create_vector(b"merged\n");
+    let file = fbs::ResolvedFile::create(
+        &mut b,
+        &fbs::ResolvedFileArgs {
+            path: Some(path),
+            content: Some(content),
+            term_ids: Some(ids),
+        },
+    );
+    let files = b.create_vector(&[file]);
+    let req = fbs::ResolveRequest::create(
+        &mut b,
+        &fbs::ResolveRequestArgs {
+            kind: fbs::RequestKind::Resolve,
+            tool: fbs::ResolveTool::Files,
+            files: Some(files),
+            ..Default::default()
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// The listed term ids cross back on a `Files` resolve: other ids refuse `jj.stale_selection`
+/// with no operation, the listed ones resolve.
+#[test]
+fn files_carry_the_listed_term_ids_and_other_ids_are_stale() {
+    let fx = base();
+    let req = list_request();
+    // SAFETY: `fx.handle` is open; `req` is a live buffer for the call.
+    let bytes = unsafe { read_and_free(zanshin_resolve_list(fx.handle, req.as_ptr(), req.len())) };
+    let ids = listed_term_ids(&bytes);
+
+    let mut other = ids.clone();
+    other[0] = Some("0".repeat(40));
+    let req = files_request(&other);
+    // SAFETY: as above.
+    let bytes = unsafe { read_and_free(zanshin_resolve(fx.handle, req.as_ptr(), req.len())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_STALE_SELECTION));
+
+    let req = files_request(&ids);
+    // SAFETY: as above.
+    let bytes = unsafe { read_and_free(zanshin_resolve(fx.handle, req.as_ptr(), req.len())) };
+    assert!(parse_envelope(&bytes).ok(), "{:?}", error_code(&bytes));
+}
+
 /// The list carries the conflict's description, sides and three-term hunk; `:theirs` resolves it
 /// and the list then refuses `jj.no_conflicts`.
 #[test]
@@ -157,6 +231,11 @@ fn list_then_resolve_then_no_conflicts() {
         .map(|t| t.content().map(|c| c.bytes().to_vec()).unwrap_or_default())
         .collect();
     assert_eq!(terms, [b"c from C\n".to_vec(), Vec::new(), b"c from D\n".to_vec()]);
+    let ids = listed_term_ids(&bytes);
+    assert!(
+        matches!(ids.as_slice(), [Some(_), None, Some(_)]),
+        "the absent base has no id: {ids:?}"
+    );
 
     let req = resolve_request(fbs::ResolveTool::Theirs, &[]);
     // SAFETY: as above.

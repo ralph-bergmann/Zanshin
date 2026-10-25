@@ -46,7 +46,7 @@ final class ResolveFiles extends ResolveTool {
 
 /// One file the GUI merge editor resolved (mirrors `zanshin_jj::ResolvedFile`).
 final class ResolvedFile {
-  const ResolvedFile({required this.path, required this.content});
+  const ResolvedFile({required this.path, required this.content, required this.termIds});
 
   /// The repo-relative path, in jj's internal `/`-separated form (what
   /// [ConflictedFile.path] reports).
@@ -54,6 +54,11 @@ final class ResolvedFile {
 
   /// The resolved content, written as is.
   final Uint8List content;
+
+  /// The [ConflictedFile.termIds] the content was composed from — the
+  /// staleness token. `resolve` refuses `jj.stale_selection` when the
+  /// conflict changed since, `jj.invalid_input` when this is empty.
+  final List<String?> termIds;
 }
 
 /// One merge hunk of a file conflict (mirrors `zanshin_jj::ConflictHunk`).
@@ -75,6 +80,7 @@ final class ConflictedFile {
     required this.unresolvable,
     required this.labels,
     required this.hunks,
+    required this.termIds,
   });
 
   /// The repo-relative path, in jj's internal `/`-separated form.
@@ -97,6 +103,12 @@ final class ConflictedFile {
 
   /// A file conflict's merge hunks; empty for any other conflict.
   final List<ConflictHunk> hunks;
+
+  /// A file conflict's simplified file ids (hex), one per term in `Merge`
+  /// order (as [labels] and a conflicting hunk's terms); `null` = no file on
+  /// that term (an absent or deleted side). Empty for any other conflict.
+  /// [ResolvedFile.termIds] sends them back.
+  final List<String?> termIds;
 }
 
 /// `resolveList`'s answer (mirrors `zanshin_jj::ResolveList`).
@@ -159,7 +171,12 @@ Uint8List zanshinResolve(int rawHandle, {required ResolveTool tool, String? revi
     },
     files: [
       if (tool case ResolveFiles(:final files))
-        for (final ResolvedFile file in files) fbs.ResolvedFileObjectBuilder(path: file.path, content: file.content),
+        for (final ResolvedFile file in files)
+          fbs.ResolvedFileObjectBuilder(
+            path: file.path,
+            content: file.content,
+            termIds: [for (final String? id in file.termIds) fbs.ConflictTermIdObjectBuilder(id: id)],
+          ),
     ],
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_resolve(rawHandle, ptr, len));
@@ -202,6 +219,7 @@ ResolveList decodeResolveListEnvelopeInternal(Uint8List bytes) {
                 ],
               ),
           ],
+          termIds: [for (final fbs.ConflictTermId id in file.termIds ?? const <fbs.ConflictTermId>[]) id.id],
         ),
     ],
     warnings: decodeEnvelopeWarningsInternal(env),

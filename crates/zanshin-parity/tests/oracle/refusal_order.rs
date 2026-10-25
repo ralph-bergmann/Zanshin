@@ -4,7 +4,9 @@
 //! against the pinned CLI:
 //! with both an unresolvable `immutable_heads()` alias and an unparsable description template,
 //! the CLI parses the template before its `tx.finish` resolves the immutable set, unless the
-//! location has children, whose rewritability check resolves it first. Each witness refuses
+//! location has children, whose rewritability check resolves it first. A `new` merge with the root
+//! (`new @ root()`, staleness run) names the template too: the Git backend refuses it only at the
+//! commit write, after the template. Each witness refuses
 //! through Zanshin and through the pinned `jj` on the SAME repo (a refusal writes no operation, so
 //! both see one state) and compares the refusal's class.
 //!
@@ -85,11 +87,12 @@ fn change(repo: &mut Repo, revset: &str) -> ChangeId {
     found.expect("one commit")
 }
 
-/// `A`, `B`, `C` = `@--`, `@-`, `@`.
+/// `A`, `B`, `C` = `@--`, `@-`, `@`, and the root commit.
 struct Ids {
     a: ChangeId,
     b: ChangeId,
     c: ChangeId,
+    root: ChangeId,
 }
 
 /// Runs each case on one both-broken repo: the CLI's args and Zanshin's call refuse with the
@@ -105,6 +108,7 @@ fn assert_same_class(
         a: change(&mut repo, "@--"),
         b: change(&mut repo, "@-"),
         c: change(&mut repo, "@"),
+        root: change(&mut repo, "root()"),
     };
     for (args, expected) in cases {
         let before = op_heads(&root);
@@ -128,6 +132,7 @@ fn id_of(ids: &Ids, arg: &str) -> ChangeId {
         "@--" => ids.a.clone(),
         "@-" => ids.b.clone(),
         "@" => ids.c.clone(),
+        "root()" => ids.root.clone(),
         _ => panic!("unknown arg {arg}"),
     }
 }
@@ -199,12 +204,14 @@ fn new_parses_its_template_before_the_finish_resolves_the_immutable_set() {
             (&["new", "-A", "@"], Class::Template),
             (&["new", "-A", "@--"], Class::ImmutableSet),
             (&["new", "-B", "@"], Class::ImmutableSet),
+            // A root merge: the Git backend refuses it at the commit write, after the template.
+            (&["new", "@", "root()"], Class::Template),
         ],
         |repo, ids, args| {
             let [mut parents, insert_after, insert_before] = location(ids, args);
-            // `new @`: the positional revision is the parent, as `-o @` is.
+            // `new @` / `new @ root()`: the positional revisions are the parents, as `-o @` is.
             if parents.is_empty() && insert_after.is_empty() && insert_before.is_empty() {
-                parents.push(id_of(ids, args[1]));
+                parents.extend(args[1..].iter().map(|arg| id_of(ids, arg)));
             }
             repo.new_change(&parents, &insert_after, &insert_before)
         },

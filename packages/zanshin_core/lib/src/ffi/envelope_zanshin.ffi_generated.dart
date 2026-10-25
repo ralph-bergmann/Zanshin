@@ -3944,7 +3944,9 @@ class ResolveListRequestObjectBuilder extends fb.ObjectBuilder {
 
 ///  One file the GUI merge editor resolved (Story 9.17): `path` repo-relative in jj's internal
 ///  `/`-separated form (what `ConflictedFile.path` reports), `content` its resolved bytes, written
-///  as they are.
+///  as they are. `term_ids` (staleness run): the `ConflictedFile.term_ids` the content was composed
+///  from, sent back unchanged — required (absent or empty → `jj.invalid_input`); a conflict whose
+///  term ids differ now refuses `jj.stale_selection`.
 class ResolvedFile {
   ResolvedFile._(this._bc, this._bcOffset);
   factory ResolvedFile(List<int> bytes) {
@@ -3959,10 +3961,12 @@ class ResolvedFile {
 
   String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
   List<int>? get content => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<ConflictTermId>? get termIds =>
+      const fb.ListReader<ConflictTermId>(ConflictTermId.reader).vTableGetNullable(_bc, _bcOffset, 8);
 
   @override
   String toString() {
-    return 'ResolvedFile{path: ${path}, content: ${content}}';
+    return 'ResolvedFile{path: ${path}, content: ${content}, termIds: ${termIds}}';
   }
 }
 
@@ -3979,7 +3983,7 @@ class ResolvedFileBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
   }
 
   int addPathOffset(int? offset) {
@@ -3992,6 +3996,11 @@ class ResolvedFileBuilder {
     return fbBuilder.offset;
   }
 
+  int addTermIdsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -4000,21 +4009,28 @@ class ResolvedFileBuilder {
 class ResolvedFileObjectBuilder extends fb.ObjectBuilder {
   final String? _path;
   final List<int>? _content;
+  final List<ConflictTermIdObjectBuilder>? _termIds;
 
   ResolvedFileObjectBuilder({
     String? path,
     List<int>? content,
+    List<ConflictTermIdObjectBuilder>? termIds,
   }) : _path = path,
-       _content = content;
+       _content = content,
+       _termIds = termIds;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
     final int? contentOffset = _content == null ? null : fbBuilder.writeListUint8(_content!);
-    fbBuilder.startTable(2);
+    final int? termIdsOffset = _termIds == null
+        ? null
+        : fbBuilder.writeList(_termIds!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(3);
     fbBuilder.addOffset(0, pathOffset);
     fbBuilder.addOffset(1, contentOffset);
+    fbBuilder.addOffset(2, termIdsOffset);
     return fbBuilder.endTable();
   }
 
@@ -4160,6 +4176,10 @@ class ResolveRequestObjectBuilder extends fb.ObjectBuilder {
 ///                       (absent → `@`)
 ///    tree               what `zanshin_select_tree` returned for that diff and its `left`
 ///    restore_descendants  `--restore-descendants`: descendants keep their content
+///    right              (staleness run) the target's tree ids the selection saw — its
+///                       `ShowEntry.tree_ids`, hex in order; required (absent / empty / even count
+///                       / non-hex → `jj.invalid_input`); a target tree that differs now refuses
+///                       `jj.stale_selection`, since diffedit replaces the whole tree
 class DiffeditRequest {
   DiffeditRequest._(this._bc, this._bcOffset);
   factory DiffeditRequest(List<int> bytes) {
@@ -4178,10 +4198,11 @@ class DiffeditRequest {
   String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
   TreeSelection? get tree => TreeSelection.reader.vTableGetNullable(_bc, _bcOffset, 12);
   bool get restoreDescendants => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  List<String>? get right => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 16);
 
   @override
   String toString() {
-    return 'DiffeditRequest{kind: ${kind}, revision: ${revision}, from: ${from}, to: ${to}, tree: ${tree}, restoreDescendants: ${restoreDescendants}}';
+    return 'DiffeditRequest{kind: ${kind}, revision: ${revision}, from: ${from}, to: ${to}, tree: ${tree}, restoreDescendants: ${restoreDescendants}, right: ${right}}';
   }
 }
 
@@ -4198,7 +4219,7 @@ class DiffeditRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(6);
+    fbBuilder.startTable(7);
   }
 
   int addKind(RequestKind? kind) {
@@ -4231,6 +4252,11 @@ class DiffeditRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addRightOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -4243,6 +4269,7 @@ class DiffeditRequestObjectBuilder extends fb.ObjectBuilder {
   final String? _to;
   final TreeSelectionObjectBuilder? _tree;
   final bool? _restoreDescendants;
+  final List<String>? _right;
 
   DiffeditRequestObjectBuilder({
     RequestKind? kind,
@@ -4251,12 +4278,14 @@ class DiffeditRequestObjectBuilder extends fb.ObjectBuilder {
     String? to,
     TreeSelectionObjectBuilder? tree,
     bool? restoreDescendants,
+    List<String>? right,
   }) : _kind = kind,
        _revision = revision,
        _from = from,
        _to = to,
        _tree = tree,
-       _restoreDescendants = restoreDescendants;
+       _restoreDescendants = restoreDescendants,
+       _right = right;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -4265,13 +4294,15 @@ class DiffeditRequestObjectBuilder extends fb.ObjectBuilder {
     final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
     final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
     final int? treeOffset = _tree?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(6);
+    final int? rightOffset = _right == null ? null : fbBuilder.writeList(_right!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(7);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionOffset);
     fbBuilder.addOffset(2, fromOffset);
     fbBuilder.addOffset(3, toOffset);
     fbBuilder.addOffset(4, treeOffset);
     fbBuilder.addBool(5, _restoreDescendants);
+    fbBuilder.addOffset(6, rightOffset);
     return fbBuilder.endTable();
   }
 
@@ -22048,6 +22079,79 @@ class ConflictTermObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One term's file id of a file conflict (staleness run): `id` hex; ABSENT = no file on that term
+///  (an absent or deleted side).
+class ConflictTermId {
+  ConflictTermId._(this._bc, this._bcOffset);
+  factory ConflictTermId(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConflictTermId> reader = _ConflictTermIdReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get id => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'ConflictTermId{id: ${id}}';
+  }
+}
+
+class _ConflictTermIdReader extends fb.TableReader<ConflictTermId> {
+  const _ConflictTermIdReader();
+
+  @override
+  ConflictTermId createObject(fb.BufferContext bc, int offset) => ConflictTermId._(bc, offset);
+}
+
+class ConflictTermIdBuilder {
+  ConflictTermIdBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConflictTermIdObjectBuilder extends fb.ObjectBuilder {
+  final String? _id;
+
+  ConflictTermIdObjectBuilder({
+    String? id,
+  }) : _id = id;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? idOffset = _id == null ? null : fbBuilder.writeString(_id!);
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, idOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One merge hunk of a file conflict (Story 9.17) — `jj_lib::files::merge_hunks` over the
 ///  simplified sides: a conflicting hunk's terms in jj's `Merge` order (side 1, base 1, side 2, …),
 ///  or one term, the text every side shares.
@@ -22136,6 +22240,10 @@ class ConflictHunkObjectBuilder extends fb.ObjectBuilder {
 ///    labels             a file conflict's simplified conflict labels, one per term (empty =
 ///                       unlabeled, and for a conflict that is not a file conflict)
 ///    hunks              a file conflict's merge hunks; empty for any other conflict
+///    term_ids           (staleness run) a file conflict's simplified file ids, one per term in
+///                       `Merge` order (as `labels` and a conflicting hunk's `terms`); an ABSENT
+///                       `id` = no file on that term (an absent or deleted side); empty for any
+///                       other conflict. `ResolvedFile.term_ids` sends them back.
 class ConflictedFile {
   ConflictedFile._(this._bc, this._bcOffset);
   factory ConflictedFile(List<int> bytes) {
@@ -22155,10 +22263,12 @@ class ConflictedFile {
   List<String>? get labels => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
   List<ConflictHunk>? get hunks =>
       const fb.ListReader<ConflictHunk>(ConflictHunk.reader).vTableGetNullable(_bc, _bcOffset, 14);
+  List<ConflictTermId>? get termIds =>
+      const fb.ListReader<ConflictTermId>(ConflictTermId.reader).vTableGetNullable(_bc, _bcOffset, 16);
 
   @override
   String toString() {
-    return 'ConflictedFile{path: ${path}, description: ${description}, numSides: ${numSides}, unresolvable: ${unresolvable}, labels: ${labels}, hunks: ${hunks}}';
+    return 'ConflictedFile{path: ${path}, description: ${description}, numSides: ${numSides}, unresolvable: ${unresolvable}, labels: ${labels}, hunks: ${hunks}, termIds: ${termIds}}';
   }
 }
 
@@ -22175,7 +22285,7 @@ class ConflictedFileBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(6);
+    fbBuilder.startTable(7);
   }
 
   int addPathOffset(int? offset) {
@@ -22208,6 +22318,11 @@ class ConflictedFileBuilder {
     return fbBuilder.offset;
   }
 
+  int addTermIdsOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -22220,6 +22335,7 @@ class ConflictedFileObjectBuilder extends fb.ObjectBuilder {
   final String? _unresolvable;
   final List<String>? _labels;
   final List<ConflictHunkObjectBuilder>? _hunks;
+  final List<ConflictTermIdObjectBuilder>? _termIds;
 
   ConflictedFileObjectBuilder({
     String? path,
@@ -22228,12 +22344,14 @@ class ConflictedFileObjectBuilder extends fb.ObjectBuilder {
     String? unresolvable,
     List<String>? labels,
     List<ConflictHunkObjectBuilder>? hunks,
+    List<ConflictTermIdObjectBuilder>? termIds,
   }) : _path = path,
        _description = description,
        _numSides = numSides,
        _unresolvable = unresolvable,
        _labels = labels,
-       _hunks = hunks;
+       _hunks = hunks,
+       _termIds = termIds;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -22247,13 +22365,17 @@ class ConflictedFileObjectBuilder extends fb.ObjectBuilder {
     final int? hunksOffset = _hunks == null
         ? null
         : fbBuilder.writeList(_hunks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(6);
+    final int? termIdsOffset = _termIds == null
+        ? null
+        : fbBuilder.writeList(_termIds!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(7);
     fbBuilder.addOffset(0, pathOffset);
     fbBuilder.addOffset(1, descriptionOffset);
     fbBuilder.addUint32(2, _numSides);
     fbBuilder.addOffset(3, unresolvableOffset);
     fbBuilder.addOffset(4, labelsOffset);
     fbBuilder.addOffset(5, hunksOffset);
+    fbBuilder.addOffset(6, termIdsOffset);
     return fbBuilder.endTable();
   }
 

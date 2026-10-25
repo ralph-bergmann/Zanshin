@@ -2201,6 +2201,7 @@ final class DiffeditCommand extends WorkerCommand implements HandleScopedCommand
     required super.commandId,
     required this.handleId,
     required this.tree,
+    required this.right,
     this.revision,
     this.from,
     this.to,
@@ -2213,6 +2214,9 @@ final class DiffeditCommand extends WorkerCommand implements HandleScopedCommand
 
   /// The edited tree and the `left` it was selected against.
   final TreeSelection tree;
+
+  /// The target's tree ids the selection saw (its `ShowEntry.treeIds`).
+  final List<String> right;
 
   /// `-r`; not with [from] / [to].
   final String? revision;

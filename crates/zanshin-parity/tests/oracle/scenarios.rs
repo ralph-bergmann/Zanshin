@@ -5332,9 +5332,15 @@ fn resolve_scenarios() -> Vec<Scenario> {
             ..simple(
                 "resolve_tool_files",
                 |repo, _, _| {
+                    // The GUI's staleness token: the term ids `resolve_list` reports.
+                    let listed = repo
+                        .resolve_list(&zanshin_jj::ResolveListOptions::default())
+                        .expect("resolve_list");
+                    let _ = repo.take_warnings();
                     let files = vec![zanshin_jj::ResolvedFile {
                         path: "c.txt".to_owned(),
                         content: b"merged\n".to_vec(),
+                        term_ids: listed.files[0].term_ids.clone(),
                     }];
                     resolve_outcome(repo, None, &[], zanshin_jj::ResolveTool::Files(files))
                 },
@@ -5433,6 +5439,12 @@ fn diffedit_outcome(
                 .parent_tree_ids
         }
     };
+    // The target's own tree the selection is made in — diffedit's `right`.
+    let right = repo
+        .show(Some(&revision.0), None)
+        .expect("show target")
+        .swap_remove(0)
+        .tree_ids;
     let tree = repo
         .select_tree(&SelectTreeOptions {
             revision: Some(revision),
@@ -5444,6 +5456,7 @@ fn diffedit_outcome(
     let _ = repo.take_warnings();
     let result = repo.diffedit(&zanshin_jj::DiffeditOptions {
         tree: TreeSelection { tree, left },
+        right,
         ..options
     });
     zanshin_outcome(repo, &result)

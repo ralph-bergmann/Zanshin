@@ -97,6 +97,45 @@ void main() {
       expect(file.unresolvable, isNull);
       expect(file.labels, [await label(x), await label(a), await label(y)]);
       expect(file.hunks.single.terms.map(utf8.decode), ['c from C\n', '', 'c from D\n']);
+      expect(file.termIds, hasLength(3));
+      expect(file.termIds[0], isNotNull);
+      expect(file.termIds[1], isNull, reason: 'the base has no c.txt');
+      expect(file.termIds[2], isNotNull);
+    });
+
+    test('a_modify_delete_conflict_lists_the_deleted_side_as_null', () async {
+      final String modify = await add([a], {'a.txt': 'x\n'}, 'MOD\n');
+      await repo.newChange([a]);
+      File('${tempDir.path}/a.txt').deleteSync();
+      final String delete = (await repo.status()).workingCopyChangeId!;
+      await add([modify, delete], {}, 'MD\n');
+      final ConflictedFile file = (await repo.resolveList(paths: const ['a.txt'])).files.single;
+      expect(file.description, '2-sided conflict including 1 deletion');
+      expect(file.termIds, hasLength(3));
+      expect(file.termIds[0], isNotNull, reason: 'the modifying side');
+      expect(file.termIds[1], isNotNull, reason: "the base's a.txt");
+      expect(file.termIds[2], isNull, reason: 'the deleting side');
+    });
+
+    test('a_conflict_changed_since_the_list_is_stale_and_empty_term_ids_are_invalid', () async {
+      final List<String?> old = (await repo.resolveList()).files.single.termIds;
+      await repo.edit(x);
+      File('${tempDir.path}/c.txt').writeAsStringSync('c from E\n');
+      await repo.edit(at);
+      final merged = Uint8List.fromList(utf8.encode('merged\n'));
+      await expectLater(
+        repo.resolve(
+          tool: ResolveFiles([ResolvedFile(path: 'c.txt', content: merged, termIds: old)]),
+        ),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.stale_selection')),
+      );
+      expect((await repo.resolveList()).files.single.path, 'c.txt', reason: 'still conflicted: nothing written');
+      await expectLater(
+        repo.resolve(
+          tool: ResolveFiles([ResolvedFile(path: 'c.txt', content: merged, termIds: const [])]),
+        ),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
     });
 
     test('revision_and_paths_cross_the_buffer_for_a_merge_that_is_not_at', () async {
@@ -141,8 +180,11 @@ void main() {
     });
 
     test('resolve_theirs_and_files_cross_the_buffer', () async {
+      final List<String?> termIds = (await repo.resolveList(revision: at)).files.single.termIds;
       await repo.resolve(
-        tool: ResolveFiles([ResolvedFile(path: 'c.txt', content: Uint8List.fromList(utf8.encode('merged\n')))]),
+        tool: ResolveFiles([
+          ResolvedFile(path: 'c.txt', content: Uint8List.fromList(utf8.encode('merged\n')), termIds: termIds),
+        ]),
         revision: at,
       );
       expect(await cAt(at), 'merged\n');
@@ -155,7 +197,9 @@ void main() {
     test('files_with_paths_refuse_with_jj_invalid_input', () async {
       await expectLater(
         repo.resolve(
-          tool: ResolveFiles([ResolvedFile(path: 'c.txt', content: Uint8List(0))]),
+          tool: ResolveFiles([
+            ResolvedFile(path: 'c.txt', content: Uint8List(0), termIds: const ['00']),
+          ]),
           paths: const ['c.txt'],
         ),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),

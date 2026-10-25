@@ -25,7 +25,7 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 use crate::repo::map_mutate_err;
 
 /// A string vector as owned strings; ABSENT is empty.
-fn strings(v: Option<Vector<'_, ForwardsUOffset<&str>>>) -> Vec<String> {
+pub(crate) fn strings(v: Option<Vector<'_, ForwardsUOffset<&str>>>) -> Vec<String> {
     v.map(|v| v.iter().map(ToOwned::to_owned).collect()).unwrap_or_default()
 }
 

@@ -972,6 +972,15 @@ pub fn ok_resolve_list(r: &zanshin_jj::ResolveList, report: &CallReport) -> Vec<
             let path = b.create_string(&file.path);
             let description = b.create_string(&file.description);
             let unresolvable = file.unresolvable.as_deref().map(|u| b.create_string(u));
+            let term_ids: Vec<_> = file
+                .term_ids
+                .iter()
+                .map(|id| {
+                    let id = id.as_deref().map(|id| b.create_string(id));
+                    fbs::ConflictTermId::create(&mut b, &fbs::ConflictTermIdArgs { id })
+                })
+                .collect();
+            let term_ids = b.create_vector(&term_ids);
             fbs::ConflictedFile::create(
                 &mut b,
                 &fbs::ConflictedFileArgs {
@@ -981,6 +990,7 @@ pub fn ok_resolve_list(r: &zanshin_jj::ResolveList, report: &CallReport) -> Vec<
                     unresolvable,
                     labels: Some(labels),
                     hunks: Some(hunks),
+                    term_ids: Some(term_ids),
                 },
             )
         })
@@ -2164,6 +2174,7 @@ mod tests {
                     unresolvable: None,
                     labels: vec!["x".to_owned(), "a".to_owned(), "y".to_owned()],
                     hunks: vec![hunk(&[b"top\n"]), hunk(&[b"x\n", b"", b"y\n"])],
+                    term_ids: vec![Some("ab".to_owned()), None, Some("cd".to_owned())],
                 },
                 zanshin_jj::ConflictedFile {
                     path: "s".to_owned(),
@@ -2172,6 +2183,7 @@ mod tests {
                     unresolvable: Some("Only conflicts that involve normal files".to_owned()),
                     labels: Vec::new(),
                     hunks: Vec::new(),
+                    term_ids: Vec::new(),
                 },
             ],
         };
@@ -2203,6 +2215,12 @@ mod tests {
                             .map(|term| term.content().expect("content").bytes().to_vec())
                             .collect(),
                     })
+                    .collect(),
+                term_ids: file
+                    .term_ids()
+                    .expect("term ids")
+                    .iter()
+                    .map(|id| id.id().map(ToOwned::to_owned))
                     .collect(),
             })
             .collect();

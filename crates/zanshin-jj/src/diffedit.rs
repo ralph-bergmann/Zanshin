@@ -8,6 +8,12 @@
 //! choice)` — [`crate::Repo::select_tree`]'s build — so the verb takes the tree that call returned,
 //! a [`TreeSelection`], and refuses it as stale when the base tree is no longer its `left`.
 //!
+//! Staleness (decided 2026-10-25): unlike `commit`/`split`/`squash`, `diffedit` replaces the
+//! target's whole tree, so the target keeps nothing of an edit it received after the selection
+//! (an autosaving editor folded in by the pre-verb snapshot). The verb therefore also takes the
+//! target's tree ids the selection saw ([`DiffeditOptions::right`]) and refuses as stale when the
+//! target's tree is no longer that.
+//!
 //! Divergences, all deliberate:
 //!
 //! - no `--tool`, no `ui.diff-editor` and no editor instructions: the editor is the GUI's;
@@ -23,9 +29,12 @@ use crate::mutate::{
     be, finish_verb, guard_rewritable, mutation_result, no_op_result, resolve_or_wc, MutateError, MutationResult,
 };
 use crate::op_support::{start_repo_transaction, SelectedTree};
-use crate::select_tree::{check_left, check_tree_selection};
+use crate::select_tree::{check_left, check_tree_selection, parse_tree_ids};
 use crate::snapshot::VerbContext;
 use crate::{ChangeId, TreeSelection};
+
+/// The stale-`right` refusal's reason.
+const STALE_RIGHT: &str = "The target's tree changed since the selection was made: re-read it and select again";
 
 /// [`crate::Repo::diffedit`]'s arguments (Story 9.17) — the CLI's `jj diffedit` flags this verb
 /// ports. `revision` conflicts with `from` and `to`, as in the CLI.
@@ -42,12 +51,16 @@ pub struct DiffeditOptions {
     /// it was selected against. In the `from`/`to` form pass [`crate::SelectTreeOptions::from`] =
     /// `from` — or `@`'s change id when only `to` is given, since the base is then `@`'s tree.
     pub tree: TreeSelection,
+    /// The target's tree the selection was made in — [`crate::ShowEntry::tree_ids`] of the target
+    /// (hex, in order). Required: the verb refuses [`MutateError::StaleSelection`] when the
+    /// target's tree is no longer this, since `diffedit` replaces the whole tree.
+    pub right: Vec<String>,
     /// `--restore-descendants`: descendants keep their content, not their diff.
     pub restore_descendants: bool,
 }
 
 /// What `jj diffedit` refuses before the snapshot (Story 9.17): `revision` together with `from`
-/// or `to` (clap's `conflicts_with`), or a tree of the wrong shape.
+/// or `to` (clap's `conflicts_with`), a tree of the wrong shape, or a missing or malformed `right`.
 ///
 /// # Errors
 ///
@@ -58,7 +71,9 @@ pub(crate) fn check_diffedit_args(options: &DiffeditOptions) -> Result<(), Mutat
             "`revision` cannot be combined with `from`/`to`".to_owned(),
         ));
     }
-    check_tree_selection(&options.tree)
+    check_tree_selection(&options.tree)?;
+    parse_tree_ids(&options.right, "right")?;
+    Ok(())
 }
 
 /// `jj diffedit` (Story 9.17) — see [`crate::Repo::diffedit`]. The arguments were checked by
@@ -91,6 +106,11 @@ pub(crate) fn diffedit(
 
     let base_tree = pollster::block_on(merge_commit_trees(tx.repo(), &base_commits)).map_err(be)?;
     check_left(&base_tree, &options.tree.left)?;
+    if *target.tree_ids() != parse_tree_ids(&options.right, "right")? {
+        return Err(MutateError::StaleSelection {
+            reason: STALE_RIGHT.to_owned(),
+        });
+    }
     let edited = SelectedTree::from_tree_id(tx.repo().store(), &options.tree.tree)?;
     if edited.tree().tree_ids() == target.tree_ids() {
         // "Nothing changed."
@@ -138,6 +158,7 @@ mod tests {
         let id = || Some(ChangeId("k".to_owned()));
         let ok = DiffeditOptions {
             tree: tree(),
+            right: vec!["00".to_owned()],
             ..Default::default()
         };
         check_diffedit_args(&ok).expect("a tree alone");
@@ -163,5 +184,19 @@ mod tests {
             ..ok.clone()
         }));
         assert!(is_invalid(&DiffeditOptions::default()), "an empty tree");
+        assert!(
+            is_invalid(&DiffeditOptions {
+                right: Vec::new(),
+                ..ok.clone()
+            }),
+            "no right"
+        );
+        assert!(
+            is_invalid(&DiffeditOptions {
+                right: vec!["zz".to_owned()],
+                ..ok.clone()
+            }),
+            "a malformed right"
+        );
     }
 }

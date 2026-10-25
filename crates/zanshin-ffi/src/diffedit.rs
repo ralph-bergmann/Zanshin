@@ -19,10 +19,11 @@ use crate::envelope::{
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 use crate::repo::map_mutate_err;
-use crate::select_tree::tree_selection;
+use crate::select_tree::{strings, tree_selection};
 
 /// Parse a `DiffeditRequest` buffer into owned [`DiffeditOptions`]; absent ids take the CLI's
-/// defaults, an absent `tree` is empty (which `zanshin_jj` refuses as `jj.invalid_input`).
+/// defaults, an absent `tree` or `right` is empty (which `zanshin_jj` refuses as
+/// `jj.invalid_input`).
 ///
 /// `data`/`len` describe a caller-owned buffer Dart builds and frees itself; Rust borrows it for
 /// the call only. The byte slice lives in this function's scope and the result is OWNED, so the
@@ -45,6 +46,7 @@ fn read_diffedit_request(data: *const u8, len: usize) -> Result<DiffeditOptions,
         from: id(req.from()),
         to: id(req.to()),
         tree: req.tree().map(tree_selection).unwrap_or_default(),
+        right: strings(req.right()),
         restore_descendants: req.restore_descendants(),
     })
 }
@@ -55,11 +57,12 @@ fn read_diffedit_request(data: *const u8, len: usize) -> Result<DiffeditOptions,
 /// The arguments cross as a `DiffeditRequest` `FlatBuffers` request buffer: `revision` (`-r`,
 /// diffed against its parents; absent with neither `from` nor `to`: `@`), `from` / `to`
 /// (`--from` / `--to`: `to`, absent `@`, diffed against `from`'s own tree, absent `@`), `tree`
-/// (what `zanshin_select_tree` returned for that diff and its `left`) and `restore_descendants`.
-/// The target must be rewritable; a base tree that is no longer `tree.left` is stale. A tree equal
-/// to the target's writes NO operation (`MutationResult.new_op_id` is the pre-call head);
-/// otherwise the target gets the tree, its descendants are rebased (reparented with
-/// `restore_descendants`) and the operation is `edit commit <hex>`.
+/// (what `zanshin_select_tree` returned for that diff and its `left`), `restore_descendants` and
+/// `right` (the target's `ShowEntry.tree_ids` the selection saw, required). The target must be
+/// rewritable; a base tree that is no longer `tree.left`, or then a target tree that is no longer
+/// `right`, is stale. A tree equal to the target's writes NO operation (`MutationResult.new_op_id`
+/// is the pre-call head); otherwise the target gets the tree, its descendants are rebased
+/// (reparented with `restore_descendants`) and the operation is `edit commit <hex>`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
 ///
@@ -68,12 +71,14 @@ fn read_diffedit_request(data: *const u8, len: usize) -> Result<DiffeditOptions,
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `DiffeditRequest` buffer, or its `kind`
 ///   is not `Diffedit`.
-/// - `jj.invalid_input` — `revision` together with `from`/`to`, or a `tree` of the wrong shape —
-///   before the snapshot: nothing written, no `precondition`; detail in `context`.
+/// - `jj.invalid_input` — `revision` together with `from`/`to`, a `tree` of the wrong shape, or an
+///   absent / malformed `right` — before the snapshot: nothing written, no `precondition`; detail
+///   in `context`.
 /// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent.
 /// - `jj.revset_resolution_error` — an omitted id's `@` in a workspace with no working-copy commit.
 /// - `jj.immutable` — the target is inside the immutable set; its hex id in `context`.
-/// - `jj.stale_selection` — the base tree is not the selection's `left`; detail in `context`.
+/// - `jj.stale_selection` — the base tree is not the selection's `left`, or the target's tree is
+///   not `right`; detail in `context`.
 /// - `jj.config_error` — the `immutable_heads()` alias does not resolve.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.not_a_git_repo` — the colocated finish found no Git backend.
@@ -125,6 +130,10 @@ mod tests {
         });
         let from = b.create_string("f");
         let to = b.create_string("t");
+        let right = with_tree.then(|| {
+            let id = b.create_string("r");
+            b.create_vector(&[id])
+        });
         let req = fbs::DiffeditRequest::create(
             &mut b,
             &fbs::DiffeditRequestArgs {
@@ -134,6 +143,7 @@ mod tests {
                 to: Some(to),
                 tree,
                 restore_descendants: true,
+                right,
             },
         );
         b.finish(req, None);
@@ -150,9 +160,11 @@ mod tests {
         assert_eq!(options.tree.tree.tree_ids, ["t"]);
         assert_eq!(options.tree.left, ["l"]);
         assert!(options.restore_descendants);
+        assert_eq!(options.right, ["r"]);
         let bytes = request(fbs::RequestKind::Diffedit, false);
         let options = read_diffedit_request(bytes.as_ptr(), bytes.len()).expect("no tree");
         assert!(options.tree.tree.tree_ids.is_empty());
+        assert!(options.right.is_empty());
         let bytes = request(fbs::RequestKind::Resolve, true);
         let err = read_diffedit_request(bytes.as_ptr(), bytes.len()).expect_err("wrong kind");
         assert_eq!(err.code, FFI_INVALID_ARGUMENT);

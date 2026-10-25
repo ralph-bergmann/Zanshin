@@ -23,7 +23,7 @@
 
 use std::sync::Arc;
 
-use jj_lib::repo::ReadonlyRepo;
+use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::revset::RevsetExpression;
 use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
@@ -32,7 +32,8 @@ use crate::bookmark_ops::{plan_bookmark_move, BookmarkMovePlan};
 use crate::commit_views::plan_interdiff;
 use crate::duplicate::plan_duplicate;
 use crate::mutate::{
-    given, plan_abandon, plan_absorb, plan_describe, plan_edit, plan_new, plan_restore, resolve_commit, MutateError,
+    given, plan_abandon, plan_absorb, plan_describe, plan_edit, plan_new, plan_restore, refuse_git_root_merge,
+    resolve_commit, MutateError,
 };
 use crate::op_support::{resolve_immutable, start_repo_transaction, LocationArgs, NO_LOCATION, ONTO_WITH_INSERT};
 use crate::rebase::{
@@ -385,7 +386,9 @@ impl Rows<'_> {
         insert_before: &[ChangeId],
     ) -> Result<ActionOutcome, MutateError> {
         self.row(ctx, |tx, ctx| {
-            plan_new(tx, &ctx.templates(self.workspace), parents, insert_after, insert_before)?;
+            let location = plan_new(tx, &ctx.templates(self.workspace), parents, insert_after, insert_before)?;
+            // The verb refuses a root merge at its write (after the template); rows keep it.
+            refuse_git_root_merge(tx.repo().store(), &location.parents)?;
             // Every `new` writes, so the CLI's `tx.finish` resolves the immutable set (Story
             // 9.56). Rows never parse the description template, so with a broken template the
             // verb's refusal (template parse) differs.

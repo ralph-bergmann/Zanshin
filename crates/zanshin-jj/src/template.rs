@@ -354,6 +354,8 @@ impl<'c> Templates<'c> {
     /// # Errors
     ///
     /// - [`MutateError::Config`] — the key is not a string, or see [`Templates::parse_commit`].
+    /// - [`MutateError::InvalidInput`] — (Git backend) `builder` merges the root commit
+    ///   ([`crate::mutate::GIT_ROOT_MERGE`]), refused before the hidden write the backend refuses.
     /// - [`MutateError::Backend`] — the hidden write failed.
     pub(crate) fn new_description(
         &self,
@@ -366,6 +368,8 @@ impl<'c> Templates<'c> {
             return Ok(String::new());
         }
         let renderer = self.parse_commit(repo, &text, sink)?;
+        // The CLI's Git backend refuses a root merge at this hidden write (`new.rs:222`).
+        crate::mutate::refuse_git_root_merge(repo.store(), builder.parents())?;
         let temp = write_hidden(builder)?;
         Ok(complete_newline(&String::from_utf8_lossy(
             &renderer.format_plain_text(&temp),

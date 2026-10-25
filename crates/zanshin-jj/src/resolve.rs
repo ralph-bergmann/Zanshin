@@ -79,6 +79,11 @@ pub struct ConflictedFile {
     /// A file conflict's content cut into merge hunks — `jj_lib::files::merge_hunks` over the
     /// simplified sides; empty for a conflict that is not a file conflict.
     pub hunks: Vec<ConflictHunk>,
+    /// A file conflict's simplified file ids, one per term in `Merge` order (as `labels` and a
+    /// conflicting hunk's `terms`), hex; `None` = no file on that term (an absent or deleted
+    /// side). Empty for a conflict that is not a file conflict. [`ResolvedFile::term_ids`] sends
+    /// them back as the staleness token.
+    pub term_ids: Vec<Option<String>>,
 }
 
 /// One merge hunk of a file conflict (Story 9.17).
@@ -121,10 +126,14 @@ pub struct ResolvedFile {
     pub path: String,
     /// Its resolved content, written as is.
     pub content: Vec<u8>,
+    /// The conflict's [`ConflictedFile::term_ids`] the content was composed from. Required: the
+    /// verb refuses [`MutateError::StaleSelection`] when the conflict at the path changed since.
+    pub term_ids: Vec<Option<String>>,
 }
 
 /// What `jj resolve` refuses before the snapshot (Story 9.17): [`ResolveTool::Files`] together
-/// with `paths`, or without files, or with an invalid, root or duplicate path.
+/// with `paths`, or without files, or with an invalid, root or duplicate path, or a file without
+/// its term ids.
 ///
 /// # Errors
 ///
@@ -142,6 +151,12 @@ pub(crate) fn check_resolve_args(options: &ResolveOptions) -> Result<(), MutateE
         return Err(MutateError::invalid("resolved files need at least one file".to_owned()));
     }
     parse_files(files)?;
+    if let Some(file) = files.iter().find(|file| file.term_ids.is_empty()) {
+        return Err(MutateError::invalid(format!(
+            "resolved file {} needs the term ids resolve_list reported",
+            file.path
+        )));
+    }
     Ok(())
 }
 
@@ -251,12 +266,13 @@ pub(crate) fn resolve_list(
     for (path, conflict) in conflicts {
         let (file, unresolvable) = pollster::block_on(check_conflict(&tree, &path, &conflict))?;
         let simplified = conflict.simplify();
-        let (labels, hunks) = match file {
+        let (labels, hunks, term_ids) = match file {
             Some(file) => (
                 file.labels.as_slice().to_vec(),
                 conflict_hunks(merge_hunks(&file.contents, merge_options)),
+                term_ids(&file),
             ),
-            None => (Vec::new(), Vec::new()),
+            None => (Vec::new(), Vec::new(), Vec::new()),
         };
         files.push(ConflictedFile {
             path: path.as_internal_file_string().to_owned(),
@@ -265,9 +281,18 @@ pub(crate) fn resolve_list(
             unresolvable,
             labels,
             hunks,
+            term_ids,
         });
     }
     Ok(ResolveList { files })
+}
+
+/// A materialized file conflict's simplified file ids as hex, `None` = no file on that term.
+fn term_ids(file: &MaterializedFileConflictValue) -> Vec<Option<String>> {
+    file.ids
+        .iter()
+        .map(|id| id.as_ref().map(jj_lib::object_id::ObjectId::hex))
+        .collect()
 }
 
 /// `merge_hunks`' result as hunks of terms in `Merge` order.
@@ -287,8 +312,13 @@ fn conflict_hunks(result: MergeResult) -> Vec<ConflictHunk> {
 
 /// `MergeToolFile::from_tree_and_path` (`mod.rs:333-369` @ v0.46.0) for a path `resolve` works
 /// on: a path that is not a conflict is a stale selection (only [`ResolveTool::Files`] names one),
-/// a conflict a merge tool cannot take [`MutateError::ConflictNotResolvable`].
-async fn merge_tool_file(tree: &MergedTree, path: &RepoPath) -> Result<MaterializedFileConflictValue, MutateError> {
+/// and so is a conflict whose term ids are no longer `expected` (the GUI's files send them; the
+/// tools pass `None`); a conflict a merge tool cannot take [`MutateError::ConflictNotResolvable`].
+async fn merge_tool_file(
+    tree: &MergedTree,
+    path: &RepoPath,
+    expected: Option<&[Option<String>]>,
+) -> Result<MaterializedFileConflictValue, MutateError> {
     let conflict = match tree.path_value(path).await.map_err(be)?.into_resolved() {
         Err(conflict) => conflict,
         Ok(Some(_)) => {
@@ -302,7 +332,15 @@ async fn merge_tool_file(tree: &MergedTree, path: &RepoPath) -> Result<Materiali
             });
         }
     };
-    match check_conflict(tree, path, &conflict).await? {
+    let checked = check_conflict(tree, path, &conflict).await?;
+    if let Some(expected) = expected {
+        if checked.0.as_ref().map(term_ids).as_deref() != Some(expected) {
+            return Err(MutateError::StaleSelection {
+                reason: format!("The conflict at {path:?} changed since it was listed: re-read it and resolve again"),
+            });
+        }
+    }
+    match checked {
         (Some(file), None) => Ok(file),
         (_, refusal) => Err(MutateError::ConflictNotResolvable {
             message: refusal.unwrap_or_default(),
@@ -371,8 +409,12 @@ async fn resolved_tree(
     };
     // `edit_files` checks every file before the tool runs.
     let mut checked = Vec::with_capacity(paths.len());
-    for path in paths {
-        let file = merge_tool_file(tree, &path).await?;
+    for (index, path) in paths.into_iter().enumerate() {
+        let expected = match tool {
+            ResolveTool::Files(files) => Some(files[index].term_ids.as_slice()),
+            ResolveTool::Ours | ResolveTool::Theirs => None,
+        };
+        let file = merge_tool_file(tree, &path, expected).await?;
         checked.push((path, file));
     }
     let mut builder = MergedTreeBuilder::new(tree.clone());
@@ -421,6 +463,7 @@ mod tests {
         ResolvedFile {
             path: path.to_owned(),
             content: b"x\n".to_vec(),
+            term_ids: vec![Some("00".to_owned()), None, Some("01".to_owned())],
         }
     }
 
@@ -454,6 +497,12 @@ mod tests {
         assert!(refusal(&files(vec![file("")], &[])).contains("not the root"));
         assert!(refusal(&files(vec![file("/a")], &[])).contains("invalid path"));
         assert!(refusal(&files(vec![file("a"), file("a")], &[])).contains("path resolved twice: a"));
+        let no_ids = ResolvedFile {
+            term_ids: Vec::new(),
+            ..file("b")
+        };
+        assert!(refusal(&files(vec![file("a"), no_ids], &[]))
+            .contains("resolved file b needs the term ids resolve_list reported"));
     }
 
     #[test]

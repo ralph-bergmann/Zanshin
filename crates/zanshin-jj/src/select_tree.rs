@@ -35,7 +35,9 @@
 //! - **Stale** is a selection whose `left` is no longer the revision's parent tree (a rebase, a
 //!   rewritten parent), or a key that is not one of the file's current sections. A change to the
 //!   revision's OWN content is not stale: every verb snapshots first (9.26), the selected tree is
-//!   absolute, and the rest stays in the revision. Refused as [`MutateError::StaleSelection`].
+//!   absolute, and the rest stays in the revision — except for `diffedit`, whose target keeps
+//!   nothing, so it also checks the target's tree it was selected in (`DiffeditOptions::right`).
+//!   Refused as [`MutateError::StaleSelection`].
 //!
 //! Divergences, all deliberate:
 //!

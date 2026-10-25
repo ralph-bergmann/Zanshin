@@ -12,6 +12,7 @@ use std::fs;
 use futures::AsyncReadExt as _;
 use jj_lib::backend::TreeValue;
 use jj_lib::merged_tree::MergedTree;
+use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo_path::RepoPathBuf;
 use zanshin_jj::{
     ChangeId, MutateError, ResolveList, ResolveListOptions, ResolveOptions, ResolveTool, ResolvedFile, WarningKind,
@@ -47,16 +48,44 @@ fn options(revision: Option<&ChangeId>, paths: &[&str], tool: ResolveTool) -> Re
     }
 }
 
+/// The GUI's files with a placeholder term-id token — for refusals that come before it is read.
 fn files(files: &[(&str, &str)]) -> ResolveTool {
+    with_ids(files, |_| vec![Some("00".to_owned())])
+}
+
+/// The GUI's files, each with the term ids `resolve_list` reports for its path at `revision` (a
+/// path it does not list — no conflict there — gets a placeholder).
+fn listed(fx: &mut Fx, revision: Option<&ChangeId>, entries: &[(&str, &str)]) -> ResolveTool {
+    let conflicts = list(fx, revision, &[]).map(|listed| listed.files).unwrap_or_default();
+    with_ids(entries, |path| {
+        conflicts
+            .iter()
+            .find(|file| file.path == path)
+            .map_or_else(|| vec![Some("00".to_owned())], |file| file.term_ids.clone())
+    })
+}
+
+fn with_ids(files: &[(&str, &str)], ids: impl Fn(&str) -> Vec<Option<String>>) -> ResolveTool {
     ResolveTool::Files(
         files
             .iter()
             .map(|(path, content)| ResolvedFile {
                 path: (*path).to_owned(),
                 content: content.as_bytes().to_vec(),
+                term_ids: ids(path),
             })
             .collect(),
     )
+}
+
+/// The hex file id of the resolved file `path` in `id`'s tree.
+fn file_id(fx: &Fx, id: &ChangeId, path: &str) -> String {
+    let path = RepoPathBuf::from_internal_string(path).expect("path");
+    let value = pollster::block_on(commit(&fx.root, id).tree().path_value(&path)).expect("path value");
+    let Ok(Some(TreeValue::File { id, .. })) = value.into_resolved() else {
+        panic!("not a resolved file");
+    };
+    id.hex()
 }
 
 /// `path`'s resolved content in `tree`; `<absent>` when absent, `<conflict>` when conflicted.
@@ -120,6 +149,57 @@ fn list_reports_a_two_sided_file_conflict_with_its_three_term_hunk() {
     );
 }
 
+/// The term ids are the simplified file ids in `Merge` order: side 1, the absent base, side 2.
+#[test]
+fn list_reports_the_term_ids_with_an_absent_base() {
+    let mut fx = base();
+    let m = two_sided(&mut fx);
+    let [x, y] = <[ChangeId; 2]>::try_from(parents(&fx.root, &m)).expect("two parents");
+    let listed = list(&mut fx, None, &[]).expect("list");
+    assert_eq!(
+        listed.files[0].term_ids,
+        [Some(file_id(&fx, &x, "c.txt")), None, Some(file_id(&fx, &y, "c.txt"))]
+    );
+}
+
+/// An EMPTY file on a side is a file: its term id is present, unlike the absent base's.
+#[test]
+fn an_empty_file_side_has_a_term_id_and_an_absent_base_none() {
+    let mut fx = base();
+    let m = conflicted_merge(&mut fx, &[("c.txt", "x\n")], &[("c.txt", "")]);
+    let [_, y] = <[ChangeId; 2]>::try_from(parents(&fx.root, &m)).expect("two parents");
+    let listed = list(&mut fx, None, &[]).expect("list");
+    let ids = &listed.files[0].term_ids;
+    assert_eq!(ids[1], None, "the absent base");
+    assert_eq!(ids[2], Some(file_id(&fx, &y, "c.txt")), "the empty side");
+}
+
+/// The conflict changes after `resolve_list` (a side's commit is rewritten, `@` rebased) but stays
+/// a 2-sided file conflict: the old term ids refuse as stale, nothing written; the new ones
+/// resolve.
+#[test]
+fn a_conflict_changed_since_the_list_is_stale() {
+    let mut fx = base();
+    let m = two_sided(&mut fx);
+    let [x, _] = <[ChangeId; 2]>::try_from(parents(&fx.root, &m)).expect("two parents");
+    let old = listed(&mut fx, None, &[("c.txt", "merged\n")]);
+    fx.repo.edit(x).expect("edit X");
+    fs::write(fx.root.join("c.txt"), "c from E\n").expect("rewrite X's side");
+    fx.repo.edit(m.clone()).expect("back to M");
+    let listed_now = list(&mut fx, None, &[]).expect("list");
+    assert_eq!(listed_now.files[0].num_sides, 2, "still a 2-sided file conflict");
+    let err = refused(&mut fx, |repo| repo.resolve(&options(None, &[], old)));
+    assert!(
+        matches!(&err, MutateError::StaleSelection { reason }
+            if reason == "The conflict at \"c.txt\" changed since it was listed: re-read it and resolve again"),
+        "{err:?}"
+    );
+    assert_eq!(content(&commit(&fx.root, &m).tree(), "c.txt"), "<conflict>");
+    let fresh = listed(&mut fx, None, &[("c.txt", "merged\n")]);
+    fx.repo.resolve(&options(None, &[], fresh)).expect("resolve");
+    assert_eq!(content(&commit(&fx.root, &m).tree(), "c.txt"), "merged\n");
+}
+
 /// jj's conflict label of `id`: short change id, short commit id, quoted first description line.
 fn label(fx: &Fx, id: &ChangeId) -> String {
     let commit = commit(&fx.root, id);
@@ -174,6 +254,16 @@ fn list_marks_non_file_and_three_sided_conflicts_unresolvable() {
         ),
         "{text}"
     );
+    assert!(file.term_ids.is_empty(), "a non-file conflict has no term ids");
+    // A non-file conflict cannot go through `Files`: any token is stale.
+    let stale = "The conflict at \"c.txt\" changed since it was listed: re-read it and resolve again";
+    let err = refused(&mut fx, |repo| {
+        repo.resolve(&options(None, &[], files(&[("c.txt", "x\n")])))
+    });
+    assert!(
+        matches!(&err, MutateError::StaleSelection { reason } if reason == stale),
+        "{err:?}"
+    );
 
     let side_w = add(&mut fx, on_a, &[("c.txt", "w\n")], "W\n");
     add(&mut fx, &[side_x, side_z, side_w], &[], "N\n");
@@ -188,11 +278,29 @@ fn list_marks_non_file_and_three_sided_conflicts_unresolvable() {
         Some("The conflict at \"c.txt\" has 3 sides. At most 2 sides are supported.")
     );
     assert_eq!(file.hunks.iter().map(|hunk| hunk.terms.len()).collect::<Vec<_>>(), [5]);
+    let listed_ids = file.term_ids.clone();
 
     let err = refused(&mut fx, |repo| repo.resolve(&options(None, &[], ResolveTool::Ours)));
     assert!(
         matches!(&err, MutateError::ConflictNotResolvable { message }
             if message == "The conflict at \"c.txt\" has 3 sides. At most 2 sides are supported."),
+        "{err:?}"
+    );
+
+    // `Files`: the listed ids pass the staleness check and meet the resolvability refusal; a
+    // changed id is stale first.
+    let tool = with_ids(&[("c.txt", "x\n")], |_| listed_ids.clone());
+    let err = refused(&mut fx, |repo| repo.resolve(&options(None, &[], tool)));
+    assert!(
+        matches!(&err, MutateError::ConflictNotResolvable { message } if message.contains("has 3 sides")),
+        "{err:?}"
+    );
+    let mut changed = listed_ids.clone();
+    changed[0] = Some("0".repeat(40));
+    let tool = with_ids(&[("c.txt", "x\n")], |_| changed.clone());
+    let err = refused(&mut fx, |repo| repo.resolve(&options(None, &[], tool)));
+    assert!(
+        matches!(&err, MutateError::StaleSelection { reason } if reason == stale),
         "{err:?}"
     );
 }
@@ -281,10 +389,7 @@ fn executable(tree: &MergedTree, path: &str) -> bool {
 #[test]
 fn a_resolution_keeps_the_executable_bit() {
     use std::os::unix::fs::PermissionsExt as _;
-    for (tool, expected) in [
-        (ResolveTool::Ours, "x\n"),
-        (files(&[("c.txt", "merged\n")]), "merged\n"),
-    ] {
+    for (gui_files, expected) in [(false, "x\n"), (true, "merged\n")] {
         let mut fx = base();
         let base_a = fx.a.clone();
         let on_a = std::slice::from_ref(&base_a);
@@ -296,6 +401,11 @@ fn a_resolution_keeps_the_executable_bit() {
         let side_y = add(&mut fx, on_a, &[("c.txt", "y\n")], "Y\n");
         chmod(&fx);
         let m = add(&mut fx, &[side_x, side_y], &[], "M\n");
+        let tool = if gui_files {
+            listed(&mut fx, None, &[("c.txt", "merged\n")])
+        } else {
+            ResolveTool::Ours
+        };
         fx.repo.resolve(&options(None, &[], tool)).expect("resolve");
         let tree = commit(&fx.root, &m).tree();
         assert_eq!(content(&tree, "c.txt"), expected);
@@ -316,9 +426,18 @@ fn a_deleting_side_removes_the_path() {
             .expect("new y");
         fs::remove_file(fx.root.join("a.txt")).expect("rm");
         let side_y = change_id(&wc(&fx.root));
-        let m = add(&mut fx, &[side_x, side_y], &[], "M\n");
+        let m = add(&mut fx, &[side_x.clone(), side_y], &[], "M\n");
         let listed = list(&mut fx, None, &[]).expect("list");
         assert_eq!(listed.files[0].description, "2-sided conflict including 1 deletion");
+        // The deleting side's term has no file; the base and the modifying side have one.
+        assert_eq!(
+            listed.files[0].term_ids,
+            [
+                Some(file_id(&fx, &side_x, "a.txt")),
+                Some(file_id(&fx, &base_a, "a.txt")),
+                None
+            ]
+        );
         fx.repo.resolve(&options(None, &[], tool)).expect("resolve");
         assert_eq!(content(&commit(&fx.root, &m).tree(), "a.txt"), expected);
     }
@@ -334,9 +453,8 @@ fn files_resolve_exactly_the_listed_files() {
         &[("c.txt", "c1\n"), ("d.txt", "d1\n")],
         &[("c.txt", "c2\n"), ("d.txt", "d2\n")],
     );
-    fx.repo
-        .resolve(&options(None, &[], files(&[("c.txt", "merged\n")])))
-        .expect("resolve");
+    let tool = listed(&mut fx, None, &[("c.txt", "merged\n")]);
+    fx.repo.resolve(&options(None, &[], tool)).expect("resolve");
     let tree = commit(&fx.root, &m).tree();
     assert_eq!(content(&tree, "c.txt"), "merged\n");
     assert_eq!(content(&tree, "d.txt"), "<conflict>");
@@ -355,6 +473,7 @@ fn bad_files_refuse_before_the_snapshot() {
         (&[][..], files(&[("c.txt", "x\n"), ("c.txt", "y\n")])),
         (&[][..], files(&[("/c.txt", "x\n")])),
         (&[][..], files(&[("", "x\n")])),
+        (&[][..], with_ids(&[("c.txt", "x\n")], |_| Vec::new())),
     ] {
         let err = refused(&mut fx, |repo| repo.resolve(&options(None, paths, tool)));
         assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
@@ -368,17 +487,15 @@ fn bad_files_refuse_before_the_snapshot() {
 fn a_listed_file_that_is_no_conflict_is_stale() {
     let mut fx = base();
     two_sided(&mut fx);
-    let err = refused(&mut fx, |repo| {
-        repo.resolve(&options(None, &[], files(&[("c.txt", "x\n"), ("a.txt", "y\n")])))
-    });
+    let tool = listed(&mut fx, None, &[("c.txt", "x\n"), ("a.txt", "y\n")]);
+    let err = refused(&mut fx, |repo| repo.resolve(&options(None, &[], tool)));
     assert!(
         matches!(&err, MutateError::StaleSelection { reason }
             if reason == "Couldn't find any conflicts at \"a.txt\" in this revision"),
         "{err:?}"
     );
-    let err = refused(&mut fx, |repo| {
-        repo.resolve(&options(None, &[], files(&[("c.txt", "x\n"), ("zz.txt", "y\n")])))
-    });
+    let tool = listed(&mut fx, None, &[("c.txt", "x\n"), ("zz.txt", "y\n")]);
+    let err = refused(&mut fx, |repo| repo.resolve(&options(None, &[], tool)));
     assert!(
         matches!(&err, MutateError::StaleSelection { reason }
             if reason == "Couldn't find the path \"zz.txt\" in this revision"),
@@ -402,10 +519,8 @@ fn a_partial_resolve_of_another_revision_warns_the_remaining_conflicts() {
         &[("a2.txt", "a2\n"), ("b2.txt", "b2\n")],
     );
     let at = add(&mut fx, std::slice::from_ref(&m), &[("e.txt", "e\n")], "E\n");
-    let result = fx
-        .repo
-        .resolve(&options(Some(&m), &[], files(&[("a2.txt", "a\n")])))
-        .expect("resolve");
+    let tool = listed(&mut fx, Some(&m), &[("a2.txt", "a\n")]);
+    let result = fx.repo.resolve(&options(Some(&m), &[], tool)).expect("resolve");
     assert_eq!(result.working_copy_change_id, Some(at.clone()));
     assert_eq!(parents(&fx.root, &at), std::slice::from_ref(&m));
     let tree = commit(&fx.root, &m).tree();

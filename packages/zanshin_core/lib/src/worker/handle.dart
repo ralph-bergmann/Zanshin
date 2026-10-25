@@ -1545,17 +1545,22 @@ final class RepoHandle {
   /// The conflicts of [revision] (`null` = `@`) under [paths] — or, with
   /// [ResolveFiles], exactly its files' paths — are resolved by [tool]:
   /// [ResolveOurs] / [ResolveTheirs] take side 1 / side 2, [ResolveFiles]
-  /// writes the GUI merge editor's content as is. The revision must be
-  /// rewritable; descendants are rebased. A revision that is not `@` and still
-  /// has conflicts warns `jj.resolve_conflicts_remain`.
+  /// writes the GUI merge editor's content as is. Each `ResolvedFile` carries
+  /// the `ConflictedFile.termIds` [resolveList] reported as its staleness
+  /// token. A non-file conflict (empty `termIds`, `unresolvable` set) cannot
+  /// go through [ResolveFiles]. The revision must be rewritable; descendants
+  /// are rebased. A revision that is not `@` and still has conflicts warns
+  /// `jj.resolve_conflicts_remain`.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`,
-  /// `jj.no_conflicts`, `jj.immutable`, `jj.stale_selection`,
-  /// `jj.conflict_not_resolvable`, `jj.config_error`, `jj.not_a_git_repo`,
-  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  /// `jj.invalid_input` — also a file without `termIds` —
+  /// `jj.change_not_found`, `jj.revset_resolution_error`, `jj.no_conflicts`,
+  /// `jj.immutable`, `jj.stale_selection` — also a conflict whose term ids
+  /// changed since [resolveList], or a non-file conflict; re-read and resolve
+  /// again — `jj.conflict_not_resolvable`, `jj.config_error`,
+  /// `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<MutationResult> resolve({required ResolveTool tool, String? revision, List<String> paths = const []}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -1572,17 +1577,22 @@ final class RepoHandle {
   /// [to] form call [selectTree] with `from:` = [from] — or `@`'s change id
   /// when only [to] is given, since the base is then `@`'s tree. A tree equal
   /// to the target's writes no operation; otherwise descendants are rebased,
-  /// or reparented with [restoreDescendants].
+  /// or reparented with [restoreDescendants]. [right] is the target's tree ids
+  /// the selection was made in (its [ShowEntry.treeIds]): diffedit replaces
+  /// the whole tree, so a target that changed since (an editor's autosave
+  /// folded in by the snapshot) refuses `jj.stale_selection` and keeps the
+  /// change.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input` — [revision] with [from] / [to] — `jj.change_not_found`,
-  /// `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_selection`,
-  /// `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`,
-  /// `jj.jj_lib_error`).
+  /// `jj.invalid_input` — [revision] with [from] / [to], an empty or malformed
+  /// [right] — `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.immutable`, `jj.stale_selection`, `jj.config_error`,
+  /// `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<MutationResult> diffedit({
     required TreeSelection tree,
+    required List<String> right,
     String? revision,
     String? from,
     String? to,
@@ -1594,6 +1604,7 @@ final class RepoHandle {
     return _worker.diffedit(
       _handleId,
       tree: tree,
+      right: right,
       revision: revision,
       from: from,
       to: to,
