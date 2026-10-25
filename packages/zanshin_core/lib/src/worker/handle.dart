@@ -557,6 +557,10 @@ final class RepoHandle {
   /// Switch the working copy to [changeId] without creating a new commit
   /// (Story 6.5).
   ///
+  /// Editing the commit that already is `@` writes no operation and the
+  /// result's `newOpId` is the pre-call head (the CLI's "Already editing that
+  /// commit."); an immutable `@` still refuses.
+  ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`). Unlike [describe]

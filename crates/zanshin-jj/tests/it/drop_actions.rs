@@ -986,6 +986,26 @@ fn change_actions_of_a_described_change_are_all_available() {
     );
 }
 
+/// Story 9.38: `edit` of the current `@` is the CLI's "Already editing that commit." — `NoOp`.
+#[test]
+fn change_actions_of_the_working_copy_report_edit_as_a_no_op() {
+    let mut fx = base(None);
+    let d = fx.d.clone();
+    assert_eq!(wc(&fx.root), d, "`@` is D");
+    assert_eq!(
+        card(&mut fx, &d),
+        [
+            available(),
+            available(),
+            available(),
+            no_op(),
+            available(),
+            combined(),
+            available()
+        ]
+    );
+}
+
 #[test]
 fn change_actions_of_the_root_refuse_with_each_verbs_text() {
     let mut fx = base(None);
@@ -1212,7 +1232,8 @@ fn change_actions_rows_agree_with_their_verbs() {
     let pick_b: fn(&Fx) -> ChangeId = |fx| fx.b.clone();
     let pick_root: fn(&Fx) -> ChangeId = |fx| fx.zero.clone();
     let pick_unknown: fn(&Fx) -> ChangeId = |_| ChangeId(UNKNOWN.to_owned());
-    for pick in [pick_b, pick_root, pick_unknown] {
+    let pick_wc: fn(&Fx) -> ChangeId = |fx| fx.d.clone();
+    for pick in [pick_b, pick_root, pick_unknown, pick_wc] {
         for (index, verb) in verbs.iter().enumerate() {
             let mut fx = base(None);
             let x = pick(&fx);

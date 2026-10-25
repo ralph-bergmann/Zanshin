@@ -322,8 +322,8 @@ fn edit_switches_wc_without_creating_a_new_commit() {
     );
 }
 
-/// Story 9.40: editing the commit that already is the (non-discardable) `@` changes nothing —
-/// the CLI's "Already editing that commit." — so no operation is written.
+/// Story 9.38: editing the commit that already is the (non-discardable) `@` takes the CLI's
+/// "Already editing that commit." early return, so no operation is written.
 #[test]
 fn edit_of_the_current_non_discardable_wc_writes_no_operation() {
     test_helpers::pin_test_env();
@@ -337,10 +337,58 @@ fn edit_of_the_current_non_discardable_wc_writes_no_operation() {
 
     assert_eq!(result.new_op_id, before, "the result is the pre-call head");
     assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "no operation is written");
+    assert!(result.finish.is_none());
     assert_eq!(
         result.working_copy_change_id.as_ref().expect("@").0,
         layout.commit3_change_id
     );
+}
+
+/// Story 9.38: the fixture's `@` is discardable (empty, undescribed). jj-lib's `MutableRepo::edit`
+/// would abandon and re-add it; the CLI returns "Already editing that commit." before opening a
+/// transaction (`edit.rs:65-66` @ v0.46.0), so nothing is written and `@` keeps its commit id.
+#[test]
+fn edit_of_the_current_discardable_wc_writes_no_operation() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = repo.op_log(Some(1)).unwrap().swap_remove(0).id;
+
+    let result = repo.edit(ChangeId(layout.wc_change_id.clone())).unwrap();
+
+    assert_eq!(result.new_op_id, before, "the result is the pre-call head");
+    assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "no operation is written");
+    assert!(result.finish.is_none());
+    assert_eq!(
+        result.working_copy_change_id.as_ref().expect("@").0,
+        layout.wc_change_id
+    );
+    let change = repo.get_change(&ChangeId(layout.wc_change_id)).unwrap();
+    assert_eq!(change.commit_id.0, layout.wc_commit_hex, "`@` stays the same commit");
+}
+
+/// The rewritability check runs before the early return (`edit.rs:62-64` @ v0.46.0): an immutable
+/// current `@` refuses, as `jj edit @` does, and nothing is written.
+#[test]
+fn edit_of_an_immutable_current_wc_refuses() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    fs::write(
+        fx.path.join(".jj").join("repo").join("config.toml"),
+        "[revset-aliases]\n'immutable_heads()' = '@'\n",
+    )
+    .unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = repo.op_log(Some(1)).unwrap().swap_remove(0).id;
+
+    let err = repo
+        .edit(ChangeId(layout.wc_change_id))
+        .expect_err("an immutable `@` is not rewritable");
+
+    assert!(matches!(err, MutateError::Immutable { .. }), "{err:?}");
+    assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "nothing is written");
 }
 
 // ── abandon ──────────────────────────────────────────────────────────────────────

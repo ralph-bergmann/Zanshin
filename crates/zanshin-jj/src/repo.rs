@@ -1411,9 +1411,10 @@ impl Repo {
     /// Switches the working copy to `change_id` without creating a new commit
     /// (FR-JJ-10a).
     ///
-    /// Editing the commit that already is a non-discardable `@` changes nothing, so no operation
-    /// is written and the result carries the pre-call head op id — the CLI's "Already editing that
-    /// commit." (Story 9.40); a discardable current `@` remains Story 9.38's.
+    /// Editing the commit that already is `@` (after the pre-verb snapshot) writes no operation —
+    /// discardable or not, `@` keeps its change and commit id — and the result carries the
+    /// pre-call head op id: the CLI's "Already editing that commit." (Story 9.38). The
+    /// rewritability guard runs first, so an immutable `@` still refuses.
     ///
     /// # Errors
     ///
@@ -3328,7 +3329,8 @@ impl Repo {
     /// The card menu's verbs for `change` (Story 9.31): `new` onto it, `new -A` / `new -B` it,
     /// `edit`, `describe`, `squash -r` (into its parent, with `combined_description_needed`) and
     /// `abandon` — each answered by the verb's own plan fn, as in [`Repo::drop_actions`]. Only the
-    /// squash reports [`crate::ActionStatus::NoOp`]. An id that does not resolve refuses every row
+    /// squash and, for the current `@`, the edit row report [`crate::ActionStatus::NoOp`]. An id
+    /// that does not resolve refuses every row
     /// with [`crate::MutateError::ChangeNotFound`].
     ///
     /// Writes NO operation of its own — only the pre-verb snapshot's; the call's warnings are the

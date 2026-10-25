@@ -193,8 +193,9 @@ enum ActionStatus {
   available,
 
   /// It would run and write NO operation (rebase, squash, bookmark move,
-  /// revert, restore and absorb only; revert's "No revisions to revert." is
-  /// unreachable here, as a row always names one change).
+  /// revert, restore, absorb and edit only — edit for the current `@`, the
+  /// CLI's "Already editing that commit."; revert's "No revisions to revert."
+  /// is unreachable here, as a row always names one change).
   noOp,
 
   /// It would refuse; [ActionOutcome.refusal] says why.

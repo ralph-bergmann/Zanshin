@@ -390,9 +390,9 @@ fn edit_valid_round_trip_moves_working_copy() {
 
     // Mint a genuine ANCESTOR relationship to edit back across: new_change(A) creates
     // B on top of the original @ (A) and switches @ to B; editing back to A is then a
-    // real "switch to a different, already-existing change" — unlike editing @ to
-    // itself, which hits jj-lib's implicit-abandon-of-a-discardable-previous-@ side
-    // effect (see mutate::edit's doc comment) and mints a replacement instead.
+    // real "switch to a different, already-existing change" — editing @ to itself is a
+    // no-op since Story 9.38 (the CLI's "Already editing that commit."), so the test
+    // edits back to a different change.
     let req = change_id_list_bytes(fbs::RequestKind::NewChange, &[&wc_change_id]);
     let new_change_token = unsafe { zanshin_new_change(handle, req.as_ptr(), req.len()) };
     let new_change_bytes = unsafe { read_and_free(new_change_token) };

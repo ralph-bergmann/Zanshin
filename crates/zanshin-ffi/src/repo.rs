@@ -1243,7 +1243,9 @@ pub unsafe extern "C" fn zanshin_new_change(handle: u64, data: *const u8, len: u
 /// Switch the working copy to `change_id` without creating a new commit, in the repo
 /// referenced by `handle`.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success. Editing
+/// the commit that already is `@` writes no operation and `new_op_id` is the pre-call head (the
+/// CLI's "Already editing that commit."); an immutable `@` still refuses.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.

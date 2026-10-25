@@ -1261,7 +1261,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_duplicate(
 /// Switch the working copy to `change_id` without creating a new commit, in the repo
 /// referenced by `handle`.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success. Editing
+/// the commit that already is `@` writes no operation and `new_op_id` is the pre-call head (the
+/// CLI's "Already editing that commit."); an immutable `@` still refuses.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -1729,7 +1731,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_untrack(
 /// index disambiguates the expression's symbols AND gives the prefix lengths; empty disables
 /// disambiguation (the full index), as in `zanshin_graph_topology`. At most `limit + 1` commits
 /// are read; `truncated` says there were more. An ambiguous prefix is a resolution error; an
-/// unmatched one finds nothing. The parse diagnostics are the envelope's `warnings`.
+/// unmatched one finds nothing. The parse diagnostics are the envelope's `warnings` — on a failure
+/// too, as far as the call got (a bad `expression` keeps `short_prefixes`' diagnostics).
 ///
 /// The arguments cross as a `FindChangesRequest` `FlatBuffers` request buffer. Returns a
 /// `FlatBuffers` `Envelope` carrying a `FoundChanges` payload on success.
@@ -3719,7 +3722,7 @@ external ffi.Pointer<ZanshinBuf> zanshin_revert(
 /// only. Every expression gets its own `RevsetCount` in request order; one that does not parse or
 /// resolve carries its own `error` (`jj.revset_parse_error` / `jj.revset_resolution_error`, with
 /// `hints` and `revset`) and fails nothing else. The parse diagnostics are the envelope's
-/// `warnings`, in expression order.
+/// `warnings`, in expression order — on a call-level failure too, as far as the call got.
 ///
 /// The arguments cross as a `RevsetCountsRequest` `FlatBuffers` request buffer. Returns a
 /// `FlatBuffers` `Envelope` carrying a `RevsetCounts` payload on success.

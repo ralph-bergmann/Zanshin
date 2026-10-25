@@ -1396,7 +1396,8 @@ class _DropVerbReader extends fb.Reader<DropVerb> {
 
 ///  Whether a previewed verb would run (`Available` — writing an operation, except `Interdiff`,
 ///  which only reads), run and write none (`NoOp` — only rebase, squash, bookmark move, revert,
-///  restore and absorb; revert's "No revisions to revert." is unreachable through
+///  restore, absorb and edit, the card's edit row for the current `@` ("Already editing that
+///  commit."); revert's "No revisions to revert." is unreachable through
 ///  `zanshin_drop_actions`, whose rows always name one change), or refuse (`Refused`).
 enum ActionStatus {
   Available(0),

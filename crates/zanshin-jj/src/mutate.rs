@@ -1338,7 +1338,9 @@ pub(crate) fn new_change(
     Ok(mutation_result(&finish, vec![new_change_id], Vec::new()))
 }
 
-/// The read-only part of [`edit`] (Story 9.31): the target resolved and the rewritability guard.
+/// The read-only part of [`edit`] (Story 9.31): the target resolved and the rewritability guard,
+/// then whether the target already is `workspace_name`'s `@` in `tx.base_repo()` — the CLI's
+/// "Already editing that commit." early return (Story 9.38), which `edit` takes as a no-op.
 /// Writes nothing; [`edit`] runs it first and `drop_actions`' `edit` row calls the same fn.
 ///
 /// # Errors
@@ -1352,11 +1354,13 @@ pub(crate) fn new_change(
 pub(crate) fn plan_edit(
     tx: &Transaction,
     templates: &Templates<'_>,
+    workspace_name: &WorkspaceName,
     change_id: &ChangeId,
-) -> Result<Commit, MutateError> {
+) -> Result<(Commit, bool), MutateError> {
     let commit = resolve_commit(tx.repo(), change_id)?;
     guard_rewritable(tx, templates, std::slice::from_ref(commit.id()))?;
-    Ok(commit)
+    let is_wc = tx.base_repo().view().get_wc_commit_id(workspace_name) == Some(commit.id());
+    Ok((commit, is_wc))
 }
 
 /// Switches the working copy to `change_id` without creating a new commit (FR-JJ-10a).
@@ -1364,7 +1368,10 @@ pub(crate) fn plan_edit(
 /// `ctx.immutable` is the repo's effective immutable-set expression, parsed by the pre-verb
 /// snapshot ([`crate::snapshot::CommandEnv`]); the target is refused if it falls
 /// inside it, mirroring the CLI's `check_rewritable` in `jj edit`
-/// (`cli/src/commands/edit.rs:63` @ v0.44.0).
+/// (`cli/src/commands/edit.rs:62-64` @ v0.46.0). A target that already is `@` (after the
+/// pre-verb snapshot) then writes nothing and returns the pre-call head op id, as the CLI's
+/// "Already editing that commit." branch opens no transaction (`edit.rs:65-66`, Story 9.38) —
+/// jj-lib's `MutableRepo::edit` would abandon and re-add a discardable `@` instead.
 ///
 /// # Errors
 ///
@@ -1387,7 +1394,10 @@ pub(crate) fn edit(
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let commit = plan_edit(&tx, &ctx.templates(workspace), change_id)?;
+    let (commit, is_wc) = plan_edit(&tx, &ctx.templates(workspace), &workspace_name, change_id)?;
+    if is_wc {
+        return no_op_result(&workspace_name, &readonly);
+    }
     pollster::block_on(tx.repo_mut().edit(workspace_name.clone(), &commit)).map_err(be)?;
     // See new_change's comment: edit() may implicitly abandon a discardable previous
     // `@`, leaving an un-rebased rewrite that would trip tx.commit()'s assertion.

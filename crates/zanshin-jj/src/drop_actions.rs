@@ -111,8 +111,9 @@ pub enum ActionStatus {
     Available,
     /// It would run and write NO operation — the CLI's "Nothing changed." / "No bookmarks to
     /// update." / "No revisions to rebase." / "No revisions to revert." (unreachable through
-    /// `drop_actions`: a row always names one change). Only `rebase`, `squash`, `bookmark move`,
-    /// `revert`, `restore` and `absorb` report it.
+    /// `drop_actions`: a row always names one change) / "Already editing that commit.". Only
+    /// `rebase`, `squash`, `bookmark move`, `revert`, `restore`, `absorb` and `edit` (the card's
+    /// edit row for the current `@`) report it.
     NoOp,
     /// It would refuse; [`ActionOutcome::refusal`] says why.
     Refused,
@@ -588,8 +589,16 @@ pub(crate) fn change_actions(
             new_insert_after: rows.new_change(ctx, &[], one, &[])?,
             new_insert_before: rows.new_change(ctx, &[], &[], one)?,
             edit: rows.row(ctx, |tx, ctx| {
-                plan_edit(tx, &ctx.templates(rows.workspace), change)?;
-                Ok(Planned::AVAILABLE)
+                let (_, is_wc) = plan_edit(
+                    tx,
+                    &ctx.templates(rows.workspace),
+                    rows.workspace.workspace_name(),
+                    change,
+                )?;
+                Ok(Planned {
+                    no_op: is_wc,
+                    ..Planned::AVAILABLE
+                })
             })?,
             describe: rows.row(ctx, |tx, ctx| {
                 plan_describe(tx, &ctx.templates(rows.workspace), change)?;

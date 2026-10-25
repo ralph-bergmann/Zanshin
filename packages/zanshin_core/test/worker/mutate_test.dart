@@ -157,8 +157,8 @@ void main() {
 
       // Mint a genuine ancestor relationship: newChange(original) creates a new
       // child and moves @ to it; editing back to `original` is then a real
-      // switch-to-an-existing-change, not a self-edit (which hits jj-lib's
-      // implicit-abandon-of-a-discardable-previous-@ side effect).
+      // switch-to-an-existing-change, not a self-edit (a no-op since Story
+      // 9.38, the CLI's "Already editing that commit.").
       await handle.newChange([original]);
 
       final MutationResult result = await handle.edit(original);

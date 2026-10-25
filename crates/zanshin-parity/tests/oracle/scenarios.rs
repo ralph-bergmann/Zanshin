@@ -872,6 +872,45 @@ pub fn scenarios() -> Vec<Scenario> {
             },
             |s| vec!["edit".to_owned(), s.change_arg("B")],
         ),
+        // Story 9.38: `edit` of the current `@` is "Already editing that commit." — no
+        // transaction (`edit.rs:65-66` @ v0.46.0), whether `@` is discardable or not.
+        simple(
+            "edit_wc",
+            |repo, _, s| {
+                let result = repo.edit(s.change("@"));
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["edit", "@"]),
+        ),
+        Scenario {
+            setup: &[Step::Jj(&["new"])],
+            ..simple(
+                "edit_discardable_wc",
+                |repo, _, s| {
+                    let result = repo.edit(s.change("@"));
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["edit", "@"]),
+            )
+        },
+        Scenario {
+            // The rewritability check runs before the early return (`edit.rs:62-64`).
+            setup: &[Step::Jj(&[
+                "config",
+                "set",
+                "--repo",
+                "revset-aliases.'immutable_heads()'",
+                "@",
+            ])],
+            ..simple(
+                "edit_immutable_wc",
+                |repo, _, s| {
+                    let result = repo.edit(s.change("@"));
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["edit", "@"]),
+            )
+        },
         Scenario {
             // M merges C and D, which both add c.txt with different content; `@` is M's empty
             // child, so `edit` checks out the conflicted M (Story 9.53: "There are unresolved
