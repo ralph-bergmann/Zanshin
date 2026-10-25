@@ -7265,6 +7265,8 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 9.40 (both end in `tx.finish`'s no-change gate), 9.4 (file reads), 9.17 (conflict materialization).
 
+**Update 2026-10-25 (done).** `Repo::file_edit(revision, restore_descendants, path, content)` runs the CLI's own sparse `TreeState` round trip with the GUI's bytes in place of the editor's save (conflict markers parse back, the executable bit is kept, a missing file and its missing parent directories are created; the path parses as the CLI's `parse_file_path`); `Repo::file_delete(revision, restore_descendants, paths)` takes prefixes as every Zanshin path verb (ADR-0003). Deliberate divergence: a path below an existing non-directory refuses `jj.invalid_input` (the CLI's editor cannot save there, or replaces that file with a directory). Witnesses: 23 `file_edit_*`/`file_delete_*` scenarios in `crates/zanshin-parity/tests/oracle/scenarios.rs` against the pinned CLI. Spec `spec-9-44-file-edit-file-delete`.
+
 ### Story 9.45: `git colocation status | enable | disable` — per workspace (jj 0.46) [M]
 *(Added 2026-10-08, console session — surfaced by the 0.46 bump; no Zanshin story covered `jj git colocation` before.)*
 
