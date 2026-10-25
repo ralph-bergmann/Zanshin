@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/repo.rs (start_call / refresh_settings reload rule); crates/zanshin-jj/src/colocation.rs (reload)
     severity: medium
+    resolved: >-
+      2026-10-26 — fixed (spec-9-45-closing-sibling-handle-follows-git-target, commit 6c19d53): every handle records the `store/git_target` bytes it loaded and reloads its workspace at call start (also in the op-pinned reads) when the bytes on disk differ.
 ---
 
 <intent-contract>
