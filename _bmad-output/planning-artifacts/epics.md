@@ -7232,6 +7232,8 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 9.26 (`precondition`, where the refresh runs), 9.27 (config stack, fingerprint refresh), 9.28 (config verbs), 9.33, 9.36.
 
+**Update 2026-10-25 (done, audited at v0.46.0 — `set_command_name` is `cli_util.rs:4701`, `command_name` `:4358-4368`).** The table is `crates/zanshin-jj/src/cli_command.rs`; a unit test walks `jj_cli::commands::default_app()`, so the names are the canonical clap chains (`operation log`, not the `op` alias). Every call start takes its entry (compile-enforced), creation paths use `git init` / `git clone` for every load, the config verbs fold in, and the `&self` reads (`log_defaults`, `revset_counts`, `find_changes`, `resolve_revset`) resolve for `log`. The refresh reloads when the fingerprint changed or the stack resolved for the call's command differs from the settings' (`same_resolution`); without command scopes nothing reloads (+16 µs per verb on `large-10k`). `select_tree`, `drop_actions`, `change_actions` and `open` resolve with no command (deferred). Oracle: `init_when_commands_no_colocate` / `init_when_commands_other_command`.
+
 ### Story 9.42: Graph walk evaluates like `jj log` @ v0.46 — `at_operation()` over sibling operations, `within_visibility` prioritization [R]
 *(Added 2026-10-08, console session — surfaced by the jj-lib 0.44 → 0.46 bump; `deferred-work.md` "Surfaced 2026-10-08". Low priority: only an edge case benefits.)*
 
