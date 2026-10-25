@@ -2086,6 +2086,12 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in Story 9.45 (bmad-build-auto, 2026-10-25)
 
-- **A second open handle on the same repo keeps a GitBackend pointing at the old Git directory after the default workspace's colocation is toggled (by Zanshin on another handle, or by the jj CLI).** Medium.
+- ~~**A second open handle on the same repo keeps a GitBackend pointing at the old Git directory after the default workspace's colocation is toggled (by Zanshin on another handle, or by the jj CLI).**~~ — RESOLVED 2026-10-26 (spec-9-45-closing-sibling-handle-follows-git-target, commit 6c19d53): every call compares `store/git_target`'s bytes with the ones its handle loaded and reloads the workspace when they differ — `refresh_settings` for every verb, `commit_contents`/`revset_counts`/`find_changes` (now `&mut self`) before their read; a handle's own toggle and `reload_workspace` re-record the bytes. Medium.
   - `GitBackend` caches the Git repo path from `.jj/repo/store/git_target` at load; a handle reloads its workspace only when the config-stack fingerprint or the per-command resolution changes (`crates/zanshin-jj/src/repo.rs`, `start_call`/`refresh_settings`), and `crates/zanshin-jj/src/colocation.rs` `reload` replaces only the calling handle's workspace. The same staleness already follows a `jj git colocation enable|disable` run in a terminal.
   - **Follow-up:** reload a handle's workspace at call start when `store/git_target` (or the Git dir it names) changed since load; or leave it (reopen the project).
+
+## Surfaced in the closing run of Story 9.45 (bmad-build-auto, 2026-10-25)
+
+- **An open handle keeps the gix config snapshot its GitBackend took at load, so a terminal `git remote add` / `git config` beside it stays invisible until the handle reloads, while the CLI sees it on its next command.** Medium.
+  - jj-lib 0.46.0 `git_backend.rs:346` opens the `gix::ThreadSafeRepository` once in `GitBackend::load` and `git_repo()` (:367) hands out copies of that snapshot; `crates/zanshin-jj/src/repo.rs` `refresh_settings` reloads only on a config-stack, per-command or `store/git_target` change. Pre-existing; Zanshin's own remote verbs reload after their config write.
+  - **Follow-up:** add the Git config file (`<git dir>/config`) to the per-call reload check (a stamp like the config fingerprint); or leave it.
