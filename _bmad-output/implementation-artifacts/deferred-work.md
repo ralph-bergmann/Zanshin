@@ -2068,3 +2068,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **project-context.md's jj pin-bump checklist does not name the new CLI command table.** Low.
   - The audit test catches a renamed or removed command at a bump, not a new CLI verb or a changed verb-to-command mapping.
   - **Follow-up:** add "re-check `crates/zanshin-jj/src/cli_command.rs` against the new clap tree" to the pin-bump steps in project-context.md § zanshin-jj.
+
+## Surfaced in the closing run of Story 9.41 (bmad-build-auto, 2026-10-25)
+
+- **`Repo::parallelize` on the root commit panics in jj-lib, exactly as the pinned `jj parallelize 'root()'` does; over FFI it surfaces as `internal.panic`.** Low.
+  - jj-lib 0.46.0 `src/repo.rs:1203` (`assertion failed: !old_ids.is_empty()`), reached from `crates/zanshin-jj/src/repo.rs` `parallelize`; reproduced with the parity binary (`target/debug/jj parallelize 'root()'` in a fresh repo). Pre-existing, an upstream bug Zanshin mirrors; the FFI's `catch_unwind` turns it into `internal.panic` instead of a typed refusal.
+  - **Follow-up:** report it upstream and pick up the fix at the next pin bump; or leave it.
