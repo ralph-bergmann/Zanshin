@@ -145,7 +145,7 @@ per visible page:
 ```rust
 repo.graph_topology(revset, prioritize, short_prefixes, anchors: &[String], with_timestamps: bool)
     -> Result<GraphTopology, RevsetError>
-repo.commit_contents(&operation_id, &commit_ids) -> Result<Vec<CommitContent>, CommitContentError>
+repo.commit_contents(&operation_id, &extra_operation_ids, &commit_ids) -> Result<Vec<CommitContent>, CommitContentError>
 ```
 
 - **`graph_topology`** runs `walk_graph`'s parse → `load_at_head` → `TopoGroupedGraph` +
@@ -167,10 +167,14 @@ repo.commit_contents(&operation_id, &commit_ids) -> Result<Vec<CommitContent>, C
   `CommitContent` is the object half (author, committer timestamp, FULL description,
   conflict, empty), one entry per id in request order. Ids are full hex only; the error
   ladder is bad id → `InvalidInput`, vanished operation → `OperationNotFound`, id not in
-  the pinned index → `CommitNotFound`, load failure → `Backend`.
+  the pinned index → `CommitNotFound`, load failure → `Backend`. `extra_operation_ids` is
+  the topology's `extra_operation_ids` (the operations its revset's `at_operation()`s
+  brought in); with any, the ids are checked and loaded against the pinned index merged
+  with theirs, so those rows load too.
 
 `TopologyMeta` plus the matching `CommitContent` recompose `walk_graph`'s `CommitMeta`
-exactly; `walk_graph` itself is unchanged.
+exactly — except `empty` of a merge outside the head's index, which `walk_graph` reports as
+`None` (the CLI's inline template error) and `commit_contents` with the extras answers.
 
 ## Integration-test fixture pattern
 

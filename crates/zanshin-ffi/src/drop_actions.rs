@@ -110,7 +110,10 @@ fn read_drop_actions_request(data: *const u8, len: usize) -> Result<(DropSource,
 /// `Refused`), the refusal as the `FfiError` the verb's own wrapper returns, and the two flags
 /// (`combined_description_needed`, `allow_backwards_needed`). An id that does not resolve refuses
 /// every row it affects with `jj.change_not_found`. Writes NO operation of its own, only the
-/// pre-verb snapshot's.
+/// pre-verb snapshot's. The snapshot resolves the config for no CLI command; each row resolves it
+/// for its own verb's command, so a `--when.commands` scope reaches that row only — and a row
+/// whose verb's start-up config fails is a `Refused` row carrying `jj.config_error`, not a failed
+/// call.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -155,7 +158,8 @@ pub unsafe extern "C" fn zanshin_drop_actions(handle: u64, data: *const u8, len:
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `ChangeActions` payload on success; every one of
 /// its seven outcomes is present. An id that does not resolve refuses every row with
-/// `jj.change_not_found`. Writes NO operation of its own, only the pre-verb snapshot's.
+/// `jj.change_not_found`. Writes NO operation of its own, only the pre-verb snapshot's. Each row
+/// resolves its config for its own verb's CLI command, as in `zanshin_drop_actions`.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.

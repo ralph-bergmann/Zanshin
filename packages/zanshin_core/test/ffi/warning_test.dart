@@ -172,6 +172,7 @@ final List<_Case> _cases = [
       workingCopies: const [],
       anchorStart: const [0],
       anchorNode: const [],
+      extraOperationIds: const [],
     ),
     read: (b) => GraphTopologyView.fromEnvelope(b).warnings,
   ),

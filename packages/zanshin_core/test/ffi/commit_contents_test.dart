@@ -39,7 +39,12 @@ Uint8List contentsEnvelope(List<fbs.CommitContentObjectBuilder> contents) => fbs
 ).toBytes();
 
 /// A complete entry; [omit] names the ONE string field to leave absent.
-fbs.CommitContentObjectBuilder entry(String commitId, {String? omit}) => fbs.CommitContentObjectBuilder(
+fbs.CommitContentObjectBuilder entry(
+  String commitId, {
+  String? omit,
+  bool empty = false,
+  bool? emptyUnknown,
+}) => fbs.CommitContentObjectBuilder(
   commitId: omit == 'commit_id' ? null : commitId,
   authorName: omit == 'author_name' ? null : 'Ada',
   authorEmail: omit == 'author_email' ? null : '',
@@ -47,7 +52,8 @@ fbs.CommitContentObjectBuilder entry(String commitId, {String? omit}) => fbs.Com
   committerTzOffsetMinutes: -120,
   description: omit == 'description' ? null : 'Subject\n\nBody\n',
   conflict: true,
-  empty: false,
+  empty: empty,
+  emptyUnknown: emptyUnknown,
 );
 
 void main() {
@@ -87,6 +93,18 @@ void main() {
       expect(first.empty, isFalse);
       expect(contents[1].commitId, 'aa', reason: 'request order is wire order');
       expect(contents.warnings, isEmpty);
+    });
+
+    test('empty_unknown decodes as a null empty; without it (an old buffer) empty is the flag', () {
+      final WarnedList<CommitContent> contents = decodeCommitContentsEnvelope(
+        contentsEnvelope([
+          entry('aa', emptyUnknown: true),
+          entry('bb', empty: true, emptyUnknown: false),
+          entry('cc', empty: true),
+        ]),
+      );
+
+      expect(contents.map((c) => c.empty), [null, true, true]);
     });
 
     test('an empty list decodes to an empty list, not an error', () {
@@ -135,6 +153,13 @@ void main() {
 
     test('zanshinCommitContents rejects an interior NUL in a commit id before any FFI call', () {
       expect(() => zanshinCommitContents(0, operationId: 'abcd', commitIds: ['ok', 'a${nul}b']), throwsArgumentError);
+    });
+
+    test('zanshinCommitContents rejects an interior NUL in an extra operation id before any FFI call', () {
+      expect(
+        () => zanshinCommitContents(0, operationId: 'abcd', extraOperationIds: ['a${nul}b'], commitIds: const []),
+        throwsArgumentError,
+      );
     });
   });
 }

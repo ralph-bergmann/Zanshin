@@ -1771,6 +1771,7 @@ class ZanshinWorker {
     required List<repo_ffi_select_tree.FileSelection> files,
     String? revision,
     String? from,
+    repo_ffi_select_tree.SelectTreeVerb? verb,
   }) async {
     // See [bookmarkCreate] for why this guard is on the calling side.
     repo_ffi_select_tree.rejectSelectTreeNuls(revision, left, files);
@@ -1783,6 +1784,7 @@ class ZanshinWorker {
         left: left,
         files: files,
         from: from,
+        verb: verb,
       ),
     );
     return repo_ffi_select_tree.decodeSelectedTreeEnvelopeInternal(bytes);
@@ -2886,11 +2888,13 @@ class ZanshinWorker {
     int handleId, {
     required String operationId,
     required List<String> commitIds,
+    List<String> extraOperationIds = const [],
   }) async {
     // WHY here and not only in the adapter: the adapter runs in the WORKER
     // isolate, where a throw comes back as `internal.dispatch_error` rather than
     // the documented [ArgumentError] (same rule as [workspaceRoot]).
     rejectInteriorNul(operationId, 'operationId');
+    rejectInteriorNuls(extraOperationIds, 'extraOperationIds');
     rejectInteriorNuls(commitIds, 'commitIds');
     final Uint8List bytes = await send(
       CommitContentsCommand(
@@ -2898,6 +2902,7 @@ class ZanshinWorker {
         handleId: handleId,
         operationId: operationId,
         commitIds: commitIds,
+        extraOperationIds: extraOperationIds,
       ),
     );
     return repo_ffi_commit_contents.decodeCommitContentsEnvelopeInternal(bytes);
@@ -4582,6 +4587,7 @@ void _workerEntry(_WorkerInit init) {
           :final List<String> left,
           :final List<repo_ffi_select_tree.FileSelection> files,
           :final String? from,
+          :final repo_ffi_select_tree.SelectTreeVerb? verb,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -4595,6 +4601,7 @@ void _workerEntry(_WorkerInit init) {
               left: left,
               files: files,
               from: from,
+              verb: verb,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }
@@ -4950,6 +4957,7 @@ void _workerEntry(_WorkerInit init) {
           :final int handleId,
           :final String operationId,
           :final List<String> commitIds,
+          :final List<String> extraOperationIds,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -4960,6 +4968,7 @@ void _workerEntry(_WorkerInit init) {
             final Uint8List bytes = repo_ffi_commit_contents.zanshinCommitContents(
               raw,
               operationId: operationId,
+              extraOperationIds: extraOperationIds,
               commitIds: commitIds,
             );
             responseSP.send((commandId, BufferResult(bytes)));

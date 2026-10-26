@@ -50,9 +50,10 @@ fn map_commit_content_err(e: CommitContentError) -> FfiErrorObj {
 // ── Request-buffer reader ────────────────────────────────────────────────────
 
 /// Owned Rust form of a `CommitContentsRequest` buffer. An absent `commit_ids` vector is an
-/// empty request, which answers with an empty list.
+/// empty request, which answers with an empty list; an absent `extra_operation_ids` is none.
 struct CommitContentsRequestOwned {
     operation_id: OperationId,
+    extra_operation_ids: Vec<OperationId>,
     commit_ids: Vec<CommitId>,
 }
 
@@ -73,6 +74,12 @@ fn read_commit_contents_request(data: *const u8, len: usize) -> Result<CommitCon
     let operation_id = req.operation_id().ok_or_else(|| missing_field("operation_id"))?;
     Ok(CommitContentsRequestOwned {
         operation_id: OperationId(operation_id.to_owned()),
+        extra_operation_ids: req
+            .extra_operation_ids()
+            .into_iter()
+            .flatten()
+            .map(|id| OperationId(id.to_owned()))
+            .collect(),
         commit_ids: req
             .commit_ids()
             .into_iter()
@@ -106,7 +113,8 @@ fn commit_contents_to_envelope(contents: &[CommitContent]) -> Vec<u8> {
                     committer_tz_offset_minutes: c.committer_timestamp.tz_offset_minutes,
                     description: Some(description),
                     conflict: c.conflict,
-                    empty: c.empty,
+                    empty: c.empty.unwrap_or(false),
+                    empty_unknown: c.empty.is_none(),
                 },
             )
         })
@@ -133,7 +141,10 @@ fn commit_contents_to_envelope(contents: &[CommitContent]) -> Vec<u8> {
 /// head, and its envelope carries NO `precondition` and NO `warnings` (ok and error alike). The
 /// values are commit-intrinsic, so a head that moved since the topology call changes nothing. Ids
 /// are FULL hex only — prefixes are not resolved. An empty `commit_ids` list answers with an empty
-/// list.
+/// list. `extra_operation_ids` (the topology's `extra_operation_ids`, the operations its
+/// revset's `at_operation()`s brought in) are checked like `operation_id`, after it; with any,
+/// the ids are checked and loaded against the pinned index merged with theirs. A content's
+/// `empty_unknown` says jj-lib could not tell its emptiness (`empty` is then false).
 ///
 /// The arguments cross as a `CommitContentsRequest` `FlatBuffers` request buffer. Returns a
 /// `FlatBuffers` `Envelope` carrying a `CommitContents` payload on success.
@@ -144,12 +155,13 @@ fn commit_contents_to_envelope(contents: &[CommitContent]) -> Vec<u8> {
 /// - `ffi.invalid_argument` — `data` does not verify as a `CommitContentsRequest` buffer, or its
 ///   `kind` is not `CommitContents`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `operation_id` is absent, empty, not hex or not a full id (an empty or
-///   non-hex id gets the CLI's "is not a valid hexadecimal prefix" text); or a commit id is empty,
-///   not hex or not a full id. Every commit id is checked before any load.
-/// - `jj.operation_not_found` — the operation is not in the operation store; `context` is the
-///   CLI's `No operation ID matching "<id>"`.
-/// - `jj.change_not_found` — a commit id is not in the pinned operation's index; the hex in
-///   `context`.
+///   non-hex id gets the CLI's "is not a valid hexadecimal prefix" text), the same for an extra
+///   operation id; or a commit id is empty, not hex or not a full id. Every commit id is checked
+///   before any load.
+/// - `jj.operation_not_found` — the operation (or an extra one) is not in the operation store;
+///   `context` is the CLI's `No operation ID matching "<id>"`.
+/// - `jj.change_not_found` — a commit id is not in the pinned operation's index (merged with the
+///   extras'); the hex in `context`.
 /// - `jj.jj_lib_error` — loading the operation, its repo, or an indexed commit (or, for `empty`,
 ///   its parent) failed; detail in `context`.
 ///
@@ -171,7 +183,7 @@ pub unsafe extern "C" fn zanshin_commit_contents(handle: u64, data: *const u8, l
         let session = unsafe { session_from_handle(handle) }?;
         let contents = session
             .repo
-            .commit_contents(&req.operation_id, &req.commit_ids)
+            .commit_contents(&req.operation_id, &req.extra_operation_ids, &req.commit_ids)
             .map_err(map_commit_content_err)?;
         Ok(commit_contents_to_envelope(&contents))
     });
@@ -183,7 +195,7 @@ mod tests {
     use flatbuffers::root;
     use zanshin_jj::{CommitContent, CommitContentError, CommitId, Timestamp};
 
-    use super::{commit_contents_to_envelope, map_commit_content_err};
+    use super::{commit_contents_to_envelope, map_commit_content_err, read_commit_contents_request};
     use crate::envelope::{JJ_CHANGE_NOT_FOUND, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_OPERATION_NOT_FOUND};
     use crate::fbs;
 
@@ -198,13 +210,52 @@ mod tests {
             },
             description: description.to_owned(),
             conflict: true,
-            empty: false,
+            empty: Some(false),
         }
+    }
+
+    /// A request with or without `extra_operation_ids` (an old-shape request: none).
+    fn request(extras: Option<&[&str]>) -> Vec<u8> {
+        let mut b = flatbuffers::FlatBufferBuilder::new();
+        let operation_id = b.create_string("op");
+        let extra_operation_ids = extras.map(|extras| {
+            let ids: Vec<_> = extras.iter().map(|id| b.create_string(id)).collect();
+            b.create_vector(&ids)
+        });
+        let req = fbs::CommitContentsRequest::create(
+            &mut b,
+            &fbs::CommitContentsRequestArgs {
+                kind: fbs::RequestKind::CommitContents,
+                operation_id: Some(operation_id),
+                commit_ids: None,
+                extra_operation_ids,
+            },
+        );
+        b.finish(req, None);
+        b.finished_data().to_vec()
+    }
+
+    #[test]
+    fn the_reader_reads_the_extra_operations_and_none_when_absent() {
+        let bytes = request(Some(&["x1", "x2"]));
+        let req = read_commit_contents_request(bytes.as_ptr(), bytes.len()).expect("valid");
+        assert_eq!(req.operation_id.0, "op");
+        let extras: Vec<&str> = req.extra_operation_ids.iter().map(|id| id.0.as_str()).collect();
+        assert_eq!(extras, ["x1", "x2"]);
+        assert!(req.commit_ids.is_empty());
+
+        let bytes = request(None);
+        let req = read_commit_contents_request(bytes.as_ptr(), bytes.len()).expect("valid");
+        assert!(req.extra_operation_ids.is_empty(), "an old-shape request has no extras");
     }
 
     #[test]
     fn commit_contents_roundtrip_every_field_in_order_without_precondition_or_warnings() {
-        let buf = commit_contents_to_envelope(&[content("bb", "Subject\n\nBody\n"), content("aa", "")]);
+        let unknown = CommitContent {
+            empty: None,
+            ..content("aa", "")
+        };
+        let buf = commit_contents_to_envelope(&[content("bb", "Subject\n\nBody\n"), unknown]);
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         assert!(env.precondition().is_none(), "the verb runs no precondition");
@@ -229,8 +280,13 @@ mod tests {
         assert_eq!(first.description(), Some("Subject\n\nBody\n"), "the FULL description");
         assert!(first.conflict());
         assert!(!first.empty());
+        assert!(!first.empty_unknown(), "a known emptiness");
         assert_eq!(items.get(1).commit_id(), Some("aa"));
         assert_eq!(items.get(1).description(), Some(""));
+        assert!(
+            items.get(1).empty_unknown() && !items.get(1).empty(),
+            "unknown: false + the bit"
+        );
     }
 
     #[test]

@@ -88,6 +88,30 @@ final class FileSelection {
   final List<HunkKey> hunks;
 }
 
+/// The verb a selection is made for (mirrors `zanshin_jj::SelectTreeVerb`,
+/// Story 9.41): `selectTree` resolves its config for that verb's CLI command, so
+/// a `--when.commands` scope for it applies.
+enum SelectTreeVerb {
+  /// `jj commit`.
+  commit,
+
+  /// `jj split`.
+  split,
+
+  /// `jj squash`.
+  squash,
+
+  /// `jj diffedit`.
+  diffedit;
+
+  fbs.SelectTreeVerb get _wire => switch (this) {
+    SelectTreeVerb.commit => fbs.SelectTreeVerb.Commit,
+    SelectTreeVerb.split => fbs.SelectTreeVerb.Split,
+    SelectTreeVerb.squash => fbs.SelectTreeVerb.Squash,
+    SelectTreeVerb.diffedit => fbs.SelectTreeVerb.Diffedit,
+  };
+}
+
 /// A tree `selectTree` wrote (mirrors `zanshin_jj::SelectedTreeId`): its tree
 /// ids and conflict labels, exactly as the backend returned them.
 final class SelectedTree {
@@ -186,13 +210,15 @@ List<fbs.SourceTreeObjectBuilder> sourceTreeBuilders(List<SourceTree> trees) => 
 /// (`diffedit --from`; `null`: the revision's parent tree), [left] that left
 /// tree as `ShowEntry.parentTreeIds` — or, with [from], `ShowEntry.treeIds` —
 /// reported it, [files] the selected files; a changed file not listed keeps its
-/// left side.
+/// left side. [verb] (Story 9.41) is the verb the selection is for — the call
+/// resolves its config for that verb's CLI command; `null`: no command.
 Uint8List zanshinSelectTree(
   int rawHandle, {
   required List<String> left,
   required List<FileSelection> files,
   String? revision,
   String? from,
+  SelectTreeVerb? verb,
 }) {
   rejectSelectTreeNuls(revision, left, files);
   rejectInteriorNul(from, 'from');
@@ -201,6 +227,7 @@ Uint8List zanshinSelectTree(
     revision: revision,
     from: from,
     left: left,
+    verb: verb?._wire,
     files: [
       for (final FileSelection file in files)
         fbs.FileSelectionObjectBuilder(

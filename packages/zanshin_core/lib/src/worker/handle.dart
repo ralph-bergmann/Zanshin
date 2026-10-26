@@ -32,7 +32,7 @@ import '../ffi/rebase.dart' show ArrangeAction, SimplifyParentsResult, SwapDownA
 import '../ffi/remotes.dart' show Remote, RemoteRefChange;
 import '../ffi/resolve.dart' show ResolveFiles, ResolveList, ResolveOurs, ResolveTheirs, ResolveTool;
 import '../ffi/revset_search.dart' show FoundChanges, RevsetCount, RevsetCounts;
-import '../ffi/select_tree.dart' show FileSelection, SelectedTree, SourceTree, TreeSelection;
+import '../ffi/select_tree.dart' show FileSelection, SelectTreeVerb, SelectedTree, SourceTree, TreeSelection;
 import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
 import '../ffi/status.dart' show WorkingCopyStatus;
 import '../ffi/warning.dart' show WarnedList, ZanshinWarning;
@@ -423,7 +423,9 @@ final class RepoHandle {
   /// snapshot, so [lastPrecondition] is left unchanged, and records no warning
   /// (the result's `warnings` is always empty). The values are commit-intrinsic,
   /// so a head that moved since the topology call changes nothing. Ids are FULL
-  /// hex only.
+  /// hex only. Pass the view's `extraOperationIds` too (the operations an
+  /// `at_operation()` in its revset brought in): with them the rows outside the
+  /// pinned operation's index load, and a merge among them gets its `empty`.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ArgumentError] if an id contains an interior NUL (U+0000). Throws
@@ -433,11 +435,17 @@ final class RepoHandle {
   Future<WarnedList<CommitContent>> commitContents({
     required String operationId,
     required List<String> commitIds,
+    List<String> extraOperationIds = const [],
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.commitContents(_handleId, operationId: operationId, commitIds: commitIds);
+    return _worker.commitContents(
+      _handleId,
+      operationId: operationId,
+      commitIds: commitIds,
+      extraOperationIds: extraOperationIds,
+    );
   }
 
   /// Count the commits each revset in [expressions] denotes at the PINNED
@@ -1566,6 +1574,10 @@ final class RepoHandle {
   /// left side is [from]'s OWN tree instead, and [left] is that tree
   /// (`ShowEntry.treeIds`).
   ///
+  /// [verb] (Story 9.41) names the verb the selection is for: the call
+  /// resolves its config for that verb's CLI command, so a `--when.commands`
+  /// scope for it applies; `null` resolves for no command.
+  ///
   /// Pass the result as `TreeSelection.of(tree, left: left)`. Writes no
   /// operation of its own. A change to the revision's own content after the
   /// selection is not stale.
@@ -1575,17 +1587,18 @@ final class RepoHandle {
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.change_not_found`, `jj.stale_selection` — the
   /// left tree is no longer [left], or a key is not a current section —
-  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  /// `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error`).
   Future<SelectedTree> selectTree({
     required List<String> left,
     required List<FileSelection> files,
     String? revision,
     String? from,
+    SelectTreeVerb? verb,
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.selectTree(_handleId, revision: revision, left: left, files: files, from: from);
+    return _worker.selectTree(_handleId, revision: revision, left: left, files: files, from: from, verb: verb);
   }
 
   /// List a revision's conflicts with what a merge editor needs (Story 9.17) —

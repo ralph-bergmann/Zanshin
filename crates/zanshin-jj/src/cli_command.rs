@@ -20,8 +20,8 @@
 pub(crate) type CliCommand = Option<&'static str>;
 
 /// No CLI command: the state the CLI resolves in before a subcommand is known — `Repo::open`
-/// / `open_with_report`, `select_tree` (the builtin editor of several verbs), `drop_actions` /
-/// `change_actions` (rows of several verbs).
+/// / `open_with_report`, `select_tree` without a verb, and the own pre-verb snapshot of
+/// `drop_actions` / `change_actions` (each of their rows resolves for its own verb's command).
 pub(crate) const NO_COMMAND: CliCommand = None;
 
 macro_rules! cli_commands {

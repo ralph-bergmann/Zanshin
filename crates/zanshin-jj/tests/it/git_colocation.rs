@@ -570,7 +570,7 @@ fn op_pinned_reads_on_a_sibling_follow_a_toggle() {
     let c2 = wc_parent(&fx.root, "default");
 
     let read = contents
-        .commit_contents(&op, &[zanshin_jj::CommitId(c2.clone())])
+        .commit_contents(&op, &[], &[zanshin_jj::CommitId(c2.clone())])
         .expect("commit_contents");
     assert_eq!(read[0].description, "c2\n");
     // `description()` loads every commit object, the moved one included.
@@ -593,7 +593,7 @@ fn op_pinned_reads_report_a_git_target_that_no_longer_loads() {
     let malformed = zanshin_jj::OperationId("zz".to_owned());
     let backend = |reason: &str| assert!(!reason.is_empty() && !reason.starts_with("jj-lib error"), "{reason}");
 
-    match repo.commit_contents(&malformed, &[]) {
+    match repo.commit_contents(&malformed, &[], &[]) {
         Err(zanshin_jj::CommitContentError::Backend(reason)) => backend(&reason),
         other => panic!("{other:?}"),
     }

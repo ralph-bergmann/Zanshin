@@ -159,6 +159,7 @@ fn contents_call(handle: u64, operation_id: &str, ids: &[String]) -> usize {
             kind: fbs::RequestKind::CommitContents,
             operation_id: Some(op),
             commit_ids: Some(ids_vec),
+            extra_operation_ids: None,
         },
     );
     b.finish(req, None);
@@ -226,7 +227,7 @@ fn bench_whole_revset(store: &str, root: &Path, first: &GraphTopology) {
             || Repo::open(root).expect("open"),
             |fresh| {
                 let t = topology(fresh, &anchors, false);
-                hint::black_box(fresh.commit_contents(&t.operation_id, &all_ids).expect("contents"));
+                hint::black_box(fresh.commit_contents(&t.operation_id, &[], &all_ids).expect("contents"));
             },
             drop,
         ),

@@ -1284,6 +1284,12 @@ impl Repo {
     /// run): a changed `store/git_target` — a colocation toggle by another handle or a terminal —
     /// or Git config reloads the workspace first, the one thing it does to `self`.
     ///
+    /// `extra_operation_ids` are the topology's [`crate::GraphTopology::extra_operation_ids`]:
+    /// the operations its revset's `at_operation()`s brought in. With any, the ids are checked
+    /// and loaded against the pinned index merged with theirs — what the topology evaluated
+    /// against — so its out-of-index rows load too, and a merge among them gets its
+    /// [`crate::CommitContent::empty`]. Empty: the pinned index alone.
+    ///
     /// # Errors
     ///
     /// In check order:
@@ -1293,20 +1299,22 @@ impl Repo {
     ///   a full operation id.
     /// - [`crate::CommitContentError::OperationNotFound`] — the operation is not in the
     ///   operation store (the CLI's `No operation ID matching "<id>"`).
+    /// - The same two for each of `extra_operation_ids`, in order.
     /// - [`crate::CommitContentError::InvalidInput`] — a commit id is empty, not hex, or not a
     ///   full commit id (every id is checked before any load).
     /// - [`crate::CommitContentError::CommitNotFound`] — a commit id is not in the pinned
-    ///   operation's index.
+    ///   operation's index (merged with the extras').
     /// - [`crate::CommitContentError::Backend`] — any jj-lib load failure, including an indexed
     ///   commit (or, for `empty`, its parent) whose object is gone.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn commit_contents(
         &mut self,
         operation_id: &crate::OperationId,
+        extra_operation_ids: &[crate::OperationId],
         commit_ids: &[crate::CommitId],
     ) -> Result<Vec<crate::CommitContent>, crate::CommitContentError> {
         self.follow_git_target().map_err(crate::CommitContentError::Backend)?;
-        crate::commit_content::commit_contents(&self.workspace, operation_id, commit_ids)
+        crate::commit_content::commit_contents(&self.workspace, operation_id, extra_operation_ids, commit_ids)
     }
 
     /// Counts the commits each of `expressions` denotes at the PINNED `operation_id`, capped at
@@ -3640,6 +3648,11 @@ impl Repo {
     /// writes NO operation of its own — only the pre-verb snapshot's (Story 9.26). The call's
     /// warnings are the precondition's only: a row's plan warnings are discarded.
     ///
+    /// The pre-verb snapshot resolves its config for no CLI command; each row plans with the
+    /// config of its verb's CLI command (Story 9.41), so a `--when.commands` scope for that verb
+    /// applies to its row. A row whose config or start-up environment fails is refused with that
+    /// [`crate::MutateError::Precondition`] — the verb's start-up refusal — not the whole query.
+    ///
     /// # Errors
     ///
     /// - [`crate::MutateError::InvalidInput`] — a location gives `onto` together with
@@ -3653,7 +3666,7 @@ impl Repo {
         locations: &[crate::DropLocation],
     ) -> Result<crate::DropActions, crate::MutateError> {
         self.with_verb(cli_command::NO_COMMAND, |repo, ctx| {
-            crate::drop_actions::drop_actions(repo.workspace(), ctx, source, locations)
+            crate::drop_actions::drop_actions(repo, ctx, source, locations)
         })
     }
 
@@ -3665,7 +3678,8 @@ impl Repo {
     /// with [`crate::MutateError::ChangeNotFound`].
     ///
     /// Writes NO operation of its own — only the pre-verb snapshot's; the call's warnings are the
-    /// precondition's only.
+    /// precondition's only. Each row resolves its config for its own verb, as in
+    /// [`Repo::drop_actions`].
     ///
     /// # Errors
     ///
@@ -3674,7 +3688,7 @@ impl Repo {
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn change_actions(&mut self, change: &crate::ChangeId) -> Result<crate::ChangeActions, crate::MutateError> {
         self.with_verb(cli_command::NO_COMMAND, |repo, ctx| {
-            crate::drop_actions::change_actions(repo.workspace(), ctx, change)
+            crate::drop_actions::change_actions(repo, ctx, change)
         })
     }
 
@@ -4271,6 +4285,9 @@ impl Repo {
     /// file whose two such sides differ in mode. A changed path not listed keeps its left value,
     /// as does every unselected section; `select_tree.rs`' module doc has the rules.
     ///
+    /// The call resolves its config for `verb`'s CLI command (Story 9.41) — the verb the editor
+    /// runs inside in the CLI — or, with no `verb`, for no command.
+    ///
     /// Returns the tree's ids and conflict labels; pass them, with `left`, to a verb's tree arm.
     /// Writes NO operation — only the tree's objects reach the store — beyond the pre-verb
     /// snapshot's (Story 9.26). A change to the revision's own content after the selection is
@@ -4296,7 +4313,9 @@ impl Repo {
         options: &crate::SelectTreeOptions,
     ) -> Result<crate::SelectedTreeId, crate::MutateError> {
         self.with_checked_verb(
-            cli_command::NO_COMMAND,
+            options
+                .verb
+                .map_or(cli_command::NO_COMMAND, crate::SelectTreeVerb::command),
             crate::select_tree::check_select_tree_args(options),
             |repo, ctx| crate::select_tree::select_tree(repo.workspace(), &ctx.config, options),
         )
@@ -5366,6 +5385,19 @@ mod tests {
             ..crate::SelectTreeOptions::default()
         };
         records!(repo, NO_COMMAND, select_tree(&select));
+        for (verb, expected) in [
+            (crate::SelectTreeVerb::Commit, cli_command::COMMIT),
+            (crate::SelectTreeVerb::Split, cli_command::SPLIT),
+            (crate::SelectTreeVerb::Squash, cli_command::SQUASH),
+            (crate::SelectTreeVerb::Diffedit, cli_command::DIFFEDIT),
+        ] {
+            repo.command = Some("zanshin test sentinel");
+            let _ = repo.select_tree(&crate::SelectTreeOptions {
+                verb: Some(verb),
+                ..select.clone()
+            });
+            assert_eq!(repo.command(), expected, "`select_tree` with {verb:?}");
+        }
         records!(repo, RESOLVE, resolve_list(&crate::ResolveListOptions::default()));
         let resolve = crate::ResolveOptions {
             revision: Some(none()),

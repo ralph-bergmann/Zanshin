@@ -482,5 +482,6 @@ fn synthetic_topology(n: usize) -> GraphTopology {
         nodes,
         anchors: vec![vec![n - 1], vec![0]],
         all_count: n,
+        extra_operation_ids: vec![],
     }
 }

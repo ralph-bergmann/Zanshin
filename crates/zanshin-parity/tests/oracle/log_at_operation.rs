@@ -17,12 +17,12 @@ use crate::scenarios::BASE;
 /// jj's `test_log_graph_prioritize_hidden_commits` setup: `@` described "1", then "2".
 const DESCRIBED_TWICE: &[Step] = &[Step::Jj(&["describe", "-m1"]), Step::Jj(&["describe", "-m2"])];
 
-/// One row: commit id, `hidden`, `empty`.
-type Row = (String, bool, bool);
+/// One row: commit id, `hidden`, `empty` (`None`: the CLI's inline template error).
+type Row = (String, bool, Option<bool>);
 
 /// The rows of the pinned `jj log -r <revset>` graph, in row order, with
 /// `revsets.log-graph-prioritize = <prioritize>`. An `empty` that renders as a template error
-/// (a merge outside the head's index) counts as `false`, as Zanshin reports it.
+/// (`<Error: …>`, a merge outside the head's index) is `None`, as Zanshin reports it.
 #[track_caller]
 fn cli_rows(root: &Path, revset: &str, prioritize: &str) -> Vec<Row> {
     let config = format!("--config=revsets.log-graph-prioritize={prioritize}");
@@ -46,8 +46,15 @@ fn cli_rows(root: &Path, revset: &str, prioritize: &str) -> Vec<Row> {
             let at = tokens
                 .iter()
                 .position(|token| token.len() == 40 && token.bytes().all(|b| b.is_ascii_hexdigit()))?;
-            let flag = |i: usize| tokens.get(at + i) == Some(&"true");
-            Some((tokens[at].to_owned(), flag(1), flag(2)))
+            let empty = match tokens.get(at + 2).copied() {
+                Some("true") => Some(true),
+                Some("false") => Some(false),
+                other => {
+                    assert!(other.is_some_and(|t| t.starts_with("<Error")), "{line}");
+                    None
+                }
+            };
+            Some((tokens[at].to_owned(), tokens.get(at + 1) == Some(&"true"), empty))
         })
         .collect()
 }

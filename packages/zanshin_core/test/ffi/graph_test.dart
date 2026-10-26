@@ -98,6 +98,7 @@ Uint8List _envelope({
       ]),
       anchorStart: field('anchor_start', anchorStart ?? [0, 1, 1, 3]),
       anchorNode: field('anchor_node', [2, 0, 1]),
+      extraOperationIds: field('extra_operation_ids', ['12' * 64, '34' * 64]),
     ),
   ).toBytes();
 }
@@ -124,6 +125,7 @@ void _expectMatchesAccessors(GraphTopologyView view, Uint8List bytes) {
   final int n = payload.flags!.length;
   expect(view.nodeCount, n);
   expect(view.operationId, payload.operationId);
+  expect(view.extraOperationIds, payload.extraOperationIds);
   expect(view.allCount, payload.allCount);
   final int cs = payload.commitIdStride;
   final int hs = payload.changeIdStride;
@@ -282,11 +284,13 @@ void main() {
           workingCopies: const [],
           anchorStart: const [0, 0, 0],
           anchorNode: const [],
+          extraOperationIds: const [],
         ),
       ).toBytes();
       final view = GraphTopologyView.fromEnvelope(bytes);
 
       expect(view.nodeCount, 0);
+      expect(view.extraOperationIds, isEmpty);
       expect(view.allCount, 5);
       expect(view.anchorCount, 2);
       expect(view.anchorNodes(1), isEmpty);
@@ -343,6 +347,7 @@ void main() {
       'edge_kind',
       'anchor_start',
       'anchor_node',
+      'extra_operation_ids',
     ]) {
       test('a missing $field throws ffi.unknown', () {
         expect(
@@ -430,6 +435,7 @@ void main() {
           workingCopies: [fbs.TopologyWorkingCopyObjectBuilder()],
           anchorStart: const [0],
           anchorNode: const [],
+          extraOperationIds: const [],
         ),
       ).toBytes();
       final view = GraphTopologyView.fromEnvelope(bytes);

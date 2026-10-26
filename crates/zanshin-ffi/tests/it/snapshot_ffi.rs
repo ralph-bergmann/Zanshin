@@ -880,6 +880,7 @@ fn symbols_that_run_no_precondition_never_carry_the_field() {
                 kind: fbs::RequestKind::CommitContents,
                 operation_id: Some(op),
                 commit_ids: Some(ids),
+                extra_operation_ids: None,
             },
         );
         b.finish(req, None);

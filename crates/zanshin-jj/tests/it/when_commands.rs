@@ -19,9 +19,9 @@ use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
 use zanshin_jj::{
     config_file_read, config_file_write, config_gc_delete, config_gc_list, config_get, config_list, config_path,
-    config_set, config_unset, resolve_revset, Backend, ChangeId, ConfigListQuery, ConfigScope, ConfigTarget,
-    InitOptions, MutateError, PreconditionError, Repo, RepoError, RevsetSearchError, UntrackedReason, Warning,
-    WarningKind,
+    config_set, config_unset, resolve_revset, ActionStatus, Backend, ChangeId, ConfigListQuery, ConfigScope,
+    ConfigTarget, DropLocation, DropSource, DropVerb, InitOptions, MutateError, PreconditionError, Repo, RepoError,
+    RevsetSearchError, SelectTreeOptions, SelectTreeVerb, UntrackedReason, Warning, WarningKind,
 };
 
 /// Sets (or, for `None`, removes) one process environment variable.
@@ -461,4 +461,254 @@ fn the_conversions_resolve_for_git_init() {
         .result
         .expect("convert_import");
     assert_eq!(head_facts(repo.workspace_root()).1, "converter", "convert_import");
+}
+
+/// A scope whose `immutable_heads()` does not parse — it faults the start-up of the verbs it
+/// reaches (`Invalid revset-aliases.immutable_heads()`).
+fn broken_immutable_scope(command: &str) -> String {
+    format!("[[--scope]]\n--when.commands = [\"{command}\"]\n[--scope.revset-aliases]\n\"immutable_heads()\" = \"(\"\n")
+}
+
+/// A scope making `revision` immutable for `command`.
+fn immutable_scope(command: &str, revision: &ChangeId) -> String {
+    format!(
+        "[[--scope]]\n--when.commands = [\"{command}\"]\n[--scope.revset-aliases]\n\"immutable_heads()\" = \"{}\"\n",
+        revision.0
+    )
+}
+
+/// Two siblings off the root: `S` (described, not `@`) and `T` (`@`).
+fn siblings(repo: &mut Repo) -> (ChangeId, ChangeId) {
+    let s = wc(repo);
+    repo.describe(s.clone(), "S").expect("describe S");
+    let root = resolve_revset(repo, "root()").expect("root resolves").remove(0);
+    repo.new_change(&[root], &[], &[]).expect("new T");
+    (s, wc(repo))
+}
+
+/// `select_tree` resolves for the verb it names: a `["split"]` scope that faults the start-up
+/// refuses `select_tree` for `split` only.
+#[test]
+fn a_split_scope_reaches_select_tree_for_split_only() {
+    test_helpers::own_process!("a_split_scope_reaches_select_tree_for_split_only");
+    let tmp = tempfile::tempdir().unwrap();
+    let user_file = isolate(tmp.path());
+    let mut repo = init_repo(tmp.path());
+    fs::write(&user_file, broken_immutable_scope("split")).unwrap();
+    let left = repo.show(None, None).expect("show @").swap_remove(0).parent_tree_ids;
+    let select = |verb| SelectTreeOptions {
+        revision: None,
+        from: None,
+        left: left.clone(),
+        files: Vec::new(),
+        verb,
+    };
+
+    let err = repo
+        .select_tree(&select(Some(SelectTreeVerb::Split)))
+        .expect_err("the split scope faults split's start-up");
+    assert!(
+        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason }) if reason.contains("immutable_heads()")),
+        "{err:?}"
+    );
+    repo.select_tree(&select(None)).expect("no verb: no command, no scope");
+    repo.select_tree(&select(Some(SelectTreeVerb::Commit)))
+        .expect("commit: not split");
+}
+
+/// The statuses and refusals of a drop query's rows, by verb.
+fn drop_rows(repo: &mut Repo, s: &ChangeId, t: &ChangeId) -> Vec<(DropVerb, ActionStatus, String)> {
+    let location = DropLocation {
+        onto: vec![t.clone()],
+        ..DropLocation::default()
+    };
+    repo.drop_actions(&DropSource::Change(s.clone()), &[location])
+        .expect("drop_actions")
+        .actions
+        .into_iter()
+        .map(|row| (row.verb, row.outcome.status, format!("{:?}", row.outcome.refusal)))
+        .collect()
+}
+
+/// A `["rebase"]` scope making `S` immutable refuses the three rebase rows of dropping `S` onto
+/// `T`; every other row answers as without the scope.
+#[test]
+fn a_rebase_scope_reaches_the_drop_queries_rebase_rows_only() {
+    test_helpers::own_process!("a_rebase_scope_reaches_the_drop_queries_rebase_rows_only");
+    let tmp = tempfile::tempdir().unwrap();
+    let user_file = isolate(tmp.path());
+    let mut repo = init_repo(tmp.path());
+    let (s, t) = siblings(&mut repo);
+    let unscoped = drop_rows(&mut repo, &s, &t);
+    fs::write(&user_file, immutable_scope("rebase", &s)).unwrap();
+    let scoped = drop_rows(&mut repo, &s, &t);
+
+    assert_eq!(scoped.len(), unscoped.len());
+    let rebase = [
+        DropVerb::RebaseSource,
+        DropVerb::RebaseRevisions,
+        DropVerb::RebaseBranch,
+    ];
+    for (before, after) in unscoped.iter().zip(&scoped) {
+        assert_eq!(before.0, after.0, "row order");
+        if rebase.contains(&after.0) {
+            assert_eq!(before.1, ActionStatus::Available, "{before:?}");
+            assert_eq!(after.1, ActionStatus::Refused, "{after:?}");
+            assert!(after.2.contains("Immutable"), "{after:?}");
+        } else {
+            assert_eq!(before, after, "a row the scope does not reach");
+        }
+    }
+    for verb in [DropVerb::Squash, DropVerb::NewMerge, DropVerb::Duplicate] {
+        let row = scoped.iter().find(|row| row.0 == verb).expect("the row");
+        assert_eq!(row.1, ActionStatus::Available, "{row:?}");
+    }
+}
+
+/// An `["abandon"]` scope making `X` immutable refuses the card's abandon row only.
+#[test]
+fn an_abandon_scope_reaches_the_cards_abandon_row_only() {
+    test_helpers::own_process!("an_abandon_scope_reaches_the_cards_abandon_row_only");
+    let tmp = tempfile::tempdir().unwrap();
+    let user_file = isolate(tmp.path());
+    let mut repo = init_repo(tmp.path());
+    let (x, _) = siblings(&mut repo);
+    fs::write(&user_file, immutable_scope("abandon", &x)).unwrap();
+    let card = repo.change_actions(&x).expect("change_actions");
+
+    assert_eq!(card.abandon.status, ActionStatus::Refused, "{:?}", card.abandon);
+    assert!(
+        matches!(card.abandon.refusal, Some(MutateError::Immutable { .. })),
+        "{:?}",
+        card.abandon
+    );
+    for (name, row) in [
+        ("describe", &card.describe),
+        ("new", &card.new_onto),
+        ("new -A", &card.new_insert_after),
+        ("new -B", &card.new_insert_before),
+        ("edit", &card.edit),
+    ] {
+        assert_eq!(row.status, ActionStatus::Available, "{name}: {row:?}");
+    }
+}
+
+/// A `["describe"]` scope that faults the start-up refuses the card's describe row with the
+/// verb's start-up error; the call and the other rows go on.
+#[test]
+fn a_faulting_describe_scope_refuses_the_describe_row_not_the_query() {
+    test_helpers::own_process!("a_faulting_describe_scope_refuses_the_describe_row_not_the_query");
+    let tmp = tempfile::tempdir().unwrap();
+    let user_file = isolate(tmp.path());
+    let mut repo = init_repo(tmp.path());
+    let (x, _) = siblings(&mut repo);
+    fs::write(&user_file, broken_immutable_scope("describe")).unwrap();
+    let card = repo.change_actions(&x).expect("a row's fault is not the query's");
+
+    assert_eq!(card.describe.status, ActionStatus::Refused);
+    assert!(
+        matches!(&card.describe.refusal, Some(MutateError::Precondition(PreconditionError::Config { reason })) if reason.contains("immutable_heads()")),
+        "{:?}",
+        card.describe
+    );
+    let start_up = repo.describe(x.clone(), "x").expect_err("the verb refuses the same");
+    assert_eq!(
+        format!("{start_up:?}"),
+        format!("{:?}", card.describe.refusal.expect("refusal"))
+    );
+    for (name, row) in [
+        ("abandon", &card.abandon),
+        ("new", &card.new_onto),
+        ("edit", &card.edit),
+    ] {
+        assert_eq!(row.status, ActionStatus::Available, "{name}: {row:?}");
+    }
+}
+
+/// Every action row by a label naming its CLI command, and whether it is refused with a start-up
+/// config fault: `S` dropped onto `T`, `S`'s selection at `-A T`, bookmark `b` onto `T`, `S`'s card.
+fn start_up_faults(repo: &mut Repo, s: &ChangeId, t: &ChangeId) -> Vec<(String, bool)> {
+    let faulted = |outcome: &zanshin_jj::ActionOutcome| {
+        matches!(
+            outcome.refusal,
+            Some(MutateError::Precondition(PreconditionError::Config { .. }))
+        )
+    };
+    let label = |verb: DropVerb| {
+        match verb {
+            DropVerb::RebaseSource | DropVerb::RebaseRevisions | DropVerb::RebaseBranch => "rebase",
+            DropVerb::Squash => "squash",
+            DropVerb::NewMerge => "new",
+            DropVerb::Duplicate => "duplicate",
+            DropVerb::Split => "split",
+            DropVerb::BookmarkMove => "bookmark move",
+            DropVerb::Revert => "revert",
+            DropVerb::Restore => "restore",
+            DropVerb::Absorb => "absorb",
+            DropVerb::Interdiff => "interdiff",
+        }
+        .to_owned()
+    };
+    let onto = DropLocation {
+        onto: vec![t.clone()],
+        ..DropLocation::default()
+    };
+    let after = DropLocation {
+        insert_after: vec![t.clone()],
+        ..DropLocation::default()
+    };
+    let mut rows = Vec::new();
+    for (source, location) in [
+        (DropSource::Change(s.clone()), onto.clone()),
+        (
+            DropSource::Selection {
+                change: s.clone(),
+                paths: vec!["f".to_owned()],
+            },
+            after,
+        ),
+        (DropSource::Bookmark("b".to_owned()), onto),
+    ] {
+        for row in repo.drop_actions(&source, &[location]).expect("drop_actions").actions {
+            rows.push((label(row.verb), faulted(&row.outcome)));
+        }
+    }
+    let card = repo.change_actions(s).expect("change_actions");
+    for (command, outcome) in [
+        ("new", &card.new_onto),
+        ("new", &card.new_insert_after),
+        ("new", &card.new_insert_before),
+        ("edit", &card.edit),
+        ("describe", &card.describe),
+        ("squash", &card.squash_into_parent),
+        ("abandon", &card.abandon),
+    ] {
+        rows.push((command.to_owned(), faulted(outcome)));
+    }
+    rows
+}
+
+/// Each row resolves for its own verb's command: a start-up-faulting scope for one command
+/// refuses exactly the rows that play it, for every command a row plays.
+#[test]
+fn a_faulting_scope_refuses_exactly_the_rows_of_its_command() {
+    test_helpers::own_process!("a_faulting_scope_refuses_exactly_the_rows_of_its_command");
+    let tmp = tempfile::tempdir().unwrap();
+    let user_file = isolate(tmp.path());
+    let mut repo = init_repo(tmp.path());
+    let (s, t) = siblings(&mut repo);
+    repo.bookmark_create(&["b".to_owned()], Some(&s)).expect("bookmark b");
+    let unscoped = start_up_faults(&mut repo, &s, &t);
+    assert!(unscoped.iter().all(|(_, faulted)| !faulted), "{unscoped:?}");
+
+    let mut commands: Vec<String> = unscoped.iter().map(|(command, _)| command.clone()).collect();
+    commands.sort();
+    commands.dedup();
+    assert_eq!(commands.len(), 13, "every row command: {commands:?}");
+    for command in &commands {
+        fs::write(&user_file, broken_immutable_scope(command)).unwrap();
+        for (row, faulted) in start_up_faults(&mut repo, &s, &t) {
+            assert_eq!(faulted, &row == command, "scope {command}, row {row}");
+        }
+    }
 }

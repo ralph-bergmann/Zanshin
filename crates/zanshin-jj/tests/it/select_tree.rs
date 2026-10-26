@@ -237,6 +237,7 @@ fn select(fx: &mut Fx, files: Vec<FileSelection>) -> Result<SelectedTreeId, Muta
         from: None,
         left,
         files,
+        verb: None,
     })
 }
 
@@ -385,6 +386,7 @@ fn a_rebased_left_is_stale_for_select_tree_and_every_tree_arm() {
             from: None,
             left: old_left.clone(),
             files: vec![hunks("f.txt", &[S1])],
+            verb: None,
         })
         .expect_err("stale left");
     assert!(is_stale(&err), "{err:?}");
@@ -441,6 +443,7 @@ fn malformed_input_refuses_before_the_snapshot() {
                 from: None,
                 left,
                 files,
+                verb: None,
             })
             .expect_err("refused");
         assert!(repo.take_precondition().is_none(), "refused before the snapshot");
@@ -471,6 +474,7 @@ fn malformed_input_refuses_before_the_snapshot() {
             from: None,
             left,
             files: Vec::new(),
+            verb: None,
         })
         .expect_err("unknown revision");
     assert!(matches!(err, MutateError::ChangeNotFound { .. }), "{err:?}");
@@ -560,6 +564,7 @@ fn select_in(
         from: None,
         left: entries[0].parent_tree_ids.clone(),
         files,
+        verb: None,
     })
 }
 
@@ -719,6 +724,7 @@ fn an_unknown_marker_style_refuses_as_a_config_error() {
             from: None,
             left,
             files: vec![hunks("f.txt", &[S1])],
+            verb: None,
         })
         .expect_err("refused");
     assert!(
@@ -851,6 +857,7 @@ fn a_conflicted_trees_labels_round_trip_through_select_tree_and_commit() {
             from: None,
             left: left.clone(),
             files: vec![whole("other.txt")],
+            verb: None,
         })
         .expect("select");
     assert_eq!(selected.labels, right.labels().as_slice());
@@ -1096,6 +1103,7 @@ fn selection(fx: &mut Fx, revision: &ChangeId, files: Vec<FileSelection>) -> Tre
             from: None,
             left: left.clone(),
             files,
+            verb: None,
         })
         .expect("select");
     TreeSelection { tree, left }

@@ -81,6 +81,7 @@ fn select(
             from: from.cloned(),
             left: left.clone(),
             files,
+            verb: None,
         })
         .expect("select");
     (TreeSelection { tree, left }, right)
@@ -319,6 +320,7 @@ fn stale_left_immutable_target_and_bad_arguments_refuse() {
             from: Some(l.clone()),
             left: parent_selection.left.clone(),
             files: Vec::new(),
+            verb: None,
         })
         .expect_err("stale");
     assert!(matches!(err, MutateError::StaleSelection { .. }), "{err:?}");

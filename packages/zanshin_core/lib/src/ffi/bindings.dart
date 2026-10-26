@@ -675,7 +675,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_change(
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `ChangeActions` payload on success; every one of
 /// its seven outcomes is present. An id that does not resolve refuses every row with
-/// `jj.change_not_found`. Writes NO operation of its own, only the pre-verb snapshot's.
+/// `jj.change_not_found`. Writes NO operation of its own, only the pre-verb snapshot's. Each row
+/// resolves its config for its own verb's CLI command, as in `zanshin_drop_actions`.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -763,7 +764,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_commit(
 /// head, and its envelope carries NO `precondition` and NO `warnings` (ok and error alike). The
 /// values are commit-intrinsic, so a head that moved since the topology call changes nothing. Ids
 /// are FULL hex only — prefixes are not resolved. An empty `commit_ids` list answers with an empty
-/// list.
+/// list. `extra_operation_ids` (the topology's `extra_operation_ids`, the operations its
+/// revset's `at_operation()`s brought in) are checked like `operation_id`, after it; with any,
+/// the ids are checked and loaded against the pinned index merged with theirs. A content's
+/// `empty_unknown` says jj-lib could not tell its emptiness (`empty` is then false).
 ///
 /// The arguments cross as a `CommitContentsRequest` `FlatBuffers` request buffer. Returns a
 /// `FlatBuffers` `Envelope` carrying a `CommitContents` payload on success.
@@ -774,12 +778,13 @@ external ffi.Pointer<ZanshinBuf> zanshin_commit(
 /// - `ffi.invalid_argument` — `data` does not verify as a `CommitContentsRequest` buffer, or its
 /// `kind` is not `CommitContents`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `operation_id` is absent, empty, not hex or not a full id (an empty or
-/// non-hex id gets the CLI's "is not a valid hexadecimal prefix" text); or a commit id is empty,
-/// not hex or not a full id. Every commit id is checked before any load.
-/// - `jj.operation_not_found` — the operation is not in the operation store; `context` is the
-/// CLI's `No operation ID matching "<id>"`.
-/// - `jj.change_not_found` — a commit id is not in the pinned operation's index; the hex in
-/// `context`.
+/// non-hex id gets the CLI's "is not a valid hexadecimal prefix" text), the same for an extra
+/// operation id; or a commit id is empty, not hex or not a full id. Every commit id is checked
+/// before any load.
+/// - `jj.operation_not_found` — the operation (or an extra one) is not in the operation store;
+/// `context` is the CLI's `No operation ID matching "<id>"`.
+/// - `jj.change_not_found` — a commit id is not in the pinned operation's index (merged with the
+/// extras'); the hex in `context`.
 /// - `jj.jj_lib_error` — loading the operation, its repo, or an indexed commit (or, for `empty`,
 /// its parent) failed; detail in `context`.
 ///
@@ -1178,7 +1183,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_diffedit(
 /// `Refused`), the refusal as the `FfiError` the verb's own wrapper returns, and the two flags
 /// (`combined_description_needed`, `allow_backwards_needed`). An id that does not resolve refuses
 /// every row it affects with `jj.change_not_found`. Writes NO operation of its own, only the
-/// pre-verb snapshot's.
+/// pre-verb snapshot's. The snapshot resolves the config for no CLI command; each row resolves it
+/// for its own verb's command, so a `--when.commands` scope reaches that row only — and a row
+/// whose verb's start-up config fails is a `Refused` row carrying `jj.config_error`, not a failed
+/// call.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -2577,7 +2585,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_set_url(
 /// an ordered revset list intersected with `revset`, and `with_timestamps` loads each non-root
 /// node's committer timestamp. The call runs the pre-verb snapshot exactly once and re-derives
 /// from the head operation; nothing is retained Rust-side (ADR-0002). The card content of a node
-/// is `zanshin_commit_contents` at the returned `operation_id`.
+/// is `zanshin_commit_contents` at the returned `operation_id`, with the returned
+/// `extra_operation_ids` (the operations the revset's `at_operation()`s brought in).
 ///
 /// The arguments cross as a `GraphTopologyRequest` `FlatBuffers` request buffer. Returns a
 /// `FlatBuffers` `Envelope` carrying a `GraphTopology` payload on success; the envelope carries
@@ -3951,7 +3960,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_revset_counts(
 /// `@`), `from` (Story 9.17: the revision whose OWN tree is the diff's left side, `diffedit
 /// --from`; absent: the revision's parent tree), `left` (that left tree the selection was made
 /// against, as `ShowEntry.parent_tree_ids` — or, with `from`, `ShowEntry.tree_ids` — reports it)
-/// and `files` (per path `whole`, or the selected `hunks`
+/// `verb` (Story 9.41: the verb the selection is for — the call resolves its config for that
+/// verb's CLI command; `Unspecified`: no command) and `files` (per path `whole`, or the selected `hunks`
 /// by their `HunkKey` with or without `mode`, the builtin editor's mode toggle; a changed file not
 /// listed, and every unselected section, keeps its left side). A file has sections when both
 /// sides are a regular file or a file conflict (materialized with `ui.conflict-marker-style`) and
@@ -3966,8 +3976,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_revset_counts(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, or its
-/// `kind` is not `SelectTree`.
+/// - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, its
+/// `kind` is not `SelectTree`, or its `verb` is outside the enum.
 /// - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed
 /// or of an even or zero count, a path invalid, the root or listed twice — all before the
 /// snapshot: nothing written, no `precondition`; detail in `context`.

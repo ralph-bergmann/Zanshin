@@ -13,12 +13,13 @@
 use flatbuffers::{ForwardsUOffset, Vector, VerifierOptions};
 use tracing::debug;
 use zanshin_jj::{
-    ChangeId, FileChoice, FileSelection, HunkKey, MutateError, SelectTreeOptions, SelectedTreeId, TreeSelection,
+    ChangeId, FileChoice, FileSelection, HunkKey, MutateError, SelectTreeOptions, SelectTreeVerb, SelectedTreeId,
+    TreeSelection,
 };
 
 use crate::envelope::{
     catch, expect_request_kind, invalid_request, ok_selected_tree, precondition_envelope, reject_null_request,
-    session_from_handle, FfiErrorObj,
+    session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -89,8 +90,8 @@ fn file_selection(table: fbs::FileSelection<'_>) -> Result<FileSelection, FfiErr
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, or its
-///   `kind` is not `SelectTree`.
+/// - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, its
+///   `kind` is not `SelectTree`, or its `verb` is outside the enum.
 /// - `jj.invalid_input` — a file is selected `whole` and by `hunks` or its `mode`.
 fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOptions, FfiErrorObj> {
     reject_null_request(data)?;
@@ -109,7 +110,28 @@ fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOpt
         from: req.from().map(|s| ChangeId(s.to_owned())),
         left: strings(req.left()),
         files,
+        verb: select_tree_verb(req.verb())?,
     })
+}
+
+/// A wire `SelectTreeVerb`: `Unspecified` is no verb.
+///
+/// # Errors
+/// - `ffi.invalid_argument` — a value outside the enum (a newer writer).
+fn select_tree_verb(verb: fbs::SelectTreeVerb) -> Result<Option<SelectTreeVerb>, FfiErrorObj> {
+    match verb {
+        fbs::SelectTreeVerb::Unspecified => Ok(None),
+        fbs::SelectTreeVerb::Commit => Ok(Some(SelectTreeVerb::Commit)),
+        fbs::SelectTreeVerb::Split => Ok(Some(SelectTreeVerb::Split)),
+        fbs::SelectTreeVerb::Squash => Ok(Some(SelectTreeVerb::Squash)),
+        fbs::SelectTreeVerb::Diffedit => Ok(Some(SelectTreeVerb::Diffedit)),
+        other => Err(FfiErrorObj {
+            report: None,
+            hints: Vec::new(),
+            code: FFI_INVALID_ARGUMENT.to_owned(),
+            context: Some(format!("unknown select_tree verb: {other:?}")),
+        }),
+    }
 }
 
 /// Write the tree a hunk selection yields, in the repo identified by `handle` — the CLI's builtin
@@ -120,7 +142,8 @@ fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOpt
 /// `@`), `from` (Story 9.17: the revision whose OWN tree is the diff's left side, `diffedit
 /// --from`; absent: the revision's parent tree), `left` (that left tree the selection was made
 /// against, as `ShowEntry.parent_tree_ids` — or, with `from`, `ShowEntry.tree_ids` — reports it)
-/// and `files` (per path `whole`, or the selected `hunks`
+/// `verb` (Story 9.41: the verb the selection is for — the call resolves its config for that
+/// verb's CLI command; `Unspecified`: no command) and `files` (per path `whole`, or the selected `hunks`
 /// by their `HunkKey` with or without `mode`, the builtin editor's mode toggle; a changed file not
 /// listed, and every unselected section, keeps its left side). A file has sections when both
 /// sides are a regular file or a file conflict (materialized with `ui.conflict-marker-style`) and
@@ -135,8 +158,8 @@ fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOpt
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, or its
-///   `kind` is not `SelectTree`.
+/// - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, its
+///   `kind` is not `SelectTree`, or its `verb` is outside the enum.
 /// - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed
 ///   or of an even or zero count, a path invalid, the root or listed twice — all before the
 ///   snapshot: nothing written, no `precondition`; detail in `context`.
@@ -186,6 +209,16 @@ mod tests {
     type File<'a> = (&'a str, bool, bool, Option<&'a [(u32, u32, u32, u32)]>);
 
     fn request(kind: fbs::RequestKind, revision: Option<&str>, left: &[&str], files: &[File<'_>]) -> Vec<u8> {
+        request_with_verb(kind, revision, left, files, fbs::SelectTreeVerb::Unspecified)
+    }
+
+    fn request_with_verb(
+        kind: fbs::RequestKind,
+        revision: Option<&str>,
+        left: &[&str],
+        files: &[File<'_>],
+        verb: fbs::SelectTreeVerb,
+    ) -> Vec<u8> {
         let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
         let file_offsets: Vec<_> = files
             .iter()
@@ -232,6 +265,7 @@ mod tests {
                 left: Some(left),
                 files: Some(files),
                 from,
+                verb,
             },
         );
         b.finish(req, None);
@@ -302,6 +336,28 @@ mod tests {
 
         let bytes = request(fbs::RequestKind::Commit, None, &["l1"], &[]);
         let err = read_select_tree_request(bytes.as_ptr(), bytes.len()).expect_err("wrong kind");
+        assert_eq!(err.code, FFI_INVALID_ARGUMENT);
+    }
+
+    /// Every wire verb maps to its `SelectTreeVerb` — `Unspecified` (an old-shape request) to
+    /// none — and a value outside the enum refuses `ffi.invalid_argument`.
+    #[test]
+    fn the_reader_maps_every_verb_and_refuses_an_unknown_one() {
+        use zanshin_jj::SelectTreeVerb;
+        let read = |verb| {
+            let bytes = request_with_verb(fbs::RequestKind::SelectTree, None, &["l1"], &[], verb);
+            read_select_tree_request(bytes.as_ptr(), bytes.len())
+        };
+        for (wire, expected) in [
+            (fbs::SelectTreeVerb::Unspecified, None),
+            (fbs::SelectTreeVerb::Commit, Some(SelectTreeVerb::Commit)),
+            (fbs::SelectTreeVerb::Split, Some(SelectTreeVerb::Split)),
+            (fbs::SelectTreeVerb::Squash, Some(SelectTreeVerb::Squash)),
+            (fbs::SelectTreeVerb::Diffedit, Some(SelectTreeVerb::Diffedit)),
+        ] {
+            assert_eq!(read(wire).expect("valid").verb, expected, "{wire:?}");
+        }
+        let err = read(fbs::SelectTreeVerb(200)).expect_err("unknown verb");
         assert_eq!(err.code, FFI_INVALID_ARGUMENT);
     }
 }

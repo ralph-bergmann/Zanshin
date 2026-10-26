@@ -307,6 +307,10 @@ table FileSelection {
   mode: bool;
 }
 
+/// The verb a `SelectTreeRequest` selects for (Story 9.41). `Unspecified` (0, the default) is no
+/// verb. Member order IS the wire value — APPEND only.
+enum SelectTreeVerb : ubyte { Unspecified, Commit, Split, Squash, Diffedit }
+
 /// Arguments of `zanshin_select_tree` (Story 9.50) — a hunk selection, applied as the CLI's
 /// builtin diff editor applies a choice.
 ///
@@ -319,12 +323,17 @@ table FileSelection {
 ///   from               (Story 9.17) jj reverse-hex change id whose OWN tree is the diff's left
 ///                      side (`diffedit --from`); `left` is then that tree — `ShowEntry.tree_ids`;
 ///                      absent → the revision's parent tree
+///   verb               (Story 9.41) the verb whose builtin diff editor the selection stands in
+///                      for; the call resolves its config for that verb's CLI command, so a
+///                      `--when.commands` scope for it applies. `Unspecified` (absent) → no
+///                      command; an unknown value is `ffi.invalid_argument`
 table SelectTreeRequest {
   kind: RequestKind;
   revision: string;
   left: [string];
   files: [FileSelection];
   from: string;
+  verb: SelectTreeVerb;
 }
 
 /// A tree arm's selection (Story 9.50): the tree `zanshin_select_tree` returned (`tree_ids`,
@@ -1345,11 +1354,15 @@ table EnvironmentAdoptRequest {
 /// `operation_id` is required: the FULL hex id of the operation the topology call loaded (an
 /// absent field is `jj.invalid_input` "operation_id is required"). `commit_ids` are FULL hex
 /// commit ids; the answer comes back in this order. An absent or empty list is a valid, empty
-/// request.
+/// request. `extra_operation_ids` (Story 9.42 follow-up) are the topology's
+/// `GraphTopology.extra_operation_ids`, FULL hex — checked like `operation_id` after it, and the
+/// ids are checked and loaded against the pinned index merged with theirs; absent or empty → the
+/// pinned index alone.
 table CommitContentsRequest {
   kind: RequestKind;
   operation_id: string;
   commit_ids: [string];
+  extra_operation_ids: [string];
 }
 
 /// What `zanshin_drop_actions` previews as dragged (Story 9.31). Member order IS the wire
@@ -2009,6 +2022,10 @@ table TopologyWorkingCopy {
 ///   single-workspace repo (the CLI's guard).
 /// - Anchors, CSR: anchor a's nodes are anchor_node[anchor_start[a] .. anchor_start[a + 1]],
 ///   ascending (= `jj log` order); `anchor_start` has A + 1 entries.
+/// - `extra_operation_ids`: the operations the revset's `at_operation()`s brought in, full hex —
+///   always written, empty without them. Pass them to `zanshin_commit_contents`
+///   (`CommitContentsRequest.extra_operation_ids`): their commits may be outside
+///   `operation_id`'s index.
 table GraphTopology {
   operation_id: string;
   all_count: ulong;
@@ -2029,6 +2046,7 @@ table GraphTopology {
   working_copies: [TopologyWorkingCopy]; // sorted by node
   anchor_start: [uint];            // A + 1
   anchor_node: [uint];             // anchor_start[A] entries
+  extra_operation_ids: [string];   // at_operation() operations, full hex
 }
 
 /// The repo's EFFECTIVE `jj log` defaults (Story 4.9) — what the user's own jj
@@ -2898,6 +2916,10 @@ table ConfigGcResult {
 /// The object half of one `jj log` row (Story 4.10, zanshin_jj::CommitContent), read at the
 /// operation `zanshin_commit_contents` was pinned to. Commit-intrinsic, so a caller may cache it
 /// by `commit_id`. Every string is always present (an empty author or description is `""`).
+/// `empty` is meaningful only when `empty_unknown` is false (presence bit — flatc 25.12.19 has
+/// no optional scalar for Dart): `empty_unknown` is true where jj-lib cannot tell — a merge whose
+/// common ancestors are outside the index it is read against (the CLI's inline template error) —
+/// and `empty` is then false.
 table CommitContent {
   commit_id: string;                 // full hex, lowercase
   author_name: string;               // may be empty (jj allows it)
@@ -2906,7 +2928,8 @@ table CommitContent {
   committer_tz_offset_minutes: int;  // timezone offset, minutes east of UTC
   description: string;               // the FULL description; "" when empty
   conflict: bool;
-  empty: bool;
+  empty: bool;                       // meaningful only when empty_unknown is false
+  empty_unknown: bool;               // jj-lib cannot tell emptiness (Dart: empty == null)
 }
 
 /// `zanshin_commit_contents`' answer: one entry per requested id, in REQUEST order.

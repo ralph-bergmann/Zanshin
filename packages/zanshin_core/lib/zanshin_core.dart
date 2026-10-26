@@ -101,7 +101,7 @@ export 'src/ffi/resolve.dart'
     show ConflictHunk, ConflictedFile, ResolveFiles, ResolveList, ResolveOurs, ResolveTheirs, ResolveTool, ResolvedFile;
 export 'src/ffi/revset_search.dart'
     show FoundChange, FoundChanges, RevsetCount, RevsetCounts, RevsetErrorDetail, RevsetErrorKind, RevsetSpan;
-export 'src/ffi/select_tree.dart' show FileSelection, HunkKey, SelectedTree, SourceTree, TreeSelection;
+export 'src/ffi/select_tree.dart' show FileSelection, HunkKey, SelectTreeVerb, SelectedTree, SourceTree, TreeSelection;
 export 'src/ffi/squash_split.dart' show SplitResult, SquashPlan;
 export 'src/ffi/status.dart' show WorkingCopyStatus;
 export 'src/ffi/warning.dart' show WarnedList, ZanshinWarning, ZanshinWarningCode;

@@ -379,6 +379,53 @@ class _RequestKindReader extends fb.Reader<RequestKind> {
   RequestKind read(fb.BufferContext bc, int offset) => RequestKind.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
+///  The verb a `SelectTreeRequest` selects for (Story 9.41). `Unspecified` (0, the default) is no
+///  verb. Member order IS the wire value — APPEND only.
+enum SelectTreeVerb {
+  Unspecified(0),
+  Commit(1),
+  Split(2),
+  Squash(3),
+  Diffedit(4);
+
+  final int value;
+  const SelectTreeVerb(this.value);
+
+  factory SelectTreeVerb.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return SelectTreeVerb.Unspecified;
+      case 1:
+        return SelectTreeVerb.Commit;
+      case 2:
+        return SelectTreeVerb.Split;
+      case 3:
+        return SelectTreeVerb.Squash;
+      case 4:
+        return SelectTreeVerb.Diffedit;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static SelectTreeVerb? _createOrNull(int? value) => value == null ? null : SelectTreeVerb.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 4;
+  static const fb.Reader<SelectTreeVerb> reader = _SelectTreeVerbReader();
+}
+
+class _SelectTreeVerbReader extends fb.Reader<SelectTreeVerb> {
+  const _SelectTreeVerbReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  SelectTreeVerb read(fb.BufferContext bc, int offset) =>
+      SelectTreeVerb.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 ///  One of the `jj arrange` TUI's key actions (Story 9.16): swap with the one parent (`J`) / the
 ///  one child (`K`), abandon (`a`), keep (`p`). `Unspecified = 0` is the default of an ABSENT
 ///  `kind` and is always refused (`ffi.invalid_argument`), so a forgotten kind never decodes as a
@@ -3059,6 +3106,10 @@ class FileSelectionObjectBuilder extends fb.ObjectBuilder {
 ///    from               (Story 9.17) jj reverse-hex change id whose OWN tree is the diff's left
 ///                       side (`diffedit --from`); `left` is then that tree — `ShowEntry.tree_ids`;
 ///                       absent → the revision's parent tree
+///    verb               (Story 9.41) the verb whose builtin diff editor the selection stands in
+///                       for; the call resolves its config for that verb's CLI command, so a
+///                       `--when.commands` scope for it applies. `Unspecified` (absent) → no
+///                       command; an unknown value is `ffi.invalid_argument`
 class SelectTreeRequest {
   SelectTreeRequest._(this._bc, this._bcOffset);
   factory SelectTreeRequest(List<int> bytes) {
@@ -3077,10 +3128,11 @@ class SelectTreeRequest {
   List<FileSelection>? get files =>
       const fb.ListReader<FileSelection>(FileSelection.reader).vTableGetNullable(_bc, _bcOffset, 10);
   String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+  SelectTreeVerb get verb => SelectTreeVerb.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 14, 0));
 
   @override
   String toString() {
-    return 'SelectTreeRequest{kind: ${kind}, revision: ${revision}, left: ${left}, files: ${files}, from: ${from}}';
+    return 'SelectTreeRequest{kind: ${kind}, revision: ${revision}, left: ${left}, files: ${files}, from: ${from}, verb: ${verb}}';
   }
 }
 
@@ -3097,7 +3149,7 @@ class SelectTreeRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
   }
 
   int addKind(RequestKind? kind) {
@@ -3125,6 +3177,11 @@ class SelectTreeRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addVerb(SelectTreeVerb? verb) {
+    fbBuilder.addUint8(5, verb?.value);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -3136,6 +3193,7 @@ class SelectTreeRequestObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _left;
   final List<FileSelectionObjectBuilder>? _files;
   final String? _from;
+  final SelectTreeVerb? _verb;
 
   SelectTreeRequestObjectBuilder({
     RequestKind? kind,
@@ -3143,11 +3201,13 @@ class SelectTreeRequestObjectBuilder extends fb.ObjectBuilder {
     List<String>? left,
     List<FileSelectionObjectBuilder>? files,
     String? from,
+    SelectTreeVerb? verb,
   }) : _kind = kind,
        _revision = revision,
        _left = left,
        _files = files,
-       _from = from;
+       _from = from,
+       _verb = verb;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -3158,12 +3218,13 @@ class SelectTreeRequestObjectBuilder extends fb.ObjectBuilder {
         ? null
         : fbBuilder.writeList(_files!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
     final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionOffset);
     fbBuilder.addOffset(2, leftOffset);
     fbBuilder.addOffset(3, filesOffset);
     fbBuilder.addOffset(4, fromOffset);
+    fbBuilder.addUint8(5, _verb?.value);
     return fbBuilder.endTable();
   }
 
@@ -10331,7 +10392,10 @@ class EnvironmentAdoptRequestObjectBuilder extends fb.ObjectBuilder {
 ///  `operation_id` is required: the FULL hex id of the operation the topology call loaded (an
 ///  absent field is `jj.invalid_input` "operation_id is required"). `commit_ids` are FULL hex
 ///  commit ids; the answer comes back in this order. An absent or empty list is a valid, empty
-///  request.
+///  request. `extra_operation_ids` (Story 9.42 follow-up) are the topology's
+///  `GraphTopology.extra_operation_ids`, FULL hex — checked like `operation_id` after it, and the
+///  ids are checked and loaded against the pinned index merged with theirs; absent or empty → the
+///  pinned index alone.
 class CommitContentsRequest {
   CommitContentsRequest._(this._bc, this._bcOffset);
   factory CommitContentsRequest(List<int> bytes) {
@@ -10347,10 +10411,12 @@ class CommitContentsRequest {
   RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
   String? get operationId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
   List<String>? get commitIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get extraOperationIds =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'CommitContentsRequest{kind: ${kind}, operationId: ${operationId}, commitIds: ${commitIds}}';
+    return 'CommitContentsRequest{kind: ${kind}, operationId: ${operationId}, commitIds: ${commitIds}, extraOperationIds: ${extraOperationIds}}';
   }
 }
 
@@ -10367,7 +10433,7 @@ class CommitContentsRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
   }
 
   int addKind(RequestKind? kind) {
@@ -10385,6 +10451,11 @@ class CommitContentsRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addExtraOperationIdsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -10394,14 +10465,17 @@ class CommitContentsRequestObjectBuilder extends fb.ObjectBuilder {
   final RequestKind? _kind;
   final String? _operationId;
   final List<String>? _commitIds;
+  final List<String>? _extraOperationIds;
 
   CommitContentsRequestObjectBuilder({
     RequestKind? kind,
     String? operationId,
     List<String>? commitIds,
+    List<String>? extraOperationIds,
   }) : _kind = kind,
        _operationId = operationId,
-       _commitIds = commitIds;
+       _commitIds = commitIds,
+       _extraOperationIds = extraOperationIds;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -10410,10 +10484,14 @@ class CommitContentsRequestObjectBuilder extends fb.ObjectBuilder {
     final int? commitIdsOffset = _commitIds == null
         ? null
         : fbBuilder.writeList(_commitIds!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(3);
+    final int? extraOperationIdsOffset = _extraOperationIds == null
+        ? null
+        : fbBuilder.writeList(_extraOperationIds!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, operationIdOffset);
     fbBuilder.addOffset(2, commitIdsOffset);
+    fbBuilder.addOffset(3, extraOperationIdsOffset);
     return fbBuilder.endTable();
   }
 
@@ -15392,6 +15470,10 @@ class TopologyWorkingCopyObjectBuilder extends fb.ObjectBuilder {
 ///    single-workspace repo (the CLI's guard).
 ///  - Anchors, CSR: anchor a's nodes are anchor_node[anchor_start[a] .. anchor_start[a + 1]],
 ///    ascending (= `jj log` order); `anchor_start` has A + 1 entries.
+///  - `extra_operation_ids`: the operations the revset's `at_operation()`s brought in, full hex —
+///    always written, empty without them. Pass them to `zanshin_commit_contents`
+///    (`CommitContentsRequest.extra_operation_ids`): their commits may be outside
+///    `operation_id`'s index.
 class GraphTopology {
   GraphTopology._(this._bc, this._bcOffset);
   factory GraphTopology(List<int> bytes) {
@@ -15426,10 +15508,12 @@ class GraphTopology {
       const fb.ListReader<TopologyWorkingCopy>(TopologyWorkingCopy.reader).vTableGetNullable(_bc, _bcOffset, 36);
   List<int>? get anchorStart => const fb.ListReader<int>(fb.Uint32Reader()).vTableGetNullable(_bc, _bcOffset, 38);
   List<int>? get anchorNode => const fb.ListReader<int>(fb.Uint32Reader()).vTableGetNullable(_bc, _bcOffset, 40);
+  List<String>? get extraOperationIds =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 42);
 
   @override
   String toString() {
-    return 'GraphTopology{operationId: ${operationId}, allCount: ${allCount}, commitIds: ${commitIds}, changeIds: ${changeIds}, commitIdStride: ${commitIdStride}, changeIdStride: ${changeIdStride}, flags: ${flags}, changeOffset: ${changeOffset}, changeIdPrefixLen: ${changeIdPrefixLen}, commitIdPrefixLen: ${commitIdPrefixLen}, parentCount: ${parentCount}, edgeStart: ${edgeStart}, edgeTarget: ${edgeTarget}, edgeKind: ${edgeKind}, timestamps: ${timestamps}, refs: ${refs}, workingCopies: ${workingCopies}, anchorStart: ${anchorStart}, anchorNode: ${anchorNode}}';
+    return 'GraphTopology{operationId: ${operationId}, allCount: ${allCount}, commitIds: ${commitIds}, changeIds: ${changeIds}, commitIdStride: ${commitIdStride}, changeIdStride: ${changeIdStride}, flags: ${flags}, changeOffset: ${changeOffset}, changeIdPrefixLen: ${changeIdPrefixLen}, commitIdPrefixLen: ${commitIdPrefixLen}, parentCount: ${parentCount}, edgeStart: ${edgeStart}, edgeTarget: ${edgeTarget}, edgeKind: ${edgeKind}, timestamps: ${timestamps}, refs: ${refs}, workingCopies: ${workingCopies}, anchorStart: ${anchorStart}, anchorNode: ${anchorNode}, extraOperationIds: ${extraOperationIds}}';
   }
 }
 
@@ -15446,7 +15530,7 @@ class GraphTopologyBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(19);
+    fbBuilder.startTable(20);
   }
 
   int addOperationIdOffset(int? offset) {
@@ -15544,6 +15628,11 @@ class GraphTopologyBuilder {
     return fbBuilder.offset;
   }
 
+  int addExtraOperationIdsOffset(int? offset) {
+    fbBuilder.addOffset(19, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -15569,6 +15658,7 @@ class GraphTopologyObjectBuilder extends fb.ObjectBuilder {
   final List<TopologyWorkingCopyObjectBuilder>? _workingCopies;
   final List<int>? _anchorStart;
   final List<int>? _anchorNode;
+  final List<String>? _extraOperationIds;
 
   GraphTopologyObjectBuilder({
     String? operationId,
@@ -15590,6 +15680,7 @@ class GraphTopologyObjectBuilder extends fb.ObjectBuilder {
     List<TopologyWorkingCopyObjectBuilder>? workingCopies,
     List<int>? anchorStart,
     List<int>? anchorNode,
+    List<String>? extraOperationIds,
   }) : _operationId = operationId,
        _allCount = allCount,
        _commitIds = commitIds,
@@ -15608,7 +15699,8 @@ class GraphTopologyObjectBuilder extends fb.ObjectBuilder {
        _refs = refs,
        _workingCopies = workingCopies,
        _anchorStart = anchorStart,
-       _anchorNode = anchorNode;
+       _anchorNode = anchorNode,
+       _extraOperationIds = extraOperationIds;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -15639,7 +15731,10 @@ class GraphTopologyObjectBuilder extends fb.ObjectBuilder {
         : fbBuilder.writeList(_workingCopies!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
     final int? anchorStartOffset = _anchorStart == null ? null : fbBuilder.writeListUint32(_anchorStart!);
     final int? anchorNodeOffset = _anchorNode == null ? null : fbBuilder.writeListUint32(_anchorNode!);
-    fbBuilder.startTable(19);
+    final int? extraOperationIdsOffset = _extraOperationIds == null
+        ? null
+        : fbBuilder.writeList(_extraOperationIds!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(20);
     fbBuilder.addOffset(0, operationIdOffset);
     fbBuilder.addUint64(1, _allCount);
     fbBuilder.addOffset(2, commitIdsOffset);
@@ -15659,6 +15754,7 @@ class GraphTopologyObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(16, workingCopiesOffset);
     fbBuilder.addOffset(17, anchorStartOffset);
     fbBuilder.addOffset(18, anchorNodeOffset);
+    fbBuilder.addOffset(19, extraOperationIdsOffset);
     return fbBuilder.endTable();
   }
 
@@ -22391,6 +22487,10 @@ class ConfigGcResultObjectBuilder extends fb.ObjectBuilder {
 ///  The object half of one `jj log` row (Story 4.10, zanshin_jj::CommitContent), read at the
 ///  operation `zanshin_commit_contents` was pinned to. Commit-intrinsic, so a caller may cache it
 ///  by `commit_id`. Every string is always present (an empty author or description is `""`).
+///  `empty` is meaningful only when `empty_unknown` is false (presence bit — flatc 25.12.19 has
+///  no optional scalar for Dart): `empty_unknown` is true where jj-lib cannot tell — a merge whose
+///  common ancestors are outside the index it is read against (the CLI's inline template error) —
+///  and `empty` is then false.
 class CommitContent {
   CommitContent._(this._bc, this._bcOffset);
   factory CommitContent(List<int> bytes) {
@@ -22411,10 +22511,11 @@ class CommitContent {
   String? get description => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 14);
   bool get conflict => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
   bool get empty => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
+  bool get emptyUnknown => const fb.BoolReader().vTableGet(_bc, _bcOffset, 20, false);
 
   @override
   String toString() {
-    return 'CommitContent{commitId: ${commitId}, authorName: ${authorName}, authorEmail: ${authorEmail}, committerTimestampMillis: ${committerTimestampMillis}, committerTzOffsetMinutes: ${committerTzOffsetMinutes}, description: ${description}, conflict: ${conflict}, empty: ${empty}}';
+    return 'CommitContent{commitId: ${commitId}, authorName: ${authorName}, authorEmail: ${authorEmail}, committerTimestampMillis: ${committerTimestampMillis}, committerTzOffsetMinutes: ${committerTzOffsetMinutes}, description: ${description}, conflict: ${conflict}, empty: ${empty}, emptyUnknown: ${emptyUnknown}}';
   }
 }
 
@@ -22431,7 +22532,7 @@ class CommitContentBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(8);
+    fbBuilder.startTable(9);
   }
 
   int addCommitIdOffset(int? offset) {
@@ -22474,6 +22575,11 @@ class CommitContentBuilder {
     return fbBuilder.offset;
   }
 
+  int addEmptyUnknown(bool? emptyUnknown) {
+    fbBuilder.addBool(8, emptyUnknown);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -22488,6 +22594,7 @@ class CommitContentObjectBuilder extends fb.ObjectBuilder {
   final String? _description;
   final bool? _conflict;
   final bool? _empty;
+  final bool? _emptyUnknown;
 
   CommitContentObjectBuilder({
     String? commitId,
@@ -22498,6 +22605,7 @@ class CommitContentObjectBuilder extends fb.ObjectBuilder {
     String? description,
     bool? conflict,
     bool? empty,
+    bool? emptyUnknown,
   }) : _commitId = commitId,
        _authorName = authorName,
        _authorEmail = authorEmail,
@@ -22505,7 +22613,8 @@ class CommitContentObjectBuilder extends fb.ObjectBuilder {
        _committerTzOffsetMinutes = committerTzOffsetMinutes,
        _description = description,
        _conflict = conflict,
-       _empty = empty;
+       _empty = empty,
+       _emptyUnknown = emptyUnknown;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -22514,7 +22623,7 @@ class CommitContentObjectBuilder extends fb.ObjectBuilder {
     final int? authorNameOffset = _authorName == null ? null : fbBuilder.writeString(_authorName!);
     final int? authorEmailOffset = _authorEmail == null ? null : fbBuilder.writeString(_authorEmail!);
     final int? descriptionOffset = _description == null ? null : fbBuilder.writeString(_description!);
-    fbBuilder.startTable(8);
+    fbBuilder.startTable(9);
     fbBuilder.addOffset(0, commitIdOffset);
     fbBuilder.addOffset(1, authorNameOffset);
     fbBuilder.addOffset(2, authorEmailOffset);
@@ -22523,6 +22632,7 @@ class CommitContentObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(5, descriptionOffset);
     fbBuilder.addBool(6, _conflict);
     fbBuilder.addBool(7, _empty);
+    fbBuilder.addBool(8, _emptyUnknown);
     return fbBuilder.endTable();
   }
 

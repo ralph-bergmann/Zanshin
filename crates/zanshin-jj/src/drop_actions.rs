@@ -20,15 +20,27 @@
 //! own: each row plans on its own transaction, started from ONE head the call loads, and drops it.
 //! The warnings a row's plan records are discarded — the verb reports its own when it runs — so
 //! the call's warnings are the precondition's only.
+//!
+//! The call's own snapshot resolves its config for no CLI command; each row plans with the config
+//! its verb's CLI command resolves (Story 9.41) — the call's context when that is the same stack,
+//! else its own (config and start-up environment, built once per command and call; a build that
+//! fails is not kept, so each row of that command tries again). A row whose
+//! command's config or start-up environment fails is refused with the verb's start-up error
+//! ([`MutateError::Precondition`]); the other rows and the call go on.
 
+use std::cell::RefCell;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::revset::RevsetExpression;
 use jj_lib::transaction::Transaction;
+use jj_lib::working_copy::SnapshotStats;
 use jj_lib::workspace::Workspace;
 
 use crate::bookmark_ops::{plan_bookmark_move, BookmarkMovePlan};
+use crate::cli_command::{self, CliCommand};
 use crate::commit_views::plan_interdiff;
 use crate::duplicate::plan_duplicate;
 use crate::mutate::{
@@ -40,9 +52,10 @@ use crate::rebase::{
     load_dry_run_head, plan_rebase_branch, plan_rebase_revisions, plan_rebase_source, rebase_is_no_op,
 };
 use crate::revert::plan_revert;
-use crate::snapshot::VerbContext;
+use crate::snapshot::{CommandEnv, VerbContext};
 use crate::squash_split::{combined_description_needed, plan_squash, prepare_split};
-use crate::{ChangeId, CommitViewError, RevisionRef, SplitOptions, SquashOptions};
+use crate::warning::Warnings;
+use crate::{ChangeId, CommitViewError, PreconditionError, Repo, RevisionRef, SplitOptions, SquashOptions};
 
 /// What is dragged (Story 9.31).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,12 +217,7 @@ fn outcome(planned: Result<Planned, MutateError>) -> Result<ActionOutcome, Mutat
             allow_backwards_needed: planned.allow_backwards_needed,
         }),
         Err(e @ (MutateError::Backend(_) | MutateError::Precondition(_))) => Err(e),
-        Err(refusal) => Ok(ActionOutcome {
-            status: ActionStatus::Refused,
-            refusal: Some(refusal),
-            combined_description_needed: false,
-            allow_backwards_needed: false,
-        }),
+        Err(refusal) => Ok(refused(refusal)),
     }
 }
 
@@ -252,20 +260,90 @@ fn view_err(e: CommitViewError) -> MutateError {
     }
 }
 
-/// The head every row plans on, and the workspace the plans read.
+impl DropVerb {
+    /// The CLI command the row's verb plays (Story 9.41) — what its context resolves for.
+    fn command(self) -> CliCommand {
+        match self {
+            Self::RebaseSource | Self::RebaseRevisions | Self::RebaseBranch => cli_command::REBASE,
+            Self::Squash => cli_command::SQUASH,
+            Self::NewMerge => cli_command::NEW,
+            Self::Duplicate => cli_command::DUPLICATE,
+            Self::Split => cli_command::SPLIT,
+            Self::BookmarkMove => cli_command::BOOKMARK_MOVE,
+            Self::Revert => cli_command::REVERT,
+            Self::Restore => cli_command::RESTORE,
+            Self::Absorb => cli_command::ABSORB,
+            Self::Interdiff => cli_command::INTERDIFF,
+        }
+    }
+}
+
+/// A refused row — the verb's own `refusal`.
+fn refused(refusal: MutateError) -> ActionOutcome {
+    ActionOutcome {
+        status: ActionStatus::Refused,
+        refusal: Some(refusal),
+        combined_description_needed: false,
+        allow_backwards_needed: false,
+    }
+}
+
+/// The head every row plans on, the repo the rows resolve their configs in, and each row
+/// command's context (Story 9.41): `None` where the command resolves to the call's stack.
 struct Rows<'a> {
+    repo: &'a Repo,
     workspace: &'a Workspace,
     readonly: Arc<ReadonlyRepo>,
+    contexts: RefCell<HashMap<CliCommand, Option<VerbContext>>>,
 }
 
 impl Rows<'_> {
-    /// Runs `plan` on a fresh transaction from the call's head, drops the transaction, and maps
-    /// the result through [`outcome`].
+    /// The start-up of the CLI's `command` minus the snapshot: its config (with the call's
+    /// `trunk()` fallback layer) and its start-up environment, or `None` when that config is the
+    /// call's own, whose context the row then reuses.
+    ///
+    /// shortcut: the `trunk()` fallback is decided once for the call's (no-command) stack, so a
+    /// `trunk()` redefined only in a command scope is not re-checked per row; check it per
+    /// command if such a scope shows up.
+    ///
+    /// shortcut: only the `VerbContext` is per command — every row's transaction starts from the
+    /// head loaded with the call's (no-command) `UserSettings`, so a scope that changes a setting
+    /// the transaction itself reads (author, signing) does not reach the row; no row outcome reads
+    /// one today. Reload the head per command if a plan starts to.
+    fn row_context(&self, command: CliCommand, call: &VerbContext) -> Result<Option<VerbContext>, PreconditionError> {
+        let config = crate::config::load_for(self.repo, command)?;
+        if crate::config::same_resolution(&config, &call.config) {
+            return Ok(None);
+        }
+        // The row's start-up warnings are discarded, as every row's are.
+        let env = CommandEnv::load(self.workspace, &config, &mut Warnings::default())?;
+        Ok(Some(VerbContext::new(
+            config,
+            env,
+            call.colocated,
+            SnapshotStats::default(),
+            Warnings::default(),
+        )))
+    }
+
+    /// Runs `plan` with the context of `command` on a fresh transaction from the call's head,
+    /// drops the transaction, and maps the result through [`outcome`]. A context that fails to
+    /// load is the row's refusal — the verb's start-up refuses with it.
     fn row(
         &self,
+        command: CliCommand,
         ctx: &mut VerbContext,
         plan: impl FnOnce(&mut Transaction, &mut VerbContext) -> Result<Planned, MutateError>,
     ) -> Result<ActionOutcome, MutateError> {
+        let mut contexts = self.contexts.borrow_mut();
+        let own = match contexts.entry(command) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => match self.row_context(command, ctx) {
+                Ok(context) => entry.insert(context),
+                Err(fault) => return Ok(refused(MutateError::Precondition(fault))),
+            },
+        };
+        let ctx = own.as_mut().unwrap_or(ctx);
         let mut tx = start_repo_transaction(&self.readonly, self.workspace.workspace_name());
         let planned = plan(&mut tx, ctx);
         drop(tx);
@@ -280,7 +358,7 @@ impl Rows<'_> {
         change: &ChangeId,
         location: &LocationArgs<'_>,
     ) -> Result<ActionOutcome, MutateError> {
-        self.row(ctx, |tx, ctx| {
+        self.row(DropVerb::RebaseSource.command(), ctx, |tx, ctx| {
             let changes = std::slice::from_ref(change);
             let loc = match form {
                 RebaseForm::Source => plan_rebase_source(tx, &ctx.templates(self.workspace), changes, location)?,
@@ -297,7 +375,7 @@ impl Rows<'_> {
     /// `jj squash` with `options`: no-op when nothing would be squashed, with the
     /// combined-description flag.
     fn squash(&self, ctx: &mut VerbContext, options: &SquashOptions) -> Result<ActionOutcome, MutateError> {
-        self.row(ctx, |tx, ctx| {
+        self.row(DropVerb::Squash.command(), ctx, |tx, ctx| {
             let plan = plan_squash(tx, self.workspace, ctx, options)?;
             Ok(Planned {
                 no_op: plan.squashed.is_none(),
@@ -314,7 +392,7 @@ impl Rows<'_> {
         change: &ChangeId,
         location: &LocationArgs<'_>,
     ) -> Result<ActionOutcome, MutateError> {
-        self.row(ctx, |tx, ctx| {
+        self.row(DropVerb::Revert.command(), ctx, |tx, ctx| {
             let plan = plan_revert(
                 tx,
                 &ctx.templates(self.workspace),
@@ -350,14 +428,14 @@ impl Rows<'_> {
         change: &ChangeId,
         target: &ChangeId,
     ) -> Result<[(DropVerb, ActionOutcome); 3], MutateError> {
-        let restore = self.row(ctx, |tx, ctx| {
+        let restore = self.row(DropVerb::Restore.command(), ctx, |tx, ctx| {
             let plan = plan_restore(tx, self.workspace, ctx, Some(change), Some(target), None, &[])?;
             Ok(Planned {
                 no_op: plan.restored.is_none(),
                 ..Planned::AVAILABLE
             })
         })?;
-        let absorb = self.row(ctx, |tx, ctx| {
+        let absorb = self.row(DropVerb::Absorb.command(), ctx, |tx, ctx| {
             let into = |repo: &jj_lib::repo::MutableRepo| {
                 Ok(RevsetExpression::commits(vec![resolve_commit(repo, target)?
                     .id()
@@ -369,7 +447,7 @@ impl Rows<'_> {
                 ..Planned::AVAILABLE
             })
         })?;
-        let interdiff = self.row(ctx, |tx, ctx| {
+        let interdiff = self.row(DropVerb::Interdiff.command(), ctx, |tx, ctx| {
             let from = RevisionRef::ChangeId(change.clone());
             let to = RevisionRef::ChangeId(target.clone());
             let prefixes = ctx.template_startup.id_prefix_context();
@@ -398,7 +476,7 @@ impl Rows<'_> {
         insert_after: &[ChangeId],
         insert_before: &[ChangeId],
     ) -> Result<ActionOutcome, MutateError> {
-        self.row(ctx, |tx, ctx| {
+        self.row(DropVerb::NewMerge.command(), ctx, |tx, ctx| {
             let location = plan_new(tx, &ctx.templates(self.workspace), parents, insert_after, insert_before)?;
             // The verb refuses a root merge at its write (after the template); rows keep it.
             refuse_git_root_merge(tx.repo().store(), &location.parents)?;
@@ -444,7 +522,7 @@ impl Rows<'_> {
                 let mut parents = location.onto.clone();
                 parents.push(change.clone());
                 rows.push((DropVerb::NewMerge, self.new_change(ctx, &parents, &[], &[])?));
-                let duplicate = self.row(ctx, |tx, ctx| {
+                let duplicate = self.row(DropVerb::Duplicate.command(), ctx, |tx, ctx| {
                     let plan = plan_duplicate(tx, &ctx.templates(self.workspace), std::slice::from_ref(change), &args)?;
                     // The verb refuses a root merge at its write (after the template); rows keep it.
                     // Always `-o`, so never `None`: the Revert row's `Option` form gives that dead case no line.
@@ -488,7 +566,7 @@ impl Rows<'_> {
                     insert_before: given(&location.insert_before).map(<[ChangeId]>::to_vec),
                     ..SplitOptions::default()
                 };
-                let split = self.row(ctx, |tx, ctx| {
+                let split = self.row(DropVerb::Split.command(), ctx, |tx, ctx| {
                     prepare_split(tx, self.workspace, ctx, &options)?;
                     Ok(Planned::AVAILABLE)
                 })?;
@@ -496,7 +574,7 @@ impl Rows<'_> {
             }
             DropSource::Bookmark(name) => {
                 if let Some(target) = onto_one {
-                    let bookmark = self.row(ctx, |tx, ctx| {
+                    let bookmark = self.row(DropVerb::BookmarkMove.command(), ctx, |tx, ctx| {
                         let target = resolve_commit(tx.repo(), target)?;
                         let plan = plan_bookmark_move(tx.repo(), name, target.id())?;
                         // A move that writes resolves the immutable set in the CLI's `tx.finish`
@@ -539,13 +617,20 @@ fn squash_into(change: &ChangeId, target: &ChangeId, paths: &[String]) -> Squash
 /// puts the precondition's warnings back as the call's only ones: whatever the rows recorded is
 /// dropped, on every path.
 fn with_rows<T>(
-    workspace: &Workspace,
+    repo: &Repo,
     ctx: &mut VerbContext,
     query: impl FnOnce(&Rows<'_>, &mut VerbContext) -> Result<T, MutateError>,
 ) -> Result<T, MutateError> {
+    let workspace = repo.workspace();
     let readonly = load_dry_run_head(workspace)?;
     let precondition_warnings = ctx.warnings.take();
-    let result = query(&Rows { workspace, readonly }, ctx);
+    let rows = Rows {
+        repo,
+        workspace,
+        readonly,
+        contexts: RefCell::default(),
+    };
+    let result = query(&rows, ctx);
     let _row_warnings = ctx.warnings.take();
     ctx.warnings.extend(precondition_warnings);
     result
@@ -557,7 +642,7 @@ fn with_rows<T>(
 ///
 /// See [`crate::Repo::drop_actions`].
 pub(crate) fn drop_actions(
-    workspace: &Workspace,
+    repo: &Repo,
     ctx: &mut VerbContext,
     source: &DropSource,
     locations: &[DropLocation],
@@ -565,7 +650,7 @@ pub(crate) fn drop_actions(
     for location in locations {
         check_location(location)?;
     }
-    with_rows(workspace, ctx, |rows, ctx| {
+    with_rows(repo, ctx, |rows, ctx| {
         let mut actions = Vec::new();
         for (index, location) in locations.iter().enumerate() {
             for (verb, outcome) in rows.location_rows(ctx, source, location)? {
@@ -586,17 +671,17 @@ pub(crate) fn drop_actions(
 ///
 /// See [`crate::Repo::change_actions`].
 pub(crate) fn change_actions(
-    workspace: &Workspace,
+    repo: &Repo,
     ctx: &mut VerbContext,
     change: &ChangeId,
 ) -> Result<ChangeActions, MutateError> {
-    with_rows(workspace, ctx, |rows, ctx| {
+    with_rows(repo, ctx, |rows, ctx| {
         let one = std::slice::from_ref(change);
         Ok(ChangeActions {
             new_onto: rows.new_change(ctx, one, &[], &[])?,
             new_insert_after: rows.new_change(ctx, &[], one, &[])?,
             new_insert_before: rows.new_change(ctx, &[], &[], one)?,
-            edit: rows.row(ctx, |tx, ctx| {
+            edit: rows.row(cli_command::EDIT, ctx, |tx, ctx| {
                 let (_, is_wc) = plan_edit(
                     tx,
                     &ctx.templates(rows.workspace),
@@ -608,7 +693,7 @@ pub(crate) fn change_actions(
                     ..Planned::AVAILABLE
                 })
             })?,
-            describe: rows.row(ctx, |tx, ctx| {
+            describe: rows.row(cli_command::DESCRIBE, ctx, |tx, ctx| {
                 plan_describe(tx, &ctx.templates(rows.workspace), change)?;
                 Ok(Planned::AVAILABLE)
             })?,
@@ -619,7 +704,7 @@ pub(crate) fn change_actions(
                     ..SquashOptions::default()
                 },
             )?,
-            abandon: rows.row(ctx, |tx, ctx| {
+            abandon: rows.row(cli_command::ABANDON, ctx, |tx, ctx| {
                 plan_abandon(tx, &ctx.templates(rows.workspace), one)?;
                 Ok(Planned::AVAILABLE)
             })?,
@@ -729,6 +814,64 @@ mod tests {
             )))),
             Err(MutateError::Precondition(_))
         ));
+    }
+
+    /// Without scopes a row's command resolves to the call's stack: the row runs with the call's
+    /// context, and the cache records that (`None`), not a context of its own.
+    #[test]
+    fn a_row_resolving_to_the_calls_stack_reuses_the_call_context() {
+        use std::cell::RefCell;
+
+        use jj_lib::working_copy::SnapshotStats;
+
+        use super::Rows;
+        use crate::snapshot::{CommandEnv, VerbContext};
+        use crate::warning::Warnings;
+
+        test_helpers::pin_test_env();
+        let fx = test_helpers::extract_fixture("tiny-3-commits").expect("fixture extracts");
+        let repo = crate::Repo::open(&fx.path).expect("fixture opens");
+        let config = crate::config::load(&repo).expect("config");
+        let env = CommandEnv::load(repo.workspace(), &config, &mut Warnings::default()).expect("env");
+        let mut ctx = VerbContext::new(config, env, false, SnapshotStats::default(), Warnings::default());
+        let rows = Rows {
+            repo: &repo,
+            workspace: repo.workspace(),
+            readonly: crate::rebase::load_dry_run_head(repo.workspace()).expect("head"),
+            contexts: RefCell::default(),
+        };
+        let row = rows
+            .row(crate::cli_command::NEW, &mut ctx, |_, _| Ok(Planned::AVAILABLE))
+            .expect("row");
+        assert_eq!(row.status, ActionStatus::Available);
+        assert!(matches!(
+            rows.contexts.borrow().get(&crate::cli_command::NEW),
+            Some(None)
+        ));
+    }
+
+    #[test]
+    fn every_drop_verb_resolves_for_its_cli_command() {
+        use super::DropVerb;
+        use crate::cli_command::{
+            ABSORB, BOOKMARK_MOVE, DUPLICATE, INTERDIFF, NEW, REBASE, RESTORE, REVERT, SPLIT, SQUASH,
+        };
+        for (verb, command) in [
+            (DropVerb::RebaseSource, REBASE),
+            (DropVerb::RebaseRevisions, REBASE),
+            (DropVerb::RebaseBranch, REBASE),
+            (DropVerb::Squash, SQUASH),
+            (DropVerb::NewMerge, NEW),
+            (DropVerb::Duplicate, DUPLICATE),
+            (DropVerb::Split, SPLIT),
+            (DropVerb::BookmarkMove, BOOKMARK_MOVE),
+            (DropVerb::Revert, REVERT),
+            (DropVerb::Restore, RESTORE),
+            (DropVerb::Absorb, ABSORB),
+            (DropVerb::Interdiff, INTERDIFF),
+        ] {
+            assert_eq!(verb.command(), command, "{verb:?}");
+        }
     }
 
     #[test]

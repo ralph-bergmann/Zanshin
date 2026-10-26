@@ -537,7 +537,7 @@ fn walk_graph_root_row_is_root_immutable_and_empty_with_a_fully_populated_payloa
     let node = node_of(&nodes, &root);
     assert!(node.meta.root, "root() is flagged");
     assert!(node.meta.immutable, "root() is always in the immutable set");
-    assert!(node.meta.empty, "the root commit has an empty tree");
+    assert_eq!(node.meta.empty, Some(true), "the root commit has an empty tree");
     assert!(node.meta.description_first_line.is_empty());
     // Uniform payload: the special rendering is the UI's, so the ids are populated here too.
     assert!(!node.meta.change_id.is_empty());
@@ -790,7 +790,7 @@ fn cli_row(meta: &CommitMeta, commit_id: &str) -> String {
     header.extend(labels);
 
     let mut second = Vec::new();
-    if meta.empty {
+    if meta.empty == Some(true) {
         second.push("(empty)".to_owned()); // empty_commit_marker
     }
     second.push(if meta.description_first_line.is_empty() {
@@ -1208,8 +1208,12 @@ fn walk_graph_flags_conflict_and_empty_on_the_right_rows_only() {
 
     assert!(node_of(&nodes, &merge).meta.conflict, "the merge tree is conflicted");
     assert!(!node_of(&nodes, &c3).meta.conflict, "a plain commit is not");
-    assert!(node_of(&nodes, &wc).meta.empty, "@ has no changes of its own");
-    assert!(!node_of(&nodes, &c3).meta.empty, "c3 adds a file");
+    assert_eq!(
+        node_of(&nodes, &wc).meta.empty,
+        Some(true),
+        "@ has no changes of its own"
+    );
+    assert_eq!(node_of(&nodes, &c3).meta.empty, Some(false), "c3 adds a file");
 }
 
 #[test]
@@ -1367,8 +1371,9 @@ fn walk_graph_at_operation_of_a_sibling_op_returns_its_rows_with_its_commits_hid
     assert!(merge.parents.iter().all(|e| e.kind == GraphEdgeKind::Direct));
     // The CLI prints "(empty)" for the two root children, and for the merge — whose emptiness
     // jj-lib cannot compute in the head's index — an inline template error instead.
-    assert!(node_of(&nodes, &sibling[0]).meta.empty && node_of(&nodes, &sibling[1]).meta.empty);
-    assert!(!merge.meta.empty);
+    assert_eq!(node_of(&nodes, &sibling[0]).meta.empty, Some(true));
+    assert_eq!(node_of(&nodes, &sibling[1]).meta.empty, Some(true));
+    assert_eq!(merge.meta.empty, None);
 }
 
 #[test]

@@ -1289,6 +1289,7 @@ GraphTopology {
   working_copies:       [TopologyWorkingCopy]  // sorted by node
   anchor_start:         [uint]                 // A + 1
   anchor_node:          [uint]                 // anchor_start[A] entries, ascending per anchor
+  extra_operation_ids:  [string]               // appended 2026-10-26; at_operation() ops, full hex
 }
 ```
 
@@ -1321,6 +1322,11 @@ GraphTopology {
   ascending (= `jj log` order); an anchor selecting nothing in `revset` is an empty range.
 - **`all_count`** is `|all()|` by iterating — the VISIBLE commits only, so a revset naming
   hidden commits can yield more nodes than `all_count`.
+- **`extra_operation_ids`** are the operations the revset's `at_operation()`s brought in, in
+  jj-lib's order (empty without them; always written — Dart's `GraphTopologyView` treats an
+  absent one as malformed). Their commits may be outside `operation_id`'s index: pass them
+  as `CommitContentsRequest.extra_operation_ids` so the content call checks and loads against
+  the same merged index (`GraphTopologyView.extraOperationIds`).
 - **Indices** fit `u32` / `i32`: a FlatBuffer is smaller than 2 GiB, so the saturating
   casts Rust carries are unreachable.
 
@@ -1449,8 +1455,10 @@ up only by the next such call). Not layered: the
 `config_resolver::resolve` runs with the CLI command each call plays (Story 9.41,
 `crates/zanshin-jj/src/cli_command.rs`), so `--when.commands` scopes match as in the
 CLI — `zanshin_log_defaults` resolves for `log`; a call no CLI command corresponds to
-(open, `select_tree`, the drop/change actions) resolves with none, so such a scope
-never matches it. `hostname` is `whoami::hostname()`, so `--when.hostnames` scopes
+(open, `select_tree` without a `verb`, the drop/change actions' own snapshot) resolves
+with none, so such a scope never matches it. `select_tree` with a `verb` resolves for
+that verb's command, and each drop/change-action row plans with its own verb's config
+(a row whose config faults is that row's refusal). `hostname` is `whoami::hostname()`, so `--when.hostnames` scopes
 match as in the CLI (Story 9.27).
 
 **The same stack opens the workspace (Story 9.27).** `zanshin_repo_open` / `_init` /
@@ -1565,11 +1573,16 @@ divergent ones. So this symbol:
   call changes nothing — the caller re-requests the topology on the watcher's
   `OpHeadsChanged` (ADR-0002 Addendum 2026-09-30).
 
-**Request:** `CommitContentsRequest { kind: CommitContents, operation_id, commit_ids }`.
-Both are FULL hex ids — prefixes are not resolved (the caller got the full ids from
-the topology call); uppercase hex is accepted. `operation_id` is required (row 4 of
-the refusal ladder, `operation_id is required`); an absent or empty `commit_ids` is
-an empty request. Interior NULs are guarded Dart-side (*Interior NUL* above); one
+**Request:** `CommitContentsRequest { kind: CommitContents, operation_id, commit_ids,
+extra_operation_ids }`. All are FULL hex ids — prefixes are not resolved (the caller got
+the full ids from the topology call); uppercase hex is accepted. `operation_id` is
+required (row 4 of the refusal ladder, `operation_id is required`); an absent or empty
+`commit_ids` is an empty request. `extra_operation_ids` (appended 2026-10-26) is the
+topology's `GraphTopology.extra_operation_ids` — the operations its revset's
+`at_operation()`s brought in; with any, the ids are checked and loaded against the pinned
+index merged with theirs (jj-lib's `MutableRepo::merge_index` on a dropped transaction —
+nothing is written), so an `at_operation()` row outside the pinned index loads; absent or
+empty is the pinned index alone. Interior NULs are guarded Dart-side (*Interior NUL* above); one
 that reaches Rust is simply not hex.
 
 **Check order** (after the ladder's rows 1–5):
@@ -1580,8 +1593,9 @@ that reaches Rust is simply not hex.
 | a | `operation_id` is hex but not the op store's full length | `jj.invalid_input` | `Operation ID "<x>" is not a full operation ID` |
 | b | the operation is not in the operation store | `jj.operation_not_found` | `No operation ID matching "<id>"` (the CLI's text) |
 | b | the operation or its repo cannot be loaded | `jj.jj_lib_error` | jj-lib's reason |
+| b | each of `extra_operation_ids`, in order: rows a and b with the same codes and texts | as a / b | as a / b |
 | c | EVERY commit id: empty, not hex, or not the store's full length | `jj.invalid_input` | `Commit ID "<x>" is not a valid hexadecimal prefix` / `… is not a full commit ID` |
-| c | then EVERY commit id: not in the pinned operation's index | `jj.change_not_found` | the caller's hex |
+| c | then EVERY commit id: not in the pinned operation's index (merged with the extras') | `jj.change_not_found` | the caller's hex |
 | d | a load: the commit, or — for `empty` — its parent | `jj.jj_lib_error` | jj-lib's reason |
 
 Every id is validated before the first load, so a malformed id is refused wherever
@@ -1601,9 +1615,19 @@ CommitContent {
   committer_tz_offset_minutes: int     // minutes east of UTC
   description:                 string  // the FULL description; "" when empty
   conflict:                    bool
-  empty:                       bool
+  empty:                       bool    // meaningful only when empty_unknown is false
+  empty_unknown:               bool    // appended 2026-10-26; Dart: empty == null
 }
 ```
+
+`empty_unknown` is true where jj-lib cannot tell the emptiness — a merge whose common
+ancestors are outside the index it is read against, where `jj log` prints an inline
+template error; `empty` is then false. Dart's `CommitContent.empty` is `bool?`, `null`
+exactly there. `zanshin_commit_contents` answers only ids that are in the index it reads
+(an `at_operation()` row requested without its `extra_operation_ids` is refused
+`jj.change_not_found`, not answered unknown), so with jj 0.46 it reports a known emptiness
+for every row; the bit mirrors the object half it shares with `walk_graph`'s rows, where
+such a merge is unknown.
 
 Every string is always written. The root commit's entry carries jj-lib's fabricated
 values, as `jj log` shows them: empty author name and email, an empty description, and a
@@ -1614,16 +1638,16 @@ parents and, for a merge, merges their trees.
 
 **Dart worker integration:**
 
-- `CommitContentsCommand(handleId, operationId, commitIds)` — worker looks up the raw
-  handle (unknown id → `ffi.invalid_handle` envelope built Dart-side), calls
-  `zanshinCommitContents(raw, operationId:, commitIds:)`
+- `CommitContentsCommand(handleId, operationId, commitIds, extraOperationIds)` — worker
+  looks up the raw handle (unknown id → `ffi.invalid_handle` envelope built Dart-side),
+  calls `zanshinCommitContents(raw, operationId:, commitIds:, extraOperationIds:)`
   (`lib/src/ffi/commit_contents.dart`), and replies `BufferResult`.
-- `ZanshinWorker.commitContents(handleId, operationId:, commitIds:)` →
+- `ZanshinWorker.commitContents(handleId, operationId:, commitIds:, extraOperationIds:)` →
   `WarnedList<CommitContent>` (its `warnings` always empty) via
   `decodeCommitContentsEnvelopeInternal`; interior-NUL guards run on the calling side
   (`ArgumentError`) before `send`.
-- `RepoHandle.commitContents(operationId:, commitIds:)` — closed-handle guard
-  (`StateError`), delegates.
+- `RepoHandle.commitContents(operationId:, commitIds:, extraOperationIds:)` —
+  closed-handle guard (`StateError`), delegates; `extraOperationIds` defaults to none.
 - Decode contract: `!ok` → `ZanshinFfiException(code, context)`; `ok` with a
   non-`CommitContents` union variant, an absent `contents` vector (Rust always writes it,
   an empty one included), or an entry missing a required string →
@@ -1986,6 +2010,11 @@ WHOLE call `jj.invalid_input` with `compute_commit_location`'s text, before anyt
 Every row is answered by the verb's own plan — the fn the verb runs before its first write — on
 its own transaction from one head, dropped afterwards: neither call writes an operation of its
 own, only the pre-verb snapshot's, and the envelope's warnings are the precondition's only.
+The pre-verb snapshot resolves its config for no CLI command; each row plans with the config its
+verb's CLI command resolves (2026-10-26), so a `--when.commands` scope for that verb reaches its
+row. A row whose verb's config or start-up environment fails (an `immutable_heads()` in such a
+scope that does not parse, say) is `Refused` with the verb's start-up error (`jj.config_error`),
+not a failure of the call.
 
 | Table | Fields |
 |-------|--------|
@@ -2195,7 +2224,11 @@ v0.46.0). The verbs then take that tree in their **tree arm**.
 1. **`left`** comes from `zanshin_show`: `ShowEntry.parent_tree_ids` — the tree `file_changes`
    diff against and split/squash/commit diff against, as hex tree ids in order (several for a
    conflicted merge of parents).
-2. **`SelectTreeRequest`** (`kind = SelectTree`): `revision` (absent = `@`), `left`, `files` — per
+2. **`SelectTreeRequest`** (`kind = SelectTree`): `revision` (absent = `@`), `left`, `verb`
+   (appended 2026-10-26: `SelectTreeVerb` `Commit` / `Split` / `Squash` / `Diffedit` — the call
+   resolves its config for that verb's CLI command, so a `--when.commands` scope for it applies;
+   `Unspecified`, the default, resolves for no command; a value outside the enum is
+   `ffi.invalid_argument`), `files` — per
    path (jj's internal `/` form) `whole` (the revision's value, whatever the change) or `hunks`, a
    list of `HunkKey { old_start, old_count, new_start, new_count }`: the builtin editor's sections
    (`ContentDiff::by_line`), 0-based line index and line count on each side, lines cut like

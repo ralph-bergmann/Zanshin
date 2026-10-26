@@ -395,6 +395,12 @@ pub fn graph_topology_to_envelope(
     let refs = ref_tables(&mut b, topology);
     let working_copies = working_copy_tables(&mut b, topology);
     let (anchor_start, anchor_node) = anchor_columns(&mut b, topology);
+    let extra_operation_ids: Vec<_> = topology
+        .extra_operation_ids
+        .iter()
+        .map(|id| b.create_string(&id.0))
+        .collect();
+    let extra_operation_ids = b.create_vector(&extra_operation_ids);
     let payload = fbs::GraphTopology::create(
         &mut b,
         &fbs::GraphTopologyArgs {
@@ -418,6 +424,7 @@ pub fn graph_topology_to_envelope(
             working_copies: Some(working_copies),
             anchor_start: Some(anchor_start),
             anchor_node: Some(anchor_node),
+            extra_operation_ids: Some(extra_operation_ids),
         },
     );
     finish_envelope(b, fbs::Payload::GraphTopology, Some(payload.as_union_value()), report)
@@ -438,7 +445,8 @@ pub fn graph_topology_to_envelope(
 /// an ordered revset list intersected with `revset`, and `with_timestamps` loads each non-root
 /// node's committer timestamp. The call runs the pre-verb snapshot exactly once and re-derives
 /// from the head operation; nothing is retained Rust-side (ADR-0002). The card content of a node
-/// is `zanshin_commit_contents` at the returned `operation_id`.
+/// is `zanshin_commit_contents` at the returned `operation_id`, with the returned
+/// `extra_operation_ids` (the operations the revset's `at_operation()`s brought in).
 ///
 /// The arguments cross as a `GraphTopologyRequest` `FlatBuffers` request buffer. Returns a
 /// `FlatBuffers` `Envelope` carrying a `GraphTopology` payload on success; the envelope carries
@@ -638,6 +646,7 @@ mod tests {
             ],
             anchors: vec![vec![2], vec![], vec![0, 1]],
             all_count: 9,
+            extra_operation_ids: vec![OperationId("12".repeat(64)), OperationId("34".repeat(64))],
         }
     }
 
@@ -669,6 +678,8 @@ mod tests {
         let (env, t) = verified(&buf);
         assert!(env.precondition().is_none() && env.warnings().is_none(), "empty report");
         assert_eq!(t.operation_id(), Some("ab".repeat(64).as_str()));
+        let extras: Vec<&str> = t.extra_operation_ids().expect("written").iter().collect();
+        assert_eq!(extras, ["12".repeat(64), "34".repeat(64)], "in order");
         assert_eq!(t.all_count(), 9);
         assert_eq!(t.commit_id_stride(), 20);
         assert_eq!(t.change_id_stride(), 16);
@@ -786,9 +797,11 @@ mod tests {
             nodes: vec![],
             anchors: vec![vec![], vec![]],
             all_count: 1,
+            extra_operation_ids: vec![],
         };
         let buf = envelope(&empty, true, &CallReport::default());
         let (_, t) = verified(&buf);
+        assert_eq!(t.extra_operation_ids().map(|v| v.len()), Some(0), "always written");
         assert_eq!(t.commit_id_stride(), 0);
         assert_eq!(t.change_id_stride(), 0);
         for v in [
@@ -861,6 +874,7 @@ mod tests {
             nodes: vec![],
             anchors: vec![],
             all_count: 0,
+            extra_operation_ids: vec![],
         })
         .expect("encode");
         assert_eq!(

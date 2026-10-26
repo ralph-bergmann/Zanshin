@@ -139,7 +139,7 @@ pub use revert::RevertOptions;
 pub use revset::{resolve_revset, RevsetError, RevsetErrorDetail, RevsetErrorKind, RevsetSpan, DEFAULT_LOG_REVSET};
 pub use revset_search::{FoundChange, FoundChanges, RevsetCount, RevsetCounts, RevsetSearchError};
 pub use select_tree::{
-    FileChoice, FileSelection, HunkKey, SelectTreeOptions, SelectedTreeId, SourceTree, TreeSelection,
+    FileChoice, FileSelection, HunkKey, SelectTreeOptions, SelectTreeVerb, SelectedTreeId, SourceTree, TreeSelection,
 };
 pub use simplify_parents::{SimplifyParentsOptions, SimplifyParentsResult};
 pub use snapshot::{FinishFacts, Precondition, PreconditionError, StaleCause};

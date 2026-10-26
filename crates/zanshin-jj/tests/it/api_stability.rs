@@ -168,7 +168,7 @@ fn sample_commit_meta() -> zanshin_jj::CommitMeta {
         working_copy: false,
         immutable: false,
         conflict: false,
-        empty: false,
+        empty: None,
         hidden: false,
         divergent: false,
         root: false,
@@ -633,6 +633,7 @@ fn graph_topology_surface_resolves() {
         nodes: vec![node],
         anchors: vec![vec![0usize]],
         all_count: 0usize,
+        extra_operation_ids: vec![zanshin_jj::OperationId(String::new())],
     };
     _ = zanshin_jj::CommitContent {
         commit_id: zanshin_jj::CommitId(String::new()),
@@ -644,7 +645,7 @@ fn graph_topology_surface_resolves() {
         },
         description: String::new(),
         conflict: false,
-        empty: false,
+        empty: Some(false),
     };
     _ = zanshin_jj::CommitContentError::InvalidInput(String::new());
     _ = zanshin_jj::CommitContentError::OperationNotFound(String::new());
@@ -664,6 +665,7 @@ fn graph_topology_surface_resolves() {
         as fn(
             &mut zanshin_jj::Repo,
             &zanshin_jj::OperationId,
+            &[zanshin_jj::OperationId],
             &[zanshin_jj::CommitId],
         ) -> Result<Vec<zanshin_jj::CommitContent>, zanshin_jj::CommitContentError>;
 }
@@ -1745,6 +1747,7 @@ fn select_tree_surface_resolves() {
                 choice: zanshin_jj::FileChoice::ModeAndHunks(vec![key]),
             },
         ],
+        verb: Some(zanshin_jj::SelectTreeVerb::Commit),
     };
     assert_eq!(options.clone(), options);
     assert_eq!(zanshin_jj::SelectTreeOptions::default().revision, None);

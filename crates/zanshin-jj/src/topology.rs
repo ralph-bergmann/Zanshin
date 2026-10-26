@@ -41,6 +41,11 @@ pub struct GraphTopology {
     /// VISIBLE commits only, so a revset that names hidden commits can yield more nodes than
     /// this.
     pub all_count: usize,
+    /// The operations the revset's `at_operation()`s brought in (full hex, in jj-lib's order);
+    /// empty for a revset without them. Their commits may be outside
+    /// [`Self::operation_id`]'s index — pass this list to [`crate::Repo::commit_contents`] so it
+    /// checks and loads against the same merged index this call evaluated against.
+    pub extra_operation_ids: Vec<OperationId>,
 }
 
 /// One node of a [`GraphTopology`].
@@ -223,12 +228,18 @@ pub(crate) fn graph_topology(
     let anchors = anchor_ids.iter().map(|ids| anchor_indices(ids, &index_of)).collect();
     let all = ResolvedRevsetExpression::all().evaluate(repo_dyn).map_err(jj)?;
     let all_count = pollster::block_on(all.stream().try_fold(0usize, |n, _| async move { Ok(n + 1) })).map_err(jj)?;
+    let extra_operation_ids = setup
+        .other_repos
+        .iter()
+        .map(|other| OperationId(other.op_id().hex()))
+        .collect();
 
     Ok(GraphTopology {
         operation_id: OperationId(readonly.op_id().hex()),
         nodes,
         anchors,
         all_count,
+        extra_operation_ids,
     })
 }
 

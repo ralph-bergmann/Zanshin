@@ -592,6 +592,114 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
+        pub const ENUM_MIN_SELECT_TREE_VERB: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_SELECT_TREE_VERB: u8 = 4;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_SELECT_TREE_VERB: [SelectTreeVerb; 5] = [
+            SelectTreeVerb::Unspecified,
+            SelectTreeVerb::Commit,
+            SelectTreeVerb::Split,
+            SelectTreeVerb::Squash,
+            SelectTreeVerb::Diffedit,
+        ];
+
+        /// The verb a `SelectTreeRequest` selects for (Story 9.41). `Unspecified` (0, the default) is no
+        /// verb. Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct SelectTreeVerb(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl SelectTreeVerb {
+            pub const Unspecified: Self = Self(0);
+            pub const Commit: Self = Self(1);
+            pub const Split: Self = Self(2);
+            pub const Squash: Self = Self(3);
+            pub const Diffedit: Self = Self(4);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 4;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::Unspecified,
+                Self::Commit,
+                Self::Split,
+                Self::Squash,
+                Self::Diffedit,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Unspecified => Some("Unspecified"),
+                    Self::Commit => Some("Commit"),
+                    Self::Split => Some("Split"),
+                    Self::Squash => Some("Squash"),
+                    Self::Diffedit => Some("Diffedit"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for SelectTreeVerb {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for SelectTreeVerb {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for SelectTreeVerb {
+            type Output = SelectTreeVerb;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for SelectTreeVerb {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for SelectTreeVerb {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for SelectTreeVerb {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
         pub const ENUM_MIN_ARRANGE_ACTION_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -5940,6 +6048,10 @@ pub mod zanshin {
         ///   from               (Story 9.17) jj reverse-hex change id whose OWN tree is the diff's left
         ///                      side (`diffedit --from`); `left` is then that tree — `ShowEntry.tree_ids`;
         ///                      absent → the revision's parent tree
+        ///   verb               (Story 9.41) the verb whose builtin diff editor the selection stands in
+        ///                      for; the call resolves its config for that verb's CLI command, so a
+        ///                      `--when.commands` scope for it applies. `Unspecified` (absent) → no
+        ///                      command; an unknown value is `ffi.invalid_argument`
         pub struct SelectTreeRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -5960,6 +6072,7 @@ pub mod zanshin {
             pub const VT_LEFT: ::flatbuffers::VOffsetT = 8;
             pub const VT_FILES: ::flatbuffers::VOffsetT = 10;
             pub const VT_FROM: ::flatbuffers::VOffsetT = 12;
+            pub const VT_VERB: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -5983,6 +6096,7 @@ pub mod zanshin {
                 if let Some(x) = args.revision {
                     builder.add_revision(x);
                 }
+                builder.add_verb(args.verb);
                 builder.add_kind(args.kind);
                 builder.finish()
             }
@@ -6042,6 +6156,17 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(SelectTreeRequest::VT_FROM, None)
                 }
             }
+            #[inline]
+            pub fn verb(&self) -> SelectTreeVerb {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<SelectTreeVerb>(SelectTreeRequest::VT_VERB, Some(SelectTreeVerb::Unspecified))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SelectTreeRequest<'_> {
@@ -6056,6 +6181,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("left", Self::VT_LEFT, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileSelection>>>>("files", Self::VT_FILES, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
+     .visit_field::<SelectTreeVerb>("verb", Self::VT_VERB, false)?
      .finish();
                 Ok(())
             }
@@ -6069,6 +6195,7 @@ pub mod zanshin {
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileSelection<'a>>>>,
             >,
             pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub verb: SelectTreeVerb,
         }
         impl<'a> Default for SelectTreeRequestArgs<'a> {
             #[inline]
@@ -6079,6 +6206,7 @@ pub mod zanshin {
                     left: None,
                     files: None,
                     from: None,
+                    verb: SelectTreeVerb::Unspecified,
                 }
             }
         }
@@ -6122,6 +6250,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(SelectTreeRequest::VT_FROM, from);
             }
             #[inline]
+            pub fn add_verb(&mut self, verb: SelectTreeVerb) {
+                self.fbb_
+                    .push_slot::<SelectTreeVerb>(SelectTreeRequest::VT_VERB, verb, SelectTreeVerb::Unspecified);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SelectTreeRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 SelectTreeRequestBuilder {
@@ -6144,6 +6277,7 @@ pub mod zanshin {
                 ds.field("left", &self.left());
                 ds.field("files", &self.files());
                 ds.field("from", &self.from());
+                ds.field("verb", &self.verb());
                 ds.finish()
             }
         }
@@ -18375,7 +18509,10 @@ pub mod zanshin {
         /// `operation_id` is required: the FULL hex id of the operation the topology call loaded (an
         /// absent field is `jj.invalid_input` "operation_id is required"). `commit_ids` are FULL hex
         /// commit ids; the answer comes back in this order. An absent or empty list is a valid, empty
-        /// request.
+        /// request. `extra_operation_ids` (Story 9.42 follow-up) are the topology's
+        /// `GraphTopology.extra_operation_ids`, FULL hex — checked like `operation_id` after it, and the
+        /// ids are checked and loaded against the pinned index merged with theirs; absent or empty → the
+        /// pinned index alone.
         pub struct CommitContentsRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -18394,6 +18531,7 @@ pub mod zanshin {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
             pub const VT_OPERATION_ID: ::flatbuffers::VOffsetT = 6;
             pub const VT_COMMIT_IDS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_EXTRA_OPERATION_IDS: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -18405,6 +18543,9 @@ pub mod zanshin {
                 args: &'args CommitContentsRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<CommitContentsRequest<'bldr>> {
                 let mut builder = CommitContentsRequestBuilder::new(_fbb);
+                if let Some(x) = args.extra_operation_ids {
+                    builder.add_extra_operation_ids(x);
+                }
                 if let Some(x) = args.commit_ids {
                     builder.add_commit_ids(x);
                 }
@@ -18447,6 +18588,19 @@ pub mod zanshin {
                     >>(CommitContentsRequest::VT_COMMIT_IDS, None)
                 }
             }
+            #[inline]
+            pub fn extra_operation_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(CommitContentsRequest::VT_EXTRA_OPERATION_IDS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for CommitContentsRequest<'_> {
@@ -18459,6 +18613,7 @@ pub mod zanshin {
      .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation_id", Self::VT_OPERATION_ID, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("commit_ids", Self::VT_COMMIT_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("extra_operation_ids", Self::VT_EXTRA_OPERATION_IDS, false)?
      .finish();
                 Ok(())
             }
@@ -18468,6 +18623,8 @@ pub mod zanshin {
             pub operation_id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub commit_ids:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub extra_operation_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
         impl<'a> Default for CommitContentsRequestArgs<'a> {
             #[inline]
@@ -18476,6 +18633,7 @@ pub mod zanshin {
                     kind: RequestKind::Unspecified,
                     operation_id: None,
                     commit_ids: None,
+                    extra_operation_ids: None,
                 }
             }
         }
@@ -18508,6 +18666,18 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitContentsRequest::VT_COMMIT_IDS, commit_ids);
             }
             #[inline]
+            pub fn add_extra_operation_ids(
+                &mut self,
+                extra_operation_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    CommitContentsRequest::VT_EXTRA_OPERATION_IDS,
+                    extra_operation_ids,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> CommitContentsRequestBuilder<'a, 'b, A> {
@@ -18530,6 +18700,7 @@ pub mod zanshin {
                 ds.field("kind", &self.kind());
                 ds.field("operation_id", &self.operation_id());
                 ds.field("commit_ids", &self.commit_ids());
+                ds.field("extra_operation_ids", &self.extra_operation_ids());
                 ds.finish()
             }
         }
@@ -26658,6 +26829,10 @@ pub mod zanshin {
         ///   single-workspace repo (the CLI's guard).
         /// - Anchors, CSR: anchor a's nodes are anchor_node[anchor_start[a] .. anchor_start[a + 1]],
         ///   ascending (= `jj log` order); `anchor_start` has A + 1 entries.
+        /// - `extra_operation_ids`: the operations the revset's `at_operation()`s brought in, full hex —
+        ///   always written, empty without them. Pass them to `zanshin_commit_contents`
+        ///   (`CommitContentsRequest.extra_operation_ids`): their commits may be outside
+        ///   `operation_id`'s index.
         pub struct GraphTopology<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -26692,6 +26867,7 @@ pub mod zanshin {
             pub const VT_WORKING_COPIES: ::flatbuffers::VOffsetT = 36;
             pub const VT_ANCHOR_START: ::flatbuffers::VOffsetT = 38;
             pub const VT_ANCHOR_NODE: ::flatbuffers::VOffsetT = 40;
+            pub const VT_EXTRA_OPERATION_IDS: ::flatbuffers::VOffsetT = 42;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -26704,6 +26880,9 @@ pub mod zanshin {
             ) -> ::flatbuffers::WIPOffset<GraphTopology<'bldr>> {
                 let mut builder = GraphTopologyBuilder::new(_fbb);
                 builder.add_all_count(args.all_count);
+                if let Some(x) = args.extra_operation_ids {
+                    builder.add_extra_operation_ids(x);
+                }
                 if let Some(x) = args.anchor_node {
                     builder.add_anchor_node(x);
                 }
@@ -26990,6 +27169,19 @@ pub mod zanshin {
                         )
                 }
             }
+            #[inline]
+            pub fn extra_operation_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GraphTopology::VT_EXTRA_OPERATION_IDS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for GraphTopology<'_> {
@@ -26999,82 +27191,27 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation_id", Self::VT_OPERATION_ID, false)?
-                    .visit_field::<u64>("all_count", Self::VT_ALL_COUNT, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
-                        "commit_ids",
-                        Self::VT_COMMIT_IDS,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
-                        "change_ids",
-                        Self::VT_CHANGE_IDS,
-                        false,
-                    )?
-                    .visit_field::<u8>("commit_id_stride", Self::VT_COMMIT_ID_STRIDE, false)?
-                    .visit_field::<u8>("change_id_stride", Self::VT_CHANGE_ID_STRIDE, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
-                        "flags",
-                        Self::VT_FLAGS,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u32>>>(
-                        "change_offset",
-                        Self::VT_CHANGE_OFFSET,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
-                        "change_id_prefix_len",
-                        Self::VT_CHANGE_ID_PREFIX_LEN,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
-                        "commit_id_prefix_len",
-                        Self::VT_COMMIT_ID_PREFIX_LEN,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u32>>>(
-                        "parent_count",
-                        Self::VT_PARENT_COUNT,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u32>>>(
-                        "edge_start",
-                        Self::VT_EDGE_START,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, i32>>>(
-                        "edge_target",
-                        Self::VT_EDGE_TARGET,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, GraphEdgeKind>>>(
-                        "edge_kind",
-                        Self::VT_EDGE_KIND,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, i64>>>(
-                        "timestamps",
-                        Self::VT_TIMESTAMPS,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TopologyRef>>,
-                    >>("refs", Self::VT_REFS, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TopologyWorkingCopy>>,
-                    >>("working_copies", Self::VT_WORKING_COPIES, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u32>>>(
-                        "anchor_start",
-                        Self::VT_ANCHOR_START,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u32>>>(
-                        "anchor_node",
-                        Self::VT_ANCHOR_NODE,
-                        false,
-                    )?
-                    .finish();
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation_id", Self::VT_OPERATION_ID, false)?
+     .visit_field::<u64>("all_count", Self::VT_ALL_COUNT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>("commit_ids", Self::VT_COMMIT_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>("change_ids", Self::VT_CHANGE_IDS, false)?
+     .visit_field::<u8>("commit_id_stride", Self::VT_COMMIT_ID_STRIDE, false)?
+     .visit_field::<u8>("change_id_stride", Self::VT_CHANGE_ID_STRIDE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>("flags", Self::VT_FLAGS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u32>>>("change_offset", Self::VT_CHANGE_OFFSET, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>("change_id_prefix_len", Self::VT_CHANGE_ID_PREFIX_LEN, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>("commit_id_prefix_len", Self::VT_COMMIT_ID_PREFIX_LEN, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u32>>>("parent_count", Self::VT_PARENT_COUNT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u32>>>("edge_start", Self::VT_EDGE_START, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, i32>>>("edge_target", Self::VT_EDGE_TARGET, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, GraphEdgeKind>>>("edge_kind", Self::VT_EDGE_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, i64>>>("timestamps", Self::VT_TIMESTAMPS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TopologyRef>>>>("refs", Self::VT_REFS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TopologyWorkingCopy>>>>("working_copies", Self::VT_WORKING_COPIES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u32>>>("anchor_start", Self::VT_ANCHOR_START, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u32>>>("anchor_node", Self::VT_ANCHOR_NODE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("extra_operation_ids", Self::VT_EXTRA_OPERATION_IDS, false)?
+     .finish();
                 Ok(())
             }
         }
@@ -27104,6 +27241,8 @@ pub mod zanshin {
             >,
             pub anchor_start: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u32>>>,
             pub anchor_node: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u32>>>,
+            pub extra_operation_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
         impl<'a> Default for GraphTopologyArgs<'a> {
             #[inline]
@@ -27128,6 +27267,7 @@ pub mod zanshin {
                     working_copies: None,
                     anchor_start: None,
                     anchor_node: None,
+                    extra_operation_ids: None,
                 }
             }
         }
@@ -27258,6 +27398,18 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphTopology::VT_ANCHOR_NODE, anchor_node);
             }
             #[inline]
+            pub fn add_extra_operation_ids(
+                &mut self,
+                extra_operation_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GraphTopology::VT_EXTRA_OPERATION_IDS,
+                    extra_operation_ids,
+                );
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GraphTopologyBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 GraphTopologyBuilder {
@@ -27294,6 +27446,7 @@ pub mod zanshin {
                 ds.field("working_copies", &self.working_copies());
                 ds.field("anchor_start", &self.anchor_start());
                 ds.field("anchor_node", &self.anchor_node());
+                ds.field("extra_operation_ids", &self.extra_operation_ids());
                 ds.finish()
             }
         }
@@ -38440,6 +38593,10 @@ pub mod zanshin {
         /// The object half of one `jj log` row (Story 4.10, zanshin_jj::CommitContent), read at the
         /// operation `zanshin_commit_contents` was pinned to. Commit-intrinsic, so a caller may cache it
         /// by `commit_id`. Every string is always present (an empty author or description is `""`).
+        /// `empty` is meaningful only when `empty_unknown` is false (presence bit — flatc 25.12.19 has
+        /// no optional scalar for Dart): `empty_unknown` is true where jj-lib cannot tell — a merge whose
+        /// common ancestors are outside the index it is read against (the CLI's inline template error) —
+        /// and `empty` is then false.
         pub struct CommitContent<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -38463,6 +38620,7 @@ pub mod zanshin {
             pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 14;
             pub const VT_CONFLICT: ::flatbuffers::VOffsetT = 16;
             pub const VT_EMPTY: ::flatbuffers::VOffsetT = 18;
+            pub const VT_EMPTY_UNKNOWN: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -38488,6 +38646,7 @@ pub mod zanshin {
                 if let Some(x) = args.commit_id {
                     builder.add_commit_id(x);
                 }
+                builder.add_empty_unknown(args.empty_unknown);
                 builder.add_empty(args.empty);
                 builder.add_conflict(args.conflict);
                 builder.finish()
@@ -38569,6 +38728,17 @@ pub mod zanshin {
                 // which contains a valid value in this slot
                 unsafe { self._tab.get::<bool>(CommitContent::VT_EMPTY, Some(false)).unwrap() }
             }
+            #[inline]
+            pub fn empty_unknown(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(CommitContent::VT_EMPTY_UNKNOWN, Some(false))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for CommitContent<'_> {
@@ -38590,6 +38760,7 @@ pub mod zanshin {
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("description", Self::VT_DESCRIPTION, false)?
                     .visit_field::<bool>("conflict", Self::VT_CONFLICT, false)?
                     .visit_field::<bool>("empty", Self::VT_EMPTY, false)?
+                    .visit_field::<bool>("empty_unknown", Self::VT_EMPTY_UNKNOWN, false)?
                     .finish();
                 Ok(())
             }
@@ -38603,6 +38774,7 @@ pub mod zanshin {
             pub description: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub conflict: bool,
             pub empty: bool,
+            pub empty_unknown: bool,
         }
         impl<'a> Default for CommitContentArgs<'a> {
             #[inline]
@@ -38616,6 +38788,7 @@ pub mod zanshin {
                     description: None,
                     conflict: false,
                     empty: false,
+                    empty_unknown: false,
                 }
             }
         }
@@ -38670,6 +38843,11 @@ pub mod zanshin {
                 self.fbb_.push_slot::<bool>(CommitContent::VT_EMPTY, empty, false);
             }
             #[inline]
+            pub fn add_empty_unknown(&mut self, empty_unknown: bool) {
+                self.fbb_
+                    .push_slot::<bool>(CommitContent::VT_EMPTY_UNKNOWN, empty_unknown, false);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> CommitContentBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 CommitContentBuilder {
@@ -38695,6 +38873,7 @@ pub mod zanshin {
                 ds.field("description", &self.description());
                 ds.field("conflict", &self.conflict());
                 ds.field("empty", &self.empty());
+                ds.field("empty_unknown", &self.empty_unknown());
                 ds.finish()
             }
         }

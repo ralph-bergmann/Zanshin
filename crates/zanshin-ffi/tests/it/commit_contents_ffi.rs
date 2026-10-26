@@ -79,18 +79,29 @@ fn commit_id_of(root: &Path, revset: &str) -> String {
     repo.get_change(&ids[0]).unwrap().commit_id.0
 }
 
-/// A `CommitContentsRequest` buffer. A `None` operation id is left ABSENT.
+/// A `CommitContentsRequest` buffer without `extra_operation_ids` (the old shape). A `None`
+/// operation id is left ABSENT.
 fn request_bytes(operation_id: Option<&str>, commit_ids: &[&str]) -> Vec<u8> {
+    request_bytes_with(operation_id, None, commit_ids)
+}
+
+/// A `CommitContentsRequest` buffer; `None` extras are left ABSENT.
+fn request_bytes_with(operation_id: Option<&str>, extras: Option<&[&str]>, commit_ids: &[&str]) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
     let op = operation_id.map(|s| b.create_string(s));
     let ids: Vec<_> = commit_ids.iter().map(|s| b.create_string(s)).collect();
     let ids = b.create_vector(&ids);
+    let extra_operation_ids = extras.map(|extras| {
+        let extras: Vec<_> = extras.iter().map(|s| b.create_string(s)).collect();
+        b.create_vector(&extras)
+    });
     let req = fbs::CommitContentsRequest::create(
         &mut b,
         &fbs::CommitContentsRequestArgs {
             kind: fbs::RequestKind::CommitContents,
             operation_id: op,
             commit_ids: Some(ids),
+            extra_operation_ids,
         },
     );
     b.finish(req, None);
@@ -152,6 +163,7 @@ fn commit_contents_returns_every_field_in_request_order_without_precondition_or_
         .unwrap()
         .commit_contents(
             &OperationId(op.clone()),
+            &[],
             &[CommitId(c3.clone()), CommitId(root.clone()), CommitId(wc.clone())],
         )
         .unwrap();
@@ -183,10 +195,61 @@ fn commit_contents_returns_every_field_in_request_order_without_precondition_or_
         );
         assert_eq!(item.description(), Some(expected.description.as_str()));
         assert_eq!(item.conflict(), expected.conflict);
-        assert_eq!(item.empty(), expected.empty);
+        assert_eq!(item.empty(), expected.empty.unwrap_or(false));
+        assert_eq!(item.empty_unknown(), expected.empty.is_none());
     }
     assert_eq!(items.get(0).commit_id(), Some(c3.as_str()));
     assert_eq!(items.get(2).commit_id(), Some(wc.as_str()));
+    close(handle);
+}
+
+/// The topology's `extra_operation_ids` cross the wire: with them every row of an
+/// `at_operation(<sibling op>, all())` topology loads, the sibling merge's emptiness known; without
+/// them (absent or empty) its ids are refused as before.
+#[test]
+fn commit_contents_with_the_extra_operations_loads_an_at_operation_topologys_rows() {
+    test_helpers::pin_test_env();
+    let (fixture, handle) = open_fixture("tiny-3-commits");
+    let (op, sibling) = test_helpers::add_unpublished_op(&fixture.path, "sibling");
+    let topology = Repo::open(&fixture.path)
+        .unwrap()
+        .graph_topology(&format!("at_operation({op}, all())"), "none()", "", &[], false)
+        .unwrap();
+    let extras: Vec<&str> = topology.extra_operation_ids.iter().map(|id| id.0.as_str()).collect();
+    assert_eq!(extras, [op.as_str()]);
+    let ids: Vec<&str> = topology.nodes.iter().map(|n| n.commit_id.0.as_str()).collect();
+
+    let bytes = call(
+        handle,
+        &request_bytes_with(Some(&topology.operation_id.0), Some(&extras), &ids),
+    );
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let items = env
+        .data_as_commit_contents()
+        .and_then(|c| c.contents())
+        .expect("contents");
+    assert_eq!(items.len(), ids.len());
+    let merge = items
+        .iter()
+        .find(|item| item.commit_id() == Some(sibling[2].as_str()))
+        .expect("the merge");
+    assert!(
+        !merge.empty_unknown() && merge.empty(),
+        "the merged index answers: empty"
+    );
+
+    for extras in [None, Some(&[][..])] {
+        assert_refused(
+            &call(
+                handle,
+                &request_bytes_with(Some(&topology.operation_id.0), extras, &ids),
+            ),
+            JJ_CHANGE_NOT_FOUND,
+            None,
+            "without the extras",
+        );
+    }
     close(handle);
 }
 
@@ -205,6 +268,7 @@ fn commit_contents_treats_an_absent_commit_ids_vector_as_an_empty_request() {
             kind: fbs::RequestKind::CommitContents,
             operation_id: Some(op_off),
             commit_ids: None,
+            extra_operation_ids: None,
         },
     );
     b.finish(req, None);

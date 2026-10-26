@@ -12,7 +12,7 @@ import '../ffi/op_log.dart' show RestoreWhat;
 import '../ffi/rebase.dart' show ArrangeAction;
 import '../ffi/repo.dart' show ObjectHash;
 import '../ffi/resolve.dart' show ResolveFiles, ResolveTool;
-import '../ffi/select_tree.dart' show FileSelection, SourceTree, TreeSelection;
+import '../ffi/select_tree.dart' show FileSelection, SelectTreeVerb, SourceTree, TreeSelection;
 import '../ffi/workspace.dart' show SparseInheritance;
 import '../graph_layout/layout_request.dart' show LaneOrder, LayoutMode;
 
@@ -1428,6 +1428,7 @@ final class CommitContentsCommand extends WorkerCommand implements HandleScopedC
     required this.handleId,
     required this.operationId,
     required this.commitIds,
+    this.extraOperationIds = const [],
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -1439,6 +1440,10 @@ final class CommitContentsCommand extends WorkerCommand implements HandleScopedC
 
   /// FULL hex commit ids; the answer comes back in this order.
   final List<String> commitIds;
+
+  /// The topology's `extraOperationIds` (FULL hex): the operations its
+  /// revset's `at_operation()`s brought in; empty = the pinned index alone.
+  final List<String> extraOperationIds;
 }
 
 /// Count each revset in [expressions] at the pinned operation [operationId],
@@ -2282,11 +2287,16 @@ final class SelectTreeCommand extends WorkerCommand implements HandleScopedComma
     required this.left,
     required this.files,
     this.from,
+    this.verb,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   @override
   final int handleId;
+
+  /// Story 9.41: the verb the selection is for — the call resolves its config
+  /// for that verb's CLI command; `null` = no command.
+  final SelectTreeVerb? verb;
 
   /// The revision the selection was made in; `null` = `@`.
   final String? revision;

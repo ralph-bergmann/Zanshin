@@ -27,15 +27,26 @@ import 'warning.dart';
 /// `Envelope` bytes.
 ///
 /// Only the worker isolate calls this — raw handles never leave the worker
-/// (Model A, Story 3.9). [operationId] and every entry of [commitIds] are FULL
-/// hex ids; the answer comes back in [commitIds]' order.
-Uint8List zanshinCommitContents(int rawHandle, {required String operationId, required List<String> commitIds}) {
+/// (Model A, Story 3.9). [operationId], every entry of [extraOperationIds] and
+/// every entry of [commitIds] are FULL hex ids; the answer comes back in
+/// [commitIds]' order. [extraOperationIds] is the topology's
+/// `extraOperationIds` — the operations its revset's `at_operation()`s brought
+/// in; with any, the ids are checked and loaded against the pinned index merged
+/// with theirs.
+Uint8List zanshinCommitContents(
+  int rawHandle, {
+  required String operationId,
+  required List<String> commitIds,
+  List<String> extraOperationIds = const [],
+}) {
   rejectInteriorNul(operationId, 'operationId');
+  rejectInteriorNuls(extraOperationIds, 'extraOperationIds');
   rejectInteriorNuls(commitIds, 'commitIds');
   final Uint8List request = fbs.CommitContentsRequestObjectBuilder(
     kind: fbs.RequestKind.CommitContents,
     operationId: operationId,
     commitIds: commitIds,
+    extraOperationIds: extraOperationIds,
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_commit_contents(rawHandle, ptr, len));
 }
@@ -82,8 +93,11 @@ final class CommitContent {
   /// The commit's tree has unresolved conflicts.
   final bool conflict;
 
-  /// The tree equals the merged parent trees (description is not considered).
-  final bool empty;
+  /// The tree equals the merged parent trees (description is not considered);
+  /// `null` when jj-lib cannot tell — a merge whose common ancestors are outside
+  /// the index it is read against (where `jj log` prints an inline template
+  /// error).
+  final bool? empty;
 }
 
 // ── Decoder ──────────────────────────────────────────────────────────────────
@@ -125,7 +139,7 @@ CommitContent _mapCommitContent(fbs.CommitContent c) => CommitContent(
   committerTzOffsetMinutes: c.committerTzOffsetMinutes,
   description: _required(c.description, 'description'),
   conflict: c.conflict,
-  empty: c.empty,
+  empty: c.emptyUnknown ? null : c.empty,
 );
 
 /// Rust always writes every string of a `CommitContent` (an empty one as `""`),

@@ -84,7 +84,7 @@ fn commit_contents_answers_in_request_order_with_the_full_description() {
     let op = head(&fx.path);
 
     let contents = repo
-        .commit_contents(&op, &[c3.clone(), root.clone(), wc.clone()])
+        .commit_contents(&op, &[], &[c3.clone(), root.clone(), wc.clone()])
         .unwrap();
 
     let ids: Vec<&CommitId> = contents.iter().map(|c| &c.commit_id).collect();
@@ -121,7 +121,7 @@ fn commit_contents_of_an_empty_list_is_empty() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
-    assert!(repo.commit_contents(&head(&fx.path), &[]).unwrap().is_empty());
+    assert!(repo.commit_contents(&head(&fx.path), &[], &[]).unwrap().is_empty());
 }
 
 // ── Error ladder ──────────────────────────────────────────────────────────────
@@ -132,11 +132,11 @@ fn commit_contents_refuses_an_empty_or_non_hex_operation_id_with_the_cli_text() 
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
     assert_eq!(
-        invalid_input(repo.commit_contents(&OperationId(String::new()), &[])),
+        invalid_input(repo.commit_contents(&OperationId(String::new()), &[], &[])),
         r#"Operation ID "" is not a valid hexadecimal prefix"#
     );
     assert_eq!(
-        invalid_input(repo.commit_contents(&OperationId("xyz".to_owned()), &[])),
+        invalid_input(repo.commit_contents(&OperationId("xyz".to_owned()), &[], &[])),
         r#"Operation ID "xyz" is not a valid hexadecimal prefix"#
     );
 }
@@ -150,12 +150,12 @@ fn commit_contents_refuses_an_operation_id_prefix_without_resolving_it() {
 
     let prefix = &op[..12];
     assert_eq!(
-        invalid_input(repo.commit_contents(&OperationId(prefix.to_owned()), &[])),
+        invalid_input(repo.commit_contents(&OperationId(prefix.to_owned()), &[], &[])),
         format!(r#"Operation ID "{prefix}" is not a full operation ID"#)
     );
     let odd = &op[..op.len() - 1];
     assert_eq!(
-        invalid_input(repo.commit_contents(&OperationId(odd.to_owned()), &[])),
+        invalid_input(repo.commit_contents(&OperationId(odd.to_owned()), &[], &[])),
         format!(r#"Operation ID "{odd}" is not a full operation ID"#)
     );
 }
@@ -167,7 +167,9 @@ fn commit_contents_reports_an_unknown_operation_as_not_found() {
     let mut repo = Repo::open(&fx.path).unwrap();
     let unknown = "ab".repeat(64);
 
-    let err = repo.commit_contents(&OperationId(unknown.clone()), &[]).unwrap_err();
+    let err = repo
+        .commit_contents(&OperationId(unknown.clone()), &[], &[])
+        .unwrap_err();
 
     assert!(
         matches!(err, CommitContentError::OperationNotFound(ref id) if *id == unknown),
@@ -195,7 +197,7 @@ fn commit_contents_reports_a_vanished_older_operation_as_not_found() {
     .unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
 
-    let err = repo.commit_contents(&older, &[]).unwrap_err();
+    let err = repo.commit_contents(&older, &[], &[]).unwrap_err();
 
     assert!(
         matches!(err, CommitContentError::OperationNotFound(ref id) if *id == older.0),
@@ -212,16 +214,16 @@ fn commit_contents_refuses_malformed_commit_ids() {
     let op = head(&fx.path);
 
     assert_eq!(
-        invalid_input(repo.commit_contents(&op, &[CommitId(String::new())])),
+        invalid_input(repo.commit_contents(&op, &[], &[CommitId(String::new())])),
         r#"Commit ID "" is not a valid hexadecimal prefix"#
     );
     assert_eq!(
-        invalid_input(repo.commit_contents(&op, &[CommitId("zz".to_owned())])),
+        invalid_input(repo.commit_contents(&op, &[], &[CommitId("zz".to_owned())])),
         r#"Commit ID "zz" is not a valid hexadecimal prefix"#
     );
     let prefix = &c3.0[..12];
     assert_eq!(
-        invalid_input(repo.commit_contents(&op, &[CommitId(prefix.to_owned())])),
+        invalid_input(repo.commit_contents(&op, &[], &[CommitId(prefix.to_owned())])),
         format!(r#"Commit ID "{prefix}" is not a full commit ID"#)
     );
 }
@@ -234,7 +236,7 @@ fn commit_contents_accepts_an_uppercase_commit_id_and_answers_in_lowercase() {
     let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
 
     let contents = repo
-        .commit_contents(&head(&fx.path), &[CommitId(c3.0.to_uppercase())])
+        .commit_contents(&head(&fx.path), &[], &[CommitId(c3.0.to_uppercase())])
         .unwrap();
 
     assert_eq!(contents[0].commit_id, c3);
@@ -250,7 +252,7 @@ fn commit_contents_reports_an_unindexed_commit_id_as_not_found() {
     let absent = "0123456789abcdef0123456789abcdef01234567".to_owned();
 
     for id in [absent, later] {
-        let err = repo.commit_contents(&pinned, &[CommitId(id.clone())]).unwrap_err();
+        let err = repo.commit_contents(&pinned, &[], &[CommitId(id.clone())]).unwrap_err();
         assert!(
             matches!(err, CommitContentError::CommitNotFound(ref hex) if *hex == id),
             "{id} is not in the pinned index: {err:?}"
@@ -267,13 +269,48 @@ fn commit_contents_checks_the_operation_first_and_every_id_format_before_the_ind
     let malformed = CommitId("zz".to_owned());
 
     let op_first =
-        invalid_input(repo.commit_contents(&OperationId("xyz".to_owned()), std::slice::from_ref(&malformed)));
+        invalid_input(repo.commit_contents(&OperationId("xyz".to_owned()), &[], std::slice::from_ref(&malformed)));
     assert!(op_first.starts_with("Operation ID"), "the op-id error wins: {op_first}");
 
-    let format_first = invalid_input(repo.commit_contents(&head(&fx.path), &[absent, malformed]));
+    let format_first = invalid_input(repo.commit_contents(&head(&fx.path), &[], &[absent, malformed]));
     assert_eq!(
         format_first, r#"Commit ID "zz" is not a valid hexadecimal prefix"#,
         "a later malformed id wins over an earlier unindexed one"
+    );
+}
+
+/// An extra operation id is checked as the pinned one is — same texts — after the pinned
+/// operation and before any commit id.
+#[test]
+fn commit_contents_checks_each_extra_operation_after_the_pinned_one_and_before_the_ids() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let op = head(&fx.path);
+    let malformed = &[CommitId("zz".to_owned())];
+    let unknown = "ab".repeat(64);
+
+    assert_eq!(
+        invalid_input(repo.commit_contents(&op, &[op.clone(), OperationId("xyz".to_owned())], malformed)),
+        r#"Operation ID "xyz" is not a valid hexadecimal prefix"#,
+        "a bad extra wins over a malformed commit id"
+    );
+    let prefix = op.0[..12].to_owned();
+    assert_eq!(
+        invalid_input(repo.commit_contents(&op, &[OperationId(prefix.clone())], &[])),
+        format!(r#"Operation ID "{prefix}" is not a full operation ID"#)
+    );
+    let err = repo
+        .commit_contents(&op, &[OperationId(unknown.clone())], malformed)
+        .unwrap_err();
+    assert!(
+        matches!(err, CommitContentError::OperationNotFound(ref id) if *id == unknown),
+        "got {err:?}"
+    );
+    let pinned_first = invalid_input(repo.commit_contents(&OperationId("qq".to_owned()), &[OperationId(unknown)], &[]));
+    assert!(
+        pinned_first.contains(r#""qq""#),
+        "the pinned op's error wins: {pinned_first}"
     );
 }
 
@@ -300,13 +337,13 @@ fn commit_contents_reports_an_unloadable_indexed_commit_and_its_child_as_backend
     std::fs::remove_file(objects.join(&c2.0[..2]).join(&c2.0[2..])).expect("c2 is a loose object");
     let op = head(&fx.path);
 
-    let own = repo.commit_contents(&op, &[c2]).unwrap_err();
+    let own = repo.commit_contents(&op, &[], &[c2]).unwrap_err();
     assert!(
         matches!(own, CommitContentError::Backend(_)),
         "indexed but unloadable: {own:?}"
     );
     // c3 itself loads, but `empty` loads its parent c2.
-    let child = repo.commit_contents(&op, &[c3]).unwrap_err();
+    let child = repo.commit_contents(&op, &[], &[c3]).unwrap_err();
     assert!(
         matches!(child, CommitContentError::Backend(_)),
         "the parent load fails: {child:?}"
@@ -326,7 +363,7 @@ fn commit_contents_at_an_old_operation_writes_nothing_and_answers_unchanged() {
     _ = repo.take_precondition();
     _ = repo.take_warnings();
     let ids: Vec<CommitId> = topology.nodes.iter().map(|n| n.commit_id.clone()).collect();
-    let before = repo.commit_contents(&topology.operation_id, &ids).unwrap();
+    let before = repo.commit_contents(&topology.operation_id, &[], &ids).unwrap();
 
     // A working-copy edit and an external commit that moves head.
     std::fs::write(fx.path.join("edited.txt"), "not yet snapshotted").unwrap();
@@ -334,7 +371,7 @@ fn commit_contents_at_an_old_operation_writes_nothing_and_answers_unchanged() {
     let heads = op_heads(&fx.path);
     let operations = listing(&fx.path, &["op_store", "operations"]);
 
-    let after = repo.commit_contents(&topology.operation_id, &ids).unwrap();
+    let after = repo.commit_contents(&topology.operation_id, &[], &ids).unwrap();
 
     assert_eq!(after, before, "commit-intrinsic values at the pinned operation");
     assert_eq!(op_heads(&fx.path), heads, "no op head written or pruned");
@@ -370,7 +407,7 @@ fn commit_contents_leaves_the_previous_verbs_side_channels_untouched() {
         .unwrap();
 
     let ids = [topology.nodes[0].commit_id.clone()];
-    repo.commit_contents(&topology.operation_id, &ids).unwrap();
+    repo.commit_contents(&topology.operation_id, &[], &ids).unwrap();
 
     assert!(
         repo.take_precondition().is_some(),
@@ -401,8 +438,8 @@ fn commit_contents_leaves_divergent_op_heads_unreconciled() {
     let operations = listing(&fx.path, &["op_store", "operations"]);
     let mut repo = Repo::open(&fx.path).unwrap();
 
-    let at_h1 = repo.commit_contents(&h1, &[CommitId(a.clone())]).unwrap();
-    let at_h2 = repo.commit_contents(&h2, &[CommitId(b.clone())]).unwrap();
+    let at_h1 = repo.commit_contents(&h1, &[], &[CommitId(a.clone())]).unwrap();
+    let at_h2 = repo.commit_contents(&h2, &[], &[CommitId(b.clone())]).unwrap();
 
     assert_eq!(at_h1[0].commit_id.0, a);
     assert_eq!(at_h1[0].description, "sibling A");

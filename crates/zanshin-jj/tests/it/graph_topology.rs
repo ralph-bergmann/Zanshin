@@ -13,8 +13,8 @@ use std::path::Path;
 
 use test_helpers::{add_commit_with_files, add_unpublished_op, extract_fixture};
 use zanshin_jj::{
-    resolve_revset, Change, CommitContent, CommitMeta, GraphEdgeKind, GraphNode, GraphTopology, Repo, RevsetError,
-    TopologyMeta, WarningKind, DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET,
+    resolve_revset, Change, CommitContent, CommitContentError, CommitMeta, GraphEdgeKind, GraphNode, GraphTopology,
+    Repo, RevsetError, TopologyMeta, WarningKind, DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET,
 };
 
 /// The CLI's `revsets.short-prefixes` default.
@@ -147,7 +147,7 @@ fn assert_split_equivalence(fixture: &str) {
     assert_eq!(edges_by_id(&topology), walk_edges(&walked), "{fixture}: edges verbatim");
 
     let requested: Vec<zanshin_jj::CommitId> = topology.nodes.iter().map(|n| n.commit_id.clone()).collect();
-    let contents = repo.commit_contents(&topology.operation_id, &requested).unwrap();
+    let contents = repo.commit_contents(&topology.operation_id, &[], &requested).unwrap();
     assert_eq!(contents.len(), topology.nodes.len());
     for ((node, content), row) in topology.nodes.iter().zip(&contents).zip(&walked) {
         assert_eq!(content.commit_id, node.commit_id, "{fixture}: request order");
@@ -465,7 +465,7 @@ fn graph_topology_passes_prioritize_and_short_prefixes_through_without_a_default
     assert_eq!(ids, walked_ids);
     assert_eq!(ids[0], c3, "no prioritisation: c3 first, not @");
     let requested: Vec<zanshin_jj::CommitId> = topology.nodes.iter().map(|n| n.commit_id.clone()).collect();
-    let contents = repo.commit_contents(&topology.operation_id, &requested).unwrap();
+    let contents = repo.commit_contents(&topology.operation_id, &[], &requested).unwrap();
     for ((node, content), row) in topology.nodes.iter().zip(&contents).zip(&walked) {
         assert_eq!(
             recompose(&node.meta, content),
@@ -517,6 +517,54 @@ fn graph_topology_at_operation_of_a_sibling_op_matches_walk_graph_and_counts_its
             "{}: every non-root node has a timestamp",
             node.commit_id.0
         );
+    }
+}
+
+/// The topology names the operation its `at_operation()` brought in; with it `commit_contents`
+/// loads every row — the sibling merge's `empty` answered by the merged index — and without it
+/// refuses the sibling's ids as before. `walk_graph` reads the merge against the head's index, so
+/// its `empty` is unknown there (the CLI's inline template error), and only there.
+#[test]
+fn commit_contents_with_the_topologys_extra_operations_loads_its_at_operation_rows() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let (op, sibling) = add_unpublished_op(&fx.path, "sibling");
+    let revset = format!("at_operation({op}, all())");
+
+    let plain = repo
+        .graph_topology("all()", DEFAULT_GRAPH_PRIORITIZE, SHORT, &[], false)
+        .unwrap();
+    assert!(plain.extra_operation_ids.is_empty(), "no at_operation(), no extras");
+    let topology = repo
+        .graph_topology(&revset, DEFAULT_GRAPH_PRIORITIZE, SHORT, &[], false)
+        .unwrap();
+    assert_eq!(topology.extra_operation_ids, [zanshin_jj::OperationId(op)]);
+
+    let requested: Vec<zanshin_jj::CommitId> = topology.nodes.iter().map(|n| n.commit_id.clone()).collect();
+    let contents = repo
+        .commit_contents(&topology.operation_id, &topology.extra_operation_ids, &requested)
+        .unwrap();
+    let ids: Vec<&zanshin_jj::CommitId> = contents.iter().map(|c| &c.commit_id).collect();
+    assert_eq!(ids, requested.iter().collect::<Vec<_>>(), "every row, request order");
+    for content in &contents {
+        // The sibling commits all keep the root tree, so the merge is empty too.
+        assert!(
+            content.empty.is_some(),
+            "{}: the merged index answers",
+            content.commit_id.0
+        );
+    }
+    let merge = contents.iter().find(|c| c.commit_id.0 == sibling[2]).unwrap();
+    assert_eq!(merge.empty, Some(true));
+
+    let err = repo
+        .commit_contents(&topology.operation_id, &[], &requested)
+        .unwrap_err();
+    assert!(matches!(err, CommitContentError::CommitNotFound(_)), "{err:?}");
+
+    for row in walk(&mut repo, &revset, DEFAULT_GRAPH_PRIORITIZE) {
+        assert_eq!(row.meta.empty.is_none(), row.id.0 == sibling[2], "{}", row.id.0);
     }
 }
 

@@ -73,6 +73,7 @@ Uint8List topologyEnvelope(
       ],
       anchorStart: anchorStart,
       anchorNode: [for (final List<int> a in anchors) ...a],
+      extraOperationIds: const [],
     ),
   ).toBytes();
 }

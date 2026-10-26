@@ -178,6 +178,7 @@ fn select_request_with_mode(
             left: Some(left),
             files: Some(files),
             from: None,
+            verb: fbs::SelectTreeVerb::Unspecified,
         },
     );
     b.finish(req, None);
@@ -510,6 +511,7 @@ fn select_whole(handle: u64, revision: Option<&str>, left: &[String], path: &str
             left: Some(left),
             files: Some(files),
             from: None,
+            verb: fbs::SelectTreeVerb::Unspecified,
         },
     );
     b.finish(req, None);

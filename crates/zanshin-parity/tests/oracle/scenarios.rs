@@ -701,6 +701,7 @@ fn select_f_txt(repo: &mut zanshin_jj::Repo, choice: FileChoice) -> (zanshin_jj:
                 path: "f.txt".to_owned(),
                 choice,
             }],
+            verb: None,
         })
         .expect("select f.txt");
     let _ = repo.take_warnings();
@@ -6149,6 +6150,7 @@ fn diffedit_outcome(
             from,
             left: left.clone(),
             files,
+            verb: None,
         })
         .expect("select");
     let _ = repo.take_warnings();

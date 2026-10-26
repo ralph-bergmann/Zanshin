@@ -322,6 +322,12 @@ fn topology_from_wire(t: fbs::GraphTopology<'_>) -> GraphTopology {
         nodes,
         anchors,
         all_count: usize::try_from(t.all_count()).expect("fits"),
+        extra_operation_ids: t
+            .extra_operation_ids()
+            .expect("extra_operation_ids")
+            .iter()
+            .map(|id| OperationId(id.to_owned()))
+            .collect(),
     }
 }
 

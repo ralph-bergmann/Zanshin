@@ -24,6 +24,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/commit_views.dart' show ShowEntry;
+import 'package:zanshin_core/src/ffi/config.dart' show ConfigFileText, ConfigScope, ConfigScopeTarget;
 import 'package:zanshin_core/src/ffi/file.dart' show FileContents;
 import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
 import 'package:zanshin_core/src/ffi/select_tree.dart';
@@ -101,6 +102,50 @@ void main() {
 
       expect(await fileAt(at), fOneAndThree);
       expect(await fileAt(result.workingCopyChangeId!), fRight, reason: 'hunk 2 remains in the new @');
+    });
+
+    test('every_verb_crosses_the_buffer_and_selects_the_same_tree_without_scopes', () async {
+      final List<String> left = await leftOf(at);
+      final SelectedTree unnamed = await selectOneAndThree(left);
+      for (final SelectTreeVerb verb in SelectTreeVerb.values) {
+        final SelectedTree named = await repo.selectTree(
+          left: left,
+          files: const [
+            FileSelection.hunks('f.txt', [section1, section3]),
+          ],
+          verb: verb,
+        );
+        expect(named.treeIds, unnamed.treeIds, reason: '$verb');
+      }
+    });
+
+    test('a_split_scope_reaches_select_tree_for_the_split_verb_only', () async {
+      final List<String> left = await leftOf(at);
+      final String root = tempDir.resolveSymbolicLinksSync();
+      final ConfigFileText repoConfig = await worker.configFileRead(
+        const ConfigScopeTarget(ConfigScope.repo),
+        workspaceRoot: root,
+      );
+      // An `immutable_heads()` that does not parse faults the start-up of the verbs the scope reaches.
+      await worker.configFileWrite(
+        repoConfig.path,
+        '[[--scope]]\n--when.commands = ["split"]\n[--scope.revset-aliases]\n"immutable_heads()" = "("\n',
+        workspaceRoot: root,
+      );
+      Future<SelectedTree> select(SelectTreeVerb? verb) => repo.selectTree(
+        left: left,
+        files: const [
+          FileSelection.hunks('f.txt', [section1, section3]),
+        ],
+        verb: verb,
+      );
+
+      await expectLater(
+        select(SelectTreeVerb.split),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.config_error')),
+      );
+      await select(SelectTreeVerb.squash);
+      await select(null);
     });
 
     test('a_stale_left_is_refused_with_jj_stale_selection', () async {

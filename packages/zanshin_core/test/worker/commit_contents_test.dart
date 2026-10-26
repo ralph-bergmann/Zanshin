@@ -23,6 +23,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/commit_contents.dart';
+import 'package:zanshin_core/src/ffi/graph.dart';
 import 'package:zanshin_core/src/ffi/op_log.dart';
 import 'package:zanshin_core/src/ffi/precondition.dart';
 import 'package:zanshin_core/src/ffi/warning.dart';
@@ -80,6 +81,48 @@ void main() {
       expect(contents[1].description, '', reason: 'the root has no description');
       expect(contents.warnings, isEmpty, reason: 'the pinned read records no warning');
       expect(handle.lastPrecondition, same(before), reason: 'the pinned read runs no precondition');
+
+      await handle.close();
+    });
+
+    test('the_topologys_extra_operation_ids_cross_into_commit_contents', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final String wcChange = (await handle.status()).workingCopyChangeId!;
+      await handle.describe(changeId: wcChange, description: 'second operation');
+
+      final GraphTopologyView plain = await handle.graphTopology(
+        revset: 'all()',
+        anchors: const [],
+        withTimestamps: false,
+      );
+      expect(plain.extraOperationIds, isEmpty, reason: 'no at_operation(), no extras');
+      final GraphTopologyView view = await handle.graphTopology(
+        revset: 'at_operation(@-, all())',
+        anchors: const [],
+        withTimestamps: false,
+      );
+      expect(view.extraOperationIds, hasLength(1), reason: 'the operation at_operation() brought in');
+      expect(view.extraOperationIds.single, hasLength(128), reason: 'a FULL operation id');
+
+      final List<String> ids = [for (var i = 0; i < view.nodeCount; i++) view.commitId(i)];
+      final WarnedList<CommitContent> contents = await handle.commitContents(
+        operationId: view.operationId,
+        extraOperationIds: view.extraOperationIds,
+        commitIds: ids,
+      );
+      expect(contents.map((c) => c.commitId), ids, reason: 'every row, request order');
+      expect(contents.every((c) => c.empty != null), isTrue, reason: 'no out-of-index merge here');
+
+      // An unknown extra refuses: the list reaches Rust through handle, command, worker and builder.
+      final String unknownOp = 'ab' * 64;
+      await expectLater(
+        handle.commitContents(operationId: view.operationId, extraOperationIds: [unknownOp], commitIds: const []),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.operation_not_found')
+              .having((e) => e.context, 'context', 'No operation ID matching "$unknownOp"'),
+        ),
+      );
 
       await handle.close();
     });

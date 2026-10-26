@@ -223,6 +223,7 @@ final class GraphTopologyView {
   GraphTopologyView._({
     required this.bytes,
     required this.operationId,
+    required this.extraOperationIds,
     required this.allCount,
     required this.warnings,
     required this._copiedVectorCount,
@@ -284,6 +285,7 @@ final class GraphTopologyView {
     final String operationId = payload.operationId ?? (throw _missing('operation_id'));
     final List<fbs.TopologyRef> wireRefs = payload.refs ?? (throw _missing('refs'));
     final List<fbs.TopologyWorkingCopy> wireWorkingCopies = payload.workingCopies ?? (throw _missing('working_copies'));
+    final List<String> extraOperationIds = payload.extraOperationIds ?? (throw _missing('extra_operation_ids'));
     final vectors = _Vectors(bytes);
     final Uint8List flags = vectors.uint8(_flagsField, 'flags');
     final int n = flags.length;
@@ -314,6 +316,7 @@ final class GraphTopologyView {
     return GraphTopologyView._(
       bytes: bytes.asUnmodifiableView(),
       operationId: operationId,
+      extraOperationIds: List.unmodifiable(extraOperationIds),
       allCount: payload.allCount,
       warnings: decodeEnvelopeWarningsInternal(env),
       copiedVectorCount: vectors.copied,
@@ -361,6 +364,11 @@ final class GraphTopologyView {
   /// The full hex id of the operation the call loaded (after its own pre-verb
   /// snapshot); pass it to `RepoHandle.commitContents` for card content.
   final String operationId;
+
+  /// The operations the revset's `at_operation()`s brought in (full hex), in
+  /// order; empty without them. Pass them to `RepoHandle.commitContents` with
+  /// [operationId]: their commits may be outside that operation's index.
+  final List<String> extraOperationIds;
 
   /// `|all()|` — the VISIBLE commits only, so a revset naming hidden commits
   /// can yield more nodes than this.

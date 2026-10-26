@@ -134,6 +134,36 @@ pub struct SelectTreeOptions {
     pub left: Vec<String>,
     /// The selected files; a file not listed keeps its left side. Each path at most once.
     pub files: Vec<FileSelection>,
+    /// The verb whose builtin diff editor the selection stands in for — the call resolves its
+    /// config for that verb's CLI command, so a `--when.commands` scope for it applies (Story
+    /// 9.41). `None` resolves with no command, the state the CLI starts in.
+    pub verb: Option<SelectTreeVerb>,
+}
+
+/// The verbs with a tree arm (Story 9.50, 9.17) — what [`SelectTreeOptions::verb`] names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectTreeVerb {
+    /// `jj commit` ([`crate::Repo::commit`]).
+    Commit,
+    /// `jj split` ([`crate::Repo::split`]).
+    Split,
+    /// `jj squash` ([`crate::Repo::squash`]).
+    Squash,
+    /// `jj diffedit` ([`crate::Repo::diffedit`]).
+    Diffedit,
+}
+
+impl SelectTreeVerb {
+    /// The CLI command the verb plays.
+    pub(crate) fn command(self) -> crate::cli_command::CliCommand {
+        use crate::cli_command::{COMMIT, DIFFEDIT, SPLIT, SQUASH};
+        match self {
+            Self::Commit => COMMIT,
+            Self::Split => SPLIT,
+            Self::Squash => SQUASH,
+            Self::Diffedit => DIFFEDIT,
+        }
+    }
 }
 
 /// A tree [`crate::Repo::select_tree`] wrote (Story 9.50): its tree ids (hex, in `Merge` order —

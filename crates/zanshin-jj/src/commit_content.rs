@@ -4,7 +4,9 @@
 //!
 //! [`commit_contents`] is the CONTINUATION of [`crate::Repo::graph_topology`]'s `jj log`: the
 //! CLI's per-row `get_commit_async` (`cli/src/commands/log.rs:298` @ v0.46.0), run at the operation
-//! the topology call returned. It therefore runs no precondition, no snapshot, no import, no
+//! the topology call returned — with the index merged with the topology's
+//! [`crate::GraphTopology::extra_operation_ids`] when its revset's `at_operation()`s brought any in
+//! (on a dropped transaction). It therefore runs no precondition, no snapshot, no import, no
 //! config load and no secure-config fix-up, and it writes no operation and no op head: the repo
 //! is loaded with `load_operation` + `load_at`, never `load_at_head` (which prunes ancestor op
 //! heads and reconciles divergent ones). Like any load, `load_at` may write the operation's
@@ -48,8 +50,10 @@ pub struct CommitContent {
     pub description: String,
     /// The commit's tree has unresolved conflicts.
     pub conflict: bool,
-    /// The tree equals the merged parent trees (description is not considered).
-    pub empty: bool,
+    /// The tree equals the merged parent trees (description is not considered); `None` when
+    /// jj-lib cannot tell — a merge whose common ancestors are outside the index it is read
+    /// against (where `jj log` prints an inline template error).
+    pub empty: Option<bool>,
 }
 
 /// Errors returned by [`crate::Repo::commit_contents`], in check order.
@@ -152,8 +156,10 @@ pub(crate) fn load_pinned(
 /// Reads the object half of every commit in `commit_ids`, in request order, at the pinned
 /// `operation_id` (see the module doc for the framing).
 ///
-/// Check order: (a) the operation id's format; (b) the operation's load; (c) EVERY commit id's
-/// format, then EVERY commit id's presence in the pinned index; (d) the commit loads. Validating
+/// Check order: (a) the operation id's format; (b) the operation's load, then each of
+/// `extra_operation_ids` the same way (format, load); (c) EVERY commit id's format, then EVERY
+/// commit id's presence in the pinned index — merged with the extras' indexes when there are any
+/// ([`crate::GraphTopology::extra_operation_ids`]); (d) the commit loads, against that index. Validating
 /// all ids before the first load makes the ladder deterministic — a malformed id is
 /// [`CommitContentError::InvalidInput`] wherever it sits — and the index check is the only thing
 /// that separates an unknown id ([`CommitContentError::CommitNotFound`]) from an indexed but
@@ -169,26 +175,43 @@ pub(crate) fn load_pinned(
 pub(crate) fn commit_contents(
     workspace: &Workspace,
     operation_id: &OperationId,
+    extra_operation_ids: &[OperationId],
     commit_ids: &[CommitId],
 ) -> Result<Vec<CommitContent>, CommitContentError> {
-    // (a) + (b): the pinned operation and its repo.
+    // (a) + (b): the pinned operation and its repo, then each extra operation's.
     let repo = load_pinned(workspace, operation_id)?;
+    let others = extra_operation_ids
+        .iter()
+        .map(|id| load_pinned(workspace, id))
+        .collect::<Result<Vec<_>, _>>()?;
     let store = repo.store();
 
-    // (c) FIRST pass: every id's format, then every id's presence in the pinned index.
+    // (c) FIRST pass: every id's format, then every id's presence in the pinned index — merged
+    // with the extras' as the topology's revset evaluated against (jj-lib's private
+    // `ResolvedRevset::merge_indexes`); the transaction is dropped and writes nothing.
     let id_hex_len = store.commit_id_length() * 2;
     let ids = commit_ids
         .iter()
         .map(|id| parse_commit_id(&id.0, id_hex_len))
         .collect::<Result<Vec<_>, _>>()?;
+    let mut merged =
+        (!others.is_empty()).then(|| crate::op_support::start_repo_transaction(&repo, workspace.workspace_name()));
+    if let Some(tx) = &mut merged {
+        for other in &others {
+            tx.repo_mut().merge_index(other).map_err(be)?;
+        }
+    }
+    let repo_dyn: &dyn jj_lib::repo::Repo = match &merged {
+        Some(tx) => tx.repo(),
+        None => repo.as_ref(),
+    };
     for (id, requested) in ids.iter().zip(commit_ids) {
-        if !pollster::block_on(repo.index().has_id(id)).map_err(be)? {
+        if !pollster::block_on(repo_dyn.index().has_id(id)).map_err(be)? {
             return Err(CommitContentError::CommitNotFound(requested.0.clone()));
         }
     }
 
     // (d) SECOND pass: the loads, in request order.
-    let repo_dyn: &dyn jj_lib::repo::Repo = repo.as_ref();
     ids.iter()
         .map(|id| {
             let commit = pollster::block_on(store.get_commit_async(id)).map_err(be)?;
