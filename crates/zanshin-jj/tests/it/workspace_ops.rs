@@ -95,7 +95,7 @@ fn forget_the_current_workspace_then_at_defaults_refuse_with_the_clis_text() {
 
     let err = repo.file_list(None, &[]).expect_err("no @");
     assert!(
-        matches!(&err, FileError::InvalidInput { reason } if reason == NO_WC),
+        matches!(&err, FileError::RevsetResolutionError { reason, hints } if reason == NO_WC && hints.is_empty()),
         "{err:?}"
     );
     let err = repo.restore(None, None, None, &[], false).expect_err("no @");

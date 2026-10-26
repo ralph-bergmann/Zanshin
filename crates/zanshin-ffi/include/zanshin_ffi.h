@@ -1249,8 +1249,8 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
  *   default `@`.
  * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a DIVERGENT
  *   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
- * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
- *   commit; the CLI's text in `context`.
+ * - `jj.revset_resolution_error` — an absent `revision`'s `@` default in a workspace with no
+ *   working-copy commit; the CLI's text in `context`, no `hints`.
  * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
  *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
@@ -1295,8 +1295,8 @@ ZanshinBuf *zanshin_file_list(uint64_t handle, const uint8_t *data, uintptr_t le
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer, or its `kind`
  *   is not `FileShow`, i.e. the buffer was built for a different wrapper.
- * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
- *   commit; the CLI's text in `context`.
+ * - `jj.revset_resolution_error` — an absent `revision`'s `@` default in a workspace with no
+ *   working-copy commit; the CLI's text in `context`, no `hints`.
  * - `jj.invalid_input` — `paths` is empty, or an entry is not a valid repo path.
  * - `jj.change_not_found` — `revision` does not resolve.
  * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent
@@ -1338,8 +1338,8 @@ ZanshinBuf *zanshin_file_show(uint64_t handle,
  * - `jj.change_not_found` — `revision` does not resolve.
  * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent
  *   change, or `revsets.short-prefixes` fails to resolve.
- * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
- *   commit; the CLI's text in `context`.
+ * - `jj.revset_resolution_error` — an absent `revision`'s `@` default in a workspace with no
+ *   working-copy commit; the CLI's text in `context`, no `hints`.
  * - `jj.invalid_input` — `path` is absent from the request buffer, or is not a valid repo
  *   path.
  * - `jj.path_not_found` — `path` is absent from the revision's tree; the path in `context`.
@@ -1386,8 +1386,8 @@ ZanshinBuf *zanshin_file_annotate(uint64_t handle,
  * - `jj.change_not_found` — `revision` does not resolve.
  * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent
  *   change, or `revsets.short-prefixes` fails to resolve.
- * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
- *   commit; the CLI's text in `context`.
+ * - `jj.revset_resolution_error` — an absent `revision`'s `@` default in a workspace with no
+ *   working-copy commit; the CLI's text in `context`, no `hints`.
  * - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
  *   or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config

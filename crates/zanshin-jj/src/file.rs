@@ -189,8 +189,9 @@ pub enum FileError {
         id: String,
     },
     /// The `revision` argument does not resolve to ONE commit, as the CLI's `-r`
-    /// (`resolve_single_rev`) refuses it: an AMBIGUOUS change-id prefix, a DIVERGENT change, or
-    /// a `revsets.short-prefixes` set that fails to load. `reason` is jj-lib's own
+    /// (`resolve_single_rev`) refuses it: an AMBIGUOUS change-id prefix, a DIVERGENT change, a
+    /// `revsets.short-prefixes` set that fails to load, or an ABSENT `revision`'s `@` in a
+    /// workspace with no working-copy commit. `reason` is jj-lib's own
     /// `RevsetResolutionError` text.
     #[error("revset resolution error: {reason}")]
     RevsetResolutionError {
@@ -256,7 +257,9 @@ fn res(e: ResolveError, revision: Option<&ChangeId>) -> FileError {
         ResolveError::NotFound => FileError::ChangeNotFound {
             id: revision.map(|r| r.0.clone()).unwrap_or_default(),
         },
-        ResolveError::NoWorkingCopy(reason) => FileError::InvalidInput { reason },
+        // The CLI gives `WorkspaceMissingWorkingCopy` no hints
+        // (`cli/src/command_error.rs:971-976` @ v0.46.0).
+        ResolveError::NoWorkingCopy(reason) => FileError::RevsetResolutionError { reason, hints: vec![] },
         ResolveError::Resolution { reason, hints } => FileError::RevsetResolutionError { reason, hints },
         ResolveError::Backend(reason) => FileError::Backend(reason),
     }
@@ -1028,8 +1031,8 @@ mod tests {
             res(ResolveError::NotFound, Some(&id)),
             FileError::ChangeNotFound { id } if id == "zzzzzzzz"
         ));
-        // `head_commit(None)` delegates to `resolve_or_wc`, which can only fail with
-        // `Backend`, so the `None` id is the defensive arm: it must still produce a
+        // `head_commit(None)` delegates to `resolve_or_wc`, which never fails with
+        // `NotFound`, so the `None` id is the defensive arm: it must still produce a
         // ChangeNotFound with an EMPTY id rather than panicking.
         assert!(matches!(
             res(ResolveError::NotFound, None),
@@ -1048,6 +1051,10 @@ mod tests {
                 Some(&id)
             ),
             FileError::RevsetResolutionError { reason, hints } if reason == "ambiguous" && hints == ["h"]
+        ));
+        assert!(matches!(
+            res(ResolveError::NoWorkingCopy("no @".to_owned()), None),
+            FileError::RevsetResolutionError { reason, hints } if reason == "no @" && hints.is_empty()
         ));
     }
 

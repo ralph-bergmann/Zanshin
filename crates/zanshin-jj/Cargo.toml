@@ -72,5 +72,13 @@ harness = false
 name = "revset_counts"
 harness = false
 
+# WHY: harness = false — same reason as above. `get_change` measures what a full change id
+# costs `Repo::get_change` now that it populates the `revsets.short-prefixes` context (leftover
+# run D after the story loop 9.25–9.46); it asserts nothing about wall-clock. Run with
+# `cargo bench -p zanshin-jj --bench get_change`.
+[[bench]]
+name = "get_change"
+harness = false
+
 [lints]
 workspace = true

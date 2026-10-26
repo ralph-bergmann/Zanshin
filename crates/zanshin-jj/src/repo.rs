@@ -993,11 +993,11 @@ impl Repo {
     ///   what applies the CLI's `-r` default `@`.
     /// - [`crate::FileError::RevsetResolutionError`] — `revision` is a change-id prefix that is
     ///   ambiguous (within the effective `revsets.short-prefixes`, else repo-wide) or names a
-    ///   DIVERGENT change (the CLI's `-r` refuses it, with its three hints), or the
-    ///   `revsets.short-prefixes` set fails to load (this holds for all four file reads).
-    /// - [`crate::FileError::InvalidInput`] — a `paths` entry is not a valid repo path, or an
-    ///   absent `revision`'s `@` in a workspace with no working-copy commit ("Workspace `<name>`
-    ///   doesn't have a working-copy commit"; this holds for all four file reads).
+    ///   DIVERGENT change (the CLI's `-r` refuses it, with its three hints), the
+    ///   `revsets.short-prefixes` set fails to load, or an absent `revision`'s `@` is in a
+    ///   workspace with no working-copy commit ("Workspace `<name>` doesn't have a working-copy
+    ///   commit", no hints) (this holds for all four file reads).
+    /// - [`crate::FileError::InvalidInput`] — a `paths` entry is not a valid repo path.
     /// - [`crate::FileError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: owned `ChangeId` is the house currency for a single-revision parameter

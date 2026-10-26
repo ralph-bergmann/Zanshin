@@ -238,9 +238,27 @@ fn an_omitted_revision_without_a_working_copy_commit_is_the_clis_user_error() {
         NO_WC,
         "bookmark create"
     );
-    match repo.file_list(None, &[]) {
-        Err(FileError::InvalidInput { reason }) => assert_eq!(reason, NO_WC, "file list"),
-        other => panic!("file list: expected InvalidInput, got {other:?}"),
+    // The four file reads: the CLI's `WorkspaceMissingWorkingCopy`, which has no hints.
+    let file_reads = [
+        ("file list", repo.file_list(None, &[]).expect_err("file list")),
+        (
+            "file show",
+            repo.file_show(None, &["c.txt".to_owned()]).expect_err("file show"),
+        ),
+        (
+            "file annotate",
+            repo.file_annotate(None, "c.txt").expect_err("file annotate"),
+        ),
+        (
+            "file search",
+            repo.file_search(None, "needle", &[], false).expect_err("file search"),
+        ),
+    ];
+    for (verb, err) in file_reads {
+        assert!(
+            matches!(&err, FileError::RevsetResolutionError { reason, hints } if reason == NO_WC && hints.is_empty()),
+            "{verb}: {err:?}"
+        );
     }
     match repo.interdiff(Some(RevisionRef::ChangeId(ChangeId(a.0.clone()))), None, &[]) {
         Err(CommitViewError::RevsetResolutionError { reason, .. }) => assert_eq!(reason, NO_WC, "interdiff"),

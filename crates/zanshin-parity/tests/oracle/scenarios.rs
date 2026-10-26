@@ -2241,6 +2241,18 @@ pub fn scenarios() -> Vec<Scenario> {
             )
         },
         Scenario {
+            // The read's `-r` default `@` refuses (`WorkspaceMissingWorkingCopy`), as the CLI.
+            setup: &[Step::Jj(&["workspace", "forget"])],
+            ..simple(
+                "file_list_without_working_copy",
+                |repo, _, _| {
+                    let result = repo.file_list(None, &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["file", "list"]),
+            )
+        },
+        Scenario {
             setup: &[Step::Jj(&[
                 "config",
                 "set",

@@ -165,6 +165,7 @@ parity!(
     commit_wc_with_child,
     commit_two_workspaces_on_wc,
     commit_without_working_copy,
+    file_list_without_working_copy,
     commit_trailers,
     commit_advance_merge_parents,
     commit_immutable_wc_with_child,
@@ -543,7 +544,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 473);
+    assert_eq!(SCENARIO_IDS.len(), 474);
 }
 
 #[test]
