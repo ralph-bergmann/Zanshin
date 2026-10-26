@@ -2,6 +2,7 @@
 
 import 'package:material_ui/material_ui.dart';
 
+import 'graph_theme.dart';
 import 'zs_appearance.dart';
 import 'zs_colors.dart';
 import 'zs_elevation.dart';
@@ -22,7 +23,8 @@ abstract final class ZsAppTheme {
 
   static const _arrowMenu = MenuStyle(mouseCursor: _arrow);
 
-  /// The theme [appearance] shows: night is dark, paper light; [ZsColors] and [ZsElevation] ride along resolved.
+  /// The theme [appearance] shows: night is dark, paper light; [ZsColors], [ZsElevation] and [GraphTheme] ride along
+  /// resolved.
   static ThemeData build(ZsAppearance appearance) {
     final colors = ZsColors.resolve(appearance);
     final ColorScheme scheme = switch (appearance.theme) {
@@ -60,7 +62,7 @@ abstract final class ZsAppTheme {
       focusColor: colors.focusRing,
       // A nested Theme re-installs this IconTheme; `--text`, like the window root's.
       iconTheme: IconThemeData(color: colors.text),
-      extensions: <ThemeExtension<dynamic>>[colors, ZsElevation.resolve(appearance)],
+      extensions: <ThemeExtension<dynamic>>[colors, ZsElevation.resolve(appearance), GraphTheme.fromColors(colors)],
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(mouseCursor: _arrow),
       checkboxTheme: const CheckboxThemeData(mouseCursor: _arrow),
       dataTableTheme: const DataTableThemeData(headingCellCursor: _arrow, dataRowCursor: _arrow),

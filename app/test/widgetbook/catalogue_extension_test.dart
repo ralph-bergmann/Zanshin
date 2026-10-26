@@ -4,11 +4,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:widgetbook/widgetbook.dart' show FieldCodec, Widgetbook;
+import 'package:zanshin/src/features/graph/graph_viewport.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../widgetbook/catalogue.dart';
 import '../../widgetbook/catalogue_extension.dart';
+import '../../widgetbook/graph/placeholder_card.dart';
 import '../helpers/catalogue.dart';
 import '../helpers/icon_registry.dart';
 import '../helpers/recording_shell.dart';
@@ -82,6 +84,22 @@ void main() {
       expect(canvasOf(ZsTheme.paper), findsWidgets);
       expect(catalogue.currentState!.route, (result as MarionetteExtensionSuccess).data['route']);
     });
+
+    for (final path in <String>['graph/viewport/recording', 'graph/viewport/scale']) {
+      testWidgets('path=$path opens the Graph viewport with placeholder cards', (tester) async {
+        useCatalogueWindow(tester);
+        final catalogue = GlobalKey<ZanshinCatalogueState>();
+        await tester.pumpWidget(catalogueAt('/', key: catalogue));
+        final MarionetteExtensionResult result = openInCatalogue(<String, String>{
+          'path': path,
+        }, catalogue.currentState!);
+        expect(result, isA<MarionetteExtensionSuccess>());
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(GraphViewport), findsOneWidget);
+        expect(find.byType(GraphPlaceholderCard), findsWidgets);
+      });
+    }
 
     testWidgets('every appearance value reaches the use case', (tester) async {
       useCatalogueWindow(tester);

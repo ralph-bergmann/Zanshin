@@ -12,6 +12,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import 'appearance_addon.dart';
 import 'folders/controls.dart';
+import 'folders/graph.dart';
 import 'folders/icons.dart';
 import 'folders/materials.dart';
 import 'folders/projects.dart';
@@ -20,8 +21,8 @@ import 'folders/windows.dart';
 
 final _log = Logger('zanshin.catalogue');
 
-/// The catalogue's tree: Controls, Materials, Shell (Story 11.3), Projects (Story 11.5), Windows and Icons (no Graph
-/// folder yet; Story 11.11 deferred item 3).
+/// The catalogue's tree: Controls, Materials, Shell (Story 11.3), Projects (Story 11.5), Windows, Icons and Graph
+/// (Story 10.1).
 final catalogueDirectories = <WidgetbookNode>[
   controlsFolder,
   materialsFolder,
@@ -29,6 +30,7 @@ final catalogueDirectories = <WidgetbookNode>[
   projectsFolder,
   windowsFolder,
   iconsFolder,
+  graphFolder,
 ];
 
 /// Every use case's path (`controls/switch/state-matrix`: the names joined by `/`, spaces as `-`, lower case).

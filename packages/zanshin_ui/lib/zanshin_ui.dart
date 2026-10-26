@@ -38,6 +38,7 @@ export 'src/controls/zs_switch.dart' show ZsSwitch;
 export 'src/controls/zs_text_field.dart' show ZsSearchField, ZsTextEditingController, ZsTextField, ZsTextFieldSize;
 export 'src/controls/zs_text_rung.dart' show ZsTextRung;
 export 'src/controls/zs_tooltip.dart' show ZsTooltip, ZsTooltipPlacement;
+export 'src/design/graph_theme.dart' show GraphTheme;
 export 'src/design/zs_app_theme.dart' show ZsAppTheme;
 export 'src/design/zs_appearance.dart' show ZsAccentFamily, ZsAppearance, ZsAppearanceOverride, ZsTheme;
 export 'src/design/zs_colors.dart' show ZsColors;

@@ -24,11 +24,11 @@ void main() {
   ];
 
   test(
-    'the folders are Controls, Materials, Shell, Projects, Windows and Icons, and every use case has its own path',
+    'the folders are Controls, Materials, Shell, Projects, Windows, Icons and Graph, and every use case has its own path',
     () {
       expect(
         catalogueDirectories.map((node) => node.name),
-        <String>['Controls', 'Materials', 'Shell', 'Projects', 'Windows', 'Icons'],
+        <String>['Controls', 'Materials', 'Shell', 'Projects', 'Windows', 'Icons', 'Graph'],
       );
       expect(paths.toSet(), hasLength(paths.length));
       expect(paths, contains('controls/switch/state-matrix'));
@@ -61,6 +61,8 @@ void main() {
           'windows/window-scaffold/resizable',
           'windows/window-scaffold/content-sized',
           'windows/window-scaffold/floating',
+          'graph/viewport/recording',
+          'graph/viewport/scale',
         ]),
       );
       expect(catalogueUseCasePaths, paths.toSet());
