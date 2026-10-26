@@ -53,16 +53,41 @@ fn remotes_on_tiny_returns_empty() {
     assert!(remotes.is_empty(), "tiny fixture has no remotes; got {remotes:?}");
 }
 
-// ── Empty on a healthy native backend ─────────────────────────────────────────
+// ── An external git config edit reaches the open handle ───────────────────────
+
+/// A `[remote]` section appended to `<git dir>/config` behind the handle's back (a terminal's
+/// `git remote add`) is listed by the handle's next call, as by the next CLI command.
+#[test]
+fn remotes_sees_an_external_git_config_edit_on_the_open_handle() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    assert!(repo.list_remotes().unwrap().is_empty());
+
+    let store = fx.path.join(".jj").join("repo").join("store");
+    let target = fs::read(store.join("git_target")).expect("a git-backed fixture");
+    let config = store
+        .join(jj_lib::file_util::path_from_bytes(&target).expect("a path"))
+        .join("config");
+    let text = fs::read_to_string(&config).expect("git config");
+    fs::write(
+        &config,
+        format!("{text}[remote \"ext\"]\n\turl = https://example.invalid/ext.git\n"),
+    )
+    .expect("edit");
+
+    let names: Vec<String> = repo.list_remotes().unwrap().into_iter().map(|r| r.name).collect();
+    assert_eq!(names, ["ext"]);
+}
+
+// ── Refused on a native backend ───────────────────────────────────────────────
 
 #[test]
-fn remotes_on_native_backend_returns_empty() {
+fn remotes_on_native_backend_is_refused_as_not_a_git_repo() {
     test_helpers::pin_test_env();
     let tmp = TempDir::new().unwrap();
-    // `Repo::init(.., None)` uses jj's native backend (`init_simple`). A non-git
-    // backend has no git remotes: `get_all_remote_names` yields
-    // `UnexpectedGitBackendError`, which `unwrap_or_default` collapses to an empty
-    // list — `Ok(vec![])`, not an error (FR-JJ-9 native-backend AC).
+    // `Repo::init(.., None)` uses jj's native backend (`init_simple`). `jj git remote
+    // list` starts with `get_git_repo(..)?`, so it refuses there (FR-JJ-9 native-backend AC).
     Repo::init(&zanshin_jj::InitOptions {
         path: std::path::PathBuf::from(tmp.path()),
         ..Default::default()
@@ -71,11 +96,9 @@ fn remotes_on_native_backend_returns_empty() {
     .unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
-    let remotes = repo.list_remotes().unwrap();
-    assert!(
-        remotes.is_empty(),
-        "native backend has no git remotes → empty list; got {remotes:?}"
-    );
+    let err = repo.list_remotes().expect_err("a native backend has no git repo");
+    assert!(matches!(err, RemoteError::NotAGitRepo), "got {err:?}");
+    assert_eq!(err.to_string(), "not a git repository");
 }
 
 // ── Lists remotes sorted by name ──────────────────────────────────────────────

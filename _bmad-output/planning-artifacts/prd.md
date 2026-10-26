@@ -204,7 +204,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 | FR-JJ-6 | Read change metadata: ID, parents, description, author, timestamps, signed-by, conflict-state, anonymous-yes/no. | P0 |
 | FR-JJ-7 | Read operation log: list of operations with timestamps and command summaries. | P0 |
 | FR-JJ-8 | List bookmarks (local + remote-tracking) with their target change IDs. | P0 |
-| FR-JJ-9 | List remotes with URLs. | P0 |
+| FR-JJ-9 | List remotes with URLs (a Git-backed repo; a native-backend repo refuses as `jj git remote list` does (Ralph, 2026-10-26)). | P0 |
 | FR-JJ-10a | Mutating ops — essentials: `describe`, `new`, `edit`, `abandon`. Each goes through jj-lib only — no shelling to `jj` CLI. | P0 |
 | FR-JJ-10b | Mutating ops — advanced: `split`, `squash`, `rebase`. | P1 (0.2 — CLI/MCP bridges the gap) |
 | FR-JJ-10c | Mutating ops — rare: `duplicate`, `restore`, `backout`. | P2 |

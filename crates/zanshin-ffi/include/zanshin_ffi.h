@@ -671,8 +671,9 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * The arguments cross as an `InterdiffRequest` `FlatBuffers` request buffer. Unlike
  * `zanshin_show`, each side is a SINGLE revision, carried by the schema's `RevisionRef` UNION:
  * a `ChangeIdRef` is the house reverse-hex change-id prefix, resolved to the one VISIBLE commit
- * carrying it, and a `CommitIdRef` is a commit-id hex prefix resolved through jj-lib's index,
- * which is visibility-BLIND. Both inherit the CLI `resolve_single_rev`'s REFUSAL — an ambiguous
+ * carrying it, and a `CommitIdRef` is a commit-id hex prefix whose whole-index fallback is
+ * visibility-BLIND. Both resolve through the effective `revsets.short-prefixes` set first, as the
+ * CLI's `--from`/`--to` symbols do. Both inherit the CLI `resolve_single_rev`'s REFUSAL — an ambiguous
  * revision is rejected rather than guessed, never resolved to one of the candidates. The
  * commit-id arm is what makes the predecessors `zanshin_evolog` reports — hidden by
  * construction — addressable, so the two verbs compose into a version-to-version diff. A revset
@@ -709,9 +710,10 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  *   carries. The offending id in `context`. An ABSENT side is not an error — ONE absent side
  *   applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the `jj.invalid_input`
  *   bullet above.
- * - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits, or
- *   an absent side's `@` default in a workspace with no working-copy commit; jj-lib's own
- *   wording in `context`.
+ * - `jj.revset_resolution_error` — a `CommitIdRef` or `ChangeIdRef` prefix is ambiguous (within
+ *   the effective `revsets.short-prefixes` set, or outside it in the whole index), a present
+ *   side's `revsets.short-prefixes` set does not resolve, or an absent side's `@` default in a
+ *   workspace with no working-copy commit; jj-lib's own wording in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
  *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
  *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
@@ -725,7 +727,9 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * `fbs.InterdiffRequestObjectBuilder(...).toBytes()` buffer.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_interdiff(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_interdiff(uint64_t handle,
+                              const uint8_t *data,
+                              uintptr_t len);
 
 /**
  * List the values of the effective jj config stack with their sources — the CLI's `jj config
@@ -2807,6 +2811,8 @@ ZanshinBuf *zanshin_simplify_parents(uint64_t handle,
  *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
+ * - `jj.not_a_git_repo` — the repo has no git backend (a native-backend repo), refused as
+ *   `jj git remote list` refuses it.
  * - `jj.jj_lib_error` — a remote fails to load (the call refuses as `jj git remote list`
  *   does; the CLI has printed the remotes sorted before the broken one by then, an error
  *   envelope carries no payload, so nothing is listed), or another unclassified jj-lib

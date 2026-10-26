@@ -6,7 +6,8 @@
 //! The revisions become siblings: each keeps its parents outside the set and inherits, in place of
 //! a parent inside the set, that parent's new parents; a commit outside the set whose parent is in
 //! the set gets that parent's in-set parents as direct parents too. Only the targets that need a
-//! rewrite are checked rewritable — an immutable root of the set stays where it is. The revisions
+//! rewrite are checked rewritable — an immutable root of the set stays where it is — plus the root
+//! COMMIT whenever it is in the set, refused where the CLI panics in jj-lib. The revisions
 //! are change ids (the CLI's revset arguments are terminal input language, ADR-0003); an empty
 //! list rewrites nothing and writes no operation, as the CLI's empty union does.
 
@@ -65,6 +66,12 @@ pub(crate) fn parallelize(
             }
         }
         new_target_parents.insert(commit.id().clone(), new_parents);
+    }
+    // The root in the set would reach jj-lib's `new_parents(&[])` assertion, where the CLI panics;
+    // refused as immutable instead (a deliberate divergence, project-context.md).
+    let root_id = tx.base_repo().store().root_commit_id().clone();
+    if ordered.contains(&root_id) {
+        needs_rewrite.push(root_id);
     }
     guard_rewritable(&tx, &ctx.templates(workspace), &needs_rewrite)?;
 

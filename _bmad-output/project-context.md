@@ -247,7 +247,9 @@ the `zanshin-graph` lane crate was removed)*
   a "nicer" outcome. (Parity is via jj-lib, never by shelling/scraping the CLI.)
   Deliberate divergences exist only by Ralph's decision, each listed here: `file_edit` refuses a
   path below an existing file (`jj.invalid_input`), where the CLI's editor flow lets jj-lib
-  silently replace that file with a directory (Story 9.44; Ralph, 2026-10-26).
+  silently replace that file with a directory (Story 9.44; Ralph, 2026-10-26); `parallelize`
+  refuses a set containing the root commit as immutable (`MutateError::Immutable`, root id, no
+  hints), where the stock CLI panics in jj-lib's `new_parents(&[])` (Ralph, 2026-10-26).
 - **Pass CLI parameters through; never decide for the user (FR-JJ-17).** Where the jj CLI leaves
   a path/revset/destination/flag to the user (e.g. `jj git init --git-repo=<repo> <dest>` — two
   paths, both user-chosen), the typed verb + FFI/MCP surface PASSES IT THROUGH so Ralph's UI can

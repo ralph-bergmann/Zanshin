@@ -131,6 +131,24 @@ const SOME_DESCRIBES: &[Step] = &[
     Step::Jj(&["describe", "-m", "three"]),
 ];
 
+/// `revsets.short-prefixes = b-mark`, then 256 HIDDEN commits (duplicated, then abandoned) so a
+/// one-char commit- or change-id prefix of B is ambiguous in the full index (Story 9.25 closing
+/// run): the chance none shares B's first char is (15/16)^256 ≈ 7e-8. Hidden commits get no
+/// labels, so they cannot clash.
+const SHORT_PREFIX_HIDDEN_COMMITS: &[Step] = &[
+    Step::Jj(&["config", "set", "--repo", "revsets.short-prefixes", "b-mark"]),
+    Step::Jj(&["new", "--no-edit", "root()", "-m", "E"]),
+    Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+    Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+    Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+    Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+    Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+    Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+    Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+    Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+    Step::Jj(&["abandon", r#"subject(exact:"E")"#]),
+];
+
 /// A bare remote, then a describe of `@` and a push of `b-mark` — a repo change and a
 /// remote-tracking change on top of `@--` (Story 9.12's `--what` scenarios).
 const DESCRIBE_THEN_PUSH: &[Step] = &[
@@ -3133,23 +3151,10 @@ fn bookmark_move_scenarios() -> Vec<Scenario> {
         },
         // `--from` B's one-hex-char commit-id prefix, unique within `revsets.short-prefixes =
         // b-mark` but ambiguous in the full index (Story 9.25 closing run). Ids are random per
-        // repo, so the index gets 256 HIDDEN commits (duplicated, then abandoned): a commit-id
-        // prefix resolves over every indexed commit, and the chance none shares B's first hex
-        // char is (15/16)^256 ≈ 7e-8. Hidden commits get no labels, so they cannot clash.
+        // repo, so the index gets `SHORT_PREFIX_HIDDEN_COMMITS`: a commit-id prefix resolves over
+        // every indexed commit.
         Scenario {
-            setup: &[
-                Step::Jj(&["config", "set", "--repo", "revsets.short-prefixes", "b-mark"]),
-                Step::Jj(&["new", "--no-edit", "root()", "-m", "E"]),
-                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
-                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
-                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
-                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
-                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
-                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
-                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
-                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
-                Step::Jj(&["abandon", r#"subject(exact:"E")"#]),
-            ],
+            setup: SHORT_PREFIX_HIDDEN_COMMITS,
             ..simple(
                 "bookmark_move_from_short_prefix",
                 |repo, root, s| {
@@ -3178,6 +3183,75 @@ fn bookmark_move_scenarios() -> Vec<Scenario> {
                         "move".into(),
                         "--from".into(),
                         s.commit_arg("B")[..1].to_owned(),
+                        "--to".into(),
+                        s.change_arg("C"),
+                    ]
+                },
+            )
+        },
+        // `interdiff --from` B's one-hex-char commit-id prefix, unique within `revsets.short-prefixes
+        // = b-mark` but ambiguous in the full index — `bookmark_move_from_short_prefix`'s 256 hidden
+        // commits, for `RevisionRef::CommitId` (leftover run A after the story loop 9.25–9.46).
+        Scenario {
+            setup: SHORT_PREFIX_HIDDEN_COMMITS,
+            ..simple(
+                "interdiff_from_short_commit_prefix",
+                |repo, root, s| {
+                    let b = s.commit_arg("B");
+                    let prefix = &b[..1];
+                    let (_, readonly) = load_workspace(root);
+                    let hex = jj_lib::object_id::HexPrefix::try_from_hex(prefix).expect("hex");
+                    assert_eq!(
+                        pollster::block_on(readonly.index().resolve_commit_id_prefix(&hex)).expect("index"),
+                        jj_lib::object_id::PrefixResolution::AmbiguousMatch,
+                        "B's prefix {prefix} must be ambiguous in the full index"
+                    );
+                    let from = zanshin_jj::RevisionRef::CommitId(zanshin_jj::CommitId(prefix.to_owned()));
+                    let to = zanshin_jj::RevisionRef::ChangeId(s.change("C"));
+                    let result = repo.interdiff(Some(from), Some(to), &[]);
+                    assert!(result.is_ok(), "the prefix must resolve within the context: {result:?}");
+                    zanshin_outcome(repo, &result)
+                },
+                |s| {
+                    vec![
+                        "interdiff".into(),
+                        "--from".into(),
+                        s.commit_arg("B")[..1].to_owned(),
+                        "--to".into(),
+                        s.change_arg("C"),
+                    ]
+                },
+            )
+        },
+        // The same for B's one-char (odd-length) change-id prefix, `RevisionRef::ChangeId`: the
+        // duplicates carry new change ids, so the full index is ambiguous there too.
+        Scenario {
+            setup: SHORT_PREFIX_HIDDEN_COMMITS,
+            ..simple(
+                "interdiff_from_short_change_prefix",
+                |repo, root, s| {
+                    let b = s.change_arg("B");
+                    let prefix = &b[..1];
+                    let (_, readonly) = load_workspace(root);
+                    let hex = jj_lib::object_id::HexPrefix::try_from_reverse_hex(prefix).expect("reverse hex");
+                    assert!(
+                        matches!(
+                            pollster::block_on(readonly.resolve_change_id_prefix(&hex)).expect("index"),
+                            jj_lib::object_id::PrefixResolution::AmbiguousMatch
+                        ),
+                        "B's change prefix {prefix} must be ambiguous in the full index"
+                    );
+                    let from = zanshin_jj::RevisionRef::ChangeId(zanshin_jj::ChangeId(prefix.to_owned()));
+                    let to = zanshin_jj::RevisionRef::ChangeId(s.change("C"));
+                    let result = repo.interdiff(Some(from), Some(to), &[]);
+                    assert!(result.is_ok(), "the prefix must resolve within the context: {result:?}");
+                    zanshin_outcome(repo, &result)
+                },
+                |s| {
+                    vec![
+                        "interdiff".into(),
+                        "--from".into(),
+                        s.change_arg("B")[..1].to_owned(),
                         "--to".into(),
                         s.change_arg("C"),
                     ]

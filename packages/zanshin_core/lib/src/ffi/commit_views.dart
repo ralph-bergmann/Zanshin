@@ -114,16 +114,19 @@ sealed class RevisionRef {
 
 /// A jj reverse-hex CHANGE-ID prefix — the house currency for a single revision.
 ///
-/// Resolves to the one VISIBLE commit carrying it; an unknown, malformed,
-/// only-hidden or DIVERGENT prefix is refused (`jj.change_not_found`) rather than
-/// guessed. Use a [CommitIdRef] to reach a hidden commit.
+/// Resolves through the effective `revsets.short-prefixes` set first (the whole
+/// index on no match), as the CLI does, to the one VISIBLE commit carrying it; an
+/// unknown, malformed, only-hidden or DIVERGENT prefix is refused
+/// (`jj.change_not_found`), an ambiguous one (`jj.revset_resolution_error`),
+/// rather than guessed. Use a [CommitIdRef] to reach a hidden commit.
 final class ChangeIdRef extends RevisionRef {
   const ChangeIdRef(super.id);
 }
 
-/// A commit-id HEX prefix, resolved through jj's index.
+/// A commit-id HEX prefix, resolved through the effective `revsets.short-prefixes`
+/// set first, then jj's index.
 ///
-/// That lookup is visibility-BLIND, so a HIDDEN commit resolves —
+/// That index lookup is visibility-BLIND, so a HIDDEN commit resolves —
 /// [EvologEntry.predecessorCommitIds] entries among them, which is what lets
 /// `evolog` and `interdiff` compose into a version-to-version diff. An ambiguous
 /// prefix is refused (`jj.revset_resolution_error`), never guessed; an empty or

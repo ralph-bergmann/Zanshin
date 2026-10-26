@@ -32,8 +32,8 @@ use jj_lib::working_copy::SnapshotOptions;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{
-    add_commit_off_root, add_commit_with_files, add_conflicted_merge_off_root, add_divergent_twin, describe_commit,
-    extract_fixture, rewrite_commit_files, FixtureHandle,
+    abandon_commit, add_commit_off_root, add_commit_with_files, add_conflicted_merge_off_root, add_divergent_twin,
+    describe_commit, extract_fixture, rewrite_commit_files, FixtureHandle,
 };
 use zanshin_jj::{Backend, ChangeId, ChangeKind, CommitId, CommitViewError, Repo, RevisionRef};
 
@@ -1003,6 +1003,9 @@ fn interdiff_refuses_an_unknown_divergent_or_empty_revision_on_either_side() {
     let original = add_commit_off_root(&fx.path, "original");
     _ = add_divergent_twin(&fx.path, &original, "twin");
     let divergent = change_id_of(&fx.path, &original);
+    let abandoned = add_commit_off_root(&fx.path, "abandoned");
+    let hidden = change_id_of(&fx.path, &abandoned);
+    abandon_commit(&fx.path, &abandoned);
     // A resolvable counterpart, so the OTHER side is never the reason for the refusal.
     let good = change_id_of(&fx.path, &add_commit_off_root(&fx.path, "resolvable"));
     let mut repo = open(&fx);
@@ -1011,6 +1014,10 @@ fn interdiff_refuses_an_unknown_divergent_or_empty_revision_on_either_side() {
     for (spelling, id) in [
         // NOT "zzzzzzzz" — that is a prefix of the ROOT commit's all-zero change id.
         ("unknown", ChangeId("nonexistentchangeid".to_owned())),
+        // Valid reverse hex that no change carries (the root's is all `z`).
+        ("valid but unknown", ChangeId("k".repeat(32))),
+        // Its one commit is abandoned: the change resolves, but to no VISIBLE commit.
+        ("only-hidden", hidden),
         // `resolve_single_rev` parity: two visible commits is ambiguous, and this verb refuses
         // rather than picking one — unlike `show`, which returns both.
         ("divergent", divergent),
@@ -1331,4 +1338,125 @@ fn interdiff_refuses_a_malformed_ambiguous_or_unknown_commit_id_on_either_side()
     }
 
     assert_eq!(head_op_id(&mut repo), before, "a refusal writes no operation either");
+}
+
+// ── interdiff: the `revsets.short-prefixes` context ───────────────────────────────
+
+/// Two commits off root whose `key` (commit hex or change id) shares its first character with an
+/// earlier one, as `(that character, the earlier commit's hex)`. Deterministic by pigeonhole:
+/// 17 keys over 16 digits collide.
+fn colliding_pair(workspace_root: &Path, key: impl Fn(&str) -> String) -> (String, String) {
+    let mut seen = std::collections::HashMap::new();
+    (0..17)
+        .find_map(|i| {
+            let hex = add_commit_off_root(workspace_root, &format!("collision seed {i}"));
+            let first = key(&hex)[..1].to_owned();
+            seen.insert(first.clone(), hex).map(|earlier| (first, earlier))
+        })
+        .expect("17 keys over 16 digits collide")
+}
+
+/// `revsets.short-prefixes` as the repo config's only key.
+fn short_prefixes(workspace_root: &Path, revset: &str) {
+    write_repo_config(workspace_root, &format!("[revsets]\nshort-prefixes = \"{revset}\"\n"));
+}
+
+/// A one-hex-char commit prefix ambiguous repo-wide refuses without a disambiguation set and
+/// resolves when the set holds only one of its commits (the CLI's `CommitPrefixResolver`); a
+/// HIDDEN commit outside the set still resolves through the whole-index fallback.
+#[test]
+fn interdiff_resolves_a_commit_prefix_unique_within_short_prefixes() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let (prefix, target) = colliding_pair(&fx.path, str::to_owned);
+    let good = change_id_of(&fx.path, &add_commit_off_root(&fx.path, "resolvable"));
+    let v1 = add_commit_with_files(&fx.path, &[], &[("a.txt", "one\n")], "v1");
+    _ = rewrite_commit_files(&fx.path, &v1, &[("a.txt", "two\n")]);
+    let mut repo = open(&fx);
+
+    short_prefixes(&fx.path, "");
+    let err = repo
+        .interdiff(Some(cmt(&prefix)), Some(chg(&good)), &[])
+        .expect_err("ambiguous in the whole index");
+    assert!(
+        matches!(&err, CommitViewError::RevsetResolutionError { reason, .. } if reason.contains("ambiguous")),
+        "{err:?}"
+    );
+
+    short_prefixes(&fx.path, &target);
+    let within = repo
+        .interdiff(Some(cmt(&prefix)), Some(chg(&good)), &[])
+        .expect("unique within the set");
+    let full = repo
+        .interdiff(Some(cmt(&target)), Some(chg(&good)), &[])
+        .expect("the full id");
+    assert_eq!(summary(&within.file_changes), summary(&full.file_changes));
+    repo.interdiff(Some(cmt(&v1)), Some(chg(&good)), &[])
+        .expect("a hidden commit resolves through the whole-index fallback");
+}
+
+/// The change-id twin: a one-char (odd-length) reverse-hex prefix ambiguous repo-wide refuses
+/// with jj-lib's `AmbiguousChangeIdPrefix` — no panic — and resolves within the set.
+#[test]
+fn interdiff_resolves_a_change_prefix_unique_within_short_prefixes() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let root = fx.path.clone();
+    let (prefix, target) = colliding_pair(&fx.path, |hex| change_id_of(&root, hex).0);
+    let good = change_id_of(&fx.path, &add_commit_off_root(&fx.path, "resolvable"));
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
+
+    for set in ["", "all()"] {
+        short_prefixes(&fx.path, set);
+        let err = repo
+            .interdiff(Some(chg(&ChangeId(prefix.clone()))), Some(chg(&good)), &[])
+            .expect_err("ambiguous");
+        assert!(
+            matches!(&err, CommitViewError::RevsetResolutionError { reason, hints }
+                if reason.contains(&format!("Change ID prefix `{prefix}` is ambiguous")) && hints.is_empty()),
+            "short-prefixes {set:?}: {err:?}"
+        );
+    }
+
+    short_prefixes(&fx.path, &target);
+    let within = repo
+        .interdiff(Some(chg(&ChangeId(prefix.clone()))), Some(chg(&good)), &[])
+        .expect("unique within the set");
+    let full = repo
+        .interdiff(Some(chg(&change_id_of(&fx.path, &target))), Some(chg(&good)), &[])
+        .expect("the full id");
+    assert_eq!(summary(&within.file_changes), summary(&full.file_changes));
+    assert_eq!(head_op_id(&mut repo), before, "reads write no operation");
+}
+
+/// A `revsets.short-prefixes` set that does not resolve refuses a present side, as the CLI's
+/// prefix resolvers do.
+#[test]
+fn interdiff_refuses_when_short_prefixes_does_not_resolve() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let good = change_id_of(&fx.path, &add_commit_off_root(&fx.path, "resolvable"));
+    short_prefixes(&fx.path, "missing");
+    let mut repo = open(&fx);
+
+    let err = repo
+        .interdiff(Some(chg(&good)), None, &[])
+        .expect_err("the set does not resolve");
+    assert!(
+        matches!(&err, CommitViewError::RevsetResolutionError { reason, .. }
+            if reason.starts_with("Failed to resolve short-prefixes disambiguation revset: ")),
+        "{err:?}"
+    );
+
+    // One that does not PARSE refuses earlier, at the call's start-up environment.
+    short_prefixes(&fx.path, "(");
+    let err = repo
+        .interdiff(Some(chg(&good)), None, &[])
+        .expect_err("the set does not parse");
+    assert!(
+        matches!(&err, CommitViewError::Precondition(zanshin_jj::PreconditionError::Config { reason })
+            if reason.starts_with("Invalid `revsets.short-prefixes`: ")),
+        "{err:?}"
+    );
 }

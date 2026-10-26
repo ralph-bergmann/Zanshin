@@ -1379,14 +1379,15 @@ pub(crate) fn user_email(config: &StackedConfig) -> Result<String, ConfigError> 
 // ── Stack fingerprint ─────────────────────────────────────────────────────────────
 
 /// One file of the stack as the fingerprint sees it: its path, and — when it exists — its
-/// modification time and length.
+/// modification time and length. Also the Git config stamp of [`crate::Repo`] (Story 9.45
+/// follow-up).
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct FileStamp {
+pub(crate) struct FileStamp {
     path: PathBuf,
     meta: Option<(Option<SystemTime>, u64)>,
 }
 
-fn stamp(path: &Path) -> FileStamp {
+pub(crate) fn stamp(path: &Path) -> FileStamp {
     FileStamp {
         path: path.to_owned(),
         meta: std::fs::metadata(path).ok().map(|m| (m.modified().ok(), m.len())),

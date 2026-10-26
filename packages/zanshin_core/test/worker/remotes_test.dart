@@ -41,7 +41,7 @@ void main() {
     });
 
     test('remotes_on_fresh_init_returns_empty_list', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
 
       final List<Remote> rems = await handle.remotes();
 
@@ -52,8 +52,26 @@ void main() {
       await handle.close();
     });
 
-    test('remotes_stable_across_two_calls_on_fresh_repo', () async {
+    test('remotes_on_native_backend_surfaces_not_a_git_repo', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      // `jj git remote list` refuses a repo without a git backend.
+      await expectLater(
+        handle.remotes(),
+        throwsA(
+          isA<ZanshinFfiException>().having(
+            (e) => e.code,
+            'code',
+            'jj.not_a_git_repo',
+          ),
+        ),
+      );
+
+      await handle.close();
+    });
+
+    test('remotes_stable_across_two_calls_on_fresh_repo', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
 
       // Both reads of a fresh repo must return isEmpty — concrete oracle
       // equality per F20 rule.

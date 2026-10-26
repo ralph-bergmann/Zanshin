@@ -1315,16 +1315,23 @@ fn absorb_rows_agree_with_absorb() {
 #[test]
 fn interdiff_rows_agree_with_interdiff() {
     type Case = fn(&Fx) -> (ChangeId, ChangeId);
-    let cases: [Case; 5] = [
-        |fx| (fx.b.clone(), fx.a.clone()),
-        |fx| (fx.b.clone(), fx.b.clone()),
-        |fx| (fx.b.clone(), fx.zero.clone()),
-        |fx| (ChangeId(UNKNOWN.to_owned()), fx.a.clone()),
-        |fx| (fx.b.clone(), ChangeId(UNKNOWN.to_owned())),
+    // The repo config of a case: the last resolves both sides through an unresolvable
+    // `revsets.short-prefixes` set, the call's id-prefix context.
+    let cases: [(Case, &str); 6] = [
+        (|fx| (fx.b.clone(), fx.a.clone()), ""),
+        (|fx| (fx.b.clone(), fx.b.clone()), ""),
+        (|fx| (fx.b.clone(), fx.zero.clone()), ""),
+        (|fx| (ChangeId(UNKNOWN.to_owned()), fx.a.clone()), ""),
+        (|fx| (fx.b.clone(), ChangeId(UNKNOWN.to_owned())), ""),
+        (
+            |fx| (fx.b.clone(), fx.a.clone()),
+            "[revsets]\nshort-prefixes = \"missing\"\n",
+        ),
     ];
     let mut statuses = Vec::new();
-    for case in cases {
+    for (case, config) in cases {
         let mut fx = base(None);
+        fs::write(fx.root.join(".jj").join("repo").join("config.toml"), config).expect("repo config");
         let (source, target) = case(&fx);
         let expected = the_row(&mut fx, &change(&source), onto(&[&target]), DropVerb::Interdiff);
         statuses.push(expected.status);
@@ -1340,11 +1347,16 @@ fn interdiff_rows_agree_with_interdiff() {
                 result.expect("an Available row diffs");
             }
             ActionStatus::Refused => {
+                // `view_err` keeps the variant and its fields, so the row's `MutateError` and the
+                // verb's `CommitViewError` print alike (`ChangeNotFound`, `RevsetResolutionError`).
                 let err = result.expect_err("a Refused row refuses");
-                let zanshin_jj::CommitViewError::ChangeNotFound { id } = err else {
-                    panic!("{err:?}");
-                };
-                assert_eq!(expected.refusal, Some(format!("{:?}", not_found(&id))));
+                assert_eq!(expected.refusal, Some(format!("{err:?}")));
+                assert!(
+                    config.is_empty()
+                        || matches!(&err, zanshin_jj::CommitViewError::RevsetResolutionError { reason, .. }
+                            if reason.starts_with("Failed to resolve short-prefixes disambiguation revset")),
+                    "{err:?}"
+                );
             }
             ActionStatus::NoOp => panic!("interdiff is never a no-op"),
         }
@@ -1355,6 +1367,7 @@ fn interdiff_rows_agree_with_interdiff() {
             ActionStatus::Available,
             ActionStatus::Available,
             ActionStatus::Available,
+            ActionStatus::Refused,
             ActionStatus::Refused,
             ActionStatus::Refused
         ]

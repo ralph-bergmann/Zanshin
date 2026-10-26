@@ -369,10 +369,18 @@ impl Rows<'_> {
                 ..Planned::AVAILABLE
             })
         })?;
-        let interdiff = self.row(ctx, |tx, _ctx| {
+        let interdiff = self.row(ctx, |tx, ctx| {
             let from = RevisionRef::ChangeId(change.clone());
             let to = RevisionRef::ChangeId(target.clone());
-            plan_interdiff(tx.repo(), self.workspace.workspace_name(), Some(&from), Some(&to)).map_err(view_err)?;
+            let prefixes = ctx.template_startup.id_prefix_context();
+            plan_interdiff(
+                tx.repo(),
+                self.workspace.workspace_name(),
+                &prefixes,
+                Some(&from),
+                Some(&to),
+            )
+            .map_err(view_err)?;
             Ok(Planned::AVAILABLE)
         })?;
         Ok([

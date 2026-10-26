@@ -45,6 +45,7 @@ use std::sync::Arc;
 use futures::TryStreamExt as _;
 use jj_lib::backend::CommitId;
 use jj_lib::commit::Commit;
+use jj_lib::id_prefix::IdPrefixIndex;
 use jj_lib::matchers::Matcher;
 use jj_lib::merge::Diff;
 use jj_lib::merged_tree::MergedTree;
@@ -681,75 +682,103 @@ pub(crate) fn resolve_ordered(
     Ok(Some(resolved))
 }
 
-/// Why a COMMIT-id prefix could not be resolved.
+/// Why a commit-id or change-id PREFIX could not be resolved through an [`IdPrefixIndex`].
 ///
-/// Three stages where [`ResolveError`] has one: the change-id resolver deliberately collapses
-/// malformed/unknown/ambiguous into a single `NotFound`, because a reverse-hex change id that
-/// resolves to several commits is *divergence*, which is a repo state rather than a typo. A
-/// commit-id prefix has no such excuse — "you typed something that is not hex", "that prefix is
-/// too short" and "no such commit" need three different remedies — so the split survives here
-/// and each caller maps it onto its own taxonomy.
+/// Four stages where [`ResolveError`] has one, because "you typed something that is not hex",
+/// "that prefix is too short" and "no such commit" need different remedies; each caller maps
+/// them onto its own taxonomy (the change-id arm of `interdiff` collapses `Malformed` and
+/// `NotFound` again, as [`resolve_commit`] does).
 #[derive(Debug)]
-pub(crate) enum CommitPrefixError {
-    /// The prefix is EMPTY or is not valid hex — a structurally invalid argument, not a miss.
+pub(crate) enum PrefixError {
+    /// The prefix is EMPTY or is not valid (reverse) hex — a structurally invalid argument.
     Malformed,
-    /// Two or more indexed commits carry the prefix; refused rather than guessed.
+    /// The prefix is ambiguous — within the disambiguation set, or (on its `NoMatch`) in the
+    /// whole index; refused rather than guessed.
     Ambiguous,
-    /// Valid hex, but no indexed commit carries it.
+    /// No commit carries it — for a change id: no VISIBLE commit, or more than one (divergent).
     NotFound,
     /// An underlying jj-lib failure (index lookup or store read).
     Backend(String),
 }
 
-/// Resolves a commit-id HEX prefix to its jj-lib [`Commit`] — VISIBLE OR NOT.
+/// Resolves a commit-id HEX prefix to its jj-lib [`Commit`] — VISIBLE OR NOT — the way the
+/// CLI's `CommitPrefixResolver` does (`lib/src/revset.rs` @ v0.46.0): through `index`, the call's
+/// populated `revsets.short-prefixes` context, whose `NoMatch` falls back to the whole index.
 ///
-/// WHY the bare index lookup rather than a revset or the CLI's `IdPrefixContext`: the CLI
-/// resolves a bare hex symbol through `CommitPrefixResolver`, which first consults the
-/// `revsets.short-prefixes` disambiguation set and, on `NoMatch`, falls back to exactly this
-/// call (`jj-lib-0.44.0 id_prefix.rs:161-189`). That fallback is a pure byte-prefix search over
-/// every INDEXED commit with no visibility filter, which is the whole mechanism this resolver
-/// exists for: a HIDDEN commit — an evolog predecessor among them — resolves here, where
-/// [`resolve_commit`]'s `into_visible()` refuses it.
-///
-/// Adopting the context would buy one narrow case (a prefix ambiguous repo-wide but unique
-/// inside `revsets.log`) at the price of a config read plus a revset parse+evaluate per call,
-/// which would give the commit-view verbs `Config` and `RevsetParseError` failure modes they do
-/// not have today. We refuse instead of guessing — the safe direction, and the same choice
-/// [`resolve_commit`] makes (it calls `resolve_change_id` with no prefix context either). A
-/// DELIBERATE divergence from the CLI, and the reason the default disambiguation set does not
-/// help anyway: it holds only visible commits, so a hidden predecessor needs a repo-wide-unique
-/// prefix in the CLI too.
+/// That fallback is a pure byte-prefix search over every INDEXED commit with no visibility
+/// filter, which is the whole mechanism this resolver exists for: a HIDDEN commit — an evolog
+/// predecessor among them — resolves here, where [`resolve_commit`]'s `into_visible()` refuses it.
 ///
 /// This is the commit-id CURRENCY, not a symbol resolver: there is no bookmark, tag or
 /// change-id fallback.
 ///
 /// # Errors
 ///
-/// - [`CommitPrefixError::Malformed`] — `id` is empty or is not valid hex.
-/// - [`CommitPrefixError::Ambiguous`] — the prefix matches several commits.
-/// - [`CommitPrefixError::NotFound`] — valid hex, no match.
-/// - [`CommitPrefixError::Backend`] — an index or store read failed.
+/// - [`PrefixError::Malformed`] — `id` is empty or is not valid hex.
+/// - [`PrefixError::Ambiguous`] — the prefix matches several commits.
+/// - [`PrefixError::NotFound`] — valid hex, no match.
+/// - [`PrefixError::Backend`] — an index or store read failed.
 pub(crate) fn resolve_commit_id_prefix(
     repo: &dyn jj_lib::repo::Repo,
+    index: &IdPrefixIndex<'_>,
     id: &crate::CommitId,
-) -> Result<Commit, CommitPrefixError> {
+) -> Result<Commit, PrefixError> {
     // WHY the explicit empty guard: `try_from_hex("")` succeeds with an EMPTY prefix, which
     // every indexed commit matches — so an omitted value would report as ambiguous (or, in a
     // one-commit repo, silently resolve) instead of being named as the caller bug it is.
     if id.0.is_empty() {
-        return Err(CommitPrefixError::Malformed);
+        return Err(PrefixError::Malformed);
     }
-    let prefix = jj_lib::object_id::HexPrefix::try_from_hex(&id.0).ok_or(CommitPrefixError::Malformed)?;
-    let resolution = pollster::block_on(repo.index().resolve_commit_id_prefix(&prefix))
-        .map_err(|e| CommitPrefixError::Backend(e.to_string()))?;
+    let prefix = jj_lib::object_id::HexPrefix::try_from_hex(&id.0).ok_or(PrefixError::Malformed)?;
+    let resolution = index
+        .resolve_commit_prefix(repo, &prefix)
+        .map_err(|e| PrefixError::Backend(e.to_string()))?;
     match resolution {
         jj_lib::object_id::PrefixResolution::SingleMatch(commit_id) => repo
             .store()
             .get_commit(&commit_id)
-            .map_err(|e| CommitPrefixError::Backend(e.to_string())),
-        jj_lib::object_id::PrefixResolution::AmbiguousMatch => Err(CommitPrefixError::Ambiguous),
-        jj_lib::object_id::PrefixResolution::NoMatch => Err(CommitPrefixError::NotFound),
+            .map_err(|e| PrefixError::Backend(e.to_string())),
+        jj_lib::object_id::PrefixResolution::AmbiguousMatch => Err(PrefixError::Ambiguous),
+        jj_lib::object_id::PrefixResolution::NoMatch => Err(PrefixError::NotFound),
     }
+}
+
+/// [`resolve_commit_id_prefix`]'s change-id twin — the CLI's `ChangePrefixResolver`
+/// (`lib/src/revset.rs` @ v0.46.0) without its `/offset` form: a reverse-hex PREFIX (odd
+/// lengths too) resolved through `index`, whose `NoMatch` falls back to the whole index, to the
+/// ONE visible commit carrying the change. Unknown, only-hidden and divergent all stay
+/// [`PrefixError::NotFound`], the collapse [`resolve_commit`] makes.
+///
+/// # Errors
+///
+/// - [`PrefixError::Malformed`] — `id` is empty or is not valid reverse hex.
+/// - [`PrefixError::Ambiguous`] — the prefix matches several changes.
+/// - [`PrefixError::NotFound`] — no change, or not exactly one visible commit of it.
+/// - [`PrefixError::Backend`] — an index or store read failed.
+pub(crate) fn resolve_change_id_prefix(
+    repo: &dyn jj_lib::repo::Repo,
+    index: &IdPrefixIndex<'_>,
+    id: &crate::ChangeId,
+) -> Result<Commit, PrefixError> {
+    // The empty guard of `resolve_commit_id_prefix`, for the same reason.
+    if id.0.is_empty() {
+        return Err(PrefixError::Malformed);
+    }
+    let prefix = jj_lib::object_id::HexPrefix::try_from_reverse_hex(&id.0).ok_or(PrefixError::Malformed)?;
+    let resolution = pollster::block_on(index.resolve_change_prefix(repo, &prefix))
+        .map_err(|e| PrefixError::Backend(e.to_string()))?;
+    let targets = match resolution {
+        jj_lib::object_id::PrefixResolution::SingleMatch(targets) => targets,
+        jj_lib::object_id::PrefixResolution::AmbiguousMatch => return Err(PrefixError::Ambiguous),
+        jj_lib::object_id::PrefixResolution::NoMatch => return Err(PrefixError::NotFound),
+    };
+    let visible = targets.into_visible().ok_or(PrefixError::NotFound)?;
+    let [commit_id] = visible.as_slice() else {
+        return Err(PrefixError::NotFound);
+    };
+    repo.store()
+        .get_commit(commit_id)
+        .map_err(|e| PrefixError::Backend(e.to_string()))
 }
 
 /// Resolves `id`, or — when it is `None` — the workspace's working-copy commit, mirroring

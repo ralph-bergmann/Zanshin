@@ -1690,7 +1690,7 @@ So that consumers can render the remote list (FR-JJ-9) and Epic 6's fetch/push s
 
 **Given** the implementation
 **When** inspected
-**Then** it queries jj's git-backend remote config via jj-lib (for Git-backed repos) or returns empty for native-backend repos
+**Then** it queries jj's git-backend remote config via jj-lib (for Git-backed repos) or refuses native-backend repos (`RemoteError::NotAGitRepo`)
 **And** does NOT shell to `jj git remote list` (AR-AP-1).
 
 **Given** unit tests in `crates/zanshin-jj/tests/remotes.rs`
@@ -1710,8 +1710,8 @@ So that consumers can render the remote list (FR-JJ-9) and Epic 6's fetch/push s
 
 **Given** a repo with the native backend (not Git-backed)
 **When** `Repo::list_remotes()` is called
-**Then** it returns empty Vec (no concept of remotes for native backend)
-**And** does not error.
+**Then** it refuses with `RemoteError::NotAGitRepo` (FFI `jj.not_a_git_repo`), as `jj git remote list` refuses it
+**And** lists nothing. *(Reworded 2026-10-26, Ralph — was "returns empty Vec … does not error", a divergence from the CLI @ v0.46.0.)*
 
 ---
 

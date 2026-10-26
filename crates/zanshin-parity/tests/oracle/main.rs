@@ -276,6 +276,8 @@ parity!(
     bookmark_move_backwards_allowed,
     bookmark_move_from,
     bookmark_move_from_short_prefix,
+    interdiff_from_short_commit_prefix,
+    interdiff_from_short_change_prefix,
     bookmark_move_names_and_from,
     bookmark_move_conflicted_to_descendant,
     bookmark_advance_from_config,
@@ -537,7 +539,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 467);
+    assert_eq!(SCENARIO_IDS.len(), 469);
 }
 
 #[test]

@@ -345,7 +345,7 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.jj_lib_error`).
+  /// `jj.not_a_git_repo` for a native-backend repo, `jj.jj_lib_error`).
   Future<WarnedList<Remote>> remotes() {
     if (_closed) {
       throw StateError('RepoHandle is already closed');

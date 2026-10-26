@@ -442,6 +442,7 @@ fn api_surface_resolves() {
     _ = zanshin_jj::OpLogError::Backend(String::new());
     _ = zanshin_jj::BookmarkError::Backend(String::new());
     _ = zanshin_jj::RemoteError::Backend(String::new());
+    _ = zanshin_jj::RemoteError::NotAGitRepo;
     _ = sample_remote();
     _ = zanshin_jj::RevsetError::JjLibError(String::new());
     // remotes: git_fetch progress callback (Story 6.4a) — pin the callback type and

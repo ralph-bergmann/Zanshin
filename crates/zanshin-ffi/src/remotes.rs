@@ -23,7 +23,7 @@ use zanshin_jj::{Remote, RemoteError, RemoteRefChange, RemoteRefChangeKind, Remo
 
 use crate::envelope::{
     catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
-    JJ_JJ_LIB_ERROR,
+    JJ_JJ_LIB_ERROR, JJ_NOT_A_GIT_REPO,
 };
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
@@ -32,6 +32,12 @@ use crate::repo::map_mutate_err;
 fn map_remotes_err(e: RemoteError) -> FfiErrorObj {
     match e {
         RemoteError::Precondition(e) => map_precondition_err(e),
+        RemoteError::NotAGitRepo => FfiErrorObj {
+            report: None,
+            hints: Vec::new(),
+            code: JJ_NOT_A_GIT_REPO.to_owned(),
+            context: None,
+        },
         RemoteError::Backend(reason) => FfiErrorObj {
             report: None,
             hints: Vec::new(),
@@ -81,6 +87,8 @@ fn remotes_to_envelope(remotes: &[Remote], report: &crate::envelope::CallReport)
 ///   `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
+/// - `jj.not_a_git_repo` — the repo has no git backend (a native-backend repo), refused as
+///   `jj git remote list` refuses it.
 /// - `jj.jj_lib_error` — a remote fails to load (the call refuses as `jj git remote list`
 ///   does; the CLI has printed the remotes sorted before the broken one by then, an error
 ///   envelope carries no payload, so nothing is listed), or another unclassified jj-lib
@@ -317,7 +325,7 @@ mod tests {
     use zanshin_jj::{Remote, RemoteError};
 
     use super::{map_remotes_err, push_remotes_to_envelope, remote_changes_to_envelope, remotes_to_envelope};
-    use crate::envelope::JJ_JJ_LIB_ERROR;
+    use crate::envelope::{JJ_JJ_LIB_ERROR, JJ_NOT_A_GIT_REPO};
     use crate::fbs;
 
     #[test]
@@ -401,6 +409,15 @@ mod tests {
         let obj = map_remotes_err(RemoteError::Backend("boom".to_owned()));
         assert_eq!(obj.code, JJ_JJ_LIB_ERROR);
         assert_eq!(obj.context, Some("boom".to_owned()));
+    }
+
+    #[test]
+    fn map_remotes_err_not_a_git_repo_maps_to_its_code() {
+        let obj = map_remotes_err(RemoteError::NotAGitRepo);
+        assert_eq!(obj.code, JJ_NOT_A_GIT_REPO);
+        assert_eq!(obj.context, None);
+        assert!(obj.hints.is_empty());
+        assert!(obj.report.is_none());
     }
 
     #[test]

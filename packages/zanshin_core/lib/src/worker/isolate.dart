@@ -979,7 +979,8 @@ class ZanshinWorker {
   /// `Envelope<Remotes>` bytes into a `List<Remote>`.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.jj_lib_error`). Completes with a [StateError] after [close].
+  /// `jj.not_a_git_repo` for a native-backend repo, `jj.jj_lib_error`).
+  /// Completes with a [StateError] after [close].
   /// The close-guard [StateError] is delivered synchronously by [RepoHandle.remotes].
   Future<WarnedList<repo_ffi_remotes.Remote>> remotes(int handleId) async {
     final Uint8List bytes = await send(

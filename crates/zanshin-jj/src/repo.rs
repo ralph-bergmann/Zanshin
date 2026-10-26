@@ -195,9 +195,11 @@ pub enum Backend {
 /// reaches `describe` and no other verb. The call start reloads the workspace only when the
 /// stack resolved for this call's command differs from the one its settings were built from — so
 /// a stack without command scopes never reloads between verbs ([`Repo::refresh_settings`]).
-/// It also reloads when `.jj/repo/store/git_target` changed on disk (Story 9.45), since jj-lib's
-/// Git backend resolves the Git directory only at load — so a colocation toggle on another handle
-/// or in a terminal moves this handle's next call to the Git directory now on disk.
+/// It also reloads when `.jj/repo/store/git_target` or that Git directory's `config` changed on
+/// disk (Story 9.45 and its follow-up), since jj-lib's Git backend resolves the Git directory and
+/// snapshots its config only at load — so a colocation toggle, or an edit of the repository's own
+/// Git config file (`git remote add`, `git config --local`), on another handle or in a terminal
+/// reaches this handle's next call.
 ///
 /// Every verb whose CLI counterpart snapshots first (`workspace_helper`) runs the same implicit
 /// snapshot + colocated Git import before it does anything else (Story 9.26); its report is
@@ -208,9 +210,9 @@ pub struct Repo {
     settings: UserSettings,
     /// What `settings` was derived from — see [`Repo::refresh_settings`].
     stack_fingerprint: crate::config::StackFingerprint,
-    /// The bytes of `store/git_target` the workspace was loaded with (absent: non-Git backend or
-    /// unreadable) — see [`Repo::refresh_settings`].
-    git_target: Option<Vec<u8>>,
+    /// `store/git_target` and the Git config the workspace was loaded with — see
+    /// [`Repo::refresh_settings`].
+    git_stamp: GitStamp,
     /// The last precondition's report, until [`Repo::take_precondition`] takes it.
     pending_precondition: Option<crate::Precondition>,
     /// The last verb's warnings, until [`Repo::take_warnings`] takes them. Reset at the start of
@@ -225,11 +227,29 @@ pub struct Repo {
     command: crate::cli_command::CliCommand,
 }
 
-/// The raw bytes of `<repo_path>/store/git_target` — the file jj-lib's `GitBackend::load` resolves
-/// the Git directory from; absent for a non-Git backend, and when unreadable (the reload's own
-/// load then reports the fault).
-fn read_git_target(repo_path: &Path) -> Option<Vec<u8>> {
-    std::fs::read(repo_path.join("store").join("git_target")).ok()
+/// What jj-lib's `GitBackend::load` read and keeps for the handle's lifetime: the raw bytes of
+/// `<repo_path>/store/git_target` (the Git directory, Story 9.45) and the stamp (mtime, length) of
+/// that directory's `config` (gix's config snapshot — a `git remote add` or `git config` from a
+/// terminal). `target` is absent for a non-Git backend and when unreadable (the reload's own load
+/// then reports the fault), `config` whenever `target` is.
+#[derive(Debug, PartialEq, Eq)]
+struct GitStamp {
+    target: Option<Vec<u8>>,
+    config: Option<crate::config::FileStamp>,
+}
+
+fn read_git_stamp(repo_path: &Path) -> GitStamp {
+    // shortcut: only `<git dir>/config` is stamped (not the global/system gitconfig, include
+    // targets or `config.worktree`), and by mtime+length, so a same-length edit within one mtime
+    // tick goes unseen; upgrade to stamping gix's config source list (or content hashing) if those
+    // edits must reach an open handle.
+    let store = repo_path.join("store");
+    let target = std::fs::read(store.join("git_target")).ok();
+    let config = target
+        .as_deref()
+        .and_then(|bytes| jj_lib::file_util::path_from_bytes(bytes).ok())
+        .map(|git_dir| crate::config::stamp(&store.join(git_dir).join("config")));
+    GitStamp { target, config }
 }
 
 impl std::fmt::Debug for Repo {
@@ -265,7 +285,8 @@ impl Repo {
     /// built. Right after the loader, the CLI's start-up secure-config fix-up runs (Story 9.37,
     /// [`crate::config::fix_up_secure_config`]; its warnings land in `warnings`, on success AND
     /// on failure), so the fingerprint taken next is POST-fix-up and a migration costs no
-    /// second reload. The fingerprint and `store/git_target`'s bytes are taken before the
+    /// second reload. The fingerprint and the Git stamp (`store/git_target`'s bytes, the Git
+    /// config's mtime and length) are taken before the
     /// settings and the load — a change in between costs one redundant reload later, never a
     /// missed one. The settings are resolved for `command`, the CLI command of the call that
     /// loads (Story 9.41). The two error mappers let [`Repo::open_with_report`] and
@@ -288,7 +309,7 @@ impl Repo {
             .map_err(&config_error)?;
         let stack_fingerprint =
             crate::config::stack_fingerprint(loader.repo_path(), loader.workspace_root()).map_err(&config_error)?;
-        let git_target = read_git_target(loader.repo_path());
+        let git_stamp = read_git_stamp(loader.repo_path());
         let settings = crate::config::user_settings_for(&*loader, command).map_err(&config_error)?;
         let workspace = loader
             .load(
@@ -306,7 +327,7 @@ impl Repo {
             workspace,
             settings,
             stack_fingerprint,
-            git_target,
+            git_stamp,
             pending_precondition: None,
             pending_warnings: crate::warning::Warnings::default(),
             trunk_fallback: false,
@@ -335,7 +356,11 @@ impl Repo {
     /// loaded with (Story 9.45): jj-lib's Git backend resolves the Git directory once, at load, so
     /// a colocation toggle by another handle or by `jj git colocation enable|disable` would leave
     /// this handle on the moved-away directory; the reload puts the call on the Git directory now
-    /// on disk, as every CLI command loads it afresh.
+    /// on disk, as every CLI command loads it afresh. Likewise iff the repository's own Git config
+    /// file (`<git dir>/config`) changed (mtime or length; follow-up of Story 9.45): gix keeps the
+    /// config snapshot it took at load, so an external `git remote add` or `git config --local`
+    /// would otherwise stay invisible to `list_remotes` and every other config read. Unchanged, it
+    /// costs one `stat`.
     ///
     /// The CLI builds its `UserSettings` per invocation, so an external `jj config set` (or a
     /// Zanshin config edit) takes effect on its very next command; this is the same, at the
@@ -372,7 +397,7 @@ impl Repo {
         let current = crate::config::stack_fingerprint(self.workspace.repo_path(), self.workspace.workspace_root())
             .map_err(crate::mutate::cfg)?;
         let reload =
-            current != self.stack_fingerprint || read_git_target(self.workspace.repo_path()) != self.git_target || {
+            current != self.stack_fingerprint || read_git_stamp(self.workspace.repo_path()) != self.git_stamp || {
                 let (resolved, _) =
                     crate::config::resolve_raw(&env, Some(paths), &raw, command).map_err(crate::mutate::cfg)?;
                 !crate::config::same_resolution(&resolved, self.settings.config())
@@ -829,8 +854,8 @@ impl Repo {
     /// Lists configured git remotes with their fetch/push URLs, sorted by name (FR-JJ-9).
     ///
     /// Re-resolves to the head operation per call (ADR-0002). Read-only; never
-    /// shells to `jj git remote list` (AR-AP-1). A non-git (native) backend, or a
-    /// git-backed repo with no remotes, yields `Ok(vec![])`.
+    /// shells to `jj git remote list` (AR-AP-1). A git-backed repo with no remotes yields
+    /// `Ok(vec![])`; a non-git (native) backend refuses, as the CLI's `get_git_repo(..)?` does.
     ///
     /// [`crate::Remote::push_url`] is present only when it DIFFERS from the fetch URL —
     /// the same question `jj git remote list` answers with its `(push: …)` suffix.
@@ -839,6 +864,7 @@ impl Repo {
     ///
     /// # Errors
     ///
+    /// - [`crate::RemoteError::NotAGitRepo`] — the workspace has no git backend.
     /// - [`crate::RemoteError::Backend`] — the head load failed, or a remote fails to load
     ///   (the call refuses as `jj git remote list` does; the CLI has printed the remotes
     ///   sorted before the broken one by then, an error carries no list); the jj-lib chain
@@ -1256,12 +1282,12 @@ impl Repo {
     /// (ADR-0002 Addendum 2026-09-30). Ids are full hex only — no prefix resolution. An empty
     /// list is `Ok(vec![])`. It reads through the Git directory on disk now (Story 9.45 closing
     /// run): a changed `store/git_target` — a colocation toggle by another handle or a terminal —
-    /// reloads the workspace first, the one thing it does to `self`.
+    /// or Git config reloads the workspace first, the one thing it does to `self`.
     ///
     /// # Errors
     ///
     /// In check order:
-    /// - [`crate::CommitContentError::Backend`] — `store/git_target` changed and the workspace
+    /// - [`crate::CommitContentError::Backend`] — `store/git_target` or the Git config changed and the workspace
     ///   could not be reloaded.
     /// - [`crate::CommitContentError::InvalidInput`] — `operation_id` is empty, not hex, or not
     ///   a full operation id.
@@ -1302,7 +1328,7 @@ impl Repo {
     ///
     /// Call-level faults only, each a [`crate::Warned`] carrying the warnings collected before it
     /// (in order — the CLI prints them before it fails):
-    /// - [`crate::RevsetSearchError::Backend`] — `store/git_target` changed and the workspace
+    /// - [`crate::RevsetSearchError::Backend`] — `store/git_target` or the Git config changed and the workspace
     ///   could not be reloaded (no warnings).
     /// - [`crate::RevsetSearchError::InvalidInput`] — `operation_id` is empty, not hex, or not a
     ///   full operation id.
@@ -2059,8 +2085,9 @@ impl Repo {
     /// [`Repo::clone_into`], which drops its throwaway transaction and reloads for the same
     /// reason.
     ///
-    /// `store/git_target`'s bytes are read before the load and recorded with the new workspace
-    /// (Story 9.45 closing run), as in [`Repo::load_effective`].
+    /// The Git stamp (`store/git_target`'s bytes, the Git config's mtime and length) is read
+    /// before the load and recorded with the new workspace (Story 9.45 closing run), as in
+    /// [`Repo::load_effective`].
     fn reload_workspace(&mut self) -> Result<(), crate::MutateError> {
         self.load_workspace_again().map_err(crate::MutateError::Backend)
     }
@@ -2068,7 +2095,7 @@ impl Repo {
     /// [`Repo::reload_workspace`]'s body, failing with the jj-lib reason alone.
     fn load_workspace_again(&mut self) -> Result<(), String> {
         let root = self.workspace.workspace_root().to_owned();
-        let git_target = read_git_target(self.workspace.repo_path());
+        let git_stamp = read_git_stamp(self.workspace.repo_path());
         self.workspace = Workspace::load(
             &self.settings,
             &root,
@@ -2076,16 +2103,17 @@ impl Repo {
             &default_working_copy_factories(),
         )
         .map_err(|e| e.to_string())?;
-        self.git_target = git_target;
+        self.git_stamp = git_stamp;
         Ok(())
     }
 
-    /// The op-pinned reads' share of [`Repo::refresh_settings`]'s `store/git_target` rule (Story
-    /// 9.45 closing run): when the bytes on disk differ from the recorded ones the workspace is
+    /// The op-pinned reads' share of [`Repo::refresh_settings`]'s Git stamp rule (Story 9.45
+    /// closing run): when `store/git_target`'s bytes or the Git config's stamp on disk differ from
+    /// the recorded ones the workspace is
     /// reloaded ([`Repo::reload_workspace`] — settings, precondition and warnings untouched), so
     /// the read runs on the Git directory now on disk. A failure is the reload's jj-lib reason.
     fn follow_git_target(&mut self) -> Result<(), String> {
-        if read_git_target(self.workspace.repo_path()) != self.git_target {
+        if read_git_stamp(self.workspace.repo_path()) != self.git_stamp {
             self.load_workspace_again()?;
         }
         Ok(())
@@ -2199,7 +2227,7 @@ impl Repo {
     }
 
     /// Runs a colocation toggle as `command`; when the toggle reloaded the workspace (its store
-    /// `Arc` changed) the handle re-records `store/git_target`'s bytes from disk, so the recorded
+    /// `Arc` changed) the handle re-records its Git stamp from disk, so the recorded `store/git_target`
     /// bytes keep naming the Git directory its backend now uses (Story 9.45 closing run) — else a
     /// sibling toggling back would restore the pre-toggle bytes and this handle would never reload.
     fn toggle_colocation(
@@ -2214,7 +2242,7 @@ impl Repo {
             let before = std::sync::Arc::clone(repo.workspace.repo_loader().store());
             let result = toggle(repo.workspace_mut(), ctx);
             if !std::sync::Arc::ptr_eq(&before, repo.workspace.repo_loader().store()) {
-                repo.git_target = read_git_target(repo.workspace.repo_path());
+                repo.git_stamp = read_git_stamp(repo.workspace.repo_path());
             }
             result
         })
@@ -2576,11 +2604,13 @@ impl Repo {
     ///
     /// Unlike [`Repo::show`], each side is a SINGLE revision, written in one of the two
     /// [`crate::RevisionRef`] currencies, and both inherit the CLI's `resolve_single_rev`
-    /// REFUSAL — an ambiguous revision is rejected rather than guessed. A
-    /// [`crate::RevisionRef::ChangeId`] is the house reverse-hex change-id prefix (Story 9.3,
-    /// FR-JJ-17) and resolves only to the currently VISIBLE commit carrying it; a
-    /// [`crate::RevisionRef::CommitId`] is a commit-id hex prefix resolved through jj-lib's
-    /// index, which is visibility-blind and therefore reaches a HIDDEN commit. That second arm
+    /// REFUSAL — an ambiguous revision is rejected rather than guessed. Both resolve through the
+    /// effective `revsets.short-prefixes` id-prefix context first, as the CLI's `--from`/`--to`
+    /// symbols do, so a prefix unique within that set resolves even when it is ambiguous
+    /// repo-wide. A [`crate::RevisionRef::ChangeId`] is a reverse-hex change-id prefix (Story
+    /// 9.3, FR-JJ-17; odd lengths too) and resolves only to the currently VISIBLE commit carrying
+    /// it; a [`crate::RevisionRef::CommitId`] is a commit-id hex prefix whose whole-index
+    /// fallback is visibility-blind and therefore reaches a HIDDEN commit. That second arm
     /// is what lets the predecessors [`Repo::evolog`] reports be fed back in, so the two verbs
     /// DO compose into a diff of one version of a change against the next. A revset expression
     /// (`main`, `@-`) is still unaddressable on either arm, where the CLI accepts one.
@@ -2616,9 +2646,12 @@ impl Repo {
     ///   ABSENT side is not an error: ONE absent side applies the CLI's `--from`/`--to` default
     ///   `@`, and omitting BOTH is the `InvalidInput` bullet above.
     /// - [`crate::CommitViewError::RevsetResolutionError`] — a [`crate::RevisionRef::CommitId`]
-    ///   prefix is carried by two or more commits; refused, never resolved to one of them. Or an
-    ///   absent side's `@` in a workspace with no working-copy commit ("Workspace `<name>`
-    ///   doesn't have a working-copy commit").
+    ///   or [`crate::RevisionRef::ChangeId`] prefix is ambiguous — within the
+    ///   `revsets.short-prefixes` set the CLI resolves both sides through, or (outside it) in the
+    ///   whole index; refused, never resolved to one of them. Or a present side's
+    ///   `revsets.short-prefixes` set does not resolve ("Failed to resolve short-prefixes
+    ///   disambiguation revset: …"), or an absent side's `@` in a workspace with no working-copy
+    ///   commit ("Workspace `<name>` doesn't have a working-copy commit").
     /// - [`crate::CommitViewError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: an OWNED single-revision parameter is the house SHAPE (epics.md Story 6.1 / AC-1);
@@ -2633,7 +2666,15 @@ impl Repo {
         paths: &[String],
     ) -> Result<crate::InterdiffView, crate::CommitViewError> {
         self.with_verb(cli_command::INTERDIFF, |repo, ctx| {
-            crate::commit_views::interdiff(repo.workspace(), &mut ctx.warnings, from.as_ref(), to.as_ref(), paths)
+            let prefixes = ctx.template_startup.id_prefix_context();
+            crate::commit_views::interdiff(
+                repo.workspace(),
+                &mut ctx.warnings,
+                &prefixes,
+                from.as_ref(),
+                to.as_ref(),
+                paths,
+            )
         })
     }
 
@@ -3780,7 +3821,8 @@ impl Repo {
     /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
     ///   commit, or divergent.
     /// - [`crate::MutateError::Immutable`] — a target that would move is inside the repo's
-    ///   effective immutable set.
+    ///   effective immutable set, or the ROOT commit is among the targets (no hints, nothing
+    ///   written). A deliberate divergence: the CLI panics in jj-lib there.
     /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
@@ -5097,6 +5139,51 @@ mod tests {
         assert!(!std::sync::Arc::ptr_eq(&before, &reloaded), "rewritten bytes reload");
         repo.follow_git_target().expect("settled");
         assert!(std::sync::Arc::ptr_eq(&reloaded, &store(&repo)), "and only once");
+    }
+
+    /// The Git stamp's second half: an edited `<git dir>/config` (a terminal's `git remote add`)
+    /// reloads once through both the call start and the op-pinned reads' follow; untouched, it
+    /// keeps the workspace.
+    #[test]
+    fn an_edited_git_config_reloads_the_workspace_once() {
+        let (fx, mut repo) = open_fixture();
+        let store = |repo: &Repo| std::sync::Arc::clone(repo.workspace.repo_loader().store());
+        let store_dir = fx.path.join(".jj").join("repo").join("store");
+        let target = std::fs::read(store_dir.join("git_target")).expect("a git-backed fixture");
+        let config = store_dir
+            .join(jj_lib::file_util::path_from_bytes(&target).expect("a path"))
+            .join("config");
+        let append = |section: &str| {
+            let text = std::fs::read_to_string(&config).expect("git config");
+            std::fs::write(
+                &config,
+                format!("{text}[remote \"{section}\"]\n\turl = /tmp/{section}\n"),
+            )
+            .expect("edit");
+        };
+
+        let before = store(&repo);
+        repo.refresh_settings(cli_command::STATUS, &mut Vec::new())
+            .expect("unchanged");
+        assert!(
+            std::sync::Arc::ptr_eq(&before, &store(&repo)),
+            "unchanged config, no reload"
+        );
+        append("ext");
+        repo.refresh_settings(cli_command::STATUS, &mut Vec::new())
+            .expect("edited");
+        let reloaded = store(&repo);
+        assert!(!std::sync::Arc::ptr_eq(&before, &reloaded), "an edited config reloads");
+        repo.refresh_settings(cli_command::STATUS, &mut Vec::new())
+            .expect("settled");
+        assert!(std::sync::Arc::ptr_eq(&reloaded, &store(&repo)), "and only once");
+
+        append("ext2");
+        repo.follow_git_target().expect("edited again");
+        let followed = store(&repo);
+        assert!(!std::sync::Arc::ptr_eq(&reloaded, &followed), "the follow reloads too");
+        repo.follow_git_target().expect("settled");
+        assert!(std::sync::Arc::ptr_eq(&followed, &store(&repo)), "and only once");
     }
 
     /// Story 9.41's per-call-site witness: every `&mut self` verb records the CLI command its config

@@ -6,8 +6,8 @@
 //! and their fetch/push URLs, and lets [`crate::Repo::git_fetch`] actually sync with them (Story
 //! 9.30: `jj git fetch`'s remote and ref selection).
 //! Re-resolves to the head operation per call (ADR-0002), never shells to the `jj`
-//! CLI (AR-AP-1). A non-git (native) backend has no remotes and yields an empty list
-//! (never an error) from `list_remotes`, or `NotAGitRepo` from `git_fetch`.
+//! CLI (AR-AP-1). A non-git (native) backend refuses both, as the CLI does: `NotAGitRepo`
+//! from `list_remotes` and from `git_fetch`.
 
 use std::io;
 
@@ -74,6 +74,11 @@ pub enum RemoteError {
     /// [`crate::PreconditionError`].
     #[error(transparent)]
     Precondition(#[from] crate::PreconditionError),
+    /// The open workspace has no git backend — jj-lib's `UnexpectedGitBackendError`, which
+    /// `jj git remote list` reports before it lists anything; the FFI's `jj.not_a_git_repo`,
+    /// as [`crate::MutateError::NotAGitRepo`].
+    #[error("not a git repository")]
+    NotAGitRepo,
     /// An underlying jj-lib failure (loader read), opaque-string-wrapped so no
     /// `jj_lib` type escapes the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
@@ -119,11 +124,13 @@ fn find_remote(git_repo: &gix::Repository, name: &RemoteName) -> Result<Option<R
 /// Lists configured git remotes with their fetch/push URLs, sorted by name (FR-JJ-9).
 ///
 /// Re-resolves to the head operation every call (ADR-0002). Read-only; never
-/// shells to `jj git remote list` (AR-AP-1). A non-git (native) backend, or a
-/// git-backed repo with no remotes, yields `Ok(vec![])`.
+/// shells to `jj git remote list` (AR-AP-1). A git-backed repo with no remotes yields
+/// `Ok(vec![])`.
 ///
 /// # Errors
 ///
+/// - [`RemoteError::NotAGitRepo`] — the store is not git-backed (the CLI's
+///   `get_git_repo(..)?`, `cli/src/commands/git/remote/list.rs:37` @ v0.46.0).
 /// - [`RemoteError::Backend`] — the head load failed, or a remote fails to load
 ///   (the call refuses as the CLI's does; the CLI has printed the remotes sorted
 ///   before the broken one by then, an error carries no list); the jj-lib chain is
@@ -133,16 +140,8 @@ pub(crate) fn list_remotes(workspace: &Workspace) -> Result<Vec<Remote>, RemoteE
     let readonly = crate::snapshot::reload_head(workspace).map_err(re)?;
     let store = readonly.store();
 
-    // `unwrap_or_default` collapses the native-backend `UnexpectedGitBackendError`
-    // to "no remotes". A native repo (`Repo::init(path, None)` -> `init_simple`) is a
-    // live, reachable path; it correctly yields an empty list (FR-JJ-9 native-backend AC).
-    let names = git::get_all_remote_names(store).unwrap_or_default();
-    if names.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // names non-empty => the store is git-backed => get_git_repo succeeds.
-    let git_repo = git::get_git_repo(store).map_err(re)?;
+    let git_repo = git::get_git_repo(store).map_err(|_| RemoteError::NotAGitRepo)?;
+    let names = git::get_all_remote_names(store).map_err(re)?;
 
     let mut out: Vec<Remote> = Vec::with_capacity(names.len());
     for name in &names {

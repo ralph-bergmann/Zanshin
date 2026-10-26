@@ -72,6 +72,21 @@ fn parallelize_allows_an_immutable_root_but_refuses_an_immutable_commit_that_mov
     );
 }
 
+/// The root commit in the set — alone, or with its child A — is refused as immutable (no hints)
+/// before jj-lib's `new_parents(&[])` assertion, where the CLI panics (a deliberate divergence).
+#[test]
+fn parallelize_refuses_a_set_containing_the_root_commit() {
+    let mut fx = base();
+    let root_hex = hex(&fx.root, &fx.zero);
+    for set in [vec![fx.zero.clone()], vec![fx.zero.clone(), fx.a.clone()]] {
+        let err = refused(&mut fx, |repo| repo.parallelize(&set));
+        assert!(
+            matches!(&err, MutateError::Immutable { commit_id, hints } if *commit_id == root_hex && hints.is_empty()),
+            "{set:?}: {err:?}"
+        );
+    }
+}
+
 #[test]
 fn parallelize_an_unknown_change_refuses() {
     let mut fx = base();

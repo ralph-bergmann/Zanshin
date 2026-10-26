@@ -631,7 +631,7 @@ or no `# Errors` block.
 | `zanshin_file_annotate` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileAnnotateRequest` | `FileAnnotation` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.path_not_found`, `jj.not_a_file`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.4 |
 | `zanshin_file_search` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileSearchRequest` | `FileSearch` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.4 |
 | `zanshin_bookmarks` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkListRequest` | `Bookmarks` (rows + tracking facts, see § `Bookmarks` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b, 9.29, 9.19 |
-| `zanshin_remotes` | `(uint64_t handle)` | — | `Remotes` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_remotes` | `(uint64_t handle)` | — | `Remotes` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_git_push_remotes` | `(uint64_t handle)` | — | `GitPushRemotes` (the default push remotes; empty when none matches or on a non-Git backend) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.54 |
 | `zanshin_git_fetch_remotes` | `(uint64_t handle)` | — | `GitFetchRemotes` (the default fetch remotes — the Fetch button's enable rule; empty when none matches or on a non-Git backend) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.30 |
 | `zanshin_workspace_list` | `(uint64_t handle)` | — | `WorkspaceList` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.7 |
@@ -1889,7 +1889,8 @@ then present. A `[remote "<name>"]` section with no URL at all is skipped, as in
 gix cannot load (an invalid `fetch` refspec, for one) refuses the call `jj.jj_lib_error` with
 jj-lib's chain in `context` (`Unexpected Git error when managing remotes: …`), as the CLI's
 `try_find_active_remote(..)?` does; the CLI has printed the remotes sorted before the broken one
-by then, and an error envelope carries no payload, so nothing is listed. A non-Git backend lists nothing. Dart: `RepoHandle.remotes()`
+by then, and an error envelope carries no payload, so nothing is listed. A non-Git backend refuses
+`jj.not_a_git_repo` (no `context`), as the CLI's `get_git_repo(..)?` does. Dart: `RepoHandle.remotes()`
 → `WarnedList<Remote>`, `Remote.url` and `Remote.pushUrl` both `String?`.
 
 ---
@@ -2007,8 +2008,9 @@ no operation: a rebase with no revisions to move or whose planned move changes n
 with nothing to squash, a bookmark already at the target or of a name no local bookmark has, a
 revert with no revisions (unreachable here: a row always names one change), a restore whose tree is already the destination's, an absorb with no
 hunk to absorb; only those six report it. `Interdiff` is a read — never `NoOp`, `Available` for
-any two changes that resolve; its refusal (`jj.change_not_found`) has the same code and `context`
-as `zanshin_interdiff`'s. The absorb row's `T` is resolved like every location id (`zanshin_absorb`
+any two changes that resolve; its refusal (`jj.change_not_found`, or `jj.revset_resolution_error`
+for an ambiguous prefix or an unresolvable `revsets.short-prefixes` set) has the same code and
+`context` as `zanshin_interdiff`'s. The absorb row's `T` is resolved like every location id (`zanshin_absorb`
 takes a revset, which refuses an unknown symbol `jj.revset_resolution_error` instead).
 
 A row's `refusal` is the `FfiError` the verb's own wrapper returns, mapped through the same

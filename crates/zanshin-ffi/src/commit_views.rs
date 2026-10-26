@@ -393,8 +393,9 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 /// The arguments cross as an `InterdiffRequest` `FlatBuffers` request buffer. Unlike
 /// `zanshin_show`, each side is a SINGLE revision, carried by the schema's `RevisionRef` UNION:
 /// a `ChangeIdRef` is the house reverse-hex change-id prefix, resolved to the one VISIBLE commit
-/// carrying it, and a `CommitIdRef` is a commit-id hex prefix resolved through jj-lib's index,
-/// which is visibility-BLIND. Both inherit the CLI `resolve_single_rev`'s REFUSAL — an ambiguous
+/// carrying it, and a `CommitIdRef` is a commit-id hex prefix whose whole-index fallback is
+/// visibility-BLIND. Both resolve through the effective `revsets.short-prefixes` set first, as the
+/// CLI's `--from`/`--to` symbols do. Both inherit the CLI `resolve_single_rev`'s REFUSAL — an ambiguous
 /// revision is rejected rather than guessed, never resolved to one of the candidates. The
 /// commit-id arm is what makes the predecessors `zanshin_evolog` reports — hidden by
 /// construction — addressable, so the two verbs compose into a version-to-version diff. A revset
@@ -431,9 +432,10 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 ///   carries. The offending id in `context`. An ABSENT side is not an error — ONE absent side
 ///   applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the `jj.invalid_input`
 ///   bullet above.
-/// - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits, or
-///   an absent side's `@` default in a workspace with no working-copy commit; jj-lib's own
-///   wording in `context`.
+/// - `jj.revset_resolution_error` — a `CommitIdRef` or `ChangeIdRef` prefix is ambiguous (within
+///   the effective `revsets.short-prefixes` set, or outside it in the whole index), a present
+///   side's `revsets.short-prefixes` set does not resolve, or an absent side's `@` default in a
+///   workspace with no working-copy commit; jj-lib's own wording in `context`.
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
 ///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
 ///   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial

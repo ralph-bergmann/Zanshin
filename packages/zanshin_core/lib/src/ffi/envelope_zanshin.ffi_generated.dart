@@ -6991,9 +6991,11 @@ class EvologRequestObjectBuilder extends fb.ObjectBuilder {
 ///  A single revision addressed by its jj reverse-hex CHANGE-ID prefix — the house currency for
 ///  single-revision parameters (Story 9.3, FR-JJ-17).
 ///
-///  Resolves to the one VISIBLE commit carrying that prefix; an unknown, malformed, only-hidden
-///  or DIVERGENT prefix is refused rather than guessed, exactly as the CLI's `resolve_single_rev`
-///  refuses an ambiguous revision. Use CommitIdRef to reach a hidden commit.
+///  Resolves through the effective `revsets.short-prefixes` set first (whole index on no match),
+///  as the CLI's `ChangePrefixResolver`, to the one VISIBLE commit carrying that prefix; an
+///  unknown, malformed, only-hidden or DIVERGENT prefix is refused (`jj.change_not_found`), an
+///  ambiguous one `jj.revset_resolution_error`, rather than guessed, exactly as the CLI's
+///  `resolve_single_rev` refuses an ambiguous revision. Use CommitIdRef to reach a hidden commit.
 class ChangeIdRef {
   ChangeIdRef._(this._bc, this._bcOffset);
   factory ChangeIdRef(List<int> bytes) {
@@ -7068,7 +7070,8 @@ class ChangeIdRefObjectBuilder extends fb.ObjectBuilder {
 ///  A single revision addressed by its commit-id HEX prefix — the CLI's `commit_id()` reading of
 ///  a bare hex symbol.
 ///
-///  Resolved through jj-lib's INDEX prefix lookup, which is VISIBILITY-BLIND: a HIDDEN commit —
+///  Resolved through the effective `revsets.short-prefixes` set first, as the CLI's
+///  `CommitPrefixResolver`, then jj-lib's INDEX prefix lookup, which is VISIBILITY-BLIND: a HIDDEN commit —
 ///  an EvologEntry.predecessor_commit_ids entry among them — resolves here, which is what lets
 ///  evolog and interdiff compose into a version-to-version diff. An ambiguous prefix is refused
 ///  (`jj.revset_resolution_error`), never guessed; an empty or non-hex value is
