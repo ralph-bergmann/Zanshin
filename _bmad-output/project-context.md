@@ -214,6 +214,11 @@ the `zanshin-graph` lane crate was removed)*
   (5) Hand-audit what the oracle cannot see: read verbs, refusal and warning CODES, network
   and interactive verbs, and verbs no scenario covers yet. A new verb story adds its
   scenarios to `scenarios.rs` — they are its acceptance criteria against the real CLI.
+  (6) Re-check the two hand-ported readers no test fully pins (Ralph, 2026-10-26):
+  `crates/zanshin-jj/src/revset.rs::render_span` reads the error span back out of pest's
+  rendered text (jj-lib keeps the pest error private) — switch to an accessor if jj-lib now
+  exposes one; `crates/zanshin-jj/src/cli_command.rs` against the new clap tree — its audit
+  test catches a renamed or removed command, not a new verb or a changed verb → command mapping.
 - When jj-lib's API changes (it will — pre-1.0), absorb the diff inside `zanshin-jj`'s
   module body. The crate's public surface stays stable. Mutations are visible in
   `jj op log` indistinguishably from CLI-initiated ones (NFR-R-2).
@@ -240,6 +245,9 @@ the `zanshin-graph` lane crate was removed)*
   chatter). Interactive verbs (diffedit/resolve/split) take a GUI-supplied selection (`TreeId`),
   never a terminal editor. When the CLI errors/refuses, surface an equivalent error — don't invent
   a "nicer" outcome. (Parity is via jj-lib, never by shelling/scraping the CLI.)
+  Deliberate divergences exist only by Ralph's decision, each listed here: `file_edit` refuses a
+  path below an existing file (`jj.invalid_input`), where the CLI's editor flow lets jj-lib
+  silently replace that file with a directory (Story 9.44; Ralph, 2026-10-26).
 - **Pass CLI parameters through; never decide for the user (FR-JJ-17).** Where the jj CLI leaves
   a path/revset/destination/flag to the user (e.g. `jj git init --git-repo=<repo> <dest>` — two
   paths, both user-chosen), the typed verb + FFI/MCP surface PASSES IT THROUGH so Ralph's UI can

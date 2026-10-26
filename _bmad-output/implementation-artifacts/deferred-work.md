@@ -2047,7 +2047,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - ~~**The CLI's revset hint lines reach only some calls.**~~ — RESOLVED 2026-10-25 (spec-9-25-closing-id-prefix-context-search-warnings-view-hints, commit 0bad054): show/evolog and the bookmark list carry the hints to `FfiError.hints`; op diff rejected — the CLI prints no revset hints there (`operation/diff.rs:203-223`, `:280-310` @ v0.46.0). Low.
   - They reach the `MutateError` verbs, `graph_topology` and the two new calls. `commit_views.rs::rev` (show/evolog), `bookmarks.rs::rev` and `op_diff.rs::resolve_both` match `{ reason, .. }` and drop `detail.hints`. The CLI prints the hints there too, e.g. for `jj show descripton(x)`.
   - **Follow-up:** map `detail.hints` onto those calls' error envelopes, the way `crates/zanshin-jj/src/mutate.rs::rev` does.
-- **`render_span` reads the span back out of pest's rendered error text.** Low.
+- ~~**`render_span` reads the span back out of pest's rendered error text.**~~ — RESOLVED 2026-10-26 (console session, Ralph): pin-bump step (6) in project-context.md § zanshin-jj now names it. Low.
   - A jj-lib or pest bump could change that text without any build error. jj-lib 0.46 keeps the pest error private (`revset_parser.rs:155-161`), so only the unit tests in `crates/zanshin-jj/src/revset.rs` pin the format.
   - **Follow-up:** add "re-verify `render_span` (or switch to a span accessor if jj-lib exposes one)" to the jj pin-bump steps in project-context.md § zanshin-jj.
 
@@ -2056,16 +2056,18 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **`interdiff`'s `from`/`to` prefixes and the change-id currency still resolve without the id-prefix context.** Low.
   - `op_support::resolve_commit_id_prefix` (a bare full-index lookup, a deliberate Epic 9 follow-up I divergence) and `op_support::resolve_commit` take no `revsets.short-prefixes` context; the CLI's `jj interdiff --from/--to` goes through `resolve_single_rev` → `attach_revset_evaluator` (`cli/src/cli_util.rs:1905-1921` @ v0.46.0), so a prefix unique within the set but ambiguous repo-wide resolves there and refuses in Zanshin. GUI callers pass full ids, so only a hand-typed short prefix meets it. Pre-existing; outside the closing run's three items.
   - **Follow-up:** resolve `RevisionRef` prefixes through the call's `TemplateStartup::id_prefix_context()` (keeping the hidden-commit fallback the index lookup gives), with an oracle scenario for `interdiff --from <prefix>`; or leave it.
+  - **Decided 2026-10-26 (Ralph):** close it like the CLI — resolve through the id-prefix context, with the oracle scenario.
 
 ## Surfaced in Story 9.41 (bmad-build-auto, 2026-10-25)
 
 - **`select_tree`, `drop_actions` and `change_actions` resolve with no CLI command, so a scope for the verb they serve (`["split"]`, `["rebase"]`, …) does not reach their snapshot, tree or preview rows.** Low.
   - Pre-existing (every call resolved with `command: None` before 9.41); `crates/zanshin-jj/src/repo.rs` passes `cli_command::NO_COMMAND` there because one call serves several verbs. The CLI's builtin diff editor runs inside `jj split -i` / `squash -i` / `commit -i` / `restore -i` under that verb's settings, and each drop row's verb resolves its own scopes.
   - **Follow-up:** pass the target verb in (a `SelectTreeOptions` field, a per-row resolution in `drop_actions`) — an FFI-visible input; or leave it.
+  - **Decided 2026-10-26 (Ralph):** like the CLI — the target verb becomes an input (an optional `SelectTreeOptions` field, append-only on the wire), and `drop_actions` / `change_actions` resolve each row with its own verb's command.
 - ~~**Most verbs' command choice has no `--when.commands` witness, and the oracle compares only creation scenarios with a user config.**~~ — RESOLVED 2026-10-25 (spec-9-41-closing-when-commands-witness-per-call-site, commit 4fddf6e): an inline test asserts the command every `Repo` verb and `Repo::open` records, scoped witnesses cover the `config_*` verbs, the author-check snapshot, both conversions and the `log` reads, and the oracle runs `describe`/`convert_*` scenarios under a scoped user config (all call sites were already right). Low.
   - The audit test (`crates/zanshin-jj/src/cli_command.rs`) proves each name is a canonical CLI command, not that each call site uses the right one: swapping `remote_changes` to `NO_COMMAND`, `convert_colocated` to `GIT_CLONE` or `squash` to `SPLIT` passes every test. `crates/zanshin-parity/tests/oracle/scenarios.rs` verb scenarios have no `user_config`.
   - **Follow-up:** a `user_config` field on the oracle's verb scenarios plus a scoped `describe` and `convert_colocated` scenario; or leave it.
-- **project-context.md's jj pin-bump checklist does not name the new CLI command table.** Low.
+- ~~**project-context.md's jj pin-bump checklist does not name the new CLI command table.**~~ — RESOLVED 2026-10-26 (console session, Ralph): pin-bump step (6) in project-context.md § zanshin-jj now names it. Low.
   - The audit test catches a renamed or removed command at a bump, not a new CLI verb or a changed verb-to-command mapping.
   - **Follow-up:** add "re-check `crates/zanshin-jj/src/cli_command.rs` against the new clap tree" to the pin-bump steps in project-context.md § zanshin-jj.
 
@@ -2074,15 +2076,18 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **`Repo::parallelize` on the root commit panics in jj-lib, exactly as the pinned `jj parallelize 'root()'` does; over FFI it surfaces as `internal.panic`.** Low.
   - jj-lib 0.46.0 `src/repo.rs:1203` (`assertion failed: !old_ids.is_empty()`), reached from `crates/zanshin-jj/src/repo.rs` `parallelize`; reproduced with the parity binary (`target/debug/jj parallelize 'root()'` in a fresh repo). Pre-existing, an upstream bug Zanshin mirrors; the FFI's `catch_unwind` turns it into `internal.panic` instead of a typed refusal.
   - **Follow-up:** report it upstream and pick up the fix at the next pin bump; or leave it.
+  - **Decided 2026-10-26 (Ralph):** refuse it typed before jj-lib is reached (the refusal other verbs give at the root commit); a panic is no behavior to mirror. An upstream report is Ralph's own.
 
 ## Surfaced in Story 9.42 (bmad-build-auto, 2026-10-25)
 
 - **`graph_topology` now returns the rows of an `at_operation(<non-ancestor op>, …)` revset, but `commit_contents` refuses their ids, so the GUI's two-call path cannot load those rows' object half (author, description, `empty`).** Low.
   - `crates/zanshin-jj/src/commit_content.rs:184-187` refuses every id outside the pinned operation's index (`CommitNotFound`); the topology reports the head operation, whose index lacks the sibling operation's commits. Pre-existing contract of the op-pinned content call; `jj log` renders those rows in full.
   - **Follow-up:** let `commit_contents` evaluate against the index merged with the topology's `at_operation()` operations (the topology would report them, an API decision); or leave it.
+  - **Decided 2026-10-26 (Ralph):** like `jj log` — the topology reports the extra operations its revset needs, and `commit_contents` accepts them and loads against the merged index.
 - **A merge outside the head index (an `at_operation()` commit) reports `empty: false` where the pinned `jj log` prints an inline template error; the error text is not surfaced.** Low.
   - jj-lib's `Commit::is_empty` looks up a merge's common ancestors in the head index and fails; the CLI keeps the row with `<Error: Commit ID … not found in index …>`. `CommitMeta.empty` is a `bool` (`crates/zanshin-jj/src/commit_meta.rs`, `is_empty`), so Story 9.42 (no API change) reports `false`.
   - **Follow-up:** an `Option<bool>` (or a per-row warning) carrying the failure, if the UI should show it; or leave it.
+  - **Decided 2026-10-26 (Ralph):** `CommitMeta.empty` becomes nullable (`Option<bool>` / `bool?`); null means "cannot be determined".
 
 ## Surfaced in Story 9.45 (bmad-build-auto, 2026-10-25)
 
@@ -2095,9 +2100,11 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **An open handle keeps the gix config snapshot its GitBackend took at load, so a terminal `git remote add` / `git config` beside it stays invisible until the handle reloads, while the CLI sees it on its next command.** Medium.
   - jj-lib 0.46.0 `git_backend.rs:346` opens the `gix::ThreadSafeRepository` once in `GitBackend::load` and `git_repo()` (:367) hands out copies of that snapshot; `crates/zanshin-jj/src/repo.rs` `refresh_settings` reloads only on a config-stack, per-command or `store/git_target` change. Pre-existing; Zanshin's own remote verbs reload after their config write.
   - **Follow-up:** add the Git config file (`<git dir>/config`) to the per-call reload check (a stamp like the config fingerprint); or leave it.
+  - **Decided 2026-10-26 (Ralph):** close it like the CLI — stamp `<git dir>/config` in the per-call reload check.
 
 ## Surfaced in Story 9.46 (bmad-build-auto, 2026-10-26)
 
 - **On a non-Git (native) backend `list_remotes` returns an empty list, where `jj git remote list` refuses (`git::get_git_repo(..)?`).** Low.
   - `cli/src/commands/git/remote/list.rs:37` @ v0.46.0 (the same at v0.44.0) propagates `UnexpectedGitBackendError`. `crates/zanshin-jj/src/remotes.rs` `list_remotes` turns it into `Ok(vec![])` (`get_all_remote_names(store).unwrap_or_default()`), as FR-JJ-9's native-backend AC (Story 3.4b) requires. Pre-existing at both tags.
   - **Follow-up:** refuse with a new `RemoteError` variant mapped to `jj.not_a_git_repo` and reword the FR-JJ-9 AC (a story after 9.46: it adds public surface).
+  - **Decided 2026-10-26 (Ralph):** refuse like the CLI — a new `RemoteError` variant mapped to `jj.not_a_git_repo`; the FR-JJ-9 native-backend AC is reworded with a dated note.
