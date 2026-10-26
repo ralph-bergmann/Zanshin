@@ -1,9 +1,5 @@
 # Single workspace version (AR-AD-7). Pre-1.0 — breaking changes allowed in WIP.
 
-# https://github.com/rust-lang/cargo/pull/17335
-[registry]
-global-min-publish-age = "7 days"
-
 [workspace]
 members = ["crates/*"]
 # WHY: explicit list (not derived from `members`) so `cargo build --release` skips

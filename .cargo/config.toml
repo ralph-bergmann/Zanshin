@@ -1,2 +1,6 @@
 [alias]
 xtask = "run --package xtask --"
+
+# https://github.com/rust-lang/cargo/pull/17335
+[registry]
+global-min-publish-age = "7 days"

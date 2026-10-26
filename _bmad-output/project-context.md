@@ -119,7 +119,7 @@ the `zanshin-graph` lane crate was removed)*
 - Strict mode is implicit (Dart 3.x). Sound null safety always on.
 - `analysis_options.yaml` extends `package:flutter_lints` + a hand-curated set of rules
   (no `very_good_analysis` dependency). `dart format` enforced in CI.
-- `dart:ffi` boundary lives ONLY in `app/lib/src/ffi/`. No `dart:ffi` imports elsewhere
+- `dart:ffi` boundary lives ONLY in `packages/zanshin_core/lib/src/ffi/`. No `dart:ffi` imports elsewhere
   in `lib/`.
 - Async: use `Future`/`Stream` plus the single long-running worker isolate (AD-4).
   Never `Isolate.run` for repeated work — send a `WorkerCommand` instead. One exception
@@ -258,8 +258,8 @@ the `zanshin-graph` lane crate was removed)*
   user-editable parameter, not a silent one. The backend classifies/offers; the UI decides.
 
 **Dart Hooks + `native_toolchain_rust`:**
-- `app/hook/build.dart` is the ONLY Dart Hook. It points at `zanshin-ffi`:
-  `manifestPath: '../crates/zanshin-ffi/Cargo.toml'`.
+- `packages/zanshin_core/hook/build.dart` is the ONLY Dart Hook. It points at `zanshin-ffi`:
+  `cratePath: '../../crates/zanshin-ffi'`.
 - Dart Hooks build ONLY `zanshin-ffi` (the single cdylib). Internal Rust crates
   stay pure `lib`; they have no `extern "C"` surface. (FR-FFI-1)
 - Never adopt `flutter_rust_bridge` or comparable FFI abstractions. The cbindgen +
@@ -612,7 +612,7 @@ the `zanshin-graph` lane crate was removed)*
 
 **Codegen workflow:**
 - Generated files (`crates/zanshin-ffi/include/zanshin_ffi.h`,
-  `app/lib/src/ffi/bindings.dart`) are COMMITTED to the repo.
+  `packages/zanshin_core/lib/src/ffi/bindings.dart`) are COMMITTED to the repo.
 - Build never auto-regenerates. The only path to update them is
   `cargo make codegen` followed by an explicit commit.
 - **WIP:** CI's `verify-codegen` drift-gate is deferred. The discipline rule
