@@ -58,6 +58,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     required this.gold,
     required this.cardSolid,
     required this.cardSolidHi,
+    required this.hatch,
+    required this.hatchMark,
     required this.bgCard,
     required this.bgCard2,
     required this.border,
@@ -348,6 +350,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     gold: Color(0xFFDCA85B),
     cardSolid: Color(0xFF1A1F35),
     cardSolidHi: Color(0xFF1F2540),
+    hatch: Color.fromRGBO(231, 233, 242, .07),
+    hatchMark: Color.fromRGBO(231, 233, 242, .30),
     bgCard: Color.fromRGBO(255, 255, 255, .045),
     bgCard2: Color.fromRGBO(255, 255, 255, .075),
     border: Color.fromRGBO(255, 255, 255, .07),
@@ -530,6 +534,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     gold: Color(0xFFDCA85B),
     cardSolid: Color(0xFFFFFDFA),
     cardSolidHi: Color(0xFFFFFFFF),
+    hatch: Color.fromRGBO(38, 36, 44, .07),
+    hatchMark: Color.fromRGBO(38, 36, 44, .30),
     bgCard: Color.fromRGBO(255, 253, 250, .90),
     bgCard2: Color.fromRGBO(58, 46, 34, .07),
     border: Color.fromRGBO(58, 46, 34, .12),
@@ -778,6 +784,12 @@ class ZsColors extends ThemeExtension<ZsColors> {
 
   /// `--card-solid-hi` (DS tokens/colors.css:30; paper :84).
   final Color cardSolidHi;
+
+  /// `--hatch` (DS tokens/colors.css:33; paper :88): the immutable card's 135° hatch, 7% of `--text`.
+  final Color hatch;
+
+  /// `--hatch-mark` (DS tokens/colors.css:33; paper :88): the denser hatch of the hatch swatch, 30% of `--text`.
+  final Color hatchMark;
 
   /// `--bg-card` (DS tokens/colors.css:31; paper :85).
   final Color bgCard;
@@ -1279,6 +1291,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     Color? gold,
     Color? cardSolid,
     Color? cardSolidHi,
+    Color? hatch,
+    Color? hatchMark,
     Color? bgCard,
     Color? bgCard2,
     Color? border,
@@ -1432,6 +1446,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     gold: gold ?? this.gold,
     cardSolid: cardSolid ?? this.cardSolid,
     cardSolidHi: cardSolidHi ?? this.cardSolidHi,
+    hatch: hatch ?? this.hatch,
+    hatchMark: hatchMark ?? this.hatchMark,
     bgCard: bgCard ?? this.bgCard,
     bgCard2: bgCard2 ?? this.bgCard2,
     border: border ?? this.border,
@@ -1593,6 +1609,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
       gold: Color.lerp(gold, other.gold, t)!,
       cardSolid: Color.lerp(cardSolid, other.cardSolid, t)!,
       cardSolidHi: Color.lerp(cardSolidHi, other.cardSolidHi, t)!,
+      hatch: Color.lerp(hatch, other.hatch, t)!,
+      hatchMark: Color.lerp(hatchMark, other.hatchMark, t)!,
       bgCard: Color.lerp(bgCard, other.bgCard, t)!,
       bgCard2: Color.lerp(bgCard2, other.bgCard2, t)!,
       border: Color.lerp(border, other.border, t)!,
@@ -1750,6 +1768,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     '--gold': gold,
     '--card-solid': cardSolid,
     '--card-solid-hi': cardSolidHi,
+    '--hatch': hatch,
+    '--hatch-mark': hatchMark,
     '--bg-card': bgCard,
     '--bg-card-2': bgCard2,
     '--border': border,
@@ -1931,6 +1951,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
           other.gold == gold &&
           other.cardSolid == cardSolid &&
           other.cardSolidHi == cardSolidHi &&
+          other.hatch == hatch &&
+          other.hatchMark == hatchMark &&
           other.bgCard == bgCard &&
           other.bgCard2 == bgCard2 &&
           other.border == border &&
@@ -2086,6 +2108,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     gold,
     cardSolid,
     cardSolidHi,
+    hatch,
+    hatchMark,
     bgCard,
     bgCard2,
     border,

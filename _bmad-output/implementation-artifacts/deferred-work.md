@@ -2135,3 +2135,12 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **notify is held at 8.2.0: with 8.2.1 the release `libzanshin_ffi.dylib` fails `dlopen` ("mis-aligned LINKEDIT string pool"); debug builds load.** Low.
   - notify 8.2.1 swaps its macOS backend (`fsevent-sys` → `objc2-core-services`). Bisected on the full update: that one change flips the release dylib from loading to failing, re-checked on a non-full disk (commit 28e0b40). `deny.toml` bans `notify@>=8.2.1`; `app/test/native_asset_smoke_test.dart` is the check. The linker-level mechanism was not investigated.
   - **Follow-up:** at the next dependency update (or jj pin bump), try the newest notify: if the release dylib loads, lift the ban in `deny.toml` and drop the pin.
+
+## Surfaced 2026-10-26 while validating the design download `8468b99` (DS #10–#13) and folding it into Epics 10 and 11 (console session, Ralph)
+
+- **The gaps the validation found are Claude's proposals inside the stories that own them, for Ralph to confirm at review** (the Epic 10 header's "Design update 2026-10-26", (a)–(f)). Medium.
+  - 11.7: bookmark chips written as `present(<name>)` (a bare name breaks every verb once the bookmark is gone); the custom revset written only on ↩/blur and only once `revsetCounts(cap: 0)` resolves it; Reset as `configUnset` at the repo scope; the effective alias read back onto the page.
+  - 10.6: the immutable reason from one `revsetCounts` call per peek; 10.15: Revert's column as `jj revert -r <id> -B @` (the client's `jj revert -B @` lacks the required `-r`), its "outside @'s history" fact from `<id> & ::@`.
+- **11-13 was missing from `development_status`.** 653bac20 ("trim done stories") dropped `11-13-menu-bar-shortcuts: backlog`, though 11.13 is open (Stufe 5). Restored with its old text plus the Revert note. The same commit set 9-43 and 10-18 to `declined` (Ralph confirmed 9.43 on 2026-10-26); their yaml comments and epics.md headings now say so. Low.
+- **DS line citations in `zs_colors.dart` drift.** The download inserts three lines into `tokens/colors.css` at :31 and one at :88, so the doc comments citing colors.css past :30 point three or four lines off. The house rule keeps older citations unrewritten; only the new `hatch` / `hatchMark` comments cite this download. Low.
+- **The hatch under increased contrast** stays a 1.20 : 1 texture; the DS lists it as open (DS readme.md:339) and carries the state in the word. Nothing to build until the DS decides. Low.

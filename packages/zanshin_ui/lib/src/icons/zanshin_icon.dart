@@ -145,7 +145,7 @@ class RenderZanshinIcon extends RenderBox {
 }
 
 /// The glyph names: one constant per file in `assets/icons/svg/`, camelCase for the DS's kebab-case names
-/// (DS assets/icons/glyphs.json:2-61). The retired aliases (`:62-72`) have no constant.
+/// (DS assets/icons/glyphs.json:2-62). The retired aliases (`:63-73`) have no constant.
 abstract final class ZI {
   static const abandon = 'abandon';
   static const alert = 'alert';
@@ -191,6 +191,7 @@ abstract final class ZI {
   static const plus = 'plus';
   static const pull = 'pull';
   static const push = 'push';
+  static const revert = 'revert';
   static const reviews = 'reviews';
   static const search = 'search';
   static const settings = 'settings';
@@ -256,6 +257,7 @@ abstract final class ZI {
     plus,
     pull,
     push,
+    revert,
     reviews,
     search,
     settings,

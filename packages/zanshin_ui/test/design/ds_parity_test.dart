@@ -274,7 +274,7 @@ void main() {
     });
 
     test('the DS glyphs, the app files and the ZI constants are one set, byte for byte after the strip', () {
-      expect(glyphs, hasLength(58));
+      expect(glyphs, hasLength(59));
       expect(_iconMismatches(ds: ds, app: app, glyphs: glyphs, aliases: aliases, zi: ZI.all), isEmpty);
     });
 

@@ -587,6 +587,11 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
 - **Decided (Ralph):** every recommendation of the three validation reports, Claude's proposals included ("mit deinen Vorschlägen", 2026-10-16). Workstreams are dropped, not hidden (decision 16.26). Widgetbook 3.25.0 becomes the one review catalogue, and 10.1's demo host becomes its Graph folder (decisions 16.29, 16.30).
 - **New stories:** 11.11 (the Zs control library, the Widgetbook catalogue and the shared Marionette configuration), 11.12 (the window foundation) and 11.13 (the menu bar and shortcuts). 11.11 comes before 10.7, and 10.22 becomes a window on 11.12. Most Epic 10 and Epic 11 stories, and 9.20, 9.21 and 9.23, carry dated notes.
 
+**Design update 2026-10-26** (Ralph, console session on the re-downloaded exports at `8468b99`, DS synced through #13; the Epic 10 header's "Design update 2026-10-26" has the details):
+- **What changed:** the card menu gains Revert (`jj revert -r <change> -B @`). Immutable changes are hatched instead of marked with ◆; a hatch swatch names them in the peek, the inspector and the card menu. The card menu of an immutable change keeps only what leaves it untouched, and `immutable_heads()` gets a page in Settings › Project. The Push sheet places the change's single Allow inline.
+- **Validated** against the client's code and jj v0.46.0; the token layer follows in the same change (`--hatch`, `--hatch-mark`, the `revert` glyph, `dsSyncedThrough` = 13). Claude's proposals for the gaps found (bookmarks written as `present(…)`, the custom revset written only once it resolves, Reset as an unset, reading the alias back, the reason through `revsetCounts`) sit in 10.6, 10.15 and 11.7.
+- **No new stories.** 10.3, 10.6, 10.8, 10.9, 10.15, 10.17, 10.20, 10.23, 11.7, 11.8 and 11.13 carry dated notes.
+
 **FRs covered:** none formally. PRD §3.2 keeps the Flutter UI out of the PRD, and there is no UX document (§ UX Design Requirements). The epic consumes:
 - FR-GR-4 and NFR-P-2 as amended 2026-09-26: complete geometry plus lazy content;
 - Story 4.11's layout, not FR-GR-1 / FR-GR-2. Those two describe the `jj log` lane model (pvigier lanes; rows with `lane`, `edges_below`, `color_idx`) that the view no longer draws; both carry a dated amendment (2026-09-26) that points at 4.10–4.12;
@@ -612,7 +617,7 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 - 10.12 follows Stories 4.10, 4.11 and 4.12, and brings real data.
 - 10.16 (minimap) follows 10.1, 10.4, 10.5 and 10.6. On its recommended raster path (an app-side `Isolate.run`, its design question (f)) it needs no backend story.
 - 10.17 (commit stacks, added 2026-09-28) follows 10.1, 10.3, 10.5 and 10.6, on the spike's stack recordings from 4.13's spike step. Real stacks come with 10.12 plus 4.13.
-- 10.18 (AI stack titles, added 2026-09-28) is an idea Ralph has not decided on. If it is built, it follows 10.17 and 10.11.
+- 10.18 (AI stack titles, added 2026-09-28) is an idea Ralph has not decided on. If it is built, it follows 10.17 and 10.11. *(Declined 2026-10-26, Ralph.)*
 - 10.19 (hidden history, added 2026-09-30) follows 10.4, 10.5, 10.6 and 10.7, on recordings of the `e243dd2` sample. Real gaps come with 10.12.
 - 10.20 (graph animations, added 2026-09-30) follows 10.1, 10.3, 10.4, 10.5 and 10.17. Real triggers come with 10.9 and 10.12.
 - 10.10 comes last. It is a placeholder that needs 9.31 and 9.16.
@@ -640,6 +645,8 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 - **Sequencing:** 11.1 → 11.2 → 11.11 → 11.3; 11.12 after 11.4 and before 11.5–11.7 and 10.22; 11.13 after 11.12, 10.9 and 10.23, and before 11.5–11.8, which wire their handlers to it. Details in the Epic 11 header.
 
 **Update 2026-10-17** (Ralph, console session after 11.1 and 11.2 landed): Story 11.14 moves the tokens, the materials and the DS icons from `app/lib/src/shared/` into `packages/zanshin_ui`, and 11.11 builds its controls there. It supersedes 11.1's design question (a). The order becomes 11.1 → 11.2 → 11.14 → 11.11 → 11.3, and 11.14 also precedes 10.1.
+
+**Design update 2026-10-26** (Ralph, console session; DS synced through #13; details in the Epic 10 header): Settings gets pages, the first being Project › Immutable commits (11.7); the Change menu gains Revert (11.13); the Push sheet places the change's single Allow inline (11.8). The token layer of the done 11.1/11.14 follows in the same change: `ZsColors.hatch` / `hatchMark`, the `revert` glyph and `ZI.revert`, `dsSyncedThrough` = 13.
 
 ---
 
@@ -7247,8 +7254,9 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Update 2026-10-25 (done).** The seam is jj-lib's `ResolvedRevset`: the set is evaluated with its `evaluate()` (merged index), its `into_inner()` keeps the resolved expression plus the `at_operation()` repos for the topology's `ParentCount` passes (`evaluate_unoptimized` against the merge, only when there are any); prioritize = `prioritize ∩ revset.within_visibility(head)`. A merge outside the head index reports `empty: false` (the CLI renders an inline template error). Witnesses: `crates/zanshin-parity/tests/oracle/log_at_operation.rs` against the pinned `jj log`. Open (deferred-work.md "Surfaced in Story 9.42"): `commit_contents` refuses those rows' ids.
 
-### Story 9.43: `converge` — resolve divergent changes (jj 0.45) [M] — *product decision pending (Ralph)*
+### Story 9.43: `converge` — resolve divergent changes (jj 0.45) [M] — *DECLINED 2026-10-26 (Ralph)*
 *(Added 2026-10-08, console session — new CLI verb since jj 0.45, surfaced by the 0.46 bump. Whether Zanshin offers it at all is Ralph's call; this entry records what a port means.)*
+*(Declined 2026-10-26, Ralph: Zanshin does not build it. The entry stays as the record of what a port would mean.)*
 
 **Motivation.** `jj converge` (`cli/src/commands/converge.rs` @ v0.46.0) replaces the visible revisions of a DIVERGENT change with one new revision: it groups the revisions of `--revision` (default: the `revsets.converge` setting) by change id, picks one divergent change (the CLI prompts when there are several), applies heuristics to solve author, description and parents, and falls back to prompting when they are inconclusive (`--no-interactive` warns and changes nothing instead). Descendants are rebased onto the solution and local bookmarks on any divergent revision move to it; the solution may carry file conflicts. Divergence is something a GUI shows prominently (commit metadata already flags it, `CommitMeta.divergent`), so a one-click "converge" is a natural follow-up.
 
@@ -7915,6 +7923,27 @@ Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `
 > - **Sequencing.** A dated bullet in place: 11.11 before 10.7, 11.12 before 10.22, 11.13 after 10.9 and 10.23.
 > - **Stories:** new 11.11–11.13 (Epic 11). Dated notes in 9.20, 9.21, 9.23, 10.1–10.3, 10.5–10.11, 10.12, 10.14–10.17, 10.19–10.27 and 11.1–11.10. 10.0, 10.4, 10.13 and 10.18 are untouched.
 
+> **Design update 2026-10-26 (Ralph, console session; the re-downloaded exports at `8468b99`: the app project and the design system).** The floating client adds three entries to `design/DESIGN-SYSTEM-SYNC.md`: #11, Revert in the card menu, and #12 and #13, immutable commits (SYNC:100-125). The DS works through #10–#13 and now reads "Synced through #13" (DS readme.md:22, :33-35). `DS …:line` citations dated 2026-10-26 refer to this download, anchored at `8468b99` (the house rule "Design-system sync"). Claude checked every entry against the client's code and against jj at v0.46.0. What changed:
+> - **#10, round 3's E · F · G adopted by the client.** These came from the DS, so there is nothing to port except one placement. When the Push sheet's change has exactly one allowable reason, a short **Allow** sits at the end of its label line, and the reason sits right under it. The name field and its line stay below, and several reasons keep the chip row (DS readme.md:33; components/push/PushDialog.prompt.md:16). The client's pre-A2 traffic lights and its Configurations sheet are not the reference (decision 16.5). → 11.8.
+> - **#11, Revert.** The card menu's last group reads Revert · Abandon. Revert is a regular row and runs `jj revert -r <change> -B @` (SYNC:100-108; GV:159, :826-838). jj has the verb at v0.46.0 (`cli/src/commands/revert.rs`), and so does the bridge (`RepoHandle.revert(revisions:, insertBefore:)`, 9.18). The new glyph `revert` is a counter-clockwise circular arrow beside `undo`: "U-turn = operations (jj undo) · circular arrow = a change's inverse (jj revert)" (DS readme.md:357). The DS now holds 59 glyphs (:353). Change › Revert joins the menu bar (DS readme.md:207). → 10.9, 10.15, 10.20, 10.23, 11.13.
+> - **#12 and #13, immutable commits.** Hatched ships, and the ◆ is retired (SYNC:118-125; DS readme.md:66, :95, :358, :405).
+>   - Immutable has no colour and no glyph. The card carries a 135° hatch, 1 px every 6 px in `--hatch` (7 % of `--text`), in every state, and stacks follow. `HatchSwatch` (12 px, `--hatch-mark`, 30 %) names it before the word in the peek, the inspector, the card menu and Settings (DS components/graph/HatchSwatch.prompt.md:1-11).
+>   - The card menu of an immutable change keeps only what leaves the change untouched. `revset-aliases."immutable_heads()"` gets a page of its own in Settings › Project (DS components/settings/SettingsPage.prompt.md, ImmutablePage.prompt.md).
+>   - Checked against jj v0.46.0 (`cli/src/config/revsets.toml`): `builtin_immutable_heads()` = `trunk() | tags() | untracked_remote_bookmarks() | untracked_remote_tags()` and `immutable()` = `::(immutable_heads() | root())`, as the page says. The rows the locked menu leaves out (Insert before, Edit, Describe, Squash, Abandon) are exactly the ones jj refuses on an immutable change.
+>   - The bridge already has what the design needs: the immutable flag per node (`GraphLayout.isImmutable`), the count (`revsetCounts`, 9.25) and the config writes (9.28). → 10.3, 10.6, 10.8, 10.15, 10.17, 11.7.
+> - **Superseded in this header.** The 2026-10-16 note's defect 40, "only ◆ is spaced" (the same words in decision 16.35): with no ◆ there is nothing to space. Its "Design input: 58 icons" now reads 59.
+> - **The token layer follows in this change,** as the house rule asks (11.1 is done): `ZsColors.hatch` and `hatchMark` for night and paper (DS tokens/colors.css:33, :88), the `revert` glyph with `ZI.revert`, and `dsSyncedThrough` = 13. Until then 11.1's parity test was red on this download, because `--hatch`, `--hatch-mark` and `revert` were missing. The downloaded `revert.svg` carries a C2PA stamp, which the test's strip already removes (`ds_parity_test.dart:71-75`).
+> - **The export drops `design/archive/`, `design/screenshots/` and `design/uploads/`.** No code and no test reads them. Older citations into them (the 2026-10-14 note, "Design input") resolve at `0eb6b21`, the commit before this download. The archives v15–v17 that the new entries name were never exported.
+> - **Found in the validation.** These are Claude's proposals; each is written into the story that owns it, for Ralph to confirm at review.
+>   - (a) **Bookmarks as bare symbols.** The page writes each chosen bookmark as a bare symbol (`design/immutable.jsx:28-31`). Once that bookmark is deleted, `immutable_heads()` stops resolving, and nearly every verb fails with `jj.config_error`. jj's own default config warns "Use present(expr) if symbols in expr might not always exist" (revsets.toml). Proposal: write `present(<name>)`. → 11.7.
+>   - (b) **A half-typed custom revset.** "Everything applies at once" would write it on every keystroke, with the same effect. Proposal: the field writes on ↩ or blur, and only after `revsetCounts(cap: 0)` parses and resolves the whole expression; otherwise it shows jj's error and writes nothing. The mock's "Not previewed here" exists because the mock evaluates only a few forms; Zanshin does not need it, because jj evaluates every term. → 11.7.
+>   - (c) **Reset.** The mock writes the default expression (`design/immutable.jsx:165`). Proposal: unset the key at the repo scope, as `jj config unset --repo 'revset-aliases."immutable_heads()"'` does. A value from another scope then shows with its source (11.7 item 5). → 11.7.
+>   - (d) **Reading the alias back.** The mock keeps the page's own model in browser storage. Zanshin reads the effective alias and maps its top-level `|` terms back onto the page: the four built-ins or `builtin_immutable_heads()`, `present(<name>)` chips and `(trunk().. & ~mine())`. Everything else, in its order, is the custom revset. → 11.7.
+>   - (e) **The reason.** The reason (`immWhy`) is computed when a peek, the card menu or the inspector shows it, in one `revsetCounts` call with cap 1. For each term in the page's order it asks `<id> & (term)` (the change is a head: "trunk() · main") and `<id> & ::(term)` (it is below one: "below trunk() · main"); the first hit wins. No backend story is needed. → 10.6; 10.8 and 10.15 reuse it.
+>   - (f) **Revert's description and availability.** The description comes from `templates.revert_description` (revert.rs). The client's `Revert "…"` / "This reverts commit ….", with the full commit id, is jj's default template (`cli/src/config/templates.toml:37-42` @ v0.46.0), not Zanshin's text. Revert's availability (not on @, only on @'s ancestors, not on an empty change) is the design's choice; jj accepts all three. → 10.15.
+> - **Still open in the DS:** under increased contrast the hatch stays a 1.20 : 1 texture. `contrast.css` leaves `--hatch` alone, and the word carries the state (DS readme.md:339). This needs no Flutter decision.
+> - **Stories:** dated notes in 10.3, 10.6, 10.8, 10.9, 10.15, 10.17, 10.20, 10.23, 11.7, 11.8 and 11.13. The other open stories of Epics 10 and 11 are not affected.
+
 **Goal.** The app's main view as in the design export. The canvas and the graph:
 - commit cards at positions computed from data, several cards per row, on a navy dot-grid canvas:
   - Compact rows are the dependency depth;
@@ -8263,7 +8292,7 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
 - 10.12 (real data) follows Stories 4.10, 4.11 and 4.12.
 - 10.16 (minimap) follows 10.1, 10.4, 10.5 and 10.6. On its recommended raster path (an app-side `Isolate.run` from the layout arrays, its design question (f)) it needs no backend story and runs on recorded layouts.
 - 10.17 (commit stacks, added 2026-09-28) follows 10.1, 10.3, 10.5 and 10.6, on the stack recordings of 4.13's spike step (its item 6). 10.7's "Group stacks" switch can land with it. Real stacks come with 10.12 plus 4.13.
-- 10.18 (AI stack titles, added 2026-09-28) is an idea Ralph has not decided on. If it is built, it follows 10.17 and 10.11.
+- 10.18 (AI stack titles, added 2026-09-28) is an idea Ralph has not decided on. If it is built, it follows 10.17 and 10.11. *(Declined 2026-10-26, Ralph.)*
 - 10.19 (hidden history, added 2026-09-30) follows 10.4, 10.5, 10.6 and 10.7, on recordings of the `e243dd2` sample (10.1 item 13). Real gaps come with 10.12.
 - 10.20 (graph animations, added 2026-09-30) follows 10.1, 10.3, 10.4, 10.5 and 10.17. Real triggers come with 10.9 and 10.12.
 - 10.10 (drag-and-drop) comes last. It is a placeholder that needs backend 9.31 and 9.16.
@@ -8799,6 +8828,13 @@ NEEDS DESIGN:
 >   - a workspace name with a space prints quoted;
 >   - in an inactive window the selected ring uses the neutral tokens and no hover paints;
 >   - under `disableAnimations` ••• appears at full size and only fades.
+
+> **Design update 2026-10-26 (the Epic 10 header; DS #12, #13; DS synced through #13):** an immutable change gets a look of its own, and the ◆ is retired. This note supersedes the scope's "a 9 px ◆ first when the commit is immutable and not the root" and the 2026-10-16 note's "only the ◆ keeps its space". It amends the state "Immutable: the subject in `--text-muted`" and adds witnesses.
+> - **The look** (DS components/graph/ChangeCard.prompt.md:11; components/graph/graph.css:106-109; readme.md:95). The normal card plus a 135° hatch: 1 px lines every 6 px in `--hatch` (`ZsColors.hatch`, 7 % of `--text`), painted over the fill and under the content. The hatch stays in every state: hover, selection, an open menu and a drop target. The subject stays `--text-muted`. There is no colour (gold stays with @, the accent with the selection) and no ◆ (DS readme.md:66). The root is hatched too, as the client does (GV:297; graph.css:450); its word is left out below.
+> - **The label.** VoiceOver reads "Immutable, " before the subject, except on the root (GV:300).
+> - **`HatchSwatch`** (DS components/graph/HatchSwatch.prompt.md): 12 × 12 (`--icon-sm`), radius `--radius-kbd`, 1 px `--border-strong`, `--card-solid`, a 135° hatch 1 px every 3 px in `--hatch-mark` (`ZsColors.hatchMark`). It is decoration beside its word; alone it takes a label. This story builds it, next to the card; 10.6, 10.8, 10.15 and 11.7 place it.
+> - **Under increased contrast** the hatch stays a texture, and the word carries the state (DS readme.md:339; the Epic 10 header's 2026-10-26 note).
+> - **Witnesses (added):** an immutable card paints the hatch in every state, the root included; no card paints a ◆; the label starts with "Immutable, " on an immutable non-root card; `HatchSwatch` paints its denser hatch at 12 px.
 
 **Motivation.** The card is the view's unit of information (GV:394-440, GC:71-148). The mock `_CommitCard` (`app/lib/src/features/commits/commit_card.dart:193`) cannot be reused. It is a variable-height `Column`/`Row` tree with its own hover `setState`, which does not fit a fixed-geometry canvas with recycled children. Ralph's rule is that designed visuals are a `RenderBox` with text slots. The house example is `app/lib/src/features/bootstrap/splash_card_render.dart`: `SlottedMultiChildRenderObjectWidget` at :148 and `RenderBox with SlottedContainerRenderObjectMixin` at :188.
 
@@ -9360,6 +9396,14 @@ Plus one real-cdylib test on an in-test repo, using `tester.runAsync`: a `descri
 >   - the callout leaves with a fade on `--dur-exit-lg`, without drift under `disableAnimations`;
 >   - in an inactive window no focus ring, hover or callout shows.
 
+> **Design update 2026-10-26 (the Epic 10 header; DS #12, #13; DS synced through #13):** the peek names an immutable change and the reason. This note amends the 2026-10-14 note's hints and adds the eyebrow and witnesses.
+> - **The eyebrow** (DS components/overlays/PeekCard.prompt.md:12; GV:259; SYNC:123). Above the subject: `HatchSwatch` (10.3) and **IMMUTABLE** in the caps label style (`--type-caps`, `--text-muted`), then the reason in 11.5 px `--text-dim`, e.g. "below trunk() · main". The reason drops to its own line as a whole when it does not fit, and ellipsizes beyond that; its tooltip keeps it whole. Not on the root.
+> - **The reason** (Claude's proposal; the Epic 10 header's 2026-10-26 note, (e)). It is computed when the peek opens, in one `revsetCounts` call at the shown operation with cap 1 (9.25). For each term of the effective `immutable_heads()`, in 11.7's order (trunk, tags, untracked remote bookmarks, untracked remote tags, the bookmark chips, other people's changes, the custom revset), the call asks `<id> & (term)` (the change is a head) and `<id> & ::(term)` (it is below one); the first hit wins, as in the client (`design/immutable.jsx:75-97`).
+>   - The wording follows the client (`design/immutable.jsx:80-90`): "trunk() · main", "tag v1.4.2", "release/1.5.x@origin, not tracked", "by Bob, not you", "your custom revset", each with "below …" for an ancestor. Names come from the head's refs in the view facts; without one, the term itself is the name ("below trunk()"). An alias that 11.7 cannot map onto its page counts as one custom term.
+>   - The result is cached per commit id and operation; 10.8 and 10.15 reuse it. While the call is pending, the eyebrow shows without the reason.
+> - **Hints** (PeekCard.prompt.md:11; GV:308). An immutable change leaves out "Double-click: jj edit": "Click: details · Drag: onto another change · Right-click: actions". Design question (a) stays answered: a double-click on an immutable card does nothing (DS components/graph/ChangeCard.prompt.md:11).
+> - **Witnesses (added):** an immutable non-root peek shows the eyebrow with the reason from the fake `revsetCounts`, for a head and for an ancestor, with the first matching term winning; the root's peek shows none; an immutable card's hint has no "Double-click".
+
 **Motivation.** The design fixes the pointer model:
 - a click selects and opens the panel;
 - a double-click moves the working copy there (`jj edit`);
@@ -9680,6 +9724,8 @@ NEEDS DESIGN:
 >   - in the stale state the action row and the describe field are disabled with the reason;
 >   - in an inactive window the describe field shows no caret.
 
+> **Design update 2026-10-26 (the Epic 10 header; DS #12, #13; DS synced through #13):** the inspector's Immutable flag carries the hatch swatch and the reason. This supersedes the 2026-10-14 note's flag "◆ Immutable" with the tooltip "Part of trunk history" and the scope's tag "◆ immutable". The flag is `Flag` with `HatchSwatch` (10.3) before "Immutable", neutral like Empty and Merge, and not on the root. Its tooltip is "Immutable · <reason>", 10.6's reason (DS components/graph/Flag.prompt.md:7; inspector.jsx:230; SYNC:122). `Flag`'s icon slot takes a widget for it (DS readme.md:35). Witness (added): an immutable change's flag shows the swatch and the reason as its tooltip, and no ◆ appears anywhere in the inspector.
+
 **Motivation.** Selecting a card opens the design's right-hand panel (GV:445-479, APP:735-862, GC:150-159). The design extraction lists this panel and its describe mode among the design's dialogs and popups, which Ralph says are not final and will look different.
 - So this story is thin by default. It wires the real data and the verbs into a minimal `material_ui` column and invests nothing in polish. Design question (a) asks whether that reading is right.
 - The design's review workflow reviews diffs that do not exist before Epic 5: the review meter, the per-file Viewed state, auto-advance and Inline/Split. It moves to the Epic 5 diff follow-up (deferred-work).
@@ -9829,6 +9875,12 @@ NEEDS DESIGN:
 >   - every shown command carries the change id and parses as written (through 9.47's oracle where it applies);
 >   - a stale project disables every verb with the reason, and none calls anything.
 > - **Related** adds 11.13, which consumes the label and the target rule (11.13 depends on this story, not the other way round), and 9.21 for redo.
+
+> **Design update 2026-10-26 (the Epic 10 header; DS #11, #12; DS synced through #13):** Revert joins the runner's verbs. This supersedes `revert` in the 2026-10-14 note's "`diffedit`, `resolve` and `revert` stay" and in the Non-goals' "`duplicate` and `revert`"; `diffedit`, `resolve` and `duplicate` keep their status. It amends the 2026-10-16 note's "Insert after" bullet and adds witnesses.
+> - **The verb** (SYNC:105; GV:832-837; 9.18). `RepoHandle.revert(revisions: [<change>], insertBefore: ['@'])`, which is `jj revert -r <change> -B @` (`cli/src/commands/revert.rs` @ v0.46.0). The runner passes no description: jj's `templates.revert_description` writes it, by default `Revert "<subject>"`, a blank line and `This reverts commit <commit id>.` (`cli/src/config/templates.toml:37-42`).
+> - **After it** (SYNC:107). The reverted change is the anchor and stays still; the new change is born from it (10.20) and is scrolled into view when needed. An open inspector follows to the new change; a closed one stays closed. The toast is 10.23's.
+> - **"Insert after" with an immutable child.** 10.15 now leaves the row out when the view knows such a child (GV:1233). The backend's refusal stays the path for a child the view does not show.
+> - **Witnesses (added):** Revert calls `revert` with the change and `insertBefore: ['@']` and no description; the new change is selected only while the inspector is open.
 
 **Motivation.** The design triggers verbs from many places:
 - a double-click: `edit`;
@@ -10466,6 +10518,28 @@ NEEDS DESIGN:
 >   - "Copy ›" opens 150 ms after hover and at once on →; a pointer moving toward it through the triangle keeps it open;
 >   - a disabled row is drawn at .4 and the arrow keys skip it.
 
+> **Design update 2026-10-26 (the Epic 10 header; DS #11, #12, #13; DS synced through #13):** the card menu gains Revert, and an immutable change gets a locked menu. This note supersedes the 2026-10-14 note's "on an immutable change every row except 'New change on top' and 'Insert after'" are disabled, and the witness "the rows per state: … immutable …" now expects the locked menu. It amends the rows and adds witnesses; the root's rule stays.
+> - **Revert** (SYNC:103-106; GV:159; DS readme.md:35, :357).
+>   - The last group reads Revert · Abandon. Revert is a regular row, not danger, with the `revert` glyph.
+>   - Its right column reads `jj revert -r <change id> -B @`, the full command of decision 16.39. The client's `jj revert -B @` is not a real command: `-r` is required (`cli/src/commands/revert.rs` @ v0.46.0).
+>   - It runs through 10.9.
+> - **Revert's availability** (GV:826-831; DS components/menus/Menu.prompt.md:20). These are the design's limits; jj accepts all three cases (the Epic 10 header's 2026-10-26 note, (f)).
+>   - Off on @: "The revert lands below @ — @ itself can't be reverted".
+>   - Off on a change outside @'s ancestors: "The revert lands below @ — only changes in @'s history". Claude's proposal: the fact comes from `revsetCounts` with `<id> & ::@`, in 10.6's call, because the view may not show the whole ancestry.
+>   - Off on an empty change: "Nothing to revert — the change is empty". Claude's proposal: until 10.11's content says empty, the row is on, and jj then records an empty revert.
+>   - Immutable changes are allowed: pushed history cannot be abandoned, which is the main case.
+>   - An off row is drawn at .4 with its reason as the row's tooltip. For Revert this answers the 2026-10-14 note's NEEDS DESIGN "disabled rows show the backend's refusal reason as a tooltip": its reasons are view facts with fixed copy.
+> - **The locked menu of an immutable change** (SYNC:114, :124; GV:182-203; DS Menu.prompt.md:20).
+>   - Rows that jj refuses are left out, not greyed. The menu keeps New change on top, Insert after (only while no child is immutable; GV:1233's `canAfter`) and Revert.
+>   - Below a separator follow a note row and **Immutable commits…**. The note row has `HatchSwatch` (10.3) in the icon column and "Immutable · <reason>" in 11.5 px `--text-dim`, with 10.6's reason; it is not focusable, and the arrow keys skip it. Immutable commits… has the `settings` glyph and no command column, and it opens Settings on Project › Immutable commits (11.7).
+>   - The header's id has no ◆. The root still shows only New change on top.
+>   - 11.11's Menu gains the note item (`{ note, icon }`; DS readme.md:35). This story adds it.
+> - **Witnesses (added):**
+>   - Revert's right column equals the command the runner runs;
+>   - Revert is off on @, outside @'s history and on an empty change, each with its reason as tooltip, and on on an immutable ancestor of @;
+>   - on an immutable change the menu holds exactly New change on top, Insert after (absent with an immutable child), Revert, the note row and Immutable commits…;
+>   - Immutable commits… opens Settings on the page.
+
 **Motivation.** The design contains four popups: the quick-action fan, the "+" chips, the bookmark popover and the inline describe editor. They make the shipped verbs reachable from the graph. Their look will change, so this story wires them to 10.9's runner with minimal visuals and invests nothing in polish.
 
 **Scope.** Every popup is thin: `material_ui` widgets, no animation polish, an overlay anchored to its card (e.g. `OverlayPortal`). The card stays pinned (10.1 item 9) while its popup is open.
@@ -10675,6 +10749,8 @@ NEEDS DESIGN:
 > - **"Group stacks"** is also View › Group Stacks in the menu bar (11.13; DS readme.md:203): the same app-global switch. 11.13 builds the item and this story's switch is its handler (11.13's Depends on); **Related** adds 11.13.
 > - **Witness** (replacing "… and animates nothing under `disableAnimations`"): under reduce motion the members fade in over 260 ms with no rise and no scale, and only the entering cards build.
 
+> **Design update 2026-10-26 (the Epic 10 header; DS #12, #13; DS synced through #13):** a stack of immutable changes is hatched like its cards. `StackCard immutable` takes 10.3's hatch on the card and on its two offset edges, in every state (DS readme.md:95; SYNC:121; DS readme.md:35). A stack is immutable when its members are. It never mixes both: 4.13's engine continues a run only while the immutable flag matches (`packages/zanshin_core/lib/src/graph_layout/stacks.dart:194`). Witness (added): a stack of immutable members paints the hatch on the card and both edges.
+
 **Motivation.** The updated design collapses linear runs of commits into one stack card (GV:227-264, :536-571; GC:227-247 at `a399daf`). The graph gets shorter and calmer, while forks, merges, bookmarks and @ stay visible. Ralph decided that a toggle never moves a column and that the graph may compact vertically (4.13). This story is the view side: the card, its popover, the bracket, the toggle and the state.
 
 **Scope.**
@@ -10735,8 +10811,9 @@ NEEDS DESIGN:
 
 ---
 
-### Story 10.18: AI titles for commit stacks — a collapsed stack named by its contents — *IDEA, NOT DECIDED* [UI]
+### Story 10.18: AI titles for commit stacks — a collapsed stack named by its contents — *DECLINED 2026-10-26 (Ralph)* [UI]
 *(Added 2026-09-28, Ralph — console session. Backlog only: Ralph wants to think it over before anything is refined, so there are no ACs. Claude compared the options and ran a spike, `spikes/stack-titles/`; the numbers below come from it.)*
+*(Declined 2026-10-26, Ralph: Zanshin does not build it. The entry and the spike stay as the record.)*
 
 **Motivation.** 10.17's stack card shows the newest member's subject (GV:255, :545 at `a399daf`). A branch's tip is never a member, because a candidate needs exactly one child (4.13 item 1). The label is therefore the subject right below the next visible card, often housekeeping such as "fix tests" or "format code". An anonymous branch has no bookmark, so its subjects are its only name. Ralph asked whether an AI could name what a stack contains.
 
@@ -11025,6 +11102,8 @@ Ralph picked variant B (`//`, "Break"), no counts anywhere, and one spacing rule
 > - **The flash's colour** (decision 16.43). "A moon ring" now reads the live copies: 2 px `--accent-live-line` plus 6 px `--accent-live-ring` (graph.css:85). They keep their colour in an inactive window (DS readme.md:194).
 > - **Item 5, slow motion.** The ×5 switch is Widgetbook's TimeDilation addon in the Graph folder (decisions 16.29, 16.30), not a demo-host switch.
 > - **Witnesses (amended).** "Reduce motion: the end state at once, with a static flash" becomes: under reduce motion moved cards jump, the born card fades in without growing, the edge layer fades back in, and the flash fades over 2.4 s at a fixed spread. Added: the glide and the edge hide both take `--dur-flip`.
+
+> **Design update 2026-10-26 (the Epic 10 header; DS #11; DS synced through #13):** a revert grows out of the reverted change, not out of @. The reverted change stays still as the anchor; the new change is born from its position with the born edge draw, then scrolled into view when needed (SYNC:107; GV:832-837, `anchor: id, born: nid`). This is the existing "a new change grows out of its anchor", with the reverted change as the anchor; @ and its descendants glide to their new rows like any moved card. Witness (added): after a revert the new card starts at the reverted card's position.
 
 **Motivation.** The export adds a playground for two graph animations, with the goal "perceptible, but never in the way: quick and smooth, not hectic" (AS:56; the playground is in German):
 - a commit stack unfolds and folds (AS:64);
@@ -11411,6 +11490,8 @@ NEEDS DESIGN (decision (g); the recommendation is the adopted default):
 >   - "A refusal shows the CLI text and no Undo, and stays until ×" becomes: a refusal shows the CLI text in the warn tone, no Undo, and hides after 6.5 s; a failure shows the error tone with its action and stays;
 >   - "Each outcome kind renders its text, with 8-character ids and the bold prefix" checks the prefix length a fake reports;
 >   - added: hovering pauses the hold; after `op abandon` no Undo shows; undoing a push shows jj's warning with Redo; F6 reaches Undo and ×.
+
+> **Design update 2026-10-26 (the Epic 10 header; DS #11; DS synced through #13):** the toast's copy gains Revert: *Reverted X — Y undoes it*, with both ids in mono, followed by Undo (`jj undo`) (SYNC:107; GV:836; DS readme.md:62). It is past tense and verb first, like every feedback line. Witness (added): a revert's toast reads "Reverted <reverted id> — <new id> undoes it" with Undo.
 
 **Motivation.** In the design every graph edit ends in a toast that says what happened and offers Undo (DND:135-146; DNC:44-54; DS components/overlays/Toast.prompt.md:1-9). The design system makes it the rule for feedback: past tense, verb first, ids in mono, always followed by Undo (DS readme.md:57). 10.9 runs the verbs and reports each outcome; this story shows it.
 
@@ -12725,6 +12806,37 @@ What exists in the app:
 >   - The window title reads "General" or the project's name.
 >   - The Accent colour row writes the new preference, and its default is Follow macOS.
 
+> **Design update 2026-10-26 (the Epic 10 header; DS #12, #13; DS synced through #13):** Immutable heads becomes a page of its own, Project › History › **Immutable commits**, and Settings gets pages. This note supersedes item 4's "History › Immutable heads", with its mono text field, its write on Enter and its offer of the previous value, and the 2026-10-16 witness "A pending Immutable heads edit is written when the window closes". It adds item 11 and witnesses.
+> - **Item 11 (new), pages** (DS components/settings/SettingsPage.prompt.md; readme.md:193).
+>   - **The navigation row** (`SettingsRow onOpen`): the label, the current set in words as the hint, the config key, then a value (`HatchSwatch` from 10.3 and the count) and ›. The whole row is one button: hover `--fl-on`, pressed `--fl-press`, focus inside; ↩ and Space open it.
+>   - **The page** replaces the tab's groups in the window body; the tabs, the scope line and the footer stay. Back is "‹ <project name>" (26 px, radius 7, `--text-muted`; hover `--fl-hover`), read as "Back to <project name>"; ⌘[ goes back, and Tab starts at it. The title is 17/600 at −0.01 em, read as a heading, followed by one sentence in 12.5 px `--text-muted`, at most 500 wide, then groups. The page swaps in place, without a slide.
+>   - **The window title** becomes the page's name ("Immutable commits") for the Window menu and Mission Control.
+>   - **A page belongs to its tab.** General hides it, and Project shows it again. ⌘, brings the window forward as it is. Closing the window leaves the page, so the next opening shows the tab. The card menu's Immutable commits… (10.15) opens Settings on Project with the page shown.
+>   - `SettingsGroup` gains `meta` (code beside the heading) and `bare`, and `SettingsRow` gains `onOpen` (DS readme.md:35). This story builds them with its rows (item 2).
+> - **Item 4, History › Immutable commits** (DS components/settings/ImmutablePage.prompt.md; SYNC:115; `design/immutable.jsx:113-169`). It replaces the text field.
+>   - **Intro:** "jj won't rewrite these changes or anything below them: no edit, describe, squash, rebase or abandon. New change on top and Revert still work. In the graph they're hatched."
+>   - **Built in** (`builtin_immutable_heads()` beside the heading): Trunk, Tags, Remote bookmarks you don't track and Remote tags you don't track, as Switch rows whose hints name what matches here ("none here" when nothing does). All four on is jj's default and is written as `builtin_immutable_heads()`; otherwise the chosen calls are written (`trunk() | tags() …`).
+>   - **Also immutable:** Other people's changes (`(trunk().. & ~mine())`, jj's own example; the hint warns that what is below them is locked too, your own changes included); Bookmarks (mono chips, each with a ✕ read as "Remove <name>", plus an add chip that opens a menu of the other bookmarks); Custom revset (a mono field, joined with `|`).
+>   - **Result:** the diff-block well (`--code-bg`, `--fl-border`, radius 12) with the TOML exactly as written, selectable, the key `"immutable_heads()"` in `--text` and the rest `--text-muted`. Then `HatchSwatch` and "**N** changes are immutable", with the heads in mono as the client lists them (`design/immutable.jsx:76-92`; names from 9.29's bookmark list and the tags, else the term). Below: "root() is always immutable. To rewrite one anyway, jj needs `--ignore-immutable`." and **Reset to jj's default** while the set differs.
+>   - **The count** (Claude's proposal): `revsetCounts` with `::immutable_heads() ~ root()` and a cap of 10,000, shown as "10,000+" when capped, counted again after each write.
+>   - **Trunk** stays History's own row; Reset leaves `trunk()` alone (ImmutablePage.prompt.md:16).
+> - **What the page writes** (Claude's proposals; the Epic 10 header's 2026-10-26 note, (a)–(d)). Every write goes to the repo scope through 9.28's `configSet`, as `jj config set --repo 'revset-aliases."immutable_heads()"' '<expr>'`.
+>   - (a) A bookmark chip is written as `present(<name>)`, so a bookmark deleted later cannot make every verb fail. The well shows that text.
+>   - (b) Switches and chips write at once. The custom field writes on ↩ or blur, and only after `revsetCounts(cap: 0)` parses and resolves the whole expression. Otherwise it shows jj's error in the TextField's error state and writes nothing. Closing the window writes a valid pending field (the 2026-10-16 note's item 1) and drops an invalid one.
+>   - (c) Reset unsets the key at the repo scope (`configUnset`, as `jj config unset --repo`). A value from another scope then shows with its source (item 5), and Reset hides.
+>   - (d) On opening, the page reads the effective alias (`configGet`) and maps its top-level `|` terms onto the controls: `builtin_immutable_heads()` or the four built-in calls; `present(<name>)` or a bare bookmark name as chips; `(trunk().. & ~mine())` as the switch. Everything else fills the custom field, in its order. A write keeps the order built-ins, chips, others, custom.
+> - **The graph follows** (item 6): each write re-requests the layout under the anchor, and the cards re-hatch (10.3).
+> - **Keyboard and VoiceOver** (ImmutablePage.prompt.md:18): each switch row is one control with its label and hint; Tab reaches a chip's ✕; the add chip opens its menu (↑↓ ↩ Esc); the well is plain, selectable text; only the switches animate.
+> - **Depends on** adds 10.3 (`HatchSwatch`) and 9.25 (`revsetCounts`, done); 10.15 opens the page.
+> - **Witnesses.** "A write of `immutable_heads()` issues exactly one graph request" now holds for every write of the page. Added:
+>   - the navigation row opens the page; ‹ and ⌘[ return; the window title reads "Immutable commits" on the page;
+>   - General hides the page and Project shows it again; closing the window leaves it; the card menu's row opens Settings on it;
+>   - all four built-ins on write `builtin_immutable_heads()`, and Tags off writes `trunk() | untracked_remote_bookmarks() | untracked_remote_tags()`;
+>   - a chip writes `present(<name>)`, and Other people's changes writes `(trunk().. & ~mine())`;
+>   - a custom revset that the fake `revsetCounts` refuses shows its error and writes nothing, and a valid one writes on ↩;
+>   - Reset calls `configUnset` at the repo scope;
+>   - the effective alias `builtin_immutable_heads() | present(develop) | heads(foo)` opens as four switches on, the chip develop and the custom text `heads(foo)`.
+
 **Motivation.** Set-and-forget settings share one window, with a tab per scope (ST:2-3; DS readme.md:104):
 - **General** holds the app's preferences and the user's jj config.
 - **Project** holds the open repository's `.jj/repo/config.toml`.
@@ -12867,6 +12979,12 @@ Today the app stores one preference, the theme (`packages/zanshin_settings/lib/s
 > - **Item 10 (new), clone form.** `ProjectSession.clone`'s app-side port of the destination rules goes: `cloneRepo` creates the folder, refuses a non-empty one with `jj.destination_not_empty` and removes a folder it created after a failure (9.20). The form shows the clone's `ProgressEvent`s (`operation: "clone"`) live, and offers Cancel once 9.52 lands (Claude's proposal). Files: `app/lib/src/features/projects/project_session.dart`, `projects_window.dart`.
 > - **Live progress.** Fetch, clone and push progress reaches Dart while the call runs only with 9.52 (helper thread for the network verbs); until then it arrives after the call returns. The Push sheet keeps Esc and Cancel inert while pushing (item 8), even after 9.52.
 > - **Depends on** adds 9.52 for live progress and the clone form's Cancel.
+
+> **Design update 2026-10-26 (the Epic 10 header; DS #10; DS synced through #13):** the change row's refusal gets its placement (DS readme.md:33; components/push/PushDialog.prompt.md:16; PushDialog.jsx:76-77, :176-183). This amends item 7's "The change row" and adds witnesses.
+> - The change is checked like any sent ref, by 9.20's explicit-mode verdict for `--change`. A change without a description, @ in the normal case, reads "Refused — <change id> has no description" right under the label line, and its checkbox is disabled.
+> - **One allowable reason:** a short **Allow** chip at the end of the label line, with the flag as its tooltip (e.g. `--allow-empty-description`), enables it. The line then reads "Allowed — … · pushed with `--allow-empty-description`", and the flag joins the command once the change is ticked. **Several reasons** keep the long chips in a row under the reason, as for refs. A hard refusal has no chip.
+> - The name field and its line ("The name jj generates (`templates.git_push_bookmark`) — type your own to name it.") stay below the reason in every state.
+> - **Witnesses (added):** an undescribed change shows the refusal with an inline Allow; Allow enables the checkbox, and the footer gains `--allow-empty-description` only once the change is ticked; two reasons show the chip row; the name field stays below.
 
 **Motivation.** The ACTION group carries Fetch and Push next to New change (AF:174-178; FC:80-85). Both buttons are inert in the export (prototype defect 74).
 
@@ -13230,6 +13348,8 @@ This story builds the plumbing once, so 11.5–11.7, 11.13 and 10.22 only fill i
 
 ### Story 11.13: Menu bar and shortcuts [UI/native]
 *(Added 2026-10-16, Ralph — console session on the design-system rounds 1–3; decisions 16.7, 16.14, 16.16, 16.18, 16.34, 16.42, 16.46 and 16.47; Claude builds it under the scope change of 11.0.)*
+
+> **Design update 2026-10-26 (the Epic 10 header; DS #11; DS synced through #13):** the Change menu gains Revert, between Squash into Parent and Abandon: New Change ⌘N · Describe… · Edit · Squash into Parent · **Revert** · Abandon ⌘⌫ · Fetch · Push… ⇧⌘P (DS readme.md:207). It has no shortcut. Like the other Change items it targets the selection, else @, and names it ("Revert kmnvxoqp"). It is greyed by 10.15's availability: on @, on a change outside @'s history and on an empty change. With no selection the target is @, so it is greyed. It runs 10.9's revert. Witness (added): Change › Revert runs the revert for the selected change and is greyed while the target is @.
 
 **Motivation.** Every command also lives in the menu bar: that is where shortcuts are learned, and where Help search and VoiceOver find them (DS readme.md:198). Today the runner's `MainMenu.xib` has "Preferences… ⌘," without an action (`MainMenu.xib:35`), no File menu and no Close ⌘W. Its stock Edit › Find submenu already claims ⌘F ("Find…", `:120`) and ⌘J ("Jump to Selection", `:146`). The DS now specifies the whole menu bar and the shortcut map (DS readme.md:196–209). No story owns it yet (r4out windows W-9).
 

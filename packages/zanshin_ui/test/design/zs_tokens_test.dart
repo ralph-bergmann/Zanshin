@@ -353,6 +353,6 @@ void main() {
   });
 
   test('the token layer records the DS sync it mirrors', () {
-    expect(dsSyncedThrough, 9);
+    expect(dsSyncedThrough, 13);
   });
 }
