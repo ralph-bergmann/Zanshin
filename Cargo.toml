@@ -66,7 +66,7 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 whoami = "2.1.2"  # WHY: the jj CLI's own source of `operation.hostname`/`operation.username` and of the `--when.hostnames` context (jj's workspace `Cargo.toml` @ v0.46.0 pins `whoami = "2.1.2"`) — same crate, same values in `jj op log`
 zanshin-jj = { path = "crates/zanshin-jj", version = "0.1.0" }
-zstd = "0.13"
+zstd = "0.14.3"  # WHY >=0.14.3: RUSTSEC-2026-0391 / -0398 / -0403 / -0410 (zstd, zstd-safe, zstd-sys)
 
 [workspace.lints.clippy]
 # WHY: priority = -1 so later, individually-configured lints (level overrides

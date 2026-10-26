@@ -50,10 +50,18 @@ multiple-versions = "warn"
 # exact-pin discipline for pre-1.0 deps (project-context.md § "Version
 # pinning rules"). Deny so a wildcard is a hard CI fail.
 wildcards = "deny"
-# No specific bans yet. The no-GPL/AGPL/LGPL/SSPL list is documented
-# (project-context.md § "Critical Don't-Miss Rules") but mechanical
-# enforcement returns with the release-phase [licenses] table.
-deny = []
+# The no-GPL/AGPL/LGPL/SSPL list is documented (project-context.md
+# § "Critical Don't-Miss Rules") but mechanical enforcement returns with the
+# release-phase [licenses] table.
+deny = [
+  # notify 8.2.1 swaps its macOS backend (fsevent-sys -> objc2-core-services),
+  # and the RELEASE build of libzanshin_ffi.dylib then fails dlopen with
+  # "mis-aligned LINKEDIT string pool" (debug builds load). Bisected 2026-10-26:
+  # notify 8.2.0 -> 8.2.1 alone flips it; Cargo.lock pins 8.2.0. Lift the ban once
+  # a newer notify (or toolchain) gives a loading release dylib — app/test/
+  # native_asset_smoke_test.dart is the check.
+  { crate = "notify@>=8.2.1", reason = "release libzanshin_ffi.dylib fails dlopen (mis-aligned LINKEDIT string pool)" },
+]
 # Populated when a known-acceptable duplicate appears (e.g., two `syn`
 # versions during a major-version transition). Each entry needs a comment
 # above it naming the dep and the rationale.
