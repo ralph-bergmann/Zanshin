@@ -19,6 +19,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/op_support.rs resolve_change; crates/zanshin-jj/src/change.rs get_change
     severity: medium (unverified)
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-d-short-prefix-cost-file-no-wc, commit c2318ca4dc68cdb9cc797bc48f4f033254275bf0): measured, about +1.5 ms per get_change call on large-10k (loose and packed) vs 16d1be5, below 5 ms, so no code change; bench benches/get_change.rs.
   - summary: >-
       The file reads report an omitted revision in a workspace without a working-copy commit as `jj.invalid_input`, where the CLI raises `WorkspaceMissingWorkingCopy` (`jj.revset_resolution_error`, as the mutation verbs and commit views map it).
     evidence: |-
@@ -26,6 +28,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/file.rs res
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-d-short-prefix-cost-file-no-wc, commit c2318ca4dc68cdb9cc797bc48f4f033254275bf0): file.rs res maps NoWorkingCopy to FileError::RevsetResolutionError (jj.revset_resolution_error, no hints) for all four file reads.
 ---
 
 <intent-contract>
