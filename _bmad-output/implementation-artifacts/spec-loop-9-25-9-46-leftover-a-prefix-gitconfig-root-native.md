@@ -19,6 +19,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/op_support.rs resolve_commit
     severity: medium
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-c-change-prefix-divergent-native-remotes, commit 0e180acb90953e44f0928e053d787c8f9b82930a): one change-id resolver (the CLI's `ChangePrefixResolver`) takes every call's short-prefixes context; odd lengths resolve, an ambiguous prefix refuses with jj-lib's text, the panic is gone (reproduced first); oracle scenarios added.
   - summary: >-
       A divergent change id is `jj.change_not_found` where the CLI raises `DivergentChangeId` (`jj.revset_resolution_error`, with the targets as hints); not on project-context.md's deliberate-divergence list.
     evidence: |-
@@ -26,6 +28,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/op_support.rs
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-c-change-prefix-divergent-native-remotes, commit 0e180acb90953e44f0928e053d787c8f9b82930a): a divergent change refuses `DivergentChangeId` (`jj.revset_resolution_error`) with the CLI's three hints on every single-revision argument; oracle scenario added.
   - summary: >-
       `git_push_remotes` / `git_fetch_remotes` still answer `[]` on a native backend while `list_remotes` now refuses `jj.not_a_git_repo`.
     evidence: |-
@@ -33,6 +37,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/repo.rs git_push_remotes / git_fetch_remotes
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-c-change-prefix-divergent-native-remotes, commit 0e180acb90953e44f0928e053d787c8f9b82930a): both queries refuse `jj.not_a_git_repo` on a native backend; a Git backend with no match stays `Ok([])`.
 ---
 
 <intent-contract>
