@@ -720,6 +720,17 @@ mod tests {
         );
     }
 
+    /// A remote section with no URL at all is no remote (jj-lib's `try_find_active_remote`, which
+    /// the CLI's list goes through). `list_remotes` never asks for it — jj-lib's name list already
+    /// drops it — so `find_remote` is called directly.
+    #[test]
+    fn a_remote_without_any_url_is_none() {
+        let (_tmp, repo) = git_repo_with_config("[remote \"e\"]\n");
+        let git_repo = jj_lib::git::get_git_repo(repo.workspace().repo_loader().store()).expect("git repo");
+        let found = super::find_remote(&git_repo, jj_lib::ref_name::RemoteName::new("e"));
+        assert!(matches!(found, Ok(None)), "{found:?}");
+    }
+
     /// Story 9.46, the load-failure row: an invalid `fetch` refspec makes gix refuse the
     /// remote, and the list refuses with jj-lib's chain, as the CLI's `?` does.
     #[test]

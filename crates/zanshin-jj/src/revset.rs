@@ -1234,7 +1234,10 @@ mod tests {
     use jj_lib::backend::CommitId;
     use jj_lib::revset::RevsetResolutionError as R;
 
-    use super::{render_span, resolution_hints, RevsetErrorDetail, RevsetErrorKind as K, RevsetSpan};
+    use super::{
+        render_span, resolution_hints, FilesetAliasesMap, RevsetErrorDetail, RevsetErrorKind as K, RevsetParseContext,
+        RevsetParseError, RevsetSpan, RevsetWorkspaceContext,
+    };
 
     /// The span `render` names in `expr`, as `(offset, length)`.
     fn spanned(expr: &str, render: &str) -> (u32, Option<u32>) {
@@ -1292,19 +1295,35 @@ mod tests {
         assert_eq!(render_span("x", " --> 1:9\n  |\n1 | x\n  | ^\n"), None);
     }
 
-    /// The parse detail of `expr`.
-    fn parse_detail(parse_config: &RevsetConfig, repo: &crate::Repo, expr: &str) -> RevsetErrorDetail {
-        let workspace = repo.workspace();
-        let Err(crate::RevsetError::ParseError { detail, .. }) = super::parse_revset_in(
-            (workspace.workspace_root(), workspace.workspace_name()),
-            parse_config,
-            expr,
-            &[],
-            &mut jj_lib::revset::RevsetDiagnostics::new(),
-        ) else {
-            panic!("{expr} parses");
+    /// jj-lib's parse error of `expr` with `parse_config`'s aliases, in the workspace rooted at
+    /// `root` — or, `None`, in no workspace (a context `parse_revset_in` never builds).
+    fn parse_error(parse_config: &RevsetConfig, root: Option<&std::path::Path>, expr: &str) -> RevsetParseError {
+        let path_converter = root.map(|root| jj_lib::ui_path::RepoPathUiConverter::Fs {
+            cwd: root.to_owned(),
+            base: root.to_owned(),
+        });
+        let context = RevsetParseContext {
+            aliases_map: &parse_config.aliases_map,
+            local_variables: std::collections::HashMap::new(),
+            user_email: "",
+            date_pattern_context: chrono::Local::now().into(),
+            default_ignored_remote: None,
+            fileset_aliases_map: &FilesetAliasesMap::new(),
+            extensions: &jj_lib::revset::RevsetExtensions::default(),
+            workspace: path_converter.as_ref().map(|path_converter| RevsetWorkspaceContext {
+                path_converter,
+                workspace_name: jj_lib::ref_name::WorkspaceName::DEFAULT,
+            }),
         };
-        *detail
+        jj_lib::revset::parse(&mut jj_lib::revset::RevsetDiagnostics::new(), expr, &context).expect_err(expr)
+    }
+
+    /// The parse detail of `expr` in `repo`'s workspace.
+    fn parse_detail(parse_config: &RevsetConfig, repo: &crate::Repo, expr: &str) -> RevsetErrorDetail {
+        super::parse_detail(
+            expr,
+            &parse_error(parse_config, Some(repo.workspace().workspace_root()), expr),
+        )
     }
 
     /// Real jj-lib renders: an empty span, a non-ASCII text, a span on a later line and one that
@@ -1354,6 +1373,101 @@ mod tests {
         assert!(detail(r#"description(bogus:"x")"#).hints[0].starts_with("Try prefixing with one of `exact:`"));
         assert!(detail(r#"files(bogus:"x")"#).hints[0].contains("filesets/#file-patterns"));
         assert!(detail("files(a::)").hints[0].contains("filesets syntax"));
+    }
+
+    /// The hint-less sources: a date pattern (no CLI hint reads it) and a glob; and a fileset's
+    /// unknown function names its similar ones.
+    #[test]
+    fn source_hints_cover_the_hintless_sources_and_fileset_functions() {
+        let (_tmp, repo, parse_config) = repo_with("");
+        let detail = |expr| parse_detail(&parse_config, &repo, expr);
+        let date = detail(r#"author_date(after:"bogus")"#);
+        assert_eq!((date.kind, date.hints), (K::Expression, Vec::<String>::new()));
+        assert!(
+            detail(r#"files(glob:"[")"#).hints.is_empty(),
+            "a glob error has no hint"
+        );
+        assert_eq!(detail("files(alll())").hints, ["Did you mean `all`?"]);
+    }
+
+    /// The CLI's `root:` hint for a filesystem path that is also a repo-relative one, and no hint
+    /// for a fileset alias error.
+    #[test]
+    fn file_pattern_and_fileset_alias_hints() {
+        use jj_lib::repo_path::RelativePathParseError;
+        use jj_lib::ui_path::FsPathParseError;
+        use std::path::Path;
+
+        let outside = super::FilePatternParseError::UiPath(super::UiPathParseError::Fs(FsPathParseError {
+            base: Path::new("../ws").into(),
+            input: Path::new("a/b").into(),
+            source: RelativePathParseError::InvalidComponent {
+                component: "..".into(),
+                path: Path::new("../ws/a/b").into(),
+            },
+        }));
+        assert_eq!(
+            super::file_pattern_hint(&outside).as_deref(),
+            Some(r#"Consider using root:"a/b" to specify repo-relative path"#)
+        );
+        let redefined = FilesetAliasesMap::new()
+            .insert("g(x, x)", "x", None)
+            .expect_err("a redefined parameter");
+        assert_eq!(super::fileset_hint(&redefined), None);
+    }
+
+    /// Without a workspace, a file pattern and `@` are their own kinds, without a hint.
+    #[test]
+    fn without_a_workspace_files_and_the_working_copy_are_their_own_kinds() {
+        let (_tmp, _repo, parse_config) = repo_with("");
+        for (expr, kind) in [
+            ("files(a)", K::FsPathWithoutWorkspace),
+            ("@", K::WorkingCopyWithoutWorkspace),
+        ] {
+            let detail = super::parse_detail(expr, &parse_error(&parse_config, None, expr));
+            assert_eq!(
+                (detail.kind, detail.symbol, detail.hints),
+                (kind, None, Vec::new()),
+                "{expr}"
+            );
+        }
+    }
+
+    /// A parameter declared twice is jj-lib's error from inserting the alias, not from a parse.
+    #[test]
+    fn a_redefined_alias_parameter_is_its_own_kind() {
+        let error = jj_lib::revset::RevsetAliasesMap::new()
+            .insert("g(x, x)", "x", None)
+            .expect_err("a redefined parameter");
+        let detail = super::parse_detail("g(x, x)", &error);
+        assert_eq!(
+            (detail.kind, detail.symbol, detail.hints),
+            (K::RedefinedFunctionParameter, None, Vec::new())
+        );
+    }
+
+    /// The levels below an alias expansion: a parameter's (the hint still reads the bottom error)
+    /// and a recursion's.
+    #[test]
+    fn lower_alias_chain_levels_name_their_parameter_and_alias() {
+        let (_tmp, repo, parse_config) = repo_with("[revset-aliases]\n'f(x)' = 'x'\nrec = 'rec'\n");
+        let root = Some(repo.workspace().workspace_root());
+
+        let call = parse_error(&parse_config, root, "f(descripton(y))");
+        assert_eq!(super::parse_detail("f(descripton(y))", &call).kind, K::InAliasExpansion);
+        let parameter = super::parse_detail("f(descripton(y))", call.origin().expect("the parameter level"));
+        assert_eq!(
+            (parameter.kind, parameter.symbol.as_deref()),
+            (K::InParameterExpansion, Some("x"))
+        );
+        assert_eq!(parameter.hints, ["Did you mean `bisect`, `description`?"]);
+
+        let recursion = parse_error(&parse_config, root, "rec");
+        let recursive = super::parse_detail("rec", recursion.origin().expect("the recursion level"));
+        assert_eq!(
+            (recursive.kind, recursive.symbol.as_deref(), recursive.hints),
+            (K::RecursiveAlias, Some("rec"), Vec::new())
+        );
     }
 
     #[test]
@@ -1416,5 +1530,19 @@ mod tests {
         );
         let empty = super::resolution_detail(&R::EmptyString);
         assert_eq!((empty.kind, empty.symbol), (K::EmptyString, None));
+        let conflicted = super::resolution_detail(&R::ConflictedRef {
+            kind: "tag",
+            symbol: "v1".to_owned(),
+            targets: Vec::new(),
+        });
+        assert_eq!(
+            (conflicted.kind, conflicted.symbol.as_deref()),
+            (K::ConflictedRef, Some("v1"))
+        );
+        let backend = super::resolution_detail(&R::Backend(jj_lib::backend::BackendError::Unsupported("x".to_owned())));
+        assert_eq!(
+            (backend.kind, backend.symbol, backend.hints),
+            (K::Backend, None, Vec::new())
+        );
     }
 }

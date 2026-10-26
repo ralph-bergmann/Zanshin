@@ -13,8 +13,8 @@ use std::ops::ControlFlow;
 
 use test_helpers::{extract_fixture, FixtureHandle};
 use zanshin_jj::{
-    resolve_revset, BookmarkError, BookmarkListOptions, BookmarkMoveOptions, ChangeId, CommitViewError, MutateError,
-    Repo, RevsetError, RevsetErrorKind, SparseInheritance, DEFAULT_GRAPH_PRIORITIZE,
+    resolve_revset, BookmarkError, BookmarkListOptions, BookmarkMoveOptions, ChangeId, CommitViewError, ConfigError,
+    MutateError, Repo, RevsetError, RevsetErrorKind, SparseInheritance, DEFAULT_GRAPH_PRIORITIZE,
 };
 
 struct Fx {
@@ -146,6 +146,24 @@ fn an_unresolvable_short_prefixes_refuses_only_id_prefix_symbols() {
     let err = eval(&mut repo, &prefix).unwrap_err();
     assert!(
         matches!(&err, RevsetError::ResolutionError { detail, .. } if detail.kind == RevsetErrorKind::Other),
+        "{err:?}"
+    );
+}
+
+/// An unparseable short-prefixes text refuses the read with the CLI's start-up text, "Invalid
+/// `revsets.short-prefixes`: " + jj-lib's parse error (`cli_util.rs:1120-1141` @ v0.46.0).
+#[test]
+fn an_unparseable_short_prefixes_refuses_with_a_config_error() {
+    let Fx {
+        fixture: _fixture,
+        repo,
+        ..
+    } = medium("[revsets]\nshort-prefixes = \"bogus_function(\"\n");
+
+    let err = resolve_revset(&repo, "tip").unwrap_err();
+    assert!(
+        matches!(&err, RevsetError::Config(ConfigError::Load { reason })
+            if reason.starts_with("Invalid `revsets.short-prefixes`: ") && reason.contains("bogus_function")),
         "{err:?}"
     );
 }
