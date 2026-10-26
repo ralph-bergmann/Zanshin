@@ -2129,3 +2129,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - ~~**The file reads report an omitted revision in a workspace without a working-copy commit as `jj.invalid_input`, where the CLI raises `WorkspaceMissingWorkingCopy` (`jj.revset_resolution_error`, as the mutation verbs and commit views map it).**~~ — RESOLVED 2026-10-26 (spec-loop-9-25-9-46-leftover-d-short-prefix-cost-file-no-wc, commit c2318ca4dc68cdb9cc797bc48f4f033254275bf0): `file.rs::res` maps `NoWorkingCopy` to `FileError::RevsetResolutionError` (jj-lib's text, no hints, as the CLI) for all four reads; tests flipped, oracle scenario `file_list_without_working_copy`. Low.
   - `crates/zanshin-jj/src/file.rs` `res` maps `ResolveError::NoWorkingCopy` to `FileError::InvalidInput`; `FileError::RevsetResolutionError` exists since leftover run C. Pre-existing.
   - **Follow-up:** map it to `FileError::RevsetResolutionError` like the other families; or leave it.
+
+## Surfaced 2026-10-26 while updating dependencies after the story loop 9.25–9.46 (console session, Ralph)
+
+- **notify is held at 8.2.0: with 8.2.1 the release `libzanshin_ffi.dylib` fails `dlopen` ("mis-aligned LINKEDIT string pool"); debug builds load.** Low.
+  - notify 8.2.1 swaps its macOS backend (`fsevent-sys` → `objc2-core-services`). Bisected on the full update: that one change flips the release dylib from loading to failing, re-checked on a non-full disk (commit 28e0b40). `deny.toml` bans `notify@>=8.2.1`; `app/test/native_asset_smoke_test.dart` is the check. The linker-level mechanism was not investigated.
+  - **Follow-up:** at the next dependency update (or jj pin bump), try the newest notify: if the release dylib loads, lift the ban in `deny.toml` and drop the pin.
