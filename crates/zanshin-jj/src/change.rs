@@ -184,19 +184,13 @@ pub(crate) fn get_change(
     prefixes: &jj_lib::id_prefix::IdPrefixContext,
     id: &ChangeId,
 ) -> Result<Change, ChangeError> {
-    use crate::op_support::ResolveError;
-
     // 1. Reload to head (ADR-0002; sync via pollster — mirrors status.rs:85).
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
 
     // 2. Resolve → visible commit(s), divergence-aware (D4): the index-first visible target
     //    (jj prefers newer-first; not guaranteed).
-    let visible = crate::op_support::resolve_change(repo_dyn, prefixes, id).map_err(|e| match e {
-        ResolveError::NotFound | ResolveError::NoWorkingCopy(_) => ChangeError::NotFound { id: id.0.clone() },
-        ResolveError::Resolution { reason, hints } => ChangeError::RevsetResolutionError { reason, hints },
-        ResolveError::Backend(reason) => ChangeError::Backend(reason),
-    })?;
+    let visible = crate::op_support::resolve_change(repo_dyn, prefixes, id).map_err(|e| res(e, id))?;
     // `resolve_change` returns at least one visible target.
     let (_, commit_id) = &visible[0];
 
@@ -205,6 +199,19 @@ pub(crate) fn get_change(
 
     // 4-8. Shared with `eval_revset` — one construction site for `Change`.
     change_from_commit(repo_dyn, &commit).map_err(ChangeError::Backend)
+}
+
+/// Converts a shared [`crate::op_support::ResolveError`] for `id` to this module's taxonomy: an
+/// id that does not resolve is `NotFound` with the id echoed, a resolution refusal keeps its
+/// reason and hints, an index failure is `Backend`. `NoWorkingCopy` is never raised for an
+/// id-carrying resolve and folds into `NotFound` like any other miss.
+fn res(e: crate::op_support::ResolveError, id: &ChangeId) -> ChangeError {
+    use crate::op_support::ResolveError;
+    match e {
+        ResolveError::NotFound | ResolveError::NoWorkingCopy(_) => ChangeError::NotFound { id: id.0.clone() },
+        ResolveError::Resolution { reason, hints } => ChangeError::RevsetResolutionError { reason, hints },
+        ResolveError::Backend(reason) => ChangeError::Backend(reason),
+    }
 }
 
 /// Builds the crate-owned [`Change`] for an already-loaded jj-lib `commit`.
@@ -290,7 +297,35 @@ pub(crate) fn change_from_commit(
 
 #[cfg(test)]
 mod tests {
-    use super::{get_change, ChangeError, ChangeId};
+    use super::{get_change, res, ChangeError, ChangeId};
+    use crate::op_support::ResolveError;
+
+    /// Every shared resolver outcome lands on its own variant with its fields — pinned directly,
+    /// because `Backend` needs an index read failure the public API cannot provoke.
+    #[test]
+    fn res_maps_every_resolve_error() {
+        let id = ChangeId("zk".to_owned());
+        assert!(matches!(
+            res(ResolveError::NotFound, &id),
+            ChangeError::NotFound { id: echoed } if echoed == "zk"
+        ));
+        assert!(matches!(
+            res(ResolveError::NoWorkingCopy("no @".to_owned()), &id),
+            ChangeError::NotFound { id: echoed } if echoed == "zk"
+        ));
+        let e = ResolveError::Resolution {
+            reason: "Change ID `zk` is divergent".to_owned(),
+            hints: vec!["h".to_owned()],
+        };
+        assert!(matches!(
+            res(e, &id),
+            ChangeError::RevsetResolutionError { reason, hints } if reason == "Change ID `zk` is divergent" && hints == ["h"]
+        ));
+        assert!(matches!(
+            res(ResolveError::Backend("index read failed".to_owned()), &id),
+            ChangeError::Backend(reason) if reason == "index read failed"
+        ));
+    }
 
     /// A head that no longer loads is this module's own `Backend` failure. Through
     /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function

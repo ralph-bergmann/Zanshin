@@ -146,8 +146,9 @@ fn a_unique_odd_prefix_resolves_without_short_prefixes() {
 }
 
 /// A short-prefixes set that does not resolve: a malformed id is not found BEFORE the set is
-/// loaded (the CLI validates the reverse hex first), a valid id is refused with jj-lib's load
-/// error and its chain, and an omitted revision (`@`) never loads it.
+/// loaded (the CLI validates the reverse hex first), a valid id — a change id, or `interdiff`'s
+/// commit-id hex — is refused with jj-lib's load error and its chain, and an omitted revision
+/// (`@`) never loads it.
 #[test]
 fn a_broken_short_prefixes_refuses_only_a_valid_id() {
     let (_fixture, mut repo) = medium(BROKEN_SHORT);
@@ -190,6 +191,14 @@ fn a_broken_short_prefixes_refuses_only_a_valid_id() {
     let from = RevisionRef::CommitId(CommitId("xyz!".to_owned()));
     let err = repo.interdiff(Some(from), None, &[]).unwrap_err();
     assert!(matches!(&err, CommitViewError::InvalidInput { .. }), "{err:?}");
+    // A valid commit-id hex loads the set and is refused with its load error.
+    let from = RevisionRef::CommitId(CommitId("ab".to_owned()));
+    let err = repo.interdiff(Some(from), None, &[]).unwrap_err();
+    assert!(
+        matches!(&err, CommitViewError::RevsetResolutionError { reason, hints }
+            if reason.starts_with(failed) && reason.contains("missing") && hints.is_empty()),
+        "{err:?}"
+    );
 }
 
 /// The DEFAULT `revsets.short-prefixes` is `revsets.log`, which names `immutable_heads()`: with
