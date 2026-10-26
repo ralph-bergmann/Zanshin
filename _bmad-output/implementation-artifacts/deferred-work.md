@@ -2141,3 +2141,12 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **11-13 was missing from `development_status`.** 653bac20 ("trim done stories") dropped `11-13-menu-bar-shortcuts: backlog`, though 11.13 is open (Stufe 5). Restored with its old text plus the Revert note. The same commit set 9-43 and 10-18 to `declined` (Ralph confirmed 9.43 on 2026-10-26); their yaml comments and epics.md headings now say so. Low.
 - **DS line citations in `zs_colors.dart` drift.** The download inserts three lines into `tokens/colors.css` at :31 and one at :88, so the doc comments citing colors.css past :30 point three or four lines off. The house rule keeps older citations unrewritten; only the new `hatch` / `hatchMark` comments cite this download. Low.
 - **The hatch under increased contrast** stays a 1.20 : 1 texture; the DS lists it as open (DS readme.md:339) and carries the state in the word. Nothing to build until the DS decides. Low.
+
+## Surfaced in Story 10.1 (bmad-build-auto, 2026-10-26)
+
+- **The Graph folder was not checked visually in the running catalogue.** Low.
+  - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session, so no Marionette screenshot exists. Widget tests and the smoke test only prove that every Graph use case builds and opens (`app/test/widgetbook/catalogue_smoke_test.dart`, `catalogue_extension_test.dart`).
+  - **Follow-up:** open `graph/viewport/recording` and `graph/viewport/scale` through `zanshinCatalogue.open` in a console session, screenshot both, and check pan and scroll by hand.
+- **`KeepAlive(keepAlive: pinned)` is inert: pinned cards are laid out on every pass instead of resting in the keep-alive bucket.** Low.
+  - Flutter's 2D element loses a kept-alive off-screen child when a reload moves its vicinity ("Expected to re-use an element"), so `_layoutNode` clears `parentData.keepAlive` after layout (`app/lib/src/features/graph/graph_viewport_render.dart`, the WHY comment in `_layoutNode`). Pinning still holds through the node key, and the pinning witness (o) passes.
+  - **Follow-up:** none unless pinned-card counts grow large. Otherwise revisit when Flutter fixes keep-alive across vicinity moves, or when 10.15 or 10.10 pins many cards.
