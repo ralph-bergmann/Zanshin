@@ -925,22 +925,22 @@ pub(crate) fn matching_remotes(
 }
 
 /// The remotes `jj git push` / `jj git fetch` without `--remote` would use (Stories 9.54, 9.30)
-/// — see [`crate::Repo::git_push_remotes`] and [`crate::Repo::git_fetch_remotes`]. A non-Git
-/// backend has none; the only-remote hint is dropped.
+/// — see [`crate::Repo::git_push_remotes`] and [`crate::Repo::git_fetch_remotes`]; the
+/// only-remote hint is dropped. In the verbs' order: the configured key, then the remotes.
 ///
 /// # Errors
 ///
-/// See [`configured_remotes`].
+/// - See [`configured_remotes`].
+/// - [`MutateError::NotAGitRepo`] — the backend is not Git, which both verbs refuse the same way.
 pub(crate) fn default_remote_names(
     workspace: &jj_lib::workspace::Workspace,
     config: &StackedConfig,
     defaults: RemoteDefaults,
     sink: &mut Warnings,
 ) -> Result<Vec<String>, MutateError> {
-    let Ok(all_remotes) = jj_lib::git::get_all_remote_names(workspace.repo_loader().store()) else {
-        return Ok(Vec::new());
-    };
     let configured = configured_remotes(config, defaults)?;
+    let all_remotes =
+        jj_lib::git::get_all_remote_names(workspace.repo_loader().store()).map_err(|_| MutateError::NotAGitRepo)?;
     let remotes = default_remotes(&all_remotes, configured, defaults, sink, &mut Vec::new());
     Ok(remotes.into_iter().map(RemoteNameBuf::into_string).collect())
 }

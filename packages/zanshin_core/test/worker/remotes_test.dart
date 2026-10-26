@@ -70,6 +70,19 @@ void main() {
       await handle.close();
     });
 
+    test('default_push_and_fetch_remotes_on_native_backend_surface_not_a_git_repo', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      // `jj git push` / `jj git fetch` refuse a repo without a git backend.
+      final Matcher notAGitRepo = throwsA(
+        isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.not_a_git_repo'),
+      );
+      await expectLater(handle.gitPushRemotes(), notAGitRepo);
+      await expectLater(handle.gitFetchRemotes(), notAGitRepo);
+
+      await handle.close();
+    });
+
     test('remotes_stable_across_two_calls_on_fresh_repo', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
 

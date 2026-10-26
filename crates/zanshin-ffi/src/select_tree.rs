@@ -163,8 +163,9 @@ fn select_tree_verb(verb: fbs::SelectTreeVerb) -> Result<Option<SelectTreeVerb>,
 /// - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed
 ///   or of an even or zero count, a path invalid, the root or listed twice — all before the
 ///   snapshot: nothing written, no `precondition`; detail in `context`.
-/// - `jj.change_not_found` — `revision` or `from` is malformed, carried by no VISIBLE commit, or
-///   divergent.
+/// - `jj.change_not_found` — `revision` or `from` is malformed or carried by no VISIBLE commit.
+/// - `jj.revset_resolution_error` — `revision` or `from` is an ambiguous change-id prefix or a divergent change
+///   (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
 ///   commit.
 /// - `jj.stale_selection` — the revision's parent tree (`from`'s tree) is not `left`, a key is not a current

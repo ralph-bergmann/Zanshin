@@ -286,9 +286,11 @@ fn read_bookmark_track_request(
 /// - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a name is the
 ///   empty string.
 /// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
-///   or only-hidden), or divergent; the id in `context`. An ABSENT `revision` is not an
+///   or only-hidden); the id in `context`. An ABSENT `revision` is not an
 ///   error — it is what applies the CLI's `-r` default `@`. An explicitly present EMPTY
 ///   string is a VALUE, not an absence, and lands here.
+/// - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+///   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_resolution_error` — an absent `revision`'s `@` default in a workspace with no
 ///   working-copy commit; the CLI's text in `context`.
 /// - `jj.bookmark_exists` — a name is already a local bookmark; the name in `context`.
@@ -402,9 +404,11 @@ pub unsafe extern "C" fn zanshin_bookmark_delete(handle: u64, data: *const u8, l
 /// - `jj.invalid_input` — neither `names` nor `from`; or, without `allow_backwards`, a backwards
 ///   or sideways move ("Refusing to move bookmark backwards or sideways: {name}", the hint "Use
 ///   --allow-backwards to allow it." in `hints`).
-/// - `jj.change_not_found` — `to` is malformed, unknown, hidden or divergent; the id in `context`.
+/// - `jj.change_not_found` — `to` is malformed, unknown or hidden; the id in `context`.
 /// - `jj.revset_parse_error` / `jj.revset_resolution_error` — a `from` text, or no `@` for `to`'s
 ///   default.
+/// - `jj.revset_resolution_error` — `to` is an ambiguous change-id prefix or a divergent change (the CLI's hints
+///   in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.config_error` — the effective config changed and no longer reads, the pre-verb snapshot
 ///   found a wrongly typed knob, or the revset aliases do not load.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale; nothing is
@@ -547,9 +551,9 @@ pub unsafe extern "C" fn zanshin_bookmark_rename(handle: u64, data: *const u8, l
 ///   snapshot; or, without `allow_backwards`, a backwards or sideways move ("Refusing to move
 ///   bookmark backwards or sideways: {name}", the hint "Use --allow-backwards to allow it." in
 ///   `hints`).
-/// - `jj.change_not_found` — `revision` is malformed, unknown, hidden or divergent; the id in
-///   `context`.
-/// - `jj.revset_resolution_error` — no `@` for `revision`'s default.
+/// - `jj.change_not_found` — `revision` is malformed, unknown or hidden; the id in `context`.
+/// - `jj.revset_resolution_error` — no `@` for `revision`'s default; `revision` is an ambiguous change-id prefix
+///   or a divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`,
 ///   or a `remotes.<r>` auto-track value does not parse; nothing is written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.

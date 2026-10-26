@@ -130,7 +130,8 @@ fn push_remotes_to_envelope(names: &[String], report: &crate::envelope::CallRepo
 /// only when it exists, in remote-name order.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `GitPushRemotes` payload on success — EMPTY when
-/// none matches (the push itself refuses then) and on a non-Git backend. An exact name no remote
+/// none matches (the push itself refuses then); a non-Git backend refuses `jj.not_a_git_repo`, as the
+/// push does. An exact name no remote
 /// carries — a `git.push` name, or the implicit `origin` — warns `jj.push_remotes_unmatched`, as
 /// the push does. Writes NO operation of its own, only the pre-verb snapshot's.
 ///
@@ -140,6 +141,7 @@ fn push_remotes_to_envelope(names: &[String], report: &crate::envelope::CallRepo
 ///   pre-verb snapshot (Story 9.26) found the effective jj config unreadable; the key in
 ///   `context`.
 /// - `jj.invalid_input` — a git.push pattern does not parse; detail in `context`.
+/// - `jj.not_a_git_repo` — the backend is not Git; no `context`.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
 ///
@@ -177,10 +179,11 @@ fn fetch_remotes_to_envelope(names: &[String], report: &crate::envelope::CallRep
 /// `handle` (Story 9.30) — the CLI's default-remote resolution, shared with `zanshin_git_fetch`:
 /// the remotes `git.fetch` names (a name, a list or a pattern), else the single remote, else
 /// `origin`, each only when it exists, in remote-name order. The Fetch button's enable rule:
-/// enabled when this is not empty.
+/// enabled when this answers `ok` and is not empty.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `GitFetchRemotes` payload on success — EMPTY when
-/// none matches (the fetch itself refuses then) and on a non-Git backend. An exact name no remote
+/// none matches (the fetch itself refuses then); a non-Git backend refuses `jj.not_a_git_repo`, as
+/// the fetch does. An exact name no remote
 /// carries — a `git.fetch` name, or the implicit `origin` — warns `jj.fetch_remotes_unmatched`, as
 /// the fetch does. The fetch's only-remote hint is not reported. Writes NO operation of its own,
 /// only the pre-verb snapshot's.
@@ -191,6 +194,7 @@ fn fetch_remotes_to_envelope(names: &[String], report: &crate::envelope::CallRep
 ///   pre-verb snapshot (Story 9.26) found the effective jj config unreadable; the key in
 ///   `context`.
 /// - `jj.invalid_input` — a git.fetch pattern does not parse; detail in `context`.
+/// - `jj.not_a_git_repo` — the backend is not Git; no `context`.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
 ///

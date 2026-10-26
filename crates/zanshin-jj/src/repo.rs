@@ -717,19 +717,26 @@ impl Repo {
         })
     }
 
-    /// Returns full metadata for the change identified by `id` (jj reverse-hex form).
+    /// Returns full metadata for the change identified by the change-id prefix `id` (jj
+    /// reverse-hex form).
     ///
     /// Re-resolves to head on every call (ADR-0002). Read-only.
+    ///
+    /// `id` is a change-id PREFIX resolved through the effective `revsets.short-prefixes` (the
+    /// CLI's `ChangePrefixResolver`); a DIVERGENT change is no error — the first visible commit,
+    /// with [`crate::Change::divergent`] set.
     ///
     /// # Errors
     ///
     /// - [`crate::ChangeError::NotFound`] — `id` is malformed (not valid reverse-hex),
     ///   absent from the index, or only points to hidden/abandoned commits.
+    /// - [`crate::ChangeError::RevsetResolutionError`] — `id` is an ambiguous prefix, or
+    ///   `revsets.short-prefixes` fails to load.
     /// - [`crate::ChangeError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn get_change(&mut self, id: &crate::ChangeId) -> Result<crate::Change, crate::ChangeError> {
-        self.with_verb(cli_command::SHOW, |repo, _ctx| {
-            crate::change::get_change(&repo.workspace, id)
+        self.with_verb(cli_command::SHOW, |repo, ctx| {
+            crate::change::get_change(&repo.workspace, &ctx.template_startup.id_prefix_context(), id)
         })
     }
 
@@ -883,7 +890,8 @@ impl Repo {
     /// exists. An exact name no remote carries warns `jj.push_remotes_unmatched`, as the push does
     /// — a `git.push` name, and the implicit `origin` too (so a repo with no remote, or several
     /// without `origin`, warns "No matching remotes for names: origin"). No match is `Ok(vec![])`
-    /// (the push itself refuses "No git remotes to push to"), and so is a non-Git (native) backend.
+    /// (the push itself refuses "No git remotes to push to"); a non-Git (native) backend is
+    /// refused as the push refuses it.
     ///
     /// For the GUI's "ahead" rule: only a push target's missing remote bookmark makes a bookmark
     /// ahead. Writes NO operation of its own — only the pre-verb snapshot's, like every read.
@@ -892,6 +900,7 @@ impl Repo {
     ///
     /// - [`crate::MutateError::Config`] — `git.push` is neither a string nor a list of strings.
     /// - [`crate::MutateError::InvalidInput`] — a `git.push` pattern does not parse.
+    /// - [`crate::MutateError::NotAGitRepo`] — the backend is not Git.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_push_remotes(&mut self) -> Result<Vec<String>, crate::MutateError> {
@@ -911,16 +920,17 @@ impl Repo {
     /// names (a name, a list or a pattern), else the single remote, else `origin` — each kept only
     /// when it exists. An exact name no remote carries warns `jj.fetch_remotes_unmatched`, as the
     /// fetch does — a `git.fetch` name, and the implicit `origin` too. No match is `Ok(vec![])`
-    /// (the fetch itself refuses "No git remotes to fetch from"), and so is a non-Git (native)
-    /// backend. The only-remote hint the fetch reports is dropped.
+    /// (the fetch itself refuses "No git remotes to fetch from"); a non-Git (native) backend is
+    /// refused as the fetch refuses it. The only-remote hint the fetch reports is dropped.
     ///
-    /// The Fetch button's enable rule: enabled when this is not empty. Writes NO operation of its
-    /// own — only the pre-verb snapshot's, like every read.
+    /// The Fetch button's enable rule: enabled when this is `Ok` and not empty. Writes NO
+    /// operation of its own — only the pre-verb snapshot's, like every read.
     ///
     /// # Errors
     ///
     /// - [`crate::MutateError::Config`] — `git.fetch` is neither a string nor a list of strings.
     /// - [`crate::MutateError::InvalidInput`] — a `git.fetch` pattern does not parse.
+    /// - [`crate::MutateError::NotAGitRepo`] — the backend is not Git.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_fetch_remotes(&mut self) -> Result<Vec<String>, crate::MutateError> {
@@ -978,10 +988,13 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::FileError::ChangeNotFound`] — `revision` is malformed, carried by no
-    ///   VISIBLE commit (unknown or only-hidden), or divergent (the CLI's `-r` refuses an
-    ///   ambiguous revision too). An ABSENT `revision` is not an error: it is what applies
-    ///   the CLI's `-r` default `@`.
+    /// - [`crate::FileError::ChangeNotFound`] — `revision` is malformed or carried by no
+    ///   VISIBLE commit (unknown or only-hidden). An ABSENT `revision` is not an error: it is
+    ///   what applies the CLI's `-r` default `@`.
+    /// - [`crate::FileError::RevsetResolutionError`] — `revision` is a change-id prefix that is
+    ///   ambiguous (within the effective `revsets.short-prefixes`, else repo-wide) or names a
+    ///   DIVERGENT change (the CLI's `-r` refuses it, with its three hints), or the
+    ///   `revsets.short-prefixes` set fails to load (this holds for all four file reads).
     /// - [`crate::FileError::InvalidInput`] — a `paths` entry is not a valid repo path, or an
     ///   absent `revision`'s `@` in a workspace with no working-copy commit ("Workspace `<name>`
     ///   doesn't have a working-copy commit"; this holds for all four file reads).
@@ -996,7 +1009,8 @@ impl Repo {
         paths: &[String],
     ) -> Result<Vec<crate::FileEntry>, crate::FileError> {
         self.with_verb(cli_command::FILE_LIST, |repo, ctx| {
-            crate::file::file_list(repo.workspace(), &mut ctx.warnings, revision.as_ref(), paths)
+            let prefixes = ctx.template_startup.id_prefix_context();
+            crate::file::file_list(repo.workspace(), &mut ctx.warnings, &prefixes, revision.as_ref(), paths)
         })
     }
 
@@ -1030,7 +1044,8 @@ impl Repo {
     ///
     /// - [`crate::FileError::InvalidInput`] — `paths` is empty, or an entry is not a valid
     ///   repo path.
-    /// - [`crate::FileError::ChangeNotFound`] — `revision` does not resolve.
+    /// - [`crate::FileError::ChangeNotFound`] / [`crate::FileError::RevsetResolutionError`] —
+    ///   `revision` does not resolve (see [`Repo::file_list`]).
     /// - [`crate::FileError::PathNotFound`] — exactly one path was given and it is absent
     ///   from the revision's tree.
     /// - [`crate::FileError::Config`] — the repo's effective jj config is unreadable or
@@ -1047,7 +1062,8 @@ impl Repo {
         paths: &[String],
     ) -> Result<crate::FileContents, crate::FileError> {
         self.with_verb(cli_command::FILE_SHOW, |repo, ctx| {
-            crate::file::file_show(repo, &mut ctx.warnings, revision.as_ref(), paths)
+            let prefixes = ctx.template_startup.id_prefix_context();
+            crate::file::file_show(repo, &mut ctx.warnings, &prefixes, revision.as_ref(), paths)
         })
     }
 
@@ -1074,7 +1090,8 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::FileError::ChangeNotFound`] — `revision` does not resolve.
+    /// - [`crate::FileError::ChangeNotFound`] / [`crate::FileError::RevsetResolutionError`] —
+    ///   `revision` does not resolve (see [`Repo::file_list`]).
     /// - [`crate::FileError::InvalidInput`] — `path` is not a valid repo path.
     /// - [`crate::FileError::PathNotFound`] — `path` is absent from the revision's tree.
     /// - [`crate::FileError::NotAFile`] — `path` exists but is not a regular file (a
@@ -1088,8 +1105,9 @@ impl Repo {
         revision: Option<crate::ChangeId>,
         path: &str,
     ) -> Result<Vec<crate::AnnotationLine>, crate::FileError> {
-        self.with_verb(cli_command::FILE_ANNOTATE, |repo, _ctx| {
-            crate::file::file_annotate(repo.workspace(), revision.as_ref(), path)
+        self.with_verb(cli_command::FILE_ANNOTATE, |repo, ctx| {
+            let prefixes = ctx.template_startup.id_prefix_context();
+            crate::file::file_annotate(repo.workspace(), &prefixes, revision.as_ref(), path)
         })
     }
 
@@ -1119,7 +1137,8 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::FileError::ChangeNotFound`] — `revision` does not resolve.
+    /// - [`crate::FileError::ChangeNotFound`] / [`crate::FileError::RevsetResolutionError`] —
+    ///   `revision` does not resolve (see [`Repo::file_list`]).
     /// - [`crate::FileError::InvalidInput`] — `pattern` names an unknown kind or does not
     ///   parse, or a `paths` entry is not a valid repo path.
     /// - [`crate::FileError::Backend`] — an underlying jj-lib failure.
@@ -1134,9 +1153,11 @@ impl Repo {
         name_only: bool,
     ) -> Result<crate::FileSearch, crate::FileError> {
         self.with_verb(cli_command::FILE_SEARCH, |repo, ctx| {
+            let prefixes = ctx.template_startup.id_prefix_context();
             crate::file::file_search(
                 repo.workspace(),
                 &mut ctx.warnings,
+                &prefixes,
                 revision.as_ref(),
                 pattern,
                 paths,
@@ -1463,7 +1484,9 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::MutateError::ChangeNotFound`] — `change_id` is malformed, absent,
-    ///   only-hidden, or divergent.
+    ///   or only-hidden.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::InvalidInput`] — `change_id` resolves to the root commit.
     /// - [`crate::MutateError::Immutable`] — `change_id` resolves to a non-root commit
     ///   inside the repo's effective immutable set.
@@ -1533,8 +1556,9 @@ impl Repo {
     ///   (as the CLI's backend write refuses it); the drop/card rows still preview it; (`-A`/`-B`) the location would create a loop (`Refusing to create a loop: commit
     ///   <12 hex> would be both an ancestor and a descendant of the new commit`); or (one
     ///   positional parent) an `experimental-advance-branches` pattern does not parse.
-    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or
-    ///   divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, absent, or only-hidden.
+    /// - [`crate::MutateError::RevsetResolutionError`] — an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is inside the repo's
     ///   effective immutable set; the first offender's hex.
     /// - [`crate::MutateError::Config`] — the `revset-aliases."immutable_heads()"` alias does not
@@ -1572,7 +1596,9 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::MutateError::ChangeNotFound`] — `change_id` is malformed, absent,
-    ///   only-hidden, or divergent.
+    ///   or only-hidden.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::Immutable`] — `change_id` resolves to a commit inside the
     ///   repo's effective immutable set (the root commit included — see
     ///   [`crate::MutateError::Immutable`]).
@@ -1602,7 +1628,9 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — `change_ids` is empty, or resolves the
     ///   root commit.
     /// - [`crate::MutateError::ChangeNotFound`] — a target id is malformed, absent,
-    ///   only-hidden, or divergent.
+    ///   or only-hidden.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::Immutable`] — a target resolves to a non-root commit inside
     ///   the repo's effective immutable set.
     /// - [`crate::MutateError::Config`] — the `revset-aliases."immutable_heads()"` alias does not
@@ -2507,9 +2535,8 @@ impl Repo {
     /// (`RevsetResolutionError::DivergentChangeId`, `revset.rs:2827` @ 0.44.0), exactly as
     /// `jj show <divergent-id>` fails in the CLI, and it arrives here as
     /// [`crate::CommitViewError::RevsetResolutionError`]. Address both commits by unioning their
-    /// COMMIT hexes, which are ordinary revset symbols. That is still a real, observable
-    /// difference from [`Repo::interdiff`], which refuses the same change as
-    /// [`crate::CommitViewError::ChangeNotFound`] from its own single-revision resolver.
+    /// COMMIT hexes, which are ordinary revset symbols. [`Repo::interdiff`] refuses the same
+    /// change the same way from its own single-revision resolver.
     /// `None` applies the CLI's own default `@` — the working-copy commit the pre-verb snapshot
     /// has just brought up to date (Story 9.26).
     /// Aliases come from the repo's effective jj config, re-read per call and never cached.
@@ -2649,14 +2676,15 @@ impl Repo {
     ///   entry is not a valid repo path, or a [`crate::RevisionRef::CommitId`] is empty or not
     ///   valid hex.
     /// - [`crate::CommitViewError::ChangeNotFound`] — a [`crate::RevisionRef::ChangeId`] is
-    ///   malformed, carried by no VISIBLE commit (unknown or only-hidden), or divergent; or a
+    ///   malformed or carried by no VISIBLE commit (unknown or only-hidden); or a
     ///   [`crate::RevisionRef::CommitId`] is valid hex that no indexed commit carries. An
     ///   ABSENT side is not an error: ONE absent side applies the CLI's `--from`/`--to` default
     ///   `@`, and omitting BOTH is the `InvalidInput` bullet above.
     /// - [`crate::CommitViewError::RevsetResolutionError`] — a [`crate::RevisionRef::CommitId`]
     ///   or [`crate::RevisionRef::ChangeId`] prefix is ambiguous — within the
     ///   `revsets.short-prefixes` set the CLI resolves both sides through, or (outside it) in the
-    ///   whole index; refused, never resolved to one of them. Or a present side's
+    ///   whole index; refused, never resolved to one of them. Or a [`crate::RevisionRef::ChangeId`]
+    ///   names a divergent change (the CLI's hints in `hints`). Or a present side's
     ///   `revsets.short-prefixes` set does not resolve ("Failed to resolve short-prefixes
     ///   disambiguation revset: …"), or an absent side's `@` in a workspace with no working-copy
     ///   commit ("Workspace `<name>` doesn't have a working-copy commit").
@@ -3055,10 +3083,12 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — `names` is empty, or a name is the empty
     ///   string.
     /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, carried by no
-    ///   VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT `revision` is not
+    ///   VISIBLE commit (unknown or only-hidden). An ABSENT `revision` is not
     ///   an error: it is what applies the CLI's `-r` default `@` — refused as
     ///   [`crate::MutateError::RevsetResolutionError`] ("Workspace `<name>` doesn't have a
     ///   working-copy commit") in a workspace with no working-copy commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — `revision` is an ambiguous change-id prefix or a
+    ///   divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::BookmarkExists`] — a name is already a local bookmark.
     /// - [`crate::MutateError::BookmarkTrackedRemoteExists`] — a name's local bookmark is
     ///   absent but it still has a tracked remote bookmark. On a GIT-backed repo a colocated
@@ -3138,8 +3168,10 @@ impl Repo {
     ///   refusal, before the pre-verb snapshot); or, without `allow_backwards`, the first bookmark in name
     ///   order that would move backwards or sideways ("Refusing to move bookmark backwards or
     ///   sideways: {name}", hint "Use --allow-backwards to allow it.").
-    /// - [`crate::MutateError::ChangeNotFound`] — `to` is malformed, unknown, hidden or
-    ///   divergent; [`crate::MutateError::RevsetResolutionError`] — no `@` for its default.
+    /// - [`crate::MutateError::ChangeNotFound`] — `to` is malformed, unknown or hidden;
+    ///   [`crate::MutateError::RevsetResolutionError`] — no `@` for its default, an ambiguous change-id
+    ///   prefix or a divergent change (the CLI's hints in `hints`), or a `revsets.short-prefixes` that fails
+    ///   to resolve.
     /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
     ///   — a `from` text.
     /// - [`crate::MutateError::Config`] — the revset aliases do not load.
@@ -3252,8 +3284,10 @@ impl Repo {
     ///   refusal, before the pre-verb snapshot); or a backwards or sideways move without
     ///   `allow_backwards` ("Refusing to move bookmark backwards or sideways: {name}", hint "Use
     ///   --allow-backwards to allow it.").
-    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, unknown, hidden or
-    ///   divergent; [`crate::MutateError::RevsetResolutionError`] — no `@` for its default.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, unknown or hidden;
+    ///   [`crate::MutateError::RevsetResolutionError`] — no `@` for its default, an ambiguous change-id
+    ///   prefix or a divergent change (the CLI's hints in `hints`), or a `revsets.short-prefixes` that fails
+    ///   to resolve.
     /// - [`crate::MutateError::Config`] — a `remotes.<r>` auto-track value does not parse.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
@@ -3408,10 +3442,12 @@ impl Repo {
     ///   the snapshot, as clap refuses it, so nothing is written), or a `paths` entry is not a
     ///   valid repo path.
     /// - [`crate::MutateError::ChangeNotFound`] — `from`, `into` or `changes_in` is
-    ///   malformed, carried by no VISIBLE commit (unknown or only-hidden), or divergent. An
+    ///   malformed or carried by no VISIBLE commit (unknown or only-hidden). An
     ///   ABSENT one is not an error: it is what selects the CLI's
     ///   `--from`/`--into`/`--changes-in` defaults described above.
-    /// - [`crate::MutateError::RevsetResolutionError`] — such an `@` default in a workspace with
+    /// - [`crate::MutateError::RevsetResolutionError`] — one of them is an ambiguous change-id prefix or a
+    ///   divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve; or
+    ///   such an `@` default in a workspace with
     ///   no working-copy commit ("Workspace `<name>` doesn't have a working-copy commit").
     /// - [`crate::MutateError::Immutable`] — the destination resolves to a commit inside the
     ///   repo's effective immutable set. Unlike `describe`/`abandon` this verb has no
@@ -3483,10 +3519,12 @@ impl Repo {
     ///   be resolved.
     /// - [`crate::MutateError::InvalidInput`] — a `paths` entry is not a valid repo path.
     /// - [`crate::MutateError::ChangeNotFound`] — `from` is malformed, carried by no VISIBLE
-    ///   commit (unknown or only-hidden), or divergent. An ABSENT `from` is not an error: it
+    ///   commit (unknown or only-hidden). An ABSENT `from` is not an error: it
     ///   is what applies the CLI's `--from` default `@` — refused as
     ///   [`crate::MutateError::RevsetResolutionError`] ("Workspace `<name>` doesn't have a
     ///   working-copy commit") in a workspace with no working-copy commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — `from` is an ambiguous change-id prefix or a
+    ///   divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::Immutable`] — a commit the hunks would be absorbed into is
     ///   inside the repo's effective immutable set. Unreachable with the `mutable()`
     ///   default, which excludes that set by construction.
@@ -3572,8 +3610,10 @@ impl Repo {
     /// - [`crate::MutateError::StaleSelection`] — a source's parent tree is not its tree's
     ///   `left`.
     /// - [`crate::MutateError::ChangeNotFound`] — `revision`, a `from` entry or `into` is
-    ///   malformed, carried by no VISIBLE commit, or divergent.
-    /// - [`crate::MutateError::RevsetResolutionError`] — an omitted revision's `@` in a workspace
+    ///   malformed or carried by no VISIBLE commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a
+    ///   divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve; or
+    ///   an omitted revision's `@` in a workspace
     ///   with no working-copy commit ("Workspace `<name>` doesn't have a working-copy commit").
     /// - [`crate::MutateError::Immutable`] — a source or the destination is inside the repo's
     ///   effective immutable set (the root commit included).
@@ -3641,8 +3681,9 @@ impl Repo {
     /// [`crate::ActionStatus::NoOp`] means the verb would write no operation: a rebase whose
     /// planned move (jj-lib's, applied on a dropped transaction) changes nothing, a squash with
     /// nothing to squash, a bookmark move to where the bookmark already is or of a name no local
-    /// bookmark has. An id that does not resolve refuses each row it affects with
-    /// [`crate::MutateError::ChangeNotFound`].
+    /// bookmark has. An id that does not resolve refuses each row it affects with the verb's own
+    /// refusal — [`crate::MutateError::ChangeNotFound`], or
+    /// [`crate::MutateError::RevsetResolutionError`] for an ambiguous prefix or a divergent change.
     ///
     /// Each row plans on its own transaction from one head, which is then dropped; the query
     /// writes NO operation of its own — only the pre-verb snapshot's (Story 9.26). The call's
@@ -3674,8 +3715,9 @@ impl Repo {
     /// `edit`, `describe`, `squash -r` (into its parent, with `combined_description_needed`) and
     /// `abandon` — each answered by the verb's own plan fn, as in [`Repo::drop_actions`]. Only the
     /// squash and, for the current `@`, the edit row report [`crate::ActionStatus::NoOp`]. An id
-    /// that does not resolve refuses every row
-    /// with [`crate::MutateError::ChangeNotFound`].
+    /// that does not resolve refuses every row with the verb's own refusal
+    /// ([`crate::MutateError::ChangeNotFound`], or [`crate::MutateError::RevsetResolutionError`]
+    /// for an ambiguous prefix or a divergent change).
     ///
     /// Writes NO operation of its own — only the pre-verb snapshot's; the call's warnings are the
     /// precondition's only. Each row resolves its config for its own verb, as in
@@ -3740,9 +3782,11 @@ impl Repo {
     ///   `tree`, an invalid repo path, a location that resolves no parent, or one that would
     ///   create a loop.
     /// - [`crate::MutateError::StaleSelection`] — the target's parent tree is not `tree.left`.
-    /// - [`crate::MutateError::ChangeNotFound`] — `revision` or a location entry is malformed,
-    ///   carried by no VISIBLE commit, or divergent.
-    /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` or a location entry is malformed or
+    ///   carried by no VISIBLE commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a
+    ///   divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve; or
+    ///   an omitted `revision`'s `@` in a
     ///   workspace with no working-copy commit ("Workspace `<name>` doesn't have a working-copy
     ///   commit").
     /// - [`crate::MutateError::Immutable`] — the target, or a child the location would
@@ -3799,8 +3843,10 @@ impl Repo {
     ///   itself` / `onto descendant <12 hex>`; a location that would create a loop or resolves no
     ///   parent; or the backend refusing a commit of the move (a merge with the root commit as a
     ///   parent, in a Git repo).
-    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed or carried by no VISIBLE
+    ///   commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::RevsetResolutionError`] — the default `-b @` in a workspace with
     ///   no working-copy commit ("Workspace `<name>` doesn't have a working-copy commit").
     /// - [`crate::MutateError::Immutable`] — a commit the move rewrites, or a child the location
@@ -3832,8 +3878,10 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed or carried by no VISIBLE
+    ///   commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::Immutable`] — a target that would move is inside the repo's
     ///   effective immutable set, or the ROOT commit is among the targets (no hints, nothing
     ///   written). A deliberate divergence: the CLI panics in jj-lib there.
@@ -3873,7 +3921,9 @@ impl Repo {
     ///   with gaps in.", hint "Revision <12 hex> would need to be in the set."), or an action names
     ///   a change outside the target set ("<change id> is not among the revisions to arrange").
     /// - [`crate::MutateError::ChangeNotFound`] — a revision or an action's change id is
-    ///   malformed, carried by no VISIBLE commit, or divergent.
+    ///   malformed or carried by no VISIBLE commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a
+    ///   divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::Immutable`] — a target is inside the repo's effective immutable
     ///   set.
     /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
@@ -3908,8 +3958,10 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed or carried by no VISIBLE
+    ///   commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::Immutable`] — a target is inside the repo's effective immutable
     ///   set (the root commit among them).
     /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
@@ -3955,8 +4007,10 @@ impl Repo {
     ///   Invalid author string``), `author_timestamp` neither RFC 2822 nor RFC 3339 (``invalid
     ///   value '<v>' for '--author-timestamp <AUTHOR_TIMESTAMP>': <reason>``), `author` with
     ///   `update_author`, `author_timestamp` with `update_author_timestamp`.
-    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed or carried by no VISIBLE
+    ///   commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::RevsetResolutionError`] — the default `@` in a workspace with no
     ///   working-copy commit.
     /// - [`crate::MutateError::Immutable`] — a target is inside the repo's effective immutable
@@ -4081,8 +4135,10 @@ impl Repo {
     ///   a location that would create a loop or resolves no parent; or (Git backend) a merge with
     ///   the root commit as a parent — refused before anything is written, after the template is
     ///   parsed (the CLI's order).
-    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed or carried by no VISIBLE
+    ///   commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::RevsetResolutionError`] — the default `@` in a workspace with no
     ///   working-copy commit.
     /// - [`crate::MutateError::Immutable`] — a child `insert_after`/`insert_before` would rewrite
@@ -4131,8 +4187,10 @@ impl Repo {
     ///   before the snapshot, so nothing is written); a location that would create a loop or
     ///   resolves no parent; or (Git backend) a merge with the root commit as a parent — refused
     ///   before anything is written, after the template is parsed (the CLI's order).
-    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed or carried by no VISIBLE
+    ///   commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::Immutable`] — a child `insert_after`/`insert_before` would rewrite
     ///   is inside the repo's effective immutable set.
     /// - [`crate::MutateError::Config`] — `templates.revert_description` is not a string or does
@@ -4195,8 +4253,10 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — a pattern does not parse ("Failed to parse
     ///   fileset: <kind>" with the CLI's `Caused by:` lines and hint), or a path is not a valid
     ///   repo path.
-    /// - [`crate::MutateError::ChangeNotFound`] — a source id is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — a source id is malformed or carried by no VISIBLE
+    ///   commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
     ///   — `revsets.fix` does not parse or resolve.
     /// - [`crate::MutateError::Immutable`] — a source is inside the repo's effective immutable set.
@@ -4298,8 +4358,10 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — `left` is malformed hex or has an even or zero
     ///   count; a path is invalid, the root, or listed twice — before the snapshot, as the CLI
     ///   parses its arguments before it snapshots, so nothing is written.
-    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed or carried by no VISIBLE
+    ///   commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
     ///   workspace with no working-copy commit.
     /// - [`crate::MutateError::StaleSelection`] — the revision's parent tree is not `left`, a key
@@ -4317,7 +4379,10 @@ impl Repo {
                 .verb
                 .map_or(cli_command::NO_COMMAND, crate::SelectTreeVerb::command),
             crate::select_tree::check_select_tree_args(options),
-            |repo, ctx| crate::select_tree::select_tree(repo.workspace(), &ctx.config, options),
+            |repo, ctx| {
+                let prefixes = ctx.template_startup.id_prefix_context();
+                crate::select_tree::select_tree(repo.workspace(), &ctx.config, &prefixes, options)
+            },
         )
     }
 
@@ -4336,10 +4401,11 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::MutateError::InvalidInput`] — a `paths` entry is not a valid repo path.
-    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
-    /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
-    ///   workspace with no working-copy commit.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed or carried by no
+    ///   VISIBLE commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — `revision` is an ambiguous prefix or a
+    ///   divergent change, `revsets.short-prefixes` fails to load, or an omitted `revision`'s
+    ///   `@` is in a workspace with no working-copy commit.
     /// - [`crate::MutateError::NoConflicts`] — nothing matched: "No conflicts found at this
     ///   revision" / "No conflicts found at the given path(s)".
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
@@ -4350,7 +4416,8 @@ impl Repo {
         options: &crate::ResolveListOptions,
     ) -> Result<crate::ResolveList, crate::MutateError> {
         self.with_verb(cli_command::RESOLVE, |repo, ctx| {
-            crate::resolve::resolve_list(repo.workspace(), &mut ctx.warnings, options)
+            let prefixes = ctx.template_startup.id_prefix_context();
+            crate::resolve::resolve_list(repo.workspace(), &mut ctx.warnings, &prefixes, options)
         })
     }
 
@@ -4375,8 +4442,10 @@ impl Repo {
     ///   `paths`, without files, or with an invalid, root or duplicate path, or a file without its
     ///   term ids (before the snapshot, so nothing is written), or a `paths` entry is not a valid
     ///   repo path.
-    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed or carried by no VISIBLE
+    ///   commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
     ///   workspace with no working-copy commit.
     /// - [`crate::MutateError::NoConflicts`] — nothing matched (the CLI's two texts).
@@ -4423,8 +4492,10 @@ impl Repo {
     ///   of the wrong shape (malformed hex, an even or zero id count, a label count that is
     ///   neither zero nor the id count), or an empty or malformed `right` — before the snapshot,
     ///   so nothing is written.
-    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
-    ///   commit, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed or carried by no VISIBLE
+    ///   commit.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an id is an ambiguous change-id prefix or a divergent
+    ///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
     /// - [`crate::MutateError::RevsetResolutionError`] — an omitted id's `@` in a workspace with
     ///   no working-copy commit.
     /// - [`crate::MutateError::Immutable`] — the target is inside the immutable set.
@@ -4559,8 +4630,10 @@ impl Repo {
     ///   clap's `required`), an entry is empty or escapes the workspace, or a matching entry is
     ///   not a file ("Found neither a file nor a conflict at '<path>'.") or a conflict with a
     ///   non-file side ("Some of the sides of the conflict are not files at '<path>'.").
-    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent, only-hidden or
-    ///   divergent; [`crate::MutateError::RevsetResolutionError`] — `None` in a workspace with no
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent, or only-hidden;
+    ///   [`crate::MutateError::RevsetResolutionError`] — an ambiguous change-id prefix or a divergent change
+    ///   (the CLI's hints in `hints`), a `revsets.short-prefixes` that fails to resolve, or `None` in a
+    ///   workspace with no
     ///   working-copy commit ("Workspace `<name>` doesn't have a working-copy commit").
     /// - [`crate::MutateError::Immutable`] — the revision is immutable (the root included).
     /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
@@ -4615,8 +4688,10 @@ impl Repo {
     ///   '<path>' is not a regular file"), or a conflict with a side that is neither a file nor
     ///   absent ("Path '<path>' has a non-file conflict and cannot be edited") — the CLI's texts;
     ///   or it lies below an existing non-directory (Zanshin's divergence above).
-    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent, only-hidden or
-    ///   divergent; [`crate::MutateError::RevsetResolutionError`] — `None` in a workspace with no
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent, or only-hidden;
+    ///   [`crate::MutateError::RevsetResolutionError`] — an ambiguous change-id prefix or a divergent change
+    ///   (the CLI's hints in `hints`), a `revsets.short-prefixes` that fails to resolve, or `None` in a
+    ///   workspace with no
     ///   working-copy commit.
     /// - [`crate::MutateError::Immutable`] — the revision is immutable (the root included), even
     ///   when nothing would change.
@@ -4652,8 +4727,10 @@ impl Repo {
     ///
     /// - [`crate::MutateError::InvalidInput`] — `paths` is empty (before the pre-verb snapshot,
     ///   clap's `required`), or an entry is empty or escapes the workspace.
-    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent, only-hidden or
-    ///   divergent; [`crate::MutateError::RevsetResolutionError`] — `None` in a workspace with no
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent, or only-hidden;
+    ///   [`crate::MutateError::RevsetResolutionError`] — an ambiguous change-id prefix or a divergent change
+    ///   (the CLI's hints in `hints`), a `revsets.short-prefixes` that fails to resolve, or `None` in a
+    ///   workspace with no
     ///   working-copy commit.
     /// - [`crate::MutateError::Immutable`] — the revision is immutable (the root included), even
     ///   when nothing would change.

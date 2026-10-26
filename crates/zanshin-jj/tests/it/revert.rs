@@ -170,8 +170,11 @@ fn templates_revert_description_describes_the_reverses() {
     );
 }
 
-/// An `immutable_heads()` alias no commit resolves.
-pub(crate) const UNRESOLVABLE_ALIAS: &str = "[revset-aliases]\n\"immutable_heads()\" = \"nonexistent_symbol_xyz\"\n";
+/// An `immutable_heads()` alias no commit resolves. `revsets.short-prefixes` is emptied: its
+/// default (`revsets.log`) names `immutable_heads()`, so a change-id argument would refuse loading
+/// it first — the CLI's order too (`change_id_prefix.rs` pins that).
+pub(crate) const UNRESOLVABLE_ALIAS: &str =
+    "[revset-aliases]\n\"immutable_heads()\" = \"nonexistent_symbol_xyz\"\n[revsets]\nshort-prefixes = \"\"\n";
 
 /// Asserts `err` is the template parse refusal (`template`) or the immutable-set one.
 pub(crate) fn assert_config_class(err: &MutateError, template: bool, context: &str) {

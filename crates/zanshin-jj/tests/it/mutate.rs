@@ -176,7 +176,7 @@ fn describe_with_the_unchanged_text_and_an_unresolvable_alias_refuses_like_the_c
     let layout = oracle_layout(&fx.path);
     fs::write(
         fx.path.join(".jj").join("repo").join("config.toml"),
-        "[revset-aliases]\n'immutable_heads()' = 'nonexistent_symbol_xyz'\n",
+        crate::revert::UNRESOLVABLE_ALIAS,
     )
     .unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
@@ -591,29 +591,22 @@ fn abandon_root_commit_returns_invalid_input_not_a_panic() {
     assert!(matches!(result, Err(MutateError::InvalidInput { .. })));
 }
 
+/// The CLI's `DivergentChangeId` refusal (`lib/src/revset.rs:2938-2946` @ v0.46.0), never a guess.
 #[test]
-fn every_mutation_returns_change_not_found_for_a_divergent_change_id() {
+fn every_mutation_refuses_a_divergent_change_id() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let layout = oracle_layout(&fx.path);
     let _twin_commit_hex = test_helpers::add_divergent_twin(&fx.path, &layout.commit1_commit_hex, "twin");
     let divergent = ChangeId(layout.commit1_change_id);
     let mut repo = Repo::open(&fx.path).unwrap();
+    let refused = |result: Result<zanshin_jj::MutationResult, MutateError>| {
+        matches!(result, Err(MutateError::RevsetResolutionError { reason, hints })
+            if reason.ends_with("is divergent") && hints.len() == 3)
+    };
 
-    assert!(matches!(
-        repo.describe(divergent.clone(), "x"),
-        Err(MutateError::ChangeNotFound { .. })
-    ));
-    assert!(matches!(
-        repo.new_change(std::slice::from_ref(&divergent), &[], &[]),
-        Err(MutateError::ChangeNotFound { .. })
-    ));
-    assert!(matches!(
-        repo.edit(divergent.clone()),
-        Err(MutateError::ChangeNotFound { .. })
-    ));
-    assert!(matches!(
-        repo.abandon(std::slice::from_ref(&divergent)),
-        Err(MutateError::ChangeNotFound { .. })
-    ));
+    assert!(refused(repo.describe(divergent.clone(), "x")));
+    assert!(refused(repo.new_change(std::slice::from_ref(&divergent), &[], &[])));
+    assert!(refused(repo.edit(divergent.clone())));
+    assert!(refused(repo.abandon(std::slice::from_ref(&divergent))));
 }

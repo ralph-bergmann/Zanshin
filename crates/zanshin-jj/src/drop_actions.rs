@@ -436,12 +436,12 @@ impl Rows<'_> {
             })
         })?;
         let absorb = self.row(DropVerb::Absorb.command(), ctx, |tx, ctx| {
+            let prefixes = ctx.template_startup.id_prefix_context();
             let into = |repo: &jj_lib::repo::MutableRepo| {
-                Ok(RevsetExpression::commits(vec![resolve_commit(repo, target)?
-                    .id()
-                    .clone()]))
+                let target = resolve_commit(repo, &prefixes, target)?;
+                Ok(RevsetExpression::commits(vec![target.id().clone()]))
             };
-            let plan = plan_absorb(tx, self.workspace, ctx, Some(change), into, &[])?;
+            let plan = plan_absorb(tx, self.workspace, ctx, &prefixes, Some(change), into, &[])?;
             Ok(Planned {
                 no_op: plan.target_commits.is_empty(),
                 ..Planned::AVAILABLE
@@ -575,7 +575,7 @@ impl Rows<'_> {
             DropSource::Bookmark(name) => {
                 if let Some(target) = onto_one {
                     let bookmark = self.row(DropVerb::BookmarkMove.command(), ctx, |tx, ctx| {
-                        let target = resolve_commit(tx.repo(), target)?;
+                        let target = resolve_commit(tx.repo(), &ctx.template_startup.id_prefix_context(), target)?;
                         let plan = plan_bookmark_move(tx.repo(), name, target.id())?;
                         // A move that writes resolves the immutable set in the CLI's `tx.finish`
                         // (Story 9.56); a no-op never reaches it.

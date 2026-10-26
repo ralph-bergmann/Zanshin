@@ -90,7 +90,7 @@ pub(crate) fn plan_revert(
     revisions: &[ChangeId],
     location: &LocationArgs<'_>,
 ) -> Result<Option<RevertPlan>, MutateError> {
-    let ids = resolve_ordered(tx, Some(revisions))?.unwrap_or_default();
+    let ids = resolve_ordered(tx, templates.prefixes(), Some(revisions))?.unwrap_or_default();
     let set = RevsetExpression::commits(ids)
         .evaluate(tx.base_repo().as_ref())
         .map_err(be)?;

@@ -390,7 +390,7 @@ fn insert_after_refuses_an_immutable_child() {
 fn every_new_resolves_the_immutable_set() {
     let mut fx = base();
     let (b, c) = (fx.b.clone(), fx.c.clone());
-    set_repo_config(&mut fx, "[revset-aliases]\n\"immutable_heads()\" = \"no-such-mark\"\n");
+    set_repo_config(&mut fx, crate::revert::UNRESOLVABLE_ALIAS);
 
     let err = refused(&mut fx, &[], std::slice::from_ref(&b), &[]);
     assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
@@ -407,7 +407,7 @@ fn every_new_resolves_the_immutable_set() {
 fn insert_after_a_leaf_refuses_an_unresolvable_alias_like_the_cli() {
     let mut fx = base();
     let c = fx.c.clone();
-    set_repo_config(&mut fx, "[revset-aliases]\n\"immutable_heads()\" = \"no-such-mark\"\n");
+    set_repo_config(&mut fx, crate::revert::UNRESOLVABLE_ALIAS);
 
     let err = refused(&mut fx, &[], std::slice::from_ref(&c), &[]);
     assert!(matches!(err, MutateError::Config { .. }), "{err:?}");

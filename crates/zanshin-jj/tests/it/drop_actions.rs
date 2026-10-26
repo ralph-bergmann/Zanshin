@@ -1396,7 +1396,7 @@ fn an_unresolvable_alias_refuses_the_unguarded_rows() {
         .expect("bookmark");
     fs::write(
         fx.root.join(".jj").join("repo").join("config.toml"),
-        "[revset-aliases]\n\"immutable_heads()\" = \"nonexistent_symbol_xyz\"\n",
+        crate::revert::UNRESOLVABLE_ALIAS,
     )
     .expect("repo config");
     fx.repo = Repo::open(&fx.root).expect("reopen");

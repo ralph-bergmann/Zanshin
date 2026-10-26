@@ -163,12 +163,15 @@ pub(crate) fn metaedit(
     let workspace_name = workspace.workspace_name().to_owned();
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
 
+    let templates = ctx.templates(workspace);
     let ids = if options.revisions.is_empty() {
-        vec![resolve_or_wc(tx.repo(), &workspace_name, None)?.id().clone()]
+        vec![resolve_or_wc(tx.repo(), &workspace_name, templates.prefixes(), None)?
+            .id()
+            .clone()]
     } else {
-        resolve_ordered(&tx, Some(&options.revisions))?.unwrap_or_default()
+        resolve_ordered(&tx, templates.prefixes(), Some(&options.revisions))?.unwrap_or_default()
     };
-    guard_rewritable(&tx, &ctx.templates(workspace), &ids)?;
+    guard_rewritable(&tx, &templates, &ids)?;
     // The revset's own order — reverse topological (`metaedit.rs:144-149`).
     let set = RevsetExpression::commits(ids)
         .evaluate(tx.base_repo().as_ref())

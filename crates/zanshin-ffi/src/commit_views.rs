@@ -290,8 +290,8 @@ fn interdiff_view_to_envelope(view: &InterdiffView, report: &crate::envelope::Ca
 /// does NOT get that far: jj-lib's own `SymbolResolver` refuses it
 /// (`RevsetResolutionError::DivergentChangeId`, `revset.rs:2827` @ 0.44.0), exactly as
 /// `jj show <divergent-id>` fails in the CLI, and it surfaces here as
-/// `jj.revset_resolution_error` — a different refusal from `zanshin_interdiff`'s
-/// `jj.change_not_found`. Union the two COMMIT hexes to address both.
+/// `jj.revset_resolution_error` — the same refusal as `zanshin_interdiff`'s for a divergent
+/// `ChangeIdRef`. Union the two COMMIT hexes to address both.
 /// Each entry's `file_changes` is the diff against the commit's MERGED parent tree; there is no
 /// path filter and no textual patch (Epic 5 owns hunks). This read writes NO operation of its own.
 ///
@@ -428,13 +428,14 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 ///   `RevisionRef` carries no `id`, a `CommitIdRef` is empty or not valid hex, or a `paths` entry
 ///   is not a valid repo path; detail in `context`.
 /// - `jj.change_not_found` — a `ChangeIdRef` is malformed, carried by no VISIBLE commit (unknown
-///   or only-hidden), or divergent; or a `CommitIdRef` is valid hex that no indexed commit
+///   or only-hidden); or a `CommitIdRef` is valid hex that no indexed commit
 ///   carries. The offending id in `context`. An ABSENT side is not an error — ONE absent side
 ///   applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the `jj.invalid_input`
 ///   bullet above.
 /// - `jj.revset_resolution_error` — a `CommitIdRef` or `ChangeIdRef` prefix is ambiguous (within
-///   the effective `revsets.short-prefixes` set, or outside it in the whole index), a present
-///   side's `revsets.short-prefixes` set does not resolve, or an absent side's `@` default in a
+///   the effective `revsets.short-prefixes` set, or outside it in the whole index), a `ChangeIdRef`
+///   names a divergent change (the CLI's hints in `hints`), a present side's
+///   `revsets.short-prefixes` set does not resolve, or an absent side's `@` default in a
 ///   workspace with no working-copy commit; jj-lib's own wording in `context`.
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
 ///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot

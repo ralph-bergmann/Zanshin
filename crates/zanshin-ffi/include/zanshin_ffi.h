@@ -65,9 +65,11 @@ char *zanshin_ffi_version(void);
  * - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a name is the
  *   empty string.
  * - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
- *   or only-hidden), or divergent; the id in `context`. An ABSENT `revision` is not an
+ *   or only-hidden); the id in `context`. An ABSENT `revision` is not an
  *   error — it is what applies the CLI's `-r` default `@`. An explicitly present EMPTY
  *   string is a VALUE, not an absence, and lands here.
+ * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+ *   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_resolution_error` — an absent `revision`'s `@` default in a workspace with no
  *   working-copy commit; the CLI's text in `context`.
  * - `jj.bookmark_exists` — a name is already a local bookmark; the name in `context`.
@@ -167,9 +169,11 @@ ZanshinBuf *zanshin_bookmark_delete(uint64_t handle,
  * - `jj.invalid_input` — neither `names` nor `from`; or, without `allow_backwards`, a backwards
  *   or sideways move ("Refusing to move bookmark backwards or sideways: {name}", the hint "Use
  *   --allow-backwards to allow it." in `hints`).
- * - `jj.change_not_found` — `to` is malformed, unknown, hidden or divergent; the id in `context`.
+ * - `jj.change_not_found` — `to` is malformed, unknown or hidden; the id in `context`.
  * - `jj.revset_parse_error` / `jj.revset_resolution_error` — a `from` text, or no `@` for `to`'s
  *   default.
+ * - `jj.revset_resolution_error` — `to` is an ambiguous change-id prefix or a divergent change (the CLI's hints
+ *   in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.config_error` — the effective config changed and no longer reads, the pre-verb snapshot
  *   found a wrongly typed knob, or the revset aliases do not load.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale; nothing is
@@ -285,9 +289,9 @@ ZanshinBuf *zanshin_bookmark_rename(uint64_t handle, const uint8_t *data, uintpt
  *   snapshot; or, without `allow_backwards`, a backwards or sideways move ("Refusing to move
  *   bookmark backwards or sideways: {name}", the hint "Use --allow-backwards to allow it." in
  *   `hints`).
- * - `jj.change_not_found` — `revision` is malformed, unknown, hidden or divergent; the id in
- *   `context`.
- * - `jj.revset_resolution_error` — no `@` for `revision`'s default.
+ * - `jj.change_not_found` — `revision` is malformed, unknown or hidden; the id in `context`.
+ * - `jj.revset_resolution_error` — no `@` for `revision`'s default; `revision` is an ambiguous change-id prefix
+ *   or a divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`,
  *   or a `remotes.<r>` auto-track value does not parse; nothing is written.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
@@ -300,7 +304,9 @@ ZanshinBuf *zanshin_bookmark_rename(uint64_t handle, const uint8_t *data, uintpt
  * duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_bookmark_set(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_bookmark_set(uint64_t handle,
+                                 const uint8_t *data,
+                                 uintptr_t len);
 
 /**
  * Forget bookmarks, in the repo referenced by `handle` — the CLI's `jj bookmark forget` (Story
@@ -460,6 +466,9 @@ ZanshinBuf *zanshin_bookmarks(uint64_t handle, const uint8_t *data, uintptr_t le
  * - `ffi.null_pointer` — `change_id` is a null pointer.
  * - `ffi.utf8_error` — `change_id` is not valid UTF-8.
  * - `jj.change_not_found` — no change for the given id (malformed, absent, or hidden-only).
+ * - `jj.revset_resolution_error` — the id is an ambiguous change-id prefix (within the effective
+ *   `revsets.short-prefixes`, else repo-wide), or that set fails to load; a divergent change is
+ *   no error (`divergent` set).
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
  *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
  *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
@@ -594,8 +603,8 @@ ZanshinBuf *zanshin_commit_contents(uint64_t handle, const uint8_t *data, uintpt
  * does NOT get that far: jj-lib's own `SymbolResolver` refuses it
  * (`RevsetResolutionError::DivergentChangeId`, `revset.rs:2827` @ 0.44.0), exactly as
  * `jj show <divergent-id>` fails in the CLI, and it surfaces here as
- * `jj.revset_resolution_error` — a different refusal from `zanshin_interdiff`'s
- * `jj.change_not_found`. Union the two COMMIT hexes to address both.
+ * `jj.revset_resolution_error` — the same refusal as `zanshin_interdiff`'s for a divergent
+ * `ChangeIdRef`. Union the two COMMIT hexes to address both.
  * Each entry's `file_changes` is the diff against the commit's MERGED parent tree; there is no
  * path filter and no textual patch (Epic 5 owns hunks). This read writes NO operation of its own.
  *
@@ -710,13 +719,14 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  *   `RevisionRef` carries no `id`, a `CommitIdRef` is empty or not valid hex, or a `paths` entry
  *   is not a valid repo path; detail in `context`.
  * - `jj.change_not_found` — a `ChangeIdRef` is malformed, carried by no VISIBLE commit (unknown
- *   or only-hidden), or divergent; or a `CommitIdRef` is valid hex that no indexed commit
+ *   or only-hidden); or a `CommitIdRef` is valid hex that no indexed commit
  *   carries. The offending id in `context`. An ABSENT side is not an error — ONE absent side
  *   applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the `jj.invalid_input`
  *   bullet above.
  * - `jj.revset_resolution_error` — a `CommitIdRef` or `ChangeIdRef` prefix is ambiguous (within
- *   the effective `revsets.short-prefixes` set, or outside it in the whole index), a present
- *   side's `revsets.short-prefixes` set does not resolve, or an absent side's `@` default in a
+ *   the effective `revsets.short-prefixes` set, or outside it in the whole index), a `ChangeIdRef`
+ *   names a divergent change (the CLI's hints in `hints`), a present side's
+ *   `revsets.short-prefixes` set does not resolve, or an absent side's `@` default in a
  *   workspace with no working-copy commit; jj-lib's own wording in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
  *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
@@ -1012,8 +1022,10 @@ ZanshinBuf *zanshin_diagnostics(void);
  * - `jj.invalid_input` — `revision` together with `from`/`to`, a `tree` of the wrong shape, or an
  *   absent / malformed `right` — before the snapshot: nothing written, no `precondition`; detail
  *   in `context`.
- * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent.
- * - `jj.revset_resolution_error` — an omitted id's `@` in a workspace with no working-copy commit.
+ * - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit.
+ * - `jj.revset_resolution_error` — an omitted id's `@` in a workspace with no working-copy commit; an id is an
+ *   ambiguous change-id prefix or a divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes`
+ *   fails to resolve.
  * - `jj.immutable` — the target is inside the immutable set; its hex id in `context`.
  * - `jj.stale_selection` — the base tree is not the selection's `left`, or the target's tree is
  *   not `right`; detail in `context`.
@@ -1233,8 +1245,10 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
  * - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer, or its `kind`
  *   is not `FileList`, i.e. the buffer was built for a different wrapper.
  * - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
- *   or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
- *   the CLI's `-r` default `@`.
+ *   or only-hidden). An ABSENT `revision` is not an error — it is what applies the CLI's `-r`
+ *   default `@`.
+ * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a DIVERGENT
+ *   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
  *   commit; the CLI's text in `context`.
  * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
@@ -1285,6 +1299,8 @@ ZanshinBuf *zanshin_file_list(uint64_t handle, const uint8_t *data, uintptr_t le
  *   commit; the CLI's text in `context`.
  * - `jj.invalid_input` — `paths` is empty, or an entry is not a valid repo path.
  * - `jj.change_not_found` — `revision` does not resolve.
+ * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent
+ *   change, or `revsets.short-prefixes` fails to resolve.
  * - `jj.path_not_found` — exactly one path was given and it is absent from the revision's
  *   tree; the path in `context`.
  * - `jj.config_error` — the repo's effective jj config is unreadable or malformed, so the
@@ -1320,6 +1336,8 @@ ZanshinBuf *zanshin_file_show(uint64_t handle,
  * - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer, or its `kind`
  *   is not `FileAnnotate`, i.e. the buffer was built for a different wrapper.
  * - `jj.change_not_found` — `revision` does not resolve.
+ * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent
+ *   change, or `revsets.short-prefixes` fails to resolve.
  * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
  *   commit; the CLI's text in `context`.
  * - `jj.invalid_input` — `path` is absent from the request buffer, or is not a valid repo
@@ -1366,6 +1384,8 @@ ZanshinBuf *zanshin_file_annotate(uint64_t handle,
  * - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer, or its `kind`
  *   is not `FileSearch`, i.e. the buffer was built for a different wrapper.
  * - `jj.change_not_found` — `revision` does not resolve.
+ * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent
+ *   change, or `revsets.short-prefixes` fails to resolve.
  * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
  *   commit; the CLI's text in `context`.
  * - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
@@ -1508,7 +1528,9 @@ ZanshinBuf *zanshin_file_untrack(uint64_t handle,
  *   the empty string or escapes the workspace, or a matching entry is not a file ("Found neither
  *   a file nor a conflict at '<path>'.") or a conflict with a non-file side ("Some of the sides
  *   of the conflict are not files at '<path>'."); nothing is written.
- * - `jj.change_not_found` — `revision` is malformed, absent, only-hidden or divergent.
+ * - `jj.change_not_found` — `revision` is malformed, absent or only-hidden.
+ * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+ *   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_resolution_error` — no `revision` in a workspace without a working-copy commit
  *   ("Workspace `<name>` doesn't have a working-copy commit").
  * - `jj.immutable` — the revision is immutable (the root included); hints as for every rewrite.
@@ -1524,7 +1546,9 @@ ZanshinBuf *zanshin_file_untrack(uint64_t handle,
  * duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_file_chmod(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_file_chmod(uint64_t handle,
+                               const uint8_t *data,
+                               uintptr_t len);
 
 /**
  * Replace one file's content in one revision of the repo referenced by `handle`, without
@@ -1559,7 +1583,9 @@ ZanshinBuf *zanshin_file_chmod(uint64_t handle, const uint8_t *data, uintptr_t l
  *   file") or a conflict with a non-file side ("Path '<path>' has a non-file conflict and cannot
  *   be edited") — the CLI's texts — or lies below an existing non-directory ("Failed to edit
  *   file: '<ancestor>' is not a directory", the divergence above); nothing is written.
- * - `jj.change_not_found` — `revision` is malformed, absent, only-hidden or divergent.
+ * - `jj.change_not_found` — `revision` is malformed, absent or only-hidden.
+ * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+ *   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_resolution_error` — no `revision` in a workspace without a working-copy commit
  *   ("Workspace `<name>` doesn't have a working-copy commit").
  * - `jj.immutable` — the revision is immutable (the root included), even when nothing would
@@ -1576,7 +1602,9 @@ ZanshinBuf *zanshin_file_chmod(uint64_t handle, const uint8_t *data, uintptr_t l
  * duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_file_edit(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_file_edit(uint64_t handle,
+                              const uint8_t *data,
+                              uintptr_t len);
 
 /**
  * Remove the entries matching the requested prefixes from one revision of the repo referenced
@@ -1598,7 +1626,9 @@ ZanshinBuf *zanshin_file_edit(uint64_t handle, const uint8_t *data, uintptr_t le
  *   `kind` is not `FileDelete`, i.e. the buffer was built for a different wrapper.
  * - `jj.invalid_input` — `paths` is empty or absent (before the pre-verb snapshot), or an entry
  *   is the empty string or escapes the workspace; nothing is written.
- * - `jj.change_not_found` — `revision` is malformed, absent, only-hidden or divergent.
+ * - `jj.change_not_found` — `revision` is malformed, absent or only-hidden.
+ * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+ *   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_resolution_error` — no `revision` in a workspace without a working-copy commit
  *   ("Workspace `<name>` doesn't have a working-copy commit").
  * - `jj.immutable` — the revision is immutable (the root included), even when nothing would
@@ -1615,7 +1645,9 @@ ZanshinBuf *zanshin_file_edit(uint64_t handle, const uint8_t *data, uintptr_t le
  * duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_file_delete(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_file_delete(uint64_t handle,
+                                const uint8_t *data,
+                                uintptr_t len);
 
 /**
  * Import the backing git repo's refs into jj's view, in the repo referenced by `handle` —
@@ -2118,8 +2150,9 @@ void zanshin_logging_init(void);
  *   '--author <AUTHOR>': Invalid author string``, ``… for '--author-timestamp
  *   <AUTHOR_TIMESTAMP>': <reason>``), `author` with `update_author`, `author_timestamp` with
  *   `update_author_timestamp`; detail in `context`.
- * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
- *   in `context`.
+ * - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+ * - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+ *   in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_resolution_error` — the default `@` in a workspace with no working-copy commit.
  * - `jj.immutable` — a revision is immutable (the root commit among them); its hex commit id in
  *   `context`.
@@ -2165,8 +2198,9 @@ ZanshinBuf *zanshin_metaedit(uint64_t handle,
  *   snapshot, nothing written, no `precondition`); "Cannot duplicate the root commit"; a location
  *   that would create a loop or resolves no parent; a merge with the root commit as a parent in a
  *   Git repo; detail in `context`.
- * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
- *   in `context`.
+ * - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+ * - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+ *   in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_resolution_error` — the default `@` in a workspace with no working-copy commit.
  * - `jj.immutable` — a child `insert_after`/`insert_before` would rewrite is immutable.
  * - `jj.config_error` — the duplicate-description template setting is not a string or does not
@@ -2224,8 +2258,9 @@ ZanshinBuf *zanshin_duplicate(uint64_t handle,
  *   `immutable_heads()` alias does not read or resolve.
  * - `jj.invalid_input` — a pattern does not parse ("Failed to parse fileset: <kind>" with the CLI's
  *   `Caused by:` lines in `context`, its hint in `hints`), or a path is not a valid repo path.
- * - `jj.change_not_found` — a source id is malformed, carried by no VISIBLE commit, or divergent;
- *   the id in `context`.
+ * - `jj.change_not_found` — a source id is malformed or carried by no VISIBLE commit; the id in `context`.
+ * - `jj.revset_resolution_error` — a source id is an ambiguous change-id prefix or a divergent change (the CLI's
+ *   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_parse_error` / `jj.revset_resolution_error` — the fix revset setting (the default
  *   sources) does not parse or resolve.
  * - `jj.immutable` — a source is immutable; its hex commit id in `context`.
@@ -2646,8 +2681,9 @@ ZanshinBuf *zanshin_git_push(uint64_t handle,
  *   written, no `precondition`); "Cannot rebase <12 hex> onto itself" / "… onto descendant <12
  *   hex>"; a location that would create a loop or resolves no parent; a merge with the root
  *   commit as a parent in a Git repo; detail in `context`.
- * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
- *   in `context`.
+ * - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+ * - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+ *   in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_resolution_error` — the default `-b @` in a workspace with no working-copy commit;
  *   the CLI's text in `context`.
  * - `jj.immutable` — a commit the move rewrites, or a child the location would rewrite, is
@@ -2689,8 +2725,9 @@ ZanshinBuf *zanshin_rebase(uint64_t handle,
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind` is
  *   not `Parallelize` — a `NewChange`- or `Abandon`-tagged buffer is refused here.
- * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
- *   in `context`.
+ * - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+ * - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+ *   in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.immutable` — a target that would move is immutable; its hex commit id in `context`.
  * - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
@@ -2735,8 +2772,10 @@ ZanshinBuf *zanshin_parallelize(uint64_t handle,
  *   a gap ("Cannot arrange revset with gaps in.", with the hint "Revision <12 hex> would need to be
  *   in the set."); an action names a change outside the set ("… is not among the revisions
  *   to arrange").
- * - `jj.change_not_found` — a revision or an action's change id is malformed, carried by no
- *   VISIBLE commit, or divergent; the id in `context`.
+ * - `jj.change_not_found` — a revision or an action's change id is malformed or carried by no
+ *   VISIBLE commit; the id in `context`.
+ * - `jj.revset_resolution_error` — such an id is an ambiguous change-id prefix or a divergent change (the
+ *   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.immutable` — a target is immutable; its hex commit id in `context`.
  * - `jj.revset_parse_error` / `jj.revset_resolution_error` — the arrange revset setting (the
  *   default target set) does not parse or resolve.
@@ -2781,8 +2820,9 @@ ZanshinBuf *zanshin_arrange(uint64_t handle,
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `SimplifyParentsRequest` buffer, or its
  *   `kind` is not `SimplifyParents`.
- * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
- *   in `context`.
+ * - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+ * - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+ *   in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.immutable` — a target is immutable (the root commit among them); its hex commit id in
  *   `context`.
  * - `jj.revset_parse_error` / `jj.revset_resolution_error` — the simplify-parents revset setting
@@ -2844,7 +2884,8 @@ ZanshinBuf *zanshin_remotes(uint64_t handle);
  * only when it exists, in remote-name order.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `GitPushRemotes` payload on success — EMPTY when
- * none matches (the push itself refuses then) and on a non-Git backend. An exact name no remote
+ * none matches (the push itself refuses then); a non-Git backend refuses `jj.not_a_git_repo`, as the
+ * push does. An exact name no remote
  * carries — a `git.push` name, or the implicit `origin` — warns `jj.push_remotes_unmatched`, as
  * the push does. Writes NO operation of its own, only the pre-verb snapshot's.
  *
@@ -2854,6 +2895,7 @@ ZanshinBuf *zanshin_remotes(uint64_t handle);
  *   pre-verb snapshot (Story 9.26) found the effective jj config unreadable; the key in
  *   `context`.
  * - `jj.invalid_input` — a git.push pattern does not parse; detail in `context`.
+ * - `jj.not_a_git_repo` — the backend is not Git; no `context`.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
  *
@@ -2872,10 +2914,11 @@ ZanshinBuf *zanshin_git_push_remotes(uint64_t handle);
  * `handle` (Story 9.30) — the CLI's default-remote resolution, shared with `zanshin_git_fetch`:
  * the remotes `git.fetch` names (a name, a list or a pattern), else the single remote, else
  * `origin`, each only when it exists, in remote-name order. The Fetch button's enable rule:
- * enabled when this is not empty.
+ * enabled when this answers `ok` and is not empty.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `GitFetchRemotes` payload on success — EMPTY when
- * none matches (the fetch itself refuses then) and on a non-Git backend. An exact name no remote
+ * none matches (the fetch itself refuses then); a non-Git backend refuses `jj.not_a_git_repo`, as
+ * the fetch does. An exact name no remote
  * carries — a `git.fetch` name, or the implicit `origin` — warns `jj.fetch_remotes_unmatched`, as
  * the fetch does. The fetch's only-remote hint is not reported. Writes NO operation of its own,
  * only the pre-verb snapshot's.
@@ -2886,6 +2929,7 @@ ZanshinBuf *zanshin_git_push_remotes(uint64_t handle);
  *   pre-verb snapshot (Story 9.26) found the effective jj config unreadable; the key in
  *   `context`.
  * - `jj.invalid_input` — a git.fetch pattern does not parse; detail in `context`.
+ * - `jj.not_a_git_repo` — the backend is not Git; no `context`.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
  *
@@ -3290,7 +3334,9 @@ ZanshinBuf *zanshin_repo_convert(const char *path);
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `change_id` or `description` is a null pointer.
  * - `ffi.utf8_error` — `change_id` or `description` is not valid UTF-8.
- * - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
+ * - `jj.change_not_found` — `change_id` is malformed, absent, or only-hidden.
+ * - `jj.revset_resolution_error` — `change_id` is an ambiguous change-id prefix or a divergent change (the CLI's
+ *   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.invalid_input` — `change_id` resolves to the root commit.
  * - `jj.immutable` — `change_id` resolves to a non-root commit inside the repo's
  *   effective immutable set; the offending hex commit id in `context`.
@@ -3359,7 +3405,9 @@ ZanshinBuf *zanshin_describe(uint64_t handle,
  *   a loop: commit <12 hex> would be both an ancestor and a descendant of the new commit`) —
  *   Story 9.48; or (one parent) an `experimental-advance-branches` pattern does not parse
  *   (Story 9.49 closing run).
- * - `jj.change_not_found` — an id in any list is malformed, absent, only-hidden, or divergent.
+ * - `jj.change_not_found` — an id in any list is malformed, absent, or only-hidden.
+ * - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+ *   in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.immutable` — (`-A`/`-B`) a commit to rebase is inside the repo's effective immutable
  *   set; the first offender's hex commit id in `context` (Story 9.48).
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
@@ -3402,7 +3450,9 @@ ZanshinBuf *zanshin_new_change(uint64_t handle,
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `change_id` is a null pointer.
  * - `ffi.utf8_error` — `change_id` is not valid UTF-8.
- * - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
+ * - `jj.change_not_found` — `change_id` is malformed, absent, or only-hidden.
+ * - `jj.revset_resolution_error` — `change_id` is an ambiguous change-id prefix or a divergent change (the CLI's
+ *   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.immutable` — `change_id` resolves to a commit inside the repo's effective
  *   immutable set; the offending hex commit id in `context`. Unlike `zanshin_describe`
  *   and `zanshin_abandon`, this wrapper has no separate root-commit guard, so editing the
@@ -3425,7 +3475,8 @@ ZanshinBuf *zanshin_new_change(uint64_t handle,
  * returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_edit(uint64_t handle, const char *change_id);
+ZanshinBuf *zanshin_edit(uint64_t handle,
+                         const char *change_id);
 
 /**
  * Abandon `change_ids` in the repo referenced by `handle`, rebasing descendants onto
@@ -3447,7 +3498,9 @@ ZanshinBuf *zanshin_edit(uint64_t handle, const char *change_id);
  *   `NewChange`-tagged buffer is refused here rather than abandoning the commits the caller
  *   named as parents.
  * - `jj.invalid_input` — the parsed `change_ids` list is empty, or resolves the root commit.
- * - `jj.change_not_found` — a target id is malformed, absent, only-hidden, or divergent.
+ * - `jj.change_not_found` — a target id is malformed, absent, or only-hidden.
+ * - `jj.revset_resolution_error` — a target id is an ambiguous change-id prefix or a divergent change (the CLI's
+ *   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.immutable` — a target resolves to a non-root commit inside the repo's effective
  *   immutable set; the hex commit id of the FIRST such target in `context`.
  * - `jj.config_error` — the repo's jj config, or its
@@ -3468,7 +3521,9 @@ ZanshinBuf *zanshin_edit(uint64_t handle, const char *change_id);
  * borrows it for the duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_abandon(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_abandon(uint64_t handle,
+                            const uint8_t *data,
+                            uintptr_t len);
 
 /**
  * Undo the last operation of the repo referenced by `handle` — the CLI's `jj undo` @ v0.46.0
@@ -3656,9 +3711,11 @@ ZanshinBuf *zanshin_git_fetch(uint64_t handle, const uint8_t *data, uintptr_t le
  * - `jj.revset_resolution_error` — an absent one's `@` default in a workspace with no
  *   working-copy commit; the CLI's text in `context`.
  * - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, carried by no
- *   VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT one is not an error —
+ *   VISIBLE commit (unknown or only-hidden). An ABSENT one is not an error —
  *   it is exactly the "the user did not supply it" wire form described above, and it is what
  *   applies the CLI's `--from`/`--into`/`--changes-in` defaults.
+ * - `jj.revset_resolution_error` — one of them is an ambiguous change-id prefix or a divergent change (the
+ *   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.immutable` — the destination resolves to a commit inside the repo's effective
  *   immutable set; the offending hex commit id in `context`. This wrapper has no separate
  *   root-commit guard, so restoring INTO the root commit reports this code too (which is
@@ -3681,7 +3738,9 @@ ZanshinBuf *zanshin_git_fetch(uint64_t handle, const uint8_t *data, uintptr_t le
  * borrows it for the duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_restore(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_restore(uint64_t handle,
+                            const uint8_t *data,
+                            uintptr_t len);
 
 /**
  * Move each hunk of the source commit into the closest destination commit where the
@@ -3713,8 +3772,9 @@ ZanshinBuf *zanshin_restore(uint64_t handle, const uint8_t *data, uintptr_t len)
  *   jj-lib's reason in `context`.
  * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
  * - `jj.change_not_found` — `from` is malformed, carried by no VISIBLE commit (unknown or
- *   only-hidden), or divergent. An ABSENT `from` is not an error — it is what applies the
- *   CLI's `--from` default `@`.
+ *   only-hidden). An ABSENT `from` is not an error — it is what applies the
+ *   CLI's `--from` default `@`. An ambiguous change-id prefix, a divergent change (the CLI's hints in `hints`)
+ *   or a `revsets.short-prefixes` that fails to resolve is `jj.revset_resolution_error`.
  * - `jj.immutable` — a commit the hunks would be absorbed into is inside the repo's
  *   effective immutable set; the hex commit id of the FIRST such target in `context`.
  *   Unreachable with the `mutable()` default, which excludes that set by construction.
@@ -3736,7 +3796,9 @@ ZanshinBuf *zanshin_restore(uint64_t handle, const uint8_t *data, uintptr_t len)
  * borrows it for the duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_absorb(uint64_t handle,
+                           const uint8_t *data,
+                           uintptr_t len);
 
 /**
  * List a revision's conflicts with what a merge editor needs, in the repo identified by `handle`
@@ -3758,7 +3820,9 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * - `ffi.invalid_argument` — `data` does not verify as a `ResolveListRequest` buffer, or its
  *   `kind` is not `ResolveList`.
  * - `jj.invalid_input` — a `paths` entry is not a valid repo path.
- * - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
+ * - `jj.change_not_found` — `revision` is malformed or carried by no VISIBLE commit.
+ * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+ *   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
  *   commit.
  * - `jj.no_conflicts` — nothing matched; the CLI's text in `context`.
@@ -3775,7 +3839,9 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_resolve_list(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_resolve_list(uint64_t handle,
+                                 const uint8_t *data,
+                                 uintptr_t len);
 
 /**
  * Resolve a revision's conflicts in the repo identified by `handle` — the CLI's `jj resolve`
@@ -3801,7 +3867,9 @@ ZanshinBuf *zanshin_resolve_list(uint64_t handle, const uint8_t *data, uintptr_t
  *   invalid, root or duplicate file path, a file without `term_ids` (all before the snapshot:
  *   nothing written, no `precondition`), or a `paths` entry is not a valid repo path; detail in
  *   `context`.
- * - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
+ * - `jj.change_not_found` — `revision` is malformed or carried by no VISIBLE commit.
+ * - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+ *   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
  *   commit.
  * - `jj.no_conflicts` — nothing matched; the CLI's text in `context`.
@@ -3820,7 +3888,9 @@ ZanshinBuf *zanshin_resolve_list(uint64_t handle, const uint8_t *data, uintptr_t
  * As [`zanshin_resolve_list`], with a `ResolveRequest` buffer
  * (`fbs.ResolveRequestObjectBuilder(...).toBytes()`).
  */
-ZanshinBuf *zanshin_resolve(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_resolve(uint64_t handle,
+                            const uint8_t *data,
+                            uintptr_t len);
 
 /**
  * Apply the reverse of existing changes, in the repo identified by `handle` — the CLI's `jj
@@ -3848,8 +3918,9 @@ ZanshinBuf *zanshin_resolve(uint64_t handle, const uint8_t *data, uintptr_t len)
  *   (clap's refusals: before the snapshot, nothing written, no `precondition`); a location that
  *   would create a loop or resolves no parent; a merge with the root commit as a parent in a Git
  *   repo; detail in `context`.
- * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
- *   in `context`.
+ * - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+ * - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+ *   in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.immutable` — a child `insert_after`/`insert_before` would rewrite is immutable.
  * - `jj.config_error` — the revert-description template setting is not a string or does not
  *   parse, or the config or its `immutable_heads()` alias does not read or resolve.
@@ -3986,8 +4057,9 @@ ZanshinBuf *zanshin_find_changes(uint64_t handle, const uint8_t *data, uintptr_t
  * - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed
  *   or of an even or zero count, a path invalid, the root or listed twice — all before the
  *   snapshot: nothing written, no `precondition`; detail in `context`.
- * - `jj.change_not_found` — `revision` or `from` is malformed, carried by no VISIBLE commit, or
- *   divergent.
+ * - `jj.change_not_found` — `revision` or `from` is malformed or carried by no VISIBLE commit.
+ * - `jj.revset_resolution_error` — `revision` or `from` is an ambiguous change-id prefix or a divergent change
+ *   (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
  *   commit.
  * - `jj.stale_selection` — the revision's parent tree (`from`'s tree) is not `left`, a key is not a current
@@ -4084,8 +4156,10 @@ ZanshinBuf *zanshin_snapshot(uint64_t handle);
  *   commit as the revision ("Cannot squash merge commits without a specified destination"), a
  *   `paths` entry that is not a valid repo path, or a `trees` entry naming no source or a source
  *   another entry names; detail in `context`.
- * - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed, carried by no
- *   VISIBLE commit, or divergent; the id in `context`.
+ * - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed or carried by no
+ *   VISIBLE commit; the id in `context`.
+ * - `jj.revset_resolution_error` — such an id is an ambiguous change-id prefix or a divergent change (the
+ *   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
  * - `jj.stale_selection` — (the tree arm, Story 9.50) a source's parent tree is not its tree's
  *   `left`; nothing written.
@@ -4189,8 +4263,10 @@ ZanshinBuf *zanshin_squash_plan(uint64_t handle,
  *   before the snapshot, as clap refuses them: nothing written, no `precondition` — neither
  *   `paths` nor `tree`, an invalid repo path, a location that resolves no parent, or one that
  *   would create a loop; detail in `context`.
- * - `jj.change_not_found` — `revision` or a location entry is malformed, carried by no VISIBLE
- *   commit, or divergent; the id in `context`.
+ * - `jj.change_not_found` — `revision` or a location entry is malformed or carried by no VISIBLE
+ *   commit; the id in `context`.
+ * - `jj.revset_resolution_error` — such an id is an ambiguous change-id prefix or a divergent change (the
+ *   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
  * - `jj.immutable` — the target, or a child the location would rewrite, is immutable.
  * - `jj.stale_selection` — (the tree arm, Story 9.50) the target's parent tree is not the tree's `left`;
  *   nothing written.

@@ -19,25 +19,26 @@ use zanshin_jj::{AnnotationLine, ChangeId, FileContents, FileEntry, FileError, F
 use crate::envelope::{
     catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, missing_field,
     precondition_envelope, reject_null_request, session_from_handle, FfiErrorObj, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR,
-    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
+    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND, JJ_REVSET_RESOLUTION_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
 /// Maps a [`FileError`] onto its AR-P-4 code; user data always rides in `context`.
 fn map_file_err(e: FileError) -> FfiErrorObj {
-    let (code, context) = match e {
+    let (code, context, hints) = match e {
         FileError::Precondition(e) => return map_precondition_err(e),
-        FileError::ChangeNotFound { id } => (JJ_CHANGE_NOT_FOUND, id),
-        FileError::PathNotFound { path } => (JJ_PATH_NOT_FOUND, path),
-        FileError::NotAFile { path } => (JJ_NOT_A_FILE, path),
-        FileError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason),
-        FileError::Config { reason } => (JJ_CONFIG_ERROR, reason),
-        FileError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
+        FileError::ChangeNotFound { id } => (JJ_CHANGE_NOT_FOUND, id, Vec::new()),
+        FileError::RevsetResolutionError { reason, hints } => (JJ_REVSET_RESOLUTION_ERROR, reason, hints),
+        FileError::PathNotFound { path } => (JJ_PATH_NOT_FOUND, path, Vec::new()),
+        FileError::NotAFile { path } => (JJ_NOT_A_FILE, path, Vec::new()),
+        FileError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason, Vec::new()),
+        FileError::Config { reason } => (JJ_CONFIG_ERROR, reason, Vec::new()),
+        FileError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason, Vec::new()),
     };
     FfiErrorObj {
         report: None,
-        hints: Vec::new(),
+        hints,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -344,8 +345,10 @@ fn file_search_to_envelope(search: &FileSearch, report: &crate::envelope::CallRe
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer, or its `kind`
 ///   is not `FileList`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
-///   or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
-///   the CLI's `-r` default `@`.
+///   or only-hidden). An ABSENT `revision` is not an error — it is what applies the CLI's `-r`
+///   default `@`.
+/// - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a DIVERGENT
+///   change (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
 ///   commit; the CLI's text in `context`.
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
@@ -407,6 +410,8 @@ pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: us
 ///   commit; the CLI's text in `context`.
 /// - `jj.invalid_input` — `paths` is empty, or an entry is not a valid repo path.
 /// - `jj.change_not_found` — `revision` does not resolve.
+/// - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent
+///   change, or `revsets.short-prefixes` fails to resolve.
 /// - `jj.path_not_found` — exactly one path was given and it is absent from the revision's
 ///   tree; the path in `context`.
 /// - `jj.config_error` — the repo's effective jj config is unreadable or malformed, so the
@@ -449,6 +454,8 @@ pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: us
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer, or its `kind`
 ///   is not `FileAnnotate`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` does not resolve.
+/// - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent
+///   change, or `revsets.short-prefixes` fails to resolve.
 /// - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
 ///   commit; the CLI's text in `context`.
 /// - `jj.invalid_input` — `path` is absent from the request buffer, or is not a valid repo
@@ -504,6 +511,8 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer, or its `kind`
 ///   is not `FileSearch`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` does not resolve.
+/// - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent
+///   change, or `revsets.short-prefixes` fails to resolve.
 /// - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
 ///   commit; the CLI's text in `context`.
 /// - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
@@ -550,6 +559,7 @@ mod tests {
     use crate::fbs;
     use crate::{
         JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
+        JJ_REVSET_RESOLUTION_ERROR,
     };
 
     fn verified(bytes: &[u8]) -> fbs::Envelope<'_> {
@@ -599,7 +609,15 @@ mod tests {
         for (obj, code, context) in cases {
             assert_eq!(obj.code, code, "code for {context}");
             assert_eq!(obj.context.as_deref(), Some(context), "context is never in the code");
+            assert!(obj.hints.is_empty(), "no hints for {context}");
         }
+        let obj = map_file_err(FileError::RevsetResolutionError {
+            reason: "Change ID `zk` is divergent".to_owned(),
+            hints: vec!["h".to_owned()],
+        });
+        assert_eq!(obj.code, JJ_REVSET_RESOLUTION_ERROR);
+        assert_eq!(obj.context.as_deref(), Some("Change ID `zk` is divergent"));
+        assert_eq!(obj.hints, ["h"]);
     }
 
     #[test]

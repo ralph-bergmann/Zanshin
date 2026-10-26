@@ -27,6 +27,7 @@ use futures::{StreamExt as _, TryStreamExt as _};
 use jj_lib::backend::CommitId;
 use jj_lib::commit::Commit;
 use jj_lib::dag_walk;
+use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::repo::{MutableRepo, Repo as _};
 use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression};
 use jj_lib::rewrite::CommitRewriter;
@@ -271,21 +272,25 @@ impl RewritePlan {
 /// parsed "In revset expression" like a user revset: `revsets.arrange` (`arrange.rs:96-104`),
 /// `revsets.fix` (`fix.rs` `cmd_fix` @ v0.46.0, Story 9.9).
 ///
+/// Both resolve through `prefixes`, the call's `revsets.short-prefixes` context.
+///
 /// # Errors
 ///
 /// - [`MutateError::ChangeNotFound`] — a revision does not resolve.
 /// - [`MutateError::Config`] — `key` is not a string, or the alias tables do not read.
 /// - [`MutateError::RevsetParseError`] / [`MutateError::RevsetResolutionError`] — the
-///   config's revset does not parse or resolve.
+///   config's revset does not parse or resolve, or a revision is an ambiguous prefix or a
+///   divergent change.
 pub(crate) fn target_expression(
     tx: &Transaction,
     workspace: &Workspace,
     ctx: &mut VerbContext,
+    prefixes: &IdPrefixContext,
     revisions: &[ChangeId],
     key: &'static str,
 ) -> Result<Arc<ResolvedRevsetExpression>, MutateError> {
     if !revisions.is_empty() {
-        let ids = resolve_ordered(tx, Some(revisions))?.unwrap_or_default();
+        let ids = resolve_ordered(tx, prefixes, Some(revisions))?.unwrap_or_default();
         return Ok(RevsetExpression::commits(ids));
     }
     let text: String = ctx.config.get(key).map_err(|e| cfg(crate::config::value_error(&e)))?;
@@ -297,8 +302,7 @@ pub(crate) fn target_expression(
         &mut ctx.warnings,
     )
     .map_err(rev)?;
-    let prefixes = ctx.template_startup.id_prefix_context();
-    crate::revset::resolve_expression(tx.base_repo().as_ref(), &expression, Some(&prefixes)).map_err(rev)
+    crate::revset::resolve_expression(tx.base_repo().as_ref(), &expression, Some(prefixes)).map_err(rev)
 }
 
 /// The commits `expression` holds in `repo`, in revset order.
@@ -313,8 +317,13 @@ pub(crate) fn commits_of(
 
 /// The target commit `change` names — refused when it is not one of them, as the TUI's cursor
 /// can reach only the targets.
-fn target_of(tx: &Transaction, state: &State, change: &ChangeId) -> Result<CommitId, MutateError> {
-    let id = resolve_commit(tx.repo(), change)?.id().clone();
+fn target_of(
+    tx: &Transaction,
+    prefixes: &IdPrefixContext,
+    state: &State,
+    change: &ChangeId,
+) -> Result<CommitId, MutateError> {
+    let id = resolve_commit(tx.repo(), prefixes, change)?.id().clone();
     let is_target = state.commits.contains_key(&id)
         && !state.external_children.contains(&id)
         && !state.external_parents.contains(&id);
@@ -344,7 +353,8 @@ pub(crate) fn arrange(
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let repo = readonly.as_ref();
 
-    let target = target_expression(&tx, workspace, ctx, &options.revisions, "revsets.arrange")?;
+    let prefixes = ctx.template_startup.id_prefix_context();
+    let target = target_expression(&tx, workspace, ctx, &prefixes, &options.revisions, "revsets.arrange")?;
     let commits = commits_of(repo, &target)?;
     let ids: Vec<CommitId> = commits.iter().map(|c| c.id().clone()).collect();
     guard_rewritable(&tx, &ctx.templates(workspace), &ids)?;
@@ -371,7 +381,7 @@ pub(crate) fn arrange(
         | ArrangeAction::SwapUp(change)
         | ArrangeAction::Abandon(change)
         | ArrangeAction::Keep(change)) = action;
-        let id = target_of(&tx, &state, change)?;
+        let id = target_of(&tx, &prefixes, &state, change)?;
         match action {
             ArrangeAction::SwapDown(_) => state.swap_down(&id),
             ArrangeAction::SwapUp(_) => state.swap_up(&id),

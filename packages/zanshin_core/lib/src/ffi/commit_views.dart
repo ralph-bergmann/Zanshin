@@ -116,9 +116,10 @@ sealed class RevisionRef {
 ///
 /// Resolves through the effective `revsets.short-prefixes` set first (the whole
 /// index on no match), as the CLI does, to the one VISIBLE commit carrying it; an
-/// unknown, malformed, only-hidden or DIVERGENT prefix is refused
-/// (`jj.change_not_found`), an ambiguous one (`jj.revset_resolution_error`),
-/// rather than guessed. Use a [CommitIdRef] to reach a hidden commit.
+/// unknown, malformed or only-hidden prefix is refused (`jj.change_not_found`),
+/// an ambiguous one or a DIVERGENT change (`jj.revset_resolution_error`, with
+/// the CLI's hints), rather than guessed. Use a [CommitIdRef] to reach a hidden
+/// commit.
 final class ChangeIdRef extends RevisionRef {
   const ChangeIdRef(super.id);
 }

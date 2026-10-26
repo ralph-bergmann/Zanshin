@@ -11,8 +11,10 @@
 //! through Zanshin and through the pinned `jj` on the SAME repo (a refusal writes no operation, so
 //! both see one state) and compares the refusal's class.
 //!
-//! WHY symbolic CLI args (`@-`, `@`, `@--`): a change-id arg makes the CLI resolve it through its
-//! short-prefixes index, which evaluates the broken alias and refuses before either step.
+//! WHY `revsets.short-prefixes = ""`: a change-id arg resolves through the short-prefixes index —
+//! the CLI's and, since leftover run C after the story loop 9.25–9.46, Zanshin's — whose default
+//! (`revsets.log`) evaluates the broken alias and refuses before either step. The CLI args stay
+//! symbolic (`@-`, `@`, `@--`).
 
 use std::ops::ControlFlow;
 use std::path::Path;
@@ -46,6 +48,7 @@ const BOTH_BROKEN: &[Step] = &[
         "'\"undo \" ++'",
     ]),
     Step::Jj(&["config", "set", "--repo", "templates.new_description", "'\"undo \" ++'"]),
+    Step::Jj(&["config", "set", "--repo", "revsets.short-prefixes", "''"]),
 ];
 
 /// Which of the two settings a refusal names.

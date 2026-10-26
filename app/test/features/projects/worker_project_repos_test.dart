@@ -336,6 +336,19 @@ void main() {
       expect(await repo.read(), const ProjectReading(status: ProjectStatus.dirty));
     });
 
+    test('a native repo reads its push remotes as none, but a broken git.push still throws', () async {
+      // `git.push` is read before the backend, so only `jj.not_a_git_repo` means "no push targets".
+      final (String path, _) = await initRepo('native-git-push');
+      await worker.configSet(const ConfigScopeTarget(ConfigScope.repo), 'git.push', '1', workspaceRoot: path);
+      final ProjectRepo repo = await repos.open(path);
+      addTearDown(repo.close);
+
+      await expectLater(
+        repo.read(),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.config_error')),
+      );
+    });
+
     test('a conflicted merge @ reads conflict', () async {
       final (String path, RepoHandle handle) = await initRepo('conflict');
       // Two siblings off root write `c.txt` differently; the merge of both is @, conflicted there.

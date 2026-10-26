@@ -1018,9 +1018,6 @@ fn interdiff_refuses_an_unknown_divergent_or_empty_revision_on_either_side() {
         ("valid but unknown", ChangeId("k".repeat(32))),
         // Its one commit is abandoned: the change resolves, but to no VISIBLE commit.
         ("only-hidden", hidden),
-        // `resolve_single_rev` parity: two visible commits is ambiguous, and this verb refuses
-        // rather than picking one — unlike `show`, which returns both.
-        ("divergent", divergent),
         // An empty id would otherwise reach jj-lib's `panic!` on an empty hex prefix.
         ("empty", ChangeId(String::new())),
     ] {
@@ -1039,6 +1036,17 @@ fn interdiff_refuses_an_unknown_divergent_or_empty_revision_on_either_side() {
                 "the {spelling} id given as `{side}` must echo ITS OWN id, got: {err:?}"
             );
         }
+    }
+    // `resolve_single_rev` parity: two visible commits is the CLI's `DivergentChangeId` refusal,
+    // naming the id — unlike `show`, which returns both.
+    let divergent_text = format!("Change ID `{}` is divergent", divergent.0);
+    for (from, to) in [(&divergent, &good), (&good, &divergent)] {
+        let err = repo.interdiff(Some(chg(from)), Some(chg(to)), &[]).unwrap_err();
+        assert!(
+            matches!(&err, CommitViewError::RevsetResolutionError { reason, hints }
+                if *reason == divergent_text && hints.len() == 3),
+            "{err:?}"
+        );
     }
 
     assert_eq!(head_op_id(&mut repo), before);

@@ -837,7 +837,7 @@ fn fileset_hint(err: &FilesetParseError) -> Option<String> {
 }
 
 /// The CLI's `revset_resolution_error_hints` (`cli/src/command_error.rs:925-977` @ v0.46.0).
-fn resolution_hints(err: &RevsetResolutionError) -> Vec<String> {
+pub(crate) fn resolution_hints(err: &RevsetResolutionError) -> Vec<String> {
     use RevsetResolutionError as R;
     let multiple_targets_hint = |targets: &[JjCommitId]| {
         let ids: Vec<String> = targets.iter().map(|id| format!("{id:.12}")).collect();

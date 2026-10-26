@@ -542,7 +542,15 @@ fn a_native_backend_is_not_a_git_repo() {
         .git_fetch(&GitFetchArgs::default(), &|_: ProgressEvent| {}, None)
         .expect_err("native");
     assert!(matches!(err, MutateError::NotAGitRepo), "{err:?}");
-    assert!(repo.git_fetch_remotes().expect("remotes").is_empty());
+    let err = repo.git_fetch_remotes().expect_err("native");
+    assert!(matches!(err, MutateError::NotAGitRepo), "{err:?}");
+    // `git.fetch` is read before the backend, as the fetch reads it.
+    let root = repo.workspace_root().to_owned();
+    zanshin_jj::config_set(Some(&root), &ConfigTarget::Scope(ConfigScope::Repo), "git.fetch", "1")
+        .result
+        .expect("config set");
+    let err = repo.git_fetch_remotes().expect_err("wrong type");
+    assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
 }
 
 /// One `Default` row: the remotes, `git.fetch` (TOML), the expected answer, the unmatched name.

@@ -120,18 +120,16 @@ fn a_bad_git_push_refuses() {
     assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
 }
 
-/// A native backend has no remotes to push to.
+/// A native backend is refused, as `git push` refuses it (`push.rs:814`) — after `git.push` is
+/// read, as the push reads it first.
 #[test]
-fn a_native_backend_has_none() {
-    test_helpers::pin_test_env();
-    let tmp = TempDir::new().expect("tempdir");
-    let mut repo = Repo::init(&zanshin_jj::InitOptions {
-        path: tmp.path().to_path_buf(),
-        ..Default::default()
-    })
-    .result
-    .expect("init");
-    assert!(repo.git_push_remotes().expect("remotes").is_empty());
+fn a_native_backend_is_not_a_git_repo() {
+    let (_tmp, root, mut repo) = native_repo();
+    let err = repo.git_push_remotes().expect_err("native");
+    assert!(matches!(err, MutateError::NotAGitRepo), "{err:?}");
+    set_git_push(&root, "1");
+    let err = repo.git_push_remotes().expect_err("wrong type");
+    assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
 }
 
 /// A native-backend repo the push's remote resolution runs against (Story 9.56).

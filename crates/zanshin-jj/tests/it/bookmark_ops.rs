@@ -394,8 +394,7 @@ fn create_refuses_an_unknown_revision() {
     assert_eq!(head_op(&mut repo).0, before);
 }
 
-/// A DIVERGENT change id is refused, never guessed — the shipped `resolve_commit` contract,
-/// which is also what the CLI's `resolve_single_rev` does.
+/// A DIVERGENT change id is refused, never guessed — the CLI's `DivergentChangeId` refusal.
 #[test]
 fn create_refuses_a_divergent_revision() {
     test_helpers::pin_test_env();
@@ -411,7 +410,7 @@ fn create_refuses_a_divergent_revision() {
         .unwrap_err();
 
     assert!(
-        matches!(err, MutateError::ChangeNotFound { .. }),
+        matches!(&err, MutateError::RevsetResolutionError { reason, .. } if *reason == format!("Change ID `{}` is divergent", divergent.0)),
         "unexpected error: {err:?}"
     );
     assert_eq!(head_op(&mut repo).0, before);

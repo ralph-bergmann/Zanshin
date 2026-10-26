@@ -45,7 +45,7 @@ use std::sync::Arc;
 use futures::TryStreamExt as _;
 use jj_lib::backend::CommitId;
 use jj_lib::commit::Commit;
-use jj_lib::id_prefix::IdPrefixIndex;
+use jj_lib::id_prefix::{IdPrefixContext, IdPrefixIndex};
 use jj_lib::matchers::Matcher;
 use jj_lib::merge::Diff;
 use jj_lib::merged_tree::MergedTree;
@@ -211,7 +211,8 @@ impl LocationArgs<'_> {
 ///
 /// # Errors
 ///
-/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
+/// - [`MutateError::ChangeNotFound`] / [`MutateError::RevsetResolutionError`] — an id does not
+///   resolve ([`resolve_ordered`]).
 /// - Anything [`compute_commit_location`] returns.
 pub(crate) fn resolve_commit_location(
     tx: &Transaction,
@@ -220,9 +221,10 @@ pub(crate) fn resolve_commit_location(
     commit_type: &str,
 ) -> Result<(Vec<CommitId>, Vec<CommitId>), MutateError> {
     let given = crate::mutate::given;
-    let onto = resolve_ordered(tx, given(location.onto))?;
-    let after = resolve_ordered(tx, given(location.insert_after))?;
-    let before = resolve_ordered(tx, given(location.insert_before))?;
+    let prefixes = templates.prefixes();
+    let onto = resolve_ordered(tx, prefixes, given(location.onto))?;
+    let after = resolve_ordered(tx, prefixes, given(location.insert_after))?;
+    let before = resolve_ordered(tx, prefixes, given(location.insert_before))?;
     compute_commit_location(
         tx.base_repo().as_ref(),
         templates,
@@ -607,66 +609,130 @@ impl SelectedTree {
 /// neither [`MutateError`] nor [`crate::FileError`] owns.
 #[derive(Debug)]
 pub(crate) enum ResolveError {
-    /// The id is empty, is not valid reverse-hex, is absent from the index, points only
-    /// at hidden/abandoned commits, or is DIVERGENT — all indistinguishable, and all a
-    /// refusal rather than a guess.
+    /// The id is empty, is not valid reverse-hex, is absent from the index, or points only at
+    /// hidden/abandoned commits — the CLI's `ChangePrefixResolver` resolves none of these
+    /// (`Ok(None)`), so its `-r` reports the symbol as not found.
     NotFound,
     /// The revision was omitted, so it is `@`, and the workspace has no working-copy commit —
     /// the CLI's user error `RevsetResolutionError::WorkspaceMissingWorkingCopy`, whose text
     /// ("Workspace `<name>` doesn't have a working-copy commit") this carries.
     NoWorkingCopy(String),
+    /// The CLI's `RevsetResolutionError` for the id: an AMBIGUOUS prefix
+    /// (`AmbiguousChangeIdPrefix`), a DIVERGENT change (`DivergentChangeId`, with the CLI's three
+    /// hints), or a `revsets.short-prefixes` set that fails to load (`Other`, jj-lib's error with
+    /// its source chain). `reason` is jj-lib's own error text.
+    Resolution {
+        /// jj-lib's `RevsetResolutionError` text.
+        reason: String,
+        /// The CLI's `revset_resolution_error_hints` for it.
+        hints: Vec<String>,
+    },
     /// An underlying jj-lib failure (index lookup or store read).
     Backend(String),
 }
 
-/// Resolves `id` to its visible jj-lib [`Commit`].
+/// Resolves the change-id PREFIX `id` to its ONE visible jj-lib [`Commit`] — the CLI's
+/// `ChangePrefixResolver` (`lib/src/revset.rs:2881-2948` @ v0.46.0) without its `/offset` form,
+/// the change-id currency of every verb.
 ///
-/// Same pattern as `change.rs::get_change` (empty/malformed reverse-hex, absent, or
-/// only-hidden all collapse to [`ResolveError::NotFound`]), but against any `Repo` — a
-/// `MutableRepo` mid-transaction or a head-resolved `ReadonlyRepo`; `resolve_change_id` and
-/// `store()` are both on the `Repo` trait and work identically on either.
+/// The CLI's order: a value that is not reverse hex (or is empty) resolves to nothing BEFORE
+/// `prefixes` — the call's `revsets.short-prefixes` context — is populated, so a malformed id never
+/// meets a broken set; then the prefix (odd lengths too) is resolved within the set, whose `NoMatch`
+/// falls back to the whole index. Works against any `Repo` — a `MutableRepo` mid-transaction or a
+/// head-resolved `ReadonlyRepo`.
 ///
-/// Unlike the read-only `get_change` (which reports divergence via `Change::divergent` and
-/// silently picks the first visible target), a DIVERGENT id also collapses to `NotFound`
-/// here: silently acting on an arbitrary one of several ambiguous commits would be unsafe,
-/// and the real `jj` CLI likewise refuses an ambiguous revision argument (`-r` is
-/// `resolve_single_rev`) rather than guessing.
+/// A DIVERGENT change is refused with the CLI's `DivergentChangeId`, never guessed: acting on an
+/// arbitrary one of several commits would be unsafe (`-r` is `resolve_single_rev`). The read-only
+/// `get_change` reports divergence through `Change::divergent` instead ([`resolve_change`]).
 ///
 /// # Errors
 ///
 /// - [`ResolveError::NotFound`] — see the variant's doc.
+/// - [`ResolveError::Resolution`] — an ambiguous prefix, a divergent change, or a failed
+///   `revsets.short-prefixes` load.
 /// - [`ResolveError::Backend`] — an index or store read failed.
-pub(crate) fn resolve_commit(repo: &dyn jj_lib::repo::Repo, id: &crate::ChangeId) -> Result<Commit, ResolveError> {
-    // WHY the explicit empty guard: `HexPrefix::from_id` on an empty id would reach
-    // jj-lib's `panic!("complete change_id should be unambiguous")` path.
-    if id.0.is_empty() {
-        return Err(ResolveError::NotFound);
+pub(crate) fn resolve_commit(
+    repo: &dyn jj_lib::repo::Repo,
+    prefixes: &IdPrefixContext,
+    id: &crate::ChangeId,
+) -> Result<Commit, ResolveError> {
+    let visible = resolve_change(repo, prefixes, id)?;
+    if let [(_, commit_id)] = visible.as_slice() {
+        return repo
+            .store()
+            .get_commit(commit_id)
+            .map_err(|e| ResolveError::Backend(e.to_string()));
     }
-    let jj_id = jj_lib::backend::ChangeId::try_from_reverse_hex(&id.0).ok_or(ResolveError::NotFound)?;
-    let targets = pollster::block_on(repo.resolve_change_id(&jj_id))
-        .map_err(|e| ResolveError::Backend(e.to_string()))?
-        .ok_or(ResolveError::NotFound)?;
-    let visible = targets.into_visible().ok_or(ResolveError::NotFound)?;
-    let [commit_id] = visible.as_slice() else {
-        return Err(ResolveError::NotFound);
+    let err = jj_lib::revset::RevsetResolutionError::DivergentChangeId {
+        symbol: id.0.clone(),
+        visible_targets: visible,
     };
-    repo.store()
-        .get_commit(commit_id)
-        .map_err(|e| ResolveError::Backend(e.to_string()))
+    Err(ResolveError::Resolution {
+        hints: crate::revset::resolution_hints(&err),
+        reason: err.to_string(),
+    })
 }
 
-/// The CLI's `resolve_revsets_ordered` (`cli_util.rs:1845-1858` @ v0.46.0) over change ids:
-/// each id resolved in argument order, duplicates dropped — the CLI's `IndexSet`. `None` stays
-/// `None` (the flag was not given). Shared by `split -o/-A/-B` and `new [-A/-B]`, so the two
-/// verbs cannot dedup differently.
+/// [`resolve_commit`] up to its divergence check: the change-id prefix `id` resolved through
+/// `prefixes` to its VISIBLE commits with their change offsets — at least one.
 ///
 /// # Errors
 ///
-/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent
-///   (the first such id, in argument order).
+/// - [`ResolveError::NotFound`] — malformed, unknown, or no visible commit.
+/// - [`ResolveError::Resolution`] — an ambiguous prefix or a failed `revsets.short-prefixes` load.
+/// - [`ResolveError::Backend`] — an index read failed.
+pub(crate) fn resolve_change(
+    repo: &dyn jj_lib::repo::Repo,
+    prefixes: &IdPrefixContext,
+    id: &crate::ChangeId,
+) -> Result<Vec<(usize, CommitId)>, ResolveError> {
+    // WHY the explicit empty guard: an EMPTY reverse-hex prefix matches every change — the CLI
+    // never sees one, its parser rejects an empty symbol.
+    let prefix = jj_lib::object_id::HexPrefix::try_from_reverse_hex(&id.0)
+        .filter(|_| !id.0.is_empty())
+        .ok_or(ResolveError::NotFound)?;
+    let index = prefixes.populate(repo).map_err(|e| ResolveError::Resolution {
+        reason: crate::mutate::flatten_chain(&e),
+        hints: Vec::new(),
+    })?;
+    let resolution = pollster::block_on(index.resolve_change_prefix(repo, &prefix))
+        .map_err(|e| ResolveError::Backend(e.to_string()))?;
+    let targets = match resolution {
+        jj_lib::object_id::PrefixResolution::SingleMatch(targets) => targets,
+        jj_lib::object_id::PrefixResolution::AmbiguousMatch => {
+            return Err(ResolveError::Resolution {
+                reason: jj_lib::revset::RevsetResolutionError::AmbiguousChangeIdPrefix(prefix.reverse_hex())
+                    .to_string(),
+                hints: Vec::new(),
+            })
+        }
+        jj_lib::object_id::PrefixResolution::NoMatch => return Err(ResolveError::NotFound),
+    };
+    let visible: Vec<(usize, CommitId)> = targets
+        .visible_with_offsets()
+        .map(|(offset, commit_id)| (offset, commit_id.clone()))
+        .collect();
+    if visible.is_empty() {
+        return Err(ResolveError::NotFound);
+    }
+    Ok(visible)
+}
+
+/// The CLI's `resolve_revsets_ordered` (`cli_util.rs:1845-1858` @ v0.46.0) over change ids:
+/// each id resolved in argument order through `prefixes`, duplicates dropped — the CLI's
+/// `IndexSet`. `None` stays `None` (the flag was not given). Shared by `split -o/-A/-B` and
+/// `new [-A/-B]`, so the two verbs cannot dedup differently.
+///
+/// # Errors
+///
+/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent or only-hidden (the first
+///   such id, in argument order).
+/// - [`MutateError::RevsetResolutionError`] — an id is an ambiguous prefix or a divergent
+///   change, or `revsets.short-prefixes` fails to load.
 /// - [`MutateError::Backend`] — a store read failed.
 pub(crate) fn resolve_ordered(
     tx: &Transaction,
+    prefixes: &IdPrefixContext,
     ids: Option<&[crate::ChangeId]>,
 ) -> Result<Option<Vec<CommitId>>, MutateError> {
     let Some(ids) = ids else {
@@ -674,7 +740,7 @@ pub(crate) fn resolve_ordered(
     };
     let mut resolved: Vec<CommitId> = Vec::with_capacity(ids.len());
     for id in ids {
-        let commit_id = crate::mutate::resolve_commit(tx.repo(), id)?.id().clone();
+        let commit_id = crate::mutate::resolve_commit(tx.repo(), prefixes, id)?.id().clone();
         if !resolved.contains(&commit_id) {
             resolved.push(commit_id);
         }
@@ -682,20 +748,19 @@ pub(crate) fn resolve_ordered(
     Ok(Some(resolved))
 }
 
-/// Why a commit-id or change-id PREFIX could not be resolved through an [`IdPrefixIndex`].
+/// Why a commit-id PREFIX could not be resolved through an [`IdPrefixIndex`].
 ///
-/// Four stages where [`ResolveError`] has one, because "you typed something that is not hex",
+/// Four stages where [`ResolveError`] has fewer, because "you typed something that is not hex",
 /// "that prefix is too short" and "no such commit" need different remedies; each caller maps
-/// them onto its own taxonomy (the change-id arm of `interdiff` collapses `Malformed` and
-/// `NotFound` again, as [`resolve_commit`] does).
+/// them onto its own taxonomy.
 #[derive(Debug)]
 pub(crate) enum PrefixError {
-    /// The prefix is EMPTY or is not valid (reverse) hex — a structurally invalid argument.
+    /// The prefix is EMPTY or is not valid hex — a structurally invalid argument.
     Malformed,
     /// The prefix is ambiguous — within the disambiguation set, or (on its `NoMatch`) in the
     /// whole index; refused rather than guessed.
     Ambiguous,
-    /// No commit carries it — for a change id: no VISIBLE commit, or more than one (divergent).
+    /// No commit carries it.
     NotFound,
     /// An underlying jj-lib failure (index lookup or store read).
     Backend(String),
@@ -707,7 +772,7 @@ pub(crate) enum PrefixError {
 ///
 /// That fallback is a pure byte-prefix search over every INDEXED commit with no visibility
 /// filter, which is the whole mechanism this resolver exists for: a HIDDEN commit — an evolog
-/// predecessor among them — resolves here, where [`resolve_commit`]'s `into_visible()` refuses it.
+/// predecessor among them — resolves here, where [`resolve_commit`] takes only visible commits.
 ///
 /// This is the commit-id CURRENCY, not a symbol resolver: there is no bookmark, tag or
 /// change-id fallback.
@@ -743,63 +808,27 @@ pub(crate) fn resolve_commit_id_prefix(
     }
 }
 
-/// [`resolve_commit_id_prefix`]'s change-id twin — the CLI's `ChangePrefixResolver`
-/// (`lib/src/revset.rs` @ v0.46.0) without its `/offset` form: a reverse-hex PREFIX (odd
-/// lengths too) resolved through `index`, whose `NoMatch` falls back to the whole index, to the
-/// ONE visible commit carrying the change. Unknown, only-hidden and divergent all stay
-/// [`PrefixError::NotFound`], the collapse [`resolve_commit`] makes.
-///
-/// # Errors
-///
-/// - [`PrefixError::Malformed`] — `id` is empty or is not valid reverse hex.
-/// - [`PrefixError::Ambiguous`] — the prefix matches several changes.
-/// - [`PrefixError::NotFound`] — no change, or not exactly one visible commit of it.
-/// - [`PrefixError::Backend`] — an index or store read failed.
-pub(crate) fn resolve_change_id_prefix(
-    repo: &dyn jj_lib::repo::Repo,
-    index: &IdPrefixIndex<'_>,
-    id: &crate::ChangeId,
-) -> Result<Commit, PrefixError> {
-    // The empty guard of `resolve_commit_id_prefix`, for the same reason.
-    if id.0.is_empty() {
-        return Err(PrefixError::Malformed);
-    }
-    let prefix = jj_lib::object_id::HexPrefix::try_from_reverse_hex(&id.0).ok_or(PrefixError::Malformed)?;
-    let resolution = pollster::block_on(index.resolve_change_prefix(repo, &prefix))
-        .map_err(|e| PrefixError::Backend(e.to_string()))?;
-    let targets = match resolution {
-        jj_lib::object_id::PrefixResolution::SingleMatch(targets) => targets,
-        jj_lib::object_id::PrefixResolution::AmbiguousMatch => return Err(PrefixError::Ambiguous),
-        jj_lib::object_id::PrefixResolution::NoMatch => return Err(PrefixError::NotFound),
-    };
-    let visible = targets.into_visible().ok_or(PrefixError::NotFound)?;
-    let [commit_id] = visible.as_slice() else {
-        return Err(PrefixError::NotFound);
-    };
-    repo.store()
-        .get_commit(commit_id)
-        .map_err(|e| PrefixError::Backend(e.to_string()))
-}
-
-/// Resolves `id`, or — when it is `None` — the workspace's working-copy commit, mirroring
-/// the CLI's `RevisionArg::AT` (`@`) default for every omitted revision argument.
+/// Resolves `id` through `prefixes`, or — when it is `None` — the workspace's working-copy
+/// commit, mirroring the CLI's `RevisionArg::AT` (`@`) default for every omitted revision
+/// argument. `@` never populates `prefixes`.
 ///
 /// `@` is the working-copy commit the pre-verb snapshot has just recorded (Story 9.26).
 ///
 /// # Errors
 ///
-/// - [`ResolveError::NotFound`] — `id` is present but does not resolve (see
-///   [`resolve_commit`]).
+/// - [`ResolveError::NotFound`] / [`ResolveError::Resolution`] — `id` is present but does not
+///   resolve (see [`resolve_commit`]).
 /// - [`ResolveError::NoWorkingCopy`] — `id` is `None` and the workspace has no working-copy
 ///   commit (a workspace forgotten from another one).
 /// - [`ResolveError::Backend`] — a store read failed.
 pub(crate) fn resolve_or_wc(
     repo: &dyn jj_lib::repo::Repo,
     workspace_name: &jj_lib::ref_name::WorkspaceName,
+    prefixes: &IdPrefixContext,
     id: Option<&crate::ChangeId>,
 ) -> Result<Commit, ResolveError> {
     if let Some(id) = id {
-        return resolve_commit(repo, id);
+        return resolve_commit(repo, prefixes, id);
     }
     let wc_id = repo
         .view()

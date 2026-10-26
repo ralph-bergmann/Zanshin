@@ -280,7 +280,11 @@ fn an_unresolvable_immutable_heads_alias_is_a_config_error() {
     // Parses fine, but names a bookmark that does not exist — the CLI reports this through
     // the same "Invalid `revset-aliases.immutable_heads()`" path as a parse failure
     // (`cli_util.rs:1139`), because the ALIAS is what is wrong, not the caller's argument.
-    write_repo_config(&fx.path, "[revset-aliases]\n'immutable_heads()' = 'no-such-bookmark'\n");
+    // `short-prefixes` is emptied: its `revsets.log` default would refuse the change id first.
+    write_repo_config(
+        &fx.path,
+        "[revset-aliases]\n'immutable_heads()' = 'no-such-bookmark'\n[revsets]\nshort-prefixes = ''\n",
+    );
 
     let mut repo = Repo::open(&fx.path).unwrap();
     let err = repo

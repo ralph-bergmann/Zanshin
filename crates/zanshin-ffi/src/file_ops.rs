@@ -397,7 +397,9 @@ pub unsafe extern "C" fn zanshin_file_untrack(handle: u64, data: *const u8, len:
 ///   the empty string or escapes the workspace, or a matching entry is not a file ("Found neither
 ///   a file nor a conflict at '<path>'.") or a conflict with a non-file side ("Some of the sides
 ///   of the conflict are not files at '<path>'."); nothing is written.
-/// - `jj.change_not_found` — `revision` is malformed, absent, only-hidden or divergent.
+/// - `jj.change_not_found` — `revision` is malformed, absent or only-hidden.
+/// - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+///   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_resolution_error` — no `revision` in a workspace without a working-copy commit
 ///   ("Workspace `<name>` doesn't have a working-copy commit").
 /// - `jj.immutable` — the revision is immutable (the root included); hints as for every rewrite.
@@ -459,7 +461,9 @@ pub unsafe extern "C" fn zanshin_file_chmod(handle: u64, data: *const u8, len: u
 ///   file") or a conflict with a non-file side ("Path '<path>' has a non-file conflict and cannot
 ///   be edited") — the CLI's texts — or lies below an existing non-directory ("Failed to edit
 ///   file: '<ancestor>' is not a directory", the divergence above); nothing is written.
-/// - `jj.change_not_found` — `revision` is malformed, absent, only-hidden or divergent.
+/// - `jj.change_not_found` — `revision` is malformed, absent or only-hidden.
+/// - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+///   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_resolution_error` — no `revision` in a workspace without a working-copy commit
 ///   ("Workspace `<name>` doesn't have a working-copy commit").
 /// - `jj.immutable` — the revision is immutable (the root included), even when nothing would
@@ -509,7 +513,9 @@ pub unsafe extern "C" fn zanshin_file_edit(handle: u64, data: *const u8, len: us
 ///   `kind` is not `FileDelete`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `paths` is empty or absent (before the pre-verb snapshot), or an entry
 ///   is the empty string or escapes the workspace; nothing is written.
-/// - `jj.change_not_found` — `revision` is malformed, absent, only-hidden or divergent.
+/// - `jj.change_not_found` — `revision` is malformed, absent or only-hidden.
+/// - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+///   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_resolution_error` — no `revision` in a workspace without a working-copy commit
 ///   ("Workspace `<name>` doesn't have a working-copy commit").
 /// - `jj.immutable` — the revision is immutable (the root included), even when nothing would

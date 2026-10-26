@@ -24,7 +24,9 @@ import 'warning.dart';
 /// rule — Rust only borrows it for the duration of the call).
 ///
 /// Errors: `ffi.null_pointer` (never — we always pass a valid pointer),
-/// `ffi.invalid_handle`, `jj.change_not_found`, `jj.jj_lib_error`.
+/// `ffi.invalid_handle`, `jj.change_not_found`, `jj.revset_resolution_error`
+/// (an ambiguous change-id prefix, or a `revsets.short-prefixes` that fails to
+/// load), `jj.jj_lib_error`.
 Uint8List zanshinChange(int rawHandle, String changeId) {
   final ffi.Pointer<Utf8> p = changeId.toNativeUtf8();
   try {

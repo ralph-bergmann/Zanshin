@@ -15,7 +15,7 @@ use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::remotes::{zanshin_git_fetch_remotes, zanshin_git_push_remotes};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
-use zanshin_ffi::{FFI_INVALID_HANDLE, JJ_CONFIG_ERROR, JJ_FETCH_REMOTES_UNMATCHED};
+use zanshin_ffi::{FFI_INVALID_HANDLE, JJ_CONFIG_ERROR, JJ_FETCH_REMOTES_UNMATCHED, JJ_NOT_A_GIT_REPO};
 use zanshin_jj::{Backend, ConfigScope, ConfigTarget, Repo};
 
 /// Copy bytes out of a `ZanshinBuf` token and free the token.
@@ -68,7 +68,23 @@ fn repo_with(remotes: &[&str]) -> Fx {
         repo.git_remote_add(name, &url.to_string_lossy(), None)
             .expect("add remote");
     }
-    let root = repo.workspace_root().to_owned();
+    open(tmp, repo.workspace_root().to_owned())
+}
+
+/// A native-backend repo, open through the FFI.
+fn native_repo() -> Fx {
+    test_helpers::pin_test_env();
+    let tmp = tempfile::TempDir::new().expect("tempdir");
+    let repo = Repo::init(&zanshin_jj::InitOptions {
+        path: tmp.path().to_path_buf(),
+        ..Default::default()
+    })
+    .result
+    .expect("init");
+    open(tmp, repo.workspace_root().to_owned())
+}
+
+fn open(tmp: tempfile::TempDir, root: PathBuf) -> Fx {
     let path = CString::new(root.to_str().expect("UTF-8 path")).expect("no NUL");
     // SAFETY: `path` is a valid NUL-terminated C string alive for the call.
     let bytes = unsafe { read_and_free(zanshin_repo_open(path.as_ptr())) };
@@ -114,6 +130,20 @@ fn a_wrong_typed_git_push_is_a_config_error() {
     let bytes = unsafe { read_and_free(zanshin_git_push_remotes(fx.handle)) };
     let env = parse_envelope(&bytes);
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CONFIG_ERROR));
+}
+
+/// A native backend is refused with `jj.not_a_git_repo` by both queries, as the push and the
+/// fetch refuse it.
+#[test]
+fn a_native_backend_is_not_a_git_repo() {
+    let fx = native_repo();
+    for query in [zanshin_git_push_remotes, zanshin_git_fetch_remotes] {
+        // SAFETY: `fx.handle` is open.
+        let bytes = unsafe { read_and_free(query(fx.handle)) };
+        let env = parse_envelope(&bytes);
+        assert!(!env.ok());
+        assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_NOT_A_GIT_REPO));
+    }
 }
 
 /// Handle `0` is never valid.

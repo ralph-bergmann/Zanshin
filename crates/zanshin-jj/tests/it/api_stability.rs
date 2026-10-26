@@ -439,6 +439,10 @@ fn api_surface_resolves() {
     _ = zanshin_jj::RepoError::Config { reason: String::new() };
     _ = zanshin_jj::StatusError::Backend(String::new());
     _ = zanshin_jj::ChangeError::Backend(String::new());
+    _ = zanshin_jj::ChangeError::RevsetResolutionError {
+        reason: String::new(),
+        hints: Vec::new(),
+    };
     _ = zanshin_jj::OpLogError::Backend(String::new());
     _ = zanshin_jj::BookmarkError::Backend(String::new());
     _ = zanshin_jj::RemoteError::Backend(String::new());
@@ -681,6 +685,10 @@ fn graph_topology_surface_resolves() {
 fn file_reads_surface_resolves() {
     // Every `FileError` variant, each carrying only owned std types — no jj_lib type.
     _ = zanshin_jj::FileError::ChangeNotFound { id: String::new() };
+    _ = zanshin_jj::FileError::RevsetResolutionError {
+        reason: String::new(),
+        hints: Vec::new(),
+    };
     _ = zanshin_jj::FileError::PathNotFound { path: String::new() };
     _ = zanshin_jj::FileError::NotAFile { path: String::new() };
     _ = zanshin_jj::FileError::InvalidInput { reason: String::new() };

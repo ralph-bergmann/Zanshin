@@ -139,8 +139,9 @@ fn read_fix_request(data: *const u8, len: usize) -> Result<(FixOptions, u64), Ff
 ///   '--author <AUTHOR>': Invalid author string``, ``… for '--author-timestamp
 ///   <AUTHOR_TIMESTAMP>': <reason>``), `author` with `update_author`, `author_timestamp` with
 ///   `update_author_timestamp`; detail in `context`.
-/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
-///   in `context`.
+/// - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+/// - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+///   in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_resolution_error` — the default `@` in a workspace with no working-copy commit.
 /// - `jj.immutable` — a revision is immutable (the root commit among them); its hex commit id in
 ///   `context`.
@@ -193,8 +194,9 @@ pub unsafe extern "C" fn zanshin_metaedit(handle: u64, data: *const u8, len: usi
 ///   snapshot, nothing written, no `precondition`); "Cannot duplicate the root commit"; a location
 ///   that would create a loop or resolves no parent; a merge with the root commit as a parent in a
 ///   Git repo; detail in `context`.
-/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
-///   in `context`.
+/// - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+/// - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+///   in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_resolution_error` — the default `@` in a workspace with no working-copy commit.
 /// - `jj.immutable` — a child `insert_after`/`insert_before` would rewrite is immutable.
 /// - `jj.config_error` — the duplicate-description template setting is not a string or does not
@@ -259,8 +261,9 @@ pub unsafe extern "C" fn zanshin_duplicate(handle: u64, data: *const u8, len: us
 ///   `immutable_heads()` alias does not read or resolve.
 /// - `jj.invalid_input` — a pattern does not parse ("Failed to parse fileset: <kind>" with the CLI's
 ///   `Caused by:` lines in `context`, its hint in `hints`), or a path is not a valid repo path.
-/// - `jj.change_not_found` — a source id is malformed, carried by no VISIBLE commit, or divergent;
-///   the id in `context`.
+/// - `jj.change_not_found` — a source id is malformed or carried by no VISIBLE commit; the id in `context`.
+/// - `jj.revset_resolution_error` — a source id is an ambiguous change-id prefix or a divergent change (the CLI's
+///   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_parse_error` / `jj.revset_resolution_error` — the fix revset setting (the default
 ///   sources) does not parse or resolve.
 /// - `jj.immutable` — a source is immutable; its hex commit id in `context`.

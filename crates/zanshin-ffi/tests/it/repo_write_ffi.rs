@@ -541,6 +541,42 @@ fn describe_on_an_immutable_commit_returns_jj_immutable_with_the_commit_in_conte
     close_handle(handle);
 }
 
+/// A DIVERGENT change id crosses the envelope as the CLI's `DivergentChangeId` refusal:
+/// `jj.revset_resolution_error`, jj-lib's text in `context`, the CLI's three hints in `hints`.
+#[test]
+fn describe_on_a_divergent_change_returns_jj_revset_resolution_error_with_the_cli_hints() {
+    test_helpers::pin_test_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let original = test_helpers::add_commit_off_root(&fixture.path, "original");
+    let divergent = change_id_for_commit(&fixture.path, &original);
+    _ = test_helpers::add_divergent_twin(&fixture.path, &original, "twin");
+    let (handle, _) = open_handle(&fixture.path);
+
+    let id = cstr(&divergent);
+    let desc = cstr("nope");
+    // SAFETY: `handle` is open; both C strings are alive for the call.
+    let token = unsafe { zanshin_describe(handle, id.as_ptr(), desc.as_ptr()) };
+    // SAFETY: token is the fresh, non-null token zanshin_describe just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    let error = env.error().expect("error must be present");
+    assert_eq!(error.code(), Some(JJ_REVSET_RESOLUTION_ERROR));
+    let expected = format!("Change ID `{divergent}` is divergent");
+    assert_eq!(error.context(), Some(expected.as_str()));
+    let hints: Vec<&str> = error.hints().expect("hints").iter().collect();
+    assert_eq!(hints.len(), 3, "{hints:?}");
+    assert!(hints[0].starts_with(&format!("Use change offset to select single revision: {divergent}/")));
+    assert_eq!(
+        hints[1],
+        format!("Use `change_id({divergent})` to select all revisions")
+    );
+    assert_eq!(hints[2], "To abandon unneeded revisions, run `jj abandon <commit_id>`");
+
+    close_handle(handle);
+}
+
 /// The guard's other new failure mode: it cannot determine what is protected. That must
 /// arrive as the same `jj.config_error` the read side already reports (Story 4.9), not as
 /// the unclassified `jj.jj_lib_error` bucket — otherwise a GUI that special-cases a broken

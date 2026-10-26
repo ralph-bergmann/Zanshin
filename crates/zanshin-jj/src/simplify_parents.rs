@@ -70,12 +70,13 @@ pub(crate) fn simplify_parents(
     let workspace_name = workspace.workspace_name().to_owned();
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
 
+    let prefixes = ctx.template_startup.id_prefix_context();
     let target = if options.source.is_empty() && options.revisions.is_empty() {
-        crate::arrange::target_expression(&tx, workspace, ctx, &[], "revsets.simplify-parents")?
+        crate::arrange::target_expression(&tx, workspace, ctx, &prefixes, &[], "revsets.simplify-parents")?
     } else {
         // The CLI parses `-s` before `-r`; an empty flag is `none()`.
-        let source = resolve_ordered(&tx, Some(&options.source))?.unwrap_or_default();
-        let revisions = resolve_ordered(&tx, Some(&options.revisions))?.unwrap_or_default();
+        let source = resolve_ordered(&tx, &prefixes, Some(&options.source))?.unwrap_or_default();
+        let revisions = resolve_ordered(&tx, &prefixes, Some(&options.revisions))?.unwrap_or_default();
         RevsetExpression::commits(source)
             .descendants()
             .union(&RevsetExpression::commits(revisions))

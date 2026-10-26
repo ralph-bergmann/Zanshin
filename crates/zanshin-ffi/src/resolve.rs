@@ -126,7 +126,9 @@ fn read_resolve_request(data: *const u8, len: usize) -> Result<ResolveOptions, F
 /// - `ffi.invalid_argument` — `data` does not verify as a `ResolveListRequest` buffer, or its
 ///   `kind` is not `ResolveList`.
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path.
-/// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
+/// - `jj.change_not_found` — `revision` is malformed or carried by no VISIBLE commit.
+/// - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+///   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
 ///   commit.
 /// - `jj.no_conflicts` — nothing matched; the CLI's text in `context`.
@@ -178,7 +180,9 @@ pub unsafe extern "C" fn zanshin_resolve_list(handle: u64, data: *const u8, len:
 ///   invalid, root or duplicate file path, a file without `term_ids` (all before the snapshot:
 ///   nothing written, no `precondition`), or a `paths` entry is not a valid repo path; detail in
 ///   `context`.
-/// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
+/// - `jj.change_not_found` — `revision` is malformed or carried by no VISIBLE commit.
+/// - `jj.revset_resolution_error` — `revision` is an ambiguous change-id prefix or a divergent change (the CLI's
+///   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
 ///   commit.
 /// - `jj.no_conflicts` — nothing matched; the CLI's text in `context`.

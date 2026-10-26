@@ -114,9 +114,18 @@ class _WorkerProjectRepo implements ProjectRepo {
           return bookmarks;
         },
         pushRemotes: () async {
-          final WarnedList<String> remotes = await handle.gitPushRemotes();
-          _logWarnings('git push remotes', remotes.warnings);
-          return remotes;
+          try {
+            final WarnedList<String> remotes = await handle.gitPushRemotes();
+            _logWarnings('git push remotes', remotes.warnings);
+            return remotes;
+          } on ZanshinFfiException catch (error) {
+            // A native-backend repo has no Git remotes to push to, as `jj git push` refuses it.
+            if (error.code != 'jj.not_a_git_repo') {
+              rethrow;
+            }
+            _logWarnings('git push remotes', error.warnings);
+            return const <String>[];
+          }
         },
       );
       return ProjectReading(status: status, bookmark: bookmarkLabel(heads.refs));

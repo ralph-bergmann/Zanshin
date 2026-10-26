@@ -32,6 +32,7 @@ use jj_lib::conflicts::{
     materialize_merge_result_to_bytes, materialize_tree_value, resolve_file_executable, ConflictMaterializeOptions,
     MaterializedTreeValue,
 };
+use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::repo_path::{RepoPath, RepoPathBuf};
@@ -179,15 +180,24 @@ pub enum FileError {
     /// [`crate::PreconditionError`].
     #[error(transparent)]
     Precondition(#[from] crate::PreconditionError),
-    /// The `revision` argument is malformed, carried by no VISIBLE commit (unknown or
-    /// only-hidden), or DIVERGENT — the same refusal `mutate.rs` makes, because the CLI's
-    /// `-r` is `resolve_single_rev`, which refuses an ambiguous revision rather than picking
-    /// one. Not to be confused with an ABSENT `revision`, which is not an error at all: it
-    /// applies the CLI's `-r` default `@`.
+    /// The `revision` argument is malformed or carried by no VISIBLE commit (unknown or
+    /// only-hidden) — the same refusal `mutate.rs` makes. Not to be confused with an ABSENT
+    /// `revision`, which is not an error at all: it applies the CLI's `-r` default `@`.
     #[error("change not found: {id}")]
     ChangeNotFound {
         /// The reverse-hex change id that could not be resolved.
         id: String,
+    },
+    /// The `revision` argument does not resolve to ONE commit, as the CLI's `-r`
+    /// (`resolve_single_rev`) refuses it: an AMBIGUOUS change-id prefix, a DIVERGENT change, or
+    /// a `revsets.short-prefixes` set that fails to load. `reason` is jj-lib's own
+    /// `RevsetResolutionError` text.
+    #[error("revset resolution error: {reason}")]
+    RevsetResolutionError {
+        /// jj-lib's resolution error text.
+        reason: String,
+        /// The CLI's hints for it (a divergent change's three); empty otherwise.
+        hints: Vec<String>,
     },
     /// The path does not exist in the target revision's tree (the CLI's
     /// `No such path: …`).
@@ -247,6 +257,7 @@ fn res(e: ResolveError, revision: Option<&ChangeId>) -> FileError {
             id: revision.map(|r| r.0.clone()).unwrap_or_default(),
         },
         ResolveError::NoWorkingCopy(reason) => FileError::InvalidInput { reason },
+        ResolveError::Resolution { reason, hints } => FileError::RevsetResolutionError { reason, hints },
         ResolveError::Backend(reason) => FileError::Backend(reason),
     }
 }
@@ -260,15 +271,20 @@ fn parse_path(path: &str) -> Result<RepoPathBuf, FileError> {
         .map_err(|reason| FileError::InvalidInput { reason })
 }
 
-/// Re-resolves to the head operation and resolves `revision` (or `@`) to its commit.
+/// Re-resolves to the head operation and resolves `revision` (or `@`) to its commit, through
+/// `prefixes` — the call's `revsets.short-prefixes` context.
 ///
 /// The single ADR-0002 entry point all four verbs share; the returned `ReadonlyRepo` is the
 /// snapshot every subsequent read in the call is taken from, so a concurrent operation can
 /// never make two halves of one result disagree.
-fn head_commit(workspace: &Workspace, revision: Option<&ChangeId>) -> Result<(Arc<ReadonlyRepo>, Commit), FileError> {
+fn head_commit(
+    workspace: &Workspace,
+    prefixes: &IdPrefixContext,
+    revision: Option<&ChangeId>,
+) -> Result<(Arc<ReadonlyRepo>, Commit), FileError> {
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
-    let commit =
-        resolve_or_wc(readonly.as_ref(), workspace.workspace_name(), revision).map_err(|e| res(e, revision))?;
+    let commit = resolve_or_wc(readonly.as_ref(), workspace.workspace_name(), prefixes, revision)
+        .map_err(|e| res(e, revision))?;
     Ok((readonly, commit))
 }
 
@@ -318,19 +334,22 @@ fn to_file_entry(path: &RepoPath, value: &MergedTreeValue) -> Option<FileEntry> 
 ///
 /// # Errors
 ///
-/// - [`FileError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE commit
-///   (unknown or only-hidden), or divergent. Not to be confused with an ABSENT `revision`,
-///   which is not an error at all: it applies the CLI's `-r` default `@`.
+/// - [`FileError::ChangeNotFound`] — `revision` is malformed or carried by no VISIBLE commit
+///   (unknown or only-hidden). Not to be confused with an ABSENT `revision`, which is not an
+///   error at all: it applies the CLI's `-r` default `@`.
+/// - [`FileError::RevsetResolutionError`] — `revision` is an ambiguous prefix or a divergent
+///   change, or `revsets.short-prefixes` fails to load.
 /// - [`FileError::InvalidInput`] — a `paths` entry is not a valid repo path.
 /// - [`FileError::Backend`] — the head load or a tree read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_list(
     workspace: &Workspace,
     sink: &mut Warnings,
+    prefixes: &IdPrefixContext,
     revision: Option<&ChangeId>,
     paths: &[String],
 ) -> Result<Vec<FileEntry>, FileError> {
-    let (_readonly, commit) = head_commit(workspace, revision)?;
+    let (_readonly, commit) = head_commit(workspace, prefixes, revision)?;
     let matcher = build_matcher(paths).map_err(|reason| FileError::InvalidInput { reason })?;
     let tree = commit.tree();
 
@@ -483,7 +502,8 @@ fn render_entry(
 /// - [`FileError::InvalidInput`] — `paths` is empty (the CLI marks FILESETS `required`), or
 ///   an entry is not a valid repo path or leaves the repo through `..` (`./x` and `a/../x` read
 ///   `x` on both branches, Story 9.53).
-/// - [`FileError::ChangeNotFound`] — `revision` does not resolve.
+/// - [`FileError::ChangeNotFound`] / [`FileError::RevsetResolutionError`] — `revision` does
+///   not resolve (see [`file_list`]).
 /// - [`FileError::PathNotFound`] — exactly one path was given and it is absent from the
 ///   tree; it names the resolved path.
 /// - [`FileError::Config`] — the effective jj config is unreadable or malformed (including
@@ -493,6 +513,7 @@ fn render_entry(
 pub(crate) fn file_show(
     repo: &crate::Repo,
     sink: &mut Warnings,
+    prefixes: &IdPrefixContext,
     revision: Option<&ChangeId>,
     paths: &[String],
 ) -> Result<FileContents, FileError> {
@@ -504,7 +525,7 @@ pub(crate) fn file_show(
     let config = crate::config::load(repo).map_err(cfg)?;
     let marker_style = crate::config::conflict_marker_style(&config).map_err(cfg)?;
 
-    let (readonly, commit) = head_commit(repo.workspace(), revision)?;
+    let (readonly, commit) = head_commit(repo.workspace(), prefixes, revision)?;
     let store = readonly.store().clone();
     let options = ConflictMaterializeOptions {
         marker_style,
@@ -578,7 +599,8 @@ pub(crate) fn file_show(
 ///
 /// # Errors
 ///
-/// - [`FileError::ChangeNotFound`] — `revision` does not resolve.
+/// - [`FileError::ChangeNotFound`] / [`FileError::RevsetResolutionError`] — `revision` does
+///   not resolve (see [`file_list`]).
 /// - [`FileError::InvalidInput`] — `path` is not a valid repo path or leaves the repo through
 ///   `..` (`invalid path: Path "../x" is not in the repo "."`); `./x` and `a/../x` read `x`, as
 ///   the CLI's `parse_file_path` from the workspace root (Story 9.53).
@@ -589,11 +611,12 @@ pub(crate) fn file_show(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_annotate(
     workspace: &Workspace,
+    prefixes: &IdPrefixContext,
     revision: Option<&ChangeId>,
     path: &str,
 ) -> Result<Vec<AnnotationLine>, FileError> {
     let file_path = parse_path(path)?;
-    let (readonly, commit) = head_commit(workspace, revision)?;
+    let (readonly, commit) = head_commit(workspace, prefixes, revision)?;
 
     let value = pollster::block_on(commit.tree().path_value(&file_path)).map_err(be)?;
     let display = file_path.as_internal_file_string().to_owned();
@@ -708,7 +731,8 @@ fn collect_matches(
 ///
 /// # Errors
 ///
-/// - [`FileError::ChangeNotFound`] — `revision` does not resolve.
+/// - [`FileError::ChangeNotFound`] / [`FileError::RevsetResolutionError`] — `revision` does
+///   not resolve (see [`file_list`]).
 /// - [`FileError::InvalidInput`] — `pattern` names an unknown kind or does not parse, or a
 ///   `paths` entry is not a valid repo path.
 /// - [`FileError::Backend`] — the head load or a blob read failed.
@@ -716,6 +740,7 @@ fn collect_matches(
 pub(crate) fn file_search(
     workspace: &Workspace,
     sink: &mut Warnings,
+    prefixes: &IdPrefixContext,
     revision: Option<&ChangeId>,
     pattern: &str,
     paths: &[String],
@@ -723,7 +748,7 @@ pub(crate) fn file_search(
 ) -> Result<FileSearch, FileError> {
     let matcher = parse_pattern(pattern)?.to_matcher();
     let path_matcher = build_matcher(paths).map_err(|reason| FileError::InvalidInput { reason })?;
-    let (readonly, commit) = head_commit(workspace, revision)?;
+    let (readonly, commit) = head_commit(workspace, prefixes, revision)?;
     let store = readonly.store().clone();
     let tree = commit.tree();
 
@@ -776,6 +801,7 @@ pub(crate) fn file_search(
 #[cfg(test)]
 mod tests {
     use jj_lib::backend::{CopyId, FileId, SymlinkId, TreeId, TreeValue};
+    use jj_lib::id_prefix::IdPrefixContext;
     use jj_lib::merge::Merge;
 
     use super::{
@@ -789,7 +815,13 @@ mod tests {
     #[test]
     fn a_head_that_no_longer_loads_is_a_backend_error() {
         let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
-        let result = super::file_list(repo.workspace(), &mut crate::warning::Warnings::default(), None, &[]);
+        let result = super::file_list(
+            repo.workspace(),
+            &mut crate::warning::Warnings::default(),
+            &IdPrefixContext::default(),
+            None,
+            &[],
+        );
         assert!(matches!(result, Err(FileError::Backend(_))), "{result:?}");
     }
 
@@ -814,6 +846,7 @@ mod tests {
         let result = super::file_show(
             &repo,
             &mut crate::warning::Warnings::default(),
+            &IdPrefixContext::default(),
             None,
             &["a.txt".to_owned()],
         );
@@ -883,7 +916,8 @@ mod tests {
         );
 
         let mut sink = crate::warning::Warnings::default();
-        let search = super::file_search(&workspace, &mut sink, Some(&change), "needle", &[], false)
+        let prefixes = IdPrefixContext::default();
+        let search = super::file_search(&workspace, &mut sink, &prefixes, Some(&change), "needle", &[], false)
             .expect("an unreadable blob is not an error — the call SUCCEEDS");
 
         let paths: Vec<&str> = search.matches.iter().map(|m| m.path.as_str()).collect();
@@ -1004,6 +1038,16 @@ mod tests {
         assert!(matches!(
             res(ResolveError::Backend("index read failed".to_owned()), Some(&id)),
             FileError::Backend(reason) if reason == "index read failed"
+        ));
+        assert!(matches!(
+            res(
+                ResolveError::Resolution {
+                    reason: "ambiguous".to_owned(),
+                    hints: vec!["h".to_owned()],
+                },
+                Some(&id)
+            ),
+            FileError::RevsetResolutionError { reason, hints } if reason == "ambiguous" && hints == ["h"]
         ));
     }
 

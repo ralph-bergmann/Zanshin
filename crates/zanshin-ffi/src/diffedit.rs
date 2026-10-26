@@ -74,8 +74,10 @@ fn read_diffedit_request(data: *const u8, len: usize) -> Result<DiffeditOptions,
 /// - `jj.invalid_input` — `revision` together with `from`/`to`, a `tree` of the wrong shape, or an
 ///   absent / malformed `right` — before the snapshot: nothing written, no `precondition`; detail
 ///   in `context`.
-/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent.
-/// - `jj.revset_resolution_error` — an omitted id's `@` in a workspace with no working-copy commit.
+/// - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit.
+/// - `jj.revset_resolution_error` — an omitted id's `@` in a workspace with no working-copy commit; an id is an
+///   ambiguous change-id prefix or a divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes`
+///   fails to resolve.
 /// - `jj.immutable` — the target is inside the immutable set; its hex id in `context`.
 /// - `jj.stale_selection` — the base tree is not the selection's `left`, or the target's tree is
 ///   not `right`; detail in `context`.

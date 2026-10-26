@@ -166,8 +166,9 @@ fn read_simplify_parents_request(data: *const u8, len: usize) -> Result<Simplify
 ///   written, no `precondition`); "Cannot rebase <12 hex> onto itself" / "… onto descendant <12
 ///   hex>"; a location that would create a loop or resolves no parent; a merge with the root
 ///   commit as a parent in a Git repo; detail in `context`.
-/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
-///   in `context`.
+/// - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+/// - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+///   in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.revset_resolution_error` — the default `-b @` in a workspace with no working-copy commit;
 ///   the CLI's text in `context`.
 /// - `jj.immutable` — a commit the move rewrites, or a child the location would rewrite, is
@@ -216,8 +217,9 @@ pub unsafe extern "C" fn zanshin_rebase(handle: u64, data: *const u8, len: usize
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind` is
 ///   not `Parallelize` — a `NewChange`- or `Abandon`-tagged buffer is refused here.
-/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
-///   in `context`.
+/// - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+/// - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+///   in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.immutable` — a target that would move is immutable; its hex commit id in `context`.
 /// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
@@ -269,8 +271,10 @@ pub unsafe extern "C" fn zanshin_parallelize(handle: u64, data: *const u8, len: 
 ///   a gap ("Cannot arrange revset with gaps in.", with the hint "Revision <12 hex> would need to be
 ///   in the set."); an action names a change outside the set ("… is not among the revisions
 ///   to arrange").
-/// - `jj.change_not_found` — a revision or an action's change id is malformed, carried by no
-///   VISIBLE commit, or divergent; the id in `context`.
+/// - `jj.change_not_found` — a revision or an action's change id is malformed or carried by no
+///   VISIBLE commit; the id in `context`.
+/// - `jj.revset_resolution_error` — such an id is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.immutable` — a target is immutable; its hex commit id in `context`.
 /// - `jj.revset_parse_error` / `jj.revset_resolution_error` — the arrange revset setting (the
 ///   default target set) does not parse or resolve.
@@ -322,8 +326,9 @@ pub unsafe extern "C" fn zanshin_arrange(handle: u64, data: *const u8, len: usiz
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `SimplifyParentsRequest` buffer, or its
 ///   `kind` is not `SimplifyParents`.
-/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
-///   in `context`.
+/// - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+/// - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+///   in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.immutable` — a target is immutable (the root commit among them); its hex commit id in
 ///   `context`.
 /// - `jj.revset_parse_error` / `jj.revset_resolution_error` — the simplify-parents revset setting

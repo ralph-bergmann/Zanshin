@@ -39,6 +39,7 @@ use crate::mutate::{
 };
 use crate::op_support::start_repo_transaction;
 use crate::snapshot::VerbContext;
+use crate::template::Templates;
 use crate::warning::Warnings;
 use crate::ChangeId;
 
@@ -252,13 +253,15 @@ fn count(n: usize) -> u32 {
 pub(crate) fn resolve_list(
     workspace: &Workspace,
     warnings: &mut Warnings,
+    prefixes: &jj_lib::id_prefix::IdPrefixContext,
     options: &ResolveListOptions,
 ) -> Result<ResolveList, MutateError> {
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let matcher = build_matcher(&options.paths)?;
-    let commit = crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), options.revision.as_ref())
-        .map_err(|e| res(e, options.revision.as_ref()))?;
+    let commit =
+        crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), prefixes, options.revision.as_ref())
+            .map_err(|e| res(e, options.revision.as_ref()))?;
     let tree = commit.tree();
     let conflicts = matched_conflicts(workspace, warnings, &tree, matcher.as_ref(), &options.paths)?;
     let merge_options = repo.store().merge_options();
@@ -371,10 +374,17 @@ pub(crate) fn resolve(
         ),
         ResolveTool::Ours | ResolveTool::Theirs => (build_matcher(&options.paths)?, options.paths.clone()),
     };
-    let commit = resolve_or_wc(tx.repo(), &workspace_name, options.revision.as_ref())?;
+    // Built from the fields, not `ctx.templates`, so `ctx.warnings` stays borrowable meanwhile.
+    let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
+    let commit = resolve_or_wc(
+        tx.repo(),
+        &workspace_name,
+        templates.prefixes(),
+        options.revision.as_ref(),
+    )?;
     let tree = commit.tree();
     let conflicts = matched_conflicts(workspace, &mut ctx.warnings, &tree, matcher.as_ref(), &explicit)?;
-    guard_rewritable(&tx, &ctx.templates(workspace), std::slice::from_ref(commit.id()))?;
+    guard_rewritable(&tx, &templates, std::slice::from_ref(commit.id()))?;
 
     let new_tree = pollster::block_on(resolved_tree(&tree, &conflicts, &options.tool))?;
     let new_commit =

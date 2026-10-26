@@ -134,7 +134,7 @@ pub(crate) struct Templates<'c> {
     config: &'c StackedConfig,
     immutable: &'c Arc<UserRevsetExpression>,
     aliases: &'c TemplateAliasesMap,
-    short_prefixes: Option<Arc<UserRevsetExpression>>,
+    prefixes: IdPrefixContext,
     workspace_name: WorkspaceNameBuf,
     workspace_root: PathBuf,
     env: OnceCell<Env>,
@@ -147,7 +147,6 @@ struct Env {
     fileset_aliases: FilesetAliasesMap,
     extensions: Arc<RevsetExtensions>,
     conflict_marker_style: ConflictMarkerStyle,
-    id_prefix_context: IdPrefixContext,
 }
 
 impl<'c> Templates<'c> {
@@ -164,11 +163,18 @@ impl<'c> Templates<'c> {
             config,
             immutable,
             aliases: &startup.aliases,
-            short_prefixes: startup.short_prefixes.clone(),
+            prefixes: startup.id_prefix_context(),
             workspace_name: workspace.workspace_name().to_owned(),
             workspace_root: workspace.workspace_root().to_owned(),
             env: OnceCell::new(),
         }
+    }
+
+    /// The call's id-prefix context — what its change-id arguments resolve through
+    /// ([`crate::op_support::resolve_commit`]) and its templates shorten ids with; populated once,
+    /// on first use.
+    pub(crate) fn prefixes(&self) -> &IdPrefixContext {
+        &self.prefixes
     }
 
     /// The immutable set the start-up environment parsed (`::(immutable_heads() | root())`) —
@@ -178,8 +184,7 @@ impl<'c> Templates<'c> {
     }
 
     /// The environment, loaded on first use: the `[revset-aliases]` and `[fileset-aliases]`
-    /// tables (each table's warnings recorded once per call), `ui.conflict-marker-style`, and the
-    /// id-prefix context disambiguated within the short-prefixes expression.
+    /// tables (each table's warnings recorded once per call) and `ui.conflict-marker-style`.
     fn env(&self, sink: &mut Warnings) -> Result<&Env, MutateError> {
         if let Some(env) = self.env.get() {
             return Ok(env);
@@ -195,10 +200,6 @@ impl<'c> Templates<'c> {
         sink.record_load(Load::FilesetAliases, warnings);
         let conflict_marker_style = crate::config::conflict_marker_style(self.config).map_err(cfg)?;
         let extensions = Arc::new(RevsetExtensions::default());
-        let mut id_prefix_context = IdPrefixContext::new(Arc::clone(&extensions));
-        if let Some(expression) = &self.short_prefixes {
-            id_prefix_context = id_prefix_context.disambiguate_within(Arc::clone(expression));
-        }
         Ok(Env {
             path_converter: RepoPathUiConverter::Fs {
                 cwd: self.workspace_root.clone(),
@@ -208,7 +209,6 @@ impl<'c> Templates<'c> {
             fileset_aliases,
             extensions,
             conflict_marker_style,
-            id_prefix_context,
         })
     }
 
@@ -247,7 +247,7 @@ impl<'c> Templates<'c> {
             &env.path_converter,
             &self.workspace_name,
             revset_parse_context,
-            &env.id_prefix_context,
+            &self.prefixes,
             Arc::clone(self.immutable),
             env.conflict_marker_style,
             &[] as &[Box<dyn jj_cli::commit_templater::CommitTemplateLanguageExtension>],

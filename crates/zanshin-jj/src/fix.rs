@@ -854,7 +854,8 @@ pub(crate) fn fix(
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let repo = readonly.as_ref();
 
-    let target = target_expression(&tx, workspace, ctx, &options.source, "revsets.fix")?;
+    let prefixes = ctx.template_startup.id_prefix_context();
+    let target = target_expression(&tx, workspace, ctx, &prefixes, &options.source, "revsets.fix")?;
     let roots: Vec<_> = commits_of(repo, &target)?.iter().map(|c| c.id().clone()).collect();
     guard_rewritable(&tx, &ctx.templates(workspace), &roots)?;
     let commits = commits_of(repo, &target.descendants())?;

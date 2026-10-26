@@ -63,7 +63,7 @@ use jj_lib::workspace::Workspace;
 
 use crate::change::change_from_commit;
 use crate::op_support::{
-    build_matcher, resolve_change_id_prefix, resolve_commit_id_prefix, resolve_or_wc, PrefixError, ResolveError,
+    build_matcher, resolve_commit, resolve_commit_id_prefix, resolve_or_wc, PrefixError, ResolveError,
 };
 use crate::{Change, ChangeId, ChangeKind, CommitId, FileChange, OperationId};
 
@@ -179,11 +179,12 @@ pub enum CommitViewError {
     /// [`crate::PreconditionError`].
     #[error(transparent)]
     Precondition(#[from] crate::PreconditionError),
-    /// A single-revision argument (`interdiff`'s `from`/`to`) is malformed, carried by no VISIBLE
-    /// commit (unknown or only-hidden), or DIVERGENT — the same refusal every other
-    /// single-revision parameter makes, because the CLI resolves both sides with
-    /// `resolve_single_rev`. Not to be confused with an ABSENT side, which is not an error at
-    /// all: it applies the CLI's `--from`/`--to` default `@` (omitting BOTH is `InvalidInput`).
+    /// A single-revision argument (`interdiff`'s `from`/`to`) is malformed or carried by no
+    /// VISIBLE commit (unknown or only-hidden) — the same refusal every other single-revision
+    /// parameter makes, because the CLI resolves both sides with `resolve_single_rev` (a
+    /// DIVERGENT change is [`CommitViewError::RevsetResolutionError`]). Not to be confused with an
+    /// ABSENT side, which is not an error at all: it applies the CLI's `--from`/`--to` default `@`
+    /// (omitting BOTH is `InvalidInput`).
     #[error("change not found: {id}")]
     ChangeNotFound {
         /// The reverse-hex change id that could not be resolved.
@@ -259,7 +260,8 @@ fn rev(e: crate::RevsetError) -> CommitViewError {
 }
 
 /// Converts a shared [`ResolveError`] to this module's taxonomy, preserving the
-/// `ChangeNotFound { id }` / `Backend` split (`file.rs::res` is the template).
+/// `ChangeNotFound { id }` / `RevsetResolutionError` / `Backend` split (`file.rs::res` is the
+/// template).
 fn res(e: ResolveError, id: Option<&ChangeId>) -> CommitViewError {
     match e {
         ResolveError::NotFound => CommitViewError::ChangeNotFound {
@@ -269,13 +271,14 @@ fn res(e: ResolveError, id: Option<&ChangeId>) -> CommitViewError {
             reason,
             hints: Vec::new(),
         },
+        ResolveError::Resolution { reason, hints } => CommitViewError::RevsetResolutionError { reason, hints },
         ResolveError::Backend(reason) => CommitViewError::Backend(reason),
     }
 }
 
 /// Converts a commit-arm [`PrefixError`] to this module's taxonomy.
 ///
-/// Where [`res`] has two outcomes this has four, because the commit-id arm can distinguish them:
+/// Four outcomes, because the commit-id arm can distinguish them:
 /// a non-hex value is a structurally invalid ARGUMENT ([`CommitViewError::InvalidInput`]), a
 /// prefix carried by several commits is an ambiguity ([`CommitViewError::RevsetResolutionError`]
 /// — the registry's ambiguity code, where a divergent change-id symbol lands for `show`/`evolog`
@@ -300,21 +303,6 @@ fn res_commit(e: PrefixError, id: &CommitId) -> CommitViewError {
     }
 }
 
-/// Converts a change-arm [`PrefixError`] to this module's taxonomy: malformed, unknown,
-/// only-hidden and divergent stay the one `ChangeNotFound` the change-id currency has always
-/// reported ([`res`]); an AMBIGUOUS prefix is jj-lib's own `AmbiguousChangeIdPrefix` refusal,
-/// the text the CLI's `ChangePrefixResolver` raises (caller's spelling, as in [`res_commit`]).
-fn res_change(e: PrefixError, id: &ChangeId) -> CommitViewError {
-    match e {
-        PrefixError::Malformed | PrefixError::NotFound => CommitViewError::ChangeNotFound { id: id.0.clone() },
-        PrefixError::Ambiguous => CommitViewError::RevsetResolutionError {
-            reason: jj_lib::revset::RevsetResolutionError::AmbiguousChangeIdPrefix(id.0.clone()).to_string(),
-            hints: Vec::new(),
-        },
-        PrefixError::Backend(reason) => CommitViewError::Backend(reason),
-    }
-}
-
 /// A failed `revsets.short-prefixes` index load, as the CLI's prefix resolvers report it
 /// (`RevsetResolutionError::Other`): jj-lib's error with its source chain.
 fn short_prefixes_failed(e: &jj_lib::id_prefix::IdPrefixIndexLoadError) -> CommitViewError {
@@ -327,23 +315,28 @@ fn short_prefixes_failed(e: &jj_lib::id_prefix::IdPrefixIndexLoadError) -> Commi
 /// Resolves ONE side of [`interdiff`] to its commit.
 ///
 /// An ABSENT side is the CLI's `@` default (the working copy the pre-verb snapshot has just
-/// recorded, Story 9.26); a present side populates `prefixes` — the call's `revsets.short-prefixes`
-/// context, loaded once and only when a side names a revision, as the CLI's resolvers do — and
-/// dispatches to the two resolvers, each mapping its own error taxonomy. Written once rather than
-/// inline twice so the `from` and `to` sides cannot drift apart.
+/// recorded, Story 9.26); a present side resolves through `prefixes` — the call's
+/// `revsets.short-prefixes` context, loaded once and only when a side names a revision, as the
+/// CLI's resolvers do. A change id takes the change-id currency every verb shares
+/// ([`resolve_commit`]), a commit id the commit-id prefix resolver, each mapping its own error
+/// taxonomy. Written once rather than inline twice so the `from` and `to` sides cannot drift apart.
 fn resolve_side(
     repo: &dyn jj_lib::repo::Repo,
     workspace_name: &jj_lib::ref_name::WorkspaceName,
     prefixes: &IdPrefixContext,
     side: Option<&RevisionRef>,
 ) -> Result<Commit, CommitViewError> {
-    let Some(side) = side else {
-        return resolve_or_wc(repo, workspace_name, None).map_err(|e| res(e, None));
-    };
-    let index = prefixes.populate(repo).map_err(|e| short_prefixes_failed(&e))?;
     match side {
-        RevisionRef::ChangeId(id) => resolve_change_id_prefix(repo, &index, id).map_err(|e| res_change(e, id)),
-        RevisionRef::CommitId(id) => resolve_commit_id_prefix(repo, &index, id).map_err(|e| res_commit(e, id)),
+        None => resolve_or_wc(repo, workspace_name, prefixes, None).map_err(|e| res(e, None)),
+        Some(RevisionRef::ChangeId(id)) => resolve_commit(repo, prefixes, id).map_err(|e| res(e, Some(id))),
+        Some(RevisionRef::CommitId(id)) => {
+            // The CLI's `CommitPrefixResolver` validates the hex before it loads the set.
+            if id.0.is_empty() || jj_lib::object_id::HexPrefix::try_from_hex(&id.0).is_none() {
+                return Err(res_commit(PrefixError::Malformed, id));
+            }
+            let index = prefixes.populate(repo).map_err(|e| short_prefixes_failed(&e))?;
+            resolve_commit_id_prefix(repo, &index, id).map_err(|e| res_commit(e, id))
+        }
     }
 }
 
@@ -583,7 +576,7 @@ pub(crate) fn evolog(
 /// `ChangePrefixResolver` do: a prefix unique within that set resolves even when it is
 /// ambiguous repo-wide, and one the set does not hold falls back to the whole index. A
 /// [`RevisionRef::ChangeId`] is a reverse-hex change-id prefix (any length) and resolves only to
-/// the currently VISIBLE commit (divergence refused); a [`RevisionRef::CommitId`] is a commit-id
+/// the currently VISIBLE commit (a divergent change refused); a [`RevisionRef::CommitId`] is a commit-id
 /// hex prefix whose index fallback is visibility-blind, so it reaches a HIDDEN commit. Feeding an
 /// [`EvologEntry::predecessor_commit_ids`] entry in as a [`RevisionRef::CommitId`] is therefore
 /// how [`evolog`] and this verb compose into a diff of one version of a change against the
@@ -611,15 +604,16 @@ pub(crate) fn evolog(
 ///
 /// - [`CommitViewError::InvalidInput`] — BOTH `from` and `to` are absent, a `paths` entry is
 ///   not a valid repo path, or a [`RevisionRef::CommitId`] is empty or not valid hex.
-/// - [`CommitViewError::ChangeNotFound`] — a [`RevisionRef::ChangeId`] is malformed, carried by
-///   no VISIBLE commit (unknown or only-hidden), or divergent; or a [`RevisionRef::CommitId`] is
-///   valid hex that no indexed commit carries. An ABSENT side is not an error: ONE absent side
-///   applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the `InvalidInput`
-///   bullet above.
+/// - [`CommitViewError::ChangeNotFound`] — a [`RevisionRef::ChangeId`] is malformed or carried by
+///   no VISIBLE commit (unknown or only-hidden); or a [`RevisionRef::CommitId`] is valid hex that
+///   no indexed commit carries. An ABSENT side is not an error: ONE absent side applies the CLI's
+///   `--from`/`--to` default `@`, and omitting BOTH is the `InvalidInput` bullet above.
 /// - [`CommitViewError::RevsetResolutionError`] — a [`RevisionRef::CommitId`] or
 ///   [`RevisionRef::ChangeId`] prefix is ambiguous (jj-lib's own wording); refused, never
-///   resolved to one of them. Or a present side's `revsets.short-prefixes` set does not resolve
-///   ("Failed to resolve short-prefixes disambiguation revset: …").
+///   resolved to one of them. Or a [`RevisionRef::ChangeId`] is DIVERGENT (``Change ID `<id>` is
+///   divergent``, with the CLI's three hints). Or a present side's `revsets.short-prefixes` set
+///   does not resolve ("Failed to resolve short-prefixes disambiguation revset: …"); a malformed
+///   change id is not found before the set is loaded, as the CLI's `ChangePrefixResolver`.
 /// - [`CommitViewError::Backend`] — the head load, the in-memory rebase, or a tree read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn interdiff(
@@ -680,7 +674,7 @@ pub(crate) fn interdiff(
 
 #[cfg(test)]
 mod tests {
-    use super::{res, res_change, res_commit, rev, CommitViewError};
+    use super::{res, res_commit, rev, CommitViewError};
     use crate::op_support::{PrefixError, ResolveError};
     use crate::{ChangeId, CommitId, ConfigError, RevsetError};
 
@@ -756,10 +750,9 @@ mod tests {
         ));
     }
 
-    /// The commit-arm resolver reports FOUR outcomes where the change arm reports two, and
-    /// each lands on a DIFFERENT already-registered code: collapsing "not hex" into
-    /// "not found", or ambiguity into either, would erase exactly the distinction that arm
-    /// exists to make. Pinned directly — `Backend` needs an index/store failure no fixture
+    /// The commit-arm resolver reports FOUR outcomes, and each lands on a DIFFERENT
+    /// already-registered code: collapsing "not hex" into "not found", or ambiguity into either,
+    /// would erase exactly the distinction that arm exists to make. Pinned directly — `Backend` needs an index/store failure no fixture
     /// provokes deterministically, and the ambiguity message is jj-lib's own.
     #[test]
     fn res_commit_preserves_the_four_stage_commit_prefix_taxonomy() {
@@ -783,22 +776,17 @@ mod tests {
         ));
     }
 
-    /// The change arm keeps its two-way not-found collapse and adds only jj-lib's ambiguity
-    /// refusal; `Backend` needs a failure no fixture provokes.
+    /// The change-id currency's resolution refusal (ambiguous, divergent, a failed short-prefixes
+    /// load) keeps its reason AND hints.
     #[test]
-    fn res_change_collapses_not_found_and_keeps_the_ambiguity() {
-        let id = ChangeId("zk".to_owned());
-        for e in [PrefixError::Malformed, PrefixError::NotFound] {
-            assert!(matches!(res_change(e, &id), CommitViewError::ChangeNotFound { id } if id == "zk"));
-        }
+    fn res_keeps_a_resolution_refusal_with_its_hints() {
+        let e = ResolveError::Resolution {
+            reason: "Change ID `zk` is divergent".to_owned(),
+            hints: vec!["h".to_owned()],
+        };
         assert!(matches!(
-            res_change(PrefixError::Ambiguous, &id),
-            CommitViewError::RevsetResolutionError { reason, hints }
-                if reason.contains("zk") && reason.contains("ambiguous") && hints.is_empty()
-        ));
-        assert!(matches!(
-            res_change(PrefixError::Backend("index read failed".to_owned()), &id),
-            CommitViewError::Backend(reason) if reason == "index read failed"
+            res(e, Some(&ChangeId("zk".to_owned()))),
+            CommitViewError::RevsetResolutionError { reason, hints } if reason.contains("divergent") && hints == ["h"]
         ));
     }
 }

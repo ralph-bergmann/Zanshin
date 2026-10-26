@@ -26,6 +26,7 @@ mod bookmark_ops;
 mod bookmark_tracking;
 mod bookmarks;
 mod change;
+mod change_id_prefix;
 mod clone_cancel;
 mod clone_config;
 mod clone_init;

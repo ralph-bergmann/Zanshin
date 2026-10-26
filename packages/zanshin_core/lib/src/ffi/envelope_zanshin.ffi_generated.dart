@@ -6828,8 +6828,8 @@ class GitRemoteSetUrlRequestObjectBuilder extends fb.ObjectBuilder {
 ///  alias/config resolution (FR-JJ-17). A bare DIVERGENT change-id symbol is nonetheless
 ///  REFUSED — jj-lib's own `SymbolResolver` raises `RevsetResolutionError::DivergentChangeId`
 ///  (`revset.rs:2827` @ 0.44.0) before evaluation, so `jj show <divergent-id>` fails in the CLI
-///  too; it surfaces here as `jj.revset_resolution_error`, a different refusal from
-///  InterdiffRequest's `jj.change_not_found`. Both commits stay addressable because their commit
+///  too; it surfaces here as `jj.revset_resolution_error`, the same refusal as every change-id
+///  argument (InterdiffRequest's included). Both commits stay addressable because their commit
 ///  hexes are ordinary revset symbols: union them to get one entry per commit.
 ///  ABSENT is the wire form of "the user did not supply it", which applies the CLI's own default
 ///  `@` — the working-copy commit the pre-verb snapshot has just brought up to date (Story 9.26). An
@@ -14400,8 +14400,8 @@ class RemotesObjectBuilder extends fb.ObjectBuilder {
 
 ///  `zanshin_git_push_remotes`' answer (Story 9.54): the remotes `jj git push` without `--remote`
 ///  would push to, in remote-name order — `git.push` (a name, a list or a pattern), else the
-///  single remote, else `origin`, each only when it exists. Empty when none matches and on a
-///  non-Git backend.
+///  single remote, else `origin`, each only when it exists. Empty when none matches; a non-Git
+///  backend refuses `jj.not_a_git_repo`, as the push does.
 class GitPushRemotes {
   GitPushRemotes._(this._bc, this._bcOffset);
   factory GitPushRemotes(List<int> bytes) {
@@ -14638,7 +14638,8 @@ class GitFetchResultObjectBuilder extends fb.ObjectBuilder {
 ///  `zanshin_git_fetch_remotes`' answer (Story 9.30): the remotes `jj git fetch` without
 ///  `--remote` would fetch from, in remote-name order — `git.fetch` (a name, a list or a
 ///  pattern), else the single remote, else `origin`, each only when it exists. Empty when none
-///  matches (the Fetch button's enable rule) and on a non-Git backend.
+///  matches (the Fetch button's enable rule); a non-Git backend refuses `jj.not_a_git_repo`, as the
+///  fetch does.
 class GitFetchRemotes {
   GitFetchRemotes._(this._bc, this._bcOffset);
   factory GitFetchRemotes(List<int> bytes) {

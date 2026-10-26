@@ -76,7 +76,7 @@ pub(crate) fn plan_duplicate(
     revisions: &[ChangeId],
     location: &LocationArgs<'_>,
 ) -> Result<DuplicatePlan, MutateError> {
-    let ids = resolve_ordered(tx, Some(revisions))?.unwrap_or_default();
+    let ids = resolve_ordered(tx, templates.prefixes(), Some(revisions))?.unwrap_or_default();
     plan_duplicate_ids(tx, templates, ids, location)
 }
 
@@ -196,7 +196,7 @@ pub(crate) fn duplicate(
     let plan = {
         let templates = ctx.templates(workspace);
         if options.revisions.is_empty() {
-            let at = resolve_or_wc(tx.repo(), &workspace_name, None)?;
+            let at = resolve_or_wc(tx.repo(), &workspace_name, templates.prefixes(), None)?;
             plan_duplicate_ids(&tx, &templates, vec![at.id().clone()], &location)?
         } else {
             plan_duplicate(&tx, &templates, &options.revisions, &location)?

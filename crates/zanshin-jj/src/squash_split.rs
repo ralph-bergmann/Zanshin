@@ -56,6 +56,7 @@ use futures::TryStreamExt as _;
 use jj_lib::backend::CommitId as JjCommitId;
 use jj_lib::commit::Commit;
 use jj_lib::commit_builder::DetachedCommitBuilder;
+use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::merge::{Diff, Merge};
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
@@ -284,10 +285,12 @@ pub(crate) fn plan_squash(
     ctx: &mut VerbContext,
     options: &SquashOptions,
 ) -> Result<PlannedSquash, MutateError> {
-    let (sources, destination) = resolve_squash(tx, workspace, options)?;
+    let templates = ctx.templates(workspace);
+    let prefixes = templates.prefixes();
+    let (sources, destination) = resolve_squash(tx, workspace, prefixes, options)?;
     let mut ids: Vec<JjCommitId> = sources.iter().map(|c| c.id().clone()).collect();
     ids.push(destination.id().clone());
-    guard_rewritable(tx, &ctx.templates(workspace), &ids)?;
+    guard_rewritable(tx, &templates, &ids)?;
     let tx_description = format!("squash commits into {}", destination.id().hex());
 
     let matcher = build_matcher(&options.paths)?;
@@ -299,7 +302,7 @@ pub(crate) fn plan_squash(
         SquashedDescription::Combine
     };
 
-    let trees = source_trees(tx, &sources, &options.trees)?;
+    let trees = source_trees(tx, prefixes, &sources, &options.trees)?;
     // `select_diff` (`squash.rs:485-533`): the left side is each source's PARENT tree.
     let mut selections: Vec<CommitWithSelection> = Vec::with_capacity(sources.len());
     for source in &sources {
@@ -346,12 +349,13 @@ pub(crate) fn plan_squash(
 /// unless it is one of `sources` and named once.
 fn source_trees<'a>(
     tx: &Transaction,
+    prefixes: &IdPrefixContext,
     sources: &[Commit],
     entries: &'a [crate::SourceTree],
 ) -> Result<HashMap<JjCommitId, &'a crate::TreeSelection>, MutateError> {
     let mut trees = HashMap::with_capacity(entries.len());
     for entry in entries {
-        let commit = resolve_commit(tx.repo(), &entry.source)?;
+        let commit = resolve_commit(tx.repo(), prefixes, &entry.source)?;
         if !sources.iter().any(|source| source.id() == commit.id()) {
             return Err(MutateError::invalid(format!(
                 "a selected tree names {}, which is not a source of the squash",
@@ -376,26 +380,27 @@ fn source_trees<'a>(
 fn resolve_squash(
     tx: &Transaction,
     workspace: &Workspace,
+    prefixes: &IdPrefixContext,
     options: &SquashOptions,
 ) -> Result<(Vec<Commit>, Commit), MutateError> {
     let workspace_name = workspace.workspace_name();
     if !options.from.is_empty() || options.into.is_some() {
         let mut sources = if options.from.is_empty() {
-            vec![resolve_or_wc(tx.repo(), workspace_name, None)?]
+            vec![resolve_or_wc(tx.repo(), workspace_name, prefixes, None)?]
         } else {
             let mut ids = Vec::with_capacity(options.from.len());
             for id in &options.from {
-                ids.push(resolve_commit(tx.repo(), id)?.id().clone());
+                ids.push(resolve_commit(tx.repo(), prefixes, id)?.id().clone());
             }
             commits_in_revset_order(tx, ids)?
         };
-        let destination = resolve_or_wc(tx.repo(), workspace_name, options.into.as_ref())?;
+        let destination = resolve_or_wc(tx.repo(), workspace_name, prefixes, options.into.as_ref())?;
         sources.retain(|source| source.id() != destination.id());
         // The CLI applies the oldest first: "it avoids creating transient conflicts".
         sources.reverse();
         return Ok((sources, destination));
     }
-    let source = resolve_or_wc(tx.repo(), workspace_name, options.revision.as_ref())?;
+    let source = resolve_or_wc(tx.repo(), workspace_name, prefixes, options.revision.as_ref())?;
     let parents = pollster::block_on(source.parents()).map_err(be)?;
     let Ok([destination]) = <[Commit; 1]>::try_from(parents) else {
         return Err(MutateError::invalid_hinted(
@@ -693,14 +698,20 @@ pub(crate) fn prepare_split(
     options: &SplitOptions,
 ) -> Result<PreparedSplit, MutateError> {
     let use_move_flags = options.onto.is_some() || options.insert_after.is_some() || options.insert_before.is_some();
-    let target = resolve_or_wc(tx.repo(), workspace.workspace_name(), options.revision.as_ref())?;
     let templates = ctx.templates(workspace);
+    let prefixes = templates.prefixes();
+    let target = resolve_or_wc(
+        tx.repo(),
+        workspace.workspace_name(),
+        prefixes,
+        options.revision.as_ref(),
+    )?;
     guard_rewritable(tx, &templates, std::slice::from_ref(target.id()))?;
     let matcher = build_matcher(&options.paths)?;
     let location = if use_move_flags {
-        let onto = resolve_ordered(tx, options.onto.as_deref())?;
-        let after = resolve_ordered(tx, options.insert_after.as_deref())?;
-        let before = resolve_ordered(tx, options.insert_before.as_deref())?;
+        let onto = resolve_ordered(tx, prefixes, options.onto.as_deref())?;
+        let after = resolve_ordered(tx, prefixes, options.insert_after.as_deref())?;
+        let before = resolve_ordered(tx, prefixes, options.insert_before.as_deref())?;
         Some(compute_commit_location(
             tx.base_repo().as_ref(),
             &templates,

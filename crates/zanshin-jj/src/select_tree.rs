@@ -64,6 +64,7 @@ use jj_lib::config::StackedConfig;
 use jj_lib::conflict_labels::ConflictLabels;
 use jj_lib::conflicts::{update_from_content, ConflictMaterializeOptions, MIN_CONFLICT_MARKER_LEN};
 use jj_lib::diff::{ContentDiff, DiffHunkKind};
+use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::matchers::EverythingMatcher;
 use jj_lib::merge::{Diff, Merge, SameChange};
 use jj_lib::merged_tree::MergedTree;
@@ -305,16 +306,18 @@ pub(crate) fn check_select_tree_args(options: &SelectTreeOptions) -> Result<(), 
 pub(crate) fn select_tree(
     workspace: &Workspace,
     config: &StackedConfig,
+    prefixes: &IdPrefixContext,
     options: &SelectTreeOptions,
 ) -> Result<SelectedTreeId, MutateError> {
     let files = parse_files(&options.files)?;
     let marker_style = crate::config::conflict_marker_style(config).map_err(cfg)?;
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo: &dyn jj_lib::repo::Repo = readonly.as_ref();
-    let revision = crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), options.revision.as_ref())
-        .map_err(|e| res(e, options.revision.as_ref()))?;
+    let revision =
+        crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), prefixes, options.revision.as_ref())
+            .map_err(|e| res(e, options.revision.as_ref()))?;
     let parent_tree = match &options.from {
-        Some(from) => crate::op_support::resolve_commit(repo, from)
+        Some(from) => crate::op_support::resolve_commit(repo, prefixes, from)
             .map_err(|e| res(e, Some(from)))?
             .tree(),
         None => pollster::block_on(revision.parent_tree(repo)).map_err(be)?,

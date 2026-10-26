@@ -1117,7 +1117,9 @@ pub unsafe extern "C" fn zanshin_repo_convert(path: *const c_char) -> *mut Zansh
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `change_id` or `description` is a null pointer.
 /// - `ffi.utf8_error` — `change_id` or `description` is not valid UTF-8.
-/// - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
+/// - `jj.change_not_found` — `change_id` is malformed, absent, or only-hidden.
+/// - `jj.revset_resolution_error` — `change_id` is an ambiguous change-id prefix or a divergent change (the CLI's
+///   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.invalid_input` — `change_id` resolves to the root commit.
 /// - `jj.immutable` — `change_id` resolves to a non-root commit inside the repo's
 ///   effective immutable set; the offending hex commit id in `context`.
@@ -1199,7 +1201,9 @@ pub unsafe extern "C" fn zanshin_describe(
 ///   a loop: commit <12 hex> would be both an ancestor and a descendant of the new commit`) —
 ///   Story 9.48; or (one parent) an `experimental-advance-branches` pattern does not parse
 ///   (Story 9.49 closing run).
-/// - `jj.change_not_found` — an id in any list is malformed, absent, only-hidden, or divergent.
+/// - `jj.change_not_found` — an id in any list is malformed, absent, or only-hidden.
+/// - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+///   in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.immutable` — (`-A`/`-B`) a commit to rebase is inside the repo's effective immutable
 ///   set; the first offender's hex commit id in `context` (Story 9.48).
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
@@ -1251,7 +1255,9 @@ pub unsafe extern "C" fn zanshin_new_change(handle: u64, data: *const u8, len: u
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `change_id` is a null pointer.
 /// - `ffi.utf8_error` — `change_id` is not valid UTF-8.
-/// - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
+/// - `jj.change_not_found` — `change_id` is malformed, absent, or only-hidden.
+/// - `jj.revset_resolution_error` — `change_id` is an ambiguous change-id prefix or a divergent change (the CLI's
+///   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.immutable` — `change_id` resolves to a commit inside the repo's effective
 ///   immutable set; the offending hex commit id in `context`. Unlike `zanshin_describe`
 ///   and `zanshin_abandon`, this wrapper has no separate root-commit guard, so editing the
@@ -1306,7 +1312,9 @@ pub unsafe extern "C" fn zanshin_edit(handle: u64, change_id: *const c_char) -> 
 ///   `NewChange`-tagged buffer is refused here rather than abandoning the commits the caller
 ///   named as parents.
 /// - `jj.invalid_input` — the parsed `change_ids` list is empty, or resolves the root commit.
-/// - `jj.change_not_found` — a target id is malformed, absent, only-hidden, or divergent.
+/// - `jj.change_not_found` — a target id is malformed, absent, or only-hidden.
+/// - `jj.revset_resolution_error` — a target id is an ambiguous change-id prefix or a divergent change (the CLI's
+///   hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.immutable` — a target resolves to a non-root commit inside the repo's effective
 ///   immutable set; the hex commit id of the FIRST such target in `context`.
 /// - `jj.config_error` — the repo's jj config, or its
@@ -1631,9 +1639,11 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, data: *const u8, len: us
 /// - `jj.revset_resolution_error` — an absent one's `@` default in a workspace with no
 ///   working-copy commit; the CLI's text in `context`.
 /// - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, carried by no
-///   VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT one is not an error —
+///   VISIBLE commit (unknown or only-hidden). An ABSENT one is not an error —
 ///   it is exactly the "the user did not supply it" wire form described above, and it is what
 ///   applies the CLI's `--from`/`--into`/`--changes-in` defaults.
+/// - `jj.revset_resolution_error` — one of them is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.immutable` — the destination resolves to a commit inside the repo's effective
 ///   immutable set; the offending hex commit id in `context`. This wrapper has no separate
 ///   root-commit guard, so restoring INTO the root commit reports this code too (which is
@@ -1699,8 +1709,9 @@ pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usiz
 ///   jj-lib's reason in `context`.
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
 /// - `jj.change_not_found` — `from` is malformed, carried by no VISIBLE commit (unknown or
-///   only-hidden), or divergent. An ABSENT `from` is not an error — it is what applies the
-///   CLI's `--from` default `@`.
+///   only-hidden). An ABSENT `from` is not an error — it is what applies the
+///   CLI's `--from` default `@`. An ambiguous change-id prefix, a divergent change (the CLI's hints in `hints`)
+///   or a `revsets.short-prefixes` that fails to resolve is `jj.revset_resolution_error`.
 /// - `jj.immutable` — a commit the hunks would be absorbed into is inside the repo's
 ///   effective immutable set; the hex commit id of the FIRST such target in `context`.
 ///   Unreachable with the `mutable()` default, which excludes that set by construction.

@@ -15,7 +15,7 @@ use zanshin_jj::{Change, ChangeError, ChangeId, ConflictState, Signature};
 
 use crate::envelope::{
     catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
-    JJ_CHANGE_NOT_FOUND, JJ_JJ_LIB_ERROR,
+    JJ_CHANGE_NOT_FOUND, JJ_JJ_LIB_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
@@ -30,6 +30,12 @@ fn map_change_err(e: ChangeError) -> FfiErrorObj {
             hints: Vec::new(),
             code: JJ_CHANGE_NOT_FOUND.to_owned(),
             context: Some(id),
+        },
+        ChangeError::RevsetResolutionError { reason, hints } => FfiErrorObj {
+            report: None,
+            hints,
+            code: JJ_REVSET_RESOLUTION_ERROR.to_owned(),
+            context: Some(reason),
         },
         ChangeError::Backend(reason) => FfiErrorObj {
             report: None,
@@ -139,6 +145,9 @@ fn change_to_envelope(change: &Change, report: &crate::envelope::CallReport) -> 
 /// - `ffi.null_pointer` — `change_id` is a null pointer.
 /// - `ffi.utf8_error` — `change_id` is not valid UTF-8.
 /// - `jj.change_not_found` — no change for the given id (malformed, absent, or hidden-only).
+/// - `jj.revset_resolution_error` — the id is an ambiguous change-id prefix (within the effective
+///   `revsets.short-prefixes`, else repo-wide), or that set fails to load; a divergent change is
+///   no error (`divergent` set).
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
 ///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
 ///   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
@@ -333,5 +342,16 @@ mod tests {
             Some("boom"),
             "Backend forwards the reason as context"
         );
+
+        let resolution = map_change_err(ChangeError::RevsetResolutionError {
+            reason: "Change ID prefix `zk` is ambiguous".to_owned(),
+            hints: vec!["h".to_owned()],
+        });
+        assert_eq!(resolution.code, crate::envelope::JJ_REVSET_RESOLUTION_ERROR);
+        assert_eq!(
+            resolution.context.as_deref(),
+            Some("Change ID prefix `zk` is ambiguous")
+        );
+        assert_eq!(resolution.hints, ["h"]);
     }
 }

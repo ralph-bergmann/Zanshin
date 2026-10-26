@@ -146,8 +146,10 @@ fn read_split_request(data: *const u8, len: usize) -> Result<SplitOptions, FfiEr
 ///   commit as the revision ("Cannot squash merge commits without a specified destination"), a
 ///   `paths` entry that is not a valid repo path, or a `trees` entry naming no source or a source
 ///   another entry names; detail in `context`.
-/// - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed, carried by no
-///   VISIBLE commit, or divergent; the id in `context`.
+/// - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed or carried by no
+///   VISIBLE commit; the id in `context`.
+/// - `jj.revset_resolution_error` — such an id is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
 /// - `jj.stale_selection` — (the tree arm, Story 9.50) a source's parent tree is not its tree's
 ///   `left`; nothing written.
@@ -265,8 +267,10 @@ pub unsafe extern "C" fn zanshin_squash_plan(handle: u64, data: *const u8, len: 
 ///   before the snapshot, as clap refuses them: nothing written, no `precondition` — neither
 ///   `paths` nor `tree`, an invalid repo path, a location that resolves no parent, or one that
 ///   would create a loop; detail in `context`.
-/// - `jj.change_not_found` — `revision` or a location entry is malformed, carried by no VISIBLE
-///   commit, or divergent; the id in `context`.
+/// - `jj.change_not_found` — `revision` or a location entry is malformed or carried by no VISIBLE
+///   commit; the id in `context`.
+/// - `jj.revset_resolution_error` — such an id is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.immutable` — the target, or a child the location would rewrite, is immutable.
 /// - `jj.stale_selection` — (the tree arm, Story 9.50) the target's parent tree is not the tree's `left`;
 ///   nothing written.

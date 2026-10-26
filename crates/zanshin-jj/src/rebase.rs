@@ -101,7 +101,7 @@ pub(crate) fn plan_rebase_revisions(
     revisions: &[ChangeId],
     location: &LocationArgs<'_>,
 ) -> Result<MoveCommitsLocation, MutateError> {
-    let ids = resolve_ordered(tx, Some(revisions))?.unwrap_or_default();
+    let ids = resolve_ordered(tx, templates.prefixes(), Some(revisions))?.unwrap_or_default();
     guard_rewritable(tx, templates, &ids)?;
     // "in reverse topological order" (`rebase.rs:446`): the revset's own order.
     let set = RevsetExpression::commits(ids)
@@ -135,7 +135,7 @@ pub(crate) fn plan_rebase_source(
     sources: &[ChangeId],
     location: &LocationArgs<'_>,
 ) -> Result<MoveCommitsLocation, MutateError> {
-    let source_ids = resolve_ordered(tx, Some(sources))?.unwrap_or_default();
+    let source_ids = resolve_ordered(tx, templates.prefixes(), Some(sources))?.unwrap_or_default();
     guard_rewritable(tx, templates, &source_ids)?;
     let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, templates, location, REBASED_COMMITS)?;
     if !location.onto.is_empty() {
@@ -169,7 +169,7 @@ pub(crate) fn plan_rebase_branch(
     branch: &[ChangeId],
     location: &LocationArgs<'_>,
 ) -> Result<MoveCommitsLocation, MutateError> {
-    let branch_ids = resolve_ordered(tx, Some(branch))?.unwrap_or_default();
+    let branch_ids = resolve_ordered(tx, templates.prefixes(), Some(branch))?.unwrap_or_default();
     plan_rebase_branch_ids(tx, templates, branch_ids, location)
 }
 
@@ -403,7 +403,7 @@ pub(crate) fn rebase(
         } else if !options.branch.is_empty() {
             plan_rebase_branch(&tx, &templates, &options.branch, &location)?
         } else {
-            let at = resolve_or_wc(tx.repo(), &workspace_name, None)?;
+            let at = resolve_or_wc(tx.repo(), &workspace_name, templates.prefixes(), None)?;
             plan_rebase_branch_ids(&tx, &templates, vec![at.id().clone()], &location)?
         }
     };

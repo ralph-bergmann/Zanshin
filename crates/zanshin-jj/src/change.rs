@@ -124,6 +124,17 @@ pub enum ChangeError {
         /// The reverse-hex change id that could not be resolved.
         id: String,
     },
+    /// The id does not resolve the way the CLI's `ChangePrefixResolver` refuses it: an
+    /// AMBIGUOUS change-id prefix, or a `revsets.short-prefixes` set that fails to load.
+    /// `reason` is jj-lib's own `RevsetResolutionError` text. (A DIVERGENT change is no error
+    /// here — Decision D4, [`Change::divergent`].)
+    #[error("revset resolution error: {reason}")]
+    RevsetResolutionError {
+        /// jj-lib's resolution error text.
+        reason: String,
+        /// The CLI's hints for it; empty for both cases.
+        hints: Vec<String>,
+    },
     /// An underlying jj-lib failure (index, backend, or loader error),
     /// opaque-string-wrapped so no `jj_lib` type escapes the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
@@ -153,46 +164,46 @@ fn to_signature(sig: &jj_lib::backend::Signature) -> Signature {
     }
 }
 
-/// Returns full metadata for the change identified by `id` (reverse-hex form).
+/// Returns full metadata for the change identified by the change-id prefix `id` (reverse-hex
+/// form), resolved through `prefixes` — the call's `revsets.short-prefixes` context — by the
+/// change-id currency every verb shares ([`crate::op_support::resolve_change`]).
 ///
-/// Re-resolves to head on every call (ADR-0002). Read-only.
+/// Re-resolves to head on every call (ADR-0002). Read-only. A DIVERGENT change is no refusal
+/// here (D4: this is no CLI `-r`): the index-first visible target is returned, flagged
+/// [`Change::divergent`].
 ///
 /// # Errors
 ///
 /// - [`ChangeError::NotFound`] — `id` is malformed, absent, or only-hidden (D6).
+/// - [`ChangeError::RevsetResolutionError`] — an ambiguous prefix, or a failed
+///   `revsets.short-prefixes` load.
 /// - [`ChangeError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn get_change(workspace: &Workspace, id: &ChangeId) -> Result<Change, ChangeError> {
+pub(crate) fn get_change(
+    workspace: &Workspace,
+    prefixes: &jj_lib::id_prefix::IdPrefixContext,
+    id: &ChangeId,
+) -> Result<Change, ChangeError> {
+    use crate::op_support::ResolveError;
+
     // 1. Reload to head (ADR-0002; sync via pollster — mirrors status.rs:85).
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
-    let store = readonly.store();
 
-    // 2. Public reverse-hex string → jj ChangeId. Empty or malformed ⇒ NotFound (D6).
-    //    `try_from_reverse_hex("")` returns `Some(ChangeId([]))` (0 is even-length), and an
-    //    empty `HexPrefix` matches every commit — `resolve_change_id` would then hit
-    //    `AmbiguousMatch` and panic. Guard the empty id explicitly so it collapses to
-    //    NotFound like every other miss, never reaching that panic.
-    if id.0.is_empty() {
-        return Err(ChangeError::NotFound { id: id.0.clone() });
-    }
-    let jj_id = jj_lib::backend::ChangeId::try_from_reverse_hex(&id.0)
-        .ok_or_else(|| ChangeError::NotFound { id: id.0.clone() })?;
+    // 2. Resolve → visible commit(s), divergence-aware (D4): the index-first visible target
+    //    (jj prefers newer-first; not guaranteed).
+    let visible = crate::op_support::resolve_change(repo_dyn, prefixes, id).map_err(|e| match e {
+        ResolveError::NotFound | ResolveError::NoWorkingCopy(_) => ChangeError::NotFound { id: id.0.clone() },
+        ResolveError::Resolution { reason, hints } => ChangeError::RevsetResolutionError { reason, hints },
+        ResolveError::Backend(reason) => ChangeError::Backend(reason),
+    })?;
+    // `resolve_change` returns at least one visible target.
+    let (_, commit_id) = &visible[0];
 
-    // 3. Resolve → visible commit(s), divergence-aware (D4).
-    //    resolve_change_id is a Repo-trait method; `as _` import above brings it in scope.
-    let targets = pollster::block_on(repo_dyn.resolve_change_id(&jj_id))
-        .map_err(be)? // IndexError → Backend
-        .ok_or_else(|| ChangeError::NotFound { id: id.0.clone() })?; // absent id
-    let commit_id = targets
-        .into_visible()
-        .and_then(|v| v.into_iter().next()) // index-first visible target (jj prefers newer-first; not guaranteed)
-        .ok_or_else(|| ChangeError::NotFound { id: id.0.clone() })?; // only hidden/abandoned
+    // 3. Load the chosen commit (sync; mirrors status.rs:92).
+    let commit = readonly.store().get_commit(commit_id).map_err(be)?;
 
-    // 4. Load the chosen commit (sync; mirrors status.rs:92).
-    let commit = store.get_commit(&commit_id).map_err(be)?;
-
-    // 5-9. Shared with `eval_revset` — one construction site for `Change`.
+    // 4-8. Shared with `eval_revset` — one construction site for `Change`.
     change_from_commit(repo_dyn, &commit).map_err(ChangeError::Backend)
 }
 
@@ -224,14 +235,14 @@ pub(crate) fn change_from_commit(
     let store = repo_dyn.store();
     let view = repo_dyn.view();
 
-    // 5. Parents: CommitIds → reverse-hex ChangeIds (mirrors status.rs:105-107).
+    // 4. Parents: CommitIds → reverse-hex ChangeIds (mirrors status.rs:105-107).
     let mut parents = Vec::with_capacity(commit.parent_ids().len());
     for pid in commit.parent_ids() {
         let parent = store.get_commit(pid).map_err(reason)?;
         parents.push(ChangeId(parent.change_id().reverse_hex()));
     }
 
-    // 6. Signatures + timestamps (raw — D2). Timestamp is Copy so author.timestamp
+    // 5. Signatures + timestamps (raw — D2). Timestamp is Copy so author.timestamp
     //    copies into `timestamps` while `author` continues to exist.
     let author = to_signature(commit.author());
     let committer = to_signature(commit.committer());
@@ -240,7 +251,7 @@ pub(crate) fn change_from_commit(
         committed_at: committer.timestamp,
     };
 
-    // 7. Conflict state (D7): path-list only; per-path value errors are dropped.
+    // 6. Conflict state (D7): path-list only; per-path value errors are dropped.
     let conflict = if commit.has_conflict() {
         let paths = commit
             .tree()
@@ -252,10 +263,10 @@ pub(crate) fn change_from_commit(
         ConflictState::Clean
     };
 
-    // 8. Anonymity (D5): empty description AND no local bookmark targets this commit.
+    // 7. Anonymity (D5): empty description AND no local bookmark targets this commit.
     let is_anonymous = commit.description().is_empty() && view.local_bookmarks_for_commit(commit.id()).next().is_none();
 
-    // 9. Divergence (D4): more than one VISIBLE commit carries this change id. A complete
+    // 8. Divergence (D4): more than one VISIBLE commit carries this change id. A complete
     //    change id is unambiguous, so `resolve_change_id` cannot hit its ambiguity panic.
     let divergent = pollster::block_on(repo_dyn.resolve_change_id(commit.change_id()))
         .map_err(reason)?
@@ -287,7 +298,11 @@ mod tests {
     #[test]
     fn a_head_that_no_longer_loads_is_a_backend_error() {
         let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
-        let result = get_change(repo.workspace(), &ChangeId("zzzzzzzzzzzz".to_owned()));
+        let result = get_change(
+            repo.workspace(),
+            &jj_lib::id_prefix::IdPrefixContext::default(),
+            &ChangeId("zzzzzzzzzzzz".to_owned()),
+        );
         assert!(matches!(result, Err(ChangeError::Backend(_))), "{result:?}");
     }
 }

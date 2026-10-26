@@ -992,14 +992,14 @@ class ZanshinWorker {
   /// Read the remotes `jj git push` without `--remote` would push to, for the
   /// repo identified by [handleId] (Story 9.54): `git.push`, else the single
   /// remote, else `origin` — each only when it exists, in remote-name order.
-  /// Empty when none matches and on a non-Git backend.
+  /// Empty when none matches; a non-Git backend is refused.
   ///
   /// Sends a [GitPushRemotesCommand] via [send] and decodes the returned
   /// FlatBuffers `Envelope<GitPushRemotes>` bytes.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`,
-  /// `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
+  /// `jj.config_error`, `jj.invalid_input`, `jj.not_a_git_repo`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
   /// close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.gitPushRemotes].
   Future<WarnedList<String>> gitPushRemotes(int handleId) async {
@@ -1012,15 +1012,15 @@ class ZanshinWorker {
   /// Read the remotes `jj git fetch` without `--remote` would fetch from, for
   /// the repo identified by [handleId] (Story 9.30): `git.fetch`, else the
   /// single remote, else `origin` — each only when it exists, in remote-name
-  /// order. Empty when none matches (the Fetch button's enable rule) and on a
-  /// non-Git backend.
+  /// order. Empty when none matches (the Fetch button's enable rule); a non-Git
+  /// backend is refused.
   ///
   /// Sends a [GitFetchRemotesCommand] via [send] and decodes the returned
   /// FlatBuffers `Envelope<GitFetchRemotes>` bytes.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`,
-  /// `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
+  /// `jj.config_error`, `jj.invalid_input`, `jj.not_a_git_repo`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
   /// close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.gitFetchRemotes].
   Future<WarnedList<String>> gitFetchRemotes(int handleId) async {

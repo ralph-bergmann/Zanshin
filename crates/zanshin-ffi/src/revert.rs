@@ -75,8 +75,9 @@ fn read_revert_request(data: *const u8, len: usize) -> Result<RevertOptions, Ffi
 ///   (clap's refusals: before the snapshot, nothing written, no `precondition`); a location that
 ///   would create a loop or resolves no parent; a merge with the root commit as a parent in a Git
 ///   repo; detail in `context`.
-/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
-///   in `context`.
+/// - `jj.change_not_found` — an id is malformed or carried by no VISIBLE commit; the id in `context`.
+/// - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
+///   in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - `jj.immutable` — a child `insert_after`/`insert_before` would rewrite is immutable.
 /// - `jj.config_error` — the revert-description template setting is not a string or does not
 ///   parse, or the config or its `immutable_heads()` alias does not read or resolve.

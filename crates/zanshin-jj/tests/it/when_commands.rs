@@ -178,10 +178,12 @@ fn the_log_reads_resolve_for_log_whatever_ran_before() {
     let tmp = tempfile::tempdir().unwrap();
     let user_file = isolate(tmp.path());
     let mut repo = init_repo(tmp.path());
+    // `short-prefixes` is emptied: its `revsets.log` fallback `scoped` would refuse the describe's
+    // change-id argument, as the CLI does.
     let scoped = |command: &str| {
         format!(
             "[[--scope]]\n--when.commands = [\"{command}\"]\n[--scope.revsets]\nlog = \"scoped\"\n\
-             [--scope.revset-aliases]\n'scoped_at()' = '@'\n"
+             short-prefixes = \"\"\n[--scope.revset-aliases]\n'scoped_at()' = '@'\n"
         )
     };
     let expressions = ["scoped_at()".to_owned()];

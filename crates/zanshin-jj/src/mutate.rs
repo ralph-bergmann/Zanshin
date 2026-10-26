@@ -30,6 +30,7 @@ use std::sync::Arc;
 use jj_lib::absorb::{absorb_hunks, split_hunks_to_trees, AbsorbSource};
 use jj_lib::commit::{conflict_label_for_commits, Commit};
 use jj_lib::git;
+use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::matchers::Matcher;
 use jj_lib::merge::Diff;
 use jj_lib::merged_tree_builder::MergedTreeBuilder;
@@ -127,10 +128,10 @@ pub struct MutationResult {
 /// [`crate::Repo::edit`], and [`crate::Repo::abandon`].
 #[derive(Debug, thiserror::Error)]
 pub enum MutateError {
-    /// No change exists for a given id, or it cannot be resolved unambiguously — same
-    /// not-found semantics as [`crate::ChangeError::NotFound`] (empty/malformed
-    /// reverse-hex, absent, only-hidden, and DIVERGENT are all indistinguishable; a
-    /// divergent id is refused rather than mutating an arbitrary one of its targets).
+    /// No change exists for a given id — same not-found semantics as
+    /// [`crate::ChangeError::NotFound`] (empty/malformed reverse-hex, absent and only-hidden are
+    /// indistinguishable). An ambiguous prefix or a DIVERGENT change is
+    /// [`MutateError::RevsetResolutionError`] instead, as the CLI refuses it.
     #[error("change not found: {id}")]
     ChangeNotFound {
         /// The reverse-hex change id that could not be resolved.
@@ -636,6 +637,7 @@ pub(crate) fn res(e: ResolveError, id: Option<&ChangeId>) -> MutateError {
             id: id.map(|i| i.0.clone()).unwrap_or_default(),
         },
         ResolveError::NoWorkingCopy(reason) => MutateError::RevsetResolutionError { reason, hints: vec![] },
+        ResolveError::Resolution { reason, hints } => MutateError::RevsetResolutionError { reason, hints },
         ResolveError::Backend(reason) => MutateError::Backend(reason),
     }
 }
@@ -671,20 +673,27 @@ pub(crate) fn warn_unmatched(
     warning::warn_unmatched_paths(sink, workspace.workspace_root(), &explicit, trees).map_err(be)
 }
 
-/// Wraps [`crate::op_support::resolve_or_wc`] in this module's error type: `id`, or — when
-/// it is `None` — the workspace's `@` (the CLI's `RevisionArg::AT` default).
+/// Wraps [`crate::op_support::resolve_or_wc`] in this module's error type: `id` resolved
+/// through `prefixes`, or — when it is `None` — the workspace's `@` (the CLI's
+/// `RevisionArg::AT` default).
 pub(crate) fn resolve_or_wc(
     repo: &MutableRepo,
     workspace_name: &WorkspaceName,
+    prefixes: &IdPrefixContext,
     id: Option<&ChangeId>,
 ) -> Result<Commit, MutateError> {
-    crate::op_support::resolve_or_wc(repo, workspace_name, id).map_err(|e| res(e, id))
+    crate::op_support::resolve_or_wc(repo, workspace_name, prefixes, id).map_err(|e| res(e, id))
 }
 
 /// Wraps [`crate::op_support::resolve_commit`] in this module's error type: a malformed,
-/// absent, only-hidden or DIVERGENT id is a `ChangeNotFound` refusal, never a guess.
-pub(crate) fn resolve_commit(repo: &MutableRepo, id: &ChangeId) -> Result<Commit, MutateError> {
-    crate::op_support::resolve_commit(repo, id).map_err(|e| res(e, Some(id)))
+/// absent or only-hidden id is a `ChangeNotFound` refusal; an ambiguous prefix or a DIVERGENT
+/// change is the CLI's `RevsetResolutionError` — never a guess.
+pub(crate) fn resolve_commit(
+    repo: &MutableRepo,
+    prefixes: &IdPrefixContext,
+    id: &ChangeId,
+) -> Result<Commit, MutateError> {
+    crate::op_support::resolve_commit(repo, prefixes, id).map_err(|e| res(e, Some(id)))
 }
 
 /// Resolves the immutable set and refuses the rewrite if any of `commit_ids` is inside it
@@ -1012,8 +1021,9 @@ pub(crate) fn mutation_result(
 ///
 /// # Errors
 ///
-/// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, only-hidden, or
-///   divergent.
+/// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, or only-hidden.
+/// - [`MutateError::RevsetResolutionError`] — `change_id` is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - [`MutateError::InvalidInput`] — `change_id` resolves to the root commit.
 /// - [`MutateError::Immutable`] — `change_id` resolves to a non-root immutable commit.
 /// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve.
@@ -1023,7 +1033,7 @@ pub(crate) fn plan_describe(
     templates: &Templates<'_>,
     change_id: &ChangeId,
 ) -> Result<Commit, MutateError> {
-    let commit = resolve_commit(tx.repo(), change_id)?;
+    let commit = resolve_commit(tx.repo(), templates.prefixes(), change_id)?;
     // jj-lib's `rewrite_commit` internally asserts the target isn't the root commit
     // (`assert_ne!`) rather than returning an error — guard explicitly so a caller gets
     // a normal `MutateError` instead of a process-crashing panic. Keep this BEFORE the
@@ -1048,8 +1058,9 @@ pub(crate) fn plan_describe(
 ///
 /// # Errors
 ///
-/// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, only-hidden, or
-///   divergent.
+/// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, or only-hidden.
+/// - [`MutateError::RevsetResolutionError`] — `change_id` is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - [`MutateError::InvalidInput`] — `change_id` resolves to the root commit.
 /// - [`MutateError::Immutable`] — `change_id` resolves to a non-root immutable commit.
 /// - [`MutateError::Config`] — the repo's jj config or its `immutable_heads()` alias could
@@ -1172,7 +1183,9 @@ pub(crate) fn check_new_args(
 ///   `compute_commit_location`'s `No revisions found to use as parent` cannot happen here:
 ///   `-A` keeps its non-empty targets as parents, and `-B` finds none only for the root, which
 ///   the rewritability check refuses first as [`MutateError::Immutable`].
-/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
+/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, or only-hidden.
+/// - [`MutateError::RevsetResolutionError`] — an id is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - [`MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is immutable; the first
 ///   offender's hex.
 /// - [`MutateError::Config`] — (`-A`/`-B` with children to rebase) the
@@ -1185,9 +1198,10 @@ pub(crate) fn plan_new(
     insert_after: &[ChangeId],
     insert_before: &[ChangeId],
 ) -> Result<NewLocation, MutateError> {
-    let destination = resolve_ordered(tx, given(parents))?;
-    let after = resolve_ordered(tx, given(insert_after))?;
-    let before = resolve_ordered(tx, given(insert_before))?;
+    let prefixes = templates.prefixes();
+    let destination = resolve_ordered(tx, prefixes, given(parents))?;
+    let after = resolve_ordered(tx, prefixes, given(insert_after))?;
+    let before = resolve_ordered(tx, prefixes, given(insert_before))?;
     if let Some(parents) = destination {
         return Ok(NewLocation {
             parents,
@@ -1251,7 +1265,9 @@ pub(crate) fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
 ///   — positional or computed by `-A`/`-B` — including the root commit ([`GIT_ROOT_MERGE`]),
 ///   refused before anything is written, after the description template is parsed (as the
 ///   CLI's backend write refuses it).
-/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
+/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, or only-hidden.
+/// - [`MutateError::RevsetResolutionError`] — an id is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - [`MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is immutable.
 /// - [`MutateError::Config`] — in the CLI's order: the `immutable_heads()` alias does not resolve
 ///   for an `-A`/`-B` location with children (in the plan); (advance case) an
@@ -1345,8 +1361,9 @@ pub(crate) fn new_change(
 ///
 /// # Errors
 ///
-/// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, only-hidden, or
-///   divergent.
+/// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, or only-hidden.
+/// - [`MutateError::RevsetResolutionError`] — `change_id` is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - [`MutateError::Immutable`] — `change_id` resolves to an immutable commit (the root
 ///   included).
 /// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve.
@@ -1357,7 +1374,7 @@ pub(crate) fn plan_edit(
     workspace_name: &WorkspaceName,
     change_id: &ChangeId,
 ) -> Result<(Commit, bool), MutateError> {
-    let commit = resolve_commit(tx.repo(), change_id)?;
+    let commit = resolve_commit(tx.repo(), templates.prefixes(), change_id)?;
     guard_rewritable(tx, templates, std::slice::from_ref(commit.id()))?;
     let is_wc = tx.base_repo().view().get_wc_commit_id(workspace_name) == Some(commit.id());
     Ok((commit, is_wc))
@@ -1375,8 +1392,9 @@ pub(crate) fn plan_edit(
 ///
 /// # Errors
 ///
-/// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, only-hidden, or
-///   divergent.
+/// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, or only-hidden.
+/// - [`MutateError::RevsetResolutionError`] — `change_id` is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - [`MutateError::Immutable`] — `change_id` resolves to an immutable commit. Unlike
 ///   `describe`/`abandon`, `edit` has no explicit root-commit guard (jj-lib returns a
 ///   graceful error rather than asserting), so the ROOT commit is now caught by the
@@ -1413,8 +1431,9 @@ pub(crate) fn edit(
 ///
 /// # Errors
 ///
-/// - [`MutateError::ChangeNotFound`] — a target id is malformed, absent, only-hidden, or
-///   divergent.
+/// - [`MutateError::ChangeNotFound`] — a target id is malformed, absent, or only-hidden.
+/// - [`MutateError::RevsetResolutionError`] — a target id is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - [`MutateError::InvalidInput`] — a target resolves to the root commit.
 /// - [`MutateError::Immutable`] — a target resolves to a non-root immutable commit.
 /// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve.
@@ -1426,7 +1445,7 @@ pub(crate) fn plan_abandon(
 ) -> Result<(Vec<Commit>, Arc<ResolvedRevsetExpression>), MutateError> {
     let mut commits = Vec::with_capacity(change_ids.len());
     for change_id in change_ids {
-        let commit = resolve_commit(tx.repo(), change_id)?;
+        let commit = resolve_commit(tx.repo(), templates.prefixes(), change_id)?;
         // jj-lib's `record_abandoned_commit` internally asserts the target isn't the
         // root commit rather than returning an error — guard explicitly so a caller
         // gets a normal `MutateError` instead of a process-crashing panic.
@@ -1453,8 +1472,9 @@ pub(crate) fn plan_abandon(
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — `change_ids` is empty, or resolves the root commit.
-/// - [`MutateError::ChangeNotFound`] — a target id is malformed, absent, only-hidden, or
-///   divergent.
+/// - [`MutateError::ChangeNotFound`] — a target id is malformed, absent, or only-hidden.
+/// - [`MutateError::RevsetResolutionError`] — a target id is an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - [`MutateError::Immutable`] — a target resolves to a non-root immutable commit.
 /// - [`MutateError::Config`] — the repo's jj config or its `immutable_heads()` alias could
 ///   not be read, parsed, or resolved.
@@ -1812,20 +1832,22 @@ pub(crate) fn plan_restore(
     paths: &[String],
 ) -> Result<RestorePlan, MutateError> {
     let workspace_name = workspace.workspace_name();
+    let templates = ctx.templates(workspace);
+    let prefixes = templates.prefixes();
     let (to_commit, from_tree, from_commits) = if from.is_some() || into.is_some() {
-        let to_commit = resolve_or_wc(tx.repo(), workspace_name, into)?;
-        let from_commit = resolve_or_wc(tx.repo(), workspace_name, from)?;
+        let to_commit = resolve_or_wc(tx.repo(), workspace_name, prefixes, into)?;
+        let from_commit = resolve_or_wc(tx.repo(), workspace_name, prefixes, from)?;
         let from_tree = from_commit.tree();
         (to_commit, from_tree, vec![from_commit])
     } else {
-        let to_commit = resolve_or_wc(tx.repo(), workspace_name, changes_in)?;
+        let to_commit = resolve_or_wc(tx.repo(), workspace_name, prefixes, changes_in)?;
         let from_tree = pollster::block_on(to_commit.parent_tree(tx.repo())).map_err(be)?;
         let from_commits = pollster::block_on(to_commit.parents()).map_err(be)?;
         (to_commit, from_tree, from_commits)
     };
     // CLI parity (`restore.rs:139` @ v0.46.0): the rewritability guard runs BEFORE any matcher or
     // tree work, so an immutable destination costs no diffing and writes no blobs.
-    guard_rewritable(tx, &ctx.templates(workspace), std::slice::from_ref(to_commit.id()))?;
+    guard_rewritable(tx, &templates, std::slice::from_ref(to_commit.id()))?;
 
     let matcher = build_matcher(paths)?;
     let to_tree = to_commit.tree();
@@ -1895,9 +1917,11 @@ pub(crate) fn check_restore_args(
 /// - [`MutateError::InvalidInput`] — a `paths` entry is not a valid repo path (the
 ///   `changes_in` conflict is [`check_restore_args`]', run before the snapshot).
 /// - [`MutateError::ChangeNotFound`] — `from`, `into` or `changes_in` is malformed, carried
-///   by no VISIBLE commit (unknown or only-hidden), or divergent. Not to be confused with an
+///   by no VISIBLE commit (unknown or only-hidden). Not to be confused with an
 ///   ABSENT one, which is not an error at all: it is what selects the CLI's
 ///   `--from`/`--into`/`--changes-in` defaults spelled out above.
+/// - [`MutateError::RevsetResolutionError`] — one of them is an ambiguous change-id prefix or a divergent change
+///   (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - [`MutateError::Immutable`] — the destination is inside the repo's effective immutable
 ///   set. The ROOT commit needs no separate guard: `check_rewritable` runs BEFORE any tree
 ///   work and the immutable set (`::(immutable_heads() | root())`) unions `root()`
@@ -1975,11 +1999,12 @@ pub(crate) fn plan_absorb(
     tx: &Transaction,
     workspace: &Workspace,
     ctx: &mut VerbContext,
+    prefixes: &IdPrefixContext,
     from: Option<&ChangeId>,
     destinations: impl FnOnce(&MutableRepo) -> Result<Arc<ResolvedRevsetExpression>, MutateError>,
     paths: &[String],
 ) -> Result<AbsorbPlan, MutateError> {
-    let source_commit = resolve_or_wc(tx.repo(), workspace.workspace_name(), from)?;
+    let source_commit = resolve_or_wc(tx.repo(), workspace.workspace_name(), prefixes, from)?;
     let resolved_destinations = destinations(tx.repo())?;
     let matcher = build_matcher(paths)?;
     warn_unmatched(workspace, &mut ctx.warnings, paths, &[&source_commit.tree()])?;
@@ -2054,9 +2079,11 @@ pub(crate) fn plan_absorb(
 ///
 /// - [`MutateError::InvalidInput`] — a `paths` entry is not a valid repo path.
 /// - [`MutateError::ChangeNotFound`] — `from` is malformed, carried by no VISIBLE commit
-///   (unknown or only-hidden), or divergent. Not to be confused with an ABSENT `from`, which
+///   (unknown or only-hidden). Not to be confused with an ABSENT `from`, which
 ///   is not an error at all: it applies the CLI's `--from` default `@`.
-/// - [`MutateError::RevsetResolutionError`] — a symbol in `destinations` cannot be resolved.
+/// - [`MutateError::RevsetResolutionError`] — a symbol in `destinations` cannot be resolved, or `from` is an
+///   ambiguous change-id prefix or a divergent change (the CLI's hints in `hints`), or `revsets.short-prefixes`
+///   fails to resolve.
 /// - [`MutateError::Immutable`] — a commit the hunks would be absorbed into is inside the
 ///   repo's effective immutable set. Unreachable with the `mutable()` default, which
 ///   excludes that set by construction; reachable when the caller widens `destinations`.
@@ -2084,6 +2111,7 @@ pub(crate) fn absorb(
         &tx,
         workspace,
         ctx,
+        &prefixes,
         from,
         |repo| resolve_expression(repo, destinations, Some(&prefixes)).map_err(rev),
         paths,

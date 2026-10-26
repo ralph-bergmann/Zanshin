@@ -283,7 +283,8 @@ fn file_list_refuses_a_divergent_revision() {
         .expect_err("a divergent id is refused, not guessed");
 
     assert!(
-        matches!(&err, FileError::ChangeNotFound { id } if *id == change.0),
+        matches!(&err, FileError::RevsetResolutionError { reason, hints }
+            if *reason == format!("Change ID `{}` is divergent", change.0) && hints.len() == 3),
         "unexpected error: {err:?}"
     );
 }

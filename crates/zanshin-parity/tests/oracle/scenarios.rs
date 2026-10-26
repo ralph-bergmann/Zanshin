@@ -149,6 +149,27 @@ const SHORT_PREFIX_HIDDEN_COMMITS: &[Step] = &[
     Step::Jj(&["abandon", r#"subject(exact:"E")"#]),
 ];
 
+/// B's one-char change-id prefix, asserted ambiguous in the full index — the
+/// [`SHORT_PREFIX_HIDDEN_COMMITS`] duplicates carry new change ids — so only the context resolves it.
+fn b_short_change_prefix(root: &Path, s: &State) -> zanshin_jj::ChangeId {
+    let prefix = s.change_arg("B")[..1].to_owned();
+    let (_, readonly) = load_workspace(root);
+    let hex = jj_lib::object_id::HexPrefix::try_from_reverse_hex(&prefix).expect("reverse hex");
+    assert!(
+        matches!(
+            pollster::block_on(readonly.resolve_change_id_prefix(&hex)).expect("index"),
+            jj_lib::object_id::PrefixResolution::AmbiguousMatch
+        ),
+        "B's change prefix {prefix} must be ambiguous in the full index"
+    );
+    zanshin_jj::ChangeId(prefix)
+}
+
+/// The label the divergent B keeps in `describe_divergent_change`: both commits carry ONE change
+/// id, which the labels map to the description of the later commit in their (deterministic)
+/// topological order.
+const DIVERGENT_B: &str = "B2";
+
 /// A bare remote, then a describe of `@` and a push of `b-mark` — a repo change and a
 /// remote-tracking change on top of `@--` (Story 9.12's `--what` scenarios).
 const DESCRIBE_THEN_PUSH: &[Step] = &[
@@ -3257,6 +3278,73 @@ fn bookmark_move_scenarios() -> Vec<Scenario> {
                         s.change_arg("C"),
                     ]
                 },
+            )
+        },
+        // The mutation verbs' change-id currency takes the same odd-length prefix through the
+        // context (leftover run C after the story loop 9.25–9.46).
+        Scenario {
+            setup: SHORT_PREFIX_HIDDEN_COMMITS,
+            ..simple(
+                "describe_short_change_prefix",
+                |repo, root, s| {
+                    let result = repo.describe(b_short_change_prefix(root, s), "x\n");
+                    assert!(result.is_ok(), "the prefix must resolve within the context: {result:?}");
+                    zanshin_outcome(repo, &result)
+                },
+                |s| {
+                    vec![
+                        "describe".into(),
+                        s.change_arg("B")[..1].to_owned(),
+                        "-m".into(),
+                        "x".into(),
+                    ]
+                },
+            )
+        },
+        Scenario {
+            setup: SHORT_PREFIX_HIDDEN_COMMITS,
+            ..simple(
+                "abandon_short_change_prefix",
+                |repo, root, s| {
+                    let result = repo.abandon(&[b_short_change_prefix(root, s)]);
+                    assert!(result.is_ok(), "the prefix must resolve within the context: {result:?}");
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["abandon".into(), s.change_arg("B")[..1].to_owned()],
+            )
+        },
+        Scenario {
+            setup: SHORT_PREFIX_HIDDEN_COMMITS,
+            ..simple(
+                "new_short_change_prefix",
+                |repo, root, s| {
+                    let result = repo.new_change(&[b_short_change_prefix(root, s)], &[], &[]);
+                    assert!(result.is_ok(), "the prefix must resolve within the context: {result:?}");
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["new".into(), s.change_arg("B")[..1].to_owned()],
+            )
+        },
+        // B divergent (described on both sides of an `--at-op` fork, which `log` reconciles): a
+        // change-id argument is the CLI's `DivergentChangeId` refusal on both sides.
+        Scenario {
+            setup: &[
+                Step::Jj(&["describe", "b-mark", "-m", "B1"]),
+                Step::Jj(&["--at-op", "@-", "describe", "b-mark", "-m", "B2"]),
+                Step::Jj(&["log", "-r", "@"]),
+            ],
+            ..simple(
+                "describe_divergent_change",
+                |repo, _, s| {
+                    let result = repo.describe(s.change(DIVERGENT_B), "x\n");
+                    assert!(
+                        matches!(&result, Err(zanshin_jj::MutateError::RevsetResolutionError { reason, .. })
+                            if reason.ends_with("is divergent")),
+                        "{result:?}"
+                    );
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["describe".into(), s.change_arg(DIVERGENT_B), "-m".into(), "x".into()],
             )
         },
         // Names AND `--from`: `a-mark` is named but not on B, so only `b-mark` moves.

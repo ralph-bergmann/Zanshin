@@ -93,16 +93,18 @@ pub(crate) fn diffedit(
 
     // `diffedit.rs:98-120`: `to` (or `@`) against `[from or @]`, else the revision against its
     // parents.
+    let templates = ctx.templates(workspace);
+    let prefixes = templates.prefixes();
     let (target, base_commits) = if options.from.is_some() || options.to.is_some() {
-        let target = resolve_or_wc(tx.repo(), &workspace_name, options.to.as_ref())?;
-        let from = resolve_or_wc(tx.repo(), &workspace_name, options.from.as_ref())?;
+        let target = resolve_or_wc(tx.repo(), &workspace_name, prefixes, options.to.as_ref())?;
+        let from = resolve_or_wc(tx.repo(), &workspace_name, prefixes, options.from.as_ref())?;
         (target, vec![from])
     } else {
-        let target = resolve_or_wc(tx.repo(), &workspace_name, options.revision.as_ref())?;
+        let target = resolve_or_wc(tx.repo(), &workspace_name, prefixes, options.revision.as_ref())?;
         let parents = pollster::block_on(target.parents()).map_err(be)?;
         (target, parents)
     };
-    guard_rewritable(&tx, &ctx.templates(workspace), std::slice::from_ref(target.id()))?;
+    guard_rewritable(&tx, &templates, std::slice::from_ref(target.id()))?;
 
     let base_tree = pollster::block_on(merge_commit_trees(tx.repo(), &base_commits)).map_err(be)?;
     check_left(&base_tree, &options.tree.left)?;

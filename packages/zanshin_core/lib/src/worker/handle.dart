@@ -143,11 +143,15 @@ final class RepoHandle {
     return _worker.status(_handleId);
   }
 
-  /// Read full change metadata for the change identified by [changeId].
+  /// Read full change metadata for the change identified by the change-id
+  /// prefix [changeId]. A divergent change is no error: its first visible
+  /// commit, with `divergent` set.
   ///
   /// Throws [StateError] if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.change_not_found`, `jj.jj_lib_error`).
+  /// `jj.change_not_found`, `jj.revset_resolution_error` (an ambiguous
+  /// change-id prefix or a failing `revsets.short-prefixes` load),
+  /// `jj.jj_lib_error`).
   Future<Change> getChange(String changeId) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -356,15 +360,15 @@ final class RepoHandle {
   /// Read the remotes `jj git push` without `--remote` would push to (Story
   /// 9.54) — the CLI's default-remote resolution: the remotes `git.push` names
   /// (a name, a list or a pattern), else the single remote, else `origin`,
-  /// each only when it exists, in remote-name order. Empty when none matches
-  /// and on a non-Git backend; an exact name no remote carries (a `git.push`
-  /// name, or the implicit `origin`) warns `jj.push_remotes_unmatched`, as the
-  /// push does.
+  /// each only when it exists, in remote-name order. Empty when none matches;
+  /// an exact name no remote carries (a `git.push` name, or the implicit
+  /// `origin`) warns `jj.push_remotes_unmatched`, as the push does. A non-Git
+  /// backend is refused, as the push refuses it.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`,
-  /// `jj.jj_lib_error`).
+  /// `jj.config_error`, `jj.invalid_input`, `jj.not_a_git_repo`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<WarnedList<String>> gitPushRemotes() {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -376,17 +380,18 @@ final class RepoHandle {
   /// 9.30) — the CLI's `get_default_fetch_remotes`: the remotes `git.fetch`
   /// names (a name, a list or a pattern), else the single remote, else
   /// `origin`, each only when it exists, in remote-name order. Empty when none
-  /// matches and on a non-Git backend; an exact name no remote carries (a
-  /// `git.fetch` name, or the implicit `origin`) warns
-  /// `jj.fetch_remotes_unmatched`, as the fetch does.
+  /// matches; an exact name no remote carries (a `git.fetch` name, or the
+  /// implicit `origin`) warns `jj.fetch_remotes_unmatched`, as the fetch does.
+  /// A non-Git backend is refused, as the fetch refuses it.
   ///
-  /// The Fetch button's enable rule: enabled when this is not empty — then a
-  /// [gitFetch] with no arguments fetches from exactly these remotes.
+  /// The Fetch button's enable rule: enabled when this completes and is not
+  /// empty (a native repo throws `jj.not_a_git_repo`) — then a [gitFetch] with
+  /// no arguments fetches from exactly these remotes.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`,
-  /// `jj.jj_lib_error`).
+  /// `jj.config_error`, `jj.invalid_input`, `jj.not_a_git_repo`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<WarnedList<String>> gitFetchRemotes() {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -516,7 +521,9 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.change_not_found`, `jj.invalid_input`, `jj.immutable`,
+  /// `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.invalid_input`, `jj.immutable`,
   /// `jj.config_error`).
   Future<MutationResult> describe({required String changeId, required String description}) {
     if (_closed) {
@@ -551,7 +558,9 @@ final class RepoHandle {
   /// entry contains an interior NUL (U+0000); throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.invalid_input` — incl. the CLI's loop refusal
   /// and, on a Git-backed repo, a merge with the root commit among its parents,
-  /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`,
+  /// `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.immutable`, `jj.config_error`,
   /// `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<MutationResult> newChange(
     List<String> parents, {
@@ -573,7 +582,9 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`). Unlike [describe]
+  /// `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.immutable`, `jj.config_error`). Unlike [describe]
   /// and [abandon] this has no separate root-commit guard, so editing the root
   /// commit reports `jj.immutable` (which is what the jj CLI reports for it).
   Future<MutationResult> edit(String changeId) {
@@ -588,7 +599,9 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.immutable`,
   /// `jj.config_error`).
   Future<MutationResult> abandon(List<String> changeIds) {
     if (_closed) {
@@ -928,7 +941,9 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.immutable`,
   /// `jj.config_error`).
   Future<MutationResult> restore({
     String? from,
@@ -1008,7 +1023,9 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.immutable`,
   /// `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`,
   /// `jj.jj_lib_error`).
   Future<MutationResult> squash({
@@ -1133,7 +1150,9 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.immutable`,
   /// `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`,
   /// `jj.jj_lib_error`).
   Future<SplitResult> split({
@@ -1183,7 +1202,9 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an id contains an interior NUL (U+0000); throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.immutable`,
   /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<MutationResult> rebase({
     List<String> branch = const [],
@@ -1223,7 +1244,9 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an id contains an interior NUL (U+0000); throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`,
+  /// `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.immutable`, `jj.config_error`,
   /// `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<MutationResult> parallelize(List<String> changeIds) {
     if (_closed) {
@@ -1454,7 +1477,9 @@ final class RepoHandle {
   /// throws [ArgumentError] if an id contains an interior NUL (U+0000); throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input` — no revision, no location, [onto] with an insert, a
-  /// location refusal —, `jj.change_not_found`, `jj.immutable`,
+  /// location refusal —, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.immutable`,
   /// `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`,
   /// `jj.jj_lib_error`).
   Future<MutationResult> revert({
@@ -1585,7 +1610,9 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`, `jj.stale_selection` — the
+  /// `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.stale_selection` — the
   /// left tree is no longer [left], or a key is not a current section —
   /// `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error`).
   Future<SelectedTree> selectTree({
@@ -1715,7 +1742,9 @@ final class RepoHandle {
   ///
   /// This read writes no operation of its own. Throws [StateError] synchronously if the
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
-  /// (`ffi.invalid_handle`, `jj.change_not_found`, `jj.invalid_input`,
+  /// (`ffi.invalid_handle`, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.invalid_input`,
   /// `jj.jj_lib_error`).
   Future<WarnedList<FileEntry>> fileList({String? revision, List<String> paths = const <String>[]}) {
     if (_closed) {
@@ -1742,6 +1771,8 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.path_not_found`, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load),
   /// `jj.config_error` — this is the only file read that consults the repo's
   /// effective jj config — `jj.jj_lib_error`).
   Future<FileContents> fileShow({required List<String> paths, String? revision}) {
@@ -1765,7 +1796,9 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.path_not_found`, `jj.not_a_file`,
-  /// `jj.change_not_found`, `jj.jj_lib_error`).
+  /// `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.jj_lib_error`).
   Future<WarnedList<AnnotationLine>> fileAnnotate({required String path, String? revision}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -1793,7 +1826,9 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`, `jj.jj_lib_error`).
+  /// `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load), `jj.jj_lib_error`).
   Future<FileSearch> fileSearch({
     required String pattern,
     String? revision,
@@ -2025,8 +2060,8 @@ final class RepoHandle {
   /// NOT get that far: jj-lib's own `SymbolResolver` refuses it
   /// (`RevsetResolutionError::DivergentChangeId`), exactly as
   /// `jj show <divergent-id>` fails in the CLI, so it throws
-  /// `jj.revset_resolution_error` — a DIFFERENT refusal from [interdiff]'s
-  /// `jj.change_not_found`. Address both commits by unioning their COMMIT hexes,
+  /// `jj.revset_resolution_error` — the same refusal as [interdiff]'s for a
+  /// divergent change. Address both commits by unioning their COMMIT hexes,
   /// which are ordinary revset symbols. Aliases come from the repo's effective jj
   /// config, re-read per call.
   ///
@@ -2369,6 +2404,8 @@ final class RepoHandle {
   /// which a length-prefixed FlatBuffers string would carry all the way into a
   /// bookmark name; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
+  /// change or a failing `revsets.short-prefixes` load),
   /// `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`,
   /// `jj.config_error` — e.g. an unparsable `remotes.<r>.auto-track-*` value —
   /// `jj.jj_lib_error`).

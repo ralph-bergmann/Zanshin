@@ -284,8 +284,10 @@ fn auto_track_created(
 ///
 /// - [`MutateError::InvalidInput`] — `names` is empty, or a name is the empty string.
 /// - [`MutateError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE
-///   commit (unknown or only-hidden), or divergent. Not to be confused with an ABSENT
+///   commit (unknown or only-hidden). Not to be confused with an ABSENT
 ///   `revision`, which is not an error at all: it applies the CLI's `-r` default `@`.
+/// - [`MutateError::RevsetResolutionError`] — `revision` is an ambiguous change-id prefix or a divergent change
+///   (the CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
 /// - [`MutateError::BookmarkExists`] — a name is already a local bookmark.
 /// - [`MutateError::BookmarkTrackedRemoteExists`] — a name's local bookmark is absent but it
 ///   still has a tracked remote bookmark.
@@ -309,7 +311,8 @@ pub(crate) fn create(
     // loading the head again. See that function's doc for why a second load would be wrong.
     let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let workspace_name = workspace.workspace_name().to_owned();
-    let target = crate::op_support::resolve_or_wc(readonly.as_ref(), &workspace_name, revision)
+    let prefixes = ctx.template_startup.id_prefix_context();
+    let target = crate::op_support::resolve_or_wc(readonly.as_ref(), &workspace_name, &prefixes, revision)
         .map_err(|e| mutate::res(e, revision))?;
     let target_id = target.id().clone();
 
@@ -634,8 +637,9 @@ pub(crate) fn r#move(
     let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let to = options.to.as_ref();
-    let target =
-        crate::op_support::resolve_or_wc(readonly.as_ref(), &workspace_name, to).map_err(|e| mutate::res(e, to))?;
+    let prefixes = ctx.template_startup.id_prefix_context();
+    let target = crate::op_support::resolve_or_wc(readonly.as_ref(), &workspace_name, &prefixes, to)
+        .map_err(|e| mutate::res(e, to))?;
     let source = if options.from.is_empty() {
         None
     } else {
@@ -643,7 +647,6 @@ pub(crate) fn r#move(
         let expression =
             crate::revset::parse_union_diagnosed(workspace, &parse_config, &options.from, &mut ctx.warnings)
                 .map_err(mutate::rev)?;
-        let prefixes = ctx.template_startup.id_prefix_context();
         Some(crate::revset::evaluate_revset(readonly.as_ref(), &expression, Some(&prefixes)).map_err(mutate::rev)?)
     };
     let expression = exact_names(&options.names);
@@ -679,8 +682,9 @@ fn advance_target(
     readonly: &ReadonlyRepo,
     to: Option<&ChangeId>,
 ) -> Result<Commit, MutateError> {
+    let prefixes = ctx.template_startup.id_prefix_context();
     if to.is_some() {
-        return crate::op_support::resolve_or_wc(readonly, workspace.workspace_name(), to)
+        return crate::op_support::resolve_or_wc(readonly, workspace.workspace_name(), &prefixes, to)
             .map_err(|e| mutate::res(e, to));
     }
     let text = crate::config::revsets_bookmark_advance_to(&ctx.config).map_err(mutate::cfg)?;
@@ -693,7 +697,6 @@ fn advance_target(
     )
     .map_err(mutate::rev)
     .map_err(with_advance_hint)?;
-    let prefixes = ctx.template_startup.id_prefix_context();
     crate::push::single_commit(readonly, &expression, &text, &prefixes).map_err(with_advance_hint)
 }
 
@@ -967,8 +970,13 @@ pub(crate) fn set(
     let ref_names = validate_names("set", names)?;
     let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let workspace_name = workspace.workspace_name().to_owned();
-    let target = crate::op_support::resolve_or_wc(readonly.as_ref(), &workspace_name, revision)
-        .map_err(|e| mutate::res(e, revision))?;
+    let target = crate::op_support::resolve_or_wc(
+        readonly.as_ref(),
+        &workspace_name,
+        &ctx.template_startup.id_prefix_context(),
+        revision,
+    )
+    .map_err(|e| mutate::res(e, revision))?;
     let target_id = target.id().clone();
     let mut created = HashSet::new();
     for name in &ref_names {

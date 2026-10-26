@@ -41,7 +41,8 @@ pub(crate) fn parallelize(
 
     // The targets, "ordered here with children before parents" (`parallelize.rs:77-82`): the
     // revset's own order.
-    let ids = resolve_ordered(&tx, Some(change_ids))?.unwrap_or_default();
+    let templates = ctx.templates(workspace);
+    let ids = resolve_ordered(&tx, templates.prefixes(), Some(change_ids))?.unwrap_or_default();
     let set = RevsetExpression::commits(ids)
         .evaluate(tx.base_repo().as_ref())
         .map_err(be)?;
@@ -73,7 +74,7 @@ pub(crate) fn parallelize(
     if ordered.contains(&root_id) {
         needs_rewrite.push(root_id);
     }
-    guard_rewritable(&tx, &ctx.templates(workspace), &needs_rewrite)?;
+    guard_rewritable(&tx, &templates, &needs_rewrite)?;
 
     // A child outside the set gets its in-set parent's in-set ancestors as direct parents too
     // (`:107-120`), each once, in first-seen order — the CLI's `IndexSet`.

@@ -625,8 +625,9 @@ pub(crate) fn file_chmod(
 ) -> Result<MutationResult, MutateError> {
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
-    let commit = mutate::resolve_or_wc(tx.repo(), workspace.workspace_name(), revision)?;
-    mutate::guard_rewritable(&tx, &ctx.templates(workspace), std::slice::from_ref(commit.id()))?;
+    let templates = ctx.templates(workspace);
+    let commit = mutate::resolve_or_wc(tx.repo(), workspace.workspace_name(), templates.prefixes(), revision)?;
+    mutate::guard_rewritable(&tx, &templates, std::slice::from_ref(commit.id()))?;
     let paths = parse_paths(workspace, paths, "file chmod")?;
     let root = workspace.workspace_root();
     let tree = commit.tree();
@@ -777,8 +778,9 @@ pub(crate) fn file_edit(
     let conflict_marker_style = crate::config::conflict_marker_style(&ctx.config).map_err(cfg)?;
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let tx = start_repo_transaction(&readonly, workspace.workspace_name());
-    let commit = mutate::resolve_or_wc(tx.repo(), workspace.workspace_name(), revision)?;
-    mutate::guard_rewritable(&tx, &ctx.templates(workspace), std::slice::from_ref(commit.id()))?;
+    let templates = ctx.templates(workspace);
+    let commit = mutate::resolve_or_wc(tx.repo(), workspace.workspace_name(), templates.prefixes(), revision)?;
+    mutate::guard_rewritable(&tx, &templates, std::slice::from_ref(commit.id()))?;
     let root = workspace.workspace_root();
     // `parse_file_path` from the workspace root, as `parse_paths` parses each entry — but `""`
     // stays the root (refused below as a directory), as in the CLI.
@@ -816,8 +818,9 @@ pub(crate) fn file_delete(
 ) -> Result<MutationResult, MutateError> {
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let tx = start_repo_transaction(&readonly, workspace.workspace_name());
-    let commit = mutate::resolve_or_wc(tx.repo(), workspace.workspace_name(), revision)?;
-    mutate::guard_rewritable(&tx, &ctx.templates(workspace), std::slice::from_ref(commit.id()))?;
+    let templates = ctx.templates(workspace);
+    let commit = mutate::resolve_or_wc(tx.repo(), workspace.workspace_name(), templates.prefixes(), revision)?;
+    mutate::guard_rewritable(&tx, &templates, std::slice::from_ref(commit.id()))?;
     let paths = parse_paths(workspace, paths, "file delete")?;
     let tree = commit.tree();
     warning::warn_unmatched_paths(&mut ctx.warnings, workspace.workspace_root(), &paths, &[&tree]).map_err(be)?;
