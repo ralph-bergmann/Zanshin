@@ -36,6 +36,9 @@ enum GraphRevealAlignment {
 
 /// A reveal carried by a relayout (Story 10.1 item 10): consumed once, by identity, in the layout it arrives with; an
 /// absent [key] falls back to the anchor.
+///
+/// Keep the instance across builds: a new instance on every build reveals again on every build. For a reveal without
+/// a relayout, use [GraphViewportController.reveal].
 @immutable
 class GraphReveal {
   /// Reveals [key].
@@ -435,15 +438,12 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
   /// Keeps the anchor's viewport position across a geometry change: its content position moved by the correction.
   void _applyAnchor(double maxX, double maxY) {
     final ({String key, Offset position})? anchor = _anchor;
-    Offset correction;
-    if (anchor == null) {
-      // Nothing laid out to anchor on: a left or top inset change alone still shifts the offset.
-      final EdgeInsets before = _anchorInsets ?? _insets;
-      correction = Offset(_insets.left - before.left, _insets.top - before.top);
-    } else {
-      final int? node = _layout.indexOfKey(anchor.key);
-      correction = node == null ? Offset.zero : cardRect(node).topLeft - anchor.position;
-    }
+    final int? node = anchor == null ? null : _layout.indexOfKey(anchor.key);
+    // No anchor node (nothing laid out, or its key is gone): a left or top inset change alone still shifts the offset.
+    final EdgeInsets before = _anchorInsets ?? _insets;
+    final Offset correction = node == null
+        ? Offset(_insets.left - before.left, _insets.top - before.top)
+        : cardRect(node).topLeft - anchor!.position;
     if (correction.dx != 0) {
       _correctTo(horizontalOffset, clampDouble(horizontalOffset.pixels + correction.dx, 0, maxX));
     }

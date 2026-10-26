@@ -11,9 +11,9 @@ typedef GraphCardBuilder = Widget Function(BuildContext context, int node);
 /// The graph's child delegate (Story 10.1 item 9): a child's vicinity is (col, node index), its identity is its key.
 ///
 /// The key sits on the outermost widget, so the viewport's element reuses a card across vicinities (a reload moves
-/// it); `KeepAlive` below it keeps a pinned card when it scrolls out, and flipping the flag updates the element in
-/// place. [shouldRebuild] compares the layout's version, the pinned keys and the builder, so a parent rebuild builds
-/// no card.
+/// it). `KeepAlive` below it is the item 9 structure only: the render viewport keeps a pinned card by laying it out
+/// on every pass and clears the flag (see `RenderGraphViewport._layoutNode`), so no card enters the keep-alive bucket.
+/// [shouldRebuild] compares the layout's version, the pinned keys and the builder, so a parent rebuild builds no card.
 class GraphChildDelegate extends TwoDimensionalChildDelegate {
   /// A delegate over [layout].
   GraphChildDelegate({required this.layout, required this.cardBuilder, this.pinnedKeys = const <String>{}});

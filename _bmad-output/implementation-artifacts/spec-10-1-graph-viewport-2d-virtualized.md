@@ -5,7 +5,7 @@ created: '2026-10-26'
 status: 'done'
 baseline_revision: '8d12f999bba530e6e1fb6c13d14efcbacabd4ccd'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
@@ -290,6 +290,54 @@ deferred:
   - `[low]` `[reject]` (edge #9) Opacity-0 cards stay in semantics. The dim predicate's semantics belong to 10.6, which defines dimming, and nothing dims in 10.1.
   - `[low]` `[reject]` (edge #10) A geometry change during an overscroll bounce snaps it into range. This is rare (a reload mid-bounce), and the cards stay anchored. Keeping the overscroll adds a pre-correction range branch.
 
+### 2026-10-26 — Review pass (follow-up)
+- verdicts: 44 findings — high 0, medium 2, low 37, false 5, maybe-false 0
+- findings:
+  - `[medium]` `[patch]` (verification-gap #1) `selectedKey`/`hoveredKey`/paint hooks changed after mount (`updateRenderObject`) were never tested. Added "(g) a rebuild after the first frame updates the z-order and swaps the paint hooks" (card order becomes base, selected, hovered; the new edges hook paints before the cards).
+  - `[low]` `[patch]` (verification-gap #2) The pan clamp at the scroll limits was untested (every pan stayed in range; the overscroll test uses touch, which `_pan` ignores). Added "a pan stops at both ends of both axes" (mouse pan outward from (0, 0) and from the maximum).
+  - `[low]` `[patch]` (verification-gap #3) Nothing checked `scrollbars: false`. Added a macOS-variant "no scrollbar is shown" (no `RawScrollbar`).
+  - `[low]` `[patch]` (verification-gap other) The delegate doc says `KeepAlive` keeps a pinned card when it scrolls out, while `_layoutNode` clears the flag and pinning is render-side. Group A (one root: the inert flag, already deferred in frontmatter): corrected the `GraphChildDelegate` doc to say the wrapper is the item 9 structure only and name the render-side mechanism.
+  - `[low]` `[patch]` (intent-alignment, pinning) The `KeepAlive` flag is present but not the operative mechanism. Group A: doc corrected; the mechanism itself stays the existing frontmatter deferral.
+  - `[medium]` `[reject]` carried (intent-alignment, scale fixtures) Scale witnesses run on the synthetic generator, not on engine-laid spike inputs. Same claim as the 2026-10-26 intent-alignment row (b); Design Notes still read as logged.
+  - `[low]` `[reject]` (intent-alignment, anchor triggers) A viewport resize re-anchors nothing; offsets only clamp. The intent lists layout, metrics and insets as the triggers (the 2026-10-16 note moved side panels into insets); a resize keeps the top-left like every scroll view, and re-anchoring on size adds size tracking for a negligible visual difference.
+  - `[false]` `[reject]` (intent-alignment, animated reveal) With motion, an animated reveal glides from the next frame instead of centring in the relayout. The intent says an animated reveal jumps under `disableAnimations`, which only makes sense if it animates otherwise; a non-animated reveal does centre in the relayout (`_correctTo` in `layoutChildSequence`).
+  - `[low]` `[patch]` (intent-alignment, plane coverage) No test asserted that the hooks' visible rect covers the viewport when the content is smaller. The empty-layout robustness test now asserts the background hook receives `Offset.zero & surface`.
+  - `[false]` `[reject]` (intent-alignment, transition constraint) No per-key paint offset for keeping a previous layout mounted. The intent's Never list excludes FLIP animation code (10.20), which is where that constraint lands.
+  - `[low]` `[reject]` (intent-alignment, overlap invariant) The checker requires same-column rows at least U apart in free mode, stricter than geometric overlap. Every recording and synthetic fixture passes it, so it rejects no real data; loosening it changes the gate with no consumer.
+  - `[low]` `[patch]` carried (intent-alignment, opacity beyond paint) A card dimmed to 0 is skipped by hit testing and `isOnCard`. Same as the 2026-10-26 blind #4 / edge #7 row; code reads as patched then.
+  - `[low]` `[reject]` (intent-alignment, cursor) (e) reads the `cursor` getter, not the tracker's active cursor. The tracker reads that getter through the hit-test entry (`hitTestSelf` is true); a tracker-level test adds nothing the getter test misses in practice.
+  - `[low]` `[reject]` (intent-alignment, catalogue) No top/bottom inset knobs, default knobs only in tests, Scale without lane order. The task list names left/right sliders; top insets are witnessed in tests; Scale's lane order is the carried blind #12 decision.
+  - `[false]` `[reject]` (intent-alignment, shouldRebuild) An identical reload rebuilds mounted cards because every `RecordedGraphLayout` gets a new version. A new layout instance is new data; rebuilding its cards is correct, and (i) covers the parent-rebuild case.
+  - `[low]` `[patch]` (blind #1) The `KeepAlive` doc contradicts the render object. Group A.
+  - `[low]` `[patch]` (blind #2) `version` comes from a counter private to `RecordedGraphLayout`; a second implementation (10.12) could collide and skip a rebuild. The `GraphLayout.version` doc now requires uniqueness across every implementation.
+  - `[low]` `[patch]` (blind #3) `GraphReveal` is consumed by identity, so `GraphReveal(...)` created in `build` re-reveals on every rebuild. `GraphReveal` and `GraphViewport.reveal` docs now say to keep the instance and point to `GraphViewportController.reveal`.
+  - `[low]` `[reject]` carried (blind #4) The pan's per-axis `jumpTo` bursts notifications and has no fling. Same as the 2026-10-26 blind #5 row; the intent asks for 1:1 movement, no momentum.
+  - `[low]` `[patch]` (blind #5) When the anchor key is absent after a reload, an inset change arriving in the same layout was dropped (correction `Offset.zero`). Group B with edge #14: `_applyAnchor` now applies the inset shift whenever no anchor node exists; added "an absent anchor key arriving with a left or top inset change still shifts the offset by it". The fallback-to-another-node part is rejected: the I/O matrix fixes "absent anchor key → offsets unchanged".
+  - `[low]` `[reject]` carried (blind #6) An explicit `verticalLayout` with stale metrics is only debug-asserted. Same as the 2026-10-26 blind #7 row.
+  - `[low]` `[reject]` carried (blind #7) `fromSpec`: edge order only asserted, `byName` throws `ArgumentError`, `blocked`/`order` dropped. Same as the 2026-10-26 blind #2 / #15 rows; `blocked` gets an accessor when 10.4 needs it (consumers add accessors).
+  - `[low]` `[reject]` carried (blind #8) The checker lacks range/bucket/parent-count checks. Same as the 2026-10-26 blind #3 row.
+  - `[low]` `[reject]` carried (blind #9) No freshness check for `graph_recordings.g.dart`. Same as the 2026-10-26 blind #10 row; "e243dd2" names the fixed sample commit, it does not go stale.
+  - `[low]` `[reject]` (blind #10) The Graph folder wires no controller, selection, hover, pinning or dimming. Those inputs belong to 10.5/10.6, which add their UI and grow the folder; the 10.1 witnesses cover them in tests.
+  - `[false]` `[reject]` (blind #11) `isOnCard` ignores the 4 px ring overhang. The card's hit box is its rect too (`child.hitTest` is size-bounded), so a press on the ring is empty canvas for the hit test as well; `isOnCard` mirrors it.
+  - `[low]` `[reject]` carried (blind #12) `paintOrder` allocates per call. Same as the 2026-10-26 blind #8 row.
+  - `[low]` `[reject]` (blind #13) `GraphViewport` builds a `GraphChildDelegate` per build without disposing it. This is the framework's own `TwoDimensionalScrollView` pattern (`TableView`/`TreeView` build their delegates in the constructor); leak tracking is off for these tests and holding the delegate in state adds a StatefulWidget layer.
+  - `[low]` `[patch]` (blind #14) `expect(g.v.offset, isNot(16477 - 300))` was near-vacuous. Replaced with `isNot(closeTo(target, 1))`, the target from `cardRect`.
+  - `[low]` `[reject]` (blind #15) `GraphTheme` has no consumer, `PerNodeTops`/checker ship in `lib`, 240 is a literal in two places. `GraphTheme` is item 12, `PerNodeTops` and the checker are items 4 and 14 under `app/lib/src/features/graph/` per the intent; 240 is the spec's default and a const default cannot read the token parameter.
+  - `[low]` `[reject]` carried (edge #1) Explicit `verticalLayout` mismatch in release. Same as the 2026-10-26 blind #7 row.
+  - `[low]` `[reject]` carried (edge #2) A press on a card's exact left/top edge pixel. Same as the 2026-10-26 edge #8 row.
+  - `[low]` `[reject]` (edge #3) `controller.reveal` between a geometry change and the next layout gets the anchor correction on top. The declarative `GraphReveal` is the path for a reveal arriving with a relayout; deferring controller reveals adds a pending-request branch for a call order no caller uses yet.
+  - `[low]` `[reject]` (edge #4) One controller on two viewports flips to the last one. Same contract as attaching one controller twice; a caller bug, and an assert is new guard code.
+  - `[low]` `[reject]` (edge #5) A negative child index shifts the CSR. Edges come only from our recorder and generator, which never emit one.
+  - `[low]` `[reject]` carried (edge #6) Unordered edges in release. Same as the 2026-10-26 edge #3 row.
+  - `[low]` `[reject]` carried (edge #7) Unknown kind/mode throws `ArgumentError`. Same as the 2026-10-26 edge #4 row.
+  - `[low]` `[reject]` carried (edge #8) `unit <= 0`. Same as the 2026-10-26 edge #1 row.
+  - `[low]` `[reject]` (edge #9) Two `working_copy == "this"` nodes. A workspace has one working copy; the dumper emits one, so the input cannot occur.
+  - `[low]` `[reject]` carried (edge #10) Out-of-range col/row pass the checker. Same as the 2026-10-26 edge #2 row.
+  - `[low]` `[reject]` (edge #11) `PerNodeTops` with too few tops throws `RangeError` in release. It is a fixture/test class; a mismatched length is a caller bug.
+  - `[false]` `[reject]` (edge #12) `cliFaithful` would retarget another child of the dropped `wqnwkozp`. In the tracked `design/design-default.json`, only `vruxwmqv` (idx 12) lists idx 13; the input is fixed, so no edge is retargeted.
+  - `[low]` `[reject]` carried (edge #13) The recorder leaks its temp dir on failure. Same as the 2026-10-26 blind #9 row.
+  - `[low]` `[patch]` (edge #14) An absent anchor key drops a same-layout inset change. Group B with blind #5.
+
 ## Design Notes
 
 - **Scale data deviation (item 13(b)).**
@@ -328,6 +376,13 @@ Gate rule for this run: no `cargo make test` / `test-full` / `coverage`.
 - The recorder was re-run twice: 16 recordings, byte-identical (`cmp`).
 - The Marionette check was not run. An unattended synchronous run cannot hold `flutter run`. This is deferred (frontmatter `deferred`, deferred-work.md "Surfaced in Story 10.1").
 - No Rust or FFI changed, so no cargo, codegen or parity check applies. The full gate is left to the story loop's end.
+
+**Verification notes (2026-10-26, follow-up review pass, after its patches):**
+- `flutter test --reporter=failures-only test/features/graph test/widgetbook` (app): 382 passed (4 new tests).
+- `dart analyze --fatal-infos app packages/zanshin_ui`: no issues.
+- `dart format --set-exit-if-changed app packages/zanshin_ui`: 0 changed.
+- packages/zanshin_ui, the recorder and `graph_recordings.g.dart` were not touched, so their tests and the re-record were not re-run.
+- No Rust, FFI or jj verb changed: no cargo, codegen or parity check applies. Full gate left to the story loop's end, per the run's gate rule.
 
 ## Auto Run Result
 
@@ -393,6 +448,16 @@ Status: done. Commit `09c2f4e27e7d8670b5b8a69142c5765681354dad` (code), plus the
 - **I4, rejected: no longer applies** (done upstream by Story 4.11 item 10).
   - `jj_dump.rs:52-53` calls `Repo::graph_topology` and uses `commit_contents` for the sidecar, and `assign_priorities` follows the anchors rule.
   - 10.1's part is done in 09c2f4e2: its dump-based recording, medium-narrow, is the switched dumper's tracked output (`goldens/fixtures/medium-narrow.input.json`, re-dumped in Story 4.11), laid out by the product engine.
+
+**Follow-up review pass (2026-10-26).** 44 findings: 0 high, 2 medium, 37 low, 5 false (rows in the Review Triage Log).
+- Patched, 9 entries (1 medium, 8 low):
+  - `_applyAnchor` applies a left/top inset shift whenever no anchor node exists, also when the recorded anchor key vanished in the same reload (blind #5 / edge #14), with a test.
+  - Docs: `GraphChildDelegate` no longer claims `KeepAlive` keeps pinned cards (the render-side mechanism is named); `GraphLayout.version` must be unique across implementations; `GraphReveal` / `GraphViewport.reveal` say to keep the instance across builds.
+  - New tests: z-order and paint-hook changes after the first frame (medium), the pan clamp at both ends, no scrollbar on macOS, the hooks' visible rect covering the viewport on an empty layout; the near-vacuous `isNot(16477 - 300)` replaced by a computed `closeTo` target.
+- Deferred: none new (the frontmatter `deferred` list is unchanged, so nothing was mirrored to deferred-work.md).
+- Rejected: 31 rows (14 carried from the first pass, 5 false, 12 new lows), each with its reason in the triage log. One more row (opacity-0 cards skipped by hit testing) was carried as an already-applied first-pass patch.
+- Files: `app/lib/src/features/graph/graph_viewport_render.dart`, `graph_viewport.dart`, `graph_child_delegate.dart`, `graph_layout.dart`; `app/test/features/graph/graph_viewport_test.dart`, `graph_anchor_test.dart`.
+- Follow-up review recommended: **false** (follow-up pass, no high patched; patched counts: medium 1, low 8).
 
 **Residual risks:**
 - There is no visual check yet; the visuals still need Ralph's review in the catalogue.

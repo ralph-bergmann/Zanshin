@@ -112,6 +112,17 @@ void main() {
       await tester.pumpWidget(g.build());
       expect(g.scroll, const Offset(100, 8000));
     });
+
+    testWidgets('an absent anchor key arriving with a left or top inset change still shifts the offset by it', (
+      tester,
+    ) async {
+      final GraphHarness g = await pumpChain(tester);
+      g
+        ..layout = handLayout(<(String, int, int)>[for (int row = 199; row >= 0; row--) ('other$row', row, row % 6)])
+        ..insets = const EdgeInsets.only(left: 50, top: 30);
+      await tester.pumpWidget(g.build());
+      expect(g.scroll, const Offset(150, 8030));
+    });
   });
 
   testWidgets('(l) a W or H change remaps without a layout request: exact extents, the anchor holds', (tester) async {
@@ -245,7 +256,7 @@ void main() {
       g.controller.reveal('r50', animate: true);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 16));
-      expect(g.v.offset, isNot(16477 - 300));
+      expect(g.v.offset, isNot(closeTo(g.cardRect(g.layout.indexOfKey('r50')!).center.dy - 300, 1)));
       await tester.pumpAndSettle();
       expect(
         tester.getCenter(find.byWidgetPredicate((w) => w is TestCard && w.nodeKey == 'r50')),

@@ -145,7 +145,8 @@ abstract class GraphLayout {
   /// The operation the layout was computed at, when the source carries it.
   String? get operationId;
 
-  /// Identifies this layout: two layouts with one version are the same layout (the delegate's `shouldRebuild`).
+  /// Identifies this layout: two layouts with one version are the same layout (the delegate's `shouldRebuild`), so a
+  /// version must be unique across every [GraphLayout] implementation, not only within one.
   int get version;
 }
 

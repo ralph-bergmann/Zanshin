@@ -99,7 +99,7 @@ class GraphViewport extends TwoDimensionalScrollView {
   /// The key that keeps its place across geometry changes; null takes the visible node nearest the centre.
   final String? anchorKey;
 
-  /// The reveal the next relayout applies once.
+  /// The reveal the next relayout applies once, by identity: keep the instance across builds (see [GraphReveal]).
   final GraphReveal? reveal;
 
   /// Reveal, jump and animate from outside.

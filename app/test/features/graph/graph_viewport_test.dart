@@ -229,7 +229,38 @@ void main() {
       await panBy(tester, start);
       expect(g.scroll, const Offset(100, 80));
     }, variant: macOS);
+
+    testWidgets('a pan stops at both ends of both axes', (tester) async {
+      final g = GraphHarness(branchy);
+      await pumpGraph(tester, g);
+      final RenderGraphViewport render = g.render(tester);
+      Future<void> pan(Offset by) async {
+        final Offset start = <Offset>[
+          for (double x = 0; x < surface.width; x += 4) Offset(x, 300),
+        ].firstWhere((p) => !render.isOnCard(p));
+        final TestGesture drag = await tester.startGesture(start, kind: PointerDeviceKind.mouse);
+        await drag.moveBy(by / 2);
+        await tester.pump();
+        await drag.moveBy(by / 2);
+        await drag.up();
+        await tester.pump();
+      }
+
+      await pan(const Offset(100, 80));
+      expect(g.scroll, Offset.zero);
+      g
+        ..h.jumpTo(g.expectedMax.dx)
+        ..v.jumpTo(g.expectedMax.dy);
+      await tester.pump();
+      await pan(const Offset(-100, -80));
+      expect(g.scroll, g.expectedMax);
+    }, variant: macOS);
   });
+
+  testWidgets('no scrollbar is shown', (tester) async {
+    await pumpGraph(tester, GraphHarness(branchy));
+    expect(find.byWidgetPredicate((w) => w is RawScrollbar, skipOffstage: false), findsNothing);
+  }, variant: macOS);
 
   testWidgets('(f) on a ≥ 100-lane fixture, far-right columns are not built at h = 0, nor column 0 at the maximum', (
     tester,
@@ -285,6 +316,38 @@ void main() {
     expect(calls.indexOf(#drawPath), lessThan(calls.indexOf(#drawParagraph)));
     expect(calls.lastIndexOf(#drawParagraph), lessThan(calls.indexOf(#drawOval)));
     expect(cardNodes, <int>[3, 2, 1, 0], reason: 'base, @, selected, hovered; the dimmed-out card is not painted');
+  });
+
+  testWidgets('(g) a rebuild after the first frame updates the z-order and swaps the paint hooks', (tester) async {
+    final g = GraphHarness(handLayout(const <(String, int, int)>[('a', 0, 0), ('b', 0, 1), ('c', 0, 2)]));
+    await pumpGraph(tester, g);
+    (List<Symbol>, List<int>) painted() {
+      final calls = <Symbol>[];
+      final cardNodes = <int>[];
+      expect(
+        g.render(tester),
+        paints..everything((method, arguments) {
+          calls.add(method);
+          if (method == #drawRect) {
+            cardNodes.add(nodeOfColor((arguments[1] as Paint).color));
+          }
+          return true;
+        }),
+      );
+      return (calls, cardNodes);
+    }
+
+    final (List<Symbol> callsBefore, List<int> before) = painted();
+    expect(callsBefore, isNot(contains(#drawPath)));
+    expect(before, isNot(<int>[2, 1, 0]));
+    g
+      ..selected = 'b'
+      ..hovered = 'a'
+      ..edges = ((context, origin, visible) => context.canvas.drawPath(Path(), Paint()));
+    await tester.pumpWidget(g.build());
+    final (List<Symbol> callsAfter, List<int> after) = painted();
+    expect(after, <int>[2, 1, 0], reason: 'base, selected, hovered');
+    expect(callsAfter.indexOf(#drawPath), lessThan(callsAfter.indexOf(#drawParagraph)));
   });
 
   testWidgets('(g) a dimmed card paints at its opacity', (tester) async {
@@ -343,10 +406,16 @@ void main() {
   });
 
   group('(n) robustness', () {
-    testWidgets('an empty layout: a 2·pad plane, no card, the paint hooks still run', (tester) async {
+    testWidgets('an empty layout: a 2·pad plane, no card, the paint hooks still run over the whole viewport', (
+      tester,
+    ) async {
       var hooks = 0;
+      final visibleRects = <Rect>[];
       final g = GraphHarness(handLayout(const <(String, int, int)>[]))
-        ..background = ((context, origin, visible) => hooks++)
+        ..background = ((context, origin, visible) {
+          hooks++;
+          visibleRects.add(visible);
+        })
         ..overlay = ((context, origin, visible) => hooks++);
       await pumpGraph(tester, g);
       expect(tester.takeException(), isNull);
@@ -354,6 +423,7 @@ void main() {
       expect(g.h.position.maxScrollExtent, 0);
       expect(g.v.position.maxScrollExtent, 0);
       expect(hooks, 2);
+      expect(visibleRects, <Rect>[Offset.zero & surface], reason: 'the painted plane covers max(content, viewport)');
     });
 
     testWidgets('a shrink while scrolled deep clamps the offsets and builds only valid nodes', (tester) async {
