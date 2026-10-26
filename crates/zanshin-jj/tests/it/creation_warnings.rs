@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 //! Story 9.33 witnesses: the creation paths — `Repo::init`, `Repo::clone`, `convert_colocated`,
-//! `convert_import` — report what the jj CLI @ v0.44.0 prints on the same flows, in its order,
+//! `convert_import` — report what the jj CLI @ v0.46.0 prints on the same flows, in its order,
 //! on success AND on failure, plus the conversion's snapshot report. Story 9.34 adds the
 //! conversions' config read points: the start-up environment before the snapshot, the snapshot
 //! knobs inside it.

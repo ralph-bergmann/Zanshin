@@ -7,7 +7,8 @@
 //! `zanshin_remotes` calls `zanshin_jj::Repo::list_remotes()` and serialises the result into a
 //! `FlatBuffers` `Envelope` carrying a `Remotes` payload. The handle is borrowed
 //! (not consumed). Both `url` and `push_url` cross the wire verbatim (no credential
-//! scrubbing); `push_url` is ABSENT when the remote pushes to its fetch URL.
+//! scrubbing); `push_url` is ABSENT when the remote pushes to its fetch URL, `url` when the
+//! remote has only a push URL.
 //! `zanshin_git_push_remotes` calls `zanshin_jj::Repo::git_push_remotes()` into a
 //! `GitPushRemotes` payload, and `zanshin_git_fetch_remotes` (Story 9.30)
 //! `zanshin_jj::Repo::git_fetch_remotes()` into a `GitFetchRemotes` payload.
@@ -44,20 +45,20 @@ fn map_remotes_err(e: RemoteError) -> FfiErrorObj {
 ///
 /// Children before parents (`FlatBuffers` requirement): for each `Remote`, its
 /// strings are built before its table; the `remotes` vector and `Remotes` table
-/// come after the loop. No kind match — a `Remote` is just plain strings, one of
-/// which (`push_url`) is null-for-absence and stays ABSENT rather than `""`.
+/// come after the loop. No kind match — a `Remote` is just plain strings, two of
+/// which (`url`, `push_url`) are null-for-absence and stay ABSENT rather than `""`.
 fn remotes_to_envelope(remotes: &[Remote], report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let mut offsets = Vec::with_capacity(remotes.len());
     for r in remotes {
         let name_off = b.create_string(&r.name);
-        let url_off = b.create_string(&r.url);
+        let url_off = r.url.as_deref().map(|s| b.create_string(s));
         let push_off = r.push_url.as_deref().map(|s| b.create_string(s));
         let r_off = fbs::Remote::create(
             &mut b,
             &fbs::RemoteArgs {
                 name: Some(name_off),
-                url: Some(url_off),
+                url: url_off,
                 push_url: push_off,
             },
         );
@@ -80,7 +81,10 @@ fn remotes_to_envelope(remotes: &[Remote], report: &crate::envelope::CallReport)
 ///   `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
-/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+/// - `jj.jj_lib_error` — a remote fails to load (the call refuses as `jj git remote list`
+///   does; the CLI has printed the remotes sorted before the broken one by then, an error
+///   envelope carries no payload, so nothing is listed), or another unclassified jj-lib
+///   error; jj-lib's chain in `context`.
 ///
 /// # Safety
 /// `handle` must be a value returned by a successful `zanshin_repo_open`,
@@ -319,17 +323,23 @@ mod tests {
     #[test]
     fn remotes_to_envelope_roundtrips_multiple_entries() {
         // ≥2 distinct entries; one with embedded credentials to assert no scrubbing.
-        // Both `push_url` arms are exercised: absent on index 0, present on index 1.
+        // Both `push_url` arms are exercised: absent on index 0, present on index 1;
+        // index 2 is push-only, its `url` absent (Story 9.46).
         let remotes = vec![
             Remote {
                 name: "origin".to_owned(),
-                url: "https://github.com/user/repo.git".to_owned(),
+                url: Some("https://github.com/user/repo.git".to_owned()),
                 push_url: None,
             },
             Remote {
                 name: "creds".to_owned(),
-                url: "https://user:token@example.com/r.git".to_owned(),
+                url: Some("https://user:token@example.com/r.git".to_owned()),
                 push_url: Some("ssh://user:s3cr3t@example.com/r.git".to_owned()),
+            },
+            Remote {
+                name: "pushonly".to_owned(),
+                url: None,
+                push_url: Some("ssh://example.com/p.git".to_owned()),
             },
         ];
         let buf = remotes_to_envelope(&remotes, &crate::envelope::CallReport::default());
@@ -338,7 +348,9 @@ mod tests {
         assert_eq!(env.data_type(), fbs::Payload::Remotes);
         let payload = env.data_as_remotes().expect("expected Remotes payload");
         let items = payload.remotes().expect("remotes vector");
-        assert_eq!(items.len(), 2);
+        assert_eq!(items.len(), 3);
+        assert_eq!(items.get(2).url(), None, "an absent fetch URL stays ABSENT, never \"\"");
+        assert_eq!(items.get(2).push_url(), Some("ssh://example.com/p.git"));
         // index 0: origin — remotes_to_envelope preserves insertion order (no sort here;
         // sorting lives upstream in zanshin-jj::list_remotes).
         assert_eq!(items.get(0).name(), Some("origin"));

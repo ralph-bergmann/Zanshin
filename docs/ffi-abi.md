@@ -153,7 +153,7 @@ attaches the verb's report. On the Dart side the thrown `ZanshinFfiException.rev
 
 ### `warnings` — the CLI's `Warning:` blocks as coded facts (Story 9.32)
 
-Every envelope-returning symbol may carry `Envelope.warnings`: the jj CLI @ v0.44.0's
+Every envelope-returning symbol may carry `Envelope.warnings`: the jj CLI @ v0.46.0's
 `ui.warning_*` output for the same call, one `Warning` per CLI block, in the CLI's print
 order (config-load warnings, the pre-verb snapshot and imports, the verb body,
 `finish_transaction`). `code` is one of the registered `jj.*` warning codes
@@ -1226,7 +1226,7 @@ request is read BEFORE the handle is borrowed). Every argument is a caller pass-
   `prioritize`. A PARSE failure is a hard `jj.revset_parse_error`; everything that can
   only fail while LOADING the disambiguation index — symbol resolution included — is a
   `jj.short_prefixes_failed` warning and degrades to full-index prefixes, as the CLI does
-  (`cli/tests/test_log_command.rs::test_log_bad_short_prefixes` @ v0.44.0).
+  (`cli/tests/test_log_command.rs::test_log_bad_short_prefixes` @ v0.46.0).
   *(2026-10-25, Story 9.25 closing run: the set also disambiguates the SYMBOLS of `revset`,
   `prioritize` and every anchor — one id-prefix context per call, as the CLI's
   `default_symbol_resolver` — so a short id prefix unique within it resolves; a set that fails
@@ -1420,18 +1420,18 @@ Handle-only — no C-string argument, so there is no `ffi.null_pointer` /
 `ffi.utf8_error` path (the same asymmetry as `zanshin_remotes`).
 
 **What "effective" means.** `zanshin-jj` rebuilds, per call, the layered config
-the jj CLI would have at the pinned **v0.44.0** for that workspace and reads the
+the jj CLI would have at the pinned **v0.46.0** for that workspace and reads the
 four values out of it:
 
 | Layer (ascending precedence) | Source |
 |------------------------------|--------|
 | `ConfigSource::Default`      | jj-lib's own defaults + Zanshin's builtin layer (`[revsets] log` / `log-graph-prioritize`, `ui.log-synthetic-elided-nodes`, `ui.conflict-marker-style` (Story 9.4 — the style `zanshin_file_show` materializes a conflicted file with), and the CLI's 7-entry `[revset-aliases]` table, verbatim from `cli/src/config/{revsets,misc}.toml` @ v0.46.0) |
-| `ConfigSource::System`       | `/etc/jj/config.toml`, `/etc/jj/conf.d/` — ONLY when `JJ_CONFIG` is unset (`cli/src/config.rs:334-345` @ v0.44.0). Non-existent entries are skipped silently. |
+| `ConfigSource::System`       | `/etc/jj/config.toml`, `/etc/jj/conf.d/` — ONLY when `JJ_CONFIG` is unset (`cli/src/config.rs:338-349` @ v0.46.0). Non-existent entries are skipped silently. |
 | `ConfigSource::EnvBase`      | `operation.hostname` / `operation.username` from `whoami` (the CLI's own crate; `$USER` as the username fallback), `NO_COLOR` (non-empty) → `ui.color = "never"`, `VISUAL` else `EDITOR` → `ui.editor` — values config files override |
 | `ConfigSource::User`         | `JJ_CONFIG` (a `PATH`-style list of files and/or directories, which REPLACES discovery — including when it is the empty string, which disables user config entirely), else `$HOME/.jjconfig.toml`, `<config_dir>/jj/config.toml`, `<config_dir>/jj/conf.d/`. Non-existent entries are skipped silently. `<config_dir>` = `$XDG_CONFIG_HOME` when absolute, else `$HOME/.config`. |
 | `ConfigSource::Repo`         | `.jj/repo/config-id` (20 ASCII hex chars) → `<config_dir>/jj/repos/<id>/config.toml`; absent id file → legacy `.jj/repo/config.toml` |
 | `ConfigSource::Workspace`    | `.jj/workspace-config-id` → `<config_dir>/jj/workspaces/<id>/config.toml`; absent id file → legacy `.jj/workspace-config.toml` |
-| `ConfigSource::EnvOverrides` | `JJ_USER` → `user.name`, `JJ_EMAIL` → `user.email`, `JJ_TIMESTAMP`, `JJ_RANDOMNESS_SEED`, `JJ_OP_TIMESTAMP`, `JJ_OP_HOSTNAME`, `JJ_OP_USERNAME`, `JJ_EDITOR`, `JJ_PAGER` — values that override every file (`cli/src/config.rs:789-819` @ v0.44.0) |
+| `ConfigSource::EnvOverrides` | `JJ_USER` → `user.name`, `JJ_EMAIL` → `user.email`, `JJ_TIMESTAMP`, `JJ_RANDOMNESS_SEED`, `JJ_OP_TIMESTAMP`, `JJ_OP_HOSTNAME`, `JJ_OP_USERNAME`, `JJ_EDITOR`, `JJ_PAGER` — values that override every file (`cli/src/config.rs:882-912` @ v0.46.0) |
 
 then flattens `--when` / `[[--scope]]` blocks through
 `jj_lib::config::resolve`. **Read-only by construction:** the CLI reaches the
@@ -1508,11 +1508,11 @@ LogDefaults {
 The two `[revset-aliases]` failure levels differ, exactly as in the CLI:
 
 - **Table level → error.** A layer whose `revset-aliases` key is not a table
-  fails the call with `jj.config_error` (`cli/src/config.rs:1000-1007` @ v0.44.0, `ConfigGetError::Type`).
+  fails the call with `jj.config_error` (`cli/src/config.rs:1175-1182` @ v0.46.0, `ConfigGetError::Type`).
 - **Entry level → warn and continue.** A single entry with a non-string value or
   a declaration jj-lib's parser rejects is skipped with a `jj.config_alias_invalid`
   warning (Story 9.32), and the call succeeds with every other alias loaded
-  (`cli/src/config.rs:1009-1032` @ v0.44.0).
+  (`cli/src/config.rs:1184-1207` @ v0.46.0).
   A malformed alias DEFINITION is not caught at load time at all — it surfaces
   as `jj.revset_parse_error` when the alias is used.
 
@@ -1875,6 +1875,22 @@ backend; an exact name no remote carries — a `git.push` name, or the implicit 
 `ffi.unknown`. The app's project dot counts a tracked remote row with no target as "ahead" only
 for these remotes (`trackingStatusOf`'s `pushRemotes`); the distances count for every tracked
 remote.
+
+---
+
+## `Remotes` payload and `zanshin_remotes` (Stories 3.4b, 9.46)
+
+`zanshin_remotes(handle)` answers `Remotes { remotes: [Remote] }`, sorted by name, each
+`Remote { name, url, push_url }` with both URLs verbatim (credentials kept, SSH not rewritten) —
+`jj git remote list` (`cli/src/commands/git/remote/list.rs:31-69` @ v0.46.0). `push_url` is
+present only when the push URL DIFFERS from `url`, the CLI's `(push: …)` suffix. `url` is ABSENT
+for a remote with only a push URL, the CLI's `<name> <no URL> (push: <url>)` row; `push_url` is
+then present. A `[remote "<name>"]` section with no URL at all is skipped, as in the CLI. A remote
+gix cannot load (an invalid `fetch` refspec, for one) refuses the call `jj.jj_lib_error` with
+jj-lib's chain in `context` (`Unexpected Git error when managing remotes: …`), as the CLI's
+`try_find_active_remote(..)?` does; the CLI has printed the remotes sorted before the broken one
+by then, and an error envelope carries no payload, so nothing is listed. A non-Git backend lists nothing. Dart: `RepoHandle.remotes()`
+→ `WarnedList<Remote>`, `Remote.url` and `Remote.pushUrl` both `String?`.
 
 ---
 

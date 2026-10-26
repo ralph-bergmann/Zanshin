@@ -507,8 +507,8 @@ fn show_of_a_merge_diffs_against_the_merged_parent_tree() {
 /// revset-resolution refusal, exactly as it is in the CLI.
 ///
 /// The story spec expected a bare divergent change id to yield both commits. It does not at
-/// v0.44.0: jj-lib's `SymbolResolver` raises `DivergentChangeId` for the bare symbol
-/// (`revset.rs:2827`), and the CLI surfaces that same error for `jj show <divergent-id>`. CLI
+/// v0.46.0: jj-lib's `SymbolResolver` raises `DivergentChangeId` for the bare symbol
+/// (`revset.rs:2940`), and the CLI surfaces that same error for `jj show <divergent-id>`. CLI
 /// parity therefore means REFUSING it here too — and it is a different refusal from
 /// `interdiff`'s, which reports `ChangeNotFound` from its own single-revision resolver. Both
 /// commits remain addressable, because `revset` is a pass-through expression: their commit

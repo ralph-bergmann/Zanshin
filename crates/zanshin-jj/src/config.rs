@@ -3,8 +3,8 @@
 //! The repo's effective jj config — the one layer stack every revset parse and the
 //! `jj log` defaults are read from (Story 4.9).
 //!
-//! [`load`] rebuilds, per operation, the `StackedConfig` the jj CLI would have at v0.44.0
-//! for this workspace, in the CLI's own order (`cli/src/config.rs:713-730`): jj-lib's
+//! [`load`] rebuilds, per operation, the `StackedConfig` the jj CLI would have at v0.46.0
+//! for this workspace, in the CLI's own order (`cli/src/config.rs:806-823`): jj-lib's
 //! defaults, jj-cli's own default layers ([`CLI_DEFAULTS`], Story 9.54) and Zanshin's builtin
 //! default layer ([`BUILTIN_CONFIG_TOML`]), the system
 //! config (`/etc/jj`), the `EnvBase` layer, the user config (`JJ_CONFIG` or platform
@@ -26,8 +26,8 @@
 //!
 //! The one exception is the secure-config fix-up the jj CLI runs at the start of EVERY command:
 //! `load_secure_config` → jj-lib's `SecureConfig::maybe_load_config` for the repo layer, then the
-//! workspace layer (`cli/src/config.rs:447-469`, `:585-593`, `:653-665` @ v0.44.0, called from
-//! `cli_util.rs:4545-4549` / `:4592-4595` after the system and user layers loaded).
+//! workspace layer (`cli/src/config.rs:455-477`, `:593-601`, `:661-673` @ v0.46.0, called from
+//! `cli_util.rs:4665-4669` / `:4712-4715` after the system and user layers loaded).
 //! [`SecureLayer::fix_up`] calls that very function — never a re-implementation — so its on-disk
 //! effects are the CLI's exactly: a legacy `.jj/repo/config.toml` / `.jj/workspace-config.toml`
 //! is migrated into `<config_dir>/jj/{repos,workspaces}/<id>/` (on Unix the legacy file becomes a
@@ -58,7 +58,7 @@
 //! - [`remove_remote_from_repo_config`] and [`rename_remote_in_repo_config`], called by
 //!   [`crate::Repo::git_remote_remove`] / [`crate::Repo::git_remote_rename`] — the two remote
 //!   verbs whose CLI counterparts rewrite the repo-level file
-//!   (`cli/src/commands/git/mod.rs:195-262` @ v0.44.0). They make exactly the CLI's two edits
+//!   (`cli/src/commands/git/mod.rs:195-262` @ v0.46.0). They make exactly the CLI's two edits
 //!   and NEVER create a file: the CLI resolves theirs through `existing_repo_config_file`, which
 //!   yields nothing when no repo layer was loaded, so the path here is the READ side's
 //!   [`SecureLayer::resolved_path`] filtered by existence ([`existing_repo_config_file`]) and
@@ -66,7 +66,7 @@
 //!   no config at all;
 //! - [`set_trunk_alias`], called by `convert.rs` for the `trunk()` alias `jj git init`'s
 //!   External branch writes (`write_repo_presets`, `cli/src/commands/git/mod.rs:156-193` @
-//!   v0.44.0). It MAY create the repo-level file, because its CLI counterpart resolves through
+//!   v0.46.0). It MAY create the repo-level file, because its CLI counterpart resolves through
 //!   the create-FORCING `repo_config_path` ([`new_repo_config_file`] here): `jj git init`
 //!   legitimately brings the repo layer into being, whereas `jj git remote remove` on a repo
 //!   that has no repo config must leave the user with no repo config.
@@ -100,7 +100,7 @@
 //! # The environment layers, and what is still absent
 //!
 //! The `EnvBase` and `EnvOverrides` layers are ported key for key from the CLI's
-//! `env_base_layer` / `env_overrides_layer` (`cli/src/config.rs:736-819` @ v0.44.0):
+//! `env_base_layer` / `env_overrides_layer` (`cli/src/config.rs:829-912` @ v0.46.0):
 //! `operation.hostname`/`operation.username` from `whoami` (the CLI's own crate, `$USER` as
 //! the username fallback), `NO_COLOR` → `ui.color`, `VISUAL`/`EDITOR` → `ui.editor`, and the
 //! `JJ_USER`, `JJ_EMAIL`, `JJ_TIMESTAMP`, `JJ_RANDOMNESS_SEED`, `JJ_OP_TIMESTAMP`,
@@ -278,7 +278,7 @@ static CLI_DEFAULTS: LazyLock<Vec<Arc<ConfigLayer>>> = LazyLock::new(|| {
 const CONFIG_ID_HEX_LEN: usize = 20;
 
 /// The `trunk()` alias's config name path, verbatim from
-/// `cli/src/commands/git/mod.rs:133` @ v0.44.0.
+/// `cli/src/commands/git/mod.rs:133` @ v0.46.0.
 ///
 /// A `[&str; N]` array, never the dotted string `"revset-aliases.trunk()"`: the alias name
 /// contains `(` and `)`, so the dotted spelling would be re-split in the wrong places.
@@ -368,7 +368,7 @@ pub(crate) struct ConfigEnv {
 
 impl ConfigEnv {
     /// Snapshots the environment the way `ConfigEnv::from_environment`
-    /// (`cli/src/config.rs:366-419` @ v0.44.0) does — from ONE snapshot of the environment the
+    /// (`cli/src/config.rs:370-423` @ v0.46.0) does — from ONE snapshot of the environment the
     /// crate's reads see: the login shell's once adopted (Story 9.36), else the process's.
     pub(crate) fn from_env() -> Self {
         Self::from_vars(
@@ -387,8 +387,8 @@ impl ConfigEnv {
             std::fs::canonicalize(&d).unwrap_or(d)
         });
         let xdg = var("XDG_CONFIG_HOME").map(PathBuf::from);
-        // WHY: only the UTF-8 pairs — the CLI's own filter (`cli/src/config.rs:389-396` @
-        // v0.44.0) silently drops a non-Unicode variable rather than panicking like `vars()`.
+        // WHY: only the UTF-8 pairs — the CLI's own filter (`cli/src/config.rs:393-400` @
+        // v0.46.0) silently drops a non-Unicode variable rather than panicking like `vars()`.
         let environment: HashMap<String, String> = vars
             .iter()
             .filter_map(|(k, v)| Some((k.to_str()?.to_owned(), v.to_str()?.to_owned())))
@@ -396,7 +396,7 @@ impl ConfigEnv {
         Self {
             config_dir: platform_config_dir(xdg.as_deref(), home_dir.as_deref()),
             // WHY UTF-8-or-unset: the CLI reads `JJ_CONFIG` as a UTF-8 `var(..).ok()`
-            // (`cli/src/config.rs:386` @ v0.44.0), so a non-UTF-8 value counts as UNSET there
+            // (`cli/src/config.rs:390` @ v0.46.0), so a non-UTF-8 value counts as UNSET there
             // (system layer + discovery on).
             jj_config: var("JJ_CONFIG").filter(|v| v.to_str().is_some()).cloned(),
             system_config_dir: Some(PathBuf::from("/etc")),
@@ -508,7 +508,7 @@ fn secure_config_path(
 }
 
 /// Candidate system-config paths, mirroring `UnresolvedConfigEnv::resolve_system`
-/// (`cli/src/config.rs:334-345` @ v0.44.0): `<system>/jj/config.toml` then `<system>/jj/conf.d`
+/// (`cli/src/config.rs:338-349` @ v0.46.0): `<system>/jj/config.toml` then `<system>/jj/conf.d`
 /// — and NOTHING when `JJ_CONFIG` is set, empty included, which is how the test suite (and a
 /// user) opts out of every file outside the repo.
 fn system_config_paths(system_config_dir: Option<&Path>, jj_config: Option<&OsStr>) -> Vec<PathBuf> {
@@ -528,8 +528,8 @@ fn env_user_config_paths(env: &ConfigEnv) -> Vec<PathBuf> {
 }
 
 /// The user-config paths EXACTLY as the CLI lists them for `jj config path --user` and picks
-/// the new-file default from — `UnresolvedConfigEnv::resolve_user` (`cli/src/config.rs:289-332`
-/// @ v0.44.0), existence checks included (Story 9.28).
+/// the new-file default from — `UnresolvedConfigEnv::resolve_user` (`cli/src/config.rs:293-336`
+/// @ v0.46.0), existence checks included (Story 9.28).
 ///
 /// Differs from [`user_config_paths`] only for NON-existent discovery candidates: `~/.jjconfig.toml`
 /// is listed only when it exists (or no `<config_dir>` is known), `<config_dir>/jj/config.toml`
@@ -591,7 +591,7 @@ fn existing_files(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 /// `std::fs::create_dir_all`, but every directory it creates is `0700` — the CLI's own
-/// `create_dir_all` (`cli/src/config.rs:262-273` @ v0.44.0), used for a new user config
+/// `create_dir_all` (`cli/src/config.rs:266-277` @ v0.46.0), used for a new user config
 /// file's parent.
 pub(crate) fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt as _;
@@ -632,7 +632,7 @@ fn env_layer(
     Ok(layer)
 }
 
-/// The CLI's `env_base_layer` (`cli/src/config.rs:736-765` @ v0.44.0): values config files
+/// The CLI's `env_base_layer` (`cli/src/config.rs:829-858` @ v0.46.0): values config files
 /// override.
 ///
 /// `NO_COLOR` counts only when non-empty ("User-level configuration files … should override
@@ -651,7 +651,7 @@ fn env_base_layer(env: &ConfigEnv) -> Result<ConfigLayer, ConfigError> {
     )
 }
 
-/// The CLI's `env_overrides_layer` (`cli/src/config.rs:789-819` @ v0.44.0): values that
+/// The CLI's `env_overrides_layer` (`cli/src/config.rs:882-912` @ v0.46.0): values that
 /// override every config file.
 ///
 /// `JJ_RANDOMNESS_SEED` is written as an `i64` and dropped when it does not parse as one,
@@ -776,7 +776,7 @@ impl SecureLayer {
     /// The file this layer's WRITERS address, CREATING the secure directory, `metadata.binpb`
     /// and the id file when missing and migrating a legacy file — `SecureConfig::load_config`,
     /// the CLI's create-forcing `repo_config_path` / `workspace_config_path`
-    /// (`cli/src/config.rs:545-549`, `:616-625` @ v0.44.0). The `config.toml` itself is NOT
+    /// (`cli/src/config.rs:553-557`, `:624-633` @ v0.46.0). The `config.toml` itself is NOT
     /// created. `Ok(None)` iff no `<config_dir>` is known — then nothing is written. The RNG is
     /// [`secure_rng`]'s.
     ///
@@ -796,7 +796,7 @@ impl SecureLayer {
 
     /// The CLI's start-up fix-up of this layer (Story 9.37): jj-lib's own
     /// `SecureConfig::maybe_load_config`, as `load_secure_config` calls it
-    /// (`cli/src/config.rs:447-469` @ v0.44.0) — it migrates a legacy file, re-points a MOVED
+    /// (`cli/src/config.rs:455-477` @ v0.46.0) — it migrates a legacy file, re-points a MOVED
     /// repo's metadata, forks a COPIED repo's config, regenerates a missing secure directory, or
     /// does nothing. Every message it returns lands in `sink` as a [`crate::Warning`], jj-lib's
     /// text verbatim. No `<config_dir>` known → nothing runs, as the CLI's `load_secure_config`
@@ -841,7 +841,7 @@ impl SecureLayer {
 }
 
 /// The `&mut ChaCha20Rng` `SecureConfig` draws new config ids from, seeded as the CLI seeds its
-/// one `ConfigEnv.rng` (`cli/src/config.rs:411-417` @ v0.44.0): from `randomness_seed`
+/// one `ConfigEnv.rng` (`cli/src/config.rs:415-421` @ v0.46.0): from `randomness_seed`
 /// (`JJ_RANDOMNESS_SEED`) when set, else from the OS RNG — drawn here by hand, because
 /// `rand::make_rng()`, what the CLI uses, `expect`s on OS-RNG failure and nothing reachable from
 /// FFI may panic.
@@ -877,7 +877,7 @@ pub(crate) fn secure_layers(env: &ConfigEnv, paths: WorkspacePaths<'_>) -> [Secu
 }
 
 /// Builds the resolved layer stack from an explicit environment, in the CLI's order
-/// (`cli/src/config.rs:713-730` @ v0.44.0): Default → System → `EnvBase` → User → Repo →
+/// (`cli/src/config.rs:806-823` @ v0.46.0): Default → System → `EnvBase` → User → Repo →
 /// Workspace → `EnvOverrides`.
 ///
 /// `workspace` is `None` outside any workspace ([`check_startup_stack`]): the stack stops at
@@ -994,7 +994,7 @@ pub(crate) fn fix_up_layers(
 }
 
 /// Flattens `--when` / `[[--scope]]` blocks of a [`load_raw`] stack — the CLI's
-/// `resolve_config` (`cli/src/config.rs:669-679` @ v0.44.0) — then applies the CLI's config
+/// `resolve_config` (`cli/src/config.rs:746-756` @ v0.46.0) — then applies the CLI's config
 /// migrations ([`migrate`], Story 9.9). Skipping the resolution would leave scoped tables
 /// unflattened (their values silently missing) and keep layers the CLI drops.
 ///
@@ -1259,7 +1259,7 @@ pub(crate) fn user_settings_for(
 /// The CLI's start-up config check, run FIRST by every creation path (`init`, `clone`,
 /// conversions): before any command touches a path, the CLI loads and resolves the stack
 /// outside a workspace and builds `UserSettings` from it (`CliRunner::run_internal`,
-/// `cli/src/cli_util.rs:4543-4627` @ v0.44.0). A broken system/user file or a wrong-typed
+/// `cli/src/cli_util.rs:4663-4750` @ v0.46.0). A broken system/user file or a wrong-typed
 /// `user.*` / `operation.*` value therefore refuses before a destination is created and wins
 /// over every path or precondition error — only a fault that needs the new workspace's paths
 /// (a scoped table) surfaces later, in [`user_settings_for_new_workspace`]. Returns the checked
@@ -1292,8 +1292,8 @@ pub(crate) fn check_startup_stack(
 }
 
 /// The `UserSettings` the workspace at `workspace_root` is CREATED with (`init`, `clone`,
-/// conversions) — the CLI's `settings_for_new_workspace` (`cli/src/cli_util.rs:372-388` @
-/// v0.44.0): the stack is built for the NEW workspace's paths (`<root>/.jj/repo`, `<root>`),
+/// conversions) — the CLI's `settings_for_new_workspace` (`cli/src/cli_util.rs:373-389` @
+/// v0.46.0): the stack is built for the NEW workspace's paths (`<root>/.jj/repo`, `<root>`),
 /// so `--when.repositories` / `--when.workspaces` scopes (a per-directory identity) already
 /// apply to what the creation writes. Normally no repo or workspace config file exists there
 /// yet; whatever is there is read, exactly as the CLI's reload reads it.
@@ -1487,7 +1487,7 @@ pub(crate) fn load_for_workspace(workspace: &Workspace, command: CliCommand) -> 
 
 /// Reads the four effective `jj log` defaults out of a loaded stack.
 ///
-/// Mirrors `cli/src/commands/log.rs:148/197` (hard type errors) and
+/// Mirrors `cli/src/commands/log.rs:144/202` @ v0.46.0 (hard type errors) and
 /// `cli/src/cli_util.rs:987-1009` (the `revsets.short-prefixes` → `revsets.log` fallback,
 /// which triggers on ABSENCE only — an explicit `""` means disabled and is returned as-is).
 ///
@@ -1539,7 +1539,7 @@ pub(crate) fn conflict_marker_style(
 
 /// Reads the effective `git import` options out of a loaded stack (Story 9.5).
 ///
-/// Mirrors `cli/src/git_util.rs::load_git_import_options` @ v0.44.0 for the two keys it
+/// Mirrors `cli/src/git_util.rs::load_git_import_options` @ v0.46.0 for the two keys it
 /// reads off config: `git.abandon-unreachable-commits` and
 /// `git.record-synthetic-predecessors`. Both already resolve through
 /// `StackedConfig::with_defaults()` — they are jj-lib's own `config/misc.toml` defaults
@@ -1553,7 +1553,7 @@ pub(crate) fn conflict_marker_style(
 /// jj-lib `config/misc.toml` defaults, so an unset key reads fine.
 ///
 /// `remote_auto_track_bookmarks` is the CLI's `parse_remote_auto_track_bookmarks_map`
-/// (`cli/src/revset_util.rs:378-391,457-470` @ v0.44.0): one string-expression matcher per
+/// (`cli/src/revset_util.rs:425-438,504-517` @ v0.46.0): one string-expression matcher per
 /// `remotes.<name>.auto-track-bookmarks` (Story 9.26), so every import site — fetch, import,
 /// clone, convert and the pre-verb snapshot — auto-tracks exactly what the user's CLI does.
 ///
@@ -2072,8 +2072,8 @@ pub(crate) fn advance_branches(config: &StackedConfig) -> Result<(Vec<String>, V
 
 /// Reads the effective `snapshot.max-new-file-size` out of a loaded stack (Story 9.22).
 ///
-/// Mirrors `snapshot_options_with_start_tracking_matcher` (`cli/src/cli_util.rs:1618-1623` @
-/// v0.44.0): the value is a `HumanByteSize` — a plain integer or a `"<number><unit>"` string —
+/// Mirrors `snapshot_options_with_start_tracking_matcher` (`cli/src/cli_util.rs:1649-1654` @
+/// v0.46.0): the value is a `HumanByteSize` — a plain integer or a `"<number><unit>"` string —
 /// and `0` means UNLIMITED (`u64::MAX`), which is how a user switches the size gate off.
 ///
 /// # Errors
@@ -2089,7 +2089,7 @@ pub(crate) fn snapshot_max_new_file_size(config: &StackedConfig) -> Result<u64, 
 }
 
 /// Reads the effective `snapshot.auto-track` fileset TEXT out of a loaded stack (Story 9.22) —
-/// the CLI's `settings().get_string("snapshot.auto-track")` (`cli/src/cli_util.rs:1606`).
+/// the CLI's `settings().get_string("snapshot.auto-track")` (`cli/src/cli_util.rs:1637` @ v0.46.0).
 /// Parsing it is the caller's job; a parse failure is a config fault there too.
 ///
 /// # Errors
@@ -2103,7 +2103,7 @@ pub(crate) fn snapshot_auto_track(config: &StackedConfig) -> Result<String, Conf
 // ── The three repo-config WRITERS ─────────────────────────────────────────────────
 //
 // `remove_remote_from_repo_config` / `rename_remote_in_repo_config` are ported verbatim from
-// `cli/src/commands/git/mod.rs:195-262` @ v0.44.0 and `set_trunk_alias` from that file's
+// `cli/src/commands/git/mod.rs:195-262` @ v0.46.0 and `set_trunk_alias` from that file's
 // `write_repo_presets` (`:156-193`), each minus its `ui.status` line (terminal UX — Zanshin
 // replaces it; NFR-R-2). The effect those lines announce IS ported: Ralph's rule
 // (2026-09-06) is that every on-disk, repo-side effect the CLI produces is required parity.
@@ -2238,7 +2238,7 @@ fn create_repo_config_file(
 ///
 /// The create-mode sibling of [`existing_repo_config_file`], resolving through the same
 /// `<config_dir>/jj/repos` root. Mirrors the CLI's `new_repo_config_file`
-/// (`cli/src/config.rs:573-579` @ v0.44.0), which likewise pairs the create-forcing
+/// (`cli/src/config.rs:581-587` @ v0.46.0), which likewise pairs the create-forcing
 /// `repo_config_path` with `ConfigFile::load_or_empty`.
 ///
 /// # Errors
@@ -2767,7 +2767,7 @@ mod tests {
         assert_eq!(snapshot_max_new_file_size(&unit).expect("a unit string"), 2048);
     }
 
-    /// `0` is the CLI's "no limit" (`cli_util.rs:1621-1623`), not "refuse every new file".
+    /// `0` is the CLI's "no limit" (`cli_util.rs:1652-1654`), not "refuse every new file".
     #[test]
     fn snapshot_max_new_file_size_zero_means_unlimited() {
         let config = stack_with("snapshot.max-new-file-size = 0");

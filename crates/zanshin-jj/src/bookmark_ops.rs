@@ -17,14 +17,14 @@
 //! the CLI's "No bookmarks to delete."
 //!
 //! Ports `cli/src/commands/bookmark/create.rs`, `.../delete.rs` and the
-//! `has_tracked_remote_bookmarks` helper from `cli/src/cli_util.rs:3385-3393`, all @ v0.44.0.
+//! `has_tracked_remote_bookmarks` helper from `cli/src/cli_util.rs:3478-3486`, all @ v0.46.0.
 //!
 //! `create` auto-tracks like the CLI (`create.rs:88-111` @ v0.46.0, Story 9.54's closing run):
 //! every created name a remote's `remotes.<r>.auto-track-bookmarks` ∪
 //! `auto-track-created-bookmarks` matcher accepts is tracked on that remote, if the remote has a
 //! view.
 //!
-//! # Deliberate divergences from the CLI at v0.44.0
+//! # Deliberate divergences from the CLI at v0.46.0
 //!
 //! - **Names are DECODED values, not CLI argument text.** The CLI validates a create name
 //!   with `revset_util::parse_bookmark_name` = `revset::parse_symbol`, i.e. the user must
@@ -122,10 +122,10 @@ fn validate_names(verb: &str, names: &[String]) -> Result<Vec<RefNameBuf>, Mutat
 }
 
 /// Whether `bookmark` has any TRACKED remote bookmark — the CLI's
-/// `cli_util.rs:3385-3393` `has_tracked_remote_bookmarks`.
+/// `cli_util.rs:3478-3486` `has_tracked_remote_bookmarks`.
 ///
 /// On a GIT-backed repo the default-ignored remote is excluded — jj-lib's reserved `git`
-/// (`cli_util.rs:3372-3381` `default_ignored_remote_name`) — which is why a colocated `foo@git`
+/// (`cli_util.rs:3465-3474` `default_ignored_remote_name`) — which is why a colocated `foo@git`
 /// does NOT block `create foo` there. The exclusion is git-specific: on any other backend the
 /// matcher is `StringMatcher::all()`, so nothing is ignored and a tracked `foo@git` DOES block.
 fn has_tracked_remote_bookmarks(repo: &dyn jj_lib::repo::Repo, bookmark: &RefName) -> bool {

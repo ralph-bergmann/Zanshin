@@ -296,7 +296,7 @@ fn parse_with_prefixes(
 /// the alias map, parse (no loaded operation needed, so a syntax error costs no head load
 /// I/O), reload to head (ADR-0002), evaluate, then drive `Revset::stream()` through
 /// jj-lib's own `RevsetStreamExt::commits` — the same hydration the CLI's `jj log` uses
-/// (`cli/src/commands/log.rs` @ v0.44.0).
+/// (`cli/src/commands/log.rs:360` @ v0.46.0).
 ///
 /// # Errors
 ///
@@ -390,7 +390,7 @@ impl RevsetConfig {
 }
 
 /// Reads [`RevsetConfig`] out of a loaded stack — the CLI's `load_revset_aliases`
-/// (`cli/src/cli_util.rs:3415-3423` @ v0.44.0): the alias map, then the builtin-redefinition
+/// (`cli/src/cli_util.rs:3508-3516` @ v0.46.0): the alias map, then the builtin-redefinition
 /// check. Their warnings are recorded once per call into `sink` (Story 9.32).
 ///
 /// # Errors
@@ -407,7 +407,7 @@ pub(crate) fn revset_config(config: &StackedConfig, sink: &mut Warnings) -> Resu
     })
 }
 
-/// The CLI's `warn_user_redefined_builtin` (`cli/src/revset_util.rs:154-180` @ v0.44.0): one
+/// The CLI's `warn_user_redefined_builtin` (`cli/src/revset_util.rs:168-194` @ v0.46.0): one
 /// [`WarningKind::ConfigAliasRedefined`] per non-builtin layer that redefines one of the three
 /// mutability builtins.
 fn redefined_builtins(config: &StackedConfig) -> Vec<Warning> {
@@ -432,7 +432,7 @@ fn redefined_builtins(config: &StackedConfig) -> Vec<Warning> {
 }
 
 /// The context line the CLI prints above a user revset's parse diagnostics
-/// (`cli/src/cli_util.rs:1851` @ v0.44.0).
+/// (`cli/src/cli_util.rs:1884` @ v0.46.0).
 pub(crate) const IN_REVSET_EXPRESSION: &str = "In revset expression";
 
 /// Parses `expr` in this workspace's revset context (`parse_config`'s aliases and user email,
@@ -977,7 +977,7 @@ pub(crate) fn evaluate_revset<'r>(
 ///   all aborts the load (`cli/src/config.rs:943-953` returns `ConfigGetError::Type`).
 ///   Skipping it would silently fall back to the builtin aliases — the one behaviour this
 ///   story exists to prevent.
-/// - **The ENTRY level warns and continues** (`cli/src/config.rs:1009-1032` @ v0.44.0): a
+/// - **The ENTRY level warns and continues** (`cli/src/config.rs:1184-1207` @ v0.46.0): a
 ///   non-string value or a declaration jj-lib's parser rejects is skipped with a
 ///   [`WarningKind::ConfigAliasInvalid`] carrying the CLI's "Failed to load `{table}.{decl}`: …"
 ///   (Story 9.32), and every other alias still loads. One messy entry must not take down the
@@ -1044,7 +1044,7 @@ where
 
 /// Builds the CLI's immutable-set expression, `::(immutable_heads() | root())`.
 ///
-/// Mirrors the CLI's *in-code* construction (`cli/src/revset_util.rs:193-203` +
+/// Mirrors the CLI's *in-code* construction (`cli/src/revset_util.rs:206-218` @ v0.46.0 +
 /// `cli/src/cli_util.rs:956-961`: parse the `immutable_heads()` definition, union
 /// `root()`, then `ancestors()`) rather than the `immutable()` alias, which exists only
 /// for user-written revsets. Both denote the same set, but mirroring the in-code form is

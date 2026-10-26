@@ -9,8 +9,8 @@
 //! read through jj-lib ([`descriptions`]) so the measurement never snapshots itself; Git's own
 //! state is read back with `git rev-parse`.
 //!
-//! The expected sequences are derived from `cli/src/cli_util.rs` @ v0.44.0: `snapshot_impl`
-//! (`:1298-1326`) runs `import git head` (written only when HEAD moved), `snapshot working copy`
+//! The expected sequences are derived from `cli/src/cli_util.rs` @ v0.46.0: `snapshot_impl`
+//! (`:1326-1354`) runs `import git head` (written only when HEAD moved), `snapshot working copy`
 //! (only when the tree changed) and `import git refs` (only when refs changed), each as its own
 //! operation.
 
@@ -401,7 +401,7 @@ fn a_held_git_import_export_lock_is_waited_for() {
 }
 
 /// Story 9.34, the double fault "Git HEAD moved outside AND a wrong-typed snapshot knob": the CLI
-/// reads the snapshot knobs inside `snapshot_working_copy` (`cli_util.rs:2065-2070` @ v0.44.0),
+/// reads the snapshot knobs inside `snapshot_working_copy` (`cli_util.rs:2098-2103` @ v0.46.0),
 /// AFTER its lock and its `import git head` — so it writes that operation, then fails. Zanshin
 /// leaves the same op log, and the partial report says so.
 #[test]
@@ -476,7 +476,7 @@ fn a_wrong_typed_knob_is_refused_only_once_the_held_lock_is_free() {
 }
 
 /// Story 9.34: `snapshot.auto-track` is read with the other snapshot knobs, inside the snapshot
-/// step (`cli_util.rs:2065-2067` @ v0.44.0) — AFTER `import git head`, so a wrong-typed value
+/// step (`cli_util.rs:2098-2100` @ v0.46.0) — AFTER `import git head`, so a wrong-typed value
 /// leaves that operation in the op log, as in the CLI.
 #[test]
 fn a_wrong_typed_auto_track_fails_after_the_head_import_like_the_cli() {
@@ -502,8 +502,8 @@ fn a_wrong_typed_auto_track_fails_after_the_head_import_like_the_cli() {
     assert!(report.was_snapshot_taken, "an operation WAS written before the failure");
 }
 
-/// The `[fileset-aliases]` table is part of the start-up environment (`cli_util.rs:938` @
-/// v0.44.0), loaded BEFORE the lock: a layer whose `fileset-aliases` is not a table refuses
+/// The `[fileset-aliases]` table is part of the start-up environment (`cli_util.rs:963` @
+/// v0.46.0), loaded BEFORE the lock: a layer whose `fileset-aliases` is not a table refuses
 /// WITHOUT waiting for a concurrent holder and writes nothing — not even the head import a Git
 /// HEAD moved outside would otherwise cause.
 #[test]
@@ -538,7 +538,7 @@ fn a_non_table_fileset_aliases_is_refused_before_the_lock() {
 }
 
 /// The start-up environment stays BEFORE the lock (`workspace_helper_with_stats` builds it
-/// first, `cli_util.rs:477` @ v0.44.0): a bad `immutable_heads()` alias refuses WITHOUT waiting
+/// first, `cli_util.rs:478` @ v0.46.0): a bad `immutable_heads()` alias refuses WITHOUT waiting
 /// for a concurrent holder and writes nothing — not even the head import a Git HEAD moved outside
 /// would otherwise cause, exactly as the CLI leaves it.
 #[test]
@@ -578,7 +578,7 @@ fn a_bad_immutable_heads_alias_is_refused_before_the_lock() {
 }
 
 /// A malformed Git import option fails where the CLI reads it — at the START of the refs step
-/// (`cli_util.rs:1434-1437` @ v0.44.0), AFTER `import git head` was committed: the op log keeps
+/// (`cli_util.rs:1463-1466` @ v0.46.0), AFTER `import git head` was committed: the op log keeps
 /// that operation and the partial report says so.
 #[test]
 fn an_invalid_import_option_fails_after_the_head_import_like_the_cli() {

@@ -204,7 +204,7 @@ fn create_with_several_names_writes_one_operation_in_argument_order() {
 }
 
 /// The CLI allows a bookmark on the root commit — only a later `git export` objects
-/// (`cli/tests/test_bookmark_command.rs:122-141` @ v0.44.0).
+/// (`cli/tests/test_bookmark_command.rs:122-141` @ v0.46.0).
 #[test]
 fn create_on_the_root_commit_succeeds() {
     test_helpers::pin_test_env();

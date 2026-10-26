@@ -115,7 +115,7 @@ fn remotes_lists_configured_remotes_sorted_by_name() {
 
     // AC-9 #18: origin's url matches the configured https URL verbatim.
     // Sorted order is [creds, origin, upstream] → origin is index 1.
-    assert_eq!(remotes[1].url, "https://github.com/origin/repo.git");
+    assert_eq!(remotes[1].url.as_deref(), Some("https://github.com/origin/repo.git"));
     assert!(
         remotes.iter().all(|r| r.push_url.is_none()),
         "none of these remotes was given a push URL; got {remotes:?}"
@@ -150,7 +150,7 @@ fn remotes_report_a_distinct_push_url() {
 
     let remotes = repo.list_remotes().unwrap();
     assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
-    assert_eq!(remotes[0].url, "https://github.com/origin/repo.git");
+    assert_eq!(remotes[0].url.as_deref(), Some("https://github.com/origin/repo.git"));
     assert_eq!(
         remotes[0].push_url.as_deref(),
         Some("ssh://git@github.com/origin/repo.git")
@@ -218,22 +218,22 @@ fn remotes_pair_each_push_url_with_its_own_remote() {
     .unwrap();
 
     let remotes = repo.list_remotes().unwrap();
-    let rows: Vec<(&str, &str, Option<&str>)> = remotes
+    let rows: Vec<(&str, Option<&str>, Option<&str>)> = remotes
         .iter()
-        .map(|r| (r.name.as_str(), r.url.as_str(), r.push_url.as_deref()))
+        .map(|r| (r.name.as_str(), r.url.as_deref(), r.push_url.as_deref()))
         .collect();
     assert_eq!(
         rows,
         [
             (
                 "alpha",
-                "https://github.com/alpha/repo.git",
+                Some("https://github.com/alpha/repo.git"),
                 Some("ssh://git@github.com/alpha/repo.git")
             ),
-            ("mid", "https://github.com/mid/repo.git", None),
+            ("mid", Some("https://github.com/mid/repo.git"), None),
             (
                 "zulu",
-                "https://github.com/zulu/repo.git",
+                Some("https://github.com/zulu/repo.git"),
                 Some("ssh://git@github.com/zulu/repo.git")
             ),
         ],
@@ -263,7 +263,8 @@ fn remotes_report_a_push_url_added_later() {
     let remotes = repo.list_remotes().unwrap();
     assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
     assert_eq!(
-        remotes[0].url, "https://github.com/origin/repo.git",
+        remotes[0].url.as_deref(),
+        Some("https://github.com/origin/repo.git"),
         "setting only the push URL must leave the fetch URL alone"
     );
     assert_eq!(
@@ -295,7 +296,7 @@ fn remotes_report_none_when_the_push_url_equals_the_fetch_url() {
 
     let remotes = repo.list_remotes().unwrap();
     assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
-    assert_eq!(remotes[0].url, url);
+    assert_eq!(remotes[0].url.as_deref(), Some(url));
     assert_eq!(
         remotes[0].push_url, None,
         "a push URL equal to the fetch URL is not a DIFFERENCE, so it is absent"
@@ -356,15 +357,14 @@ fn remotes_preserve_embedded_credentials() {
     let remotes = repo.list_remotes().unwrap();
 
     assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
+    let url = remotes[0].url.as_deref().expect("fetch URL");
     assert!(
-        remotes[0].url.contains("s3cr3t"),
-        "embedded password must be preserved verbatim (not 'redacted'), got: {}",
-        remotes[0].url
+        url.contains("s3cr3t"),
+        "embedded password must be preserved verbatim (not 'redacted'), got: {url}"
     );
     assert!(
-        remotes[0].url.contains("user:"),
-        "embedded username must be preserved verbatim, got: {}",
-        remotes[0].url
+        url.contains("user:"),
+        "embedded username must be preserved verbatim, got: {url}"
     );
 }
 
@@ -392,21 +392,13 @@ fn remotes_keep_ssh_form() {
     let remotes = repo.list_remotes().unwrap();
 
     assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
+    let url = remotes[0].url.as_deref().expect("fetch URL");
     assert!(
-        !remotes[0].url.starts_with("https://"),
-        "SSH URL must not be rewritten to HTTPS, got: {}",
-        remotes[0].url
+        !url.starts_with("https://"),
+        "SSH URL must not be rewritten to HTTPS, got: {url}"
     );
-    assert!(
-        remotes[0].url.contains("github.com"),
-        "host must be preserved, got: {}",
-        remotes[0].url
-    );
-    assert!(
-        remotes[0].url.contains("user/repo"),
-        "path must be preserved, got: {}",
-        remotes[0].url
-    );
+    assert!(url.contains("github.com"), "host must be preserved, got: {url}");
+    assert!(url.contains("user/repo"), "path must be preserved, got: {url}");
 }
 
 // ── Corrupt repo returns Backend error ────────────────────────────────────────
@@ -415,8 +407,8 @@ fn remotes_keep_ssh_form() {
 fn remotes_on_corrupt_repo_returns_backend_error() {
     test_helpers::pin_test_env();
     let tmp = TempDir::new().unwrap();
-    // Native backend: list_remotes() still calls load_at_head() first, which will
-    // fail when op_heads is removed → RemoteError::Backend.
+    // Native backend: list_remotes() still loads the head first (snapshot::reload_head),
+    // which will fail when op_heads is removed → RemoteError::Backend.
     Repo::init(&zanshin_jj::InitOptions {
         path: std::path::PathBuf::from(tmp.path()),
         ..Default::default()
@@ -427,7 +419,7 @@ fn remotes_on_corrupt_repo_returns_backend_error() {
     let mut repo = Repo::open(tmp.path()).unwrap();
 
     // Corrupt AFTER open: list_remotes() re-resolves to head per call (ADR-0002),
-    // so removing op_heads makes load_at_head() fail → RemoteError::Backend.
+    // so removing op_heads makes the head load fail → RemoteError::Backend.
     let op_heads = tmp.path().join(".jj").join("repo").join("op_heads");
     fs::remove_dir_all(&op_heads).unwrap();
 
@@ -435,5 +427,69 @@ fn remotes_on_corrupt_repo_returns_backend_error() {
     assert!(
         matches!(result, Err(RemoteError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
         "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt repo must yield Backend error, got: {result:?}"
+    );
+}
+
+// ── Story 9.46: push-only remotes and remotes that fail to load ───────────────
+
+/// A non-colocated Git-backed repo whose store's Git config gets `extra` appended.
+fn git_repo_with_config(extra: &str) -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
+    let config = tmp.path().join(".jj/repo/store/git/config");
+    let mut text = fs::read_to_string(&config).unwrap();
+    text.push_str(extra);
+    fs::write(&config, text).unwrap();
+    tmp
+}
+
+/// `jj git remote list` lists a remote with only a `pushurl` as `p <no URL> (push: <u>)`
+/// (`cli/src/commands/git/remote/list.rs:45-59,64-69` @ v0.46.0): `url` absent, `push_url` set.
+/// An empty `[remote "e"]` section is skipped, as the CLI skips it.
+#[test]
+fn a_push_only_remote_is_listed_without_a_fetch_url() {
+    test_helpers::pin_test_env();
+    let tmp = git_repo_with_config(
+        "[remote \"p\"]\n\tpushurl = ssh://git@example.com/p.git\n[remote \"e\"]\n\
+         [remote \"o\"]\n\turl = https://example.com/o.git\n",
+    );
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    let remotes = repo.list_remotes().unwrap();
+    let rows: Vec<(&str, Option<&str>, Option<&str>)> = remotes
+        .iter()
+        .map(|r| (r.name.as_str(), r.url.as_deref(), r.push_url.as_deref()))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("o", Some("https://example.com/o.git"), None),
+            ("p", None, Some("ssh://git@example.com/p.git")),
+        ]
+    );
+}
+
+/// A remote gix cannot load refuses the whole list, as the CLI's
+/// `try_find_active_remote(..)?` does (`list.rs:42-44` @ v0.46.0): `Backend` with jj-lib's
+/// chain, nothing listed.
+#[test]
+fn a_remote_that_fails_to_load_refuses_the_list() {
+    test_helpers::pin_test_env();
+    let tmp = git_repo_with_config(
+        "[remote \"bad\"]\n\turl = https://example.com/b.git\n\tfetch = a::b\n\
+         [remote \"good\"]\n\turl = https://example.com/g.git\n",
+    );
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    let err = repo.list_remotes().expect_err("a remote that fails to load refuses");
+    assert!(
+        matches!(&err, RemoteError::Backend(chain)
+            if chain.starts_with("Unexpected Git error when managing remotes: ")),
+        "{err:?}"
     );
 }

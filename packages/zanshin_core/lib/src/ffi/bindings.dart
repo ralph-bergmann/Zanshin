@@ -3377,7 +3377,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_redo(
 /// `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 /// the cause and both operation ids in `context`, nothing is written.
-/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+/// - `jj.jj_lib_error` — a remote fails to load (the call refuses as `jj git remote list`
+/// does; the CLI has printed the remotes sorted before the broken one by then, an error
+/// envelope carries no payload, so nothing is listed), or another unclassified jj-lib
+/// error; jj-lib's chain in `context`.
 ///
 /// # Safety
 /// `handle` must be a value returned by a successful `zanshin_repo_open`,

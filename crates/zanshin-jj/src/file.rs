@@ -9,7 +9,7 @@
 //! copy FIRST (Story 9.26), and that snapshot is what may write one. An omitted `revision` is
 //! therefore the up-to-date `@`, on-disk edits included.
 //!
-//! CLI parity is at tag **v0.44.0** (`cli/src/commands/file/{list,show,annotate,search}.rs`)
+//! CLI parity is at tag **v0.46.0** (`cli/src/commands/file/{list,show,annotate,search}.rs`)
 //! for the observable behavior — defaults, refusals, skip rules, pattern parsing — never for
 //! its terminal UX (NFR-R-2, ADR-0003): `-T/--template` and `--line-number` render text and
 //! are dropped, because the typed result already carries the structured fields they would
@@ -45,7 +45,7 @@ use crate::warning::{self, WarningKind, Warnings};
 use crate::{ChangeId, CommitId, SkippedPath};
 
 /// What a tree entry IS, mirroring the CLI's `TreeEntry.file_type` keyword
-/// (`cli/src/commit_templater.rs::describe_file_type` @ v0.44.0).
+/// (`cli/src/commit_templater.rs::describe_file_type` @ v0.46.0).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileType {
     /// A regular file.
@@ -161,7 +161,7 @@ pub struct FileSearch {
     pub matches: Vec<SearchMatch>,
     /// Paths whose blob could NOT be read. This carries `AccessDenied` and nothing else,
     /// because that is the only case `jj file search` warns about
-    /// (`cli/src/commands/file/search.rs:109-115` @ v0.44.0); symlinks, Git submodules and
+    /// (`cli/src/commands/file/search.rs:109-115` @ v0.46.0); symlinks, Git submodules and
     /// non-file conflicts are skipped SILENTLY there and never appear here — the exact
     /// OPPOSITE of `jj file show`, whose [`FileContents::skipped`] reports them.
     ///
@@ -310,7 +310,7 @@ fn to_file_entry(path: &RepoPath, value: &MergedTreeValue) -> Option<FileEntry> 
 
 /// Lists the entries of `revision`'s tree that match `paths` (Story 9.4).
 ///
-/// Ports `cli/src/commands/file/list.rs::cmd_file_list` @ v0.44.0: resolve the revision,
+/// Ports `cli/src/commands/file/list.rs::cmd_file_list` @ v0.46.0: resolve the revision,
 /// take its tree, build the matcher, walk `entries_matching`. The CLI has NO refusals here
 /// at all — a path matching nothing only produces a trailing warning
 /// (`print_unmatched_explicit_paths`), recorded into `sink` as `jj.paths_unmatched`
@@ -465,7 +465,7 @@ fn render_entry(
 
 /// Prints the contents of the files selected by `paths` in `revision` (Story 9.4).
 ///
-/// Ports `cli/src/commands/file/show.rs::cmd_file_show` @ v0.44.0, both branches: with
+/// Ports `cli/src/commands/file/show.rs::cmd_file_show` @ v0.46.0, both branches: with
 /// exactly ONE path the CLI takes a fast path through `tree.path_value` (absent ⇒ refuse,
 /// non-tree ⇒ render that single entry), otherwise it walks `entries_matching`. A directory
 /// is visited recursively either way.
@@ -554,7 +554,7 @@ pub(crate) fn file_show(
 
 /// Annotates `path` in `revision` line by line (Story 9.4).
 ///
-/// Ports `cli/src/commands/file/annotate.rs::cmd_file_annotate` @ v0.44.0. `path` is a
+/// Ports `cli/src/commands/file/annotate.rs::cmd_file_annotate` @ v0.46.0. `path` is a
 /// PLAIN path, not a fileset — it is `parse_file_path` in the CLI too. Both guards run
 /// BEFORE the annotator because `FileAnnotator::from_commit` returns an EMPTY annotation
 /// for a missing file rather than an error.
@@ -567,7 +567,7 @@ pub(crate) fn file_show(
 ///
 /// For a line whose origin search stopped outside the domain, this resolves
 /// `origin.commit_id` in the store; the CLI substitutes the ROOT commit instead
-/// (`cli/src/commands/file/annotate.rs:124-129` @ v0.44.0), and its comment says WHY: a repo
+/// (`cli/src/commands/file/annotate.rs:124-129` @ v0.46.0), and its comment says WHY: a repo
 /// that was jj-initialized shallowly and then unshallow'd with git has commits jj never
 /// imported, so that id may be ABSENT from the store. There, the CLI still renders every
 /// line; here the store read fails and the whole call becomes [`FileError::Backend`].
@@ -692,7 +692,7 @@ fn collect_matches(
 
 /// Searches the files of `revision` matching `paths` for `pattern` (Story 9.4).
 ///
-/// Ports `cli/src/commands/file/search.rs::cmd_file_search` @ v0.44.0. `pattern` is jj's
+/// Ports `cli/src/commands/file/search.rs::cmd_file_search` @ v0.46.0. `pattern` is jj's
 /// `kind:pattern` string-pattern syntax, defaulting to `regex`. Symlinks, Git submodules and
 /// non-file conflicts are silently not searched, exactly as the CLI skips them
 /// (`search.rs:134, :159-161`); a path whose blob cannot be READ is reported in

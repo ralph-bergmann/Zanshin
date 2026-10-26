@@ -62,11 +62,13 @@ final class Remote {
   /// Remote name (UTF-8), e.g. `"origin"`.
   final String name;
 
-  /// Fetch URL verbatim (no credential scrubbing).
-  final String url;
+  /// Fetch URL verbatim (no credential scrubbing); `null` for a remote with
+  /// only a push URL — the CLI's `<no URL> (push: …)` row (Story 9.46).
+  final String? url;
 
   /// Push URL when it DIFFERS from [url], `null` otherwise — null-for-absence,
-  /// never `''`. Absent means "this remote pushes to its fetch URL".
+  /// never `''`. Absent means "this remote pushes to its fetch URL". For a
+  /// push-only remote ([url] `null`) it is always set.
   ///
   /// This is a DIFFERENCE, not a raw `remote.<name>.pushurl` read: it is exactly
   /// the question `jj git remote list` answers when it prints its `(push: …)`
@@ -75,7 +77,8 @@ final class Remote {
   /// Because of that, this value is NOT round-trippable back through
   /// `gitRemoteSetUrl`: feeding a `null` back would clear a `pushurl` that was
   /// configured but happened to equal [url]. Treat `null` as "leave the push URL
-  /// alone", not "clear it".
+  /// alone", not "clear it" — and the same for a `null` [url]: never clear a
+  /// `url` or `pushurl` from these values.
   final String? pushUrl;
 }
 
@@ -171,9 +174,9 @@ WarnedList<Remote> _decodeRemotesEnvelope(Uint8List bytes) {
 
 Remote _mapRemote(fbs.Remote r) => Remote(
   name: r.name ?? '',
-  url: r.url ?? '',
-  // NO `?? ''` here, unlike the two siblings: coalescing would destroy the
-  // absent/present distinction this field exists to carry.
+  // NO `?? ''` on either URL: coalescing would destroy the absent/present
+  // distinction they carry.
+  url: r.url,
   pushUrl: r.pushUrl,
 );
 

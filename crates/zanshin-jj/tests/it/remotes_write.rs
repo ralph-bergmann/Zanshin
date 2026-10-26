@@ -489,7 +489,7 @@ fn prune_fixture() -> PruneFixture {
 
 /// `git.abandon-unreachable-commits = false` must actually be honoured by FETCH too — the
 /// option is read from the repo's EFFECTIVE config per call, never hardcoded (FR-JJ-17,
-/// CLI parity with `cli/src/commands/git/fetch.rs:235` @ v0.44.0).
+/// CLI parity with `cli/src/commands/git/fetch.rs:235` @ v0.46.0).
 ///
 /// The `feature@origin`-is-gone assertion is what keeps this from passing vacuously: if the
 /// pruning ever stopped happening, `B` would stay visible for a reason that has nothing to do

@@ -100,7 +100,7 @@ fn var_os_in(store: &OnceLock<EnvMap>, name: &str) -> Option<OsString> {
 /// jj-lib's own git-subprocess options (`git.executable-path`) plus the adopted environment — the
 /// options every `git` subprocess of a fetch or clone runs with. With nothing adopted the
 /// environment map is empty and git inherits the process environment, as in the CLI (which
-/// passes an empty map, `cli/src/commands/git/fetch.rs:238` @ v0.44.0). jj-lib applies the map
+/// passes an empty map, `cli/src/commands/git/fetch.rs:238` @ v0.46.0). jj-lib applies the map
 /// LAST and never clears the inherited environment, so the adopted `PATH` also selects which
 /// `git` runs.
 ///

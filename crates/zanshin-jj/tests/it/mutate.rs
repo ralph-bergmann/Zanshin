@@ -458,7 +458,7 @@ fn abandon_wc_itself_creates_new_empty_wc() {
 }
 
 /// With MORE THAN ONE target, `abandon` switches to the CLI's plural description —
-/// `abandon commit <first> and <n-1> more` (`cli/src/commands/abandon.rs` @ v0.44.0) — where
+/// `abandon commit <first> and <n-1> more` (`cli/src/commands/abandon.rs` @ v0.46.0) — where
 /// `<first>` is the FIRST ARGUMENT's commit hex, not the lowest or the newest. Every
 /// single-target test above exercises only the singular arm, so without this one the plural
 /// `format!` ships unwitnessed and an argument-order regression would stay green.

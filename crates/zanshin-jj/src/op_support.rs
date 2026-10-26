@@ -3,7 +3,7 @@
 //! `op_support.rs` — the orchestration every thick jj verb needs that lives in jj-cli's
 //! `cli_util`, not in jj-lib (Story 9.1).
 //!
-//! Ported at jj-cli **v0.44.0** parity — same preconditions, same refusals, same op-log
+//! Ported at jj-cli **v0.46.0** parity — same preconditions, same refusals, same op-log
 //! effect (NFR-R-2) — but never its terminal UX (ADR-0003): no `$EDITOR` buffer, no
 //! `DiffEditor`/`MergeEditor` subprocess, no `Ui` prompt. Interactive selection arrives as
 //! a GUI-supplied tree id instead.
@@ -12,16 +12,16 @@
 //! §5, is not a port: it is internal resolution plumbing shared by two verb families, with no
 //! CLI counterpart.
 //!
-//! - **§1 Rewritability guard** — `cli_util.rs:2002` `check_rewritable` /
-//!   `:2011` `check_rewritable_expr` / `:1118` `resolve_immutable_expression`.
+//! - **§1 Rewritability guard** — `cli_util.rs:2035` `check_rewritable` /
+//!   `:2044` `check_rewritable_expr` / `:1146` `resolve_immutable_expression`.
 //! - **§2 Insert-location resolution** — `cli_util.rs:3644` `compute_commit_location` /
 //!   `:3734` `ensure_no_commit_loop` @ v0.46.0.
 //! - **§3 Descriptions** — `description_util.rs:356` `try_combine_messages`, `:374`
 //!   `combine_messages_for_editing`, `:164` `cleanup_description_lines`, `:421`
 //!   `join_message_paragraphs` and `:449` `add_trailers_with_template` @ v0.46.0.
-//! - **§4 Selected-tree plumbing** — `cli_util.rs:3494` `DiffSelector`, whose
+//! - **§4 Selected-tree plumbing** — `cli_util.rs:3587` `DiffSelector`, whose
 //!   `NonInteractive` arm is jj-lib's `restore_tree`.
-//! - **§6 Transaction opening** — `cli_util.rs:2883` `start_repo_transaction`, the CLI's single
+//! - **§6 Transaction opening** — `cli_util.rs:2942` `start_repo_transaction`, the CLI's single
 //!   door onto `ReadonlyRepo::start_transaction`. Not rewrite orchestration like the four
 //!   above, but the same kind of port: `cli_util` code jj-lib does not expose.
 //!
@@ -67,12 +67,12 @@ use crate::template::Templates;
 
 /// Resolves the immutable expression's symbols against `repo`.
 ///
-/// Mirrors `cli_util.rs:1118` `resolve_immutable_expression` minus `--ignore-immutable`
+/// Mirrors `cli_util.rs:1146` `resolve_immutable_expression` minus `--ignore-immutable`
 /// (no verb in this crate exposes that flag) and minus the id-prefix context the CLI
 /// deliberately leaves empty there anyway.
 ///
 /// Resolve against the transaction's BASE repo, not its mutable one: that is what
-/// `rebase_mutable_descendants` (`cli_util.rs:2927`) does, because a `jj git fetch` can
+/// `rebase_mutable_descendants` (`cli_util.rs:2986`) does, because a `jj git fetch` can
 /// update immutable commits and only the still-reachable ones should constrain the rebase.
 ///
 /// # Errors
@@ -96,7 +96,7 @@ pub(crate) fn resolve_immutable(
 
 /// Refuses the rewrite if any of `commit_ids` is inside the immutable set.
 ///
-/// Ports `cli_util.rs:2011` `check_rewritable_expr`: intersect the immutable set with the
+/// Ports `cli_util.rs:2044` `check_rewritable_expr`: intersect the immutable set with the
 /// targets, stream the result, and refuse on the FIRST element. The CLI takes `try_next`,
 /// never a list, so the refusal names one offender even when several are immutable. Since
 /// Story 9.56 the refusal carries the CLI's hints for a non-root offender (`cli_util.rs:2049-2083`
@@ -524,7 +524,7 @@ pub(crate) fn apply_trailers(description: &str, new_trailers: &[Trailer]) -> Str
 
 /// The tree a partial-commit verb (squash, split, …) should actually write.
 ///
-/// Replaces the CLI's `DiffSelector` (`cli_util.rs:3494`). Its `NonInteractive` arm is
+/// Replaces the CLI's `DiffSelector` (`cli_util.rs:3587`). Its `NonInteractive` arm is
 /// [`SelectedTree::from_paths`]; its `Interactive` arm — which spawns a diff editor — is
 /// replaced by [`SelectedTree::from_tree_id`], where the GUI has already done the hunk
 /// selection and hands back a written tree (ADR-0003).
@@ -866,7 +866,7 @@ pub(crate) fn parse_prefixes(paths: &[String]) -> Result<Vec<RepoPathBuf>, Strin
 /// build-time fixture generator, neither part of what ships, and both writing operations no user
 /// undoes.
 ///
-/// Ports `cli/src/cli_util.rs:2883-2894` `start_repo_transaction` @ v0.44.0, through which the
+/// Ports `cli/src/cli_util.rs:2942-2953` `start_repo_transaction` @ v0.46.0, through which the
 /// CLI funnels every transaction it opens. Two of its three statements are reproduced:
 /// `ReadonlyRepo::start_transaction` and [`Transaction::set_workspace_name`], which is what puts
 /// `workspace_name` into the operation's metadata. The op log is on-disk state a user reads with
@@ -874,7 +874,7 @@ pub(crate) fn parse_prefixes(paths: &[String]) -> Result<Vec<RepoPathBuf>, Strin
 /// (NFR-R-2), not decoration.
 ///
 /// The CLI's third statement — the `command_args_to_transaction_attribute` loop
-/// (`cli_util.rs:2896`) — is deliberately NOT ported: it encodes the terminal command line that
+/// (`cli_util.rs:2955`) — is deliberately NOT ported: it encodes the terminal command line that
 /// ADR-0003 replaces with a GUI, so there is no argv to record. Nothing else is invented here:
 /// `hostname`/`username`/`time` already come from jj-lib's own `create_op_metadata`
 /// (`transaction.rs:176-198`) off the [`jj_lib::settings::UserSettings`], and `is_snapshot` is
@@ -882,13 +882,13 @@ pub(crate) fn parse_prefixes(paths: &[String]) -> Result<Vec<RepoPathBuf>, Strin
 ///
 /// `workspace_name` must be the name of the workspace the caller's `Workspace` handle was opened
 /// for — `Workspace::workspace_name()`, exactly as the caller this port mirrors
-/// (`cli_util.rs:2286-2298`) passes `self.workspace_name()`. Never a constant, and never derived
+/// (`cli_util.rs:2333-2345`) passes `self.workspace_name()`. Never a constant, and never derived
 /// from a path: in a repo with several workspaces the two differ, and the operation must name the
 /// one that ran it. `tests/it/op_workspace_name.rs` witnesses that from a SECOND workspace, which is
 /// the only place a constant `default` would show.
 ///
-/// The CLI has a second caller, the snapshot path (`cli_util.rs:2099`), which follows it with
-/// `set_is_snapshot(true)`; Zanshin's port of it, `snapshot::commit_snapshot` (Story 9.26), does
+/// The CLI has other callers, `cli_util.rs:691` among them; the snapshot path (`cli_util.rs:2132`)
+/// follows it with `set_is_snapshot(true)`; Zanshin's port of it, `snapshot::commit_snapshot` (Story 9.26), does
 /// exactly that on this helper's result — `is_snapshot` is not this helper's business in the CLI
 /// either.
 ///

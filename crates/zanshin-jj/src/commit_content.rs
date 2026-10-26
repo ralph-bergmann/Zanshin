@@ -3,7 +3,7 @@
 //! The op-pinned batch content lookup (Story 4.10) — the object half of a `jj log` row.
 //!
 //! [`commit_contents`] is the CONTINUATION of [`crate::Repo::graph_topology`]'s `jj log`: the
-//! CLI's per-row `get_commit_async` (`cli/src/commands/log.rs` @ v0.44.0), run at the operation
+//! CLI's per-row `get_commit_async` (`cli/src/commands/log.rs:298` @ v0.46.0), run at the operation
 //! the topology call returned. It therefore runs no precondition, no snapshot, no import, no
 //! config load and no secure-config fix-up, and it writes no operation and no op head: the repo
 //! is loaded with `load_operation` + `load_at`, never `load_at_head` (which prunes ancestor op
@@ -102,7 +102,7 @@ fn classify(id: &str, hex_len: usize) -> Result<(), IdFault> {
 }
 
 /// Parses a full operation id; the empty/non-hex text is the CLI's
-/// `OpsetResolutionError::InvalidIdPrefix` (jj-lib `op_walk.rs:79-81` @ v0.44.0).
+/// `OpsetResolutionError::InvalidIdPrefix` (jj-lib `op_walk.rs:79-81` @ v0.46.0).
 fn parse_operation_id(id: &str, hex_len: usize) -> Result<JjOperationId, CommitContentError> {
     let not_hex =
         || CommitContentError::InvalidInput(format!(r#"Operation ID "{id}" is not a valid hexadecimal prefix"#));

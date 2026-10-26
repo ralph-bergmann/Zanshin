@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! The jj config surface (Story 9.28) — the CLI's `jj config` group @ v0.44.0
+//! The jj config surface (Story 9.28) — the CLI's `jj config` group @ v0.46.0
 //! (`cli/src/commands/config/{list,get,path,set,unset,edit,gc}.rs`) as typed free functions.
 //!
 //! # Free functions, not `Repo` methods
@@ -603,7 +603,7 @@ fn parse_name(name: &str) -> Result<ConfigNamePathBuf, ConfigCmdError> {
     })
 }
 
-/// The CLI's `parse_value_or_bare_string` (`cli/src/config.rs:64-70` @ v0.44.0): a TOML value
+/// The CLI's `parse_value_or_bare_string` (`cli/src/config.rs:66-72` @ v0.46.0): a TOML value
 /// expression, else — when it does not look like one — the text as a bare string.
 fn parse_value_or_bare_string(value_str: &str) -> Result<ConfigValue, ConfigCmdError> {
     match value_str.parse::<ConfigValue>() {
@@ -616,7 +616,7 @@ fn parse_value_or_bare_string(value_str: &str) -> Result<ConfigValue, ConfigCmdE
     }
 }
 
-/// The CLI's `is_bare_string` (`cli/src/config.rs:72-82`).
+/// The CLI's `is_bare_string` (`cli/src/config.rs:74-84` @ v0.46.0).
 fn is_bare_string(value_str: &str) -> bool {
     // leading whitespace isn't ignored when parsing TOML value expression, but
     // "\n[]" doesn't look like a bare string.
@@ -638,7 +638,7 @@ struct AnnotatedValue {
     is_overridden: bool,
 }
 
-/// The CLI's `resolved_config_values` (`cli/src/config.rs:148-204` @ v0.44.0), verbatim: walks
+/// The CLI's `resolved_config_values` (`cli/src/config.rs:152-208` @ v0.46.0), verbatim: walks
 /// the layers top-down, marks each value shadowed by a value or table in an upper layer, and
 /// flattens tables (inline ones too, since their members can be overridden independently).
 fn resolved_config_values(stacked_config: &StackedConfig, filter_prefix: &ConfigNamePathBuf) -> Vec<AnnotatedValue> {
@@ -944,7 +944,7 @@ fn set_with(
             None
         };
         if let Some(author) = &working_copy_author {
-            // `warn_wc_author` (`cli/src/commands/config/set.rs:120-127` @ v0.44.0).
+            // `warn_wc_author` (`cli/src/commands/config/set.rs:110-117` @ v0.46.0).
             warnings.push(crate::warning::local(
                 crate::WarningKind::ConfigWorkingCopyAuthor,
                 format!(
@@ -989,7 +989,7 @@ fn author_field(name: &ConfigNamePathBuf) -> Option<AuthorField> {
     }
 }
 
-/// The CLI's `check_wc_author` (`cli/src/commands/config/set.rs:94-113` @ v0.44.0): load and
+/// The CLI's `check_wc_author` (`cli/src/commands/config/set.rs:84-103` @ v0.46.0): load and
 /// SNAPSHOT the workspace (its `workspace_helper`; any failure → skip silently), then compare
 /// `@`'s author field with the new value — a non-string value always differs. The snapshot's
 /// report and warnings land in `out`, on success AND on failure.
@@ -1121,7 +1121,7 @@ fn gc_root(env: &ConfigEnv, warnings: &mut Vec<crate::Warning>) -> Result<PathBu
         })
 }
 
-/// The CLI's `find_missing_repo_configs` (`cli/src/commands/config/gc.rs:88-129` @ v0.44.0).
+/// The CLI's `find_missing_repo_configs` (`cli/src/commands/config/gc.rs:88-129` @ v0.46.0).
 fn find_missing_repo_configs(root: &Path) -> Result<Vec<MissingRepoConfig>, ConfigCmdError> {
     let failed = |verb: &str, e: std::io::Error| ConfigCmdError::Config {
         reason: format!("Failed to {verb} {}: {e}", root.display()),
@@ -1313,7 +1313,7 @@ mod tests {
 
     // ── The two verbatim ports ──────────────────────────────────────────────
 
-    /// The CLI's own oracle table (`cli/src/config.rs:1111-1145` @ v0.44.0).
+    /// The CLI's own oracle table (`cli/src/config.rs:1291-1325` @ v0.46.0).
     #[test]
     fn parse_value_or_bare_string_matches_the_cli_table() {
         let parse = |s: &str| parse_value_or_bare_string(s).expect(s);

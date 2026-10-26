@@ -78,7 +78,7 @@ fn be<E: std::fmt::Display>(e: E) -> ViewError {
 /// Lists local + tracked-remote tags, sorted by name then kind.
 ///
 /// Unlike the CLI's `jj tag list`, a tracked remote tag whose target equals the local one is
-/// NOT hidden (`cli/src/commit_ref_list.rs:89-91` @ v0.44.0 drops it via
+/// NOT hidden (`cli/src/commit_ref_list.rs:89-91` @ v0.46.0 drops it via
 /// `include_synced_remotes`). That filter is a *display* default: the filtered, per-row view is
 /// [`crate::CommitMeta::tags`]' job, and the unfiltered view is this function's — exactly the
 /// split [`crate::Repo::list_bookmarks`] already makes. The backend classifies and offers; the
@@ -155,7 +155,7 @@ pub(crate) fn list_heads(workspace: &Workspace) -> Result<Vec<CommitId>, ViewErr
 
 /// Lists every workspace of this repo with its working-copy commit id.
 ///
-/// The view half of `jj workspace list` (`cli/src/commands/workspace/list.rs:74` @ v0.44.0
+/// The view half of `jj workspace list` (`cli/src/commands/workspace/list.rs:74` @ v0.46.0
 /// iterates the same map): name → commit id, in jj-lib's own `BTreeMap` order (lexicographic by
 /// workspace name), which is preserved rather than re-sorted. No workspace *path* is reported —
 /// that lives in the `WorkspaceStore`, not the `View`.

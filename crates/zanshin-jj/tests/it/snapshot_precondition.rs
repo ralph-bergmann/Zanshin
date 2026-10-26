@@ -508,7 +508,7 @@ fn auto_update_stale_recovers_a_working_copy_at_a_missing_operation() {
 }
 
 /// Story 9.34: the snapshot knobs are read at the top of the snapshot step, BEFORE the
-/// working-copy lock and the stale check (`cli_util.rs:2065-2079` @ v0.44.0), so a stale working
+/// working-copy lock and the stale check (`cli_util.rs:2098-2112` @ v0.46.0), so a stale working
 /// copy with a wrong-typed knob refuses on the knob, as in the CLI.
 #[test]
 fn a_wrong_typed_knob_wins_over_a_stale_working_copy() {

@@ -26,31 +26,31 @@ use jj_lib::ui_path::RepoPathUiConverter;
 use jj_lib::working_copy::{self, UntrackedReason};
 
 /// What a warning is about — one variant per remedy, each the port of one jj CLI
-/// `ui.warning_*` site @ v0.44.0 (Story 9.32). The FFI turns each into its registered `jj.*`
+/// `ui.warning_*` site @ v0.46.0 (Story 9.32). The FFI turns each into its registered `jj.*`
 /// warning code (`docs/rust-error-codes.md`, "Warning Codes").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WarningKind {
     /// `user.name` and/or `user.email` is empty and an operation was committed with that
-    /// identity — `finish_transaction`'s "Name and email not configured" (`cli_util.rs:2387-2415`).
+    /// identity — `finish_transaction`'s "Name and email not configured" (`cli_util.rs:2442-2470`).
     IdentityMissing,
     /// `@` was inside the immutable set, so a new `@` was created on top of it — the snapshot's
-    /// "is immutable" (`cli_util.rs:2123-2127`) or the finish's "became immutable" (`:2338-2342`).
+    /// "is immutable" (`cli_util.rs:2156-2160`) or the finish's "became immutable" (`:2385-2389`).
     WorkingCopyImmutable,
-    /// A colocated snapshot found top-level `.jjconflict*` entries (`cli_util.rs:2206-2210`).
+    /// A colocated snapshot found top-level `.jjconflict*` entries (`cli_util.rs:2253-2257`).
     JjconflictFilesPresent,
-    /// Git HEAD could not be moved to `@`'s parent (`try_reset_git_head`, `cli_util.rs:2689`).
+    /// Git HEAD could not be moved to `@`'s parent (`try_reset_git_head`, `cli_util.rs:2748`).
     GitHeadUpdateFailed,
-    /// Bookmarks or tags the Git export could not write (`git_util.rs:468-492`).
+    /// Bookmarks or tags the Git export could not write (`git_util.rs:467-491`).
     GitExportFailed,
-    /// Git refs the import could not read (`git_util.rs:270-279`).
+    /// Git refs the import could not read (`git_util.rs:269-278`).
     GitImportFailed,
     /// New files larger than `snapshot.max-new-file-size` stayed untracked
-    /// (`print_untracked_files`, `cli_util.rs:3183-3203`).
+    /// (`print_untracked_files`, `cli_util.rs:3242-3262`).
     SnapshotFilesRefused,
-    /// Paths skipped because their names are not valid UTF-8 (`cli_util.rs:3207-3228`).
+    /// Paths skipped because their names are not valid UTF-8 (`cli_util.rs:3266-3287`).
     SnapshotPathsNotUtf8,
     /// Working-copy updates skipped because of conflicting on-disk changes
-    /// (`print_checkout_stats`, `cli_util.rs:3303-3309`).
+    /// (`print_checkout_stats`, `cli_util.rs:3362-3368`).
     CheckoutFilesSkipped,
     /// A checkout moved `@` onto a commit with conflicts: the CLI lists each conflicted path with
     /// a description of its conflict (`print_updated_working_copy_stats`,
@@ -60,17 +60,17 @@ pub enum WarningKind {
     /// does not.
     UnresolvedConflicts,
     /// Explicitly named paths that match no entry (`print_unmatched_explicit_paths`,
-    /// `cli_util.rs:3323-3347`).
+    /// `cli_util.rs:3382-3413`).
     PathsUnmatched,
     /// A `[revset-aliases]` / `[fileset-aliases]` entry that does not load
-    /// (`load_aliases_map`, `config.rs:1026-1031`).
+    /// (`load_aliases_map`, `config.rs:1201-1206`).
     ConfigAliasInvalid,
     /// A config layer redefines `mutable()`, `immutable()` or `builtin_immutable_heads()`
-    /// (`warn_user_redefined_builtin`, `revset_util.rs:154-180`).
+    /// (`warn_user_redefined_builtin`, `revset_util.rs:168-194`).
     ConfigAliasRedefined,
-    /// A revset parsed with a diagnostic (`print_parse_diagnostics`, `command_error.rs:1105-1119`).
+    /// A revset parsed with a diagnostic (`print_parse_diagnostics`, `command_error.rs:1136-1150`).
     RevsetDiagnostic,
-    /// The short-prefixes disambiguation index could not be loaded (`commit_templater.rs:2208-2215`).
+    /// The short-prefixes disambiguation index could not be loaded (`commit_templater.rs:2285-2292`).
     ShortPrefixesFailed,
     /// Another remote already uses the URL just added (`git/remote/add.rs:103-108`).
     RemoteUrlDuplicate,
@@ -119,13 +119,13 @@ pub enum WarningKind {
     /// `bookmark untrack` of a bookmark on the Git-tracking remote `git` — "Git-tracking bookmark
     /// cannot be untracked: {symbol}" (`bookmark/untrack.rs:115-121` @ v0.46.0; Story 9.11).
     BookmarkGitTrackingUntrack,
-    /// A path `absorb` could not split (`absorb.rs:155-158`).
+    /// A path `absorb` could not split (`absorb.rs:156-159`).
     AbsorbPathSkipped,
-    /// A path whose content could not be read (`file/show.rs:164-170`, `file/search.rs:109-115`).
+    /// A path whose content could not be read (`file/show.rs:163-169`, `file/search.rs:109-115`).
     PathAccessDenied,
-    /// A path that exists but is not a file (`file/show.rs:191-197`).
+    /// A path that exists but is not a file (`file/show.rs:190-196`).
     PathNotAFile,
-    /// `user.name`/`user.email` was set but `@`'s author stays the old one (`config/set.rs:120-127`).
+    /// `user.name`/`user.email` was set but `@`'s author stays the old one (`config/set.rs:110-117`).
     ConfigWorkingCopyAuthor,
     /// A missing repo config directory could not be deleted (`config/gc.rs:80-84`).
     ConfigGcDeleteFailed,
@@ -325,7 +325,7 @@ pub struct Warned<T> {
 }
 
 /// A config-derived load whose warnings are recorded once per call — the CLI performs each of
-/// them once per command (`WorkspaceCommandEnvironment::new`, `cli_util.rs:934-966`).
+/// them once per command (`WorkspaceCommandEnvironment::new`, `cli_util.rs:959-991`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Load {
     /// The `[revset-aliases]` table (entry failures and builtin redefinitions).
@@ -411,7 +411,7 @@ pub(crate) fn ui_path(workspace_root: &Path, path: &RepoPath) -> String {
     .format_file_path(path)
 }
 
-/// The lines `print_error_sources` (`command_error.rs:1037-1053`) writes for `source`: one
+/// The lines `print_error_sources` (`command_error.rs:1068-1084`) writes for `source`: one
 /// `Caused by: …` line for a single cause, a numbered list below `Caused by:` for a chain.
 pub(crate) fn caused_by(source: Option<&(dyn Error + 'static)>) -> Vec<String> {
     let Some(err) = source else {
@@ -432,7 +432,7 @@ pub(crate) fn caused_by(source: Option<&(dyn Error + 'static)>) -> Vec<String> {
 }
 
 /// `err` and every `source()` below it, one per line — the body `print_parse_diagnostics`
-/// (`command_error.rs:1112-1114`) writes after its context line.
+/// (`command_error.rs:1143-1145`) writes after its context line.
 pub(crate) fn error_chain_lines(err: &(dyn Error + 'static)) -> Vec<String> {
     let mut lines = Vec::new();
     let mut next = Some(err);
@@ -462,7 +462,7 @@ pub(crate) fn parse_diagnostics<T: Error + 'static>(
         .collect()
 }
 
-/// The finish's identity check (`cli_util.rs:2387-2401`): `None` when both `user.name` and
+/// The finish's identity check (`cli_util.rs:2442-2456`): `None` when both `user.name` and
 /// `user.email` are configured.
 pub(crate) fn identity_missing(settings: &UserSettings) -> Option<Warning> {
     let not_configured = match (settings.user_name().is_empty(), settings.user_email().is_empty()) {
@@ -480,26 +480,26 @@ pub(crate) fn identity_missing(settings: &UserSettings) -> Option<Warning> {
     ))
 }
 
-/// The snapshot's immutable-`@` warning (`cli_util.rs:2123-2127`).
+/// The snapshot's immutable-`@` warning (`cli_util.rs:2156-2160`).
 pub(crate) const WC_IS_IMMUTABLE: &str =
     "The working-copy commit is immutable; a new commit has been created on top of it.";
 
-/// The finish's became-immutable warning (`cli_util.rs:2338-2342`).
+/// The finish's became-immutable warning (`cli_util.rs:2385-2389`).
 pub(crate) const WC_BECAME_IMMUTABLE: &str =
     "The working-copy commit became immutable; a new commit has been created on top of it.";
 
-/// The colocated `.jjconflict` warning (`cli_util.rs:2206-2210`).
+/// The colocated `.jjconflict` warning (`cli_util.rs:2253-2257`).
 pub(crate) const JJCONFLICT_FILES: &str = "The working copy contains '.jjconflict' files. These files are used by \
                                            `jj` internally and should not be present in the working copy.";
 
-/// `try_reset_git_head`'s warning (`cli_util.rs:2688-2691`): the error, then its sources.
+/// `try_reset_git_head`'s warning (`cli_util.rs:2747-2750`): the error, then its sources.
 pub(crate) fn git_head_update_failed(err: &(dyn Error + 'static)) -> Warning {
     let mut lines = vec![err.to_string()];
     lines.extend(caused_by(err.source()));
     local(WarningKind::GitHeadUpdateFailed, lines.join("\n"))
 }
 
-/// `print_git_export_stats`' two warnings (`git_util.rs:468-492`), bookmarks first: each
+/// `print_git_export_stats`' two warnings (`git_util.rs:467-491`), bookmarks first: each
 /// failed ref as `  {symbol}: {reason}: {source}…`.
 pub(crate) fn git_export_failed(stats: &jj_lib::git::GitExportStats) -> Vec<Warning> {
     let block =
@@ -521,7 +521,7 @@ pub(crate) fn git_export_failed(stats: &jj_lib::git::GitExportStats) -> Vec<Warn
     .collect()
 }
 
-/// `print_failed_git_import`'s warning (`git_util.rs:270-279`): each failed ref name indented.
+/// `print_failed_git_import`'s warning (`git_util.rs:269-278`): each failed ref name indented.
 pub(crate) fn git_import_failed(stats: &jj_lib::git::GitImportStats) -> Option<Warning> {
     (!stats.failed_ref_names.is_empty()).then(|| {
         let mut lines = vec!["Failed to import some Git refs:".to_owned()];
@@ -530,7 +530,7 @@ pub(crate) fn git_import_failed(stats: &jj_lib::git::GitImportStats) -> Option<W
     })
 }
 
-/// `print_untracked_files` (`cli_util.rs:3183-3203`): only the paths refused for their SIZE —
+/// `print_untracked_files` (`cli_util.rs:3242-3262`): only the paths refused for their SIZE —
 /// a path that merely does not match `snapshot.auto-track` is never warned about
 /// (`build_untracked_reason_message` → `None`).
 pub(crate) fn snapshot_files_refused<'a>(
@@ -557,8 +557,8 @@ pub(crate) fn snapshot_files_refused<'a>(
     })
 }
 
-/// `print_snapshot_stats` (`cli_util.rs:3230-3249`) minus its hint: the size refusals, then the
-/// invalid-UTF-8 names (`print_invalid_utf8_paths`, `:3207-3228`).
+/// `print_snapshot_stats` (`cli_util.rs:3289-3308`) minus its hint: the size refusals, then the
+/// invalid-UTF-8 names (`print_invalid_utf8_paths`, `:3266-3287`).
 // WHY: the CLI renders each invalid name with `{name:?}` — the quoting and `\xFF` escaping ARE
 // the output (a non-UTF-8 name has no faithful `Display`), so `Debug` is the parity rendering.
 #[allow(clippy::unnecessary_debug_formatting)]
@@ -576,7 +576,7 @@ pub(crate) fn snapshot_stats(workspace_root: &Path, stats: &working_copy::Snapsh
     out
 }
 
-/// `print_checkout_stats`' warning (`cli_util.rs:3303-3309`).
+/// `print_checkout_stats`' warning (`cli_util.rs:3362-3368`).
 pub(crate) fn checkout_files_skipped(skipped_files: u32) -> Option<Warning> {
     (skipped_files != 0).then(|| {
         local(
@@ -744,11 +744,11 @@ pub(crate) fn push_stats(stats: &jj_lib::git::GitPushStats) -> Vec<Warning> {
 }
 
 /// The explicit `paths` absent from EVERY tree in `trees`, in request order — the filter of
-/// `print_unmatched_explicit_paths` (`cli_util.rs:3329-3333`).
+/// `print_unmatched_explicit_paths` (`cli_util.rs:3388-3399`).
 ///
 /// # Errors
 ///
-/// A tree read failed (the CLI unwraps there; Zanshin reports it).
+/// A tree read failed (the CLI propagates it too, `.await?`).
 pub(crate) fn unmatched_paths<'p>(
     paths: &'p [RepoPathBuf],
     trees: &[&MergedTree],
@@ -766,7 +766,7 @@ pub(crate) fn unmatched_paths<'p>(
     Ok(unmatched)
 }
 
-/// `print_unmatched_explicit_paths`' warning (`cli_util.rs:3335-3344`); `None` when every path
+/// `print_unmatched_explicit_paths`' warning (`cli_util.rs:3401-3410`); `None` when every path
 /// matched.
 pub(crate) fn paths_unmatched(workspace_root: &Path, unmatched: &[&RepoPathBuf]) -> Option<Warning> {
     (!unmatched.is_empty()).then(|| {

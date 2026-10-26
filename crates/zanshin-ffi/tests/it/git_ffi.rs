@@ -29,10 +29,10 @@ use zanshin_ffi::git::{
     zanshin_git_remote_set_url,
 };
 use zanshin_ffi::remotes::zanshin_remotes;
-use zanshin_ffi::repo::zanshin_repo_close;
+use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::{
     FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, FFI_UTF8_ERROR, JJ_CONFIG_ERROR, JJ_INVALID_INPUT,
-    JJ_NOT_A_GIT_REPO, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND,
+    JJ_JJ_LIB_ERROR, JJ_NOT_A_GIT_REPO, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND,
 };
 use zanshin_jj::Repo;
 
@@ -331,7 +331,8 @@ fn git_remote_add_happy_path_carries_url_and_push_url_through_the_request_buffer
     let listed = repo.list_remotes().expect("list_remotes");
     assert_eq!(listed.len(), 1);
     assert_eq!(
-        listed[0].url, url,
+        listed[0].url.as_deref(),
+        Some(url.as_str()),
         "the request buffer's url must reach jj-lib verbatim"
     );
 
@@ -545,6 +546,71 @@ fn git_remote_remove_with_an_unparseable_repo_config_returns_jj_config_error() {
     let bytes = unsafe { read_and_free(zanshin_git_remote_remove(handle, name.as_ptr())) };
     assert_eq!(error_code(&bytes), JJ_CONFIG_ERROR);
 
+    close_handle(handle);
+}
+
+// ── zanshin_remotes: push-only and unloadable remotes (Story 9.46) ────────────
+
+/// A Git-backed workspace at `path` whose store's Git config gets `extra` appended, opened
+/// through `zanshin_repo_open` after the write.
+fn open_with_git_config(path: &Path, extra: &str) -> u64 {
+    close_handle(init_handle(path, 1));
+    let config = git_store(path).join("config");
+    let mut text = fs::read_to_string(&config).expect("git config must be readable");
+    text.push_str(extra);
+    fs::write(&config, text).expect("git config must be writable");
+    let p = cstr(path.to_str().expect("path must be UTF-8"));
+    // SAFETY: p is a valid NUL-terminated C string alive for the call.
+    let bytes = unsafe { read_and_free(zanshin_repo_open(p.as_ptr())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "open failed: {:?}", env.error().and_then(|e| e.code()));
+    env.data_as_repo_handle().expect("RepoHandle payload").handle()
+}
+
+/// A remote with only a `pushurl` crosses with `url` ABSENT and `push_url` set — the CLI's
+/// `<no URL> (push: …)` row.
+#[test]
+fn remotes_carry_a_push_only_remote_with_an_absent_url() {
+    test_helpers::pin_test_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let handle = open_with_git_config(tmp.path(), "[remote \"p\"]\n\tpushurl = ssh://h/p.git\n");
+    // SAFETY: handle is live for the duration of the call.
+    let bytes = unsafe { read_and_free(zanshin_remotes(handle)) };
+    let env = parse_envelope(&bytes);
+    let remotes = env
+        .data_as_remotes()
+        .expect("Remotes payload")
+        .remotes()
+        .expect("remotes");
+    assert_eq!(remotes.len(), 1);
+    assert_eq!(remotes.get(0).name(), Some("p"));
+    assert_eq!(remotes.get(0).url(), None, "absent, never \"\"");
+    assert_eq!(remotes.get(0).push_url(), Some("ssh://h/p.git"));
+    close_handle(handle);
+}
+
+/// A remote gix cannot load refuses the list `jj.jj_lib_error`, jj-lib's chain in `context`.
+#[test]
+fn remotes_refuse_a_remote_that_fails_to_load() {
+    test_helpers::pin_test_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let handle = open_with_git_config(
+        tmp.path(),
+        "[remote \"bad\"]\n\turl = https://h/b.git\n\tfetch = a::b\n",
+    );
+    // SAFETY: handle is live for the duration of the call.
+    let bytes = unsafe { read_and_free(zanshin_remotes(handle)) };
+    assert_eq!(error_code(&bytes), JJ_JJ_LIB_ERROR);
+    let context = parse_envelope(&bytes)
+        .error()
+        .and_then(|e| e.context())
+        .map(str::to_owned);
+    assert!(
+        context
+            .as_deref()
+            .is_some_and(|c| c.starts_with("Unexpected Git error when managing remotes: ")),
+        "{context:?}"
+    );
     close_handle(handle);
 }
 

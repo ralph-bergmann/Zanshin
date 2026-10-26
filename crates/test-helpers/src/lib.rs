@@ -71,7 +71,7 @@ pub fn extract_fixture(name: &str) -> Result<FixtureHandle, Box<dyn std::error::
 /// through jj's own `EnvOverrides` variables — the identity half of what jj's own test harness
 /// pins. That harness also fixes `JJ_TIMESTAMP`, `JJ_OP_TIMESTAMP`, `JJ_RANDOMNESS_SEED`,
 /// `JJ_TZ_OFFSET_MINS`, `HOME`, `GIT_CONFIG_SYSTEM=/dev/null` and a hermetic
-/// `GIT_CONFIG_COUNT` set (`cli/tests/common/test_environment.rs:130-177` @ v0.44.0), which
+/// `GIT_CONFIG_COUNT` set (`cli/tests/common/test_environment.rs:130-177` @ v0.46.0), which
 /// this suite leaves to the process environment — so the system git config is NOT excluded.
 pub const TEST_ENV: [(&str, &str); 6] = [
     ("JJ_CONFIG", ""),
@@ -278,7 +278,7 @@ pub fn add_unpublished_op(workspace_root: &Path, description: &str) -> (String, 
 
 /// Builds jj's changed-path index for every commit at the head operation of the workspace at
 /// `root` — the CLI's `jj debug index-changed-paths` (`cli/src/commands/debug/
-/// index_changed_paths.rs` @ v0.44.0, jj-lib `DefaultIndexStore::build_changed_path_index_at_operation`).
+/// index_changed_paths.rs` @ v0.46.0, jj-lib `DefaultIndexStore::build_changed_path_index_at_operation`).
 ///
 /// With it, `Commit::is_empty` answers from the index instead of loading the parents and
 /// merging their trees — the store kind Story 4.10's bench compares against. Writes index

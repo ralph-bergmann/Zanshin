@@ -15,7 +15,7 @@
 //! CLI's own op-log description (NFR-R-2) — jj-lib only, never shells to `jj` (AR-AP-1).
 //! Re-resolves to the head operation per call (ADR-0002). Four of the six can legitimately
 //! finish WITHOUT writing an operation, exactly as `WorkspaceCommandTransaction::finish`
-//! (`cli/src/cli_util.rs:2790-2806` @ v0.44.0) refuses to write when
+//! (`cli/src/cli_util.rs:2849-2865` @ v0.46.0) refuses to write when
 //! `!tx.repo().has_changes()`; `git_remote_set_url` never opens a transaction at all,
 //! because jj-lib's `set_remote_urls` takes a `&Store` and the CLI opens none either
 //! (`cli/src/commands/git/remote/set_url.rs:69-74`).
@@ -23,7 +23,7 @@
 //! # The jj repo-config rewrite (Epic 9 follow-up J)
 //!
 //! `remote remove`/`rename` additionally rewrite the REPO-LEVEL jj config, exactly as the
-//! CLI does (`cli/src/commands/git/mod.rs:195-262` @ v0.44.0): `[remotes.<name>]` is dropped
+//! CLI does (`cli/src/commands/git/mod.rs:195-262` @ v0.46.0): `[remotes.<name>]` is dropped
 //! (or moved to the new name), and a `revset-aliases.'trunk()'` that is a plain remote
 //! symbol naming that remote is deleted (remove) or re-pointed (rename). The edits live in
 //! [`crate::config`] — the crate's only config writers — and run INSIDE the transaction
@@ -48,14 +48,15 @@
 //! before opening any transaction — the CLI's early return ("No import/export needed in
 //! colocated workspaces."), after the pre-verb snapshot has already imported the refs.
 //!
-//! # Deliberate divergences from the CLI at v0.44.0
+//! # Deliberate divergences from the CLI at v0.46.0
 //!
 //! - **No terminal UX.** No hints, no padded columns, no "Nothing changed." — the typed
 //!   results below carry the structured fields those lines would have rendered.
 //! - **No `--no-integrate-operation` refusal** (`export.rs:36-39`): Zanshin has no such
 //!   global flag to refuse.
-//! - **No duplicate-URL warning** on `remote add` (`add.rs:75-117`): it is a `ui.warning`
-//!   with no effect on the operation, and [`crate::MutationResult`] has no warning channel.
+//! - **No duplicate-URL hint** on `remote add` (`add.rs:111-115`): the duplicate-URL warning
+//!   itself IS ported (`jj.remote_url_duplicate`, `warn_if_remote_url_matches` below); its "If this
+//!   was a mistake, run `jj git remote remove …`" hint is terminal UX.
 
 use std::sync::Arc;
 
@@ -290,7 +291,7 @@ pub(crate) fn project_abandoned(stats: &jj_lib::git::GitImportStats) -> Vec<Chan
 /// runs BEFORE the commit, because `import_refs` calls
 /// `record_abandoned_commit` (`jj-lib git.rs:796`), which populates `parent_mapping`, and
 /// `Transaction::write` panics while rewrites are outstanding — the CLI handles this
-/// centrally in `tx.finish` → `rebase_mutable_descendants` (`cli_util.rs:2927-2945`),
+/// centrally in `tx.finish` → `rebase_mutable_descendants` (`cli_util.rs:2986-3004`),
 /// resolving the immutable set against `tx.base_repo()`, which is what happens here too.
 ///
 /// `options` comes from the repo's EFFECTIVE config
@@ -300,10 +301,10 @@ pub(crate) fn project_abandoned(stats: &jj_lib::git::GitImportStats) -> Vec<Chan
 /// The stats are projected AFTER the commit, from the resulting view. They are returned on
 /// the NO-OP path too: a run where every pending ref failed changes nothing yet must still
 /// report `failed_ref_names` — and warn `jj.git_import_failed`, right after the import and
-/// before the finish, where the CLI prints it (`import.rs:60`, Story 9.32).
+/// before the finish, where the CLI prints it (`import.rs:57` @ v0.46.0, Story 9.32).
 ///
 /// In a COLOCATED workspace it returns before any transaction, as the CLI does ("No import
-/// needed in colocated workspaces.", `cli/src/commands/git/import.rs:46-50` @ v0.44.0): the
+/// needed in colocated workspaces.", `cli/src/commands/git/import.rs:46-50` @ v0.46.0): the
 /// pre-verb snapshot already imported the refs, so the result is the no-op at the head.
 ///
 /// # Errors
@@ -430,7 +431,7 @@ pub(crate) fn project_failures(
 /// (Story 9.32).
 ///
 /// In a COLOCATED workspace it returns before any transaction, as the CLI does ("No export
-/// needed in colocated workspaces.", `cli/src/commands/git/export.rs:41-46` @ v0.44.0) — even
+/// needed in colocated workspaces.", `cli/src/commands/git/export.rs:41-46` @ v0.46.0) — even
 /// when jj holds refs that were never exported.
 ///
 /// # Errors
@@ -498,7 +499,7 @@ pub(crate) fn git_remote_add(
 }
 
 /// The CLI's `warn_if_remote_url_matches` (`cli/src/commands/git/remote/add.rs:75-119` @
-/// v0.44.0): one `jj.remote_url_duplicate` per other remote already using the new fetch or push
+/// v0.46.0): one `jj.remote_url_duplicate` per other remote already using the new fetch or push
 /// URL. Remotes that do not load are ignored, as there.
 ///
 /// # Errors

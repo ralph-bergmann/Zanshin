@@ -37,8 +37,8 @@
 //!
 //! ## What both verbs write (Epic 9 follow-up K)
 //!
-//! Both port `do_init`'s `GitInitMode::External` arm (`cli/src/commands/git/init.rs:244-272`
-//! @ v0.44.0), so a repo Zanshin converts is on-disk indistinguishable from one `jj git init`
+//! Both port `do_init`'s `GitInitMode::External` arm (`cli/src/commands/git/init.rs:249-282`
+//! @ v0.46.0), so a repo Zanshin converts is on-disk indistinguishable from one `jj git init`
 //! converted — including the op log, which is state a user undoes with the CLI. That arm has
 //! TWO shapes, and which one runs is read from [`crate::wc_ops::is_colocated_git_workspace`]
 //! (the CLI's own check), never assumed:
@@ -94,19 +94,19 @@
 //! 1. `jj.config_deprecated` — the start-up check's "Deprecated … config", one per deprecated
 //!    key the CLI migrates (`cli_util.rs:4726-4741` @ v0.46.0; Story 9.9), before any path is
 //!    touched — on a refusal too;
-//! 2. `jj.git_import_failed` — refs the `import git refs` step could not read (`init.rs:304`),
+//! 2. `jj.git_import_failed` — refs the `import git refs` step could not read (`init.rs:314`),
 //!    reported even when the step then writes no operation;
 //! 3. colocated only: `jj.git_export_failed` — refs that step's export could not write
-//!    (`init.rs:311-312`);
+//!    (`init.rs:321-322`);
 //! 4. the start-up environment's warnings (alias tables, builtin redefinitions,
 //!    `immutable_heads()` diagnostics), loaded where the CLI's `for_workable_repo` builds the
-//!    workspace command (`init.rs:252`, `cli_util.rs:936-966`): after the refs step, before
+//!    workspace command (`init.rs:257`, `cli_util.rs:961-991`): after the refs step, before
 //!    `.jj/.gitignore` and the snapshot — which reads its snapshot knobs itself, inside the
 //!    snapshot step, after the colocated `import git head` (Story 9.34);
 //! 5. the implicit snapshot's own warnings, as every verb's precondition reports them — its
 //!    colocated refs import reports an unreadable ref a SECOND time, as the CLI does;
 //! 6. on the snapshot's success: `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`
-//!    (`cli_util.rs:1340`);
+//!    (`cli_util.rs:1368`);
 //! 7. non-colocated only: the `import git head` finish — `jj.working_copy_immutable` (the new
 //!    `@` became immutable), `jj.checkout_files_skipped`, `jj.unresolved_conflicts` (the new `@`
 //!    has conflicts) and `jj.identity_missing`.
@@ -401,7 +401,7 @@ fn resolve_git_repo_path(arg: &Path) -> PathBuf {
     }
 }
 
-/// Ports `init_git_refs` (`cli/src/commands/git/init.rs:285-320` @ v0.44.0): one transaction
+/// Ports `init_git_refs` (`cli/src/commands/git/init.rs:295-330` @ v0.46.0): one transaction
 /// importing branches and tags, exporting them back when the workspace is colocated.
 ///
 /// Returns the repo the following steps must build on — the NEW head when the operation was
@@ -447,7 +447,7 @@ fn init_git_refs(
     pollster::block_on(tx.commit("import git refs")).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })
 }
 
-/// Ports `maybe_add_gitignore` (`cli/src/commands/git/mod.rs:110-123` @ v0.44.0): the literal
+/// Ports `maybe_add_gitignore` (`cli/src/commands/git/mod.rs:110-123` @ v0.46.0): the literal
 /// `/*\n` into `<workspace_root>/.jj/.gitignore`, and ONLY when the working copy is shared
 /// with git.
 ///
@@ -462,8 +462,8 @@ pub(crate) fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> std
     std::fs::write(workspace_root.join(".jj").join(".gitignore"), "/*\n")
 }
 
-/// `do_init`'s `workspace_command.maybe_snapshot(ui)` (`cli/src/cli_util.rs:1331-1342` @
-/// v0.44.0): the implicit snapshot every verb runs first ([`crate::snapshot::snapshot_locked`]),
+/// `do_init`'s `workspace_command.maybe_snapshot(ui)` (`cli/src/cli_util.rs:1359-1370` @
+/// v0.46.0): the implicit snapshot every verb runs first ([`crate::snapshot::snapshot_locked`]),
 /// under the Git import/export lock, on the repo the refs step left behind.
 ///
 /// Its report is `report.precondition` — `Some` from the moment this starts, PARTIAL when a step
@@ -511,8 +511,8 @@ fn convert_failed(e: impl std::fmt::Display) -> RepoError {
     RepoError::ConvertFailed { reason: e.to_string() }
 }
 
-/// Ports `maybe_set_repository_level_trunk_alias` (`cli/src/commands/git/init.rs:324-364` @
-/// v0.44.0): `revset-aliases.'trunk()' = '<bookmark>@<remote>'` in the REPO-level config.
+/// Ports `maybe_set_repository_level_trunk_alias` (`cli/src/commands/git/init.rs:334-374` @
+/// v0.46.0): `revset-aliases.'trunk()' = '<bookmark>@<remote>'` in the REPO-level config.
 ///
 /// `upstream` is tried first, then `origin`, and the loop stops at the first remote that HAS
 /// a `refs/remotes/<remote>/HEAD` reference **whether or not it parses** — the CLI's own
@@ -521,7 +521,7 @@ fn convert_failed(e: impl std::fmt::Display) -> RepoError {
 /// [`GitRefKind::Bookmark`]; a direct (non-symbolic) `HEAD` has no symbolic target, so it
 /// yields no alias and no config file.
 ///
-/// At v0.44.0 there is NO `get_single_remote` guard on this — a repo with several remotes
+/// At v0.46.0 there is NO `get_single_remote` guard on this — a repo with several remotes
 /// still gets the alias, as long as `upstream` or `origin` has a HEAD reference.
 ///
 /// The file this writes lives OUTSIDE `.jj/`, under `<config_dir>/jj/repos/<config-id>/`
@@ -595,7 +595,7 @@ fn convert_into(settings: &UserSettings, path: &Path, report: &mut ConversionRep
     // Open the EXISTING `.git` as the backing store (gix::open — strictly non-destructive).
     // Because `.git` is inside `path`, the workspace is colocated. This is what
     // `jj git init --colocate` does for an existing repo (cli/src/commands/git/init.rs @
-    // v0.44.0 -> GitInitMode::External).
+    // v0.46.0 -> GitInitMode::External).
     let git_repo_path = path.join(".git");
     let (mut workspace, repo) = pollster::block_on(jj_lib::workspace::Workspace::init_external_git(
         settings,
@@ -607,9 +607,9 @@ fn convert_into(settings: &UserSettings, path: &Path, report: &mut ConversionRep
     external_arm(&mut workspace, &repo, report)
 }
 
-/// Ports `do_init`'s `GitInitMode::External` branch (jj CLI @ v0.44.0), non-colocated in the
-/// intended two-path use. Creates and populates the jj workspace at `workspace_path`, reporting
-/// into `report`. On `Err`, what was written stays (`do_init` propagates with `?`).
+/// Ports `do_init`'s `GitInitMode::External` branch (`init.rs:212-221`, `:249-282` @ v0.46.0),
+/// non-colocated in the intended two-path use. Creates and populates the jj workspace at
+/// `workspace_path`, reporting into `report`. On `Err`, what was written stays (`do_init` propagates with `?`).
 fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut ConversionReport) -> Result<(), RepoError> {
     // The CLI's destination step (`cli/src/commands/git/init.rs:161-163` @ v0.46.0): ONE level
     // created or reused, then canonicalized — here and not at the entry point, because the
@@ -650,7 +650,7 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut Convers
 ///
 /// Every step reports into `report` as it runs (Story 9.33), so a failure keeps what came
 /// before it: the refs step's warnings, the start-up environment's warnings (recorded where the
-/// CLI's `for_workable_repo` prints them, `init.rs:252`), `maybe_snapshot`'s report and
+/// CLI's `for_workable_repo` prints them, `init.rs:257`), `maybe_snapshot`'s report and
 /// warnings — PARTIAL when its snapshot step refuses a wrong-typed snapshot knob after the
 /// colocated `import git head` (Story 9.34) — and — non-colocated only — the head import's
 /// finish.
@@ -858,7 +858,7 @@ mod tests {
     }
 
     /// Story 9.34: the start-up environment is built where the CLI's `for_workable_repo` builds
-    /// it, BEFORE `maybe_add_gitignore` (`git/init.rs:252-253` @ v0.44.0) — so a bad
+    /// it, BEFORE `maybe_add_gitignore` (`git/init.rs:257-259` @ v0.46.0) — so a bad
     /// `immutable_heads()` alias refuses before `.jj/.gitignore` is written.
     #[test]
     fn a_start_up_refusal_comes_before_the_gitignore_write() {

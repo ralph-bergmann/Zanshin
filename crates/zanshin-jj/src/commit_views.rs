@@ -9,7 +9,7 @@
 //! Like the CLI's `workspace_helper`, [`crate::Repo`] snapshots the working copy FIRST (Story
 //! 9.26), and that snapshot is what may write one; an omitted revision is the up-to-date `@`.
 //!
-//! CLI parity is at tag **v0.44.0** (`cli/src/commands/{show,evolog,interdiff}.rs` plus
+//! CLI parity is at tag **v0.46.0** (`cli/src/commands/{show,evolog,interdiff}.rs` plus
 //! `cli/src/diff_util.rs::{show_patch,show_inter_diff,diff_status_inner}`) for the observable
 //! behavior — argument arity, defaults, refusals, copy-record handling and walk order — never
 //! for its terminal UX (NFR-R-2, ADR-0003). Deliberate divergences:
@@ -347,7 +347,7 @@ fn repo_path_to_pathbuf(p: &jj_lib::repo_path::RepoPath) -> PathBuf {
 
 /// Diffs two trees into the shipped per-path change vocabulary.
 ///
-/// The classification is the CLI's `diff_status_inner` (`cli/src/diff_util.rs` @ v0.44.0): a
+/// The classification is the CLI's `diff_status_inner` (`cli/src/diff_util.rs` @ v0.46.0): a
 /// copy SOURCE decides first (`Rename`/`Copy`), otherwise absent-before is `Added`,
 /// absent-after is `Removed`, and anything else is `Modified`. `TreeDiffEntry.values` is a
 /// PER-PATH `BackendResult`; like the CLI this aborts on the first error rather than inventing
@@ -407,7 +407,7 @@ async fn copy_records_over_all_parents(store: &Arc<Store>, commit: &Commit) -> R
 
 /// Shows each revision `revset` denotes with what it changed (Story 9.6) — `jj show`.
 ///
-/// Ports `cli/src/commands/show.rs::cmd_show` @ v0.44.0: the CLI UNIONS its `Vec<RevisionArg>`
+/// Ports `cli/src/commands/show.rs::cmd_show` @ v0.46.0: the CLI UNIONS its `Vec<RevisionArg>`
 /// and defaults to `@` when none is given, so `revset` is a pass-through expression whose
 /// absence means `"@"`. The revset is parsed against the repo's effective config per call
 /// (never cached), then evaluated against ONE head-resolved snapshot, so a commit's metadata and
@@ -467,7 +467,7 @@ pub(crate) fn show(
             let parent_tree_ids = before.tree_ids().iter().map(ObjectId::hex).collect();
             let tree_ids = after.tree_ids().iter().map(ObjectId::hex).collect();
             let records = copy_records_over_all_parents(store, &commit).await?;
-            // `EverythingMatcher`: `jj show` has NO path argument (`show.rs:109`).
+            // `EverythingMatcher`: `jj show` has NO path argument (`show.rs:110`).
             let file_changes = tree_file_changes(&before, &after, &EverythingMatcher, &records).await?;
             out.push(ShowEntry {
                 change,
@@ -483,7 +483,7 @@ pub(crate) fn show(
 
 /// Walks the evolution of the changes `revset` denotes (Story 9.6) — `jj evolog`.
 ///
-/// Ports `cli/src/commands/evolog.rs::cmd_evolog` @ v0.44.0 in its `--no-graph` shape: the
+/// Ports `cli/src/commands/evolog.rs::cmd_evolog` @ v0.46.0 in its `--no-graph` shape: the
 /// start set is the UNION of the CLI's `-r` revsets (default `@`) evaluated to commit ids, and
 /// `limit` is `take(limit)` applied in walk order — the CLI limits BEFORE reversing, and the
 /// reversal itself is rendering. `revset`'s symbols resolve through `prefixes`, as in [`show`].
@@ -538,7 +538,7 @@ pub(crate) fn evolog(
 /// Compares what two revisions each CHANGE, with the parent difference factored out
 /// (Story 9.6) — `jj interdiff`.
 ///
-/// Ports `cli/src/commands/interdiff.rs::cmd_interdiff` @ v0.44.0: both sides default to `@`
+/// Ports `cli/src/commands/interdiff.rs::cmd_interdiff` @ v0.46.0: both sides default to `@`
 /// individually, but omitting BOTH is a refusal (the CLI's `ArgGroup … required(true)`) —
 /// interdiffing `@` against itself is trivially empty and never what a caller meant.
 ///
@@ -568,7 +568,7 @@ pub(crate) fn evolog(
 ///
 /// An explicitly named path absent from all four trees the CLI checks (both sides and both
 /// parent trees, to account for deletions) warns `jj.paths_unmatched` before the diff
-/// (`interdiff.rs:99-110`, Story 9.32).
+/// (`interdiff.rs:99-111`, Story 9.32).
 ///
 /// # Errors
 ///
@@ -629,7 +629,7 @@ pub(crate) fn interdiff(
         // because this is where the tree it describes is in scope.
         let base_has_conflicts = from_tree.has_conflict();
         let to_tree = to_commit.tree();
-        // `CopyRecords::default()` — `show_inter_diff` passes no copy records (diff_util.rs:650).
+        // `CopyRecords::default()` — `show_inter_diff` passes no copy records (diff_util.rs:628).
         let file_changes = tree_file_changes(&from_tree, &to_tree, matcher.as_ref(), &CopyRecords::default()).await?;
         Ok(InterdiffView {
             file_changes,

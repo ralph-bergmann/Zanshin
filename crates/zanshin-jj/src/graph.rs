@@ -122,7 +122,7 @@ fn to_node(id: &JjCommitId, edges: Vec<JjGraphEdge<JjCommitId>>, meta: CommitMet
 /// before this point). Everything that can only fail while LOADING the disambiguation
 /// index — symbol resolution included — is a warning: the CLI keeps rendering with
 /// full-index prefixes rather than failing the command
-/// (`cli/src/commit_templater.rs:2203-2216` @ v0.44.0, pinned by jj's own
+/// (`cli/src/commit_templater.rs:2280-2293` @ v0.46.0, pinned by jj's own
 /// `cli/tests/test_log_command.rs::test_log_bad_short_prefixes`, where
 /// `revsets.short-prefixes = 'missing'` warns and still prints the whole log). The warning is
 /// `jj.short_prefixes_failed` (Story 9.32): the CLI's `print_parse_diagnostics` block — its

@@ -39,11 +39,13 @@ pub struct Remote {
     pub name: String,
     /// Fetch URL, returned **verbatim**: embedded credentials are NOT scrubbed
     /// and an SSH/`git@…` URL is NOT rewritten to HTTPS. The UI/MCP layer
-    /// decides what is safe to display.
-    pub url: String,
+    /// decides what is safe to display. `None` when the remote has only a push
+    /// URL — the CLI lists such a remote as `<name> <no URL> (push: <url>)`
+    /// (`cli/src/commands/git/remote/list.rs:45-59,64-69` @ v0.46.0).
+    pub url: Option<String>,
     /// Push URL when it DIFFERS from [`Remote::url`], `None` otherwise —
     /// null-for-absence, never `Some("")`. Absent means "this remote pushes to
-    /// its fetch URL".
+    /// its fetch URL". A push-only remote (no fetch URL) always carries it.
     ///
     /// This is a DIFFERENCE test, not a raw `remote.<name>.pushurl` read, for two
     /// reasons. gix resolves `url(Direction::Push)` as
@@ -51,7 +53,7 @@ pub struct Remote {
     /// accessor, so "was a `pushurl` configured?" is not answerable through the
     /// API at all. And `jj git remote list` asks the same question this field
     /// does — it prints its `(push: …)` suffix only when the two rendered URLs
-    /// differ (`cli/src/commands/git/remote/list.rs:49-55` @ v0.44.0) — so a
+    /// differ (`cli/src/commands/git/remote/list.rs:45-59` @ v0.46.0) — so a
     /// `pushurl` that happens to equal `url` yields `None` here, which is CLI
     /// parity rather than information loss.
     ///
@@ -84,25 +86,34 @@ fn re<E: std::fmt::Display>(e: E) -> RemoteError {
 }
 
 /// The fetch URL of `name` and its push URL WHEN THAT DIFFERS, both **verbatim**
-/// (no credential scrubbing, no SSH→HTTPS rewrite). `None` if the remote is
-/// missing, malformed, or has no fetch URL — the same skip condition the
-/// fetch-only predecessor had.
+/// (no credential scrubbing, no SSH→HTTPS rewrite) — `Ok(None)` for a remote
+/// section with no URL at all, which the CLI skips too. A remote gix cannot load
+/// refuses the call, as the CLI's `try_find_active_remote(..)?` does
+/// (`cli/src/commands/git/remote/list.rs:42-44` @ v0.46.0) — the CLI has printed
+/// the remotes sorted before the broken one by then; this call returns none.
 ///
 /// Both directions are read here, through ONE renderer called twice, exactly as
-/// the CLI's own `get_url` closure is (`cli/src/commands/git/remote/list.rs:49-55`
-/// @ v0.44.0), so they can never diverge in how they render — and the CLI's
-/// `(push: …)` rule is applied here too: gix's `url(Push)` FALLS BACK to the fetch
-/// URL, so comparing the two is the only way to tell "no pushurl" from
-/// "pushurl == url". See [`Remote::push_url`].
-fn remote_urls(git_repo: &gix::Repository, name: &str) -> Option<(String, Option<String>)> {
-    let remote = git_repo.try_find_remote(name)?.ok()?;
+/// the CLI's own `get_url` is (`list.rs:45-46,64-69` @ v0.46.0), so they can never
+/// diverge in how they render — and the CLI's `(push: …)` rule is applied here too:
+/// gix's `url(Push)` FALLS BACK to the fetch URL, so comparing the two is the only
+/// way to tell "no pushurl" from "pushurl == url". See [`Remote::push_url`].
+fn find_remote(git_repo: &gix::Repository, name: &RemoteName) -> Result<Option<Remote>, RemoteError> {
+    let Some(remote) =
+        git::try_find_active_remote(git_repo, name).map_err(|e| RemoteError::Backend(mutate::flatten_chain(&e)))?
+    else {
+        return Ok(None);
+    };
     // to_bstring(), NOT to_string()/Display: gix_url's Display REDACTS the
     // password ("redacted"); to_bstring() preserves the URL verbatim. The
     // BString -> String conversion is lossy UTF-8, which is fine for URLs.
     let render = |d| remote.url(d).map(|url| url.to_bstring().to_string());
-    let fetch = render(Direction::Fetch)?;
-    let push = render(Direction::Push).filter(|p| *p != fetch);
-    Some((fetch, push))
+    let url = render(Direction::Fetch);
+    let push_url = render(Direction::Push).filter(|p| url.as_ref() != Some(p));
+    Ok(Some(Remote {
+        name: name.as_str().to_owned(),
+        url,
+        push_url,
+    }))
 }
 
 /// Lists configured git remotes with their fetch/push URLs, sorted by name (FR-JJ-9).
@@ -113,7 +124,9 @@ fn remote_urls(git_repo: &gix::Repository, name: &str) -> Option<(String, Option
 ///
 /// # Errors
 ///
-/// - [`RemoteError::Backend`] — the head load failed; the jj-lib reason is
+/// - [`RemoteError::Backend`] — the head load failed, or a remote fails to load
+///   (the call refuses as the CLI's does; the CLI has printed the remotes sorted
+///   before the broken one by then, an error carries no list); the jj-lib chain is
 ///   forwarded as a string.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn list_remotes(workspace: &Workspace) -> Result<Vec<Remote>, RemoteError> {
@@ -133,13 +146,7 @@ pub(crate) fn list_remotes(workspace: &Workspace) -> Result<Vec<Remote>, RemoteE
 
     let mut out: Vec<Remote> = Vec::with_capacity(names.len());
     for name in &names {
-        if let Some((url, push_url)) = remote_urls(&git_repo, name.as_str()) {
-            out.push(Remote {
-                name: name.as_str().to_owned(),
-                url,
-                push_url,
-            });
-        }
+        out.extend(find_remote(&git_repo, name)?);
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
@@ -671,6 +678,60 @@ mod tests {
                 if *reason == GitRemoteNameError::ReservedForLocalGitRepo.to_string()
                     && *hints == ["Run `jj git remote rename` to give a different name."]),
             "{reserved:?}"
+        );
+    }
+
+    /// A non-colocated Git-backed repo whose store's Git config gets `extra` appended, opened
+    /// after the write (an open handle's store keeps the Git config it loaded).
+    fn git_repo_with_config(extra: &str) -> (tempfile::TempDir, crate::Repo) {
+        test_helpers::pin_test_env();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        crate::Repo::init(&crate::InitOptions {
+            path: tmp.path().to_owned(),
+            backend: Some(crate::Backend::Git),
+            colocate: Some(false),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
+        let config = tmp.path().join(".jj/repo/store/git/config");
+        let mut text = std::fs::read_to_string(&config).expect("read git config");
+        text.push_str(extra);
+        std::fs::write(&config, text).expect("write git config");
+        let repo = crate::Repo::open(tmp.path()).expect("open");
+        (tmp, repo)
+    }
+
+    /// Story 9.46, the push-only row: `url` absent, `push_url` set (the CLI's
+    /// `<no URL> (push: …)`); a fetch URL alone keeps `push_url` absent.
+    #[test]
+    fn a_push_only_remote_has_no_fetch_url_and_its_push_url() {
+        let (_tmp, repo) = git_repo_with_config(
+            "[remote \"p\"]\n\tpushurl = ssh://h/p.git\n[remote \"f\"]\n\turl = https://h/f.git\n",
+        );
+        let remotes = list_remotes(repo.workspace()).expect("list");
+        let rows: Vec<_> = remotes
+            .iter()
+            .map(|r| (r.name.as_str(), r.url.as_deref(), r.push_url.as_deref()))
+            .collect();
+        assert_eq!(
+            rows,
+            [("f", Some("https://h/f.git"), None), ("p", None, Some("ssh://h/p.git"))]
+        );
+    }
+
+    /// Story 9.46, the load-failure row: an invalid `fetch` refspec makes gix refuse the
+    /// remote, and the list refuses with jj-lib's chain, as the CLI's `?` does.
+    #[test]
+    fn a_remote_that_fails_to_load_is_a_backend_error() {
+        let (_tmp, repo) = git_repo_with_config("[remote \"bad\"]\n\turl = https://h/b.git\n\tfetch = a::b\n");
+        let err = list_remotes(repo.workspace()).expect_err("refuses");
+        // The chain carries gix's cause after jj-lib's context line.
+        assert!(
+            matches!(&err, RemoteError::Backend(chain)
+                if chain.strip_prefix("Unexpected Git error when managing remotes: ")
+                    .is_some_and(|cause| cause.contains("refspec") && cause.contains("a::b"))),
+            "{err:?}"
         );
     }
 

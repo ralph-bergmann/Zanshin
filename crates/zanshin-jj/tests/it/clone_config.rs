@@ -20,7 +20,7 @@
 //! `abandon_unreachable_commits` decides the fate of commits that BECOME unreachable. A
 //! clone imports into an empty repo, so nothing can become unreachable and the flag has no
 //! positive observable effect; `record_synthetic_predecessors` is pinned to `false`
-//! regardless of config, mirroring `cli/src/commands/git/clone.rs:384-389` @ v0.44.0. What
+//! regardless of config, mirroring `cli/src/commands/git/clone.rs:384-389` @ v0.46.0. What
 //! CAN be observed is that the value is now READ at all: a non-boolean value fails the
 //! clone where it was previously ignored, exactly as the CLI fails it
 //! (`GitSettings::from_settings` propagates the type error). The valid-`false` phase is the

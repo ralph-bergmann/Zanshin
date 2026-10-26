@@ -3407,7 +3407,7 @@ pub mod zanshin {
         ];
 
         /// What a tree entry IS (Story 9.4) — the CLI's `TreeEntry.file_type` keyword
-        /// (`cli/src/commit_templater.rs::describe_file_type` @ v0.44.0).
+        /// (`cli/src/commit_templater.rs::describe_file_type` @ v0.46.0).
         /// `Tree` is UNREACHABLE through `zanshin_file_list` (jj-lib's `entries_matching` recurses
         /// into subtrees rather than yielding them) but is modelled so the mapping is total. jj's
         /// sixth case — an ABSENT entry, rendered as `""` — is never emitted and has no member.
@@ -3517,7 +3517,7 @@ pub mod zanshin {
 
         /// How one remote ref changed during `zanshin_git_import` (Story 9.5) — the CLI's own
         /// derivation from `(old_remote_ref.target.is_absent(), new_target.is_absent())`
-        /// (`cli/src/git_util.rs:418-425` @ v0.44.0).
+        /// (`cli/src/git_util.rs:417-424` @ v0.46.0).
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct GitRefUpdateKind(pub i8);
@@ -24675,6 +24675,9 @@ pub mod zanshin {
         /// present only when the remote's push URL differs from `url`, exactly as
         /// `jj git remote list` prints its `(push: …)` suffix only then. ABSENT therefore
         /// means "this remote pushes to its fetch URL" — never an empty string.
+        ///
+        /// `url` is ABSENT when the remote has only a push URL (Story 9.46) — the CLI's
+        /// `<name> <no URL> (push: <url>)` row; `push_url` is then always present.
         pub struct Remote<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

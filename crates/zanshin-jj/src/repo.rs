@@ -392,15 +392,15 @@ impl Repo {
     ///    config stack. The fix-up's warnings are the call's FIRST, also when the refresh fails.
     /// 2. The CLI's start-up environment ([`crate::snapshot::CommandEnv`]: the fileset and
     ///    revset alias tables, the `immutable_heads()` parse) is built — BEFORE the lock, as
-    ///    `workspace_helper_with_stats` builds it (`cli_util.rs:477`), so a bad
+    ///    `workspace_helper_with_stats` builds it (`cli_util.rs:478`), so a bad
     ///    `immutable_heads()` alias refuses without waiting and writes nothing.
     /// 3. Colocated workspaces take jj's `git_import_export.lock` (blocking), then the head is
     ///    loaded and `snapshot_impl` runs: `import git head`, `snapshot working copy`,
     ///    `import git refs` (colocated) or the snapshot alone. Each step reads its own config
     ///    where the CLI does (Story 9.34): the snapshot knobs (`snapshot.auto-track`, the ignore
     ///    files, `snapshot.max-new-file-size`) at the start of the snapshot step, AFTER the head
-    ///    import (`cli_util.rs:2065-2070`); the Git import options at the start of the refs step
-    ///    (`cli_util.rs:1434-1437`). A fault in either fails after the earlier steps committed,
+    ///    import (`cli_util.rs:2098-2103`); the Git import options at the start of the refs step
+    ///    (`cli_util.rs:1463-1466`). A fault in either fails after the earlier steps committed,
     ///    and their operations stay, as in the CLI. `snapshot.auto-update-stale` is read only on
     ///    a stale working copy, under the lock (`cli_util.rs:500` @ v0.46.0); `true` recovers
     ///    the working copy right there and the verb continues (Story 9.23, see
@@ -621,7 +621,7 @@ impl Repo {
 
     /// Snapshots the working copy — and, in a colocated workspace, imports the Git HEAD and
     /// refs — right now (Story 9.26): the CLI's `jj util snapshot`
-    /// (`cli/src/commands/util/snapshot.rs` @ v0.44.0).
+    /// (`cli/src/commands/util/snapshot.rs` @ v0.46.0).
     ///
     /// Exactly the precondition every other snapshotting verb runs first, with nothing after
     /// it — for the GUI's "sync now" or a future working-tree trigger; the UI decides when to
@@ -834,11 +834,15 @@ impl Repo {
     ///
     /// [`crate::Remote::push_url`] is present only when it DIFFERS from the fetch URL —
     /// the same question `jj git remote list` answers with its `(push: …)` suffix.
+    /// [`crate::Remote::url`] is absent for a remote with only a push URL, which the CLI
+    /// lists as `<no URL> (push: …)` (Story 9.46).
     ///
     /// # Errors
     ///
-    /// - [`crate::RemoteError::Backend`] — the head load failed; the jj-lib
-    ///   reason is forwarded as a string.
+    /// - [`crate::RemoteError::Backend`] — the head load failed, or a remote fails to load
+    ///   (the call refuses as `jj git remote list` does; the CLI has printed the remotes
+    ///   sorted before the broken one by then, an error carries no list); the jj-lib chain
+    ///   is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_remotes(&mut self) -> Result<Vec<crate::Remote>, crate::RemoteError> {
         self.with_verb(cli_command::GIT_REMOTE_LIST, |repo, _ctx| {
@@ -2118,7 +2122,7 @@ impl Repo {
     /// In a colocated workspace the CLI skips this verb, because its per-command snapshot has
     /// already imported the refs. Zanshin runs the same pre-verb snapshot (Story 9.26), then
     /// returns the no-op result before opening any transaction — the CLI's early return ("No
-    /// import needed in colocated workspaces.", `cli/src/commands/git/import.rs` @ v0.44.0) —
+    /// import needed in colocated workspaces.", `cli/src/commands/git/import.rs` @ v0.46.0) —
     /// and writes no operation of its own.
     ///
     /// `git.abandon-unreachable-commits`, `git.record-synthetic-predecessors` and the
@@ -2245,7 +2249,7 @@ impl Repo {
     /// In a colocated workspace every finished transaction has already exported the refs, so
     /// — as with [`Repo::git_import`] — the verb returns the no-op result before opening any
     /// transaction, after the pre-verb snapshot: the CLI's early return ("No export needed in
-    /// colocated workspaces.", `cli/src/commands/git/export.rs` @ v0.44.0). Export rewrites no
+    /// colocated workspaces.", `cli/src/commands/git/export.rs` @ v0.46.0). Export rewrites no
     /// commit, so it needs no descendant pass, and it never moves `@`.
     ///
     /// If git already matched, NO operation is written and
@@ -3324,7 +3328,7 @@ impl Repo {
     /// Gives the paths matching `paths` in one commit the content they have in another
     /// (Story 9.3) — the CLI's `jj restore`, whole-file only.
     ///
-    /// Default resolution is the CLI's (`cli/src/commands/restore.rs:119-137` @ v0.44.0):
+    /// Default resolution is the CLI's (`cli/src/commands/restore.rs:120-138` @ v0.46.0):
     /// if either `from` or `into` is given the omitted one is `@`; if NEITHER is given the
     /// destination is `changes_in` (or `@`) and the source is that commit's PARENT tree,
     /// which undoes its own diff while keeping its description. `changes_in` cannot be
@@ -3415,7 +3419,7 @@ impl Repo {
     /// nothing is absorbable, NO operation is written and `rewritten_change_ids` is empty.
     ///
     /// The skipped-path warnings are recorded BEFORE the rewritability guard — the CLI's own
-    /// order (`absorb.rs:154-158` warns, then `:160-162` checks) — so a
+    /// order (`absorb.rs:155-159` warns, then `:161-163` checks, @ v0.46.0) — so a
     /// [`crate::MutateError::Immutable`] refusal still carries them through
     /// [`Repo::take_warnings`], as does an explicitly named path that matches nothing
     /// (`jj.paths_unmatched`, Story 9.32).
@@ -3453,7 +3457,7 @@ impl Repo {
     ) -> Result<crate::AbsorbResult, crate::MutateError> {
         self.with_verb(cli_command::ABSORB, |repo, ctx| {
             // WHY the literal: it is the CLI's own clap default for `--into`
-            // (`cli/src/commands/absorb.rs:64` @ v0.44.0), and it is an ALIAS — `config.rs`'s
+            // (`cli/src/commands/absorb.rs:65` @ v0.46.0), and it is an ALIAS — `config.rs`'s
             // builtin layer defines `'mutable()' = '~immutable()'`, which a user's config may
             // replace. The default is therefore a pre-filled, user-editable value that resolves
             // through the effective config layer, never a hardcoded commit set.
@@ -4644,7 +4648,7 @@ impl Repo {
     /// Opening plays a CLI command's start-up: right after the loader resolves the repo, the
     /// CLI's secure-config fix-up runs for the repo, then the workspace layer (jj-lib's
     /// `SecureConfig::maybe_load_config`, as `load_secure_config` calls it —
-    /// `cli/src/config.rs:447-469` @ v0.44.0): a legacy `.jj/repo/config.toml` / `.jj/workspace-config.toml` is
+    /// `cli/src/config.rs:455-477` @ v0.46.0): a legacy `.jj/repo/config.toml` / `.jj/workspace-config.toml` is
     /// migrated into the secure config directory, a moved repo's metadata re-pointed, a copied
     /// repo's config forked, a missing secure directory regenerated. Each such notice is one of
     /// [`CreationOutcome::warnings`] — `jj.config_migrated`, `jj.config_copied`,

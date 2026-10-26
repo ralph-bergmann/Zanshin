@@ -4,7 +4,7 @@
 //! produce that no other suite already pins, plus the channel's own rules (record-once config
 //! loads, the CLI's print order, warnings on the error arm).
 //!
-//! Every message is asserted VERBATIM against the jj CLI @ v0.44.0's text block (minus the
+//! Every message is asserted VERBATIM against the jj CLI @ v0.46.0's text block (minus the
 //! `Warning: ` heading and hints). Warnings are read right after the verb under test: every
 //! later verb — `op_log` included — starts a fresh list.
 //!
@@ -243,7 +243,7 @@ fn show_records_a_bad_revset_alias_entry_once() {
     assert_eq!(kinds(&repo.take_warnings()), [WarningKind::ConfigAliasInvalid]);
 }
 
-/// A NON-STRING alias value is the other entry failure (`config.rs:1018-1024` @ v0.44.0).
+/// A NON-STRING alias value is the other entry failure (`config.rs:1193-1199` @ v0.46.0).
 #[test]
 fn a_non_string_alias_value_warns_with_its_type() {
     let fx = git_fx("[revset-aliases]\n'foo()' = 42\n");
@@ -603,7 +603,7 @@ fn warnings_ride_the_error_arm_too() {
 }
 
 /// Story 9.34: the revset-alias table loads with the start-up environment, BEFORE the snapshot
-/// knobs are read (`cli_util.rs:939` vs `:2068-2070` @ v0.44.0), so a bad `[revset-aliases]` entry
+/// knobs are read (`cli_util.rs:964` vs `:2101-2103` @ v0.46.0), so a bad `[revset-aliases]` entry
 /// warns even when a wrong-typed size knob then refuses — as the CLI prints it.
 #[test]
 fn a_revset_alias_warning_precedes_a_wrong_typed_knob() {

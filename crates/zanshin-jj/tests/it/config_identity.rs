@@ -94,7 +94,7 @@ fn identity_warnings(repo: &mut Repo) -> Vec<String> {
         .collect()
 }
 
-/// The CLI's identity warning for `not_configured` (`cli_util.rs:2397-2401` @ v0.44.0).
+/// The CLI's identity warning for `not_configured` (`cli_util.rs:2452-2456` @ v0.46.0).
 fn identity_message(not_configured: &str) -> String {
     format!(
         "{not_configured} Until configured, your commits will be created with the empty identity, and can't be \
@@ -527,7 +527,7 @@ fn is_user_name_fault(err: &RepoError) -> bool {
 }
 
 /// The CLI checks the user-level stack at START-UP, before the command touches any path
-/// (`cli/src/cli_util.rs:4543-4627` @ v0.44.0): a user-level fault wins over a missing
+/// (`cli/src/cli_util.rs:4663-4750` @ v0.46.0): a user-level fault wins over a missing
 /// destination or source, and a refused creation creates nothing — not even the missing
 /// parent of an import destination. Expects `JJ_CONFIG` on a stack with `user.name = 1`.
 fn user_level_faults_refuse_first(tmp: &Path) {

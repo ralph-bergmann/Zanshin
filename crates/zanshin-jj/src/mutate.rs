@@ -150,7 +150,7 @@ pub enum MutateError {
     /// as the repo's EFFECTIVE config defines it — so jj refuses to rewrite it (CLI
     /// parity, NFR-R-2). No operation is committed.
     ///
-    /// Names the FIRST offender only, like the CLI (`cli_util.rs:2011` takes `try_next`,
+    /// Names the FIRST offender only, like the CLI (`cli_util.rs:2044` takes `try_next`,
     /// never a list); more targets may also be immutable. There is deliberately no
     /// `--ignore-immutable` escape hatch on any verb's signature.
     ///
@@ -176,7 +176,7 @@ pub enum MutateError {
     ///
     /// Same fault class the read side reports as [`crate::ConfigError`] /
     /// [`crate::RevsetError::Config`], and the same one the CLI reports as
-    /// ``Invalid `revset-aliases.immutable_heads()` `` (`cli_util.rs:1139`). Never a
+    /// ``Invalid `revset-aliases.immutable_heads()` `` (`cli_util.rs:1167`). Never a
     /// silent fall-back to the builtin immutable set: a config the user cannot see the
     /// effect of must not silently widen — or narrow — what a rewrite may touch.
     ///
@@ -331,7 +331,7 @@ pub enum MutateError {
     },
     /// [`crate::Repo::bookmark_create`] was called with a name that is already a LOCAL
     /// bookmark (Story 9.8) — the CLI's `Bookmark already exists: {name}`
-    /// (`cli/src/commands/bookmark/create.rs:64-70` @ v0.44.0). Nothing is created, not
+    /// (`cli/src/commands/bookmark/create.rs:64-70` @ v0.46.0). Nothing is created, not
     /// even the names that precede this one: the CLI's per-name loop is fail-fast.
     ///
     /// Its own variant rather than [`MutateError::InvalidInput`] for the same reason
@@ -348,7 +348,7 @@ pub enum MutateError {
     /// [`crate::Repo::bookmark_create`] was called with a name whose LOCAL bookmark is
     /// absent but which still has at least one TRACKED remote bookmark (Story 9.8) — the
     /// deleted-but-not-yet-pushed state, and the CLI's `Tracked remote bookmarks exist for
-    /// deleted bookmark: {name}` (`create.rs:71-83` @ v0.44.0).
+    /// deleted bookmark: {name}` (`create.rs:71-83` @ v0.46.0).
     ///
     /// Kept DISTINCT from [`MutateError::BookmarkExists`] because the remedies differ, which
     /// is precisely what the CLI's two separate hints say: recreate the local bookmark with
@@ -363,18 +363,18 @@ pub enum MutateError {
     },
     /// A verb that must lock the working copy found no working-copy commit for this
     /// workspace in the head view (Story 9.22) — the CLI's "Nothing checked out in this
-    /// workspace" (`cli/src/cli_util.rs:1486-1490` @ v0.44.0). Nothing is locked or written.
+    /// workspace" (`cli/src/cli_util.rs:1513-1515` @ v0.46.0). Nothing is locked or written.
     #[error("nothing checked out in this workspace")]
     NoWorkingCopy,
     /// The working copy's recorded tree differs from `@`'s tree in the head view (Story 9.22):
     /// `@` was rewritten without a checkout between the pre-verb snapshot and the verb's own
     /// working-copy lock — a concurrent writer. The CLI's check behind "Concurrent working copy
-    /// operation. Try again." (`cli_util.rs:1501-1505`). Nothing is written.
+    /// operation. Try again." (`cli_util.rs:1523-1527` @ v0.46.0). Nothing is written.
     #[error("concurrent working copy operation")]
     ConcurrentWorkingCopy,
     /// [`crate::Repo::file_untrack`] matched paths that are NOT ignored, so the next snapshot
     /// would add them straight back (Story 9.22) — the CLI's `'<path>' is not ignored.` /
-    /// `'<path>' and N other files are not ignored.` (`untrack.rs:84-104`).
+    /// `'<path>' and N other files are not ignored.` (`untrack.rs:85-105` @ v0.46.0).
     ///
     /// Names EVERY offender, in jj-lib's tree order; the CLI's message names the first and
     /// counts the rest, which is `paths[0]` and `paths.len() - 1` here. No operation is written
@@ -691,7 +691,7 @@ pub(crate) fn resolve_commit(repo: &MutableRepo, id: &ChangeId) -> Result<Commit
 /// (Story 9.1) — the CLI's `check_rewritable`, which every rewriting verb runs before it
 /// touches the repo.
 ///
-/// Resolution happens against `tx.base_repo()`, mirroring `cli_util.rs:2927`
+/// Resolution happens against `tx.base_repo()`, mirroring `cli_util.rs:2986`
 /// `rebase_mutable_descendants`: a `jj git fetch` can update immutable commits, and only
 /// the ones still reachable from the pre-transaction state should constrain a rebase. The
 /// CLI runs the guard against its read-only repo before opening a transaction; running it
@@ -795,7 +795,7 @@ pub(crate) fn export_refs_into(
 
 /// Whether `wc_commit` is inside the immutable set as `tx.repo()` sees it. An immutable set that
 /// does not RESOLVE counts as "not immutable": the CLI skips the step on that failure
-/// (`if let Ok(immutable_expr) = …`, `cli_util.rs:2324-2329`).
+/// (`if let Ok(immutable_expr) = …`, `cli_util.rs:2371-2376`).
 fn wc_is_immutable(
     tx: &Transaction,
     immutable: &Arc<UserRevsetExpression>,
@@ -811,7 +811,7 @@ fn wc_is_immutable(
     Ok(!set.is_empty().map_err(be)?)
 }
 
-/// Port of the CLI's `finish_transaction` (`cli/src/cli_util.rs:2300-2417` @ v0.44.0) minus its
+/// Port of the CLI's `finish_transaction` (`cli/src/cli_util.rs:2347-2472` @ v0.46.0) minus its
 /// terminal output.
 ///
 /// 1. If the transaction leaves `@` inside the immutable set, a new, empty `@` is created on top
@@ -825,7 +825,7 @@ fn wc_is_immutable(
 ///    `update_working_copy` calls `Workspace::check_out` unconditionally, which (re)records the
 ///    working copy at the new operation.
 /// 5. The identity check: an empty `user.name`/`user.email` in the settings the operation was
-///    written with warns (`cli_util.rs:2387-2415`) — only here, so every caller that commits
+///    written with warns (`cli_util.rs:2442-2470`) — only here, so every caller that commits
 ///    through this function warns and nothing else does.
 ///
 /// Its warnings land in `sink` in the CLI's print order: became-immutable, the HEAD reset, the
@@ -1069,7 +1069,7 @@ pub(crate) fn describe(
     let commit = plan_describe(&tx, &ctx.templates(workspace), change_id)?;
     let mut builder = tx.repo_mut().rewrite_commit(&commit).detach();
     builder.set_description(description);
-    // `describe.rs:151-163`: the trailers template is parsed whatever the description, and
+    // `describe.rs:151-165` @ v0.46.0: the trailers template is parsed whatever the description, and
     // applied only to a non-empty one (`use_editor` is false: Zanshin always passes the text).
     {
         let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
@@ -1448,7 +1448,7 @@ pub(crate) fn plan_abandon(
 /// `ctx.immutable` is the repo's effective immutable-set expression, parsed by the pre-verb
 /// snapshot ([`crate::snapshot::CommandEnv`]); a target inside it is refused,
 /// mirroring the CLI's `check_rewritable` in `jj abandon`
-/// (`cli/src/commands/abandon.rs:85` @ v0.44.0).
+/// (`cli/src/commands/abandon.rs:85` @ v0.46.0).
 ///
 /// # Errors
 ///
@@ -1497,7 +1497,7 @@ pub(crate) fn abandon(
         ..Default::default()
     };
     // WHY: jj 0.44 added the leading `immutable` argument; the CLI passes the resolved
-    // immutable set (`cli_util.rs:2927` `rebase_mutable_descendants`), so we do too. Note
+    // immutable set (`cli_util.rs:2986` `rebase_mutable_descendants`), so we do too. Note
     // the algebra: immutability is ancestor-closed, so once `guard_rewritable` passed on
     // the targets none of their descendants can be immutable and this argument cannot
     // change the outcome here. It is passed for CLI parity and for the case the CLI's own
@@ -1632,7 +1632,7 @@ where
 /// or — when `work` changed nothing — drops the transaction and writes NO operation.
 ///
 /// The no-op arm is `WorkspaceCommandTransaction::finish`'s own guard
-/// (`cli/src/cli_util.rs:2792-2795`: `if !tx.repo().has_changes() { "Nothing changed."; return }`),
+/// (`cli/src/cli_util.rs:2851-2854`: `if !tx.repo().has_changes() { "Nothing changed."; return }`),
 /// which is why `jj git remote add` needs no guard of its own while `remove`/`rename` write
 /// one explicitly for the reserved remote `git`, and why `jj bookmark delete` can match
 /// nothing and still succeed. All of those shapes collapse to this one here.
@@ -1695,8 +1695,8 @@ where
 // `finish` persists together with the operation id it now corresponds to.
 
 /// Locks the working copy of `workspace` and returns it with `@` as `repo` sees it — the port of
-/// `WorkspaceCommandHelper::start_working_copy_mutation` (`cli/src/cli_util.rs:1482-1507` @
-/// v0.44.0).
+/// `WorkspaceCommandHelper::start_working_copy_mutation` (`cli/src/cli_util.rs:1511-1529` @
+/// v0.46.0).
 ///
 /// `repo` must be the head-resolved repo the caller's transaction starts from, so `@` and the
 /// transaction describe one view. The concurrency check is the CLI's: if the tree the working
@@ -1731,7 +1731,7 @@ pub(crate) fn lock_working_copy<'w>(
 /// Runs `work` against a transaction AND the locked working copy, then commits `description`
 /// UNCONDITIONALLY and finishes the working copy at the new operation (Story 9.22).
 ///
-/// The shape of `cmd_file_track`/`cmd_file_untrack` @ v0.44.0: both commit the raw
+/// The shape of `cmd_file_track`/`cmd_file_untrack` @ v0.46.0: both commit the raw
 /// `Transaction` (`start_transaction().into_inner()` … `tx.commit(..)`), which BYPASSES
 /// `WorkspaceCommandTransaction::finish`'s "Nothing changed." guard — so, unlike
 /// [`finish_or_no_op`], an operation is written even when the view did not change. Order is the
@@ -1779,7 +1779,7 @@ where
             working_copy_change_id: Some(ChangeId(new_wc.change_id().reverse_hex())),
             // WHY `None`: `track`/`untrack` commit the raw transaction and never reach
             // `finish_transaction` — so they never warn about the identity either, the CLI's
-            // "Name and email not configured" living there (`cli/src/cli_util.rs:2387-2415`).
+            // "Name and email not configured" living there (`cli/src/cli_util.rs:2442-2470`).
             finish: None,
         },
     ))
@@ -1794,7 +1794,7 @@ pub(crate) struct RestorePlan {
     pub(crate) restored: Option<SelectedTree>,
 }
 
-/// `jj restore`'s plan (`restore.rs:119-185` @ v0.46.0), shared by [`restore`] and
+/// `jj restore`'s plan (`restore.rs:121-183` @ v0.46.0), shared by [`restore`] and
 /// `drop_actions`' restore row (Story 9.31 follow-on): `into` then `from` resolved with the
 /// CLI's defaults (see [`restore`]), the rewritability guard on the destination, the matcher,
 /// the selected tree, the unmatched-paths warning, and the same-tree check. Writes nothing.
@@ -1823,7 +1823,7 @@ pub(crate) fn plan_restore(
         let from_commits = pollster::block_on(to_commit.parents()).map_err(be)?;
         (to_commit, from_tree, from_commits)
     };
-    // CLI parity (`restore.rs:138`): the rewritability guard runs BEFORE any matcher or
+    // CLI parity (`restore.rs:139` @ v0.46.0): the rewritability guard runs BEFORE any matcher or
     // tree work, so an immutable destination costs no diffing and writes no blobs.
     guard_rewritable(tx, &ctx.templates(workspace), std::slice::from_ref(to_commit.id()))?;
 
@@ -1866,7 +1866,7 @@ pub(crate) fn check_restore_args(
 /// Gives the paths matching `paths` in the destination commit the content they have in the
 /// source commit (Story 9.3) — the CLI's `jj restore`, whole-file only.
 ///
-/// Default resolution mirrors `cli/src/commands/restore.rs:119-137` @ v0.44.0 exactly:
+/// Default resolution mirrors `cli/src/commands/restore.rs:120-138` @ v0.46.0 exactly:
 ///
 /// - If either `from` or `into` is given, the OMITTED one is `@`, and the source tree is
 ///   the source commit's own tree.
@@ -1879,7 +1879,7 @@ pub(crate) fn check_restore_args(
 ///
 /// If the selected tree already EQUALS the destination's, no transaction is committed —
 /// the op log is untouched and the returned `new_op_id` is the pre-call head
-/// (`restore.rs:181`, which likewise never opens a transaction). That check cannot be
+/// (`restore.rs:183` @ v0.46.0, which likewise never opens a transaction). That check cannot be
 /// replaced by `has_changes()`: `rewrite_commit(...).set_tree(same_tree).write()` already
 /// records a rewrite.
 ///
@@ -1887,7 +1887,7 @@ pub(crate) fn check_restore_args(
 /// the working-copy commit the pre-verb snapshot has just brought up to date (Story 9.26).
 ///
 /// An explicitly named path that matches nothing in either tree warns
-/// (`jj.paths_unmatched`, `restore.rs:174-179`) after the rewritability guard and before the
+/// (`jj.paths_unmatched`, `restore.rs:175-181` @ v0.46.0) after the rewritability guard and before the
 /// no-op check, where the CLI prints it (Story 9.32).
 ///
 /// # Errors
@@ -2013,7 +2013,7 @@ pub(crate) fn plan_absorb(
             ),
         );
     }
-    // CLI parity (`absorb.rs:160-162`): the guard runs over the split's TARGETS, which are
+    // CLI parity (`absorb.rs:161-163` @ v0.46.0): the guard runs over the split's TARGETS, which are
     // discovered by annotation — not over anything the caller named. An empty target set is
     // trivially rewritable: nothing is absorbable, and the verb writes no operation.
     let target_ids: Vec<jj_lib::backend::CommitId> = selected.target_commits.keys().cloned().collect();
@@ -2036,18 +2036,18 @@ pub(crate) fn plan_absorb(
 /// defaults to `@`, which the pre-verb snapshot has just brought up to date with the on-disk
 /// edits, exactly as the CLI's `workspace_helper` does (Story 9.26).
 ///
-/// Ordering mirrors `cli/src/commands/absorb.rs` @ v0.44.0: resolve → split → collect the
+/// Ordering mirrors `cli/src/commands/absorb.rs` @ v0.46.0: resolve → split → collect the
 /// skipped paths → `check_rewritable` on the split's TARGETS → absorb → descendant pass.
 /// jj-lib's `absorb_hunks` appends the source id to each target's predecessors itself
 /// (`absorb.rs:357-361`); predecessors are never touched here.
 ///
 /// When nothing was absorbable the transaction is dropped and NO operation is written —
 /// the CLI's own `tx.finish` refuses to write when `!tx.repo().has_changes()`
-/// (`cli_util.rs:2792-2795`). `AbsorbResult::rewritten_change_ids` is then empty.
+/// (`cli_util.rs:2851-2854`). `AbsorbResult::rewritten_change_ids` is then empty.
 ///
 /// Warnings in the CLI's order (Story 9.32): an explicitly named path that matches nothing in
-/// the source tree (`jj.paths_unmatched`, `absorb.rs:102-107`), then one `jj.absorb_path_skipped`
-/// per path jj-lib refused to split (`:155-158`) — BEFORE the rewritability guard, so a refusal's
+/// the source tree (`jj.paths_unmatched`, `absorb.rs:102-108`), then one `jj.absorb_path_skipped`
+/// per path jj-lib refused to split (`:156-159`) — BEFORE the rewritability guard, so a refusal's
 /// error envelope still carries them — then the finish's.
 ///
 /// # Errors

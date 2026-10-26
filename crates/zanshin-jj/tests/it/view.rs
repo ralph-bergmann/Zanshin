@@ -94,7 +94,7 @@ fn tags_local_resolves_to_the_targets_change_id() {
 // ── Tags: a tracked remote tag is an ADDITIONAL row, listed unfiltered ───────
 
 /// A tracked remote tag pointing at the SAME commit as the local one is deliberately NOT
-/// hidden: the CLI's `jj tag list` drops it (`cli/src/commit_ref_list.rs` @ v0.44.0's
+/// hidden: the CLI's `jj tag list` drops it (`cli/src/commit_ref_list.rs` @ v0.46.0's
 /// `include_synced_remotes`), but that is a display default — `list_tags` mirrors
 /// `list_bookmarks` and offers the unfiltered view.
 #[test]

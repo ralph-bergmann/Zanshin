@@ -134,6 +134,23 @@ void main() {
       await handle.close();
     });
 
+    // Story 9.46: a remote with only a push url, which `jj git remote list` lists as
+    // `<no URL> (push: …)`, crosses the real cdylib with a null url.
+    test('remotes_lists_a_push_only_remote_with_a_null_url', () async {
+      await (await worker.initRepo(tempDir.path, backend: 1, noColocate: true)).close();
+      File(
+        '${tempDir.path}/.jj/repo/store/git/config',
+      ).writeAsStringSync('[remote "p"]\n\tpushurl = ssh://h/p.git\n', mode: FileMode.append);
+      final RepoHandle handle = await worker.openRepo(tempDir.path);
+
+      final Remote listed = (await handle.remotes()).single;
+      expect(listed.name, equals('p'));
+      expect(listed.url, isNull);
+      expect(listed.pushUrl, equals('ssh://h/p.git'));
+
+      await handle.close();
+    });
+
     // One of the two error codes this story adds, surfacing as a real
     // ZanshinFfiException through the whole worker seam.
     test('gitRemoteAdd_duplicate_surfaces_jj_remote_exists', () async {

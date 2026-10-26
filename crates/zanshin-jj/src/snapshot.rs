@@ -24,16 +24,16 @@
 //!
 //! - the start-up environment ([`CommandEnv`]: the alias tables and the `immutable_heads()` parse)
 //!   BEFORE the Git import/export lock — `workspace_helper_with_stats` builds it first
-//!   (`cli_util.rs:477`);
+//!   (`cli_util.rs:478`);
 //! - the snapshot knobs (`snapshot.auto-track`, the ignore files, `snapshot.max-new-file-size`)
 //!   at the top of [`snapshot_working_copy`] — AFTER `import git head`, before the working-copy
-//!   lock and the stale check (`cli_util.rs:2065-2070`);
-//! - the Git import options at the top of [`import_git_refs`] (`cli_util.rs:1434-1437`);
+//!   lock and the stale check (`cli_util.rs:2098-2103`);
+//! - the Git import options at the top of [`import_git_refs`] (`cli_util.rs:1463-1466`);
 //! - `snapshot.auto-update-stale` only on a stale working copy, under the lock ([`run`],
 //!   `cli_util.rs:500` @ v0.46.0) — `true` recovers right there ([`crate::stale`], Story 9.23).
 //!
 //! `immutable_heads()` is parsed with the start-up environment but RESOLVED only where a step
-//! needs it (`cli_util.rs:2105-2108`).
+//! needs it (`cli_util.rs:2138-2141`).
 
 use std::path::Path;
 use std::sync::Arc;
@@ -77,7 +77,7 @@ use crate::GitImportResult;
 pub struct Precondition {
     /// Whether the head operation changed during the precondition — an operation was written,
     /// or the repo was reloaded at a newer working-copy operation. `jj util snapshot`'s own
-    /// `was_snapshot_taken` (`cli/src/commands/util/snapshot.rs` @ v0.44.0).
+    /// `was_snapshot_taken` (`cli/src/commands/util/snapshot.rs` @ v0.46.0).
     pub was_snapshot_taken: bool,
     /// What the snapshot could not record — the data behind the CLI's `print_snapshot_stats`
     /// warnings, which ride the call's warnings as `jj.snapshot_files_refused` /
@@ -113,7 +113,7 @@ pub struct Precondition {
 }
 
 /// The refs the colocated Git export could not write while the CLI finished a transaction
-/// (`finish_transaction`, `cli/src/cli_util.rs:2300-2417` @ v0.44.0) — a warning there, never an
+/// (`finish_transaction`, `cli/src/cli_util.rs:2347-2472` @ v0.46.0) — a warning there, never an
 /// error (Story 9.26). The data behind the call's `jj.git_export_failed` warnings; the finish's
 /// other warnings ride the call's [`crate::Warning`] list only (Story 9.32).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -269,7 +269,7 @@ fn saturate(n: usize) -> u32 {
 // ── The Git import/export lock ────────────────────────────────────────────────────
 
 /// Proof that `<repo_path>/git_import_export.lock` is held — the CLI's `GitImportExportLock`
-/// (`cli/src/cli_util.rs:981-996` @ v0.44.0). Empty (`None`) outside a colocated workspace,
+/// (`cli/src/cli_util.rs:1011-1026` @ v0.46.0). Empty (`None`) outside a colocated workspace,
 /// where the CLI takes no lock either. Dropping it releases the lock.
 pub(crate) struct GitImportExportLock {
     _lock: Option<FileLock>,
@@ -557,7 +557,7 @@ fn note_heads_moved(workspace: &Workspace, loaded_op_id: &jj_lib::op_store::Oper
     }
 }
 
-/// Port of `snapshot_impl` (`cli/src/cli_util.rs:1298-1326` @ v0.44.0): colocated → import the
+/// Port of `snapshot_impl` (`cli/src/cli_util.rs:1326-1354` @ v0.46.0): colocated → import the
 /// Git HEAD, then snapshot, then import the Git refs; otherwise the snapshot alone.
 ///
 /// `ctx.lock` must be the held [`GitImportExportLock`]; every step runs under it. `ctx.config` is
@@ -687,7 +687,7 @@ fn import_git_head(
 /// Port of `snapshot_working_copy` (`cli/src/cli_util.rs:2091-2278` @ v0.46.0) — also the stale
 /// recovery's first step, on a repo loaded at the working copy's own operation (Story 9.23).
 ///
-/// First reads the snapshot knobs off `ctx.config`, exactly where the CLI does (`:2065-2070`,
+/// First reads the snapshot knobs off `ctx.config`, exactly where the CLI does (`:2098-2103`,
 /// Story 9.34): `snapshot.auto-track` ([`wc_ops::auto_tracking_matcher`]), then the ignore files
 /// and `snapshot.max-new-file-size` ([`wc_ops::snapshot_options`]). That is after a colocated
 /// `import git head` committed — which a wrong-typed knob therefore leaves in the op log, as in
@@ -812,13 +812,13 @@ fn has_jjconflict_entries(tree: &MergedTree) -> Result<bool, PreconditionError> 
     }))
 }
 
-/// Port of `import_git_refs` (`cli/src/cli_util.rs:1428-1460` @ v0.44.0): read the Git import
+/// Port of `import_git_refs` (`cli/src/cli_util.rs:1457-1489` @ v0.46.0): read the Git import
 /// options (`git.*` plus `remotes.<name>.auto-track-bookmarks`) off the effective config, import
 /// the Git refs with them, and — only when that changed anything — rebase the MUTABLE
 /// descendants (immutable set resolved against the BASE repo, `rebase_mutable_descendants`)
 /// and finish the transaction as `import git refs`.
 ///
-/// The options are read HERE, first, as the CLI reads them (`:1434-1437`): a malformed value
+/// The options are read HERE, first, as the CLI reads them (`:1463-1466`): a malformed value
 /// fails after `import git head` and `snapshot working copy` were committed, and those
 /// operations stay in the op log, exactly as the CLI leaves them.
 ///

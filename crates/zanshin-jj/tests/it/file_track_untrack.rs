@@ -2,7 +2,7 @@
 
 //! Integration tests for `Repo::file_track` / `Repo::file_untrack` (Story 9.22) — one witness
 //! per row of the story's I/O matrix, the `cli/tests/test_file_track_untrack_commands.rs`
-//! sequences @ v0.44.0, and the `base_ignores` chain.
+//! sequences @ v0.46.0, and the `base_ignores` chain.
 //!
 //! Every repo is built in-test (`Repo::init`, or `git init` + `convert_colocated` for the
 //! colocated rows) because the rows need files ON DISK next to a working-copy state, which the
@@ -1012,7 +1012,7 @@ fn a_workspace_without_at_is_refused() {
 
 // ── The CLI's own sequences ──────────────────────────────────────────────────────
 
-/// `test_track_ignored` @ v0.44.0, step by step: `auto-track = none()`, a descendant of `@`,
+/// `test_track_ignored` @ v0.46.0, step by step: `auto-track = none()`, a descendant of `@`,
 /// two tracks each followed by the CLI's next-command snapshot, an untrack whose eviction is
 /// immediate and rebases the descendant, and an ignored path that `track` does not take.
 #[test]

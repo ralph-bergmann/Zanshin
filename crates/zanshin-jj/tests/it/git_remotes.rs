@@ -75,13 +75,14 @@ fn remote_names(repo: &mut Repo) -> Vec<String> {
         .collect()
 }
 
-/// The fetch URL `Repo::list_remotes` reports for `name`, if any.
+/// The fetch URL `Repo::list_remotes` reports for `name` — `None` both when the remote is
+/// missing and when it has only a push URL (the CLI's `<no URL> (push: …)` row).
 fn remote_url(repo: &mut Repo, name: &str) -> Option<String> {
     repo.list_remotes()
         .expect("list_remotes")
         .into_iter()
         .find(|r| r.name == name)
-        .map(|r| r.url)
+        .and_then(|r| r.url)
 }
 
 /// The push URL `Repo::list_remotes` reports for `name` — `None` both when the remote is

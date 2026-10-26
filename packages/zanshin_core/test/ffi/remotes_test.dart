@@ -119,6 +119,23 @@ void main() {
         reason: 'a present push url round-trips verbatim, credentials included',
       );
     });
+
+    // ── Push-only remote: absent url stays null (Story 9.46) ──────────────────
+
+    test('a push-only remote decodes with a null url and its push url', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Remotes,
+        data: fbs.RemotesObjectBuilder(
+          remotes: [fbs.RemoteObjectBuilder(name: 'p', pushUrl: 'ssh://h/p.git')],
+        ),
+      ).toBytes();
+
+      final Remote r = decodeRemotesEnvelope(bytes).single;
+
+      expect(r.url, isNull, reason: 'an absent fetch url stays null, never \'\'');
+      expect(r.pushUrl, equals('ssh://h/p.git'));
+    });
   });
 
   group('decodeGitPushRemotesEnvelope decode contract (Story 9.54)', () {

@@ -7,7 +7,7 @@
 //! [`file_delete`], Story 9.44), which rewrite one revision's tree as `file chmod` does.
 //!
 //! Both verbs are step-for-step ports of `cmd_file_track` / `cmd_file_untrack`
-//! (`cli/src/commands/file/{track,untrack}.rs` @ v0.44.0): lock the working copy through
+//! (`cli/src/commands/file/{track,untrack}.rs` @ v0.46.0): lock the working copy through
 //! [`mutate::commit_with_locked_wc`], snapshot (and, for untrack, `reset`), commit
 //! `track paths` / `untrack paths` UNCONDITIONALLY, and finish the working copy at that
 //! operation. The terminal output the CLI prints afterwards is not ported; every fact it
@@ -170,7 +170,7 @@ pub(crate) fn project_stats(stats: &working_copy::SnapshotStats) -> SnapshotStat
 }
 
 /// Merges the pre-verb auto-snapshot's stats into `file track`'s own — the loop of
-/// `print_track_snapshot_stats` (`cli/src/commands/file/track.rs` @ v0.44.0).
+/// `print_track_snapshot_stats` (`cli/src/commands/file/track.rs` @ v0.46.0).
 ///
 /// The track snapshot marks every new file it was not asked to track `FileNotAutoTracked`; for
 /// a path the preceding auto-snapshot already refused, that snapshot's reason (e.g. the file
@@ -196,10 +196,10 @@ pub(crate) fn merge_track_stats(
 }
 
 /// Parses the effective `snapshot.auto-track` into a matcher — the CLI's `auto_tracking_matcher`
-/// (`cli/src/cli_util.rs:1604-1611` @ v0.44.0).
+/// (`cli/src/cli_util.rs:1635-1642` @ v0.46.0).
 ///
 /// The value is a FILESET expression (`fileset::parse`, not the bare-path form), parsed the way
-/// the CLI parses a CONFIG value (`fileset_parse_context_for_config`, `:1007-1018`): with the
+/// the CLI parses a CONFIG value (`fileset_parse_context_for_config`, `:1037-1046`): with the
 /// effective `[fileset-aliases]` and a ROOT path converter, so a relative path in it means
 /// "relative to the workspace root", never to some process CWD.
 ///
@@ -233,7 +233,7 @@ pub(crate) fn auto_tracking_matcher(
 }
 
 /// The `$XDG_CONFIG_HOME` the CLI's `base_ignores` falls back to: the variable when set and
-/// non-empty, else `<home>/.config` (`cli/src/cli_util.rs:1660-1667` @ v0.44.0). Both variables
+/// non-empty, else `<home>/.config` (`cli/src/cli_util.rs:1692-1699` @ v0.46.0). Both variables
 /// are read through `crate::environment` (Story 9.36) — the variable, as in the CLI, only as
 /// UTF-8; `<home>` is a non-empty `$HOME` (what `etcetera::home_dir()` reads in the CLI's own
 /// environment), else `etcetera::home_dir()` itself.
@@ -271,7 +271,7 @@ fn excludes_file_path(workspace: &Workspace, config: &gix::config::File) -> Opti
 
 /// The ignore patterns every snapshot starts from, BEFORE the working copy's own
 /// `.gitignore`s — the port of `WorkspaceCommandHelper::base_ignores`
-/// (`cli/src/cli_util.rs:1642-1685` @ v0.44.0).
+/// (`cli/src/cli_util.rs:1673-1717` @ v0.46.0).
 ///
 /// On a git backend: the repo's git config's excludes file (see [`excludes_file_path`]), then
 /// `<git dir>/info/exclude`. On any other backend: only the excludes file named by the GLOBAL
@@ -319,7 +319,7 @@ pub(crate) fn base_ignores(workspace: &Workspace) -> Result<Arc<GitIgnoreFile>, 
 }
 
 /// Builds the options a snapshot runs with — the port of
-/// `snapshot_options_with_start_tracking_matcher` (`cli/src/cli_util.rs:1613-1631` @ v0.44.0).
+/// `snapshot_options_with_start_tracking_matcher` (`cli/src/cli_util.rs:1644-1662` @ v0.46.0).
 ///
 /// `base_ignores` from [`base_ignores`], `max_new_file_size` from the effective
 /// `snapshot.max-new-file-size` (`0` = unlimited), no progress callback, and a
@@ -416,7 +416,7 @@ fn saturate(n: usize) -> u32 {
 }
 
 /// Starts tracking the paths matching `paths` in the working copy (Story 9.22) — the port of
-/// `cmd_file_track` @ v0.44.0. See [`crate::Repo::file_track`] for the contract.
+/// `cmd_file_track` @ v0.46.0. See [`crate::Repo::file_track`] for the contract.
 ///
 /// Every refusal that needs no lock (paths, config, ignore files) happens BEFORE the lock. The
 /// only warning is the MERGED stats' size refusals (`print_track_snapshot_stats` prints no
@@ -458,14 +458,14 @@ pub(crate) fn file_track(
 struct UntrackOutcome {
     num_rebased: usize,
     /// The explicit `paths` with no entry in the pre-call `@` tree — `print_unmatched_explicit_paths`
-    /// (`cli/src/cli_util.rs:3323-3347` @ v0.44.0), in request order, duplicates kept, each in its
+    /// (`cli/src/cli_util.rs:3382-3413` @ v0.46.0), in request order, duplicates kept, each in its
     /// NORMALISED repo-path form (the CLI formats the parsed path too, so `nope/` reports `nope`).
     unmatched_paths: Vec<RepoPathBuf>,
     stats: working_copy::SnapshotStats,
     export: Option<git::GitExportStats>,
 }
 
-/// The body of `cmd_file_untrack` between the lock and the commit (`untrack.rs:62-111`).
+/// The body of `cmd_file_untrack` between the lock and the commit (`untrack.rs:63-119` @ v0.46.0).
 /// `colocated_root` is the workspace root — the git worktree the export writes to — when the
 /// workspace is colocated, `None` otherwise.
 fn untrack_in_tx(
@@ -534,7 +534,7 @@ fn untrack_in_tx(
 }
 
 /// Stops tracking the paths matching `paths` (Story 9.22) — the port of `cmd_file_untrack` @
-/// v0.44.0. See [`crate::Repo::file_untrack`] for the contract.
+/// v0.46.0. See [`crate::Repo::file_untrack`] for the contract.
 ///
 /// Every refusal that needs no lock (paths, config, ignore files) happens BEFORE the lock.
 /// Warnings in the CLI's order (Story 9.32): the colocated export's failures inside the

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! The `base_ignores` row that needs NO usable `$XDG_CONFIG_HOME`: the CLI then reads the
-//! global git ignore from `<home>/.config/git/ignore` (`cli/src/cli_util.rs:1660-1667` @
-//! v0.44.0) — the branch a Finder/Dock-launched Zanshin, which has no `XDG_CONFIG_HOME`, runs.
+//! global git ignore from `<home>/.config/git/ignore` (`cli/src/cli_util.rs:1692-1699` @
+//! v0.46.0) — the branch a Finder/Dock-launched Zanshin, which has no `XDG_CONFIG_HOME`, runs.
 //!
 //! # WHY its own process
 //!

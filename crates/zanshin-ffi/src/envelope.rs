@@ -730,7 +730,7 @@ pub(crate) fn expect_request_kind(actual: fbs::RequestKind, expected: fbs::Reque
 ///
 /// Argument arity is observable CLI behavior: `jj file annotate`'s positional `path`,
 /// `jj file search`'s `-p/--pattern`, and `jj git remote add`'s two positionals are all
-/// required at v0.44.0, so an omitted field is a caller bug and must be named as one. An
+/// required at v0.46.0, so an omitted field is a caller bug and must be named as one. An
 /// explicitly present EMPTY string is a VALUE, not an absence, and is passed through
 /// unchanged.
 pub(crate) fn missing_field(field: &str) -> FfiErrorObj {
