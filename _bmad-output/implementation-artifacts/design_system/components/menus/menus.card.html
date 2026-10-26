@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x650" name="Menus" subtitle="Menu (••• / right-click), ProjectMenu (the capsule), DropMenu (while dragging)" -->
+<!-- @dsCard group="Components" viewport="700x690" name="Menus" subtitle="Menu (••• / right-click — see Card menu for its variants), ProjectMenu (the capsule), DropMenu (while dragging)" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -26,6 +26,7 @@
         { id: "describe", label: "Describe…", icon: "describe", cmd: "jj describe" },
         { id: "squash", label: "Squash into parent", icon: "squash", cmd: "jj squash" },
         "sep",
+        { id: "revert", label: "Revert", icon: "revert", cmd: "jj revert -B @" },
         { id: "abandon", label: "Abandon", icon: "abandon", cmd: "jj abandon", danger: true },
       ]}/>
       <ProjectMenu activeId="p_myapp" recent={[

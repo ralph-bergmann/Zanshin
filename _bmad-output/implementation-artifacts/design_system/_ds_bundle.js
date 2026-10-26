@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/brand/Icon.jsx":"45c4a7df2bac","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"017e79b469f3","components/content/DiffView.jsx":"04b319036eb4","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"15e5ec6e86ca","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"c4738cdf8461","components/graph/ChangeId.jsx":"cdfcdc246109","components/graph/DayAxis.jsx":"daf511168e2f","components/graph/Flag.jsx":"74ce24245881","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/StackCard.jsx":"2f1bb5d3a29a","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"eba0bb90465b","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"1ef204a4c010","components/overlays/PeekCard.jsx":"2107f8cc819f","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"84a747440735","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/SettingsGroup.jsx":"5b815f7fe172","components/settings/SettingsRow.jsx":"7d9c836ee9c8","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"7e3ccde5113a","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"aabbb9e82bcd","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"b8357bf78fa1","ui_kits/desktop/dialogs.jsx":"de3d5fdba128","ui_kits/desktop/graph.jsx":"c00b2e7d7394","ui_kits/desktop/inspector.jsx":"b6944e6c90c1","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/brand/Icon.jsx":"df15e6713ebc","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"017e79b469f3","components/content/DiffView.jsx":"04b319036eb4","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"15e5ec6e86ca","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"daf511168e2f","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"c7c18348d2bf","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"1ef204a4c010","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"7e3ccde5113a","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"1622468fa8bc","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"e890a01991e8","ui_kits/desktop/dialogs.jsx":"6d06586d7d66","ui_kits/desktop/graph.jsx":"b6e9c7fe0cc6","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"b103786c1ee8","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -58,6 +58,7 @@ const ZS_ICON_SET = {
   "plus": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 3v10M3 8h10\"></path></g>",
   "pull": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 1.75v6M5 4.75l3 3 3-3\"></path><circle cx=\"8\" cy=\"12\" r=\"1.75\"></circle></g>",
   "push": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 13V5M5 8l3-3 3 3M3 2h10\"></path></g>",
+  "revert": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3.43 9.61A5.25 5.25 0 1 0 4.79 4.54L2.67 6.66\"></path><path d=\"M2.67 3.16v3.5h3.5\"></path></g>",
   "reviews": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 11.5V4a1 1 0 0 1 1-1h7l3 3v5.5a1 1 0 0 1-1 1H6L3 14v-2.5z\"></path></g>",
   "search": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"7\" cy=\"7\" r=\"4\"></circle><path d=\"M10 10l3.5 3.5\"></path></g>",
   "settings": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6.79 3.77L6.96 2.09A6 6 0 0 1 9.04 2.09L9.21 3.77A4.4 4.4 0 0 1 11.06 4.83L12.6 4.14A6 6 0 0 1 13.64 5.95L12.27 6.94A4.4 4.4 0 0 1 12.27 9.06L13.64 10.05A6 6 0 0 1 12.6 11.86L11.06 11.17A4.4 4.4 0 0 1 9.21 12.23L9.04 13.91A6 6 0 0 1 6.96 13.91L6.79 12.23A4.4 4.4 0 0 1 4.94 11.17L3.4 11.86A6 6 0 0 1 2.36 10.05L3.73 9.06A4.4 4.4 0 0 1 3.73 6.94L2.36 5.95A6 6 0 0 1 3.4 4.14L4.94 4.83A4.4 4.4 0 0 1 6.79 3.77z\"></path><circle cx=\"8\" cy=\"8\" r=\"1.85\"></circle></g>",
@@ -1969,19 +1970,16 @@ Object.assign(__ds_scope, { BookmarkChip });
 
 // components/graph/ChangeId.jsx
 try { (() => {
-// ChangeId — jj change id; the unique prefix is bold (2 characters by default; search rows bold the typed prefix). ◆ marks immutable history.
+// ChangeId — jj change id; the unique prefix is bold (2 characters by default; search rows bold the typed prefix).
+// Immutable history has no mark here — the card's hatch carries it (the ◆ is retired).
 function ChangeId({
   id = "",
   length = 5,
-  prefix = 2,
-  immutable = false
+  prefix = 2
 }) {
   return /*#__PURE__*/React.createElement("span", {
     className: "zs-cid"
-  }, immutable && /*#__PURE__*/React.createElement("span", {
-    className: "zs-cid-imm",
-    title: "immutable"
-  }, "\u25C6"), /*#__PURE__*/React.createElement("b", null, id.slice(0, prefix)), id.slice(prefix, length));
+  }, /*#__PURE__*/React.createElement("b", null, id.slice(0, prefix)), id.slice(prefix, length));
 }
 Object.assign(__ds_scope, { ChangeId });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/graph/ChangeId.jsx", error: String((e && e.message) || e) }); }
@@ -1990,7 +1988,7 @@ Object.assign(__ds_scope, { ChangeId });
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 // ChangeCard — one change in the graph. Detailed (62px): subject over meta. Compact (40px): one line.
-// States: workingCopy (saffron, glow) · selected (moon ring) · immutable (◆, muted subject) · empty / undescribed (italic, dim) · root
+// States: workingCopy (saffron, glow) · selected (moon ring) · immutable (hatched, muted subject — no ◆, no colour; the hatch stays on hover, selection, open menu and drop) · empty / undescribed (italic, dim) · root
 // · dim · drop (rebase target) · dragging "src" | "from" · flash (just changed) · menuOpen (its ••• menu is showing)
 // Hover affordances: the ••• button (onMenu) on the bottom edge; without bookmarks, a round bookmark button (onBookmark) on the top edge.
 // workspaces: the workspaces whose working copy is this commit — pass them only when the repo has two or more (jj prints no marker
@@ -2045,8 +2043,7 @@ function ChangeCard({
   const cls = ["zs-card", !detailed && "is-compact", workingCopy && "is-wc", selected && "is-sel", hover && "is-hover", immutable && "is-immutable", root && "is-root", dim && "is-dim", drop && "is-drop", dragging && "is-drag-" + dragging, flash && "is-flash", menuOpen && "is-menu", className].filter(Boolean).join(" ");
   const cid = /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
     id: id,
-    length: detailed && !workingCopy ? 8 : 5,
-    immutable: immutable && !root
+    length: detailed && !workingCopy ? 8 : 5
   });
   const stop = e => e.stopPropagation();
   const others = (workspaces || []).filter(w => w !== ownWorkspace).sort();
@@ -2063,7 +2060,7 @@ function ChangeCard({
   return /*#__PURE__*/React.createElement("div", _extends({
     role: "button",
     tabIndex: 0,
-    "aria-label": (workingCopy ? "Working copy" + (named ? " of " + ownWorkspace : "") + ", " : "") + (others.length ? "working copy of " + others.join(", ") + ", " : "") + (subject || "no description"),
+    "aria-label": (workingCopy ? "Working copy" + (named ? " of " + ownWorkspace : "") + ", " : "") + (others.length ? "working copy of " + others.join(", ") + ", " : "") + (immutable && !root ? "Immutable, " : "") + (subject || "no description"),
     className: cls,
     style: {
       width,
@@ -2187,6 +2184,7 @@ Object.assign(__ds_scope, { DayLabel, DayAxis });
 // components/graph/Flag.jsx
 try { (() => {
 // Flag — status pill in the inspector header. kind: neutral (Immutable, Empty, Merge) · wc (Working copy) · warn (Conflict)
+// icon: an Icon name or a node — Immutable carries the HatchSwatch (no ◆), its title the reason ("Immutable · below trunk() · main").
 function Flag({
   kind = "neutral",
   icon,
@@ -2196,10 +2194,10 @@ function Flag({
   return /*#__PURE__*/React.createElement("span", {
     className: "zs-flag" + (kind !== "neutral" ? " is-" + kind : ""),
     title: title
-  }, icon && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+  }, icon && (typeof icon === "string" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: icon,
     size: "sm"
-  }), children);
+  }) : icon), children);
 }
 Object.assign(__ds_scope, { Flag });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/graph/Flag.jsx", error: String((e && e.message) || e) }); }
@@ -2462,11 +2460,34 @@ function GraphEnd({
 Object.assign(__ds_scope, { GraphPorts, GraphEdge, GraphEnd });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/graph/GraphEdge.jsx", error: String((e && e.message) || e) }); }
 
+// components/graph/HatchSwatch.jsx
+try { (() => {
+// HatchSwatch — the key to the immutable look: a 12px card in miniature (radius 3, 1px --border-strong, --card-solid) with a denser hatch
+// (1px every 3px in --hatch-mark). It stands wherever "immutable" is named — the peek's eyebrow, the card menu's note row, the inspector's
+// flag, the Immutable commits row and page — in the icon column. Immutable has no colour and no ◆: the hatch is the marker, the swatch names it.
+function HatchSwatch({
+  title,
+  className = "",
+  style
+}) {
+  return /*#__PURE__*/React.createElement("span", {
+    className: ("zs-hatch " + className).trim(),
+    style: style,
+    title: title,
+    role: title ? "img" : undefined,
+    "aria-label": title,
+    "aria-hidden": title ? undefined : true
+  });
+}
+Object.assign(__ds_scope, { HatchSwatch });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/graph/HatchSwatch.jsx", error: String((e && e.message) || e) }); }
+
 // components/graph/StackCard.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 // StackCard — a linear run of ≥ 2 changes (one parent, one child, no bookmark, not @) folded into one card.
 // The count bubble leads; the meta line shows the range newest‥oldest (from = top member, to = bottom member).
+// immutable: every member is — the front card is hatched like a ChangeCard.
 function StackCard({
   count,
   subject,
@@ -2475,12 +2496,13 @@ function StackCard({
   author,
   date,
   detailed = true,
+  immutable = false,
   width,
   className = "",
   style,
   ...rest
 }) {
-  const cls = ["zs-card is-stack", !detailed && "is-compact", className].filter(Boolean).join(" ");
+  const cls = ["zs-card is-stack", !detailed && "is-compact", immutable && "is-immutable", className].filter(Boolean).join(" ");
   return /*#__PURE__*/React.createElement("div", _extends({
     role: "button",
     tabIndex: 0,
@@ -2583,7 +2605,7 @@ const zsMs = (name, fallback) => {
     return fallback;
   }
 };
-const zsActionable = it => it && it !== "sep" && !it.header && !it.disabled;
+const zsActionable = it => it && it !== "sep" && !it.header && !it.note && !it.disabled;
 const zsText = it => (it.text != null ? it.text : typeof it.label === "string" ? it.label : "").toLowerCase();
 // is p inside the triangle a → b → c (the pointer's last spot and the submenu's near corners)?
 const zsInTri = (p, a, b, c) => {
@@ -2621,6 +2643,9 @@ function Menu({
   ...rest
 }) {
   const ref = React.useRef(null);
+  const uid = React.useId();
+  // note rows (why something is missing) aren't commands: the keyboard skips them, the menu points at them for VoiceOver
+  const notes = items.map((it, i) => it && it.note ? uid + "-n" + i : null).filter(Boolean).join(" ");
   const [hi, setHi] = React.useState(highlight == null ? -1 : highlight);
   const [kbd, setKbd] = React.useState(false);
   const [blinkAt, setBlinkAt] = React.useState(-1);
@@ -2749,6 +2774,7 @@ function Menu({
     role: "menu",
     tabIndex: -1,
     "aria-label": subject,
+    "aria-describedby": notes || undefined,
     className: cls,
     style: style,
     onKeyDown: onKey,
@@ -2782,6 +2808,14 @@ function Menu({
       className: "zs-menu-h",
       role: "presentation"
     }, it.header);
+    if (it.note) return /*#__PURE__*/React.createElement("div", {
+      key: "n" + i,
+      id: uid + "-n" + i,
+      className: "zs-menu-note"
+    }, typeof it.icon === "string" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: it.icon,
+      size: "sm"
+    }) : it.icon || /*#__PURE__*/React.createElement("span", null), /*#__PURE__*/React.createElement("span", null, it.note));
     const check = it.checked !== undefined;
     const cls = ["zs-menu-item", it.danger && "is-danger", i === hi && "is-hi", i === blinkAt && "is-blink"].filter(Boolean).join(" ");
     return /*#__PURE__*/React.createElement("div", {
@@ -2789,13 +2823,14 @@ function Menu({
       className: "zs-menu-row",
       style: {
         position: "relative"
-      }
+      },
+      title: it.disabled ? it.title : undefined
     }, /*#__PURE__*/React.createElement("button", {
       type: "button",
       tabIndex: -1,
       className: cls,
       disabled: it.disabled,
-      title: it.title,
+      title: it.disabled ? undefined : it.title,
       role: check ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem",
       "aria-checked": check ? !!it.checked : undefined,
       "aria-haspopup": it.submenu ? "menu" : undefined,
@@ -3334,6 +3369,8 @@ Object.assign(__ds_scope, { DragGhost });
 // components/overlays/PeekCard.jsx
 try { (() => {
 // PeekCard — the hover card beside a change (after 450ms): subject, description, id · commit · author · date, file and line counts, how to act on it.
+// immutable: an eyebrow above the subject — the swatch + IMMUTABLE (caps), then the reason (11.5, --text-dim); the reason drops to its own
+// line as a whole when it doesn't fit and ellipsizes beyond that. The hint then leaves out "Double-click: jj edit".
 function PeekCard({
   id = "",
   commit,
@@ -3345,6 +3382,8 @@ function PeekCard({
   added = 0,
   removed = 0,
   hint,
+  immutable = false,
+  immutableWhy,
   className = "",
   style
 }) {
@@ -3353,7 +3392,14 @@ function PeekCard({
   return /*#__PURE__*/React.createElement("div", {
     className: ("zs-peek " + className).trim(),
     style: style
-  }, /*#__PURE__*/React.createElement("div", {
+  }, immutable && /*#__PURE__*/React.createElement("div", {
+    className: "zs-peek-imm"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-peek-imm-l"
+  }, /*#__PURE__*/React.createElement(__ds_scope.HatchSwatch, null), "Immutable"), immutableWhy && /*#__PURE__*/React.createElement("span", {
+    className: "zs-peek-imm-why",
+    title: immutableWhy
+  }, immutableWhy)), /*#__PURE__*/React.createElement("div", {
     className: "zs-peek-subj"
   }, subject), description && /*#__PURE__*/React.createElement("div", {
     className: "zs-peek-desc"
@@ -4016,8 +4062,11 @@ Object.assign(__ds_scope, { SearchPopover, SearchGroup, SearchRow, SearchMatch, 
 // components/settings/SettingsGroup.jsx
 try { (() => {
 // SettingsGroup — caps heading over one rounded box of rows (settings window). Group by what the user is deciding, not by config file.
+// meta: a mono note beside the heading (the revset the group stands for, e.g. builtin_immutable_heads()) · bare: no box (a result well, a note).
 function SettingsGroup({
   title,
+  meta,
+  bare = false,
   children,
   className = ""
 }) {
@@ -4025,27 +4074,75 @@ function SettingsGroup({
     className: ("zs-setgrp " + className).trim()
   }, title && /*#__PURE__*/React.createElement("h3", {
     className: "zs-setgrp-h"
-  }, title), /*#__PURE__*/React.createElement("div", {
+  }, title, meta && /*#__PURE__*/React.createElement("code", {
+    className: "zs-setgrp-meta"
+  }, meta)), bare ? children : /*#__PURE__*/React.createElement("div", {
     className: "zs-setbox"
   }, children));
 }
 Object.assign(__ds_scope, { SettingsGroup });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/settings/SettingsGroup.jsx", error: String((e && e.message) || e) }); }
 
+// components/settings/SettingsPage.jsx
+try { (() => {
+// SettingsPage — a page inside a Settings tab, reached from a navigation row (SettingsRow onOpen). The back button names the tab it
+// returns to ("‹ MyApp"), then the title (17/600) and one sentence on what the page decides, then its groups. The window title becomes
+// the page's name; the tabs, the scope line and the footer stay. Changes apply at once, as everywhere in Settings. ⌘[ goes back.
+function SettingsPage({
+  back,
+  onBack,
+  title,
+  intro,
+  children,
+  className = ""
+}) {
+  const onKey = e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "[" && onBack) {
+      e.preventDefault();
+      onBack();
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: ("zs-setpage " + className).trim(),
+    onKeyDown: onKey
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-setpage-top"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-setpage-back",
+    onClick: onBack,
+    "aria-label": typeof back === "string" ? "Back to " + back : undefined,
+    title: "Back \u2014 \u2318["
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "chevron-left",
+    size: "sm"
+  }), back)), /*#__PURE__*/React.createElement("div", {
+    className: "zs-setpage-intro"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "zs-setpage-title"
+  }, title), intro && /*#__PURE__*/React.createElement("p", {
+    className: "zs-setpage-p"
+  }, intro)), children);
+}
+Object.assign(__ds_scope, { SettingsPage });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/settings/SettingsPage.jsx", error: String((e && e.message) || e) }); }
+
 // components/settings/SettingsRow.jsx
 try { (() => {
 // SettingsRow — label (+ hint, + the jj config key it writes) left, control right. stack: the control goes full-width below (long revsets).
+// onOpen: a navigation row — the whole row is a button that opens a page inside the tab (SettingsPage); the right side shows a value
+// (children, e.g. a count) and ›. Hover --fl-on, pressed --fl-press, the box's corners where it is first or last.
 function SettingsRow({
   label,
   hint,
   configKey,
   stack = false,
+  onOpen,
   children,
   className = ""
 }) {
-  return /*#__PURE__*/React.createElement("div", {
-    className: ["zs-setrow", stack && "is-stack", className].filter(Boolean).join(" ")
-  }, /*#__PURE__*/React.createElement("div", {
+  const cls = ["zs-setrow", stack && "is-stack", onOpen && "is-nav", className].filter(Boolean).join(" ");
+  const body = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "zs-setrow-lbl"
   }, /*#__PURE__*/React.createElement("span", null, label), hint && /*#__PURE__*/React.createElement("span", {
     className: "zs-setrow-hint"
@@ -4053,10 +4150,230 @@ function SettingsRow({
     className: "zs-setrow-cfg"
   }, configKey)), /*#__PURE__*/React.createElement("div", {
     className: "zs-setrow-ctl"
-  }, children));
+  }, children, onOpen && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    className: "zs-setrow-chev",
+    name: "chevron-right",
+    size: "sm"
+  })));
+  return onOpen ? /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: cls,
+    onClick: onOpen
+  }, body) : /*#__PURE__*/React.createElement("div", {
+    className: cls
+  }, body);
 }
 Object.assign(__ds_scope, { SettingsRow });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/settings/SettingsRow.jsx", error: String((e && e.message) || e) }); }
+
+// components/settings/ImmutablePage.jsx
+try { (() => {
+// ImmutablePage — Settings › Project › Immutable commits: revset-aliases."immutable_heads()" as switches, chips and one field, with the TOML
+// it writes and what it locks. jj won't rewrite the heads or anything below them (root() always); --ignore-immutable overrides.
+// jj v0.46: builtin_immutable_heads() = trunk() | tags() | untracked_remote_bookmarks() | untracked_remote_tags().
+// The page only edits the config; the app evaluates it (count, heads, unknown terms) and re-hatches the graph at once.
+const ZS_IMM_BUILT = [["trunk", "trunk()", "trunk"], ["tags", "tags()", "tags"], ["remoteBookmarks", "untracked_remote_bookmarks()", "untracked remote bookmarks"], ["remoteTags", "untracked_remote_tags()", "untracked remote tags"]];
+const ZS_IMM_DEFAULTS = {
+  trunk: true,
+  tags: true,
+  remoteBookmarks: true,
+  remoteTags: true,
+  others: false,
+  bookmarks: [],
+  custom: ""
+};
+const zsImmSym = n => /^[\w./@+-]+$/.test(n) ? n : '"' + n.replace(/"/g, '\\"') + '"';
+const zsTomlStr = s => s.includes('"') ? "'" + s + "'" : '"' + s + '"';
+function zsImmExpr(c) {
+  const on = ZS_IMM_BUILT.filter(([k]) => c[k]);
+  const parts = on.length === ZS_IMM_BUILT.length ? ["builtin_immutable_heads()"] : on.map(b => b[1]);
+  (c.bookmarks || []).forEach(b => parts.push(zsImmSym(b)));
+  if (c.others) parts.push("(trunk().. & ~mine())");
+  const cu = (c.custom || "").trim();
+  if (cu) parts.push(/[\s|&~]/.test(cu) && !/^\(.*\)$/.test(cu) ? "(" + cu + ")" : cu);
+  return parts.length ? parts.join(" | ") : "none()";
+}
+function zsImmSummary(c) {
+  const on = ZS_IMM_BUILT.filter(([k]) => c[k]);
+  const list = [...(on.length === ZS_IMM_BUILT.length ? ["jj’s default (trunk, tags, remote bookmarks you don’t track)"] : on.map(b => b[2])), ...(c.others ? ["other people’s changes"] : []), ...(c.bookmarks || []), ...((c.custom || "").trim() ? ["a custom revset"] : [])];
+  if (!list.length) return "Only root()";
+  const s = list.join(", ");
+  return /^jj/.test(s) ? s : s[0].toUpperCase() + s.slice(1);
+}
+function ImmutablePage({
+  config,
+  onChange,
+  trunkName = "main",
+  project = "Project",
+  onBack,
+  tags = [],
+  remoteBookmarks = [],
+  remoteTags = [],
+  bookmarks = [],
+  count,
+  heads = [],
+  unknown = [],
+  className = ""
+}) {
+  const c = {
+    ...ZS_IMM_DEFAULTS,
+    ...(config || {})
+  };
+  const set = patch => onChange && onChange({
+    ...c,
+    ...patch
+  });
+  const [adding, setAdding] = React.useState(false);
+  const addRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!adding) return undefined;
+    const down = e => {
+      if (addRef.current && !addRef.current.contains(e.target)) setAdding(false);
+    };
+    document.addEventListener("pointerdown", down, true);
+    return () => document.removeEventListener("pointerdown", down, true);
+  }, [adding]);
+  const list = a => a.length ? a.join(", ") : "none here";
+  // the add menu closes on a pick, Esc or a click outside; focus returns to the add chip
+  const done = () => {
+    setAdding(false);
+    const b = addRef.current && addRef.current.querySelector("button");
+    if (b) b.focus();
+  };
+  const choices = bookmarks.filter(b => b !== trunkName && !c.bookmarks.includes(b));
+  const sw = (k, label) => /*#__PURE__*/React.createElement(__ds_scope.Switch, {
+    label: label,
+    checked: !!c[k],
+    onChange: v => set({
+      [k]: v
+    })
+  });
+  const expr = zsImmExpr(c);
+  return /*#__PURE__*/React.createElement(__ds_scope.SettingsPage, {
+    className: ("zs-imm " + className).trim(),
+    back: project,
+    onBack: onBack,
+    title: "Immutable commits",
+    intro: "jj won\u2019t rewrite these changes or anything below them: no edit, describe, squash, rebase or abandon. New change on top and Revert still work. In the graph they\u2019re hatched."
+  }, /*#__PURE__*/React.createElement(__ds_scope.SettingsGroup, {
+    title: "Built in",
+    meta: "builtin_immutable_heads()"
+  }, /*#__PURE__*/React.createElement(__ds_scope.SettingsRow, {
+    label: "Trunk",
+    hint: "Your main line. trunk() is " + trunkName + ", set under History.",
+    configKey: "trunk()"
+  }, sw("trunk", "Trunk")), /*#__PURE__*/React.createElement(__ds_scope.SettingsRow, {
+    label: "Tags",
+    hint: "Released versions: " + list(tags) + ".",
+    configKey: "tags()"
+  }, sw("tags", "Tags")), /*#__PURE__*/React.createElement(__ds_scope.SettingsRow, {
+    label: "Remote bookmarks you don\u2019t track",
+    hint: "Fetched, but not yours to rewrite: " + list(remoteBookmarks) + ".",
+    configKey: "untracked_remote_bookmarks()"
+  }, sw("remoteBookmarks", "Remote bookmarks you don’t track")), /*#__PURE__*/React.createElement(__ds_scope.SettingsRow, {
+    label: "Remote tags you don\u2019t track",
+    hint: remoteTags.length ? "Fetched, but not yours to move: " + list(remoteTags) + "." : "None in this repository.",
+    configKey: "untracked_remote_tags()"
+  }, sw("remoteTags", "Remote tags you don’t track"))), /*#__PURE__*/React.createElement(__ds_scope.SettingsGroup, {
+    title: "Also immutable"
+  }, /*#__PURE__*/React.createElement(__ds_scope.SettingsRow, {
+    label: "Other people\u2019s changes",
+    hint: "Everything after trunk() that isn\u2019t yours. What\u2019s below them is locked too, your own changes included.",
+    configKey: "trunk().. & ~mine()"
+  }, sw("others", "Other people’s changes")), /*#__PURE__*/React.createElement(__ds_scope.SettingsRow, {
+    label: "Bookmarks",
+    hint: "A release or shared branch you never rewrite.",
+    stack: true
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-imm-chips"
+  }, c.bookmarks.map(b => /*#__PURE__*/React.createElement(__ds_scope.Chip, {
+    key: b,
+    kind: "filter",
+    mono: true,
+    onRemove: () => set({
+      bookmarks: c.bookmarks.filter(x => x !== b)
+    })
+  }, b)), /*#__PURE__*/React.createElement("span", {
+    className: "zs-imm-add",
+    ref: addRef,
+    title: choices.length ? undefined : "Every bookmark is in already"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Chip, {
+    kind: "add",
+    disabled: !choices.length,
+    "aria-haspopup": "menu",
+    "aria-expanded": adding,
+    onClick: () => setAdding(!adding)
+  }, "Bookmark\u2026"), adding && /*#__PURE__*/React.createElement(__ds_scope.Menu, {
+    autoFocus: true,
+    items: choices.map(b => ({
+      id: b,
+      text: b,
+      label: /*#__PURE__*/React.createElement("code", {
+        className: "zs-select-code"
+      }, b)
+    })),
+    onSelect: id => {
+      done();
+      set({
+        bookmarks: [...c.bookmarks, id]
+      });
+    },
+    onClose: done
+  })))), /*#__PURE__*/React.createElement(__ds_scope.SettingsRow, {
+    label: "Custom revset",
+    hint: "Joined with |. The graph previews bookmark names, change ids, author() and description(); jj evaluates the rest.",
+    stack: true
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-imm-col"
+  }, /*#__PURE__*/React.createElement(__ds_scope.TextField, {
+    mono: true,
+    value: c.custom,
+    onChange: e => set({
+      custom: e.target.value
+    }),
+    placeholder: 'description(glob:"hotfix:*")',
+    spellCheck: false,
+    "aria-label": "Custom revset"
+  }), unknown.length > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "zs-imm-unk"
+  }, "Not previewed here: ", /*#__PURE__*/React.createElement("code", null, unknown.join(" | ")))))), /*#__PURE__*/React.createElement(__ds_scope.SettingsGroup, {
+    title: "Result",
+    bare: true
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-imm-out"
+  }, /*#__PURE__*/React.createElement("pre", {
+    className: "zs-imm-toml"
+  }, "[revset-aliases]\n", trunkName !== "main" ? '"trunk()" = ' + zsTomlStr(trunkName) + "\n" : "", /*#__PURE__*/React.createElement("b", null, '"immutable_heads()"'), " = " + zsTomlStr(expr)), count != null && /*#__PURE__*/React.createElement("div", {
+    className: "zs-imm-sum"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-imm-n"
+  }, /*#__PURE__*/React.createElement(__ds_scope.HatchSwatch, null), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, count), " ", count === 1 ? "change is" : "changes are", " immutable")), heads.length > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "zs-imm-heads"
+  }, heads.join(" · ")))), /*#__PURE__*/React.createElement("div", {
+    className: "zs-imm-note"
+  }, /*#__PURE__*/React.createElement("span", null, "root() is always immutable. To rewrite one anyway, jj needs ", /*#__PURE__*/React.createElement("code", null, "--ignore-immutable"), "."), expr !== "builtin_immutable_heads()" && /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    onClick: () => set(ZS_IMM_DEFAULTS)
+  }, "Reset to jj\u2019s default"))));
+}
+ImmutablePage.defaults = ZS_IMM_DEFAULTS;
+ImmutablePage.builtins = ZS_IMM_BUILT.map(([key, fn, name]) => ({
+  key,
+  fn,
+  name
+}));
+ImmutablePage.expr = config => zsImmExpr({
+  ...ZS_IMM_DEFAULTS,
+  ...(config || {})
+});
+ImmutablePage.isDefault = config => ImmutablePage.expr(config) === "builtin_immutable_heads()";
+ImmutablePage.summary = config => zsImmSummary({
+  ...ZS_IMM_DEFAULTS,
+  ...(config || {})
+});
+ImmutablePage.toml = (config, trunkName = "main") => "[revset-aliases]\n" + (trunkName !== "main" ? '"trunk()" = ' + zsTomlStr(trunkName) + "\n" : "") + '"immutable_heads()" = ' + zsTomlStr(ImmutablePage.expr(config));
+Object.assign(__ds_scope, { ImmutablePage });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/settings/ImmutablePage.jsx", error: String((e && e.message) || e) }); }
 
 // components/surfaces/Callout.jsx
 try { (() => {
@@ -4448,6 +4765,8 @@ function PushDialog({
   const done = state === "done",
     busy = state === "pushing";
   const ref = b => zsRefusal(b, to, allow, byDefault);
+  // the change's one allowable reason: a short "Allow" at the end of its label line, the reason right below it (as a row's kind column)
+  const chgInline = !!(chg && chg.open.length === 1 && !chg.hard.length && !done);
   const pushSet = rows.filter(b => sel.has(zsKey(b)) && !ref(b).blocked);
   const cmd = PushDialog.command({
     bookmarks,
@@ -4710,10 +5029,17 @@ function PushDialog({
     className: "zs-push-change-t"
   }, /*#__PURE__*/React.createElement("span", {
     className: "zs-push-change-l"
-  }, "Push ", /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
+  }, /*#__PURE__*/React.createElement("span", null, "Push ", /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
     id: change.id,
     length: 8
-  }), " as a new bookmark"), /*#__PURE__*/React.createElement("input", {
+  }), " as a new bookmark"), chgInline && allowChip(chg.open[0], true)), chg.commit.length || chg.hard.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-sub is-refused"
+  }, chg.blocked ? "Refused — " : "Allowed — ", /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
+    id: change.refusedAt || change.id,
+    length: 8
+  }), " ", chg.commit.map(x => ZS_ALLOW[x] ? ZS_ALLOW[x][0] : ZS_HARD[x].text()).join(" and "), !chg.blocked && /*#__PURE__*/React.createElement(React.Fragment, null, " \xB7 pushed with ", /*#__PURE__*/React.createElement("code", null, chg.commit.map(x => ZS_ALLOW[x][1]).join(" ")))), chg.open.length > (chgInline ? 1 : 0) && !chg.hard.length && /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-allow"
+  }, chg.open.map(id => allowChip(id)))) : null, /*#__PURE__*/React.createElement("input", {
     className: "zs-field zs-field--sm is-mono zs-push-change-in",
     value: change.name != null ? change.name : change.generated,
     disabled: !withChange || done || busy,
@@ -4723,14 +5049,7 @@ function PushDialog({
       ...change,
       name: e.target.value
     })
-  }), chg.commit.length || chg.hard.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
-    className: "zs-push-sub is-refused"
-  }, chg.blocked ? "Refused — " : "Allowed — ", /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
-    id: change.refusedAt || change.id,
-    length: 8
-  }), " ", chg.commit.map(x => ZS_ALLOW[x] ? ZS_ALLOW[x][0] : ZS_HARD[x].text()).join(" and "), !chg.blocked && /*#__PURE__*/React.createElement(React.Fragment, null, " \xB7 pushed with ", /*#__PURE__*/React.createElement("code", null, chg.commit.map(x => ZS_ALLOW[x][1]).join(" ")))), chg.open.length > 0 && !chg.hard.length && /*#__PURE__*/React.createElement("span", {
-    className: "zs-push-allow"
-  }, chg.open.map(id => allowChip(id)))) : /*#__PURE__*/React.createElement("span", {
+  }), /*#__PURE__*/React.createElement("span", {
     className: "zs-push-sub"
   }, change.name == null || change.name === change.generated ? /*#__PURE__*/React.createElement(React.Fragment, null, "The name jj generates (", /*#__PURE__*/React.createElement("code", null, "templates.git_push_bookmark"), ") \u2014 type your own to name it.") : /*#__PURE__*/React.createElement(React.Fragment, null, "Your name \u2014 pushed with ", /*#__PURE__*/React.createElement("code", null, "--named"), ".")))), !empty && !done && warnN > 0 && /*#__PURE__*/React.createElement("div", {
     className: "zs-push-note",
@@ -5657,7 +5976,7 @@ Object.assign(__ds_scope, { RevsetDialog });
 // ui_kits/desktop/app.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// App — repository state and jj operations (new · edit · describe · squash · abandon · commit · split · rebase by drag · undo),
+// App — repository state and jj operations (new · edit · describe · squash · revert · abandon · commit · split · rebase by drag · undo),
 // direct manipulation (drag a change, bookmark, file or hunk onto a change), calm scrolling, and the floating composition.
 (() => {
   const {
@@ -5669,8 +5988,23 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     ChangeId,
     RevsetDialog,
     PushDialog,
-    ResizeEdge
+    ResizeEdge,
+    HatchSwatch,
+    ImmutablePage
   } = window.ZanshinDesignSystem_a33847;
+  const Swatch = HatchSwatch || (() => null);
+  // Settings › Project › Immutable commits starts at jj's default: builtin_immutable_heads()
+  const IMM0 = {
+    ...(ImmutablePage && ImmutablePage.defaults || {
+      trunk: true,
+      tags: true,
+      remoteBookmarks: true,
+      remoteTags: true,
+      others: false,
+      bookmarks: [],
+      custom: ""
+    })
+  };
   // TOP = --chrome-top on the macOS 27 reference geometry (bar centred on the traffic lights at y 26: 26 + 22 + 12)
   const EDGE = 12,
     TOP = 60,
@@ -5777,6 +6111,36 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       return out;
     }
   };
+
+  // the inverse of a diff (jj revert): + and − swap, added and deleted files swap; within a run removals stay ahead of additions
+  const zkInvLines = lines => {
+    const out = [];
+    let run = [];
+    const flush = () => {
+      out.push(...run.filter(l => l[0] === "-"), ...run.filter(l => l[0] === "+"));
+      run = [];
+    };
+    lines.forEach(l => {
+      const s = l[0] === "+" ? "-" + l.slice(1) : l[0] === "-" ? "+" + l.slice(1) : l;
+      if (s[0] === "+" || s[0] === "-") run.push(s);else {
+        flush();
+        out.push(s);
+      }
+    });
+    flush();
+    return out;
+  };
+  const zkInvert = (files, tag) => files.map(f => ({
+    ...f,
+    status: f.status === "A" ? "D" : f.status === "D" ? "A" : f.status,
+    hunks: f.hunks.map(h => ({
+      ...h,
+      id: h.id + tag,
+      oldStart: h.newStart,
+      newStart: h.oldStart,
+      lines: zkInvLines(h.lines)
+    }))
+  }));
 
   // what can happen when something is dropped on a change — only what makes sense, most likely first
   function zkDropActions(p, tid, cs) {
@@ -5917,12 +6281,15 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
   function ZKApp() {
     const D = window.ZK_DATA;
     const URLQ = new URLSearchParams(location.search);
-    const [repo, setRepo] = React.useState({
-      changes: D.changes,
+    // what is immutable comes from Settings › Project (History › Trunk, Immutable commits) — immutable.js evaluates it, the cards re-hatch at once
+    const [imm, setImm] = React.useState(IMM0);
+    const [trunk, setTrunk] = React.useState("main");
+    const [repo, setRepo] = React.useState(() => ({
+      changes: window.ZK_IMM.apply(D.changes, IMM0, "main", D.me),
       wc: D.wc,
       ops: D.OPS,
       opCount: D.opCount
-    });
+    }));
     const [hist, setHist] = React.useState([]),
       [fut, setFut] = React.useState([]);
     const [sel, setSel] = React.useState(null);
@@ -5989,13 +6356,16 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     // Settings and Projects are windows of their own; `key` is the key window — the others are inactive (tokens/inactive.css)
     const [projectsOpen, setProjectsOpen] = React.useState(URLQ.has("projects"));
     const [settingsOpen, setSettingsOpen] = React.useState(URLQ.has("settings"));
-    const [setTab, setSetTab] = React.useState(URLQ.get("settings") === "project" ? "project" : "general");
+    const [setTab, setSetTab] = React.useState(/^(project|immutable)$/.test(URLQ.get("settings") || "") ? "project" : "general");
+    const [setPage, setSetPage] = React.useState(URLQ.get("settings") === "immutable" ? "immutable" : null); // a page inside the Project tab
     const [key, setKey] = React.useState(URLQ.has("settings") ? "settings" : URLQ.has("projects") ? "projects" : "project");
     const [push, setPush] = React.useState(null);
     // every row that shows ⌘, (Zanshin menu, project menu, the Projects sidebar) and ⌘, itself → the tab shown last, never switched ·
     // "Project Settings…" → Project · "Appearance, diffs and more" → General (those two show no ⌘,) · no project + Project last → General
-    const openSettings = tab => {
+    // page: open a page of the tab (the card menu's Immutable commits…); undefined leaves the window as it is
+    const openSettings = (tab, page) => {
       if (tab === "general" || tab === "project") setSetTab(tab);
+      if (page !== undefined) setSetPage(page);
       setSettingsOpen(true);
       setKey("settings");
     };
@@ -6016,7 +6386,10 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         setKey("projects");
         return;
       }
-      if (w === "settings") setSettingsOpen(false);
+      if (w === "settings") {
+        setSettingsOpen(false);
+        setSetPage(null);
+      }
       if (w === "projects") setProjectsOpen(false);
       setKey(w === "settings" && projectsOpen ? "projects" : "project");
     };
@@ -6071,6 +6444,27 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       ...o,
       [k]: v
     }));
+    React.useEffect(() => {
+      setRepo(r => {
+        const n = window.ZK_IMM.apply(r.changes, imm, trunk, D.me);
+        return n === r.changes ? r : {
+          ...r,
+          changes: n
+        };
+      });
+    }, [repo.changes, imm, trunk]);
+    const immInfo = React.useMemo(() => {
+      const cs = repo.changes,
+        ev = window.ZK_IMM.evaluate(cs, imm, trunk, D.me);
+      return {
+        count: ev.count,
+        heads: ev.heads,
+        unknown: ev.unknown,
+        tags: cs.flatMap(c => c.tags || []),
+        remoteBookmarks: cs.flatMap(c => c.bookmarks.filter(b => b.state === "remote").map(b => b.name)),
+        bookmarks: [...new Set(cs.flatMap(c => c.bookmarks.map(b => b.name)))].sort()
+      };
+    }, [repo.changes, imm, trunk]);
 
     // ---- derived graph ----
     const W = opts.cardW,
@@ -6342,6 +6736,44 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         }],
         select: null,
         born
+      });
+    };
+    // jj revert -r <change> -B @ — for a change in @'s history that changes something, immutable ones included (pushed history can't be
+    // abandoned): a new change with the inverse diff slots in between @ and its parents; @ keeps its own diff on top and stays @
+    const revertWhy = id => {
+      if (id === repo.wc) return "The revert lands below @ — @ itself can’t be reverted";
+      if (!O.anc(repo.changes, repo.wc).has(id)) return "The revert lands below @ — only changes in @’s history";
+      const c = byId(id);
+      if (!c || !c.files.length) return "Nothing to revert — the change is empty";
+      return null;
+    };
+    const revert = id => {
+      if (revertWhy(id)) return;
+      const s = byId(id),
+        w = byId(repo.wc),
+        nid = zkNewId(taken());
+      const n = {
+        ...blank(nid, w.parents.slice(), w.lane),
+        gapParents: w.gapParents.slice(),
+        subject: 'Revert "' + (s.subject || "") + '"',
+        description: "This reverts commit " + s.commit + ".",
+        files: zkInvert(s.files, "r" + nid.slice(0, 3))
+      };
+      const cs = O.set([n, ...repo.changes], repo.wc, {
+        parents: [nid],
+        gapParents: []
+      });
+      commitRepo("revert -r " + s8(id) + " -B @", {
+        ...repo,
+        changes: cs
+      }, {
+        born: nid,
+        toast: ["Reverted ", {
+          id
+        }, " — ", {
+          id: nid
+        }, " undoes it"],
+        select: sel ? nid : undefined
       });
     };
     const squashInto = (id, tid, cmd) => {
@@ -6953,12 +7385,73 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       } else if (a === "squash") {
         const c = byId(id);
         squashInto(id, c.parents[0]);
-      } else if (a === "abandon") abandon(id);
+      } else if (a === "abandon") abandon(id);else if (a === "revert") revert(id);else if (a === "immutable") openSettings("project", "immutable");
     };
     const mc = menu && byId(menu.id),
       isWCm = mc && mc.id === repo.wc;
-    const off = (mut, idA) => mut && mc.immutable && idA !== "after" || idA === "edit" && isWCm;
     const canSquash = c => c && !c.immutable && c.parents.length === 1 && byId(c.parents[0]) && !byId(c.parents[0]).immutable;
+    // the card menu — Revert · Abandon in the last group. An immutable change keeps only what leaves it as it is (New change on top, Insert after
+    // while its children are mutable, Revert), then why and where to change that; the rest is left out, not greyed
+    const menuItems = !mc ? [] : (() => {
+      const rw = revertWhy(mc.id);
+      const NEW = {
+          id: "new",
+          label: "New change on top",
+          icon: "new-on-top",
+          cmd: "jj new"
+        },
+        AFTER = {
+          id: "after",
+          label: "Insert after",
+          icon: "insert-after",
+          cmd: "jj new -A"
+        };
+      const REVERT = {
+        id: "revert",
+        label: "Revert",
+        icon: "revert",
+        cmd: "jj revert -B @",
+        disabled: !!rw,
+        title: rw || undefined
+      };
+      if (mc.immutable) return [NEW, ...(repo.changes.some(x => P(x).includes(mc.id) && x.immutable) ? [] : [AFTER]), "sep", REVERT, "sep", {
+        note: "Immutable · " + (mc.immWhy || "part of trunk() history"),
+        icon: /*#__PURE__*/React.createElement(Swatch, null)
+      }, {
+        id: "immutable",
+        label: "Immutable commits…",
+        icon: "settings"
+      }];
+      return [NEW, AFTER, {
+        id: "before",
+        label: "Insert before",
+        icon: "insert-before",
+        cmd: "jj new -B"
+      }, "sep", {
+        id: "edit",
+        label: "Edit",
+        icon: "working-copy-at",
+        cmd: "jj edit",
+        disabled: isWCm
+      }, {
+        id: "describe",
+        label: "Describe…",
+        icon: "describe",
+        cmd: "jj describe"
+      }, {
+        id: "squash",
+        label: "Squash into parent",
+        icon: "squash",
+        cmd: "jj squash",
+        disabled: !canSquash(mc)
+      }, "sep", REVERT, {
+        id: "abandon",
+        label: "Abandon",
+        icon: "abandon",
+        cmd: "jj abandon",
+        danger: true
+      }];
+    })();
     const atR = sel ? insW + EDGE * 2 : MINI + EDGE;
     const dragAct = drag && drag.actions[drag.sel];
     const visibleSet = new Set(nodes.flatMap(n => n.stack ? n.members.map(m => m.id) : [n.id]));
@@ -7139,49 +7632,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       subject: mc.subject || "(no description set)",
       workingCopy: isWCm,
       onSelect: menuAct,
-      items: [{
-        id: "new",
-        label: "New change on top",
-        icon: "new-on-top",
-        cmd: "jj new"
-      }, {
-        id: "after",
-        label: "Insert after",
-        icon: "insert-after",
-        cmd: "jj new -A",
-        disabled: off(true, "after")
-      }, {
-        id: "before",
-        label: "Insert before",
-        icon: "insert-before",
-        cmd: "jj new -B",
-        disabled: off(true, "before")
-      }, "sep", {
-        id: "edit",
-        label: "Edit",
-        icon: "working-copy-at",
-        cmd: "jj edit",
-        disabled: off(true, "edit")
-      }, {
-        id: "describe",
-        label: "Describe…",
-        icon: "describe",
-        cmd: "jj describe",
-        disabled: off(true, "describe")
-      }, {
-        id: "squash",
-        label: "Squash into parent",
-        icon: "squash",
-        cmd: "jj squash",
-        disabled: off(true, "squash") || !canSquash(mc)
-      }, "sep", {
-        id: "abandon",
-        label: "Abandon",
-        icon: "abandon",
-        cmd: "jj abandon",
-        danger: true,
-        disabled: off(true, "abandon")
-      }]
+      items: menuItems
     })), drag && drag.menu && /*#__PURE__*/React.createElement("div", {
       className: "zk-dropwrap is-" + drag.menu.place,
       style: {
@@ -7344,6 +7795,13 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     }), settingsOpen && window.ZanshinDesignSystem_a33847.Window && /*#__PURE__*/React.createElement(window.ZKSettings, {
       tab: setTab,
       setTab: setSetTab,
+      page: setPage,
+      setPage: setSetPage,
+      imm: imm,
+      setImm: setImm,
+      trunk: trunk,
+      setTrunk: setTrunk,
+      immInfo: immInfo,
       active: key === "settings",
       onFocus: () => setKey("settings"),
       style: {
@@ -7889,7 +8347,8 @@ try { (() => {
 // ui_kits/desktop/data.js
 try { (() => {
 // Sample repository for the Zanshin desktop UI kit — taken from the floating client's default `jj log` view (graph-data.js, data.js).
-// One Flutter app ("MyApp"), trunk at Release v1.0.0, @ on top of the onboarding feature, six side lines of work.
+// One Flutter app ("MyApp"), trunk at Release v1.0.0 (tag v1.0.0), @ on top of the onboarding feature, six side lines of work.
+// What is immutable isn't stored here: immutable.js evaluates Settings › Project › Immutable commits (by default trunk() and below).
 (() => {
   const C = o => Object.assign({
     parents: [],
@@ -7907,7 +8366,6 @@ try { (() => {
     date: "Sep 15",
     t: 14400,
     lane: 0,
-    immutable: true,
     endBelow: true,
     stat: [["M", "pubspec.yaml", 22, 21], ["M", "pubspec.lock", 58, 56], ["M", "ios/Podfile.lock", 3, 3], ["M", "android/build.gradle", 1, 1]]
   }), C({
@@ -7919,7 +8377,7 @@ try { (() => {
     date: "Sep 19",
     t: 8640,
     lane: 0,
-    immutable: true,
+    tags: ["v1.0.0"],
     bookmarks: [{
       name: "main",
       state: "synced"
@@ -8626,8 +9084,11 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     Select,
     TextField,
     SettingsGroup,
-    SettingsRow
+    SettingsRow,
+    HatchSwatch,
+    ImmutablePage
   } = window.ZanshinDesignSystem_a33847;
+  const Swatch = HatchSwatch || (() => null);
   function zkFlatten(nodes, depth = 0, all = false, out = []) {
     nodes.forEach(n => {
       out.push({
@@ -8800,9 +9261,19 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       onDoubleClick: () => node.status !== "missing" && onOpen(node.id)
     }))))));
   }
+
+  // page "immutable": Settings › Project › Immutable commits (ImmutablePage) — a page inside the Project tab, reached from History's navigation row
+  // or the card menu of an immutable change; the window's title becomes the page's name, ‹ MyApp returns to the tab.
   function ZKSettings({
     tab,
     setTab,
+    page,
+    setPage,
+    imm,
+    setImm,
+    trunk,
+    setTrunk,
+    immInfo = {},
     onClose,
     prefs,
     setPref,
@@ -8819,11 +9290,10 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       fetch: "origin",
       push: "origin",
       auto: "15",
-      trunk: "main",
-      immutable: "builtin_immutable_heads()",
       own: false,
       email: "ralph@work.example"
     });
+    const sub = tab === "project" && page === "immutable" && ImmutablePage;
     const setp = (k, v) => setP(o => ({
       ...o,
       [k]: v
@@ -8833,7 +9303,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       onMouseDown: onFocus,
       style: style
     }, /*#__PURE__*/React.createElement(Window, {
-      title: tab === "general" ? "General" : "Project",
+      title: tab === "general" ? "General" : sub ? "Immutable commits" : "Project",
       titleHidden: true,
       active: active,
       buttons: {
@@ -8975,7 +9445,13 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         email: e.target.value
       }),
       "aria-label": "Email"
-    })))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(SettingsGroup, {
+    })))) : sub ? /*#__PURE__*/React.createElement(ImmutablePage, _extends({
+      config: imm,
+      onChange: setImm,
+      project: project.name,
+      trunkName: trunk,
+      onBack: () => setPage(null)
+    }, immInfo)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(SettingsGroup, {
       title: "Remotes"
     }, /*#__PURE__*/React.createElement(SettingsRow, {
       label: "Fetch from",
@@ -9017,21 +9493,18 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       configKey: 'revset-aliases."trunk()"'
     }, /*#__PURE__*/React.createElement(Select, {
       label: "Trunk",
-      value: p.trunk,
-      onChange: v => setp("trunk", v),
+      value: trunk,
+      onChange: setTrunk,
       options: ["main", "develop", "release/1.5.x@origin"]
-    })), /*#__PURE__*/React.createElement(SettingsRow, {
-      label: "Immutable heads",
-      hint: "Changes at or below these can\u2019t be rewritten.",
+    })), ImmutablePage && /*#__PURE__*/React.createElement(SettingsRow, {
+      label: "Immutable commits",
+      hint: ImmutablePage.summary(imm),
       configKey: 'revset-aliases."immutable_heads()"',
-      stack: true
-    }, /*#__PURE__*/React.createElement(TextField, {
-      mono: true,
-      value: p.immutable,
-      onChange: e => setp("immutable", e.target.value),
-      spellCheck: false,
-      "aria-label": "Immutable heads revset"
-    }))), /*#__PURE__*/React.createElement(SettingsGroup, {
+      onOpen: () => setPage("immutable")
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "zs-setrow-count",
+      title: immInfo.count + " immutable changes"
+    }, /*#__PURE__*/React.createElement(Swatch, null), immInfo.count))), /*#__PURE__*/React.createElement(SettingsGroup, {
       title: "Identity"
     }, /*#__PURE__*/React.createElement(SettingsRow, {
       label: "Use a different email here",
@@ -9171,7 +9644,8 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     style
   }) {
     const st = zkCount(n.files || []);
-    const hint = (isWC ? "Working copy (@) · Click for details" : "Click: details · Double-click: jj edit") + " · Drag: onto another change · Right-click: actions";
+    // an immutable change can't be edited: its hint leaves out the double-click, its eyebrow says why
+    const hint = (isWC ? "Working copy (@) · Click for details" : n.immutable ? "Click: details" : "Click: details · Double-click: jj edit") + " · Drag: onto another change · Right-click: actions";
     return /*#__PURE__*/React.createElement("div", {
       className: "zk-peek",
       style: style
@@ -9185,7 +9659,9 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       files: zkFileCounts(n.files || []),
       added: st.a,
       removed: st.r,
-      hint: hint
+      hint: hint,
+      immutable: !!n.immutable,
+      immutableWhy: n.immWhy
     }));
   }
   function ZKStackPop({
@@ -9318,6 +9794,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         subject: n.subject,
         from: n.members[n.members.length - 1].id,
         to: n.members[0].id,
+        immutable: n.immutable,
         author: n.author,
         date: n.date,
         onClick: () => onToggleStack(n.members[0].id)
@@ -9591,6 +10068,135 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
 })();
 })(); } catch (e) { __ds_ns.__errors.push({ path: "ui_kits/desktop/graph.jsx", error: String((e && e.message) || e) }); }
 
+// ui_kits/desktop/immutable.js
+try { (() => {
+// Immutable commits — the kit's mock of revset-aliases."immutable_heads()" (the floating client's immutable.jsx). The page itself is the design
+// system's ImmutablePage; this file only evaluates a config over the sample repo: the heads, each change's reason (a head names itself, what
+// lies below it says "below …"; the first term wins), the heads by name for the Result line, and the custom terms the preview can't read.
+(() => {
+  const P = c => [...c.parents, ...(c.gapParents || [])];
+  function ancestorsOf(M, id) {
+    const out = new Set(),
+      st = [...P(M.get(id) || {
+        parents: []
+      })];
+    while (st.length) {
+      const x = st.pop();
+      if (out.has(x)) continue;
+      out.add(x);
+      const c = M.get(x);
+      if (c) st.push(...P(c));
+    }
+    return out;
+  }
+  // bookmark / tag names, change ids, author(), description(), mine() are previewed; jj evaluates the rest
+  function customHeads(all, text, me) {
+    const list = [],
+      unknown = [];
+    const val = s => s.replace(/^(substring|exact|glob):/, "").replace(/^["']|["']$/g, "");
+    String(text || "").split("|").map(s => s.trim().replace(/^\((.*)\)$/, "$1").trim()).filter(Boolean).forEach(t => {
+      let m,
+        hit = null;
+      if (m = t.match(/^(author|description)\((.*)\)$/)) {
+        const raw = m[2].trim(),
+          v = val(raw).toLowerCase(),
+          glob = /^glob:/.test(raw);
+        const re = glob && new RegExp("^" + v.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$", "s");
+        const test = s => {
+          s = (s || "").toLowerCase();
+          return re ? re.test(s) : s.includes(v);
+        };
+        hit = all.filter(x => test(m[1] === "author" ? x.author : x.subject + (x.description ? "\n" + x.description : "")));
+      } else if (t === "mine()") hit = all.filter(x => x.author === me);else {
+        const n = val(t),
+          named = all.filter(x => x.bookmarks.some(b => b.name === n) || (x.tags || []).includes(n));
+        if (named.length) hit = named;else if (/^[k-z]{3,}$/.test(n)) {
+          const p = all.filter(x => x.id.startsWith(n));
+          if (p.length === 1) hit = p;
+        }
+      }
+      if (hit) list.push(...hit);else unknown.push(t);
+    });
+    return {
+      list,
+      unknown
+    };
+  }
+  function evaluate(all, c, trunkName, me) {
+    const M = new Map(all.map(x => [x.id, x])),
+      heads = [],
+      names = [];
+    const head = (x, at, below, name) => {
+      heads.push({
+        id: x.id,
+        at,
+        below
+      });
+      if (name && !names.includes(name)) names.push(name);
+    };
+    const trunkC = all.find(x => x.bookmarks.some(b => b.name === trunkName));
+    if (c.trunk && trunkC) head(trunkC, "trunk() · " + trunkName, "below trunk() · " + trunkName, trunkName);
+    if (c.tags) all.forEach(x => (x.tags || []).forEach(t => head(x, "tag " + t, "below tag " + t, t)));
+    if (c.remoteBookmarks) all.forEach(x => x.bookmarks.forEach(b => {
+      if (b.state === "remote") head(x, b.name + ", not tracked", "below " + b.name + ", not tracked", b.name);
+    }));
+    (c.bookmarks || []).forEach(n => all.forEach(x => {
+      if (x.bookmarks.some(b => b.name === n)) head(x, n, "below " + n, n);
+    }));
+    let others = 0;
+    if (c.others) {
+      const inTrunk = trunkC ? new Set([trunkC.id, ...ancestorsOf(M, trunkC.id)]) : new Set();
+      all.forEach(x => {
+        if (x.author && x.author !== me && !inTrunk.has(x.id)) {
+          others++;
+          head(x, "by " + x.author + ", not you", "below a change by " + x.author);
+        }
+      });
+    }
+    const cu = customHeads(all, c.custom, me);
+    cu.list.forEach(x => head(x, "your custom revset", "below your custom revset"));
+    if (cu.list.length) names.push("custom revset");
+    if (others) names.push(others + (others === 1 ? " change" : " changes") + " by others");
+    const why = new Map();
+    heads.forEach(h => {
+      if (!why.has(h.id)) why.set(h.id, h.at);
+    });
+    heads.forEach(h => ancestorsOf(M, h.id).forEach(a => {
+      if (!why.has(a) && M.has(a)) why.set(a, h.below);
+    }));
+    return {
+      why,
+      count: why.size,
+      heads: names,
+      unknown: cu.unknown
+    };
+  }
+  // the changes with `immutable` / `immWhy` per the config — the same array when nothing changes
+  function apply(all, c, trunkName, me) {
+    const {
+      why
+    } = evaluate(all, c, trunkName, me);
+    let changed = false;
+    const next = all.map(x => {
+      const imm = why.has(x.id),
+        w = why.get(x.id);
+      if (!!x.immutable === imm && x.immWhy === w) return x;
+      changed = true;
+      return {
+        ...x,
+        immutable: imm,
+        immWhy: w
+      };
+    });
+    return changed ? next : all;
+  }
+  window.ZK_IMM = {
+    evaluate,
+    apply
+  };
+})();
+})(); } catch (e) { __ds_ns.__errors.push({ path: "ui_kits/desktop/immutable.js", error: String((e && e.message) || e) }); }
+
 // ui_kits/desktop/inspector.jsx
 try { (() => {
 // Inspector — reading and shaping one change. The title is the describe field; checkboxes pick hunks; the composer turns a selection
@@ -9609,8 +10215,10 @@ try { (() => {
     Segmented,
     Checkbox,
     TextField,
-    BookmarkChip
+    BookmarkChip,
+    HatchSwatch
   } = window.ZanshinDesignSystem_a33847;
+  const Swatch = HatchSwatch || (() => null);
   const first = s => (s || "").split("\n")[0].trim();
   const joinMsg = (s, b) => (s.trim() + (b.trim() ? "\n\n" + b.trim() : "")).trim();
   const fname = p => p.split("/").pop();
@@ -9938,8 +10546,9 @@ try { (() => {
     }, isWC && /*#__PURE__*/React.createElement(Flag, {
       kind: "wc"
     }, "@ Working copy"), c.immutable && /*#__PURE__*/React.createElement(Flag, {
-      title: "Part of trunk history"
-    }, "\u25C6 Immutable"), !files.length && !c.merge && /*#__PURE__*/React.createElement(Flag, null, "Empty"), c.merge && /*#__PURE__*/React.createElement(Flag, null, "Merge"), c.conflict && /*#__PURE__*/React.createElement(Flag, {
+      icon: /*#__PURE__*/React.createElement(Swatch, null),
+      title: c.immWhy ? "Immutable · " + c.immWhy : "Part of trunk history"
+    }, "Immutable"), !files.length && !c.merge && /*#__PURE__*/React.createElement(Flag, null, "Empty"), c.merge && /*#__PURE__*/React.createElement(Flag, null, "Merge"), c.conflict && /*#__PURE__*/React.createElement(Flag, {
       kind: "warn",
       icon: "conflict"
     }, "Conflict")), /*#__PURE__*/React.createElement(IconButton, {
@@ -11567,6 +12176,8 @@ __ds_ns.GraphEdge = __ds_scope.GraphEdge;
 
 __ds_ns.GraphEnd = __ds_scope.GraphEnd;
 
+__ds_ns.HatchSwatch = __ds_scope.HatchSwatch;
+
 __ds_ns.StackCard = __ds_scope.StackCard;
 
 __ds_ns.DropMenu = __ds_scope.DropMenu;
@@ -11607,7 +12218,11 @@ __ds_ns.SearchTag = __ds_scope.SearchTag;
 
 __ds_ns.SearchAvatar = __ds_scope.SearchAvatar;
 
+__ds_ns.ImmutablePage = __ds_scope.ImmutablePage;
+
 __ds_ns.SettingsGroup = __ds_scope.SettingsGroup;
+
+__ds_ns.SettingsPage = __ds_scope.SettingsPage;
 
 __ds_ns.SettingsRow = __ds_scope.SettingsRow;
 

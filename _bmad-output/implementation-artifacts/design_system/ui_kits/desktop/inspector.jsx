@@ -1,7 +1,8 @@
 // Inspector — reading and shaping one change. The title is the describe field; checkboxes pick hunks; the composer turns a selection
 // into a commit (@: jj commit) or a split (jj split -r). Files, hunks and bookmarks can be dragged onto another change.
 (() => {
-const { Island, IconButton, Button, Flag, AtBadge, Icon, FileRow, DiffView, DiffHunk, Segmented, Checkbox, TextField, BookmarkChip } = window.ZanshinDesignSystem_a33847;
+const { Island, IconButton, Button, Flag, AtBadge, Icon, FileRow, DiffView, DiffHunk, Segmented, Checkbox, TextField, BookmarkChip, HatchSwatch } = window.ZanshinDesignSystem_a33847;
+const Swatch = HatchSwatch || (() => null);
 const first = (s) => (s || "").split("\n")[0].trim();
 const joinMsg = (s, b) => (s.trim() + (b.trim() ? "\n\n" + b.trim() : "")).trim();
 const fname = (p) => p.split("/").pop();
@@ -128,7 +129,7 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
         <span className="zk-ins-id" title={"commit " + c.commit}><b>{c.id.slice(0, 2)}</b>{c.id.slice(2)}</span>
         <span className="zk-ins-flags">
           {isWC && <Flag kind="wc">@ Working copy</Flag>}
-          {c.immutable && <Flag title="Part of trunk history">◆ Immutable</Flag>}
+          {c.immutable && <Flag icon={<Swatch/>} title={c.immWhy ? "Immutable · " + c.immWhy : "Part of trunk history"}>Immutable</Flag>}
           {!files.length && !c.merge && <Flag>Empty</Flag>}
           {c.merge && <Flag>Merge</Flag>}
           {c.conflict && <Flag kind="warn" icon="conflict">Conflict</Flag>}

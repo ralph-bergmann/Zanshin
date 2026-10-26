@@ -1,0 +1,71 @@
+<!-- @dsCard group="Components" viewport="960x600" name="Card menu" subtitle="••• / right-click on a change: Revert · Abandon in the last group; the immutable (locked) variant with its note row; @ itself with Revert off" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);font-family:var(--font-sans)}.g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:start}.c{display:flex;flex-direction:column;gap:10px;min-width:0}.cap{font-size:var(--fs-md);line-height:1.45;color:var(--text-dim);text-wrap:pretty;min-height:68px}.cap b{color:var(--text);font-weight:600}.cap code{font:var(--fs-sm) var(--font-mono);color:var(--text-muted)}.c>.zs-menu{min-width:0;width:100%;max-width:290px}.foot{display:flex;align-items:center;gap:16px;margin-top:22px}.foot>.zs-toast{flex-shrink:0}.foot p{margin:0;font-size:var(--fs-md);line-height:1.45;color:var(--text-dim);max-width:420px;text-wrap:pretty}.foot code{font:var(--fs-sm) var(--font-mono);color:var(--text-muted)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Menu, HatchSwatch, Toast, ChangeId } = window.ZanshinDesignSystem_a33847;
+  const NEW = [
+    { id: "new", label: "New change on top", icon: "new-on-top", cmd: "jj new" },
+    { id: "after", label: "Insert after", icon: "insert-after", cmd: "jj new -A" },
+    { id: "before", label: "Insert before", icon: "insert-before", cmd: "jj new -B" },
+  ];
+  const Demo = () => (
+    <div>
+      <div className="g">
+        <div className="c">
+          <div className="cap"><b>Below @</b> · the last group holds the two ways to take a change back: <b>Revert</b> records the undo as a new change (<code>jj revert -r plkmnvxo -B @</code> — it slots in between @ and its parents), <b>Abandon</b> erases the change.</div>
+          <Menu still id="plkmnvxo" subject="feat(onboarding): swipe gestures + haptic feedback" highlight={8} items={[
+            ...NEW, "sep",
+            { id: "edit", label: "Edit", icon: "working-copy-at", cmd: "jj edit" },
+            { id: "describe", label: "Describe…", icon: "describe", cmd: "jj describe" },
+            { id: "squash", label: "Squash into parent", icon: "squash", cmd: "jj squash" },
+            "sep",
+            { id: "revert", label: "Revert", icon: "revert", cmd: "jj revert -B @" },
+            { id: "abandon", label: "Abandon", icon: "abandon", cmd: "jj abandon", danger: true },
+          ]}/>
+        </div>
+        <div className="c">
+          <div className="cap"><b>Immutable</b> · only what leaves it as it is — New change on top, Insert after (while its children are mutable), Revert (pushed history can't be abandoned: the main case). The rest is left out, not greyed; then why, and where to change that.</div>
+          <Menu still id="vruxwmqv" subject="Release v1.0.0" items={[
+            NEW[0], NEW[1], "sep",
+            { id: "revert", label: "Revert", icon: "revert", cmd: "jj revert -B @" },
+            "sep",
+            { note: "Immutable · trunk() · main", icon: <HatchSwatch/> },
+            { id: "imm", label: "Immutable commits…", icon: "settings" },
+          ]}/>
+        </div>
+        <div className="c">
+          <div className="cap"><b>@ itself</b> · Edit and Revert are off (.4); a disabled row's reason is its tooltip — here “The revert lands below @ — @ itself can’t be reverted”. Off too: changes not below @ and empty ones.</div>
+          <Menu still id="ovknlmro" subject="(no description set)" workingCopy items={[
+            ...NEW, "sep",
+            { id: "edit", label: "Edit", icon: "working-copy-at", cmd: "jj edit", disabled: true },
+            { id: "describe", label: "Describe…", icon: "describe", cmd: "jj describe" },
+            { id: "squash", label: "Squash into parent", icon: "squash", cmd: "jj squash" },
+            "sep",
+            { id: "revert", label: "Revert", icon: "revert", cmd: "jj revert -B @", disabled: true, title: "The revert lands below @ — @ itself can’t be reverted" },
+            { id: "abandon", label: "Abandon", icon: "abandon", cmd: "jj abandon", danger: true },
+          ]}/>
+        </div>
+      </div>
+      <div className="foot">
+        <Toast onUndo={() => {}} onClose={() => {}}>Reverted <ChangeId id="plkmnvxo" length={8}/> — <ChangeId id="kqtwmzrl" length={8}/> undoes it</Toast>
+        <p>The clicked change stays still; the new one is born out of it, described <code>Revert "…"</code> · <code>This reverts commit 3c4d5e6f.</code> (jj's default template). Undo = <code>jj undo</code>. Other reasons: “The revert lands below @ — only changes in @’s history” · “Nothing to revert — the change is empty”.</p>
+      </div>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

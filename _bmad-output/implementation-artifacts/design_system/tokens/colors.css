@@ -28,6 +28,9 @@
 
   /* ---- solid surfaces ---- */
   --card-solid:#1a1f35;--card-solid-hi:#1f2540;
+  /* immutable — no colour, no ◆: the card carries a hatch (135°, 1px every 6px, 7% of --text — 1.20:1 on the card, a texture, not a line);
+     the swatch (HatchSwatch) a denser one (every 3px, 30% — 2.44:1) that names it wherever "immutable" is written */
+  --hatch:rgba(231,233,242,.07);--hatch-mark:rgba(231,233,242,.30);
   --bg-card:rgba(255,255,255,.045);--bg-card-2:rgba(255,255,255,.075);
   --border:rgba(255,255,255,.07);--border-strong:rgba(255,255,255,.14);
   --code-bg:rgba(8,10,22,.42);--scrim:rgba(7,9,20,.48);
@@ -82,6 +85,7 @@
   --canvas:radial-gradient(115% 85% at 10% -12%,rgba(220,168,91,.20),rgba(220,168,91,0) 62%),linear-gradient(165deg,#f7f4f0,#f0ece7 68%,#e8e3dd);/* @kind other */
   --canvas-base:#f0ece7;
   --card-solid:#fffdfa;--card-solid-hi:#ffffff;
+  --hatch:rgba(38,36,44,.07);--hatch-mark:rgba(38,36,44,.30);/* 1.14:1 · 1.86:1 on the card */
   --bg-card:rgba(255,253,250,.90);--bg-card-2:rgba(58,46,34,.07);
   --border:rgba(58,46,34,.12);--border-strong:rgba(58,46,34,.22);
   --code-bg:rgba(255,255,255,.66);--scrim:rgba(58,46,34,.18);

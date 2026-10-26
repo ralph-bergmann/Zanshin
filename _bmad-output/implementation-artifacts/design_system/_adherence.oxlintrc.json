@@ -111,8 +111,8 @@
         "message": "<ChangeCard> dragging must be one of 'src' | 'from'."
       },
       {
-        "selector": "JSXOpeningElement[name.name='ChangeId'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|length|prefix|immutable|key|ref|className|style|children)$/]",
-        "message": "<ChangeId> doesn't accept that prop. Declared props: id, length, prefix, immutable."
+        "selector": "JSXOpeningElement[name.name='ChangeId'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|length|prefix|key|ref|className|style|children)$/]",
+        "message": "<ChangeId> doesn't accept that prop. Declared props: id, length, prefix."
       },
       {
         "selector": "JSXOpeningElement[name.name='Checkbox'] > JSXAttribute > JSXIdentifier[name!=/^(?:checked|mixed|onChange|label|disabled|size|tone|presentational|key|ref|className|style|children)$/]",
@@ -223,6 +223,10 @@
         "message": "<GraphSearch> size must be one of 'full' | 'medium' | 'compact' | 'narrow'."
       },
       {
+        "selector": "JSXOpeningElement[name.name='HatchSwatch'] > JSXAttribute > JSXIdentifier[name!=/^(?:title|className|style|key|ref|className|style|children)$/]",
+        "message": "<HatchSwatch> doesn't accept that prop. Declared props: title, className, style."
+      },
+      {
         "selector": "JSXOpeningElement[name.name='Icon'] > JSXAttribute > JSXIdentifier[name!=/^(?:name|size|title|key|ref|className|style|children)$/]",
         "message": "<Icon> doesn't accept that prop. Declared props: name, size, title."
       },
@@ -233,6 +237,10 @@
       {
         "selector": "JSXOpeningElement[name.name='IconButton'] > JSXAttribute[name.name='size'] > Literal[value!=/^(?:sm|md|lg)$/]",
         "message": "<IconButton> size must be one of 'sm' | 'md' | 'lg'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ImmutableConfig'] > JSXAttribute > JSXIdentifier[name!=/^(?:trunk|tags|remoteBookmarks|remoteTags|others|bookmarks|custom|key|ref|className|style|children)$/]",
+        "message": "<ImmutableConfig> doesn't accept that prop. Declared props: trunk, tags, remoteBookmarks, remoteTags, others, bookmarks, custom."
       },
       {
         "selector": "JSXOpeningElement[name.name='Island'] > JSXAttribute > JSXIdentifier[name!=/^(?:shape|as|children|key|ref|className|style|children)$/]",
@@ -251,16 +259,16 @@
         "message": "<Link> doesn't accept that prop. Declared props: href, quiet, external, children."
       },
       {
-        "selector": "JSXOpeningElement[name.name='MenuItem'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|label|text|icon|cmd|shortcut|danger|disabled|checked|radio|submenu|header|title|key|ref|className|style|children)$/]",
-        "message": "<MenuItem> doesn't accept that prop. Declared props: id, label, text, icon, cmd, shortcut, danger, disabled, checked, radio, submenu, header, title."
+        "selector": "JSXOpeningElement[name.name='MenuItem'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|label|text|icon|cmd|shortcut|danger|disabled|checked|radio|submenu|header|note|title|key|ref|className|style|children)$/]",
+        "message": "<MenuItem> doesn't accept that prop. Declared props: id, label, text, icon, cmd, shortcut, danger, disabled, checked, radio, submenu, header, note, title."
       },
       {
         "selector": "JSXOpeningElement[name.name='NamiMark'] > JSXAttribute > JSXIdentifier[name!=/^(?:size|chip|bare|title|key|ref|className|style|children)$/]",
         "message": "<NamiMark> doesn't accept that prop. Declared props: size, chip, bare, title."
       },
       {
-        "selector": "JSXOpeningElement[name.name='PeekCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|commit|subject|description|author|date|files|added|removed|hint|className|style|key|ref|className|style|children)$/]",
-        "message": "<PeekCard> doesn't accept that prop. Declared props: id, commit, subject, description, author, date, files, added, removed, hint, className, style."
+        "selector": "JSXOpeningElement[name.name='PeekCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|commit|subject|description|author|date|files|added|removed|hint|immutable|immutableWhy|className|style|key|ref|className|style|children)$/]",
+        "message": "<PeekCard> doesn't accept that prop. Declared props: id, commit, subject, description, author, date, files, added, removed, hint, immutable, immutableWhy, className, style."
       },
       {
         "selector": "JSXOpeningElement[name.name='Popover'] > JSXAttribute > JSXIdentifier[name!=/^(?:width|children|key|ref|className|style|children)$/]",
@@ -347,12 +355,16 @@
         "message": "<SelectOption> doesn't accept that prop. Declared props: value, label, text, disabled, mono."
       },
       {
-        "selector": "JSXOpeningElement[name.name='SettingsGroup'] > JSXAttribute > JSXIdentifier[name!=/^(?:title|className|children|key|ref|className|style|children)$/]",
-        "message": "<SettingsGroup> doesn't accept that prop. Declared props: title, className, children."
+        "selector": "JSXOpeningElement[name.name='SettingsGroup'] > JSXAttribute > JSXIdentifier[name!=/^(?:title|meta|bare|className|children|key|ref|className|style|children)$/]",
+        "message": "<SettingsGroup> doesn't accept that prop. Declared props: title, meta, bare, className, children."
       },
       {
-        "selector": "JSXOpeningElement[name.name='SettingsRow'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|hint|configKey|stack|className|children|key|ref|className|style|children)$/]",
-        "message": "<SettingsRow> doesn't accept that prop. Declared props: label, hint, configKey, stack, className, children."
+        "selector": "JSXOpeningElement[name.name='SettingsPage'] > JSXAttribute > JSXIdentifier[name!=/^(?:back|onBack|title|intro|className|children|key|ref|className|style|children)$/]",
+        "message": "<SettingsPage> doesn't accept that prop. Declared props: back, onBack, title, intro, className, children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='SettingsRow'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|hint|configKey|stack|onOpen|className|children|key|ref|className|style|children)$/]",
+        "message": "<SettingsRow> doesn't accept that prop. Declared props: label, hint, configKey, stack, onOpen, className, children."
       },
       {
         "selector": "JSXOpeningElement[name.name='Skeleton'] > JSXAttribute > JSXIdentifier[name!=/^(?:kind|width|height|radius|className|style|key|ref|className|style|children)$/]",
@@ -371,8 +383,8 @@
         "message": "<Spinner> doesn't accept that prop. Declared props: size, label, className, style."
       },
       {
-        "selector": "JSXOpeningElement[name.name='StackCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:count|subject|from|to|author|date|detailed|width|key|ref|className|style|children)$/]",
-        "message": "<StackCard> doesn't accept that prop. Declared props: count, subject, from, to, author, date, detailed, width."
+        "selector": "JSXOpeningElement[name.name='StackCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:count|subject|from|to|author|date|detailed|immutable|width|key|ref|className|style|children)$/]",
+        "message": "<StackCard> doesn't accept that prop. Declared props: count, subject, from, to, author, date, detailed, immutable, width."
       },
       {
         "selector": "JSXOpeningElement[name.name='StaleNotice'] > JSXAttribute > JSXIdentifier[name!=/^(?:command|onUpdate|onCopy|busy|className|style|key|ref|className|style|children)$/]",
@@ -506,10 +518,16 @@
       "GraphSearch": {
         "replaces": []
       },
+      "HatchSwatch": {
+        "replaces": []
+      },
       "Icon": {
         "replaces": []
       },
       "IconButton": {
+        "replaces": []
+      },
+      "ImmutableConfig": {
         "replaces": []
       },
       "Island": {
@@ -576,6 +594,9 @@
         "replaces": []
       },
       "SettingsGroup": {
+        "replaces": []
+      },
+      "SettingsPage": {
         "replaces": []
       },
       "SettingsRow": {
@@ -790,6 +811,8 @@
       "--graph-pad",
       "--green-400",
       "--green-700",
+      "--hatch",
+      "--hatch-mark",
       "--hunk",
       "--hunk-bg",
       "--icon-bar",
@@ -1026,6 +1049,8 @@
       "--gold": "color",
       "--card-solid": "color",
       "--card-solid-hi": "color",
+      "--hatch": "color",
+      "--hatch-mark": "color",
       "--bg-card": "color",
       "--bg-card-2": "color",
       "--border": "color",

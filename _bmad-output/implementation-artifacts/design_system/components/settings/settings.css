@@ -13,3 +13,42 @@
 .zs-setrow .zs-field--sm{width:240px;max-width:100%}
 .zs-setrow.is-stack .zs-field{width:100%}
 @media (max-width:560px){.zs-setrow{flex-wrap:wrap}.zs-setrow .zs-field--sm{width:100%}}
+.zs-setgrp-meta{margin-left:8px;font:var(--fs-xs) var(--font-mono);letter-spacing:0;text-transform:none;color:var(--text-faint)}
+
+/* navigation row (SettingsRow onOpen) — the whole row opens a page inside the tab: a value, then › */
+.zs-setrow.is-nav{width:100%;box-sizing:border-box;border:0;border-radius:0;background:none;font:inherit;color:inherit;text-align:left;cursor:default;transition:background var(--dur-hover) var(--ease-state)}
+.zs-setrow+.zs-setrow.is-nav{border-top:1px solid var(--fl-border)}
+.zs-setrow.is-nav:hover{background:var(--fl-on)}
+.zs-setrow.is-nav:active{background:var(--fl-press);transition:none}
+.zs-setrow.is-nav:first-child{border-top-left-radius:var(--radius-well);border-top-right-radius:var(--radius-well)}
+.zs-setrow.is-nav:last-child{border-bottom-left-radius:var(--radius-well);border-bottom-right-radius:var(--radius-well)}
+.zs-setrow.is-nav .zs-setrow-ctl{gap:10px}
+.zs-setrow-chev{color:var(--text-dim)}
+.zs-setrow-count{display:inline-flex;align-items:center;gap:6px;font:var(--fs-md) var(--font-mono);color:var(--text-muted)}
+
+/* SettingsPage — a page inside a tab: back (the tab's name), title 17/600, one sentence, then groups 18px apart */
+.zs-setpage{display:flex;flex-direction:column;gap:18px}
+.zs-setpage-top{display:flex;margin:-4px 0 -8px -6px}
+.zs-setpage-back{display:inline-flex;align-items:center;gap:3px;height:var(--control-sm);padding:0 10px 0 4px;border:0;border-radius:var(--radius-chip);background:none;font:inherit;font-size:var(--fs-control);color:var(--text-muted);cursor:default;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
+.zs-setpage-back:hover{background:var(--fl-hover);color:var(--text)}
+.zs-setpage-back:active{background:var(--fl-on);color:var(--text);transition:none}
+.zs-setpage-title{margin:0 4px 4px;font-size:var(--fs-xl);font-weight:600;letter-spacing:var(--tracking-dialog);color:var(--text)}
+.zs-setpage-p{margin:0 4px;max-width:500px;font-size:var(--fs-control);line-height:1.5;color:var(--text-muted);text-wrap:pretty}
+
+/* ImmutablePage — chips, the custom field, the Result well (the inspector's diff-block well) and the note with Reset */
+.zs-imm-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%}
+.zs-imm-add{position:relative;display:inline-flex}
+.zs-imm-add>.zs-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:var(--z-menu);max-height:240px;overflow-y:auto}
+.zs-imm-col{display:flex;flex-direction:column;gap:6px;width:100%}
+.zs-imm-unk{font-size:var(--fs-id);color:var(--text-dim)}
+.zs-imm-unk code{font:var(--fs-sm) var(--font-mono);color:var(--text-muted)}
+.zs-imm-out{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:var(--radius-well);background:var(--code-bg);border:1px solid var(--fl-border)}
+.zs-imm-toml{margin:0;font:var(--fs-md)/1.6 var(--font-mono);color:var(--text-muted);white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
+.zs-imm-toml b{font-weight:500;color:var(--text)}
+.zs-imm-sum{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:var(--fs-md);color:var(--text-dim)}
+.zs-imm-n{display:inline-flex;align-items:center;gap:6px}
+.zs-imm-sum b{font-weight:600;color:var(--text)}
+.zs-imm-heads{font:var(--fs-id) var(--font-mono);color:var(--text-muted)}
+.zs-imm-note{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 4px 0;font-size:var(--fs-id);line-height:1.45;color:var(--text-dim);text-wrap:pretty}
+.zs-imm-note code{font:var(--fs-sm) var(--font-mono);color:var(--text-muted);white-space:nowrap}
+.zs-imm-note>.zs-btn{flex-shrink:0}

@@ -23,7 +23,7 @@ a:focus-visible{outline:var(--focus-w) solid var(--focus-ring);outline-offset:va
    Text entry is the other exception — border + 3px halo on any focus (forms.css). ---- */
 [class*="zs-"]:where(:not(input,textarea,select)):focus-visible,[class*="zs-"]:where(:not(input,textarea,select)).st-focus{outline:var(--focus-w) solid var(--focus-ring);outline-offset:var(--focus-offset);animation:zs-focus-in var(--dur-focus) var(--ease-state)}
 /* inside: rows in lists, menus and scroll areas, flush segments, rail buttons, scroll viewports, anything in a clipping well */
-:is(.zs-ib--lg,.zs-hunk,.zs-seg-btn,.zs-search-x,.zs-chip-x,.zs-disc-hd,.zs-file,.zs-proj,.zs-proj-more,.zs-dialog-navitem,.zs-option-link,.zs-gs-scope,.zs-gs-x,.zs-rsd-item,.zs-rsd-empty,.zs-drop-item,.zs-scroll-vp,.zs-diff-collapsed,.zs-push-row):is(:focus-visible,.st-focus){outline-offset:var(--focus-offset-inset);animation-name:zs-focus-in-inset}
+:is(.zs-ib--lg,.zs-setrow.is-nav,.zs-hunk,.zs-seg-btn,.zs-search-x,.zs-chip-x,.zs-disc-hd,.zs-file,.zs-proj,.zs-proj-more,.zs-dialog-navitem,.zs-option-link,.zs-gs-scope,.zs-gs-x,.zs-rsd-item,.zs-rsd-empty,.zs-drop-item,.zs-scroll-vp,.zs-diff-collapsed,.zs-push-row):is(:focus-visible,.st-focus){outline-offset:var(--focus-offset-inset);animation-name:zs-focus-in-inset}
 /* graph cards: 3px, outside the 3px selection halo */
 .zs-card:is(:focus-visible,.st-focus){outline-offset:var(--focus-offset-card);animation-name:zs-focus-in-card}
 @keyframes zs-focus-in{from{outline-color:transparent;outline-offset:calc(var(--focus-offset) + var(--focus-settle) * var(--motion))}}
@@ -45,8 +45,8 @@ a:focus-visible{outline:var(--focus-w) solid var(--focus-ring);outline-offset:va
 /* ---- secondary text on a fill takes the next rung, so it keeps 4.5:1 on the fill (night faint on a pressed row was 2.9):
    hover → faint reads as dim · on, pressed, selected, highlighted → dim and faint read as muted · tooltips → faint reads as dim.
    Done with the tokens themselves, so every meta line, count, hash and shortcut inside the row follows. ---- */
-:is(.zs-btn,.zs-ib,.zs-chip,.zs-file,.zs-proj,.zs-disc-hd,.zs-option-link,.zs-dialog-navitem,.zs-gs-row,.zs-gs-srow,.zs-rsd-item,.zs-rsd-empty,.zs-push-row):is(:hover,.st-hover){--text-faint:var(--text-dim)}
-:is(.zs-btn,.zs-ib,.zs-chip,.zs-file,.zs-proj,.zs-disc-hd,.zs-option-link,.zs-dialog-navitem,.zs-gs-row,.zs-gs-srow,.zs-rsd-item,.zs-rsd-empty,.zs-push-row):is(:active,.st-press,.is-on,.is-sel,.is-active){--text-dim:var(--text-muted);--text-faint:var(--text-muted)}
+:is(.zs-btn,.zs-ib,.zs-chip,.zs-setrow.is-nav,.zs-setpage-back,.zs-file,.zs-proj,.zs-disc-hd,.zs-option-link,.zs-dialog-navitem,.zs-gs-row,.zs-gs-srow,.zs-rsd-item,.zs-rsd-empty,.zs-push-row):is(:hover,.st-hover){--text-faint:var(--text-dim)}
+:is(.zs-btn,.zs-ib,.zs-chip,.zs-setrow.is-nav,.zs-setpage-back,.zs-file,.zs-proj,.zs-disc-hd,.zs-option-link,.zs-dialog-navitem,.zs-gs-row,.zs-gs-srow,.zs-rsd-item,.zs-rsd-empty,.zs-push-row):is(:active,.st-press,.is-on,.is-sel,.is-active){--text-dim:var(--text-muted);--text-faint:var(--text-muted)}
 .zs-tip{--text-faint:var(--text-dim)}
 
 /* ---- the shared entrances and exits. Distances, scales and angles are × --motion, so under Reduce motion each one is a pure fade. ---- */

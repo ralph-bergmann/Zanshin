@@ -5,7 +5,7 @@ import { AtBadge, WorkspaceTag } from "./AtBadge.jsx";
 import { BookmarkChip } from "./BookmarkChip.jsx";
 
 // ChangeCard — one change in the graph. Detailed (62px): subject over meta. Compact (40px): one line.
-// States: workingCopy (saffron, glow) · selected (moon ring) · immutable (◆, muted subject) · empty / undescribed (italic, dim) · root
+// States: workingCopy (saffron, glow) · selected (moon ring) · immutable (hatched, muted subject — no ◆, no colour; the hatch stays on hover, selection, open menu and drop) · empty / undescribed (italic, dim) · root
 // · dim · drop (rebase target) · dragging "src" | "from" · flash (just changed) · menuOpen (its ••• menu is showing)
 // Hover affordances: the ••• button (onMenu) on the bottom edge; without bookmarks, a round bookmark button (onBookmark) on the top edge.
 // workspaces: the workspaces whose working copy is this commit — pass them only when the repo has two or more (jj prints no marker
@@ -24,7 +24,7 @@ export function ChangeCard({
   );
   const cls = ["zs-card", !detailed && "is-compact", workingCopy && "is-wc", selected && "is-sel", hover && "is-hover", immutable && "is-immutable", root && "is-root",
     dim && "is-dim", drop && "is-drop", dragging && "is-drag-" + dragging, flash && "is-flash", menuOpen && "is-menu", className].filter(Boolean).join(" ");
-  const cid = <ChangeId id={id} length={detailed && !workingCopy ? 8 : 5} immutable={immutable && !root} />;
+  const cid = <ChangeId id={id} length={detailed && !workingCopy ? 8 : 5} />;
   const stop = (e) => e.stopPropagation();
   const others = (workspaces || []).filter((w) => w !== ownWorkspace).sort();
   const named = workspaces && workspaces.length > 0;
@@ -36,7 +36,7 @@ export function ChangeCard({
     </>
   );
   return (
-    <div role="button" tabIndex={0} aria-label={(workingCopy ? "Working copy" + (named ? " of " + ownWorkspace : "") + ", " : "") + (others.length ? "working copy of " + others.join(", ") + ", " : "") + (subject || "no description")} className={cls} style={{ width, ...style }} data-change={id} {...rest}>
+    <div role="button" tabIndex={0} aria-label={(workingCopy ? "Working copy" + (named ? " of " + ownWorkspace : "") + ", " : "") + (others.length ? "working copy of " + others.join(", ") + ", " : "") + (immutable && !root ? "Immutable, " : "") + (subject || "no description")} className={cls} style={{ width, ...style }} data-change={id} {...rest}>
       {detailed ? (
         <>
           <div className="zs-card-line">{subj}</div>

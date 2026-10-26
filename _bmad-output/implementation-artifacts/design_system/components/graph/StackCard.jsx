@@ -2,8 +2,9 @@ import React from "react";
 
 // StackCard — a linear run of ≥ 2 changes (one parent, one child, no bookmark, not @) folded into one card.
 // The count bubble leads; the meta line shows the range newest‥oldest (from = top member, to = bottom member).
-export function StackCard({ count, subject, from = "", to = "", author, date, detailed = true, width, className = "", style, ...rest }) {
-  const cls = ["zs-card is-stack", !detailed && "is-compact", className].filter(Boolean).join(" ");
+// immutable: every member is — the front card is hatched like a ChangeCard.
+export function StackCard({ count, subject, from = "", to = "", author, date, detailed = true, immutable = false, width, className = "", style, ...rest }) {
+  const cls = ["zs-card is-stack", !detailed && "is-compact", immutable && "is-immutable", className].filter(Boolean).join(" ");
   return (
     <div role="button" tabIndex={0} className={cls} style={{ width, ...style }} title={count + " changes — click to expand"} {...rest}>
       <div className="zs-card-line">

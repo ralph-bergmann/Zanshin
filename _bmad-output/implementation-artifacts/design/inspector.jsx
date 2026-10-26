@@ -227,7 +227,7 @@ function GraphInspector({ commit, isWC, files, editing, setEditing, canSquash, o
         <span className="gins-id" title={commit.commitId ? `commit ${commit.commitId}` : undefined}><b>{commit.id.slice(0, 2)}</b>{commit.id.slice(2)}</span>
         <span className="gins-flags">
           {isWC && <span className="gins-flag wc">@ Working copy</span>}
-          {commit.immutable && !commit.isRoot && <span className="gins-flag" title="Part of trunk history">◆ Immutable</span>}
+          {commit.immutable && !commit.isRoot && <span className="gins-flag" title={commit.immWhy ? "Immutable · " + commit.immWhy : "Part of trunk history"}><span className="ghatch"></span>Immutable</span>}
           {commit.isEmpty && <span className="gins-flag">Empty</span>}
           {commit.isMerge && <span className="gins-flag">Merge</span>}
           {commit.hasConflict && <span className="gins-flag warn"><Ic name="conflict" size={11}/>Conflict</span>}

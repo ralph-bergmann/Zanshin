@@ -95,8 +95,10 @@ function WindowFrame({ title, titleHidden = false, active, buttons = { close: tr
 // tab up to 740, not resizable; only close is active. The window title is the tab's name; the tabs sit centred in the header.
 // No Esc, no ✕: changes apply at once.
 // ------------------------------------------------------------
-function SettingsWin({ tab, setTab, project, t, setTweak, active, geo, setGeo, z, onActivate, onClose }) {
+// page: a page inside the Project tab ("immutable" = Immutable commits, immutable.jsx) — Back returns to the tab
+function SettingsWin({ tab, setTab, page, setPage, project, t, setTweak, active, geo, setGeo, z, onActivate, onClose }) {
   const shown = tab === "project" && !project ? "general" : tab;
+  const sub = shown === "project" && page === "immutable" && window.ImmutablePage;
   const tabs = (
     <div className="gtb-seg gset-tabs" role="tablist" aria-label="Settings">
       <button role="tab" aria-selected={shown === "general"} className={shown === "general" ? "on" : ""} onClick={() => setTab("general")}><Ic name="settings" size={13}/>General</button>
@@ -106,14 +108,14 @@ function SettingsWin({ tab, setTab, project, t, setTweak, active, geo, setGeo, z
     </div>
   );
   return (
-    <WindowFrame title={shown === "general" ? "General" : "Project"} titleHidden center active={active} buttons={{ close: true }} onClose={onClose}
+    <WindowFrame title={shown === "general" ? "General" : sub ? "Immutable commits" : "Project"} titleHidden center active={active} buttons={{ close: true }} onClose={onClose}
       header={tabs} geo={geo} setGeo={setGeo} z={z} maxH={Math.min(740, window.innerHeight - geo.y - EDGE)} onActivate={onActivate} className="zsw">
       <div className="gset-scope">
         {shown === "general"
           ? <>For Zanshin on this Mac · jj settings go to <code>~/.config/jj/config.toml</code></>
           : <>For {project.name} only{project.path ? <> · <code>{project.path}/.jj/repo/config.toml</code></> : null}</>}
       </div>
-      <div className="gset-bd">{shown === "general" ? <window.GeneralPane t={t} setTweak={setTweak}/> : <window.ProjectPane key={project.id} project={project}/>}</div>
+      <div className="gset-bd">{shown === "general" ? <window.GeneralPane t={t} setTweak={setTweak}/> : sub ? <window.ImmutablePage project={project} onBack={() => setPage(null)}/> : <window.ProjectPane key={project.id} project={project} onPage={setPage}/>}</div>
       <footer className="gset-ft">How the graph looks lives with the graph: <b>View options</b> in the toolbar.</footer>
     </WindowFrame>
   );

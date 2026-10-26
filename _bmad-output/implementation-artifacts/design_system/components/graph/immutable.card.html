@@ -1,0 +1,60 @@
+<!-- @dsCard group="Components" viewport="900x800" name="Immutable changes" subtitle="The hatch is the marker — no colour, no ◆ — kept in every card state; HatchSwatch names it in the peek, the inspector and the menus" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:18px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);font-family:var(--font-sans)}h4{margin:0 0 14px;font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}.cards{display:grid;grid-template-columns:repeat(4,200px);gap:30px 18px;margin-bottom:24px}.cell{display:flex;flex-direction:column;gap:8px}.cell span{font-size:var(--fs-sm);color:var(--text-dim)}.peeks{display:flex;gap:18px;align-items:flex-start;margin-bottom:22px}.side{display:flex;flex-direction:column;gap:14px;padding-top:4px}.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.k{font:var(--fs-sm) var(--font-mono);color:var(--text-dim)}.zoom{display:grid;place-items:center;width:64px;height:64px;border-radius:var(--radius-md);background:var(--fl-hover)}.zoom .zs-hatch{transform:scale(4)}.paper{display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:24px 24px 18px;margin:0 -24px -18px;background:var(--canvas)}p.n{margin:0;max-width:300px;font-size:var(--fs-md);line-height:1.45;color:var(--text-dim);text-wrap:pretty}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { ChangeCard, StackCard, PeekCard, Flag, HatchSwatch } = window.ZanshinDesignSystem_a33847;
+  const noop = () => {};
+  const rel = { id: "vruxwmqv", subject: "Release v1.0.0", author: "Alice", date: "Sep 19", bookmarks: ["main"], immutable: true, width: 200 };
+  const Demo = () => (
+    <div>
+      <h4>On the graph — the normal card plus a 135° hatch, 1px every 6px in --hatch (7% of --text)</h4>
+      <div className="cards">
+        <div className="cell"><ChangeCard {...rel}/><span>rest · trunk() · main</span></div>
+        <div className="cell"><ChangeCard {...rel} hover/><span>hover — the hatch stays</span></div>
+        <div className="cell"><ChangeCard {...rel} selected/><span>selected</span></div>
+        <div className="cell"><ChangeCard {...rel} menuOpen onMenu={noop}/><span>menu open</span></div>
+        <div className="cell"><ChangeCard {...rel} drop/><span>drop target (Insert after, New merge)</span></div>
+        <div className="cell"><ChangeCard id="wqnwkozp" subject="chore(deps): update dependencies" immutable detailed={false} width={200}/><span>compact · below trunk() · main</span></div>
+        <div className="cell"><StackCard count={3} subject="chore: release prep" from="tmqwpzrk" to="wqnwkozp" author="Charlie" date="Sep 12" immutable width={200}/><span>stack — every member immutable</span></div>
+        <div className="cell"><ChangeCard id="kkmpptxz" subject="feat(onboarding): scaffold 4-page flow" author="Lena König" date="3d" width={200}/><span>mutable, for comparison</span></div>
+      </div>
+      <h4>Where the word is written — HatchSwatch</h4>
+      <div className="peeks">
+        <PeekCard id="vruxwmqv" commit="c9d0e1f2" subject="Release v1.0.0" author="Alice" date="Sep 19" files={{ a: 0, m: 2, d: 0 }} added={4} removed={4}
+          immutable immutableWhy="trunk() · main" hint="Click: details · Drag: onto another change · Right-click: actions"/>
+        <PeekCard id="mwoqxlpn" commit="a3b4c5d6" subject="feat(api): paginated responses for /events" author="Bob" date="1d" files={{ a: 1, m: 1, d: 0 }} added={68} removed={9}
+          immutable immutableWhy="below release/1.5.x@origin, not tracked" hint="Click: details · Drag: onto another change · Right-click: actions"/>
+      </div>
+      <div className="row" style={{ marginBottom: 22 }}>
+        <div className="zoom"><HatchSwatch/></div>
+        <div className="side">
+          <div className="row"><HatchSwatch/><span className="k">12px · radius 3 · 1px --border-strong · --card-solid · 1px every 3px in --hatch-mark (30%)</span></div>
+          <div className="row"><Flag icon={<HatchSwatch/>} title="Immutable · trunk() · main">Immutable</Flag><span className="k">inspector flag — its title is the reason</span></div>
+        </div>
+        <p className="n">The peek's eyebrow: swatch + IMMUTABLE (caps), then the reason; a long reason drops to its own line as a whole, then ellipsizes. Its hint leaves out “Double-click: jj edit”. VoiceOver: “Immutable, Release v1.0.0”.</p>
+      </div>
+      <div className="paper" data-theme="paper">
+        <ChangeCard {...rel}/>
+        <ChangeCard id="kkmpptxz" subject="feat(onboarding): scaffold 4-page flow" author="Lena König" date="3d" width={200}/>
+        <Flag icon={<HatchSwatch/>}>Immutable</Flag>
+        <span className="k">Paper: the same 7% / 30% of its --text</span>
+      </div>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

@@ -73,6 +73,8 @@ export function PushDialog({ remotes = ["origin"], defaultRemotes, defaultRemote
   const byDefault = selDefault && rows.every((b) => !defKeys.includes(zsKey(b)) || !zsRefusal(b, to, allow, true).blocked);
   const done = state === "done", busy = state === "pushing";
   const ref = (b) => zsRefusal(b, to, allow, byDefault);
+  // the change's one allowable reason: a short "Allow" at the end of its label line, the reason right below it (as a row's kind column)
+  const chgInline = !!(chg && chg.open.length === 1 && !chg.hard.length && !done);
   const pushSet = rows.filter((b) => sel.has(zsKey(b)) && !ref(b).blocked);
   const cmd = PushDialog.command({ bookmarks, selected: [...sel], bulk, remotes: to, defaultRemotes: defs, change, allow });
   const warnN = pushSet.filter((b) => to.some((r) => (!byDefault || zsAt(b, r).inDefault) && ZS_KIND[zsAt(b, r).kind][1] === "warn")).length;
@@ -171,13 +173,14 @@ export function PushDialog({ remotes = ["origin"], defaultRemotes, defaultRemote
           <section className={"zs-push-change" + (withChange ? " is-on" : "") + (chg.blocked ? " is-refused" : "")} aria-label="Push a change">
             <Checkbox checked={withChange} disabled={chg.blocked || done || busy} label="Push @ as a new bookmark" onChange={(v) => onChange && onChange({ ...change, on: v })}/>
             <div className="zs-push-change-t">
-              <span className="zs-push-change-l">Push <ChangeId id={change.id} length={8}/> as a new bookmark</span>
-              <input className="zs-field zs-field--sm is-mono zs-push-change-in" value={change.name != null ? change.name : change.generated} disabled={!withChange || done || busy} spellCheck="false" aria-label="Bookmark name"
-                onChange={(e) => onChange && onChange({ ...change, name: e.target.value })}/>
+              <span className="zs-push-change-l"><span>Push <ChangeId id={change.id} length={8}/> as a new bookmark</span>{chgInline && allowChip(chg.open[0], true)}</span>
               {chg.commit.length || chg.hard.length ? <>
                 <span className="zs-push-sub is-refused">{chg.blocked ? "Refused — " : "Allowed — "}<ChangeId id={change.refusedAt || change.id} length={8}/> {chg.commit.map((x) => (ZS_ALLOW[x] ? ZS_ALLOW[x][0] : ZS_HARD[x].text())).join(" and ")}{!chg.blocked && <> · pushed with <code>{chg.commit.map((x) => ZS_ALLOW[x][1]).join(" ")}</code></>}</span>
-                {chg.open.length > 0 && !chg.hard.length && <span className="zs-push-allow">{chg.open.map((id) => allowChip(id))}</span>}
-              </> : <span className="zs-push-sub">{(change.name == null || change.name === change.generated) ? <>The name jj generates (<code>templates.git_push_bookmark</code>) — type your own to name it.</> : <>Your name — pushed with <code>--named</code>.</>}</span>}
+                {chg.open.length > (chgInline ? 1 : 0) && !chg.hard.length && <span className="zs-push-allow">{chg.open.map((id) => allowChip(id))}</span>}
+              </> : null}
+              <input className="zs-field zs-field--sm is-mono zs-push-change-in" value={change.name != null ? change.name : change.generated} disabled={!withChange || done || busy} spellCheck="false" aria-label="Bookmark name"
+                onChange={(e) => onChange && onChange({ ...change, name: e.target.value })}/>
+              <span className="zs-push-sub">{(change.name == null || change.name === change.generated) ? <>The name jj generates (<code>templates.git_push_bookmark</code>) — type your own to name it.</> : <>Your name — pushed with <code>--named</code>.</>}</span>
             </div>
           </section>
         )}

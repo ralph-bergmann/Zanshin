@@ -1,7 +1,8 @@
 // Windows — Projects (the project picker, the start window) and Settings (General · Project). Both are macOS windows of their own
 // (components/window: Window) above the project window: no scrim, no ✕ — the red button and ⌘W close them; the system draws the frame.
 (() => {
-const { Window, SearchField, Button, ProjectRow, NamiMark, Icon, Segmented, Switch, Select, TextField, SettingsGroup, SettingsRow } = window.ZanshinDesignSystem_a33847;
+const { Window, SearchField, Button, ProjectRow, NamiMark, Icon, Segmented, Switch, Select, TextField, SettingsGroup, SettingsRow, HatchSwatch, ImmutablePage } = window.ZanshinDesignSystem_a33847;
+const Swatch = HatchSwatch || (() => null);
 
 function zkFlatten(nodes, depth = 0, all = false, out = []) {
   nodes.forEach((n) => { out.push({ node: n, depth }); if (n.kind === "group" && (all || n.expanded)) zkFlatten(n.children || [], depth + 1, all, out); });
@@ -63,14 +64,17 @@ function ZKProjects({ tree, setTree, activeId, onOpen, onClose, onSettings, acti
   );
 }
 
-function ZKSettings({ tab, setTab, onClose, prefs, setPref, project, active = true, onFocus, style }) {
+// page "immutable": Settings › Project › Immutable commits (ImmutablePage) — a page inside the Project tab, reached from History's navigation row
+// or the card menu of an immutable change; the window's title becomes the page's name, ‹ MyApp returns to the tab.
+function ZKSettings({ tab, setTab, page, setPage, imm, setImm, trunk, setTrunk, immInfo = {}, onClose, prefs, setPref, project, active = true, onFocus, style }) {
   const [g, setG] = React.useState({ name: "Ralph Stein", email: "ralph@dasralph.de" });
-  const [p, setP] = React.useState({ fetch: "origin", push: "origin", auto: "15", trunk: "main", immutable: "builtin_immutable_heads()", own: false, email: "ralph@work.example" });
+  const [p, setP] = React.useState({ fetch: "origin", push: "origin", auto: "15", own: false, email: "ralph@work.example" });
+  const sub = tab === "project" && page === "immutable" && ImmutablePage;
   const setp = (k, v) => setP((o) => ({ ...o, [k]: v }));
   // the window title is the tab's name (Window menu, Mission Control); no Esc, no ✕ — changes apply at once
   return (
     <div onMouseDown={onFocus} style={style}>
-      <Window title={tab === "general" ? "General" : "Project"} titleHidden active={active} buttons={{ close: true }} onClose={onClose} width={620} headerAlign="center" style={{ maxHeight: 740 }}
+      <Window title={tab === "general" ? "General" : sub ? "Immutable commits" : "Project"} titleHidden active={active} buttons={{ close: true }} onClose={onClose} width={620} headerAlign="center" style={{ maxHeight: 740 }}
         header={<Segmented variant="tabs" label="Settings" value={tab} onChange={setTab} options={[{ value: "general", label: "General", icon: "settings" },
           project ? { value: "project", label: project.name, icon: <span className="zk-set-mark"><NamiMark size={14}/></span> } : { value: "project", label: "Project", icon: "folder", disabled: true, title: "Open a project first" }]}/>}>
         <div className="zk-set-scope">
@@ -93,17 +97,19 @@ function ZKSettings({ tab, setTab, onClose, prefs, setPref, project, active = tr
               <SettingsRow label="Name" configKey="user.name"><TextField value={g.name} onChange={(e) => setG({ ...g, name: e.target.value })} aria-label="Name"/></SettingsRow>
               <SettingsRow label="Email" configKey="user.email"><TextField value={g.email} onChange={(e) => setG({ ...g, email: e.target.value })} aria-label="Email"/></SettingsRow>
             </SettingsGroup>
-          </> : <>
+          </> : sub ? <ImmutablePage config={imm} onChange={setImm} project={project.name} trunkName={trunk} onBack={() => setPage(null)} {...immInfo}/> : <>
             <SettingsGroup title="Remotes">
               <SettingsRow label="Fetch from" configKey="git.fetch"><Select label="Fetch from" value={p.fetch} onChange={(v) => setp("fetch", v)} options={["origin", "upstream"]}/></SettingsRow>
               <SettingsRow label="Push to" configKey="git.push"><Select label="Push to" value={p.push} onChange={(v) => setp("push", v)} options={["origin", "upstream"]}/></SettingsRow>
               <SettingsRow label="Fetch automatically"><Segmented variant="inset" label="Fetch automatically" value={p.auto} onChange={(v) => setp("auto", v)} options={[{ value: "off", label: "Off" }, { value: "5", label: "5 min" }, { value: "15", label: "15 min" }]}/></SettingsRow>
             </SettingsGroup>
             <SettingsGroup title="History">
-              <SettingsRow label="Trunk" configKey={'revset-aliases."trunk()"'}><Select label="Trunk" value={p.trunk} onChange={(v) => setp("trunk", v)} options={["main", "develop", "release/1.5.x@origin"]}/></SettingsRow>
-              <SettingsRow label="Immutable heads" hint="Changes at or below these can’t be rewritten." configKey={'revset-aliases."immutable_heads()"'} stack>
-                <TextField mono value={p.immutable} onChange={(e) => setp("immutable", e.target.value)} spellCheck={false} aria-label="Immutable heads revset"/>
-              </SettingsRow>
+              <SettingsRow label="Trunk" configKey={'revset-aliases."trunk()"'}><Select label="Trunk" value={trunk} onChange={setTrunk} options={["main", "develop", "release/1.5.x@origin"]}/></SettingsRow>
+              {ImmutablePage && (
+                <SettingsRow label="Immutable commits" hint={ImmutablePage.summary(imm)} configKey={'revset-aliases."immutable_heads()"'} onOpen={() => setPage("immutable")}>
+                  <span className="zs-setrow-count" title={immInfo.count + " immutable changes"}><Swatch/>{immInfo.count}</span>
+                </SettingsRow>
+              )}
             </SettingsGroup>
             <SettingsGroup title="Identity">
               <SettingsRow label="Use a different email here" hint="For work repositories with their own address."><Switch label="Use a different email" checked={p.own} onChange={(v) => setp("own", v)}/></SettingsRow>

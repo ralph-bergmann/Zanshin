@@ -33,7 +33,6 @@
 /* ChangeId — first two characters carry the identity */
 .zs-cid{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;font:var(--type-id);color:var(--text-faint);letter-spacing:.01em}
 .zs-cid b{color:var(--text);font-weight:700}
-.zs-cid-imm{font-size:var(--fs-2xs);color:var(--text-faint)}
 
 /* AtBadge — @, the working copy */
 .zs-at{display:inline-grid;place-items:center;flex-shrink:0;height:16px;padding:0 5px;border-radius:var(--radius-xs);background:var(--co);color:var(--co-ink);font:700 var(--fs-sm)/1 var(--font-mono)}
@@ -103,3 +102,9 @@
 .zs-days-col{position:sticky;top:0;width:88px;z-index:8}
 .zs-day-label{position:absolute;transform:translateY(-50%);font:var(--fs-sm) var(--font-mono);color:var(--text-muted);white-space:nowrap;padding:2px 7px;border-radius:var(--radius-tag);background:var(--card-solid);border:1px solid var(--border)}
 .zs-days-col>.zs-day-label{left:14px}
+
+/* Immutable — no colour, no ◆: the hatch is the marker. 135°, 1px every 6px in --hatch, on the normal card — it stays on hover, selection,
+   open menu and drop target (this block comes last, so the states' background shorthands don't clear it); stacks follow (the front card).
+   HatchSwatch names it wherever the word is written: the same hatch, denser (every 3px, --hatch-mark), on a 12px card in miniature. */
+.zs-card.is-immutable{background-image:repeating-linear-gradient(135deg,transparent 0 5px,var(--hatch) 5px 6px)}
+.zs-hatch{display:inline-block;flex-shrink:0;box-sizing:border-box;width:var(--icon-sm);height:var(--icon-sm);border-radius:var(--radius-kbd);border:1px solid var(--border-strong);background:repeating-linear-gradient(135deg,transparent 0 2px,var(--hatch-mark) 2px 3px),var(--card-solid);vertical-align:-2px}

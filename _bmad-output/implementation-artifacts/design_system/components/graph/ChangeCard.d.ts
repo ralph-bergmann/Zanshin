@@ -2,7 +2,7 @@ import * as React from "react";
 
 /**
  * One jj change in the graph.
- * States: rest · hover · selected (accent edge + 3px ring) · @ (saffron edge, wash, glow) · @ + selected · focus-visible (3px outside) · drop target · drag source · dragged from · menu open · dim · flash (the moon ring fading) · immutable · root · compact / detailed · conflict · workspaces (name@) · inactive window (the ring goes neutral).
+ * States: rest · hover · selected (accent edge + 3px ring) · @ (saffron edge, wash, glow) · @ + selected · focus-visible (3px outside) · drop target · drag source · dragged from · menu open · dim · flash (the moon ring fading) · immutable (the hatch — 135°, 1px every 6px in --hatch — on the normal card in every state; no ◆, no colour; VoiceOver "Immutable, …") · root · compact / detailed · conflict · workspaces (name@) · inactive window (the ring goes neutral).
  */
 export interface ChangeCardProps extends React.HTMLAttributes<HTMLDivElement> {
   id: string;
@@ -19,6 +19,7 @@ export interface ChangeCardProps extends React.HTMLAttributes<HTMLDivElement> {
   workingCopy?: boolean;
   selected?: boolean;
   hover?: boolean;
+  /** can't be rewritten (immutable_heads() and everything below): hatched */
   immutable?: boolean;
   empty?: boolean;
   root?: boolean;

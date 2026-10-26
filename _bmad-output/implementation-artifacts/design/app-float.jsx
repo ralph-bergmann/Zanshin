@@ -13,7 +13,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "autoHide": true
 }/*EDITMODE-END*/;
 // settled design decisions (formerly tweaks)
-const FIXED = { hoverFocus: true, showFiles: true, bookmarkLabels: "legend", addButtons: "both", laneOrder: "optimized", crossings: "bridge", gapMarker: "break", gapCount: false };
+const FIXED = { hoverFocus: true, showFiles: true, bookmarkLabels: "legend", addButtons: "both", laneOrder: "optimized", crossings: "bridge", gapMarker: "break", gapCount: false, immStyle: "hatched" };
 const URLQ = new URLSearchParams(location.search);
 const URL_TWEAKS = Object.fromEntries([["theme", URLQ.get("th") || URLQ.get("theme")]].filter(([, v]) => v != null));
 
@@ -252,7 +252,8 @@ function FloatApp() {
   });
   const [stack, setStack] = useState(() => [...(URLQ.has("settings") ? ["settings"] : []), ...(URLQ.has("embed") ? [] : ["projects"]), "project"]);
   const key = stack[0];
-  const [tab, setTabState] = useState(() => { const q = URLQ.get("settings"); if (q === "general" || q === "project") return q; try { return localStorage.getItem(TAB_KEY) || "general"; } catch { return "general"; } });
+  const [page, setPage] = useState(() => URLQ.get("settings") === "immutable" ? "immutable" : null);
+  const [tab, setTabState] = useState(() => { const q = URLQ.get("settings"); if (q === "general" || q === "project") return q; if (q === "immutable") return "project"; try { return localStorage.getItem(TAB_KEY) || "general"; } catch { return "general"; } });
   const setTab = (v) => { setTabState(v); try { localStorage.setItem(TAB_KEY, v); } catch {} };
   const front = (w) => setStack(s => s[0] === w ? s : [w, ...s.filter(x => x !== w)]);
   const openWin = (w) => { setWins(o => o[w] ? o : { ...o, [w]: window.placeWindow(w, o) }); front(w); };
@@ -266,6 +267,12 @@ function FloatApp() {
   // "Settings…" and "Appearance, diffs and more" → General · "Project Settings…" → Project · ⌘, → the tab shown last, never switched
   const openSettings = (which) => { if (which === "general" || which === "project") setTab(which); openWin("settings"); };
   const fns = useRef(null); fns.current = { openSettings, openWin, closeWin, key };
+  // the graph asks for a page of Settings (card menu › Immutable commits…)
+  useEffect(() => {
+    const h = (e) => { const d = e.detail || {}; fns.current.openSettings(d.tab); setPage(d.page || null); };
+    window.addEventListener("zanshin:settings", h);
+    return () => window.removeEventListener("zanshin:settings", h);
+  }, []);
   useEffect(() => {
     const k = (e) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
@@ -305,7 +312,7 @@ function FloatApp() {
         {wins.projects && <window.ProjectsWin tree={homeTree} setTree={setHomeTree} activeProjectId={activeProjectId} active={key === "projects"} z={zOf("projects")}
           geo={wins.projects} setGeo={setGeo("projects")} onActivate={() => front("projects")} onClose={() => closeWin("projects")} onZoom={() => zoom("projects")}
           onSettings={() => openSettings("general")} onOpenProject={(p) => { setActiveProjectId(p.id); closeWin("projects"); front("project"); }}/>}
-        {wins.settings && <window.SettingsWin tab={tab} setTab={setTab} project={project} t={t} setTweak={setTweak} active={key === "settings"} z={zOf("settings")}
+        {wins.settings && <window.SettingsWin tab={tab} setTab={setTab} page={page} setPage={setPage} project={project} t={t} setTweak={setTweak} active={key === "settings"} z={zOf("settings")}
           geo={wins.settings} setGeo={setGeo("settings")} onActivate={() => front("settings")} onClose={() => closeWin("settings")}/>}
       </div>
     </>

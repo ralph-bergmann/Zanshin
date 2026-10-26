@@ -17,7 +17,7 @@
     C({ id: "nvkqlxsp", commitId: "b1c9d0e1", parents: ["ttnlkwrs"], subject: "fix: memory leak in image cache", author: "Bob", date: "Sep 13", ts: "2026-09-13T10:00", immutable: true, inDefault: false, stats: { added: 18, removed: 9, files: 2 } }),
     C({ id: "rtmswzvk", commitId: "b2c9d0e1", parents: ["nvkqlxsp"], subject: "perf: lazy-load heavy screens", author: "Alice", date: "Sep 14", ts: "2026-09-14T15:00", immutable: true, inDefault: false, stats: { added: 72, removed: 40, files: 7 } }),
     C({ id: "wqnwkozp", commitId: "b8c9d0e1", parents: ["rtmswzvk"], subject: "chore(deps): update dependencies", author: "Charlie Davis", date: "Sep 15", ts: "2026-09-15T16:00", immutable: true, stats: { added: 84, removed: 81, files: 4 } }),
-    C({ id: "vruxwmqv", commitId: "c9d0e1f2", parents: ["wqnwkozp"], subject: "Release v1.0.0", author: "Alice", date: "Sep 19", ts: "2026-09-19T11:00", immutable: true,
+    C({ id: "vruxwmqv", commitId: "c9d0e1f2", parents: ["wqnwkozp"], subject: "Release v1.0.0", author: "Alice", date: "Sep 19", ts: "2026-09-19T11:00", immutable: true, tags: ["v1.0.0"],
         bookmarks: [{ name: "main", state: "synced" }], stats: { added: 4, removed: 4, files: 2 } }),
     C({ id: "yostqsxw", commitId: "d0e1f2a3", parents: ["wqnwkozp"], subject: "fix: backport startup crash fix to 1.5.x", author: "Charlie Davis", date: "Sep 17", ts: "2026-09-17T14:00", priority: 5, immutable: true, inDefault: false,
         bookmarks: [{ name: "release/1.5.x@origin", state: "remote" }], stats: { added: 12, removed: 3, files: 1 } }),
@@ -88,7 +88,7 @@
     // merge with one visible parent and one parent whose whole history is outside the revset (missing + visible parent)
     C({ id: "ksqlrzvo", commitId: "f9a2b3c4", parents: ["sqpuoqvx"], subject: "fix(l10n): locale fallback for de-AT", author: "Charlie Davis", date: "Sep 10", ts: "2026-09-10T09:00", immutable: true, inDefault: false,
         bookmarks: [{ name: "release/1.4.x@origin", state: "remote" }], stats: { added: 9, removed: 2, files: 1 } }),
-    C({ id: "romwxqkn", commitId: "faa2b3c4", parents: ["ksqlrzvo"], subject: "fix(l10n): plural rules for pl", author: "Charlie Davis", date: "Sep 11", ts: "2026-09-11T09:00", immutable: true, inDefault: false, stats: { added: 14, removed: 6, files: 2 } }),
+    C({ id: "romwxqkn", commitId: "faa2b3c4", parents: ["ksqlrzvo"], subject: "fix(l10n): plural rules for pl", author: "Charlie Davis", date: "Sep 11", ts: "2026-09-11T09:00", immutable: true, tags: ["v1.4.2"], inDefault: false, stats: { added: 14, removed: 6, files: 2 } }),
     C({ id: "wlmpxokt", commitId: "fba2b3c4", parents: ["vruxwmqv", "romwxqkn"], subject: "merge: pull 1.4.x locale fixes forward", author: "Charlie Davis", date: "1d", ts: "2026-09-24T08:00", priority: 9 }),
 
     // fork: sxmtvqno keeps its direct child and gains a descendant behind a gap → settings stack ends there

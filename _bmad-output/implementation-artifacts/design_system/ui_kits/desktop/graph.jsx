@@ -51,11 +51,12 @@ const zkFileCounts = (files) => ({ a: files.filter((f) => f.status === "A").leng
 
 function ZKPeek({ n, isWC, style }) {
   const st = zkCount(n.files || []);
-  const hint = (isWC ? "Working copy (@) · Click for details" : "Click: details · Double-click: jj edit") + " · Drag: onto another change · Right-click: actions";
+  // an immutable change can't be edited: its hint leaves out the double-click, its eyebrow says why
+  const hint = (isWC ? "Working copy (@) · Click for details" : n.immutable ? "Click: details" : "Click: details · Double-click: jj edit") + " · Drag: onto another change · Right-click: actions";
   return (
     <div className="zk-peek" style={style}>
       <PeekCard id={n.id} commit={n.commit} subject={n.subject || "(no description set)"} description={n.description} author={n.author} date={n.date}
-        files={zkFileCounts(n.files || [])} added={st.a} removed={st.r} hint={hint}/>
+        files={zkFileCounts(n.files || [])} added={st.a} removed={st.r} hint={hint} immutable={!!n.immutable} immutableWhy={n.immWhy}/>
     </div>
   );
 }
@@ -104,7 +105,7 @@ function ZKPlane({ nodes, L, W, H, axisLeft = 0, detailed, wcId, selId, hoverId,
       {nodes.map((n) => {
         const p = L.pos.get(n.id), style = { left: p.x, top: p.y };
         const hov = { onMouseEnter: () => onHover(n.id), onMouseLeave: () => onHover(null) };
-        if (n.stack) return <StackCard key={n.id} className="zk-node" style={style} width={W} detailed={detailed} count={n.count} subject={n.subject} from={n.members[n.members.length - 1].id} to={n.members[0].id}
+        if (n.stack) return <StackCard key={n.id} className="zk-node" style={style} width={W} detailed={detailed} count={n.count} subject={n.subject} from={n.members[n.members.length - 1].id} to={n.members[0].id} immutable={n.immutable}
           author={n.author} date={n.date} onClick={() => onToggleStack(n.members[0].id)} {...hov}/>;
         const isDnd = dnd && (dnd.src === n.id ? "src" : dnd.from === n.id ? "from" : null);
         return <ChangeCard key={n.id} className={"zk-node" + (n.id === bornId ? " zk-born" : "")} style={style} width={W} detailed={detailed}

@@ -1,0 +1,66 @@
+<!-- @dsCard group="Components" viewport="1320x1280" name="Settings page — Immutable commits" subtitle="A navigation row opens a page inside the Project tab (‹ MyApp, title, one sentence) · ImmutablePage: Built in, Also immutable, the TOML it writes and what it locks" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:18px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);font-family:var(--font-sans)}.g{display:grid;grid-template-columns:620px 620px;gap:28px;align-items:start}.cap{margin:0 0 10px;font-size:var(--fs-md);line-height:1.45;color:var(--text-dim);text-wrap:pretty}.cap b{color:var(--text);font-weight:600}.mark{display:grid;border-radius:var(--radius-xs);overflow:hidden}.scope{padding:12px 28px 4px;text-align:center;font-size:var(--fs-md);line-height:1.5;color:var(--text-dim)}.scope code{font:var(--fs-id) var(--font-mono);color:var(--text-muted)}.bd{display:flex;flex-direction:column;gap:18px;padding:12px 24px 18px}.ft{padding:12px 24px 15px;border-top:1px solid var(--fl-border);text-align:center;font-size:var(--fs-id);color:var(--text-dim)}.ft b{font-weight:500;color:var(--text-muted)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Window, Segmented, SettingsGroup, SettingsRow, Select, Switch, ImmutablePage, HatchSwatch, NamiMark } = window.ZanshinDesignSystem_a33847;
+  const tabs = <Segmented variant="tabs" label="Settings" value="project" onChange={() => {}} options={[{ value: "general", label: "General", icon: "settings" }, { value: "project", label: "MyApp", icon: <span className="mark"><NamiMark size={14}/></span> }]}/>;
+  const Shell = ({ title, children }) => (
+    <Window title={title} titleHidden buttons={{ close: true }} width={620} headerAlign="center" header={tabs}>
+      <div className="scope">For MyApp only · <code>~/code/work/mobile/myapp/.jj/repo/config.toml</code></div>
+      <div className="bd">{children}</div>
+      <footer className="ft">How the graph looks lives with the graph: <b>View options</b> in the toolbar.</footer>
+    </Window>
+  );
+  function Demo() {
+    const [cfg, setCfg] = React.useState({ ...ImmutablePage.defaults, others: true, bookmarks: ["release/1.1.0-rc1"], custom: 'description(glob:"hotfix:*") | heads(remote_bookmarks())' });
+    const [trunk, setTrunk] = React.useState("main");
+    const def = ImmutablePage.defaults;
+    return (
+      <div className="g">
+        <div>
+          <p className="cap"><b>1 · The way in</b> — Project › History. Immutable heads used to be a raw revset field; now a navigation row: the set in words, the key it writes, the count with the swatch, ›. The card menu of an immutable change opens the page directly (Immutable commits…).</p>
+          <Shell title="Project">
+            <SettingsGroup title="Remotes">
+              <SettingsRow label="Fetch from" configKey="git.fetch"><Select label="Fetch from" value="origin" options={["origin", "upstream"]}/></SettingsRow>
+              <SettingsRow label="Push to" configKey="git.push"><Select label="Push to" value="origin" options={["origin", "upstream"]}/></SettingsRow>
+            </SettingsGroup>
+            <SettingsGroup title="History">
+              <SettingsRow label="Trunk" configKey={'revset-aliases."trunk()"'}><Select label="Trunk" mono value={trunk} onChange={setTrunk} options={["main", "develop", "release/1.5.x@origin"]}/></SettingsRow>
+              <SettingsRow label="Immutable commits" hint={ImmutablePage.summary(def)} configKey={'revset-aliases."immutable_heads()"'} onOpen={() => {}}>
+                <span className="zs-setrow-count" title="2 immutable changes"><HatchSwatch/>2</span>
+              </SettingsRow>
+            </SettingsGroup>
+            <SettingsGroup title="Identity">
+              <SettingsRow label="Use a different email here" hint="For work repositories with their own address."><Switch label="Use a different email" checked={false} onChange={() => {}}/></SettingsRow>
+            </SettingsGroup>
+          </Shell>
+        </div>
+        <div>
+          <p className="cap"><b>2 · The page</b> — inside the Project tab; the window's title becomes “Immutable commits”. Shown changed: a bookmark, other people's changes and a custom revset with a term the preview can't evaluate — so <b>Reset to jj's default</b> appears. Every change applies at once; the graph re-hatches.</p>
+          <Shell title="Immutable commits">
+            <ImmutablePage config={cfg} onChange={setCfg} project="MyApp" trunkName={trunk} onBack={() => {}}
+              tags={["v1.0.0", "v1.4.2"]} remoteBookmarks={["release/1.5.x@origin"]} bookmarks={["develop", "docs/api-reference", "release/1.1.0-rc1", "exp/riverpod-3"]}
+              count={cfg.others ? 14 : 3} heads={["main", "v1.0.0", "v1.4.2", ...cfg.bookmarks, ...(cfg.custom.trim() ? ["custom revset"] : []), ...(cfg.others ? ["9 changes by others"] : [])]}
+              unknown={/heads\(remote_bookmarks\(\)\)/.test(cfg.custom) ? ["heads(remote_bookmarks())"] : []}/>
+          </Shell>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

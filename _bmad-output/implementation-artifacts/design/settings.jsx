@@ -91,9 +91,22 @@ function GeneralPane({ t, setTweak }) {
   </>;
 }
 
-function ProjectPane({ project }) {
+// Immutable commits has a page of its own (immutable.jsx); this row leads there
+function ImmutableNav({ onOpen }) {
+  const c = window.useImmutable();
+  const n = useMemo(() => window.immutableCount(window.GRAPH_COMMITS || [], c), [c]);
+  return (
+    <button className="gset-row gset-nav" onClick={onOpen}>
+      <div className="gset-lbl"><span>Immutable commits</span><span className="gset-hint">{window.immutableSummary(c)}</span><code className="gset-cfg">{'revset-aliases."immutable_heads()"'}</code></div>
+      <div className="gset-ctl"><span className="gset-count" title={n + " immutable changes"}><span className="ghatch"></span>{n}</span><Ic name="chevronRight" size={12}/></div>
+    </button>
+  );
+}
+
+function ProjectPane({ project, onPage }) {
   const [p, set] = useLocal("zanshin.settings.project." + (project ? project.id : "_"), { fetch: "origin", push: "origin", auto: "15", trunk: "main", immutable: "builtin_immutable_heads()", own: false, email: "ralph@work.example" });
   const remotes = ["origin", "upstream"];
+  const imm = window.useImmutable ? window.useImmutable() : null;   // trunk() and immutable_heads() live in immutable.jsx where it is loaded
   return <>
     <Group title="Remotes">
       <Row label="Fetch from" cfg="git.fetch"><select className="gset-sel" value={p.fetch} onChange={e => set("fetch", e.target.value)}>{remotes.map(r => <option key={r}>{r}</option>)}</select></Row>
@@ -101,10 +114,12 @@ function ProjectPane({ project }) {
       <Row label="Fetch automatically"><Seg value={p.auto} onChange={v => set("auto", v)} label="Fetch automatically" opts={[{ v: "off", l: "Off" }, { v: "5", l: "5 min" }, { v: "15", l: "15 min" }]}/></Row>
     </Group>
     <Group title="History">
-      <Row label="Trunk" cfg={'revset-aliases."trunk()"'}><select className="gset-sel" value={p.trunk} onChange={e => set("trunk", e.target.value)}>{["main", "develop", "release/1.5.x@origin"].map(r => <option key={r}>{r}</option>)}</select></Row>
-      <Row label="Immutable heads" hint="Changes at or below these can’t be rewritten." cfg={'revset-aliases."immutable_heads()"'} stack>
-        <input className="gset-in is-code" value={p.immutable} onChange={e => set("immutable", e.target.value)} spellCheck={false} aria-label="Immutable heads revset"/>
-      </Row>
+      <Row label="Trunk" cfg={'revset-aliases."trunk()"'}><select className="gset-sel" value={imm ? imm.trunkName : p.trunk} onChange={e => imm ? window.setImmutable({ trunkName: e.target.value }) : set("trunk", e.target.value)}>{["main", "develop", "release/1.5.x@origin"].map(r => <option key={r}>{r}</option>)}</select></Row>
+      {imm && onPage ? <ImmutableNav onOpen={() => onPage("immutable")}/> : (
+        <Row label="Immutable heads" hint="Changes at or below these can’t be rewritten." cfg={'revset-aliases."immutable_heads()"'} stack>
+          <input className="gset-in is-code" value={p.immutable} onChange={e => set("immutable", e.target.value)} spellCheck={false} aria-label="Immutable heads revset"/>
+        </Row>
+      )}
     </Group>
     <Group title="Identity">
       <Row label="Use a different email here" hint="For work repositories with their own address."><Switch on={p.own} set={v => set("own", v)} label="Use a different email"/></Row>
@@ -143,5 +158,5 @@ function SettingsWindow({ tab, setTab, onClose, t, setTweak, project }) {
 }
 
 // the panes also fill the Settings window of the floating client (windows.jsx); SettingsWindow stays for the studies
-Object.assign(window, { ProjectMenu, SettingsWindow, GeneralPane, ProjectPane });
+Object.assign(window, { ProjectMenu, SettingsWindow, GeneralPane, ProjectPane, SettingsKit: { Row, Group, Switch, Seg } });
 })();

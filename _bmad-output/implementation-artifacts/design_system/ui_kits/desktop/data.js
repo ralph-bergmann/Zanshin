@@ -1,10 +1,11 @@
 // Sample repository for the Zanshin desktop UI kit — taken from the floating client's default `jj log` view (graph-data.js, data.js).
-// One Flutter app ("MyApp"), trunk at Release v1.0.0, @ on top of the onboarding feature, six side lines of work.
+// One Flutter app ("MyApp"), trunk at Release v1.0.0 (tag v1.0.0), @ on top of the onboarding feature, six side lines of work.
+// What is immutable isn't stored here: immutable.js evaluates Settings › Project › Immutable commits (by default trunk() and below).
 (() => {
   const C = (o) => Object.assign({ parents: [], gapParents: [], bookmarks: [], author: "Ralph Stein", description: "", files: null }, o);
   const changes = [
-    C({ id: "wqnwkozp", commit: "b8c9d0e1", subject: "chore(deps): update dependencies", author: "Charlie Davis", date: "Sep 15", t: 14400, lane: 0, immutable: true, endBelow: true, stat: [["M", "pubspec.yaml", 22, 21], ["M", "pubspec.lock", 58, 56], ["M", "ios/Podfile.lock", 3, 3], ["M", "android/build.gradle", 1, 1]] }),
-    C({ id: "vruxwmqv", commit: "c9d0e1f2", parents: ["wqnwkozp"], subject: "Release v1.0.0", author: "Alice", date: "Sep 19", t: 8640, lane: 0, immutable: true, bookmarks: [{ name: "main", state: "synced" }], stat: [["M", "pubspec.yaml", 1, 1], ["M", "CHANGELOG.md", 3, 3]] }),
+    C({ id: "wqnwkozp", commit: "b8c9d0e1", subject: "chore(deps): update dependencies", author: "Charlie Davis", date: "Sep 15", t: 14400, lane: 0, endBelow: true, stat: [["M", "pubspec.yaml", 22, 21], ["M", "pubspec.lock", 58, 56], ["M", "ios/Podfile.lock", 3, 3], ["M", "android/build.gradle", 1, 1]] }),
+    C({ id: "vruxwmqv", commit: "c9d0e1f2", parents: ["wqnwkozp"], subject: "Release v1.0.0", author: "Alice", date: "Sep 19", t: 8640, lane: 0, tags: ["v1.0.0"], bookmarks: [{ name: "main", state: "synced" }], stat: [["M", "pubspec.yaml", 1, 1], ["M", "CHANGELOG.md", 3, 3]] }),
 
     C({ id: "kkmpptxz", commit: "1f2e3d4c", parents: ["vruxwmqv"], subject: "feat(onboarding): scaffold 4-page flow", author: "Lena König", date: "3d", t: 4320, lane: 0, stat: [["A", "lib/features/onboarding/onboarding_flow.dart", 64, 0], ["A", "lib/features/onboarding/onboarding_page.dart", 48, 0], ["A", "lib/features/onboarding/pages.dart", 40, 0], ["M", "lib/app/router.dart", 12, 0], ["A", "test/features/onboarding/flow_test.dart", 20, 0]] }),
     C({ id: "nlrtpsqy", commit: "2a3b4c5d", parents: ["kkmpptxz"], subject: "feat(onboarding): hero illustrations + lottie loader", author: "Lena König", date: "2d", t: 2880, lane: 0, bookmarks: [{ name: "feature/ZAN-415_hero-assets", state: "synced" }], stat: [["A", "assets/onboarding/hero_1.svg", 1, 0], ["A", "assets/lottie/nami_loader.json", 1, 0], ["M", "pubspec.yaml", 4, 1], ["A", "lib/features/onboarding/hero.dart", 52, 0], ["M", "lib/features/onboarding/onboarding_page.dart", 18, 3]] }),

@@ -138,6 +138,7 @@ const QA_ICON = {
   describe: <path d="M3 13l.6-2.6L10.5 3.5l2 2-6.9 6.9L3 13zM9.3 4.7l2 2" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinejoin="round"/>,
   squash: <g stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v7M5 6l3 3 3-3"/><path d="M3 13h10"/></g>,
   abandon: <g stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></g>,
+  revert: <g stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M2.2 3.2v3.6h3.6"/><path d="M3.7 9.8A5.4 5.4 0 1 0 5 4.2L2.2 6.8"/></g>,
 };
 const QUICK_ACTIONS = [
   { id: "edit", label: "Edit (jj edit)" },
@@ -155,10 +156,10 @@ const QA_ROOT = NEW_ACTIONS.slice(0, 1);
 const MENU_GROUPS = [
   [{ id: "new", label: "New change on top", cmd: "jj new" }, { id: "after", label: "Insert after", cmd: "jj new -A", mut: true }, { id: "before", label: "Insert before", cmd: "jj new -B", mut: true }],
   [{ id: "edit", label: "Edit", cmd: "jj edit", mut: true }, { id: "describe", label: "Describe…", cmd: "jj describe", mut: true }, { id: "squash", label: "Squash into parent", cmd: "jj squash", mut: true }],
-  [{ id: "abandon", label: "Abandon", cmd: "jj abandon", danger: true, mut: true }],
+  [{ id: "revert", label: "Revert", cmd: "jj revert -B @" }, { id: "abandon", label: "Abandon", cmd: "jj abandon", danger: true, mut: true }],
 ];
 // Right-click menu, positioned in .gws coordinates and clamped to it.
-function CardMenu({ menu, c, isWC, onAction, onClose }) {
+function CardMenu({ menu, c, isWC, revertOff, canAfter = true, onAction, onClose }) {
   const ref = useRef(null);
   const [pos, setPos] = useState({ left: menu.x, top: menu.y, vis: false });
   useLayoutEffect(() => {
@@ -177,22 +178,29 @@ function CardMenu({ menu, c, isWC, onAction, onClose }) {
       window.removeEventListener("wheel", onClose); window.removeEventListener("resize", onClose); window.removeEventListener("blur", onClose);
     };
   }, []);
-  const groups = c.isRoot ? [MENU_GROUPS[0].slice(0, 1)] : MENU_GROUPS;
+  // immutable: only what leaves it as it is (New change on top, Insert after if its children can move, Revert), then why, and where to change that
+  const locked = c.immutable && !c.isRoot;
+  const groups = c.isRoot ? [MENU_GROUPS[0].slice(0, 1)] : locked ? [MENU_GROUPS[0].filter(a => a.id === "new" || (a.id === "after" && canAfter)), MENU_GROUPS[2].slice(0, 1)] : MENU_GROUPS;
   return (
     <div ref={ref} className="gmenu" role="menu" style={{ left: pos.left, top: pos.top, visibility: pos.vis ? "visible" : "hidden" }} onContextMenu={e => e.preventDefault()}>
       <div className="gmenu-head"><span className="gcid"><b>{c.id.slice(0, 2)}</b>{c.id.slice(2, 8)}</span><span className="gmenu-subj">{c.subject}</span></div>
       {groups.map((g, gi) => <React.Fragment key={gi}>
         {gi > 0 && <div className="gmenu-sep"></div>}
         {g.map(a => {
-          const off = (a.mut && c.immutable && a.id !== "after") || (a.id === "edit" && isWC);
+          const off = (a.mut && c.immutable && a.id !== "after") || (a.id === "edit" && isWC) || (a.id === "revert" && revertOff != null);
           return (
-            <button key={a.id} role="menuitem" className={"gmenu-item " + (a.danger ? "danger" : "")} disabled={off} onClick={() => onAction(a.id)}>
+            <button key={a.id} role="menuitem" className={"gmenu-item " + (a.danger ? "danger" : "")} disabled={off} title={a.id === "revert" && off ? revertOff : undefined} onClick={() => onAction(a.id)}>
               <svg width="14" height="14" viewBox="0 0 16 16">{QA_ICON[a.id]}</svg>
               <span>{a.label}</span><span className="gmenu-cmd">{a.cmd}</span>
             </button>
           );
         })}
       </React.Fragment>)}
+      {locked && <>
+        <div className="gmenu-sep"></div>
+        <div className="gmenu-note"><span className="ghatch"></span><span>Immutable · {c.immWhy || "part of trunk() history"}</span></div>
+        <button role="menuitem" className="gmenu-item" onClick={() => onAction("immutable")}><Ic name="settings" size={14}/><span>Immutable commits…</span><span className="gmenu-cmd"></span></button>
+      </>}
     </div>
   );
 }
@@ -248,6 +256,7 @@ function CommitPeek({ c, hint }) {
   const fc = fileCounts(c);
   return (
     <div className="gpeek-inner">
+      {c.immutable && !c.isRoot && <div className="gpeek-imm"><span className="gpeek-imm-l"><span className="ghatch"></span>Immutable</span>{c.immWhy && <span className="gpeek-imm-why" title={c.immWhy}>{c.immWhy}</span>}</div>}
       <div className="gpeek-subj">{c.subject}</div>
       {c.description && <div className="gpeek-desc">{c.description}</div>}
       <div className="gpeek-meta">
@@ -269,12 +278,12 @@ function CommitPeek({ c, hint }) {
   );
 }
 
-function GraphCard({ reveal, flash, n, W, H, detailed, legend, addMode, isCtx, onMenu, isSel, isWC, isHover, dim, onClick, onDoubleClick, onHover, onAction, dnd, onBeginDrag }) {
+function GraphCard({ reveal, flash, n, W, H, detailed, legend, addMode, isCtx, onMenu, isSel, isWC, isHover, dim, onClick, onDoubleClick, onHover, onAction, dnd, onBeginDrag, immMark = true }) {
   const c = n.c;
   const hasLegend = legend && c.bookmarks.length > 0;
   const cid = (
     <span className="gcid">
-      {c.immutable && !c.isRoot && <span className="gimm" title="immutable">◆</span>}
+      {c.immutable && !c.isRoot && immMark && <span className="gimm" title="immutable">◆</span>}
       <b>{c.id.slice(0, 2)}</b>{c.id.slice(2, detailed && !isWC ? 8 : 5)}
     </span>
   );
@@ -288,7 +297,7 @@ function GraphCard({ reveal, flash, n, W, H, detailed, legend, addMode, isCtx, o
       className={"gcard " + (detailed ? "is-detailed " : "is-compact ") + (isSel ? "sel " : "") + (isWC ? "wc " : "") +
         (isHover ? "hov " : "") + (c.immutable ? "immutable " : "") + (c.isRoot ? "root " : "") + (hasLegend ? "has-legend " : "") + (addMode !== "edges" ? "add-menu " : "") + (isCtx ? "ctx " : "") + (dim ? "dim " : "") + (reveal ? "reveal " : "") + (flash ? "flash " : "") + (dnd === "src" ? "drag-src " : dnd === "drop" ? "drop " : dnd === "from" ? "drag-from " : dnd === "bm" ? "bm-lift " : "")}
       style={{ left: n.x, top: n.y, width: W, height: H }}
-      tabIndex={0} role="button" aria-label={(isWC ? "Working copy, " : "") + c.subject}
+      tabIndex={0} role="button" aria-label={(isWC ? "Working copy, " : "") + (c.immutable && !c.isRoot ? "Immutable, " : "") + c.subject}
       onKeyDown={e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}
       onClick={onClick} onDoubleClick={onDoubleClick}
       onContextMenu={addMode === "context" || addMode === "both" ? e => { e.preventDefault(); e.stopPropagation(); onMenu(c.id, e); } : undefined}
@@ -296,7 +305,7 @@ function GraphCard({ reveal, flash, n, W, H, detailed, legend, addMode, isCtx, o
       data-change={c.id}
     >
       <div className="gpeek gpeek-side" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
-        <CommitPeek c={c} hint={c.isRoot ? null : (isWC ? "Working copy (@) · Click for details" : "Click: details · Double-click: jj edit") + " · Drag: onto another change" + (addMode === "context" || addMode === "both" ? " · Right-click: actions" : "")}/>
+        <CommitPeek c={c} hint={c.isRoot ? null : (isWC ? "Working copy (@) · Click for details" : c.immutable ? "Click: details" : "Click: details · Double-click: jj edit") + " · Drag: onto another change" + (addMode === "context" || addMode === "both" ? " · Right-click: actions" : "")}/>
       </div>
       {detailed ? <>
         <div className="gline">{subj}</div>
@@ -542,6 +551,7 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
   }
   const [all, setAll] = useState(boot.current.A);
   const [diffs, setDiffs] = useState(boot.current.D);
+  const immCfg = window.useImmutable ? window.useImmutable() : null;   // Settings › Project › Immutable commits (immutable.jsx)
   const [revset, setRevset] = usePersist("zanshin.graph.revset", "default");
   const rsv = window.useRevsetVersion();
   const [detailed, setDetailed] = usePersist("zanshin.graph.detailed", true);
@@ -699,6 +709,8 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
   }, [L]);
 
   const commitAll = (next) => { window.GRAPH_COMMITS = next; setAll(next); };
+  // immutable_heads() decides what is immutable: re-evaluated when it changes and after every edit
+  useEffect(() => { if (!immCfg) return; const next = window.applyImmutable(all, immCfg); if (next !== all) commitAll(next); }, [all, immCfg]);
   const mkId = () => { const abc = "kmnopqrstuvwxyz", taken = new Set(all.map(c => c.id)); let s; do { s = ""; for (let i = 0; i < 8; i++) s += abc[Math.floor(Math.random() * abc.length)]; } while (taken.has(s)); return s; };
   // jj new <pid> · -A (after: takes over pid's children) · -B (before: slots in between pid and its parents)
   const newChange = (pid = wcId, mode = "new") => {
@@ -810,12 +822,28 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
     const c = all.find(x => x.id === id), nid = mk(), r = ops.abandon(all, diffs, id, nid);
     return { ...r, anchor: c.parents[0], born: r.wc ? nid : undefined, select: null, toast: { text: ["Abandoned ", { id }] } };
   });
+  // jj revert -r id -B @ — only for a change in @'s history that changes something; immutable ones too (pushed history can't be abandoned)
+  const revertWhy = (id) => {
+    if (id === wcId) return "The revert lands below @ — @ itself can’t be reverted";
+    if (!wcId || !ops || !ops.ancestors(all, wcId).has(id)) return "The revert lands below @ — only changes in @’s history";
+    if (!(diffs[id] || []).length) return "Nothing to revert — the change is empty";
+    return null;
+  };
+  const revertChange = (id) => {
+    if (revertWhy(id) != null) return;
+    apply((all, diffs, mk) => {
+      const s = stateRef.current, nid = mk(), r = ops.revert(all, diffs, id, s.wcId, nid);
+      return { ...r, anchor: id, born: nid, select: s.selectedId ? nid : undefined, toast: { text: ["Reverted ", { id }, " — ", { id: nid }, " undoes it"] } };
+    });
+  };
   const cardAction = (id, a) => {
     if (a === "new" || a === "after" || a === "before") return newChange(id, a);
     if (a === "edit") { const c = all.find(x => x.id === id); if (c && !c.immutable) editAt(id); return; }
     if (a === "describe") { if (selectedId === id) setEditMeta(true); else { pendingDescribe.current = true; setSelectedId(id); } return; }
     if (a === "squash") return squashParent(id);
     if (a === "abandon") return abandonChange(id);
+    if (a === "revert") return revertChange(id);
+    if (a === "immutable") window.dispatchEvent(new CustomEvent("zanshin:settings", { detail: { tab: "project", page: "immutable" } }));
   };
 
   // ============================================================
@@ -1106,7 +1134,7 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
     : { width: L.width, height: L.height };
 
   return (
-    <div className={"gws" + (floating ? " is-float" : "") + (drag ? " is-dragging drag-" + drag.payload.kind : "") + (calm ? " is-calm" + (calm.pin ? " pin-ins" : "") : "")} ref={wsRef}>
+    <div className={"gws" + (floating ? " is-float" : "") + (drag ? " is-dragging drag-" + drag.payload.kind : "") + (calm ? " is-calm" + (calm.pin ? " pin-ins" : "") : "")} ref={wsRef} data-imm={floating ? t.immStyle || "hatched" : undefined}>
       {!floating && <GraphToolbar revset={revset} setRevset={setRevset} layout={layout} setLayout={setLayout} detailed={detailed} setDetailed={setDetailed}
         stacks={stacks} setStacks={setStacks}
         cardW={cardW} setCardW={setCardW} shown={shownCount} total={all.length} gapInfo={gapInfo}
@@ -1177,7 +1205,7 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
               <GraphCard reveal={revealSet.has(n.id)} flash={flash.has(n.id)} key={n.id} n={n} W={cardW} H={H} detailed={detailed} legend={t.bookmarkLabels !== "hover"} addMode={t.addButtons || "menu"} isCtx={!!menu && menu.id === n.id} onMenu={openMenu}
                 isSel={selectedId === n.id} isWC={wcId === n.id} isHover={hoverId === n.id} dim={!!focus && !focus.has(n.id)}
                 onClick={() => onCardClick(n.id)} onDoubleClick={() => onCardDbl(n.id)} onHover={hoverCard} onAction={cardAction}
-                dnd={dndOf(n.id)} onBeginDrag={beginDrag}/>
+                dnd={dndOf(n.id)} onBeginDrag={beginDrag} immMark={!floating}/>
             ))}
           </div>
         </div>
@@ -1202,7 +1230,7 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
         all, visibleSet, pickBookmark, detailOpen: !!selected, wcDir, wcId, newChange: () => newChange(wcId), push: pushRefs, beginDrag, calm: !!calm, toastOn: !!toast,
       })}
       {menu && L.N.get(menu.id) && (
-        <CardMenu key={menu.id + menu.x + "," + menu.y} menu={menu} c={L.N.get(menu.id).c} isWC={wcId === menu.id} onClose={closeMenu}
+        <CardMenu key={menu.id + menu.x + "," + menu.y} menu={menu} c={L.N.get(menu.id).c} isWC={wcId === menu.id} revertOff={revertWhy(menu.id)} canAfter={!all.some(x => x.parents.includes(menu.id) && x.immutable)} onClose={closeMenu}
           onAction={(a) => { closeMenu(); cardAction(menu.id, a); }}/>
       )}
       {drag && <window.DragGhost drag={drag} commit={drag.payload.kind === "change" ? (all.find(c => c.id === drag.payload.id) || null) : null} isWC={drag.payload.kind === "change" && drag.payload.id === wcId}/>}

@@ -1,7 +1,10 @@
-// App — repository state and jj operations (new · edit · describe · squash · abandon · commit · split · rebase by drag · undo),
+// App — repository state and jj operations (new · edit · describe · squash · revert · abandon · commit · split · rebase by drag · undo),
 // direct manipulation (drag a change, bookmark, file or hunk onto a change), calm scrolling, and the floating composition.
 (() => {
-const { AtPill, Menu, DropMenu, DragGhost, Toast, ChangeId, RevsetDialog, PushDialog, ResizeEdge } = window.ZanshinDesignSystem_a33847;
+const { AtPill, Menu, DropMenu, DragGhost, Toast, ChangeId, RevsetDialog, PushDialog, ResizeEdge, HatchSwatch, ImmutablePage } = window.ZanshinDesignSystem_a33847;
+const Swatch = HatchSwatch || (() => null);
+// Settings › Project › Immutable commits starts at jj's default: builtin_immutable_heads()
+const IMM0 = { ...((ImmutablePage && ImmutablePage.defaults) || { trunk: true, tags: true, remoteBookmarks: true, remoteTags: true, others: false, bookmarks: [], custom: "" }) };
 // TOP = --chrome-top on the macOS 27 reference geometry (bar centred on the traffic lights at y 26: 26 + 22 + 12)
 const EDGE = 12, TOP = 60, RAIL_R = 76, PANEL_W = 300, DETAIL_W = 460, MINI = 146;
 const s8 = (id) => id.slice(0, 8);
@@ -30,6 +33,16 @@ const O = {
   pickHunks(files, ids) { const set = new Set(ids); return files.map((f) => ({ ...f, hunks: f.hunks.filter((h) => set.has(h.id)) })).filter((f) => f.hunks.length); },
   mergeFiles(a, b) { const out = a.map((f) => ({ ...f, hunks: f.hunks.slice() })); b.forEach((f) => { const t = out.find((x) => x.path === f.path); if (t) t.hunks = [...t.hunks, ...f.hunks]; else out.push({ ...f, hunks: f.hunks.slice() }); }); return out; },
 };
+
+// the inverse of a diff (jj revert): + and − swap, added and deleted files swap; within a run removals stay ahead of additions
+const zkInvLines = (lines) => {
+  const out = []; let run = [];
+  const flush = () => { out.push(...run.filter((l) => l[0] === "-"), ...run.filter((l) => l[0] === "+")); run = []; };
+  lines.forEach((l) => { const s = l[0] === "+" ? "-" + l.slice(1) : l[0] === "-" ? "+" + l.slice(1) : l; if (s[0] === "+" || s[0] === "-") run.push(s); else { flush(); out.push(s); } });
+  flush(); return out;
+};
+const zkInvert = (files, tag) => files.map((f) => ({ ...f, status: f.status === "A" ? "D" : f.status === "D" ? "A" : f.status,
+  hunks: f.hunks.map((h) => ({ ...h, id: h.id + tag, oldStart: h.newStart, newStart: h.oldStart, lines: zkInvLines(h.lines) })) }));
 
 // what can happen when something is dropped on a change — only what makes sense, most likely first
 function zkDropActions(p, tid, cs) {
@@ -74,7 +87,10 @@ function ZKToastText({ text }) {
 function ZKApp() {
   const D = window.ZK_DATA;
   const URLQ = new URLSearchParams(location.search);
-  const [repo, setRepo] = React.useState({ changes: D.changes, wc: D.wc, ops: D.OPS, opCount: D.opCount });
+  // what is immutable comes from Settings › Project (History › Trunk, Immutable commits) — immutable.js evaluates it, the cards re-hatch at once
+  const [imm, setImm] = React.useState(IMM0);
+  const [trunk, setTrunk] = React.useState("main");
+  const [repo, setRepo] = React.useState(() => ({ changes: window.ZK_IMM.apply(D.changes, IMM0, "main", D.me), wc: D.wc, ops: D.OPS, opCount: D.opCount }));
   const [hist, setHist] = React.useState([]), [fut, setFut] = React.useState([]);
   const [sel, setSel] = React.useState(null);
   const [editing, setEditing] = React.useState(false);
@@ -103,18 +119,20 @@ function ZKApp() {
   // Settings and Projects are windows of their own; `key` is the key window — the others are inactive (tokens/inactive.css)
   const [projectsOpen, setProjectsOpen] = React.useState(URLQ.has("projects"));
   const [settingsOpen, setSettingsOpen] = React.useState(URLQ.has("settings"));
-  const [setTab, setSetTab] = React.useState(URLQ.get("settings") === "project" ? "project" : "general");
+  const [setTab, setSetTab] = React.useState(/^(project|immutable)$/.test(URLQ.get("settings") || "") ? "project" : "general");
+  const [setPage, setSetPage] = React.useState(URLQ.get("settings") === "immutable" ? "immutable" : null);   // a page inside the Project tab
   const [key, setKey] = React.useState(URLQ.has("settings") ? "settings" : URLQ.has("projects") ? "projects" : "project");
   const [push, setPush] = React.useState(null);
   // every row that shows ⌘, (Zanshin menu, project menu, the Projects sidebar) and ⌘, itself → the tab shown last, never switched ·
   // "Project Settings…" → Project · "Appearance, diffs and more" → General (those two show no ⌘,) · no project + Project last → General
-  const openSettings = (tab) => { if (tab === "general" || tab === "project") setSetTab(tab); setSettingsOpen(true); setKey("settings"); };
+  // page: open a page of the tab (the card menu's Immutable commits…); undefined leaves the window as it is
+  const openSettings = (tab, page) => { if (tab === "general" || tab === "project") setSetTab(tab); if (page !== undefined) setSetPage(page); setSettingsOpen(true); setKey("settings"); };
   // ⌘W / the red button on the key window. Configurations asks first when dirty; the project window closes the project and shows Projects
   // (the start window — the kit keeps the graph behind it); Settings and Projects just close
   const closeWindow = (w) => {
     if (w === "configs") { setCfgDlg((d) => (d && (d.draft !== configs || d.home !== home) ? { ...d, ask: true } : null)); if (!(cfgDlg && (cfgDlg.draft !== configs || cfgDlg.home !== home))) setKey("project"); return; }
     if (w === "project") { setCfgDlg(null); setProjectsOpen(true); setKey("projects"); return; }
-    if (w === "settings") setSettingsOpen(false); if (w === "projects") setProjectsOpen(false); setKey(w === "settings" && projectsOpen ? "projects" : "project");
+    if (w === "settings") { setSettingsOpen(false); setSetPage(null); } if (w === "projects") setProjectsOpen(false); setKey(w === "settings" && projectsOpen ? "projects" : "project");
   };
   const [cfgPos, setCfgPos] = React.useState({ x: 150, y: 96 });   // remembered while the kit runs, like the window's frame
   const dragWin = (e, pos, set) => {
@@ -132,6 +150,12 @@ function ZKApp() {
   const scRef = React.useRef(null), clickT = React.useRef(0), moveT = React.useRef(0), peekT = React.useRef(0), toastT = React.useRef(0), calmT = React.useRef(0), quiet = React.useRef(0), first = React.useRef(true), justDragged = React.useRef(false);
   const setOpt = (k, v) => setOpts((o) => ({ ...o, [k]: v }));
   const setPref = (k, v) => setPrefs((o) => ({ ...o, [k]: v }));
+  React.useEffect(() => { setRepo((r) => { const n = window.ZK_IMM.apply(r.changes, imm, trunk, D.me); return n === r.changes ? r : { ...r, changes: n }; }); }, [repo.changes, imm, trunk]);
+  const immInfo = React.useMemo(() => {
+    const cs = repo.changes, ev = window.ZK_IMM.evaluate(cs, imm, trunk, D.me);
+    return { count: ev.count, heads: ev.heads, unknown: ev.unknown, tags: cs.flatMap((c) => c.tags || []),
+      remoteBookmarks: cs.flatMap((c) => c.bookmarks.filter((b) => b.state === "remote").map((b) => b.name)), bookmarks: [...new Set(cs.flatMap((c) => c.bookmarks.map((b) => b.name)))].sort() };
+  }, [repo.changes, imm, trunk]);
 
   // ---- derived graph ----
   const W = opts.cardW, H = opts.detailed ? 62 : 40;
@@ -226,6 +250,21 @@ function ZKApp() {
     let cs = O.lift(repo.changes, id).filter((x) => x.id !== id), wc = repo.wc, born;
     if (id === repo.wc) { wc = born = zkNewId(taken()); cs = [blank(wc, c.parents.slice(0, 1), c.lane), ...cs]; }
     commitRepo("abandon " + s8(id), { ...repo, changes: cs, wc }, { toast: ["Abandoned ", { id }], select: null, born });
+  };
+  // jj revert -r <change> -B @ — for a change in @'s history that changes something, immutable ones included (pushed history can't be
+  // abandoned): a new change with the inverse diff slots in between @ and its parents; @ keeps its own diff on top and stays @
+  const revertWhy = (id) => {
+    if (id === repo.wc) return "The revert lands below @ — @ itself can’t be reverted";
+    if (!O.anc(repo.changes, repo.wc).has(id)) return "The revert lands below @ — only changes in @’s history";
+    const c = byId(id); if (!c || !c.files.length) return "Nothing to revert — the change is empty";
+    return null;
+  };
+  const revert = (id) => {
+    if (revertWhy(id)) return;
+    const s = byId(id), w = byId(repo.wc), nid = zkNewId(taken());
+    const n = { ...blank(nid, w.parents.slice(), w.lane), gapParents: w.gapParents.slice(), subject: 'Revert "' + (s.subject || "") + '"', description: "This reverts commit " + s.commit + ".", files: zkInvert(s.files, "r" + nid.slice(0, 3)) };
+    const cs = O.set([n, ...repo.changes], repo.wc, { parents: [nid], gapParents: [] });
+    commitRepo("revert -r " + s8(id) + " -B @", { ...repo, changes: cs }, { born: nid, toast: ["Reverted ", { id }, " — ", { id: nid }, " undoes it"], select: sel ? nid : undefined });
   };
   const squashInto = (id, tid, cmd) => {
     const c = byId(id), t = byId(tid); if (!c || !t || c.immutable || t.immutable) return;
@@ -397,10 +436,25 @@ function ZKApp() {
     else if (a === "describe") { setSel(id); setEditing(true); }
     else if (a === "squash") { const c = byId(id); squashInto(id, c.parents[0]); }
     else if (a === "abandon") abandon(id);
+    else if (a === "revert") revert(id);
+    else if (a === "immutable") openSettings("project", "immutable");
   };
   const mc = menu && byId(menu.id), isWCm = mc && mc.id === repo.wc;
-  const off = (mut, idA) => (mut && mc.immutable && idA !== "after") || (idA === "edit" && isWCm);
   const canSquash = (c) => c && !c.immutable && c.parents.length === 1 && byId(c.parents[0]) && !byId(c.parents[0]).immutable;
+  // the card menu — Revert · Abandon in the last group. An immutable change keeps only what leaves it as it is (New change on top, Insert after
+  // while its children are mutable, Revert), then why and where to change that; the rest is left out, not greyed
+  const menuItems = !mc ? [] : (() => {
+    const rw = revertWhy(mc.id);
+    const NEW = { id: "new", label: "New change on top", icon: "new-on-top", cmd: "jj new" }, AFTER = { id: "after", label: "Insert after", icon: "insert-after", cmd: "jj new -A" };
+    const REVERT = { id: "revert", label: "Revert", icon: "revert", cmd: "jj revert -B @", disabled: !!rw, title: rw || undefined };
+    if (mc.immutable) return [NEW, ...(repo.changes.some((x) => P(x).includes(mc.id) && x.immutable) ? [] : [AFTER]), "sep", REVERT, "sep",
+      { note: "Immutable · " + (mc.immWhy || "part of trunk() history"), icon: <Swatch/> }, { id: "immutable", label: "Immutable commits…", icon: "settings" }];
+    return [NEW, AFTER, { id: "before", label: "Insert before", icon: "insert-before", cmd: "jj new -B" }, "sep",
+      { id: "edit", label: "Edit", icon: "working-copy-at", cmd: "jj edit", disabled: isWCm },
+      { id: "describe", label: "Describe…", icon: "describe", cmd: "jj describe" },
+      { id: "squash", label: "Squash into parent", icon: "squash", cmd: "jj squash", disabled: !canSquash(mc) },
+      "sep", REVERT, { id: "abandon", label: "Abandon", icon: "abandon", cmd: "jj abandon", danger: true }];
+  })();
   const atR = sel ? insW + EDGE * 2 : MINI + EDGE;
   const dragAct = drag && drag.actions[drag.sel];
   const visibleSet = new Set(nodes.flatMap((n) => n.stack ? n.members.map((m) => m.id) : [n.id]));
@@ -445,17 +499,7 @@ function ZKApp() {
       </div>
       {menu && mc && (
         <div className="zk-menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
-          <Menu id={mc.id} subject={mc.subject || "(no description set)"} workingCopy={isWCm} onSelect={menuAct} items={[
-            { id: "new", label: "New change on top", icon: "new-on-top", cmd: "jj new" },
-            { id: "after", label: "Insert after", icon: "insert-after", cmd: "jj new -A", disabled: off(true, "after") },
-            { id: "before", label: "Insert before", icon: "insert-before", cmd: "jj new -B", disabled: off(true, "before") },
-            "sep",
-            { id: "edit", label: "Edit", icon: "working-copy-at", cmd: "jj edit", disabled: off(true, "edit") },
-            { id: "describe", label: "Describe…", icon: "describe", cmd: "jj describe", disabled: off(true, "describe") },
-            { id: "squash", label: "Squash into parent", icon: "squash", cmd: "jj squash", disabled: off(true, "squash") || !canSquash(mc) },
-            "sep",
-            { id: "abandon", label: "Abandon", icon: "abandon", cmd: "jj abandon", danger: true, disabled: off(true, "abandon") },
-          ]}/>
+          <Menu id={mc.id} subject={mc.subject || "(no description set)"} workingCopy={isWCm} onSelect={menuAct} items={menuItems}/>
         </div>
       )}
       {drag && drag.menu && (
@@ -497,7 +541,7 @@ function ZKApp() {
       {projectsOpen && window.ZanshinDesignSystem_a33847.Window && <window.ZKProjects tree={tree} setTree={setTree} activeId={activeId} active={key === "projects"} onFocus={() => setKey("projects")}
         style={{ left: settingsOpen ? 24 : "calc(50% - 450px)", top: 56, zIndex: key === "projects" ? 2 : 1 }}
         onOpen={(id) => { setActiveId(id); closeWindow("projects"); }} onClose={() => closeWindow("projects")} onSettings={() => openSettings()}/>}
-      {settingsOpen && window.ZanshinDesignSystem_a33847.Window && <window.ZKSettings tab={setTab} setTab={setSetTab} active={key === "settings"} onFocus={() => setKey("settings")}
+      {settingsOpen && window.ZanshinDesignSystem_a33847.Window && <window.ZKSettings tab={setTab} setTab={setSetTab} page={setPage} setPage={setSetPage} imm={imm} setImm={setImm} trunk={trunk} setTrunk={setTrunk} immInfo={immInfo} active={key === "settings"} onFocus={() => setKey("settings")}
         style={{ left: projectsOpen ? "auto" : "calc(50% - 310px)", right: projectsOpen ? 24 : "auto", top: 40, zIndex: key === "settings" ? 2 : 1 }}
         onClose={() => closeWindow("settings")} prefs={prefs} setPref={setPref} project={project}/>}
     </div>

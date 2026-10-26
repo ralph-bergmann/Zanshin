@@ -8,6 +8,7 @@ Hover card that opens beside a change after a 450ms rest — enough to decide wi
 ~~~
 
 - 340px on the one menu material (`--fl-sheen` over `--fl-bg-solid`, 1px `--fl-border`, radius 13, `--shadow-menu`); flips left near the right edge; opens after `--delay-peek` (450ms; a stack's list after `--delay-stack-list`, 380ms).
-- The hint line teaches the gestures in the client's exact wording; @ uses "Working copy (@) · Click for details".
+- The hint line teaches the gestures in the client's exact wording; @ uses "Working copy (@) · Click for details"; an immutable change leaves out "Double-click: jj edit".
+- **Immutable** (`immutable`, `immutableWhy`): an eyebrow above the subject — `HatchSwatch` + **IMMUTABLE** in the caps label style (`--type-caps`, `--text-muted`), then the reason in 11.5 `--text-dim` ("below trunk() · main"). The reason drops to its own line as a whole when it doesn't fit, and ellipsizes beyond that (its `title` keeps it whole). Not for root().
 - Never opens while dragging, scrolling, or while a menu is up.
 - Keyboard · VoiceOver · Reduce motion: hover-only (after `--delay-peek`); keyboard users get the same facts in the inspector · not announced · fades in.

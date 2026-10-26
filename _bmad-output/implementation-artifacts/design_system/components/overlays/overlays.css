@@ -33,6 +33,10 @@
 .zs-peek-stats .fd,.zs-peek-stats .lr{color:var(--rem)}
 .zs-peek-lines{margin-left:auto;display:flex;gap:8px}
 .zs-peek-hint{padding:8px 0 0;border-top:1px solid var(--border);font-size:var(--fs-sm);color:var(--text-dim)}
+/* the immutable eyebrow: swatch + IMMUTABLE (caps), then the reason — it wraps to its own line as a whole, then ellipsizes */
+.zs-peek-imm{display:flex;flex-wrap:wrap;align-items:center;gap:3px 8px;font-size:var(--fs-id);color:var(--text-dim)}
+.zs-peek-imm-l{display:inline-flex;align-items:center;gap:6px;font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-muted)}
+.zs-peek-imm-why{max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* DragGhost */
 .zs-ghost{pointer-events:none;transition:opacity var(--dur-hover) var(--ease-state)}

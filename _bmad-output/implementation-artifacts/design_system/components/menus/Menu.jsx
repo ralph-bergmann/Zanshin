@@ -5,7 +5,7 @@ import { AtBadge } from "../graph/AtBadge.jsx";
 
 // reads a motion token (ms) so code and tokens never drift; falls back where there is no document
 export const zsMs = (name, fallback) => { try { const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)); return isNaN(n) ? fallback : n; } catch (e) { return fallback; } };
-const zsActionable = (it) => it && it !== "sep" && !it.header && !it.disabled;
+const zsActionable = (it) => it && it !== "sep" && !it.header && !it.note && !it.disabled;
 const zsText = (it) => (it.text != null ? it.text : typeof it.label === "string" ? it.label : "").toLowerCase();
 // is p inside the triangle a → b → c (the pointer's last spot and the submenu's near corners)?
 const zsInTri = (p, a, b, c) => { const s = (u, v, w) => (u.x - w.x) * (v.y - w.y) - (v.x - w.x) * (u.y - w.y); const d1 = s(p, a, b), d2 = s(p, b, c), d3 = s(p, c, a); return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0)); };
@@ -22,6 +22,9 @@ const zsInTri = (p, a, b, c) => { const s = (u, v, w) => (u.x - w.x) * (v.y - w.
 // (8px margin) and shifts up to stay 8px inside the bottom edge.
 export function Menu({ id, subject, workingCopy = false, items = [], onSelect, onClose, autoFocus = false, blink = true, highlight, closing = false, still = false, className = "", style, ...rest }) {
   const ref = React.useRef(null);
+  const uid = React.useId();
+  // note rows (why something is missing) aren't commands: the keyboard skips them, the menu points at them for VoiceOver
+  const notes = items.map((it, i) => (it && it.note ? uid + "-n" + i : null)).filter(Boolean).join(" ");
   const [hi, setHi] = React.useState(highlight == null ? -1 : highlight);
   const [kbd, setKbd] = React.useState(false);
   const [blinkAt, setBlinkAt] = React.useState(-1);
@@ -79,7 +82,7 @@ export function Menu({ id, subject, workingCopy = false, items = [], onSelect, o
   };
   const cls = ["zs-menu", kbd && "is-kbd", closing && "is-closing", still && "is-static", className].filter(Boolean).join(" ");
   return (
-    <div ref={ref} role="menu" tabIndex={-1} aria-label={subject} className={cls} style={style} onKeyDown={onKey}
+    <div ref={ref} role="menu" tabIndex={-1} aria-label={subject} aria-describedby={notes || undefined} className={cls} style={style} onKeyDown={onKey}
       onMouseMove={(e) => { if (kbd) setKbd(false); if (sub < 0 || !aiming(e)) last.current = { x: e.clientX, y: e.clientY }; }}
       onMouseLeave={() => { if (!kbd && sub < 0 && !busy.current) setHi(-1); }} {...rest}>
       {(id || subject) && (
@@ -92,11 +95,12 @@ export function Menu({ id, subject, workingCopy = false, items = [], onSelect, o
       {items.map((it, i) => {
         if (it === "sep") return <div key={"sep" + i} className="zs-menu-sep" role="separator"></div>;
         if (it.header) return <div key={"h" + i} className="zs-menu-h" role="presentation">{it.header}</div>;
+        if (it.note) return <div key={"n" + i} id={uid + "-n" + i} className="zs-menu-note">{typeof it.icon === "string" ? <Icon name={it.icon} size="sm" /> : it.icon || <span></span>}<span>{it.note}</span></div>;
         const check = it.checked !== undefined;
         const cls = ["zs-menu-item", it.danger && "is-danger", i === hi && "is-hi", i === blinkAt && "is-blink"].filter(Boolean).join(" ");
         return (
-          <div key={it.id || i} className="zs-menu-row" style={{ position: "relative" }}>
-            <button type="button" tabIndex={-1} className={cls} disabled={it.disabled} title={it.title}
+          <div key={it.id || i} className="zs-menu-row" style={{ position: "relative" }} title={it.disabled ? it.title : undefined}>
+            <button type="button" tabIndex={-1} className={cls} disabled={it.disabled} title={it.disabled ? undefined : it.title}
               role={check ? (it.radio ? "menuitemradio" : "menuitemcheckbox") : "menuitem"} aria-checked={check ? !!it.checked : undefined}
               aria-haspopup={it.submenu ? "menu" : undefined} aria-expanded={it.submenu ? sub === i : undefined}
               onMouseEnter={(e) => enter(i, e)} onClick={() => activate(i)}>

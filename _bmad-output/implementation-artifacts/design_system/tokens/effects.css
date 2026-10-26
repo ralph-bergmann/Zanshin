@@ -4,7 +4,7 @@
 :root,[data-theme="night"]{
   /* radii — concentric: inside a rounded container, radius = the container's radius minus the inset
      (island 14 − 4 = 10 · menu 13 − 5 = 8 · rail 16 − 5 = 11 · tabs 10 − 3 = 7). Use the token, never the number. */
-  --radius-kbd:3px;     /* key caps, the focus shape of links */
+  --radius-kbd:3px;     /* key caps, the focus shape of links, the hatch swatch */
   --radius-xs:4px;      /* @ badge, inline code, skeleton bars */
   --radius-tag:5px;     /* tags, day labels, key-cap hints, the ✕ in a chip */
   --radius-sm:6px;      /* segments, small chips, the ✕ in a field */

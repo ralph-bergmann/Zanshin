@@ -12,6 +12,10 @@
 .zs-menu-subj{font-size:var(--fs-md);color:var(--text-dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .zs-menu-h{padding:7px 8px 3px 34px;font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}
 .zs-menu-h:first-child{padding-top:3px}
+/* note row — why something is missing (the card menu of an immutable change): the leading column holds its mark, the text wraps */
+.zs-menu-note{display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:10px;padding:5px 8px 4px;font-size:var(--fs-id);line-height:1.4;color:var(--text-dim);text-wrap:pretty}
+.zs-menu-note>.zs-hatch{margin:2px 2px 0}
+.zs-menu-note>.zs-icon{margin-top:2px;color:var(--text-dim)}
 .zs-menu-item{position:relative;display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;height:28px;padding:0 8px;border:0;border-radius:var(--radius-md);background:none;font:inherit;font-size:var(--fs-control);color:var(--text);text-align:left;cursor:default;outline:none}
 .zs-menu-item:focus-visible{outline:none;animation:none}
 .zs-menu-item>.zs-icon{color:var(--text-muted)}

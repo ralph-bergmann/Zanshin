@@ -56,10 +56,20 @@
     return out;
   }
   const allHunks = (files) => files.flatMap(f => f.hunks.map(h => h.id));
+  // the inverse of a diff (jj revert): + and − swap, added and deleted files swap; within a run, removals stay ahead of additions
+  const FLIP = { A: "D", D: "A" };
+  function invert(files) {
+    return files.map(f => ({ ...f, status: FLIP[f.status] || f.status, hunks: f.hunks.map(h => {
+      const lines = [], run = [], out = () => { lines.push(...run.filter(l => l.k === "-"), ...run.filter(l => l.k === "+")); run.length = 0; };
+      h.lines.forEach(l => { if (l.k === "+" || l.k === "-") run.push({ ...l, k: l.k === "+" ? "-" : "+" }); else { out(); lines.push(l); } });
+      out();
+      return { ...h, id: window.newHunkId(), oldStart: h.newStart, newStart: h.oldStart, lines };
+    }) }));
+  }
 
   // ---------- jj commands ----------
   const Ops = {
-    descendants, ancestors, detach, blank, count, hunkStat, allHunks, undescribed,
+    descendants, ancestors, detach, blank, count, hunkStat, allHunks, undescribed, invert,
 
     // jj rebase -s id -o dest (descendants follow) · -r: only id, its children close the gap
     rebase(all, id, dest, mode) { return setParents(mode === "r" ? detach(all, id) : all, id, [dest]); },
@@ -163,6 +173,13 @@
       const D = { ...diffs }; delete D[id];
       if (s.isWorkingCopy) { next = [...next, blank(nid, [...s.parents], s)]; D[nid] = []; return { all: next, diffs: D, wc: nid }; }
       return { all: next, diffs: D };
+    },
+    // jj revert -r id -B wc — a new change with id's inverse diff slots in between @ and its parents; @ keeps its own diff on top
+    revert(all, diffs, id, wc, nid) {
+      const s = all.find(c => c.id === id), w = all.find(c => c.id === wc);
+      const n = { ...blank(nid, [...w.parents], w), subject: 'Revert "' + (undescribed(s) ? "" : s.subject) + '"', description: "This reverts commit " + (s.commitId || s.id) + "." };
+      const D = { ...diffs, [nid]: invert(diffs[id] || []) };
+      return { all: restat(setParents([...all, n], wc, [nid]), D, [nid]), diffs: D };
     },
   };
   window.GraphOps = Ops;
