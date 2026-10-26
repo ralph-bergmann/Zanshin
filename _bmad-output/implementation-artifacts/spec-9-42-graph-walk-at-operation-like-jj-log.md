@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/commit_content.rs:184; crates/zanshin-jj/src/topology.rs (operation_id)
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-b-when-commands-rows-at-operation-contents, commit 51c9d24): `GraphTopology.extra_operation_ids` reports the `at_operation()` operations and `commit_contents` loads against the merged index.
   - summary: >-
       A merge outside the head index (an `at_operation()` commit) reports `empty: false` where the pinned `jj log` prints an inline template error; the error text is not surfaced.
     evidence: |-
@@ -24,6 +26,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/commit_meta.rs (is_empty)
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-b-when-commands-rows-at-operation-contents, commit 51c9d24): `CommitMeta.empty` / `CommitContent.empty` are nullable; null where emptiness cannot be determined.
 ---
 
 <intent-contract>

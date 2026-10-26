@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/repo.rs (select_tree, drop_actions, change_actions); crates/zanshin-jj/src/cli_command.rs NO_COMMAND
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-b-when-commands-rows-at-operation-contents, commit 51c9d24): `SelectTreeOptions.verb` selects the CLI command; each drop/change-action row resolves for its own verb's command.
   - summary: >-
       Most verbs' command choice has no `--when.commands` witness; only describe, new, status, git fetch/push remotes, log reads, init and clone do, and the oracle compares only creation scenarios with a user config.
     evidence: |-
@@ -33,6 +35,8 @@ deferred:
     location: >-
       _bmad-output/project-context.md § zanshin-jj (pin-bump steps)
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (console session, Ralph, commit 7e51032): pin-bump step (6) in project-context.md § zanshin-jj names `cli_command.rs`.
 ---
 
 <intent-contract>

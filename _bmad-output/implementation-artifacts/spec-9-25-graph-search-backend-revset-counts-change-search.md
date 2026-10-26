@@ -52,6 +52,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/revset.rs (render_span)
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (console session, Ralph, commit 7e51032): pin-bump step (6) in project-context.md § zanshin-jj names `render_span`.
 ---
 
 <intent-contract>

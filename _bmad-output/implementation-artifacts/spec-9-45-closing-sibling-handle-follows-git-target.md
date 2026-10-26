@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/repo.rs (refresh_settings reload rule); jj-lib git_backend.rs:346
     severity: medium
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-a-prefix-gitconfig-root-native, commit b46a030): the handle stamps `<git dir>/config` and reloads at call start (and before the op-pinned reads) when it changed.
 ---
 
 <intent-contract>

@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/op_support.rs:730 (resolve_commit_id_prefix), crates/zanshin-jj/src/commit_views.rs (resolve_side)
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-a-prefix-gitconfig-root-native, commit b46a030): interdiff's `RevisionRef` prefixes resolve through the call's `revsets.short-prefixes` context, with oracle scenarios.
 ---
 
 <intent-contract>

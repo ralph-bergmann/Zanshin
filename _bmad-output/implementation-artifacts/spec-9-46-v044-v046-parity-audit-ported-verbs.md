@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remotes.rs list_remotes
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-a-prefix-gitconfig-root-native, commit b46a030): `RemoteError::NotAGitRepo` → `jj.not_a_git_repo`; FR-JJ-9 and the Story 2.9 ACs reworded.
 ---
 
 <intent-contract>

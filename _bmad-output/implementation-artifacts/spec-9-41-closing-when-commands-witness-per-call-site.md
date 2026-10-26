@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/repo.rs (parallelize); jj-lib 0.46.0 src/repo.rs:1203
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (spec-loop-9-25-9-46-leftover-a-prefix-gitconfig-root-native, commit b46a030): a set containing the root commit is refused as immutable before jj-lib is reached (listed as a deliberate divergence).
 ---
 
 <intent-contract>
