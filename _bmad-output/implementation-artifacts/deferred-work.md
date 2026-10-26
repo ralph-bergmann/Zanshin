@@ -2053,7 +2053,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in the closing run of Story 9.25 (bmad-build-auto, 2026-10-25)
 
-- **`interdiff`'s `from`/`to` prefixes and the change-id currency still resolve without the id-prefix context.** Low.
+- ~~**`interdiff`'s `from`/`to` prefixes and the change-id currency still resolve without the id-prefix context.**~~ — RESOLVED 2026-10-26 (spec-loop-9-25-9-46-leftover-a-prefix-gitconfig-root-native, commit b46a030): both `RevisionRef` arms resolve through the call's `revsets.short-prefixes` context like the CLI's prefix resolvers (whole-index fallback keeps hidden commits), with oracle scenarios `interdiff_from_short_commit_prefix` / `_change_prefix`; the mutation verbs' change-id currency is a new ledger item below. Low.
   - `op_support::resolve_commit_id_prefix` (a bare full-index lookup, a deliberate Epic 9 follow-up I divergence) and `op_support::resolve_commit` take no `revsets.short-prefixes` context; the CLI's `jj interdiff --from/--to` goes through `resolve_single_rev` → `attach_revset_evaluator` (`cli/src/cli_util.rs:1905-1921` @ v0.46.0), so a prefix unique within the set but ambiguous repo-wide resolves there and refuses in Zanshin. GUI callers pass full ids, so only a hand-typed short prefix meets it. Pre-existing; outside the closing run's three items.
   - **Follow-up:** resolve `RevisionRef` prefixes through the call's `TemplateStartup::id_prefix_context()` (keeping the hidden-commit fallback the index lookup gives), with an oracle scenario for `interdiff --from <prefix>`; or leave it.
   - **Decided 2026-10-26 (Ralph):** close it like the CLI — resolve through the id-prefix context, with the oracle scenario.
@@ -2073,7 +2073,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in the closing run of Story 9.41 (bmad-build-auto, 2026-10-25)
 
-- **`Repo::parallelize` on the root commit panics in jj-lib, exactly as the pinned `jj parallelize 'root()'` does; over FFI it surfaces as `internal.panic`.** Low.
+- ~~**`Repo::parallelize` on the root commit panics in jj-lib, exactly as the pinned `jj parallelize 'root()'` does; over FFI it surfaces as `internal.panic`.**~~ — RESOLVED 2026-10-26 (spec-loop-9-25-9-46-leftover-a-prefix-gitconfig-root-native, commit b46a030): a set containing the root is refused `MutateError::Immutable` (root id, no hints) before jj-lib, nothing written; listed as a deliberate divergence in project-context.md (no oracle scenario: the stock CLI panics). Low.
   - jj-lib 0.46.0 `src/repo.rs:1203` (`assertion failed: !old_ids.is_empty()`), reached from `crates/zanshin-jj/src/repo.rs` `parallelize`; reproduced with the parity binary (`target/debug/jj parallelize 'root()'` in a fresh repo). Pre-existing, an upstream bug Zanshin mirrors; the FFI's `catch_unwind` turns it into `internal.panic` instead of a typed refusal.
   - **Follow-up:** report it upstream and pick up the fix at the next pin bump; or leave it.
   - **Decided 2026-10-26 (Ralph):** refuse it typed before jj-lib is reached (the refusal other verbs give at the root commit); a panic is no behavior to mirror. An upstream report is Ralph's own.
@@ -2097,14 +2097,26 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in the closing run of Story 9.45 (bmad-build-auto, 2026-10-25)
 
-- **An open handle keeps the gix config snapshot its GitBackend took at load, so a terminal `git remote add` / `git config` beside it stays invisible until the handle reloads, while the CLI sees it on its next command.** Medium.
+- ~~**An open handle keeps the gix config snapshot its GitBackend took at load, so a terminal `git remote add` / `git config` beside it stays invisible until the handle reloads, while the CLI sees it on its next command.**~~ — RESOLVED 2026-10-26 (spec-loop-9-25-9-46-leftover-a-prefix-gitconfig-root-native, commit b46a030): the handle's Git stamp adds `<git dir>/config` (mtime, length) to the `store/git_target` bytes, checked at call start and before the op-pinned reads; unchanged it costs one `stat` (a `shortcut:` comment names the unwatched global/include files). Medium.
   - jj-lib 0.46.0 `git_backend.rs:346` opens the `gix::ThreadSafeRepository` once in `GitBackend::load` and `git_repo()` (:367) hands out copies of that snapshot; `crates/zanshin-jj/src/repo.rs` `refresh_settings` reloads only on a config-stack, per-command or `store/git_target` change. Pre-existing; Zanshin's own remote verbs reload after their config write.
   - **Follow-up:** add the Git config file (`<git dir>/config`) to the per-call reload check (a stamp like the config fingerprint); or leave it.
   - **Decided 2026-10-26 (Ralph):** close it like the CLI — stamp `<git dir>/config` in the per-call reload check.
 
 ## Surfaced in Story 9.46 (bmad-build-auto, 2026-10-26)
 
-- **On a non-Git (native) backend `list_remotes` returns an empty list, where `jj git remote list` refuses (`git::get_git_repo(..)?`).** Low.
+- ~~**On a non-Git (native) backend `list_remotes` returns an empty list, where `jj git remote list` refuses (`git::get_git_repo(..)?`).**~~ — RESOLVED 2026-10-26 (spec-loop-9-25-9-46-leftover-a-prefix-gitconfig-root-native, commit b46a030): new `RemoteError::NotAGitRepo` → `jj.not_a_git_repo` through FFI and Dart; FR-JJ-9 (prd.md) and the native-backend AC (in epics.md Story 2.9, where the text lives) reworded with a dated note. Low.
   - `cli/src/commands/git/remote/list.rs:37` @ v0.46.0 (the same at v0.44.0) propagates `UnexpectedGitBackendError`. `crates/zanshin-jj/src/remotes.rs` `list_remotes` turns it into `Ok(vec![])` (`get_all_remote_names(store).unwrap_or_default()`), as FR-JJ-9's native-backend AC (Story 3.4b) requires. Pre-existing at both tags.
   - **Follow-up:** refuse with a new `RemoteError` variant mapped to `jj.not_a_git_repo` and reword the FR-JJ-9 AC (a story after 9.46: it adds public surface).
   - **Decided 2026-10-26 (Ralph):** refuse like the CLI — a new `RemoteError` variant mapped to `jj.not_a_git_repo`; the FR-JJ-9 native-backend AC is reworded with a dated note.
+
+## Surfaced in leftover run A after the story loop 9.25–9.46 (bmad-build-auto, 2026-10-26)
+
+- **The house change-id currency outside `interdiff` (`op_support::resolve_commit` — show, evolog, every mutation verb) bypasses the id-prefix context, refuses odd-length prefixes, and panics in jj-lib on an ambiguous even-length short id.** Medium.
+  - `resolve_commit` calls `repo.resolve_change_id`, a prefix lookup that hits `panic!("complete change_id should be unambiguous")` on `AmbiguousMatch` (jj-lib 0.46.0 `src/repo.rs:140-150`; read from the code, not reproduced) — `internal.panic` over FFI. The CLI resolves every `-r` through `ChangePrefixResolver` with the `revsets.short-prefixes` context and refuses an ambiguous prefix. GUI callers pass full ids; `interdiff`'s `ChangeIdRef` now goes through `op_support::resolve_change_id_prefix` (this run).
+  - **Follow-up:** route `resolve_commit` through `resolve_change_id_prefix` with the call's `TemplateStartup::id_prefix_context()` (at least with `IdPrefixIndex::empty()` to drop the panic); or leave it.
+- **A divergent change id is `jj.change_not_found` where the CLI raises `DivergentChangeId` (`jj.revset_resolution_error`, the targets as hints); the collapse is not on project-context.md's deliberate-divergence list.** Low.
+  - `op_support::resolve_commit` / `resolve_change_id_prefix` map more than one visible target to `NotFound`; jj-lib 0.46.0 `src/revset.rs` `ChangePrefixResolver::resolve_symbol` raises `RevsetResolutionError::DivergentChangeId`. Pre-existing.
+  - **Follow-up:** refuse a divergent id like the CLI, or list the collapse as deliberate; or leave it.
+- **`git_push_remotes` / `git_fetch_remotes` still answer `[]` on a native backend, while `list_remotes` now refuses `jj.not_a_git_repo`.** Low.
+  - `crates/zanshin-jj/src/repo.rs` `git_push_remotes` doc ("… and so is a non-Git (native) backend"); the push/fetch verbs themselves refuse `NotAGitRepo`. Neither query has a CLI verb of its own. Pre-existing.
+  - **Follow-up:** refuse them `NotAGitRepo` too, for one native-backend answer across the remote surface; or leave it.
