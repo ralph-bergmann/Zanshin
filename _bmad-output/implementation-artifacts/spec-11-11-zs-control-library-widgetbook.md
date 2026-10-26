@@ -32,6 +32,8 @@ deferred:
     location: >-
       app/widgetbook/catalogue.dart
     severity: low
+    resolved: >-
+      2026-10-26 — fixed (spec-10-1-graph-viewport-2d-virtualized, commit 09c2f4e): the Widgetbook "Graph" folder is in app/widgetbook/catalogue.dart; the smoke test and the catalogue-open test cover it.
   - summary: >-
       material_ui's TextField paints no selection while unfocused, so a Zs text field never shows the unemphasized selection of an unfocused field.
     evidence: |-
