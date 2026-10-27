@@ -950,11 +950,11 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - The export compensates with an exact chain colouring for small graphs and with its whole-lane optimizer (GL:492-568). 4.14 ports neither.
   - **Follow-up:** 4.14's measurements on the real 1.4k-commit repo and the scale inputs. If the width grows noticeably, port the exact colouring for small graphs.
   - **2026-10-27, Story 4.14:** measured on the design samples, fixture-medium/large `all()`, synth-10k and synth-100k (spec-4-14 § Measurements): Compact widens on the fixtures (3 → 4 lanes, +28 % mean width vs per-mode compact), Free on synth-100k narrows (mean 98.6 → 42.9); the exact colouring is not ported, since it runs only at ≤ 40 chain heads and saves no lane there (commit 3739e9a); left: the measurement on the real 1.4k-commit repo, whose copy was not reachable (Ralph).
-- **Router B's cost on the UI isolate is unknown.** Medium.
+- ~~**Router B's cost on the UI isolate is unknown.**~~ — RESOLVED 2026-10-27 (spec-4-15-line-router-b-library, commit 33cd76d): measured at fixture-large to synth-100k, `routeSyncNodeLimit` = 20,000 (sync up to it, `Isolate.run` above); wiring the switch is Story 10.4's view work. Medium.
   - The geometry stage runs per layout and per card size, and track assignment is quadratic in a cluster's size (GL:87-112).
   - **Follow-up:** 4.15's timings at large-10k and synth-100k set the `Isolate.run` threshold (its item 4).
   - **2026-10-27, Story 4.15:** measured AOT (spec-4-15 § Measurements): class + geometry 1.5 ms at fixture-large-all, 3.8 ms (free) at synth-10k, 19.5 ms at synth-50k, 40.7 ms (free) / 27.9 ms (compact) at synth-100k; a bridge window ≤ 20 µs; the quadratic track assignment never shows (clusters stay small). `routeSyncNodeLimit` = 20,000 (synchronous up to it, `Isolate.run` above, GLD §14.5); left: 10.4 wires the switch.
-- **Free detours use a unit threshold.** Low.
+- ~~**Free detours use a unit threshold.**~~ — REJECTED 2026-10-27 (spec-4-15-line-router-b-library): nothing to tune — on the router oracle's 132 cases no direct run is judged differently by the unit rule and GL's pixel test; the rule's card-height bound (H ≤ about 90 px) is stated in GLD §14.2. Low.
   - The export's pixel test leaves room from 13 units at H 62 and from 12 at H 40 (GL:162-172). 4.15's unit rule (12) detours a little more often with compact cards.
   - **Follow-up:** 4.15's oracle lists the cases; tune the rule if they show.
   - **2026-10-27, Story 4.15:** the router oracle (132 cases: the sample and the Lines Study at W 160/240/400 × H 40/62 × both modes) lists none — no direct run is judged differently by the unit rule and GL's pixel test, and all 132 cases equal GL's routing; the rule is not tuned. Left: nothing, unless a real repo shows visible detours where GL's line would sit cleanly above a card.
@@ -968,7 +968,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **Gutter overflow.** Low.
   - More than 9 lines on one gutter × step ±6 px each into the neighbouring cards (GL:193-197).
   - **Follow-up:** 4.15 reports it. Widen the gutter's budget only if real repos show it.
-  - **2026-10-27, Story 4.15:** reported (`RouteClasses.overfullGutters`; the edges are derivable from `gutters` + `gutterSteps`); none on the fixtures, the design sample or the Lines Study; 8 on synth-10k (free) and 14 / 28 on synth-100k (compact / free), whose outer lines are Compact's only segments behind cards (975 at 100k). The budget is not widened; left: a real repo (none measured — no dump reachable, as for 4.14).
+  - **2026-10-27, Story 4.15:** reported (`RouteClasses.overfullGutters`; the edges are derivable from `gutters` + `gutterSteps`); none on the fixtures, the design sample or the Lines Study; 8 on synth-10k (free) and 14 / 28 on synth-100k (compact / free), whose outer lines are Compact's only segments behind cards (975 at 100k). The budget is not widened (commit 33cd76d); left: a real repo (none measured — no dump reachable, as for 4.14).
 
 ### Cards, motion and the minimap
 
