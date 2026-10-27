@@ -88,6 +88,13 @@ viewer/       throwaway HTML viewer (index.html, viewer.js, viewer.css); viewer/
    the joint design oracle (GL's greedy lane count on the `e243dd2` sample); `tools/goldens.mjs`
    writes every product golden from the Dart binary with `--columns joint`; `compare.mjs --core`
    compares the product CLI with that binary and checks I8.
+12. **Done (2026-10-27, Story 4.15):** line router B, [`docs/graph-layout.md`](../../docs/graph-layout.md)
+   §14 — product-only (`packages/zanshin_core/lib/src/graph_layout/router.dart`), no spike reference.
+   `tools/router-oracle.mjs` checks it against the export's own `routeAll` on GL's own grids (the
+   sample and the Lines Study's PRESETS × FAN at three widths, two heights, both modes: 132 cases);
+   `loadLayout` gained `kinds` (GL's routed edges carry their kind) and `study` (the Study's
+   PRESETS / FAN), both checked substitutions. The product's `benchmark/router_cli.dart` is the
+   oracle's Dart side and has `check` / `bench` for the scale inputs.
 
 ## Run
 
@@ -131,6 +138,13 @@ node tools/goldens.mjs              # → packages/zanshin_core/test/graph_layou
 # binary's --columns joint output for both orders)
 (cd ../../packages/zanshin_core && dart compile exe benchmark/graph_layout_cli.dart -o ../../spikes/graph-layout-ab/outputs/bin/graph_layout_core)
 node tools/compare.mjs --core outputs/bin/graph_layout_core
+
+# line router B (Story 4.15, docs/graph-layout.md §14): the router oracle against GL's routeAll,
+# and route checks / timings on the scale inputs
+(cd ../../packages/zanshin_core && dart compile exe benchmark/router_cli.dart -o ../../spikes/graph-layout-ab/outputs/bin/router_cli)
+node tools/router-oracle.mjs        # → outputs/oracle/router-{cases,dart,report}.json (exit 1 on an unexplained difference)
+outputs/bin/router_cli check --mode compact --order greedy --width 240 --height 62 inputs/synth-10k.json
+outputs/bin/router_cli bench --mode free --order compact --width 240 --height 62 inputs/synth-100k.json
 
 # lane orders (`compact` is Dart-only, SPEC §4.7) and their quality
 dart/build/graph_layout layout --mode free --order compact inputs/synth-10k.json outputs/o.json

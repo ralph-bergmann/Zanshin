@@ -115,6 +115,7 @@ export 'src/ffi/workspace.dart'
         WorkspaceRemoveResult,
         WorkspaceRootResult;
 export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;
+export 'src/graph_layout/router.dart' show RouteBridges, RouteClasses, RouteGeometry, RouteMetrics, routeSyncNodeLimit;
 export 'src/worker/events.dart'
     show OpHeadsChangedEvent, ProgressEvent, RepoEvent, WatchErrorEvent, WorkingCopyHeartbeatEvent;
 export 'src/worker/handle.dart' show CreatedRepoHandle, OpenedRepoHandle, RepoHandle;

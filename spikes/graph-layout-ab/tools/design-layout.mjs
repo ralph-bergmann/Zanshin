@@ -39,14 +39,29 @@ export const LAYOUT_REV = "e74ced3";
 /** GL's exact-colouring candidate (graph-layout.jsx:525 at e74ced3), removed by `exact: false`. */
 const EXACT_LINE = "if (Math.min(...cands.map(c => c.count)) > 2) { const X = exact(); if (X) cands.push(X); }";
 
-/** GL evaluated whole at `commit`: its computeLayout and the sample's GRAPH_COMMITS / GRAPH_NOW. */
-export function loadLayout(commit = LAYOUT_REV, { exact = true } = {}) {
+/** GL's routeLines output line (graph-layout.jsx:296 at e74ced3), which `kinds: true` extends by the edge's kind (Story 4.15). */
+const ROUTE_OUT_LINE = "return { from: e.from, to: e.to, pts, dashed: e.dashed, via: e.via, count: e.count, hiddenIds: e.hiddenIds };";
+
+/** The Graph Lines Study's scenario declarations (graph-lines-study.jsx:7-22 at e74ced3): from this text up to STUDY_END. */
+const STUDY_START = "const H = 62, WC = ";
+const STUDY_END = "const FANS = ";
+
+/** Replaces `line` in `src` by `by`; throws unless `line` is there exactly once. */
+function substitute(src, line, by, what) {
+  if (src.split(line).length !== 2) throw new Error(`${what}: the line is not there exactly once`);
+  return src.replace(line, by);
+}
+
+/**
+ * GL evaluated whole at `commit`: its computeLayout and the sample's GRAPH_COMMITS / GRAPH_NOW.
+ * `kinds: true` (Story 4.15) makes routeLines' edges carry their kind; `study: true` also evaluates
+ * the Lines Study's PRESETS / FAN declarations in the same context and returns them with groupStacks.
+ */
+export function loadLayout(commit = LAYOUT_REV, { exact = true, kinds = false, study = false } = {}) {
   if (new Date(2026, 0, 1).getTimezoneOffset() !== 0) throw new Error("run with TZ=UTC");
   let src = designFile("graph-layout.jsx", commit);
-  if (!exact) {
-    if (src.split(EXACT_LINE).length !== 2) throw new Error(`graph-layout.jsx at ${commit}: the exact-colouring line is not there exactly once`);
-    src = src.replace(EXACT_LINE, "/* exact colouring disabled (tools/design-layout.mjs) */");
-  }
+  if (!exact) src = substitute(src, EXACT_LINE, "/* exact colouring disabled (tools/design-layout.mjs) */", `graph-layout.jsx at ${commit}: exact colouring`);
+  if (kinds) src = substitute(src, ROUTE_OUT_LINE, ROUTE_OUT_LINE.replace("return { ", "return { kind: e.kind, "), `graph-layout.jsx at ${commit}: routeLines output`);
   const ctx = vm.createContext({});
   vm.runInContext(
     'var window = globalThis; window.placeGapMarkers = () => []; window.revsetMatch = (id) => id === "all" ? () => true : (c) => !!c.inDefault;',
@@ -55,7 +70,17 @@ export function loadLayout(commit = LAYOUT_REV, { exact = true } = {}) {
   vm.runInContext(designFile("graph-data.js", commit), ctx, { filename: "graph-data.js" });
   vm.runInContext(src, ctx, { filename: "graph-layout.jsx" });
   if (typeof ctx.computeLayout !== "function") throw new Error(`graph-layout.jsx at ${commit} sets no window.computeLayout`);
-  return { computeLayout: ctx.computeLayout, GRAPH_COMMITS: ctx.GRAPH_COMMITS, GRAPH_NOW: ctx.GRAPH_NOW, ctx };
+  const out = { computeLayout: ctx.computeLayout, GRAPH_COMMITS: ctx.GRAPH_COMMITS, GRAPH_NOW: ctx.GRAPH_NOW, ctx };
+  if (study) {
+    const ls = designFile("graph-lines-study.jsx", commit);
+    const from = ls.indexOf(STUDY_START), to = ls.indexOf(STUDY_END);
+    if (from < 0 || to < from || ls.indexOf(STUDY_START, from + 1) >= 0 || ls.indexOf(STUDY_END, to + 1) >= 0) {
+      throw new Error(`graph-lines-study.jsx at ${commit}: the PRESETS / FAN declarations are not there exactly once`);
+    }
+    vm.runInContext(ls.slice(from, to), ctx, { filename: "graph-lines-study.jsx" });
+    Object.assign(out, vm.runInContext("({ PRESETS, FAN, TARGET, TRUNK })", ctx), { groupStacks: ctx.groupStacks });
+  }
+  return out;
 }
 
 /** GL's lane count for `revset`: max lane + 1 over its nodes. */

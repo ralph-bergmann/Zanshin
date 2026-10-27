@@ -77,6 +77,71 @@ bool _after(int a, int b, Int64List key, Int32List? second) {
   return second != null && second[a] > second[b];
 }
 
+/// Sorts the index array [items] stably, ascending by `key[item]` and then — when [second] is
+/// given — by `second[item]` (Story 4.15's router: pixel keys). Same rules as [sortIndicesStable];
+/// the keys must not be NaN.
+void sortIndicesStableByDouble(Int32List items, Float64List key, {Float64List? second}) {
+  final int n = items.length;
+  if (n < 2) {
+    return;
+  }
+  for (var lo = 0; lo < n; lo += _run) {
+    final int hi = lo + _run < n ? lo + _run : n;
+    for (int i = lo + 1; i < hi; i++) {
+      final int x = items[i];
+      int j = i - 1;
+      while (j >= lo && _afterDouble(items[j], x, key, second)) {
+        items[j + 1] = items[j];
+        j--;
+      }
+      items[j + 1] = x;
+    }
+  }
+  if (n <= _run) {
+    return;
+  }
+  var src = items;
+  var dst = Int32List(n);
+  for (int width = _run; width < n; width *= 2) {
+    for (var lo = 0; lo < n; lo += 2 * width) {
+      final int mid = lo + width < n ? lo + width : n;
+      final int hi = lo + 2 * width < n ? lo + 2 * width : n;
+      var a = lo;
+      var b = mid;
+      var k = lo;
+      while (a < mid && b < hi) {
+        if (_afterDouble(src[a], src[b], key, second)) {
+          dst[k++] = src[b++];
+        } else {
+          dst[k++] = src[a++];
+        }
+      }
+      while (a < mid) {
+        dst[k++] = src[a++];
+      }
+      while (b < hi) {
+        dst[k++] = src[b++];
+      }
+    }
+    final swap = src;
+    src = dst;
+    dst = swap;
+  }
+  if (!identical(src, items)) {
+    items.setAll(0, src);
+  }
+}
+
+/// Whether [a] sorts strictly after [b] by (`key`, `second`).
+bool _afterDouble(int a, int b, Float64List key, Float64List? second) {
+  final double ka = key[a];
+  final double kb = key[b];
+  if (ka != kb) {
+    return ka > kb;
+  }
+  return second != null && second[a] > second[b];
+}
+
 /// Sorts `list[from ..< to]` ascending in place.
 void sortInt64Range(Int64List list, int from, int to) {
   final int n = to - from;
