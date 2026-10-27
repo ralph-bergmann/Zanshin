@@ -94,7 +94,13 @@ viewer/       throwaway HTML viewer (index.html, viewer.js, viewer.css); viewer/
    sample and the Lines Study's PRESETS × FAN at three widths, two heights, both modes: 132 cases);
    `loadLayout` gained `kinds` (GL's routed edges carry their kind) and `study` (the Study's
    PRESETS / FAN), both checked substitutions. The product's `benchmark/router_cli.dart` is the
-   oracle's Dart side and has `check` / `bench` for the scale inputs.
+   oracle's Dart side and has `check` / `bench` for the scale inputs. Since the closing run
+   (2026-10-27) the oracle also has a `gutter` category — GL's own columns of the sample and of the
+   Study's PRESETS 1–3 at FAN 0 with one node moved and frozen through GL's `opts.cols`, kept where
+   GL routes gutter lines (1,485 cases, all equal or explained by the unit rule) — and fails unless
+   its equal cases witness gutter, stepped, deep, left, right, shared-exit-side, shared-entry-side
+   and compact gutter lines (1,815 / 108 / 132 / 1,170 / 645 / 399 / 12 / 294) and the generation
+   counts stay pinned (frozen moves 115 / 269 / 67 / 87 / 91, 1,485 cases).
 
 ## Run
 
@@ -142,7 +148,9 @@ node tools/compare.mjs --core outputs/bin/graph_layout_core
 # line router B (Story 4.15, docs/graph-layout.md §14): the router oracle against GL's routeAll,
 # and route checks / timings on the scale inputs
 (cd ../../packages/zanshin_core && dart compile exe benchmark/router_cli.dart -o ../../spikes/graph-layout-ab/outputs/bin/router_cli)
-node tools/router-oracle.mjs        # → outputs/oracle/router-{cases,dart,report}.json (exit 1 on an unexplained difference)
+node tools/router-oracle.mjs        # ≈ 45 s: sample, study and gutter cases → outputs/oracle/router-{cases,dart,report}.json
+                                    # (exit 1 on an unexplained difference, an empty gutter-coverage count
+                                    # or a changed generation count)
 outputs/bin/router_cli check --mode compact --order greedy --width 240 --height 62 inputs/synth-10k.json
 outputs/bin/router_cli bench --mode free --order compact --width 240 --height 62 inputs/synth-100k.json
 

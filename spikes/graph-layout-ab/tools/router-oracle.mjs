@@ -11,16 +11,23 @@
 // <router_cli> = `dart compile exe benchmark/router_cli.dart` in packages/zanshin_core (default:
 // outputs/bin/router_cli). Cases: the sample (default, all; optimize false) and the Lines Study's
 // PRESETS 1/2/3 × FAN 0/4/8 (groupStacks(…, "default", []).list, optimize true), each at W 160/240/400 ×
-// H 40/62 × free/compact. Per case GL's grid — node order, col, row = u (free, U 16) or u / 16
-// (compact, U 1), parents in order with their kind, parentCount = the commit's parents.length — goes
-// to `router_cli oracle`; per edge the kind, the gutter, the polyline (±1e-6, so the exit and entry
-// offsets and the tracks) and the bridges are compared. A case is `equal`, or every class and slot
-// difference is explained:
+// H 40/62 × free/compact. GL's own columns avoid every gutter line, so the closing run of 4.15 adds the
+// `gutter` category: GL's own columns of the sample (optimize false) and of the Study's PRESETS 1/2/3
+// at FAN 0 (optimize true) with one node moved into another column
+// 0 … colCount, frozen through GL's opts.cols (GL:548-557; a move counts only if GL froze it), at the same
+// 12 metrics, kept where GL routes ≥ 1 gutter line; over its equal cases the oracle counts gutter,
+// stepped (±6 px), deep (dashed, shared `via`), left, right, shared-exit-side, shared-entry-side and
+// compact gutter lines and fails if any count is 0, and it pins the generation counts. Per case GL's
+// grid — node order, col, row = u (free, U 16) or u / 16 (compact, U 1), parents in order with their
+// kind, parentCount = the commit's parents.length — goes to `router_cli oracle`; per edge the kind,
+// the gutter, the polyline (±1e-6, so the exit and entry offsets and the tracks) and the bridges are
+// compared. A case is `equal`, or every class and slot difference is explained:
 //   - unit rule: GL's decision (its pixel test, GL:162-190) and the same decision under §14.2's unit
 //     rule differ, and the router took the unit rule's — listed with the cards' unit distances;
 //   - shared entry: GL groups dashed edges by its `via` (GL:212), §14 by parentCount = 1.
 // The other geometry differences of such a case count as consequential. Writes
-// outputs/oracle/router-{cases,dart,report}.json; exits 1 on an unexplained difference.
+// outputs/oracle/router-{cases,dart,report}.json; exits 1 on an unexplained difference or a
+// gutter-coverage / generation-count failure.
 
 process.env.TZ = "UTC";
 
@@ -52,6 +59,9 @@ for (const rev of ["default", "all"]) {
     cases.push({ name: `sample-${rev}-${mode}-W${W}-H${H}`, category: "sample", W, H, mode, L: d.computeLayout(d.GRAPH_COMMITS, rev, W, H, mode, { optimize: false }) });
   }
 }
+// the gutter category's bases: the sample, and the Study's presets without FAN (their octopus merge
+// gives a child several non-first parents on one side, so gutter entries get ordered)
+const gutterBases = ["default", "all"].map((rev) => ({ name: rev, all: d.GRAPH_COMMITS, rev, optimize: false }));
 for (const preset of d.PRESETS) {
   for (const fan of [0, 4, 8]) {
     const base = [...d.GRAPH_COMMITS, ...d.FAN.slice(0, fan)];
@@ -60,8 +70,30 @@ for (const preset of d.PRESETS) {
     const commits = base.map((c) => (c.id === tgt.id && preset.extra.length
       ? { ...c, parents: [...c.parents, ...preset.extra.filter((x) => !c.parents.includes(x) && byId.has(x))], isMerge: true } : c));
     const list = d.groupStacks(commits, "default", []).list;
+    if (fan === 0) gutterBases.push({ name: `study-p${preset.n}`, all: list, rev: "default", optimize: true });
     for (const { W, H, mode } of metrics) {
       cases.push({ name: `study-p${preset.n}-fan${fan}-${mode}-W${W}-H${H}`, category: "study", W, H, mode, L: d.computeLayout(list, "default", W, H, mode, { optimize: true }) });
+    }
+  }
+}
+// gutter: single-node moves on GL's own columns, frozen by GL (it re-packs a move it cannot keep).
+// opts.cols is keyed like GL's (a stack by its first member, GL:551); a move never runs the optimizer.
+const colKey = (n) => (n.c.isGroup ? n.c.members[0].id : n.id);
+const frozenMoves = {};
+for (const b of gutterBases) {
+  frozenMoves[b.name] = 0;
+  const base = d.computeLayout(b.all, b.rev, 240, 62, "compact", { optimize: b.optimize });
+  const colCount = Math.max(1, ...base.nodes.map((n) => n.col + 1));
+  for (const node of base.nodes) {
+    for (let col = 0; col <= colCount; col++) {
+      if (col === node.col) continue;
+      const cols = new Map(base.nodes.map((n) => [colKey(n), n === node ? col : n.col]));
+      const Ls = metrics.map(({ W, H, mode }) => ({ W, H, mode, L: d.computeLayout(b.all, b.rev, W, H, mode, { optimize: false, cols }) }));
+      if (!Ls.every(({ L }) => L.nodes.every((n) => n.col === cols.get(colKey(n))))) continue;
+      frozenMoves[b.name]++;
+      for (const { W, H, mode, L } of Ls) {
+        if (L.edges.some((e) => e.kind === "gutter")) cases.push({ name: `gutter-${b.name}-${node.id}-c${col}-${mode}-W${W}-H${H}`, category: "gutter", W, H, mode, L });
+      }
     }
   }
 }
@@ -150,14 +182,15 @@ const near = (a, b) => Math.abs(a - b) <= EPS;
 const cutsOf = (list) => list.map((c) => [c.x, c.y, c.w, c.h]).sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
 const report = [];
 const byCategory = {};
+const coverage = { frozen_moves: frozenMoves, cases: 0, gutter: 0, stepped: 0, deep: 0, left: 0, right: 0, exit_shared: 0, entry_shared: 0, compact: 0 };
 let failed = false;
 cases.forEach((k, ci) => {
   const { L, W, H, mode } = k, free = mode === "free", out = dart[ci];
   if (out.name !== k.name) throw new Error(`router_cli answered ${out.name} for ${k.name}`);
-  const unitRule = [], verdicts = [], shared = [], unexplained = [], consequential = [];
+  const unitRule = [], verdicts = [], shared = [], unexplained = [], consequential = [], glOf = [];
   // classes
   L.edges.forEach((e, q) => {
-    const gl = decide(L, W, H, free, e, pixelClear(L, W, H));
+    const gl = (glOf[q] = decide(L, W, H, free, e, pixelClear(L, W, H)));
     if (KIND[gl.kind] !== KIND[e.kind]) throw new Error(`${k.name}: the oracle's GL decision (${gl.kind}) is not GL's (${e.kind}) on edge ${q}`);
     const unit = free ? decide(L, W, H, free, e, unitClear(L, W)) : gl;
     const ours = { kind: out.kinds[q], gutter: out.gutters[q] };
@@ -205,6 +238,27 @@ cases.forEach((k, ci) => {
   if (!explained && consequential.length) unexplained.push(...consequential.map((c) => ({ ...c, what: "geometry" })));
   const status = unexplained.length ? "unexplained" : explained ? "explained" : "equal";
   if (unexplained.length) failed = true;
+  // the gutter witness, over equal cases only: GL's gutter vertical x = pts[2][0] (GL:295), the gutter's own x from decide()'s index
+  if (k.category === "gutter") coverage.cases++;
+  if (k.category === "gutter" && status === "equal") {
+    const side = (e) => Math.sign(L.N.get(e.to).cx - L.N.get(e.from).cx) || 1;
+    const approach = (e) => (e.kind === "gutter" ? e.pts[2][0] : L.N.get(e.from).cx);
+    L.edges.forEach((e, q) => {
+      if (e.kind !== "gutter") return;
+      const n = L.N.get(e.to), xg = e.pts[2][0];
+      const off = Math.abs(xg - (G.pad + W / 2 + (glOf[q].gutter * (W + G.gapX)) / 2)), steps = Math.round(off / 6);
+      if (!near(off, 6 * steps)) throw new Error(`${k.name}: gutter edge ${q} sits ${off} px off its gutter, not a multiple of 6`);
+      coverage.gutter++;
+      if (steps > 0) coverage.stepped++;
+      if (e.dashed && n.parents.filter((pp) => pp.skipped && pp.via === e.via).length >= 2) coverage.deep++;
+      coverage[xg < n.cx ? "left" : "right"]++;
+      if (!free) coverage.compact++;
+      if (L.edges.some((o) => o !== e && o.from === e.from && o.kind !== "straight" && side(o) === side(e))) coverage.exit_shared++;
+      const notFirst = (o) => n.parents.findIndex((pp) => pp.id === o.from) !== 0; // a first parent enters at the centre
+      if (notFirst(e) && L.edges.some((o) => o !== e && o.to === e.to && notFirst(o)
+        && Math.sign(approach(o) - n.cx) === Math.sign(xg - n.cx))) coverage.entry_shared++;
+    });
+  }
   const row = {
     name: k.name, category: k.category, status, nodes: L.nodes.length, edges: L.edges.length,
     unit_rule: unitRule, unit_rule_verdicts: verdicts, shared_entry: shared, consequential: explained ? consequential.length : 0, unexplained,
@@ -218,9 +272,21 @@ cases.forEach((k, ci) => {
   cat.shared_entry_nodes += shared.length;
   cat.consequential_edges += row.consequential;
 });
-fs.writeFileSync(path.join(outDir, "router-report.json"), JSON.stringify({ design: "e74ced3", summary: byCategory, cases: report }, null, 1) + "\n");
+fs.writeFileSync(path.join(outDir, "router-report.json"), JSON.stringify({ design: "e74ced3", summary: byCategory, gutter_coverage: coverage, cases: report }, null, 1) + "\n");
 for (const [cat, s] of Object.entries(byCategory)) {
   console.log(`${cat}: equal ${s.equal}, explained ${s.explained}, unexplained ${s.unexplained} (unit-rule edges ${s.unit_rule_edges}, run verdicts that differ ${s.unit_rule_verdicts}, shared-entry nodes ${s.shared_entry_nodes}, consequential edges ${s.consequential_edges})`);
+}
+console.log(`gutter coverage: frozen moves ${Object.entries(frozenMoves).map(([b, m]) => `${b} ${m}`).join(", ")}; ${coverage.cases} cases; over equal cases: gutter lines ${coverage.gutter}, stepped ${coverage.stepped}, deep ${coverage.deep}, left ${coverage.left}, right ${coverage.right}, shared exit side ${coverage.exit_shared}, shared entry side ${coverage.entry_shared}, compact ${coverage.compact}`);
+for (const key of ["gutter", "stepped", "deep", "left", "right", "exit_shared", "entry_shared", "compact"]) {
+  if (coverage[key] === 0) { console.log(`FAIL gutter coverage: no ${key} gutter line`); failed = true; }
+}
+// The generation counts depend only on the GL export (e74ced3); they move only with a new export.
+const EXPECTED = { frozen: { default: 115, all: 269, "study-p1": 67, "study-p2": 87, "study-p3": 91 }, cases: 1485 };
+for (const [what, expected, actual] of [
+  ...Object.entries(EXPECTED.frozen).map(([b, m]) => [`${b} frozen moves`, m, frozenMoves[b]]),
+  ["gutter cases", EXPECTED.cases, coverage.cases],
+]) {
+  if (actual !== expected) { console.log(`FAIL ${what}: expected ${expected}, got ${actual}`); failed = true; }
 }
 for (const row of report.filter((x) => x.status === "unexplained")) console.log(`FAIL ${row.name}: ${JSON.stringify(row.unexplained[0])}`);
 console.log(`${failed ? "FAIL" : "ok"}: ${cases.length} cases → outputs/oracle/router-report.json`);

@@ -1059,6 +1059,36 @@ overfull clusters), with no run that the unit rule and GL's pixel test judge dif
 shared-entry grouping difference. GL's grids hold no `gutter` line (its optimizer avoids them), so
 gutter routes are witnessed by the product's hand-built tests and the scale checks, not by GL.
 
+*Amended 2026-10-27, closing run of Story 4.15: gutter routes in the router oracle.* The oracle gains
+a third category, `gutter`, so GL itself routes gutter lines. The bases are the sample revsets
+`default` and `all` (GL's own columns, `computeLayout(GRAPH_COMMITS, rev, 240, 62, "compact",
+{optimize: false})`) and the Study's PRESETS 1 / 2 / 3 at FAN 0 (GL's own optimized columns; their
+octopus merge gives a child several non-first parents on one side, which the sample lacks); every
+single-node move (each node in GL's node order into each column 0 …
+colCount other than its own) is passed as GL's `opts.cols`, which freezes the columns when they are
+valid in both vertical models and silently re-packs otherwise (keyed like GL: a stack by its
+first member; a move never runs the optimizer). A move counts only if GL froze it
+(every node's `col` is the requested one, at all 12 metrics); each frozen move × the 12 metrics is a
+case iff GL routes ≥ 1 `gutter` line, named `gutter-<rev>-<node>-c<col>-<mode>-W<W>-H<H>`. These
+grids go through the same comparison as the other categories. Over the category's equal cases the
+oracle counts gutter lines, stepped gutter lines (GL's gutter vertical x off the gutter's own x by a
+positive multiple of 6 px; any other offset throws), deep gutter lines (dashed, sharing a `via` with
+another dashed edge into the same child), lines whose gutter lies left or right of the child, lines
+whose parent has another non-straight line leaving on the same side (shared exit side), lines into a
+child with another non-first-parent line approaching on the same side of its centre (shared entry
+side) and lines in `compact` cases (lane-blocked by construction); it writes them to
+`router-report.json` (`gutter_coverage`) and exits 1 if any count is 0. It also pins the
+generation counts, which move only with a new GL export: frozen moves 115 (`default`), 269
+(`all`), 67 / 87 / 91 (PRESETS 1 / 2 / 3), 1,485 gutter cases. Measured 2026-10-27: those counts,
+1,467 gutter cases equal and 18 explained, none unexplained, the 132 original cases still equal;
+over the equal cases 1,815 gutter lines, 108 stepped, 132 deep, 1,170 left, 645 right, 399 with a
+shared exit side, 12 with a shared entry side, 294 in `compact`. The 18 explained cases are all
+Free at H 40 (W 160 / 240 / 400 each) and all one run: the line from `xrlpkvqm` (or its stack
+`grp:tqwmlnxz`) into `mxnztwqp`, with the card `lvqrnkmw` 12 units above the parent — GL's pixel
+test finds the band above the parent clear and keeps the run direct (or, where the line is a
+gutter line anyway, takes a different gutter), §14.2's unit rule blocks that run: the unit rule's documented
+difference at H 40 (d = 12, Story 4.15's derivation). The router was not changed.
+
 ### 7.3 Invariants
 
 `tools/` checks these on every output against its input:
