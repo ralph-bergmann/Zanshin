@@ -129,11 +129,23 @@ fn author_and_author_timestamp_are_set_as_the_cli_sets_them() {
         "--update-author keeps the timestamp"
     );
 
+    let b_id = b.id().clone();
     fx.repo
         .metaedit(&MetaeditOptions {
             revisions: vec![fx.b.clone()],
-            // A new description: within one second the rewrite would reproduce the fixture's `B`
-            // Git object, and the Git backend shifts a colliding commit's committer second.
+            update_author_timestamp: true,
+            ..MetaeditOptions::default()
+        })
+        .expect("--update-author-timestamp alone");
+    let b = commit(&fx.root, &fx.b);
+    assert_ne!(b.id(), &b_id, "the flag alone rewrites the commit");
+    assert_ne!(b.author().timestamp, author.timestamp);
+
+    fx.repo
+        .metaedit(&MetaeditOptions {
+            revisions: vec![fx.b.clone()],
+            // `--update-author` restored the fixture's author: without a new description a rewrite
+            // within one second reproduces `B`'s Git object, whose committer second the backend shifts.
             message: Some(message("B2")),
             update_author_timestamp: true,
             ..MetaeditOptions::default()
