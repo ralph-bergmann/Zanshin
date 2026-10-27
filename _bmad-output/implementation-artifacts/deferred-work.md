@@ -941,7 +941,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 
 ### Graph layout and lines
 
-- **The spike's design-input tool cannot read `e74ced3`.** Low: no recording needs it.
+- ~~**The spike's design-input tool cannot read `e74ced3`.**~~ — RESOLVED 2026-10-27 (spec-4-14-shared-columns-free-compact, commit 3739e9a): `spikes/graph-layout-ab/tools/design-layout.mjs` evaluates `graph-layout.jsx` whole (`revsetMatch` stubbed as LSH:54, `placeGapMarkers` a no-op); `design-input.mjs --rev e74ced3` works again, byte-identical to the `e243dd2` inputs, and Story 4.15 reuses the loader. Low: no recording needs it.
   - `node tools/design-input.mjs --rev e74ced3` throws "no top-level declaration of G". It extracts six declarations by name from `graph-view.jsx` (design-input.mjs:33-54), which now imports them from `graph-layout.jsx` (GV:6-7).
   - GD and the gap walk are unchanged (GL:435-460 = GV@e243dd2:145-170), so the `e243dd2` inputs stand for this export too.
   - **Follow-up:** 4.14 and 4.15 add a loader that evaluates `graph-layout.jsx` whole. It is plain JS: stub `revsetMatch` as LSH:54 does, and stub `placeGapMarkers` or extract it.
@@ -949,6 +949,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - Chains may share a lane only when they are apart in both layouts, so 4.14's packing can need more columns than either per-mode packing.
   - The export compensates with an exact chain colouring for small graphs and with its whole-lane optimizer (GL:492-568). 4.14 ports neither.
   - **Follow-up:** 4.14's measurements on the real 1.4k-commit repo and the scale inputs. If the width grows noticeably, port the exact colouring for small graphs.
+  - **2026-10-27, Story 4.14:** measured on the design samples, fixture-medium/large `all()`, synth-10k and synth-100k (spec-4-14 § Measurements): Compact widens on the fixtures (3 → 4 lanes, +28 % mean width vs per-mode compact), Free on synth-100k narrows (mean 98.6 → 42.9); the exact colouring is not ported, since it runs only at ≤ 40 chain heads and saves no lane there (commit 3739e9a); left: the measurement on the real 1.4k-commit repo, whose copy was not reachable (Ralph).
 - **Router B's cost on the UI isolate is unknown.** Medium.
   - The geometry stage runs per layout and per card size, and track assignment is quadratic in a cluster's size (GL:87-112).
   - **Follow-up:** 4.15's timings at large-10k and synth-100k set the `Isolate.run` threshold (its item 4).
@@ -972,6 +973,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - The design labels a Compact row with the local calendar day of its newest commit, shown only when that day is older than the row above's (GV:438-449).
   - 4.11 emits day buckets only for Free (4.11 open question 9), and the view never computes days.
   - **Follow-up:** 4.11 (or 4.14) emits a local day key per node in both modes; 10.16 labels Compact rows from it.
+  - **2026-10-27, Story 4.14:** `GraphGridView.nodeDays` gives every node its local day key in both modes (root `noDay`, a stack its newest member's day) (commit 3739e9a); left: 10.16 labels Compact rows from it (which day it reads: "Surfaced in Story 4.14").
 - **The Animation Show Case is superseded.** None; a record.
   - AS stays in the export as a playground.
   - Its values are no longer planned (decision (c)): the 250 ms stack slide, the 1.8 px/ms tracing, the 600 ms leave with a 16 px blur and a 16 px rise.
