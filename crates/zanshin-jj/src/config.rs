@@ -1538,6 +1538,27 @@ pub(crate) fn conflict_marker_style(
     config.get("ui.conflict-marker-style").map_err(|e| value_error(&e))
 }
 
+/// Reads the effective `diff.git.context` out of a loaded stack (Story 5.1) — the context lines
+/// of a Git-format diff.
+///
+/// Mirrors `UnifiedDiffOptions::from_settings` (`cli/src/diff_util.rs:1751-1757` @ v0.46.0),
+/// which reads this key and then `diff.git.show-path-prefix` before `--context` overrides the
+/// first, so a malformed value of either fails the diff even when the caller passes its own
+/// context, and with both malformed the error names `diff.git.context`. The defaults (3, `true`)
+/// come from jj-cli's own default layers ([`CLI_DEFAULTS`]).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — either value has the wrong type, or is missing from every layer
+///   (impossible while the jj-cli default layers are present).
+pub(crate) fn diff_git_context(config: &StackedConfig) -> Result<usize, ConfigError> {
+    let context = config.get("diff.git.context").map_err(|e| value_error(&e))?;
+    config
+        .get::<bool>("diff.git.show-path-prefix")
+        .map_err(|e| value_error(&e))?;
+    Ok(context)
+}
+
 /// Reads the effective `git import` options out of a loaded stack (Story 9.5).
 ///
 /// Mirrors `cli/src/git_util.rs::load_git_import_options` @ v0.46.0 for the two keys it

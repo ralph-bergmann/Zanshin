@@ -20,7 +20,9 @@
 //!   `ContentDiff::by_line([left, right])` over the two texts, one section per `Different` hunk. A
 //!   section's [`HunkKey`] is where it sits on each side, in lines (`split_inclusive('\n')`, so a
 //!   last line without `\n` counts). A file has sections when both sides are file-like and both
-//!   texts are UTF-8 without a NUL byte — a conflict's markers included.
+//!   texts are UTF-8 without a NUL byte — a conflict's markers included. The diff read
+//!   ([`crate::Repo::compute_hunks`], Story 5.1) is the other user of [`sections`]: it lists the
+//!   same keys per file and per hunk, so a key it shows is a key this module accepts.
 //! - **The mode toggle** is the builtin editor's `FileMode` section (`builtin.rs:296-301`): a
 //!   file whose two file-like sides differ in mode can take the right mode
 //!   ([`FileChoice::ModeAndHunks`]), with or without sections; a binary file's mode can be taken
@@ -552,7 +554,7 @@ fn stale_key(path: &RepoPath, key: &HunkKey) -> MutateError {
 
 /// The builtin editor's text test (`buf_to_file_contents`, `builtin.rs:107-122`): no NUL byte and
 /// valid UTF-8.
-fn is_text(content: &[u8]) -> bool {
+pub(crate) fn is_text(content: &[u8]) -> bool {
     !content.contains(&0) && std::str::from_utf8(content).is_ok()
 }
 

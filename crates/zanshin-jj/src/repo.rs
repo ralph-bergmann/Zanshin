@@ -4386,6 +4386,38 @@ impl Repo {
         )
     }
 
+    /// The diff between two trees as `jj diff --git`'s line-level hunks (Story 5.1), each hunk
+    /// with the builtin diff editor's sections it shows — `hunks.rs`' module doc has the rules.
+    ///
+    /// `from` and `to` are tree ids plus conflict labels — for a revision, its
+    /// [`crate::ShowEntry::parent_tree_ids`] / [`crate::ShowEntry::parent_tree_labels`] and
+    /// [`crate::ShowEntry::tree_ids`] / [`crate::ShowEntry::tree_labels`]. Every file's
+    /// [`crate::FileDiff::sections`] are exactly the [`crate::HunkKey`]s [`Repo::select_tree`]
+    /// accepts when the trees are the ones it diffs (the revision's parent tree, or `from`'s tree,
+    /// against the revision's own) with the labels `show` reports, and both calls see the same
+    /// effective `ui.conflict-marker-style` — each resolves config for its own CLI command, so a
+    /// `--when.commands` scope can differ. `context: None` is the effective `diff.git.context`; `whitespace`
+    /// is the CLI's `-w` / `-b`. The call resolves its config for the CLI command `diff`
+    /// (Story 9.41). Equal trees give an empty result.
+    ///
+    /// Writes NO operation beyond the pre-verb snapshot's (Story 9.26).
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — a tree has an even or zero id count, an id that is
+    ///   not hex, or a label count that is neither zero nor its id count.
+    /// - [`crate::MutateError::Config`] — `diff.git.context`, `diff.git.show-path-prefix` or
+    ///   `ui.conflict-marker-style` is malformed.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — a tree id names no tree in the store, a side cannot be
+    ///   read (access denied, as in the CLI), or another jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn compute_hunks(&mut self, options: &crate::HunksOptions) -> Result<Vec<crate::FileDiff>, crate::MutateError> {
+        self.with_verb(cli_command::DIFF, |repo, ctx| {
+            crate::hunks::compute_hunks(repo.workspace().repo_loader().store(), &ctx.config, options)
+        })
+    }
+
     /// Lists a revision's conflicts with what a merge editor needs (Story 9.17) — the CLI's `jj
     /// resolve --list`, plus each file conflict's merge hunks.
     ///
@@ -5475,6 +5507,7 @@ mod tests {
             });
             assert_eq!(repo.command(), expected, "`select_tree` with {verb:?}");
         }
+        records!(repo, DIFF, compute_hunks(&crate::HunksOptions::default()));
         records!(repo, RESOLVE, resolve_list(&crate::ResolveListOptions::default()));
         let resolve = crate::ResolveOptions {
             revision: Some(none()),

@@ -79,6 +79,8 @@ cli_commands! {
     CONFIG_UNSET = "config unset";
     /// `Repo::describe`.
     DESCRIBE = "describe";
+    /// `Repo::compute_hunks`.
+    DIFF = "diff";
     /// `Repo::diffedit`.
     DIFFEDIT = "diffedit";
     /// `Repo::duplicate`.

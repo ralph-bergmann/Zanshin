@@ -362,7 +362,9 @@ fn sample_show_entry() -> zanshin_jj::ShowEntry {
             kind: zanshin_jj::ChangeKind::Added,
         }],
         parent_tree_ids: vec![String::new()],
+        parent_tree_labels: vec![String::new()],
         tree_ids: vec![String::new()],
+        tree_labels: Vec::new(),
     }
 }
 
@@ -1767,6 +1769,55 @@ fn select_tree_surface_resolves() {
             &mut zanshin_jj::Repo,
             &zanshin_jj::SelectTreeOptions,
         ) -> Result<zanshin_jj::SelectedTreeId, zanshin_jj::MutateError>;
+}
+
+/// The Story 5.1 surface: the diff types named field by field and `Repo::compute_hunks` as a
+/// `fn` pointer.
+#[test]
+fn compute_hunks_surface_resolves() {
+    let key = zanshin_jj::HunkKey {
+        old_start: 0,
+        old_count: 1,
+        new_start: 0,
+        new_count: 1,
+    };
+    let options = zanshin_jj::HunksOptions {
+        from: zanshin_jj::SelectedTreeId::default(),
+        to: zanshin_jj::SelectedTreeId::default(),
+        context: Some(3),
+        whitespace: zanshin_jj::Whitespace::IgnoreAllSpace,
+    };
+    assert_eq!(options.clone(), options);
+    assert_eq!(
+        zanshin_jj::HunksOptions::default().whitespace,
+        zanshin_jj::Whitespace::Exact
+    );
+    assert_ne!(zanshin_jj::Whitespace::IgnoreSpaceChange, zanshin_jj::Whitespace::Exact);
+    let file = zanshin_jj::FileDiff {
+        path: "a".to_owned(),
+        binary: false,
+        mode_change: false,
+        sections: vec![key],
+        hunks: vec![zanshin_jj::Hunk {
+            before_range: 0..1,
+            after_range: 0..1,
+            symbol: None,
+            sections: vec![key],
+            removed: 1,
+            added: 1,
+            lines: vec![
+                zanshin_jj::HunkLine::Context(String::new()),
+                zanshin_jj::HunkLine::Removed(String::new()),
+                zanshin_jj::HunkLine::Added(String::new()),
+            ],
+        }],
+    };
+    assert_eq!(file.clone(), file);
+    _ = zanshin_jj::Repo::compute_hunks
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::HunksOptions,
+        ) -> Result<Vec<zanshin_jj::FileDiff>, zanshin_jj::MutateError>;
 }
 
 /// The Story 9.17 surface: `resolve_list`'s payload, `resolve`'s tools and `diffedit`'s options

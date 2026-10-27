@@ -605,7 +605,9 @@ mod tests {
                 },
             ],
             parent_tree_ids: vec!["t1".to_owned(), "t2".to_owned(), "t3".to_owned()],
+            parent_tree_labels: Vec::new(),
             tree_ids: vec!["own".to_owned()],
+            tree_labels: Vec::new(),
         }];
 
         let buf = show_view_to_envelope(&entries, &crate::envelope::CallReport::default());

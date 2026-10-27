@@ -24,7 +24,7 @@ jj-cli = { workspace = true }
 jj-lib = { workspace = true }
 pollster = { workspace = true }
 rand_chacha = { workspace = true }  # WHY: one call site — `config.rs::SecureLayer::create_path` hands `SecureConfig::load_config` the `ChaCha20Rng` it takes by concrete type
-regex = { workspace = true }  # WHY: two ports — `metaedit.rs`'s `parse_author` and `fix.rs`'s `$variable` interpolation, the CLI's own expressions
+regex = { workspace = true }  # WHY: three ports — `metaedit.rs`'s `parse_author`, `fix.rs`'s `$variable` interpolation and `source_symbol.rs`'s hunk-header patterns, the CLI's own expressions
 serde = { workspace = true }  # WHY: one call site — `fix.rs` deserializes `fix.tools.<name>` into the CLI's `RawToolConfig`
 shlex = { workspace = true }  # WHY: one call site — `fix.rs`'s port of `CommandNameAndArgs::split_name_and_args`
 tempfile = { workspace = true }  # WHY: one call site — `wc_ops.rs::file_edit`'s temporary sparse working copy, as in `cmd_file_edit`

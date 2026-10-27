@@ -61,6 +61,7 @@ mod git_remotes;
 mod git_sync;
 mod graph;
 mod graph_topology;
+mod hunks;
 mod id_prefix_context;
 mod login_shell_environment;
 mod metaedit;

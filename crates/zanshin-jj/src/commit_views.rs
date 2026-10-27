@@ -110,10 +110,17 @@ pub struct ShowEntry {
     /// against ([`crate::Repo::select_tree`], Story 9.50). jj-lib returns the commit's OWN tree
     /// for a commit its index knows to be empty — the same tree, so the same `left` the verbs see.
     pub parent_tree_ids: Vec<String>,
+    /// The conflict labels of the tree `parent_tree_ids` name (Story 5.1) — empty = unlabeled,
+    /// else one per id. jj-lib labels a merged parent tree per parent commit; the labels sit
+    /// inside its conflict markers, so [`crate::Repo::compute_hunks`] needs them to cut the
+    /// sections [`crate::Repo::select_tree`] keys.
+    pub parent_tree_labels: Vec<String>,
     /// The revision's OWN tree as hex tree ids in `Merge` order (Story 9.17) — the `left` of a
     /// selection made against this revision as the `from` of another one
     /// ([`crate::SelectTreeOptions::from`], `diffedit --from`).
     pub tree_ids: Vec<String>,
+    /// The conflict labels of the revision's own tree (Story 5.1) — empty = unlabeled.
+    pub tree_labels: Vec<String>,
 }
 
 /// What `jj interdiff` reports: the per-path change list, plus whether the tree it diffed FROM
@@ -491,8 +498,14 @@ pub(crate) fn show(
             // commit (`commit.rs:134-143`), so it is surfaced as the `left` the verbs diff
             // against (Story 9.50), never as the parents' own tree.
             let before = commit.parent_tree(repo_dyn).await.map_err(be)?;
-            let parent_tree_ids = before.tree_ids().iter().map(ObjectId::hex).collect();
-            let tree_ids = after.tree_ids().iter().map(ObjectId::hex).collect();
+            let crate::SelectedTreeId {
+                tree_ids: parent_tree_ids,
+                labels: parent_tree_labels,
+            } = crate::SelectedTreeId::of(&before);
+            let crate::SelectedTreeId {
+                tree_ids,
+                labels: tree_labels,
+            } = crate::SelectedTreeId::of(&after);
             let records = copy_records_over_all_parents(store, &commit).await?;
             // `EverythingMatcher`: `jj show` has NO path argument (`show.rs:110`).
             let file_changes = tree_file_changes(&before, &after, &EverythingMatcher, &records).await?;
@@ -500,7 +513,9 @@ pub(crate) fn show(
                 change,
                 file_changes,
                 parent_tree_ids,
+                parent_tree_labels,
                 tree_ids,
+                tree_labels,
             });
         }
         Ok::<(), CommitViewError>(())
