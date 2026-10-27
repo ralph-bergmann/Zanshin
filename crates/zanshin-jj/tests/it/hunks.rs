@@ -101,6 +101,10 @@ fn base() -> Fx {
     write(&root, "bin.dat", b"x\0y");
     write(&root, "mode.sh", b"m\n");
     set_executable(&root, "mode.sh", false);
+    write(&root, "binmode.dat", b"x\0y");
+    set_executable(&root, "binmode.dat", false);
+    write(&root, "both.sh", b"m\n");
+    set_executable(&root, "both.sh", false);
     write(&root, "gone.txt", b"g\n");
     write(&root, "eof.txt", b"a\nb");
     write(&root, "lib.rs", b"fn main() {\n    a();\n}\n");
@@ -114,6 +118,9 @@ fn base() -> Fx {
     write(&root, "f.txt", b"A\nb\nC\nd\nE\n");
     write(&root, "bin.dat", b"x\0z");
     set_executable(&root, "mode.sh", true);
+    set_executable(&root, "binmode.dat", true);
+    write(&root, "both.sh", b"n\n");
+    set_executable(&root, "both.sh", true);
     fs::remove_file(root.join("gone.txt")).expect("rm");
     write(&root, "new.txt", b"n\n");
     write(&root, "eof.txt", b"a\nc");
@@ -265,6 +272,8 @@ fn three_sections_at_context_three_are_one_hunk_and_round_trip() {
         paths,
         [
             "bin.dat",
+            "binmode.dat",
+            "both.sh",
             "eof.txt",
             "f.txt",
             "gone.txt",
@@ -310,7 +319,8 @@ fn added_and_removed_files_have_no_sections() {
 }
 
 /// A mode-only change has no hunks and no sections, but the mode toggle, which round-trips
-/// through `select_tree` (`ModeAndHunks(vec![])`) to `@`'s `mode.sh`.
+/// through `select_tree` (`ModeAndHunks(vec![])`) to `@`'s `mode.sh`. A mode change with a
+/// content change round-trips with its sections (`ModeAndHunks([..])`).
 #[test]
 fn a_mode_only_change_has_the_toggle_and_no_hunks() {
     let mut fx = base();
@@ -318,7 +328,19 @@ fn a_mode_only_change_has_the_toggle_and_no_hunks() {
     let mode = file(&diffs, "mode.sh");
     assert!(mode.mode_change && !mode.binary);
     assert!(mode.hunks.is_empty() && mode.sections.is_empty());
-    assert_sections_round_trip(&mut fx, std::slice::from_ref(mode));
+    let both = file(&diffs, "both.sh");
+    assert!(both.mode_change && both.sections == [key(0, 1, 0, 1)]);
+    assert_sections_round_trip(&mut fx, &[mode.clone(), both.clone()]);
+}
+
+/// A mode-only change of a binary file is not binary: the CLI skips equal contents first.
+#[test]
+fn a_mode_only_change_of_a_binary_file_is_not_binary() {
+    let mut fx = base();
+    let diffs = diff(&mut fx, None, Whitespace::Exact);
+    let binmode = file(&diffs, "binmode.dat");
+    assert!(!binmode.binary && binmode.mode_change);
+    assert!(binmode.hunks.is_empty() && binmode.sections.is_empty());
 }
 
 /// Binary content is marked and has no hunks.
@@ -435,15 +457,66 @@ fn conflicted_merge_round_trip(marker_style: Option<&str>) {
         removed.iter().any(|text| text.starts_with("<<<<<<<")),
         "the markers are the left text: {c:?}"
     );
-    if marker_style.is_none() {
-        assert!(
-            removed
-                .iter()
-                .any(|text| from.labels.iter().any(|label| text.contains(label.as_str()))),
-            "a marker line names a parent's label: {removed:?} / {:?}",
-            from.labels
-        );
+    assert!(
+        removed
+            .iter()
+            .any(|text| from.labels.iter().any(|label| text.contains(label.as_str()))),
+        "a marker line names a parent's label: {removed:?} / {:?}",
+        from.labels
+    );
+    assert_sections_round_trip(&mut fx, &diffs);
+}
+
+/// The X / Y merge left conflicted in `@`, with a line added above the markers: both sides carry
+/// markers, the right ones with `@`'s own tree labels, and the keys still round-trip — in the
+/// default and the `git` marker style.
+#[test]
+fn a_conflicted_revision_round_trips_through_select_tree() {
+    conflicted_revision_round_trip(None);
+    conflicted_revision_round_trip(Some("git"));
+}
+
+fn conflicted_revision_round_trip(marker_style: Option<&str>) {
+    let mut fx = init();
+    if let Some(style) = marker_style {
+        add_repo_config(&fx, &format!("ui.conflict-marker-style = \"{style}\"\n"));
     }
+    let root = fx.root.clone();
+    write(&root, "c.txt", b"base\n");
+    let a = wc(&root);
+    fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new x");
+    write(&root, "c.txt", b"x\n");
+    let x = wc(&root);
+    fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new y");
+    write(&root, "c.txt", b"y\n");
+    let y = wc(&root);
+    fx.repo.new_change(&[x, y], &[], &[]).expect("merge");
+    let markers = fs::read(root.join("c.txt")).expect("the checked-out markers");
+    write(&root, "c.txt", &[b"top\n".as_slice(), &markers].concat());
+    let _ = fx.repo.take_warnings();
+
+    let (_, to) = trees(&mut fx.repo);
+    assert_eq!(to.tree_ids.len(), 3, "@'s own tree is still conflicted");
+    assert_eq!(to.labels.len(), 3, "and labelled");
+    let diffs = diff(&mut fx, None, Whitespace::Exact);
+    let c = file(&diffs, "c.txt");
+    assert!(!c.sections.is_empty(), "{c:?}");
+    let lines: Vec<&str> = c
+        .hunks
+        .iter()
+        .flat_map(|hunk| &hunk.lines)
+        .filter_map(|line| match line {
+            HunkLine::Context(text) | HunkLine::Added(text) => Some(text.as_str()),
+            HunkLine::Removed(_) => None,
+        })
+        .collect();
+    assert!(
+        lines
+            .iter()
+            .any(|text| to.labels.iter().any(|label| text.contains(label.as_str()))),
+        "a right-side marker line names one of @'s labels: {lines:?} / {:?}",
+        to.labels
+    );
     assert_sections_round_trip(&mut fx, &diffs);
 }
 
@@ -472,6 +545,20 @@ fn bad_trees_are_refused() {
         vec!["0123456789abcdef0123456789abcdef01234567".to_owned()],
     );
     assert!(matches!(unknown, MutateError::Backend(_)), "{unknown:?}");
+    let none = call(&mut fx.repo, Vec::new());
+    assert!(matches!(none, MutateError::InvalidInput { .. }), "{none:?}");
+    let labels = fx
+        .repo
+        .compute_hunks(&HunksOptions {
+            from: SelectedTreeId {
+                tree_ids: to.tree_ids.clone(),
+                labels: vec!["one".to_owned(), "two".to_owned()],
+            },
+            to: to.clone(),
+            ..HunksOptions::default()
+        })
+        .expect_err("a label count that is neither zero nor the id count");
+    assert!(matches!(labels, MutateError::InvalidInput { .. }), "{labels:?}");
 }
 
 /// A malformed `diff.git.context` or `diff.git.show-path-prefix` is a config error — also with an

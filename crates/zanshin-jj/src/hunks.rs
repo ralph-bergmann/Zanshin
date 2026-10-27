@@ -10,8 +10,8 @@
 //!   error, as in the CLI.
 //! - **Hunks** are jj-lib's `unified_diff_hunks` over the two texts, with the caller's context
 //!   (default `diff.git.context`) and whitespace mode — the CLI's `show_unified_diff_hunks`
-//!   (`diff_util.rs:1767-1847`). Equal texts (a mode-only change) and binary content (a NUL
-//!   byte in either side's first 8000 bytes) get none.
+//!   (`diff_util.rs:1767-1847`). Equal texts (a mode-only change) and differing binary content
+//!   (a NUL byte in either side's first 8000 bytes) get none.
 //! - **Source symbols** are the CLI's ([`crate::source_symbol`]): the new side's, unless the hunk
 //!   adds no line, cut at 80 bytes.
 //! - **Sections** are [`crate::select_tree::sections`] over the same texts. They are the keys
@@ -74,7 +74,8 @@ pub enum Whitespace {
 pub struct FileDiff {
     /// The repo-relative path, in jj's internal `/`-separated form.
     pub path: String,
-    /// Either side's content is binary (a NUL byte in its first 8000 bytes): no hunks.
+    /// The contents differ and either side's is binary (a NUL byte in its first 8000 bytes): no
+    /// hunks. A mode-only change of a binary file is not binary, as in the CLI.
     pub binary: bool,
     /// Both sides are file-like (a regular file or a file conflict) and differ in the executable
     /// bit — the builtin diff editor's mode toggle ([`crate::FileChoice::ModeAndHunks`]).
@@ -192,7 +193,8 @@ impl DiffReader<'_> {
         } else {
             Vec::new()
         };
-        let binary = left.content.is_binary || right.content.is_binary;
+        // The CLI skips equal contents before its binary check (`show_git_diff`).
+        let binary = texts.before != texts.after && (left.content.is_binary || right.content.is_binary);
         let hunks = if binary || texts.before == texts.after {
             Vec::new()
         } else {
