@@ -953,9 +953,11 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **Router B's cost on the UI isolate is unknown.** Medium.
   - The geometry stage runs per layout and per card size, and track assignment is quadratic in a cluster's size (GL:87-112).
   - **Follow-up:** 4.15's timings at large-10k and synth-100k set the `Isolate.run` threshold (its item 4).
+  - **2026-10-27, Story 4.15:** measured AOT (spec-4-15 § Measurements): class + geometry 1.5 ms at fixture-large-all, 3.8 ms (free) at synth-10k, 19.5 ms at synth-50k, 40.7 ms (free) / 27.9 ms (compact) at synth-100k; a bridge window ≤ 20 µs; the quadratic track assignment never shows (clusters stay small). `routeSyncNodeLimit` = 20,000 (synchronous up to it, `Isolate.run` above, GLD §14.5); left: 10.4 wires the switch.
 - **Free detours use a unit threshold.** Low.
   - The export's pixel test leaves room from 13 units at H 62 and from 12 at H 40 (GL:162-172). 4.15's unit rule (12) detours a little more often with compact cards.
   - **Follow-up:** 4.15's oracle lists the cases; tune the rule if they show.
+  - **2026-10-27, Story 4.15:** the router oracle (132 cases: the sample and the Lines Study at W 160/240/400 × H 40/62 × both modes) lists none — no direct run is judged differently by the unit rule and GL's pixel test, and all 132 cases equal GL's routing; the rule is not tuned. Left: nothing, unless a real repo shows visible detours where GL's line would sit cleanly above a card.
 - **Day dividers can cross cards around midnight.** Low; accepted in 10.2.
   - Commits on either side of midnight less than about 25 min apart (about 11 min with compact cards) overlap vertically. So SYNC #8's "the band around a divider never holds cards" fails there (GL:597-602; prototype defect 45).
   - **Follow-up:** none, unless real repos show it often.
@@ -966,6 +968,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **Gutter overflow.** Low.
   - More than 9 lines on one gutter × step ±6 px each into the neighbouring cards (GL:193-197).
   - **Follow-up:** 4.15 reports it. Widen the gutter's budget only if real repos show it.
+  - **2026-10-27, Story 4.15:** reported (`RouteClasses.overfullGutters`; the edges are derivable from `gutters` + `gutterSteps`); none on the fixtures, the design sample or the Lines Study; 8 on synth-10k (free) and 14 / 28 on synth-100k (compact / free), whose outer lines are Compact's only segments behind cards (975 at 100k). The budget is not widened; left: a real repo (none measured — no dump reachable, as for 4.14).
 
 ### Cards, motion and the minimap
 
@@ -2159,3 +2162,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **The node day key is the day of the clamped T, not of the commit's own timestamp, which the design's Compact label reads.** Low.
   - `GraphGridView.nodeDays` = dk(T(i)) with T(i) = max(own ts, parents' T) (docs/graph-layout.md §4.2 free, `layout_engine.dart` `nodeDays()`), matching Free's day buckets; a non-root node without a ts gets tmin's day. The design's Compact label uses the raw `Date.parse(c.ts)` and shows nothing without a ts (graph-view.jsx@e74ced3:440-446), so the two differ for a commit older than an ancestor and for a node without a ts.
   - **Follow-up:** Story 10.16 decides when it labels Compact rows: keep the clamped day (one day per commit in both layouts), or have the engine emit the raw-ts day (`dayKey(ts)`, `noDay` without a ts) beside it.
+
+## Surfaced in Story 4.15 (bmad-build-auto, 2026-10-27)
+
+- **Gutter routes have no parity check against the export: GL's own grids in the router oracle hold no gutter line.** Low.
+  - The oracle's corpus is the one Story 4.15 names (the design sample and the Lines Study's PRESETS × FAN; `spikes/graph-layout-ab/tools/router-oracle.mjs`); GL's optimizer avoids every gutter there, so the gutter x, its ±6 px steps, gutter exit/entry order and deep placement on a gutter's lower run rest only on the hand-built `packages/zanshin_core/test/graph_layout/router_test.dart` cases and the scale checks.
+  - **Follow-up:** add oracle cases whose GL grid has gutter lines (e.g. GL's `computeLayout` with frozen `opts.cols` that lane-block a merge) and compare them like the rest.

@@ -4366,6 +4366,14 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 
 **Related:** 4.11 (route classes, D8 and D9), 4.14, 10.4, 10.16, 10.19; GLD §4.5, §11.4, §12; SYNC #7.
 
+> **Delivered (2026-10-27, Story 4.15 done):** spec at `_bmad-output/implementation-artifacts/spec-4-15-line-router-b-library.md` (decisions in `decisions-review-4-10-to-4-13.md` under `### 4.15`).
+>
+> - **SPEC.** New GLD §14 "Routing" (home and input, the class stage with the unit rule and its derivation, the geometry stage, the bridge query, where it runs, differences from GL); dated amendments of §4.5 (its symbolic geometry and D9 superseded; `route` / `blocked` stay), §7.2 (the router oracle) and §12 (the planned top-centre exit replaced).
+> - **Library.** `packages/zanshin_core/lib/src/graph_layout/router.dart`, engine core, exported from the barrel (`RouteClasses`, `RouteMetrics`, `RouteGeometry`, `RouteBridges`, `routeSyncNodeLimit`). Class stage per layout from the grid's raw arrays + `parentCount` (no W/H); geometry stage per metrics in typed arrays (polyline CSR, entry-port CSR, verticals by x, horizontals by y); `bridges(x0, y0, x1, y1)` per window. Reports: direct fallbacks, overfull gutters, overfull clusters, unavoidable crossings (counts; per-edge flags for the fallbacks and the overfull clusters). The engine, grid format and goldens are unchanged.
+> - **Oracle.** `spikes/graph-layout-ab/tools/router-oracle.mjs` against GL's own `routeAll` on GL's own grids: all 132 cases (sample + the Lines Study's PRESETS × FAN, three widths, two heights, both modes) equal — kinds, polylines to ±1e-6, bridges; no unit-rule or shared-entry difference (I2: rule kept). GL's grids hold no gutter line; gutters are witnessed by the hand-built tests and the scale checks.
+> - **Gate.** No line behind a card in Compact on every recording input × both orders × W 160 / 240 / 400 (except on a reported overfull gutter); in Free every hit is reported. synth-10k's 229 blocked merges (compact, greedy): 26 gutter lines, 0 segments behind a card (defect 2 fixed).
+> - **Measured** (I1, item 4): class + geometry 1.5 ms at fixture-large-all, 3.8 ms (free) at synth-10k, 40.7 ms (free) / 27.9 ms (compact) at synth-100k, AOT; a bridge window ≤ 20 µs → **`routeSyncNodeLimit` = 20,000** (synchronous up to it, `Isolate.run` above; never a worker request). I3: overfull gutters only on the synthetic inputs (up to 28 at 100k); reported, the budget is not widened.
+
 ---
 
 ## Epic 5: `zanshin-diff` — Word-Diff + Syntax Highlight
