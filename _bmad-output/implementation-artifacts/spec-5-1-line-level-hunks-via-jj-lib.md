@@ -5,7 +5,7 @@ created: '2026-10-27'
 status: 'done'
 baseline_revision: 'f04191e6bddd4ab9f197380c2ad3a89f6cc80e71'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
@@ -20,6 +20,17 @@ deferred:
       ("Surfaced in Story 5.1").
     location: >-
       crates/zanshin-ffi/src/commit_views.rs
+    severity: medium
+  - summary: >-
+      The repo ships Apache-2.0 code (the source_symbol port) without the Apache-2.0 licence text, and the manifests still say license = "MIT".
+    evidence: |-
+      crates/zanshin-jj/src/source_symbol.rs is SPDX "MIT AND Apache-2.0", but the root has only an MIT LICENSE
+      and Cargo.toml:19 sets license = "MIT" (zanshin-jj inherits it). Apache-2.0 4(a) asks for a copy of the
+      licence with redistributions; the linked jj-lib / jj-cli dependencies raise the same question for a shipped
+      binary, so it is a project-wide notice decision for Ralph. Mirrored into deferred-work.md ("Surfaced in the
+      follow-up review of Story 5.1").
+    location: >-
+      crates/zanshin-jj/src/source_symbol.rs:1, Cargo.toml:19, LICENSE
     severity: medium
 ---
 
@@ -129,6 +140,38 @@ deferred:
   - `[low]` `patch` (edge-case) `diff_git_context` reads the two keys in the reverse of the CLI's order. — Now `diff.git.context` first, then `show-path-prefix`.
   - `[low]` `reject` (edge-case) At `-w`, a hunk with changed lines can list no section. — It only happens when the `-w` alignment pairs lines that the exact diff matched. The GUI can switch to Exact to select by hunk. The fallback branch would add complexity, and the case is now documented on `Hunk::sections`.
 
+### 2026-10-27 — Review pass
+- verdicts: 28 findings — high 0, medium 6, low 9, false 13, maybe-false 0
+- findings:
+  - `[false]` `reject` (blind) `FileDiff` has no kind or modes, so empty add/delete, file↔symlink and submodule changes look alike. — The intent's Never clause gives file kinds to Story 5.6; carried with the first pass's "no kind" row. The path is still listed, so the change is not lost.
+  - `[false]` `reject` (blind) Renames/copies are not tracked. — carried: Story 5.6's scope (first pass, same claim).
+  - `[medium]` `patch` (blind) `binary` is set even when the contents are equal, unlike `show_git_diff`, which skips equal contents first. — Verified at `cli/src/diff_util.rs` @ v0.46.0 (`if left == right { continue }` before the binary check). Fixed in `hunks.rs` (`binary = contents differ && either side binary`, docs updated); new test `a_mode_only_change_of_a_binary_file_is_not_binary` (`binmode.dat` 644→755).
+  - `[false]` `reject` (blind) Lossy decoding without an indicator; non-UTF-8 files get hunks but no sections. — carried: first pass's lossy-UTF-8 row (no sections already marks whole-only).
+  - `[low]` `reject` (blind) At `-w`/`-b`, `Context` keeps only the right side's text, which a side-by-side view would need. — It is jj-lib's `unified_diff_hunks` output, which the CLI prints the same way; the doc says so. Carrying both texts adds surface for a non-default mode; 10.24 can ask again at Exact.
+  - `[false]` `reject` (blind) `Hunk` has no key of its own. — A hunk is identified by its file's `path` plus `before_range`/`after_range`, unique within one result; that is the "path + ranges" key sprint-status names.
+  - `[false]` `reject` (blind) No test compares against the real CLI. — carried: first pass's stock-CLI row.
+  - `[low]` `patch` (blind) The documented `InvalidInput` for a zero id count and a mismatched label count is untested in `compute_hunks`. — `bad_trees_are_refused` now asserts both.
+  - `[medium]` `patch` (blind) No conflicted right side (both sides carry markers). — Grouped with the verification-gap finding below; same test.
+  - `[low]` `patch` (blind) A mode change together with a content change (`ModeAndHunks` with sections) is never round-tripped. — `both.sh` (`m`→`n`, 644→755) added to the fixture and to the mode round trip.
+  - `[false]` `reject` (blind) Symlink sides are untested. — carried: first pass rejected symlinks as jj-lib's `git_diff_part` arm taken over unchanged.
+  - `[low]` `patch` (blind) The `git`-style conflict round trip skips the label assertion. — The guard is removed; the left-label assertion now runs in both styles and passes.
+  - `[low]` `reject` (blind) `hunk_sections` is quadratic. — The work is sections × changed lines of one file; a 5k-line file with hundreds of sections is still well under a million comparisons. Not worth a two-pointer rewrite.
+  - `[medium]` `defer` (blind) Apache-2.0 code ships without the licence text, and the crate metadata says MIT. — Real for redistribution, but the same holds for the linked jj-lib/jj-cli Apache dependencies, so it is a project-wide notice decision. The "2020-2026" year is right (it covers `diff_util.rs`'s `trim_source_symbol` too). Deferred and mirrored into deferred-work.md.
+  - `[low]` `reject` (blind) deferred-work.md records only the labels-on-the-wire gap. — The other items are Story 5.6's scope or were rejected with reasons; deferred-work mirrors deferrals, not rejections.
+  - `[low]` `reject` (blind) sprint-status 5-1 still carries the old "NEEDS DESIGN" text. — It is history in the sibling style (DONE summary first, design notes after); cosmetic.
+  - `[low]` `reject` (blind) The epics.md reconciliation note omits the inline unit tests and the 5.6 fields. — Cosmetic; the note's purpose (the crate location) is met, and 5.6 owns its fields in its own story text.
+  - `[medium]` `patch` (edge-case) Mode-only change on a binary file is reported binary. — Same root cause as the blind binary finding; same fix and test.
+  - `[false]` `reject` (edge-case) A symlink/file swap, submodule or other-conflict change with equal text has no flag and is invisible. — File kinds are Story 5.6 by the intent's Never clause; the path is still listed.
+  - `[medium]` `patch` (verification-gap) A conflicted right side (`ShowEntry::tree_labels` into `compute_hunks`) has no witness. — New test `a_conflicted_revision_round_trips_through_select_tree`: the X/Y merge kept conflicted in `@` with a line above the markers; asserts `@`'s tree has 3 ids and 3 labels, a right-side line names one of them, and the keys round-trip through `select_tree`, in the default and the `git` marker style.
+  - `[false]` `reject` (intent) No test compares with stock `jj diff --git` output. — carried: first pass's stock-CLI row.
+  - `[false]` `reject` (intent) The problem's GUI consumers (I1, inspector) cannot reach the read. — carried: first pass's GUI-surface row (5.5/5.8).
+  - `[false]` `reject` (intent) Per-key / subset acceptance is not exercised. — The keys are cut by the same `select_tree::sections` over the same texts, and `select_tree` accepts any subset of its keys by its own contract (9.50 tests); the full-set round trip proves the two cuts agree.
+  - `[medium]` `patch` (intent) Binary is reported on a mode-only change of a binary file. — Same root cause as the blind binary finding; same fix.
+  - `[false]` `reject` (intent) `AccessDenied` on a side is untested. — carried: first pass (dev-only `SecretBackend`, jj-lib's arm unchanged).
+  - `[low]` `patch` (intent) The label-in-markers assertion runs only for the default style. — Same as the blind `git`-style finding; same fix.
+  - `[false]` `reject` (intent) The missing-EOF-newline case is tested only with text files. — Binary files get no hunks, so there is no line text to keep; the rule only applies to text.
+  - `[false]` `reject` (intent) The `-w`/`-b` section behavior is only partly tested. — `ignoring_whitespace_drops_the_hunk_but_keeps_the_section` covers the documented case; the empty-section hunk was rejected in the first pass.
+
 ## Design Notes
 
 Hunk-to-section matching: walk the hunk's lines with `l = before_range.start` and `r = after_range.start`. Context advances both, Removed records `l` and then advances it, Added records `r` and then advances it. A section is listed when a recorded `l` lies in `old_start..old_start+old_count` or a recorded `r` lies in `new_start..new_start+new_count`. At `-w` a hunk may then list a whole exact section of which it shows only part. That is deliberate: a selection always takes whole sections (9.50).
@@ -144,6 +187,14 @@ Hunk-to-section matching: walk the hunk's lines with `l = before_range.start` an
 - `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings` -- clean.
 - `cargo fmt --all --check` -- clean.
 - Not run: `cargo make codegen` (no FFI or schema change), the parity oracle (no jj verb changed), and Dart checks (no Dart touched). Coverage was not measured.
+
+**Verification notes, follow-up review (run on 2026-10-27; full gate deferred to the story loop by its gate rule):**
+- `cargo test -p zanshin-jj --test it -- hunks::` -- 15 passed (incl. the new binary mode-only and conflicted-revision tests).
+- `cargo test -p zanshin-jj --lib -- hunks:: source_symbol:: select_tree::` -- 23 passed.
+- `cargo test -p zanshin-jj --test it -- select_tree:: commit_views:: api_stability::` -- 101 passed.
+- `cargo clippy -p zanshin-jj --all-targets -- -D warnings` -- clean.
+- `cargo fmt --all --check` -- clean.
+- Not run: `zanshin-ffi` tests (untouched this pass), codegen, the parity oracle, Dart checks. Coverage was not measured.
 
 **Commands:**
 - `cargo test -p zanshin-jj --lib -- hunks:: source_symbol:: select_tree:: cli_command:: every_verb` -- expected: pass
@@ -209,3 +260,20 @@ Status: done. Code commit `87d963acb680813c45cd6b67a7fad85be27af6a5`.
 - The hunk text is CLI-equal by construction (the same jj-lib functions), not by an oracle comparison with the stock `jj diff --git`.
 - Renames show as delete plus add until 5.6 adds copy records.
 - `-w`/`-b` can leave a hunk without a selectable section; this is documented.
+
+### Follow-up review (2026-10-27)
+
+**Summary.** A second review pass over the whole Story 5.1 diff; code commit `6eddcd27f41f30189f4cef9330cc7931930947f4`. One behavior fix: `FileDiff::binary` now follows the CLI's order (`show_git_diff` skips equal contents before its binary check), so a mode-only change of a binary file is no longer reported binary. Four test gaps were closed, including the case the new `ShowEntry::tree_labels` exist for: a conflicted revision whose own tree carries markers.
+
+**Files changed.**
+- `crates/zanshin-jj/src/hunks.rs`: the binary rule and its docs (module doc, `FileDiff::binary`).
+- `crates/zanshin-jj/tests/it/hunks.rs`: fixture files `binmode.dat` and `both.sh`; new tests `a_mode_only_change_of_a_binary_file_is_not_binary` and `a_conflicted_revision_round_trips_through_select_tree` (default + `git` style); the mode round trip now includes a mode+content change; the `git`-style label assertion; zero-id and label-count refusals.
+- `_bmad-output/implementation-artifacts/deferred-work.md`: "Surfaced in the follow-up review of Story 5.1" (the licence notice).
+
+**Review.** 28 findings: 0 high, 6 medium, 9 low, 13 false. Patched entries: 2 medium (the binary rule, reported by three layers; the conflicted right side, reported by two) and 3 low (the error-path asserts, the mode+content round trip, the `git`-style label assertion). Deferred: 1 medium (the Apache-2.0 licence notice and crate metadata, a project-wide decision). Rejected, with reasons in the Review Triage Log: file kinds/modes and renames (5.6), lossy decoding, the hunk key (path + ranges already identify it), the stock-CLI oracle, symlinks, access denied, GUI surface, subset acceptance, the EOF and `-w` test-scope claims (all carried or false); right-only context text at `-w`/`-b`, the quadratic section match, the deferred-work/sprint-status/epics wording (low, not worth the change).
+
+**Follow-up review recommended: false.** This follow-up pass patched no high entry (2 medium, 3 low), so the work has converged.
+
+**Verification.** See the follow-up verification notes above; every targeted command passed.
+
+**Residual risks.** Unchanged from the first pass, plus: per-file coverage of `hunks.rs` is measured only by the story loop's final gate; the licence notice is open for Ralph.

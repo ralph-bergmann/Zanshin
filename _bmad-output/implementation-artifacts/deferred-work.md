@@ -2176,3 +2176,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **`ShowEntry::parent_tree_labels` / `tree_labels` are Rust-only: the FFI `ShowView` does not carry them.** Medium.
   - Story 5.1 added the two label lists to `zanshin_jj::ShowEntry`. A merged parent tree's labels sit inside its conflict markers, so `compute_hunks` needs them to print the text `jj diff --git` prints and to cut the keys `select_tree` accepts when both sides carry markers. `crates/zanshin-ffi/src/commit_views.rs` ignores them, and the wire is unchanged.
   - **Follow-up:** Story 5.8 (diff FFI wrapper) adds them to `schemas/envelope.fbs`' `ShowEntry` together with the diff payload, so a Dart caller can name a conflicted parent tree completely.
+
+## Surfaced in the follow-up review of Story 5.1 (bmad-build-auto, 2026-10-27)
+
+- **The repo ships Apache-2.0 code without the Apache-2.0 licence text, and its manifests still say `license = "MIT"`.** Medium.
+  - `crates/zanshin-jj/src/source_symbol.rs:1` is a verbatim port of jj's `cli/src/source_symbol.rs` (SPDX `MIT AND Apache-2.0`, jj's copyright in the module doc), but the root has only an MIT `LICENSE` and `Cargo.toml:19` sets `license = "MIT"` for every crate (`zanshin-jj` inherits it). Apache-2.0 §4(a) asks for a copy of the licence with redistributions; the linked Apache-2.0 dependencies (jj-lib, jj-cli) already raise the same question for any shipped binary.
+  - **Follow-up:** Ralph decides the project's licence notices: e.g. add `LICENSES/Apache-2.0.txt` (or `LICENSE-APACHE`) plus a third-party NOTICE for the app bundle, and set `zanshin-jj`'s `license` to `MIT AND Apache-2.0`.
