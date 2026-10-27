@@ -24,6 +24,8 @@ deferred:
     location: >-
       spikes/graph-layout-ab/tools/router-oracle.mjs (cases)
     severity: low
+    resolved: >-
+      2026-10-27 — fixed (spec-4-15-closing-gutter-routes-oracle-parity, commit f0fc69b): the router oracle's new `gutter` category freezes GL's own columns with one moved node (1,485 cases with gutter lines); 1,467 equal GL, the other 18 are the unit rule's documented d = 12 difference, and a coverage check pins stepped, deep, both-side and shared exit/entry gutter lines.
 ---
 
 <intent-contract>

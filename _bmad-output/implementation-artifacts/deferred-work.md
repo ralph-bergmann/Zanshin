@@ -2165,6 +2165,6 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in Story 4.15 (bmad-build-auto, 2026-10-27)
 
-- **Gutter routes have no parity check against the export: GL's own grids in the router oracle hold no gutter line.** Low.
+- ~~**Gutter routes have no parity check against the export: GL's own grids in the router oracle hold no gutter line.**~~ — RESOLVED 2026-10-27 (spec-4-15-closing-gutter-routes-oracle-parity, commit f0fc69b): the router oracle's `gutter` category (1,485 cases on GL's frozen columns) equals GL on 1,467, the other 18 are the unit rule's documented d = 12 difference, and a coverage check pins every gutter-line kind. Low.
   - The oracle's corpus is the one Story 4.15 names (the design sample and the Lines Study's PRESETS × FAN; `spikes/graph-layout-ab/tools/router-oracle.mjs`); GL's optimizer avoids every gutter there, so the gutter x, its ±6 px steps, gutter exit/entry order and deep placement on a gutter's lower run rest only on the hand-built `packages/zanshin_core/test/graph_layout/router_test.dart` cases and the scale checks.
   - **Follow-up:** add oracle cases whose GL grid has gutter lines (e.g. GL's `computeLayout` with frozen `opts.cols` that lane-block a merge) and compare them like the rest.
