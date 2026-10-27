@@ -2151,3 +2151,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **`KeepAlive(keepAlive: pinned)` is inert: pinned cards are laid out on every pass instead of resting in the keep-alive bucket.** Low.
   - Flutter's 2D element loses a kept-alive off-screen child when a reload moves its vicinity ("Expected to re-use an element"), so `_layoutNode` clears `parentData.keepAlive` after layout (`app/lib/src/features/graph/graph_viewport_render.dart`, the WHY comment in `_layoutNode`). Pinning still holds through the node key, and the pinning witness (o) passes.
   - **Follow-up:** none unless pinned-card counts grow large. Otherwise revisit when Flutter fixes keep-alive across vicinity moves, or when 10.15 or 10.10 pins many cards.
+
+## Surfaced in Story 4.14 (bmad-build-auto, 2026-10-27)
+
+- **The node day key is the day of the clamped T, not of the commit's own timestamp, which the design's Compact label reads.** Low.
+  - `GraphGridView.nodeDays` = dk(T(i)) with T(i) = max(own ts, parents' T) (docs/graph-layout.md §4.2 free, `layout_engine.dart` `nodeDays()`), matching Free's day buckets; a non-root node without a ts gets tmin's day. The design's Compact label uses the raw `Date.parse(c.ts)` and shows nothing without a ts (graph-view.jsx@e74ced3:440-446), so the two differ for a commit older than an ancestor and for a node without a ts.
+  - **Follow-up:** Story 10.16 decides when it labels Compact rows: keep the clamped day (one day per commit in both layouts), or have the engine emit the raw-ts day (`dayKey(ts)`, `noDay` without a ts) beside it.

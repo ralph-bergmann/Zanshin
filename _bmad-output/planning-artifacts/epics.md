@@ -4258,6 +4258,14 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 
 **Related:** 4.11, 4.13, 4.15; 10.1 (I8 in the checker, offX 0), 10.2, 10.12; GLD §4.3, §4.7, §4.8; SYNC #8.
 
+> **Delivered (2026-10-27, Story 4.14 done):** spec at `_bmad-output/implementation-artifacts/spec-4-14-shared-columns-free-compact.md` (decisions in `decisions-review-4-10-to-4-13.md` under `### 4.14`).
+>
+> - **SPEC.** Dated amendments of GLD §2, §3, §4.2 (a day key per node), §4.3 (joint packing: intervals in both models, packed in each model's visit order, the fewer lanes kept, compact on a tie), §4.7 (the joint `compact` order: windows = components under "overlap in either model", cost 16·c_c + c_f, per-model skip and work units), §4.8 (joint columns; the design sample's default compaction is now 9 → 7, re-derived by hand), §6 (`--columns mode|joint`, Dart-only), §7.2 (the `e74ced3` loader and the joint oracle), §7.3 (I8), §13 (product = joint always, timestamps for every request, grid v3/v4 with node day).
+> - **Engine.** The spike's Dart reference gained `--columns joint` (the default `mode` is the per-mode reference, unchanged); the product engine always lays out joint columns and is byte-identical to it (`compare.mjs --core`, every input incl. synth-100k); all product goldens come from that binary. Grid format versions 3 / 4 add `nodeDays` (`GraphGridView.noDay` for the root; stack node = its newest member's).
+> - **Oracle.** `tools/design-layout.mjs` evaluates the export's `graph-layout.jsx` whole (I1: `design-input.mjs --rev e74ced3` = the `e243dd2` inputs byte for byte); the joint greedy lane count equals GL's fewer greedy packing on both revsets (default 8, all 9), and GL's exact colouring saves no lane there.
+> - **Worker.** `RepoHandle.graphLayout` loads timestamps for every request; a compact and a free request on one repo return the same lanes, columns and day keys.
+> - **Measured** (spec § Measurements, I2): the joint packing widens some inputs (fixture-medium/large `all()`: 3 → 4 lanes, Compact mean width 2.77 → 3.54: +28 % vs per-mode compact, +18–20 % vs the larger per-mode width) and narrows others in Free (synth-100k: mean width 98.6 → 42.9 vs per-mode free); the joint layout costs ~2–3× the per-mode lanes phase (synth-100k 43 ms vs 10–15 ms, AOT). Exact colouring is not ported (it applies only to the design samples, where it saves nothing).
+
 ### Story 4.15: Line router B — one line per parent → child pair, as a `zanshin_core` library [bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3` (the Lines Study's variant B, SYNC #7; the Epic 10 header's design update 2026-10-14, decisions (a1) and (g)). Bridge scope: pure Dart in `packages/zanshin_core`, exported for the view. Refined enough to build from; ACs to be written when scheduled.)*
 
