@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: MIT
 //
-// Story 4.11 — the product engine's goldens (docs/graph-layout.md §13), generated from the two
-// references and written into packages/zanshin_core/test/graph_layout/goldens/. Greedy outputs
-// come from the Rust binary, `compact`-order outputs from the spike's Dart binary (the order has
-// no Rust reference), the design oracle files from outputs/oracle/ (run js_oracle.mjs first), the
+// Story 4.11 — the product engine's goldens (docs/graph-layout.md §13), written into
+// packages/zanshin_core/test/graph_layout/goldens/. Amended 2026-10-27 (Story 4.14): the product
+// always lays out joint columns (§4.3 / §4.7), so every output comes from the spike's Dart binary
+// with `--columns joint`, both orders (the Rust reference stays per-mode history). The design
+// oracle files come from outputs/oracle/ (run js_oracle.mjs and design-layout.mjs first), the
 // fuzz cases from tools/fuzz.mjs's generator under fixed seeds. Shipped scope only: modes
 // compact | free × orders greedy | compact.
 //
 //   node tools/goldens.mjs        (from the spike root)
 //
-// Needs: both binaries built, inputs/ regenerated (fixture-tiny-all included), outputs/oracle/,
-// and (Story 4.13) tools/stacks.mjs run, which writes inputs/stacks-design-*.json and the
-// outputs/oracle/stacks-design-*.runs.json the `stacks/` section copies.
+// Needs: the Dart binary built, inputs/ regenerated (fixture-tiny-all included), outputs/oracle/
+// (js_oracle.mjs, design-layout.mjs), and (Story 4.13) tools/stacks.mjs run, which writes
+// inputs/stacks-design-*.json and the outputs/oracle/stacks-design-*.runs.json the `stacks/`
+// section copies.
 // Deterministic: a second run leaves `git status` clean. Exit code 1 on any failure.
 
 import fs from "node:fs";
@@ -25,10 +27,7 @@ const spike = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repo = path.resolve(spike, "../..");
 const out = path.join(repo, "packages/zanshin_core/test/graph_layout/goldens");
 const work = path.join(spike, "outputs/goldens");
-const BIN = {
-  greedy: path.join(spike, "rust/target/release/graph-layout"),
-  compact: path.join(spike, "dart/build/graph_layout"),
-};
+const BIN = path.join(spike, "dart/build/graph_layout");
 const MODES = ["compact", "free"];
 const ORDERS = ["greedy", "compact"];
 /** Fuzz cases: tools/fuzz.mjs genInput(rng(SEED * 1_000_003 + case)), case = 0 … CASES − 1. */
@@ -38,12 +37,13 @@ const CASES = 100;
  * `compact`-order outputs at a small budget that stops the search mid-way: each must differ from
  * both the default budget's output and greedy's (checked below). The committed fixtures cannot
  * serve: their `compact` order equals greedy's (tiny, medium NARROW) or is final after the first
- * window, which even budget 0 evaluates (medium and large `all()`).
+ * window, which even budget 0 evaluates (medium and large `all()`). With joint columns (Story 4.14)
+ * `design-all`'s search is final after its first window too, and the cut is the same in both modes
+ * (the search does not depend on the mode); two budgets cut `design-default`.
  */
 const CUT = [
-  ["design-all", "compact", 20],
-  ["design-all", "free", 90],
-  ["design-default", "free", 40],
+  ["design-default", "compact", 20],
+  ["design-default", "free", 10],
 ];
 /** Stack fuzz cases (Story 4.13): tools/stacks.mjs genStackInput + stackRequest of rng(STACK_SEED * 1_000_003 + case). */
 const STACK_SEED = 413;
@@ -70,20 +70,19 @@ function fnv1a64(bytes) {
 const digest = (bytes) => ({ fnv1a64: fnv1a64(bytes), bytes: bytes.length });
 
 /**
- * Runs the reference of `order` on `inFile` (the Dart one with `budget`, when given) and returns
- * the output bytes. With a stack request file (`stacks`) it is the spike's Dart binary for both
- * orders: stacks are Dart-only (docs/graph-layout.md §4.8).
+ * Runs the spike's Dart binary with `--columns joint` on `inFile` (with `budget` and a stack
+ * request file `stacks`, when given) and returns the output bytes.
  */
 function layout(inFile, mode, order, budget = null, stacks = null) {
   const outFile = path.join(work, "out.json");
   fs.rmSync(outFile, { force: true });
   const args = [
-    "layout", "--mode", mode, "--order", order,
+    "layout", "--mode", mode, "--order", order, "--columns", "joint",
     ...(budget === null ? [] : ["--budget", String(budget)]),
     ...(stacks === null ? [] : ["--stacks", stacks]),
     inFile, outFile,
   ];
-  const r = spawnSync(stacks === null ? BIN[order] : BIN.compact, args, { encoding: "utf8" });
+  const r = spawnSync(BIN, args, { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`${order} reference, ${path.basename(inFile)} ${mode}: exit ${r.status} ${r.stderr}`);
   return fs.readFileSync(outFile);
 }
@@ -96,7 +95,7 @@ const write = (rel, data) => {
 const json = (v) => JSON.stringify(v, null, 2) + "\n";
 
 function main() {
-  for (const bin of Object.values(BIN)) if (!fs.existsSync(bin)) throw new Error(`missing ${bin}: build the references first`);
+  if (!fs.existsSync(BIN)) throw new Error(`missing ${BIN}: build the Dart reference first`);
   fs.mkdirSync(work, { recursive: true });
   fs.rmSync(out, { recursive: true, force: true });
 
@@ -108,6 +107,10 @@ function main() {
     const oracle = path.join(spike, "outputs/oracle", `design-${rev}.compact.greedy.json`);
     if (!fs.existsSync(oracle)) throw new Error(`missing ${oracle}: run node tools/js_oracle.mjs first`);
     write(`design/oracle/design-${rev}.compact.greedy.json`, fs.readFileSync(oracle));
+    // Story 4.14: GL's (e74ced3) lane counts on the e243dd2 sample (tools/design-layout.mjs).
+    const lanes = path.join(spike, "outputs/oracle", `joint-design-${rev}.lanes.json`);
+    if (!fs.existsSync(lanes)) throw new Error(`missing ${lanes}: run node tools/design-layout.mjs first`);
+    write(`design/oracle/joint-design-${rev}.lanes.json`, fs.readFileSync(lanes));
   }
   for (const [name, mode, budget] of CUT) {
     const inFile = path.join(spike, "inputs", `${name}.json`);
@@ -219,12 +222,12 @@ function main() {
 }
 
 function readme() {
-  return `# Layout goldens (Story 4.11, stacks Story 4.13)
+  return `# Layout goldens (Story 4.11, stacks Story 4.13, joint columns Story 4.14)
 
-Generated — do not edit by hand. Regenerate from \`spikes/graph-layout-ab/\` after building both
-references (\`cargo build --release --manifest-path rust/Cargo.toml\`,
-\`dart compile exe dart/bin/graph_layout.dart -o dart/build/graph_layout\`), regenerating the
-inputs and running \`node tools/js_oracle.mjs\` and \`node tools/stacks.mjs\` (README \`## Run\`):
+Generated — do not edit by hand. Regenerate from \`spikes/graph-layout-ab/\` after building the
+Dart reference (\`dart compile exe dart/bin/graph_layout.dart -o dart/build/graph_layout\`),
+regenerating the inputs and running \`node tools/js_oracle.mjs\`, \`node tools/design-layout.mjs\`
+and \`node tools/stacks.mjs\` (README \`## Run\`):
 
 \`\`\`sh
 node tools/goldens.mjs
@@ -232,12 +235,18 @@ node tools/goldens.mjs
 
 Every output is \`docs/graph-layout.md\` §3's canonical form, for the shipped scope: modes
 \`compact\` | \`free\` × lane orders \`greedy\` | \`compact\`, named \`<input>.<mode>.<order>.json\`.
-\`greedy\` comes from the Rust reference (\`rust/\`), the \`compact\` order from the spike's Dart
-reference (\`dart/\`), which is its only implementation.
+The product always lays out joint columns (§4.3 / §4.7, amended 2026-10-27): one lane packing and
+one column order for both modes, so \`lane\`, \`col\` and \`lanes\` are the same in a compact and a free
+output (I8). Every output therefore comes from the spike's Dart reference (\`dart/\`) with
+\`--columns joint\`, both orders; the Rust reference (\`rust/\`) keeps the per-mode packing.
 
 - \`design/\`: the design sample's inputs (\`tools/design-input.mjs\`, export pinned at \`57f259c\`),
   their 8 outputs, and \`oracle/\`: the design's own \`computeLayout\` (\`tools/js_oracle.mjs\`) in
-  \`compact\` mode, greedy.
+  \`compact\` mode, greedy, with the per-mode lanes of that export (the product test compares rows
+  and edges only); and \`joint-design-<rev>.lanes.json\`: the lane counts of the export \`e74ced3\`'s
+  \`graph-layout.jsx\` (\`tools/design-layout.mjs\`) on the \`e243dd2\` sample (\`stacks/design-<rev>.json\`
+  without its stack facts) — \`gl_greedy_lanes\` (exact colouring off: the fewer of its two greedy
+  packings), \`gl_exact_lanes\` and the Dart reference's \`joint_greedy_lanes\`.
 - \`design/<input>.<mode>.compact.budget-<N>.json\`: the \`compact\` order at a budget N that stops its
   search mid-way (the output differs from the default budget's and from greedy's) — ${CUT.map(([name, mode, n]) => "`" + name + "` " + mode + " N = " + n).join(", ")}. The
   committed fixtures cannot show a cut: their \`compact\` order equals greedy's or is final after the

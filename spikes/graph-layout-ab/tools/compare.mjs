@@ -271,14 +271,18 @@ for (const r of matrix) console.log(`${r.input.padEnd(w)} | ${r.cells.map((c, k)
 console.log(`\n${matrix.length * cols.length - bad} identical and invariant-clean, ${bad} differ or fail${flag("--digest") ? " (bench digests checked)" : ""}`);
 
 // --core <binary> (Story 4.11): the product engine's CLI (packages/zanshin_core/benchmark/
-// graph_layout_cli.dart) as a third implementation, over the shipped scope only: greedy must equal
-// the Rust output byte for byte, the `compact` order the spike Dart output (its only reference),
-// and every output must pass the invariants.
+// graph_layout_cli.dart) as a third implementation, over the shipped scope only; every output must
+// pass the invariants. Amended 2026-10-27 (Story 4.14): the product always lays out joint columns
+// (docs/graph-layout.md §4.3 / §4.7), so both orders must equal the spike Dart binary's
+// `--columns joint` output byte for byte (its only reference), and per order the compact and the
+// free output must share lane, col and lanes (I8).
 const coreBin = argv.includes("--core") ? path.resolve(argv[argv.indexOf("--core") + 1]) : null;
 if (coreBin) {
   const CORE_MODES = ["compact", "free"], CORE_ORDERS = ["greedy", "compact"];
-  const refImpl = { greedy: "rust", compact: "dart" };
+  const refImpl = { greedy: "dart-joint", compact: "dart-joint" };
+  BIN["dart-joint"] = BIN.dart;
   fs.mkdirSync(path.join(spike, "outputs/core"), { recursive: true });
+  fs.mkdirSync(path.join(spike, "outputs/dart-joint"), { recursive: true });
   const coreMatrix = [];
   let coreBad = 0;
   for (const file of files) {
@@ -291,9 +295,9 @@ if (coreBin) {
       const out = path.join(spike, "outputs/core", `${base}.${mode}.${order}.json`);
       let cell = "=";
       const notes = [];
-      for (const [bin, dst] of [[BIN[refImpl[order]], ref], [coreBin, out]]) {
+      for (const [bin, dst, extra] of [[BIN[refImpl[order]], ref, ["--columns", "joint"]], [coreBin, out, []]]) {
         fs.rmSync(dst, { force: true });
-        const r = spawnSync(bin, ["layout", "--mode", mode, "--order", order, inputFile, dst], { encoding: "utf8", maxBuffer: 1 << 26 });
+        const r = spawnSync(bin, ["layout", "--mode", mode, "--order", order, ...extra, inputFile, dst], { encoding: "utf8", maxBuffer: 1 << 26 });
         if (r.error) throw r.error;
         if (r.status !== 0) { cell = "FAIL"; notes.push(`  ${path.basename(bin)} exit ${r.status}: ${r.stderr.trim()}`); }
       }
@@ -302,6 +306,11 @@ if (coreBin) {
         if (!A.equals(B)) { cell = "DIFF"; notes.push(...explain(inputFile, JSON.parse(A), JSON.parse(B)).map((l) => l.replace(/\b(rust|dart)\b/g, (m) => (m === "rust" ? refImpl[order] : "core")))); }
         else {
           const fails = invariants(input, JSON.parse(B));
+          if (mode === "free") {
+            const c = JSON.parse(fs.readFileSync(path.join(spike, "outputs/core", `${base}.compact.${order}.json`), "utf8")), f = JSON.parse(B);
+            const cols = (o) => JSON.stringify([o.lanes, o.nodes.map((x) => [x.lane, x.col])]);
+            if (cols(c) !== cols(f)) fails.push("I8: lane / col / lanes differ between compact and free");
+          }
           if (fails.length) { cell = "INV"; notes.push(...fails.map((m) => `  invariant: ${m}`)); }
         }
       }
@@ -311,7 +320,7 @@ if (coreBin) {
     coreMatrix.push(row);
   }
   const coreCols = CORE_MODES.flatMap((m) => CORE_ORDERS.map((o) => `${m}/${o}`));
-  console.log(`\ncore (${path.relative(process.cwd(), coreBin)}) vs ${CORE_ORDERS.map((o) => `${o}: ${refImpl[o]}`).join(", ")}`);
+  console.log(`\ncore (${path.relative(process.cwd(), coreBin)}) vs ${CORE_ORDERS.map((o) => `${o}: ${refImpl[o]} (--columns joint)`).join(", ")}`);
   console.log(`${"input".padEnd(w)} | ${coreCols.join(" | ")}`);
   console.log(`${"-".repeat(w)}-|-${coreCols.map((c) => "-".repeat(c.length)).join("-|-")}`);
   for (const r of coreMatrix) console.log(`${r.input.padEnd(w)} | ${r.cells.map((c, k) => c.padEnd(coreCols[k].length)).join(" | ")}`);

@@ -3,7 +3,8 @@
 // The product engine's invariant checks (Story 4.11): docs/graph-layout.md §7.3 I1–I6 with the
 // amended `free` I5, the `compact` order against greedy, literal model-cost references, and the
 // seeded random DAGs they run on. Ported from the spike's Dart tests
-// (spikes/graph-layout-ab/dart/test/layout_test.dart), minus `time` and `optimized`.
+// (spikes/graph-layout-ab/dart/test/layout_test.dart), minus `time` and `optimized`. Story 4.14:
+// joint columns — I8 across modes, the joint model cost, every node's day key.
 
 import 'dart:math';
 import 'dart:typed_data';
@@ -159,8 +160,9 @@ List<int> clampedT(LayoutInput g, List<List<int>> lp) {
 }
 
 /// The failures of docs/graph-layout.md §7.3 I1–I6 — I5 as amended on 2026-10-01 — plus the
-/// header fields, the edge order and kinds of §3 and col = lane (both shipped orders keep π the
-/// identity), for the grid [r] laid out from [g]; empty when every check holds.
+/// header fields, the edge order and kinds of §3, col = lane (both shipped orders keep π the
+/// identity) and every node's day key (Story 4.14: dk of its clamped T, [GraphGridView.noDay] for a
+/// root, in both modes), for the grid [r] laid out from [g]; empty when every check holds.
 List<String> invariantFailures(LayoutInput g, GraphGridView r) {
   final fails = <String>[];
   void check(bool ok, String message) {
@@ -229,6 +231,11 @@ List<String> invariantFailures(LayoutInput g, GraphGridView r) {
   }
   check(r.rows == (n == 0 ? 0 : y.reduce(max) + u), 'rows');
   check(r.lanes == (n == 0 ? 0 : r.nodeLanes.reduce(max) + 1), 'lanes');
+  final List<int> days = clampedT(g, lp);
+  for (var i = 0; i < n; i++) {
+    final int want = g.isRoot[i] != 0 ? GraphGridView.noDay : dayKey(days[i], g.utcOffsetMin);
+    check(r.nodeDays[i] == want, 'day key of node $i');
+  }
   switch (r.mode) {
     case LayoutMode.compact:
       check(r.bucketCount == 0, 'I5 compact: no buckets');
@@ -323,9 +330,35 @@ List<String> compactAgainstGreedy(LayoutInput g, GraphGridView greedy, GraphGrid
   }
   check(compact.lanes <= greedy.lanes, 'more lanes than greedy');
   check(compact.nodeLanes.toSet().length == compact.lanes, 'an empty column');
-  final int greedyCost = naiveCompactCost(l, l.lane);
-  final int compactCost = naiveCompactCost(l, compact.nodeLanes);
-  check(compactCost <= greedyCost, 'model cost $compactCost > greedy $greedyCost');
+  final int greedyCost = naiveCompactCost(g, l.lane);
+  final int compactCost = naiveCompactCost(g, compact.nodeLanes);
+  check(compactCost <= greedyCost, 'joint model cost $compactCost > greedy $greedyCost');
+  return fails;
+}
+
+/// The failures of §7.3 I8 (Story 4.14) for a `compact` grid [c] and a `free` grid [f] of one
+/// input, order and stack request: the same `lanes`, and every node — stack nodes included — the
+/// same lane and col, hidden ones −1 in both; the same day keys too. Empty when it holds.
+List<String> i8Failures(GraphGridView c, GraphGridView f) {
+  final fails = <String>[];
+  if (c.mode != LayoutMode.compact || f.mode != LayoutMode.free) {
+    fails.add('I8 needs a compact and a free grid');
+  }
+  if (c.lanes != f.lanes) {
+    fails.add('I8 lanes ${c.lanes} ≠ ${f.lanes}');
+  }
+  if (c.nodeLanes.length != f.nodeLanes.length) {
+    fails.add('I8 node count ${c.nodeLanes.length} ≠ ${f.nodeLanes.length}');
+    return fails;
+  }
+  for (var i = 0; i < c.nodeLanes.length && fails.length < 8; i++) {
+    if (c.nodeLanes[i] != f.nodeLanes[i] || c.nodeCols[i] != f.nodeCols[i]) {
+      fails.add('I8 node $i: lane/col ${c.nodeLanes[i]}/${c.nodeCols[i]} ≠ ${f.nodeLanes[i]}/${f.nodeCols[i]}');
+    }
+    if (c.nodeDays[i] != f.nodeDays[i]) {
+      fails.add('node $i: day key differs between the modes');
+    }
+  }
   return fails;
 }
 
@@ -372,9 +405,17 @@ List<String> compactAgainstGreedy(LayoutInput g, GraphGridView greedy, GraphGrid
   return (seg, a, b);
 }
 
-/// §4.7's model cost of [lanes] (per node) over the greedy layout [l], from scratch:
-/// U·(400·X + 4·Len) + κ·Σ column·(b − a), with blocked-merge verticals clipped to 10·a − 3U.
-int naiveCompactCost(LayoutEngine l, List<int> lanes) {
+/// §4.7's joint model cost (amended 2026-10-27) of [lanes] (per node) over [g]'s joint greedy
+/// layout, from scratch: 16·cost_compact + cost_free, each [naiveModelCost] in its model's greedy
+/// engine (the lanes are joint, so both engines share them; y, U and routes are the model's).
+int naiveCompactCost(LayoutInput g, List<int> lanes) =>
+    16 * naiveModelCost(greedyEngine(g, LayoutMode.compact), lanes) +
+    naiveModelCost(greedyEngine(g, LayoutMode.free), lanes);
+
+/// §4.7's model cost of [lanes] (per node) in the vertical model of the greedy layout [l], from
+/// scratch: U·(400·X + 4·Len) + κ·Σ column·(b − a), with blocked-merge verticals clipped to
+/// 10·a − 3U.
+int naiveModelCost(LayoutEngine l, List<int> lanes) {
   final int u = l.unit;
   final Int64List y = l.y;
   final (List<int> seg, List<int> a, List<int> b) = naiveSegments(l);

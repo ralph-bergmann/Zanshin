@@ -727,6 +727,7 @@ final class StackLayout {
     nodeRows: rowOf,
     nodeLanes: laneOf,
     nodeCols: colOf,
+    nodeDays: _nodeDays(),
     edgeFroms: edgeFrom,
     edgeTos: edgeTo,
     edgeKinds: edgeKind,
@@ -741,4 +742,17 @@ final class StackLayout {
     runStarts: runStart,
     runMembers: runMembers,
   );
+
+  /// The day key of every grouped node (Story 4.14): an input node's own — hidden ones included —
+  /// and a stack node its newest member's.
+  Int64List _nodeDays() {
+    final Int64List own = engine.nodeDays();
+    final days = Int64List(rowOf.length)..setRange(0, n, own);
+    for (var r = 0; r < runNode.length; r++) {
+      if (runNode[r] >= 0) {
+        days[runNode[r]] = own[runMembers[runStart[r + 1] - 1]];
+      }
+    }
+    return days;
+  }
 }

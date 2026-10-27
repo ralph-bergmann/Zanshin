@@ -79,6 +79,15 @@ viewer/       throwaway HTML viewer (index.html, viewer.js, viewer.css); viewer/
    `inputs/stacks-design-{default,all}.json` and the design's own `groupStacks` runs (the run-rule
    oracle) and checks the Dart binary against them; `tools/goldens.mjs` writes the `stacks/`
    goldens; `node tools/stacks.mjs facts <in> <out>` adds synthetic facts to any input.
+11. **Done (2026-10-27, Story 4.14):** joint columns, [`docs/graph-layout.md`](../../docs/graph-layout.md)
+   §4.3 / §4.7 (amended) — one lane packing and one column order for `compact` and `free`, as the
+   floating-client export `e74ced3` lays them out. Dart-only: `--columns joint` (`layout`, `bench`;
+   the default `--columns mode` keeps the per-mode reference, so Rust ≡ Dart, `fuzz.mjs`, `bench.mjs`
+   and `js_oracle.mjs` are unchanged); the Rust binary rejects the flag. `tools/design-layout.mjs`
+   evaluates the export's `graph-layout.jsx` whole (`design-input.mjs --rev e74ced3` uses it) and is
+   the joint design oracle (GL's greedy lane count on the `e243dd2` sample); `tools/goldens.mjs`
+   writes every product golden from the Dart binary with `--columns joint`; `compare.mjs --core`
+   compares the product CLI with that binary and checks I8.
 
 ## Run
 
@@ -111,11 +120,15 @@ node tools/loc.mjs
 /usr/bin/time -l rust/target/release/graph-layout layout --mode time --order optimized inputs/synth-100k.json /tmp/o.json
 
 # the product engine's goldens (Story 4.11; after js_oracle.mjs, which writes outputs/oracle/,
-# and — Story 4.13 — stacks.mjs, which checks the run-rule oracle and writes the stack inputs)
+# — Story 4.13 — stacks.mjs, which checks the run-rule oracle and writes the stack inputs, and
+# — Story 4.14 — design-layout.mjs, the joint design oracle on the e243dd2 inputs)
 node tools/stacks.mjs               # → inputs/stacks-design-*.json, outputs/oracle/stacks-design-*.runs.json
-node tools/goldens.mjs              # → packages/zanshin_core/test/graph_layout/goldens/
+node tools/design-input.mjs --rev e243dd2
+node tools/design-layout.mjs        # → outputs/oracle/joint-design-*.lanes.json (exit 1 on a mismatch)
+node tools/goldens.mjs              # → packages/zanshin_core/test/graph_layout/goldens/ (all --columns joint)
 
-# the product engine as a third implementation (Story 4.11)
+# the product engine as a third implementation (Story 4.11; since Story 4.14 against the Dart
+# binary's --columns joint output for both orders)
 (cd ../../packages/zanshin_core && dart compile exe benchmark/graph_layout_cli.dart -o ../../spikes/graph-layout-ab/outputs/bin/graph_layout_core)
 node tools/compare.mjs --core outputs/bin/graph_layout_core
 

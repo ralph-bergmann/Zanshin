@@ -3,6 +3,7 @@
 // The stack invariants (Story 4.13, docs/graph-layout.md §4.8 and §7.3 as amended) over at least
 // 1,000 seeded stack-shaped DAGs × both modes × both orders × the stack states all collapsed, all
 // expanded, the default and random subsets — and over every stack golden input with its requests.
+// Story 4.14: I8 across the two modes for each order and stack state, and the day keys.
 
 import 'dart:convert';
 import 'dart:io';
@@ -15,6 +16,7 @@ import 'package:zanshin_core/src/graph_layout/layout_engine.dart';
 import 'package:zanshin_core/src/graph_layout/layout_input.dart';
 import 'package:zanshin_core/src/graph_layout/layout_request.dart';
 
+import 'invariants.dart' show i8Failures;
 import 'stack_invariants.dart';
 import 'support/spec_json.dart';
 
@@ -24,16 +26,25 @@ GraphGridView _grid(LayoutInput g, LayoutMode mode, LaneOrder order, [StackInput
   computeGraphGrid(g, mode: mode, order: order, budget: defaultLayoutBudget, stacks: stacks),
 );
 
-/// Checks [g] with every request of [requests] in every mode and order; returns the failures.
+/// Checks [g] with every request of [requests] in every mode and order, and I8 (Story 4.14: the
+/// same lanes and columns in both modes) per order and request; returns the failures.
 List<String> _checkAll(LayoutInput g, Map<String, StackInput> requests, String what) {
   final fails = <String>[];
-  for (final LayoutMode mode in LayoutMode.values) {
-    for (final LaneOrder order in LaneOrder.values) {
+  for (final LaneOrder order in LaneOrder.values) {
+    final grouped = <LayoutMode, Map<String, GraphGridView>>{};
+    for (final LayoutMode mode in LayoutMode.values) {
       final GraphGridView off = _grid(g, mode, order);
       for (final MapEntry(key: String state, value: StackInput s) in requests.entries) {
-        for (final String f in stackInvariantFailures(g, s, off, _grid(g, mode, order, s))) {
+        final GraphGridView r = _grid(g, mode, order, s);
+        (grouped[mode] ??= {})[state] = r;
+        for (final String f in stackInvariantFailures(g, s, off, r)) {
           fails.add('$what ${mode.name} ${order.name} $state: $f');
         }
+      }
+    }
+    for (final String state in requests.keys) {
+      for (final String f in i8Failures(grouped[LayoutMode.compact]![state]!, grouped[LayoutMode.free]![state]!)) {
+        fails.add('$what ${order.name} $state: $f');
       }
     }
   }

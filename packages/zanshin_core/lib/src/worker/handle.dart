@@ -208,8 +208,9 @@ final class RepoHandle {
   }
 
   /// Lay out the whole revset's graph (Story 4.11): the [graphTopology] of [revset] — with the
-  /// committer timestamps iff [mode] is `free` — laid out on the worker isolate by the Dart
-  /// layout engine (docs/graph-layout.md), returned as the topology and the grid.
+  /// committer timestamps in every mode (Story 4.14) — laid out on the worker isolate by the Dart
+  /// layout engine (docs/graph-layout.md), returned as the topology and the grid. Lanes and
+  /// columns are joint: the same for `compact` and `free`, so switching [mode] only moves rows.
   ///
   /// Every parameter is a CLI or layout pass-through (FR-JJ-17); the defaults are editable
   /// pre-fills:
@@ -217,17 +218,17 @@ final class RepoHandle {
   /// - [revset] — the nodes; prefer [logDefaults]' `log` over [defaultLogRevset].
   /// - [anchors] — ordered revsets for the priority rule (§11.2); [defaultGraphAnchors] is the
   ///   pre-fill.
-  /// - [utcOffsetMin] — the viewer's fixed UTC offset for `free`'s day buckets; `compact`'s layout
-  ///   does not read it, but it must lie within ±1440 in every mode.
+  /// - [utcOffsetMin] — the viewer's fixed UTC offset for `free`'s day buckets and every node's day
+  ///   key ([GraphGridView.nodeDays], both modes); it must lie within ±1440.
   /// - [prioritize], [shortPrefixes] — as in [graphTopology], pre-filled [defaultGraphPrioritize]
   ///   and [defaultShortPrefixes]; prefer [logDefaults]' effective values.
   /// - [mode], [order] — pre-filled [defaultLayoutMode] (`free`) and [defaultLaneOrder]
   ///   (`compact`).
   /// - [budget] — the `compact` order's work units, pre-filled [defaultLayoutBudget].
   /// - [stacks] — Story 4.13's commit stacks (docs/graph-layout.md §4.8): linear runs grouped into
-  ///   stack nodes, the columns kept, only rows compacted; the grid then has format version 2 and
-  ///   carries the runs. The "Group stacks" switch (Story 10.7) decides it; `false` here is 4.11's
-  ///   layout byte for byte and ignores the three key lists.
+  ///   stack nodes, the columns kept, only rows compacted; the grid then has format version
+  ///   [GraphGridView.stackFormatVersion] and carries the runs. The "Group stacks" switch (Story
+  ///   10.7) decides it; `false` lays out no stacks and ignores the three key lists.
   /// - [expandedKeys], [collapsedKeys] — the runs the user toggled (Story 10.17), by a run's key:
   ///   the bare key of its oldest member, `runMembers[runStarts[k]]` in the grid (no design-style
   ///   `grp:` prefix).

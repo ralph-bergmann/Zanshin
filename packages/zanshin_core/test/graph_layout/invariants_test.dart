@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-// docs/graph-layout.md §7.3's invariants I1–I6 (I5 as amended on 2026-10-01) and §4.7's claims
-// for the `compact` order against greedy (Story 4.11), over seeded random DAGs and over every
-// committed golden input, in every shipped mode and order.
+// docs/graph-layout.md §7.3's invariants I1–I6 (I5 as amended on 2026-10-01), I8 (Story 4.14:
+// joint columns, the same lanes and columns in both modes) and §4.7's claims for the `compact`
+// order against greedy (Story 4.11), over seeded random DAGs and over every committed golden
+// input, in every shipped mode and order.
 
 import 'dart:convert';
 import 'dart:io';
@@ -26,14 +27,23 @@ import 'support/topology_envelope.dart';
 GraphGridView run(LayoutInput g, LayoutMode mode, LaneOrder order) =>
     GraphGridView.fromBytes(computeGraphGrid(g, mode: mode, order: order, budget: defaultLayoutBudget));
 
-/// Every invariant and every compact-vs-greedy claim of [g], per mode.
+/// Every invariant and every compact-vs-greedy claim of [g], per mode, and I8 per order.
 void checkAll(LayoutInput g, String what) {
+  final grids = <LayoutMode, Map<LaneOrder, GraphGridView>>{};
   for (final LayoutMode mode in LayoutMode.values) {
     final GraphGridView greedy = run(g, mode, LaneOrder.greedy);
     final GraphGridView compact = run(g, mode, LaneOrder.compact);
+    grids[mode] = {LaneOrder.greedy: greedy, LaneOrder.compact: compact};
     expect(invariantFailures(g, greedy), isEmpty, reason: '$what ${mode.name} greedy');
     expect(invariantFailures(g, compact), isEmpty, reason: '$what ${mode.name} compact');
     expect(compactAgainstGreedy(g, greedy, compact), isEmpty, reason: '$what ${mode.name} compact vs greedy');
+  }
+  for (final LaneOrder order in LaneOrder.values) {
+    expect(
+      i8Failures(grids[LayoutMode.compact]![order]!, grids[LayoutMode.free]![order]!),
+      isEmpty,
+      reason: '$what ${order.name}: I8',
+    );
   }
 }
 
@@ -81,12 +91,19 @@ void main() {
       'design/design-all.json',
       'fixtures/tiny-all.input.json',
       'fixtures/medium-narrow.input.json',
+      'stacks/design-default.json',
+      'stacks/design-all.json',
     ]) {
       checkAll(parseSpecInput(File('$goldens/$path').readAsBytesSync()).input, path);
     }
     final List<String> cases = File('$goldens/fuzz/cases.jsonl').readAsLinesSync();
     for (var c = 0; c < cases.length; c++) {
       checkAll(parseSpecInput(utf8.encode(cases[c])).input, 'fuzz case $c');
+    }
+    final List<String> stackCases = File('$goldens/stacks/fuzz/cases.jsonl').readAsLinesSync();
+    for (var c = 0; c < stackCases.length; c++) {
+      final Object? input = (jsonDecode(stackCases[c]) as Map<String, Object?>)['input'];
+      checkAll(parseSpecInput(utf8.encode(jsonEncode(input))).input, 'stack fuzz case $c');
     }
   });
 }

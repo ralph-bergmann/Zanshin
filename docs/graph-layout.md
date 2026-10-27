@@ -10,6 +10,10 @@ only (§12, §13). The dated amendments of Story 4.11 are §2, §3, §4.2, §4.3
 *(Amended 2026-10-01, Story 4.13: the dated amendments of Story 4.13 are §2, §3, §4.8 (new), §6,
 §7.3, §9 and §13.)*
 
+*(Amended 2026-10-27, Story 4.14: joint columns — one lane packing and one column order shared by
+`compact` and `free`, as the floating-client export `e74ced3` lays them out. The dated amendments
+of Story 4.14 are §2, §3, §4.2, §4.3, §4.7, §4.8, §6, §7.2, §7.3 and §13.)*
+
 The contract for both implementations (`rust/`, `dart/`). Each one is written from this
 document alone and MUST produce **byte-identical output** for every input × mode × order.
 Where this spec and the design differ, the spec wins; every deliberate difference is listed
@@ -90,6 +94,11 @@ elapsed time) is a painter-side prefix sum over `buckets`, O(#buckets). It needs
 | `is_root` | true for the `root()` commit |
 | `priority` | ordering class ≥ 0; need not be unique (ties fall to the index) |
 | `parents` | jj's graph edges in stream order. `direct` and `indirect` carry `idx`, the target's node index; `missing` carries `idx: null` |
+
+*Amended 2026-10-27, Story 4.14:* with joint columns (`--columns joint`, §6; the product always,
+§13) every layout computes both vertical models (§4.3), so `ts_ms` is read in `compact` too (by the
+`free` model the packing uses), and the product reads `utc_offset_min` in both modes (every node's
+day key, §4.2 free step 4). Without joint columns nothing changes.
 
 **Validation.** A violation exits with code 2, prints a message on stderr and writes no output
 file.
@@ -225,6 +234,12 @@ Two conforming files are compared with `cmp`.
   - `start` / `end` are the bucket's first and last row.
   - Labels ("10m", "Yesterday", "Sep 23") are the painter's.
 
+*Amended 2026-10-27, Story 4.14: joint columns.* With joint columns `lane`, `col` and `lanes` do
+not depend on the mode: a `compact` and a `free` output of one input, order and stack request
+differ only in `mode`, `unit`, `rows`, the nodes' `row`, the edges' `route` and `blocked`, and
+`buckets` (I8, §7.3). The per-node day key of §4.2 free step 4 is a field of the product's grid
+(§13), not of this JSON, so no golden carries it.
+
 *Amended 2026-10-01, Story 4.13: the output with stacks (§4.8).* Without a stack request nothing
 changes: there is no `runs` key. With one:
 - `rows` is the grouped rows′ (§4.8 step 7); `lanes` stays the ungrouped value.
@@ -334,6 +349,14 @@ on head-first input.)
 
    `now_ms` stays unused.
 
+   *Amended 2026-10-27, Story 4.14: the day key per node.* The product's grid (§13) carries dk(i)
+   for every node in **both** modes: the clamped T(i) of steps 1–2 at `utc_offset_min`, which the
+   `free` model computes in either mode (§4.3, amended). The `is_root` node has none (the grid's
+   `noDay`, −2^63); a non-root node with a null ts counts by its T(i), as above. With stacks (§4.8) a
+   stack node has its newest member's dk(m_k), a hidden member keeps its own. The buckets keep their
+   definition (in `free` only; their value is the dk of their members). Compact's day labels
+   (Story 10.16) read it.
+
 ### 4.3 Lane packing → lane(i) [lanes]
 
 **Continuation child.** cont(j) = the child i ∈ C(j) with fp(i) = j and the least key(i), or
@@ -377,6 +400,38 @@ a < b′.
 - A child never shares a merge parent's lane.
 - In the row modes a (row, lane) cell holds at most one card. With the clamp this now also
   holds in `time`.
+
+**Joint packing** *(amended 2026-10-27, Story 4.14; `--columns joint` in the spike's Dart
+reference, the product always).* The export `e74ced3` shares one set of columns between its Free
+and Compact layouts, so a switch only moves cards up and down. Every layout then lays out both
+vertical models, k ∈ {c, f}: `compact` (U_c = 1, y_c of §4.2 compact) and `free` (U_f = 16, y_f of
+§4.2 free, steps 1–3), whichever mode is requested. cont is model-independent; Ey, end, a and b
+above are computed in each model in that model's y and U, giving every node two intervals
+[a_c, b_c) and [a_f, b_f).
+- **fits(ℓ, i, x)** ⇔ for k = c and k = f, no interval of lane ℓ other than x's overlaps
+  [a_k(i), b_k(i)) in model k (overlap: a′ < b ∧ a < b′). The continuation rule and first fit are
+  the ones above with this fits: continuation iff fp(i) exists, cont(fp(i)) = i and fits(lane(fp(i)),
+  i, fp(i)); else first fit, the least lane fitting in both models (an unused lane always fits).
+- **Packing P_k** visits the nodes by (y_k, priority, i). Pack twice, P_c and P_f, and keep the one
+  with fewer lanes; **P_c on a tie**. The packing therefore does not depend on the requested mode,
+  and neither do lane, col (§4.6, §4.7) and `lanes`. One-chain inputs (intervals nested alike in both
+  models) pack exactly as the single-model packing above.
+- **Implementation.** In the visited model v every stored interval of an earlier node m has
+  a′ ≤ y_v(m) ≤ y_v(i) < b, so the overlap there still reduces to a < b′: the per-lane top-two b′
+  and the segment tree answer it, and first fit walks "the least lane ≥ s whose largest b′ ≤ a",
+  re-checking the other model w and continuing at s = ℓ + 1 on a reject. Model w needs a general
+  test: per lane its w-intervals ordered by start, each with the prefix's largest end (and its
+  owner) and second-largest end; [a, b) overlaps an interval other than x's iff, among the intervals
+  starting before b, the largest end other than x's exceeds a. (A lane's intervals overlap only for
+  a node and its continuation child, so the last interval's end alone is not enough.)
+- **Bound.** O(n log n) per visit for the visited model, plus O(log n) per probe of model w times
+  the first-fit probes per node (≤ L), plus the insertion into w's ordered list, O(lane size) as a
+  sorted array (shift and prefix update) — an array-backed balanced tree would make it O(log n) if
+  a measurement ever shows the shift; spec-4-14 § Measurements did not (`lanes` phase 43 ms at
+  100k nodes, Dart AOT).
+- The one-pitch buffer, the merge-children term and the stub exception stay as stated above. I2
+  (§7.3) holds in both models: a lane's intervals are disjoint in both, apart from a node and its
+  continuation child.
 
 ### 4.4 Blocked [blocked]
 
@@ -600,6 +655,40 @@ budget; on synth-10k the budget binds.
 - The viewer shows it since bundle v2 (2026-09-26), which stores `compact`'s own lane array per
   mode (README, Viewer).
 
+**Joint `compact` order** *(amended 2026-10-27, Story 4.14; `--columns joint`, the product
+always).* On the joint packing (§4.3, amended) the order runs once for both models; its result does
+not depend on the requested mode.
+- **Segments** are the maximal straight chains of the joint packing (lane(fp(i)) = lane(i)). Each
+  has a reservation per model, R_k(s) = the union of its nodes' model-k intervals, and each model
+  keeps the tick geometry above in its own y, U, routes and `blocked` (§4.4 / §4.5 over model k's y
+  on the current lanes; D9's clip at 10·a_k − 3U_k). Columns are disjoint in each model (the packing
+  guarantees it, exchanges keep it); every column keeps one segment list per model, ascending by
+  a_k (the two orders may differ).
+- **Windows** of the column pair (c, c + d): the segments of both columns, joined when their
+  reservations overlap in **either** model. Per model the sweep above ("grows while the next starts
+  before the window's largest b") gives that model's windows; a union-find joins the model-c
+  windows that share a segment with one model-f window. A window is a connected component: disjoint
+  from the others in both models and independent of which column a segment sits in, so the
+  components are computed once per pair visit and visited ascending by their least a_c (unique: two
+  segments with one a_c overlap).
+- **Exchange:** every member moves to the other column; each column's list in each model is
+  rebuilt in that model's order.
+- **Cost:** cost(W) = 16·cost_c(W) + cost_f(W), each the local cost above in its own model (U_c = 1,
+  U_f = 16, gravity κ·col·(b_k − a_k)). Both are per-pitch costs, `free`'s in 1/16-pitch units, so
+  the weight 16 keeps the sum integer. An exchange stays iff the joint cost falls. κ, the reach,
+  the rounds and the budget are unchanged; column 0 stays fixed; empty columns are dropped.
+- **Skipping:** per model k a window's span is [min lo_k, 10·max b_k); kept spans are recorded per
+  model. After the first round a window is skipped iff in **both** models its span meets no span
+  kept since the previous round began (tested model c then f, each against the previous round's
+  spans, then the current round's; the first hit evaluates the window).
+- **Work units** (identical in the spike and the product): each model's local cost charges as
+  above; the skip test charges, per model, half the length of each span list it scans; an exchange
+  and its undo charge, per model and per column, the list's length before the rebuild minus the
+  index of its first changed entry. "If spent > budget: stop the search" is checked before each
+  window, as before.
+- **One model.** With a single model every rule above is §4.7's, work units included (the spike's
+  `JointCompactOrder(single: true)` equals `CompactOrder` at every budget, `dart/test`).
+
 ### 4.8 Stacks [stacks] — Dart-only (not in the Rust A/B reference), 2026-10-01
 
 *(Added 2026-10-01, Story 4.13.)* With a stack request (§2, §6 `--stacks`, §13), linear runs of
@@ -771,6 +860,22 @@ With the `compact` order the columns differ, and so do the constraints: `all` 19
 9 → 8 (measured, not derived by hand). `golden_test.dart` asserts the greedy counts. If the engine
 disagrees, re-derive by hand before changing a number.
 
+*Amended 2026-10-27, Story 4.14: joint columns.* §4.8 runs unchanged on the joint ungrouped
+columns (§4.3 / §4.7, amended) with the requested mode's rows; (F) and the day buckets stay
+`free`-only. The termination argument's "the reservations of such chains are disjoint" holds in
+each model, so it holds for the requested one. Every stack node takes lane(m_k) and col(m_k), which
+are the same in both modes, so I8 holds with stacks for every stack state. The design sample,
+re-derived by hand with joint columns (compact, greedy, every run collapsed):
+- `all`: the joint packing equals the per-mode one here (9 lanes), so 19 → 15 as above.
+- `default`: 9 → **7**. The joint packing has 8 lanes (the per-mode compact one 7): zqklmwts no
+  longer shares column 4 with the nqxwrptl run and mrplxqwv but has column 7 to itself, so the (C)
+  constraint that held sxmtvqno at 4 is gone. The qmsvtlkr run's card is at row 2, so sxmtvqno is
+  at row 3, lvqrnkmw at row 4 and potwkszn at row 5. kxwsnptm stays at row 4 (the mwoqxlpn run's
+  card is at row 2, vtxnbqrs at row 3). srkvzmop is at row 6, so `rows` is 7. zqklmwts, whose only
+  parent is sxmtvqno (row 3), is at row 4.
+
+With the joint `compact` order: `all` 19 → 15, `default` 9 → 7 (measured).
+
 ## 5. Complexity: design step → spike
 
 | step (GV) | design | spike | spike cost |
@@ -828,6 +933,13 @@ bench  --mode compact|time|free --order greedy|optimized --runs N [--warmup W] <
   remainder). An unreadable or malformed request file is exit 2, as is a stack-fact violation of the
   input. The Rust binary has no `--stacks` (an unknown flag, exit 2). The product engine's CLI
   (§13, `packages/zanshin_core/benchmark/graph_layout_cli.dart`) takes it too.
+- **Dart-only (2026-10-27, Story 4.14):** `--columns mode|joint`, in `layout` and `bench`; default
+  `mode` (the per-mode packing and order, as before, so Rust ≡ Dart, `tools/fuzz.mjs`,
+  `tools/bench.mjs` and `tools/js_oracle.mjs` run unchanged). `joint` lays out joint columns
+  (§4.3 / §4.7, amended) and takes only `--mode compact|free` with `--order greedy|compact`; any
+  other combination, or another value, is exit 2. `bench` then echoes `"columns":"joint"` after
+  `"order"`. The Rust binary has no `--columns` (an unknown flag, exit 2); the product engine's CLI
+  always lays out joint columns and has no flag for it.
 
 ## 7. Verification
 
@@ -894,6 +1006,29 @@ for byte.
 
 If an implementation disagrees, re-derive by hand before "fixing" code.
 
+*Amended 2026-10-27, Story 4.14: the `e74ced3` export and the joint oracle.* From `e74ced3` on,
+the export keeps its layout in `graph-layout.jsx` (GL), plain JS: one IIFE that sets
+`window.computeLayout`. `tools/design-layout.mjs`'s `loadLayout(commit, {exact})` evaluates
+`graph-data.js` and `graph-layout.jsx` **whole** in a fresh `vm` context (read with `git show`,
+`window` = the context's global, `TZ=UTC`), with the Graph Lines Study's `revsetMatch` stub
+(`(id) => id === "all" ? () => true : (c) => !!c.inDefault`) and a no-op `placeGapMarkers`.
+`exact: false` removes GL's one exact-colouring candidate line by a checked substitution (it throws
+if the line is not there exactly once). `tools/design-input.mjs` uses it when `graph-view.jsx` has no
+top-level `computeLayout`, so `--rev e74ced3` writes `inputs/design-e74ced3-{default,all}.json`,
+byte-identical to the `e243dd2` inputs (`graph-data.js` is unchanged).
+
+**The joint oracle.** `node tools/design-layout.mjs [--rev e74ced3]` runs GL's
+`computeLayout(GRAPH_COMMITS, rev, 240, 62, "compact", {optimize: false})` per revset, with exact
+colouring off (GL keeps the fewer of its two greedy packings, by Free and by Compact order — the
+rule of §4.3, amended) and on, and compares GL's greedy lane count with the Dart binary's
+`layout --mode compact --order greedy --columns joint` on `inputs/design-e243dd2-<rev>.json`; it
+writes `outputs/oracle/joint-design-<rev>.lanes.json` and exits 1 on a mismatch. Measured
+2026-10-27: `default` 8 lanes (GL greedy 8, GL exact 8, joint 8), `all` 9 (9, 9, 9). The product's
+`golden_test.dart` checks the joint greedy lanes against these files. Only the lane count is
+compared: GL's whole-lane optimizer, router-judged packing choice and W/H-dependent rows are not
+ported (spec-4-14, Design Notes: exact colouring returns only past a measured threshold, which it
+did not meet). On a mismatch, re-derive by hand before changing code.
+
 ### 7.3 Invariants
 
 `tools/` checks these on every output against its input:
@@ -927,6 +1062,14 @@ If an implementation disagrees, re-derive by hand before "fixing" code.
 - Compaction: y′ ≤ the ungrouped y for every visible node, y′(s) ≤ y(m_k) for every stack node, and
   `rows` ≤ the ungrouped `rows`. With every run expanded, the nodes, edges, buckets and `rows` equal
   the ungrouped output.
+
+*Amended 2026-10-27, Story 4.14: joint columns.*
+- I8 (columns across modes): for one input, order and stack request (or none), the `compact` and
+  the `free` output have the same `lanes` and every node — stack nodes included, a hidden member −1
+  in both — the same `lane` and `col`. The product's grids carry the same day keys in both modes too.
+- I1–I7 hold in both modes on the joint columns, I2 included in the model that did not drive the
+  packing; the joint `compact` order's joint cost (16·cost_c + cost_f) is never above joint
+  greedy's.
 
 ## 8. Benchmark protocol
 
@@ -1227,3 +1370,27 @@ topology, whose own errors (and its precondition and warnings) reach the caller 
 - **Request.** `RepoHandle.graphLayout` gains `stacks` (default `false`) and the key lists
   `expandedKeys`, `collapsedKeys` and `keepOpenKeys` (default empty); with `stacks` false the lists
   are ignored and the result is 4.11's.
+
+*Amended 2026-10-27, Story 4.14: joint columns.*
+- **Engine.** The product engine always lays out joint columns (§4.3 / §4.7, amended): it lays out
+  both vertical models in every request, packs once for both, runs the lane order on that packing
+  and outputs the requested mode's rows, routes, `blocked` and buckets with lane, col and `lanes`
+  identical in both modes (I8). Its §3 output is the spike's Dart reference with `--columns joint`,
+  byte for byte; the goldens all come from that binary (`tools/goldens.mjs`), and
+  `tools/compare.mjs --core <binary>` compares the product CLI with it for both orders. The input
+  builder's "which the request loads iff the mode is `free`" and the worker command's "timestamps
+  iff `free`" above no longer hold: see the worker below.
+- **Day key.** Every node's dk (§4.2 free step 4, amended) is computed in both modes from the free
+  model's clamped T; the root's is `GraphGridView.noDay` (−2^63); with stacks a stack node has
+  dk(m_k) and a hidden member its own.
+- **Result.** Grid format version **3** (without stacks) = version 1's header and twelve arrays
+  plus a thirteenth, node day (int64 × n), in a 35-slot header (140 bytes; the arrays start at byte
+  144); version **4** (with stacks) = version 3's 35 slots and thirteen arrays (node day int64 ×
+  (n + S)) plus S, R and M at slots 35–37 and the five stack arrays at slots 38–47 (48 slots, 192
+  bytes). `GraphGridView` reads only versions 3 and 4 (`formatVersion` 3, `stackFormatVersion` 4)
+  and exposes `nodeDays`; versions 1 and 2 are retired (no grid is ever persisted) and refused like
+  any other version.
+- **Worker command.** `RepoHandle.graphLayout` loads the committer timestamps for **every**
+  request (both models are laid out, and every node has a day key); `utc_offset_min` is read in
+  both modes. `compact` therefore pays the timestamp load too (Story 4.10: ~59 ms packed, ~1.24 s
+  loose at 10k).

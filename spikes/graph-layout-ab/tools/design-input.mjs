@@ -27,6 +27,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DESIGN_REV, designFile } from "./design-source.mjs";
+import { loadLayout } from "./design-layout.mjs";
 
 const spike = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -52,6 +53,9 @@ export function extract(src, name) {
 export function loadDesign(commit = DESIGN_REV) {
   if (new Date(2026, 0, 1).getTimezoneOffset() !== 0) throw new Error("run with TZ=UTC");
   const jsx = designFile("graph-view.jsx", commit);
+  // From e74ced3 on, computeLayout lives in graph-layout.jsx, evaluated whole (Story 4.14, I1);
+  // `designInput` needs nothing else.
+  if (!jsx.split("\n").some((l) => l.startsWith("function computeLayout("))) return loadLayout(commit);
   const ctx = vm.createContext({});
   // From e243dd2 on, computeLayout calls graph-gaps.jsx's placeGapMarkers. Its markers are
   // drawing only, never layout input, so a no-op stands in.

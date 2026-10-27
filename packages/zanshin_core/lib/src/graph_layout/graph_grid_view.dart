@@ -6,10 +6,10 @@ import 'package:meta/meta.dart';
 
 import 'layout_request.dart';
 
-/// The grid header: 33 little-endian int32 slots at byte 0.
-const _headerSlots = 33;
+/// The grid header: 35 little-endian int32 slots at byte 0.
+const _headerSlots = 35;
 
-/// The header's byte length; the first array starts at the next multiple of 8 (136).
+/// The header's byte length; the first array starts at the next multiple of 8 (144).
 const int _headerBytes = 4 * _headerSlots;
 
 const _slotVersion = 0;
@@ -37,10 +37,11 @@ const _bucketKind = 8;
 const _bucketValue = 9;
 const _bucketStart = 10;
 const _bucketEnd = 11;
-const _arrayCount = 12;
+const _nodeDay = 12;
+const _arrayCount = 13;
 
 /// The element size in bytes of each array, in array order.
-const _elementSizes = <int>[4, 4, 4, 4, 4, 1, 1, 1, 1, 8, 4, 4];
+const _elementSizes = <int>[4, 4, 4, 4, 4, 1, 1, 1, 1, 8, 4, 4, 8];
 
 /// The array names, in array order (for the decode errors).
 const _arrayNames = <String>[
@@ -56,20 +57,22 @@ const _arrayNames = <String>[
   'bucket value',
   'bucket start',
   'bucket end',
+  'node day',
 ];
 
-/// The version-2 header (Story 4.13, a layout with stacks): 46 int32 slots, version 1's 33 first.
-const _stackHeaderSlots = 46;
+/// The version-4 header (Stories 4.13 / 4.14, a layout with stacks): 48 int32 slots, version 3's
+/// 35 first.
+const _stackHeaderSlots = 48;
 
-/// The version-2 header's byte length; its first array starts right after it (184 is 8-aligned).
+/// The version-4 header's byte length; its first array starts right after it (192 is 8-aligned).
 const int _stackHeaderBytes = 4 * _stackHeaderSlots;
 
-const _slotStacks = 33;
-const _slotRuns = 34;
-const _slotMembers = 35;
+const _slotStacks = 35;
+const _slotRuns = 36;
+const _slotMembers = 37;
 
-/// Slot 36 + 2k is stack array k's byte offset, slot 37 + 2k its element count.
-const _slotStackArrays = 36;
+/// Slot 38 + 2k is stack array k's byte offset, slot 39 + 2k its element count.
+const _slotStackArrays = 38;
 
 const _nodeRun = 0;
 const _runState = 1;
@@ -90,35 +93,39 @@ const _stackArrayNames = <String>['node run', 'run state', 'run node', 'run star
 ///
 /// **Format** (format version [formatVersion]; little-endian; the contract of docs/graph-layout.md
 /// §13):
-/// - **Header:** 33 int32 slots at byte 0 — [0] the format version, [1] the mode
+/// - **Header:** 35 int32 slots at byte 0 — [0] the format version, [1] the mode
 ///   ([LayoutMode.index]: 0 compact, 1 free), [2] the lane order ([LaneOrder.index]: 0 greedy,
 ///   1 compact), [3] U (1 in `compact`, 16 in `free`), [4] rows, [5] lanes, [6] n, [7] E (the
-///   layout edges), [8] B (the buckets), then for each of the twelve arrays below its byte offset
+///   layout edges), [8] B (the buckets), then for each of the thirteen arrays below its byte offset
 ///   and its element count (slots 9 + 2k and 10 + 2k).
 /// - **Arrays,** in this order, each starting at the next multiple of 8 after the previous one (the
-///   first at byte 136): node row, node lane, node col (int32 × n); edge from, edge to
+///   first at byte 144): node row, node lane, node col (int32 × n); edge from, edge to
 ///   (int32 × E); edge kind, edge route, edge blocked (uint8 × E); bucket kind (uint8 × B); bucket
-///   value (int64 × B); bucket start, bucket end (int32 × B).
+///   value (int64 × B); bucket start, bucket end (int32 × B); node day (int64 × n).
 /// - **Values:** a node's row is y (§4.2; in `free` in 1/U pitch units, y ≤ 48·(n − 1), so it
-///   fits an int32). Edges are in §3's order — by child ascending, then by the parent's position
-///   among the child's layout parents; `from` is the parent, `to` the child, and Missing parents
-///   are no layout edges. Edge kinds are [edgeKindDirect] / [edgeKindIndirect], routes
-///   [routeStraight] / [routeMerge] / [routeBranchOff] (§8.4's r), `blocked` 0 or 1. Buckets are
-///   `free`'s day buckets ([bucketKindDay]), ascending; their value is the local-midnight instant
-///   in epoch ms, their start and end the least and the largest y of their members.
+///   fits an int32). Lanes and columns are joint (§4.3 / §4.7, amended 2026-10-27): the same in a
+///   `compact` and a `free` grid of one input. Edges are in §3's order — by child ascending, then
+///   by the parent's position among the child's layout parents; `from` is the parent, `to` the
+///   child, and Missing parents are no layout edges. Edge kinds are [edgeKindDirect] /
+///   [edgeKindIndirect], routes [routeStraight] / [routeMerge] / [routeBranchOff] (§8.4's r),
+///   `blocked` 0 or 1. Buckets are `free`'s day buckets ([bucketKindDay]), ascending; their value
+///   is the local-midnight instant in epoch ms, their start and end the least and the largest y of
+///   their members. A node's day (Story 4.14, §4.2 free step 4's dk in both modes) is the
+///   local-midnight instant of its clamped T, [noDay] for a root.
 ///
-/// **Format version [stackFormatVersion]** (Story 4.13, docs/graph-layout.md §4.8 and §13 — a
-/// layout with a stack request): version 1's header slots and twelve arrays, with header slot 0
-/// = 2, then
-/// - **more header slots,** 46 in all (184 bytes): [33] S (the stack nodes), [34] R (the runs),
-///   [35] M (the run members), then for each of five more arrays its byte offset and element count
-///   (slots 36 + 2k and 37 + 2k);
+/// **Format version [stackFormatVersion]** (Stories 4.13 / 4.14, docs/graph-layout.md §4.8 and
+/// §13 — a layout with a stack request): version 3's header slots and thirteen arrays, with header
+/// slot 0 = 4, then
+/// - **more header slots,** 48 in all (192 bytes): [35] S (the stack nodes), [36] R (the runs),
+///   [37] M (the run members), then for each of five more arrays its byte offset and element count
+///   (slots 38 + 2k and 39 + 2k);
 /// - **the node arrays** hold n + S entries: the n topology nodes, then the stack nodes in run
-///   order; a hidden node (a member of a collapsed run) has row, lane and col −1. [nodeCount] stays
-///   n. The edges and buckets are the grouped layout's, and an edge's `from` / `to` may be a stack
-///   node. Index order is then no topological order: an edge into a stack node has a parent index
-///   below its child's (p < n ≤ s);
-/// - **five more arrays** after the twelve, each 8-aligned after the previous one: node run
+///   order; a hidden node (a member of a collapsed run) has row, lane and col −1 but keeps its own
+///   day; a stack node has its newest member's day. [nodeCount] stays n. The edges and buckets are
+///   the grouped layout's, and an edge's `from` / `to` may be a stack node. Index order is then no
+///   topological order: an edge into a stack node has a parent index below its child's
+///   (p < n ≤ s);
+/// - **five more arrays** after the thirteen, each 8-aligned after the previous one: node run
 ///   (int32 × n: the run index of each topology node, or −1), run state (uint8 × R:
 ///   [runExpanded] / [runCollapsed]), run node (int32 × R: the run's stack node, or −1 when
 ///   expanded), run start (int32 × R + 1) and run members (int32 × M) — the runs' members as a CSR
@@ -150,6 +157,7 @@ final class GraphGridView {
     required this.bucketValues,
     required this.bucketStarts,
     required this.bucketEnds,
+    required this.nodeDays,
     required this.stackCount,
     required this.runCount,
     required this.nodeRuns,
@@ -231,7 +239,7 @@ final class GraphGridView {
 
     final offsets = Int32List(_arrayCount);
     for (var k = 0; k < _arrayCount; k++) {
-      final int expected = k <= _nodeCol ? n + s : (k <= _edgeBlocked ? e : b);
+      final int expected = k <= _nodeCol || k == _nodeDay ? n + s : (k <= _edgeBlocked ? e : b);
       offsets[k] = locate(
         _arrayNames[k],
         _slotArrays + 2 * k,
@@ -277,6 +285,7 @@ final class GraphGridView {
       bucketValues: buffer.asInt64List(offsets[_bucketValue], b).asUnmodifiableView(),
       bucketStarts: buffer.asInt32List(offsets[_bucketStart], b).asUnmodifiableView(),
       bucketEnds: buffer.asInt32List(offsets[_bucketEnd], b).asUnmodifiableView(),
+      nodeDays: buffer.asInt64List(offsets[_nodeDay], nodes).asUnmodifiableView(),
       stackCount: s,
       runCount: r,
       nodeRuns: stacked ? buffer.asInt32List(stackOffsets[_nodeRun], n).asUnmodifiableView() : null,
@@ -287,11 +296,15 @@ final class GraphGridView {
     );
   }
 
-  /// The grid format version of a layout without stacks (header slot 0).
-  static const formatVersion = 1;
+  /// The grid format version of a layout without stacks (header slot 0). Versions 1 and 2 (before
+  /// Story 4.14's node day) are retired: no grid is ever persisted.
+  static const formatVersion = 3;
 
-  /// The grid format version of a layout with a stack request (Story 4.13).
-  static const stackFormatVersion = 2;
+  /// The grid format version of a layout with a stack request (Stories 4.13 / 4.14).
+  static const stackFormatVersion = 4;
+
+  /// [nodeDays]' value for a node in no day: the root (−2^63).
+  static const int noDay = -0x7FFFFFFFFFFFFFFF - 1;
 
   /// A run state ([runStates]): the run's members are visible.
   static const runExpanded = 0;
@@ -386,6 +399,12 @@ final class GraphGridView {
   /// Each bucket's largest member y, unmodifiable.
   final Int32List bucketEnds;
 
+  /// Each node's local day (Story 4.14): the local-midnight instant in epoch ms of the calendar day
+  /// of its clamped T at the request's UTC offset (§4.2 free, step 4's dk), in both modes; [noDay]
+  /// for the root. With stacks n + S entries: a hidden node keeps its own day, a stack node has its
+  /// newest member's. Unmodifiable.
+  final Int64List nodeDays;
+
   /// S, the stack nodes (the collapsed runs); 0 without stacks.
   final int stackCount;
 
@@ -432,7 +451,7 @@ final class GraphGridView {
   }
 }
 
-/// Writes a grid buffer in [GraphGridView]'s format: the header, then the twelve arrays. Every
+/// Writes a grid buffer in [GraphGridView]'s format: the header, then the thirteen arrays. Every
 /// bucket is a `day` bucket. For the layout engine only — not part of the public API that
 /// [GraphGridView] is.
 @internal
@@ -445,6 +464,7 @@ Uint8List writeGraphGrid({
   required Int64List nodeRows,
   required Int32List nodeLanes,
   required Int32List nodeCols,
+  required Int64List nodeDays,
   required Int32List edgeFroms,
   required Int32List edgeTos,
   required Uint8List edgeKinds,
@@ -460,7 +480,7 @@ Uint8List writeGraphGrid({
   final offsets = Int32List(_arrayCount);
   int end = _headerBytes;
   for (var k = 0; k < _arrayCount; k++) {
-    final count = k <= _nodeCol ? n : (k <= _edgeBlocked ? e : b);
+    final count = k <= _nodeCol || k == _nodeDay ? n : (k <= _edgeBlocked ? e : b);
     final int start = (end + 7) & ~7;
     offsets[k] = start;
     end = start + count * _elementSizes[k];
@@ -480,7 +500,11 @@ Uint8List writeGraphGrid({
   for (var k = 0; k < _arrayCount; k++) {
     header
       ..setInt32(4 * (_slotArrays + 2 * k), offsets[k], Endian.little)
-      ..setInt32(4 * (_slotArrays + 2 * k + 1), k <= _nodeCol ? n : (k <= _edgeBlocked ? e : b), Endian.little);
+      ..setInt32(
+        4 * (_slotArrays + 2 * k + 1),
+        k <= _nodeCol || k == _nodeDay ? n : (k <= _edgeBlocked ? e : b),
+        Endian.little,
+      );
   }
   final Int32List row = buffer.asInt32List(offsets[_nodeRow], n);
   for (var i = 0; i < n; i++) {
@@ -501,14 +525,15 @@ Uint8List writeGraphGrid({
     start[k] = bucketStarts[k];
     bucketEnd[k] = bucketEnds[k];
   }
+  buffer.asInt64List(offsets[_nodeDay], n).setAll(0, nodeDays);
   return bytes;
 }
 
-/// Writes a grid buffer of format version [GraphGridView.stackFormatVersion] (Story 4.13): the
-/// 46-slot header, the twelve arrays of [writeGraphGrid] — the node arrays with n + S entries,
-/// −1 for a hidden node — then the five run arrays. n is `nodeRuns.length`, S the node arrays'
-/// surplus over it. Every bucket is a `day` bucket. For the layout engine only, like
-/// [writeGraphGrid].
+/// Writes a grid buffer of format version [GraphGridView.stackFormatVersion] (Stories 4.13 /
+/// 4.14): the 48-slot header, the thirteen arrays of [writeGraphGrid] — the node arrays with n + S
+/// entries, −1 for a hidden node's row, lane and col — then the five run arrays. n is
+/// `nodeRuns.length`, S the node arrays' surplus over it. Every bucket is a `day` bucket. For the
+/// layout engine only, like [writeGraphGrid].
 @internal
 Uint8List writeStackGrid({
   required LayoutMode mode,
@@ -519,6 +544,7 @@ Uint8List writeStackGrid({
   required Int64List nodeRows,
   required Int32List nodeLanes,
   required Int32List nodeCols,
+  required Int64List nodeDays,
   required Int32List edgeFroms,
   required Int32List edgeTos,
   required Uint8List edgeKinds,
@@ -539,7 +565,7 @@ Uint8List writeStackGrid({
   final int b = bucketValues.length;
   final int r = runStates.length;
   final int m = runMembers.length;
-  final counts = <int>[nodes, nodes, nodes, e, e, e, e, e, b, b, b, b];
+  final counts = <int>[nodes, nodes, nodes, e, e, e, e, e, b, b, b, b, nodes];
   final stackCounts = <int>[n, r, r, r + 1, m];
   final offsets = Int32List(_arrayCount);
   final stackOffsets = Int32List(_stackArrayCount);
@@ -598,6 +624,7 @@ Uint8List writeStackGrid({
     start[k] = bucketStarts[k];
     bucketEnd[k] = bucketEnds[k];
   }
+  buffer.asInt64List(offsets[_nodeDay], nodes).setAll(0, nodeDays);
   buffer.asInt32List(stackOffsets[_nodeRun], n).setAll(0, nodeRuns);
   buffer.asUint8List(stackOffsets[_runState], r).setAll(0, runStates);
   buffer.asInt32List(stackOffsets[_runNode], r).setAll(0, runNodes);

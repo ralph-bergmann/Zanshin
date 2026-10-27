@@ -1,0 +1,8 @@
+{
+  "design": "e74ced3",
+  "revset": "default",
+  "input": "inputs/design-e243dd2-default.json",
+  "gl_greedy_lanes": 8,
+  "gl_exact_lanes": 8,
+  "joint_greedy_lanes": 8
+}

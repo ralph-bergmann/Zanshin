@@ -491,3 +491,656 @@ final class CompactOrder {
     }
   }
 }
+
+/// The weight of each model's cost in the joint `compact` order (SPEC §4.7, amended 2026-10-27):
+/// joint cost = 16·cost_compact + cost_free, both models' per-pitch costs scaled to stay integer.
+const List<int> modelWeights = [16, 1];
+
+/// The `compact` lane order on the joint packing (SPEC §4.7, amended 2026-10-27, Story 4.14).
+///
+/// Segments are the straight chains of the joint packing; every model (`compact` and `free`, or
+/// with [single] only the layout's own) keeps its own reservations, tick geometry and per-column
+/// segment lists. A window is a connected component of two columns' segments under "reservations
+/// overlap in some model"; components are visited by their least reservation start in model 0. An
+/// exchange stays iff Σ weight·cost falls. With [single] every rule reduces to [CompactOrder]'s,
+/// work units included — the tests check that.
+final class JointCompactOrder {
+  JointCompactOrder(
+    this.g, {
+    bool single = false,
+    this.gravity = compactGravity,
+    this.reach = compactReach,
+    this.rounds = compactRounds,
+    this.budget = compactBudget,
+    this.skip = true,
+  }) : n = g.n {
+    if (n == 0) {
+      segCount = 0;
+      return;
+    }
+    _segments();
+    colOf = Int32List(segCount);
+    for (var s = 0; s < segCount; s++) {
+      colOf[s] = g.lane[segHead[s]];
+    }
+    if (single) {
+      models.add(CompactModel._(this, g.y, g.unit, g.routes, 1));
+    } else {
+      for (var k = 0; k < 2; k++) {
+        models.add(CompactModel._(this, g.modelY[k], modelUnits[k], g.routesOf(k), modelWeights[k]));
+      }
+    }
+  }
+
+  final GraphLayout g;
+  final int n;
+  final int gravity;
+  final int reach;
+  final int rounds;
+  final int budget;
+  final bool skip;
+
+  /// The models, model 0 first (its reservation starts order the windows).
+  final List<CompactModel> models = [];
+
+  /// cont(j) (SPEC §4.3); segment of every node; per segment its head (lowest node).
+  late final Int32List cont;
+  late final Int32List seg;
+  late final int segCount;
+  late final Int32List segHead;
+
+  /// Column of every segment.
+  late final Int32List colOf;
+
+  int _spent = 0;
+
+  /// Runs the search; returns the new lane of every node.
+  Int32List run() {
+    if (n == 0) return Int32List(0);
+    final inM = Uint8List(segCount);
+    List<List<int>>? previous; // per model, the level spans of the exchanges the previous round kept
+    for (var r = 0; r < rounds; r++) {
+      final kept = [for (var k = 0; k < models.length; k++) <int>[]];
+      if (!_swapRound(inM, skip ? previous : null, kept)) break;
+      previous = kept;
+    }
+    final columns = models[0].colSegs;
+    final newCol = Int32List(columns.length);
+    var next = 0;
+    for (var c = 0; c < columns.length; c++) {
+      newCol[c] = columns[c].isEmpty && c > 0 ? -1 : next++;
+    }
+    final lane = Int32List(n);
+    for (var i = 0; i < n; i++) {
+      lane[i] = newCol[colOf[seg[i]]];
+    }
+    return lane;
+  }
+
+  /// The joint model cost of the current columns: Σ weight·[CompactModel.localCost] over every
+  /// segment.
+  int totalCost() {
+    if (n == 0) return 0;
+    final all = List<int>.generate(segCount, (s) => s);
+    return _cost(all, Uint8List(segCount)..fillRange(0, segCount, 1));
+  }
+
+  int _cost(List<int> members, Uint8List inM) {
+    var sum = 0;
+    for (final m in models) {
+      sum += m.weight * m.localCost(members, inM);
+    }
+    return sum;
+  }
+
+  /// Segments = maximal chains of straight edges of the joint packing (lane(fp(i)) = lane(i)).
+  void _segments() {
+    final fp = g.fp, lane = g.lane;
+    cont = g.continuations();
+    final seg = Int32List(n);
+    final heads = Int32List(n);
+    var count = 0;
+    for (var i = n - 1; i >= 0; i--) {
+      final f = fp[i];
+      if (f >= 0 && lane[f] == lane[i]) {
+        seg[i] = seg[f];
+      } else {
+        heads[count] = i;
+        seg[i] = count++;
+      }
+    }
+    this.seg = seg;
+    segCount = count;
+    segHead = Int32List.sublistView(heads, 0, count);
+  }
+
+  // ---- Per column pair: the windows (components), rebuilt by [_components].
+
+  /// Per model k, the members of every component ascending by model k's reservation start (CSR).
+  final List<Int32List> _compStart = [];
+  final List<Int32List> _compMembers = [];
+
+  /// Components of the segments of columns [cl] and [cr]: per model the §4.7 sweep cuts windows
+  /// where no reservation reaches the next start; a union-find joins the windows of model 0 that
+  /// share a segment with one window of another model. Components are numbered by their least
+  /// model-0 start. Returns their count.
+  int _components(int cl, int cr) {
+    final mc = models.length;
+    final pairSize = models[0].colSegs[cl].length + models[0].colSegs[cr].length;
+    final seqs = <Int32List>[], groupStart = <List<int>>[];
+    for (final m in models) {
+      final (seq, starts) = m.sweep(cl, cr);
+      seqs.add(seq);
+      groupStart.add(starts);
+    }
+    // Model-0 window of every segment of the pair (scratch indexed by segment).
+    final g0 = groupStart[0];
+    final g0Count = g0.length - 1;
+    final parent = Int32List(g0Count);
+    for (var k = 0; k < g0Count; k++) {
+      parent[k] = k;
+    }
+    int find(int x) {
+      while (parent[x] != x) {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+      }
+      return x;
+    }
+
+    final seq0 = seqs[0];
+    for (var w = 0; w < g0Count; w++) {
+      for (var p = g0[w]; p < g0[w + 1]; p++) {
+        _window0[seq0[p]] = w;
+      }
+    }
+    for (var k = 1; k < mc; k++) {
+      final starts = groupStart[k], seq = seqs[k];
+      for (var w = 0; w + 1 < starts.length; w++) {
+        // Join every model-0 window this window touches; a root is always its set's least window.
+        var root = find(_window0[seq[starts[w]]]);
+        for (var p = starts[w] + 1; p < starts[w + 1]; p++) {
+          final r = find(_window0[seq[p]]);
+          if (r < root) {
+            parent[root] = r;
+            root = r;
+          } else if (r > root) {
+            parent[r] = root;
+          }
+        }
+      }
+    }
+    // Number the components by their least model-0 window (= least model-0 start).
+    final compOf = Int32List(g0Count)..fillRange(0, g0Count, -1);
+    var count = 0;
+    for (var w = 0; w < g0Count; w++) {
+      final r = find(w);
+      if (compOf[r] < 0) compOf[r] = count++;
+      compOf[w] = compOf[r];
+    }
+    _compStart.clear();
+    _compMembers.clear();
+    for (var k = 0; k < mc; k++) {
+      final seq = seqs[k];
+      final start = Int32List(count + 1);
+      for (var p = 0; p < pairSize; p++) {
+        start[compOf[_window0[seq[p]]] + 1]++;
+      }
+      for (var c = 0; c < count; c++) {
+        start[c + 1] += start[c];
+      }
+      final cursor = Int32List.fromList(start);
+      final members = Int32List(pairSize);
+      for (var p = 0; p < pairSize; p++) {
+        members[cursor[compOf[_window0[seq[p]]]]++] = seq[p];
+      }
+      _compStart.add(start);
+      _compMembers.add(members);
+    }
+    return count;
+  }
+
+  late final Int32List _window0 = Int32List(segCount);
+
+  /// Whether some span of [spans] (pairs lo, hi) meets [lo, hi); charges half the list's length.
+  bool _touched(List<int> spans, int lo, int hi) {
+    _spent += spans.length >> 1;
+    for (var k = 0; k < spans.length; k += 2) {
+      if (spans[k] < hi && lo < spans[k + 1]) return true;
+    }
+    return false;
+  }
+
+  /// One round (SPEC §4.7, amended 2026-10-27). True if an exchange stayed; [kept] collects, per
+  /// model, the level span [lo, hi) of each exchange that stayed. After the first round a window
+  /// is skipped iff in every model its span meets no span kept since the previous round began.
+  bool _swapRound(Uint8List inM, List<List<int>>? previous, List<List<int>> kept) {
+    var moved = false;
+    final mc = models.length;
+    final spanLo = List<int>.filled(mc, 0), spanHi = List<int>.filled(mc, 0);
+    for (var d = 1; d <= reach; d++) {
+      for (var c = 1; c + d < models[0].colSegs.length; c++) {
+        final count = _components(c, c + d);
+        for (var w = 0; w < count; w++) {
+          if (_spent > budget) return moved;
+          for (var k = 0; k < mc; k++) {
+            final m = models[k], start = _compStart[k], members = _compMembers[k];
+            var lo = 0x3FFFFFFFFFFFFFFF, end = -0x3FFFFFFFFFFFFFFF;
+            for (var p = start[w]; p < start[w + 1]; p++) {
+              final s = members[p];
+              if (m.segLo[s] < lo) lo = m.segLo[s];
+              if (m.segB[s] > end) end = m.segB[s];
+            }
+            spanLo[k] = lo;
+            spanHi[k] = 10 * end;
+          }
+          if (previous != null) {
+            var touched = false;
+            for (var k = 0; k < mc && !touched; k++) {
+              touched = _touched(previous[k], spanLo[k], spanHi[k]) || _touched(kept[k], spanLo[k], spanHi[k]);
+            }
+            if (!touched) continue;
+          }
+          final members = Int32List.sublistView(_compMembers[0], _compStart[0][w], _compStart[0][w + 1]);
+          for (final s in members) {
+            inM[s] = 1;
+          }
+          final before = _cost(members, inM);
+          _exchange(w, c, c + d, inM);
+          if (_cost(members, inM) < before) {
+            moved = true;
+            for (var k = 0; k < mc; k++) {
+              kept[k]
+                ..add(spanLo[k])
+                ..add(spanHi[k]);
+            }
+          } else {
+            _exchange(w, c, c + d, inM);
+          }
+          for (final s in members) {
+            inM[s] = 0;
+          }
+        }
+      }
+    }
+    return moved;
+  }
+
+  /// Moves every member of component [w] to the other column of the pair ([cl], [cr]) and rebuilds
+  /// both columns' lists in every model.
+  void _exchange(int w, int cl, int cr, Uint8List inM) {
+    for (var k = 0; k < models.length; k++) {
+      final m = models[k];
+      final members = Int32List.sublistView(_compMembers[k], _compStart[k][w], _compStart[k][w + 1]);
+      final fromLeft = <int>[], fromRight = <int>[];
+      for (final s in members) {
+        (colOf[s] == cl ? fromLeft : fromRight).add(s);
+      }
+      // Both leaving positions before either list changes: rebuilding one column moves the
+      // arrivals' positions.
+      final leftFirst = fromLeft.isEmpty ? -1 : m.pos[fromLeft.first];
+      final rightFirst = fromRight.isEmpty ? -1 : m.pos[fromRight.first];
+      _spent += m.rebuild(cl, leftFirst, fromRight, inM);
+      _spent += m.rebuild(cr, rightFirst, fromLeft, inM);
+    }
+    for (final s in Int32List.sublistView(_compMembers[0], _compStart[0][w], _compStart[0][w + 1])) {
+      colOf[s] = colOf[s] == cl ? cr : cl;
+    }
+  }
+}
+
+/// One vertical model's part of [JointCompactOrder]: its segment reservations, §4.6's tick model
+/// per segment (SPEC §4.7) and every column's segments ascending by its reservation start.
+final class CompactModel {
+  CompactModel._(this._o, this.y, this.u, this.routes, this.weight) {
+    _reservations();
+    _geometry();
+    _columns();
+  }
+
+  final JointCompactOrder _o;
+  final Int64List y;
+  final int u;
+  final Uint8List routes;
+  final int weight;
+
+  late final Int64List segA;
+  late final Int64List segB;
+  late final Int64List segLo;
+  late final int hCount;
+  late final Int32List hPar;
+  late final Int32List hChild;
+  late final Int64List hLevel;
+  late final Int32List byLevel;
+  late final Int64List levelSorted;
+  late final Int32List incStart;
+  late final Int32List incH;
+  late final Int32List vStart;
+  late final Int64List vLo;
+  late final Int64List vHi;
+  late final Int64List vMin;
+  late final Int64List vMax;
+
+  /// Per column, its segments ascending by this model's reservation start; [pos] is each
+  /// segment's index there.
+  final List<List<int>> colSegs = [];
+  late final Int32List pos;
+
+  void _reservations() {
+    final g = _o.g, n = _o.n, seg = _o.seg, cont = _o.cont, fp = g.fp;
+    final chStart = g.chStart, chIdx = g.chIdx, chPos = g.chPos;
+    final count = _o.segCount;
+    final segA = Int64List(count)..fillRange(0, count, 0x3FFFFFFFFFFFFFFF);
+    final segB = Int64List(count)..fillRange(0, count, -0x3FFFFFFFFFFFFFFF);
+    for (var i = 0; i < n; i++) {
+      var end = y[i];
+      final c = cont[i];
+      if (c >= 0 && y[c] - u > end) end = y[c] - u;
+      for (var s = chStart[i]; s < chStart[i + 1]; s++) {
+        if (chPos[s] >= 1 && y[chIdx[s]] - u > end) end = y[chIdx[s]] - u;
+      }
+      final f = fp[i];
+      final a = f >= 0 ? y[f] + u : y[i];
+      final b = end + 2 * u;
+      final s = seg[i];
+      if (a < segA[s]) segA[s] = a;
+      if (b > segB[s]) segB[s] = b;
+    }
+    this.segA = segA;
+    this.segB = segB;
+  }
+
+  /// [CompactOrder]'s geometry over this model's y, U and routes.
+  void _geometry() {
+    final g = _o.g, edgeParent = g.edgeParent, edgeChild = g.edgeChild, edgeCount = g.edgeCount;
+    final seg = _o.seg, segCount = _o.segCount, segA = this.segA;
+    var hCount = 0;
+    final vCount = Int32List(segCount + 1);
+    for (var e = 0; e < edgeCount; e++) {
+      final sp = seg[edgeParent[e]], si = seg[edgeChild[e]];
+      switch (routes[e]) {
+        case routeStraight:
+          vCount[sp + 1]++;
+        case routeMerge:
+          vCount[sp + 1]++;
+          vCount[si + 1]++;
+          hCount++;
+        default:
+          vCount[si + 1]++;
+          hCount++;
+      }
+    }
+    for (var s = 0; s < segCount; s++) {
+      vCount[s + 1] += vCount[s];
+    }
+    final vStart = vCount;
+    final vTotal = vStart[segCount];
+    final vLo = Int64List(vTotal), vHi = Int64List(vTotal);
+    final cursor = Int32List.fromList(vStart);
+    final hPar = Int32List(hCount), hChild = Int32List(hCount);
+    final hLevel = Int64List(hCount);
+    var h = 0;
+    for (var e = 0; e < edgeCount; e++) {
+      final p = edgeParent[e], i = edgeChild[e];
+      final sp = seg[p], si = seg[i];
+      final botP = 10 * y[p], botI = 10 * y[i];
+      final top = botP + 5 * u;
+      switch (routes[e]) {
+        case routeStraight:
+          final k = cursor[sp]++;
+          vLo[k] = top;
+          vHi[k] = botI;
+        case routeMerge:
+          final dn = botI - 2 * u;
+          var k = cursor[sp]++;
+          vLo[k] = top;
+          vHi[k] = dn;
+          k = cursor[si]++;
+          vLo[k] = dn;
+          vHi[k] = botI;
+          hPar[h] = sp;
+          hChild[h] = si;
+          hLevel[h] = dn;
+          h++;
+        default:
+          final up = botP + 7 * u;
+          final floor = 10 * segA[si] - 3 * u;
+          final k = cursor[si]++;
+          vLo[k] = up > floor ? up : floor;
+          vHi[k] = botI;
+          hPar[h] = sp;
+          hChild[h] = si;
+          hLevel[h] = up;
+          h++;
+      }
+    }
+    final vMin = Int64List(segCount), vMax = Int64List(segCount);
+    for (var s = 0; s < segCount; s++) {
+      final lo = Int64List.sublistView(vLo, vStart[s], vStart[s + 1])..sort();
+      final hi = Int64List.sublistView(vHi, vStart[s], vStart[s + 1])..sort();
+      vMin[s] = lo.isEmpty ? 0 : lo.first;
+      vMax[s] = hi.isEmpty ? 0 : hi.last;
+    }
+    final incStart = Int32List(segCount + 1);
+    for (var k = 0; k < hCount; k++) {
+      incStart[hPar[k] + 1]++;
+      incStart[hChild[k] + 1]++;
+    }
+    for (var s = 0; s < segCount; s++) {
+      incStart[s + 1] += incStart[s];
+    }
+    final incH = Int32List(2 * hCount);
+    final incCursor = Int32List.fromList(incStart);
+    for (var k = 0; k < hCount; k++) {
+      incH[incCursor[hPar[k]]++] = k;
+      incH[incCursor[hChild[k]]++] = k;
+    }
+    final segLo = Int64List(segCount);
+    for (var s = 0; s < segCount; s++) {
+      var lo = 10 * segA[s] - 3 * u;
+      for (var r = incStart[s]; r < incStart[s + 1]; r++) {
+        if (hLevel[incH[r]] < lo) lo = hLevel[incH[r]];
+      }
+      segLo[s] = lo;
+    }
+    final byLevel = Int32List(hCount);
+    for (var k = 0; k < hCount; k++) {
+      byLevel[k] = k;
+    }
+    byLevel.sort((a, b) {
+      final la = hLevel[a], lb = hLevel[b];
+      if (la != lb) return la < lb ? -1 : 1;
+      return a - b;
+    });
+    final levelSorted = Int64List(hCount);
+    for (var k = 0; k < hCount; k++) {
+      levelSorted[k] = hLevel[byLevel[k]];
+    }
+    this.hCount = hCount;
+    this.hPar = hPar;
+    this.hChild = hChild;
+    this.hLevel = hLevel;
+    this.byLevel = byLevel;
+    this.levelSorted = levelSorted;
+    this.incStart = incStart;
+    this.incH = incH;
+    this.segLo = segLo;
+    this.vStart = vStart;
+    this.vLo = vLo;
+    this.vHi = vHi;
+    this.vMin = vMin;
+    this.vMax = vMax;
+  }
+
+  /// Every column's segments ascending by reservation start.
+  void _columns() {
+    final segCount = _o.segCount, colOf = _o.colOf;
+    final bySegA = Int32List(segCount);
+    for (var s = 0; s < segCount; s++) {
+      bySegA[s] = s;
+    }
+    bySegA.sort((a, b) {
+      final x = segA[a], y = segA[b];
+      if (x != y) return x < y ? -1 : 1;
+      return a - b;
+    });
+    for (var c = 0; c < _o.g.laneCount; c++) {
+      colSegs.add(<int>[]);
+    }
+    pos = Int32List(segCount);
+    for (final s in bySegA) {
+      final list = colSegs[colOf[s]];
+      pos[s] = list.length;
+      list.add(s);
+    }
+  }
+
+  /// The segments of columns [cl] and [cr] ascending by reservation start (left first on a tie),
+  /// and the start of each §4.7 window in that sequence (plus the end): a window grows while the
+  /// next segment starts before its largest b.
+  (Int32List, List<int>) sweep(int cl, int cr) {
+    final left = colSegs[cl], right = colSegs[cr];
+    final seq = Int32List(left.length + right.length);
+    final starts = <int>[];
+    var i = 0, j = 0, p = 0;
+    var end = -0x3FFFFFFFFFFFFFFF;
+    while (i < left.length || j < right.length) {
+      final takeLeft = i < left.length && (j >= right.length || segA[left[i]] <= segA[right[j]]);
+      final t = takeLeft ? left[i++] : right[j++];
+      if (p == 0 || segA[t] >= end) {
+        starts.add(p);
+        end = segB[t];
+      } else if (segB[t] > end) {
+        end = segB[t];
+      }
+      seq[p++] = t;
+    }
+    starts.add(p);
+    return (seq, starts);
+  }
+
+  /// Rebuilds column [c]'s list: its window members (marked in [inM]; the first at index
+  /// [leaveFirst], or −1 for none) go, [arrive] (ascending start) come. Returns the work: the
+  /// list's length minus its first changed index.
+  int rebuild(int c, int leaveFirst, List<int> arrive, Uint8List inM) {
+    final list = colSegs[c];
+    final oldLen = list.length;
+    var first = leaveFirst < 0 ? oldLen : leaveFirst;
+    if (arrive.isNotEmpty) {
+      final a = segA[arrive.first];
+      var lo = 0, hi = first;
+      while (lo < hi) {
+        final mid = (lo + hi) >> 1;
+        if (segA[list[mid]] < a) {
+          lo = mid + 1;
+        } else {
+          hi = mid;
+        }
+      }
+      first = lo;
+    }
+    final tail = list.sublist(first);
+    list.length = first;
+    var r = 0;
+    for (final s in tail) {
+      if (inM[s] != 0) continue;
+      while (r < arrive.length && segA[arrive[r]] < segA[s]) {
+        pos[arrive[r]] = list.length;
+        list.add(arrive[r++]);
+      }
+      pos[s] = list.length;
+      list.add(s);
+    }
+    while (r < arrive.length) {
+      pos[arrive[r]] = list.length;
+      list.add(arrive[r++]);
+    }
+    return oldLen - first;
+  }
+
+  /// m(s, λ): the number of segment s's verticals with lo < λ < hi.
+  int m(int s, int level) {
+    if (level <= vMin[s] || level >= vMax[s]) return 0;
+    final start = vStart[s], end = vStart[s + 1];
+    var lo = start, hi = end;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (vLo[mid] < level) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    final below = lo - start;
+    lo = start;
+    hi = end;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (vHi[mid] <= level) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return below - (lo - start);
+  }
+
+  /// The verticals at level λ in column c (only the last segment with 10·a − 3U < λ can hold one).
+  int mAt(int c, int level) {
+    final list = colSegs[c], u3 = 3 * u;
+    var lo = 0, hi = list.length;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (10 * segA[list[mid]] - u3 < level) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo == 0 ? 0 : m(list[lo - 1], level);
+  }
+
+  /// [CompactOrder.localCost] in this model.
+  int localCost(List<int> members, Uint8List inM) {
+    final colOf = _o.colOf, gravity = _o.gravity;
+    var x = 0, len = 0, grav = 0, spent = 0;
+    for (final s in members) {
+      final cs = colOf[s];
+      grav += gravity * cs * (segB[s] - segA[s]);
+      for (var r = incStart[s]; r < incStart[s + 1]; r++) {
+        final h = incH[r];
+        final other = hPar[h] == s ? hChild[h] : hPar[h];
+        if (inM[other] != 0 && hPar[h] != s) continue; // counted from its parent side
+        final xo = colOf[other];
+        final lo = cs < xo ? cs : xo, hi = cs < xo ? xo : cs;
+        len += hi - lo;
+        final level = hLevel[h];
+        for (var c = lo + 1; c < hi; c++) {
+          x += mAt(c, level);
+        }
+        spent += hi - lo;
+      }
+      final from = vMin[s], to = vMax[s];
+      if (to <= from) continue;
+      var lo = 0, hi = hCount;
+      while (lo < hi) {
+        final mid = (lo + hi) >> 1;
+        if (levelSorted[mid] <= from) {
+          lo = mid + 1;
+        } else {
+          hi = mid;
+        }
+      }
+      for (var k = lo; k < hCount && levelSorted[k] < to; k++) {
+        spent++;
+        final h = byLevel[k];
+        final pa = hPar[h], ch = hChild[h];
+        if (inM[pa] != 0 || inM[ch] != 0) continue;
+        final xa = colOf[pa], xb = colOf[ch];
+        if ((xa < cs && cs < xb) || (xb < cs && cs < xa)) x += m(s, levelSorted[k]);
+      }
+    }
+    _o._spent += spent;
+    return u * (400 * x + 4 * len) + grav;
+  }
+}

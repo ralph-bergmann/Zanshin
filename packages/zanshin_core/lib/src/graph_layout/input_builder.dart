@@ -10,12 +10,14 @@ import 'layout_input.dart';
 /// `zanshin_graph_topology` (Story 4.10, read through Story 4.12's view), in O(n + E) with stamp
 /// arrays and no maps:
 /// - nodes in the topology's order; a node is a root iff the topology flags it, and has a
-///   timestamp iff the topology carries timestamps and the node is not the root;
+///   timestamp iff the topology carries timestamps and the node is not the root (the worker loads
+///   them for every request since Story 4.14: both vertical models are laid out);
 /// - each node's parents are its edges in stream order: a Missing edge stays a `missing` parent,
 ///   and Direct / Indirect edges keep ONE parent per target, at the position of its first
 ///   occurrence, `direct` if any edge to that target is direct (§2's repeated-target rule);
 /// - the priority classes follow §11.2's anchors rule over the topology's anchors;
-/// - [utcOffsetMin] is passed through (`free` reads it).
+/// - [utcOffsetMin] is passed through (both modes read it: `free`'s day buckets, every node's day
+///   key).
 ///
 /// Values are copied verbatim — never repaired, never rejected: a target outside the node range is
 /// copied as it is (and never used as an index), so the engine's validation names the rule it

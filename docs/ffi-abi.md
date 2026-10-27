@@ -1375,7 +1375,9 @@ An error envelope never carries a partial payload.
   mode's call.
 - *(2026-10-01, Story 4.11)* `GraphLayoutCommand(handleId, revset, prioritize, shortPrefixes,
   anchors, mode, order, utcOffsetMin, budget)` — the same topology call (timestamps iff `mode` is
-  `free`), then the Dart layout engine over the native bytes before they are freed; replies with
+  `free`; *amended 2026-10-27, Story 4.14:* timestamps for every request, since the joint columns
+  lay out both vertical models and every node carries a day key), then the Dart layout engine over
+  the native bytes before they are freed; replies with
   a `GraphLayoutResult`: the topology envelope (one copy) plus the layout grid (one copy), or a
   `LayoutContractException` instead of the grid (unknown id → `ffi.invalid_handle` envelope as a
   `BufferResult`). `ZanshinWorker.graphLayout` / `RepoHandle.graphLayout` return

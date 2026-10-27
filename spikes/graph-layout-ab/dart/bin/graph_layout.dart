@@ -6,10 +6,12 @@ import 'package:graph_layout/graph_layout.dart';
 
 const String _usage = '''
 usage:
-  graph_layout layout --mode compact|time|free --order greedy|optimized|compact [--budget B] [--stacks R] <input.json> <output.json>
-  graph_layout bench  --mode compact|time|free --order greedy|optimized|compact [--budget B] [--stacks R] [--runs N] [--warmup W] <input.json>
+  graph_layout layout --mode compact|time|free --order greedy|optimized|compact [--budget B] [--stacks R] [--columns mode|joint] <input.json> <output.json>
+  graph_layout bench  --mode compact|time|free --order greedy|optimized|compact [--budget B] [--stacks R] [--columns mode|joint] [--runs N] [--warmup W] <input.json>
 (--order compact is Dart-only, SPEC §4.7; --budget is its search budget, default 2000000;
- --stacks R is Dart-only, SPEC §4.8: the stack request file R, modes compact and free only)''';
+ --stacks R is Dart-only, SPEC §4.8: the stack request file R, modes compact and free only;
+ --columns is Dart-only, SPEC §4.3 / §4.7: joint = one packing and column order for compact and
+ free (modes compact and free, orders greedy and compact only), mode = per mode, the default)''';
 
 /// Usage error or invalid input: exit code 2 (SPEC §6).
 final class _Exit2 implements Exception {
@@ -47,7 +49,9 @@ void _layout(_Cli cli) {
   final request = cli.stacks == null ? null : _read(cli.stacks!);
   final input = parseInput(_read(cli.positional[0]), stacks: request != null);
   final stacks = request == null ? null : parseStackRequest(request, input);
-  final json = encodeOutput(computeLayout(input, cli.mode, cli.order, budget: cli.budget, stacks: stacks));
+  final json = encodeOutput(
+    computeLayout(input, cli.mode, cli.order, budget: cli.budget, stacks: stacks, joint: cli.joint),
+  );
   try {
     File(cli.positional[1]).writeAsStringSync(json);
   } on FileSystemException catch (e) {
@@ -94,6 +98,7 @@ void _bench(_Cli cli) {
       cli.order,
       budget: cli.budget,
       stacks: stacks,
+      joint: cli.joint,
       onPhaseEnd: () => t[k++] = sw.elapsedTicks,
     );
     if (iter < warmup) continue;
@@ -113,6 +118,7 @@ void _bench(_Cli cli) {
     ..write(cli.mode.name)
     ..write('","order":"')
     ..write(cli.order.name)
+    ..write(cli.joint ? '","columns":"joint' : '')
     ..write('","nodes":')
     ..write(input!.n)
     ..write(',"edges":')
@@ -156,7 +162,7 @@ Uint8List _read(String path) {
 }
 
 final class _Cli {
-  _Cli(this.mode, this.order, this.runs, this.warmup, this.budget, this.stacks, this.positional);
+  _Cli(this.mode, this.order, this.runs, this.warmup, this.budget, this.stacks, this.joint, this.positional);
 
   factory _Cli.parse(List<String> args) {
     final flags = <String, String>{};
@@ -177,7 +183,7 @@ final class _Cli {
         name = arg.substring(2);
         value = args[++k];
       }
-      if (!const {'mode', 'order', 'runs', 'warmup', 'budget', 'stacks'}.contains(name)) {
+      if (!const {'mode', 'order', 'runs', 'warmup', 'budget', 'stacks', 'columns'}.contains(name)) {
         throw _Exit2('unknown flag --$name');
       }
       if (flags.containsKey(name)) throw _Exit2('--$name given twice');
@@ -191,7 +197,13 @@ final class _Cli {
     if (budget < 0) throw _Exit2('--budget must be ≥ 0');
     final stacks = flags['stacks'];
     if (stacks != null && mode == Mode.time) throw _Exit2('--stacks takes --mode compact or free');
-    return _Cli(mode, order, _intFlag(flags, 'runs'), _intFlag(flags, 'warmup'), budget, stacks, positional);
+    final columns = flags['columns'] ?? 'mode';
+    if (columns != 'mode' && columns != 'joint') throw _Exit2('--columns must be mode or joint');
+    final joint = columns == 'joint';
+    if (joint && (mode == Mode.time || order == LaneOrder.optimized)) {
+      throw _Exit2('--columns joint takes --mode compact or free and --order greedy or compact');
+    }
+    return _Cli(mode, order, _intFlag(flags, 'runs'), _intFlag(flags, 'warmup'), budget, stacks, joint, positional);
   }
 
   static int? _intFlag(Map<String, String> flags, String name) {
@@ -210,5 +222,8 @@ final class _Cli {
 
   /// The stack request file (SPEC §4.8, Story 4.13), or null without `--stacks`.
   final String? stacks;
+
+  /// `--columns joint` (SPEC §4.3 / §4.7, amended 2026-10-27, Story 4.14); `mode` is the default.
+  final bool joint;
   final List<String> positional;
 }

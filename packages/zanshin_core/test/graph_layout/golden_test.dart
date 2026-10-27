@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 // The product engine against the committed goldens (Story 4.11), which tools/goldens.mjs writes
-// from the spike's two references (greedy: Rust; the `compact` order: the spike's Dart) and from
-// the design's own computeLayout: every output byte for byte in docs/graph-layout.md §3's
-// canonical form, the fuzz cases by FNV-1a 64 hash and byte length. Story 4.13 adds the stacks
-// (§4.8): the spike Dart's outputs, the design's own groupStacks runs, the hand-derived compaction.
+// from the spike's Dart reference with `--columns joint` (Story 4.14: the product always lays out
+// joint columns) and from the design's own computeLayout: every output byte for byte in
+// docs/graph-layout.md §3's canonical form, the fuzz cases by FNV-1a 64 hash and byte length.
+// Story 4.13 adds the stacks (§4.8): the spike Dart's outputs, the design's own groupStacks runs,
+// the hand-derived compaction. Story 4.14 adds the joint-columns design oracle (export e74ced3).
 
 import 'dart:convert';
 import 'dart:io';
@@ -46,11 +47,20 @@ String layOutStacks(Uint8List bytes, Uint8List request, LayoutMode mode, LaneOrd
 void main() {
   group('design sample', () {
     for (final rev in ['default', 'all']) {
-      test('design_${rev}_compact_greedy_equals_the_designs_own_compute_layout', () {
-        expect(
+      // The 57f259c design packs lanes per mode; the product's lanes are joint (Story 4.14), so this
+      // oracle compares rows and edges but no lane or col — the joint oracle below checks the lanes.
+      // An edge's route and `blocked` do depend on the lanes; on this sample they are expected to
+      // match the per-mode oracle all the same.
+      test('design_${rev}_compact_greedy_rows_and_edges_incl_routes_match_the_per_mode_design_oracle', () {
+        Map<String, Object?> parse(String json) => jsonDecode(json) as Map<String, Object?>;
+        final Map<String, Object?> got = parse(
           layOut(golden('design/design-$rev.json'), LayoutMode.compact, LaneOrder.greedy),
-          utf8.decode(golden('design/oracle/design-$rev.compact.greedy.json')),
         );
+        final Map<String, Object?> want = parse(utf8.decode(golden('design/oracle/design-$rev.compact.greedy.json')));
+        List<Object?> rows(Map<String, Object?> o) => [
+          for (final node in o['nodes']! as List<Object?>) (node! as Map<String, Object?>)['row'],
+        ];
+        expect([got['rows'], rows(got), got['edges']], [want['rows'], rows(want), want['edges']]);
       });
 
       for (final LayoutMode mode in LayoutMode.values) {
@@ -75,12 +85,30 @@ void main() {
       }
     });
 
+    // Story 4.14, docs/graph-layout.md §7.2 (amended 2026-10-27): on the e243dd2 sample (52
+    // commits, unchanged at e74ced3), the joint greedy lane count equals the fewer of the two
+    // greedy packings of the export e74ced3's graph-layout.jsx (exact colouring off), which
+    // tools/design-layout.mjs recorded. On a mismatch, re-derive by hand before changing code.
+    for (final rev in ['default', 'all']) {
+      test('design_e243dd2_${rev}_joint_greedy_lanes_equal_the_e74ced3_designs_fewer_greedy_packing', () {
+        final oracle =
+            jsonDecode(utf8.decode(golden('design/oracle/joint-design-$rev.lanes.json'))) as Map<String, Object?>;
+        final LayoutInput input = parseSpecInput(golden('stacks/design-$rev.json')).input;
+        for (final LayoutMode mode in LayoutMode.values) {
+          final grid = GraphGridView.fromBytes(
+            computeGraphGrid(input, mode: mode, order: LaneOrder.greedy, budget: defaultLayoutBudget),
+          );
+          expect(grid.lanes, oracle['gl_greedy_lanes'], reason: '$rev ${mode.name}');
+        }
+        expect([oracle['gl_greedy_lanes'], oracle['gl_exact_lanes']], rev == 'default' ? [8, 8] : [9, 9]);
+      });
+    }
+
     // The `compact` order at a budget that stops its search mid-way (goldens README): the cut
     // output is the reference's at the same budget, and differs from the default budget's.
     for (final (String name, LayoutMode mode, int budget) in const [
-      ('design-all', LayoutMode.compact, 20),
-      ('design-all', LayoutMode.free, 90),
-      ('design-default', LayoutMode.free, 40),
+      ('design-default', LayoutMode.compact, 20),
+      ('design-default', LayoutMode.free, 10),
     ]) {
       test('${name}_${mode.name}_compact_at_budget_${budget}_equals_the_cut_reference', () {
         final String cut = layOut(golden('design/$name.json'), mode, LaneOrder.compact, budget: budget);
@@ -168,9 +196,10 @@ void main() {
       });
     }
 
-    // docs/graph-layout.md §4.8 "The design sample, by hand": compact, greedy, every run collapsed.
+    // docs/graph-layout.md §4.8 "The design sample, by hand" (amended 2026-10-27 for the joint
+    // columns): compact, greedy, every run collapsed.
     test('stacks_design_compact_greedy_rows_shrink_by_the_hand_derived_counts', () {
-      for (final (String rev, int before, int after) in const [('all', 19, 15), ('default', 9, 8)]) {
+      for (final (String rev, int before, int after) in const [('all', 19, 15), ('default', 9, 7)]) {
         final ({LayoutInput input, int nowMs, SpecStackFacts? facts}) parsed = parseSpecInput(
           golden('stacks/design-$rev.json'),
           stacks: true,

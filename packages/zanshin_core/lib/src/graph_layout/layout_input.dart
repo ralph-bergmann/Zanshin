@@ -35,7 +35,8 @@ final class LayoutInput {
     required this.parKind,
   }) : n = ts.length;
 
-  /// The viewer's fixed UTC offset in minutes for calendar days (D7); read by `free` only.
+  /// The viewer's fixed UTC offset in minutes for calendar days (D7): `free`'s day buckets and,
+  /// in both modes, every node's day key (Story 4.14).
   final int utcOffsetMin;
 
   /// The node count.

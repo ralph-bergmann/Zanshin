@@ -839,8 +839,9 @@ class ZanshinWorker {
   }
 
   /// Lay out the whole revset's graph in the repo identified by [handleId] (Story 4.11): the
-  /// topology of [graphTopology] — re-derived from head on every call, with timestamps iff [mode]
-  /// is `free` — laid out by the Dart layout engine on the worker isolate (docs/graph-layout.md).
+  /// topology of [graphTopology] — re-derived from head on every call, with timestamps in every
+  /// mode (Story 4.14: joint columns and the node day keys need them) — laid out by the Dart layout
+  /// engine on the worker isolate (docs/graph-layout.md).
   ///
   /// Every argument is a caller pass-through (FR-JJ-17; `RepoHandle.graphLayout` pre-fills all
   /// but [revset], [anchors] and [utcOffsetMin]). The call runs the topology call's pre-verb
@@ -3811,7 +3812,9 @@ void _workerEntry(_WorkerInit init) {
               prioritize: prioritize,
               shortPrefixes: shortPrefixes,
               anchors: anchors,
-              withTimestamps: mode == LayoutMode.free,
+              // Every request: the joint columns lay out both vertical models, and every node's day
+              // key needs its time (Story 4.14).
+              withTimestamps: true,
             );
             final TransferableTypedData topology;
             final ({Uint8List? grid, LayoutContractException? violation}) layout;

@@ -68,7 +68,321 @@ void main() {
   outputAndValidation();
   randomized();
   stacks();
+  jointColumns();
   finish();
+}
+
+// ---- Story 4.14: joint columns (docs/graph-layout.md §4.3 / §4.7, amended 2026-10-27) -----------
+
+/// The joint packing read literally: both models' §4.3 intervals, a node fits a lane iff no
+/// interval there except the excluded owner's overlaps it in either model; packed once in each
+/// model's visit order, the fewer lanes kept, `compact`'s on a tie. Also returns both counts.
+(List<int>, int, int) naiveJointLanes(LayoutInput g) {
+  final ls = [GraphLayout(g, Mode.compact)..layering(), GraphLayout(g, Mode.free)..layering()];
+  final n = g.n, fp = ls[0].fp, prio = g.priority;
+  final cont = List.filled(n, -1);
+  for (var i = 0; i < n; i++) {
+    final f = fp[i];
+    if (f >= 0 && (cont[f] < 0 || prio[i] < prio[cont[f]])) cont[f] = i;
+  }
+  List<int> iv(int k, int i) {
+    final l = ls[k], y = l.y, u = l.unit;
+    final ey = [
+      if (cont[i] >= 0) y[cont[i]],
+      for (var s = l.chStart[i]; s < l.chStart[i + 1]; s++)
+        if (l.chPos[s] >= 1) y[l.chIdx[s]],
+    ];
+    final end = ey.isEmpty ? y[i] : max(y[i], ey.reduce(max) - u);
+    return [fp[i] >= 0 ? y[fp[i]] + u : y[i], end + 2 * u];
+  }
+
+  final ivs = [for (var k = 0; k < 2; k++) List.generate(n, (i) => iv(k, i))];
+  (List<int>, int) pack(int v) {
+    final y = ls[v].y;
+    final order = List.generate(n, (i) => i)
+      ..sort((a, b) => y[a] != y[b] ? y[a].compareTo(y[b]) : (prio[a] != prio[b] ? prio[a] - prio[b] : a - b));
+    final lanes = <List<int>>[]; // owners per lane
+    bool overlap(int k, int x, int i) => ivs[k][x][0] < ivs[k][i][1] && ivs[k][i][0] < ivs[k][x][1];
+    bool fits(int lane, int i, int except) =>
+        lane >= lanes.length || !lanes[lane].any((x) => x != except && (overlap(0, x, i) || overlap(1, x, i)));
+    final lane = List.filled(n, -1);
+    for (final i in order) {
+      var chosen = -1;
+      if (fp[i] >= 0 && cont[fp[i]] == i && fits(lane[fp[i]], i, fp[i])) chosen = lane[fp[i]];
+      if (chosen < 0) {
+        chosen = 0;
+        while (!fits(chosen, i, -1)) {
+          chosen++;
+        }
+      }
+      while (lanes.length <= chosen) {
+        lanes.add([]);
+      }
+      lanes[chosen].add(i);
+      lane[i] = chosen;
+    }
+    return (lane, lanes.length);
+  }
+
+  final (lc, cc) = pack(0);
+  final (lf, cf) = pack(1);
+  return (cc <= cf ? lc : lf, cc, cf);
+}
+
+/// A joint layout through routing: the state the `compact` order starts from.
+GraphLayout jointGreedy(LayoutInput g, Mode mode) => GraphLayout(g, mode, joint: true)
+  ..layering()
+  ..packLanes()
+  ..markBlocked()
+  ..route();
+
+/// The joint model cost (SPEC §4.7, amended): 16·cost_compact + cost_free, each from scratch.
+int naiveJointCost(LayoutInput g, List<int> lanes) =>
+    16 * naiveCompactCost(jointGreedy(g, Mode.compact), lanes) + naiveCompactCost(jointGreedy(g, Mode.free), lanes);
+
+void jointColumns() {
+  LayoutResult joint(LayoutInput g, Mode mode, [LaneOrder order = LaneOrder.greedy, StackInput? stacks]) =>
+      computeLayout(g, mode, order, joint: true, stacks: stacks);
+
+  // Trunk R-T1-T2-T3-T4 (lane 0); X branches off T1, Y off T3. In compact rows X [2, 4) and
+  // Y [4, 6) are disjoint, so per-mode compact stacks them in lane 1. X is committed six days
+  // after Y: in free units X [36, 154) and Y [76, 108) overlap, so joint columns split them.
+  //   0:X→T1 1:T4→T3 2:Y→T3 3:T3→T2 4:T2→T1 5:T1→R 6:R
+  const t0 = now - 30 * day;
+  final xy = graph(
+    [
+      [5],
+      [3],
+      [3],
+      [4],
+      [5],
+      [6],
+      [],
+    ],
+    priority: [2, 0, 2, 0, 0, 0, 0],
+    ts: [t0 + 10 * day, t0 + 4 * day, t0 + 3 * day + hour, t0 + 3 * day, t0 + 2 * day, t0 + day, t0],
+  );
+
+  test('joint: two chains disjoint in compact but overlapping in free get different lanes in both modes', () {
+    expectEq(run(xy, Mode.compact).lane, [1, 0, 1, 0, 0, 0, 0], 'per-mode compact');
+    expectEq(run(xy, Mode.free).lane, [2, 0, 1, 0, 0, 0, 0], 'per-mode free');
+    // Both visit orders need 3 lanes; the tie keeps compact's order, which places X first.
+    final (lanes, compactCount, freeCount) = naiveJointLanes(xy);
+    expectEq([compactCount, freeCount], [3, 3]);
+    expectEq(lanes, [1, 0, 2, 0, 0, 0, 0]);
+    for (final mode in [Mode.compact, Mode.free]) {
+      final r = joint(xy, mode);
+      expectEq(r.lane, [1, 0, 2, 0, 0, 0, 0], '$mode lanes');
+      expectEq(
+        [r.lanes, r.col],
+        [
+          3,
+          [1, 0, 2, 0, 0, 0, 0],
+        ],
+        '$mode',
+      );
+    }
+    expectEq(joint(xy, Mode.compact).row, run(xy, Mode.compact).row, 'compact rows');
+    expectEq(joint(xy, Mode.free).row, run(xy, Mode.free).row, 'free rows');
+  });
+
+  test('joint: the free visit order needs fewer lanes here, so the joint packing is its', () {
+    // Found by a random search; the expected values are the literal two-model scan's.
+    final g = graph(
+      [
+        [1],
+        [6],
+        [5],
+        [8],
+        [5, 6],
+        [8, 6],
+        [8],
+        [8],
+        [],
+      ],
+      priority: [0, 0, 1, 1, 0, 0, 0, 0, 1],
+      ts: [
+        1000000000000,
+        1000342000000,
+        1000082800000,
+        999910000000,
+        999902800000,
+        999816400000,
+        999816400000,
+        999730000000,
+        999730000000,
+      ],
+    );
+    final (lanes, compactCount, freeCount) = naiveJointLanes(g);
+    expectEq([compactCount, freeCount], [5, 4]);
+    expectEq(lanes, [3, 2, 1, 3, 0, 0, 2, 1, 0]);
+    for (final mode in [Mode.compact, Mode.free]) {
+      expectEq(joint(g, mode).lane, lanes, '$mode');
+    }
+  });
+
+  test('joint: one chain packs as per-mode greedy (single-model reduction)', () {
+    final chain = graph(
+      [
+        [1],
+        [2],
+        [3],
+        [],
+      ],
+      ts: [now, now - day, now - 2 * day, null],
+      roots: {3},
+    );
+    for (final mode in [Mode.compact, Mode.free]) {
+      expectEq(encodeOutput(joint(chain, mode)), encodeOutput(run(chain, mode)), '$mode');
+    }
+  });
+
+  test('joint: the packing equals the literal two-model scan; the visit-order choice takes the fewer lanes', () {
+    final rnd = Random(41);
+    var freeFewer = 0, compactFewer = 0, tie = 0;
+    for (var t = 0; t < 300; t++) {
+      final g = randomGraph(rnd, 1 + rnd.nextInt(70), branchy: t.isOdd);
+      final (want, cc, cf) = naiveJointLanes(g);
+      if (cf < cc) {
+        freeFewer++;
+      } else if (cc < cf) {
+        compactFewer++;
+      } else {
+        tie++;
+      }
+      for (final mode in [Mode.compact, Mode.free]) {
+        final l = GraphLayout(g, mode, joint: true)
+          ..layering()
+          ..packLanes()
+          ..markBlocked();
+        expectEq(l.lane, want, 'lanes, case $t $mode');
+        expectEq(l.blocked, naiveBlocked(l), 'blocked, case $t $mode');
+      }
+    }
+    check(freeFewer > 0 && compactFewer > 0 && tie > 0, 'visit-order cases: $freeFewer / $compactFewer / $tie');
+  });
+
+  test('joint: I8 and I1–I6 on random graphs in both modes and orders, with and without stacks', () {
+    final rnd = Random(43);
+    for (var t = 0; t < 150; t++) {
+      final g = randomGraph(rnd, rnd.nextInt(110), branchy: t.isOdd);
+      for (final order in [LaneOrder.greedy, LaneOrder.compact]) {
+        final c = joint(g, Mode.compact, order), f = joint(g, Mode.free, order);
+        final what = 'case $t $order';
+        checkInvariants(g, c, '$what compact');
+        checkInvariants(g, f, '$what free');
+        expectEq([c.lanes, c.lane, c.col], [f.lanes, f.lane, f.col], '$what: I8');
+        expectEq(encodeOutput(joint(g, Mode.free, order)), encodeOutput(f), '$what: deterministic');
+      }
+    }
+  });
+
+  test('joint: compact order cost exact, never above joint greedy; the search is mode-independent', () {
+    final rnd = Random(47);
+    var swapped = 0;
+    for (var t = 0; t < 150; t++) {
+      final g = randomGraph(rnd, 1 + rnd.nextInt(90), branchy: t.isOdd);
+      final what = 'case $t';
+      final lc = jointGreedy(g, Mode.compact), lf = jointGreedy(g, Mode.free);
+      final start = naiveJointCost(g, lc.lane);
+      final co = JointCompactOrder(lc);
+      expectEq(co.totalCost(), start, '$what: start cost');
+      expectEq(JointCompactOrder(lc, rounds: 0).run(), lc.lane, '$what: no rounds = greedy');
+      final lanes = co.run();
+      final beforeDrop = Int32List.fromList([for (var i = 0; i < g.n; i++) co.colOf[co.seg[i]]]);
+      final searched = naiveJointCost(g, beforeDrop);
+      expectEq(co.totalCost(), searched, '$what: searched cost');
+      check(searched <= start, '$what: cost $searched > greedy $start');
+      check(naiveJointCost(g, lanes) <= searched, '$what: dropping empty columns raised the cost');
+      if (searched < start) swapped++;
+      checkDisjointReservations(lc, lanes, '$what compact');
+      checkDisjointReservations(lf, lanes, '$what free');
+      expectEq(JointCompactOrder(lf).run(), lanes, '$what: same search from the free layout');
+      final c = joint(g, Mode.compact, LaneOrder.compact), greedy = joint(g, Mode.compact);
+      expectEq(c.lane, lanes, '$what: computeLayout lanes');
+      expectEq(c.edgeRoute, greedy.edgeRoute, '$what: routes');
+      for (var i = 0; i < g.n; i++) {
+        check((c.lane[i] == 0) == (greedy.lane[i] == 0), '$what: lane 0 node $i');
+      }
+      check(c.lanes <= greedy.lanes, '$what: more lanes than greedy');
+      expectEq(c.lane.toSet().length, c.lanes, '$what: an empty column');
+    }
+    check(swapped > 40, 'too few improving searches: $swapped');
+  });
+
+  test('joint: with one model the joint search is the per-mode search, work units included', () {
+    final rnd = Random(53);
+    for (var t = 0; t < 120; t++) {
+      final g = randomGraph(rnd, 1 + rnd.nextInt(120), branchy: t.isOdd);
+      for (final mode in [Mode.compact, Mode.free]) {
+        final l = GraphLayout(g, mode)
+          ..layering()
+          ..packLanes()
+          ..markBlocked()
+          ..route();
+        for (final budget in [0, 40, 300, 3000, compactBudget]) {
+          expectEq(
+            JointCompactOrder(l, single: true, budget: budget).run(),
+            CompactOrder(l, budget: budget).run(),
+            'case $t $mode budget $budget',
+          );
+        }
+      }
+    }
+  });
+
+  test('joint: skipping unchanged windows ends where the unskipped search ends', () {
+    final rnd = Random(59);
+    for (var t = 0; t < 150; t++) {
+      final g = randomGraph(rnd, 1 + rnd.nextInt(130), branchy: t.isOdd);
+      List<int> search({required bool skip}) =>
+          JointCompactOrder(jointGreedy(g, Mode.compact), rounds: 1 << 20, budget: 1 << 60, skip: skip).run();
+      expectEq(search(skip: true), search(skip: false), 'case $t');
+    }
+  });
+
+  test('joint: stacks keep the joint columns in both modes (I7 + I8)', () {
+    final rnd = Random(61);
+    for (var t = 0; t < 60; t++) {
+      final base = randomGraph(rnd, rnd.nextInt(70), branchy: t % 3 == 0);
+      final n = base.n;
+      final g = stackGraph(
+        [
+          for (var i = 0; i < n; i++)
+            [
+              for (var k = base.parStart[i]; k < base.parStart[i + 1]; k++)
+                switch (base.parKind[k]) {
+                  kindMissing => null,
+                  kindIndirect => Ind(base.parIdx[k]),
+                  _ => base.parIdx[k],
+                },
+            ],
+        ],
+        ts: [for (var i = 0; i < n; i++) base.hasTs[i] != 0 ? base.ts[i] : null],
+        priority: base.priority.toList(),
+      );
+      final all = List.generate(n, (i) => i);
+      final some = [
+        for (var i = 0; i < n; i++)
+          if (rnd.nextBool()) i,
+      ];
+      for (final order in [LaneOrder.greedy, LaneOrder.compact]) {
+        final off = joint(g, Mode.compact, order);
+        for (final req in [
+          stackRequest(g, collapsed: all),
+          stackRequest(g, keepOpen: all),
+          stackRequest(g, collapsed: some),
+        ]) {
+          final c = joint(g, Mode.compact, order, req), f = joint(g, Mode.free, order, req);
+          expectEq([c.lanes, c.lane, c.col], [f.lanes, f.lane, f.col], 'case $t $order: I8');
+          check(c.lanes == off.lanes, 'case $t $order: lanes');
+          for (var i = 0; i < n; i++) {
+            if (c.lane[i] >= 0) check(c.lane[i] == off.lane[i], 'case $t $order: I7 node $i');
+          }
+        }
+      }
+    }
+  });
 }
 
 void arithmetic() {
@@ -269,30 +583,31 @@ void layering() {
     expectEq(r.rows, 52);
     // Day buckets (amended 2026-10-01): 0 counts by its clamped T (1's day), the root by none.
     expectEq(r.bucketValue, [floorDiv(t0 + day, day) * day]);
-    expectEq([r.bucketStart, r.bucketEnd], [
-      [20],
-      [36],
-    ]);
+    expectEq(
+      [r.bucketStart, r.bucketEnd],
+      [
+        [20],
+        [36],
+      ],
+    );
   });
 
   test('free: day buckets across a local midnight share one row; roots are in none', () {
     const midnight = 1000072800000; // 2001-09-10T00:00 at UTC+2
     final r = run(
-      graph(
-        [[], [], []],
-        ts: [midnight + 10000, midnight - 20000, null],
-        roots: {2},
-        offset: 120,
-      ),
+      graph([[], [], []], ts: [midnight + 10000, midnight - 20000, null], roots: {2}, offset: 120),
       Mode.free,
     );
     expectEq(r.row, [0, 0, 0]);
     expectEq(r.bucketKind, [bucketDay, bucketDay]);
     expectEq(r.bucketValue, [midnight - day, midnight]);
-    expectEq([r.bucketStart, r.bucketEnd], [
-      [0, 0],
-      [0, 0],
-    ]);
+    expectEq(
+      [r.bucketStart, r.bucketEnd],
+      [
+        [0, 0],
+        [0, 0],
+      ],
+    );
     final rootOnly = run(graph([[]], ts: [null], roots: {0}), Mode.free);
     expectEq(rootOnly.bucketKind.length, 0, 'no non-root node, no bucket');
     expectEq(run(graph([[], []], ts: [midnight, midnight - day]), Mode.compact).bucketKind.length, 0, 'compact');
@@ -314,10 +629,13 @@ void layering() {
     );
     expectEq(r.row, [32, 16, 0]);
     expectEq(r.bucketValue, [floorDiv(t1, day) * day]);
-    expectEq([r.bucketStart, r.bucketEnd], [
-      [16],
-      [32],
-    ]);
+    expectEq(
+      [r.bucketStart, r.bucketEnd],
+      [
+        [16],
+        [32],
+      ],
+    );
   });
 
   test('free: day key at UTC offsets −300, 0, 330 and ±1440', () {
@@ -1158,11 +1476,32 @@ void stacks() {
     for (final field in ['key', 'immutable', 'parent_count', 'has_ref', 'working_copy']) {
       expectThrows<InputError>(() => parse([node(0)..remove(field), node(1)]), 'no $field');
     }
-    expectThrows<InputError>(() => parse([node(0, {'key': 'n1'}), node(1)]), 'a repeated key');
-    expectThrows<InputError>(() => parse([node(0, {'has_ref': 'no'}), node(1)]), 'a mistyped fact');
-    expectThrows<InputError>(() => parse([node(0, {'parent_count': -1}), node(1)]), 'a negative parent count');
     expectThrows<InputError>(
-      () => parse([node(0, {'working_copy': 'this'}), node(1, {'working_copy': 'this'})]),
+      () => parse([
+        node(0, {'key': 'n1'}),
+        node(1),
+      ]),
+      'a repeated key',
+    );
+    expectThrows<InputError>(
+      () => parse([
+        node(0, {'has_ref': 'no'}),
+        node(1),
+      ]),
+      'a mistyped fact',
+    );
+    expectThrows<InputError>(
+      () => parse([
+        node(0, {'parent_count': -1}),
+        node(1),
+      ]),
+      'a negative parent count',
+    );
+    expectThrows<InputError>(
+      () => parse([
+        node(0, {'working_copy': 'this'}),
+        node(1, {'working_copy': 'this'}),
+      ]),
       'two "this"',
     );
     expectThrows<InputError>(() => parseStackRequest(utf8.encode('{"expanded":[]}'), ok), 'lists missing');

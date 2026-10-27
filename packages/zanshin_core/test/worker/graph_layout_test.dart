@@ -512,7 +512,7 @@ void main() {
                 mode: mode,
                 order: order,
               );
-              expect(layout.topology.hasTimestamps, mode == LayoutMode.free, reason: 'timestamps iff free');
+              expect(layout.topology.hasTimestamps, isTrue, reason: 'timestamps for every request (Story 4.14)');
               final key = '${mode.name}.${order.name}';
               expectGolden(canonicalOutput(layout.grid), key, '$key.json');
               if (mode == LayoutMode.free) {
@@ -531,6 +531,30 @@ void main() {
             timeout: const Timeout(Duration(minutes: 10)),
           );
         }
+      }
+
+      if (full) {
+        test('${name}_compact_and_free_share_lanes_columns_and_day_keys', () async {
+          // Story 4.14 (I8): a Free ↔ Compact switch only moves rows.
+          for (final LaneOrder order in LaneOrder.values) {
+            Future<Layout> lay(LayoutMode mode) => handle.graphLayout(
+              revset: revset,
+              anchors: defaultGraphAnchors,
+              utcOffsetMin: 120,
+              shortPrefixes: '',
+              mode: mode,
+              order: order,
+            );
+            final Layout compact = await lay(LayoutMode.compact);
+            final Layout free = await lay(LayoutMode.free);
+            expect([compact.topology.hasTimestamps, free.topology.hasTimestamps], [true, true], reason: order.name);
+            expect(
+              [compact.grid.lanes, compact.grid.nodeLanes, compact.grid.nodeCols, compact.grid.nodeDays],
+              [free.grid.lanes, free.grid.nodeLanes, free.grid.nodeCols, free.grid.nodeDays],
+              reason: order.name,
+            );
+          }
+        });
       }
     });
   }

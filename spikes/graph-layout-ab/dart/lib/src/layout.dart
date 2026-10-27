@@ -34,6 +34,10 @@ const int rootKey = -0x7FFFFFFFFFFFFFFF - 1;
 /// Stands in for −∞ in the lane packing (every real value is ≥ 0).
 const int _negInf = -0x4000000000000000;
 
+/// With joint columns (SPEC §4.3, amended 2026-10-27, Story 4.14) both vertical models are laid
+/// out; model 0 is `compact` (U = 1), model 1 is `free` (U = 16).
+const List<int> modelUnits = [1, 16];
+
 const int _minute = 60000;
 const int _day = 86400000;
 
@@ -137,7 +141,9 @@ final class LayoutResult {
 /// (layering, lanes, blocked, routing, ordering; SPEC §8.2) and, with [stacks], after the sixth
 /// (stacks, SPEC §4.8). [budget] is the `compact` order's search budget (SPEC §4.7; a request
 /// parameter in the product, 2026-10-01). With [stacks] (Story 4.13) the result is the grouped
-/// layout of SPEC §4.8 over the finished ungrouped one.
+/// layout of SPEC §4.8 over the finished ungrouped one. With [joint] (Story 4.14, `--columns joint`)
+/// lanes and columns are shared by `compact` and `free` (SPEC §4.3 / §4.7, amended 2026-10-27):
+/// only [Mode.compact] and [Mode.free] with [LaneOrder.greedy] or [LaneOrder.compact].
 LayoutResult computeLayout(
   LayoutInput input,
   Mode mode,
@@ -145,8 +151,12 @@ LayoutResult computeLayout(
   void Function()? onPhaseEnd,
   int budget = compactBudget,
   StackInput? stacks,
+  bool joint = false,
 }) {
-  final g = GraphLayout(input, mode);
+  if (joint && (mode == Mode.time || order == LaneOrder.optimized)) {
+    throw ArgumentError('joint columns need --mode compact or free and --order greedy or compact');
+  }
+  final g = GraphLayout(input, mode, joint: joint);
   g.layering();
   onPhaseEnd?.call();
   g.packLanes();
@@ -165,11 +175,23 @@ LayoutResult computeLayout(
 
 /// The layout state, one phase per method (SPEC §4). Phases must run in order.
 final class GraphLayout {
-  GraphLayout(this.input, this.mode) : n = input.n, unit = mode == Mode.free ? 16 : 1;
+  GraphLayout(this.input, this.mode, {this.joint = false}) : n = input.n, unit = mode == Mode.free ? 16 : 1;
 
   final LayoutInput input;
   final Mode mode;
   final int n;
+
+  /// Joint columns (SPEC §4.3 / §4.7, amended 2026-10-27): one packing and one column order for
+  /// both vertical models, whatever [mode] asks for.
+  final bool joint;
+
+  /// The model index of [mode] (0 `compact`, 1 `free`; [modelUnits]).
+  int get requestedModel => mode == Mode.compact ? 0 : 1;
+
+  /// With [joint]: per model its y (the requested one is [y] itself) and its visit order
+  /// (y, priority, i); set by [layering] and [packLanes].
+  late final List<Int64List> modelY;
+  late final List<Int32List> modelVisit;
 
   /// U (SPEC §1).
   final int unit;
@@ -216,11 +238,21 @@ final class GraphLayout {
     y = Int64List(n);
     switch (mode) {
       case Mode.compact:
-        _layerCompact();
+        _compactRows(y);
       case Mode.time:
         _layerTime();
       case Mode.free:
         _layerFree();
+    }
+    if (!joint) return;
+    // The other model's rows, for the joint packing only: no buckets, no walk kept (SPEC §4.3).
+    final other = Int64List(n);
+    if (mode == Mode.compact) {
+      _freeRows(other);
+      modelY = [y, other];
+    } else {
+      _compactRows(other);
+      modelY = [other, y];
     }
   }
 
@@ -283,8 +315,9 @@ final class GraphLayout {
     this.chPos = chPos;
   }
 
-  void _layerCompact() {
-    final y = this.y, lpStart = this.lpStart, edgeParent = this.edgeParent;
+  /// SPEC §4.2 compact into [y].
+  void _compactRows(Int64List y) {
+    final lpStart = this.lpStart, edgeParent = this.edgeParent;
     for (var i = n - 1; i >= 0; i--) {
       var r = 0;
       for (var e = lpStart[i]; e < lpStart[i + 1]; e++) {
@@ -376,9 +409,18 @@ final class GraphLayout {
   }
 
   void _layerFree() {
-    final y = this.y, lpStart = this.lpStart, edgeParent = this.edgeParent;
+    final (order, t) = _freeRows(y);
+    _freeDayBuckets(order, t);
+    freeOrder = order;
+    freeT = t;
+  }
+
+  /// SPEC §4.2 free, steps 1–3, into [y] (U = 16 whatever [mode] is); returns the walk and the
+  /// clamped T.
+  (Int32List, Int64List) _freeRows(Int64List y) {
+    final lpStart = this.lpStart, edgeParent = this.edgeParent;
     final ts = input.ts, hasTs = input.hasTs, isRoot = input.isRoot;
-    final u = unit;
+    const u = 16;
 
     // 1: tmin over every non-null ts.
     var tmin = 0;
@@ -421,9 +463,7 @@ final class GraphLayout {
       prevY = r;
       prevT = t[i];
     }
-    _freeDayBuckets(order, t);
-    freeOrder = order;
-    freeT = t;
+    return (order, t);
   }
 
   /// Step 4 of SPEC §4.2 free (amended 2026-10-01): one `day` bucket per local day of the clamped
@@ -466,6 +506,10 @@ final class GraphLayout {
 
   /// SPEC §4.3 [lanes].
   void packLanes() {
+    if (joint) {
+      _packJoint();
+      return;
+    }
     final y = this.y, fp = this.fp, priority = input.priority;
     final chStart = this.chStart, chIdx = this.chIdx, chPos = this.chPos;
     final u = unit;
@@ -561,10 +605,148 @@ final class GraphLayout {
     _adoptLanes(lane, laneCount);
   }
 
+  /// Joint packing (SPEC §4.3, amended 2026-10-27): a node fits a lane iff, in BOTH models, its
+  /// interval is disjoint from every interval there except the excluded owner's. Packs once in
+  /// each model's visit order and keeps the packing with fewer lanes, `compact`'s on a tie.
+  void _packJoint() {
+    final cont = continuations();
+    final ia = <Int64List>[], ib = <Int64List>[], visits = <Int32List>[];
+    for (var k = 0; k < 2; k++) {
+      final (a, b) = _intervals(modelY[k], modelUnits[k], cont);
+      ia.add(a);
+      ib.add(b);
+      visits.add(_visitOrder(modelY[k]));
+    }
+    final (lane0, count0) = _packVisit(0, visits[0], cont, ia, ib);
+    final (lane1, count1) = _packVisit(1, visits[1], cont, ia, ib);
+    modelVisit = visits;
+    visitOrder = visits[requestedModel];
+    if (count0 <= count1) {
+      _adoptLanes(lane0, count0);
+    } else {
+      _adoptLanes(lane1, count1);
+    }
+  }
+
+  /// cont(j) of SPEC §4.3: the child with fp = j and the least key (priority, index), or −1.
+  Int32List continuations() {
+    final priority = input.priority;
+    final cont = Int32List(n)..fillRange(0, n, -1);
+    for (var i = 0; i < n; i++) {
+      final f = fp[i];
+      if (f < 0) continue;
+      final c = cont[f];
+      if (c < 0 || priority[i] < priority[c]) cont[f] = i;
+    }
+    return cont;
+  }
+
+  /// Every node's §4.3 interval [a, b) over rows [y] in units of [u].
+  (Int64List, Int64List) _intervals(Int64List y, int u, Int32List cont) {
+    final a = Int64List(n), b = Int64List(n);
+    for (var i = 0; i < n; i++) {
+      var end = y[i];
+      final c = cont[i];
+      if (c >= 0 && y[c] - u > end) end = y[c] - u;
+      for (var s = chStart[i]; s < chStart[i + 1]; s++) {
+        if (chPos[s] >= 1 && y[chIdx[s]] - u > end) end = y[chIdx[s]] - u;
+      }
+      final f = fp[i];
+      a[i] = f >= 0 ? y[f] + u : y[i];
+      b[i] = end + 2 * u;
+    }
+    return (a, b);
+  }
+
+  /// The nodes by (y, priority, i) ascending.
+  Int32List _visitOrder(Int64List y) {
+    final priority = input.priority;
+    final order = Int32List(n);
+    for (var i = 0; i < n; i++) {
+      order[i] = i;
+    }
+    order.sort((a, b) {
+      final ya = y[a], yb = y[b];
+      if (ya != yb) return ya < yb ? -1 : 1;
+      final pa = priority[a], pb = priority[b];
+      if (pa != pb) return pa - pb;
+      return a - b;
+    });
+    return order;
+  }
+
+  /// One joint packing, visiting [order] (model [v]'s). In model v every stored interval starts at
+  /// or below the visited node's y, so §4.3's per-lane top-two b′ and segment tree answer the
+  /// overlap; the other model w needs [LaneIntervals]' general test. First fit walks "the least
+  /// lane ≥ s whose largest b′ ≤ a" and moves past a lane w rejects.
+  (Int32List, int) _packVisit(int v, Int32List order, Int32List cont, List<Int64List> ia, List<Int64List> ib) {
+    final w = 1 - v;
+    final av = ia[v], bv = ib[v], aw = ia[w], bw = ib[w];
+    final max1 = Int64List(n)..fillRange(0, n, _negInf);
+    final max2 = Int64List(n)..fillRange(0, n, _negInf);
+    final own1 = Int32List(n)..fillRange(0, n, -1);
+    var size = 1;
+    while (size < n) {
+      size <<= 1;
+    }
+    final tree = Int64List(2 * size)..fillRange(0, 2 * size, _negInf);
+    final other = LaneIntervals(n);
+
+    final lane = Int32List(n);
+    var laneCount = 0;
+    for (var k = 0; k < n; k++) {
+      final i = order[k];
+      final a = av[i], b = bv[i];
+      var l = -1;
+      final f = fp[i];
+      if (f >= 0 && cont[f] == i) {
+        final lf = lane[f];
+        final others = own1[lf] == f ? max2[lf] : max1[lf];
+        if (others <= a && !other.overlaps(lf, aw[i], bw[i], f)) l = lf;
+      }
+      if (l < 0) {
+        var s = 0;
+        while (true) {
+          l = leastLaneFrom(tree, size, s, a);
+          if (!other.overlaps(l, aw[i], bw[i], -1)) break;
+          s = l + 1;
+        }
+      }
+
+      if (b > max1[l]) {
+        max2[l] = max1[l];
+        max1[l] = b;
+        own1[l] = i;
+        var node = size + l;
+        tree[node] = b;
+        node >>= 1;
+        while (node >= 1) {
+          final left = tree[2 * node], right = tree[2 * node + 1];
+          tree[node] = left < right ? left : right;
+          node >>= 1;
+        }
+      } else if (b > max2[l]) {
+        max2[l] = b;
+      }
+      other.insert(l, aw[i], bw[i], i);
+      lane[i] = l;
+      if (l >= laneCount) laneCount = l + 1;
+    }
+    return (lane, laneCount);
+  }
+
   /// Sets [lane] and builds the per-lane y-lists; the visit order is ascending in y, so each list
   /// comes out sorted.
   void _adoptLanes(Int32List lane, int laneCount) {
-    final order = visitOrder;
+    final (laneYStart, laneYs) = _laneYLists(lane, laneCount, visitOrder, y);
+    this.lane = lane;
+    this.laneCount = laneCount;
+    this.laneYStart = laneYStart;
+    this.laneYs = laneYs;
+  }
+
+  /// Per lane the y values of [y], ascending ([order] is ascending in y); CSR.
+  (Int32List, Int64List) _laneYLists(Int32List lane, int laneCount, Int32List order, Int64List y) {
     final laneYStart = Int32List(laneCount + 1);
     for (var i = 0; i < n; i++) {
       laneYStart[lane[i] + 1]++;
@@ -578,16 +760,25 @@ final class GraphLayout {
       final i = order[k];
       laneYs[cursor[lane[i]]++] = y[i];
     }
-    this.lane = lane;
-    this.laneCount = laneCount;
-    this.laneYStart = laneYStart;
-    this.laneYs = laneYs;
+    return (laneYStart, laneYs);
+  }
+
+  /// The routes of model [k] (SPEC §4.4 + §4.5 over that model's y) on the current lanes. With
+  /// [joint] only; the requested model's are [routes].
+  Uint8List routesOf(int k) {
+    if (k == requestedModel) return routes;
+    final (start, ys) = _laneYLists(lane, laneCount, modelVisit[k], modelY[k]);
+    return _routesFrom(_blockedFrom(modelY[k], start, ys));
   }
 
   /// SPEC §4.4 [blocked].
   void markBlocked() {
+    blocked = _blockedFrom(y, laneYStart, laneYs);
+  }
+
+  Uint8List _blockedFrom(Int64List y, Int32List laneYStart, Int64List laneYs) {
     final blocked = Uint8List(edgeCount);
-    final y = this.y, lane = this.lane, laneYStart = this.laneYStart, laneYs = this.laneYs;
+    final lane = this.lane;
     for (var e = 0; e < edgeCount; e++) {
       final p = edgeParent[e], i = edgeChild[e];
       final lp = lane[p];
@@ -606,11 +797,15 @@ final class GraphLayout {
       }
       if (lo < end && laneYs[lo] <= y[i]) blocked[e] = 1;
     }
-    this.blocked = blocked;
+    return blocked;
   }
 
   /// SPEC §4.5 [routing].
   void route() {
+    routes = _routesFrom(blocked);
+  }
+
+  Uint8List _routesFrom(Uint8List blocked) {
     final routes = Uint8List(edgeCount);
     final lane = this.lane;
     for (var e = 0; e < edgeCount; e++) {
@@ -623,7 +818,7 @@ final class GraphLayout {
         routes[e] = routeBranchOff;
       }
     }
-    this.routes = routes;
+    return routes;
   }
 
   /// SPEC §4.6 / §4.7 [ordering]; [budget] bounds the `compact` order's search.
@@ -640,7 +835,7 @@ final class GraphLayout {
           col[i] = pos[lane[i]];
         }
       case LaneOrder.compact:
-        final newLane = compactColumns(this, budget: budget);
+        final newLane = joint ? JointCompactOrder(this, budget: budget).run() : compactColumns(this, budget: budget);
         var count = 0;
         for (var i = 0; i < n; i++) {
           if (newLane[i] >= count) count = newLane[i] + 1;
@@ -749,6 +944,98 @@ final class GraphLayout {
       bucketStart: bucketStart,
       bucketEnd: bucketEnd,
     );
+  }
+}
+
+/// The least leaf ≥ [s] of the min-segment-tree [tree] (leaves at [size] …) whose value is ≤ [a].
+/// The caller guarantees one exists (an unused lane, value −∞, at or after [s]).
+int leastLaneFrom(Int64List tree, int size, int s, int a) {
+  var node = size + s;
+  while (tree[node] > a) {
+    // The next subtree to the right: climb while a right child, then step to the right sibling.
+    while (node & 1 == 1) {
+      node >>= 1;
+    }
+    node++;
+  }
+  while (node < size) {
+    node = tree[2 * node] <= a ? 2 * node : 2 * node + 1;
+  }
+  return node - size;
+}
+
+/// Per lane, its intervals [a, b) in the model the joint packing does not visit (SPEC §4.3,
+/// amended 2026-10-27), ascending by start, each with the prefix's largest b (and its owner) and
+/// second-largest b. [a, b) overlaps an interval of the lane other than x's iff, among the ones
+/// starting before b, the largest end other than x's exceeds a. Intervals of one lane overlap only
+/// for a node and its continuation child, so the prefix maximum (not the last end) is needed.
+///
+/// shortcut: an insert shifts the lane's tail, O(lane size); an array-backed balanced tree would
+/// make it O(log n) if a measurement ever shows the shift (spec-4-14 § Measurements).
+final class LaneIntervals {
+  LaneIntervals(int n) : _rec = List<Int64List?>.filled(n, null), _len = Int32List(n);
+
+  /// Record layout: a, b, owner, prefix max b, its owner, prefix second-largest b.
+  static const int _w = 6;
+
+  final List<Int64List?> _rec;
+  final Int32List _len;
+
+  /// Whether [a, b) overlaps an interval of [lane] not owned by [except].
+  bool overlaps(int lane, int a, int b, int except) {
+    final r = _rec[lane];
+    if (r == null) return false;
+    final before = _countBefore(r, _len[lane], b);
+    if (before == 0) return false;
+    final base = (before - 1) * _w;
+    return (r[base + 4] == except ? r[base + 5] : r[base + 3]) > a;
+  }
+
+  /// Stores [a, b), owned by [owner], in [lane].
+  void insert(int lane, int a, int b, int owner) {
+    final len = _len[lane];
+    var r = _rec[lane];
+    if (r == null || (len + 1) * _w > r.length) {
+      final grown = Int64List((len < 4 ? 8 : 2 * len) * _w);
+      if (r != null) grown.setRange(0, len * _w, r);
+      _rec[lane] = r = grown;
+    }
+    final pos = _countBefore(r, len, a);
+    r.setRange((pos + 1) * _w, (len + 1) * _w, r, pos * _w);
+    r[pos * _w] = a;
+    r[pos * _w + 1] = b;
+    r[pos * _w + 2] = owner;
+    var m1 = pos == 0 ? _negInf : r[(pos - 1) * _w + 3];
+    var o1 = pos == 0 ? -1 : r[(pos - 1) * _w + 4];
+    var m2 = pos == 0 ? _negInf : r[(pos - 1) * _w + 5];
+    for (var k = pos; k <= len; k++) {
+      final base = k * _w, bk = r[base + 1];
+      if (bk > m1) {
+        m2 = m1;
+        m1 = bk;
+        o1 = r[base + 2];
+      } else if (bk > m2) {
+        m2 = bk;
+      }
+      r[base + 3] = m1;
+      r[base + 4] = o1;
+      r[base + 5] = m2;
+    }
+    _len[lane] = len + 1;
+  }
+
+  /// The number of the first [len] records of [r] whose start is below [x].
+  static int _countBefore(Int64List r, int len, int x) {
+    var lo = 0, hi = len;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (r[mid * _w] < x) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
   }
 }
 

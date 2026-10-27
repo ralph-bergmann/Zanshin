@@ -157,6 +157,8 @@ List<String> stackInvariantFailures(LayoutInput g, StackInput s, GraphGridView o
   for (var i = 0; i < n; i++) {
     final hidden = image[i] != i;
     check(r.isHidden(i) == hidden, 'isHidden($i)');
+    // Story 4.14: every input node keeps its own day key, a hidden one too.
+    check(r.nodeDays[i] == off.nodeDays[i], 'day key of $i');
     if (hidden) {
       visible[i] = false;
       check(y[i] == -1 && r.nodeLanes[i] == -1 && r.nodeCols[i] == -1, 'hidden $i has a position');
@@ -172,6 +174,7 @@ List<String> stackInvariantFailures(LayoutInput g, StackInput s, GraphGridView o
     big[sNode] = off.nodeRows[mk];
     check(r.nodeLanes[sNode] == off.nodeLanes[mk] && r.nodeCols[sNode] == off.nodeCols[mk], 'I7 stack $sNode');
     check(y[sNode] <= off.nodeRows[mk], 'y′ ≤ y(m_k) at stack $sNode');
+    check(r.nodeDays[sNode] == off.nodeDays[mk], 'day key of stack $sNode = its newest member\'s');
     if (off.nodeCols[run.members.first] != off.nodeCols[mk]) {
       splitStack.add(sNode);
     }

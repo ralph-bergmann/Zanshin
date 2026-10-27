@@ -336,7 +336,7 @@ final class GraphTopologyCommand extends WorkerCommand implements HandleScopedCo
 /// Lay out the whole revset's graph in the repo identified by [handleId] (Story 4.11).
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never remove), calls
-/// `zanshinGraphTopology(raw, …)` with timestamps iff [mode] is `free`, lays the topology out
+/// `zanshinGraphTopology(raw, …)` with timestamps (every mode, Story 4.14), lays the topology out
 /// with the Dart layout engine while the native envelope is still alive, copies the envelope and
 /// the grid ONCE each into a `TransferableTypedData`, frees the native buffer, and replies with a
 /// `GraphLayoutResult` (an unknown handle still replies `BufferResult`). Nothing is kept in the
@@ -376,13 +376,13 @@ final class GraphLayoutCommand extends WorkerCommand implements HandleScopedComm
   /// Ordered revsets whose selected nodes the layout's priority rule reads (caller pass-through).
   final List<String> anchors;
 
-  /// The layout's vertical model; `free` loads the committer timestamps.
+  /// The layout's vertical model (rows, routes and buckets; lanes and columns are joint).
   final LayoutMode mode;
 
   /// The layout's lane order.
   final LaneOrder order;
 
-  /// The fixed UTC offset in minutes for `free`'s day buckets, within ±1440.
+  /// The fixed UTC offset in minutes for `free`'s day buckets and the node day keys, within ±1440.
   final int utcOffsetMin;
 
   /// The work units the `compact` lane order may spend, ≥ 0.
