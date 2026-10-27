@@ -132,6 +132,9 @@ fn author_and_author_timestamp_are_set_as_the_cli_sets_them() {
     fx.repo
         .metaedit(&MetaeditOptions {
             revisions: vec![fx.b.clone()],
+            // A new description: within one second the rewrite would reproduce the fixture's `B`
+            // Git object, and the Git backend shifts a colliding commit's committer second.
+            message: Some(message("B2")),
             update_author_timestamp: true,
             ..MetaeditOptions::default()
         })
