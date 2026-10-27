@@ -2168,3 +2168,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - ~~**Gutter routes have no parity check against the export: GL's own grids in the router oracle hold no gutter line.**~~ — RESOLVED 2026-10-27 (spec-4-15-closing-gutter-routes-oracle-parity, commit f0fc69b): the router oracle's `gutter` category (1,485 cases on GL's frozen columns) equals GL on 1,467, the other 18 are the unit rule's documented d = 12 difference, and a coverage check pins every gutter-line kind. Low.
   - The oracle's corpus is the one Story 4.15 names (the design sample and the Lines Study's PRESETS × FAN; `spikes/graph-layout-ab/tools/router-oracle.mjs`); GL's optimizer avoids every gutter there, so the gutter x, its ±6 px steps, gutter exit/entry order and deep placement on a gutter's lower run rest only on the hand-built `packages/zanshin_core/test/graph_layout/router_test.dart` cases and the scale checks.
   - **Follow-up:** add oracle cases whose GL grid has gutter lines (e.g. GL's `computeLayout` with frozen `opts.cols` that lane-block a merge) and compare them like the rest.
+
+## Surfaced in Story 5.1 (bmad-build-auto, 2026-10-27)
+
+- **`ShowEntry::parent_tree_labels` / `tree_labels` are Rust-only: the FFI `ShowView` does not carry them.** Medium.
+  - Story 5.1 added the two label lists to `zanshin_jj::ShowEntry`. A merged parent tree's labels sit inside its conflict markers, so `compute_hunks` needs them to print the text `jj diff --git` prints and to cut the keys `select_tree` accepts when both sides carry markers. `crates/zanshin-ffi/src/commit_views.rs` ignores them, and the wire is unchanged.
+  - **Follow-up:** Story 5.8 (diff FFI wrapper) adds them to `schemas/envelope.fbs`' `ShowEntry` together with the diff payload, so a Dart caller can name a conflicted parent tree completely.

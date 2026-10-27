@@ -4391,6 +4391,8 @@ Produce structured diff JSON (hunks → lines → segments) with word-level diff
 > - **Trees in, not change ids.** `compute_hunks` takes two trees. 5.6's revision form (the merged parents) and from/to then share it.
 > - **Binary and conflicted files.** Binary stays as specified. A conflicted file is diffed with its conflict materialized, as `jj diff` does (`diff_util.rs:1884`).
 > - **ACs to add:** the sections equal the builtin editor's for the same pair of files; a hunk's counts equal its lines; context 0 and context 3 yield the same sections; the symbol equals `jj diff --git`'s on a Rust fixture and is absent on a Dart fixture.
+>
+> **Reconciled 2026-10-27 (Story 5.1 build, `spec-5-1-line-level-hunks-via-jj-lib.md`):** the read is `zanshin_jj::Repo::compute_hunks` in `crates/zanshin-jj/src/hunks.rs`, not `crates/zanshin-diff` — only `zanshin-jj` imports jj-lib, and the section keys must come from `select_tree::sections`. It takes two trees (ids + labels) and returns one `FileDiff` per path (`path`, `binary`, `mode_change`, `sections`, `hunks`). A `Hunk` carries `before_range`/`after_range`, `symbol`, `sections`, `removed`/`added` and `lines: Vec<HunkLine>` (`Context`/`Removed`/`Added`); a line keeps its `\n`, so a last line without one shows the EOF state. Tests are in `crates/zanshin-jj/tests/it/hunks.rs`. JSON / schema wording below is superseded by 5.5 (FlatBuffers).
 
 As a Rust developer building the diff base,
 I want `crates/zanshin-diff/src/hunks.rs` computing line-level hunks for a change by delegating to jj-lib,
