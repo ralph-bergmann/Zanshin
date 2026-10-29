@@ -946,11 +946,12 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - `node tools/design-input.mjs --rev e74ced3` throws "no top-level declaration of G". It extracts six declarations by name from `graph-view.jsx` (design-input.mjs:33-54), which now imports them from `graph-layout.jsx` (GV:6-7).
   - GD and the gap walk are unchanged (GL:435-460 = GV@e243dd2:145-170), so the `e243dd2` inputs stand for this export too.
   - **Follow-up:** 4.14 and 4.15 add a loader that evaluates `graph-layout.jsx` whole. It is plain JS: stub `revsetMatch` as LSH:54 does, and stub `placeGapMarkers` or extract it.
-- **The joint column packing may widen the graph.** Medium: unmeasured.
+- ~~**The joint column packing may widen the graph.**~~ — RESOLVED 2026-10-29 (console session, measured on a copy of a real 4.7k-commit repo, `dart-intellij-third-party`): no port of the exact colouring needed — the width barely grows (numbers in the sub-bullet below). Medium.
   - Chains may share a lane only when they are apart in both layouts, so 4.14's packing can need more columns than either per-mode packing.
   - The export compensates with an exact chain colouring for small graphs and with its whole-lane optimizer (GL:492-568). 4.14 ports neither.
   - **Follow-up:** 4.14's measurements on the real 1.4k-commit repo and the scale inputs. If the width grows noticeably, port the exact colouring for small graphs.
   - **2026-10-27, Story 4.14:** measured on the design samples, fixture-medium/large `all()`, synth-10k and synth-100k (spec-4-14 § Measurements): Compact widens on the fixtures (3 → 4 lanes, +28 % mean width vs per-mode compact), Free on synth-100k narrows (mean 98.6 → 42.9); the exact colouring is not ported, since it runs only at ≤ 40 chain heads and saves no lane there (commit 3739e9a); left: the measurement on the real 1.4k-commit repo, whose copy was not reachable (Ralph).
+  - **2026-10-29, real repo** (a copy of `dart-intellij-third-party`, spike dumper + Dart AOT `--columns mode` vs `joint`, `tools/lane-metrics.mjs`): `all()` (4,674 nodes): 11 lanes in every mode × order, per-mode and joint alike; meanW C greedy 2.62 → 2.66, C compact 2.30 → 2.46 (+7 %), F greedy 2.60 → 2.83 (+9 %), F compact 2.59 → 2.58; crossings C compact 112 → 126, F compact 112 → 115. Default revset (51 nodes): Compact 4 = 4 lanes; Free 3 → 4 lanes (meanW 2.11 → 2.39) — the joint lower bound, since per-mode Compact already needs 4, so exact colouring could not save it. Layout time with the `compact` order at 4.7k: 7.1 → 31.2 ms (C), 6.5 → 32.5 ms (F). The exact colouring is not ported.
 - ~~**Router B's cost on the UI isolate is unknown.**~~ — RESOLVED 2026-10-27 (spec-4-15-line-router-b-library, commit 33cd76d): measured at fixture-large to synth-100k, `routeSyncNodeLimit` = 20,000 (sync up to it, `Isolate.run` above); wiring the switch is Story 10.4's view work. Medium.
   - The geometry stage runs per layout and per card size, and track assignment is quadratic in a cluster's size (GL:87-112).
   - **Follow-up:** 4.15's timings at large-10k and synth-100k set the `Isolate.run` threshold (its item 4).
@@ -966,10 +967,11 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - A rebase gives many commits the same committer time. GL orders ties by generation depth, priority and design index (GL:395); the engine orders them by index (D3; LE:324-329). Both keep parents first.
   - Only unrelated commits with identical timestamps can end up at different heights.
   - **Follow-up:** none.
-- **Gutter overflow.** Low.
+- ~~**Gutter overflow.**~~ — RESOLVED 2026-10-29 (console session, measured on a copy of a real 4.7k-commit repo): one overfull gutter in Free, none in Compact or in the default revset; the budget is not widened (numbers in the sub-bullet below). Low.
   - More than 9 lines on one gutter × step ±6 px each into the neighbouring cards (GL:193-197).
   - **Follow-up:** 4.15 reports it. Widen the gutter's budget only if real repos show it.
   - **2026-10-27, Story 4.15:** reported (`RouteClasses.overfullGutters`; the edges are derivable from `gutters` + `gutterSteps`); none on the fixtures, the design sample or the Lines Study; 8 on synth-10k (free) and 14 / 28 on synth-100k (compact / free), whose outer lines are Compact's only segments behind cards (975 at 100k). The budget is not widened (commit 33cd76d); left: a real repo (none measured — no dump reachable, as for 4.14).
+  - **2026-10-29, real repo** (a copy of `dart-intellij-third-party`, `router_cli check`, W 240, `compact` order, H 62 and 40): `all()` (4,674 nodes, 5,010 edges): Compact 0 overfull gutters, 3 gutter lines, 0 card hits; Free 1 overfull gutter, 21 gutter lines, 3 direct fallbacks, 36 (H 62) / 35 (H 40) card hits, all explained. Default revset (51 nodes): 0 overfull gutters in both modes. Class + geometry 1.2 ms at 4.7k (Free). One overfull gutter in 4.7k commits does not justify a wider budget.
 
 ### Cards, motion and the minimap
 

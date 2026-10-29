@@ -92,7 +92,7 @@ pub fn dump(
     let now_ms = nodes.iter().filter_map(|n| n.ts_ms).max().unwrap_or(0) + now_after_newest_ms;
     let contents = if with_contents {
         let ids: Vec<CommitId> = topo.nodes.iter().map(|t| t.commit_id.clone()).collect();
-        repo.commit_contents(&topo.operation_id, &ids).map_err(|e| format!("commit_contents: {e}"))?
+        repo.commit_contents(&topo.operation_id, &topo.extra_operation_ids, &ids).map_err(|e| format!("commit_contents: {e}"))?
     } else {
         Vec::new()
     };
