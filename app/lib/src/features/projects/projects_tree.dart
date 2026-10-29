@@ -543,13 +543,13 @@ class ProjectsTreeState extends State<ProjectsTree> {
       if (item is! ProjectsGroupItem) {
         return KeyEventResult.ignored;
       }
-      if (row.node.isExpanded) {
-        _go(current + 1);
-      } else {
+      if (!item.expanded) {
         widget.onToggle(item.group.id);
+      } else if (row.node.children.isNotEmpty) {
+        _go(current + 1);
       }
     } else if (key == LogicalKeyboardKey.arrowLeft) {
-      if (item is ProjectsGroupItem && row.node.isExpanded) {
+      if (item is ProjectsGroupItem && item.expanded) {
         widget.onToggle(item.group.id);
       } else {
         final TreeSliverNode<ProjectsItem>? parent = row.parent;
@@ -960,7 +960,7 @@ class ProjectsTreeState extends State<ProjectsTree> {
           label: item.name,
           value: value == null || value.isEmpty ? null : value,
           selected: selected,
-          expanded: item is ProjectsGroupItem ? node.isExpanded : null,
+          expanded: item is ProjectsGroupItem ? item.expanded : null,
         ),
         ring: ZsRingPlacement.inside,
         ringRadius: metrics.radiusMd,
@@ -970,7 +970,8 @@ class ProjectsTreeState extends State<ProjectsTree> {
             final Widget more = _MoreButton(
               focusNode: _moreFocusFor(item.id)..skipTraversal = !selected,
               identifier: 'projects-row-$index-more',
-              visible: status.hovered || focus.hasFocus,
+              // Keyboard focus (the ring's rule), not focus a click left behind (Ralph, 2026-10-29).
+              visible: status.hovered || status.focusVisible,
               onPressed: (button) {
                 widget.onSelect(item.id);
                 _openMenu(button, anchor, menu);
@@ -982,7 +983,7 @@ class ProjectsTreeState extends State<ProjectsTree> {
                 ProjectsGroupItem() => _GroupFace(
                   item: item,
                   depth: depth,
-                  expanded: node.isExpanded,
+                  expanded: item.expanded,
                   status: status,
                   dropInto: hover?.placement == TreeDropPlacement.inside,
                   more: more,
@@ -1527,7 +1528,7 @@ class _MoreButton extends StatelessWidget {
           final ZsColors colors = ZsColors.of(context);
           final bool lit = status.hovered || status.pressed;
           return AnimatedOpacity(
-            opacity: visible || status.focusVisible || focusNode.hasFocus ? 1 : 0,
+            opacity: visible || status.focusVisible ? 1 : 0,
             duration: motion.durHover,
             curve: motion.easeState,
             child: DecoratedBox(

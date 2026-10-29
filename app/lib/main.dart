@@ -44,6 +44,7 @@ Future<void> main() async {
         WidgetsFlutterBinding.ensureInitialized();
       }
       SemanticsBinding.instance.ensureSemantics();
+      zsRingFollowsInput();
 
       initLogForwarding(level: .ALL);
 

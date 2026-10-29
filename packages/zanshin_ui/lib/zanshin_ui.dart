@@ -18,7 +18,7 @@ export 'src/controls/zs_control_core.dart' show ZsControlCore, ZsControlStatus;
 export 'src/controls/zs_disclosure.dart' show ZsDisclosure;
 export 'src/controls/zs_drag_ghost.dart' show ZsDragGhost, ZsDragGhostKind;
 export 'src/controls/zs_field_list.dart' show ZsFieldListController, ZsFieldListRow;
-export 'src/controls/zs_focus_ring.dart' show ZsFocusRing, ZsRingPlacement;
+export 'src/controls/zs_focus_ring.dart' show ZsFocusRing, ZsRingPlacement, zsRingFollowsInput;
 export 'src/controls/zs_kbd.dart' show ZsKbd;
 export 'src/controls/zs_link.dart' show ZsLink;
 export 'src/controls/zs_menu.dart'

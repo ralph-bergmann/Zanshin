@@ -181,6 +181,28 @@ class _Rig {
     await tester.pump();
   }
 
+  /// Puts focus in the search, where a keyboard user starts (nothing is focused on open; Ralph, 2026-10-29).
+  Future<void> focusSearch() async {
+    await tester.showKeyboard(find.descendant(of: id('projects-search'), matching: find.byType(EditableText)));
+    await tester.pump();
+  }
+
+  /// Presses [label] in the list-edit question once its sheet is in, and lets the sheet go.
+  Future<void> answer(String label) async {
+    await sheetIn();
+    await tester.tap(find.descendant(of: id('projects-question'), matching: find.text(label)));
+    await sheetOut();
+  }
+
+  /// Confirms the list-edit question by ⌘↩ once its sheet is in, and lets the sheet go.
+  Future<void> confirmByKeys() async {
+    await sheetIn();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await key(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await sheetOut();
+  }
+
   Finder id(String identifier) => find.bySemanticsIdentifier(identifier);
 
   /// The visible row named [name].
@@ -303,11 +325,13 @@ void main() {
   });
 
   group('keys', () {
-    testWidgets('the search has focus; ↓ moves into the tree at the open project; ↑ ↓ Home End move and select', (
+    testWidgets('nothing has focus on open; ↓ from the search moves into the tree at the open project; ↑ ↓ Home End', (
       tester,
     ) async {
       final rig = _Rig(tester);
       await rig.pump(openUnderHome: 'code/work/api-server');
+      expect(rig.focused, isNot('projects search'), reason: 'Ralph, 2026-10-29: a focused search on open looks odd');
+      await rig.focusSearch();
       expect(rig.focused, 'projects search');
 
       await rig.key(LogicalKeyboardKey.arrowDown);
@@ -330,6 +354,7 @@ void main() {
     testWidgets('← collapses a group or steps to the parent; → expands or steps in; ↩ toggles a group', (tester) async {
       final rig = _Rig(tester);
       await rig.pump();
+      await rig.focusSearch();
       await rig.key(LogicalKeyboardKey.arrowDown);
       expect(rig.focused, 'projects row group:g1', reason: 'without a selection the first row');
 
@@ -353,6 +378,7 @@ void main() {
     testWidgets('↩ opens a project; a missing one does not open', (tester) async {
       final rig = _Rig(tester);
       await rig.pump();
+      await rig.focusSearch();
       await rig.key(LogicalKeyboardKey.arrowDown);
       await rig.key(LogicalKeyboardKey.end);
 
@@ -371,6 +397,7 @@ void main() {
     testWidgets('typing a prefix within --dur-typeahead selects the next row starting with it', (tester) async {
       final rig = _Rig(tester);
       await rig.pump();
+      await rig.focusSearch();
       await rig.key(LogicalKeyboardKey.arrowDown);
 
       await rig.key(LogicalKeyboardKey.keyD);
@@ -445,6 +472,7 @@ void main() {
       await rig.pump();
       await tester.runAsync(() => rig.registry.add('${rig.home}/code/my-project', name: 'my project'));
       await tester.pump();
+      await rig.focusSearch();
       await rig.key(LogicalKeyboardKey.arrowDown);
       expect(rig.focused, 'projects row group:g1');
 
@@ -853,6 +881,15 @@ void main() {
 
       await openMenu(tester, rig, 5);
       await choose(tester, 'projects-menu-remove');
+      await rig.sheetIn();
+      expect(find.text('Remove top from the list?'), findsOneWidget);
+      await tester.tap(find.descendant(of: rig.id('projects-question'), matching: find.text('Cancel')));
+      await rig.sheetOut();
+      expect(rig.registry.entry(path), isNotNull, reason: 'Cancel changes nothing');
+
+      await openMenu(tester, rig, 5);
+      await choose(tester, 'projects-menu-remove');
+      await rig.answer('Remove');
       await rig.settle(() => rig.registry.entry(path) == null);
       expect(find.text('top'), findsNothing);
       expect(rig.registry.entry('${rig.home}/code/gone')!.order, 1, reason: 'its siblings renumbered');
@@ -1151,6 +1188,15 @@ void main() {
       final Set<String> paths = rig.registry.value.projects.map((project) => project.path).toSet();
       await openMenu(tester, rig, 0);
       await choose(tester, 'projects-menu-delete');
+      await rig.sheetIn();
+      expect(find.text('Delete the group Work?'), findsOneWidget);
+      await tester.tap(find.descendant(of: rig.id('projects-question'), matching: find.text('Cancel')));
+      await rig.sheetOut();
+      expect(rig.registry.group('g1'), isNotNull, reason: 'Cancel changes nothing');
+
+      await openMenu(tester, rig, 0);
+      await choose(tester, 'projects-menu-delete');
+      await rig.answer('Delete group');
       await rig.settle(() => rig.registry.group('g1') == null);
 
       final ProjectsSettings value = rig.registry.value;
@@ -1166,6 +1212,21 @@ void main() {
       for (var i = 0; i < 6; i++) {
         expect(tester.getSemantics(rig.id('projects-row-$i')), selected(false));
       }
+    });
+
+    testWidgets('an empty group opens and closes like any other (Ralph, 2026-10-29)', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      await tester.runAsync(() => rig.registry.addGroup('Empty'));
+      await tester.pump();
+      Matcher open(bool expanded) => isSemantics(isExpanded: expanded, hasExpandedState: true);
+      expect(tester.getSemantics(rig.row('EMPTY')), open(true), reason: 'open by default, showing it holds nothing');
+      await tester.tap(rig.row('EMPTY'));
+      await tester.pump();
+      expect(tester.getSemantics(rig.row('EMPTY')), open(false));
+      await tester.tap(rig.row('EMPTY'));
+      await tester.pump();
+      expect(tester.getSemantics(rig.row('EMPTY')), open(true));
     });
 
     testWidgets('Move to group › of a group lists neither itself nor what it holds; its place is checked', (
@@ -1498,6 +1559,7 @@ void main() {
       testWidgets('Delete group by keyboard: focus on the first row, nothing selected on the way', (tester) async {
         final rig = _Rig(tester);
         await rig.pump();
+        await rig.focusSearch();
         await rig.key(LogicalKeyboardKey.arrowDown);
         await rig.key(LogicalKeyboardKey.arrowDown);
         await rig.key(LogicalKeyboardKey.arrowDown);
@@ -1513,6 +1575,7 @@ void main() {
         await rig.key(LogicalKeyboardKey.enter);
         await tester.pump(_m.durBlink * 2);
         await tester.pump(_m.durExit);
+        await rig.confirmByKeys();
         await rig.settle(() => rig.registry.group('g1') == null);
         await tester.pump();
         expect(rig.focused, 'projects row group:g2');
@@ -1616,6 +1679,7 @@ void main() {
           await rig.registry.addGroup('Last');
         });
         await tester.pump();
+        await rig.focusSearch();
         await rig.key(LogicalKeyboardKey.arrowDown);
         await rig.key(LogicalKeyboardKey.end);
         await rig.key(LogicalKeyboardKey.arrowUp);
@@ -1629,6 +1693,7 @@ void main() {
         await rig.key(LogicalKeyboardKey.enter);
         await tester.pump(_m.durBlink * 2);
         await tester.pump(_m.durExit);
+        await rig.confirmByKeys();
         await rig.settle(() => rig.registry.group('g3') == null);
         await tester.pump();
         await tester.pump();

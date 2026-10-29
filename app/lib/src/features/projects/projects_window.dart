@@ -39,7 +39,7 @@ final _log = Logger('zanshin.projects');
 /// [onIdentitySettings] is given (Claude's proposal). A failed read hides the footer.
 ///
 /// **Header** (the scaffold's): "Projects" at sidebar + 12 (600 13/1.2, `--text-dim` in an inactive window), then the
-/// controls — the search (230; focused on open; Esc clears it and never closes; ↓ moves into the tree), Add directory
+/// controls — the search (230; not focused on open — Ralph, 2026-10-29; Esc clears it and never closes; ↓ moves into the tree), Add directory
 /// (the gold primary), Clone… and New group (ghost, icon-only). Below 800 wide the search is 120 and Clone… icon-only
 /// (Claude's proposal from the floating export's `geo.w < 800`, design/windows.jsx:149).
 ///
@@ -56,7 +56,8 @@ final _log = Logger('zanshin.projects');
 /// `jj git clone --no-colocate` command). **New group** names a group inline, last inside the selected group, else
 /// inside the selected project's group, else at the top level (Story 11.15 item 2). The tree's row menus rename,
 /// delete and move rows (Story 11.15); every move selects the moved row, and a click below the rows clears the
-/// selection.
+/// selection. Delete group and Remove from list ask first (`ZsConfirmDialog`, tone destructive; Ralph, 2026-10-29):
+/// neither has an undo.
 ///
 /// Every successful open reaches [onOpened] (11.12's window coordinator closes the `projects` dialog window there, or
 /// keeps it with a creation's warnings). The identity is read again whenever the window becomes key. Identifiers:
@@ -133,6 +134,18 @@ class _Offer {
   var closing = false;
 }
 
+/// A list edit waiting for its confirmation sheet: Delete group or Remove from list, which have no undo.
+class _Question {
+  _Question(this.title, this.confirm, this.body, this.run);
+
+  final String title;
+  final String confirm;
+  final InlineSpan body;
+  final VoidCallback run;
+  var closing = false;
+  var confirmed = false;
+}
+
 /// The notice under the header: a `title` and `lines`, shown verbatim.
 typedef _Notice = ({String title, List<String> lines});
 
@@ -151,6 +164,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   String? _renaming;
   _Notice? _notice;
   _Offer? _offer;
+  _Question? _question;
 
   var _cloneOpen = false;
   var _cloneBusy = false;
@@ -177,11 +191,6 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     widget.session.addListener(_sessionChanged);
     unawaited(_readVersions());
     unawaited(_readIdentity(open));
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _searchFocus.requestFocus();
-      }
-    });
   }
 
   /// The window became key again (its appearance turned active): the identity is read once more, so an edit made
@@ -578,6 +587,42 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     unawaited(widget.registry.deleteGroup(id));
   }
 
+  /// Delete group asks first (Ralph, 2026-10-29).
+  void _askDeleteGroup(String id) {
+    final ProjectGroup? group = widget.registry.value.groups.where((g) => g.id == id).firstOrNull;
+    if (group == null) {
+      return;
+    }
+    setState(
+      () => _question = _Question(
+        'Delete the group ${group.name}?',
+        'Delete group',
+        const TextSpan(text: 'Its projects and groups take its place; nothing leaves the list.'),
+        () => _deleteGroup(id),
+      ),
+    );
+  }
+
+  /// Remove from list asks first (Ralph, 2026-10-29); the repository stays on disk.
+  void _askRemove(ProjectEntry entry) => setState(
+    () => _question = _Question(
+      'Remove ${entry.name} from the list?',
+      'Remove',
+      TextSpan(
+        children: <InlineSpan>[
+          TextSpan(text: displayPath(entry.path, widget.environment.home), style: ZsType.id),
+          const TextSpan(text: ' stays on disk; only the list forgets it.'),
+        ],
+      ),
+      () {
+        if (_selected == 'project:${entry.path}') {
+          setState(() => _selected = null);
+        }
+        unawaited(widget.registry.remove(entry.path));
+      },
+    ),
+  );
+
   // ---- clone ----
 
   void _urlChanged(String url) {
@@ -712,6 +757,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
                   ),
                 ),
                 if (offer != null) Positioned.fill(child: _sheet(context, offer)),
+                if (_question case final _Question question) Positioned.fill(child: _questionSheet(question)),
               ],
             );
           },
@@ -794,13 +840,8 @@ class ProjectsWindowState extends State<ProjectsWindow> {
               onRename: renameGroup,
               onRenameCommit: _commitRename,
               onRenameCancel: () => setState(() => _renaming = null),
-              onDeleteGroup: _deleteGroup,
-              onRemove: (entry) {
-                if (_selected == 'project:${entry.path}') {
-                  setState(() => _selected = null);
-                }
-                unawaited(widget.registry.remove(entry.path));
-              },
+              onDeleteGroup: _askDeleteGroup,
+              onRemove: _askRemove,
               onMoveItem: (item, placement) => unawaited(_moveItem(item, placement)),
               onDropFolders: (paths, placement) => unawaited(_addFolders(paths, placement)),
               onDropHover: (hovering) => setState(() => _rowDrop = hovering),
@@ -997,6 +1038,29 @@ class ProjectsWindowState extends State<ProjectsWindow> {
       identifier: 'projects-offer',
     );
   }
+
+  Widget _questionSheet(_Question question) => ZsConfirmDialog(
+    title: question.title,
+    confirmLabel: question.confirm,
+    body: Text.rich(question.body),
+    closing: question.closing,
+    onConfirm: () => setState(
+      () => question
+        ..confirmed = true
+        ..closing = true,
+    ),
+    onCancel: () => setState(() => question.closing = true),
+    // The edit runs once the sheet is gone and focus is back at its opener, so the tree hands focus on from there.
+    onClosed: () {
+      if (identical(_question, question)) {
+        setState(() => _question = null);
+      }
+      if (question.confirmed) {
+        question.run();
+      }
+    },
+    identifier: 'projects-question',
+  );
 }
 
 /// The sidebar's brand block (DS ui_kits/desktop/kit.css:192-194): padding 6 14 12, gap 9 — the 32 px Nami chip,

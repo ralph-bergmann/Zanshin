@@ -36,6 +36,7 @@ Future<void> main() async {
     WidgetsFlutterBinding.ensureInitialized();
   }
   SemanticsBinding.instance.ensureSemantics();
+  zsRingFollowsInput();
   final IconRegistry registry = await IconRegistry.load();
   final windows = AppWindows();
   final tracker = ActiveWindowTracker();

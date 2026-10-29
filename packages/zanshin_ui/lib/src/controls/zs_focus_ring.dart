@@ -2,6 +2,8 @@
 
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../design/zs_colors.dart';
@@ -30,7 +32,8 @@ enum ZsRingPlacement {
 /// within the control's bounds and no clipping container cuts it (Claude's proposal, Story 11.11). In an inactive
 /// window `--focus-ring` is transparent and nothing is painted.
 ///
-/// The control decides [visible] — keyboard focus only (`ZsControlCore` reports it).
+/// The control decides [visible] — keyboard focus only (`ZsControlCore` reports it; [zsRingFollowsInput] keeps a
+/// pointer press from counting as keyboard).
 class ZsFocusRing extends StatefulWidget {
   /// Rings [child] while [visible].
   const ZsFocusRing({
@@ -160,3 +163,49 @@ class _FocusRingPainter extends CustomPainter {
       oldDelegate.settle != settle ||
       oldDelegate.radius != radius;
 }
+
+var _followsInput = false;
+
+/// Shows focus rings only while the keyboard drives — the CSS `:focus-visible` rule the DS ring follows (DS
+/// components/base.css:19-31): a pointer press hides them, a key that moves focus shows them again. Flutter's own
+/// automatic mode counts a mouse as keyboard-like, so focus a control takes after a click (a row following the
+/// selection, a sheet's first button) would ring. Call once, after the binding exists; every ring follows
+/// `FocusManager.highlightMode` through `ZsControlCore`.
+void zsRingFollowsInput() {
+  if (_followsInput) {
+    return;
+  }
+  _followsInput = true;
+  GestureBinding.instance.pointerRouter.addGlobalRoute((event) {
+    if (event is PointerDownEvent) {
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTouch;
+    }
+  });
+  HardwareKeyboard.instance.addHandler((event) {
+    if (event is KeyDownEvent && zsKeyShowsRing(event.logicalKey, FocusManager.instance.primaryFocus)) {
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+    }
+    return false;
+  });
+}
+
+/// Whether pressing [key] while [focus] has the focus is keyboard navigation: no ⌘ ⌃ ⌥ held and no lone modifier;
+/// inside a text field only Tab, ↑ and ↓ (typing, ↩ and Esc there are no navigation).
+@visibleForTesting
+bool zsKeyShowsRing(LogicalKeyboardKey key, FocusNode? focus) {
+  final HardwareKeyboard keyboard = HardwareKeyboard.instance;
+  if (keyboard.isMetaPressed || keyboard.isControlPressed || keyboard.isAltPressed || _lone.contains(key)) {
+    return false;
+  }
+  return focus?.context?.findAncestorWidgetOfExactType<EditableText>() == null ||
+      key == LogicalKeyboardKey.tab ||
+      key == LogicalKeyboardKey.arrowUp ||
+      key == LogicalKeyboardKey.arrowDown;
+}
+
+final _lone = <LogicalKeyboardKey>{
+  LogicalKeyboardKey.shiftLeft,
+  LogicalKeyboardKey.shiftRight,
+  LogicalKeyboardKey.capsLock,
+  LogicalKeyboardKey.fn,
+};

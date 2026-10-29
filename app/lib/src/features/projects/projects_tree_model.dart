@@ -20,8 +20,8 @@ sealed class ProjectsItem {
 
 /// A group row: [group] with the count of its own projects and groups in the registry.
 final class ProjectsGroupItem extends ProjectsItem {
-  /// The row of [group], holding [projects] projects and [groups] groups.
-  const ProjectsGroupItem(this.group, {required this.projects, required this.groups});
+  /// The row of [group], holding [projects] projects and [groups] groups, open when [expanded].
+  const ProjectsGroupItem(this.group, {required this.projects, required this.groups, this.expanded = true});
 
   /// The group.
   final ProjectGroup group;
@@ -31,6 +31,10 @@ final class ProjectsGroupItem extends ProjectsItem {
 
   /// How many groups it holds itself.
   final int groups;
+
+  /// Whether the group is open — also when it holds nothing, which `TreeSliverNode.isExpanded` never reports
+  /// (design/windows.jsx:386: an empty group opens too and shows that it is empty).
+  final bool expanded;
 
   @override
   String get id => 'group:${group.id}';
@@ -141,11 +145,12 @@ List<TreeSliverNode<ProjectsItem>> projectsTree(
           }
           final int projects = members[group.id]?.where((m) => m.$3 is ProjectEntry).length ?? 0;
           final int groups = members[group.id]?.where((m) => m.$3 is ProjectGroup).length ?? 0;
+          final bool expanded = searching || adding || !collapsed.contains(group.id);
           nodes.add(
             TreeSliverNode<ProjectsItem>(
-              ProjectsGroupItem(group, projects: projects, groups: groups),
+              ProjectsGroupItem(group, projects: projects, groups: groups, expanded: expanded),
               children: <TreeSliverNode<ProjectsItem>>[...children, if (adding) TreeSliverNode(newGroup!)],
-              expanded: searching || adding || !collapsed.contains(group.id),
+              expanded: expanded,
             ),
           );
         case final ProjectEntry project when all || !searching || projectMatches(project, query):
