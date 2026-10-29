@@ -2154,7 +2154,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in Story 10.1 (bmad-build-auto, 2026-10-26)
 
-- **The Graph folder was not checked visually in the running catalogue.** Low.
+- ~~**The Graph folder was not checked visually in the running catalogue.**~~ — RESOLVED 2026-10-29 (console session, Marionette): `graph/viewport/recording` (design-default, free) and `graph/viewport/scale` (10k) render with @ outlined, cards at 240 × 62 with the 56 px column gap (`ZsMetrics`), clipped at the viewport edge; a diagonal canvas drag pans both axes and a long vertical drag scrolls the 10k plane; no error in the run log. Edges, the day axis and the real cards are 10.4, 10.2 and 10.3. Low.
   - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session, so no Marionette screenshot exists. Widget tests and the smoke test only prove that every Graph use case builds and opens (`app/test/widgetbook/catalogue_smoke_test.dart`, `catalogue_extension_test.dart`).
   - **Follow-up:** open `graph/viewport/recording` and `graph/viewport/scale` through `zanshinCatalogue.open` in a console session, screenshot both, and check pan and scroll by hand.
 - **`KeepAlive(keepAlive: pinned)` is inert: pinned cards are laid out on every pass instead of resting in the keep-alive bucket.** Low.

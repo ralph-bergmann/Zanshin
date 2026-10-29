@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/widgetbook/folders/graph.dart
     severity: low
+    resolved: >-
+      2026-10-29 — fixed (console session, Marionette): both Graph use cases render, pan and scroll as specified; no error in the run log.
   - summary: >-
       KeepAlive(keepAlive: pinned) is inert; pinned cards are laid out on every pass instead of resting in the keep-alive bucket.
     evidence: |-
