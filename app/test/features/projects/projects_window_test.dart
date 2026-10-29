@@ -1410,6 +1410,7 @@ void main() {
           }
         }
         expect(checked, greaterThan(0), reason: 'no row was checked');
+        expect(tester.widget<ProjectsTree>(find.byType(ProjectsTree)).selected, isNull, reason: 'rows not built too');
       }
 
       testWidgets('Rename… ↩: focus on the renamed row, still selected', (tester) async {
@@ -1601,6 +1602,59 @@ void main() {
         await rig.settle(() => selected(true).matches(tester.getSemantics(rig.row('top')), <Object?, Object?>{}));
         await tester.pump();
         expect(rig.focused, 'projects search');
+      });
+
+      testWidgets('Delete group far down a long list: focus on the first row, no row arrowed through selected', (
+        tester,
+      ) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await tester.runAsync(() async {
+          for (var i = 0; i < 20; i++) {
+            await rig.registry.add('${rig.home}/code/extra$i');
+          }
+          await rig.registry.addGroup('Last');
+        });
+        await tester.pump();
+        await rig.key(LogicalKeyboardKey.arrowDown);
+        await rig.key(LogicalKeyboardKey.end);
+        await rig.key(LogicalKeyboardKey.arrowUp);
+        await rig.key(LogicalKeyboardKey.arrowDown);
+        expect(rig.focused, 'projects row group:g3');
+        expect(find.text('WORK'), findsNothing, reason: 'the first row is not built');
+        await rig.key(LogicalKeyboardKey.tab);
+        await rig.key(LogicalKeyboardKey.enter);
+        await tester.pump(_m.durMenu);
+        await rig.key(LogicalKeyboardKey.end);
+        await rig.key(LogicalKeyboardKey.enter);
+        await tester.pump(_m.durBlink * 2);
+        await tester.pump(_m.durExit);
+        await rig.settle(() => rig.registry.group('g3') == null);
+        await tester.pump();
+        await tester.pump();
+        expect(rig.focused, 'projects row group:g1');
+        expectNothingSelected(tester, rig);
+      });
+
+      testWidgets('a focused row that is not selected keeps focus when a row lands above it', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await tester.tap(rig.id('projects-new-group'));
+        await tester.pump();
+        await tester.pump();
+        await rig.key(LogicalKeyboardKey.escape);
+        await tester.pump();
+        expect(rig.focused, 'projects row group:g1');
+        expectNothingSelected(tester, rig);
+
+        final top = '${rig.home}/code/top';
+        await tester.runAsync(() => rig.registry.move(top, index: 0));
+        await tester.pump();
+        await tester.pump();
+        expect(rig.id('projects-row-0'), findsOneWidget);
+        expect(find.descendant(of: rig.id('projects-row-0'), matching: find.text('top')), findsOneWidget);
+        expect(rig.focused, 'projects row group:g1');
+        expectNothingSelected(tester, rig);
       });
     });
   });

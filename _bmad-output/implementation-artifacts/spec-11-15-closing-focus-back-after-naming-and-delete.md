@@ -5,7 +5,7 @@ created: '2026-10-29'
 status: 'done'
 baseline_revision: 'bb70ac73686b5dabc3948a5582793157290488c3'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-11-context.md'
@@ -97,6 +97,36 @@ deferred: []
   - `[false]` `[reject]` (intent 5) No `## Auto Run Result` and uncommitted — written and committed at finalize.
   - `[false]` `[reject]` (intent 6) The window's `_deleteGroup` named by the ledger is unchanged — the effect is reached in the tree (Design note "Why in the tree"); the Delete test passes through the window.
 
+### 2026-10-29 — Review pass
+- verdicts: 26 findings — high 0, medium 2, low 19, false 5, maybe-false 0
+- findings:
+  - `[low]` `[patch]` (blind 1) `_quiet` can stay set when its hand-back is superseded and then swallow a later arrival's select — the row listener now clears `_quiet` on any other row's arrival once the waiting row is attached (same change as edge 1).
+  - `[false]` `[reject]` (blind 2) A menu removal (Delete group, Remove) can land before the menu returns focus to the ••• — ZsMenu requests the opener's focus before `onSelected` runs (zs_menu.dart:160-163) and it applies in a microtask; the registry write `onSelected` starts is async, so the build that drops the row always sees the ••• focused.
+  - `[low]` `[reject]` (blind 3) Any slot shift arms focus-follows-selection — carried: focus only moves inside the tree onto the row the window selected (2026-10-29 pass, blind 5).
+  - `[low]` `[reject]` (blind 4) A click below the rows clears the selection but not `_following` — focus is still on a tree row and moves to the row the window later selects, the tree's focus = selection rule; a deselect branch guards a rare sequence with no named harm.
+  - `[low]` `[reject]` (blind 5) No hand-back target when the tree is empty — needs Esc / Delete group with no rows at all; focus then goes where it went before this story; a fallback outside the tree adds a branch for an empty registry.
+  - `[low]` `[patch]` (blind 6) Several "row leaves or moves" paths untested — an outside registry change landing a row above the focused row is now tested (with verification-gap 1); Remove / Move to an existing group / drag take the same held-slot check in `build` the tested cases take.
+  - `[low]` `[reject]` (blind 7) Rename blur and Rename ↩ with an empty name untested — the blur rule is 11.15's own and tested there; empty ↩ calls `onRenameCancel` with `_fieldKeyed` set, the Esc test's path.
+  - `[false]` `[reject]` (blind 8) The doc omits a hand-back when the field closes from outside while focused (`_deleteGroup` clearing `_renaming`) — unreachable: reaching Delete group moves focus out of the field first, and the blur rule closes it before the delete runs.
+  - `[low]` `[reject]` (blind 9a) The New group ↩ test hard-codes `g3` — carried (2026-10-29 pass, blind 10).
+  - `[low]` `[patch]` (blind 9b) `expectNothingSelected` checks only built rows — it now also expects the tree's `selected` to be null; that exposed edge 1.
+  - `[low]` `[reject]` (blind 9c) The tap below the rows in "New group Esc without a selection" is redundant — it is the matrix row's input and costs nothing.
+  - `[low]` `[reject]` (blind 9d) "Nothing selected on the way" is checked only at the end — carried (2026-10-29 pass, blind 9 / intent 4).
+  - `[false]` `[reject]` (blind 10) The post-frame-before-microtask ordering is untested — the Delete tests arrow through rows first, so a changed ordering lets the scope's previous row arrive and select, which `expectNothingSelected` fails on (the new long-list test caught exactly that for the deferred case).
+  - `[medium]` `[patch]` (edge 1) A hand-back to an unbuilt Tab stop leaves Flutter's fallback in place: the scope's previously focused row arrives first and selects itself — demonstrated (Delete group far down a long list selected `extra19`); arrivals while `_quiet` names a row still unattached (`parent == null`) no longer select. Test added.
+  - `[false]` `[reject]` (edge 2) A selection change and a slot move of the followed row in one update let the hand-back override the follow — New group ↩, the only async select, appends the group last in its parent (project_registry.dart:175), never above the followed row; `_moveItem` selects before it awaits the move.
+  - `[low]` `[reject]` (edge 3) A selection change while the hand-back's row is still unbuilt clears `_following` — needs the window to select within the one frame the revealed row takes to build; `addGroup`'s select comes after file IO.
+  - `[low]` `[reject]` (edge 4) A followed selection hidden by a collapse or filter leaves `_following` on the old row — New group expands its parent and clears the search, `_moveItem` expands the target; focus stays on a tree row.
+  - `[low]` `[patch]` (edge 5) Same as blind 9b — same fix.
+  - `[medium]` `[patch]` (edge 6, claim) "Selection never changed" breaks for an off-screen Tab stop — same root cause as edge 1; same fix.
+  - `[low]` `[patch]` (verification-gap 1) A moved focused row that is not the Tab stop keeping focus is never asserted — test: New group Esc (g1 focused, nothing selected), `top` moved to index 0 above it, focus stays on g1, nothing selected.
+  - `[low]` `[reject]` (intent a) The trigger surface includes slot moves (drag, drops, Remove) — carried (2026-10-29 pass, intent 1).
+  - `[false]` `[reject]` (intent b) The field-close trigger is wider than ↩ / Esc — as blind 8: no reachable close while the field holds focus other than ↩ / Esc.
+  - `[low]` `[reject]` (intent c1) The menu-opened-elsewhere boundary is untested — carried (2026-10-29 pass, blind 8 / intent 3).
+  - `[low]` `[reject]` (intent c2) "A keyboard move ends following" is untested — carried (2026-10-29 pass, blind 8).
+  - `[low]` `[reject]` (intent d) Expectations live at the user surface, tests check end state in widget tests only — carried (2026-10-29 pass, intent 4; Verification notes why no Marionette check).
+  - `[low]` `[patch]` (intent e) `_quiet` stays set when the target already holds primary focus — with blind 1: another row's arrival now clears it; the target itself never holds focus at a hand-back (the field, a removed row or a detached moved node held it).
+
 ## Design Notes
 
 **Why in the tree, not the window.** The ledger points at `_deleteGroup` too, but the window knows neither whether focus was in the field (↩ / Esc vs blur) nor where the menu returned focus; the tree knows both. Following the selection covers the async New group without the window calling back.
@@ -116,6 +146,12 @@ deferred: []
 - `cargo make --allow-private test-dart-analyze`: exit 0, no issues. `test-dart-format`: exit 0, 0 files changed.
 - No Rust, FFI, schema or `zanshin_ui` change: no cargo test/clippy/fmt/codegen/parity or `test-ui` run needed.
 - No Marionette visual check: the change is focus-only and paints nothing new; the widget tests read the primary focus's label and the selection semantics.
+
+**Outcomes of the follow-up review pass (2026-10-29, same gate rule):**
+- `flutter test test/features/projects/projects_window_test.dart --plain-name "closing — focus"` (in `app/`): the new long-list Delete test failed before the listener patch (the tree's `selected` was `…/code/extra19`), all 12 pass after it.
+- `cargo make --allow-private test-flutter`: exit 0 (890 tests: 888 + 2 new).
+- `cargo make --allow-private test-dart-analyze`: exit 0 after dropping one redundant `group: null` argument. `test-dart-format`: exit 0.
+- No Rust, FFI, schema or `zanshin_ui` change: no cargo/codegen/parity/`test-ui` run needed.
 
 ## Auto Run Result
 
@@ -140,3 +176,23 @@ Status: done (2026-10-29). Blocking condition: none.
 **Verification.** See Verification › Outcomes: 888 app tests pass, analyze and format clean.
 
 **Residual risks.** The superseded-hand-back case above. Following continues if the user Tabs away and back before the next selection change. After ↩ the field's blur handler still runs, so a rename commits twice with the same name (pre-existing, harmless). The full gate runs at the end of the story loop.
+
+### Follow-up review pass (2026-10-29)
+
+**Summary.** The row listener in `ProjectsTreeState._focusFor` no longer selects a row that Flutter's fallback focuses while a hand-back waits for its Tab stop to be built (off-screen in a long list). Before, Delete group far down a long list selected the row arrowed through before it. Once the waiting row is attached, any other row's arrival clears `_quiet` and selects as usual. That closes the superseded-hand-back risk the first pass named. `expectNothingSelected` now also checks the tree's `selected`, which covers rows that are not built.
+
+**Files changed.**
+- `app/lib/src/features/projects/projects_tree.dart` -- `_focusFor`'s arrival listener: quiet while the hand-back's row is unattached; another arrival clears a stale `_quiet`.
+- `app/test/features/projects/projects_window_test.dart` -- `expectNothingSelected` checks `ProjectsTree.selected`; tests "Delete group far down a long list…" and "a focused row that is not selected keeps focus when a row lands above it".
+
+**Review findings.** 26 findings (high 0, medium 2, low 19, false 5).
+- **Patched:** 1 medium entry (edge 1 + edge 6, the fallback selecting a row while the hand-back waits) and 3 low entries (blind 1 + intent e: stale `_quiet`; blind 9b + edge 5: unbuilt rows unchecked; verification-gap 1 + blind 6: moved unselected row untested).
+- **Deferred:** none.
+- **Rejected, false:** menu removal timing (blind 2), the doc's ↩/Esc wording (blind 8, intent b), the ordering being untested (blind 10), a same-update select and slot move (edge 2).
+- **Rejected, low:** deselect not ending following (blind 4), empty tree (blind 5), Rename blur and empty ↩ tests (blind 7), the redundant tap (blind 9c), a select during the build frame (edge 3), a followed selection hidden by a collapse (edge 4). Carried from the first pass: blind 3, blind 9a, blind 9d, intent a, intent c1, intent c2, intent d.
+
+**Follow-up review recommendation:** false. This was a follow-up pass and no `high` entry was patched. Patched entries: medium 1, low 3.
+
+**Verification.** See Verification › Outcomes of the follow-up review pass.
+
+**Residual risks.** While a hand-back waits for an unbuilt row, a Tab arrival on another row in that one frame does not select it. A waiting row that is removed takes its focus node with it (`_prune`), which ends the wait.

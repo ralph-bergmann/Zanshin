@@ -357,18 +357,24 @@ class ProjectsTreeState extends State<ProjectsTree> {
 
   /// The row's focus node; focus arriving selects the row. Only arriving: a node also notifies when its traversal
   /// changes, which must not select a focused row again after a click below the rows cleared the selection. A
-  /// hand-back's arrival does not select either.
+  /// hand-back's arrival does not select either, nor does Flutter's fallback while a hand-back waits for its row.
   FocusNode _focusFor(String id) => _rowFocus.putIfAbsent(id, () {
     final node = FocusNode(debugLabel: 'projects row $id');
     var had = false;
     node.addListener(() {
       final bool has = node.hasPrimaryFocus;
       if (has && !had) {
-        // Cleared on arrival, not before: a row not built yet takes the focus a frame later.
-        if (_quiet == id) {
+        // Cleared on arrival, not before: a row not built yet takes the focus a frame later. Until then its request
+        // waits unattached (no parent), and the fallback Flutter applies meanwhile is no user move.
+        final String? quiet = _quiet;
+        final bool waiting = _rowFocus[quiet]?.parent == null && _rowFocus.containsKey(quiet);
+        if (quiet == id) {
           _quiet = null;
-        } else if (widget.selected != id) {
-          widget.onSelect(id);
+        } else if (!waiting) {
+          _quiet = null;
+          if (widget.selected != id) {
+            widget.onSelect(id);
+          }
         }
       }
       had = has;
