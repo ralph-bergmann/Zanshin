@@ -648,6 +648,8 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 
 **Design update 2026-10-26** (Ralph, console session; DS synced through #13; details in the Epic 10 header): Settings gets pages, the first being Project › Immutable commits (11.7); the Change menu gains Revert (11.13); the Push sheet places the change's single Allow inline (11.8). The token layer of the done 11.1/11.14 follows in the same change: `ZsColors.hatch` / `hatchMark`, the `revert` glyph and `ZI.revert`, `dsSyncedThrough` = 13.
 
+**Design update 2026-10-29** (Ralph, design session on the prototype in the repo, commit `994454ca`; DS synced through #15): the Projects window deselects on a click below the rows, names and renames groups in place, gives group rows the row menu (Rename… · Move to group › · Delete group), ends Move to group › with New group…, and carries the DS drag ghost while a row moves. Story 11.15 takes what 11.6 does not ship yet.
+
 ---
 
 ### Cross-Cutting Concerns (no dedicated epic)
@@ -13480,5 +13482,87 @@ The handlers come from the stories that own them: 10.5 (scroll API), 10.6 (selec
 - `cargo make test-full` is green.
 
 **Related:** 11.1, 11.2, 11.10, 11.11, 10.1; the Epic 11 house rule Code locations; `d81ebd9` (the change-aware gate).
+
+---
+
+### Story 11.15: Projects window — deselect, naming and renaming groups, the group menu, Move to group › New group…, the drag ghost [UI]
+*(Added 2026-10-29, Ralph — console session after the design rounds DS #14 and #15 (commit `994454ca`), which Ralph made with Claude Code on the prototype in the repo; Claude builds it under the scope change of 11.0. DS synced through #15.)*
+
+**Motivation.** Trying the Projects window, Ralph found three gaps: a selected group could not be deselected, so a new group never landed on the top level; groups could not be renamed or deleted; and rows should move by drag with a clear target. The design took them up in DS #14 and #15 (`design/DESIGN-SYSTEM-SYNC.md` #14, #15; DS readme.md › Windows › Projects; `components/content/ProjectRow.prompt.md` › Moving, Naming a group, The row menu; `components/overlays/DragGhost.prompt.md`; the prototype `design/windows.jsx` › `ProjectsWin`).
+
+11.6 already ships most of it (`app/lib/src/features/projects/`):
+- New group's name field (`projects_tree.dart` › `_NewGroupField`; ↩ creates, Esc and a click elsewhere cancel);
+- the project menu by ••• and right-click (`_menuEntries`: Open · Reveal in Finder · Move to group › · Remove from list, with the design's enable rules);
+- moving rows by drag with the design's zones (`tree_drop.dart` › `treeDropPlacement`: a project half and half, a group a quarter, the middle half, a quarter), the line at the target's indent and the ring on the group in the live accent (`_DropPainter`).
+
+This story adds the rest.
+
+**Scope.**
+1. **Deselect.** A click on the empty tree below the last row clears the selection (Finder). The tree's Tab stop is then the first row (11.6's rule). The click that ends a drag clears nothing (item 7).
+2. **New group's place.** With a project selected, the field and the new group go into that project's group. Today they go to the top level, because `ProjectsWindowState._targetGroup` reads only a selected group. A selected group (inside it) and no selection (the end of the top level) stay as they are.
+3. **Group rows get the row menu.**
+   - ••• on group rows, shown as on a project row: on hover and while the row or the button has focus; Tab from the selected row reaches it. A right-click opens the menu at the pointer. Either way the row is selected.
+   - Entries: Rename… · Move to group › · — · Delete group.
+4. **Rename…** puts the name field into the group's own row (`ProjectRow editing`): the chevron slot and the folder stay, the 28 px field holds the name, selected.
+   - ↩ and a click elsewhere keep what was typed (Finder). Esc cancels. An empty name keeps the old one.
+   - New group keeps 11.6's rule: a click elsewhere cancels.
+5. **Delete group** removes only the group.
+   - Its projects and subgroups take its place in its parent, in their order. Nothing leaves the list.
+   - No confirmation, because nothing is lost but the name (Claude's proposal in the design session). The selection clears.
+6. **Move to group ›** for groups and projects.
+   - Groups get the submenu too. It lists Top level and every group by its path ("Work / Mobile"), sorted, with the current place checked (radio). It never lists the group itself or anything inside it. Choosing the current place does nothing.
+   - For both kinds the submenu ends with **— · New group…**. The name field appears as the last row of the row's current group, as New group does. ↩ creates the group there and moves the row into it, selected (Finder's New Folder with Selection). Esc and a click elsewhere leave everything as it was.
+7. **Moving rows, the remaining rules** (ProjectRow.prompt.md › Moving):
+   - no drag while a search is active (the results are flat);
+   - Esc cancels a drag;
+   - the moved row ends selected, and the click that ends a drag neither toggles a group nor clears the selection;
+   - an expanded group with children takes its whole lower part as "into" (as its last child);
+   - below the last row is the end of the top level, shown as the line under the last row at indent 0 (`drop="end"`). `_endTarget` accepts that drop today but shows nothing;
+   - the row in hand stays in place at 40 % (today 50 %);
+   - "into" is the `--accent-soft` fill with a `--accent-live-line` border (DS content.css › `.is-drop-into`). Today it is a ring and a border without the fill. Check the line and the ring against the DS card *Content* and adjust what differs;
+   - the arrow cursor throughout.
+8. **The ghost.** The pointer carries the DS `DragGhost` instead of today's `_DragFeedback`, which is a plain name chip.
+   - The chip: 34 px, `--card-solid-hi`, a moon border with a 3 px ring, tilted −1.5°, 14 / 12 px from the pointer. It shows the status dot (a project) or the folder glyph (a group), then the name.
+   - Under it, the destination in words, sans, with a moon border: "Into <group>" or "To the top level". While nothing valid is under the pointer it shows the hint "Drop between rows or on a group".
+   - Under Reduce motion it has no tilt animation and simply follows the pointer.
+   - It is built as `ZsDragGhost` in `packages/zanshin_ui` with the kinds `project` and `group`. 10.10 adds `change`, `bookmark` and `diff` (Claude's proposal: the first user builds it).
+9. **The registry** (`ProjectRegistry`): `renameGroup(id, name)` and `deleteGroup(id)`. `deleteGroup` does item 5's splice and renumbers the orders as `remove` does. Both are persisted like the other edits. Item 6's New group… uses `addGroup` (the group goes last in its parent) and then `move` / `moveGroup`.
+10. **The DS sync marker.** `dsSyncedThrough` goes to 15 (`zs_appearance.dart`, `zs_tokens_test.dart`). #14 and #15 add no tokens: they use `--accent-soft`, `--accent-live-line` and the ghost's existing tokens. The DS parity test confirms that.
+
+**Non-goals.**
+- Undo for list edits (Remove from list, Delete group, moves): the design has none.
+- Moving rows by keyboard: the design moves by pointer only.
+- The graph's ghost kinds (10.10).
+- Selecting several rows.
+
+**Depends on.** 11.6 and 11.11, both done.
+
+**Design status.** FINAL: DS #14 and #15 (2026-10-29). Claude proposed three choices in the design session, and Ralph accepted them by trying the prototype:
+- Delete group keeps the contents.
+- A click elsewhere keeps a rename but cancels a new group.
+- New group… creates the group where the row is, not on the top level.
+
+Nothing NEEDS DESIGN.
+
+**Witnesses.**
+- A click below the last row clears the selection. New group then lands at the end of the top level.
+- With a project inside a group selected, New group's field and the new group are in that group.
+- A group row shows ••• on hover and on focus. A right-click opens the same menu and selects the row.
+- Rename…: ↩ and a click elsewhere keep the new name; Esc and an empty name keep the old one. The registry stores the result.
+- Delete group on a group that holds a project and a subgroup: both now sit in its parent at its place, in order, and the list holds the same projects as before.
+- Move to group › of a group lists neither the group nor anything inside it, and the current place is checked.
+- New group… on a project: Esc leaves the registry unchanged. ↩ with "Mobile" creates a group "Mobile" in the project's group, with the project in it, selected.
+- Drag:
+  - no drag starts while searching;
+  - Esc during a drag keeps the order;
+  - the moved row ends selected;
+  - a drop below the last row moves the row to the end of the top level, and the line shows at indent 0 while hovering there.
+- The ghost reads:
+  - "Into Backend" over Backend's middle;
+  - "To the top level" between two top-level rows and below the last row;
+  - "Drop between rows or on a group" over the dragged group's own subtree.
+- In the running window (Marionette, the Widgetbook Windows use case): screenshots of the name field, the group menu with its submenu and a drag in progress, compared with the DS cards *Content* and *Overlays*.
+
+**Related:** 11.6, 11.11, 10.10 (the ghost); DS #14, #15.
 
 ---
