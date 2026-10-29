@@ -2182,3 +2182,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **The repo ships Apache-2.0 code without the Apache-2.0 licence text, and its manifests still say `license = "MIT"`.** Medium.
   - `crates/zanshin-jj/src/source_symbol.rs:1` is a verbatim port of jj's `cli/src/source_symbol.rs` (SPDX `MIT AND Apache-2.0`, jj's copyright in the module doc), but the root has only an MIT `LICENSE` and `Cargo.toml:19` sets `license = "MIT"` for every crate (`zanshin-jj` inherits it). Apache-2.0 §4(a) asks for a copy of the licence with redistributions; the linked Apache-2.0 dependencies (jj-lib, jj-cli) already raise the same question for any shipped binary.
   - **Follow-up:** Ralph decides the project's licence notices: e.g. add `LICENSES/Apache-2.0.txt` (or `LICENSE-APACHE`) plus a third-party NOTICE for the app bundle, and set `zanshin-jj`'s `license` to `MIT AND Apache-2.0`.
+
+## Surfaced in Story 11.15 (bmad-build-auto, 2026-10-29)
+
+- **Keyboard focus is not given back after the name field closes (↩ / Esc on Rename… or New group…) or after Delete group removes the focused row.** Low.
+  - The field leaves the tree and nothing refocuses a row; Delete group disposes the focused row (`app/lib/src/features/projects/projects_tree.dart` › `didUpdateWidget` / `_startField`; `projects_window.dart` › `_deleteGroup`). 11.6's New group already behaved so; a keyboard user who came through Tab → ••• has to Tab back in.
+  - **Follow-up:** after a commit or cancel that held focus, focus the row the selection names once the window's async selection settles (New group selects only after `addGroup` returns, so focusing the Tab stop at once would re-select the old row).
