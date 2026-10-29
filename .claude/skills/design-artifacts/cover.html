@@ -1,0 +1,49 @@
+<!-- @dsCard height=300 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zanshin Design System</title>
+<style>
+  html, body { margin: 0; }
+  body { background: var(--canvas-base); }
+  .cover { position: relative; width: 960px; height: 300px; overflow: hidden; background: var(--canvas-base); }
+  .band { position: absolute; left: 0; top: 0; }
+  .lift { fill: var(--night-lift); }
+  .gold { fill: var(--primary-action); }
+  .moon { fill: var(--accent); }
+  .saffron { fill: var(--co); }
+  .tint { fill: var(--accent-soft-hi); }
+  .blk { rx: var(--radius-dialog); }
+  .pill { rx: 32px; }
+  .wave { fill: none; stroke: var(--canvas-base); stroke-width: 3; stroke-linecap: round; }
+  .text { position: absolute; left: 48px; bottom: 44px; max-width: 880px; }
+  .name { margin: 0; font-family: var(--font-sans); font-weight: 600; font-size: 64px; line-height: .95; letter-spacing: -0.012em; color: var(--text); }
+  .tag { margin: 12px 0 0; font-family: var(--font-sans); font-size: 14px; line-height: 1.5; color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="cover">
+  <!--
+    blocks: --night-lift 420×124 · --accent 196×124 · --primary-action 180×88 · --co 64×64 pill · --accent-soft-hi 60×124, corners --radius-dialog
+    arrangement: a strip of unequal bands bleeding off the top, 12px gaps (--chrome-inset), the name beneath (top-band skeleton: the name is too wide for the 440 zone)
+    pattern: wave crests cut from the indigo lift in the ground colour — Nami, three waves, is the mark ("a literal motif → arcs from radii")
+    steps and radii: 12 gap (--space-3), 16 crest radius (--space-4), 24 row pitch (--space-6), 18 corners (--radius-dialog), pill = half of 64
+  -->
+  <svg class="band" width="960" height="124" viewBox="0 0 960 124" aria-hidden="true">
+    <rect class="lift blk" x="0" y="-18" width="420" height="130"></rect>
+    <rect class="gold blk" x="432" y="-18" width="180" height="94"></rect>
+    <rect class="moon blk" x="624" y="-18" width="196" height="130"></rect>
+    <rect class="saffron pill" x="832" y="-18" width="64" height="64"></rect>
+    <rect class="tint blk" x="908" y="-18" width="70" height="130"></rect>
+    <path class="wave" d="M196 40 a16 16 0 0 1 32 0 M244 40 a16 16 0 0 1 32 0 M292 40 a16 16 0 0 1 32 0 M340 40 a16 16 0 0 1 32 0"></path>
+    <path class="wave" d="M220 64 a16 16 0 0 1 32 0 M268 64 a16 16 0 0 1 32 0 M316 64 a16 16 0 0 1 32 0 M364 64 a16 16 0 0 1 32 0"></path>
+    <path class="wave" d="M196 88 a16 16 0 0 1 32 0 M244 88 a16 16 0 0 1 32 0 M292 88 a16 16 0 0 1 32 0 M340 88 a16 16 0 0 1 32 0"></path>
+  </svg>
+  <div class="text">
+    <h1 class="name">Zanshin Design System</h1>
+    <p class="tag">A desktop client for jj — the change graph owns the window; every control floats above it.</p>
+  </div>
+</div>
+</body>
+</html>
