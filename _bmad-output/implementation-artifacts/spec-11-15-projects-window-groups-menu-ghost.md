@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/projects_tree.dart (didUpdateWidget, _startField); app/lib/src/features/projects/projects_window.dart (_deleteGroup)
     severity: low
+    resolved: >-
+      2026-10-29 — fixed (spec-11-15-closing-focus-back-after-naming-and-delete, commit 934bb72): the tree hands focus back to its Tab stop without selecting it and follows the selection while it stays there.
 ---
 
 <intent-contract>
