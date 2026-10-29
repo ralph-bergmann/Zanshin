@@ -44,7 +44,10 @@ import 'tree_drop.dart';
 /// **Keys** (decision 16.43; DS ProjectRow.prompt.md:11): one Tab stop — the selected row, else the first; focus that
 /// arrives selects its row. ↑ ↓ Home End move and select, → expands a group or steps into it, ← collapses one or steps
 /// to the parent, ↩ opens a project (a group toggles), typing selects the next row whose name starts with the letters
-/// typed within `--dur-typeahead`. Tab from the selected row reaches its ••• and no other.
+/// typed within `--dur-typeahead`. Tab from the selected row reaches its ••• and no other. When the name field closes
+/// on ↩ or Esc, or a row (or its •••) leaves the tree holding focus, focus goes back to the Tab stop without selecting
+/// it (a focused row that moves gets it back itself); while it stays there, it follows the selection (New group's
+/// group, selected once it exists).
 ///
 /// **Drops.** A row dragged onto another row, or a Finder folder dragged over one, lands where `tree_drop.dart` places
 /// it — a group's middle half is inside it; for a dragged row an expanded group with children takes its whole lower
@@ -232,6 +235,9 @@ class ProjectsTreeState extends State<ProjectsTree> {
 
   var _roots = const <TreeSliverNode<ProjectsItem>>[];
   var _rows = const <ProjectsRow>[];
+
+  /// Every row the tree builds, in order: [_rows] with the new group's field in its place.
+  var _slots = const <String>[];
   final _indexOf = <String, int>{};
   String? _tabStop;
 
@@ -244,6 +250,15 @@ class ProjectsTreeState extends State<ProjectsTree> {
   String? _dragging;
   var _dragCancelled = false;
   var _keysHooked = false;
+
+  /// Whether ↩ or Esc is closing the name field (a blur closing it leaves focus where it went).
+  var _fieldKeyed = false;
+
+  /// The row focus was handed back to; while it keeps primary focus, focus follows the selection.
+  String? _following;
+
+  /// The row a hand-back focuses without selecting it, until it arrives.
+  String? _quiet;
 
   /// Where a row drag would land now, as the drop look shows it.
   @visibleForTesting
@@ -276,7 +291,43 @@ class ProjectsTreeState extends State<ProjectsTree> {
     }
     if (field != null && field != _fieldOf(oldWidget)) {
       _startField();
+    } else if (field == null && _fieldOf(oldWidget) != null) {
+      if (_fieldKeyed || _nameFocus.hasFocus) {
+        _handBack();
+      }
+      _fieldKeyed = false;
     }
+    final String? selected = widget.selected;
+    final String? following = _following;
+    if (following != null && selected != null && selected != oldWidget.selected && selected != following) {
+      if (_rowFocus[following]?.hasPrimaryFocus ?? false) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _following == following && _indexOf.containsKey(selected)) {
+            _following = selected;
+            _reveal(_indexOf[selected]!);
+            _focusFor(selected).requestFocus();
+          }
+        });
+      } else {
+        _following = null;
+      }
+    }
+  }
+
+  /// Gives focus to the row [id] (else the Tab stop) after this frame, without selecting it, and follows the selection
+  /// from there. After the frame: a focused node that unmounts makes Flutter focus the scope's previously focused row
+  /// in a microtask, and this request replaces that before it applies.
+  void _handBack([String? id]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final String? stop = id ?? _tabStop;
+      if (!mounted || stop == null || !_indexOf.containsKey(stop)) {
+        return;
+      }
+      _reveal(_indexOf[stop]!);
+      _quiet = stop;
+      _following = stop;
+      _focusFor(stop).requestFocus();
+    });
   }
 
   @override
@@ -305,14 +356,20 @@ class ProjectsTreeState extends State<ProjectsTree> {
   }
 
   /// The row's focus node; focus arriving selects the row. Only arriving: a node also notifies when its traversal
-  /// changes, which must not select a focused row again after a click below the rows cleared the selection.
+  /// changes, which must not select a focused row again after a click below the rows cleared the selection. A
+  /// hand-back's arrival does not select either.
   FocusNode _focusFor(String id) => _rowFocus.putIfAbsent(id, () {
     final node = FocusNode(debugLabel: 'projects row $id');
     var had = false;
     node.addListener(() {
       final bool has = node.hasPrimaryFocus;
-      if (has && !had && widget.selected != id) {
-        widget.onSelect(id);
+      if (has && !had) {
+        // Cleared on arrival, not before: a row not built yet takes the focus a frame later.
+        if (_quiet == id) {
+          _quiet = null;
+        } else if (widget.selected != id) {
+          widget.onSelect(id);
+        }
       }
       had = has;
     });
@@ -358,6 +415,7 @@ class ProjectsTreeState extends State<ProjectsTree> {
   /// the frame that mounts it. The blur rule is off until then: the one field moving from one row to another must not
   /// read as focus leaving it.
   void _startField() {
+    _following = null;
     final String? renaming = widget.renaming;
     final String name = renaming == null ? '' : _groupName(renaming) ?? '';
     _name.value = TextEditingValue(
@@ -543,6 +601,8 @@ class ProjectsTreeState extends State<ProjectsTree> {
     }
     final int i = index.clamp(0, _rows.length - 1);
     final String id = _rows[i].node.content.id;
+    _following = null;
+    _quiet = null;
     widget.onSelect(id);
     _reveal(i);
     final FocusNode focus = _focusFor(id);
@@ -714,16 +774,30 @@ class ProjectsTreeState extends State<ProjectsTree> {
 
   // ---- build ----
 
+  /// The row whose row or ••• holds focus.
+  String? get _held {
+    for (final String id in _slots) {
+      if ((_rowFocus[id]?.hasFocus ?? false) || (_moreFocus[id]?.hasFocus ?? false)) {
+        return id;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final String? held = _held;
+    final int heldSlot = held == null ? -1 : _slots.indexOf(held);
     _roots = projectsTree(
       widget.projects,
       collapsed: widget.collapsed,
       query: widget.query,
       newGroup: widget.newGroup,
     );
+    final List<ProjectsRow> visible = visibleRows(_roots);
+    _slots = <String>[for (final ProjectsRow row in visible) row.node.content.id];
     _rows = <ProjectsRow>[
-      for (final ProjectsRow row in visibleRows(_roots))
+      for (final ProjectsRow row in visible)
         if (row.node.content is! ProjectsNewGroupItem) row,
     ];
     _indexOf
@@ -731,6 +805,11 @@ class ProjectsTreeState extends State<ProjectsTree> {
       ..addAll(<String, int>{for (final (int i, ProjectsRow row) in _rows.indexed) row.node.content.id: i});
     final String? selected = widget.selected;
     _tabStop = selected != null && _indexOf.containsKey(selected) ? selected : _rows.firstOrNull?.node.content.id;
+    // A focused row that leaves, or moves to another slot (whose element then builds another row), loses its focus:
+    // it goes back to the Tab stop, or to the row where it is now — unless a name field opening takes it.
+    if (held != null && _fieldOf(widget) == null && _slots.indexOf(held) != heldSlot) {
+      _handBack(_indexOf.containsKey(held) ? held : null);
+    }
     _prune(_indexOf.keys.toSet());
     final ZsColors colors = ZsColors.of(context);
     final Widget body = _roots.isEmpty
@@ -811,8 +890,14 @@ class ProjectsTreeState extends State<ProjectsTree> {
         focusNode: _nameFocus,
         label: 'New group',
         identifier: 'projects-new-group-name',
-        onSubmitted: _commitNewGroup,
-        onCancel: widget.onNewGroupCancel,
+        onSubmitted: (name) {
+          _fieldKeyed = true;
+          _commitNewGroup(name);
+        },
+        onCancel: () {
+          _fieldKeyed = true;
+          widget.onNewGroupCancel();
+        },
       ),
       ProjectsGroupItem(:final ProjectGroup group) when group.id == widget.renaming => _NameField(
         depth: node.depth ?? 0,
@@ -820,8 +905,14 @@ class ProjectsTreeState extends State<ProjectsTree> {
         focusNode: _nameFocus,
         label: 'Rename group',
         identifier: 'projects-rename-group-name',
-        onSubmitted: (name) => _commitRename(group.id, name),
-        onCancel: widget.onRenameCancel,
+        onSubmitted: (name) {
+          _fieldKeyed = true;
+          _commitRename(group.id, name);
+        },
+        onCancel: () {
+          _fieldKeyed = true;
+          widget.onRenameCancel();
+        },
       ),
       _ => _itemRow(node, item),
     };

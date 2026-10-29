@@ -1396,6 +1396,213 @@ void main() {
       expect(find.text('MyApp'), findsOneWidget, reason: 'Mobile stays expanded');
       expect(tester.getSemantics(rig.row('top')), selected(true));
     });
+
+    group('closing — focus', () {
+      Finder nameField(_Rig rig, String identifier) =>
+          find.descendant(of: rig.id(identifier), matching: find.byType(EditableText));
+
+      void expectNothingSelected(WidgetTester tester, _Rig rig) {
+        var checked = 0;
+        for (var i = 0; i < rig.registry.value.groups.length + rig.registry.value.projects.length; i++) {
+          if (rig.id('projects-row-$i').evaluate().isNotEmpty) {
+            expect(tester.getSemantics(rig.id('projects-row-$i')), selected(false), reason: 'row $i');
+            checked++;
+          }
+        }
+        expect(checked, greaterThan(0), reason: 'no row was checked');
+      }
+
+      testWidgets('Rename… ↩: focus on the renamed row, still selected', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await openMenu(tester, rig, 0);
+        await choose(tester, 'projects-menu-rename');
+        await tester.pump();
+        expect(rig.focused, 'projects group name');
+        await tester.enterText(nameField(rig, 'projects-rename-group-name'), 'Clients');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await rig.settle(() => rig.registry.group('g1')!.name == 'Clients');
+        await tester.pump();
+        expect(rig.focused, 'projects row group:g1');
+        expect(tester.getSemantics(rig.row('CLIENTS')), selected(true));
+      });
+
+      testWidgets('Rename… Esc: focus on the row, its name kept', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await openMenu(tester, rig, 0);
+        await choose(tester, 'projects-menu-rename');
+        await tester.pump();
+        await rig.key(LogicalKeyboardKey.escape);
+        await tester.pump();
+        expect(rig.focused, 'projects row group:g1');
+        expect(rig.registry.group('g1')!.name, 'Work');
+        expect(tester.getSemantics(rig.row('WORK')), selected(true));
+      });
+
+      testWidgets('New group ↩: focus follows the selection to the new group once it exists', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await tester.tap(find.text('MyApp'));
+        await tester.pump(kDoubleTapTimeout);
+        await tester.tap(rig.id('projects-new-group'));
+        await tester.pump();
+        await tester.pump();
+        expect(rig.focused, 'projects group name');
+        await tester.enterText(nameField(rig, 'projects-new-group-name'), 'X');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await rig.settle(
+          () =>
+              find.ancestor(of: find.text('X'), matching: find.byType(ZsControlCore)).evaluate().isNotEmpty &&
+              selected(true).matches(tester.getSemantics(rig.row('X')), <Object?, Object?>{}),
+        );
+        await tester.pump();
+        expect(rig.focused, 'projects row group:g3');
+        expect(tester.getSemantics(rig.row('MyApp')), selected(false));
+      });
+
+      testWidgets('New group Esc without a selection: focus on the first row, nothing selected', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await tester.tapAt(tester.getRect(rig.row('gone')).bottomCenter + const Offset(0, 30));
+        await tester.pump();
+        await tester.tap(rig.id('projects-new-group'));
+        await tester.pump();
+        await tester.pump();
+        expect(rig.focused, 'projects group name');
+        await rig.key(LogicalKeyboardKey.escape);
+        await tester.pump();
+        expect(nameField(rig, 'projects-new-group-name'), findsNothing);
+        expect(rig.focused, 'projects row group:g1');
+        expectNothingSelected(tester, rig);
+      });
+
+      testWidgets('New group… ↩: focus and selection on the moved row inside the new group', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        final top = '${rig.home}/code/top';
+        await openMenu(tester, rig, 5);
+        await openSubmenu(tester);
+        await choose(tester, 'projects-menu-move-new');
+        await tester.pump();
+        expect(rig.focused, 'projects group name');
+        await tester.enterText(nameField(rig, 'projects-new-group-name'), 'Mobile2');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await rig.settle(() => rig.registry.entry(top)!.group == 'g3');
+        await tester.pump();
+        expect(rig.focused, 'projects row project:$top');
+        expect(tester.getSemantics(rig.row('top')), selected(true));
+      });
+
+      testWidgets('Delete group by keyboard: focus on the first row, nothing selected on the way', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await rig.key(LogicalKeyboardKey.arrowDown);
+        await rig.key(LogicalKeyboardKey.arrowDown);
+        await rig.key(LogicalKeyboardKey.arrowDown);
+        await rig.key(LogicalKeyboardKey.arrowUp);
+        await rig.key(LogicalKeyboardKey.arrowUp);
+        expect(rig.focused, 'projects row group:g1');
+        await rig.key(LogicalKeyboardKey.tab);
+        expect(rig.focused, 'projects more group:g1');
+        await rig.key(LogicalKeyboardKey.enter);
+        await tester.pump(_m.durMenu);
+        expect(find.bySemanticsIdentifier('projects-menu-delete'), findsOneWidget);
+        await rig.key(LogicalKeyboardKey.end);
+        await rig.key(LogicalKeyboardKey.enter);
+        await tester.pump(_m.durBlink * 2);
+        await tester.pump(_m.durExit);
+        await rig.settle(() => rig.registry.group('g1') == null);
+        await tester.pump();
+        expect(rig.focused, 'projects row group:g2');
+        expectNothingSelected(tester, rig);
+      });
+
+      testWidgets('a click into the search closing New group keeps focus in the search', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await tester.tap(rig.id('projects-new-group'));
+        await tester.pump();
+        await tester.pump();
+        expect(rig.focused, 'projects group name');
+        await tester.tap(nameField(rig, 'projects-search'), kind: PointerDeviceKind.mouse);
+        await tester.pump();
+        await tester.pump();
+        expect(nameField(rig, 'projects-new-group-name'), findsNothing);
+        expect(rig.focused, 'projects search');
+      });
+
+      testWidgets('a hand-back to a row scrolled out of the built range does not select it', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await tester.runAsync(() async {
+          for (var i = 0; i < 20; i++) {
+            await rig.registry.add('${rig.home}/code/extra$i');
+          }
+        });
+        await tester.pump();
+        final pointer = TestPointer(1, PointerDeviceKind.mouse);
+        await tester.sendEventToBinding(pointer.hover(tester.getCenter(rig.row('top'))));
+        await tester.sendEventToBinding(pointer.scroll(const Offset(0, 5000)));
+        await tester.pump();
+        expect(find.text('WORK'), findsNothing, reason: 'Work is not built');
+        await tester.tap(rig.id('projects-new-group'));
+        await tester.pump();
+        await tester.pump();
+        expect(rig.focused, 'projects group name');
+
+        await rig.key(LogicalKeyboardKey.escape);
+        await tester.pump();
+        await tester.pump();
+        expect(rig.focused, 'projects row group:g1');
+        expectNothingSelected(tester, rig);
+      });
+
+      testWidgets('New group… chosen by keyboard during a search keeps focus in the new field', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await tester.enterText(
+          find.descendant(of: rig.id('projects-search'), matching: find.byType(EditableText)),
+          'top',
+        );
+        await tester.pump();
+        await rig.key(LogicalKeyboardKey.arrowDown);
+        expect(rig.focused, 'projects row project:${rig.home}/code/top');
+        await rig.key(LogicalKeyboardKey.tab);
+        await rig.key(LogicalKeyboardKey.enter);
+        await tester.pump(_m.durMenu);
+        await rig.key(LogicalKeyboardKey.keyM);
+        await rig.key(LogicalKeyboardKey.arrowRight);
+        await tester.pump(_m.durMenu);
+        await rig.key(LogicalKeyboardKey.end);
+        await rig.key(LogicalKeyboardKey.enter);
+        await tester.pump(_m.durBlink * 2);
+        await tester.pump(_m.durExit);
+        await tester.pump();
+        expect(nameField(rig, 'projects-new-group-name'), findsOneWidget);
+        expect(rig.focused, 'projects group name');
+      });
+
+      testWidgets('focus moved off the handed-back row does not follow a later selection', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump();
+        await tester.tap(rig.id('projects-new-group'));
+        await tester.pump();
+        await tester.pump();
+        await rig.key(LogicalKeyboardKey.escape);
+        await tester.pump();
+        expect(rig.focused, 'projects row group:g1');
+
+        await tester.tap(nameField(rig, 'projects-search'), kind: PointerDeviceKind.mouse);
+        await tester.pump();
+        expect(rig.focused, 'projects search');
+        final top = '${rig.home}/code/top';
+        await tester.runAsync(() => rig.session.open(top));
+        await rig.settle(() => selected(true).matches(tester.getSemantics(rig.row('top')), <Object?, Object?>{}));
+        await tester.pump();
+        expect(rig.focused, 'projects search');
+      });
+    });
   });
 
   group('Clone', () {
