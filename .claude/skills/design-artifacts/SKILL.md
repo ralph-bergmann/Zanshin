@@ -10,8 +10,8 @@ Standalone Claude Design (claude.ai/design) closes 2026-12-14. Since 2026-10-29 
 | What | Source of truth | Published as |
 |---|---|---|
 | Design system: tokens, components, guidelines, brand book, UI kit | `_bmad-output/implementation-artifacts/design_system/` (this repo; Claude Code edits it in place — there are no more re-downloads) | Design System artifact https://claude.ai/artifact/J5iSiy8cS6Q1EXa44g945d — read-only page (`"editing": "code"`), namespace `ZanshinDesignSystem_a33847` |
-| App design: screens, flows | Design canvas https://claude.ai/artifact/6sAzL5mDcVpWXevbTcempu (edited in the browser or by Claude) | itself; back up into the repo (D) |
-| Old app design project, frozen | `_bmad-output/implementation-artifacts/design/` (export of 2026-10-26) | reference only |
+| App design: the clickable prototype (the floating client) | `_bmad-output/implementation-artifacts/design/` — `JJ Desktop Client Floating.html` and its `.jsx`/`.css`; Claude Code edits it in place, exactly as Claude Design did (F) | the Browser pane via `.claude/launch.json` → `design-preview` |
+| App design: static screen overview (16 boards a–k, state of 2026-10-26) | Design canvas https://claude.ai/artifact/6sAzL5mDcVpWXevbTcempu | itself — a picture, not maintained alongside the prototype; rebuild it when Ralph asks |
 
 Flutter reads `design_system/` directly (`packages/zanshin_ui/test/design/css_token_reader.dart`, `crates/xtask/src/tasks/gate_plan.rs`, specs), so its layout stays as it is: `tokens/*.css`, `components/<group>/<Comp>.jsx|.d.ts|.prompt.md`, `_ds_bundle.js`, `readme.md` (brand book, "Synced through #N").
 
@@ -32,7 +32,7 @@ One publish to the canvas: `files` copies from the DS server-side — `project/d
 
 ## C. Something new in the design belongs in the DS
 
-Make the change in `design_system/` (CSS tokens, the component's `.jsx` + `.d.ts` + `.prompt.md`, `readme.md`), add a dated line to the readme's Sync section saying what came from the canvas, then A and B. The rule of the system still holds: the DS leads, designs use its components.
+Make the change in `design_system/` (CSS tokens, the component's `.jsx` + `.d.ts` + `.prompt.md`, `readme.md`), add a dated line to the readme's Sync section saying what came from the prototype or the canvas, then A and B. The rule of the system still holds: the DS leads, designs use its components.
 
 ## D. Back up a canvas into the repo (replaces the ZIP download)
 
@@ -41,6 +41,10 @@ Make the change in `design_system/` (CSS tokens, the component's `.jsx` + `.d.ts
 ## E. Changing a component's code
 
 `_ds_bundle.js` is the compiled bundle (format 4, header JSON on line 1, then one `// components/<group>/<Comp>.jsx` + `try { (() => { … })(); } catch …` block per source file, JSX already turned into `React.createElement`, exports assigned to the namespace). No build tool is installed: after editing a `.jsx`, rewrite that file's block in `_ds_bundle.js` by hand to match (look at a neighbouring block for the pattern) and add a new component's name to the header's `components` list. Never leave a literal `</script` or `<!--` in it (the script refuses).
+
+## F. Changing the app design (the click dummy)
+
+Edit the prototype in `design/` (`app-float.jsx`, `graph-*.jsx`, `inspector.jsx`, `settings.jsx`, `float.css`, …; `design/CLAUDE.md` holds the project's own notes), then show it: `preview_start` `design-preview` and open `JJ Desktop Client Floating.html`. A change that belongs to the system (a token, a component, a rule) also goes into `design_system/` with a numbered entry in `design/DESIGN-SYSTEM-SYNC.md`, then A — the same two-step habit as in Claude Design, without the ZIPs. The old copies of the prototype (`JJ Desktop Client.html`, `archive/`, studies) stay reference only.
 
 ## Pitfalls
 
