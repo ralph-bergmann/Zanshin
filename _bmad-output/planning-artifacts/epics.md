@@ -12731,14 +12731,14 @@ What exists in the app:
    - **Footer:** the jj identity, `user.name` and `user.email` from 9.28's `configGet`, instead of "Signed in" (Claude's proposal). The export's account is invented (SH:2070-2079; prototype defect 65).
      - Without an identity, the footer links to 11.7's Identity rows (9.27's `identity_missing`).
 3. **Toolbar** (SH:2093-2109):
-   - the search ("Search projects, paths…", focused on open, with ✕), which matches names and paths across groups (SH:1997-2007);
+   - the search ("Search projects, paths…", with ✕), which matches names and paths across groups (SH:1997-2007). *Changed 2026-10-29 (Ralph): it is no longer focused on open; a focused search there looked odd (see 11.15's note).*
    - **Add directory**, the gold primary;
    - **Clone from remote**;
    - **New group**, a ghost button.
 4. **Tree** (SH:2111-2176; DS `components/content/ProjectRow.jsx:16-55`), from 11.5's registry.
    - **Group rows:** chevron, folder, name, and the count "N · M groups".
    - **Project rows:** status dot, name, the saffron caps "open" marker on the open project (FC:260), branch label, ↑ and ↓ (9.29), "path · last opened", and "…" on hover.
-     - "…" offers Open, Reveal in Finder, Move to group and Remove from list (Claude's proposal).
+     - "…" offers Open, Reveal in Finder, Move to group and Remove from list (Claude's proposal). *Since 2026-10-29 (Ralph) Remove from list asks first (see 11.15's note).*
    - **Behaviour:**
      - The selection is moon (FC:259).
      - A double-click or ↩ opens a project.
@@ -12782,7 +12782,7 @@ What exists in the app:
   - an empty folder gets the init offer.
 - A dropped folder runs the same flow. A folder already in the list is not added again.
 - A clone from a local bare remote opens the clone; the bare remote is built in the test, as 6.4a's tests do.
-- A missing row is struck through and does not open. Remove from list deletes only the registry entry.
+- A missing row is struck through and does not open. Remove from list deletes only the registry entry, once confirmed (since 2026-10-29).
 - The footer shows the effective identity. Without one, its link opens 11.7.
 
 **Related:** 11.5, 11.7, 9.20, 9.33, 3.4a, 3.4c.
@@ -13220,7 +13220,7 @@ The same story sets up the tools to review and drive them. Widgetbook 3.25.0 bec
 **Scope.**
 1. **The state core.** `FocusableActionDetector` + `WidgetStatesController` + `MouseRegion` + `Semantics`, about 40 lines of our own instead of Material's `WidgetStateMixin` (RC §4). Every control takes its states from it:
    - rest → hover → pressed, one fill step each, the press instant, no shrink, no ripple (`DS readme.md:102`, `:121-122`). Where a component's CSS uses its own ladder (the inline ✕ / ••• buttons: hover `--fl-on`, pressed `--fl-press`), the component CSS wins (r4out a11y KVS-12);
-   - focus-visible: the one ring of `DS readme.md:135` and `DS tokens/states.css:17-23`, drawn inside for rows, flush segments, rail buttons, scroll viewports and clipping wells (`DS components/base.css:25-26`), 3 px out for cards, fading in on `--dur-focus` while it settles 3 px × `--motion`. macOS's focus highlight mode is always "traditional", so a control that takes no focus on click behaves like `:focus-visible` (RC §4). Under increased contrast the ring is 3 px (`DS tokens/contrast.css:21`), and an inside ring is drawn at inset −3, so it stays within the bounds and is never clipped (r4out a11y KVS-4; Claude's proposal);
+   - focus-visible: the one ring of `DS readme.md:135` and `DS tokens/states.css:17-23`, drawn inside for rows, flush segments, rail buttons, scroll viewports and clipping wells (`DS components/base.css:25-26`), 3 px out for cards, fading in on `--dur-focus` while it settles 3 px × `--motion`. macOS's focus highlight mode is always "traditional", so a control that takes no focus on click behaves like `:focus-visible` (RC §4). *Corrected 2026-10-29 (Ralph's finding after 11.15): Flutter counts a mouse as "traditional" too, so focus moved after a click — a row following the selection, a sheet's first button — drew a ring. `zsRingFollowsInput` (`zs_focus_ring.dart`, called in both mains) now sets the highlight mode from the last input: a pointer press hides the rings, a key that navigates shows them, typing, ↩ and Esc in a text field and ⌘/⌃/⌥ chords do not count. That is `:focus-visible`.* Under increased contrast the ring is 3 px (`DS tokens/contrast.css:21`), and an inside ring is drawn at inset −3, so it stays within the bounds and is never clipped (r4out a11y KVS-4; Claude's proposal);
    - disabled .4 (`DS tokens/states.css:26`); disabled with a reason: the same .4, no hover fill, no press, no activation by pointer or key, not a Tab stop, the reason in the semantics hint, "dimmed" for VoiceOver (`DS readme.md:127`, `:136`). The helper wraps the control in the Zs tooltip, not Material's `Tooltip` that `DS components/base.css:38` names (r4out a11y KVS-10);
    - error, busy (spinner in the icon slot, the label stays, clicks ignored, `progress` cursor) and read-only (`DS readme.md:128-130`);
    - the inactive window (`DS tokens/inactive.css`; `DS readme.md:131`, `:194`): the accent role goes neutral and no focus ring, halo or caret shows; what stays live reads `--accent-live-line`, `-ring` and `-text` — progress, the edit flash, drop targets, links (`DS tokens/accents.css:23-24`); the badge goes neutral with the role;
@@ -13508,7 +13508,7 @@ This story adds the rest.
    - New group keeps 11.6's rule: a click elsewhere cancels.
 5. **Delete group** removes only the group.
    - Its projects and subgroups take its place in its parent, in their order. Nothing leaves the list.
-   - No confirmation, because nothing is lost but the name (Claude's proposal in the design session). The selection clears.
+   - ~~No confirmation, because nothing is lost but the name (Claude's proposal in the design session).~~ *Changed 2026-10-29 (Ralph): it asks first — see the note below.* The selection clears.
 6. **Move to group ›** for groups and projects.
    - Groups get the submenu too. It lists Top level and every group by its path ("Work / Mobile"), sorted, with the current place checked (radio). It never lists the group itself or anything inside it. Choosing the current place does nothing.
    - For both kinds the submenu ends with **— · New group…**. The name field appears as the last row of the row's current group, as New group does. ↩ creates the group there and moves the row into it, selected (Finder's New Folder with Selection). Esc and a click elsewhere leave everything as it was.
@@ -13549,7 +13549,7 @@ Nothing NEEDS DESIGN.
 - With a project inside a group selected, New group's field and the new group are in that group.
 - A group row shows ••• on hover and on focus. A right-click opens the same menu and selects the row.
 - Rename…: ↩ and a click elsewhere keep the new name; Esc and an empty name keep the old one. The registry stores the result.
-- Delete group on a group that holds a project and a subgroup: both now sit in its parent at its place, in order, and the list holds the same projects as before.
+- Delete group on a group that holds a project and a subgroup: both now sit in its parent at its place, in order, and the list holds the same projects as before (once confirmed, since 2026-10-29; Cancel changes nothing).
 - Move to group › of a group lists neither the group nor anything inside it, and the current place is checked.
 - New group… on a project: Esc leaves the registry unchanged. ↩ with "Mobile" creates a group "Mobile" in the project's group, with the project in it, selected.
 - Drag:
@@ -13562,6 +13562,12 @@ Nothing NEEDS DESIGN.
   - "To the top level" between two top-level rows and below the last row;
   - "Drop between rows or on a group" over the dragged group's own subtree.
 - In the running window (Marionette, the Widgetbook Windows use case): screenshots of the name field, the group menu with its submenu and a drag in progress, compared with the DS cards *Content* and *Overlays*.
+
+**Changed after the story (Ralph, 2026-10-29, trying the window; commit `2cc8edd3`).** Four findings, fixed in the console session:
+- **No focus on open.** The search is no longer focused when the window opens (11.6 item 3). The prototype keeps its `autoFocus`; the app deviates.
+- **An empty group opens.** It opens and closes like any other group, and starts open, so it shows that it holds nothing (as the prototype does). `ProjectsGroupItem.expanded` carries the state, because `TreeSliverNode` never reports a node without children as expanded. → on an open empty group does nothing.
+- **Rings for the keyboard only.** After New group ↩ the ring sat on the new group and moved with every click, because Flutter treats a mouse like a keyboard for focus highlights. Fixed for the whole app by `zsRingFollowsInput` (11.11's correction); a row's ••• follows the same rule (hover or keyboard focus).
+- **Delete group and Remove from list ask first** (`ZsConfirmDialog`, tone destructive: the red button, focus on Cancel, ⌘↩ confirms). Neither edit has an undo. "Delete the group ‹name›?" — "Its projects and groups take its place; nothing leaves the list." / "Remove ‹name› from the list?" — "‹path› stays on disk; only the list forgets it." The edit runs once the sheet has gone, so focus is back at its opener and the tree hands it on as before. Cancel changes nothing. This supersedes item 5's "no confirmation" and departs from DS ConfirmDialog's "local edits never ask", which assumes an undo.
 
 **Related:** 11.6, 11.11, 10.10 (the ghost); DS #14, #15.
 
