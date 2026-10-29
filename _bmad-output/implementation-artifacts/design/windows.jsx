@@ -4,7 +4,7 @@
 // One key window at a time (the project window, Settings or Projects); the others are inactive (windows.css › INACTIVE).
 // Short modal tasks stay sheets on the project window: jj log Configurations, Push.
 (() => {
-const { useState, useEffect, useRef, useMemo } = React;
+const { useState, useEffect, useLayoutEffect, useRef, useMemo } = React;
 const Ic = (p) => <window.Icon {...p}/>;
 
 // a mock of the system's buttons: grey rings at rest (Zanshin's deviation, also for greyed buttons), the system's own on hover
@@ -125,15 +125,92 @@ function SettingsWin({ tab, setTab, page, setPage, project, t, setTweak, active,
 // PROJECTS — "All Projects…" (⇧⌘O). 900 × 640, resizable down to 680 × 440, close and zoom active. The sidebar begins under the
 // traffic lights, the brand block below the header row. Esc clears the search and never closes; ↩ or a double-click opens the
 // selected project, which closes Projects. Settings in the sidebar opens the Settings window beside it.
+// A click on the empty list clears the selection; New group goes into the selected group, beside the selected project, or to the
+// top level when nothing is selected — first as a name field in that place (↩ creates it; Esc, an empty name or a click elsewhere
+// cancels). Rows move by drag (not while searching): a line between rows, a ring on the group it goes into, below the last row the
+// top level; a group never into itself; Esc cancels. ••• or a right-click opens the row's menu — a project: Open · Reveal in Finder ·
+// Move to group › · Remove from list (Open and Reveal off for a missing project, Remove for the open one); a group: Rename… (the
+// name field in its row; ↩ or a click elsewhere keeps the name, Esc cancels) · Move to group › · Delete group (its projects and
+// groups move up into its place). Move to group ›: Top level and every group by its path, ✓ where it is now, then New group…, which
+// asks for a name where the row is now and moves the row into the new group.
 // ------------------------------------------------------------
+// move a node: before / after another one, into a group (as its last child), or to the end of the top level
+function moveTreeNode(tree, id, ref, where) {
+  let moving = null;
+  const cut = (ns) => ns.filter(n => n.id === id ? ((moving = n), false) : true).map(n => n.children ? { ...n, children: cut(n.children) } : n);
+  const put = (ns) => {
+    const i = ns.findIndex(n => n.id === ref);
+    if (i >= 0 && where !== "into") { const at = i + (where === "after" ? 1 : 0); return [...ns.slice(0, at), moving, ...ns.slice(at)]; }
+    return ns.map(n => n.id === ref ? { ...n, expanded: true, children: [...(n.children || []), moving] } : n.children ? { ...n, children: put(n.children) } : n);
+  };
+  const rest = cut(tree);
+  return !moving ? tree : where === "end" ? [...rest, moving] : put(rest);
+}
+const NAMING = "__naming"; // the id of a new group's name field among the rows
+// replace a node by what f returns: [] removes it, its children ungroup it
+function spliceTreeNode(tree, id, f) {
+  return tree.flatMap(n => n.id === id ? f(n) : [n.children ? { ...n, children: spliceTreeNode(n.children, id, f) } : n]);
+}
+
+// RowMenu — a Projects row's menu in the card menu's look: items { label, onSelect, disabled, checked, submenu } or "sep". A submenu
+// opens beside its row on hover or click (to the left at the screen's edge); a click outside, Esc, a resize or leaving the app closes it.
+function RowMenu({ x, y, items, onClose }) {
+  const [sub, setSub] = useState(null); // { i, rect }
+  useEffect(() => {
+    const down = (e) => { if (!e.target.closest(".zpw-menu")) onClose(); };
+    const key = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); onClose(); } };
+    window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true);
+    window.addEventListener("resize", onClose); window.addEventListener("blur", onClose);
+    return () => {
+      window.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key, true);
+      window.removeEventListener("resize", onClose); window.removeEventListener("blur", onClose);
+    };
+  }, []);
+  return <>
+    <MenuPanel x={x} y={y} items={items} sub={sub} onSub={setSub} onClose={onClose}/>
+    {sub && <MenuPanel anchor={sub.rect} items={items[sub.i].submenu} onClose={onClose}/>}
+  </>;
+}
+function MenuPanel({ x, y, anchor, items, sub, onSub, onClose }) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+  useLayoutEffect(() => {
+    const w = ref.current.offsetWidth, h = ref.current.offsetHeight, W = window.innerWidth, H = window.innerHeight;
+    let left = anchor ? anchor.right + 2 : x;
+    if (left + w > W - 6) left = anchor ? anchor.left - w - 2 : W - w - 6;
+    setPos({ left: Math.max(6, left), top: Math.max(6, Math.min(anchor ? anchor.top - 6 : y, H - h - 6)) });
+  }, [x, y, anchor]);
+  return (
+    <div ref={ref} className="gmenu zpw-menu" role="menu" style={{ left: pos ? pos.left : 0, top: pos ? pos.top : 0, visibility: pos ? "visible" : "hidden" }} onContextMenu={(e) => e.preventDefault()}>
+      {items.map((it, i) => it === "sep" ? <div key={"sep" + i} className="gmenu-sep"></div> : (
+        <button key={it.label} type="button" role={it.checked != null ? "menuitemradio" : "menuitem"} aria-checked={it.checked} aria-haspopup={it.submenu ? "menu" : undefined}
+          className={"gmenu-item" + (sub && sub.i === i ? " is-open" : "")} disabled={it.disabled}
+          onMouseEnter={(e) => onSub && onSub(it.submenu ? { i, rect: e.currentTarget.getBoundingClientRect() } : null)}
+          onClick={(e) => { if (it.submenu) onSub({ i, rect: e.currentTarget.getBoundingClientRect() }); else { onClose(); it.onSelect(); } }}>
+          <span className="zpw-menu-check">{it.checked && <Ic name="check" size={12}/>}</span>
+          <span>{it.label}</span>
+          <span className="gmenu-cmd">{it.submenu && <Ic name="chevronRight" size={12}/>}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ProjectsWin({ tree, setTree, activeProjectId, onOpenProject, onSettings, active, geo, setGeo, z, onActivate, onClose, onZoom }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(activeProjectId);
   const [dragOver, setDragOver] = useState(false);
+  const [move, setMove] = useState(null); // a row in hand: { node, x, y, target: { ref, where, label } | null }
+  const [naming, setNaming] = useState(null); // a group's name being typed: { parent, moveId } for a new one, { id } to rename
+  const [menu, setMenu] = useState(null); // { node, x, y }
   const q = query.trim().toLowerCase();
-  const visible = useMemo(() => q
-    ? window.flattenAll(tree).filter(({ node }) => node.name.toLowerCase().includes(q) || (node.kind === "project" && (node.path || "").toLowerCase().includes(q)))
-    : window.flattenTree(tree), [tree, q]);
+  const visible = useMemo(() => {
+    if (q) return window.flattenAll(tree).filter(({ node }) => node.name.toLowerCase().includes(q) || (node.kind === "project" && (node.path || "").toLowerCase().includes(q)));
+    // a new group's name field stands where the group will be: the last row of its parent
+    const field = { id: NAMING, kind: "naming" };
+    const shown = !naming || naming.id ? tree : naming.parent ? window.updateTreeNode(tree, naming.parent, n => ({ ...n, children: [...(n.children || []), field] })) : [...tree, field];
+    return window.flattenTree(shown);
+  }, [tree, q, naming]);
   const toggleGroup = (id) => setTree(tr => window.updateTreeNode(tr, id, n => ({ ...n, expanded: !n.expanded })));
   const open = (node) => { if (node && node.kind === "project" && node.status !== "missing") onOpenProject(node); };
   const onKeyDown = (e) => {
@@ -148,6 +225,122 @@ function ProjectsWin({ tree, setTree, activeProjectId, onOpenProject, onSettings
     const name = "imported-" + Math.floor(Math.random() * 1000);
     setTree(tr => [...tr, { id: "p_" + name, kind: "project", name, path: "~/code/" + name, status: "clean", branch: "main", ahead: 0, behind: 0, lastOpened: "just added" }]);
   };
+  const startNaming = (parent, moveId) => {
+    setQuery("");
+    if (parent) setTree(tr => window.updateTreeNode(tr, parent, n => ({ ...n, expanded: true })));
+    setNaming({ parent, moveId });
+  };
+  const newGroup = () => {
+    const sel = selectedId && window.flattenAll(tree).find(x => x.node.id === selectedId);
+    startNaming(sel ? (sel.node.kind === "group" ? sel.node.id : sel.path[sel.path.length - 2] || null) : null);
+  };
+  const commitName = (value) => {
+    const name = value.trim(), n = naming;
+    setNaming(null);
+    if (!n || !name) return;
+    if (n.id) { setTree(tr => window.updateTreeNode(tr, n.id, g => ({ ...g, name }))); return; }
+    const g = { id: "g_" + Date.now(), kind: "group", name, expanded: true, children: [] };
+    setTree(tr => {
+      const added = n.parent ? window.updateTreeNode(tr, n.parent, p => ({ ...p, children: [...(p.children || []), g] })) : [...tr, g];
+      return n.moveId ? moveTreeNode(added, n.moveId, g.id, "into") : added;
+    });
+    setSelectedId(n.moveId || g.id);
+  };
+  // the row menu: Move to group › lists Top level and every group by its path (not the row itself or what is inside it)
+  const menuFor = (node) => {
+    const all = window.flattenAll(tree), hit = all.find(x => x.node.id === node.id), parent = hit.path[hit.path.length - 2] || null;
+    const names = new Map(all.map(x => [x.node.id, x.node.name]));
+    const block = new Set([node.id, ...window.flattenAll(node.children || []).map(x => x.node.id)]);
+    const groups = all.filter(x => x.node.kind === "group" && !block.has(x.node.id))
+      .map(x => ({ id: x.node.id, label: x.path.map(id => names.get(id)).join(" / ") }))
+      .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
+    const moveTo = (gid) => { if (gid !== parent) setTree(tr => moveTreeNode(tr, node.id, gid, gid ? "into" : "end")); setSelectedId(node.id); };
+    const moveMenu = { label: "Move to group", submenu: [
+      { label: "Top level", checked: parent === null, onSelect: () => moveTo(null) },
+      ...groups.map(g => ({ label: g.label, checked: parent === g.id, onSelect: () => moveTo(g.id) })),
+      "sep",
+      { label: "New group…", onSelect: () => startNaming(parent, node.id) },
+    ] };
+    if (node.kind === "group") return [
+      { label: "Rename…", onSelect: () => setNaming({ id: node.id }) },
+      moveMenu,
+      "sep",
+      { label: "Delete group", onSelect: () => { setTree(tr => spliceTreeNode(tr, node.id, g => g.children || [])); setSelectedId(null); } },
+    ];
+    const missing = node.status === "missing";
+    return [
+      { label: "Open", disabled: missing, onSelect: () => open(node) },
+      { label: "Reveal in Finder", disabled: missing, onSelect: () => {} },
+      moveMenu,
+      "sep",
+      { label: "Remove from list", disabled: node.id === activeProjectId, onSelect: () => { setTree(tr => spliceTreeNode(tr, node.id, () => [])); setSelectedId(null); } },
+    ];
+  };
+  // ••• opens it below the button, a right-click at the pointer; either selects the row
+  const openMenu = (e, node, below) => {
+    e.preventDefault(); e.stopPropagation();
+    setSelectedId(node.id);
+    const r = below && e.currentTarget.getBoundingClientRect();
+    setMenu({ node, x: r ? r.right - 200 : e.clientX, y: r ? r.bottom + 4 : e.clientY });
+  };
+  // a group's name typed in place: a new one (↩ creates it; Esc, an empty name or a click elsewhere cancels) or Rename… (↩ or a click
+  // elsewhere keeps it, Esc cancels)
+  const nameRow = (key, depth, value) => (
+    <div key={key} className="home-row group naming" style={{ "--depth": depth }}>
+      <span className="home-row-chev"></span>
+      <Ic name="folder" size={14} className="home-row-icon"/>
+      <input className="zpw-name" defaultValue={value} placeholder="Group name" aria-label={value != null ? "Rename group" : "New group"}
+        ref={(el) => { if (el && !el.dataset.ready) { el.dataset.ready = "1"; el.focus(); el.select(); } }}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key !== "Enter" && e.key !== "Escape") return;
+          e.currentTarget.dataset.done = "1"; // the blur of the field going away must not decide again
+          if (e.key === "Enter") commitName(e.currentTarget.value); else setNaming(null);
+        }}
+        onBlur={(e) => { if (e.target.dataset.done) return; if (value != null) commitName(e.target.value); else setNaming(null); }}/>
+    </div>
+  );
+  // moving a row: pointer drag past 4px; the target follows the pointer's row (top / bottom half, a group's middle = into it)
+  const startMove = (e, node) => {
+    if (e.button !== 0 || q || e.target.closest("button,input")) return;
+    const byId = new Map(window.flattenAll(tree).map(x => [x.node.id, x]));
+    const block = new Set([node.id, ...window.flattenAll(node.children || []).map(x => x.node.id)]);
+    const x0 = e.clientX, y0 = e.clientY;
+    let live = false, target = null;
+    const targetAt = (x, y) => {
+      const el = document.elementFromPoint(x, y), list = el && el.closest(".zpw .home-list");
+      if (!list) return null;
+      const row = [...list.querySelectorAll(".home-row[data-id]")].find(r => y < r.getBoundingClientRect().bottom + 1);
+      if (!row) return { where: "end", label: "To the top level" };
+      const hit = byId.get(row.dataset.id);
+      if (!hit || block.has(hit.node.id)) return null;
+      const r = row.getBoundingClientRect(), f = (y - r.top) / r.height, n = hit.node;
+      const where = n.kind !== "group" ? (f < .5 ? "before" : "after")
+        : f < .25 ? "before" : f < .75 || (n.expanded && n.children && n.children.length) ? "into" : "after";
+      const parent = where === "into" ? n : (byId.get(hit.path[hit.path.length - 2]) || {}).node;
+      return { ref: n.id, where, label: parent ? "Into " + parent.name : "To the top level" };
+    };
+    const onMove = (ev) => {
+      if (!live && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+      live = true; target = targetAt(ev.clientX, ev.clientY);
+      setMove({ node, x: ev.clientX, y: ev.clientY, target });
+    };
+    const end = (drop) => {
+      window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel); window.removeEventListener("keydown", onKey, true);
+      if (!live) return;
+      setMove(null);
+      // the click that ends a drag must neither toggle a group nor clear the selection
+      const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      window.addEventListener("click", swallow, true); setTimeout(() => window.removeEventListener("click", swallow, true), 0);
+      if (drop && target) { setTree(tr => moveTreeNode(tr, node.id, target.ref, target.where)); setSelectedId(node.id); }
+    };
+    const onUp = () => end(true), onCancel = () => end(false);
+    const onKey = (ev) => { if (ev.key === "Escape" && live) { ev.preventDefault(); ev.stopPropagation(); end(false); } };
+    window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel); window.addEventListener("keydown", onKey, true);
+  };
+  const dropCls = (id) => move && move.target && move.target.ref === id ? " drop-" + move.target.where : "";
   const narrow = geo.w < 800;
   const STATUS = window.STATUS_META;
   return (
@@ -178,28 +371,33 @@ function ProjectsWin({ tree, setTree, activeProjectId, onOpenProject, onSettings
         </div>
         <button className="home-action primary"><Ic name="plus" size={12}/>Add directory</button>
         <button className="home-action" title="Clone…" aria-label="Clone…"><Ic name="cloud" size={13}/>{!narrow && <span>Clone…</span>}</button>
-        <button className="home-action ghost" title="New group" aria-label="New group"><Ic name="folderPlus" size={13}/></button>
+        <button className="home-action ghost" title="New group" aria-label="New group" onClick={newGroup}><Ic name="folderPlus" size={13}/></button>
       </>}>
-      <div className="home-list" role="tree" aria-label="Projects">
+      <div className={"home-list" + (move && move.target && move.target.where === "end" ? " drop-end" : "")} role="tree" aria-label="Projects"
+        onClick={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}>
         {visible.length === 0 && <div className="home-empty">No projects match “{query}”</div>}
         {visible.map(({ node, depth }) => {
+          if (node.kind === "naming") return nameRow(NAMING, depth);
+          if (naming && naming.id === node.id) return nameRow(node.id, depth, node.name);
+          const moving = move && move.node.id === node.id ? "drag-from " : "";
           if (node.kind === "group") {
             const count = (node.children || []).filter(c => c.kind === "project").length, sub = (node.children || []).filter(c => c.kind === "group").length;
             return (
-              <div key={node.id} className={"home-row group " + (node.expanded ? "expanded " : "") + (selectedId === node.id ? "selected " : "")} style={{ "--depth": depth }}
-                onClick={() => { setSelectedId(node.id); toggleGroup(node.id); }} role="treeitem" aria-expanded={!!node.expanded}>
+              <div key={node.id} data-id={node.id} className={"home-row group " + (node.expanded ? "expanded " : "") + (selectedId === node.id ? "selected " : "") + moving + dropCls(node.id)} style={{ "--depth": depth }}
+                onPointerDown={(e) => startMove(e, node)} onClick={() => { setSelectedId(node.id); toggleGroup(node.id); }} onContextMenu={(e) => openMenu(e, node)} role="treeitem" aria-expanded={!!node.expanded}>
                 <span className="home-row-indent" aria-hidden="true"></span>
                 <span className={"home-row-chev " + (node.expanded ? "open" : "")}><Ic name="chevronRight" size={12}/></span>
                 <Ic name={node.expanded ? "folderOpen" : "folder"} size={14} className="home-row-icon"/>
                 <span className="home-row-name">{node.name}</span>
                 <span className="home-row-count">{count}{sub > 0 && ` · ${sub} group${sub === 1 ? "" : "s"}`}</span>
+                <button className="home-row-more" onClick={(e) => openMenu(e, node, true)} title="More…" aria-label="More…" aria-haspopup="menu"><Ic name="more" size={13}/></button>
               </div>
             );
           }
           const s = STATUS[node.status] || STATUS.clean, isOpen = activeProjectId === node.id;
           return (
-            <div key={node.id} className={"home-row project " + (selectedId === node.id ? "selected " : "") + (isOpen ? "active-project " : "") + (node.status === "missing" ? "missing " : "")}
-              style={{ "--depth": depth }} onClick={() => setSelectedId(node.id)} onDoubleClick={() => open(node)} role="treeitem" aria-selected={selectedId === node.id} title={node.path}>
+            <div key={node.id} data-id={node.id} className={"home-row project " + (selectedId === node.id ? "selected " : "") + (isOpen ? "active-project " : "") + (node.status === "missing" ? "missing " : "") + moving + dropCls(node.id)}
+              style={{ "--depth": depth }} onPointerDown={(e) => startMove(e, node)} onClick={() => setSelectedId(node.id)} onContextMenu={(e) => openMenu(e, node)} onDoubleClick={() => open(node)} role="treeitem" aria-selected={selectedId === node.id} title={node.path}>
               <span className="home-row-indent" aria-hidden="true"></span>
               <span className="home-row-chev"></span>
               <span className="home-row-status" style={{ background: s.color }} title={s.label}></span>
@@ -213,12 +411,22 @@ function ProjectsWin({ tree, setTree, activeProjectId, onOpenProject, onSettings
                 </div>
                 <div className="home-row-line2"><span className="home-row-path">{node.path}</span><span className="home-row-sep">·</span><span className="home-row-when">{node.lastOpened}</span></div>
               </div>
-              <button className="home-row-more" onClick={(e) => e.stopPropagation()} title="More…" aria-label="More…"><Ic name="more" size={13}/></button>
+              <button className="home-row-more" onClick={(e) => openMenu(e, node, true)} title="More…" aria-label="More…" aria-haspopup="menu"><Ic name="more" size={13}/></button>
             </div>
           );
         })}
       </div>
       <div className={"home-drop-hint " + (dragOver ? "active" : "")}><Ic name="download" size={13}/><span>Drop to add directory</span></div>
+      {move && (
+        <div className="gghost" style={{ position: "fixed", left: move.x, top: move.y }} aria-hidden="true">
+          <div className="gghost-card">
+            {move.node.kind === "group" ? <Ic name="folder" size={13}/> : <span className="home-row-status" style={{ background: (STATUS[move.node.status] || STATUS.clean).color }}></span>}
+            <span className="gghost-subj">{move.node.name}</span>
+          </div>
+          <div className={"gghost-cmd" + (move.target ? " on" : "")}><span className="gghost-alt">{move.target ? move.target.label : "Drop between rows or on a group"}</span></div>
+        </div>
+      )}
+      {menu && <RowMenu x={menu.x} y={menu.y} items={menuFor(menu.node)} onClose={() => setMenu(null)}/>}
     </WindowFrame>
   );
 }

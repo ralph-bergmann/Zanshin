@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x470" name="Content" subtitle="FileRow, DiffView + DiffHunk, ProjectRow, Kbd" -->
+<!-- @dsCard group="Components" viewport="700x600" name="Content" subtitle="FileRow, DiffView + DiffHunk, ProjectRow (incl. moving rows), Kbd" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -32,6 +32,13 @@
             <ProjectRow depth={1} name="design-kit" path="~/code/work/mobile/design-kit" branch="main" status="behind" behind={3} lastOpened="5d ago"/>
             <ProjectRow depth={1} name="old-experiment" path="~/code/play/old-experiment" branch="—" status="missing" lastOpened="6mo ago"/>
           </div>
+          <div className="tree" role="tree" aria-label="Moving rows">
+            <ProjectRow kind="group" name="Backend" count={2} drop="into"/>
+            <ProjectRow name="infra" path="~/code/work/infra" branch="main" status="clean" lastOpened="1w ago" drop="before"/>
+            <ProjectRow name="dotfiles" path="~/dotfiles" branch="main" status="clean" lastOpened="today" dragging/>
+            <ProjectRow kind="group" depth={1} editing name="" onCommit={() => {}} onCancel={() => {}}/>
+          </div>
+          <div className="keys"><span>Moving: into a group · between rows · in hand · naming a new group</span></div>
           <div className="keys"><Kbd>⌘</Kbd><Kbd>,</Kbd><span>Settings</span><span style={{ width: 10 }}></span><Kbd>⌘</Kbd><Kbd>↩</Kbd><span>Commit / Split</span></div>
         </div>
         <DiffView file={files[sel][1]} viewed={viewed} onViewedChange={setViewed}

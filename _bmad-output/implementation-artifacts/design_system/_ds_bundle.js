@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/brand/Icon.jsx":"df15e6713ebc","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"017e79b469f3","components/content/DiffView.jsx":"04b319036eb4","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"15e5ec6e86ca","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"daf511168e2f","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"c7c18348d2bf","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"1ef204a4c010","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"7e3ccde5113a","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"1622468fa8bc","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"e890a01991e8","ui_kits/desktop/dialogs.jsx":"6d06586d7d66","ui_kits/desktop/graph.jsx":"b6e9c7fe0cc6","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"b103786c1ee8","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/brand/Icon.jsx":"df15e6713ebc","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"017e79b469f3","components/content/DiffView.jsx":"04b319036eb4","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"cb9ce51e065b","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"daf511168e2f","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"c7c18348d2bf","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"7e3ccde5113a","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"1622468fa8bc","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"e890a01991e8","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"b6e9c7fe0cc6","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"b103786c1ee8","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -318,6 +318,10 @@ const zsProjectStatus = {
 // Keyboard (a tree, one Tab stop — the selected row): ↑ ↓ move and select · Home End · → expands a group, or steps into it ·
 // ← collapses, or steps to the parent · ↩ opens a project (a group: toggles) · ••• is reachable with Tab from its row and shows with focus.
 // VoiceOver: tree item with level, expanded / collapsed, selected; the status dot reads as its label (clean, ahead …).
+// Moving rows: dragging = the row in hand (stays in place, faded) · drop = where it would land: before / after this row (a line at its
+// indent) · into this group (fill + border) · end (below this last row, at indent 0 — the end of the top level).
+// editing (a group): its name as a field in place — a new group (no name yet) or Rename…. ↩ commits, Esc cancels; a click elsewhere
+// cancels a new group and keeps a rename; an empty name cancels. ••• (onMore) opens the row's menu, on projects and groups alike.
 function zsTreeKeys(e, {
   group,
   expanded,
@@ -370,6 +374,11 @@ function ProjectRow({
   count,
   groups,
   more = true,
+  dragging = false,
+  drop,
+  editing = false,
+  onCommit,
+  onCancel,
   onClick,
   onDoubleClick,
   onMore,
@@ -379,11 +388,72 @@ function ProjectRow({
   className = "",
   ...rest
 }) {
+  const moving = [dragging && "is-dragging", drop && "is-drop-" + drop];
   const focus = e => {
     try {
       if (e.target === e.currentTarget && e.currentTarget.matches(":focus-visible")) onSelect && onSelect();
     } catch (_) {}
   };
+  const moreButton = more && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-proj-more",
+    title: "More\u2026",
+    "aria-label": "More",
+    "aria-haspopup": "menu",
+    onClick: e => {
+      e.stopPropagation();
+      onMore && onMore(e);
+    }
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "more",
+    size: "md"
+  }));
+  if (kind === "group" && editing) {
+    const fresh = !name;
+    // ↩ / Esc decide; the blur of the field going away must not decide again
+    const decide = (el, keep) => {
+      el.dataset.done = "1";
+      const v = el.value.trim();
+      if (keep && v) onCommit && onCommit(v);else onCancel && onCancel();
+    };
+    return /*#__PURE__*/React.createElement("div", _extends({
+      role: "treeitem",
+      "aria-level": depth + 1,
+      className: ["zs-proj is-group is-editing", className].filter(Boolean).join(" "),
+      style: {
+        "--depth": depth
+      }
+    }, rest), /*#__PURE__*/React.createElement("span", {
+      className: "zs-proj-chev"
+    }), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: "folder",
+      size: "md",
+      className: "zs-proj-icon"
+    }), /*#__PURE__*/React.createElement(__ds_scope.TextField, {
+      size: "sm",
+      className: "zs-proj-field",
+      defaultValue: name,
+      placeholder: "Group name",
+      "aria-label": fresh ? "New group" : "Rename group",
+      inputRef: el => {
+        if (el && !el.dataset.ready) {
+          el.dataset.ready = "1";
+          el.focus();
+          el.select();
+        }
+      },
+      onKeyDown: e => {
+        e.stopPropagation();
+        if (e.key === "Enter" || e.key === "Escape") {
+          e.preventDefault();
+          decide(e.currentTarget, e.key === "Enter");
+        }
+      },
+      onBlur: e => {
+        if (!e.target.dataset.done) decide(e.target, !fresh);
+      }
+    }));
+  }
   if (kind === "group") {
     return /*#__PURE__*/React.createElement("div", _extends({
       role: "treeitem",
@@ -391,7 +461,7 @@ function ProjectRow({
       "aria-level": depth + 1,
       "aria-selected": selected,
       tabIndex: tabIndex != null ? tabIndex : selected ? 0 : -1,
-      className: ["zs-proj is-group", selected && "is-sel", className].filter(Boolean).join(" "),
+      className: ["zs-proj is-group", selected && "is-sel", ...moving, className].filter(Boolean).join(" "),
       style: {
         "--depth": depth
       },
@@ -416,7 +486,7 @@ function ProjectRow({
       className: "zs-proj-name"
     }, name), /*#__PURE__*/React.createElement("span", {
       className: "zs-proj-count"
-    }, count, groups > 0 ? " · " + groups + (groups === 1 ? " group" : " groups") : ""));
+    }, count, groups > 0 ? " · " + groups + (groups === 1 ? " group" : " groups") : ""), moreButton);
   }
   const s = zsProjectStatus[status] || zsProjectStatus.clean;
   return /*#__PURE__*/React.createElement("div", _extends({
@@ -424,7 +494,7 @@ function ProjectRow({
     "aria-selected": selected,
     "aria-level": depth + 1,
     tabIndex: tabIndex != null ? tabIndex : selected ? 0 : -1,
-    className: ["zs-proj", selected && "is-sel", open && "is-open", status === "missing" && "is-missing", className].filter(Boolean).join(" "),
+    className: ["zs-proj", selected && "is-sel", open && "is-open", status === "missing" && "is-missing", ...moving, className].filter(Boolean).join(" "),
     style: {
       "--depth": depth
     },
@@ -470,19 +540,7 @@ function ProjectRow({
     className: "zs-proj-sep"
   }, "\xB7"), lastOpened && /*#__PURE__*/React.createElement("span", {
     className: "zs-proj-when"
-  }, lastOpened))), more && /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-proj-more",
-    title: "More\u2026",
-    "aria-label": "More",
-    onClick: e => {
-      e.stopPropagation();
-      onMore && onMore(e);
-    }
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "more",
-    size: "md"
-  })));
+  }, lastOpened))), moreButton);
 }
 Object.assign(__ds_scope, { zsProjectStatus, ProjectRow });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/content/ProjectRow.jsx", error: String((e && e.message) || e) }); }
@@ -3298,8 +3356,10 @@ Object.assign(__ds_scope, { ProjectMenu });
 
 // components/overlays/DragGhost.jsx
 try { (() => {
-// DragGhost — what is in your hand while dragging. kind: change (id + subject) · bookmark (pill) · diff (file status + name or a count).
-// Below it: the jj command a plain drop would run (moon-bordered), or a hint while nothing is targeted. Hidden once the DropMenu opens.
+// DragGhost — what is in your hand while dragging. kind: change (id + subject) · bookmark (pill) · diff (file status + name or a count) ·
+// project / group (a row of the Projects tree: status dot or folder + label).
+// Below it: the jj command a plain drop would run (moon-bordered) — for a list move, target: where it goes, in words (moon-bordered) —
+// or a hint while nothing is targeted. Hidden once the DropMenu opens.
 function DragGhost({
   kind = "change",
   id = "",
@@ -3312,12 +3372,28 @@ function DragGhost({
   added,
   removed,
   command,
+  target,
   hint,
   className = "",
   style
 }) {
   let chip;
-  if (kind === "bookmark") {
+  if (kind === "project" || kind === "group") {
+    const s = __ds_scope.zsProjectStatus[status] || __ds_scope.zsProjectStatus.clean;
+    chip = /*#__PURE__*/React.createElement("div", {
+      className: "zs-ghost-card"
+    }, kind === "group" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: "folder",
+      size: "md"
+    }) : /*#__PURE__*/React.createElement("span", {
+      className: "zs-proj-dot",
+      style: {
+        background: s.color
+      }
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "zs-ghost-subj"
+    }, label));
+  } else if (kind === "bookmark") {
     chip = /*#__PURE__*/React.createElement("div", {
       className: "zs-ghost-card is-bm"
     }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
@@ -3357,9 +3433,9 @@ function DragGhost({
     className: ("zs-ghost " + className).trim(),
     style: style,
     "aria-hidden": "true"
-  }, chip, (command || hint) && /*#__PURE__*/React.createElement("div", {
-    className: "zs-ghost-cmd" + (command ? " is-on" : "")
-  }, command ? /*#__PURE__*/React.createElement("span", null, command) : /*#__PURE__*/React.createElement("span", {
+  }, chip, (command || target || hint) && /*#__PURE__*/React.createElement("div", {
+    className: "zs-ghost-cmd" + (command ? " is-on" : target ? " is-on is-words" : "")
+  }, command || target ? /*#__PURE__*/React.createElement("span", null, command || target) : /*#__PURE__*/React.createElement("span", {
     className: "zs-ghost-alt"
   }, hint)));
 }
@@ -9077,6 +9153,8 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     SearchField,
     Button,
     ProjectRow,
+    DragGhost,
+    Menu,
     NamiMark,
     Icon,
     Segmented,
@@ -9089,16 +9167,56 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     ImmutablePage
   } = window.ZanshinDesignSystem_a33847;
   const Swatch = HatchSwatch || (() => null);
-  function zkFlatten(nodes, depth = 0, all = false, out = []) {
+  function zkFlatten(nodes, depth = 0, all = false, out = [], parent = null) {
     nodes.forEach(n => {
       out.push({
         node: n,
-        depth
+        depth,
+        parent
       });
-      if (n.kind === "group" && (all || n.expanded)) zkFlatten(n.children || [], depth + 1, all, out);
+      if (n.kind === "group" && (all || n.expanded)) zkFlatten(n.children || [], depth + 1, all, out, n);
     });
     return out;
   }
+  // move a node: before / after another one, into a group (as its last child), or to the end of the top level
+  function zkMove(nodes, id, ref, where) {
+    let moving = null;
+    const cut = ns => ns.filter(n => n.id === id ? (moving = n, false) : true).map(n => n.children ? {
+      ...n,
+      children: cut(n.children)
+    } : n);
+    const put = ns => {
+      const i = ns.findIndex(n => n.id === ref);
+      if (i >= 0 && where !== "into") {
+        const at = i + (where === "after" ? 1 : 0);
+        return [...ns.slice(0, at), moving, ...ns.slice(at)];
+      }
+      return ns.map(n => n.id === ref ? {
+        ...n,
+        expanded: true,
+        children: [...(n.children || []), moving]
+      } : n.children ? {
+        ...n,
+        children: put(n.children)
+      } : n);
+    };
+    const rest = cut(nodes);
+    return !moving ? nodes : where === "end" ? [...rest, moving] : put(rest);
+  }
+  // change one node: f returns what stands in its place — [] removes it, its children ungroup it
+  function zkEdit(nodes, id, f) {
+    return nodes.flatMap(n => n.id === id ? f(n) : [n.children ? {
+      ...n,
+      children: zkEdit(n.children, id, f)
+    } : n]);
+  }
+  const ZK_NAMING = "__naming"; // a new group's name field among the rows
+
+  // A click on the empty tree clears the selection (then the first row is the Tab stop). New group asks for the name where the group will
+  // be: in the selected group, beside the selected project, or at the top level (ProjectRow editing). Rows move by drag (not while
+  // searching): ProjectRow drop / dragging + DragGhost; Esc cancels. ••• or a right-click opens the row's Menu — a project: Open · Reveal in
+  // Finder · Move to group › · Remove from list; a group: Rename… · Move to group › · Delete group (its contents move up). Move to group ›:
+  // Top level and every group by its path, the current one checked, then New group…, which names a group where the row is and moves it in.
   function ZKProjects({
     tree,
     setTree,
@@ -9112,10 +9230,21 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
   }) {
     const [q, setQ] = React.useState("");
     const [sel, setSel] = React.useState(activeId);
+    const [move, setMove] = React.useState(null); // a row in hand: { node, x, y, target: { i, ref, where, label } | null }
+    const [naming, setNaming] = React.useState(null); // a group's name being typed: { parent, moveId } for a new one, { id } to rename
+    const [menu, setMenu] = React.useState(null); // { node, x, y }
     const query = q.trim().toLowerCase();
+    const field = {
+      id: ZK_NAMING,
+      kind: "naming"
+    };
+    const shown = !naming || naming.id ? tree : naming.parent ? zkEdit(tree, naming.parent, n => [{
+      ...n,
+      children: [...(n.children || []), field]
+    }]) : [...tree, field];
     const rows = query ? zkFlatten(tree, 0, true).filter(({
       node
-    }) => (node.name + " " + (node.path || "")).toLowerCase().includes(query)) : zkFlatten(tree);
+    }) => (node.name + " " + (node.path || "")).toLowerCase().includes(query)) : zkFlatten(shown);
     const toggle = id => {
       const up = ns => ns.map(n => n.id === id ? {
         ...n,
@@ -9142,6 +9271,219 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       window.addEventListener("keydown", k);
       return () => window.removeEventListener("keydown", k);
     }, [sel, tree, q, active]);
+    const startNaming = (parent, moveId) => {
+      setQ("");
+      if (parent) setTree(zkEdit(tree, parent, n => [{
+        ...n,
+        expanded: true
+      }]));
+      setNaming({
+        parent,
+        moveId
+      });
+    };
+    const newGroup = () => {
+      const s = sel && zkFlatten(tree, 0, true).find(x => x.node.id === sel);
+      startNaming(s ? s.node.kind === "group" ? s.node.id : s.parent && s.parent.id : null);
+    };
+    const commitName = name => {
+      const n = naming;
+      setNaming(null);
+      if (n.id) {
+        setTree(zkEdit(tree, n.id, g => [{
+          ...g,
+          name
+        }]));
+        return;
+      }
+      const g = {
+        id: "g-" + Date.now(),
+        kind: "group",
+        name,
+        expanded: true,
+        children: []
+      };
+      const added = n.parent ? zkEdit(tree, n.parent, p => [{
+        ...p,
+        children: [...(p.children || []), g]
+      }]) : [...tree, g];
+      setTree(n.moveId ? zkMove(added, n.moveId, g.id, "into") : added);
+      setSel(n.moveId || g.id);
+    };
+    // the row's Menu: Move to group › lists Top level and every group by its path — never the row itself or what is inside it
+    const menuFor = node => {
+      const all = zkFlatten(tree, 0, true),
+        byId = new Map(all.map(x => [x.node.id, x]));
+      const parent = byId.get(node.id).parent ? byId.get(node.id).parent.id : null;
+      const pathOf = id => {
+        const out = [];
+        for (let x = byId.get(id); x; x = x.parent && byId.get(x.parent.id)) out.unshift(x.node.name);
+        return out.join(" / ");
+      };
+      const block = new Set([node.id, ...zkFlatten(node.children || [], 0, true).map(x => x.node.id)]);
+      const groups = all.filter(x => x.node.kind === "group" && !block.has(x.node.id)).map(x => ({
+        id: x.node.id,
+        label: pathOf(x.node.id)
+      })).sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
+      const moveTo = gid => {
+        if (gid !== parent) setTree(zkMove(tree, node.id, gid, gid ? "into" : "end"));
+        setSel(node.id);
+      };
+      const moveMenu = {
+        id: "move",
+        label: "Move to group",
+        submenu: [{
+          id: "top",
+          label: "Top level",
+          checked: parent === null,
+          radio: true,
+          run: () => moveTo(null)
+        }, ...groups.map(g => ({
+          id: "g:" + g.id,
+          label: g.label,
+          checked: parent === g.id,
+          radio: true,
+          run: () => moveTo(g.id)
+        })), "sep", {
+          id: "new",
+          label: "New group…",
+          run: () => startNaming(parent, node.id)
+        }]
+      };
+      if (node.kind === "group") return [{
+        id: "rename",
+        label: "Rename…",
+        run: () => setNaming({
+          id: node.id
+        })
+      }, moveMenu, "sep", {
+        id: "delete",
+        label: "Delete group",
+        run: () => {
+          setTree(zkEdit(tree, node.id, g => g.children || []));
+          setSel(null);
+        }
+      }];
+      const missing = node.status === "missing";
+      return [{
+        id: "open",
+        label: "Open",
+        disabled: missing,
+        run: () => onOpen(node.id)
+      }, {
+        id: "reveal",
+        label: "Reveal in Finder",
+        disabled: missing,
+        run: () => {}
+      }, moveMenu, "sep", {
+        id: "remove",
+        label: "Remove from list",
+        disabled: node.id === activeId,
+        run: () => {
+          setTree(zkEdit(tree, node.id, () => []));
+          setSel(null);
+        }
+      }];
+    };
+    // ••• opens it below the button, a right-click at the pointer; either selects the row. A click outside closes it, Esc / ← too (Menu).
+    const openMenu = (e, node, below) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setSel(node.id);
+      const r = below && e.currentTarget.getBoundingClientRect();
+      setMenu({
+        node,
+        x: Math.max(8, Math.min(r ? r.right - 220 : e.clientX, window.innerWidth - 240)),
+        y: Math.min(r ? r.bottom + 4 : e.clientY, window.innerHeight - 220)
+      });
+    };
+    React.useEffect(() => {
+      if (!menu) return undefined;
+      const down = e => {
+        if (!e.target.closest(".zk-menu")) setMenu(null);
+      };
+      window.addEventListener("pointerdown", down, true);
+      return () => window.removeEventListener("pointerdown", down, true);
+    }, [menu]);
+    // moving a row: a pointer drag past 4px; the row under the pointer decides — top / bottom half, a group's middle = into it
+    const startMove = (e, node) => {
+      if (e.button !== 0 || query || naming || e.target.closest("button,input")) return;
+      const list = rows,
+        el = e.currentTarget.closest('[role="tree"]'),
+        x0 = e.clientX,
+        y0 = e.clientY;
+      const block = new Set([node.id, ...zkFlatten(node.children || [], 0, true).map(x => x.node.id)]);
+      let live = false,
+        target = null;
+      const targetAt = (x, y) => {
+        const r = el.getBoundingClientRect();
+        if (x < r.left || x > r.right || y < r.top || y > r.bottom) return null;
+        const items = [...el.querySelectorAll('[role="treeitem"]')],
+          i = items.findIndex(it => y < it.getBoundingClientRect().bottom + 1);
+        if (i < 0) return {
+          i: items.length - 1,
+          where: "end",
+          label: "To the top level"
+        };
+        const hit = list[i],
+          n = hit.node;
+        if (block.has(n.id)) return null;
+        const b = items[i].getBoundingClientRect(),
+          f = (y - b.top) / b.height;
+        const where = n.kind !== "group" ? f < .5 ? "before" : "after" : f < .25 ? "before" : f < .75 || n.expanded && (n.children || []).length ? "into" : "after";
+        const parent = where === "into" ? n : hit.parent;
+        return {
+          i,
+          ref: n.id,
+          where,
+          label: parent ? "Into " + parent.name : "To the top level"
+        };
+      };
+      const onMove = ev => {
+        if (!live && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+        live = true;
+        target = targetAt(ev.clientX, ev.clientY);
+        setMove({
+          node,
+          x: ev.clientX,
+          y: ev.clientY,
+          target
+        });
+      };
+      const end = drop => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onCancel);
+        window.removeEventListener("keydown", onKey, true);
+        if (!live) return;
+        setMove(null);
+        // the click that ends a drag neither toggles a group nor clears the selection
+        const swallow = ev => {
+          ev.stopPropagation();
+          ev.preventDefault();
+        };
+        window.addEventListener("click", swallow, true);
+        setTimeout(() => window.removeEventListener("click", swallow, true), 0);
+        if (drop && target) {
+          setTree(zkMove(tree, node.id, target.ref, target.where));
+          setSel(node.id);
+        }
+      };
+      const onUp = () => end(true),
+        onCancel = () => end(false);
+      const onKey = ev => {
+        if (ev.key === "Escape" && live) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          end(false);
+        }
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onCancel);
+      window.addEventListener("keydown", onKey, true);
+    };
+    const dropAt = i => move && move.target && move.target.i === i ? move.target.where : undefined;
     return /*#__PURE__*/React.createElement("div", {
       onMouseDown: onFocus,
       style: style
@@ -9223,18 +9565,30 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         variant: "ghost",
         icon: "folder-plus",
         label: "New group",
-        title: "New group"
+        title: "New group",
+        onClick: newGroup
       }))
     }, /*#__PURE__*/React.createElement("div", {
       className: "zk-tree",
       role: "tree",
-      "aria-label": "Projects"
+      "aria-label": "Projects",
+      onClick: e => {
+        if (e.target === e.currentTarget) setSel(null);
+      }
     }, !rows.length && /*#__PURE__*/React.createElement("div", {
       className: "zk-empty"
     }, "No projects match \u201C", q, "\u201D"), rows.map(({
       node,
       depth
-    }) => node.kind === "group" ? /*#__PURE__*/React.createElement(ProjectRow, {
+    }, i) => node.kind === "naming" || naming && naming.id === node.id ? /*#__PURE__*/React.createElement(ProjectRow, {
+      key: node.id,
+      kind: "group",
+      editing: true,
+      name: node.kind === "naming" ? "" : node.name,
+      depth: depth,
+      onCommit: commitName,
+      onCancel: () => setNaming(null)
+    }) : node.kind === "group" ? /*#__PURE__*/React.createElement(ProjectRow, {
       key: node.id,
       kind: "group",
       name: node.name,
@@ -9243,6 +9597,12 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       selected: sel === node.id,
       count: (node.children || []).filter(c => c.kind === "project").length,
       groups: (node.children || []).filter(c => c.kind === "group").length,
+      dragging: !!move && move.node.id === node.id,
+      drop: dropAt(i),
+      tabIndex: sel == null && i === 0 ? 0 : undefined,
+      onPointerDown: e => startMove(e, node),
+      onMore: e => openMenu(e, node, true),
+      onContextMenu: e => openMenu(e, node),
       onClick: () => {
         setSel(node.id);
         toggle(node.id);
@@ -9256,10 +9616,44 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       depth: depth,
       open: node.id === activeId,
       selected: sel === node.id,
+      dragging: !!move && move.node.id === node.id,
+      drop: dropAt(i),
+      tabIndex: sel == null && i === 0 ? 0 : undefined,
+      onPointerDown: e => startMove(e, node),
+      onMore: e => openMenu(e, node, true),
+      onContextMenu: e => openMenu(e, node),
       onClick: () => setSel(node.id),
       onSelect: () => setSel(node.id),
       onDoubleClick: () => node.status !== "missing" && onOpen(node.id)
-    }))))));
+    })))), menu && /*#__PURE__*/React.createElement("div", {
+      className: "zk-menu",
+      style: {
+        left: menu.x,
+        top: menu.y
+      },
+      onContextMenu: e => e.preventDefault()
+    }, /*#__PURE__*/React.createElement(Menu, {
+      "aria-label": menu.node.name,
+      items: menuFor(menu.node),
+      autoFocus: true,
+      onClose: () => setMenu(null),
+      onSelect: (id, item) => {
+        setMenu(null);
+        if (item && item.run) item.run();
+      }
+    })), move && /*#__PURE__*/React.createElement("div", {
+      className: "zk-ghost",
+      style: {
+        left: move.x,
+        top: move.y
+      }
+    }, /*#__PURE__*/React.createElement(DragGhost, {
+      kind: move.node.kind,
+      status: move.node.status,
+      label: move.node.name,
+      target: move.target ? move.target.label : undefined,
+      hint: "Drop between rows or on a group"
+    }))));
   }
 
   // page "immutable": Settings › Project › Immutable commits (ImmutablePage) — a page inside the Project tab, reached from History's navigation row

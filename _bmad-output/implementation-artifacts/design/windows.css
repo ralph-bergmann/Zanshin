@@ -59,6 +59,23 @@
 .zpw-search{flex:0 1 230px;min-width:120px}
 .zpw .home-action{flex-shrink:0}
 .zpw.drag-over::after{content:"";position:absolute;inset:6px;z-index:5;border:2px dashed var(--accent);border-radius:8px;background:var(--accent-soft);pointer-events:none}
+/* moving rows: the row in hand fades in place; a 2px moon line between rows at the target's indent, a moon ring on the group it goes
+   into, the line below the last row for the top level. The ghost is the graph's (.gghost). */
+.zpw .home-row.drag-from{opacity:.4}
+.zpw .home-row.drop-before::before,.zpw .home-row.drop-after::before{content:"";position:absolute;z-index:1;left:calc(8px + var(--depth) * 16px);right:8px;height:2px;border-radius:1px;background:var(--accent);pointer-events:none}
+.zpw .home-row.drop-before::before{top:-2px}.zpw .home-row.drop-after::before{bottom:-2px}
+.zpw .home-row.drop-into{background:var(--accent-soft);border-color:var(--accent)}
+.zpw .home-list.drop-end::after{content:"";flex-shrink:0;height:2px;margin:0 8px;border-radius:1px;background:var(--accent)}
+/* a group's name typed in place (New group, Move to group › New group…, Rename…): the row keeps its indent, chevron slot and folder */
+.zpw .home-row.naming,.zpw .home-row.naming:hover{padding-top:2px;padding-bottom:2px;background:transparent;cursor:default}
+.zpw-name{flex:1;min-width:0;height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--accent);background:var(--fl-bg-solid);color:var(--text);font:13px var(--font-sans);outline:none;box-shadow:0 0 0 3px var(--accent-ring)}
+.zpw-name::placeholder{color:var(--text-faint)}
+/* the row menu (••• or right-click): the card menu's look, fixed to the screen; ✓ marks where the row is, › opens Move to group */
+.zpw-menu{position:fixed;z-index:3000;min-width:200px;max-width:340px}
+.zpw-menu .gmenu-item{grid-template-columns:14px minmax(0,1fr) auto}
+.zpw-menu-check{display:grid;place-items:center}
+.zpw-menu .gmenu-item.is-open{background:var(--accent);color:var(--accent-ink)}
+.zpw-menu .gmenu-item.is-open :is(svg,.gmenu-cmd){color:var(--accent-ink)}
 
 /* ============================================================
    INACTIVE — not the key window (normal while Settings or Projects is key). As macOS does with its accent: the accent role goes

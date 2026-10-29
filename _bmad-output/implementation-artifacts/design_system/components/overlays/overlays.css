@@ -56,6 +56,7 @@
 /* the command a drop would run — the tooltip build (it is a label that follows the pointer): --tooltip-bg, --tooltip-border, --shadow-tooltip */
 .zs-ghost-cmd{display:flex;flex-direction:column;gap:3px;width:max-content;max-width:340px;margin-top:8px;padding:7px 10px;border-radius:var(--radius-chip);background:var(--tooltip-bg);border:1px solid var(--tooltip-border);font:var(--fs-id) var(--font-mono);color:var(--text-muted);box-shadow:var(--shadow-tooltip)}
 .zs-ghost-cmd.is-on{color:var(--text);border-color:var(--accent-line)}
+.zs-ghost-cmd.is-words{font:var(--fs-sm) var(--font-sans)}
 .zs-ghost-alt{font:var(--fs-sm) var(--font-sans);color:var(--text-dim)}
 
 /* StaleNotice — "Working copy is stale": a glass island top-centre over the graph while the state lasts */

@@ -68,6 +68,18 @@
 .zs-proj:active,.zs-proj.st-press{background:var(--fl-on)}
 .zs-proj.is-sel,.zs-proj.is-sel:hover{background:var(--accent-soft)}
 .zs-proj.is-sel:active{background:var(--accent-soft-hi)}
+/* moving rows: the row in hand stays in place at 40%; between rows a 2px line at the target's indent, into a group a fill + border, the end of
+   the top level a line under the last row at indent 0 — all in the live line (a drop target never goes neutral) */
+.zs-proj.is-dragging{opacity:.4}
+.zs-proj:is(.is-drop-before,.is-drop-after,.is-drop-end){position:relative}
+.zs-proj:is(.is-drop-before,.is-drop-after,.is-drop-end)::before{content:"";position:absolute;left:calc(8px + var(--depth,0) * 16px);right:8px;height:2px;border-radius:1px;background:var(--accent-live-line);pointer-events:none}
+.zs-proj.is-drop-before::before{top:-2px}
+.zs-proj:is(.is-drop-after,.is-drop-end)::before{bottom:-2px}
+.zs-proj.is-drop-end::before{left:8px}
+.zs-proj.is-drop-into,.zs-proj.is-drop-into:hover{background:var(--accent-soft);border-color:var(--accent-live-line)}
+/* a group's name typed in place: the row keeps its indent, chevron slot and folder; the field takes the rest */
+.zs-proj.is-editing,.zs-proj.is-editing:hover,.zs-proj.is-editing:active{padding-top:2px;padding-bottom:2px;background:transparent}
+.zs-proj-field{flex:1;min-width:0}
 .zs-proj-chev{width:14px;height:14px;display:grid;place-items:center;flex-shrink:0;color:var(--text-dim);transition:transform var(--dur-expand) var(--ease-glide)}
 .zs-proj-chev.is-open{transform:rotate(90deg)}
 .zs-proj .zs-proj-icon{color:var(--text-dim)}

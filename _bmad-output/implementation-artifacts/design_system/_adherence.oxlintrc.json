@@ -171,16 +171,16 @@
         "message": "<Disclosure> doesn't accept that prop. Declared props: label, open, defaultOpen, onToggle, meta, children, className."
       },
       {
-        "selector": "JSXOpeningElement[name.name='DragGhost'] > JSXAttribute > JSXIdentifier[name!=/^(?:kind|id|subject|workingCopy|bookmark|rest|status|label|added|removed|command|hint|className|style|key|ref|className|style|children)$/]",
-        "message": "<DragGhost> doesn't accept that prop. Declared props: kind, id, subject, workingCopy, bookmark, rest, status, label, added, removed, command, hint, className, style."
+        "selector": "JSXOpeningElement[name.name='DragGhost'] > JSXAttribute > JSXIdentifier[name!=/^(?:kind|id|subject|workingCopy|bookmark|rest|status|label|added|removed|command|target|hint|className|style|key|ref|className|style|children)$/]",
+        "message": "<DragGhost> doesn't accept that prop. Declared props: kind, id, subject, workingCopy, bookmark, rest, status, label, added, removed, command, target, hint, className, style."
       },
       {
-        "selector": "JSXOpeningElement[name.name='DragGhost'] > JSXAttribute[name.name='kind'] > Literal[value!=/^(?:change|bookmark|diff)$/]",
-        "message": "<DragGhost> kind must be one of 'change' | 'bookmark' | 'diff'."
+        "selector": "JSXOpeningElement[name.name='DragGhost'] > JSXAttribute[name.name='kind'] > Literal[value!=/^(?:change|bookmark|diff|project|group)$/]",
+        "message": "<DragGhost> kind must be one of 'change' | 'bookmark' | 'diff' | 'project' | 'group'."
       },
       {
-        "selector": "JSXOpeningElement[name.name='DragGhost'] > JSXAttribute[name.name='status'] > Literal[value!=/^(?:M|A|D)$/]",
-        "message": "<DragGhost> status must be one of 'M' | 'A' | 'D'."
+        "selector": "JSXOpeningElement[name.name='DragGhost'] > JSXAttribute[name.name='status'] > Literal[value!=/^(?:M|A|D|clean|dirty|ahead|behind|diverged|conflict|missing|syncing|stale)$/]",
+        "message": "<DragGhost> status must be one of 'M' | 'A' | 'D' | 'clean' | 'dirty' | 'ahead' | 'behind' | 'diverged' | 'conflict' | 'missing' | 'syncing' | 'stale'."
       },
       {
         "selector": "JSXOpeningElement[name.name='DropAction'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|label|icon|hint|note|cmd|group|key|ref|className|style|children)$/]",
@@ -287,8 +287,12 @@
         "message": "<RecentProject> doesn't accept that prop. Declared props: id, name, branch, path, status."
       },
       {
-        "selector": "JSXOpeningElement[name.name='ProjectRow'] > JSXAttribute > JSXIdentifier[name!=/^(?:kind|name|path|branch|status|ahead|behind|lastOpened|open|selected|depth|expanded|count|groups|more|onMore|onToggle|onSelect|tabIndex|key|ref|className|style|children)$/]",
-        "message": "<ProjectRow> doesn't accept that prop. Declared props: kind, name, path, branch, status, ahead, behind, lastOpened, open, selected, depth, expanded, count, groups, more, onMore, onToggle, onSelect, tabIndex."
+        "selector": "JSXOpeningElement[name.name='ProjectRow'] > JSXAttribute > JSXIdentifier[name!=/^(?:kind|name|path|branch|status|ahead|behind|lastOpened|open|selected|depth|expanded|count|groups|more|dragging|drop|editing|onCommit|onCancel|onMore|onToggle|onSelect|tabIndex|key|ref|className|style|children)$/]",
+        "message": "<ProjectRow> doesn't accept that prop. Declared props: kind, name, path, branch, status, ahead, behind, lastOpened, open, selected, depth, expanded, count, groups, more, dragging, drop, editing, onCommit, onCancel, onMore, onToggle, onSelect, tabIndex."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ProjectRow'] > JSXAttribute[name.name='drop'] > Literal[value!=/^(?:before|after|into|end)$/]",
+        "message": "<ProjectRow> drop must be one of 'before' | 'after' | 'into' | 'end'."
       },
       {
         "selector": "JSXOpeningElement[name.name='ProjectRow'] > JSXAttribute[name.name='kind'] > Literal[value!=/^(?:project|group)$/]",

@@ -1,12 +1,23 @@
 import React from "react";
 import { Icon } from "../brand/Icon.jsx";
 import { AtBadge } from "../graph/AtBadge.jsx";
+import { zsProjectStatus } from "../content/ProjectRow.jsx";
 
-// DragGhost — what is in your hand while dragging. kind: change (id + subject) · bookmark (pill) · diff (file status + name or a count).
-// Below it: the jj command a plain drop would run (moon-bordered), or a hint while nothing is targeted. Hidden once the DropMenu opens.
-export function DragGhost({ kind = "change", id = "", subject, workingCopy = false, bookmark, rest, status = "M", label, added, removed, command, hint, className = "", style }) {
+// DragGhost — what is in your hand while dragging. kind: change (id + subject) · bookmark (pill) · diff (file status + name or a count) ·
+// project / group (a row of the Projects tree: status dot or folder + label).
+// Below it: the jj command a plain drop would run (moon-bordered) — for a list move, target: where it goes, in words (moon-bordered) —
+// or a hint while nothing is targeted. Hidden once the DropMenu opens.
+export function DragGhost({ kind = "change", id = "", subject, workingCopy = false, bookmark, rest, status = "M", label, added, removed, command, target, hint, className = "", style }) {
   let chip;
-  if (kind === "bookmark") {
+  if (kind === "project" || kind === "group") {
+    const s = zsProjectStatus[status] || zsProjectStatus.clean;
+    chip = (
+      <div className="zs-ghost-card">
+        {kind === "group" ? <Icon name="folder" size="md" /> : <span className="zs-proj-dot" style={{ background: s.color }}></span>}
+        <span className="zs-ghost-subj">{label}</span>
+      </div>
+    );
+  } else if (kind === "bookmark") {
     chip = (
       <div className="zs-ghost-card is-bm">
         <Icon name="bookmark" size="sm" />
@@ -34,7 +45,7 @@ export function DragGhost({ kind = "change", id = "", subject, workingCopy = fal
   return (
     <div className={("zs-ghost " + className).trim()} style={style} aria-hidden="true">
       {chip}
-      {(command || hint) && <div className={"zs-ghost-cmd" + (command ? " is-on" : "")}>{command ? <span>{command}</span> : <span className="zs-ghost-alt">{hint}</span>}</div>}
+      {(command || target || hint) && <div className={"zs-ghost-cmd" + (command ? " is-on" : target ? " is-on is-words" : "")}>{command || target ? <span>{command || target}</span> : <span className="zs-ghost-alt">{hint}</span>}</div>}
     </div>
   );
 }
