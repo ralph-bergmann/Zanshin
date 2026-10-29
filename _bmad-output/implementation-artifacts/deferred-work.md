@@ -563,6 +563,7 @@ _Ralph showed a mockup of the main view (commit cards at (row, lane), elbow line
   - `ZanshinApp` renders the Yaru test page, and `HomePage` → `AppShell` (mock data) is "temporarily unused".
   - `context.zc` force-unwraps a `ZanshinColors` extension that the current themes do not register.
   - Where the graph mounts, and under which theme, is Ralph's call. 10.1 registers `GraphTheme` only in its demo host. Severity low.
+  - **2026-10-29, Ralph:** this part is answered — since decision (e) of 2026-10-14 the mount points and the app theme are Claude's proposals, and Story 10.1 registers `GraphTheme` in `ZsAppTheme.build` (commit 09c2f4e); the mock UI and the Yaru test page are Story 11.10's.
 - **The mockup's window chrome has no story** [mockup; the existing mock widgets in `app/lib/src/features/shell/main_nav_rail.dart`, `status_bar.dart` and `window_title_bar.dart`]
   - The top toolbar (Fetch / Pull / Push / New).
   - The status bar ("@ feature/new-ui", "repo clean", "142 ops", versions, "⌘K palette").
@@ -1256,6 +1257,7 @@ _Ralph re-downloaded the design-system project twice (rounds 2 and 3; the DS rea
 - **The cost of glass (design question (a)) is not measured: profile-mode frame times over a scrolling 10k graph with the six islands need 10.1's synthetic recording and 11.3's host.** Medium.
   - epics.md Story 11.2 Design status (a) and its witness "In profile mode, frame build and raster times over a scrolling 10k graph with six islands are recorded, not gated"; `sprint-status.yaml` lists `10-1-graph-viewport-2d-virtualized` and `11-3-floating-overlay-host` as backlog.
   - **Follow-up:** once 10.1 and 11.3 land, measure in profile mode with the three top-bar islands, the rail, the inspector and the minimap open, record the numbers in that story's notes; a missed frame budget goes to Ralph (solid while scrolling, or fewer blurred surfaces).
+  - **2026-10-29, Ralph:** 10.1 and 11.3 are done, but the measurement waits until the inspector (10.8) and the minimap (10.16) exist, so all six islands are open. Covered by Stories 10.8 and 10.16.
 - **Fading a glass surface through an Opacity ancestor drops its backdrop blur for the whole fade, and 11.3's calm scrolling plus the panel, toast and minimap entrances fade glass.** Medium.
   - Engine reading, not run on a device: Impeller opens an offscreen subpass for an opacity layer that holds a backdrop filter (`engine/src/flutter/impeller/display_list/canvas.cc` `SaveLayer`, :1830-1912), and `FlipBackdrop` reads only that subpass's texture (`render_passes_.back()`), which is still empty; `ZsSheet` (Story 11.2) fades its scrim through the filter's alpha instead.
   - **Follow-up:** 11.3 (calm scrolling, panel-in), 10.16 and 10.23 fade glass the same way (alpha in the filter's colour matrix plus an opacity on the content inside the `BackdropFilter`), e.g. through an opacity input on `ZsGlass`; confirm the behaviour on a Mac first.
@@ -2182,6 +2184,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **The repo ships Apache-2.0 code without the Apache-2.0 licence text, and its manifests still say `license = "MIT"`.** Medium.
   - `crates/zanshin-jj/src/source_symbol.rs:1` is a verbatim port of jj's `cli/src/source_symbol.rs` (SPDX `MIT AND Apache-2.0`, jj's copyright in the module doc), but the root has only an MIT `LICENSE` and `Cargo.toml:19` sets `license = "MIT"` for every crate (`zanshin-jj` inherits it). Apache-2.0 §4(a) asks for a copy of the licence with redistributions; the linked Apache-2.0 dependencies (jj-lib, jj-cli) already raise the same question for any shipped binary.
   - **Follow-up:** Ralph decides the project's licence notices: e.g. add `LICENSES/Apache-2.0.txt` (or `LICENSE-APACHE`) plus a third-party NOTICE for the app bundle, and set `zanshin-jj`'s `license` to `MIT AND Apache-2.0`.
+  - **2026-10-29, Ralph:** Apache text + NOTICE. Done (console session): `LICENSE-APACHE` (jj's `LICENSE` @ v0.46.0, verbatim) at the root, `zanshin-jj`'s `license = "MIT AND Apache-2.0"`, `source_symbol.rs` points to the copy (jj ships no NOTICE file, so §4(d) does not apply); left: a third-party notice for the Rust crates in the app bundle, with the release-phase `[licenses]` table in `deny.toml`.
 
 ## Surfaced in Story 11.15 (bmad-build-auto, 2026-10-29)
 

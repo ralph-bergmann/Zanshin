@@ -2,7 +2,8 @@
 name = "zanshin-jj"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+# source_symbol.rs ports Apache-2.0 code from the jj CLI (see LICENSE-APACHE).
+license = "MIT AND Apache-2.0"
 description.workspace = true
 homepage.workspace = true
 repository.workspace = true

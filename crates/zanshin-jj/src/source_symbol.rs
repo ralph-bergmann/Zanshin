@@ -6,8 +6,8 @@
 //! A verbatim port of `cli/src/source_symbol.rs` @ v0.46.0 (the languages, their patterns and the
 //! scanner) plus `trim_source_symbol` from `cli/src/diff_util.rs:1849-1861`. That code is
 //! Copyright 2020-2026 The Jujutsu Authors, licensed under the Apache License, Version 2.0
-//! (<https://www.apache.org/licenses/LICENSE-2.0>); the jj CLI is not a library dependency for
-//! it (`source_symbol` is `pub(crate)` there), so it is ported. Changes: std `&[u8]` helpers
+//! (<https://www.apache.org/licenses/LICENSE-2.0>; a copy is the repo's `LICENSE-APACHE`); the jj
+//! CLI is not a library dependency for it (`source_symbol` is `pub(crate)` there), so it is ported. Changes: std `&[u8]` helpers
 //! instead of `bstr`, and a pattern that fails to compile matches nothing instead of panicking.
 //! A file whose name has no pattern — Dart among them — gets no symbol.
 
