@@ -8,9 +8,9 @@ import 'package:zanshin_shell/zanshin_shell.dart' show ShellTheme;
 
 import 'zs_accents.dart';
 
-/// The design-system sync the token layer mirrors: the DS downloaded 2026-10-26 is "synced through #13"
-/// (DS readme.md:22). It rises when the DS records #14.
-const dsSyncedThrough = 13;
+/// The design-system sync the token layer mirrors: the DS downloaded 2026-10-29 is "synced through #15"
+/// (DS readme.md:22). It rises when the DS records #16.
+const dsSyncedThrough = 15;
 
 /// The two themes (decision 16.11; DS tokens/colors.css:9, :79). `[data-theme="light"]` is an alias of paper.
 enum ZsTheme {

@@ -18,6 +18,7 @@ import 'package:zanshin/src/features/projects/projects_environment.dart';
 import 'package:zanshin/src/features/projects/projects_module.dart';
 import 'package:zanshin/src/features/projects/projects_tree.dart';
 import 'package:zanshin/src/features/projects/projects_window.dart';
+import 'package:zanshin/src/features/projects/tree_drop.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
@@ -424,7 +425,9 @@ void main() {
 
       await rig.key(LogicalKeyboardKey.tab);
       expect(rig.focused, 'projects row group:g1', reason: 'from the header into the body');
-      // A group row has no •••: the next Tab leaves the tree.
+      // The selected group row's ••• (Story 11.15 item 3), then the next Tab leaves the tree.
+      await rig.key(LogicalKeyboardKey.tab);
+      expect(rig.focused, 'projects more group:g1');
       await rig.key(LogicalKeyboardKey.tab);
       final BuildContext? focused = FocusManager.instance.primaryFocus?.context;
       expect(
@@ -673,7 +676,7 @@ void main() {
         shell.folderDragHandler!(FolderDragEntered(viewId: view, position: mobile, paths: <String>[jj, git, listed]));
         await tester.pump();
         expect(find.text('Drop to add directory'), findsOneWidget, reason: 'the hint shows only during a drag');
-        expect(rig.row('MOBILE'), paints..drrect(color: ZsColors.of(tester.element(rig.row('MOBILE'))).accentLiveRing));
+        expect(rig.row('MOBILE'), paints..drrect(color: ZsColors.of(tester.element(rig.row('MOBILE'))).accentLiveLine));
 
         shell.folderDragHandler!(FolderDropped(viewId: view, position: mobile, paths: <String>[jj, git, listed]));
         await rig.settle(() => find.text('Convert dropped-git to a jj repository?').evaluate().isNotEmpty);
@@ -963,9 +966,436 @@ void main() {
       await tester.pump();
       expect(field, findsOneWidget);
       expect(tester.widget<EditableText>(field).controller.text, 'Clients');
-      expect(FocusManager.instance.primaryFocus?.debugLabel, 'projects new group', reason: 'focus came back to it');
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'projects group name', reason: 'focus came back to it');
       // macOS: Flutter's FocusManager parks focus at the root while the app is inactive (focus_manager.dart).
     }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+  });
+
+  group('Story 11.15', () {
+    Future<void> openMenu(WidgetTester tester, _Rig rig, int row) async {
+      await tester.tap(rig.id('projects-row-$row-more'));
+      await tester.pump();
+      await tester.pump(_m.durMenu);
+    }
+
+    Future<void> openSubmenu(WidgetTester tester) async {
+      await tester.tap(find.bySemanticsIdentifier('projects-menu-move'));
+      await tester.pump();
+      await tester.pump(_m.durMenu);
+    }
+
+    Future<void> choose(WidgetTester tester, String identifier) async {
+      await tester.tap(find.bySemanticsIdentifier(identifier));
+      await tester.pump(_m.durBlink * 2);
+      await tester.pump(_m.durExit);
+      await tester.pump();
+    }
+
+    Matcher selected(bool value) => isSemantics(isSelected: value);
+
+    ProjectsTreeState tree(WidgetTester tester) => tester.state<ProjectsTreeState>(find.byType(ProjectsTree));
+
+    /// Presses a mouse on [from] and moves it a little, so the row's drag starts.
+    Future<TestGesture> grab(WidgetTester tester, Offset from) async {
+      final TestGesture gesture = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+      await gesture.moveBy(const Offset(0, 4));
+      await tester.pump();
+      return gesture;
+    }
+
+    Future<void> hoverAt(WidgetTester tester, TestGesture gesture, Offset to) async {
+      await gesture.moveTo(to);
+      await tester.pump();
+      await gesture.moveTo(to + const Offset(1, 0));
+      await tester.pump();
+    }
+
+    String? ghostText(WidgetTester tester) {
+      final Finder text = find.descendant(of: find.byType(ZsDragGhost), matching: find.byType(Text));
+      return text.evaluate().length < 2 ? null : tester.widget<Text>(text.last).data;
+    }
+
+    testWidgets('a click below the last row deselects; New group then lands at the end of the top level', (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      await tester.tap(find.text('top'));
+      await tester.pump(kDoubleTapTimeout);
+      expect(tester.getSemantics(rig.id('projects-row-5')), selected(true));
+
+      await tester.tapAt(tester.getRect(rig.row('gone')).bottomCenter + const Offset(0, 30));
+      await tester.pump();
+      expect(tester.getSemantics(rig.id('projects-row-5')), selected(false));
+      tree(tester).focusTabStop();
+      await tester.pump();
+      expect(rig.focused, 'projects row group:g1', reason: 'the Tab stop is the first row');
+
+      await tester.tap(find.text('gone'));
+      await tester.pump(kDoubleTapTimeout);
+      await tester.tapAt(tester.getRect(rig.row('gone')).bottomCenter + const Offset(0, 30));
+      await tester.pump();
+      await tester.tap(rig.id('projects-new-group'));
+      await tester.pump();
+      await tester.pump();
+      final Finder field = find.descendant(of: rig.id('projects-new-group-name'), matching: find.byType(EditableText));
+      expect(tester.getTopLeft(field).dy, greaterThan(tester.getBottomLeft(rig.row('gone')).dy));
+      await tester.enterText(field, 'Last');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await rig.settle(() => rig.registry.value.groups.length == 3);
+      expect(rig.registry.value.groups.last, const ProjectGroup(id: 'g3', name: 'Last', order: 3));
+    });
+
+    testWidgets('with a project inside a group selected, New group goes into that group', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      await tester.tap(find.text('MyApp'));
+      await tester.pump(kDoubleTapTimeout);
+      await tester.tap(rig.id('projects-new-group'));
+      await tester.pump();
+      await tester.pump();
+      final Finder field = find.descendant(of: rig.id('projects-new-group-name'), matching: find.byType(EditableText));
+      expect(tester.getTopLeft(field).dy, greaterThan(tester.getBottomLeft(rig.row('design-kit')).dy));
+      expect(tester.getTopLeft(field).dy, lessThan(tester.getTopLeft(rig.row('api-server')).dy));
+      await tester.enterText(field, 'X');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await rig.settle(
+        () =>
+            find.ancestor(of: find.text('X'), matching: find.byType(ZsControlCore)).evaluate().isNotEmpty &&
+            selected(true).matches(tester.getSemantics(rig.row('X')), <Object?, Object?>{}),
+      );
+      expect(rig.registry.value.groups.last, const ProjectGroup(id: 'g3', name: 'X', parent: 'g2', order: 2));
+    });
+
+    testWidgets('a group row shows ••• on hover; a right-click selects it and opens its menu', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      double more() => tester
+          .widget<AnimatedOpacity>(
+            find.descendant(of: rig.id('projects-row-1-more'), matching: find.byType(AnimatedOpacity)),
+          )
+          .opacity;
+      expect(more(), 0);
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(rig.row('MOBILE')));
+      await tester.pump();
+      expect(more(), 1);
+      await mouse.moveTo(Offset.zero);
+      await tester.pump();
+
+      await tester.tap(find.text('MOBILE'), buttons: kSecondaryButton);
+      await tester.pump();
+      await tester.pump(_m.durMenu);
+      expect(tester.getSemantics(rig.id('projects-row-1')), selected(true));
+      expect(find.bySemanticsIdentifier('projects-menu-rename'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('projects-menu-delete'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('projects-menu-open'), findsNothing);
+    });
+
+    testWidgets('Rename…: ↩ and a click elsewhere keep the new name; Esc and an empty name keep the old one', (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final Finder field = find.descendant(
+        of: rig.id('projects-rename-group-name'),
+        matching: find.byType(EditableText),
+      );
+      Future<void> rename() async {
+        await openMenu(tester, rig, 0);
+        await choose(tester, 'projects-menu-rename');
+        await tester.pump();
+      }
+
+      final double mobileTop = tester.getTopLeft(rig.row('MOBILE')).dy;
+      await rename();
+      expect(field, findsOneWidget);
+      expect(
+        tester.getTopLeft(rig.row('MOBILE')).dy - mobileTop,
+        ProjectsTree.newGroupHeight - ProjectsTree.groupHeight,
+        reason: 'the row is the 34 high field row',
+      );
+      final TextEditingValue value = tester.widget<EditableText>(field).controller.value;
+      expect(value.text, 'Work');
+      expect(value.selection, const TextSelection(baseOffset: 0, extentOffset: 4), reason: 'the name selected');
+      await rig.key(LogicalKeyboardKey.escape);
+      expect(field, findsNothing);
+      expect(rig.registry.group('g1')!.name, 'Work');
+
+      await rename();
+      await tester.enterText(field, '  ');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(field, findsNothing);
+      expect(rig.registry.group('g1')!.name, 'Work', reason: 'an empty name keeps the old one');
+
+      await rename();
+      await tester.enterText(field, 'Clients');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await rig.settle(() => rig.registry.group('g1')!.name == 'Clients');
+      expect(find.text('CLIENTS'), findsOneWidget);
+
+      await rename();
+      await tester.enterText(field, 'Agency');
+      // A mouse click outside a text field unfocuses it (EditableText's tap-outside action).
+      await tester.tap(find.text('top'), kind: PointerDeviceKind.mouse);
+      await rig.settle(() => rig.registry.group('g1')!.name == 'Agency');
+      expect(field, findsNothing, reason: 'a click elsewhere keeps what was typed');
+    });
+
+    testWidgets('Delete group puts what it holds in its place, in order, and clears the selection', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final Set<String> paths = rig.registry.value.projects.map((project) => project.path).toSet();
+      await openMenu(tester, rig, 0);
+      await choose(tester, 'projects-menu-delete');
+      await rig.settle(() => rig.registry.group('g1') == null);
+
+      final ProjectsSettings value = rig.registry.value;
+      expect(rig.registry.group('g2')!.parent, isNull);
+      expect(rig.registry.group('g2')!.order, 0);
+      expect(
+        rig.registry.entry('${rig.home}/code/work/api-server'),
+        isA<ProjectEntry>().having((e) => e.order, 'order', 1),
+      );
+      expect(rig.registry.entry('${rig.home}/code/top')!.order, 2);
+      expect(rig.registry.entry('${rig.home}/code/gone')!.order, 3);
+      expect(value.projects.map((project) => project.path).toSet(), paths);
+      for (var i = 0; i < 6; i++) {
+        expect(tester.getSemantics(rig.id('projects-row-$i')), selected(false));
+      }
+    });
+
+    testWidgets('Move to group › of a group lists neither itself nor what it holds; its place is checked', (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      await openMenu(tester, rig, 1);
+      await openSubmenu(tester);
+      expect(find.text('Work / Mobile'), findsNothing);
+      expect(tester.getSemantics(find.bySemanticsIdentifier('projects-menu-move-top')), isSemantics(isChecked: false));
+      expect(tester.getSemantics(find.bySemanticsIdentifier('projects-menu-move-g1')), isSemantics(isChecked: true));
+      expect(find.bySemanticsIdentifier('projects-menu-move-new'), findsOneWidget);
+
+      final ProjectsSettings before = rig.registry.value;
+      await choose(tester, 'projects-menu-move-g1');
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+      expect(rig.registry.value, before, reason: 'the current place changes nothing');
+
+      await openMenu(tester, rig, 1);
+      await openSubmenu(tester);
+      await choose(tester, 'projects-menu-move-top');
+      await rig.settle(() => rig.registry.group('g2')!.parent == null);
+      expect(tester.getSemantics(rig.row('MOBILE')), selected(true), reason: 'the moved row ends selected');
+    });
+
+    testWidgets('New group… on a project: Esc changes nothing; ↩ creates the group around it, selected', (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final top = '${rig.home}/code/top';
+      final Finder field = find.descendant(of: rig.id('projects-new-group-name'), matching: find.byType(EditableText));
+      final ProjectsSettings before = rig.registry.value;
+
+      await openMenu(tester, rig, 5);
+      await openSubmenu(tester);
+      await choose(tester, 'projects-menu-move-new');
+      await tester.pump();
+      expect(field, findsOneWidget);
+      expect(tester.getTopLeft(field).dy, greaterThan(tester.getBottomLeft(rig.row('gone')).dy));
+      await rig.key(LogicalKeyboardKey.escape);
+      expect(field, findsNothing);
+      expect(rig.registry.value, before);
+
+      await openMenu(tester, rig, 5);
+      await openSubmenu(tester);
+      await choose(tester, 'projects-menu-move-new');
+      await tester.pump();
+      await tester.enterText(field, 'Mobile2');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await rig.settle(() => rig.registry.entry(top)!.group == 'g3');
+      expect(rig.registry.group('g3'), const ProjectGroup(id: 'g3', name: 'Mobile2', order: 2));
+      expect(rig.registry.entry(top)!.order, 0);
+      expect(tester.getSemantics(rig.row('top')), selected(true));
+    });
+
+    testWidgets('no drag starts while searching', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      await tester.enterText(find.descendant(of: rig.id('projects-search'), matching: find.byType(EditableText)), 'o');
+      await tester.pump();
+      final ProjectsSettings before = rig.registry.value;
+      final TestGesture gesture = await grab(tester, tester.getCenter(rig.row('top')));
+      await hoverAt(tester, gesture, tester.getCenter(rig.row('MOBILE')));
+      expect(find.byType(ZsDragGhost), findsNothing);
+      await gesture.up();
+      await tester.pump();
+      expect(rig.registry.value, before);
+    });
+
+    testWidgets('Esc during a drag hides the ghost and the drop look and keeps the order', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final ProjectsSettings before = rig.registry.value;
+      final TestGesture gesture = await grab(tester, tester.getCenter(rig.row('gone')));
+      await hoverAt(tester, gesture, tester.getRect(rig.row('top')).topCenter + const Offset(0, 6));
+      expect(ghostText(tester), ProjectsTree.topLevelWords);
+      expect(tree(tester).dropHover?.placement, TreeDropPlacement.before);
+      final String? focusedBefore = rig.focused;
+
+      double goneOpacity() => tester
+          .widget<Opacity>(
+            find
+                .ancestor(
+                  of: find.descendant(of: find.byType(ProjectsTree), matching: find.text('gone')),
+                  matching: find.byType(Opacity),
+                )
+                .first,
+          )
+          .opacity;
+      expect(goneOpacity(), .4);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(find.byType(ZsDragGhost), findsNothing);
+      expect(tree(tester).dropHover, isNull);
+      expect(rig.focused, focusedBefore);
+      expect(goneOpacity(), 1, reason: 'the row in hand is back once Esc cancelled the drag');
+      await hoverAt(tester, gesture, tester.getRect(rig.row('top')).topCenter + const Offset(0, 8));
+      expect(tree(tester).dropHover, isNull);
+      await gesture.up();
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+      expect(rig.registry.value, before);
+    });
+
+    testWidgets('the ghost names the destination; below the last row is the end of the top level', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final myApp = '${rig.home}/code/work/mobile/myapp';
+      final gone = '${rig.home}/code/gone';
+      final TestGesture gesture = await grab(tester, tester.getCenter(rig.row('MyApp')));
+      expect(find.byType(ZsDragGhost), findsOneWidget);
+      expect(
+        tester
+            .widget<Opacity>(
+              find
+                  .ancestor(
+                    of: find.descendant(of: find.byType(ProjectsTree), matching: find.text('MyApp')),
+                    matching: find.byType(Opacity),
+                  )
+                  .first,
+            )
+            .opacity,
+        .4,
+      );
+
+      final Rect work = tester.getRect(rig.row('WORK'));
+      await hoverAt(tester, gesture, Offset(work.center.dx, work.top + work.height * .85));
+      expect(ghostText(tester), 'Into Work', reason: 'an expanded group with children: its lower part is inside');
+      expect(tree(tester).dropHover?.placement, TreeDropPlacement.inside);
+      expect(
+        rig.row('WORK'),
+        paints..drrect(color: ZsColors.of(tester.element(rig.row('WORK'))).accentLiveLine),
+      );
+
+      await hoverAt(tester, gesture, tester.getRect(rig.row('gone')).topCenter + const Offset(0, 6));
+      expect(ghostText(tester), ProjectsTree.topLevelWords, reason: 'between top and gone');
+
+      await hoverAt(tester, gesture, tester.getRect(rig.row('gone')).bottomCenter + const Offset(0, 30));
+      expect(ghostText(tester), ProjectsTree.topLevelWords, reason: 'below the last row');
+      expect(tree(tester).dropHover, (id: 'project:$gone', placement: TreeDropPlacement.after, depth: 0));
+      await gesture.up();
+      await rig.settle(() => rig.registry.entry(myApp)!.group == null);
+      expect(rig.registry.entry(myApp)!.order, 3, reason: 'last at the top level');
+      expect(tester.getSemantics(rig.row('MyApp')), selected(true), reason: 'the moved row ends selected');
+    });
+
+    testWidgets('over the dragged group’s own subtree the ghost gives the hint and a drop changes nothing', (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final ProjectsSettings before = rig.registry.value;
+      final TestGesture gesture = await grab(tester, tester.getCenter(rig.row('WORK')));
+      await hoverAt(tester, gesture, tester.getCenter(rig.row('MyApp')));
+      expect(ghostText(tester), ProjectsTree.dropHint);
+      expect(tree(tester).dropHover, isNull);
+      await gesture.up();
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+      expect(rig.registry.value, before);
+    });
+
+    testWidgets('the top quarter of an expanded group with children drops before it', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final gone = '${rig.home}/code/gone';
+      final TestGesture gesture = await grab(tester, tester.getCenter(rig.row('gone')));
+      await hoverAt(tester, gesture, tester.getRect(rig.row('WORK')).topCenter + const Offset(0, 4));
+      expect(tree(tester).dropHover?.placement, TreeDropPlacement.before);
+      expect(ghostText(tester), ProjectsTree.topLevelWords);
+      await gesture.up();
+      await rig.settle(() => rig.registry.entry(gone)!.group == null && rig.registry.entry(gone)!.order == 0);
+    });
+
+    testWidgets('a row moved into a collapsed group expands it and ends selected', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final top = '${rig.home}/code/top';
+      await tester.tap(find.text('MOBILE'));
+      await tester.pump();
+      expect(find.text('MyApp'), findsNothing, reason: 'Mobile collapsed');
+
+      await openMenu(tester, rig, 3);
+      await openSubmenu(tester);
+      await choose(tester, 'projects-menu-move-g2');
+      await rig.settle(() => rig.registry.entry(top)!.group == 'g2');
+      expect(find.text('MyApp'), findsOneWidget, reason: 'Mobile expanded');
+      expect(tester.getSemantics(rig.row('top')), selected(true));
+    });
+
+    testWidgets('New group… on a group: the field last in its group; ↩ puts the group into the new one', (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final Finder field = find.descendant(of: rig.id('projects-new-group-name'), matching: find.byType(EditableText));
+      await openMenu(tester, rig, 1);
+      await openSubmenu(tester);
+      await choose(tester, 'projects-menu-move-new');
+      await tester.pump();
+      expect(tester.getTopLeft(field).dy, greaterThan(tester.getBottomLeft(rig.row('api-server')).dy));
+      expect(tester.getTopLeft(field).dy, lessThan(tester.getTopLeft(rig.row('top')).dy));
+
+      await tester.enterText(field, 'Phones');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await rig.settle(() => rig.registry.group('g2')!.parent == 'g3');
+      // Last in Work (after api-server, once Mobile has left it).
+      expect(rig.registry.group('g3'), const ProjectGroup(id: 'g3', name: 'Phones', parent: 'g1', order: 1));
+      expect(rig.registry.group('g2')!.order, 0);
+      expect(tester.getSemantics(rig.row('MOBILE')), selected(true));
+    });
+
+    testWidgets('a drag released on a group does not toggle it; the moved row is selected', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final top = '${rig.home}/code/top';
+      final TestGesture gesture = await grab(tester, tester.getCenter(rig.row('top')));
+      await hoverAt(tester, gesture, tester.getCenter(rig.row('MOBILE')));
+      expect(ghostText(tester), 'Into Mobile');
+      await gesture.up();
+      await rig.settle(() => rig.registry.entry(top)!.group == 'g2');
+      expect(find.text('MyApp'), findsOneWidget, reason: 'Mobile stays expanded');
+      expect(tester.getSemantics(rig.row('top')), selected(true));
+    });
   });
 
   group('Clone', () {

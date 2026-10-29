@@ -2,6 +2,8 @@
 
 import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
+import 'package:zanshin/src/features/projects/project_status_style.dart';
+import 'package:zanshin_settings/zanshin_settings.dart' show ProjectStatus;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 /// The "Materials" folder: each Story 11.2 material over a busy canvas inside one [BackdropGroup], so its blur, sheen
@@ -59,8 +61,50 @@ final materialsFolder = WidgetbookFolder(
         WidgetbookUseCase(name: 'Window canvas', builder: (context) => const ZsCanvas()),
       ],
     ),
+    // Story 11.15: the chip a dragged Projects row carries, over the window fill.
+    WidgetbookComponent(
+      name: 'Drag ghost',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(
+          name: 'Kinds',
+          builder: (context) => const ZsWindowFill(child: _Ghosts()),
+        ),
+      ],
+    ),
   ],
 );
+
+/// A project and a group with a target, and a project with the hint (DS components/overlays/DragGhost.prompt.md:7).
+class _Ghosts extends StatelessWidget {
+  const _Ghosts();
+
+  @override
+  Widget build(BuildContext context) {
+    final ZsColors colors = ZsColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 40,
+        children: <Widget>[
+          ZsDragGhost(
+            kind: ZsDragGhostKind.project,
+            label: 'dotfiles',
+            dot: ProjectStatus.clean.colorIn(colors),
+            target: 'Into Backend',
+          ),
+          const ZsDragGhost(kind: ZsDragGhostKind.group, label: 'Mobile', target: 'To the top level'),
+          ZsDragGhost(
+            kind: ZsDragGhostKind.project,
+            label: 'workers',
+            dot: ProjectStatus.conflict.colorIn(colors),
+            hint: 'Drop between rows or on a group',
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// [child] over the busy canvas, in a [BackdropGroup] (11.3's per-window group).
 Widget _overCanvas(Widget child) => BackdropGroup(

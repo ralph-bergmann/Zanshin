@@ -53,8 +53,10 @@ final _log = Logger('zanshin.projects');
 ///
 /// **Clone…** opens an inline form under the header: the URL, the destination (mono; pre-filled
 /// `‹last parent or ~›/‹name›` by the CLI's rule), Choose…, Cancel and Clone (gold, busy while it runs; its tooltip the
-/// `jj git clone --no-colocate` command). **New group** names a group inline, inside the selected group or at the top
-/// level.
+/// `jj git clone --no-colocate` command). **New group** names a group inline, last inside the selected group, else
+/// inside the selected project's group, else at the top level (Story 11.15 item 2). The tree's row menus rename,
+/// delete and move rows (Story 11.15); every move selects the moved row, and a click below the rows clears the
+/// selection.
 ///
 /// Every successful open reaches [onOpened] (11.12's window coordinator closes the `projects` dialog window there, or
 /// keeps it with a creation's warnings). The identity is read again whenever the window becomes key. Identifiers:
@@ -146,6 +148,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   String? _selected;
   final _collapsed = <String>{};
   ProjectsNewGroupItem? _newGroup;
+  String? _renaming;
   _Notice? _notice;
   _Offer? _offer;
 
@@ -239,6 +242,13 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   /// Shows the drop hint as a Finder drag over the window does.
   void previewDrop() => setState(() => _outerDrop = true);
 
+  /// Starts renaming the group [id] in its row, as its Rename… does (Story 11.15 item 4).
+  void renameGroup(String id) => setState(() {
+    _newGroup = null;
+    _renaming = id;
+    _selected = 'group:$id';
+  });
+
   // ---- reads ----
 
   Future<void> _readVersions() async {
@@ -289,6 +299,23 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     final String? selected = _selected;
     return selected != null && selected.startsWith('group:') ? selected.substring('group:'.length) : null;
   }
+
+  /// Where New group puts the group (Story 11.15 item 2): into a selected group, else into a selected project's
+  /// group, else the top level (null).
+  String? get _newGroupParent {
+    final String? selected = _selected;
+    if (selected != null && selected.startsWith('project:')) {
+      return widget.registry.entry(selected.substring('project:'.length))?.group;
+    }
+    return _targetGroup;
+  }
+
+  /// The group [item] sits in now; null for the top level.
+  String? _parentOfItem(ProjectsItem item) => switch (item) {
+    ProjectsProjectItem(:final ProjectEntry entry) => entry.group,
+    ProjectsGroupItem(:final ProjectGroup group) => group.parent,
+    ProjectsNewGroupItem() => null,
+  };
 
   static String _nameOf(String path) {
     final List<String> segments = path.split('/').where((segment) => segment.isNotEmpty).toList();
@@ -471,17 +498,19 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     }
   }
 
-  void _startNewGroup() {
-    final String? parent = _targetGroup;
-    setState(() {
-      _search.clear();
-      if (parent != null) {
-        _collapsed.remove(parent);
-      }
-      _newGroup = ProjectsNewGroupItem(parent);
-    });
-  }
+  /// Puts the name field for a new group last in [parent] (expanded), ending a rename; [moving] is the row Move to
+  /// group › New group… moves into it.
+  void _startNewGroup({String? parent, ProjectsItem? moving}) => setState(() {
+    _search.clear();
+    _renaming = null;
+    if (parent != null) {
+      _collapsed.remove(parent);
+    }
+    _newGroup = ProjectsNewGroupItem(parent, moving: moving);
+  });
 
+  /// Creates the group; Move to group › New group…'s row then moves into it, first, and ends selected (Finder's New
+  /// Folder with Selection); otherwise the group ends selected.
   Future<void> _commitNewGroup(String name) async {
     final ProjectsNewGroupItem? adding = _newGroup;
     if (adding == null) {
@@ -489,7 +518,10 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     }
     setState(() => _newGroup = null);
     final String id = await widget.registry.addGroup(name, parent: adding.parent);
-    if (mounted) {
+    final ProjectsItem? moving = adding.moving;
+    if (moving != null) {
+      await _moveItem(moving, (group: id, index: 0));
+    } else if (mounted) {
       setState(() => _selected = 'group:$id');
     }
   }
@@ -497,7 +529,21 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   /// The end of every parent: past the last member.
   int get _end => widget.registry.value.projects.length + widget.registry.value.groups.length;
 
+  /// Moves [item] to [placement] (the end of its group without an index) and selects it, expanding the group it lands
+  /// in and that group's parents (Story 11.15 item 7; DS ProjectRow.prompt.md:11 "it expands").
   Future<void> _moveItem(ProjectsItem item, ProjectsPlacement placement) async {
+    if (item is ProjectsNewGroupItem) {
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _selected = item.id;
+        final visited = <String>{};
+        for (String? at = placement.group; at != null && visited.add(at); at = widget.registry.group(at)?.parent) {
+          _collapsed.remove(at);
+        }
+      });
+    }
     switch (item) {
       case ProjectsProjectItem(:final ProjectEntry entry):
         await widget.registry.move(entry.path, group: placement.group, index: placement.index ?? _end);
@@ -506,6 +552,30 @@ class ProjectsWindowState extends State<ProjectsWindow> {
       case ProjectsNewGroupItem():
         break;
     }
+  }
+
+  /// Move to group ›: last in [group] (the top level when null); the place the row is in already changes nothing.
+  void _moveToGroup(ProjectsItem item, String? group) {
+    if (group != _parentOfItem(item)) {
+      unawaited(_moveItem(item, (group: group, index: null)));
+    }
+  }
+
+  void _commitRename(String id, String name) {
+    setState(() => _renaming = null);
+    unawaited(widget.registry.renameGroup(id, name));
+  }
+
+  /// Delete group: what it holds takes its place; the selection clears (Story 11.15 item 5).
+  void _deleteGroup(String id) {
+    setState(() {
+      _selected = null;
+      _collapsed.remove(id);
+      if (_renaming == id) {
+        _renaming = null;
+      }
+    });
+    unawaited(widget.registry.deleteGroup(id));
   }
 
   // ---- clone ----
@@ -704,9 +774,11 @@ class ProjectsWindowState extends State<ProjectsWindow> {
               collapsed: _collapsed,
               selected: _selected,
               newGroup: _newGroup,
+              renaming: _renaming,
               home: widget.environment.home,
               now: DateTime.now(),
               onSelect: (id) => setState(() => _selected = id),
+              onDeselect: () => setState(() => _selected = null),
               // A search shows every group open; a toggle then would flip a state nobody sees until it is cleared.
               onToggle: (group) => _search.text.trim().isNotEmpty
                   ? null
@@ -717,7 +789,12 @@ class ProjectsWindowState extends State<ProjectsWindow> {
                     }),
               onOpen: (entry) => unawaited(_openEntry(entry)),
               onReveal: (entry) => unawaited(widget.environment.revealInFinder(entry.path)),
-              onMoveToGroup: (entry, group) => unawaited(widget.registry.move(entry.path, group: group, index: _end)),
+              onMoveToGroup: _moveToGroup,
+              onNewGroupFor: (item) => _startNewGroup(parent: _parentOfItem(item), moving: item),
+              onRename: renameGroup,
+              onRenameCommit: _commitRename,
+              onRenameCancel: () => setState(() => _renaming = null),
+              onDeleteGroup: _deleteGroup,
               onRemove: (entry) {
                 if (_selected == 'project:${entry.path}') {
                   setState(() => _selected = null);
@@ -789,7 +866,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
         icon: ZI.folderPlus,
         iconOnly: true,
         identifier: 'projects-new-group',
-        onPressed: _startNewGroup,
+        onPressed: () => _startNewGroup(parent: _newGroupParent),
       ),
     ],
   );

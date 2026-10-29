@@ -15,7 +15,7 @@ import 'projects_tree_model.dart';
 import 'relative_time.dart';
 import 'tree_drop.dart';
 
-/// The Projects window's tree (epics.md Story 11.6 item 4 and design update item 4; DS
+/// The Projects window's tree (epics.md Story 11.6 item 4 and design update item 4, Story 11.15; DS
 /// components/content/ProjectRow.{jsx,prompt.md}; content.css:66-95), over [projects] as [projectsTree] projects it.
 ///
 /// **Rows.** 28 high for a group, 44 for a project, 1 apart, indented 16 per level from 8; radius `--radius-md`. A group
@@ -23,14 +23,23 @@ import 'tree_drop.dart';
 /// (`--fs-sm` 600, tracked .08em, `--text-muted`) and the count mono `--fs-xs` `--text-faint`. A project shows its 7 px
 /// status dot (none before its first reading; Claude's proposal), its name (13/500), the saffron caps OPEN on the open
 /// project, its bookmark label (mono `--fs-xs` `--text-dim` after the xs `branch` glyph, ProjectRow.jsx:66; none
-/// without one), then its path with `~` and when it was last opened, and the 22 px ••• that shows on hover and with focus inside the row. A missing
-/// project strikes its name and path through in `--text-faint`, its dot at half.
+/// without one), then its path with `~` and when it was last opened. Both end in the 22 px ••• that shows on hover and
+/// with focus inside the row. A missing project strikes its name and path through in `--text-faint`, its dot at half.
 ///
 /// **States.** Hover `--fl-hover`, pressed `--fl-on`; selected `--accent-soft` (also on hover), pressed
 /// `--accent-soft-hi`; secondary text takes the next rung on a fill; under increased contrast a selected row has a 1 px
 /// `--accent-line` edge inside (DS tokens/contrast.css:26). A click selects (a group also toggles); a double-click
-/// opens a project; a right-click opens the ••• menu at the pointer: Open, Reveal in Finder, Move to group › and
-/// Remove from list (Claude's proposal), Open and Reveal disabled for a missing project, Remove for the open one.
+/// opens a project; a click on the empty tree below the rows clears the selection (Story 11.15 item 1).
+///
+/// **The row menu** (••• below the button, a right-click at the pointer; either selects the row): a project — Open,
+/// Reveal in Finder, Move to group › and Remove from list (Claude's proposal), Open and Reveal disabled for a missing
+/// project, Remove for the open one; a group — Rename… · Move to group › · — · Delete group (Story 11.15 item 3).
+/// Move to group › lists Top level and every group by its path ("Work / Mobile"), sorted, radio-checked where the row
+/// is — a group's never itself or a group inside it — then — · New group… (item 6).
+///
+/// **Naming** (item 4; DS ProjectRow.prompt.md:17): New group's field and Rename…'s are one field (TextField sm in a
+/// 34 row, the chevron slot and the folder before it). ↩ commits, Esc cancels; focus leaving keeps a rename and cancels
+/// a new group; an empty name cancels (a rename keeps its old name).
 ///
 /// **Keys** (decision 16.43; DS ProjectRow.prompt.md:11): one Tab stop — the selected row, else the first; focus that
 /// arrives selects its row. ↑ ↓ Home End move and select, → expands a group or steps into it, ← collapses one or steps
@@ -38,13 +47,17 @@ import 'tree_drop.dart';
 /// typed within `--dur-typeahead`. Tab from the selected row reaches its ••• and no other.
 ///
 /// **Drops.** A row dragged onto another row, or a Finder folder dragged over one, lands where `tree_drop.dart` places
-/// it — a group's middle half is inside it — shown as a 1 px `--accent-live-line` edge with the 4 px
-/// `--accent-live-ring` around the row, or a 2 px `--accent-live-line` line on its edge indented to the insertion
-/// depth (the live copies: a Finder drop lands in a window that is not key). A group never moves into itself.
+/// it — a group's middle half is inside it; for a dragged row an expanded group with children takes its whole lower
+/// part as inside (item 7) — shown as the `--accent-soft` fill with a 1 px `--accent-live-line` border, or a 2 px
+/// `--accent-live-line` line 2 above or below the row from the insertion depth's indent to 8 from the right (DS
+/// content.css:71-79; the live copies: a Finder drop lands in a window that is not key). Below the last row is the end
+/// of the top level, shown as that line under the last row at indent 0. A group never moves into itself. No row drags
+/// while searching; Esc cancels a drag; the row in hand stays at 40 %; the pointer carries a [ZsDragGhost] 14 / 12 from
+/// it, naming where a drop lands ("Into ‹group›", "To the top level") or giving the hint (item 8).
 ///
 /// VoiceOver: a region "Projects"; each row a node named by its name, its value the dot's label (and "open"), with its
 /// selected and expanded state. Identifiers: `projects-tree`, `projects-row-<i>`, `projects-row-<i>-more` in visible
-/// order, `projects-menu`, `projects-new-group-name`.
+/// order, `projects-menu` (entries `projects-menu-*`), `projects-new-group-name`, `projects-rename-group-name`.
 class ProjectsTree extends StatefulWidget {
   /// The tree of [projects].
   const ProjectsTree({
@@ -52,21 +65,28 @@ class ProjectsTree extends StatefulWidget {
     required this.home,
     required this.now,
     required this.onSelect,
+    required this.onDeselect,
     required this.onToggle,
     required this.onOpen,
     required this.onReveal,
     required this.onMoveToGroup,
+    required this.onNewGroupFor,
     required this.onRemove,
+    required this.onRename,
+    required this.onDeleteGroup,
     required this.onMoveItem,
     required this.onDropFolders,
     required this.onDropHover,
     required this.onNewGroupCommit,
     required this.onNewGroupCancel,
+    required this.onRenameCommit,
+    required this.onRenameCancel,
     this.openPath,
     this.query = '',
     this.collapsed = const <String>{},
     this.selected,
     this.newGroup,
+    this.renaming,
     super.key,
   });
 
@@ -88,6 +108,9 @@ class ProjectsTree extends StatefulWidget {
   /// The new group's field, while one is being named.
   final ProjectsNewGroupItem? newGroup;
 
+  /// The id of the group whose row is its name field, while it is being renamed.
+  final String? renaming;
+
   /// The home folder paths abbreviate to `~`.
   final String home;
 
@@ -96,6 +119,9 @@ class ProjectsTree extends StatefulWidget {
 
   /// Selects the row with the given id.
   final ValueChanged<String> onSelect;
+
+  /// Clears the selection (a click below the rows).
+  final VoidCallback onDeselect;
 
   /// Expands or collapses the group with the given id.
   final ValueChanged<String> onToggle;
@@ -106,11 +132,20 @@ class ProjectsTree extends StatefulWidget {
   /// Reveals a project in Finder.
   final ValueChanged<ProjectEntry> onReveal;
 
-  /// Moves a project into a group (null: the top level), last there.
-  final void Function(ProjectEntry project, String? group) onMoveToGroup;
+  /// Moves a row into a group (null: the top level), last there (Move to group ›).
+  final void Function(ProjectsItem item, String? group) onMoveToGroup;
+
+  /// Starts naming a new group for the row to move into (Move to group › New group…).
+  final ValueChanged<ProjectsItem> onNewGroupFor;
 
   /// Removes a project from the list.
   final ValueChanged<ProjectEntry> onRemove;
+
+  /// Starts renaming the group with the given id (Rename…).
+  final ValueChanged<String> onRename;
+
+  /// Deletes the group with the given id, keeping what it holds (Delete group).
+  final ValueChanged<String> onDeleteGroup;
 
   /// Moves a dragged row to a placement.
   final void Function(ProjectsItem item, ProjectsPlacement placement) onMoveItem;
@@ -127,13 +162,19 @@ class ProjectsTree extends StatefulWidget {
   /// Drops the new group's field.
   final VoidCallback onNewGroupCancel;
 
+  /// Renames the group (its id) to the name typed.
+  final void Function(String group, String name) onRenameCommit;
+
+  /// Ends renaming without a change.
+  final VoidCallback onRenameCancel;
+
   /// A group row's height (Story 11.6 design note "Window").
   static const double groupHeight = 28;
 
   /// A project row's height.
   static const double projectHeight = 44;
 
-  /// The new group's row: its 30 px field with 2 above and below (Claude's proposal).
+  /// The name field's row: its 30 px field with 2 above and below (Claude's proposal; DS content.css:81).
   static const double newGroupHeight = 34;
 
   /// The gap below every row (`.zk-tree{gap:1px}`, DS ui_kits/desktop/kit.css:200).
@@ -147,6 +188,15 @@ class ProjectsTree extends StatefulWidget {
 
   /// The empty registry's sentence (Claude's proposal).
   static const emptyText = 'No projects yet. Add a directory or drop a folder here.';
+
+  /// The ghost's hint while nothing valid is under the pointer (DS components/overlays/DragGhost.prompt.md:12).
+  static const dropHint = 'Drop between rows or on a group';
+
+  /// The ghost's words for a drop at the top level (DragGhost.prompt.md:12).
+  static const topLevelWords = 'To the top level';
+
+  /// The ghost's words for a drop into the group named [name] (DragGhost.prompt.md:12).
+  static String intoWords(String name) => 'Into $name';
 
   /// The search's empty result (DS ui_kits/desktop/dialogs.jsx:51).
   static String noResultsText(String query) => 'No projects match “$query”';
@@ -165,13 +215,20 @@ class ProjectsTree extends StatefulWidget {
 /// Where a drag would land: on the row `id` at `placement`, the line indented to `depth`.
 typedef _Hover = ({String id, TreeDropPlacement placement, int depth});
 
+/// A drop's look and its place in the registry.
+typedef _Landing = ({_Hover hover, ProjectsPlacement placement});
+
+/// What the ghost shows: the drop's words (null: the hint), or nothing once Esc cancelled the drag.
+typedef _Ghost = ({String? target, bool hidden});
+
 /// The tree's state; [focusTabStop] moves the keyboard into the tree (↓ from the search).
 class ProjectsTreeState extends State<ProjectsTree> {
   final _scroll = ScrollController();
   final _rowFocus = <String, FocusNode>{};
   final _moreFocus = <String, FocusNode>{};
-  final _newGroupName = ZsTextEditingController();
-  final _newGroupFocus = FocusNode(debugLabel: 'projects new group');
+  final _name = ZsTextEditingController();
+  final _nameFocus = FocusNode(debugLabel: 'projects group name');
+  final _ghost = ValueNotifier<_Ghost>((target: null, hidden: false));
 
   var _roots = const <TreeSliverNode<ProjectsItem>>[];
   var _rows = const <ProjectsRow>[];
@@ -185,36 +242,55 @@ class ProjectsTreeState extends State<ProjectsTree> {
   _Hover? _hover;
   var _finderHover = false;
   String? _dragging;
+  var _dragCancelled = false;
+  var _keysHooked = false;
+
+  /// Where a row drag would land now, as the drop look shows it.
+  @visibleForTesting
+  ({String id, TreeDropPlacement placement, int depth})? get dropHover => _hover;
 
   @override
   void initState() {
     super.initState();
-    _newGroupFocus.addListener(_newGroupFocusChanged);
+    _nameFocus.addListener(_nameFocusChanged);
+    if (_fieldOf(widget) != null) {
+      _startField();
+    }
   }
 
   @override
   void didUpdateWidget(ProjectsTree oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.newGroup == null && widget.newGroup != null) {
-      _newGroupName.clear();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.newGroup != null) {
-          _newGroupFocus.requestFocus();
-        }
-      });
+    final Object? field = _fieldOf(widget);
+    // New group taking the field from a rename keeps what was typed, as a click elsewhere does.
+    final String? renamed = oldWidget.renaming;
+    if (renamed != null && widget.renaming == null && widget.newGroup != null) {
+      final String typed = _name.text.trim();
+      if (typed.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            widget.onRenameCommit(renamed, typed);
+          }
+        });
+      }
+    }
+    if (field != null && field != _fieldOf(oldWidget)) {
+      _startField();
     }
   }
 
   @override
   void dispose() {
+    _unhookKeys();
     _scroll.dispose();
     for (final node in <FocusNode>[..._rowFocus.values, ..._moreFocus.values]) {
       node.dispose();
     }
-    _newGroupFocus
-      ..removeListener(_newGroupFocusChanged)
+    _nameFocus
+      ..removeListener(_nameFocusChanged)
       ..dispose();
-    _newGroupName.dispose();
+    _name.dispose();
+    _ghost.dispose();
     _tapTimer?.cancel();
     _typeTimer?.cancel();
     super.dispose();
@@ -228,12 +304,17 @@ class ProjectsTreeState extends State<ProjectsTree> {
     }
   }
 
+  /// The row's focus node; focus arriving selects the row. Only arriving: a node also notifies when its traversal
+  /// changes, which must not select a focused row again after a click below the rows cleared the selection.
   FocusNode _focusFor(String id) => _rowFocus.putIfAbsent(id, () {
     final node = FocusNode(debugLabel: 'projects row $id');
+    var had = false;
     node.addListener(() {
-      if (node.hasPrimaryFocus && widget.selected != id) {
+      final bool has = node.hasPrimaryFocus;
+      if (has && !had && widget.selected != id) {
         widget.onSelect(id);
       }
+      had = has;
     });
     return node;
   });
@@ -259,27 +340,82 @@ class ProjectsTreeState extends State<ProjectsTree> {
     });
   }
 
-  /// Focus leaving the field cancels it — except while the app is not active: Flutter parks focus at the root while
-  /// another app is in front and gives it back on return, so switching apps keeps the name being typed.
-  void _newGroupFocusChanged() {
+  // ---- the name field ----
+
+  /// What the name field names: a rename (`rename:<id>`), a new group, or nothing.
+  static Object? _fieldOf(ProjectsTree tree) => tree.renaming != null ? 'rename:${tree.renaming}' : tree.newGroup;
+
+  String? _groupName(String id) {
+    for (final ProjectGroup group in widget.projects.groups) {
+      if (group.id == id) {
+        return group.name;
+      }
+    }
+    return null;
+  }
+
+  /// Fills the field for what it now names — a rename's name, selected; a new group's nothing — and focuses it after
+  /// the frame that mounts it. The blur rule is off until then: the one field moving from one row to another must not
+  /// read as focus leaving it.
+  void _startField() {
+    final String? renaming = widget.renaming;
+    final String name = renaming == null ? '' : _groupName(renaming) ?? '';
+    _name.value = TextEditingValue(
+      text: name,
+      selection: TextSelection(baseOffset: 0, extentOffset: name.length),
+    );
+    _nameFocus.removeListener(_nameFocusChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _nameFocus
+        ..removeListener(_nameFocusChanged)
+        ..addListener(_nameFocusChanged);
+      if (_fieldOf(widget) != null) {
+        _nameFocus.requestFocus();
+      }
+    });
+  }
+
+  /// Focus leaving the field keeps a rename and cancels a new group — except while the app is not active: Flutter
+  /// parks focus at the root while another app is in front and gives it back on return, so switching apps keeps the
+  /// name being typed.
+  void _nameFocusChanged() {
     final AppLifecycleState? lifecycle = WidgetsBinding.instance.lifecycleState;
     if (lifecycle != null && lifecycle != AppLifecycleState.resumed) {
       return;
     }
-    if (!_newGroupFocus.hasFocus && widget.newGroup != null && mounted) {
+    if (_nameFocus.hasFocus || !mounted) {
+      return;
+    }
+    if (widget.renaming case final String id) {
+      _commitRename(id, _name.text);
+    } else if (widget.newGroup != null) {
       widget.onNewGroupCancel();
     }
   }
 
   void _commitNewGroup(String name) {
     final String trimmed = name.trim();
-    _newGroupFocus.removeListener(_newGroupFocusChanged);
+    _nameFocus.removeListener(_nameFocusChanged);
     if (trimmed.isEmpty) {
       widget.onNewGroupCancel();
     } else {
       widget.onNewGroupCommit(trimmed);
     }
-    _newGroupFocus.addListener(_newGroupFocusChanged);
+    _nameFocus.addListener(_nameFocusChanged);
+  }
+
+  void _commitRename(String id, String name) {
+    final String trimmed = name.trim();
+    _nameFocus.removeListener(_nameFocusChanged);
+    if (trimmed.isEmpty) {
+      widget.onRenameCancel();
+    } else {
+      widget.onRenameCommit(id, trimmed);
+    }
+    _nameFocus.addListener(_nameFocusChanged);
   }
 
   // ---- pointer ----
@@ -428,9 +564,9 @@ class ProjectsTreeState extends State<ProjectsTree> {
     }
     double top = ProjectsTree.padding.top;
     for (var i = 0; i < index; i++) {
-      top += ProjectsTree.heightOf(_rows[i].node.content) + ProjectsTree.gap;
+      top += _heightOf(_rows[i].node.content) + ProjectsTree.gap;
     }
-    final double bottom = top + ProjectsTree.heightOf(_rows[index].node.content);
+    final double bottom = top + _heightOf(_rows[index].node.content);
     final ScrollPosition position = _scroll.position;
     final double viewport = position.viewportDimension;
     double? to;
@@ -443,6 +579,11 @@ class ProjectsTreeState extends State<ProjectsTree> {
       _scroll.jumpTo(to.clamp(position.minScrollExtent, position.maxScrollExtent));
     }
   }
+
+  /// [item]'s row height: a group being renamed is its name field's row.
+  double _heightOf(ProjectsItem item) => item is ProjectsGroupItem && item.group.id == widget.renaming
+      ? ProjectsTree.newGroupHeight
+      : ProjectsTree.heightOf(item);
 
   // ---- drops ----
 
@@ -457,19 +598,20 @@ class ProjectsTreeState extends State<ProjectsTree> {
     return false;
   }
 
-  TreeDropPlacement _placementIn(ProjectsItem item, double dy) => treeDropPlacement(
-    dy: dy,
-    rowExtent: ProjectsTree.heightOf(item),
-    canHaveChildren: item is ProjectsGroupItem,
-  );
+  /// Where a pointer at [dy] over [node] drops; for a dragged [row], an expanded group with children takes everything
+  /// below its top quarter as inside (DS ProjectRow.prompt.md:11).
+  TreeDropPlacement _placementIn(TreeSliverNode<ProjectsItem> node, double dy, {bool row = false}) {
+    final ProjectsItem item = node.content;
+    final double extent = _heightOf(item);
+    if (row && item is ProjectsGroupItem && node.isExpanded && node.children.isNotEmpty) {
+      return dy < extent / 4 ? TreeDropPlacement.before : TreeDropPlacement.inside;
+    }
+    return treeDropPlacement(dy: dy, rowExtent: extent, canHaveChildren: item is ProjectsGroupItem);
+  }
 
   /// Where [moving] (null for Finder folders) would land at [placement] on [node], or null where it cannot go: onto
   /// itself, or a group into itself.
-  ({_Hover hover, ProjectsPlacement placement})? _landing(
-    TreeSliverNode<ProjectsItem> node,
-    TreeDropPlacement placement,
-    ProjectsItem? moving,
-  ) {
+  _Landing? _landing(TreeSliverNode<ProjectsItem> node, TreeDropPlacement placement, ProjectsItem? moving) {
     if (moving != null && moving.id == node.content.id) {
       return null;
     }
@@ -481,11 +623,29 @@ class ProjectsTreeState extends State<ProjectsTree> {
     return (hover: (id: node.content.id, placement: placement, depth: point.depth), placement: target);
   }
 
-  void _showHover(_Hover? hover, {bool finder = false}) {
-    final bool finderHover = hover != null && finder;
+  /// The end of the top level for [moving]: last there, shown as the line under the last row at indent 0.
+  _Landing _endLanding(ProjectsItem moving) => (
+    hover: (
+      id: _rows.isEmpty ? '' : _rows.last.node.content.id,
+      placement: TreeDropPlacement.after,
+      depth: 0,
+    ),
+    placement: (group: null, index: (registryMembers(widget.projects, null)..remove(moving.id)).length),
+  );
+
+  /// The ghost's words for a drop into [group] (the top level when null): its stored name (Design note "Ghost words").
+  String _wordsFor(String? group) =>
+      group == null ? ProjectsTree.topLevelWords : ProjectsTree.intoWords(_groupName(group) ?? group);
+
+  void _showLanding(_Landing? landing, {bool finder = false}) {
+    final _Hover? hover = landing?.hover;
+    if (!finder && _dragging != null) {
+      _ghost.value = (target: landing == null ? null : _wordsFor(landing.placement.group), hidden: _dragCancelled);
+    }
     if (hover != _hover) {
       setState(() => _hover = hover);
     }
+    final bool finderHover = hover != null && finder;
     if (finderHover != _finderHover) {
       _finderHover = finderHover;
       widget.onDropHover(finderHover);
@@ -494,12 +654,63 @@ class ProjectsTreeState extends State<ProjectsTree> {
 
   void _leave(String id) {
     if (_hover?.id == id) {
-      _showHover(null);
+      _showLanding(null);
     }
   }
 
   double _localDy(BuildContext context, Offset global) =>
       (context.findRenderObject()! as RenderBox).globalToLocal(global).dy;
+
+  // ---- dragging ----
+
+  void _dragStarted(ProjectsItem item) {
+    _dragCancelled = false;
+    _ghost.value = (target: null, hidden: false);
+    if (!_keysHooked) {
+      _keysHooked = true;
+      FocusManager.instance.addEarlyKeyEventHandler(_earlyKey);
+      HardwareKeyboard.instance.addHandler(_hardwareKey);
+    }
+    setState(() => _dragging = item.id);
+  }
+
+  /// Runs from `onDragCompleted` / `onDraggableCanceled`, which fire even when the row unmounted mid-drag (unlike
+  /// `onDragEnd`), so the key handlers never stay hooked.
+  void _dragEnded() {
+    _unhookKeys();
+    if (!mounted) {
+      return;
+    }
+    _showLanding(null);
+    setState(() => _dragging = null);
+  }
+
+  void _unhookKeys() {
+    if (_keysHooked) {
+      _keysHooked = false;
+      FocusManager.instance.removeEarlyKeyEventHandler(_earlyKey);
+      HardwareKeyboard.instance.removeHandler(_hardwareKey);
+    }
+  }
+
+  /// Esc during a drag cancels it (DS DragGhost.prompt.md:14): no drop look, no ghost, no drop. Flutter's `Draggable`
+  /// cannot be ended from outside, so the (invisible) drag lasts until the button is released (Design note "Esc
+  /// during a drag").
+  bool _cancelDragOn(KeyEvent event) {
+    if (_dragging == null || event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.escape) {
+      return false;
+    }
+    setState(() => _dragCancelled = true);
+    _showLanding(null);
+    _ghost.value = (target: null, hidden: true);
+    return true;
+  }
+
+  /// Before the focus tree, so the Esc reaches no other handler (the search's clear, a window's close).
+  KeyEventResult _earlyKey(KeyEvent event) => _cancelDragOn(event) ? KeyEventResult.handled : KeyEventResult.ignored;
+
+  /// Without a primary focus the focus manager hears no key; the keyboard's own handlers still do.
+  bool _hardwareKey(KeyEvent event) => FocusManager.instance.primaryFocus == null && _cancelDragOn(event);
 
   // ---- build ----
 
@@ -538,7 +749,7 @@ class ProjectsTreeState extends State<ProjectsTree> {
             tree: _roots,
             indentation: TreeSliverIndentationType.none,
             toggleAnimationStyle: AnimationStyle.noAnimation,
-            treeRowExtentBuilder: (node, _) => ProjectsTree.heightOf(node.content! as ProjectsItem) + ProjectsTree.gap,
+            treeRowExtentBuilder: (node, _) => _heightOf(node.content! as ProjectsItem) + ProjectsTree.gap,
             treeNodeBuilder: (context, node, _) => _row(node as TreeSliverNode<ProjectsItem>),
           );
     return Semantics(
@@ -560,34 +771,63 @@ class ProjectsTreeState extends State<ProjectsTree> {
     );
   }
 
-  /// The empty space below the rows: a row dropped there goes last at the top level.
-  Widget _endTarget() => DragTarget<ProjectsItem>(
-    onAcceptWithDetails: (details) => widget.onMoveItem(details.data, (
-      group: null,
-      index: (registryMembers(widget.projects, null)..remove(details.data.id)).length,
-    )),
-    // At least 24 high (Claude's proposal), so a list taller than the window keeps a place to drop at its end.
-    builder: (context, _, _) => ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 24),
-      child: const SizedBox.expand(),
+  /// The empty space below the rows: a click clears the selection (Finder); a row dropped there goes last at the top
+  /// level.
+  Widget _endTarget() => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: widget.onDeselect,
+    child: DragTarget<ProjectsItem>(
+      onWillAcceptWithDetails: (_) => !_dragCancelled,
+      onMove: (details) {
+        if (!_dragCancelled) {
+          _showLanding(_endLanding(details.data));
+        }
+      },
+      onLeave: (data) {
+        if (data != null) {
+          _leave(_endLanding(data).hover.id);
+        }
+      },
+      onAcceptWithDetails: (details) {
+        _showLanding(null);
+        if (!_dragCancelled) {
+          widget.onMoveItem(details.data, _endLanding(details.data).placement);
+        }
+      },
+      // At least 24 high (Claude's proposal), so a list taller than the window keeps a place to drop at its end.
+      builder: (context, _, _) => ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 24),
+        child: const SizedBox.expand(),
+      ),
     ),
   );
 
   Widget _row(TreeSliverNode<ProjectsItem> node) {
     final ProjectsItem item = node.content;
     final Widget content = switch (item) {
-      ProjectsNewGroupItem() => _NewGroupField(
+      ProjectsNewGroupItem() => _NameField(
         depth: node.depth ?? 0,
-        controller: _newGroupName,
-        focusNode: _newGroupFocus,
+        controller: _name,
+        focusNode: _nameFocus,
+        label: 'New group',
+        identifier: 'projects-new-group-name',
         onSubmitted: _commitNewGroup,
         onCancel: widget.onNewGroupCancel,
+      ),
+      ProjectsGroupItem(:final ProjectGroup group) when group.id == widget.renaming => _NameField(
+        depth: node.depth ?? 0,
+        controller: _name,
+        focusNode: _nameFocus,
+        label: 'Rename group',
+        identifier: 'projects-rename-group-name',
+        onSubmitted: (name) => _commitRename(group.id, name),
+        onCancel: widget.onRenameCancel,
       ),
       _ => _itemRow(node, item),
     };
     return Padding(
       padding: const EdgeInsets.only(bottom: ProjectsTree.gap),
-      child: SizedBox(height: ProjectsTree.heightOf(item), child: content),
+      child: SizedBox(height: _heightOf(item), child: content),
     );
   }
 
@@ -607,7 +847,7 @@ class ProjectsTreeState extends State<ProjectsTree> {
       ProjectsNewGroupItem() => null,
     };
     // The keys are handled at the row, inside the ••• menu's anchor, which would take the arrow keys otherwise.
-    Widget core(ZsMenuController? menu, BuildContext? anchor) => Focus(
+    Widget core(ZsMenuController menu, BuildContext anchor) => Focus(
       canRequestFocus: false,
       skipTraversal: true,
       includeSemantics: false,
@@ -629,66 +869,82 @@ class ProjectsTreeState extends State<ProjectsTree> {
         ringRadius: metrics.radiusMd,
         builder: (context, status) => ListenableBuilder(
           listenable: focus,
-          builder: (context, _) => CustomPaint(
-            foregroundPainter: hover == null ? null : _DropPainter(hover, ZsColors.of(context), metrics.radiusMd),
-            child: switch (item) {
-              ProjectsGroupItem() => _GroupFace(item: item, depth: depth, expanded: node.isExpanded, status: status),
-              ProjectsProjectItem() => _ProjectFace(
-                item: item,
-                depth: depth,
-                status: status,
-                open: item.entry.path == widget.openPath,
-                home: widget.home,
-                now: widget.now,
-                more: _MoreButton(
-                  focusNode: _moreFocusFor(item.id)..skipTraversal = !selected,
-                  identifier: 'projects-row-$index-more',
-                  visible: status.hovered || focus.hasFocus,
-                  onPressed: (button) => _openMenu(button, anchor, menu),
+          builder: (context, _) {
+            final Widget more = _MoreButton(
+              focusNode: _moreFocusFor(item.id)..skipTraversal = !selected,
+              identifier: 'projects-row-$index-more',
+              visible: status.hovered || focus.hasFocus,
+              onPressed: (button) {
+                widget.onSelect(item.id);
+                _openMenu(button, anchor, menu);
+              },
+            );
+            return CustomPaint(
+              foregroundPainter: hover == null ? null : _DropPainter(hover, ZsColors.of(context)),
+              child: switch (item) {
+                ProjectsGroupItem() => _GroupFace(
+                  item: item,
+                  depth: depth,
+                  expanded: node.isExpanded,
+                  status: status,
+                  dropInto: hover?.placement == TreeDropPlacement.inside,
+                  more: more,
                 ),
-              ),
-              ProjectsNewGroupItem() => const SizedBox.shrink(),
-            },
-          ),
+                ProjectsProjectItem() => _ProjectFace(
+                  item: item,
+                  depth: depth,
+                  status: status,
+                  open: item.entry.path == widget.openPath,
+                  home: widget.home,
+                  now: widget.now,
+                  more: more,
+                ),
+                ProjectsNewGroupItem() => const SizedBox.shrink(),
+              },
+            );
+          },
         ),
       ),
     );
 
-    Widget row;
-    if (item is ProjectsProjectItem) {
-      row = ZsMenuAnchor(
-        entries: _menuEntries(item),
-        semanticLabel: item.name,
-        identifier: 'projects-menu',
-        builder: (anchor, menu) => GestureDetector(
-          onSecondaryTapUp: (details) {
-            widget.onSelect(item.id);
-            menu.open(position: details.localPosition);
-          },
-          child: _draggable(item, core(menu, anchor)),
-        ),
-      );
-    } else {
-      row = _draggable(item, core(null, null));
-    }
+    Widget row = ZsMenuAnchor(
+      entries: _menuEntries(item),
+      semanticLabel: item.name,
+      identifier: 'projects-menu',
+      builder: (anchor, menu) => GestureDetector(
+        onSecondaryTapUp: (details) {
+          widget.onSelect(item.id);
+          menu.open(position: details.localPosition);
+        },
+        child: _draggable(item, core(menu, anchor)),
+      ),
+    );
     final dragged = row;
     // The row's own context places a drag over it (the tree's would measure from the tree's top).
     row = Builder(
       builder: (rowContext) => DragTarget<ProjectsItem>(
         onWillAcceptWithDetails: (details) =>
+            !_dragCancelled &&
             details.data.id != item.id &&
             !(details.data is ProjectsGroupItem &&
                 item is ProjectsGroupItem &&
                 _isWithin(item.group.id, (details.data as ProjectsGroupItem).group.id)),
-        onMove: (details) => _showHover(
-          _landing(node, _placementIn(item, _localDy(rowContext, details.offset)), details.data)?.hover,
-        ),
+        onMove: (details) {
+          if (!_dragCancelled) {
+            _showLanding(
+              _landing(node, _placementIn(node, _localDy(rowContext, details.offset), row: true), details.data),
+            );
+          }
+        },
         onLeave: (_) => _leave(item.id),
         onAcceptWithDetails: (details) {
-          _showHover(null);
-          final ({_Hover hover, ProjectsPlacement placement})? landing = _landing(
+          _showLanding(null);
+          if (_dragCancelled) {
+            return;
+          }
+          final _Landing? landing = _landing(
             node,
-            _placementIn(item, _localDy(rowContext, details.offset)),
+            _placementIn(node, _localDy(rowContext, details.offset), row: true),
             details.data,
           );
           if (landing != null) {
@@ -700,17 +956,13 @@ class ProjectsTreeState extends State<ProjectsTree> {
     );
     return FolderDropTarget(
       onDragUpdate: (details) {
-        _showHover(_landing(node, _placementIn(item, details.localPosition.dy), null)?.hover, finder: true);
+        _showLanding(_landing(node, _placementIn(node, details.localPosition.dy), null), finder: true);
         return true;
       },
       onDragExit: () => _leave(item.id),
       onDrop: (details) {
-        _showHover(null);
-        final ({_Hover hover, ProjectsPlacement placement})? landing = _landing(
-          node,
-          _placementIn(item, details.localPosition.dy),
-          null,
-        );
+        _showLanding(null);
+        final _Landing? landing = _landing(node, _placementIn(node, details.localPosition.dy), null);
         if (landing != null) {
           widget.onDropFolders(details.paths, landing.placement);
         }
@@ -719,49 +971,50 @@ class ProjectsTreeState extends State<ProjectsTree> {
     );
   }
 
-  /// [child] as a drag source; while it is dragged it shows at half opacity (Claude's proposal) — through an [Opacity]
-  /// that is always there, so the row under the pointer is never rebuilt into another element mid-drag.
+  /// [child] as a drag source — none while searching (the results are flat) — carrying the [ZsDragGhost] 14 / 12 from
+  /// the pointer (DS DragGhost.prompt.md:10). While it is dragged it shows at 40 % (DS content.css:73) — through an
+  /// [Opacity] that is always there, so the row under the pointer is never rebuilt into another element mid-drag.
   Widget _draggable(ProjectsItem item, Widget child) => Draggable<ProjectsItem>(
     data: item,
+    maxSimultaneousDrags: widget.query.trim().isEmpty ? null : 0,
     dragAnchorStrategy: pointerDragAnchorStrategy,
-    feedback: _DragFeedback(name: item.name),
-    onDragStarted: () => setState(() => _dragging = item.id),
-    onDragEnd: (_) {
-      _showHover(null);
-      if (mounted) {
-        setState(() => _dragging = null);
-      }
-    },
-    child: Opacity(opacity: _dragging == item.id ? .5 : 1, child: child),
+    feedback: Padding(
+      padding: const EdgeInsets.only(left: 14, top: 12),
+      child: ValueListenableBuilder<_Ghost>(
+        valueListenable: _ghost,
+        builder: (context, ghost, _) {
+          if (ghost.hidden) {
+            return const SizedBox.shrink();
+          }
+          final String? target = ghost.target;
+          return ZsDragGhost(
+            kind: item is ProjectsGroupItem ? ZsDragGhostKind.group : ZsDragGhostKind.project,
+            label: item.name,
+            dot: item is ProjectsProjectItem ? item.entry.status?.colorIn(ZsColors.of(context)) : null,
+            target: target,
+            hint: target == null ? ProjectsTree.dropHint : null,
+          );
+        },
+      ),
+    ),
+    onDragStarted: () => _dragStarted(item),
+    onDragCompleted: _dragEnded,
+    onDraggableCanceled: (_, _) => _dragEnded(),
+    child: Opacity(opacity: _dragging == item.id && !_dragCancelled ? .4 : 1, child: child),
   );
 
   /// Opens [menu] 4 below the ••• at [button], from its left edge (Claude's proposal), in [anchor]'s coordinates.
-  void _openMenu(BuildContext button, BuildContext? anchor, ZsMenuController? menu) {
+  void _openMenu(BuildContext button, BuildContext anchor, ZsMenuController menu) {
     final RenderObject? box = button.findRenderObject();
-    final RenderObject? row = anchor?.findRenderObject();
-    if (menu == null || box is! RenderBox || row is! RenderBox) {
+    final RenderObject? row = anchor.findRenderObject();
+    if (box is! RenderBox || row is! RenderBox) {
       return;
     }
     menu.open(position: box.localToGlobal(Offset(0, box.size.height + 4), ancestor: row));
   }
 
-  List<ZsMenuEntry> _menuEntries(ProjectsProjectItem item) {
-    final ProjectEntry entry = item.entry;
-    final ProjectsSettings projects = widget.projects;
-    final names = <String, String>{for (final ProjectGroup g in projects.groups) g.id: g.name};
-    final parents = <String, String?>{for (final ProjectGroup g in projects.groups) g.id: g.parent};
-    String pathOf(String id) {
-      final segments = <String>[];
-      final visited = <String>{};
-      for (String? current = id; current != null && visited.add(current); current = parents[current]) {
-        segments.insert(0, names[current] ?? current);
-      }
-      return segments.join(' / ');
-    }
-
-    final groups = <(String, String)>[for (final ProjectGroup g in projects.groups) (g.id, pathOf(g.id))]
-      ..sort((a, b) => a.$2.toLowerCase().compareTo(b.$2.toLowerCase()));
-    return <ZsMenuEntry>[
+  List<ZsMenuEntry> _menuEntries(ProjectsItem item) => switch (item) {
+    ProjectsProjectItem(:final ProjectEntry entry) => <ZsMenuEntry>[
       ZsMenuItem(
         label: 'Open',
         enabled: !item.missing,
@@ -774,27 +1027,7 @@ class ProjectsTreeState extends State<ProjectsTree> {
         onSelected: () => widget.onReveal(entry),
         identifier: 'projects-menu-reveal',
       ),
-      ZsMenuItem(
-        label: 'Move to group',
-        identifier: 'projects-menu-move',
-        submenu: <ZsMenuEntry>[
-          ZsMenuItem(
-            label: 'Top level',
-            checked: entry.group == null,
-            radio: true,
-            onSelected: () => widget.onMoveToGroup(entry, null),
-            identifier: 'projects-menu-move-top',
-          ),
-          for (final (String id, String label) in groups)
-            ZsMenuItem(
-              label: label,
-              checked: entry.group == id,
-              radio: true,
-              onSelected: () => widget.onMoveToGroup(entry, id),
-              identifier: 'projects-menu-move-$id',
-            ),
-        ],
-      ),
+      _moveTo(item, entry.group),
       const ZsMenuSeparator(),
       ZsMenuItem(
         label: 'Remove from list',
@@ -802,7 +1035,68 @@ class ProjectsTreeState extends State<ProjectsTree> {
         onSelected: () => widget.onRemove(entry),
         identifier: 'projects-menu-remove',
       ),
-    ];
+    ],
+    ProjectsGroupItem(:final ProjectGroup group) => <ZsMenuEntry>[
+      ZsMenuItem(label: 'Rename…', onSelected: () => widget.onRename(group.id), identifier: 'projects-menu-rename'),
+      _moveTo(item, group.parent),
+      const ZsMenuSeparator(),
+      ZsMenuItem(
+        label: 'Delete group',
+        onSelected: () => widget.onDeleteGroup(group.id),
+        identifier: 'projects-menu-delete',
+      ),
+    ],
+    ProjectsNewGroupItem() => const <ZsMenuEntry>[],
+  };
+
+  /// Move to group › for [item], now in [current] (the top level when null): Top level, then every group by its path,
+  /// sorted, the current place checked — a group's never itself or a group inside it — then — · New group… (DS
+  /// ProjectRow.prompt.md:21).
+  ZsMenuItem _moveTo(ProjectsItem item, String? current) {
+    final ProjectsSettings projects = widget.projects;
+    final names = <String, String>{for (final ProjectGroup g in projects.groups) g.id: g.name};
+    final parents = <String, String?>{for (final ProjectGroup g in projects.groups) g.id: g.parent};
+    String pathOf(String id) {
+      final segments = <String>[];
+      final visited = <String>{};
+      for (String? at = id; at != null && visited.add(at); at = parents[at]) {
+        segments.insert(0, names[at] ?? at);
+      }
+      return segments.join(' / ');
+    }
+
+    final String? self = item is ProjectsGroupItem ? item.group.id : null;
+    final groups = <(String, String)>[
+      for (final ProjectGroup g in projects.groups)
+        if (self == null || !_isWithin(g.id, self)) (g.id, pathOf(g.id)),
+    ]..sort((a, b) => a.$2.toLowerCase().compareTo(b.$2.toLowerCase()));
+    return ZsMenuItem(
+      label: 'Move to group',
+      identifier: 'projects-menu-move',
+      submenu: <ZsMenuEntry>[
+        ZsMenuItem(
+          label: 'Top level',
+          checked: current == null,
+          radio: true,
+          onSelected: () => widget.onMoveToGroup(item, null),
+          identifier: 'projects-menu-move-top',
+        ),
+        for (final (String id, String label) in groups)
+          ZsMenuItem(
+            label: label,
+            checked: current == id,
+            radio: true,
+            onSelected: () => widget.onMoveToGroup(item, id),
+            identifier: 'projects-menu-move-$id',
+          ),
+        const ZsMenuSeparator(),
+        ZsMenuItem(
+          label: 'New group…',
+          onSelected: () => widget.onNewGroupFor(item),
+          identifier: 'projects-menu-move-new',
+        ),
+      ],
+    );
   }
 }
 
@@ -819,12 +1113,14 @@ Color _fill(ZsColors colors, ZsControlStatus status) {
 }
 
 /// The row's box: its fill fading on `--dur-hover`, radius `--radius-md`, the contrast edge when selected, and its
-/// content padded 8 + 16 per level on the left and 8 on the right.
+/// content padded 8 + 16 per level on the left and 8 on the right. A drop into it ([dropInto]) is the `--accent-soft`
+/// fill with a 1 px `--accent-live-line` border (`.zs-proj.is-drop-into`, DS content.css:79).
 class _RowBox extends StatelessWidget {
-  const _RowBox({required this.status, required this.depth, required this.child});
+  const _RowBox({required this.status, required this.depth, required this.child, this.dropInto = false});
 
   final ZsControlStatus status;
   final int depth;
+  final bool dropInto;
   final Widget child;
 
   @override
@@ -833,15 +1129,16 @@ class _RowBox extends StatelessWidget {
     final metrics = ZsMetrics.of(context);
     final ZsMotion motion = ZsMotion.of(context);
     final bool edge = status.selected && ZsAppearance.of(context).increasedContrast;
+    final Color? border = dropInto ? colors.accentLiveLine : (edge ? colors.accentLine : null);
     return TweenAnimationBuilder<Color?>(
-      tween: ColorTween(end: _fill(colors, status)),
+      tween: ColorTween(end: dropInto ? colors.accentSoft : _fill(colors, status)),
       duration: status.pressed ? motion.durInstant : motion.durHover,
       curve: motion.easeState,
       builder: (context, fill, child) => DecoratedBox(
         decoration: BoxDecoration(
           color: fill,
           borderRadius: BorderRadius.circular(metrics.radiusMd),
-          border: edge ? Border.all(color: colors.accentLine) : null,
+          border: border == null ? null : Border.all(color: border),
         ),
         child: child,
       ),
@@ -886,12 +1183,21 @@ class _Chevron extends StatelessWidget {
 
 /// A group row's content.
 class _GroupFace extends StatelessWidget {
-  const _GroupFace({required this.item, required this.depth, required this.expanded, required this.status});
+  const _GroupFace({
+    required this.item,
+    required this.depth,
+    required this.expanded,
+    required this.status,
+    required this.dropInto,
+    required this.more,
+  });
 
   final ProjectsGroupItem item;
   final int depth;
   final bool expanded;
   final ZsControlStatus status;
+  final bool dropInto;
+  final Widget more;
 
   @override
   Widget build(BuildContext context) {
@@ -900,34 +1206,44 @@ class _GroupFace extends StatelessWidget {
     return _RowBox(
       status: status,
       depth: depth,
-      child: ExcludeSemantics(
-        child: Row(
-          spacing: 8,
-          children: <Widget>[
-            _Chevron(expanded: expanded),
-            ZanshinIcon(expanded ? ZI.folderOpen : ZI.folder, size: ZsIconSize.md, color: colors.textDim),
-            // The count sits at the row's end (`.zs-proj-count{margin-left:auto}`, DS content.css:74).
-            Expanded(
-              child: Text(
-                ZsType.caps(item.name),
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-                // `font-size:var(--fs-sm);font-weight:600;letter-spacing:var(--tracking-pill)` (DS content.css:73).
-                style: _weighted(ZsType.meta, FontWeight.w600).copyWith(
-                  letterSpacing: ZsType.trackingPill * ZsType.fsSm,
-                  color: colors.textMuted,
-                ),
+      dropInto: dropInto,
+      child: Row(
+        spacing: 8,
+        children: <Widget>[
+          Expanded(
+            child: ExcludeSemantics(
+              child: Row(
+                spacing: 8,
+                children: <Widget>[
+                  _Chevron(expanded: expanded),
+                  ZanshinIcon(expanded ? ZI.folderOpen : ZI.folder, size: ZsIconSize.md, color: colors.textDim),
+                  // The count sits at the row's end (`.zs-proj-count{margin-left:auto}`, DS content.css:87).
+                  Expanded(
+                    child: Text(
+                      ZsType.caps(item.name),
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      // `font-size:var(--fs-sm);font-weight:600;letter-spacing:var(--tracking-pill)` (DS
+                      // content.css:86).
+                      style: _weighted(ZsType.meta, FontWeight.w600).copyWith(
+                        letterSpacing: ZsType.trackingPill * ZsType.fsSm,
+                        color: colors.textMuted,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    item.count,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: ZsType.id.copyWith(fontSize: ZsType.fsXs, color: rung.faint),
+                  ),
+                ],
               ),
             ),
-            Text(
-              item.count,
-              maxLines: 1,
-              softWrap: false,
-              style: ZsType.id.copyWith(fontSize: ZsType.fsXs, color: rung.faint),
-            ),
-          ],
-        ),
+          ),
+          more,
+        ],
       ),
     );
   }
@@ -953,7 +1269,7 @@ class _ProjectFace extends StatelessWidget {
   final DateTime now;
   final Widget more;
 
-  /// `.zs-proj-dot{width:7px;height:7px;margin-right:2px}` (DS components/content/content.css:76).
+  /// `.zs-proj-dot{width:7px;height:7px;margin-right:2px}` (DS components/content/content.css:88).
   static const double _dot = 7;
 
   @override
@@ -1136,12 +1452,15 @@ class _MoreButton extends StatelessWidget {
   }
 }
 
-/// The inline field naming a new group: in the row's place, ↩ creates the group, Esc cancels.
-class _NewGroupField extends StatelessWidget {
-  const _NewGroupField({
+/// The inline field naming a group — a new one, or Rename…'s in the group's own row — in the row's place (DS
+/// content.css:80-82): ↩ submits, Esc cancels.
+class _NameField extends StatelessWidget {
+  const _NameField({
     required this.depth,
     required this.controller,
     required this.focusNode,
+    required this.label,
+    required this.identifier,
     required this.onSubmitted,
     required this.onCancel,
   });
@@ -1149,6 +1468,8 @@ class _NewGroupField extends StatelessWidget {
   final int depth;
   final ZsTextEditingController controller;
   final FocusNode focusNode;
+  final String label;
+  final String identifier;
   final ValueChanged<String> onSubmitted;
   final VoidCallback onCancel;
 
@@ -1178,8 +1499,8 @@ class _NewGroupField extends StatelessWidget {
                 controller: controller,
                 focusNode: focusNode,
                 placeholder: 'Group name',
-                label: 'New group',
-                identifier: 'projects-new-group-name',
+                label: label,
+                identifier: identifier,
                 onSubmitted: onSubmitted,
               ),
             ),
@@ -1190,58 +1511,30 @@ class _NewGroupField extends StatelessWidget {
   }
 }
 
-/// What follows the pointer while a row is dragged: its name on the menu material (Claude's proposal).
-class _DragFeedback extends StatelessWidget {
-  const _DragFeedback({required this.name});
-
-  final String name;
-
-  @override
-  Widget build(BuildContext context) {
-    final ZsColors colors = ZsColors.of(context);
-    return IgnorePointer(
-      child: ZsMenuMaterial(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          child: Text(name, style: ZsType.cardSubject.copyWith(color: colors.text)),
-        ),
-      ),
-    );
-  }
-}
-
-/// Paints where a drag would land on a row (Story 11.6 design note "Window"): inside — a 1 px `--accent-live-line`
-/// edge with a 4 px `--accent-live-ring` around it; before or after — a 2 px `--accent-live-line` line on the row's
-/// edge, from the insertion depth's indent.
+/// Paints the line where a drag would land before or after a row (`.zs-proj.is-drop-before/after/end::before`, DS
+/// content.css:74-78): 2 px `--accent-live-line`, radius 1, from the insertion depth's indent (8 + 16 per level) to 8
+/// from the right, 2 above the row (before) or 2 below it (after, end). A drop into a group is its row box's look.
 class _DropPainter extends CustomPainter {
-  _DropPainter(this.hover, this.colors, this.radius);
+  _DropPainter(this.hover, this.colors);
 
   final _Hover hover;
   final ZsColors colors;
-  final double radius;
 
-  static const double _ring = 4;
   static const double _line = 2;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final Rect box = Offset.zero & size;
     if (hover.placement == TreeDropPlacement.inside) {
-      final rrect = RRect.fromRectAndRadius(box, Radius.circular(radius));
-      canvas
-        ..drawDRRect(rrect.inflate(_ring), rrect, Paint()..color = colors.accentLiveRing)
-        ..drawDRRect(rrect, rrect.deflate(1), Paint()..color = colors.accentLiveLine);
       return;
     }
     final double left = 8 + ProjectsTree.indent * hover.depth;
-    final double top = hover.placement == TreeDropPlacement.before ? 0 : size.height - _line;
+    final double top = hover.placement == TreeDropPlacement.before ? -_line : size.height;
     canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTWH(left, top, size.width - left, _line), const Radius.circular(_line / 2)),
+      RRect.fromRectAndRadius(Rect.fromLTRB(left, top, size.width - 8, top + _line), const Radius.circular(1)),
       Paint()..color = colors.accentLiveLine,
     );
   }
 
   @override
-  bool shouldRepaint(_DropPainter oldDelegate) =>
-      oldDelegate.hover != hover || oldDelegate.colors != colors || oldDelegate.radius != radius;
+  bool shouldRepaint(_DropPainter oldDelegate) => oldDelegate.hover != hover || oldDelegate.colors != colors;
 }

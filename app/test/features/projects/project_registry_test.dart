@@ -241,6 +241,57 @@ void main() {
     });
   });
 
+  group('Story 11.15', () {
+    test('renameGroup persists across a reload; an unknown id or the same name writes nothing', () async {
+      final ProjectRegistry registry = await load();
+      final String work = await registry.addGroup('Work');
+      await registry.renameGroup(work, 'Clients');
+      expect((await load()).group(work)!.name, 'Clients');
+
+      var notifications = 0;
+      registry.addListener(() => notifications++);
+      await registry.renameGroup(work, 'Clients');
+      await registry.renameGroup('g99', 'Other');
+      expect(notifications, 0);
+    });
+
+    test('deleteGroup splices a project and a subgroup into its place, in order, keeping every project', () async {
+      final ProjectRegistry registry = await load();
+      final String work = await registry.addGroup('Work');
+      final String mobile = await registry.addGroup('Mobile', parent: work);
+      await registry.add('/r/app', group: mobile);
+      await registry.add('/r/api', group: work);
+      await registry.add('/r/top');
+      await registry.add('/r/gone');
+      final paths = <String>{for (final ProjectEntry p in registry.value.projects) p.path};
+
+      await registry.deleteGroup(work);
+
+      expect(registry.group(work), isNull);
+      expect(orders(registry.value, null), <String>['Mobile:0', 'api:1', 'top:2', 'gone:3']);
+      expect(registry.group(mobile)!.parent, isNull);
+      expect(registry.entry('/r/app')!.group, mobile, reason: 'a subgroup keeps what it holds');
+      expect(<String>{for (final ProjectEntry p in registry.value.projects) p.path}, paths);
+      expect((await load()).value, registry.value);
+
+      final ProjectsSettings before = registry.value;
+      await registry.deleteGroup('g99');
+      expect(registry.value, before);
+    });
+
+    test('deleteGroup inside a group splices among that group’s members', () async {
+      final ProjectRegistry registry = await load();
+      final String work = await registry.addGroup('Work');
+      await registry.add('/r/a', group: work);
+      final String mobile = await registry.addGroup('Mobile', parent: work);
+      await registry.add('/r/b', group: work);
+      await registry.add('/r/m1', group: mobile);
+      await registry.add('/r/m2', group: mobile);
+      await registry.deleteGroup(mobile);
+      expect(orders(registry.value, work), <String>['a:0', 'm1:1', 'm2:2', 'b:3']);
+    });
+  });
+
   group('canonicalPath', () {
     test('an existing path resolves its symlinks and loses a trailing slash', () async {
       final Directory real = await Directory('${dir.path}/real').create();

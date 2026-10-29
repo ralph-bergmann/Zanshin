@@ -63,11 +63,15 @@ final class ProjectsProjectItem extends ProjectsItem {
 
 /// The inline field that names a new group in [parent] (the top level when null).
 final class ProjectsNewGroupItem extends ProjectsItem {
-  /// The field for a new group in [parent].
-  const ProjectsNewGroupItem(this.parent);
+  /// The field for a new group in [parent]; Move to group › New group… (Story 11.15 item 6) names the row [moving]
+  /// that goes into it.
+  const ProjectsNewGroupItem(this.parent, {this.moving});
 
   /// The group the new one goes into, or null for the top level.
   final String? parent;
+
+  /// The row that moves into the new group once it is created, or null for the header's New group.
+  final ProjectsItem? moving;
 
   @override
   String get id => 'new-group';

@@ -179,6 +179,55 @@ class ProjectRegistry implements ValueListenable<ProjectsSettings> {
     return id;
   }
 
+  /// Renames the group [id] to [name]; an unknown id or the same name writes nothing (Story 11.15 item 9).
+  Future<void> renameGroup(String id, String name) {
+    if (group(id)?.name case final String old when old != name) {
+      return _update(
+        (registry) => registry.copyWith(
+          groups: <ProjectGroup>[
+            for (final ProjectGroup g in registry.groups)
+              if (g.id == id) g.copyWith(name: name) else g,
+          ],
+        ),
+      );
+    }
+    return Future<void>.value();
+  }
+
+  /// Deletes the group [id] alone (Story 11.15 item 5): its projects and groups take its place among its parent's
+  /// members, in their order, and that parent's members are renumbered 0..n; an unknown id changes nothing.
+  Future<void> deleteGroup(String id) {
+    if (group(id) == null) {
+      return Future<void>.value();
+    }
+    return _update((registry) {
+      // Read inside the update: an edit just before this one may have moved or removed the group.
+      final ProjectGroup? deleting = registry.groups.where((g) => g.id == id).firstOrNull;
+      if (deleting == null) {
+        return registry;
+      }
+      final String? parent = deleting.parent;
+      final List<_Member> siblings = _siblings(registry, parent);
+      final int at = siblings.indexOf(_Member.group(id));
+      siblings.replaceRange(at, at + 1, _siblings(registry, id));
+      final orders = <_Member, int>{for (final (int i, _Member member) in siblings.indexed) member: i};
+      return registry.copyWith(
+        projects: <ProjectEntry>[
+          for (final ProjectEntry project in registry.projects)
+            project.copyWith(
+              group: project.group == id ? parent : project.group,
+              order: orders[_Member.project(project.path)] ?? project.order,
+            ),
+        ],
+        groups: <ProjectGroup>[
+          for (final ProjectGroup g in registry.groups)
+            if (g.id != id)
+              g.copyWith(parent: g.parent == id ? parent : g.parent, order: orders[_Member.group(g.id)] ?? g.order),
+        ],
+      );
+    });
+  }
+
   /// Moves the project at [path] into [group] (the top level when null) at [index] among its new siblings, clamped
   /// to their range; the old and the new siblings are renumbered 0..n.
   Future<void> move(String path, {required int index, String? group}) {

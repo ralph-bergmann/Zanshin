@@ -2,10 +2,12 @@
 
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/projects/project_capsule.dart';
 import 'package:zanshin/src/features/projects/projects_environment.dart';
+import 'package:zanshin/src/features/projects/projects_window.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -78,10 +80,101 @@ final projectsFolder = WidgetbookFolder(
             ),
           ),
         ),
+        // Story 11.15: Work's row as its name field, and a row in hand over a group.
+        WidgetbookUseCase(
+          name: 'Rename group',
+          builder: (context) => _Sized(DemoProjectsWindow(setup: (state, _) => state.renameGroup('g1'))),
+        ),
+        WidgetbookUseCase(
+          name: 'Moving',
+          builder: (context) => _Sized(DemoProjectsWindow(setup: (state, _) => _holdDrag(state))),
+        ),
       ],
     ),
   ],
 );
+
+/// Presses a mouse on the row "workers…" and moves it to the middle of PERSONAL two frames later, never releasing
+/// it, so the ghost and the drop look stay on screen (Marionette cannot drag). Nothing happens when a row is missing.
+void _holdDrag(ProjectsWindowState state) {
+  void nextFrame(VoidCallback then) => WidgetsBinding.instance.addPostFrameCallback((_) => then());
+  nextFrame(
+    () => nextFrame(() {
+      if (!state.mounted) {
+        return;
+      }
+      final Offset? from = _textCentre(state.context, (text) => text.startsWith('workers'));
+      final Offset? to = _textCentre(state.context, (text) => text == 'PERSONAL');
+      if (from == null || to == null) {
+        return;
+      }
+      final int viewId = View.of(state.context).viewId;
+      const pointer = 0x11500;
+      const device = 0x11500;
+      final GestureBinding gestures = GestureBinding.instance
+        ..handlePointerEvent(
+          PointerAddedEvent(viewId: viewId, device: device, kind: PointerDeviceKind.mouse, position: from),
+        )
+        ..handlePointerEvent(
+          PointerDownEvent(
+            viewId: viewId,
+            pointer: pointer,
+            device: device,
+            kind: PointerDeviceKind.mouse,
+            position: from,
+          ),
+        );
+      Offset last = from;
+      for (final at in <Offset>[from + const Offset(0, 6), to, to + const Offset(1, 0)]) {
+        // The drag moves its ghost by each event's delta, which a synthesised event must carry itself.
+        gestures.handlePointerEvent(
+          PointerMoveEvent(
+            viewId: viewId,
+            pointer: pointer,
+            device: device,
+            kind: PointerDeviceKind.mouse,
+            position: at,
+            delta: at - last,
+          ),
+        );
+        last = at;
+      }
+      // Once the use case is gone, the held pointer is cancelled, so its ghost does not outlive it.
+      void release() => nextFrame(() {
+        if (state.mounted) {
+          release();
+          return;
+        }
+        gestures
+          ..handlePointerEvent(
+            PointerCancelEvent(viewId: viewId, pointer: pointer, device: device, kind: PointerDeviceKind.mouse),
+          )
+          ..handlePointerEvent(PointerRemovedEvent(viewId: viewId, device: device, kind: PointerDeviceKind.mouse));
+      });
+      release();
+    }),
+  );
+}
+
+/// The global centre of the first [Text] under [root] whose text [matches], or null.
+Offset? _textCentre(BuildContext root, bool Function(String text) matches) {
+  Offset? found;
+  void visit(Element element) {
+    if (found != null) {
+      return;
+    }
+    final Widget widget = element.widget;
+    final RenderObject? box = element.renderObject;
+    if (widget is Text && matches(widget.data ?? '') && box is RenderBox && box.hasSize) {
+      found = box.localToGlobal(box.size.center(Offset.zero));
+      return;
+    }
+    element.visitChildren(visit);
+  }
+
+  root.visitChildElements(visit);
+  return found;
+}
 
 /// [child] at [size] (the Projects window's default 900 × 640), centred and scaled down to fit the panel.
 class _Sized extends StatelessWidget {
