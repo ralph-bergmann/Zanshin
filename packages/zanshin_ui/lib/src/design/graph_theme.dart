@@ -38,6 +38,10 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     required this.hatch,
     required this.hatchMark,
     required this.focusRing,
+    required this.edge,
+    required this.edgeHover,
+    required this.lineage,
+    required this.lineageGlow,
   });
 
   /// The graph roles of [colors].
@@ -65,6 +69,10 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     hatch: colors.hatch,
     hatchMark: colors.hatchMark,
     focusRing: colors.focusRing,
+    edge: colors.edge,
+    edgeHover: colors.edgeHov,
+    lineage: colors.co,
+    lineageGlow: colors.coGlow,
   );
 
   /// The graph roles [appearance] shows.
@@ -148,6 +156,18 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
   /// The keyboard focus outline, `--focus-ring` (DS tokens/states.css).
   final Color focusRing;
 
+  /// An edge's 1.5 px stroke, `--edge` (DS components/graph/graph.css:65 `.zs-edge`).
+  final Color edge;
+
+  /// A hovered edge's stroke, `--edge-hov` (graph.css:67 `.zs-edge.is-hover`).
+  final Color edgeHover;
+
+  /// The @ lineage's 2.25 px stroke, `--co` (graph.css:68 `.zs-edge.is-wc`).
+  final Color lineage;
+
+  /// The @ lineage's 4 px drop-shadow glow, `--co-glow` (graph.css:68).
+  final Color lineageGlow;
+
   @override
   GraphTheme copyWith({
     ZsCanvasGradient? canvas,
@@ -173,6 +193,10 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     Color? hatch,
     Color? hatchMark,
     Color? focusRing,
+    Color? edge,
+    Color? edgeHover,
+    Color? lineage,
+    Color? lineageGlow,
   }) => GraphTheme(
     canvas: canvas ?? this.canvas,
     canvasBase: canvasBase ?? this.canvasBase,
@@ -197,6 +221,10 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     hatch: hatch ?? this.hatch,
     hatchMark: hatchMark ?? this.hatchMark,
     focusRing: focusRing ?? this.focusRing,
+    edge: edge ?? this.edge,
+    edgeHover: edgeHover ?? this.edgeHover,
+    lineage: lineage ?? this.lineage,
+    lineageGlow: lineageGlow ?? this.lineageGlow,
   );
 
   @override
@@ -229,6 +257,10 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
       hatch: mix(hatch, other.hatch),
       hatchMark: mix(hatchMark, other.hatchMark),
       focusRing: mix(focusRing, other.focusRing),
+      edge: mix(edge, other.edge),
+      edgeHover: mix(edgeHover, other.edgeHover),
+      lineage: mix(lineage, other.lineage),
+      lineageGlow: mix(lineageGlow, other.lineageGlow),
     );
   }
 
@@ -258,7 +290,11 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
           other.conflict == conflict &&
           other.hatch == hatch &&
           other.hatchMark == hatchMark &&
-          other.focusRing == focusRing;
+          other.focusRing == focusRing &&
+          other.edge == edge &&
+          other.edgeHover == edgeHover &&
+          other.lineage == lineage &&
+          other.lineageGlow == lineageGlow;
 
   @override
   int get hashCode => Object.hashAll(<Object>[
@@ -285,5 +321,9 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     hatch,
     hatchMark,
     focusRing,
+    edge,
+    edgeHover,
+    lineage,
+    lineageGlow,
   ]);
 }

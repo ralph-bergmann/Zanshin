@@ -22,11 +22,13 @@ RecordedGraphLayout recording(String name) {
   return RecordedGraphLayout.fromSpec(input, output);
 }
 
-/// A hand-built layout: one (key, row, col) per node, edges as (child, parent) node indices (in any order), day
-/// [buckets] as (value, first row, last row), oldest first. The card facts are optional, one entry per node.
+/// A hand-built layout: one (key, row, col) per node, edges as (child, parent) node indices (in any order; a child's
+/// edges keep their list order, so its first listed parent is its first parent), [indirect] as positions in [edges],
+/// day [buckets] as (value, first row, last row), oldest first. The card facts are optional, one entry per node.
 RecordedGraphLayout handLayout(
   List<(String, int, int)> nodes, {
   List<(int, int)> edges = const <(int, int)>[],
+  Set<int> indirect = const <int>{},
   int unit = 1,
   int? workingCopy,
   List<(int, int, int)> buckets = const <(int, int, int)>[],
@@ -42,7 +44,13 @@ RecordedGraphLayout handLayout(
   String? workspaceName,
   List<int>? parentCounts,
 }) {
-  final sorted = <(int, int)>[...edges]..sort((a, b) => a.$1.compareTo(b.$1));
+  // Dart's sort is not stable: sort positions by child, then by position.
+  final order = List<int>.generate(edges.length, (k) => k)
+    ..sort((a, b) {
+      final int byChild = edges[a].$1.compareTo(edges[b].$1);
+      return byChild != 0 ? byChild : a.compareTo(b);
+    });
+  final sorted = <(int, int)>[for (final int k in order) edges[k]];
   var rows = 0;
   var cols = 0;
   for (final (_, int row, int col) in nodes) {
@@ -69,7 +77,10 @@ RecordedGraphLayout handLayout(
     workspaceName: workspaceName,
     edgeChildren: Int32List.fromList(<int>[for (final (int child, _) in sorted) child]),
     edgeParents: Int32List.fromList(<int>[for (final (_, int parent) in sorted) parent]),
-    edgeKinds: <GraphEdgeKind>[for (final _ in sorted) GraphEdgeKind.direct],
+    edgeKinds: <GraphEdgeKind>[
+      for (final int k in order)
+        if (indirect.contains(k)) GraphEdgeKind.indirect else GraphEdgeKind.direct,
+    ],
     edgeShapes: <GraphEdgeShape>[for (final _ in sorted) GraphEdgeShape.straight],
     bucketValues: <int>[for (final (int value, _, _) in buckets) value],
     bucketFirstRows: Int32List.fromList(<int>[for (final (_, int first, _) in buckets) first]),

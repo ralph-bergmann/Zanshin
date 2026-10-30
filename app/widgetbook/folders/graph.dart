@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/graph/day_axis.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
+import 'package:zanshin/src/features/graph/graph_edges.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_metrics.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
@@ -15,6 +16,7 @@ import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/layout_invariants.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/vertical_layout.dart';
+import 'package:zanshin_core/zanshin_core.dart' show RouteGeometry;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../graph/fake_content.dart';
@@ -157,8 +159,11 @@ int recordedNowMs(String sample) => _nowMs.putIfAbsent(sample, () {
 int _syntheticNowMs(GraphLayout layout) =>
     layout.bucketCount == 0 ? 0 : layout.bucketValueOf(layout.bucketCount - 1) + 12 * 3600000;
 
-/// A viewport over [layout] with commit cards and Free's day axis, over the window canvas; it owns its scroll
-/// controllers, its card controller (with a minute tick on "now"), and its day-axis painter.
+/// A viewport over [layout] with commit cards, router B's edges (Story 10.4) and Free's day axis, over the window
+/// canvas; it owns its scroll controllers, its card controller (with a minute tick on "now"), its day-axis painter and
+/// its edge painter. Its [GraphRouteCache] runs the route's class stage once per layout and its geometry once per card
+/// size (in `Isolate.run` above `routeSyncNodeLimit` nodes; edges appear when it completes, a superseded result is
+/// dropped); the hovered card's edges are hovered (no focus path until 10.6), @'s lineage is on.
 class _GraphDemo extends StatefulWidget {
   const _GraphDemo({required this.layout, required this.options, required this.insets, required this.nowMs});
 
@@ -179,6 +184,8 @@ class _GraphDemoState extends State<_GraphDemo> {
   VerticalLayout? _rows;
   GraphDayAxisPainter? _axis;
   VerticalLayout? _axisRows;
+  late final _routes = GraphRouteCache(onRouted: () => setState(() {}));
+  GraphEdgePainter? _edges;
 
   @override
   void initState() {
@@ -198,6 +205,7 @@ class _GraphDemoState extends State<_GraphDemo> {
   @override
   void dispose() {
     _tick.cancel();
+    _routes.dispose();
     _cards.dispose();
     _axis?.dispose();
     _vertical.dispose();
@@ -233,11 +241,27 @@ class _GraphDemoState extends State<_GraphDemo> {
     );
   }
 
+  /// The edge painter of the current layout, metrics and theme (recreated when one changes), or null while its
+  /// geometry is being routed.
+  GraphEdgePainter? _edgesFor(GraphMetrics metrics, GraphTheme theme) {
+    final RouteGeometry? geometry = _routes.geometryFor(widget.layout, metrics);
+    if (geometry == null) {
+      return null;
+    }
+    final GraphEdgePainter? edges = _edges;
+    if (edges != null && identical(edges.geometry, geometry) && edges.theme == theme) {
+      return edges;
+    }
+    return _edges = GraphEdgePainter(layout: widget.layout, geometry: geometry, theme: theme);
+  }
+
   @override
   Widget build(BuildContext context) {
     final metrics = GraphMetrics.fromOptions(widget.options);
     final VerticalLayout rows = _rowsFor(metrics);
-    final GraphDayAxisPainter axis = _axisFor(rows, GraphTheme.of(context));
+    final GraphTheme theme = GraphTheme.of(context);
+    final GraphDayAxisPainter axis = _axisFor(rows, theme);
+    final GraphEdgePainter? edges = _edgesFor(metrics, theme);
     final double leftInset = widget.insets.left;
     return Stack(
       fit: StackFit.expand,
@@ -248,6 +272,10 @@ class _GraphDemoState extends State<_GraphDemo> {
           listenable: Listenable.merge(<Listenable>[_cards.selected, _cards.hovered, _cards.menuOpen]),
           builder: (context, _) {
             final String? menu = _cards.menuOpen.value;
+            final String? hoveredKey = _cards.hovered.value;
+            final highlight = GraphEdgeHighlight(
+              hoveredNode: hoveredKey == null ? null : widget.layout.indexOfKey(hoveredKey),
+            );
             return GraphViewport(
               layout: widget.layout,
               metrics: metrics,
@@ -260,6 +288,9 @@ class _GraphDemoState extends State<_GraphDemo> {
               hoveredKey: _cards.hovered.value,
               pinnedKeys: menu == null ? const <String>{} : <String>{menu},
               paintBackground: axis.paintGuides,
+              paintEdges: edges == null
+                  ? null
+                  : (context, origin, visible) => edges.paint(context, origin, visible, highlight: highlight),
               paintOverlay: (context, origin, visible) =>
                   axis.paintLabels(context, origin, visible, leftInset: leftInset),
             );

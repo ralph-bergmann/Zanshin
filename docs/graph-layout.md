@@ -847,7 +847,11 @@ strings in the request file. A violation is invalid input (exit 2; the product's
 **Known limit (D11).** A split run's stack node reserves its column from its own card, so its parent
 edge, which branches off m_1's parent in another column, rises in the stack's column below the card
 without a reservation and may pass behind a lower card there. §4.3's start one pitch above the
-parent would avoid that, but would let collapsing grow `rows`.
+parent would avoid that, but would let collapsing grow `rows`. *(2026-10-30, Story 10.4, I2:)* the
+painted line never climbs the stack's column: router B (§14.2) gives such an edge a gutter, so in
+Compact no line passes behind the lower card (unless the gutter holds more than 9 lines, the reported
+`overfullGutters`, whose outer lines may reach into cards); in Free a gutter route whose every gutter is blocked is
+the router's reported fallback (`fallbackEdges`) and may still pass behind a card.
 
 **The design sample, by hand.** `e243dd2` (52 commits, §7.2), `compact`, greedy, the default
 request: no run lies in A (the onboarding chain under `@` has no run), so every run collapses.
@@ -1241,7 +1245,12 @@ Record the CPU, the OS, and the rustc and Dart versions.
   run's stack node reserves its column from its own card, so its parent edge (a branch-off from
   m_1's parent) rises in the stack's column below the card without a reservation and may pass
   behind a lower card there. Reserving from one pitch above the parent, as §4.3 does, would let
-  collapsing grow `rows`.
+  collapsing grow `rows`. *(2026-10-30, Story 10.4, I2:)* router B (§14.2) never lets such an
+  edge climb the stack's column but gives it a gutter, so in Compact no line passes behind the lower
+  card unless the gutter holds more than 9 lines (the reported `overfullGutters`, whose outer lines
+  may reach into cards); the route report's Compact gate and a D11 hand case witness it. In Free a
+  gutter route whose every gutter is blocked is the router's reported fallback (`fallbackEdges`) and
+  may still pass behind a card.
 
 ## 10. Project layout and detaching
 

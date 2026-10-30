@@ -47,6 +47,11 @@ void main() {
     'hatch': ((g) => g.hatch, (c) => c.hatch),
     'hatchMark': ((g) => g.hatchMark, (c) => c.hatchMark),
     'focusRing': ((g) => g.focusRing, (c) => c.focusRing),
+    // The edge roles (Story 10.4).
+    'edge': ((g) => g.edge, (c) => c.edge),
+    'edgeHover': ((g) => g.edgeHover, (c) => c.edgeHov),
+    'lineage': ((g) => g.lineage, (c) => c.co),
+    'lineageGlow': ((g) => g.lineageGlow, (c) => c.coGlow),
   };
 
   test('night, paper and the inactive window take the card roles from ZsColors', () {
@@ -85,6 +90,10 @@ void main() {
       hatch: ZsColors.paper.hatch,
       hatchMark: ZsColors.paper.hatchMark,
       focusRing: ZsColors.paper.focusRing,
+      edge: ZsColors.paper.edge,
+      edgeHover: ZsColors.paper.edgeHov,
+      lineage: ZsColors.paper.co,
+      lineageGlow: ZsColors.paper.coGlow,
     );
     for (final MapEntry(key: name, value: (role, token)) in cardRoles.entries) {
       expect(role(all), token(ZsColors.paper), reason: name);
@@ -106,6 +115,10 @@ void main() {
         'conflict' => GraphTheme.night.copyWith(conflict: const Color(0x01020304)),
         'hatch' => GraphTheme.night.copyWith(hatch: const Color(0x01020304)),
         'hatchMark' => GraphTheme.night.copyWith(hatchMark: const Color(0x01020304)),
+        'edge' => GraphTheme.night.copyWith(edge: const Color(0x01020304)),
+        'edgeHover' => GraphTheme.night.copyWith(edgeHover: const Color(0x01020304)),
+        'lineage' => GraphTheme.night.copyWith(lineage: const Color(0x01020304)),
+        'lineageGlow' => GraphTheme.night.copyWith(lineageGlow: const Color(0x01020304)),
         _ => GraphTheme.night.copyWith(focusRing: const Color(0x01020304)),
       };
       expect(one, isNot(GraphTheme.night), reason: name);

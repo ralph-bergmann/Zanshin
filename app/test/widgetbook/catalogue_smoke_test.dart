@@ -2,6 +2,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:widgetbook/widgetbook.dart';
+import 'package:zanshin/src/features/graph/graph_viewport_render.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -99,4 +100,42 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('graph/viewport/recording paints edges (Story 10.4)', (tester) async {
+    useCatalogueWindow(tester);
+    await tester.pumpWidget(catalogueAt('/?path=graph/viewport/recording&appearance={theme:night}'));
+    await tester.pump();
+    expect(
+      tester.allRenderObjects.whereType<RenderGraphViewport>().single,
+      paints..path(color: GraphTheme.night.edge, strokeWidth: 1.5),
+    );
+  });
+
+  testWidgets('graph/viewport/scale at 50k paints its edges once the isolate has routed them (Story 10.4)', (
+    tester,
+  ) async {
+    useCatalogueWindow(tester);
+    await tester.pumpWidget(catalogueAt('/?path=graph/viewport/scale&appearance={theme:night}&knobs={nodes:50k}'));
+    await tester.pump();
+    PaintPattern edges() => paints..path(color: GraphTheme.night.edge, strokeWidth: 1.5);
+    RenderGraphViewport render() => tester.allRenderObjects.whereType<RenderGraphViewport>().single;
+    bool painted() {
+      try {
+        expect(render(), edges());
+        return true;
+      } on TestFailure {
+        return false;
+      }
+    }
+
+    expect(painted(), isFalse, reason: 'no edge before the route completes');
+    // Real time for Isolate.run, then pumps to deliver its result and repaint.
+    for (var i = 0; i < 300 && !painted(); i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pump();
+      await tester.pump();
+    }
+    expect(render(), edges());
+    expect(tester.takeException(), isNull);
+  });
 }
