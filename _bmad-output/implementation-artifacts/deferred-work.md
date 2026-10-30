@@ -2194,3 +2194,15 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
   - The field leaves the tree and nothing refocuses a row; Delete group disposes the focused row (`app/lib/src/features/projects/projects_tree.dart` › `didUpdateWidget` / `_startField`; `projects_window.dart` › `_deleteGroup`). 11.6's New group already behaved so; a keyboard user who came through Tab → ••• has to Tab back in.
   - **Follow-up:** after a commit or cancel that held focus, focus the row the selection names once the window's async selection settles (New group selects only after `addGroup` returns, so focusing the Tab stop at once would re-select the old row).
   - **2026-10-29, closing run of Story 11.15:** fixed — the tree hands focus back to the Tab stop without selecting it and follows the selection while it stays there (commit 934bb72; spec `spec-11-15-closing-focus-back-after-naming-and-delete.md`).
+
+## Surfaced in Story 10.2 (bmad-build-auto, 2026-10-30)
+
+- **Nothing refreshes the day axis's "now" on window focus or at local midnight; the labels re-format only when their owner passes a new `nowMs`.** Low.
+  - Design question (a), Claude's proposal: freeze "now" per reload, re-format on window focus and at midnight (a repaint). 10.2 makes `nowMs` a paint-only input of `GraphDayAxisPainter` (`app/lib/src/features/graph/day_axis.dart`) and witnesses the repaint. The clock and the reload belong to 10.5's view model, whose story text names neither trigger.
+  - **Follow-up:** Story 10.5 owns "now". It freezes it per reload, and passes a fresh one on window focus and from a timer at the next local midnight (at the layout's offset).
+- **Day labels are excluded from semantics, so each card's semantics label must carry its date (design question (d), Claude's proposal). The placeholder cards carry none.** Low.
+  - The axis only paints and adds no semantics node (`app/lib/src/features/graph/day_axis.dart`). Cards and their semantics are Story 10.3's.
+  - **Follow-up:** Story 10.3's card semantics label includes the commit's date.
+- **The day axis was not checked visually (Marionette) in the running catalogue.** Low.
+  - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session. Widget tests cover placement, paint order, stickiness and pass-through, and the smoke test covers building (`app/test/features/graph/day_axis_test.dart`, `app/test/widgetbook/catalogue_smoke_test.dart`). Nobody has compared the pills and dividers with the DS card `design_system/components/graph/days.card.html`.
+  - **Follow-up:** in a console session, open `graph/viewport/recording` (design-all, free; left inset 76) and `graph/viewport/scale` via `zanshinCatalogue.open`, screenshot them, and compare with the DS card.
