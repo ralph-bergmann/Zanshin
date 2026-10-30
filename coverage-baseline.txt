@@ -20,6 +20,7 @@ crates/zanshin-ffi/src/commit_contents.rs = 100.00
 crates/zanshin-ffi/src/commit_views.rs = 100.00
 crates/zanshin-ffi/src/config.rs = 100.00
 crates/zanshin-ffi/src/diagnostics.rs = 100.00
+crates/zanshin-ffi/src/diff.rs = 100.00
 crates/zanshin-ffi/src/diffedit.rs = 100.00
 crates/zanshin-ffi/src/drop_actions.rs = 100.00
 crates/zanshin-ffi/src/envelope.rs = 100.00
