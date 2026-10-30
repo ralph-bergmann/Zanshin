@@ -2203,6 +2203,16 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **Day labels are excluded from semantics, so each card's semantics label must carry its date (design question (d), Claude's proposal). The placeholder cards carry none.** Low.
   - The axis only paints and adds no semantics node (`app/lib/src/features/graph/day_axis.dart`). Cards and their semantics are Story 10.3's.
   - **Follow-up:** Story 10.3's card semantics label includes the commit's date.
+  - **Resolved in Story 10.3 (2026-10-30):** the label carries the spoken relative date plus the axis's day label ("40 minutes ago, Today"), and refreshes on the minute tick (`graphCardLabel`, `app/lib/src/features/graph/graph_card.dart`).
 - **The day axis was not checked visually (Marionette) in the running catalogue.** Low.
   - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session. Widget tests cover placement, paint order, stickiness and pass-through, and the smoke test covers building (`app/test/features/graph/day_axis_test.dart`, `app/test/widgetbook/catalogue_smoke_test.dart`). Nobody has compared the pills and dividers with the DS card `design_system/components/graph/days.card.html`.
   - **Follow-up:** in a console session, open `graph/viewport/recording` (design-all, free; left inset 76) and `graph/viewport/scale` via `zanshinCatalogue.open`, screenshot them, and compare with the DS card.
+
+## Surfaced in Story 10.3 (bmad-build-auto, 2026-10-30)
+
+- **The commit card's affordances carry no tooltips: the `+N` workspace tag does not list the folded names on hover, and ••• lacks its title "Actions (or right-click the card)".** Low.
+  - The 2026-10-16 note asks for the `+N` tooltip, the 2026-10-14 note for •••'s title (GV:320). The card is one leaf RenderBox (`app/lib/src/features/graph/graph_card_render.dart`); a tooltip needs the overlay host and hover-delay machinery that 10.6's commit callout builds. VoiceOver gets the names through the card's label meanwhile.
+  - **Follow-up:** Story 10.6 shows both through its callout/tooltip layer.
+- **The commit cards were not checked visually (Marionette) in the running catalogue.** Low.
+  - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session. Widget tests cover layout, yield order, rings, hatch, hit areas, input and semantics (`app/test/features/graph/graph_card_test.dart`); the smoke test pumps `graph/card/states`.
+  - **Follow-up:** in a console session, open `graph/card/states` and `graph/viewport/recording` via `zanshinCatalogue.open`, screenshot them in night and paper, and compare with the DS cards (`design_system/components/graph/graph.card.html`, `immutable.card.html`, `workspaces.card.html`).
