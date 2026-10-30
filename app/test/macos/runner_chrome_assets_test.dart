@@ -10,6 +10,13 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 /// The runner's asset catalogue (`flutter test` runs in `app/`).
 const _assets = 'macos/Runner/Assets.xcassets';
 
+/// The app icon's Icon Composer bundle and the DS bundle its layers come from.
+const _appIcon = 'macos/Runner/NamiIndigo.icon';
+const _dsAppIcon = '../_bmad-output/implementation-artifacts/design_system/assets/app-icon/Zanshin-NamiIndigo.icon';
+
+/// [colour] as the `#rrggbb` an SVG stroke takes.
+String _hex(Color colour) => '#${(colour.toARGB32() & 0xffffff).toRadixString(16).padLeft(6, '0')}';
+
 /// The any (aqua) and the dark (darkAqua) colour of the colour set [name].
 ({Color any, Color dark}) _colourSet(String name) {
   final json = jsonDecode(File('$_assets/$name.colorset/Contents.json').readAsStringSync()) as Map<String, Object?>;
@@ -80,5 +87,37 @@ void main() {
   test('the Runner target names AccentColor as the app accent in Debug, Release and Profile', () {
     final String project = File('macos/Runner.xcodeproj/project.pbxproj').readAsStringSync();
     expect('ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;'.allMatches(project), hasLength(3));
+  });
+
+  // Icon Composer paints a layer's solid fill over the region an open stroke path encloses (the waves turned into
+  // crescents, Story 11.10), so each layer is the DS geometry stroked in its gold and takes no layer fill.
+  test('the app icon holds the DS wave layers, stroked in --gold-200/400/600, with no layer fill', () {
+    final json = jsonDecode(File('$_appIcon/icon.json').readAsStringSync()) as Map<String, Object?>;
+    final List<Map<String, Object?>> groups = (json['groups']! as List<Object?>).cast<Map<String, Object?>>();
+    final layers = <Map<String, Object?>>[
+      for (final group in groups) ...(group['layers']! as List<Object?>).cast<Map<String, Object?>>(),
+    ];
+    final expected = <(String, Color)>[
+      ('Wave-Top', css['--gold-200']! as Color),
+      ('Wave-Mid', css['--gold-400']! as Color),
+      ('Wave-Bottom', css['--gold-600']! as Color),
+    ];
+    expect(layers.map((layer) => layer['name']), expected.map(((String, Color) layer) => layer.$1));
+    for (final (int i, (String name, Color stroke)) in expected.indexed) {
+      final Map<String, Object?> layer = layers[i];
+      expect(layer['image-name'], '$name.svg', reason: name);
+      expect(layer['fill'], 'none', reason: name);
+      final String ds = File('$_dsAppIcon/Assets/$name.svg').readAsStringSync();
+      expect(ds, contains('stroke="#ffffff"'), reason: 'the DS layer $name is drawn white for its fill');
+      expect(
+        File('$_appIcon/Assets/$name.svg').readAsStringSync().trimRight(),
+        ds.replaceFirst('stroke="#ffffff"', 'stroke="${_hex(stroke)}"').trimRight(),
+        reason: '$name.svg is the DS layer with another stroke colour',
+      );
+    }
+    final List<String> files = Directory(
+      '$_appIcon/Assets',
+    ).listSync().map((e) => e.uri.pathSegments.last).where((name) => !name.startsWith('.')).toList()..sort();
+    expect(files, <String>['Wave-Bottom.svg', 'Wave-Mid.svg', 'Wave-Top.svg']);
   });
 }

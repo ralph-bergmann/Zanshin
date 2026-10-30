@@ -24,8 +24,24 @@
           "fill" : "none",
           "glass" : false,
           "hidden" : false,
-          "image-name" : "waves.svg",
-          "name" : "waves"
+          "image-name" : "Wave-Top.svg",
+          "name" : "Wave-Top"
+        },
+        {
+          "blend-mode" : "normal",
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "Wave-Mid.svg",
+          "name" : "Wave-Mid"
+        },
+        {
+          "blend-mode" : "normal",
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "Wave-Bottom.svg",
+          "name" : "Wave-Bottom"
         }
       ],
       "lighting" : "individual",

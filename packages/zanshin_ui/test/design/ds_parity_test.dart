@@ -64,9 +64,6 @@ Map<String, String> _edited(Map<String, String> files, String file, String from,
 const _dsIcons = '$dsRoot/assets/icons';
 const _appIcons = 'assets/icons/svg';
 
-/// The one glyph the set check tolerates by name: no DS file, kept until 11.10 removes its mock users.
-const _leftover = 'workstream';
-
 /// The copy step of item 11: the C2PA download stamp removed, every other byte kept.
 List<int> _stripStamp(List<int> bytes) => latin1.encode(
   latin1
@@ -82,7 +79,7 @@ Map<String, List<int>> _svgFiles(String directory) => <String, List<int>>{
 };
 
 /// The icon set check (decision 16.33): the DS files, `glyphs.json`, the app files and the [ZI] values are one set
-/// (minus [_leftover]), every app file equals its DS file after the strip, and no [ZI] value is a retired alias.
+/// with no leftover, every app file equals its DS file after the strip, and no [ZI] value is a retired alias.
 List<String> _iconMismatches({
   required Map<String, List<int>> ds,
   required Map<String, List<int>> app,
@@ -90,8 +87,8 @@ List<String> _iconMismatches({
   required Map<String, String> aliases,
   required List<String> zi,
 }) {
-  final Set<String> appNames = app.keys.toSet()..remove(_leftover);
-  final Set<String> ziNames = zi.toSet()..remove(_leftover);
+  final Set<String> appNames = app.keys.toSet();
+  final Set<String> ziNames = zi.toSet();
   final Set<String> glyphNames = glyphs.toSet();
   return <String>[
     for (final String name in <String>{...ds.keys, ...glyphNames, ...appNames, ...ziNames}) ...<String>[

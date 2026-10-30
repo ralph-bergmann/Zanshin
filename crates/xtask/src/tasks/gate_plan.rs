@@ -139,8 +139,8 @@ const RULES: &[(Pattern, &str, Need)] = &[
     ),
     (
         Pattern::Prefix("_bmad-output/implementation-artifacts/design_system/"),
-        "read by zanshin_ui's DS parity test",
-        Need::Groups(&[UI]),
+        "read by zanshin_ui's DS parity test and the app's manifest-parity and app-icon tests",
+        Need::Groups(&[UI, APP]),
     ),
     // Docs, planning and agent files.
     (Pattern::Suffix(".md"), "docs", Need::Nothing),
@@ -979,10 +979,11 @@ mod tests {
         );
         assert_eq!(steps(classify("docs/ffi-abi.md").1), RUST);
         let ds = "_bmad-output/implementation-artifacts/design_system/tokens/colors.css";
-        assert_eq!(steps(classify(ds).1), UI);
+        let ui_and_app = steps(Need::Groups(&[UI, APP]));
+        assert_eq!(steps(classify(ds).1), ui_and_app);
         assert_eq!(
             steps(classify("_bmad-output/implementation-artifacts/design_system/readme.md").1),
-            UI
+            ui_and_app
         );
     }
 

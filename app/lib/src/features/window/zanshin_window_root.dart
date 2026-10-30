@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:io';
-
-import 'package:flutter/foundation.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:yaru/yaru.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../app/zanshin_app_view_model.dart';
@@ -18,11 +14,11 @@ part 'zanshin_window_root.factory.dart';
 /// The root of every app window (Story 11.12 item 5): each window is built from the `WindowManager`'s context, so it
 /// has no theme or DI ancestor of its own, and this root installs them over the shared DI graph.
 ///
-/// A `material_ui` `MaterialApp` with the token theme for both modes from a [ZanshinAppViewModel] (Yaru's on Linux)
-/// over [child]; its builder wraps the navigator in [WindowChromeBuilder] (full screen and the measured
-/// traffic-light block, Story 11.4) and [ZsRoot], whose appearance is the view model's with the window's chrome report
-/// and the key status the [ActiveWindowTracker] reports for this window's view (inactive while another window is
-/// key; DS tokens/inactive.css). Inside the root, `KeyedSubtree(ValueKey('window:<windowKey>'))` lets Marionette's
+/// A `material_ui` `MaterialApp` with the token theme for both modes from a [ZanshinAppViewModel] over [child]; its
+/// builder wraps the navigator in [WindowChromeBuilder] (full screen and the measured traffic-light block, Story 11.4)
+/// and [ZsRoot], whose appearance is the view model's with the window's chrome report and the key status the
+/// [ActiveWindowTracker] reports for this window's view (inactive while another window is key; DS
+/// tokens/inactive.css). Inside the root, `KeyedSubtree(ValueKey('window:<windowKey>'))` lets Marionette's
 /// `ancestor_keys` scope a listing to one window (decision 16.31).
 ///
 /// Every window gets its own view model from the factory, over the same settings store and shell reports, so a
@@ -51,18 +47,6 @@ class ZanshinWindowRoot extends StatelessWidget {
   Widget build(BuildContext context) => _viewModelFactory(
     init: (vm) => vm.init(),
     builder: (context, vm, _) {
-      if (!kIsWeb && Platform.isLinux) {
-        return YaruTheme(
-          builder: (context, yaru, _) => _WindowMaterialApp(
-            themeMode: vm.selectedMode,
-            lightTheme: yaru.theme,
-            darkTheme: yaru.darkTheme,
-            builder: (context, navigator) => _keyed(navigator),
-            home: child,
-          ),
-        );
-      }
-
       // The token theme for both modes. The window root follows the theme the MaterialApp resolved, so the first
       // frame before the shell answered follows the system's brightness too, and takes full screen and the
       // traffic-light block from the window's chrome report and the key status from the tracker.
@@ -105,8 +89,8 @@ class _WindowMaterialApp extends StatelessWidget {
     required this.home,
   });
 
-  final ThemeData? lightTheme;
-  final ThemeData? darkTheme;
+  final ThemeData lightTheme;
+  final ThemeData darkTheme;
   final ThemeMode themeMode;
   final Widget home;
 
@@ -116,9 +100,9 @@ class _WindowMaterialApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Zanshin',
-    theme: lightTheme ?? yaruLight,
+    theme: lightTheme,
     themeMode: themeMode,
-    darkTheme: darkTheme ?? yaruDark,
+    darkTheme: darkTheme,
     builder: builder,
     home: home,
   );

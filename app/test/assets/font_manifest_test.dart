@@ -40,6 +40,16 @@ void main() {
     );
   });
 
+  // Story 11.10 (I9): Yaru's Ubuntu fonts came without their licence, and the old `Zanshin` icon font is retired.
+  test('the app bundles no Yaru, Ubuntu or old Zanshin icon font', () async {
+    final Map<String, List<(String, int?)>> fonts = await _bundledFonts();
+    for (final String family in fonts.keys) {
+      expect(family.startsWith('packages/yaru/'), isFalse, reason: '$family is a Yaru font');
+      expect(family.contains('Ubuntu'), isFalse, reason: '$family is an Ubuntu font');
+      expect(family, isNot('Zanshin'), reason: '$family is the retired icon font');
+    }
+  });
+
   // OFL §2: every bundled copy of a font carries its copyright and licence. zanshin_ui lists each font folder's
   // OFL.txt under `flutter: licenses:`; flutter_tools appends those files verbatim to the bundle's NOTICES.
   test('the NOTICES the app bundles contain the OFL.txt of every zanshin_ui font', () async {

@@ -24,8 +24,6 @@ dependencies:
   package_info_plus: ^10.2.1
   # The pure-Dart Rust↔Dart bridge (FFI + worker). Provides the zanshin-ffi native
   # asset via its own build hook; the app aggregates it at build time.
-  yaru:
-    path: ../../yaru.dart
   zanshin_core:
     path: ../packages/zanshin_core
   zanshin_settings:
@@ -57,7 +55,3 @@ flutter:
   assets:
     - assets/lottie/nami_loader.json
     - assets/lottie/nami_loader_transparent.json
-  fonts:
-    - family: Zanshin
-      fonts:
-        - asset: 'assets/fonts/zanshin_icons/Zanshin.ttf'

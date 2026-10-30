@@ -207,10 +207,6 @@ abstract final class ZI {
   static const viewOptions = 'view-options';
   static const workingCopyAt = 'working-copy-at';
 
-  /// Not a DS glyph (workstreams are dropped, decision 16.26): the one named leftover of the mock, kept until 11.10
-  /// deletes it with its users.
-  static const workstream = 'workstream';
-
   /// Every glyph the registry loads.
   static const all = <String>[
     abandon,
@@ -272,6 +268,5 @@ abstract final class ZI {
     user,
     viewOptions,
     workingCopyAt,
-    workstream,
   ];
 }
