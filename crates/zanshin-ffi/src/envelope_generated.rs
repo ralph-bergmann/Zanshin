@@ -4013,18 +4013,111 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_HUNK_LINE_KIND: u8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 61;
+        pub const ENUM_MAX_HUNK_LINE_KIND: u8 = 2;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 62] = [
+        pub const ENUM_VALUES_HUNK_LINE_KIND: [HunkLineKind; 3] =
+            [HunkLineKind::Context, HunkLineKind::Removed, HunkLineKind::Added];
+
+        /// What a `HunkLine` is (Story 5.5): on both sides, the left side only, or the right side only.
+        /// Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct HunkLineKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl HunkLineKind {
+            pub const Context: Self = Self(0);
+            pub const Removed: Self = Self(1);
+            pub const Added: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Context, Self::Removed, Self::Added];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Context => Some("Context"),
+                    Self::Removed => Some("Removed"),
+                    Self::Added => Some("Added"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for HunkLineKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for HunkLineKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for HunkLineKind {
+            type Output = HunkLineKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for HunkLineKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for HunkLineKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for HunkLineKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 62;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 63] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -4087,6 +4180,7 @@ pub mod zanshin {
             Payload::FoundChanges,
             Payload::GitColocationStatus,
             Payload::GitColocationResult,
+            Payload::Diff,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -4156,9 +4250,10 @@ pub mod zanshin {
             pub const FoundChanges: Self = Self(59);
             pub const GitColocationStatus: Self = Self(60);
             pub const GitColocationResult: Self = Self(61);
+            pub const Diff: Self = Self(62);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 61;
+            pub const ENUM_MAX: u8 = 62;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -4222,6 +4317,7 @@ pub mod zanshin {
                 Self::FoundChanges,
                 Self::GitColocationStatus,
                 Self::GitColocationResult,
+                Self::Diff,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -4288,6 +4384,7 @@ pub mod zanshin {
                     Self::FoundChanges => Some("FoundChanges"),
                     Self::GitColocationStatus => Some("GitColocationStatus"),
                     Self::GitColocationResult => Some("GitColocationResult"),
+                    Self::Diff => Some("Diff"),
                     _ => None,
                 }
             }
@@ -41080,6 +41177,726 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum HunkLineOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One line of a `Hunk` (Story 5.5). `text` includes its `\n` (a last line without one keeps that
+        /// state), decoded lossily as UTF-8; a `Context` line carries the right side's text.
+        pub struct HunkLine<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for HunkLine<'a> {
+            type Inner = HunkLine<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> HunkLine<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TEXT: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                HunkLine { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args HunkLineArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<HunkLine<'bldr>> {
+                let mut builder = HunkLineBuilder::new(_fbb);
+                if let Some(x) = args.text {
+                    builder.add_text(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> HunkLineKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<HunkLineKind>(HunkLine::VT_KIND, Some(HunkLineKind::Context))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn text(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(HunkLine::VT_TEXT, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for HunkLine<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<HunkLineKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("text", Self::VT_TEXT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct HunkLineArgs<'a> {
+            pub kind: HunkLineKind,
+            pub text: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for HunkLineArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                HunkLineArgs {
+                    kind: HunkLineKind::Context,
+                    text: None,
+                }
+            }
+        }
+
+        pub struct HunkLineBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> HunkLineBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: HunkLineKind) {
+                self.fbb_
+                    .push_slot::<HunkLineKind>(HunkLine::VT_KIND, kind, HunkLineKind::Context);
+            }
+            #[inline]
+            pub fn add_text(&mut self, text: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(HunkLine::VT_TEXT, text);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> HunkLineBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                HunkLineBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<HunkLine<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for HunkLine<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("HunkLine");
+                ds.field("kind", &self.kind());
+                ds.field("text", &self.text());
+                ds.finish()
+            }
+        }
+        pub enum HunkOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One hunk of a `FileDiff` — what `jj diff --git` prints under one `@@` header (Story 5.5).
+        /// `before_start` / `before_end`: its lines on the left side, 0-based half-open; `after_start` /
+        /// `after_end` likewise on the right side. `symbol`: the header's source symbol, cut at 80 bytes;
+        /// ABSENT when the file's language has no pattern or no symbol precedes the hunk. `sections`: the
+        /// file's sections one of its removed or added lines falls in (the `HunkKey` `SelectTreeRequest`
+        /// takes); at `-w` / `-b` it can be a whole section the hunk shows only part of, or empty.
+        /// `removed` / `added`: its `Removed` / `Added` lines. `lines`: in order. Vectors are always
+        /// present (empty, not absent).
+        pub struct Hunk<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Hunk<'a> {
+            type Inner = Hunk<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Hunk<'a> {
+            pub const VT_BEFORE_START: ::flatbuffers::VOffsetT = 4;
+            pub const VT_BEFORE_END: ::flatbuffers::VOffsetT = 6;
+            pub const VT_AFTER_START: ::flatbuffers::VOffsetT = 8;
+            pub const VT_AFTER_END: ::flatbuffers::VOffsetT = 10;
+            pub const VT_SYMBOL: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SECTIONS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_REMOVED: ::flatbuffers::VOffsetT = 16;
+            pub const VT_ADDED: ::flatbuffers::VOffsetT = 18;
+            pub const VT_LINES: ::flatbuffers::VOffsetT = 20;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Hunk { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args HunkArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Hunk<'bldr>> {
+                let mut builder = HunkBuilder::new(_fbb);
+                if let Some(x) = args.lines {
+                    builder.add_lines(x);
+                }
+                builder.add_added(args.added);
+                builder.add_removed(args.removed);
+                if let Some(x) = args.sections {
+                    builder.add_sections(x);
+                }
+                if let Some(x) = args.symbol {
+                    builder.add_symbol(x);
+                }
+                builder.add_after_end(args.after_end);
+                builder.add_after_start(args.after_start);
+                builder.add_before_end(args.before_end);
+                builder.add_before_start(args.before_start);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn before_start(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(Hunk::VT_BEFORE_START, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn before_end(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(Hunk::VT_BEFORE_END, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn after_start(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(Hunk::VT_AFTER_START, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn after_end(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(Hunk::VT_AFTER_END, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn symbol(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Hunk::VT_SYMBOL, None)
+                }
+            }
+            #[inline]
+            pub fn sections(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkKey<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkKey>>,
+                    >>(Hunk::VT_SECTIONS, None)
+                }
+            }
+            #[inline]
+            pub fn removed(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(Hunk::VT_REMOVED, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn added(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(Hunk::VT_ADDED, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn lines(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkLine<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkLine>>,
+                    >>(Hunk::VT_LINES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Hunk<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<u32>("before_start", Self::VT_BEFORE_START, false)?
+     .visit_field::<u32>("before_end", Self::VT_BEFORE_END, false)?
+     .visit_field::<u32>("after_start", Self::VT_AFTER_START, false)?
+     .visit_field::<u32>("after_end", Self::VT_AFTER_END, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("symbol", Self::VT_SYMBOL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<HunkKey>>>>("sections", Self::VT_SECTIONS, false)?
+     .visit_field::<u32>("removed", Self::VT_REMOVED, false)?
+     .visit_field::<u32>("added", Self::VT_ADDED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<HunkLine>>>>("lines", Self::VT_LINES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct HunkArgs<'a> {
+            pub before_start: u32,
+            pub before_end: u32,
+            pub after_start: u32,
+            pub after_end: u32,
+            pub symbol: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub sections: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkKey<'a>>>>,
+            >,
+            pub removed: u32,
+            pub added: u32,
+            pub lines: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkLine<'a>>>>,
+            >,
+        }
+        impl<'a> Default for HunkArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                HunkArgs {
+                    before_start: 0,
+                    before_end: 0,
+                    after_start: 0,
+                    after_end: 0,
+                    symbol: None,
+                    sections: None,
+                    removed: 0,
+                    added: 0,
+                    lines: None,
+                }
+            }
+        }
+
+        pub struct HunkBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> HunkBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_before_start(&mut self, before_start: u32) {
+                self.fbb_.push_slot::<u32>(Hunk::VT_BEFORE_START, before_start, 0);
+            }
+            #[inline]
+            pub fn add_before_end(&mut self, before_end: u32) {
+                self.fbb_.push_slot::<u32>(Hunk::VT_BEFORE_END, before_end, 0);
+            }
+            #[inline]
+            pub fn add_after_start(&mut self, after_start: u32) {
+                self.fbb_.push_slot::<u32>(Hunk::VT_AFTER_START, after_start, 0);
+            }
+            #[inline]
+            pub fn add_after_end(&mut self, after_end: u32) {
+                self.fbb_.push_slot::<u32>(Hunk::VT_AFTER_END, after_end, 0);
+            }
+            #[inline]
+            pub fn add_symbol(&mut self, symbol: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Hunk::VT_SYMBOL, symbol);
+            }
+            #[inline]
+            pub fn add_sections(
+                &mut self,
+                sections: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<HunkKey<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Hunk::VT_SECTIONS, sections);
+            }
+            #[inline]
+            pub fn add_removed(&mut self, removed: u32) {
+                self.fbb_.push_slot::<u32>(Hunk::VT_REMOVED, removed, 0);
+            }
+            #[inline]
+            pub fn add_added(&mut self, added: u32) {
+                self.fbb_.push_slot::<u32>(Hunk::VT_ADDED, added, 0);
+            }
+            #[inline]
+            pub fn add_lines(
+                &mut self,
+                lines: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<HunkLine<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Hunk::VT_LINES, lines);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> HunkBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                HunkBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Hunk<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Hunk<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Hunk");
+                ds.field("before_start", &self.before_start());
+                ds.field("before_end", &self.before_end());
+                ds.field("after_start", &self.after_start());
+                ds.field("after_end", &self.after_end());
+                ds.field("symbol", &self.symbol());
+                ds.field("sections", &self.sections());
+                ds.field("removed", &self.removed());
+                ds.field("added", &self.added());
+                ds.field("lines", &self.lines());
+                ds.finish()
+            }
+        }
+        pub enum FileDiffOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One changed path of a `Diff` (Story 5.5). `path`: repo-relative, jj's internal `/`-separated
+        /// form. `binary`: the contents differ and either side's is binary — no hunks. `mode_change`: both
+        /// sides are file-like and differ in the executable bit (the builtin diff editor's mode toggle,
+        /// `FileSelection.mode`). `sections`: every `HunkKey` `SelectTreeRequest` accepts for the file;
+        /// empty when it can only be selected whole, or by its mode when `mode_change`. `hunks`: in file
+        /// order. Vectors are always present.
+        pub struct FileDiff<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileDiff<'a> {
+            type Inner = FileDiff<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileDiff<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_BINARY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_MODE_CHANGE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_SECTIONS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HUNKS: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileDiff { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileDiffArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileDiff<'bldr>> {
+                let mut builder = FileDiffBuilder::new(_fbb);
+                if let Some(x) = args.hunks {
+                    builder.add_hunks(x);
+                }
+                if let Some(x) = args.sections {
+                    builder.add_sections(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.add_mode_change(args.mode_change);
+                builder.add_binary(args.binary);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileDiff::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn binary(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(FileDiff::VT_BINARY, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn mode_change(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(FileDiff::VT_MODE_CHANGE, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn sections(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkKey<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkKey>>,
+                    >>(FileDiff::VT_SECTIONS, None)
+                }
+            }
+            #[inline]
+            pub fn hunks(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Hunk<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Hunk>>,
+                    >>(FileDiff::VT_HUNKS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileDiff<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+     .visit_field::<bool>("binary", Self::VT_BINARY, false)?
+     .visit_field::<bool>("mode_change", Self::VT_MODE_CHANGE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<HunkKey>>>>("sections", Self::VT_SECTIONS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<Hunk>>>>("hunks", Self::VT_HUNKS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct FileDiffArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub binary: bool,
+            pub mode_change: bool,
+            pub sections: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkKey<'a>>>>,
+            >,
+            pub hunks:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Hunk<'a>>>>>,
+        }
+        impl<'a> Default for FileDiffArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileDiffArgs {
+                    path: None,
+                    binary: false,
+                    mode_change: false,
+                    sections: None,
+                    hunks: None,
+                }
+            }
+        }
+
+        pub struct FileDiffBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileDiffBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDiff::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_binary(&mut self, binary: bool) {
+                self.fbb_.push_slot::<bool>(FileDiff::VT_BINARY, binary, false);
+            }
+            #[inline]
+            pub fn add_mode_change(&mut self, mode_change: bool) {
+                self.fbb_
+                    .push_slot::<bool>(FileDiff::VT_MODE_CHANGE, mode_change, false);
+            }
+            #[inline]
+            pub fn add_sections(
+                &mut self,
+                sections: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<HunkKey<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDiff::VT_SECTIONS, sections);
+            }
+            #[inline]
+            pub fn add_hunks(
+                &mut self,
+                hunks: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<Hunk<'b>>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDiff::VT_HUNKS, hunks);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileDiffBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileDiffBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileDiff<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileDiff<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileDiff");
+                ds.field("path", &self.path());
+                ds.field("binary", &self.binary());
+                ds.field("mode_change", &self.mode_change());
+                ds.field("sections", &self.sections());
+                ds.field("hunks", &self.hunks());
+                ds.finish()
+            }
+        }
+        pub enum DiffOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A line-level diff between two trees (Story 5.5) — `zanshin_jj::Repo::compute_hunks`' files,
+        /// in its order. `files` is always present.
+        pub struct Diff<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Diff<'a> {
+            type Inner = Diff<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Diff<'a> {
+            pub const VT_FILES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Diff { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DiffArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Diff<'bldr>> {
+                let mut builder = DiffBuilder::new(_fbb);
+                if let Some(x) = args.files {
+                    builder.add_files(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn files(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileDiff<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileDiff>>,
+                    >>(Diff::VT_FILES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Diff<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileDiff>>>>("files", Self::VT_FILES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct DiffArgs<'a> {
+            pub files: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileDiff<'a>>>>,
+            >,
+        }
+        impl<'a> Default for DiffArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DiffArgs { files: None }
+            }
+        }
+
+        pub struct DiffBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DiffBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_files(
+                &mut self,
+                files: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<FileDiff<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diff::VT_FILES, files);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiffBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DiffBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Diff<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Diff<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Diff");
+                ds.field("files", &self.files());
+                ds.finish()
+            }
+        }
         pub enum WarningOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -42269,6 +43086,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_diff(&self) -> Option<Diff<'a>> {
+                if self.data_type() == Payload::Diff {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { Diff::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -42343,6 +43175,7 @@ pub mod zanshin {
           Payload::FoundChanges => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FoundChanges>>("Payload::FoundChanges", pos),
           Payload::GitColocationStatus => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitColocationStatus>>("Payload::GitColocationStatus", pos),
           Payload::GitColocationResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitColocationResult>>("Payload::GitColocationResult", pos),
+          Payload::Diff => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Diff>>("Payload::Diff", pos),
           _ => Ok(()),
         }
      })?
@@ -42861,6 +43694,13 @@ pub mod zanshin {
                     }
                     Payload::GitColocationResult => {
                         if let Some(x) = self.data_as_git_colocation_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::Diff => {
+                        if let Some(x) = self.data_as_diff() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

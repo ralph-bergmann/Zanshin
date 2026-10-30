@@ -2440,3 +2440,36 @@ resolve at the head as in § Operation verbs (`jj.operation_not_found` / `jj.inv
 Not ported: the status lines "Restored to operation: …" / "Reverted operation: …" (the written
 operation's description names the target). Dart: `RepoHandle.opRestore(operation, {what})`,
 `opRevert({operation, what})`, `opIntegrate(operation)`; `RestoreWhat`, `OpIntegrateResult`.
+
+---
+
+## `Diff` payload (Story 5.5)
+
+The line-level diff between two trees — `zanshin_jj::Repo::compute_hunks`' output, field for field
+and in its order. Built by `zanshin_ffi::diff::diff_to_envelope(&[FileDiff], &CallReport)` (an
+infallible builder: the call's `CallReport` rides as `warnings` / `precondition` as on every
+envelope). **No extern yet** — Story 5.8 adds `zanshin_diff_*` to `diff.rs`, the worker command
+and the `RepoHandle` method.
+
+```
+Diff     { files: [FileDiff] }
+FileDiff { path, binary, mode_change, sections: [HunkKey], hunks: [Hunk] }
+Hunk     { before_start, before_end, after_start, after_end, symbol,
+           sections: [HunkKey], removed, added, lines: [HunkLine] }
+HunkLine { kind: HunkLineKind (Context | Removed | Added), text }
+```
+
+- **Keys.** `FileDiff.sections` and `Hunk.sections` are the `HunkKey` table `SelectTreeRequest`
+  takes, copied verbatim from `compute_hunks` — a key read here is a key `zanshin_select_tree`
+  accepts for the same trees. A file's `sections` empty: it can only be selected whole, or by its
+  mode when `mode_change`. A hunk's `sections` at `-w` / `-b` can be a whole section the hunk
+  shows only part of, or empty.
+- **Ranges** are 0-based half-open lines (`before_end` / `after_end` = `Range::end`).
+- **`symbol`** ABSENT = no source symbol (Dart `null`); `text` keeps its `\n`, so a last line
+  without one shows the EOF state; a `Context` line carries the right side's text.
+- **Vectors** are always written (empty, not absent); files, hunks, lines and sections keep
+  their input order. `binary` and mode-only files carry no hunks.
+
+Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart`) → `Diff`,
+`FileDiff`, `Hunk` (ranges as `({int start, int end})` records), `HunkLine`, `HunkLineKind`;
+keys are `select_tree.dart`'s `HunkKey`. Not exported from `zanshin_core.dart` until Story 5.8.

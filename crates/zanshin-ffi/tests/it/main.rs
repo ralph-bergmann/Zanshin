@@ -47,6 +47,7 @@ mod commit_contents_ffi;
 mod commit_ffi;
 mod commit_views_ffi;
 mod config_ffi;
+mod diff_ffi;
 mod drop_actions_ffi;
 mod environment_ffi;
 mod events_ffi;

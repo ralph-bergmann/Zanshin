@@ -1894,6 +1894,46 @@ class _ConfigValueSourceReader extends fb.Reader<ConfigValueSource> {
       ConfigValueSource.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
+///  What a `HunkLine` is (Story 5.5): on both sides, the left side only, or the right side only.
+///  Member order IS the wire value — APPEND only.
+enum HunkLineKind {
+  Context(0),
+  Removed(1),
+  Added(2);
+
+  final int value;
+  const HunkLineKind(this.value);
+
+  factory HunkLineKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return HunkLineKind.Context;
+      case 1:
+        return HunkLineKind.Removed;
+      case 2:
+        return HunkLineKind.Added;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static HunkLineKind? _createOrNull(int? value) => value == null ? null : HunkLineKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<HunkLineKind> reader = _HunkLineKindReader();
+}
+
+class _HunkLineKindReader extends fb.Reader<HunkLineKind> {
+  const _HunkLineKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  HunkLineKind read(fb.BufferContext bc, int offset) => HunkLineKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
@@ -1956,7 +1996,8 @@ enum PayloadTypeId {
   RevsetCounts(58),
   FoundChanges(59),
   GitColocationStatus(60),
-  GitColocationResult(61);
+  GitColocationResult(61),
+  Diff(62);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -2087,6 +2128,8 @@ enum PayloadTypeId {
         return PayloadTypeId.GitColocationStatus;
       case 61:
         return PayloadTypeId.GitColocationResult;
+      case 62:
+        return PayloadTypeId.Diff;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -2095,7 +2138,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 61;
+  static const int maxValue = 62;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -24027,6 +24070,452 @@ class GitColocationResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One line of a `Hunk` (Story 5.5). `text` includes its `\n` (a last line without one keeps that
+///  state), decoded lossily as UTF-8; a `Context` line carries the right side's text.
+class HunkLine {
+  HunkLine._(this._bc, this._bcOffset);
+  factory HunkLine(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<HunkLine> reader = _HunkLineReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  HunkLineKind get kind => HunkLineKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get text => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'HunkLine{kind: ${kind}, text: ${text}}';
+  }
+}
+
+class _HunkLineReader extends fb.TableReader<HunkLine> {
+  const _HunkLineReader();
+
+  @override
+  HunkLine createObject(fb.BufferContext bc, int offset) => HunkLine._(bc, offset);
+}
+
+class HunkLineBuilder {
+  HunkLineBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(HunkLineKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addTextOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class HunkLineObjectBuilder extends fb.ObjectBuilder {
+  final HunkLineKind? _kind;
+  final String? _text;
+
+  HunkLineObjectBuilder({
+    HunkLineKind? kind,
+    String? text,
+  }) : _kind = kind,
+       _text = text;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? textOffset = _text == null ? null : fbBuilder.writeString(_text!);
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, textOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One hunk of a `FileDiff` — what `jj diff --git` prints under one `@@` header (Story 5.5).
+///  `before_start` / `before_end`: its lines on the left side, 0-based half-open; `after_start` /
+///  `after_end` likewise on the right side. `symbol`: the header's source symbol, cut at 80 bytes;
+///  ABSENT when the file's language has no pattern or no symbol precedes the hunk. `sections`: the
+///  file's sections one of its removed or added lines falls in (the `HunkKey` `SelectTreeRequest`
+///  takes); at `-w` / `-b` it can be a whole section the hunk shows only part of, or empty.
+///  `removed` / `added`: its `Removed` / `Added` lines. `lines`: in order. Vectors are always
+///  present (empty, not absent).
+class Hunk {
+  Hunk._(this._bc, this._bcOffset);
+  factory Hunk(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Hunk> reader = _HunkReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get beforeStart => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  int get beforeEnd => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  int get afterStart => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  int get afterEnd => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+  String? get symbol => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+  List<HunkKey>? get sections => const fb.ListReader<HunkKey>(HunkKey.reader).vTableGetNullable(_bc, _bcOffset, 14);
+  int get removed => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 16, 0);
+  int get added => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 18, 0);
+  List<HunkLine>? get lines => const fb.ListReader<HunkLine>(HunkLine.reader).vTableGetNullable(_bc, _bcOffset, 20);
+
+  @override
+  String toString() {
+    return 'Hunk{beforeStart: ${beforeStart}, beforeEnd: ${beforeEnd}, afterStart: ${afterStart}, afterEnd: ${afterEnd}, symbol: ${symbol}, sections: ${sections}, removed: ${removed}, added: ${added}, lines: ${lines}}';
+  }
+}
+
+class _HunkReader extends fb.TableReader<Hunk> {
+  const _HunkReader();
+
+  @override
+  Hunk createObject(fb.BufferContext bc, int offset) => Hunk._(bc, offset);
+}
+
+class HunkBuilder {
+  HunkBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(9);
+  }
+
+  int addBeforeStart(int? beforeStart) {
+    fbBuilder.addUint32(0, beforeStart);
+    return fbBuilder.offset;
+  }
+
+  int addBeforeEnd(int? beforeEnd) {
+    fbBuilder.addUint32(1, beforeEnd);
+    return fbBuilder.offset;
+  }
+
+  int addAfterStart(int? afterStart) {
+    fbBuilder.addUint32(2, afterStart);
+    return fbBuilder.offset;
+  }
+
+  int addAfterEnd(int? afterEnd) {
+    fbBuilder.addUint32(3, afterEnd);
+    return fbBuilder.offset;
+  }
+
+  int addSymbolOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSectionsOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemoved(int? removed) {
+    fbBuilder.addUint32(6, removed);
+    return fbBuilder.offset;
+  }
+
+  int addAdded(int? added) {
+    fbBuilder.addUint32(7, added);
+    return fbBuilder.offset;
+  }
+
+  int addLinesOffset(int? offset) {
+    fbBuilder.addOffset(8, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class HunkObjectBuilder extends fb.ObjectBuilder {
+  final int? _beforeStart;
+  final int? _beforeEnd;
+  final int? _afterStart;
+  final int? _afterEnd;
+  final String? _symbol;
+  final List<HunkKeyObjectBuilder>? _sections;
+  final int? _removed;
+  final int? _added;
+  final List<HunkLineObjectBuilder>? _lines;
+
+  HunkObjectBuilder({
+    int? beforeStart,
+    int? beforeEnd,
+    int? afterStart,
+    int? afterEnd,
+    String? symbol,
+    List<HunkKeyObjectBuilder>? sections,
+    int? removed,
+    int? added,
+    List<HunkLineObjectBuilder>? lines,
+  }) : _beforeStart = beforeStart,
+       _beforeEnd = beforeEnd,
+       _afterStart = afterStart,
+       _afterEnd = afterEnd,
+       _symbol = symbol,
+       _sections = sections,
+       _removed = removed,
+       _added = added,
+       _lines = lines;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? symbolOffset = _symbol == null ? null : fbBuilder.writeString(_symbol!);
+    final int? sectionsOffset = _sections == null
+        ? null
+        : fbBuilder.writeList(_sections!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? linesOffset = _lines == null
+        ? null
+        : fbBuilder.writeList(_lines!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(9);
+    fbBuilder.addUint32(0, _beforeStart);
+    fbBuilder.addUint32(1, _beforeEnd);
+    fbBuilder.addUint32(2, _afterStart);
+    fbBuilder.addUint32(3, _afterEnd);
+    fbBuilder.addOffset(4, symbolOffset);
+    fbBuilder.addOffset(5, sectionsOffset);
+    fbBuilder.addUint32(6, _removed);
+    fbBuilder.addUint32(7, _added);
+    fbBuilder.addOffset(8, linesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One changed path of a `Diff` (Story 5.5). `path`: repo-relative, jj's internal `/`-separated
+///  form. `binary`: the contents differ and either side's is binary — no hunks. `mode_change`: both
+///  sides are file-like and differ in the executable bit (the builtin diff editor's mode toggle,
+///  `FileSelection.mode`). `sections`: every `HunkKey` `SelectTreeRequest` accepts for the file;
+///  empty when it can only be selected whole, or by its mode when `mode_change`. `hunks`: in file
+///  order. Vectors are always present.
+class FileDiff {
+  FileDiff._(this._bc, this._bcOffset);
+  factory FileDiff(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileDiff> reader = _FileDiffReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  bool get binary => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
+  bool get modeChange => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  List<HunkKey>? get sections => const fb.ListReader<HunkKey>(HunkKey.reader).vTableGetNullable(_bc, _bcOffset, 10);
+  List<Hunk>? get hunks => const fb.ListReader<Hunk>(Hunk.reader).vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'FileDiff{path: ${path}, binary: ${binary}, modeChange: ${modeChange}, sections: ${sections}, hunks: ${hunks}}';
+  }
+}
+
+class _FileDiffReader extends fb.TableReader<FileDiff> {
+  const _FileDiffReader();
+
+  @override
+  FileDiff createObject(fb.BufferContext bc, int offset) => FileDiff._(bc, offset);
+}
+
+class FileDiffBuilder {
+  FileDiffBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addBinary(bool? binary) {
+    fbBuilder.addBool(1, binary);
+    return fbBuilder.offset;
+  }
+
+  int addModeChange(bool? modeChange) {
+    fbBuilder.addBool(2, modeChange);
+    return fbBuilder.offset;
+  }
+
+  int addSectionsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addHunksOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileDiffObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final bool? _binary;
+  final bool? _modeChange;
+  final List<HunkKeyObjectBuilder>? _sections;
+  final List<HunkObjectBuilder>? _hunks;
+
+  FileDiffObjectBuilder({
+    String? path,
+    bool? binary,
+    bool? modeChange,
+    List<HunkKeyObjectBuilder>? sections,
+    List<HunkObjectBuilder>? hunks,
+  }) : _path = path,
+       _binary = binary,
+       _modeChange = modeChange,
+       _sections = sections,
+       _hunks = hunks;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? sectionsOffset = _sections == null
+        ? null
+        : fbBuilder.writeList(_sections!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? hunksOffset = _hunks == null
+        ? null
+        : fbBuilder.writeList(_hunks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(5);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addBool(1, _binary);
+    fbBuilder.addBool(2, _modeChange);
+    fbBuilder.addOffset(3, sectionsOffset);
+    fbBuilder.addOffset(4, hunksOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A line-level diff between two trees (Story 5.5) — `zanshin_jj::Repo::compute_hunks`' files,
+///  in its order. `files` is always present.
+class Diff {
+  Diff._(this._bc, this._bcOffset);
+  factory Diff(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Diff> reader = _DiffReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<FileDiff>? get files => const fb.ListReader<FileDiff>(FileDiff.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'Diff{files: ${files}}';
+  }
+}
+
+class _DiffReader extends fb.TableReader<Diff> {
+  const _DiffReader();
+
+  @override
+  Diff createObject(fb.BufferContext bc, int offset) => Diff._(bc, offset);
+}
+
+class DiffBuilder {
+  DiffBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addFilesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class DiffObjectBuilder extends fb.ObjectBuilder {
+  final List<FileDiffObjectBuilder>? _files;
+
+  DiffObjectBuilder({
+    List<FileDiffObjectBuilder>? files,
+  }) : _files = files;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? filesOffset = _files == null
+        ? null
+        : fbBuilder.writeList(_files!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, filesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One warning the call produced (Story 9.32) — the jj CLI's `ui.warning_*` output as a coded
 ///  fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
 ///  Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
@@ -24286,6 +24775,8 @@ class Envelope {
         return GitColocationStatus.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 61:
         return GitColocationResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 62:
+        return Diff.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

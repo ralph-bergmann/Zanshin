@@ -42,6 +42,7 @@ pub mod commit_contents;
 pub mod commit_views;
 pub mod config;
 pub mod diagnostics;
+pub mod diff;
 pub mod diffedit;
 pub mod drop_actions;
 pub mod environment;

@@ -3070,6 +3070,57 @@ table GitColocationResult {
   git_worktree_removed: bool;
 }
 
+/// What a `HunkLine` is (Story 5.5): on both sides, the left side only, or the right side only.
+/// Member order IS the wire value — APPEND only.
+enum HunkLineKind : ubyte { Context, Removed, Added }
+
+/// One line of a `Hunk` (Story 5.5). `text` includes its `\n` (a last line without one keeps that
+/// state), decoded lossily as UTF-8; a `Context` line carries the right side's text.
+table HunkLine {
+  kind: HunkLineKind;
+  text: string;
+}
+
+/// One hunk of a `FileDiff` — what `jj diff --git` prints under one `@@` header (Story 5.5).
+/// `before_start` / `before_end`: its lines on the left side, 0-based half-open; `after_start` /
+/// `after_end` likewise on the right side. `symbol`: the header's source symbol, cut at 80 bytes;
+/// ABSENT when the file's language has no pattern or no symbol precedes the hunk. `sections`: the
+/// file's sections one of its removed or added lines falls in (the `HunkKey` `SelectTreeRequest`
+/// takes); at `-w` / `-b` it can be a whole section the hunk shows only part of, or empty.
+/// `removed` / `added`: its `Removed` / `Added` lines. `lines`: in order. Vectors are always
+/// present (empty, not absent).
+table Hunk {
+  before_start: uint;
+  before_end: uint;
+  after_start: uint;
+  after_end: uint;
+  symbol: string;
+  sections: [HunkKey];
+  removed: uint;
+  added: uint;
+  lines: [HunkLine];
+}
+
+/// One changed path of a `Diff` (Story 5.5). `path`: repo-relative, jj's internal `/`-separated
+/// form. `binary`: the contents differ and either side's is binary — no hunks. `mode_change`: both
+/// sides are file-like and differ in the executable bit (the builtin diff editor's mode toggle,
+/// `FileSelection.mode`). `sections`: every `HunkKey` `SelectTreeRequest` accepts for the file;
+/// empty when it can only be selected whole, or by its mode when `mode_change`. `hunks`: in file
+/// order. Vectors are always present.
+table FileDiff {
+  path: string;
+  binary: bool;
+  mode_change: bool;
+  sections: [HunkKey];
+  hunks: [Hunk];
+}
+
+/// A line-level diff between two trees (Story 5.5) — `zanshin_jj::Repo::compute_hunks`' files,
+/// in its order. `files` is always present.
+table Diff {
+  files: [FileDiff];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -3133,6 +3184,7 @@ union Payload {
   FoundChanges,
   GitColocationStatus,
   GitColocationResult,
+  Diff,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────
