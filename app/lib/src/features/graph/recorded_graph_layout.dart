@@ -29,6 +29,8 @@ class RecordedGraphLayout extends GraphLayout {
     List<int>? bucketValues,
     Int32List? bucketFirstRows,
     Int32List? bucketLastRows,
+    this.utcOffsetMinutes = 0,
+    this.rootIndex,
     this.workingCopyIndex,
     this.totalCount,
     this.operationId,
@@ -101,6 +103,7 @@ class RecordedGraphLayout extends GraphLayout {
     final elided = Uint8List(n);
     final timestamps = <int?>[];
     int? workingCopy;
+    int? root;
     for (var i = 0; i < n; i++) {
       final node = inNodes[i]! as Map<String, Object?>;
       final parents = node['parents']! as List<Object?>;
@@ -110,6 +113,9 @@ class RecordedGraphLayout extends GraphLayout {
       timestamps.add(node['ts_ms'] as int?);
       if (node['working_copy'] == 'this') {
         workingCopy = i;
+      }
+      if (node['is_root'] == true) {
+        root = i;
       }
       final cell = outNodes[i]! as Map<String, Object?>;
       cols[i] = cell['col']! as int;
@@ -164,6 +170,8 @@ class RecordedGraphLayout extends GraphLayout {
       bucketValues: bucketValues,
       bucketFirstRows: bucketFirstRows,
       bucketLastRows: bucketLastRows,
+      utcOffsetMinutes: (input['utc_offset_min'] as int?) ?? 0,
+      rootIndex: root,
       workingCopyIndex: workingCopy,
     );
   }
@@ -181,6 +189,12 @@ class RecordedGraphLayout extends GraphLayout {
 
   @override
   final int colCount;
+
+  @override
+  final int utcOffsetMinutes;
+
+  @override
+  final int? rootIndex;
 
   @override
   final int? workingCopyIndex;

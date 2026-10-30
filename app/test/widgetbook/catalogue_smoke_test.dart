@@ -80,6 +80,9 @@ void main() {
         await tester.pump();
         expect(tester.takeException(), isNull);
         expect(canvasOf(theme), findsWidgets, reason: 'the use case shows under the Appearance addon');
+        if (path.startsWith('graph/')) {
+          expect(find.byType(ZsCanvas), findsOneWidget, reason: 'the window canvas behind the viewport');
+        }
       });
     }
 

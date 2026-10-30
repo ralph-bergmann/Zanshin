@@ -12,7 +12,7 @@ import 'graph_harness.dart';
 void main() {
   test('fromSpec joins the input view facts with the output geometry', () {
     const input =
-        '{"now_ms":0,"utc_offset_min":0,"nodes":['
+        '{"now_ms":0,"utc_offset_min":120,"nodes":['
         '{"id":"c1","ts_ms":300,"is_root":false,"priority":0,"parents":[{"idx":1,"kind":"direct"},'
         '{"idx":2,"kind":"indirect"},{"idx":null,"kind":"missing"}],"key":"k1","parent_count":4,'
         '"working_copy":"this"},'
@@ -43,6 +43,8 @@ void main() {
     expect(layout.elidedOf(0), isTrue);
     expect(layout.elidedOf(1), isFalse);
     expect(layout.workingCopyIndex, 0);
+    expect(layout.rootIndex, 2);
+    expect(layout.utcOffsetMinutes, 120);
     expect(layout.shownCount, 3);
     expect(layout.totalCount, isNull);
     expect(layout.operationId, isNull);

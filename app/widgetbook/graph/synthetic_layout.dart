@@ -11,7 +11,8 @@ const syntheticSizes = <int>[10000, 50000, 100000];
 
 /// A deterministic synthetic layout of [nodeCount] nodes over [lanes] columns (≥ 100 by default), seeded by [seed]:
 /// several cards per row, branches, merges, indirect edges and Missing stubs. With [free] the rows are spread in
-/// 1/16 pitch units (U = 16) by seeded gaps of one to two and a half pitches; the topology and columns stay the same.
+/// 1/16 pitch units (U = 16) by seeded gaps of one to two and a half pitches, and every 25 rows above the root make one
+/// day bucket; the topology and columns stay the same.
 ///
 /// This is test and demo data written directly as a layout (the spike's 10k–100k outputs are not committed), not a
 /// layout of a topology; the invariant checker gates it like every fixture.
@@ -127,7 +128,10 @@ RecordedGraphLayout syntheticLayout(int nodeCount, {bool free = false, int seed 
     final bool stub = id > 0 && missing.nextDouble() < .01;
     elided[i] = stub ? 1 : 0;
     parentCounts[i] = parents[id].length + (stub ? 1 : 0);
-    timestamps.add(id == 0 ? null : 1790000000000 + rowOf[id] * 60000);
+    // Half an hour per row inside its day bucket (25 rows per day, below), so a card's time falls in its day.
+    timestamps.add(
+      id == 0 ? null : _baseMidnight + (rowOf[id] - 1) ~/ 25 * 86400000 + (rowOf[id] - 1) % 25 * 1800000,
+    );
     for (var position = 0; position < parents[id].length; position++) {
       final int parent = parents[id][position];
       edgeChildren.add(i);
@@ -138,6 +142,17 @@ RecordedGraphLayout syntheticLayout(int nodeCount, {bool free = false, int seed 
         0 => GraphEdgeShape.branchOff,
         _ => GraphEdgeShape.merge,
       });
+    }
+  }
+  // Free: one day per 25 row indices above the root (which is in no day), oldest first.
+  final bucketValues = <int>[];
+  final bucketFirstRows = <int>[];
+  final bucketLastRows = <int>[];
+  if (free) {
+    for (var first = 1; first < row; first += 25) {
+      bucketValues.add(_baseMidnight + bucketValues.length * 86400000);
+      bucketFirstRows.add(y[first]);
+      bucketLastRows.add(y[math.min(first + 24, row - 1)]);
     }
   }
   return RecordedGraphLayout(
@@ -155,6 +170,13 @@ RecordedGraphLayout syntheticLayout(int nodeCount, {bool free = false, int seed 
     edgeParents: Int32List.fromList(edgeParents),
     edgeKinds: edgeKinds,
     edgeShapes: edgeShapes,
+    bucketValues: bucketValues,
+    bucketFirstRows: Int32List.fromList(bucketFirstRows),
+    bucketLastRows: Int32List.fromList(bucketLastRows),
+    rootIndex: nodeCount == 0 ? null : nodeCount - 1,
     workingCopyIndex: nodeCount == 0 ? null : nodeCount - 1 - head[0],
   );
 }
+
+/// A UTC midnight, the synthetic layouts' oldest day.
+const _baseMidnight = 1789948800000;

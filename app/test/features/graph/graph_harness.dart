@@ -22,12 +22,16 @@ RecordedGraphLayout recording(String name) {
   return RecordedGraphLayout.fromSpec(input, output);
 }
 
-/// A hand-built layout: one (key, row, col) per node, edges as (child, parent) node indices (in any order).
+/// A hand-built layout: one (key, row, col) per node, edges as (child, parent) node indices (in any order), day
+/// [buckets] as (value, first row, last row), oldest first.
 RecordedGraphLayout handLayout(
   List<(String, int, int)> nodes, {
   List<(int, int)> edges = const <(int, int)>[],
   int unit = 1,
   int? workingCopy,
+  List<(int, int, int)> buckets = const <(int, int, int)>[],
+  int? root,
+  int utcOffsetMinutes = 0,
 }) {
   final sorted = <(int, int)>[...edges]..sort((a, b) => a.$1.compareTo(b.$1));
   var rows = 0;
@@ -50,6 +54,11 @@ RecordedGraphLayout handLayout(
     edgeParents: Int32List.fromList(<int>[for (final (_, int parent) in sorted) parent]),
     edgeKinds: <GraphEdgeKind>[for (final _ in sorted) GraphEdgeKind.direct],
     edgeShapes: <GraphEdgeShape>[for (final _ in sorted) GraphEdgeShape.straight],
+    bucketValues: <int>[for (final (int value, _, _) in buckets) value],
+    bucketFirstRows: Int32List.fromList(<int>[for (final (_, int first, _) in buckets) first]),
+    bucketLastRows: Int32List.fromList(<int>[for (final (_, _, int last) in buckets) last]),
+    utcOffsetMinutes: utcOffsetMinutes,
+    rootIndex: root,
     workingCopyIndex: workingCopy,
   );
 }

@@ -133,6 +133,12 @@ abstract class GraphLayout {
   /// The last row of [bucket], in 1/U pitch units.
   int bucketLastRowOf(int bucket);
 
+  /// The fixed UTC offset, in minutes, the day buckets were cut at.
+  int get utcOffsetMinutes;
+
+  /// The `root()` commit, when it is in the layout.
+  int? get rootIndex;
+
   /// This workspace's `@`, when it is in the layout.
   int? get workingCopyIndex;
 

@@ -33,6 +33,9 @@ abstract class VerticalLayout {
   /// The top edge of [node]'s card.
   double top(int node);
 
+  /// The top edge of a card at [row] (in 1/U pitch units) in O(1); defined for rows that hold a node.
+  double topOfRow(int row);
+
   /// The plane's height.
   double get contentHeight;
 
@@ -95,7 +98,10 @@ class UniformRows extends VerticalLayout {
   double get _step => (metrics.cardHeight + metrics.gapY) / layout.unit;
 
   @override
-  double top(int node) => metrics.pad + (layout.rows - layout.unit - layout.rowOf(node)) * _step;
+  double top(int node) => topOfRow(layout.rowOf(node));
+
+  @override
+  double topOfRow(int row) => metrics.pad + (layout.rows - layout.unit - row) * _step;
 
   @override
   double get contentHeight => layout.nodeCount == 0
@@ -132,6 +138,14 @@ class PerNodeTops extends VerticalLayout {
 
   @override
   double top(int node) => _byNode[node];
+
+  /// The top of the first node at each row, built once on first use.
+  late final _byRow = <int, double>{
+    for (int node = _byNode.length - 1; node >= 0; node--) layout.rowOf(node): _byNode[node],
+  };
+
+  @override
+  double topOfRow(int row) => _byRow[row]!;
 
   @override
   double get contentHeight =>
