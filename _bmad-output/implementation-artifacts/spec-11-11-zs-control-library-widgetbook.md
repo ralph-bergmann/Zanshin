@@ -48,6 +48,8 @@ deferred:
     location: >-
       app/test/widgetbook/
     severity: low
+    resolved: >-
+      2026-10-30 — fixed (spec-11-10-retire-docked-mock-ui, commit 9a7f3c6): app/test/widgetbook/ds_manifest_parity_test.dart maps 52 components to use cases and 26 to their open stories, with a reason for Wordmark and TrafficLights.
   - summary: >-
       The rule "marionette_mcp must match marionette_flutter exactly" cannot be kept as written: the app allows ^0.7.0 and the documented install command takes the newest marionette_mcp.
     evidence: |-

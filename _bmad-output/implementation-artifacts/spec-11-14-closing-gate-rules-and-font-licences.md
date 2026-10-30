@@ -31,6 +31,8 @@ deferred:
     location: >-
       ../yaru.dart/pubspec.yaml (Ralph's fork); app/pubspec.yaml yaru dependency
     severity: medium
+    resolved: >-
+      2026-10-30 — fixed (spec-11-10-retire-docked-mock-ui, commit 9a7f3c6): Yaru and its fonts are retired; font_manifest_test.dart checks the bundle lists no Yaru, Ubuntu or Zanshin family.
 ---
 
 <intent-contract>
