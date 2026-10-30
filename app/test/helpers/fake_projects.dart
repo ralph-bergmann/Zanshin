@@ -132,6 +132,9 @@ class FakeProjectRepo implements ProjectRepo {
   Stream<void> get changes => _changes.stream;
 
   @override
+  Stream<RepoEvent> get events => const Stream<RepoEvent>.empty();
+
+  @override
   Future<ProjectReading> read() async {
     _repos.log.add('read $path');
     reads++;

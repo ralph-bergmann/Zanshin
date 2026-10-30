@@ -47,6 +47,7 @@ class GraphViewport extends TwoDimensionalScrollView {
     this.anchorKey,
     this.reveal,
     this.controller,
+    this.onUserPan,
     super.scrollCacheExtent = defaultScrollCacheExtent,
     super.clipBehavior,
     super.key,
@@ -105,6 +106,9 @@ class GraphViewport extends TwoDimensionalScrollView {
   /// Reveal, jump and animate from outside.
   final GraphViewportController? controller;
 
+  /// Called with |dx| + |dy| of each canvas mouse-pan move (user scrolling for calm, Story 10.5).
+  final ValueChanged<double>? onUserPan;
+
   @override
   Widget build(BuildContext context) => ScrollConfiguration(
     behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
@@ -160,6 +164,7 @@ class _GraphViewportWidget extends TwoDimensionalViewport {
     anchorKey: owner.anchorKey,
     reveal: owner.reveal,
     controller: owner.controller,
+    onUserPan: owner.onUserPan,
     motion: motion,
     horizontalOffset: horizontalOffset,
     horizontalAxisDirection: horizontalAxisDirection,
@@ -188,6 +193,7 @@ class _GraphViewportWidget extends TwoDimensionalViewport {
     ..anchorKey = owner.anchorKey
     ..reveal = owner.reveal
     ..controller = owner.controller
+    ..onUserPan = owner.onUserPan
     ..motion = motion
     ..horizontalOffset = horizontalOffset
     ..horizontalAxisDirection = horizontalAxisDirection

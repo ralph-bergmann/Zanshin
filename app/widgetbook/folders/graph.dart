@@ -1,32 +1,34 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
-import 'package:zanshin/src/features/graph/day_axis.dart';
+import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
-import 'package:zanshin/src/features/graph/graph_edges.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_metrics.dart';
+import 'package:zanshin/src/features/graph/graph_view.dart';
+import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/layout_invariants.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
-import 'package:zanshin/src/features/graph/vertical_layout.dart';
-import 'package:zanshin_core/zanshin_core.dart' show RouteGeometry;
+import 'package:zanshin/src/features/graph/stale_notice.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../graph/fake_content.dart';
+import '../graph/fake_graph_source.dart';
 import '../graph/graph_recordings.g.dart';
 import '../graph/synthetic_layout.dart';
 
 /// The "Graph" folder (Story 10.1, decision 16.30): the fake-data host of every Epic 10 story. "Viewport / Recording"
 /// shows the recorded layouts of the design sample and medium-narrow, "Viewport / Scale" the synthetic 10k–100k
 /// fixtures, both with fake content (Story 10.3); every `GraphViewOptions` field is a knob, and the left and right
-/// insets stand in for the floating chrome. "Card / States" shows one commit card per state (Story 10.3).
+/// insets stand in for the floating chrome. "Viewport / View model" drives a `GraphViewModel` on a fake source over the
+/// recordings, with the stale notice over it (Story 10.5). "Card / States" shows one commit card per state (Story
+/// 10.3); "Stale notice / Variants" the notice with its action, busy, and with Copy (Story 10.5).
 final graphFolder = WidgetbookFolder(
   name: 'Graph',
   children: <WidgetbookNode>[
@@ -71,7 +73,30 @@ final graphFolder = WidgetbookFolder(
             );
           },
         ),
+        WidgetbookUseCase(
+          name: 'View model',
+          builder: (context) {
+            final String revset = context.knobs.object.dropdown(
+              label: 'revset',
+              options: const <String>['jj log', 'all()'],
+            );
+            final String stale = context.knobs.object.dropdown(
+              label: 'stale cause',
+              options: const <String>['none', 'stale', 'sibling_operation', 'operation_not_found'],
+            );
+            return _ViewModelDemo(
+              revset: revset,
+              options: _options(context),
+              insets: _insets(context),
+              staleCause: stale == 'none' ? null : stale,
+            );
+          },
+        ),
       ],
+    ),
+    WidgetbookComponent(
+      name: 'Stale notice',
+      useCases: <WidgetbookUseCase>[WidgetbookUseCase(name: 'Variants', builder: (context) => const _StaleNotices())],
     ),
     WidgetbookComponent(
       name: 'Card',
@@ -159,11 +184,8 @@ int recordedNowMs(String sample) => _nowMs.putIfAbsent(sample, () {
 int _syntheticNowMs(GraphLayout layout) =>
     layout.bucketCount == 0 ? 0 : layout.bucketValueOf(layout.bucketCount - 1) + 12 * 3600000;
 
-/// A viewport over [layout] with commit cards, router B's edges (Story 10.4) and Free's day axis, over the window
-/// canvas; it owns its scroll controllers, its card controller (with a minute tick on "now"), its day-axis painter and
-/// its edge painter. Its [GraphRouteCache] runs the route's class stage once per layout and its geometry once per card
-/// size (in `Isolate.run` above `routeSyncNodeLimit` nodes; edges appear when it completes, a superseded result is
-/// dropped); the hovered card's edges are hovered (no focus path until 10.6), @'s lineage is on.
+/// A [GraphCanvas] over [layout] on the window canvas, with a card controller whose "now" is [nowMs] (the app's view
+/// model owns "now"; the samples keep theirs).
 class _GraphDemo extends StatefulWidget {
   const _GraphDemo({required this.layout, required this.options, required this.insets, required this.nowMs});
 
@@ -177,22 +199,7 @@ class _GraphDemo extends StatefulWidget {
 }
 
 class _GraphDemoState extends State<_GraphDemo> {
-  final _vertical = ScrollController();
-  final _horizontal = ScrollController();
   late final _cards = GraphCardController(now: widget.nowMs);
-  late final Timer _tick;
-  VerticalLayout? _rows;
-  GraphDayAxisPainter? _axis;
-  VerticalLayout? _axisRows;
-  late final _routes = GraphRouteCache(onRouted: () => setState(() {}));
-  GraphEdgePainter? _edges;
-
-  @override
-  void initState() {
-    super.initState();
-    // 10.5 owns the tick in the app; here "now" advances a minute per minute from the sample's now.
-    _tick = Timer.periodic(const Duration(minutes: 1), (_) => _cards.now.value += 60000);
-  }
 
   @override
   void didUpdateWidget(_GraphDemo oldWidget) {
@@ -204,101 +211,101 @@ class _GraphDemoState extends State<_GraphDemo> {
 
   @override
   void dispose() {
-    _tick.cancel();
-    _routes.dispose();
     _cards.dispose();
-    _axis?.dispose();
-    _vertical.dispose();
-    _horizontal.dispose();
     super.dispose();
   }
 
-  // A tear-off of this state's method is equal across builds, so the delegate rebuilds no card.
-  Widget _card(BuildContext context, int node) => GraphCard(layout: widget.layout, node: node, controller: _cards);
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: <Widget>[
+      const ZsCanvas(),
+      GraphCanvas(layout: widget.layout, cards: _cards, options: widget.options, insets: widget.insets),
+    ],
+  );
+}
 
-  /// The rows, built once per layout and remapped once per metrics change.
-  VerticalLayout _rowsFor(GraphMetrics metrics) {
-    final VerticalLayout? rows = _rows;
-    if (rows != null && rows.layout == widget.layout) {
-      return rows.metrics == metrics ? rows : _rows = rows.withMetrics(metrics);
-    }
-    return _rows = UniformRows(widget.layout, metrics);
-  }
+/// "Viewport / View model" (Story 10.5): a [GraphViewModel] on a [FakeGraphSource] over the recordings (`jj log` →
+/// design-default, `all()` → design-all), bound by [GraphView]; the knobs switch the revset, mode and lane order
+/// through the model (each re-centres on @), and a stale cause makes every layout refuse, so the notice stands over
+/// the last layout (or, picked before the first, over the empty canvas).
+class _ViewModelDemo extends StatefulWidget {
+  const _ViewModelDemo({required this.revset, required this.options, required this.insets, required this.staleCause});
 
-  /// The day-axis painter, recreated (the old one disposed) when the rows, the theme or "now" change.
-  GraphDayAxisPainter _axisFor(VerticalLayout rows, GraphTheme theme) {
-    final GraphDayAxisPainter? axis = _axis;
-    if (axis != null && identical(_axisRows, rows) && axis.theme == theme && axis.nowMs == widget.nowMs) {
-      return axis;
-    }
-    axis?.dispose();
-    _axisRows = rows;
-    return _axis = GraphDayAxisPainter(
-      axis: GraphDayAxis.of(widget.layout, rows),
-      theme: theme,
-      nowMs: widget.nowMs,
-      utcOffsetMinutes: widget.layout.utcOffsetMinutes,
-    );
-  }
+  final String revset;
+  final GraphViewOptions options;
+  final EdgeInsets insets;
+  final String? staleCause;
 
-  /// The edge painter of the current layout, metrics and theme (recreated when one changes), or null while its
-  /// geometry is being routed.
-  GraphEdgePainter? _edgesFor(GraphMetrics metrics, GraphTheme theme) {
-    final RouteGeometry? geometry = _routes.geometryFor(widget.layout, metrics);
-    if (geometry == null) {
-      return null;
-    }
-    final GraphEdgePainter? edges = _edges;
-    if (edges != null && identical(edges.geometry, geometry) && edges.theme == theme) {
-      return edges;
-    }
-    return _edges = GraphEdgePainter(layout: widget.layout, geometry: geometry, theme: theme);
+  @override
+  State<_ViewModelDemo> createState() => _ViewModelDemoState();
+}
+
+class _ViewModelDemoState extends State<_ViewModelDemo> {
+  late final _source = FakeGraphSource(
+    (request) => recordedLayout(
+      request.revset == 'all()' ? 'design-all' : 'design-default',
+      GraphViewOptions(layout: request.mode, laneOrder: request.order),
+    ),
+    staleCause: widget.staleCause,
+  );
+  late final _model = GraphViewModel();
+
+  String get _revset => widget.revset == 'all()' ? 'all()' : FakeGraphSource.defaults.log;
+
+  @override
+  void initState() {
+    super.initState();
+    final int now = recordedNowMs('design-default');
+    _model.init(_source, clock: () => DateTime.fromMillisecondsSinceEpoch(now));
+    _apply(null);
   }
 
   @override
-  Widget build(BuildContext context) {
-    final metrics = GraphMetrics.fromOptions(widget.options);
-    final VerticalLayout rows = _rowsFor(metrics);
-    final GraphTheme theme = GraphTheme.of(context);
-    final GraphDayAxisPainter axis = _axisFor(rows, theme);
-    final GraphEdgePainter? edges = _edgesFor(metrics, theme);
-    final double leftInset = widget.insets.left;
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        const ZsCanvas(),
-        // The viewport's z-order follows the card controller; rebuilding it builds no card.
-        ListenableBuilder(
-          listenable: Listenable.merge(<Listenable>[_cards.selected, _cards.hovered, _cards.menuOpen]),
-          builder: (context, _) {
-            final String? menu = _cards.menuOpen.value;
-            final String? hoveredKey = _cards.hovered.value;
-            final highlight = GraphEdgeHighlight(
-              hoveredNode: hoveredKey == null ? null : widget.layout.indexOfKey(hoveredKey),
-            );
-            return GraphViewport(
-              layout: widget.layout,
-              metrics: metrics,
-              verticalLayout: rows,
-              cardBuilder: _card,
-              verticalController: _vertical,
-              horizontalController: _horizontal,
-              insets: widget.insets,
-              selectedKey: _cards.selected.value,
-              hoveredKey: _cards.hovered.value,
-              pinnedKeys: menu == null ? const <String>{} : <String>{menu},
-              paintBackground: axis.paintGuides,
-              paintEdges: edges == null
-                  ? null
-                  : (context, origin, visible) => edges.paint(context, origin, visible, highlight: highlight),
-              paintOverlay: (context, origin, visible) =>
-                  axis.paintLabels(context, origin, visible, leftInset: leftInset),
-            );
-          },
-        ),
-      ],
-    );
+  void didUpdateWidget(_ViewModelDemo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _apply(oldWidget);
   }
+
+  void _apply(_ViewModelDemo? old) {
+    _model
+      ..setMode(widget.options.layout)
+      ..setLaneOrder(widget.options.laneOrder);
+    if (old == null ? widget.revset == 'all()' : old.revset != widget.revset) {
+      _model.setRevset(_revset);
+    }
+    if (old != null && old.staleCause != widget.staleCause) {
+      _source.staleCause = widget.staleCause;
+      _model.reload();
+    }
+  }
+
+  @override
+  void dispose() {
+    _model.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: <Widget>[
+      const ZsCanvas(),
+      GraphView(model: _model, options: widget.options, insets: widget.insets),
+      Positioned(
+        left: 0,
+        right: 0,
+        top: 12,
+        child: Center(
+          heightFactor: 1,
+          child: ListenableBuilder(
+            listenable: _model,
+            builder: (context, _) => GraphView.staleNotice(_model) ?? const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 /// One state of the card matrix: its label, its one-node layout and the controller state it forces.
@@ -552,6 +559,39 @@ class _CardStatesState extends State<_CardStates> {
                   Text('Immutable', style: label),
                 ],
               ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// "Stale notice / Variants" (Story 10.5): the notice for each cause with "Update working copy", one busy, and the
+/// notice without the action, offering Copy.
+class _StaleNotices extends StatelessWidget {
+  const _StaleNotices();
+
+  @override
+  Widget build(BuildContext context) {
+    final causes = <GraphStale>[
+      for (final String cause in <String>['stale', 'sibling_operation', 'operation_not_found'])
+        GraphStale.fromContext('$cause\n${'3f9a2c71d0e4' * 2}\n${'b81e6d09c5a7' * 2}'),
+    ];
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ZsCanvas(),
+        SingleChildScrollView(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 16,
+            children: <Widget>[
+              for (final GraphStale stale in causes)
+                StaleNotice(command: stale.command, message: stale.message, onUpdate: () {}),
+              StaleNotice(command: causes.first.command, message: causes.first.message, onUpdate: () {}, busy: true),
+              StaleNotice(command: causes.first.command, message: causes.first.message),
             ],
           ),
         ),

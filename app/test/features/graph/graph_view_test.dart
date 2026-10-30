@@ -1,0 +1,424 @@
+// SPDX-License-Identifier: MIT
+
+import 'package:flutter/gestures.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/graph/graph_canvas.dart';
+import 'package:zanshin/src/features/graph/graph_card.dart';
+import 'package:zanshin/src/features/graph/graph_layout.dart';
+import 'package:zanshin/src/features/graph/graph_ports.dart';
+import 'package:zanshin/src/features/graph/graph_view.dart';
+import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin/src/features/graph/graph_viewport.dart';
+import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
+import 'package:zanshin/src/features/shell/graph_insets.dart';
+import 'package:zanshin/src/features/shell/shell_controller.dart';
+import 'package:zanshin/src/features/shell/shell_layout.dart';
+import 'package:zanshin/src/features/shell/shell_scope.dart';
+import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
+
+import '../../helpers/icon_registry.dart';
+import '../../helpers/scripted_graph_source.dart';
+import '../../helpers/shell_host.dart';
+import 'graph_harness.dart';
+
+/// A chain of [rows] commits `r0` … `r<rows−1>` (column `row % 6`) under [heads] (newest first, column 0), @ at [at].
+RecordedGraphLayout chainAt(
+  int rows, {
+  required String at,
+  List<String> heads = const <String>[],
+  Map<String, int> colOf = const <String, int>{},
+}) {
+  final nodes = <(String, int, int)>[
+    for (var i = 0; i < heads.length; i++) (heads[i], rows + heads.length - 1 - i, 0),
+    for (int row = rows - 1; row >= 0; row--) ('r$row', row, colOf['r$row'] ?? row % 6),
+  ];
+  final int wc = nodes.indexWhere((node) => node.$1 == at);
+  return handLayout(
+    nodes,
+    edges: <(int, int)>[for (var i = 0; i + 1 < nodes.length; i++) (i, i + 1)],
+    workingCopy: wc < 0 ? null : wc,
+  );
+}
+
+/// The shell's insets of the design: top 60, the rail 76, the minimap column 158, bottom 12.
+const _shellInsets = GraphInsets(top: 60, left: 76, right: 158, bottom: 12, inspectorWidth: 460, minimapWidth: 134);
+
+class _Recorder extends ShellController {
+  final reported = <double>[];
+
+  double get total => reported.fold(0, (a, b) => a + b);
+
+  @override
+  void reportUserScroll(double amount) {
+    reported.add(amount);
+    super.reportUserScroll(amount);
+  }
+}
+
+/// A [GraphView] host whose inputs a test changes before each pump.
+class _Host {
+  _Host(this.model);
+
+  final GraphViewModel model;
+  ShellController? shell;
+  GraphInsets insets = _shellInsets;
+  var appearance = const ZsAppearance();
+  var options = const GraphViewOptions();
+
+  Widget build() {
+    Widget view = GraphView(model: model, options: options);
+    final ShellController? shell = this.shell;
+    if (shell != null) {
+      view = ShellScope(
+        controller: shell,
+        layout: ShellLayout(
+          panelWidth: 300,
+          inspectorWidth: 460,
+          collapsed: false,
+          insets: insets,
+          panelMax: 440,
+          inspectorMax: 720,
+        ),
+        child: view,
+      );
+    }
+    return wrap(view, appearance: appearance);
+  }
+}
+
+/// [child] in the shell tests' window root (an Overlay for the tooltips).
+Widget wrap(Widget child, {ZsAppearance appearance = const ZsAppearance()}) => shellHost(child, appearance: appearance);
+
+Finder cardOf(String key) =>
+    find.byWidgetPredicate((w) => w is GraphCard && w.layout.keyOf(w.node) == key, skipOffstage: false);
+
+RenderGraphViewport viewportOf(WidgetTester tester) => tester.allRenderObjects.whereType<RenderGraphViewport>().single;
+
+GraphCardController cardsOf(WidgetTester tester) => tester.widget<GraphCanvas>(find.byType(GraphCanvas)).cards;
+
+/// The keys of the cards fully on screen, with their top-left.
+Map<String, Offset> onScreen(WidgetTester tester) => <String, Offset>{
+  for (final Element element in find.byType(GraphCard, skipOffstage: false).evaluate())
+    if ((Offset.zero & surface).contains(tester.getTopLeft(find.byWidget(element.widget))) &&
+        (Offset.zero & surface).contains(tester.getBottomRight(find.byWidget(element.widget))))
+      (element.widget as GraphCard).layout.keyOf((element.widget as GraphCard).node): tester.getTopLeft(
+        find.byWidget(element.widget),
+      ),
+};
+
+void main() {
+  setUpIconRegistry();
+  late ScriptedGraphSource source;
+  late GraphViewModel model;
+  late _Host host;
+  final noon = DateTime.utc(2026, 10, 30, 12);
+  var clock = noon;
+
+  var created = false;
+
+  setUp(() {
+    clock = noon;
+    created = false;
+    source = ScriptedGraphSource(respond: (_) => chainAt(200, at: 'r100'));
+  });
+
+  /// Creates the model inside the test, so its first request runs on the test's clock.
+  void create({ShellController? shell}) {
+    created = true;
+    model = GraphViewModel()..init(source, clock: () => clock);
+    host = _Host(model)..shell = shell;
+  }
+
+  Future<void> pump(WidgetTester tester) async {
+    if (!created) {
+      create();
+    }
+    tester.view
+      ..physicalSize = surface
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(host.build());
+    await tester.pump();
+  }
+
+  /// Unmounts the view, then disposes the model (its minute timer must not outlive the test) and the shell.
+  Future<void> finish(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    model.dispose();
+    host.shell?.dispose();
+  }
+
+  Rect visible(EdgeInsets insets) => insets.deflateRect(Offset.zero & surface);
+
+  Future<void> heads(WidgetTester tester) async {
+    source.emit(const OpHeadsChangedEvent(0, <String>[]));
+    await tester.pump();
+    await tester.pump();
+  }
+
+  testWidgets('the first layout centres @ in the visible rect in the relayout it lands with', (tester) async {
+    source.hold = true;
+    create(shell: ShellController());
+    await pump(tester);
+    expect(find.byType(GraphCanvas), findsNothing, reason: 'loading shows nothing');
+    source.held.single.complete(GraphLoad(chainAt(200, at: 'r100')));
+    // The first frame that shows the canvas already has @ centred.
+    for (var i = 0; i < 3 && find.byType(GraphCanvas).evaluate().isEmpty; i++) {
+      await tester.pump();
+    }
+    expect(tester.getCenter(cardOf('r100')), visible(viewportOf(tester).insets).center);
+    await finish(tester);
+  });
+
+  testWidgets('insets come from the ShellScope; pinning and an edge drag move no card', (tester) async {
+    create(shell: ShellController());
+    await pump(tester);
+    expect(viewportOf(tester).insets, const EdgeInsets.fromLTRB(76, 60, 158, 12));
+    final Map<String, Offset> before = onScreen(tester);
+    expect(before, isNotEmpty);
+    for (final left in <double>[388, 400, 420, 76]) {
+      host.insets = GraphInsets(top: 60, left: left, right: 484, bottom: 12, inspectorWidth: 460, minimapWidth: 134);
+      await tester.pumpWidget(host.build());
+      expect(viewportOf(tester).insets, EdgeInsets.fromLTRB(left, 60, 484, 12));
+      for (final MapEntry<String, Offset>(:key, :value) in before.entries) {
+        expect(tester.getTopLeft(cardOf(key)), value, reason: '$key at left $left');
+      }
+    }
+    await finish(tester);
+  });
+
+  testWidgets('outside a shell the insets parameter applies', (tester) async {
+    create();
+    await tester.pumpWidget(wrap(GraphView(model: model, insets: const EdgeInsets.only(left: 30))));
+    await tester.pump();
+    expect(viewportOf(tester).insets, const EdgeInsets.only(left: 30));
+    await finish(tester);
+  });
+
+  testWidgets('a 45 px mouse pan reports ≥ 30 px and turns calm on; a programmatic reveal reports nothing', (
+    tester,
+  ) async {
+    final shell = _Recorder();
+    create(shell: shell);
+    await pump(tester);
+    final RenderGraphViewport render = viewportOf(tester);
+    bool clear(Offset p) => <Offset>[
+      for (final double dx in <double>[-14, 0, 14])
+        for (final double dy in <double>[-14, 0, 14]) p + Offset(dx, dy),
+    ].every((q) => !render.isOnCard(q));
+    final Offset spot = <Offset>[
+      for (double y = 120; y < 560; y += 7)
+        for (double x = 120; x < 620; x += 7) Offset(x, y),
+    ].firstWhere(clear);
+    final TestGesture gesture = await tester.startGesture(spot, kind: PointerDeviceKind.mouse);
+    for (var i = 0; i < 3; i++) {
+      await gesture.moveBy(const Offset(0, -15));
+      await tester.pump();
+    }
+    await gesture.up();
+    expect(shell.total, greaterThanOrEqualTo(30));
+    expect(shell.calm.value.calm, isTrue);
+
+    await tester.pump(const Duration(seconds: 1));
+    shell.reported.clear();
+    model.scrollToWorkingCopy();
+    await tester.pumpAndSettle();
+    expect(tester.getCenter(cardOf('r100')), visible(render.insets).center);
+    expect(shell.reported, isEmpty);
+    await finish(tester);
+  });
+
+  testWidgets(
+    'a fling reports its glide after the drag, not the drag itself',
+    (tester) async {
+      final shell = _Recorder();
+      create(shell: shell);
+      await pump(tester);
+      final RenderGraphViewport render = viewportOf(tester);
+      await tester.flingFrom(const Offset(400, 400), const Offset(0, -240), 1500);
+      expect(shell.reported, isEmpty, reason: 'the drag is the shell trackpad/touch counting, not ours');
+      final double atUp = render.verticalOffset.pixels;
+      await tester.pumpAndSettle();
+      final double glide = (render.verticalOffset.pixels - atUp).abs();
+      expect(glide, greaterThan(0));
+      expect(shell.total, closeTo(glide, 1));
+      await finish(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets("now: the model's now reaches the cards, and the window turning active refreshes it", (tester) async {
+    await pump(tester);
+    expect(cardsOf(tester).now.value, noon.millisecondsSinceEpoch);
+    clock = noon.add(const Duration(minutes: 7));
+    host.appearance = const ZsAppearance(inactive: true);
+    await tester.pumpWidget(host.build());
+    await tester.pump();
+    expect(cardsOf(tester).now.value, noon.millisecondsSinceEpoch);
+    host.appearance = const ZsAppearance();
+    await tester.pumpWidget(host.build());
+    await tester.pump();
+    expect(model.now.value, clock.millisecondsSinceEpoch);
+    expect(cardsOf(tester).now.value, clock.millisecondsSinceEpoch);
+    await finish(tester);
+  });
+
+  testWidgets('the selection is the same in the cards and the model', (tester) async {
+    await pump(tester);
+    cardsOf(tester).select('r101');
+    expect(model.selected, 'r101');
+    model.select(null);
+    await tester.pump();
+    expect(cardsOf(tester).selected.value, isNull);
+    model.select('r99');
+    await tester.pump();
+    expect(cardsOf(tester).selected.value, 'r99');
+    await finish(tester);
+  });
+
+  testWidgets('a reload keeps the visible selection in place, else the centre card', (tester) async {
+    await pump(tester);
+    model.select('r99');
+    await tester.pump();
+    final Offset selected = tester.getTopLeft(cardOf('r99'));
+    expect(tester.getCenter(cardOf('r99')), isNot(visible(EdgeInsets.zero).center));
+    // The centre card (@, r100) moves to column 0, the selection does not: the selection is the anchor.
+    source.respond = (_) => chainAt(200, at: 'r100', colOf: const <String, int>{'r100': 0});
+    await heads(tester);
+    expect(tester.getTopLeft(cardOf('r99')), selected);
+
+    final RenderGraphViewport render = viewportOf(tester);
+    render.verticalOffset.jumpTo(render.verticalOffset.pixels + 3000);
+    await tester.pump();
+    var centre = '';
+    double best = double.infinity;
+    for (final Element element in find.byType(GraphCard, skipOffstage: false).evaluate()) {
+      final card = element.widget as GraphCard;
+      final double d = (tester.getCenter(find.byWidget(card)) - surface.center(Offset.zero)).distanceSquared;
+      if (d < best) {
+        best = d;
+        centre = card.layout.keyOf(card.node);
+      }
+    }
+    final Offset at = tester.getTopLeft(cardOf(centre));
+    // Off screen, the selection moving column (and a new head) does not anchor: the centre card does.
+    source.respond = (_) =>
+        chainAt(200, at: 'r100', heads: <String>['h1'], colOf: const <String, int>{'r100': 0, 'r99': 0});
+    await heads(tester);
+    expect(tester.getTopLeft(cardOf(centre)), at);
+    expect(model.selected, 'r99');
+    await finish(tester);
+  });
+
+  testWidgets('a revset switch centres @ in that relayout; a card-width change and an event reload do not', (
+    tester,
+  ) async {
+    await pump(tester);
+    final RenderGraphViewport render = viewportOf(tester);
+    render.verticalOffset.jumpTo(render.verticalOffset.pixels + 2000);
+    await tester.pump();
+    model.setRevset('all()');
+    await tester.pump();
+    await tester.pump();
+    expect(tester.getCenter(cardOf('r100')), visible(EdgeInsets.zero).center);
+
+    render.verticalOffset.jumpTo(render.verticalOffset.pixels - 250);
+    await tester.pump();
+    final int requests = source.requests.length;
+    host.options = const GraphViewOptions(cardWidth: 300);
+    await tester.pumpWidget(host.build());
+    expect(source.requests, hasLength(requests), reason: 'a card size needs no layout request');
+    expect(tester.getCenter(cardOf('r100')), isNot(visible(EdgeInsets.zero).center));
+    await heads(tester);
+    expect(tester.getCenter(cardOf('r100')), isNot(visible(EdgeInsets.zero).center));
+    await finish(tester);
+  });
+
+  for (final cause in <String>['stale', 'sibling_operation', 'operation_not_found']) {
+    testWidgets('stale ($cause): the notice names the command, carries jj message, offers the update; the cards stay', (
+      tester,
+    ) async {
+      await pump(tester);
+      source.respond = (_) => throw staleError(cause);
+      await heads(tester);
+      final GraphStale stale = model.stale!;
+      await tester.pumpWidget(
+        wrap(
+          Stack(
+            children: <Widget>[
+              Positioned.fill(child: GraphView(model: model)),
+              Positioned(top: 12, left: 0, right: 0, child: Center(child: GraphView.staleNotice(model))),
+            ],
+          ),
+        ),
+      );
+      expect(find.text('Working copy is stale'), findsOneWidget);
+      expect(find.text(stale.command), findsOneWidget);
+      expect(
+        stale.command,
+        cause == 'sibling_operation' ? 'jj op integrate aaaaaaaaaaaa' : 'jj workspace update-stale',
+      );
+      expect(find.byWidgetPredicate((w) => w is ZsTooltip && w.message == stale.message), findsOneWidget);
+      expect(find.text('Update working copy'), findsOneWidget);
+      expect(find.byType(GraphCard), findsWidgets, reason: 'the last layout still renders');
+      await tester.tap(find.text('Update working copy'));
+      await tester.pump();
+      expect(source.updates, 1);
+      await finish(tester);
+    });
+  }
+
+  testWidgets('no notice slot without a stale working copy', (tester) async {
+    await pump(tester);
+    expect(GraphView.staleNotice(model), isNull);
+    await finish(tester);
+  });
+
+  testWidgets('a failed load shows the caption with Retry, which requests again; an empty one its caption', (
+    tester,
+  ) async {
+    source.respond = (_) => throw const ZanshinFfiException('jj.io_error');
+    await pump(tester);
+    expect(find.text('The graph could not be loaded (jj.io_error).'), findsOneWidget);
+    source.respond = (_) => chainAt(0, at: '');
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    await tester.pump();
+    expect(source.requests, hasLength(2));
+    expect(find.text('No changes match this revset.'), findsOneWidget);
+
+    // A revset error after the empty layout keeps that layout but drops the empty caption (10.21 shows the error).
+    source.respond = (_) => throw const ZanshinFfiException('jj.revset_parse_error', 'bad');
+    model.setRevset('bad(');
+    await tester.pump();
+    await tester.pump();
+    expect(model.revsetError, isNotNull);
+    expect(find.text('No changes match this revset.'), findsNothing);
+    await finish(tester);
+  });
+
+  testWidgets('the day axis gets a new painter when "now" crosses local midnight, not on a same-day tick', (
+    tester,
+  ) async {
+    // The layout's offset is 0, so its local midnight is UTC midnight.
+    clock = DateTime.utc(2026, 10, 30, 23, 58, 30);
+    await pump(tester);
+    final GraphPaintHook? before = viewportOf(tester).paintBackground;
+    expect(before, isNotNull);
+
+    clock = DateTime.utc(2026, 10, 30, 23, 59);
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(cardsOf(tester).now.value, clock.millisecondsSinceEpoch, reason: 'the minute tick reached the cards');
+    expect(viewportOf(tester).paintBackground, before, reason: 'the same day keeps the painter');
+
+    clock = DateTime.utc(2026, 10, 31);
+    await tester.pump(const Duration(minutes: 1));
+    await tester.pump();
+    expect(cardsOf(tester).now.value, clock.millisecondsSinceEpoch);
+    expect(viewportOf(tester).paintBackground, isNot(before), reason: 'a new day, a new painter');
+    await finish(tester);
+  });
+}

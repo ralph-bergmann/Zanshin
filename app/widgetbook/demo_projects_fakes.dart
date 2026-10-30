@@ -150,6 +150,9 @@ class _DemoRepo implements ProjectRepo {
   Stream<void> get changes => const Stream<void>.empty();
 
   @override
+  Stream<RepoEvent> get events => const Stream<RepoEvent>.empty();
+
+  @override
   Future<ProjectReading> read() async => const ProjectReading(status: ProjectStatus.dirty, bookmark: 'feature/new-ui');
 
   @override

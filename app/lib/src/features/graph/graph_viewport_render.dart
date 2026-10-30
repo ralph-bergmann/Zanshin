@@ -113,6 +113,7 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
     required this._anchorKey,
     required this._reveal,
     required GraphViewportController? controller,
+    required this.onUserPan,
     required this.motion,
     required super.horizontalOffset,
     required super.horizontalAxisDirection,
@@ -276,8 +277,8 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
     markNeedsPaint();
   }
 
-  /// The key that keeps its viewport position across geometry changes; null takes the visible node nearest the
-  /// viewport's centre (the default rule until 10.5).
+  /// The key that keeps its viewport position across geometry changes while its card meets the viewport (Story 10.5
+  /// design question (a): the selection); otherwise, or when null, the visible node nearest the viewport's centre.
   String? get anchorKey => _anchorKey;
   String? _anchorKey;
   set anchorKey(String? value) {
@@ -301,6 +302,9 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
 
   /// The motion tokens; a reveal jumps when movement is reduced.
   ZsMotion motion;
+
+  /// Called with |dx| + |dy| of each canvas pan move.
+  ValueChanged<double>? onUserPan;
 
   /// The controller whose primitives drive this viewport.
   GraphViewportController? get controller => _controller;
@@ -457,6 +461,10 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
   void _recordAnchor(List<int> nodes, Offset scroll, Size view) {
     _anchorInsets = _insets;
     int? node = _anchorKey == null ? null : _layout.indexOfKey(_anchorKey!);
+    // On screen means in the unobscured area: a card under the chrome gives way to the centre node.
+    if (node != null && !cardRect(node).overlaps(_unobscured.shift(scroll))) {
+      node = null;
+    }
     if (node == null) {
       final Offset centre = scroll + view.center(Offset.zero);
       double best = double.infinity;
@@ -655,6 +663,7 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
   }
 
   void _updatePan(DragUpdateDetails details) {
+    onUserPan?.call(details.delta.dx.abs() + details.delta.dy.abs());
     for (final (ViewportOffset offset, double delta) in <(ViewportOffset, double)>[
       (horizontalOffset, details.delta.dx),
       (verticalOffset, details.delta.dy),

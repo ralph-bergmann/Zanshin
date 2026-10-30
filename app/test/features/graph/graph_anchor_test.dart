@@ -106,6 +106,62 @@ void main() {
       }
     });
 
+    testWidgets('an anchor key on screen keeps its place even when the centre node changes column (Story 10.5)', (
+      tester,
+    ) async {
+      final GraphHarness g = await pumpChain(tester);
+      final String centre = nearestCentre(g);
+      final String key = onScreen(tester, g).keys.firstWhere((k) => k != centre);
+      g.anchorKey = key;
+      await tester.pumpWidget(g.build());
+      final Offset at = g.screenOf(tester, key);
+      final int col = g.layout.colOf(g.layout.indexOfKey(centre)!);
+      g.layout = chainLayout(200, head: 'new', colOf: <String, int>{centre: col + 2});
+      await tester.pumpWidget(g.build());
+      expect(g.screenOf(tester, key), at);
+    });
+
+    testWidgets('an anchor key whose card is off screen gives way to the node nearest the centre (Story 10.5)', (
+      tester,
+    ) async {
+      final GraphHarness g = await pumpChain(tester);
+      g.anchorKey = 'r10';
+      await tester.pumpWidget(g.build());
+      expect(g.viewport.overlaps(g.cardRect(g.layout.indexOfKey('r10')!)), isFalse);
+      final Map<String, Offset> before = onScreen(tester, g);
+      // Were r10 the anchor, its new column would shift every card sideways.
+      g.layout = chainLayout(200, head: 'new', colOf: const <String, int>{'r10': 5});
+      await tester.pumpWidget(g.build());
+      for (final MapEntry<String, Offset>(:key, :value) in before.entries) {
+        expect(g.screenOf(tester, key), value, reason: key);
+      }
+    });
+
+    testWidgets('an anchor key whose card lies under an inset gives way to the node nearest the centre (Story 10.5)', (
+      tester,
+    ) async {
+      final GraphHarness g = await pumpChain(tester);
+      // r122 (column 2) sits at screen x 548–788, on screen but wholly under a 300 px right inset (the inspector).
+      g
+        ..insets = const EdgeInsets.only(right: 300)
+        ..anchorKey = 'r122';
+      await tester.pumpWidget(g.build());
+      final Rect card = g.cardRect(g.layout.indexOfKey('r122')!).shift(-g.scroll);
+      expect(card.left, greaterThanOrEqualTo(500));
+      expect((Offset.zero & surface).overlaps(card), isTrue);
+      final before = <String, Offset>{
+        for (final String key in g.expectedMounted(cache: 0))
+          if (key != 'r122') key: g.screenOf(tester, key),
+      };
+      expect(before, isNotEmpty);
+      // Were r122 the anchor, its move to column 0 would shift every card sideways.
+      g.layout = chainLayout(200, colOf: const <String, int>{'r122': 0});
+      await tester.pumpWidget(g.build());
+      for (final MapEntry<String, Offset>(:key, :value) in before.entries) {
+        expect(g.screenOf(tester, key), value, reason: key);
+      }
+    });
+
     testWidgets('an absent anchor key leaves the offsets as they are', (tester) async {
       final GraphHarness g = await pumpChain(tester);
       g.layout = handLayout(<(String, int, int)>[for (int row = 199; row >= 0; row--) ('other$row', row, row % 6)]);
@@ -127,9 +183,20 @@ void main() {
 
   testWidgets('(l) a W or H change remaps without a layout request: exact extents, the anchor holds', (tester) async {
     final GraphHarness g = await pumpChain(tester);
-    g.anchorKey = 'r120';
+    // An anchor key holds only while its card meets the viewport (Story 10.5): such a card other than the centre one,
+    // in column 0 or 1, so no card width clamps the offset at 0.
+    final String centre = nearestCentre(g);
+    final String key = g
+        .expectedMounted(cache: 0)
+        .firstWhere(
+          (k) =>
+              k != centre &&
+              g.layout.colOf(g.layout.indexOfKey(k)!) <= 1 &&
+              g.viewport.overlaps(g.cardRect(g.layout.indexOfKey(k)!)),
+        );
+    g.anchorKey = key;
     await tester.pumpWidget(g.build());
-    final Offset at = g.screenOf(tester, 'r120');
+    final Offset at = g.screenOf(tester, key);
     final RenderGraphViewport render = g.render(tester);
     for (final metrics in <GraphMetrics>[
       GraphMetrics(cardWidth: 320),
@@ -140,7 +207,7 @@ void main() {
       await tester.pumpWidget(g.build());
       expect(identical(render.graphLayout, g.layout), isTrue);
       expect(Offset(g.h.position.maxScrollExtent, g.v.position.maxScrollExtent), g.expectedMax);
-      expect(g.screenOf(tester, 'r120'), at);
+      expect(g.screenOf(tester, key), at, reason: '$key ${metrics.cardWidth} ${metrics.cardHeight}');
       expect(g.mounted(tester), g.expectedMounted());
     }
   });

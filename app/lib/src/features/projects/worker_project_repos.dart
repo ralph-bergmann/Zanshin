@@ -84,8 +84,10 @@ class _WorkerProjectRepo implements ProjectRepo {
   final RepoHandle handle;
 
   @override
-  Stream<void> get changes =>
-      _worker.events.where((event) => event is OpHeadsChangedEvent && event.handleId == handle.handleId).map((_) {});
+  Stream<void> get changes => events.where((event) => event is OpHeadsChangedEvent).map((_) {});
+
+  @override
+  Stream<RepoEvent> get events => _worker.events.where((event) => event.handleId == handle.handleId);
 
   @override
   Future<ProjectReading> read() async {

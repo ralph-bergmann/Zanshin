@@ -49,6 +49,9 @@ abstract interface class ProjectRepo {
   /// Fires when a jj operation lands in this repository (its op heads changed), by anyone.
   Stream<void> get changes;
 
+  /// The worker's events of this repository's handle, every kind (10.5's graph reloads on them).
+  Stream<RepoEvent> get events;
+
   /// Reads what the status dot and the bookmark label show; a stale working copy reads as [ProjectStatus.stale].
   /// Throws [ZanshinFfiException] when the reads fail otherwise.
   Future<ProjectReading> read();
