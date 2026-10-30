@@ -23,7 +23,7 @@ RecordedGraphLayout recording(String name) {
 }
 
 /// A hand-built layout: one (key, row, col) per node, edges as (child, parent) node indices (in any order), day
-/// [buckets] as (value, first row, last row), oldest first.
+/// [buckets] as (value, first row, last row), oldest first. The card facts are optional, one entry per node.
 RecordedGraphLayout handLayout(
   List<(String, int, int)> nodes, {
   List<(int, int)> edges = const <(int, int)>[],
@@ -32,6 +32,15 @@ RecordedGraphLayout handLayout(
   List<(int, int, int)> buckets = const <(int, int, int)>[],
   int? root,
   int utcOffsetMinutes = 0,
+  List<int?>? timestamps,
+  List<List<GraphRef>>? refs,
+  List<GraphCommitContent?>? contents,
+  List<int>? flags,
+  List<int>? prefixLengths,
+  List<int?>? offsets,
+  List<List<String>>? workspaces,
+  String? workspaceName,
+  List<int>? parentCounts,
 }) {
   final sorted = <(int, int)>[...edges]..sort((a, b) => a.$1.compareTo(b.$1));
   var rows = 0;
@@ -48,8 +57,16 @@ RecordedGraphLayout handLayout(
     keys: <String>[for (final (String key, _, _) in nodes) key],
     cols: Int32List.fromList(<int>[for (final (_, _, int col) in nodes) col]),
     nodeRows: Int32List.fromList(<int>[for (final (_, int row, _) in nodes) row]),
-    parentCounts: Int32List(nodes.length),
+    parentCounts: parentCounts == null ? Int32List(nodes.length) : Int32List.fromList(parentCounts),
     elided: Uint8List(nodes.length),
+    timestamps: timestamps,
+    refs: refs,
+    contents: contents,
+    flags: flags == null ? null : Uint8List.fromList(flags),
+    changeIdPrefixLengths: prefixLengths == null ? null : Int32List.fromList(prefixLengths),
+    changeOffsets: offsets,
+    workingCopies: workspaces,
+    workspaceName: workspaceName,
     edgeChildren: Int32List.fromList(<int>[for (final (int child, _) in sorted) child]),
     edgeParents: Int32List.fromList(<int>[for (final (_, int parent) in sorted) parent]),
     edgeKinds: <GraphEdgeKind>[for (final _ in sorted) GraphEdgeKind.direct],
@@ -90,7 +107,8 @@ class CardLog {
   }
 }
 
-/// A card that logs its builds and inits, paints a rect in the colour `0xFF000000 + node` and the key as text.
+/// A card that logs its builds and inits, paints a rect in the colour `0xFF000000 + node` and the key as text, inside
+/// the overhang the viewport lays every card child out with (so its rect is the card rect).
 class TestCard extends StatefulWidget {
   const TestCard({required this.nodeKey, required this.node, required this.log, super.key});
 
@@ -112,13 +130,17 @@ class _TestCardState extends State<TestCard> {
   @override
   Widget build(BuildContext context) {
     widget.log.builds.update(widget.nodeKey, (n) => n + 1, ifAbsent: () => 1);
+    // The semantics node first, so `getSemantics` of a TestCard finds its own node.
     return Semantics(
       container: true,
-      child: GestureDetector(
-        onTap: () => widget.log.taps.add(widget.nodeKey),
-        child: ColoredBox(
-          color: Color(0xFF000000 + widget.node),
-          child: Text(widget.nodeKey, textDirection: TextDirection.ltr),
+      child: Padding(
+        padding: const EdgeInsets.all(graphCardOverhang),
+        child: GestureDetector(
+          onTap: () => widget.log.taps.add(widget.nodeKey),
+          child: ColoredBox(
+            color: Color(0xFF000000 + widget.node),
+            child: Text(widget.nodeKey, textDirection: TextDirection.ltr),
+          ),
         ),
       ),
     );

@@ -6,13 +6,15 @@ import 'dart:typed_data';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 
+import 'fake_content.dart';
+
 /// The scale sizes of the catalogue and the tests (Story 10.1 item 13(b)).
 const syntheticSizes = <int>[10000, 50000, 100000];
 
 /// A deterministic synthetic layout of [nodeCount] nodes over [lanes] columns (≥ 100 by default), seeded by [seed]:
 /// several cards per row, branches, merges, indirect edges and Missing stubs. With [free] the rows are spread in
 /// 1/16 pitch units (U = 16) by seeded gaps of one to two and a half pitches, and every 25 rows above the root make one
-/// day bucket; the topology and columns stay the same.
+/// day bucket; the topology and columns stay the same. Every node carries [fakeContent] and [fakeRefs].
 ///
 /// This is test and demo data written directly as a layout (the spike's 10k–100k outputs are not committed), not a
 /// layout of a topology; the invariant checker gates it like every fixture.
@@ -175,6 +177,8 @@ RecordedGraphLayout syntheticLayout(int nodeCount, {bool free = false, int seed 
     bucketLastRows: Int32List.fromList(bucketLastRows),
     rootIndex: nodeCount == 0 ? null : nodeCount - 1,
     workingCopyIndex: nodeCount == 0 ? null : nodeCount - 1 - head[0],
+    contents: <GraphCommitContent?>[for (var i = 0; i < nodeCount; i++) fakeContent(i, keys[i])],
+    refs: <List<GraphRef>>[for (var i = 0; i < nodeCount; i++) fakeRefs(i, keys[i])],
   );
 }
 

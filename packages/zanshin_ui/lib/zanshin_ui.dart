@@ -48,6 +48,7 @@ export 'src/design/zs_metrics.dart' show ZsIconSize, ZsMetrics;
 export 'src/design/zs_motion.dart' show ZsMotion;
 export 'src/design/zs_root.dart' show ZsRoot, ZsShellScope;
 export 'src/design/zs_type.dart' show ZsType;
+export 'src/design/zs_values.dart' show ZsGradientStop, ZsLinearGradient, ZsShadowStack;
 export 'src/icons/icon_registry.dart' show IconRegistry, IconRegistryScope;
 export 'src/icons/zanshin_icon.dart' show ZI, ZanshinIcon;
 export 'src/icons/zs_nami_mark.dart' show ZsNamiMark;

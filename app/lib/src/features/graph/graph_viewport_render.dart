@@ -14,9 +14,11 @@ import 'graph_layout.dart';
 import 'graph_metrics.dart';
 import 'vertical_layout.dart';
 
-/// How far a card paints outside its rect (the widest ring, `--ring-wc-select` / `--ring-drop`, spreads 4 px); the
-/// visible query inflates every card by it.
-const double graphCardOverhang = 4;
+/// How far a card's child box reaches outside its card rect on every side (Story 10.3): the bookmark control at
+/// top −11 and ••• at bottom −11, which covers the rings (4 px at most). Every card child is laid out at its card rect
+/// inflated by it, so its affordances hit-test inside the child; the visible query inflates every card by it. The
+/// drop glow may paint beyond it, unclipped.
+const double graphCardOverhang = 11;
 
 /// Paints one layer of the plane: [origin] is where the plane's (0, 0) paints, [visibleRect] the part of the plane
 /// the viewport shows (it may reach past the plane: the painted plane covers max(content, viewport)).
@@ -401,7 +403,7 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
       scroll.dy + view.height + cacheY - _insets.top,
     );
     final List<int> nodes = vertical.visibleNodes(window, graphCardOverhang);
-    final size = Size(_metrics.cardWidth, _metrics.cardHeight);
+    final size = Size(_metrics.cardWidth + 2 * graphCardOverhang, _metrics.cardHeight + 2 * graphCardOverhang);
     for (final node in nodes) {
       _layoutNode(node, size, scroll);
     }
@@ -426,7 +428,7 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
     }
     child.layout(BoxConstraints.tight(size), parentUsesSize: true);
     final TwoDimensionalViewportParentData data = parentDataOf(child)
-      ..layoutOffset = cardRect(node).topLeft - scroll
+      ..layoutOffset = cardRect(node).topLeft - const Offset(graphCardOverhang, graphCardOverhang) - scroll
       // WHY: a pinned card is laid out in every pass instead of resting in the keep-alive bucket (whose vicinity
       // another node can take after a reload). The framework's `_moveChild` treats an off-screen child whose KeepAlive
       // flag is set as bucketed and loses it when a reload moves its vicinity, so a laid-out child carries no flag;
@@ -591,8 +593,12 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
   @override
   bool hitTestSelf(Offset position) => true;
 
+  // Whether the last hit test landed on a child: a press there (a card, or an affordance in its overhang) never pans.
+  var _childHit = false;
+
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    _childHit = false;
     for (final RenderBox child in paintOrder.reversed) {
       final Offset paintOffset = parentDataOf(child).paintOffset!;
       final bool hit = result.addWithPaintOffset(
@@ -601,7 +607,7 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
         hitTest: (result, transformed) => child.hitTest(result, position: transformed),
       );
       if (hit) {
-        return true;
+        return _childHit = true;
       }
     }
     return false;
@@ -611,7 +617,8 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
   Rect? describeSemanticsClip(RenderObject? child) {
     final double cacheX = _cacheFor(size.width);
     final double cacheY = _cacheFor(size.height);
-    return Rect.fromLTRB(-cacheX, -cacheY, size.width + cacheX, size.height + cacheY);
+    // Every mounted card keeps a (hidden) node: a card is mounted when its rect inflated by the overhang meets it.
+    return Rect.fromLTRB(-cacheX, -cacheY, size.width + cacheX, size.height + cacheY).inflate(graphCardOverhang);
   }
 
   @override
@@ -630,7 +637,7 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
       // The viewport sits below both inner Scrollables, so it registers first and wins: a single Scrollable would
       // drop the other axis.
       GestureBinding.instance.pointerSignalResolver.register(event, _scrollBoth);
-    } else if (event is PointerDownEvent && !isOnCard(entry.localPosition)) {
+    } else if (event is PointerDownEvent && !_childHit) {
       _pan.addPointer(event);
     }
   }

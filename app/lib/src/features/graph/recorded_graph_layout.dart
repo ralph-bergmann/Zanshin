@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'graph_layout.dart';
@@ -34,7 +35,22 @@ class RecordedGraphLayout extends GraphLayout {
     this.workingCopyIndex,
     this.totalCount,
     this.operationId,
+    List<String>? changeIds,
+    Int32List? changeIdPrefixLengths,
+    List<int?>? changeOffsets,
+    Uint8List? flags,
+    List<List<GraphRef>>? refs,
+    List<List<String>>? workingCopies,
+    List<GraphCommitContent?>? contents,
+    this.workspaceName,
   }) : _keys = keys,
+       _changeIds = changeIds,
+       _givenPrefixLengths = changeIdPrefixLengths,
+       _changeOffsets = changeOffsets,
+       _flags = flags,
+       _refs = refs,
+       _workingCopies = workingCopies,
+       _contents = contents,
        _cols = cols,
        _rows = nodeRows,
        _parentCounts = parentCounts,
@@ -52,6 +68,13 @@ class RecordedGraphLayout extends GraphLayout {
     final int e = edgeChildren.length;
     assert(cols.length == n && nodeRows.length == n && parentCounts.length == n && elided.length == n);
     assert(timestamps == null || timestamps.length == n);
+    assert(changeIds == null || changeIds.length == n);
+    assert(changeIdPrefixLengths == null || changeIdPrefixLengths.length == n);
+    assert(changeOffsets == null || changeOffsets.length == n);
+    assert(flags == null || flags.length == n);
+    assert(refs == null || refs.length == n);
+    assert(workingCopies == null || workingCopies.length == n);
+    assert(contents == null || contents.length == n);
     assert(edgeParents.length == e && edgeKinds.length == e && edgeShapes.length == e);
     assert(_bucketFirstRows.length == _bucketValues.length && _bucketLastRows.length == _bucketValues.length);
     for (var i = 0; i < n; i++) {
@@ -86,8 +109,14 @@ class RecordedGraphLayout extends GraphLayout {
 
   /// Joins a docs/graph-layout.md §2 input (the view facts: `key` ?? `id`, `parent_count` ?? the parent entries,
   /// `working_copy == "this"`, a Missing parent, `ts_ms`) with the engine's §3 output for it (rows, unit, lanes,
-  /// columns, edges with their routes, buckets).
-  factory RecordedGraphLayout.fromSpec(String inputJson, String outputJson) {
+  /// columns, edges with their routes, buckets). `immutable` goes into the flags (the root is immutable); the
+  /// recordings carry no content and no refs, so [content] and [refs] may supply them per node.
+  factory RecordedGraphLayout.fromSpec(
+    String inputJson,
+    String outputJson, {
+    GraphCommitContent? Function(int node, String key)? content,
+    List<GraphRef> Function(int node, String key)? refs,
+  }) {
     final input = jsonDecode(inputJson) as Map<String, Object?>;
     final output = jsonDecode(outputJson) as Map<String, Object?>;
     final inNodes = input['nodes']! as List<Object?>;
@@ -102,12 +131,16 @@ class RecordedGraphLayout extends GraphLayout {
     final parentCounts = Int32List(n);
     final elided = Uint8List(n);
     final timestamps = <int?>[];
+    final flags = Uint8List(n);
     int? workingCopy;
     int? root;
     for (var i = 0; i < n; i++) {
       final node = inNodes[i]! as Map<String, Object?>;
       final parents = node['parents']! as List<Object?>;
       keys.add((node['key'] ?? node['id'])! as String);
+      if (node['immutable'] == true || node['is_root'] == true) {
+        flags[i] = flagImmutable;
+      }
       parentCounts[i] = (node['parent_count'] as int?) ?? parents.length;
       elided[i] = parents.any((p) => (p! as Map<String, Object?>)['kind'] == 'missing') ? 1 : 0;
       timestamps.add(node['ts_ms'] as int?);
@@ -173,10 +206,87 @@ class RecordedGraphLayout extends GraphLayout {
       utcOffsetMinutes: (input['utc_offset_min'] as int?) ?? 0,
       rootIndex: root,
       workingCopyIndex: workingCopy,
+      flags: flags,
+      contents: content == null ? null : <GraphCommitContent?>[for (var i = 0; i < n; i++) content(i, keys[i])],
+      refs: refs == null ? null : <List<GraphRef>>[for (var i = 0; i < n; i++) refs(i, keys[i])],
     );
   }
 
+  /// The `flags` bit of an immutable node.
+  static const flagImmutable = 1;
+
+  /// The `flags` bit of a hidden node.
+  static const flagHidden = 2;
+
+  /// The `flags` bit of a divergent node.
+  static const flagDivergent = 4;
+
   static var _nextVersion = 0;
+
+  @override
+  final String? workspaceName;
+
+  final List<String>? _changeIds;
+  final Int32List? _givenPrefixLengths;
+  final List<int?>? _changeOffsets;
+  final Uint8List? _flags;
+  final List<List<GraphRef>>? _refs;
+  final List<List<String>>? _workingCopies;
+  final List<GraphCommitContent?>? _contents;
+
+  // A fixture stand-in for jj's `changeIdPrefixLen`: the shortest prefix unique among this layout's change ids, from
+  // its sorted neighbours, computed once on first use.
+  late final Int32List _prefixLengths = _givenPrefixLengths ?? _shortestPrefixes();
+
+  Int32List _shortestPrefixes() {
+    final int n = _keys.length;
+    final order = List<int>.generate(n, (i) => i)..sort((a, b) => changeIdOf(a).compareTo(changeIdOf(b)));
+    int common(String a, String b) {
+      var k = 0;
+      while (k < a.length && k < b.length && a.codeUnitAt(k) == b.codeUnitAt(k)) {
+        k++;
+      }
+      return k;
+    }
+
+    final lengths = Int32List(n);
+    for (var r = 0; r < n; r++) {
+      final String id = changeIdOf(order[r]);
+      final int before = r > 0 ? common(id, changeIdOf(order[r - 1])) : 0;
+      final int after = r + 1 < n ? common(id, changeIdOf(order[r + 1])) : 0;
+      lengths[order[r]] = math.min(id.length, math.max(before, after) + 1);
+    }
+    return lengths;
+  }
+
+  @override
+  String changeIdOf(int node) => _changeIds?[node] ?? _keys[node];
+
+  @override
+  int changeIdPrefixLengthOf(int node) => _prefixLengths[node];
+
+  @override
+  int? changeOffsetOf(int node) => _changeOffsets?[node];
+
+  bool _flag(int node, int bit) => (_flags?[node] ?? 0) & bit != 0;
+
+  @override
+  bool isImmutable(int node) => _flag(node, flagImmutable);
+
+  @override
+  bool isHidden(int node) => _flag(node, flagHidden);
+
+  @override
+  bool isDivergent(int node) => _flag(node, flagDivergent);
+
+  @override
+  List<GraphRef> refsOf(int node) => _refs?[node] ?? const <GraphRef>[];
+
+  @override
+  List<String> workingCopiesOf(int node) => _workingCopies?[node] ?? const <String>[];
+
+  @override
+  GraphCommitContent? contentOf(int node) => _contents?[node];
 
   @override
   final GraphMode mode;

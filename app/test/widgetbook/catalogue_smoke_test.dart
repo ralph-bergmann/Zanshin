@@ -66,6 +66,7 @@ void main() {
           'windows/window-scaffold/floating',
           'graph/viewport/recording',
           'graph/viewport/scale',
+          'graph/card/states',
         ]),
       );
       expect(catalogueUseCasePaths, paths.toSet());

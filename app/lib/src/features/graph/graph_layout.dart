@@ -48,6 +48,123 @@ enum GraphBucketKind {
   day,
 }
 
+// revset.pest:24-29 @ v0.46.0: `identifier_part ~ (("." | "-"+ | "+") ~ identifier_part)*`.
+final _identifier = RegExp(r'^[\p{XID_Continue}_*/]+(?:(?:\.|-+|\+)[\p{XID_Continue}_*/]+)*$', unicode: true);
+
+/// [name] as jj prints a revset symbol (`format_symbol`, revset_parser.rs:676-710 @ v0.46.0): plain when it is a
+/// revset `identifier`, otherwise quoted by [_formatString].
+String jjRevsetSymbol(String name) => _identifier.hasMatch(name) ? name : _formatString(name);
+
+// core/src/ref_name.rs `is_safe_identifier` @ v0.46.0: split on `.`, `-`, `+`; every part non-empty ASCII
+// alphanumerics, `_` and `/`.
+final _safeRefPart = RegExp(r'^[A-Za-z0-9_/]+$');
+
+/// [name] as jj prints a ref or workspace name (`RefName::as_symbol()`'s Display, core/src/ref_name.rs @ v0.46.0):
+/// plain when `is_safe_identifier` holds, otherwise quoted by [_formatString].
+String jjRefSymbol(String name) =>
+    name.split(RegExp('[.+-]')).every(_safeRefPart.hasMatch) ? name : _formatString(name);
+
+/// jj's `format_string` (core/src/symbol_util.rs @ v0.46.0): double-quoted, with `\"` `\\` `\t` `\r` `\n` `\0` and
+/// `\xHH` for the other ASCII controls.
+String _formatString(String text) {
+  final out = StringBuffer('"');
+  for (final int c in text.runes) {
+    switch (c) {
+      case 0x22:
+        out.write(r'\"');
+      case 0x5C:
+        out.write(r'\\');
+      case 0x09:
+        out.write(r'\t');
+      case 0x0D:
+        out.write(r'\r');
+      case 0x0A:
+        out.write(r'\n');
+      case 0x00:
+        out.write(r'\0');
+      case < 0x20 || 0x7F:
+        out.write('\\x${c.toRadixString(16).padLeft(2, '0')}');
+      default:
+        out.writeCharCode(c);
+    }
+  }
+  return (out..write('"')).toString();
+}
+
+/// A bookmark ref on a commit, a view fact (Story 10.3): jj's `CommitRef` (commit_templater.rs @ v0.46.0).
+@immutable
+class GraphRef {
+  /// A ref [name], on [remote] when it is a remote-tracking ref.
+  const GraphRef(this.name, {this.remote, this.synced = true, this.conflicted = false});
+
+  /// The bookmark's name.
+  final String name;
+
+  /// The remote, or null for a local ref.
+  final String? remote;
+
+  /// Whether a local ref is in sync with its tracked remotes.
+  final bool synced;
+
+  /// Whether the ref's target is conflicted.
+  final bool conflicted;
+
+  /// The ref as jj prints it: `name[@remote]`, each a revset symbol (`RefSymbolBuf`'s Display is `format_symbol`,
+  /// commit_templater.rs:1815-1831, :2132-2136 @ v0.46.0), then `??` when conflicted, else `*` for an unsynced local
+  /// ref (`impl Template for Rc<CommitRef>`).
+  String get display {
+    final String? remote = this.remote;
+    final sigil = conflicted
+        ? '??'
+        : remote == null && !synced
+        ? '*'
+        : '';
+    return '${jjRevsetSymbol(name)}${remote == null ? '' : '@${jjRevsetSymbol(remote)}'}$sigil';
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is GraphRef &&
+      other.name == name &&
+      other.remote == remote &&
+      other.synced == synced &&
+      other.conflicted == conflicted;
+
+  @override
+  int get hashCode => Object.hash(name, remote, synced, conflicted);
+
+  @override
+  String toString() => 'GraphRef($display)';
+}
+
+/// A commit's content (Story 10.3), loaded lazily (10.11): null until it is.
+@immutable
+class GraphCommitContent {
+  /// The content of one commit.
+  const GraphCommitContent({
+    required this.subject,
+    this.authorName = '',
+    this.authorEmail = '',
+    this.empty = false,
+    this.conflict = false,
+  });
+
+  /// The description's first line, `''` when the description is empty (jj's `description.first_line()`).
+  final String subject;
+
+  /// The author's name.
+  final String authorName;
+
+  /// The author's email.
+  final String authorEmail;
+
+  /// Whether the change is empty (jj's `empty()`).
+  final bool empty;
+
+  /// Whether the commit has a conflict (jj's `conflict()`).
+  final bool conflict;
+}
+
 /// One computed layout of a revset (Story 10.1 item 2), read only through accessors so the backing store can be
 /// swapped (10.12). Consumers add accessors, never backing objects.
 ///
@@ -150,6 +267,39 @@ abstract class GraphLayout {
 
   /// The operation the layout was computed at, when the source carries it.
   String? get operationId;
+
+  /// The full change id of [node] (jj's `change_id()`, in jj's reverse-hex letters).
+  String changeIdOf(int node);
+
+  /// The length of [node]'s shortest unique change-id prefix (jj's `shortest()`, commit_templater.rs:2295-2302 @
+  /// v0.46.0, which honours `revsets.short-prefixes`).
+  int changeIdPrefixLengthOf(int node);
+
+  /// jj's `change_offset()` of [node]; non-null only when it is hidden or divergent (templates.toml
+  /// `format_change_offset` @ v0.46.0).
+  int? changeOffsetOf(int node);
+
+  /// Whether [node] is in `immutable()` (the root included).
+  bool isImmutable(int node);
+
+  /// Whether [node] is hidden (jj's `hidden()`).
+  bool isHidden(int node);
+
+  /// Whether [node] is divergent (jj's `divergent()`).
+  bool isDivergent(int node);
+
+  /// The bookmarks on [node], in jj's order (`bookmarks()`).
+  List<GraphRef> refsOf(int node);
+
+  /// The workspace names whose working copy is [node] (jj's `working_copies()`): empty with at most one workspace
+  /// (commit_templater.rs:1491-1503 @ v0.46.0).
+  List<String> workingCopiesOf(int node);
+
+  /// This workspace's name, when the source carries it.
+  String? get workspaceName;
+
+  /// [node]'s content, null until it is loaded.
+  GraphCommitContent? contentOf(int node);
 
   /// Identifies this layout: two layouts with one version are the same layout (the delegate's `shouldRebuild`), so a
   /// version must be unique across every [GraphLayout] implementation, not only within one.
