@@ -684,7 +684,7 @@ _Ralph decided to run the commit-graph layout in Dart on the worker isolate (`sp
   - The stage-2 dumper (`spikes/graph-layout-ab/rust-inputs/src/jj_dump.rs`) keeps the first edge and records the other in its `.meta.json` sidecar (`dropped_duplicate_parents`).
   - 4.11 item 5 keeps V3 as the engine's validation and puts the rule into the input builders: one layout edge per (child, target) at the first position, `direct` if any duplicate is direct (open question).
   - **Follow-up:** SPEC §2 and the dumper adopt the rule before 4.11's goldens and 10.1's recordings are made. `tools/fuzz.mjs` should generate repeated targets for the builder's tests.
-- **The elided count N has no owner.** Low; only if 10.4 design question (a) keeps "~ N elided".
+- ~~**The elided count N has no owner.**~~ — REJECTED 2026-10-30 (spec-10-4-graph-edges-rounded-routes): no longer applies — the Epic 10 header answers design question (a) with "no counts" and moves the elided marker to 10.19. Low; only if 10.4 design question (a) keeps "~ N elided".
   - N depends on the revset (a parent is hidden relative to what the revset shows), so it is neither topology nor commit-intrinsic content, and 10.11's commit-id cache cannot hold it. It needs an index walk per Missing parent.
   - 4.10's Non-goals exclude it, and the re-plan's Epic 10 fixups now say "a follow-up count call".
   - **Follow-up:** if 10.4 (a) keeps N, create a story for an op-pinned count call for the visible nodes, e.g. `elided_counts(operation_id, revset, commit_ids)`.
@@ -897,7 +897,7 @@ _The spec (`spec-4-11-dart-layout-engine-worker-isolate.md`) carries all six ite
 
 _The spec (`spec-4-13-commit-stacks-layout-engine.md`) carries every item in its `deferred:` list. Numbers: its § Measurements; decisions: `decisions-review-4-10-to-4-13.md` ### 4.13._
 
-- **D11: a split run's stack node leaves its parent edge unprotected below the card.** Low; a known limit, recorded in `docs/graph-layout.md` §4.8 and §9.
+- ~~**D11: a split run's stack node leaves its parent edge unprotected below the card.**~~ — RESOLVED 2026-10-30 (spec-10-4-graph-edges-rounded-routes, commit 4ad948d): router B sends the edge up a gutter, so the painter marks nothing and `rows` does not grow (Claude's proposal); a D11 hand case and the Compact route-report gate witness it. Low; a known limit, recorded in `docs/graph-layout.md` §4.8 and §9.
   - The stack reserves its column from its own card, so its parent edge (a branch-off from m_1's parent) rises in the stack's column without a reservation and may pass behind a lower card there. Reserving from one pitch above the parent (§4.3) would let collapsing grow `rows`. The 1,000-DAG invariants test produces 637 split runs (compact, greedy).
   - **Follow-up:** 10.4 / 10.17 decide whether the painter marks such an edge, or Ralph prefers a growing `rows` (a SPEC amendment + goldens).
   - Resolved in Story 10.4 (2026-10-30), Claude's proposal: the painter marks nothing and `rows` does not grow. Router B classifies a first-parent edge into another column as `fork` only when the child's column is free between the rows, else `gutter` (docs/graph-layout.md §14.2), so the D11 edge climbs a gutter instead of the stack's column; the route report's Compact gate and a D11 hand case (`layout_invariants_test.dart`) witness it; §4.8 and §9 carry a dated note.

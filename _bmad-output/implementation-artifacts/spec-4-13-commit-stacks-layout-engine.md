@@ -24,6 +24,8 @@ deferred:
       deferred-work.md "Surfaced in Story 4.13".
     location: packages/zanshin_core/lib/src/graph_layout/stacks.dart (_segmentConstraints)
     severity: low
+    resolved: >-
+      2026-10-30 — fixed (spec-10-4-graph-edges-rounded-routes, commit 4ad948d): router B sends the edge up a gutter, so the painter marks nothing and `rows` does not grow.
   - summary: >-
       The design sample's compaction with the `compact` order (19 → 16, 9 → 8) is measured, not
       derived by hand.
