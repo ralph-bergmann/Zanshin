@@ -8240,6 +8240,7 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
 
 **House rules for every Epic 10 story.**
 - **Code and tests.** Code goes in `app/lib/src/features/graph/`, tests in `app/test/features/graph/` (mirroring). The POC (`app/lib/src/features/graph_poc/`, `app/lib/main4.dart`) is reference only.
+  - *Note 2026-10-30 (Story 11.10):* the POC (`app/lib/src/features/graph_poc/`, `app/lib/main4.dart`, `app/test/features/graph_poc/commit_graph_view_test.dart`) is removed. Read it at revision `8bd1c34b8e3c048eab8b53a2d4ea4ef79ca38072` (`git show <rev>:<path>`).
 - **Bridge imports.** The app imports only `package:zanshin_core/zanshin_core.dart`. That library exports none of the handle, show, bookmark, mutation, exception or graph types today (`zanshin_core.dart:9-33`). Each story adds the types it consumes to the `show` list; that is what the `[UI/bridge]` tag means.
 - **Material.** Material types come from `package:material_ui` only; its `ThemeMode` is not Flutter's.
   - *Amended 2026-10-16 (decision 16.1):* no visible control is Material or Yaru. Controls are 11.11's Zs library on Flutter's widgets-layer primitives (`app/lib/src/shared/controls/`; *since 2026-10-17 `packages/zanshin_ui`, Story 11.14*), and text entry is Flutter's `TextField` without decoration. The Material types that remain (`MaterialApp`, `ThemeData`) still come from `package:material_ui` only. Yaru leaves by 11.10.
@@ -9762,9 +9763,12 @@ NEEDS DESIGN:
 - So this story is thin by default. It wires the real data and the verbs into a minimal `material_ui` column and invests nothing in polish. Design question (a) asks whether that reading is right.
 - The design's review workflow reviews diffs that do not exist before Epic 5: the review meter, the per-file Viewed state, auto-advance and Inline/Split. It moves to the Epic 5 diff follow-up (deferred-work).
 - The prototype's data defects (prototype defect 12) are still not copied.
-- Mock widgets with a similar structure exist on `MockCommit` and stay for Ralph to retire:
+- Mock widgets with a similar structure existed on `MockCommit`:
   - `CommitDetail`: `app/lib/src/features/commits/commit_detail.dart:11`;
   - `DiffBlock`: `app/lib/src/features/commits/diff_block.dart:11`.
+  - *Note 2026-10-30 (Story 11.10):* both files and `MockCommit` are deleted. Read them at revision
+    `8bd1c34b8e3c048eab8b53a2d4ea4ef79ca38072`, e.g.
+    `git show 8bd1c34b:app/lib/src/features/commits/commit_detail.dart`.
 
 **Scope.**
 1. **Frame.**

@@ -2235,3 +2235,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **Parts of epics 10.5 item 14 are handed on, not built: @'s off-screen direction (10.6's pill), the inspector's scroll for a covered selection with its witnesses (10.8), and the plane's extra margins (dropped as Claude's proposal).** Low.
   - Recorded in the epics.md "Built 2026-10-30" note under Story 10.5; 10.6 item 6 and 10.8 read them as 10.5's. `GraphView` (`app/lib/src/features/graph/graph_view.dart`) takes the shell's insets as they are.
   - **Follow-up:** 10.6 publishes @'s direction against the visible rect; 10.8 scrolls a covered selection when the inspector opens.
+
+## Surfaced in Story 11.10 (bmad-build-auto, 2026-10-30)
+
+- **The DS's app-icon bundle prescribes solid layer fills over white-stroked open paths, which Icon Composer renders as three filled crescents, not waves.** Low.
+  - `design_system/assets/app-icon/Zanshin-NamiIndigo.icon/icon.json` (`"fill": {"solid": …}` per layer) and `README.txt` ("each fills with the listed color") over `Wave-*.svg` drawn `stroke="#ffffff"`; an `xcrun actool` render of exactly that showed crescents. The app's `app/macos/Runner/NamiIndigo.icon` therefore strokes each layer in its gold with `"fill" : "none"` (spec-11-10 Spec Change Log).
+  - **Follow-up:** the next design-artifacts round strokes the DS layers in their golds (or notes "no layer fill") so a re-sync does not bring the crescents back.
