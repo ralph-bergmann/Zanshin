@@ -2200,7 +2200,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **Nothing refreshes the day axis's "now" on window focus or at local midnight; the labels re-format only when their owner passes a new `nowMs`.** Low.
   - Design question (a), Claude's proposal: freeze "now" per reload, re-format on window focus and at midnight (a repaint). 10.2 makes `nowMs` a paint-only input of `GraphDayAxisPainter` (`app/lib/src/features/graph/day_axis.dart`) and witnesses the repaint. The clock and the reload belong to 10.5's view model, whose story text names neither trigger.
   - **Follow-up:** Story 10.5 owns "now". It freezes it per reload, and passes a fresh one on window focus and from a timer at the next local midnight (at the layout's offset).
-- **Day labels are excluded from semantics, so each card's semantics label must carry its date (design question (d), Claude's proposal). The placeholder cards carry none.** Low.
+- ~~**Day labels are excluded from semantics, so each card's semantics label must carry its date (design question (d), Claude's proposal). The placeholder cards carry none.**~~ — RESOLVED 2026-10-30 (spec-10-3-commit-cards, commit ecfa75e): the card's label ends with the spoken relative date and the axis's day label, refreshed on the minute tick. Low.
   - The axis only paints and adds no semantics node (`app/lib/src/features/graph/day_axis.dart`). Cards and their semantics are Story 10.3's.
   - **Follow-up:** Story 10.3's card semantics label includes the commit's date.
   - **Resolved in Story 10.3 (2026-10-30):** the label carries the spoken relative date plus the axis's day label ("40 minutes ago, Today"), and refreshes on the minute tick (`graphCardLabel`, `app/lib/src/features/graph/graph_card.dart`).

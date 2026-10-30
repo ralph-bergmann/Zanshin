@@ -25,6 +25,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/day_axis.dart
     severity: low
+    resolved: >-
+      2026-10-30 — fixed (spec-10-3-commit-cards, commit ecfa75e): the card's label ends with the spoken relative date and the axis's day label, refreshed on the minute tick.
   - summary: >-
       The day axis was not checked visually (Marionette) in the running catalogue.
     evidence: |-
