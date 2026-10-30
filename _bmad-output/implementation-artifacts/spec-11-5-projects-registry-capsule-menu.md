@@ -62,6 +62,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/project_session.dart
     severity: low
+    resolved: >-
+      2026-10-30 — fixed (spec-10-5-graph-view-model-repo-wiring, commit 5d5548c): RepoGraphSource over ProjectSession.repo (whose ProjectRepo gained events); the epic text is reconciled; wiring into HomePage is 10.12's.
   - summary: >-
       The Project menu has no VoiceOver name: the DS names it "Project", and ZsMenuAnchor names a menu only through subject, which also draws a head the Project menu does not have.
     evidence: |-
@@ -78,6 +80,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/project_session.dart (_refresh)
     severity: medium (unverified)
+    resolved: >-
+      2026-10-30 — fixed (spec-10-5-graph-view-model-repo-wiring, commit 5d5548c): measured — bursts of 40, 40 and 80 CLI commands against an open project gave 0 divergent changes and 0 concurrent operations, so no debounce.
   - summary: >-
       One malformed registry entry makes SettingsStore move the whole settings.json aside and reset every setting, the registry included.
     evidence: |-

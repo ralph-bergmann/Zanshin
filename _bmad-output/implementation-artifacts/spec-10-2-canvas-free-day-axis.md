@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/day_axis.dart (GraphDayAxisPainter.nowMs)
     severity: low
+    resolved: >-
+      2026-10-30 — fixed (spec-10-5-graph-view-model-repo-wiring, commit 5d5548c): GraphViewModel.now is fresh on every reload and on window focus and ticks on each minute boundary, so midnight lands on time.
   - summary: >-
       Day labels are excluded from semantics, so the card's own semantics label must carry its date (design question (d), Claude's proposal); the placeholder cards carry none.
     evidence: |-

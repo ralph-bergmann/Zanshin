@@ -15,6 +15,8 @@ deferred:
     evidence: 'epics.md Story 10.5 items 14-15 (":8907-8920", ":8943-8949") say the view model publishes `calm` and takes `GraphInsets` "as a listenable"; 11.3''s witnesses (epics.md:12076-12080, :12172-12176) need the 30 px / 650 ms machine before 10.5 exists, so this spec builds it in `CalmController` (Design Notes "Calm"). A fling''s ballistic glide after the fingers lift sends no pointer events, so calm can end while the graph still glides.'
     location: 'app/lib/src/features/shell/calm_controller.dart'
     severity: low
+    resolved: >-
+      2026-10-30 — fixed (spec-10-5-graph-view-model-repo-wiring, commit 5d5548c): GraphView reads the scope's insets and reports pans and flings through reportUserScroll; the epic text is reconciled; minimap scrolling comes with 10.16's minimap.
   - summary: 'The project window keeps two stand-ins for Story 11.4 until it lands: a WindowDragArea over the bar row and a canvasBase fill under the graph.'
     evidence: 'epics.md Story 11.3 item 1 and Story 11.4 own the drag region and the canvas; without the stand-ins the new home could not be moved (the Yaru page''s WindowDragArea AppBar, zanshin_app.dart:155, goes) and the vibrancy view would show through (MainWindowChrome.swift:90-110).'
     location: 'app/lib/src/features/home/home_page.dart'
