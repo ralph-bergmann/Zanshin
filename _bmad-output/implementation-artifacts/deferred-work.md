@@ -688,6 +688,7 @@ _Ralph decided to run the commit-graph layout in Dart on the worker isolate (`sp
   - N depends on the revset (a parent is hidden relative to what the revset shows), so it is neither topology nor commit-intrinsic content, and 10.11's commit-id cache cannot hold it. It needs an index walk per Missing parent.
   - 4.10's Non-goals exclude it, and the re-plan's Epic 10 fixups now say "a follow-up count call".
   - **Follow-up:** if 10.4 (a) keeps N, create a story for an op-pinned count call for the visible nodes, e.g. `elided_counts(operation_id, revset, commit_ids)`.
+  - Resolved in Story 10.4 (2026-10-30): the Epic 10 header (2026-09-30 note, epics.md:8988-8994) answers design question (a) with "no counts" and moves the elided marker to 10.19, so N needs no owner and no `elided_counts` call is created.
 - ~~**The spike's dumper is the reference input builder and must move onto the product path.**~~ — REJECTED 2026-10-26 (spec-10-1-graph-viewport-2d-virtualized): no longer applies — Story 4.11 switched the dumper to `graph_topology` (`jj_dump.rs:52-53`); 10.1's medium-narrow recording comes from its tracked output. Low.
   - `jj_dump.rs` calls `Repo::walk_graph` and computes the `priority` stand-in itself (`assign_priorities`, `rust-inputs/src/input.rs:147`).
   - 10.1 records its layouts from these dumps until 10.12, and 4.11's end-to-end tests compare the Dart input builder against them.
@@ -899,6 +900,7 @@ _The spec (`spec-4-13-commit-stacks-layout-engine.md`) carries every item in its
 - **D11: a split run's stack node leaves its parent edge unprotected below the card.** Low; a known limit, recorded in `docs/graph-layout.md` §4.8 and §9.
   - The stack reserves its column from its own card, so its parent edge (a branch-off from m_1's parent) rises in the stack's column without a reservation and may pass behind a lower card there. Reserving from one pitch above the parent (§4.3) would let collapsing grow `rows`. The 1,000-DAG invariants test produces 637 split runs (compact, greedy).
   - **Follow-up:** 10.4 / 10.17 decide whether the painter marks such an edge, or Ralph prefers a growing `rows` (a SPEC amendment + goldens).
+  - Resolved in Story 10.4 (2026-10-30), Claude's proposal: the painter marks nothing and `rows` does not grow. Router B classifies a first-parent edge into another column as `fork` only when the child's column is free between the rows, else `gutter` (docs/graph-layout.md §14.2), so the D11 edge climbs a gutter instead of the stack's column; the route report's Compact gate and a D11 hand case (`layout_invariants_test.dart`) witness it; §4.8 and §9 carry a dated note.
 - **The design sample's compaction with the `compact` order is measured, not derived by hand.** Low.
   - By hand (and asserted): `compact` mode, greedy, every run collapsed — all 19 → 15, default 9 → 8 (the planning estimate 9 → 7 missed a binding column constraint at sxmtvqno). With the `compact` order the engine gives 19 → 16 and 9 → 8; the stack goldens pin those outputs, but no hand derivation backs them.
   - **Follow-up:** none needed unless a review wants the derivation.
@@ -2216,3 +2218,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **The commit cards were not checked visually (Marionette) in the running catalogue.** Low.
   - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session. Widget tests cover layout, yield order, rings, hatch, hit areas, input and semantics (`app/test/features/graph/graph_card_test.dart`); the smoke test pumps `graph/card/states`.
   - **Follow-up:** in a console session, open `graph/card/states` and `graph/viewport/recording` via `zanshinCatalogue.open`, screenshot them in night and paper, and compare with the DS cards (`design_system/components/graph/graph.card.html`, `immutable.card.html`, `workspaces.card.html`).
+
+## Surfaced in Story 10.4 (bmad-build-auto, 2026-10-30)
+
+- **The graph edges were not checked visually (Marionette) in the running catalogue against the DS cards.** Low.
+  - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session. Widget tests cover geometry, dashes, bridges, lineage, classification, culling, the hit lookup and paint order (`app/test/features/graph/graph_edges_test.dart`); the smoke tests show `graph/viewport/recording` and the 50k Scale case paint edges.
+  - **Follow-up:** in a console session, open `graph/viewport/recording` (design-all, free and compact; hover a card) and `graph/viewport/scale` via `zanshinCatalogue.open`, screenshot them in night and paper, and compare with the DS cards (`design_system/components/graph/lines.card.html`, `fanout.card.html`, `graph.card.html`).
