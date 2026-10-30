@@ -5,7 +5,7 @@ created: '2026-10-30'
 status: 'done'
 baseline_revision: 'fd0a5499c43d46198c6bbf6a9d10b958fed462c5'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
@@ -332,6 +332,47 @@ deferred:
   - `[low]` `[reject]` (intent #10) The anchor-under-W-change, State-across-reload and both-themes witnesses run on `TestCard`. Those are viewport mechanisms (10.1) the card does not change; the rings are tested in both themes.
   - `[false]` `[reject]` (intent #11) The Auto Run Result and the deferred-work mirror are missing. They are written at finalize, in the spec's commit.
 
+### 2026-10-30 — Review pass (follow-up)
+- verdicts: 37 findings — high 0, medium 0, low 30, false 6, maybe-false 1 (intent 12, verification-gap 4, blind 16, edge 5); 7 of them carried from the first pass.
+- findings:
+  - `[low]` `[reject]` (intent #1) The label speaks "40 minutes ago" where the intent's `<relative>` could mean the card's "40m". The spoken form is the screen-reader rendering of the same date (VoiceOver reads "40m" as metres); it was the first pass's medium patch, and the day-label rule is unchanged.
+  - `[low]` `[patch]` carried (intent #2) Workspace `name@` slots use `jjRefSymbol` (jj's `is_safe_identifier`), not revset `format_symbol`. The first pass's edge #10 patch; CLI parity decides. Not patched again.
+  - `[false]` `[reject]` (intent #3) Compact cards omit the "empty" word. DS ChangeCard.jsx:47 shows `empty` only in the detailed meta line; the compact line's flags are the icons. The label keeps "empty".
+  - `[false]` `[reject]` (intent #4) The menu-open look beats the @ fill and border. graph.css:84 `.zs-card.is-menu` comes after :5 `.zs-card.is-wc` at the same specificity, so the CSS does the same; `openMenu` toggling is carried from blind #10 (reject).
+  - `[false]` `[reject]` (intent #5) The `+N` workspace tag is drawn as a bordered tag, not plain text. graph.css:44 `.zs-ws.is-more` is a `.zs-ws` (the inset border) with 400 `--text-dim`, which is what the code paints.
+  - `[low]` `[reject]` (intent #6) The root with null content still reads "root()". "root()" is the root's name, not loaded content; the null-content rule drops the description and author, which the root has none of.
+  - `[false]` `[reject]` (intent #7) "The catalogue's `ListenableBuilder` rebuilds the viewport on hover and selection, so cards may build." `GraphChildDelegate.shouldRebuild` (graph_child_delegate.dart:46-49) compares the layout version, the builder and the pinned keys; the catalogue passes the tear-off `_card` (graph.dart:254), which is equal across builds, so hover and selection build no card.
+  - `[low]` `[reject]` carried (intent #8) No live-viewport test of a W / Detailed remap. Same as the first pass's intent #10: a 10.1 viewport mechanism tested on `TestCard`.
+  - `[low]` `[defer]` carried (intent #9) Pixels are proven with the test font and against the derived tokens, not the DS with Inter / JetBrains Mono. The first pass's deferred Marionette check; not deferred again.
+  - `[low]` `[reject]` (intent #10) The inactive window's neutral selected border is not asserted. The border is `GraphTheme.cardSelectedBorder`, resolved from the same inactive tokens the asserted `ringSelect` uses; an extra assertion adds no behaviour.
+  - `[low]` `[reject]` (intent #11) Only `RecordedGraphLayout` implements the new accessors and fixture prefixes stand in for jj's. Live data is 10.12's (the intent's Never list).
+  - `[low]` `[patch]` carried (intent #12) The pan gate moved from `isOnCard` to "a child claimed the press". The first pass's verification-gap patch, with its tests.
+  - `[low]` `[patch]` (verification-gap #1) Nothing tested the hover hand-back of a hovered card that unmounts (`RenderGraphCard.detach`). Added "a hovered card that leaves the viewport gives its hover back" (graph_card_test.dart, in the viewport): hover by the controller, scroll the card out, expect `hovered` null.
+  - `[low]` `[patch]` (verification-gap #2) No root case without the immutable flag, so `GraphCardData.of`'s `isRoot ||` was unpinned. Added the "root without flag" case to the hatch test.
+  - `[low]` `[patch]` (verification-gap other #1) `syntheticLayout` reported its root as mutable, against `GraphLayout.isImmutable`'s contract ("the root included"). It now passes a `flags` list with the root's immutable bit (synthetic_layout.dart).
+  - `[low]` `[reject]` (verification-gap other #2, grouped with blind #13 and edge #5) `RenderGraphViewport.isOnCard` has no production caller since the pan gate moved. It is the card-rect geometry probe the 10.1 viewport tests use to pick press points; deleting it means rewriting six of those tests, and nothing diverges meanwhile.
+  - `[low]` `[patch]` (blind #1) The conflict and merge flags hold their glyph from layout, but the `icons` setter only repainted, so a registry that arrives after the first layout left them blank. The setter now marks layout.
+  - `[low]` `[reject]` carried (blind #2) `GraphCardData` has no value equality, so every `GraphCard` rebuild relayouts. Same as the first pass's blind #4: rebuilds come from theme / appearance changes (which relayout anyway) or new data.
+  - `[false]` `[reject]` carried (blind #3) "A right-click or the VoiceOver Actions action opens the menu while actions are disabled." Same as the first pass's edge #3: the spec disables only ••• and the add-bookmark circle.
+  - `[low]` `[reject]` carried (blind #4) A second right-click closes the open menu, and a right-click does not select. The first pass's blind #10: the controller methods are placeholders that 10.15 overrides; selection on right-click is 10.6's.
+  - `[low]` `[reject]` (blind #5) `openMenu` / `openBookmarks` drop the anchor and `openBookmarks` is empty. The spec makes them overridable placeholders (10.15 builds the menu and the popover); the catalogue has no popover to open.
+  - `[low]` `[patch]` (blind #6, grouped with edge #3) The legend pill printed raw names while jj's `CommitRef` and `GraphRef.display` quote them (`"my bm"@"up stream"`). `graphLegendParts` now runs the name and the remote through `jjRevsetSymbol`; test added.
+  - `[low]` `[patch]` (blind #7) The ticket regex matched inside words (`fix/iOS17-2-crash` → `S17-2`, `fix/iO` dropped). It now needs a word start (`(?<![A-Za-z0-9])`); test added. Lowercase keys stay unmatched, as the DS's regex.
+  - `[low]` `[reject]` (blind #8) `paint` writes `_addWasRevealed`. The latch reads the state painted on screen, which is what the fade-out must follow; moving it into three listeners adds branches for no observed defect.
+  - `[false]` `[reject]` (blind #9) "A Detailed ↔ Compact remap keeps the old id in the label." A test that remaps one widget instance from 40 to 62 px (no build) read the new 8-character id without any change to the code: the relayout refreshes the semantics node.
+  - `[low]` `[reject]` (blind #10) Compact yield leaves the space freed by folding tags empty instead of regrowing the subject. It takes three or more workspaces on a narrow compact card, and the recompute adds a yield branch; the spec's order (the subject first) holds.
+  - `[low]` `[reject]` (blind #11) The pill shows no disabled look and no menu-open fill. The spec disables only ••• and the add circle; the menu-open part is carried from the first pass's blind #11 (false, graph.css:22 / :85).
+  - `[low]` `[reject]` (blind #12) The reveal rule exists in the State and in the render box. Both read the same controller and `inactive`; the State only drives the animation, and the tests cover both through the hit and paint witnesses.
+  - `[low]` `[reject]` (blind #13) Grouped with verification-gap other #2.
+  - `[low]` `[reject]` (blind #14) `_CardStates._matrix` recreates the catalogue's controllers in `build` on a knob change. Catalogue-only; the old controllers are swapped in the same frame, `removeListener` after dispose is allowed, and the smoke test pumps the use case.
+  - `[low]` `[reject]` (blind #15) The name-shortening loop steps 1 px and `_paintIcon` opens a `saveLayer` per glyph. The loop runs only for named workspaces too wide for the line; the layer per glyph is `RenderZanshinIcon`'s own way to tint a picture.
+  - `[low]` `[patch]` (blind #16) Missing tests for new render paths. Added the detach hand-back (verification-gap #1) and the quoted pill (blind #6); the icons setter change is one line; disabled secondary and Actions are by design (blind #3).
+  - `[low]` `[reject]` (edge #1) `paintGraphHatch` loops forever for `period <= 0`. Its only callers pass 6 and 3 (constants).
+  - `[maybe-false]` `[reject]` (edge #2) A re-attached card would keep a stale repaint layer for state changed while detached. The viewport drops unlaid cards (they are disposed, not re-attached; pinned ones stay laid out, graph_viewport_render.dart:410-436); only a reparented ancestor could re-attach one, which nothing does. If true it would be low.
+  - `[low]` `[patch]` (edge #3) Grouped with blind #6.
+  - `[low]` `[reject]` (edge #4) Each distinct bookmark set registers a new `CustomSemanticsAction` label in its static table. The spec mandates "Bookmarks: <names>"; the table grows by short strings per distinct set.
+  - `[low]` `[reject]` (edge #5) Grouped with verification-gap other #2.
+
 ## Design Notes
 
 - **Why a leaf `RenderBox`, not text slots.** A `Text` slot would rebuild on the minute tick, and hover and selection must build nothing. The splash card already paints its texts with `TextPainter`s. One node with custom semantics actions is also better VoiceOver than three nested buttons.
@@ -365,6 +406,14 @@ Gate rule for this run: no `cargo make test` / `test-full` / `coverage`.
 - `dart format --set-exit-if-changed app packages/zanshin_ui`: 0 changed.
 - Marionette check: not run. The unattended synchronous run cannot hold `flutter run -d macos -t widgetbook/main.dart`. Deferred (frontmatter, deferred-work.md "Surfaced in Story 10.3").
 - No Rust, FFI, schema or jj verb changed, so no cargo, clippy, codegen or parity check applies. The full gate is left to the story loop's end, per this run's gate rule.
+
+**Verification notes (2026-10-30, follow-up review pass, after its patches):**
+- `flutter test --reporter=failures-only test/features/graph test/widgetbook` (app): 467 passed.
+- `flutter test --reporter=failures-only test/design` (packages/zanshin_ui): 74 passed.
+- `dart analyze --fatal-infos app packages/zanshin_ui`: no issues.
+- `dart format --set-exit-if-changed app packages/zanshin_ui`: 0 changed.
+- Blind #9 was refuted by experiment: a remap test of one widget instance (40 → 62 px, no build) read the new id with the code unchanged; the test was not kept.
+- No Rust, FFI, schema or jj verb changed: no cargo, clippy, codegen or parity check. No full gate, per this run's gate rule.
 
 ## Auto Run Result
 
@@ -422,3 +471,21 @@ Status: done. Code commit `ecfa75e8856ae0f2c809bddbe608aa680878d6fc`, plus the f
 - Nobody has looked at the cards on screen yet. Pixel offsets of badges, pills and the hatch against the DS cards are unverified, and the test font is not Inter or JetBrains Mono.
 - With the 1 px mouse tap slop, a click that wobbles 2 px on an affordance neither opens it nor pans (as on any Flutter control).
 - The fixture prefix stand-in (shortest prefix among the layout's own ids) is not jj's index-wide `shortest()`; real prefixes arrive with 10.12.
+
+### Follow-up review pass (2026-10-30)
+
+Status: done. Four review layers (blind, edge case, verification gap, intent alignment) over the code diff since `fd0a5499c43d46198c6bbf6a9d10b958fed462c5`.
+
+**Changes:**
+- `app/lib/src/features/graph/graph_card.dart`: `graphLegendParts` prints the name and remote as jj's revset symbols (quoted when not an identifier, as `GraphRef.display`), and a ticket key must start a word.
+- `app/lib/src/features/graph/graph_card_render.dart`: the `icons` setter marks layout, since the flag items hold their glyph from layout.
+- `app/widgetbook/graph/synthetic_layout.dart`: the root carries the immutable flag, as `GraphLayout.isImmutable` documents.
+- `app/test/features/graph/graph_card_test.dart`: tests for the quoted pill and the word-start ticket, a root without the flag, and the hover hand-back of a card that leaves the viewport.
+
+**Review.** 37 findings: 0 high, 0 medium, 30 low, 6 false, 1 maybe-false; 7 carried from the first pass.
+- Patched, 7 entries, all low: the pill's quoting; the ticket regex; the icons setter; the synthetic root flag; the detach hand-back test; the flagless-root test; the missing-tests entry (covered by those).
+- Deferred: none new (the carried Marionette item stays deferred), so `deferred-work.md` gains no entry.
+- Rejected, each with its reason in the triage log: the spoken date (intent #1), the root's "root()" with null content, the inactive border assertion, the fixture data seam, `isOnCard` (kept as the 10.1 tests' geometry probe), the anchors and empty `openBookmarks` (10.15's), the paint-time latch, the compact subject regrow, the pill's disabled look, the duplicated reveal rule, the catalogue matrix in `build`, the yield loop and glyph layers, `paintGraphHatch` with period ≤ 0, the semantics action table, the re-attach staleness (maybe-false: no re-attach path exists), and 6 false (compact "empty", menu-over-@ precedence, the `+N` tag's border, catalogue builds, the remap label, disabled right-click).
+- Follow-up review recommended: **false**. This follow-up pass patched no high finding (0 high, 0 medium, 7 low patched); the work has converged.
+
+**Residual risks:** unchanged from the first pass; the cards are still not checked on screen against the DS (the deferred Marionette item).
