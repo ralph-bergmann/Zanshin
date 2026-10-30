@@ -210,7 +210,8 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
       return;
     }
     _icons = value;
-    markNeedsPaint();
+    // The flag items hold their glyph from layout.
+    markNeedsLayout();
   }
 
   /// The graph's card controller.

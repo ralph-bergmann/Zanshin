@@ -177,6 +177,8 @@ RecordedGraphLayout syntheticLayout(int nodeCount, {bool free = false, int seed 
     bucketLastRows: Int32List.fromList(bucketLastRows),
     rootIndex: nodeCount == 0 ? null : nodeCount - 1,
     workingCopyIndex: nodeCount == 0 ? null : nodeCount - 1 - head[0],
+    // The root is in immutable() (GraphLayout.isImmutable).
+    flags: nodeCount == 0 ? null : (Uint8List(nodeCount)..[nodeCount - 1] = RecordedGraphLayout.flagImmutable),
     contents: <GraphCommitContent?>[for (var i = 0; i < nodeCount; i++) fakeContent(i, keys[i])],
     refs: <List<GraphRef>>[for (var i = 0; i < nodeCount; i++) fakeRefs(i, keys[i])],
   );

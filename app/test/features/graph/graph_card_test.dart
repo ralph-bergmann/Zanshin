@@ -262,6 +262,22 @@ void main() {
       expect(graphLegendParts(const GraphRef('main', conflicted: true)).sigil, '??');
       expect(graphLegendParts(const GraphRef('dev', synced: false)).sigil, '*');
       expect(graphLegendParts(const GraphRef('dev', remote: 'origin', synced: false)).sigil, '', reason: 'local only');
+      // A ticket key starts a word: `iOS17-2` is no ticket.
+      expect(graphLegendParts(const GraphRef('fix/iOS17-2-crash')), (
+        prefix: 'fix/',
+        main: 'iOS17-2-crash',
+        remote: '',
+        sigil: '',
+        rest: '',
+      ));
+      // Names that are no identifier print quoted, as jj's CommitRef (and GraphRef.display) print them.
+      expect(graphLegendParts(const GraphRef('my bm', remote: 'up stream')), (
+        prefix: '',
+        main: '"my bm"',
+        remote: '@"up stream"',
+        sigil: '',
+        rest: '',
+      ));
     });
 
     test("GraphRef.display prints jj's CommitRef", () {
@@ -689,6 +705,8 @@ void main() {
       for (final (String what, RecordedGraphLayout layout) in <(String, RecordedGraphLayout)>[
         ('immutable', one(flags: _imm)),
         ('root', one(root: true, flags: _imm, content: null)),
+        // A layout that does not flag its root (the synthetic ones did not): the root is immutable all the same.
+        ('root without flag', one(root: true, content: null)),
       ]) {
         for (final state in <String>['base', 'hover', 'selected', 'menu']) {
           final controller = GraphCardController(now: _now);
@@ -1099,6 +1117,26 @@ void main() {
       expect(Offset(host.h.offset, host.v.offset), Offset.zero);
       expect(controller.calls.last.$1, 'menu');
     }, variant: macOS);
+
+    testWidgets('a hovered card that leaves the viewport gives its hover back', (tester) async {
+      final RecordedGraphLayout layout = chainLayout(60, cols: 2);
+      final controller = RecordingController();
+      addTearDown(controller.dispose);
+      final host = Host(layout, controller);
+      await host.pump(tester);
+      final String key = layout.keyOf(onScreen(host));
+      // No pointer: the unmounted card gets no onExit, so only its detach can clear the key.
+      controller.hovered.value = key;
+      await tester.pump();
+      host.v.jumpTo(host.v.position.maxScrollExtent);
+      await tester.pump();
+      expect(
+        find.byWidgetPredicate((w) => w is GraphCard && w.layout.keyOf(w.node) == key, skipOffstage: false),
+        findsNothing,
+      );
+      await tester.pump();
+      expect(controller.hovered.value, isNull);
+    });
   });
 
   group('the minute tick', () {

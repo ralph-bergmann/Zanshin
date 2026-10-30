@@ -251,17 +251,18 @@ int graphLocalDay(int tsMs, {required int utcOffsetMinutes}) {
 }
 
 /// A bookmark legend's parts (DS components/graph/BookmarkChip.jsx:5-12; epics.md:8903-8909): a ticket key
-/// `[A-Z][A-Z0-9]+-\d+` leads with the rest (its `_-/.` lead trimmed) after it; otherwise the prefix path, then the
+/// `[A-Z][A-Z0-9]+-\d+` at a word start leads with the rest (its `_-/.` lead trimmed) after it; otherwise the prefix path, then the
 /// last segment. `remote` is `@remote` or empty, `sigil` jj's `??` / `*`.
 ({String prefix, String main, String remote, String sigil, String rest}) graphLegendParts(GraphRef ref) {
-  final String base = ref.name;
-  final remote = ref.remote == null ? '' : '@${ref.remote}';
+  // jj's CommitRef prints both as revset symbols (quoted when not an identifier), as [GraphRef.display] does.
+  final String base = jjRevsetSymbol(ref.name);
+  final remote = ref.remote == null ? '' : '@${jjRevsetSymbol(ref.remote!)}';
   final sigil = ref.conflicted
       ? '??'
       : ref.remote == null && !ref.synced
       ? '*'
       : '';
-  final RegExpMatch? ticket = RegExp(r'[A-Z][A-Z0-9]+-\d+').firstMatch(base);
+  final RegExpMatch? ticket = RegExp(r'(?<![A-Za-z0-9])[A-Z][A-Z0-9]+-\d+').firstMatch(base);
   if (ticket != null) {
     final String rest = base.substring(ticket.end).replaceFirst(RegExp(r'^[_\-/.]+'), '');
     return (prefix: '', main: ticket[0]!, remote: remote, sigil: sigil, rest: rest);
