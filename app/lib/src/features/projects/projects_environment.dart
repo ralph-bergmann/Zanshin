@@ -8,6 +8,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 
+import '../../l10n/strings.dart';
+
 final _log = Logger('zanshin.projects');
 
 /// What the Projects window reads from and asks of its surroundings besides the registry and the session (Story 11.6;
@@ -53,9 +55,9 @@ class JjIdentity {
 
   /// The jj CLI's phrase for what is missing (`cli_util.rs:2447-2449` @ v0.46.0), or null when both are configured.
   String? get missingPhrase => switch ((name == null, email == null)) {
-    (true, true) => 'Name and email not configured.',
-    (true, false) => 'Name not configured.',
-    (false, true) => 'Email not configured.',
+    (true, true) => 'Name and email not configured.', // l10n-ignore: jj's text (cli_util.rs)
+    (true, false) => 'Name not configured.', // l10n-ignore: jj's text (cli_util.rs)
+    (false, true) => 'Email not configured.', // l10n-ignore: jj's text (cli_util.rs)
     (false, false) => null,
   };
 
@@ -83,7 +85,7 @@ class DesktopProjectsEnvironment implements ProjectsEnvironment {
   Future<String?> appVersion() async {
     try {
       final PackageInfo info = await PackageInfo.fromPlatform();
-      return '${info.version} · Build ${info.buildNumber}';
+      return platformStrings().versionBuild(info.version, info.buildNumber);
     } on Exception catch (error, stack) {
       _log.warning('the app version could not be read', error, stack);
       return null;

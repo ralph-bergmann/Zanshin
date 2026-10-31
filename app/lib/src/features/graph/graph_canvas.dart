@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:zanshin_core/zanshin_core.dart' show RouteGeometry;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'day_axis.dart';
 import 'graph_card.dart';
 import 'graph_edges.dart';
@@ -133,12 +134,18 @@ class _GraphCanvasState extends State<GraphCanvas> {
     return _rows = UniformRows(widget.layout, metrics);
   }
 
-  /// The day-axis painter, recreated (the old one disposed) when the rows, the theme or the local day change.
+  /// The day-axis painter, recreated (the old one disposed) when the rows, the theme, the strings or the local day
+  /// change.
   GraphDayAxisPainter _axisFor(VerticalLayout rows, GraphTheme theme) {
     final int nowMs = widget.cards.now.value;
     final int day = _dayOf(nowMs);
+    final AppLocalizations strings = context.l10n;
     final GraphDayAxisPainter? axis = _axis;
-    if (axis != null && identical(_axisRows, rows) && axis.theme == theme && _axisDay == day) {
+    if (axis != null &&
+        identical(_axisRows, rows) &&
+        axis.theme == theme &&
+        identical(axis.strings, strings) &&
+        _axisDay == day) {
       return axis;
     }
     axis?.dispose();
@@ -147,6 +154,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
     return _axis = GraphDayAxisPainter(
       axis: GraphDayAxis.of(widget.layout, rows),
       theme: theme,
+      strings: strings,
       nowMs: nowMs,
       utcOffsetMinutes: widget.layout.utcOffsetMinutes,
     );

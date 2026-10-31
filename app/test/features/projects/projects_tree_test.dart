@@ -2,6 +2,7 @@
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/l10n/app_localizations_en.dart';
 import 'package:zanshin/src/features/projects/projects_tree_model.dart';
 import 'package:zanshin/src/features/projects/tree_drop.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
@@ -59,7 +60,7 @@ void main() {
           if (row.node.content case final ProjectsGroupItem group) group,
       ];
       expect(
-        <String>[for (final group in groups) '${group.name} ${group.count}'],
+        <String>[for (final group in groups) '${group.name} ${group.countIn(AppLocalizationsEn())}'],
         <String>[
           'Work 1 · 1 group',
           'Mobile 2',
@@ -67,7 +68,7 @@ void main() {
         ],
       );
       expect(
-        const ProjectsGroupItem(ProjectGroup(id: 'g', name: 'G'), projects: 3, groups: 2).count,
+        const ProjectsGroupItem(ProjectGroup(id: 'g', name: 'G'), projects: 3, groups: 2).countIn(AppLocalizationsEn()),
         '3 · 2 groups',
       );
     });

@@ -5,6 +5,7 @@ import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import '../app/zanshin_app_view_model.dart';
 import 'active_window_tracker.dart';
 import 'window_chrome_builder.dart';
@@ -99,7 +100,9 @@ class _WindowMaterialApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Zanshin',
+    title: 'Zanshin', // l10n-ignore: the product name
+    localizationsDelegates: zanshinLocalizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     theme: lightTheme,
     themeMode: themeMode,
     darkTheme: darkTheme,

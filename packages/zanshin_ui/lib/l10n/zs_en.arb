@@ -1,0 +1,44 @@
+{
+  "@@locale": "en",
+  "textMenuUndo": "Undo",
+  "@textMenuUndo": {"description": "Text-field context menu item that undoes the last edit."},
+  "textMenuRedo": "Redo",
+  "@textMenuRedo": {"description": "Text-field context menu item that redoes the last undone edit."},
+  "textMenuCut": "Cut",
+  "@textMenuCut": {"description": "Text-field context menu item that cuts the selection."},
+  "textMenuCopy": "Copy",
+  "@textMenuCopy": {"description": "Text-field context menu item that copies the selection."},
+  "textMenuPaste": "Paste",
+  "@textMenuPaste": {"description": "Text-field context menu item that pastes the clipboard."},
+  "textMenuSelectAll": "Select all",
+  "@textMenuSelectAll": {"description": "Text-field context menu item that selects the whole text."},
+  "searchPlaceholder": "Search",
+  "@searchPlaceholder": {"description": "Default placeholder and accessible name of a search field."},
+  "searchClear": "Clear",
+  "@searchClear": {"description": "VoiceOver label of the search field's clear (x) button."},
+  "chipRemove": "Remove {label}",
+  "@chipRemove": {
+    "description": "VoiceOver label of a chip's remove button.",
+    "placeholders": {"label": {"type": "String", "example": "main"}}
+  },
+  "confirmCancel": "Cancel",
+  "@confirmCancel": {"description": "Default label of a confirmation dialog's cancel button."},
+  "selectCustom": "Custom…",
+  "@selectCustom": {"description": "Default label of a select's entry for a custom value."},
+  "busyValue": "busy",
+  "@busyValue": {"description": "VoiceOver value of a control or spinner while it is busy."},
+  "confirmShortcutHint": "⌘↩ confirms",
+  "@confirmShortcutHint": {"description": "Footer hint of a destructive confirmation dialog: Command-Return confirms."},
+  "linkOpensInBrowser": "{label}, opens in browser",
+  "@linkOpensInBrowser": {
+    "description": "VoiceOver label of a link that opens an external page.",
+    "placeholders": {"label": {"type": "String", "example": "jj docs"}}
+  },
+  "progressIndeterminate": "in progress",
+  "@progressIndeterminate": {"description": "VoiceOver value of a progress bar without a known fraction."},
+  "resizePoints": "{number} points",
+  "@resizePoints": {
+    "description": "VoiceOver value of a panel resize edge: the panel width in points.",
+    "placeholders": {"number": {"type": "double", "format": "decimalPattern", "example": "300"}}
+  }
+}

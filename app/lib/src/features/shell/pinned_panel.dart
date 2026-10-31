@@ -3,6 +3,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'shell_controller.dart';
 import 'shell_layout.dart';
 
@@ -122,7 +123,7 @@ class _ShellPanelsState extends State<ShellPanels> {
                   min: metrics.panelWMin,
                   max: layout.panelMax,
                   defaultValue: metrics.panelW,
-                  label: 'Panel width',
+                  label: context.l10n.panelWidth,
                   identifier: 'panel-edge',
                   inert: controller.itemDragging,
                   onChanged: (width) => controller.panelWidth = width,
@@ -231,7 +232,7 @@ class _PinnedPanelState extends State<PinnedPanel> {
                   ),
                   ZsIconButton(
                     icon: ZI.close,
-                    label: 'Close',
+                    label: context.l10n.panelClose,
                     size: ZsIconButtonSize.sm,
                     identifier: '${widget.identifier}-close',
                     onPressed: widget.onClose,

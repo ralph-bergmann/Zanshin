@@ -279,7 +279,8 @@ class ProjectSession extends ChangeNotifier {
   }
 
   /// The jj CLI's refusal of a clone into a folder that is not empty (`clone.rs:190-192` @ v0.46.0).
-  static const cloneDestinationNotEmpty = 'Destination path exists and is not an empty directory';
+  static const cloneDestinationNotEmpty =
+      'Destination path exists and is not an empty directory'; // l10n-ignore: jj's text
 
   Future<ProjectOpenOutcome> _clone(String url, String destination, {String? group, int? index}) async {
     final String spelled = canonicalPath(destination);
@@ -297,7 +298,9 @@ class ProjectSession extends ChangeNotifier {
         ..warning('creating the clone destination failed: errno ${error.osError?.errorCode}')
         ..fine('create failure', error, stack);
       // The CLI's message with its cause (`user_error_with_message`, `clone.rs:194-195` @ v0.46.0).
-      return ProjectRefused('Failed to create $destination: ${error.osError?.message ?? error.message}');
+      return ProjectRefused(
+        'Failed to create $destination: ${error.osError?.message ?? error.message}', // l10n-ignore: jj's text
+      );
     }
     // The registry's key when another spelling of the folder is listed (a missing entry, say), else its canonical form.
     final String target = _target(spelled);

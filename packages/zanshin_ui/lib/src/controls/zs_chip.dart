@@ -12,6 +12,7 @@ import '../design/zs_metrics.dart';
 import '../design/zs_motion.dart';
 import '../design/zs_type.dart';
 import '../icons/zanshin_icon.dart';
+import '../zs_strings.dart';
 import 'zs_control.dart';
 import 'zs_control_core.dart';
 import 'zs_control_text.dart';
@@ -303,7 +304,7 @@ class _RemoveButton extends StatelessWidget {
     return ZsControlCore(
       onActivate: onPressed,
       enabled: onPressed != null,
-      semantics: SemanticsProperties(button: true, label: 'Remove $label'),
+      semantics: SemanticsProperties(button: true, label: zsStrings(context).chipRemove(label)),
       ring: ZsRingPlacement.inside,
       ringRadius: radius,
       builder: (context, status) {

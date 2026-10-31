@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'splash_card.dart';
 
 // ---------------------------------------------------------------- colours
@@ -104,7 +105,6 @@ const _dotRingAlpha = 0.16;
 const double _kanjiBaseline = 181;
 const double _lockupGap = 20;
 const double _taglineBaseline = 217;
-const _taglineText = 'JUJUTSU CLIENT';
 const _kanjiText = '残心';
 
 const _wordmarkScale = 0.38;
@@ -493,7 +493,7 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
         ..shader = _wordmarkShader,
     );
 
-    final TextPainter tagline = _tagline ??= _painter(_taglineText, _taglineStyle);
+    final TextPainter tagline = _tagline ??= _painter(platformStrings().splashTagline, _taglineStyle);
     tagline.paint(
       canvas,
       Offset(

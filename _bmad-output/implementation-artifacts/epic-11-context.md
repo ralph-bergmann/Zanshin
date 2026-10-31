@@ -4,7 +4,7 @@
 
 ## Goal
 
-Build the macOS app around the commit graph: one project window in which the graph fills the space and every control floats above it on glass islands. A user picks or adds a project, organises projects in groups, switches projects from the capsule, changes settings in one window, fetches and pushes from the top bar, and steps back through the operation log. The epic owns everything that is not graph-semantic — the design-system foundation, glass materials and Zs control library (package `zanshin_ui`, with the Widgetbook catalogue and Marionette setup), the overlay host, native chrome and window foundation, projects and the Projects window, Settings, the menu bar, sync, the Undo Timeline, and retiring the old docked mock UI. Claude builds it and Ralph reviews every story; Epic 10 plugs its graph-semantic parts (search, View capsule, inspector, minimap, @ pill, toast, Configurations) into this epic's slots.
+Build the macOS app around the commit graph: one project window in which the graph fills the space and every control floats above it on glass islands. A user picks or adds a project, organises projects in groups, switches projects from the capsule, changes settings in one window, fetches and pushes from the top bar, and steps back through the operation log. The epic owns everything that is not graph-semantic — the design-system foundation, glass materials and Zs control library (package `zanshin_ui`, with the Widgetbook catalogue and Marionette setup), the overlay host, native chrome and window foundation, projects and the Projects window, Settings, the menu bar, sync, the Undo Timeline, retiring the old docked mock UI, and making the English UI l10n-ready (strings in ARB files). Claude builds it and Ralph reviews every story; Epic 10 plugs its graph-semantic parts (search, View capsule, inspector, minimap, @ pill, toast, Configurations) into this epic's slots.
 
 ## Stories
 
@@ -18,12 +18,13 @@ Build the macOS app around the commit graph: one project window in which the gra
 - Story 11.7: Settings window
 - Story 11.8: Sync (Fetch, Push, remote-change poll, badge)
 - Story 11.9: Undo Timeline panel
-- Story 11.10: Retire the docked mock UI
+- Story 11.10: Retire the docked mock UI (done)
 - Story 11.11: Zs control library, Widgetbook catalogue, Marionette configuration (done)
 - Story 11.12: Window foundation (done)
 - Story 11.13: Menu bar and shortcuts
 - Story 11.14: The `zanshin_ui` package (done)
 - Story 11.15: Projects window — deselect, groups, row menu, drag ghost (done)
+- Story 11.16: l10n-ready — the app's strings move into ARB files (English only)
 
 ## Requirements & Constraints
 
@@ -33,6 +34,7 @@ Build the macOS app around the commit graph: one project window in which the gra
 - **Accessibility.** VoiceOver semantics on every surface (macOS reads roles from semantics flags only) and a keyboard path; focus rings only for keyboard focus (`zsRingFollowsInput`: a pointer press hides them, a navigating key shows them — Flutter alone counts a mouse as keyboard).
 - **System settings apply live, with no in-app switch.** Reduce motion by property (movement, size, rotation, stroke drawing → 0; fades keep durations; the spinner turns). Reduce transparency or increased contrast paints glass solid. An inactive window paints no hover or focus ring and neutralises the accent except its live copies (progress, flash, drop targets, links).
 - **Undo** lives in three places: ⌘Z (only Zanshin's own latest operation while current), the toast, the Undo Timeline. Every undo ends in the toast "Undid ‹action› · Redo". List edits in the Projects window have no undo.
+- **English, l10n-ready.** The app stays English only (no second language, no language setting), but user-facing strings (labels, tooltips, captions, menus, dialogs, VoiceOver labels) go through ARB files via `gen-l10n`, with key, description and ICU plurals/placeholders; no hard-coded UI text, guarded by `app/test/l10n/hard_coded_strings_test.dart` (widgetbook and tests exempt). The app's strings are `app/lib/l10n/app_en.arb` (`context.l10n`, `platformStrings()` without a context), `zanshin_ui`'s `packages/zanshin_ui/lib/l10n/zs_en.arb`; after an edit run `flutter gen-l10n` in that package and commit the generated files. Window roots register `zanshinLocalizationsDelegates`. jj's own words shown verbatim (commands, jj's errors and hints) and the product name stay out of the ARB, marked `// l10n-ignore: <reason>`. Dates keep per-locale `intl` formatting (`ensureDateFormatting()` before a `DateFormat`).
 - **Stale working copy** is a project-level state without Retry; Fetch, Push, Change items and the op log are disabled with "Working copy is stale".
 
 ## Technical Decisions
@@ -53,10 +55,10 @@ Build the macOS app around the commit graph: one project window in which the gra
 ## UX & Interaction Patterns
 
 - **Top bar** Place · View · Action; the centre gives way first when narrowing.
-- **Rail:** Bookmarks and Undo Timeline only (Workstreams dropped, Reviews hidden). Previews are hover-only; the keyboard path is the rail button (↩ pins).
+- **Rail:** Bookmarks and Undo Timeline only (Workstreams and Reviews dropped). Previews are hover-only; the keyboard path is the rail button (↩ pins).
 - **Calm scrolling:** user scrolling moves the chrome aside, gated by "Hide controls", back after one 650 ms wait; only this window's menus, popovers and sheets block it.
 - Transient surfaces share one exit (fade + mirrored drift × motion). **Esc** closes the topmost surface, in its own window only.
-- **Shortcuts:** ⌘, opens Settings on the last tab, never toggles. ⌘W on the project window closes the project and shows Projects. ⌘J/⇧⌘J only scroll. Fetch has no shortcut; Push… is ⇧⌘P. Text shortcuts win inside fields. Project commands reach the project window from any Zanshin window.
+- **Shortcuts:** ⌘, opens Settings on the last tab, never toggles. ⌘W on the project window closes the project and shows Projects. ⌘J/⇧⌘J only scroll. View › Reload ⌘R = 10.12's reload button (graph and project reading, coalesced). Fetch has no shortcut; Push… is ⇧⌘P. Text shortcuts win inside fields. Project commands reach the project window from any Zanshin window.
 - **Change menu** acts on the selection, else @, and names its target ("Abandon @"); it includes Revert (no shortcut, greyed while the target is @).
 - **Settings pages:** a navigation row opens a page that replaces the tab's groups; "‹ <project>" and ⌘[ go back; the window title is the page name.
 - **Projects tree (11.15):** Finder-like — a click on empty space deselects; rename keeps on ↩ or click elsewhere, a new group cancels on click elsewhere; Delete group keeps its contents and, like Remove from list, asks first (neither has an undo); an empty group opens like any other; the search is not focused on open; Move to group › ends with "New group…"; drag carries a ghost naming the destination ("Into <group>" / "To the top level").
@@ -64,8 +66,8 @@ Build the macOS app around the commit graph: one project window in which the gra
 
 ## Cross-Story Dependencies
 
-- **Order of what remains:** 11.13 after 11.12, 10.9, 10.23; 11.7 and 11.8 wire their shortcuts to 11.13's items (an item stays grey until its handler story lands). 11.7 also needs 10.3 (`HatchSwatch`) for the Immutable commits page. 11.8 also needs 10.23 (the toast) and finishes the clone form (live progress events, Cancel, no app-side destination rules); its timed poll gets no special auth handling (an unconfirmed credential prompt fails that tick quietly; ticks never overlap). 11.9 after 10.9, 10.23. 11.10 last.
+- **Order of what remains:** 11.13 after 11.12, 10.9, 10.23; 11.7 and 11.8 wire their shortcuts to 11.13's items (an item stays grey until its handler story lands). 11.7 also needs 10.3 (`HatchSwatch`) for the Immutable commits page. 11.8 also needs 10.23 (the toast) and finishes the clone form (live progress events, Cancel, no app-side destination rules); its timed poll gets no special auth handling (an unconfirmed credential prompt fails that tick quietly; ticks never overlap). 11.9 after 10.9, 10.23 (both still backlog). 11.16 can run now (11.10 is done) and touches every UI string, so later UI stories keep to its ARB rule.
 - **Epic 10:** 10.5 (done) consumes 11.3's slots — insets in, user-scroll reports out, the graph source is `RepoGraphSource` over `ProjectSession.repo`; `GraphView` is not in `HomePage` until 10.12. 10.8 puts the inspector on 11.3's `ZsResizeEdge`; 10.22 hosts Configurations (`revsetConfigsWindowKey`, floating while active, close guard "Discard changes?"); 10.23's toast takes over the warnings Projects keeps today; 10.10 adds `change`/`bookmark`/`diff` kinds to 11.15's `ZsDragGhost`; 10.15's card menu opens Settings' Immutable commits page. Glass fades only through `ZsFade`; glass never mounts through an `OverlayPortal` inside other glass.
 - **Hand-offs still open from done stories:** 11.7 hosts Settings (`settingsWindowKey`, content-sized, no minimum, root without a navigator) and adds `openSettings` to `AppWindowActions`; it passes Project Settings…, Settings… and Set identity… to the Project menu and Projects window. 11.13 routes ⌘W on the project window to `AppWindowCoordinator`'s red-button path, ⇧⌘O to `openProjects`, ⌘F to Projects' search, and greys window shortcuts while a sheet is open. 10.22 checks dirty state before a switch, a close and quitting (via `AppWindows` close guards). 9.29 and 11.8 add ahead, behind, diverged and syncing to `ProjectStatus`. Open measurements: another callout arrow side for 10.6/10.19, the glass cost once 10.1 exists.
-- **11.10 removes:** Yaru, the icon font, `flutter_svg`, the workstream glyph, the `main2/3/4.dart` hosts, `ZanshinColors` and the mock widgets.
+- **11.10 removed** Yaru, the icon font, `flutter_svg`, the workstream glyph, the `main2/3/4.dart` hosts, `ZanshinColors` and the mock widgets; the Widgetbook entrypoint is the only dev host.
 - **Backend:** Epic 9 has no open story left, so the verbs this epic waits on have shipped — open/init/clone (with the CLI's destination rules), detect/convert, status, bookmarks, remotes, fetch with the CLI's default remotes, push + dry-run plan, redo and the op surface, `update-stale`, the read-only remote poll `remoteChanges`, ahead/behind, op restore, live network progress and cancel, undo, revert, the config surface, `revsetCounts`. Older story text that keeps an element disabled "until 9.x lands" no longer applies; check the shipped bridge API instead. The poll is witnessed once in the running app, because `dart test` reaps its git child.

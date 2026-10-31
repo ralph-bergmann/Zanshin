@@ -1,0 +1,9 @@
+arb-dir: lib/l10n
+template-arb-file: zs_en.arb
+output-localization-file: zs_localizations.dart
+output-class: ZsLocalizations
+required-resource-attributes: true
+format: true
+# WHY: the generated `localizationsDelegates` names flutter/material's deprecated GlobalMaterialLocalizations (unused:
+# only `delegate` is registered); `type=lint` in the generated files does not cover this warning.
+header: '// ignore_for_file: deprecated_member_use'

@@ -1,0 +1,333 @@
+{
+  "@@locale": "en",
+
+  "bootFailed": "Zanshin could not start.",
+  "@bootFailed": {"description": "Headline of the main window when the app's boot failed; the error text follows."},
+  "bootLoadingSettings": "Loading settings…",
+  "@bootLoadingSettings": {"description": "Splash status line while the settings load."},
+  "bootReadingShell": "Reading the shell environment…",
+  "@bootReadingShell": {"description": "Splash status line while the login shell's environment is read."},
+  "bootStarting": "Starting Zanshin…",
+  "@bootStarting": {"description": "Splash status line while the first window starts."},
+  "splashTagline": "JUJUTSU CLIENT",
+  "@splashTagline": {"description": "Tagline under the logo on the splash card, in capitals."},
+  "versionBuild": "{version} · Build {build}",
+  "@versionBuild": {
+    "description": "The app's version line (splash footer, Projects sidebar).",
+    "placeholders": {"version": {"type": "String", "example": "2026.9.1"}, "build": {"type": "String", "example": "1"}}
+  },
+  "jjLibVersion": "jj-lib {version}",
+  "@jjLibVersion": {
+    "description": "The jj-lib version line in the Projects sidebar; jj-lib is the library's name.",
+    "placeholders": {"version": {"type": "String", "example": "0.46.0"}}
+  },
+
+  "projectsTitle": "Projects",
+  "@projectsTitle": {"description": "Title of the Projects window (window title and header), and its sidebar navigation row."},
+  "projectsSettingsTooltip": "Settings — ⌘, (the tab shown last)",
+  "@projectsSettingsTooltip": {"description": "Tooltip of the Settings… row in the Projects sidebar: Command-comma opens the tab shown last."},
+  "settingsEllipsis": "Settings…",
+  "@settingsEllipsis": {"description": "Opens the Settings window (Projects sidebar row, Project menu item)."},
+  "projectsSearchPlaceholder": "Search projects, paths…",
+  "@projectsSearchPlaceholder": {"description": "Placeholder of the Projects window's search field."},
+  "projectsAddDirectory": "Add directory",
+  "@projectsAddDirectory": {"description": "Button that adds a directory to the Projects list."},
+  "projectsAddPrompt": "Add",
+  "@projectsAddPrompt": {"description": "Confirm button of the folder picker opened by Add directory."},
+  "projectsClone": "Clone…",
+  "@projectsClone": {"description": "Button that opens the clone form in the Projects window."},
+  "projectsNewGroup": "New group",
+  "@projectsNewGroup": {"description": "Button and name field that create a new group in the Projects list."},
+  "projectsPathMissing": "{path} does not exist.",
+  "@projectsPathMissing": {
+    "description": "Notice when an added folder does not exist.",
+    "placeholders": {"path": {"type": "String", "example": "/Users/me/code/app"}}
+  },
+  "projectsConversionFailed": "Conversion failed",
+  "@projectsConversionFailed": {"description": "Notice title when converting a Git repository to jj failed."},
+  "projectsInitFailed": "Creating a repository failed",
+  "@projectsInitFailed": {"description": "Notice title when creating a jj repository failed."},
+  "projectsCloneFailed": "Clone failed",
+  "@projectsCloneFailed": {"description": "Notice title when a clone failed."},
+  "projectsOpenFailed": "Could not open {name}",
+  "@projectsOpenFailed": {
+    "description": "Notice title when a project could not be opened.",
+    "placeholders": {"name": {"type": "String", "example": "zanshin"}}
+  },
+  "projectsConverted": "Converted {name}",
+  "@projectsConverted": {
+    "description": "Notice title over the warnings of a conversion that succeeded.",
+    "placeholders": {"name": {"type": "String", "example": "zanshin"}}
+  },
+  "projectsCreated": "Created a repository in {name}",
+  "@projectsCreated": {
+    "description": "Notice title over the warnings of a repository creation that succeeded.",
+    "placeholders": {"name": {"type": "String", "example": "zanshin"}}
+  },
+  "projectsCloned": "Cloned {name}",
+  "@projectsCloned": {
+    "description": "Notice title over the warnings of a clone that succeeded.",
+    "placeholders": {"name": {"type": "String", "example": "zanshin"}}
+  },
+  "projectsOpened": "Opened {name}",
+  "@projectsOpened": {
+    "description": "Notice title over the warnings of an open that succeeded.",
+    "placeholders": {"name": {"type": "String", "example": "zanshin"}}
+  },
+  "deleteGroupTitle": "Delete the group {name}?",
+  "@deleteGroupTitle": {
+    "description": "Confirmation title before a group is deleted.",
+    "placeholders": {"name": {"type": "String", "example": "Work"}}
+  },
+  "deleteGroup": "Delete group",
+  "@deleteGroup": {"description": "Row menu item and confirm button that delete a group."},
+  "deleteGroupBody": "Its projects and groups take its place; nothing leaves the list.",
+  "@deleteGroupBody": {"description": "Confirmation body before a group is deleted."},
+  "removeProjectTitle": "Remove {name} from the list?",
+  "@removeProjectTitle": {
+    "description": "Confirmation title before a project is removed from the list.",
+    "placeholders": {"name": {"type": "String", "example": "zanshin"}}
+  },
+  "removeProjectConfirm": "Remove",
+  "@removeProjectConfirm": {"description": "Confirm button that removes a project from the list."},
+  "removeProjectBody": "{path} stays on disk; only the list forgets it.",
+  "@removeProjectBody": {
+    "description": "Confirmation body before a project is removed; the path is shown in monospace.",
+    "placeholders": {"path": {"type": "String", "example": "~/code/zanshin"}}
+  },
+  "cloneUrl": "Repository URL",
+  "@cloneUrl": {"description": "Placeholder and name of the clone form's URL field."},
+  "cloneDestination": "Destination",
+  "@cloneDestination": {"description": "Placeholder and name of the clone form's destination field."},
+  "cloneChoose": "Choose…",
+  "@cloneChoose": {"description": "Clone form button that picks the destination's parent folder."},
+  "cloneChoosePrompt": "Choose",
+  "@cloneChoosePrompt": {"description": "Confirm button of the folder picker for the clone destination."},
+  "cloneCancel": "Cancel",
+  "@cloneCancel": {"description": "Clone form button that closes the form."},
+  "cloneSubmit": "Clone",
+  "@cloneSubmit": {"description": "Clone form button that runs the clone, and its tooltip title."},
+  "convertTitle": "Convert {name} to a jj repository?",
+  "@convertTitle": {
+    "description": "Offer to convert a Git repository; jj is the version control system's name.",
+    "placeholders": {"name": {"type": "String", "example": "app"}}
+  },
+  "convertConfirm": "Convert",
+  "@convertConfirm": {"description": "Confirm button of the convert offer."},
+  "convertBody": "{path} stays a Git repository; jj joins it and shares its working copy.",
+  "@convertBody": {
+    "description": "Body of the convert offer; the path is shown in monospace.",
+    "placeholders": {"path": {"type": "String", "example": "~/code/app"}}
+  },
+  "convertBodyInside": "{inside} lies inside the Git repository at {path}. It stays a Git repository; jj joins it and shares its working copy.",
+  "@convertBodyInside": {
+    "description": "Body of the convert offer for a folder inside a Git repository; the paths are shown in monospace.",
+    "placeholders": {"inside": {"type": "String", "example": "~/code/app/src"}, "path": {"type": "String", "example": "~/code/app"}}
+  },
+  "initTitle": "Create a jj repository in {name}?",
+  "@initTitle": {
+    "description": "Offer to create a jj repository in a plain folder.",
+    "placeholders": {"name": {"type": "String", "example": "notes"}}
+  },
+  "initConfirm": "Create",
+  "@initConfirm": {"description": "Confirm button of the create offer."},
+  "initBody": "{path} becomes a jj repository, its Git store inside .jj.",
+  "@initBody": {
+    "description": "Body of the create offer; the path is shown in monospace, .jj is a folder name.",
+    "placeholders": {"path": {"type": "String", "example": "~/notes"}}
+  },
+  "enclosingTitle": "Add the enclosing repository {name}?",
+  "@enclosingTitle": {
+    "description": "Offer to add the jj repository around a chosen folder.",
+    "placeholders": {"name": {"type": "String", "example": "app"}}
+  },
+  "enclosingConfirm": "Add",
+  "@enclosingConfirm": {"description": "Confirm button of the enclosing-repository offer."},
+  "enclosingBody": "{inside} lies inside the jj repository at {path}.",
+  "@enclosingBody": {
+    "description": "Body of the enclosing-repository offer; the paths are shown in monospace.",
+    "placeholders": {"inside": {"type": "String", "example": "~/code/app/src"}, "path": {"type": "String", "example": "~/code/app"}}
+  },
+  "identityCaption": "Identity",
+  "@identityCaption": {"description": "Caption over the jj identity in the Projects sidebar footer (shown in capitals)."},
+  "setIdentity": "Set identity…",
+  "@setIdentity": {"description": "Link that opens the identity settings."},
+  "noticeDismiss": "Dismiss",
+  "@noticeDismiss": {"description": "Button that dismisses the notice under the Projects header."},
+  "dropToAddDirectory": "Drop to add directory",
+  "@dropToAddDirectory": {"description": "Hint shown while a folder is dragged over the Projects window."},
+
+  "treeLabel": "Projects",
+  "@treeLabel": {"description": "VoiceOver name of the projects tree."},
+  "treeEmpty": "No projects yet. Add a directory or drop a folder here.",
+  "@treeEmpty": {"description": "The projects tree with no projects."},
+  "treeNoResults": "No projects match “{query}”",
+  "@treeNoResults": {
+    "description": "The projects tree when the search matches nothing.",
+    "placeholders": {"query": {"type": "String", "example": "zan"}}
+  },
+  "treeDropHint": "Drop between rows or on a group",
+  "@treeDropHint": {"description": "Drag ghost while no valid drop place is under the pointer."},
+  "treeTopLevel": "To the top level",
+  "@treeTopLevel": {"description": "Drag ghost for a drop at the top level of the list."},
+  "treeInto": "Into {name}",
+  "@treeInto": {
+    "description": "Drag ghost for a drop into a group.",
+    "placeholders": {"name": {"type": "String", "example": "Work"}}
+  },
+  "renameGroup": "Rename group",
+  "@renameGroup": {"description": "Name of the field that renames a group."},
+  "groupNamePlaceholder": "Group name",
+  "@groupNamePlaceholder": {"description": "Placeholder of the group name field."},
+  "groupCount": "{projects}{groups, plural, =0{} =1{ · 1 group} other{ · {groups} groups}}",
+  "@groupCount": {
+    "description": "A group row's count: its projects, then its own groups when it holds any.",
+    "placeholders": {"projects": {"type": "int", "example": "3"}, "groups": {"type": "int", "example": "2"}}
+  },
+  "projectOpen": "open",
+  "@projectOpen": {"description": "Marks the open project: a project row's VoiceOver value and its badge (shown in capitals)."},
+  "menuOpen": "Open",
+  "@menuOpen": {"description": "Project row menu item that opens the project."},
+  "menuRevealInFinder": "Reveal in Finder",
+  "@menuRevealInFinder": {"description": "Project row menu item that shows the folder in Finder."},
+  "menuRemoveFromList": "Remove from list",
+  "@menuRemoveFromList": {"description": "Project row menu item that removes the project from the list."},
+  "menuRename": "Rename…",
+  "@menuRename": {"description": "Group row menu item that renames the group."},
+  "menuMoveToGroup": "Move to group",
+  "@menuMoveToGroup": {"description": "Row menu submenu that moves the row into a group."},
+  "menuTopLevel": "Top level",
+  "@menuTopLevel": {"description": "Move to group submenu item for the top level of the list."},
+  "menuNewGroup": "New group…",
+  "@menuNewGroup": {"description": "Move to group submenu item that moves the row into a new group."},
+  "moreTooltip": "More…",
+  "@moreTooltip": {"description": "Tooltip of a row's menu button."},
+  "moreLabel": "More",
+  "@moreLabel": {"description": "VoiceOver name of a row's menu button."},
+
+  "statusClean": "clean",
+  "@statusClean": {"description": "Project status: no uncommitted changes."},
+  "statusDirty": "uncommitted changes",
+  "@statusDirty": {"description": "Project status: the working copy has changes."},
+  "statusConflict": "conflict",
+  "@statusConflict": {"description": "Project status: the working copy has a conflict."},
+  "statusMissing": "path missing",
+  "@statusMissing": {"description": "Project status: the project's folder is gone."},
+  "statusStale": "working copy is stale",
+  "@statusStale": {"description": "Project status: jj's working copy is stale."},
+  "statusAhead": "ahead of remote",
+  "@statusAhead": {"description": "Project status: local commits not on the remote."},
+  "statusBehind": "behind remote",
+  "@statusBehind": {"description": "Project status: remote commits not fetched."},
+  "statusDiverged": "diverged",
+  "@statusDiverged": {"description": "Project status: local and remote have both moved."},
+
+  "lastOpenedNow": "now",
+  "@lastOpenedNow": {"description": "When a project was last opened: under a minute ago."},
+  "lastOpenedMinutes": "{n}m ago",
+  "@lastOpenedMinutes": {"description": "When a project was last opened: minutes ago, abbreviated.", "placeholders": {"n": {"type": "int"}}},
+  "lastOpenedHours": "{n}h ago",
+  "@lastOpenedHours": {"description": "When a project was last opened: hours ago, abbreviated.", "placeholders": {"n": {"type": "int"}}},
+  "lastOpenedYesterday": "yesterday",
+  "@lastOpenedYesterday": {"description": "When a project was last opened: the calendar day before."},
+  "lastOpenedDays": "{n}d ago",
+  "@lastOpenedDays": {"description": "When a project was last opened: days ago, abbreviated.", "placeholders": {"n": {"type": "int"}}},
+  "lastOpenedWeeks": "{n}w ago",
+  "@lastOpenedWeeks": {"description": "When a project was last opened: weeks ago, abbreviated.", "placeholders": {"n": {"type": "int"}}},
+  "lastOpenedMonths": "{n}mo ago",
+  "@lastOpenedMonths": {"description": "When a project was last opened: months ago, abbreviated.", "placeholders": {"n": {"type": "int"}}},
+  "lastOpenedYears": "{n}y ago",
+  "@lastOpenedYears": {"description": "When a project was last opened: years ago, abbreviated.", "placeholders": {"n": {"type": "int"}}},
+
+  "capsuleRecent": "Recent",
+  "@capsuleRecent": {"description": "Project menu heading over the recent projects."},
+  "capsuleAllProjects": "All Projects…",
+  "@capsuleAllProjects": {"description": "Project menu item that opens the Projects window."},
+  "capsuleProjectSettings": "Project Settings…",
+  "@capsuleProjectSettings": {"description": "Project menu item that opens the project's settings."},
+  "capsuleMenuLabel": "Project",
+  "@capsuleMenuLabel": {"description": "VoiceOver name of the Project menu."},
+
+  "railLabel": "Panels",
+  "@railLabel": {"description": "VoiceOver name of the rail of panel buttons."},
+  "topBarView": "View",
+  "@topBarView": {"description": "VoiceOver name of the top bar's view island."},
+  "panelWidth": "Panel width",
+  "@panelWidth": {"description": "VoiceOver name of the pinned panel's resize edge."},
+  "panelClose": "Close",
+  "@panelClose": {"description": "Button that closes the pinned panel."},
+
+  "graphLoadFailed": "The graph could not be loaded ({code}).",
+  "@graphLoadFailed": {
+    "description": "Caption when the commit graph failed to load; code is the error code.",
+    "placeholders": {"code": {"type": "String", "example": "jj.io"}}
+  },
+  "graphRetry": "Retry",
+  "@graphRetry": {"description": "Button that loads the graph again."},
+  "graphEmpty": "No changes match this revset.",
+  "@graphEmpty": {"description": "Caption when the graph's revset matches nothing; revset is jj's term."},
+  "staleTitle": "Working copy is stale",
+  "@staleTitle": {"description": "The stale-working-copy notice's sentence; stale is jj's term."},
+  "staleUpdate": "Update working copy",
+  "@staleUpdate": {"description": "Button that updates the stale working copy."},
+  "staleCopy": "Copy — {command}",
+  "@staleCopy": {
+    "description": "Button that copies the jj command to the clipboard.",
+    "placeholders": {"command": {"type": "String", "example": "jj workspace update-stale"}}
+  },
+
+  "dayToday": "Today",
+  "@dayToday": {"description": "Day label for today."},
+  "dayYesterday": "Yesterday",
+  "@dayYesterday": {"description": "Day label for yesterday."},
+  "relativeNow": "now",
+  "@relativeNow": {"description": "A card's commit time: under a minute ago."},
+  "relativeMinutes": "{n}m",
+  "@relativeMinutes": {"description": "A card's commit time: minutes ago, abbreviated.", "placeholders": {"n": {"type": "int"}}},
+  "relativeHours": "{n}h",
+  "@relativeHours": {"description": "A card's commit time: hours ago, abbreviated.", "placeholders": {"n": {"type": "int"}}},
+  "relativeDays": "{n}d",
+  "@relativeDays": {"description": "A card's commit time: days ago, abbreviated.", "placeholders": {"n": {"type": "int"}}},
+  "spokenMinutesAgo": "{n, plural, =1{1 minute ago} other{{n} minutes ago}}",
+  "@spokenMinutesAgo": {"description": "A card's commit time as VoiceOver speaks it: minutes ago.", "placeholders": {"n": {"type": "int"}}},
+  "spokenHoursAgo": "{n, plural, =1{1 hour ago} other{{n} hours ago}}",
+  "@spokenHoursAgo": {"description": "A card's commit time as VoiceOver speaks it: hours ago.", "placeholders": {"n": {"type": "int"}}},
+  "spokenDaysAgo": "{n, plural, =1{1 day ago} other{{n} days ago}}",
+  "@spokenDaysAgo": {"description": "A card's commit time as VoiceOver speaks it: days ago.", "placeholders": {"n": {"type": "int"}}},
+
+  "cardWorkingCopy": "Working copy",
+  "@cardWorkingCopy": {"description": "VoiceOver: the card is our workspace's working copy."},
+  "cardWorkingCopyOf": "Working copy of {name}",
+  "@cardWorkingCopyOf": {
+    "description": "VoiceOver: the card is the working copy of our workspace, named.",
+    "placeholders": {"name": {"type": "String", "example": "default"}}
+  },
+  "cardOtherWorkingCopy": "working copy of {names}",
+  "@cardOtherWorkingCopy": {
+    "description": "VoiceOver: the card is the working copy of other workspaces (comma-separated names).",
+    "placeholders": {"names": {"type": "String", "example": "docs, ci"}}
+  },
+  "cardImmutable": "Immutable",
+  "@cardImmutable": {"description": "VoiceOver: the commit is immutable."},
+  "cardNoDescription": "no description",
+  "@cardNoDescription": {"description": "VoiceOver: the commit has no description."},
+  "cardEmpty": "empty",
+  "@cardEmpty": {"description": "The commit changes no files (card flag and VoiceOver)."},
+  "cardConflict": "conflict",
+  "@cardConflict": {"description": "VoiceOver: the commit has a conflict."},
+  "cardMerge": "merge",
+  "@cardMerge": {"description": "VoiceOver: the commit is a merge."},
+  "cardHidden": "hidden",
+  "@cardHidden": {"description": "VoiceOver: the commit is hidden."},
+  "cardDivergent": "divergent",
+  "@cardDivergent": {"description": "VoiceOver: the change is divergent."},
+  "cardActions": "Actions",
+  "@cardActions": {"description": "VoiceOver custom action that opens a card's menu."},
+  "cardAddBookmark": "Add bookmark",
+  "@cardAddBookmark": {"description": "VoiceOver custom action that adds a bookmark to a card."},
+  "cardBookmarks": "Bookmarks: {names}",
+  "@cardBookmarks": {
+    "description": "VoiceOver custom action listing a card's bookmarks (comma-separated).",
+    "placeholders": {"names": {"type": "String", "example": "main, feat/x"}}
+  }
+}

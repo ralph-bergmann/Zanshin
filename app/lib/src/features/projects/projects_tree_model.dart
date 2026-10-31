@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show TreeSliverNode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 
+import '../../l10n/strings.dart';
 import 'tree_drop.dart';
 
 /// One row of the Projects tree (Story 11.6): a group, a project, or the field naming a new group.
@@ -42,9 +43,9 @@ final class ProjectsGroupItem extends ProjectsItem {
   @override
   String get name => group.name;
 
-  /// The count column: "N", and " · 1 group" / " · M groups" when it holds any (DS
+  /// The count column in [strings]: "N", and " · 1 group" / " · M groups" when it holds any (DS
   /// components/content/ProjectRow.jsx:50).
-  String get count => '$projects${groups > 0 ? ' · $groups ${groups == 1 ? 'group' : 'groups'}' : ''}';
+  String countIn(AppLocalizations strings) => strings.groupCount(projects, groups);
 }
 
 /// A project row.

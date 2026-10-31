@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/l10n/app_localizations_en.dart';
 import 'package:zanshin/src/features/projects/relative_time.dart';
+
+final _en = AppLocalizationsEn();
 
 void main() {
   group('lastOpenedLabel', () {
@@ -25,12 +28,12 @@ void main() {
       (const Duration(days: 365), '1y ago'),
       (const Duration(days: 800), '2y ago'),
     ]) {
-      test('$ago ago reads "$label"', () => expect(lastOpenedLabel(now.subtract(ago), now), label));
+      test('$ago ago reads "$label"', () => expect(lastOpenedLabel(_en, now.subtract(ago), now), label));
     }
 
     test('a time after now reads now; a UTC time is compared in local time', () {
-      expect(lastOpenedLabel(now.add(const Duration(hours: 2)), now), 'now');
-      expect(lastOpenedLabel(now.subtract(const Duration(hours: 3)).toUtc(), now), '3h ago');
+      expect(lastOpenedLabel(_en, now.add(const Duration(hours: 2)), now), 'now');
+      expect(lastOpenedLabel(_en, now.subtract(const Duration(hours: 3)).toUtc(), now), '3h ago');
     });
   });
 

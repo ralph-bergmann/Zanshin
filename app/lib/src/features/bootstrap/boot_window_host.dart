@@ -21,7 +21,7 @@ import 'zanshin_bootstrap.dart';
 export '../window/app_windows.dart' show mainWindowKey;
 
 /// Title of the main window.
-const mainWindowTitle = 'Zanshin';
+const mainWindowTitle = 'Zanshin'; // l10n-ignore: the product name
 
 final _log = Logger('zanshin.bootstrap');
 

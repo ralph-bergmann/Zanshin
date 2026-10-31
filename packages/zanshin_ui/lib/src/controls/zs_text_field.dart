@@ -8,12 +8,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:material_ui/material_ui.dart' show Material, MaterialType, TextField;
 
+import '../../l10n/zs_localizations.dart';
 import '../design/zs_appearance.dart';
 import '../design/zs_colors.dart';
 import '../design/zs_metrics.dart';
 import '../design/zs_motion.dart';
 import '../design/zs_type.dart';
 import '../icons/zanshin_icon.dart';
+import '../zs_strings.dart';
 import 'zs_control.dart';
 import 'zs_control_core.dart';
 import 'zs_control_text.dart';
@@ -176,41 +178,42 @@ Widget _textContextMenu(BuildContext context, EditableTextState state, UndoHisto
   const SelectionChangedCause cause = SelectionChangedCause.toolbar;
   final String text = state.textEditingValue.text;
   final TextSelection selection = state.textEditingValue.selection;
+  final ZsLocalizations strings = zsStrings(context);
   final entries = <ZsMenuEntry>[
     ZsMenuItem(
-      label: 'Undo',
+      label: strings.textMenuUndo,
       shortcut: '⌘Z',
       enabled: !state.widget.readOnly && undo.value.canUndo,
       onSelected: () => run(undo.undo),
     ),
     ZsMenuItem(
-      label: 'Redo',
+      label: strings.textMenuRedo,
       shortcut: '⇧⌘Z',
       enabled: !state.widget.readOnly && undo.value.canRedo,
       onSelected: () => run(undo.redo),
     ),
     const ZsMenuSeparator(),
     ZsMenuItem(
-      label: 'Cut',
+      label: strings.textMenuCut,
       shortcut: '⌘X',
       enabled: state.cutEnabled,
       onSelected: () => run(() => state.cutSelection(cause)),
     ),
     ZsMenuItem(
-      label: 'Copy',
+      label: strings.textMenuCopy,
       shortcut: '⌘C',
       enabled: state.copyEnabled,
       onSelected: () => run(() => state.copySelection(cause)),
     ),
     ZsMenuItem(
-      label: 'Paste',
+      label: strings.textMenuPaste,
       shortcut: '⌘V',
       enabled: state.pasteEnabled,
       onSelected: () => run(() => unawaited(state.pasteText(cause))),
     ),
     const ZsMenuSeparator(),
     ZsMenuItem(
-      label: 'Select all',
+      label: strings.textMenuSelectAll,
       shortcut: '⌘A',
       // Flutter follows the native macOS text menu, which has no Select all (`selectAllEnabled` is false there); the
       // DS's menu has it, enabled while not everything is selected.
@@ -599,7 +602,7 @@ class ZsSearchField extends StatefulWidget implements ZsControl {
   const ZsSearchField({
     this.controller,
     this.focusNode,
-    this.placeholder = 'Search',
+    this.placeholder,
     this.label,
     this.shortcutLabel,
     this.onChanged,
@@ -616,8 +619,8 @@ class ZsSearchField extends StatefulWidget implements ZsControl {
   /// The field's focus node.
   final FocusNode? focusNode;
 
-  /// The placeholder, also the default name.
-  final String placeholder;
+  /// The placeholder, also the default name; "Search" when null.
+  final String? placeholder;
 
   /// The accessible name; the placeholder when null.
   final String? label;
@@ -735,9 +738,10 @@ class _ZsSearchFieldState extends State<ZsSearchField> {
     final bool query = _controller.text.isNotEmpty;
     final String? shortcut = widget.shortcutLabel;
     final TextStyle style = zsSans(ZsType.fsControl, height: ZsType.lhSnug).copyWith(color: colors.text);
+    final String placeholder = widget.placeholder ?? zsStrings(context).searchPlaceholder;
     return Semantics(
       identifier: widget.identifier,
-      label: widget.label ?? widget.placeholder,
+      label: widget.label ?? placeholder,
       child: MouseRegion(
         cursor: SystemMouseCursors.text,
         onEnter: (_) => setState(() => _hovered = true),
@@ -779,7 +783,7 @@ class _ZsSearchFieldState extends State<ZsSearchField> {
                               if (!query)
                                 ExcludeSemantics(
                                   child: Text(
-                                    widget.placeholder,
+                                    placeholder,
                                     style: style.copyWith(color: look.placeholder),
                                     maxLines: 1,
                                     softWrap: false,
@@ -830,7 +834,7 @@ class _ClearButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ZsControlCore(
     onActivate: onPressed,
-    semantics: const SemanticsProperties(button: true, label: 'Clear'),
+    semantics: SemanticsProperties(button: true, label: zsStrings(context).searchClear),
     ring: ZsRingPlacement.inside,
     ringRadius: _side / 2,
     builder: (context, status) {

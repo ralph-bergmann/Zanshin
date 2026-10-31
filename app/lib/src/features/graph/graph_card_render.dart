@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'day_axis.dart';
 import 'graph_card.dart';
 import 'graph_layout.dart';
@@ -130,6 +131,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     required this._motion,
     required this._inactive,
     required this._icons,
+    required this._strings,
     required this._controller,
     required this._reveal,
   });
@@ -223,6 +225,18 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     _icons = value;
     // The flag items hold their glyph from layout.
     markNeedsLayout();
+  }
+
+  /// The words: the dates, the "empty" flag, the label and the custom actions.
+  AppLocalizations get strings => _strings;
+  AppLocalizations _strings;
+  set strings(AppLocalizations value) {
+    if (identical(value, _strings)) {
+      return;
+    }
+    _strings = value;
+    markNeedsLayout();
+    markNeedsSemanticsUpdate();
   }
 
   /// The graph's card controller.
@@ -338,8 +352,9 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     final int now = _controller.now.value;
     final int off = _data.utcOffsetMinutes;
     return (
-      relative: graphRelativeDate(ts, nowMs: now, utcOffsetMinutes: off),
+      relative: graphRelativeDate(_strings, ts, nowMs: now, utcOffsetMinutes: off),
       day: graphDayLabel(
+        _strings,
         graphLocalDay(ts, utcOffsetMinutes: off),
         nowMs: now,
         utcOffsetMinutes: off,
@@ -500,7 +515,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     final Color subjectColor = d.immutable ? t.cardTextMuted : t.cardText;
     final TextPainter subject = d.isRoot
         ? _plain(
-            'root()',
+            'root()', // l10n-ignore: jj's text
             _weight(ZsType.cardSubject, FontWeight.w400).copyWith(
               fontFamily: ZsType.monoFamily,
               fontFamilyFallback: const <String>[ZsType.sansFamily],
@@ -509,7 +524,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
           )
         : content != null && content.subject.isEmpty
         ? _plain(
-            '(no description set)',
+            '(no description set)', // l10n-ignore: jj's text
             _weight(
               ZsType.cardSubject,
               FontWeight.w400,
@@ -585,7 +600,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
       if (_detailed && (content?.empty ?? false))
         _Item.text(
           GraphCardSlot.empty,
-          _plain('empty', meta.copyWith(fontStyle: FontStyle.italic, color: t.cardTextFaint)),
+          _plain(_strings.cardEmpty, meta.copyWith(fontStyle: FontStyle.italic, color: t.cardTextFaint)),
         ),
       if (content?.conflict ?? false) _Item.icon(GraphCardSlot.conflict, _icons.conflict, t.conflict),
       if (d.merge) _Item.icon(GraphCardSlot.merge, _icons.merge, t.cardTextDim),
@@ -1075,14 +1090,16 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
       ..isButton = true
       ..isSelected = _selected
       ..identifier = 'graph-card-${d.key}'
-      ..label = graphCardLabel(d, nowMs: _controller.now.value, detailed: _detailed)
+      ..label = graphCardLabel(_strings, d, nowMs: _controller.now.value, detailed: _detailed)
       ..textDirection = TextDirection.ltr
       ..onTap = _semanticSelect
       ..customSemanticsActions = <CustomSemanticsAction, VoidCallback>{
-        const CustomSemanticsAction(label: 'Actions'): _semanticMenu,
+        CustomSemanticsAction(label: _strings.cardActions): _semanticMenu,
         if (!d.isRoot)
           CustomSemanticsAction(
-            label: d.refs.isEmpty ? 'Add bookmark' : 'Bookmarks: ${d.refs.map((r) => r.display).join(', ')}',
+            label: d.refs.isEmpty
+                ? _strings.cardAddBookmark
+                : _strings.cardBookmarks(d.refs.map((r) => r.display).join(', ')),
           ): _semanticBookmarks,
       };
   }

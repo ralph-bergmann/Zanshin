@@ -4,6 +4,8 @@ import 'package:flutter/widgets.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
+
 /// A [ProjectStatus] as the status dot shows it (DS components/content/ProjectRow.jsx:5-15): its `--proj-*` colour
 /// and the label its tooltip and VoiceOver read.
 extension ProjectStatusStyle on ProjectStatus {
@@ -19,15 +21,15 @@ extension ProjectStatusStyle on ProjectStatus {
     ProjectStatus.diverged => colors.projDiverged,
   };
 
-  /// The dot's label.
-  String get label => switch (this) {
-    ProjectStatus.clean => 'clean',
-    ProjectStatus.dirty => 'uncommitted changes',
-    ProjectStatus.conflict => 'conflict',
-    ProjectStatus.missing => 'path missing',
-    ProjectStatus.stale => 'working copy is stale',
-    ProjectStatus.ahead => 'ahead of remote',
-    ProjectStatus.behind => 'behind remote',
-    ProjectStatus.diverged => 'diverged',
+  /// The dot's label in [strings].
+  String labelIn(AppLocalizations strings) => switch (this) {
+    ProjectStatus.clean => strings.statusClean,
+    ProjectStatus.dirty => strings.statusDirty,
+    ProjectStatus.conflict => strings.statusConflict,
+    ProjectStatus.missing => strings.statusMissing,
+    ProjectStatus.stale => strings.statusStale,
+    ProjectStatus.ahead => strings.statusAhead,
+    ProjectStatus.behind => strings.statusBehind,
+    ProjectStatus.diverged => strings.statusDiverged,
   };
 }

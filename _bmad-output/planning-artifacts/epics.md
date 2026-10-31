@@ -8266,6 +8266,7 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
 - **Material.** Material types come from `package:material_ui` only; its `ThemeMode` is not Flutter's.
   - *Amended 2026-10-16 (decision 16.1):* no visible control is Material or Yaru. Controls are 11.11's Zs library on Flutter's widgets-layer primitives (`app/lib/src/shared/controls/`; *since 2026-10-17 `packages/zanshin_ui`, Story 11.14*), and text entry is Flutter's `TextField` without decoration. The Material types that remain (`MaterialApp`, `ThemeData`) still come from `package:material_ui` only. Yaru leaves by 11.10.
 - **Visuals.** Designed visuals are a `RenderBox` with text slots (the `splash_card_render.dart` pattern), not nested `Column`/`Row` trees.
+- **Strings.** *(Added 2026-10-31, Story 11.16.)* User-facing strings go through the ARB; no hard-coded UI text. The app's live in `app/lib/l10n/app_en.arb` (`context.l10n`, or `platformStrings()` without a context), `zanshin_ui`'s in `packages/zanshin_ui/lib/l10n/zs_en.arb`; every entry has a key and a description, plurals and placeholders use ICU, dates go through `intl` at the strings' locale. After an ARB edit run `flutter gen-l10n` in that package and commit the generated files. jj's own words shown verbatim (commands, jj's errors and hints), the product name and pure symbols stay literals marked `// l10n-ignore: <reason>`; the guard `app/test/l10n/hard_coded_strings_test.dart` fails on an unmarked one.
 - **Theme.** *(Amended 2026-10-14: decision (f) of the design update; the earlier text read "Colours and sizes live in a `GraphTheme` `ThemeExtension`, whose dark and light values come from the design tokens (GC:4-5, SC:9-56, SC:2363-2376).")* Colours and sizes come from the design system, `DS` = `_bmad-output/implementation-artifacts/design_system/`, cited as `DS <path>:<line>`.
   - **The token layer (Story 11.1)** holds every DS token once:
     - night: `DS tokens/colors.css:7-55` and `DS tokens/effects.css:4-39`;
@@ -12003,7 +12004,7 @@ Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the 
 
 **Design input.** The floating client and the design system, with the abbreviations of the Epic 10 header's 2026-10-14 update. Tokens come from the design system (decision (f)).
 
-**House rules.** Epic 10's house rules apply (the design-system sync included), with two changes:
+**House rules.** Epic 10's house rules apply (the design-system sync included), with these changes:
 - **Code locations** (Claude's proposal):
   - `app/lib/src/features/shell/`: 11.3 and the Dart side of 11.4;
   - `app/lib/src/features/projects/`: 11.5 and 11.6;
@@ -12018,6 +12019,7 @@ Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the 
   - the menu bar (11.13) goes in `app/lib/src/features/shell/` *(added 2026-10-16, Claude's proposal)*;
   - tests mirror these under `app/test/`.
 - **App home:** the app's `MaterialApp` home becomes 11.3's shell, and the Yaru test page goes (11.10).
+- **Strings** *(added 2026-10-31, Story 11.16)*: Epic 10's house rule Strings applies to every Epic 11 story — user-facing strings go through the ARB (`app/lib/l10n/app_en.arb`, `packages/zanshin_ui/lib/l10n/zs_en.arb`; `flutter gen-l10n` in that package after an edit); no hard-coded UI text, jj's verbatim words marked `// l10n-ignore: <reason>`. Every window root registers `AppLocalizations.delegate` and `ZsLocalizations.delegate` (`zanshinLocalizationsDelegates`), never `AppLocalizations.localizationsDelegates`.
 
 **Sequencing.**
 - 11.0 is done (docs).

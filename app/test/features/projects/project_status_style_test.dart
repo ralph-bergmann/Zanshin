@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/l10n/app_localizations_en.dart';
 import 'package:zanshin/src/features/projects/project_status_style.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -18,7 +19,7 @@ void main() {
       expect(ProjectStatus.diverged.colorIn(colors), colors.projDiverged);
     }
     expect(
-      <String>[for (final ProjectStatus status in ProjectStatus.values) status.label],
+      <String>[for (final ProjectStatus status in ProjectStatus.values) status.labelIn(AppLocalizationsEn())],
       <String>[
         'clean',
         'uncommitted changes',

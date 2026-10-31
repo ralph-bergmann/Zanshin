@@ -8,6 +8,7 @@
 /// grows with what the app consumes.
 library;
 
+export 'l10n/zs_localizations.dart' show ZsLocalizations;
 export 'src/controls/zs_badge.dart' show ZsBadge, ZsBadgeTone;
 export 'src/controls/zs_button.dart' show ZsButton, ZsButtonSize, ZsButtonVariant, ZsIconButton, ZsIconButtonSize;
 export 'src/controls/zs_checkbox.dart' show ZsCheckbox, ZsCheckboxSize, ZsCheckboxTone;

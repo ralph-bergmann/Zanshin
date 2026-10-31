@@ -12,6 +12,7 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'project_registry.dart';
 import 'project_session.dart';
 import 'projects_environment.dart';
@@ -107,9 +108,6 @@ class ProjectsWindow extends StatefulWidget {
 
   /// The narrow search's width.
   static const double searchNarrowWidth = 120;
-
-  /// The Settings… row's tooltip (DS ui_kits/desktop/dialogs.jsx:39).
-  static const settingsTooltip = 'Settings — ⌘, (the tab shown last)';
 
   @override
   State<ProjectsWindow> createState() => ProjectsWindowState();
@@ -393,7 +391,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
         setState(() => _selected = 'project:$added');
         return true;
       case ProjectNotARepo(kind: RepoKind.pathNotFound):
-        _note('$path does not exist.');
+        _note(context.l10n.projectsPathMissing(path));
         return false;
       case ProjectNotARepo(kind: RepoKind.git):
         return _ask(_Offer(_OfferKind.convert, path, placement));
@@ -406,16 +404,19 @@ class ProjectsWindowState extends State<ProjectsWindow> {
       case ProjectOpenFailed(:final String? context, :final List<ZanshinWarning> warnings):
         _note(
           switch (made) {
-            _OfferKind.convert => 'Conversion failed',
-            _OfferKind.init => 'Creating a repository failed',
-            _OfferKind.clone => 'Clone failed',
-            _OfferKind.enclosing || _OfferKind.open => 'Could not open ${_nameOf(path)}',
+            _OfferKind.convert => this.context.l10n.projectsConversionFailed,
+            _OfferKind.init => this.context.l10n.projectsInitFailed,
+            _OfferKind.clone => this.context.l10n.projectsCloneFailed,
+            _OfferKind.enclosing || _OfferKind.open => this.context.l10n.projectsOpenFailed(_nameOf(path)),
           },
           <String?>[context, for (final ZanshinWarning warning in warnings) warning.message],
         );
         return false;
       case ProjectRefused(:final String message):
-        _note(made == _OfferKind.clone ? 'Clone failed' : message, <String?>[if (made == _OfferKind.clone) message]);
+        _note(
+          made == _OfferKind.clone ? context.l10n.projectsCloneFailed : message,
+          <String?>[if (made == _OfferKind.clone) message],
+        );
         return false;
     }
   }
@@ -425,6 +426,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   void _opened(ProjectOpened outcome, {required _OfferKind made, required String path}) {
     final String? open = widget.session.current?.path;
     final String name = widget.session.current?.name ?? _nameOf(path);
+    final AppLocalizations strings = context.l10n;
     setState(() {
       if (open != null) {
         _selected = 'project:$open';
@@ -433,10 +435,10 @@ class ProjectsWindowState extends State<ProjectsWindow> {
           ? null
           : (
               title: switch (made) {
-                _OfferKind.convert => 'Converted $name',
-                _OfferKind.init => 'Created a repository in $name',
-                _OfferKind.clone => 'Cloned $name',
-                _OfferKind.enclosing || _OfferKind.open => 'Opened $name',
+                _OfferKind.convert => strings.projectsConverted(name),
+                _OfferKind.init => strings.projectsCreated(name),
+                _OfferKind.clone => strings.projectsCloned(name),
+                _OfferKind.enclosing || _OfferKind.open => strings.projectsOpened(name),
               },
               lines: <String>[for (final ZanshinWarning warning in outcome.warnings) warning.message],
             );
@@ -491,7 +493,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     final String? path = await widget.environment.chooseDirectory(
       viewId: View.of(context).viewId,
       initialDirectory: _lastParent,
-      prompt: 'Add',
+      prompt: context.l10n.projectsAddPrompt,
     );
     if (path == null || !mounted) {
       return;
@@ -593,11 +595,12 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     if (group == null) {
       return;
     }
+    final AppLocalizations strings = context.l10n;
     setState(
       () => _question = _Question(
-        'Delete the group ${group.name}?',
-        'Delete group',
-        const TextSpan(text: 'Its projects and groups take its place; nothing leaves the list.'),
+        strings.deleteGroupTitle(group.name),
+        strings.deleteGroup,
+        TextSpan(text: strings.deleteGroupBody),
         () => _deleteGroup(id),
       ),
     );
@@ -606,13 +609,12 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   /// Remove from list asks first (Ralph, 2026-10-29); the repository stays on disk.
   void _askRemove(ProjectEntry entry) => setState(
     () => _question = _Question(
-      'Remove ${entry.name} from the list?',
-      'Remove',
+      context.l10n.removeProjectTitle(entry.name),
+      context.l10n.removeProjectConfirm,
       TextSpan(
-        children: <InlineSpan>[
+        children: slotSpans(context.l10n.removeProjectBody(slot(0)), <InlineSpan>[
           TextSpan(text: displayPath(entry.path, widget.environment.home), style: ZsType.id),
-          const TextSpan(text: ' stays on disk; only the list forgets it.'),
-        ],
+        ]),
       ),
       () {
         if (_selected == 'project:${entry.path}') {
@@ -661,7 +663,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     final String? parent = await widget.environment.chooseDirectory(
       viewId: View.of(context).viewId,
       initialDirectory: _lastParent ?? widget.environment.home,
-      prompt: 'Choose',
+      prompt: context.l10n.cloneChoosePrompt,
     );
     if (parent == null || !mounted) {
       return;
@@ -678,7 +680,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   });
 
   String get _cloneCommand =>
-      'jj git clone --no-colocate ${shellQuote(_cloneUrl.text.trim())} ${shellQuote(_destination)}';
+      'jj git clone --no-colocate ${shellQuote(_cloneUrl.text.trim())} ${shellQuote(_destination)}'; // l10n-ignore: the jj command
 
   Future<void> _submitClone() async {
     final String url = _cloneUrl.text.trim();
@@ -738,7 +740,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
                   child: FocusTraversalGroup(
                     policy: OrderedTraversalPolicy(),
                     child: ZsWindowScaffold(
-                      title: 'Projects',
+                      title: context.l10n.projectsTitle,
                       header: <Widget>[
                         FocusTraversalOrder(
                           order: const NumericFocusOrder(1),
@@ -780,12 +782,13 @@ class ProjectsWindowState extends State<ProjectsWindow> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             spacing: 1,
             children: <Widget>[
-              const _NavRow(icon: ZI.folderOpen, label: 'Projects', current: true),
+              _NavRow(icon: ZI.folderOpen, label: context.l10n.projectsTitle, current: true),
+              // The Settings… row's tooltip (DS ui_kits/desktop/dialogs.jsx:39).
               ZsTooltip(
-                message: ProjectsWindow.settingsTooltip,
+                message: context.l10n.projectsSettingsTooltip,
                 child: _NavRow(
                   icon: ZI.settings,
-                  label: 'Settings…',
+                  label: context.l10n.settingsEllipsis,
                   onPressed: widget.onSettings,
                   identifier: 'projects-settings',
                 ),
@@ -877,14 +880,14 @@ class ProjectsWindowState extends State<ProjectsWindow> {
           child: ZsSearchField(
             controller: _search,
             focusNode: _searchFocus,
-            placeholder: 'Search projects, paths…',
+            placeholder: context.l10n.projectsSearchPlaceholder,
             identifier: 'projects-search',
             onChanged: (_) => setState(() {}),
           ),
         ),
       ),
       ZsButton(
-        label: 'Add directory',
+        label: context.l10n.projectsAddDirectory,
         variant: ZsButtonVariant.primary,
         size: ZsButtonSize.md,
         icon: ZI.plus,
@@ -892,7 +895,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
         onPressed: () => unawaited(_chooseDirectory()),
       ),
       ZsButton(
-        label: 'Clone…',
+        label: context.l10n.projectsClone,
         size: ZsButtonSize.md,
         icon: ZI.cloud,
         iconOnly: narrow,
@@ -901,7 +904,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
         onPressed: _cloneBusy ? null : () => _cloneOpen ? _closeCloneForm() : openCloneForm(),
       ),
       ZsButton(
-        label: 'New group',
+        label: context.l10n.projectsNewGroup,
         variant: ZsButtonVariant.ghost,
         size: ZsButtonSize.md,
         icon: ZI.folderPlus,
@@ -927,8 +930,8 @@ class ProjectsWindowState extends State<ProjectsWindow> {
           children: <Widget>[
             ZsTextField(
               controller: _cloneUrl,
-              placeholder: 'Repository URL',
-              label: 'Repository URL',
+              placeholder: context.l10n.cloneUrl,
+              label: context.l10n.cloneUrl,
               enabled: !_cloneBusy,
               identifier: 'projects-clone-url',
               onChanged: (url) => setState(() => _urlChanged(url)),
@@ -941,8 +944,8 @@ class ProjectsWindowState extends State<ProjectsWindow> {
                   child: ZsTextField(
                     controller: _cloneDestination,
                     mono: true,
-                    placeholder: 'Destination',
-                    label: 'Destination',
+                    placeholder: context.l10n.cloneDestination,
+                    label: context.l10n.cloneDestination,
                     enabled: !_cloneBusy,
                     identifier: 'projects-clone-destination',
                     onChanged: (_) => setState(() => _destinationEdited = true),
@@ -950,22 +953,22 @@ class ProjectsWindowState extends State<ProjectsWindow> {
                   ),
                 ),
                 ZsButton(
-                  label: 'Choose…',
+                  label: context.l10n.cloneChoose,
                   size: ZsButtonSize.md,
                   identifier: 'projects-clone-choose',
                   onPressed: _cloneBusy ? null : () => unawaited(_chooseCloneParent()),
                 ),
                 ZsButton(
-                  label: 'Cancel',
+                  label: context.l10n.cloneCancel,
                   size: ZsButtonSize.md,
                   identifier: 'projects-clone-cancel',
                   onPressed: _cloneBusy ? null : _closeCloneForm,
                 ),
                 ZsTooltip(
-                  message: 'Clone',
+                  message: context.l10n.cloneSubmit,
                   cmd: _cloneCommand,
                   child: ZsButton(
-                    label: 'Clone',
+                    label: context.l10n.cloneSubmit,
                     variant: ZsButtonVariant.primary,
                     size: ZsButtonSize.md,
                     busy: _cloneBusy,
@@ -986,42 +989,33 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     const TextStyle mono = ZsType.id;
     // The body names the folder as the tree does (`~` for home); the well shows the command with the full path.
     String shown(String path) => displayPath(path, widget.environment.home);
+    final AppLocalizations strings = context.l10n;
+    // The message with its paths as slots: slot 0 the path, slot 1 the folder inside it.
+    final pathSpans = <InlineSpan>[
+      TextSpan(text: shown(offer.path), style: mono),
+      TextSpan(text: shown(offer.inside ?? offer.path), style: mono),
+    ];
     final (String title, String confirm, String? cmd, List<InlineSpan> body) = switch (offer.kind) {
       _OfferKind.convert => (
-        'Convert $name to a jj repository?',
-        'Convert',
-        'jj git init --colocate ${shellQuote(offer.path)}',
-        <InlineSpan>[
-          if (offer.inside case final String inside) ...<InlineSpan>[
-            TextSpan(text: shown(inside), style: mono),
-            const TextSpan(text: ' lies inside the Git repository at '),
-            TextSpan(text: shown(offer.path), style: mono),
-            const TextSpan(text: '. It stays a Git repository; jj joins it and shares its working copy.'),
-          ] else ...<InlineSpan>[
-            TextSpan(text: shown(offer.path), style: mono),
-            const TextSpan(text: ' stays a Git repository; jj joins it and shares its working copy.'),
-          ],
-        ],
+        strings.convertTitle(name),
+        strings.convertConfirm,
+        'jj git init --colocate ${shellQuote(offer.path)}', // l10n-ignore: the jj command
+        slotSpans(
+          offer.inside == null ? strings.convertBody(slot(0)) : strings.convertBodyInside(slot(1), slot(0)),
+          pathSpans,
+        ),
       ),
       _OfferKind.init => (
-        'Create a jj repository in $name?',
-        'Create',
-        'jj git init --no-colocate ${shellQuote(offer.path)}',
-        <InlineSpan>[
-          TextSpan(text: shown(offer.path), style: mono),
-          const TextSpan(text: ' becomes a jj repository, its Git store inside .jj.'),
-        ],
+        strings.initTitle(name),
+        strings.initConfirm,
+        'jj git init --no-colocate ${shellQuote(offer.path)}', // l10n-ignore: the jj command
+        slotSpans(strings.initBody(slot(0)), pathSpans),
       ),
       _ => (
-        'Add the enclosing repository $name?',
-        'Add',
+        strings.enclosingTitle(name),
+        strings.enclosingConfirm,
         null,
-        <InlineSpan>[
-          TextSpan(text: shown(offer.inside ?? offer.path), style: mono),
-          const TextSpan(text: ' lies inside the jj repository at '),
-          TextSpan(text: shown(offer.path), style: mono),
-          const TextSpan(text: '.'),
-        ],
+        slotSpans(strings.enclosingBody(slot(1), slot(0)), pathSpans),
       ),
     };
     return ZsConfirmDialog(
@@ -1097,11 +1091,11 @@ class _Brand extends StatelessWidget {
               spacing: 1,
               children: <Widget>[
                 Text(
-                  'Zanshin',
+                  'Zanshin', // l10n-ignore: the product name
                   style: ZsType.panelTitle.copyWith(letterSpacing: .02 * ZsType.fsLg, color: colors.text),
                 ),
                 if (version != null) line(version),
-                if (jjLibVersion != null) line('jj-lib $jjLibVersion'),
+                if (jjLibVersion != null) line(context.l10n.jjLibVersion(jjLibVersion)),
               ],
             ),
           ),
@@ -1218,7 +1212,7 @@ class _IdentityFooter extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             spacing: 6,
             children: <Widget>[
-              Text(ZsType.caps('Identity'), style: ZsType.capsLabel.copyWith(color: colors.textDim)),
+              Text(ZsType.caps(context.l10n.identityCaption), style: ZsType.capsLabel.copyWith(color: colors.textDim)),
               if (missing == null && name != null && email != null)
                 Row(
                   spacing: 8,
@@ -1262,7 +1256,7 @@ class _IdentityFooter extends StatelessWidget {
               else ...<Widget>[
                 Text(missing ?? '', style: text),
                 if (onSettings case final VoidCallback open)
-                  ZsLink(label: 'Set identity…', onPressed: open, identifier: 'projects-identity-settings'),
+                  ZsLink(label: context.l10n.setIdentity, onPressed: open, identifier: 'projects-identity-settings'),
               ],
             ],
           ),
@@ -1317,7 +1311,7 @@ class _NoticeBlock extends StatelessWidget {
               ),
               ZsIconButton(
                 icon: ZI.close,
-                label: 'Dismiss',
+                label: context.l10n.noticeDismiss,
                 size: ZsIconButtonSize.sm,
                 identifier: 'projects-notice-dismiss',
                 onPressed: onDismiss,
@@ -1357,7 +1351,7 @@ class _DropHint extends StatelessWidget {
             children: <Widget>[
               ZanshinIcon(ZI.fetch, size: ZsIconSize.md, color: colors.accentLiveText),
               Text(
-                'Drop to add directory',
+                context.l10n.dropToAddDirectory,
                 style: ZsType.meta.copyWith(fontSize: ZsType.fsId, color: colors.accentLiveText),
               ),
             ],

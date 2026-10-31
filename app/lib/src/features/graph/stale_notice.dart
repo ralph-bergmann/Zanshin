@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
+
 /// "Working copy is stale · ‹command›" (Story 10.5 item 9; DS components/overlays/StaleNotice.{prompt.md,jsx},
 /// overlays.css:62-68): a glass pill 44 high (`--control-xl`, radius `--radius-pill`, padding 0 7 0 16, gap 9), the
 /// mark `conflict` in `--warn`, the sentence `--text` 500, "·" `--text-faint`, the command mono `--text-muted`.
@@ -19,11 +21,8 @@ class StaleNotice extends StatelessWidget {
   /// A notice naming [command].
   const StaleNotice({required this.command, this.message, this.onUpdate, this.busy = false, super.key});
 
-  /// The sentence.
-  static const title = 'Working copy is stale';
-
   /// What "Update working copy" runs.
-  static const updateCommand = 'jj workspace update-stale';
+  static const updateCommand = 'jj workspace update-stale'; // l10n-ignore: the jj command
 
   /// The command jj's hint names.
   final String command;
@@ -42,6 +41,8 @@ class StaleNotice extends StatelessWidget {
     final ZsColors colors = ZsColors.of(context);
     final metrics = ZsMetrics.of(context);
     const gap = SizedBox(width: 9);
+    final AppLocalizations strings = context.l10n;
+    final String title = strings.staleTitle;
     final Widget sentence = Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -90,7 +91,7 @@ class StaleNotice extends StatelessWidget {
                 ZsTooltip(
                   message: updateCommand,
                   child: ZsButton(
-                    label: 'Update working copy',
+                    label: strings.staleUpdate,
                     icon: ZI.fetch,
                     size: ZsButtonSize.md,
                     busy: busy,
@@ -100,7 +101,7 @@ class StaleNotice extends StatelessWidget {
                 )
               else
                 ZsButton(
-                  label: 'Copy — $command',
+                  label: strings.staleCopy(command),
                   icon: ZI.copy,
                   iconOnly: true,
                   onPressed: () => unawaited(Clipboard.setData(ClipboardData(text: command))),

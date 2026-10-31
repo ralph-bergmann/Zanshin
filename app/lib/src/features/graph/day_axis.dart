@@ -5,31 +5,33 @@ import 'dart:ui' show PointMode;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'graph_layout.dart';
 import 'vertical_layout.dart';
 
 const _dayMs = 86400000;
-const _months = <String>['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /// The label of the day starting at [dayMs] (a local midnight, epoch ms) seen at [nowMs], both read at the layout's
-/// fixed offset (Story 10.2; design graph-layout.jsx:36-45): "Today" for today and later, "Yesterday", else "Sep 23",
-/// with ", 2025" when the year is not the current one.
-// shortcut: hard-coded en-US, no intl (deferred-work.md:764); switch to the app's localisation once it exists.
-String graphDayLabel(int dayMs, {required int nowMs, required int utcOffsetMinutes}) {
+/// fixed offset, in [strings] (Story 10.2; design graph-layout.jsx:36-45): "Today" for today and later, "Yesterday",
+/// else the day through `intl` at the strings' locale — `MMMd` ("Sep 23"), `yMMMd` ("Sep 23, 2025") when the year is
+/// not the current one.
+String graphDayLabel(AppLocalizations strings, int dayMs, {required int nowMs, required int utcOffsetMinutes}) {
   final int off = utcOffsetMinutes * 60000;
   final int local = nowMs + off;
   final int today = local - local % _dayMs - off;
   if (dayMs >= today) {
-    return 'Today';
+    return strings.dayToday;
   }
   if (dayMs == today - _dayMs) {
-    return 'Yesterday';
+    return strings.dayYesterday;
   }
   final day = DateTime.fromMillisecondsSinceEpoch(dayMs + off, isUtc: true);
-  final text = '${_months[day.month - 1]} ${day.day}';
-  return day.year == DateTime.fromMillisecondsSinceEpoch(local, isUtc: true).year ? text : '$text, ${day.year}';
+  ensureDateFormatting();
+  final thisYear = day.year == DateTime.fromMillisecondsSinceEpoch(local, isUtc: true).year;
+  return (thisYear ? DateFormat.MMMd(strings.localeName) : DateFormat.yMMMd(strings.localeName)).format(day);
 }
 
 /// Free's day axis in plane coordinates (Story 10.2): one label per day bucket and a divider between two days, read
@@ -115,11 +117,20 @@ class GraphDayAxis {
 /// the edges), [paintLabels] in the overlay hook (above the cards). Paint-only: it adds no hit target and no
 /// semantics, and a new [nowMs] needs a new painter, a repaint, never a layout. The owner calls [dispose].
 class GraphDayAxisPainter {
-  /// A painter of [axis] in [theme]'s day-axis roles, labelling against [nowMs] at [utcOffsetMinutes].
-  GraphDayAxisPainter({required this.axis, required this.theme, required this.nowMs, required this.utcOffsetMinutes});
+  /// A painter of [axis] in [theme]'s day-axis roles, labelling in [strings] against [nowMs] at [utcOffsetMinutes].
+  GraphDayAxisPainter({
+    required this.axis,
+    required this.theme,
+    required this.strings,
+    required this.nowMs,
+    required this.utcOffsetMinutes,
+  });
 
   /// The axis painted.
   final GraphDayAxis axis;
+
+  /// The labels' words.
+  final AppLocalizations strings;
 
   /// The colours.
   final GraphTheme theme;
@@ -211,7 +222,7 @@ class GraphDayAxisPainter {
     b,
     () => TextPainter(
       text: TextSpan(
-        text: graphDayLabel(axis.values[b], nowMs: nowMs, utcOffsetMinutes: utcOffsetMinutes),
+        text: graphDayLabel(strings, axis.values[b], nowMs: nowMs, utcOffsetMinutes: utcOffsetMinutes),
         style: ZsType.id.copyWith(fontSize: ZsType.fsSm, color: theme.dayLabelText),
       ),
       textDirection: TextDirection.ltr,

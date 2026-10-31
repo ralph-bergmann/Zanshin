@@ -12,6 +12,7 @@ import 'package:zanshin/src/features/bootstrap/boot_failure.dart';
 import 'package:zanshin/src/features/bootstrap/splash_card.dart';
 import 'package:zanshin/src/features/bootstrap/splash_card_render.dart';
 import 'package:zanshin/src/features/bootstrap/zanshin_bootstrap.dart';
+import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -752,5 +753,13 @@ void main() {
     final BuildContext page = tester.element(find.byType(Scaffold));
     expect(Theme.of(page).extension<ZsColors>(), ZsColors.paper);
     expect(ZsAppearance.maybeOf(page), isNotNull);
+  });
+
+  testWidgets('the failure page registers the app\'s and zanshin_ui\'s strings (Story 11.16)', (tester) async {
+    await tester.pumpWidget(const BootFailure(error: 'x', mode: ThemeMode.system));
+
+    final BuildContext page = tester.element(find.byType(Scaffold));
+    expect(AppLocalizations.of(page), isNotNull);
+    expect(ZsLocalizations.of(page), isNotNull);
   });
 }

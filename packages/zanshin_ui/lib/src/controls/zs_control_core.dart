@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../design/zs_appearance.dart';
 import '../design/zs_metrics.dart';
+import '../zs_strings.dart';
 import 'zs_focus_ring.dart';
 import 'zs_tooltip.dart';
 
@@ -383,7 +384,7 @@ class _ZsControlCoreState extends State<ZsControlCore> {
       identifier: widget.identifier,
       enabled: !_disabled,
       label: s.label,
-      value: widget.busy ? 'busy' : s.value,
+      value: widget.busy ? zsStrings(context).busyValue : s.value,
       hint: hint,
       tooltip: _tooltip(s.label, hint),
       button: s.button,

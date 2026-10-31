@@ -8,6 +8,7 @@ import '../design/zs_metrics.dart';
 import '../design/zs_type.dart';
 import '../icons/zanshin_icon.dart';
 import '../materials/zs_sheet.dart';
+import '../zs_strings.dart';
 import 'zs_button.dart';
 import 'zs_control.dart';
 import 'zs_control_text.dart';
@@ -45,7 +46,7 @@ class ZsConfirmDialog extends StatefulWidget implements ZsControl {
     required this.onCancel,
     this.body,
     this.cmd,
-    this.cancelLabel = 'Cancel',
+    this.cancelLabel,
     this.tone = ZsConfirmTone.destructive,
     this.busy = false,
     this.closing = false,
@@ -66,8 +67,8 @@ class ZsConfirmDialog extends StatefulWidget implements ZsControl {
   /// The confirm button's verb ("Clear history").
   final String confirmLabel;
 
-  /// The cancel button's label.
-  final String cancelLabel;
+  /// The cancel button's label; "Cancel" when null.
+  final String? cancelLabel;
 
   /// Destructive, warn or standard.
   final ZsConfirmTone tone;
@@ -202,13 +203,13 @@ class _ZsConfirmDialogState extends State<ZsConfirmDialog> {
                       Expanded(
                         child: _destructive
                             ? Text(
-                                '⌘↩ confirms',
+                                zsStrings(context).confirmShortcutHint,
                                 style: zsSans(ZsType.fsSm, height: ZsType.lhSnug).copyWith(color: colors.textFaint),
                               )
                             : const SizedBox.shrink(),
                       ),
                       ZsButton(
-                        label: widget.cancelLabel,
+                        label: widget.cancelLabel ?? zsStrings(context).confirmCancel,
                         size: ZsButtonSize.md,
                         focusNode: _cancel,
                         onPressed: () {

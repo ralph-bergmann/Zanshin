@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'day_axis.dart';
 import 'graph_card_render.dart';
 import 'graph_layout.dart';
@@ -199,24 +200,25 @@ const _minuteMs = 60000;
 const _hourMs = 3600000;
 const _dayMs = 86400000;
 
-/// The relative committer time a card shows (Story 10.3, Claude's proposal (h)), against [nowMs]: "now" under a
-/// minute and in the future, "Nm" under an hour, "Nh" under a day, "Nd" under a week, else the day as
-/// [graphDayLabel] writes it ("Sep 19", ", 2025" in another year) at the layout's offset.
-String graphRelativeDate(int tsMs, {required int nowMs, required int utcOffsetMinutes}) {
+/// The relative committer time a card shows in [strings] (Story 10.3, Claude's proposal (h)), against [nowMs]: "now"
+/// under a minute and in the future, "Nm" under an hour, "Nh" under a day, "Nd" under a week, else the day as
+/// [graphDayLabel] writes it ("Sep 19", "Sep 19, 2025" in another year) at the layout's offset.
+String graphRelativeDate(AppLocalizations strings, int tsMs, {required int nowMs, required int utcOffsetMinutes}) {
   final int age = nowMs - tsMs;
   if (age < _minuteMs) {
-    return 'now';
+    return strings.relativeNow;
   }
   if (age < _hourMs) {
-    return '${age ~/ _minuteMs}m';
+    return strings.relativeMinutes(age ~/ _minuteMs);
   }
   if (age < _dayMs) {
-    return '${age ~/ _hourMs}h';
+    return strings.relativeHours(age ~/ _hourMs);
   }
   if (age < 7 * _dayMs) {
-    return '${age ~/ _dayMs}d';
+    return strings.relativeDays(age ~/ _dayMs);
   }
   return graphDayLabel(
+    strings,
     graphLocalDay(tsMs, utcOffsetMinutes: utcOffsetMinutes),
     nowMs: nowMs,
     utcOffsetMinutes: utcOffsetMinutes,
@@ -225,22 +227,21 @@ String graphRelativeDate(int tsMs, {required int nowMs, required int utcOffsetMi
 
 /// [graphRelativeDate] as VoiceOver speaks it: "now", "N minutes ago", "N hours ago", "N days ago", else the same
 /// day form.
-String _spokenRelativeDate(int tsMs, {required int nowMs, required int utcOffsetMinutes}) {
+String _spokenRelativeDate(AppLocalizations strings, int tsMs, {required int nowMs, required int utcOffsetMinutes}) {
   final int age = nowMs - tsMs;
-  String ago(int n, String unit) => n == 1 ? '1 $unit ago' : '$n ${unit}s ago';
   if (age < _minuteMs) {
-    return 'now';
+    return strings.relativeNow;
   }
   if (age < _hourMs) {
-    return ago(age ~/ _minuteMs, 'minute');
+    return strings.spokenMinutesAgo(age ~/ _minuteMs);
   }
   if (age < _dayMs) {
-    return ago(age ~/ _hourMs, 'hour');
+    return strings.spokenHoursAgo(age ~/ _hourMs);
   }
   if (age < 7 * _dayMs) {
-    return ago(age ~/ _dayMs, 'day');
+    return strings.spokenDaysAgo(age ~/ _dayMs);
   }
-  return graphRelativeDate(tsMs, nowMs: nowMs, utcOffsetMinutes: utcOffsetMinutes);
+  return graphRelativeDate(strings, tsMs, nowMs: nowMs, utcOffsetMinutes: utcOffsetMinutes);
 }
 
 /// The local midnight (epoch ms) of the day [tsMs] falls in, at the fixed offset [utcOffsetMinutes].
@@ -285,41 +286,43 @@ int graphLocalDay(int tsMs, {required int utcOffsetMinutes}) {
 /// [, merge][, hidden | , divergent]`. The root leaves "Immutable, " out; without content the subject and the author
 /// are left out. The date is spoken ("40 minutes ago", not the card's "40m"), then ", day label" unless the spoken
 /// text is the day label.
-String graphCardLabel(GraphCardData data, {required int nowMs, bool detailed = true}) {
+String graphCardLabel(AppLocalizations strings, GraphCardData data, {required int nowMs, bool detailed = true}) {
   final GraphCommitContent? content = data.content;
   final List<String> others = data.otherWorkspaces;
   final (:String prefix, :String rest, :String offset) = data.idParts(detailed: detailed);
   final int? ts = data.timestampMs;
   final int off = data.utcOffsetMinutes;
-  final String? relative = ts == null ? null : _spokenRelativeDate(ts, nowMs: nowMs, utcOffsetMinutes: off);
+  final String? relative = ts == null ? null : _spokenRelativeDate(strings, ts, nowMs: nowMs, utcOffsetMinutes: off);
   final String? day = ts == null
       ? null
       : graphDayLabel(
+          strings,
           graphLocalDay(ts, utcOffsetMinutes: off),
           nowMs: nowMs,
           utcOffsetMinutes: off,
         );
   final String? author = data.author;
+  final String? workspace = data.workspaceName;
   return <String>[
-    if (data.isWorkingCopy && data.workingCopies.isNotEmpty && data.workspaceName != null)
-      'Working copy of ${data.workspaceName}'
+    if (data.isWorkingCopy && data.workingCopies.isNotEmpty && workspace != null)
+      strings.cardWorkingCopyOf(workspace)
     else if (data.isWorkingCopy)
-      'Working copy',
-    if (others.isNotEmpty) 'working copy of ${others.join(', ')}',
-    if (data.immutable && !data.isRoot) 'Immutable',
+      strings.cardWorkingCopy,
+    if (others.isNotEmpty) strings.cardOtherWorkingCopy(others.join(', ')),
+    if (data.immutable && !data.isRoot) strings.cardImmutable,
     if (data.isRoot)
-      'root()'
+      'root()' // l10n-ignore: jj's text
     else if (content != null && content.subject.isEmpty)
-      'no description'
+      strings.cardNoDescription
     else if (content != null)
       content.subject,
     '$prefix$rest$offset',
     ?author,
     if (relative != null && relative == day) relative else if (relative != null) '$relative, $day',
-    if (content?.empty ?? false) 'empty',
-    if (content?.conflict ?? false) 'conflict',
-    if (data.merge) 'merge',
-    if (data.hidden) 'hidden' else if (data.divergent) 'divergent',
+    if (content?.empty ?? false) strings.cardEmpty,
+    if (content?.conflict ?? false) strings.cardConflict,
+    if (data.merge) strings.cardMerge,
+    if (data.hidden) strings.cardHidden else if (data.divergent) strings.cardDivergent,
   ].join(', ');
 }
 
@@ -434,6 +437,7 @@ class _GraphCardState extends State<GraphCard> with SingleTickerProviderStateMix
         conflict: registry?[ZI.conflict]?.picture,
         merge: registry?[ZI.merge]?.picture,
       ),
+      strings: context.l10n,
       controller: widget.controller,
       reveal: _reveal,
     );
@@ -449,6 +453,7 @@ class _GraphCardLeaf extends LeafRenderObjectWidget {
     required this.motion,
     required this.inactive,
     required this.icons,
+    required this.strings,
     required this.controller,
     required this.reveal,
   });
@@ -460,6 +465,7 @@ class _GraphCardLeaf extends LeafRenderObjectWidget {
   final ZsMotion motion;
   final bool inactive;
   final GraphCardIcons icons;
+  final AppLocalizations strings;
   final GraphCardController controller;
   final Animation<double> reveal;
 
@@ -472,6 +478,7 @@ class _GraphCardLeaf extends LeafRenderObjectWidget {
     motion: motion,
     inactive: inactive,
     icons: icons,
+    strings: strings,
     controller: controller,
     reveal: reveal,
   );
@@ -485,6 +492,7 @@ class _GraphCardLeaf extends LeafRenderObjectWidget {
     ..motion = motion
     ..inactive = inactive
     ..icons = icons
+    ..strings = strings
     ..controller = controller
     ..reveal = reveal;
 }

@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../design/zs_appearance.dart';
 import '../design/zs_colors.dart';
 import '../design/zs_motion.dart';
+import '../zs_strings.dart';
 import 'zs_control.dart';
 import 'zs_lerp_builder.dart';
 
@@ -95,7 +96,7 @@ class _ZsProgressBarState extends State<ZsProgressBar> with SingleTickerProvider
     final Widget bar;
     final String semanticsValue;
     if (value == null) {
-      semanticsValue = 'in progress';
+      semanticsValue = zsStrings(context).progressIndeterminate;
       bar = CustomPaint(
         size: Size(widget.width, ZsProgressBar._height),
         painter: _ProgressPainter(

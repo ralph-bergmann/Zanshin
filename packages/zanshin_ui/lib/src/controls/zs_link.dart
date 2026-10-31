@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../design/zs_colors.dart';
 import '../design/zs_metrics.dart';
 import '../design/zs_motion.dart';
+import '../zs_strings.dart';
 import 'zs_control.dart';
 import 'zs_control_core.dart';
 import 'zs_focus_ring.dart';
@@ -57,7 +58,7 @@ class ZsLink extends StatelessWidget implements ZsControl {
     statesController: statesController,
     onActivate: onPressed,
     enabled: onPressed != null,
-    semantics: SemanticsProperties(link: true, label: external ? '$label, opens in browser' : label),
+    semantics: SemanticsProperties(link: true, label: external ? zsStrings(context).linkOpensInBrowser(label) : label),
     ring: ZsRingPlacement.outside,
     ringRadius: ZsMetrics.of(context).radiusKbd,
     builder: (context, status) {

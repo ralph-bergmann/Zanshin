@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'boot_failure.dart';
 
 /// The app's version and build number, as the splash's footer shows them.
@@ -201,10 +202,11 @@ class ZanshinBootSequence {
   /// and the icons are decoded while the settings load, so their time is
   /// hidden behind theirs.
   ///
-  /// The status lines are English (decision 16.9); the wording is Claude's
-  /// proposal (Story 11.1).
+  /// The status lines come from the platform-resolved strings (Story 11.16;
+  /// no window exists yet); the wording is Claude's proposal (Story 11.1).
   Future<BootFirstWindow> _load() async {
-    log('Loading settings…');
+    final AppLocalizations strings = platformStrings();
+    log(strings.bootLoadingSettings);
     var shellPending = true;
     // `ignore` only keeps an early failure from counting as unhandled while
     // the settings load: the awaits below still throw it.
@@ -213,11 +215,11 @@ class ZanshinBootSequence {
     final SettingsStore settings = await openSettings();
     _persistedMode = settings.value.appearance.themeMode;
     if (shellPending) {
-      log('Reading the shell environment…');
+      log(strings.bootReadingShell);
     }
     await shellEnvironment;
     final IconRegistry registry = await icons;
-    log('Starting Zanshin…');
+    log(strings.bootStarting);
     return startApp(settings, registry);
   }
 

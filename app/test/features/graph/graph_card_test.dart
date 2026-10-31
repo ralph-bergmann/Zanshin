@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/l10n/app_localizations_en.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_card_render.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
@@ -21,6 +22,8 @@ import '../../helpers/icon_registry.dart';
 import 'graph_harness.dart';
 
 final macOS = TargetPlatformVariant.only(TargetPlatform.macOS);
+
+final _en = AppLocalizationsEn();
 
 // Sep 28 2026, 12:00 UTC.
 const _now = 1790596800000;
@@ -228,7 +231,7 @@ void main() {
 
   group('pure helpers', () {
     test('graphRelativeDate: now, Nm, Nh, Nd, the day, another year; the future is now', () {
-      String rel(int ts) => graphRelativeDate(ts, nowMs: _now, utcOffsetMinutes: 0);
+      String rel(int ts) => graphRelativeDate(_en, ts, nowMs: _now, utcOffsetMinutes: 0);
       expect(rel(_now - 30000), 'now');
       expect(rel(_now - 40 * _minute), '40m');
       expect(rel(_now - 20 * _hour), '20h');
@@ -238,7 +241,12 @@ void main() {
       expect(rel(_now + 5 * _hour), 'now');
       // The day form is read at the layout's offset: 23:30 UTC on Sep 18 is Sep 19 at +02:00.
       expect(
-        graphRelativeDate(DateTime.utc(2026, 9, 18, 23, 30).millisecondsSinceEpoch, nowMs: _now, utcOffsetMinutes: 120),
+        graphRelativeDate(
+          _en,
+          DateTime.utc(2026, 9, 18, 23, 30).millisecondsSinceEpoch,
+          nowMs: _now,
+          utcOffsetMinutes: 120,
+        ),
         'Sep 19',
       );
     });
@@ -355,31 +363,33 @@ void main() {
     test('graphCardLabel: the states, the workspaces and the date with its day label (I1)', () {
       GraphCardData of(RecordedGraphLayout layout) => GraphCardData.of(layout, 0);
       expect(
-        graphCardLabel(of(one(flags: _imm)), nowMs: _now),
+        graphCardLabel(_en, of(one(flags: _imm)), nowMs: _now),
         'Immutable, feat: swipe gestures, kxwsnptm, Ralph, 40 minutes ago, Today',
       );
       expect(
-        graphCardLabel(of(one(root: true, flags: _imm, content: null, ts: null)), nowMs: _now),
+        graphCardLabel(_en, of(one(root: true, flags: _imm, content: null, ts: null)), nowMs: _now),
         'root(), kxwsnptm',
       );
       expect(
         graphCardLabel(
+          _en,
           of(one(workingCopy: true, workspaces: <String>['default', 'ci'], workspaceName: 'default')),
           nowMs: _now,
         ),
         startsWith('Working copy of default, working copy of ci, feat: swipe gestures'),
       );
-      expect(graphCardLabel(of(one(workingCopy: true)), nowMs: _now), startsWith('Working copy, feat'));
-      expect(graphCardLabel(of(one(ts: _now - 9 * _day)), nowMs: _now), endsWith(', Ralph, Sep 19'));
-      expect(graphCardLabel(of(one(ts: _now - 20 * _hour)), nowMs: _now), endsWith(', 20 hours ago, Yesterday'));
-      expect(graphCardLabel(of(one(ts: _now - 30000)), nowMs: _now), endsWith(', Ralph, now, Today'));
-      expect(graphCardLabel(of(one(ts: _now - _minute)), nowMs: _now), endsWith(', 1 minute ago, Today'));
-      expect(graphCardLabel(of(one(ts: _now - _hour)), nowMs: _now), endsWith(', 1 hour ago, Today'));
-      expect(graphCardLabel(of(one(ts: _now - _day)), nowMs: _now), endsWith(', 1 day ago, Yesterday'));
-      expect(graphCardLabel(of(one(ts: _now - 3 * _day)), nowMs: _now), endsWith(', 3 days ago, Sep 25'));
-      expect(graphCardLabel(of(one(content: null)), nowMs: _now), 'kxwsnptm, 40 minutes ago, Today');
+      expect(graphCardLabel(_en, of(one(workingCopy: true)), nowMs: _now), startsWith('Working copy, feat'));
+      expect(graphCardLabel(_en, of(one(ts: _now - 9 * _day)), nowMs: _now), endsWith(', Ralph, Sep 19'));
+      expect(graphCardLabel(_en, of(one(ts: _now - 20 * _hour)), nowMs: _now), endsWith(', 20 hours ago, Yesterday'));
+      expect(graphCardLabel(_en, of(one(ts: _now - 30000)), nowMs: _now), endsWith(', Ralph, now, Today'));
+      expect(graphCardLabel(_en, of(one(ts: _now - _minute)), nowMs: _now), endsWith(', 1 minute ago, Today'));
+      expect(graphCardLabel(_en, of(one(ts: _now - _hour)), nowMs: _now), endsWith(', 1 hour ago, Today'));
+      expect(graphCardLabel(_en, of(one(ts: _now - _day)), nowMs: _now), endsWith(', 1 day ago, Yesterday'));
+      expect(graphCardLabel(_en, of(one(ts: _now - 3 * _day)), nowMs: _now), endsWith(', 3 days ago, Sep 25'));
+      expect(graphCardLabel(_en, of(one(content: null)), nowMs: _now), 'kxwsnptm, 40 minutes ago, Today');
       expect(
         graphCardLabel(
+          _en,
           of(
             one(
               offset: 1,
@@ -393,7 +403,11 @@ void main() {
         'no description, kxwsnptm/1, 40 minutes ago, Today, empty, conflict, merge, divergent',
       );
       expect(
-        graphCardLabel(of(one(flags: RecordedGraphLayout.flagDivergent | RecordedGraphLayout.flagHidden)), nowMs: _now),
+        graphCardLabel(
+          _en,
+          of(one(flags: RecordedGraphLayout.flagDivergent | RecordedGraphLayout.flagHidden)),
+          nowMs: _now,
+        ),
         endsWith(', hidden'),
       );
     });

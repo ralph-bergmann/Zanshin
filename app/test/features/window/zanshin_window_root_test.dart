@@ -12,6 +12,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/zanshin_window_root.dart';
+import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -225,6 +226,16 @@ void main() {
     await tester.pump();
     expect((appearanceIn(tester, 'main').inactive, appearanceIn(tester, 'projects').inactive), (true, true));
     expect(windows.statuses['projects']!.hovered, isFalse, reason: 'the hover goes with the key status');
+  });
+
+  testWidgets('each root registers the app\'s and zanshin_ui\'s strings (Story 11.16)', (tester) async {
+    await pumpTwoWindows(tester);
+
+    for (final key in <String>['main', 'projects']) {
+      final BuildContext content = tester.element(find.bySemanticsIdentifier('probe-$key'));
+      expect(AppLocalizations.of(content)?.projectsTitle, 'Projects', reason: key);
+      expect(ZsLocalizations.of(content)?.confirmCancel, 'Cancel', reason: key);
+    }
   });
 
   testWidgets('a text field in the dialog window takes typed input', (tester) async {

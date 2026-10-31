@@ -175,7 +175,8 @@ class RenderZsNamiMark extends RenderBox {
     config
       ..isSemanticBoundary = true
       ..isImage = true
-      ..label = 'Zanshin'
+      ..label =
+          'Zanshin' // l10n-ignore: the product name
       ..textDirection = _textDirection;
   }
 

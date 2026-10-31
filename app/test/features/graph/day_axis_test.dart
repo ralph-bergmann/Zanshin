@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/l10n/app_localizations_en.dart';
 import 'package:zanshin/src/features/graph/day_axis.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_metrics.dart';
@@ -63,6 +64,7 @@ GraphDayAxisPainter wireAxis(GraphHarness g, {required int nowMs}) {
   final painter = GraphDayAxisPainter(
     axis: GraphDayAxis.of(g.layout, rows),
     theme: GraphTheme.night,
+    strings: AppLocalizationsEn(),
     nowMs: nowMs,
     utcOffsetMinutes: g.layout.utcOffsetMinutes,
   );
@@ -88,8 +90,12 @@ double textWidth(String text) {
 void main() {
   group('graphDayLabel', () {
     final int now = DateTime.utc(2026, 9, 26, 10).millisecondsSinceEpoch;
-    String label(DateTime day, {int at = 0, int offset = 0}) =>
-        graphDayLabel(day.millisecondsSinceEpoch, nowMs: at == 0 ? now : at, utcOffsetMinutes: offset);
+    String label(DateTime day, {int at = 0, int offset = 0}) => graphDayLabel(
+      AppLocalizationsEn(),
+      day.millisecondsSinceEpoch,
+      nowMs: at == 0 ? now : at,
+      utcOffsetMinutes: offset,
+    );
 
     test('today and a future day are "Today"', () {
       expect(label(DateTime.utc(2026, 9, 26)), 'Today');

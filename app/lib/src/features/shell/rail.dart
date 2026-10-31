@@ -3,6 +3,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'shell_controller.dart';
 
 /// The rail (epics.md Story 11.3 item 4; DS ui_kits/desktop/chrome.jsx:140-157; kit.css:65-66): a rail island of
@@ -38,7 +39,7 @@ class ShellRail extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     container: true,
     explicitChildNodes: true,
-    label: 'Panels',
+    label: context.l10n.railLabel,
     child: ZsIsland(
       shape: ZsIslandShape.rail,
       child: Column(

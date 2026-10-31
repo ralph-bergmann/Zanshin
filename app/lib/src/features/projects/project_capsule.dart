@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import '../shell/calm_controller.dart';
 import '../shell/shell_scope.dart';
 import 'project_status_style.dart';
@@ -120,8 +121,9 @@ class _ProjectCapsuleState extends State<ProjectCapsule> {
 
   List<ZsMenuEntry> _entries(ZsColors colors) {
     final String open = widget.project.path;
+    final AppLocalizations strings = context.l10n;
     return <ZsMenuEntry>[
-      const ZsMenuHeader('Recent'),
+      ZsMenuHeader(strings.capsuleRecent),
       for (final (int i, ProjectEntry project) in widget.recent.indexed)
         ZsMenuItem(
           label: project.name,
@@ -129,14 +131,14 @@ class _ProjectCapsuleState extends State<ProjectCapsule> {
           radio: true,
           strong: project.path == open,
           dot: project.status?.colorIn(colors),
-          dotLabel: project.status?.label,
+          dotLabel: project.status?.labelIn(strings),
           cmd: project.bookmark ?? ProjectCapsule.noBookmark,
           onSelected: () => widget.onOpen(project.path),
           identifier: 'project-menu-recent-$i',
         ),
       const ZsMenuSeparator(),
       ZsMenuItem(
-        label: 'All Projects…',
+        label: strings.capsuleAllProjects,
         shortcut: '⇧⌘O',
         enabled: widget.onAllProjects != null,
         onSelected: widget.onAllProjects,
@@ -144,13 +146,13 @@ class _ProjectCapsuleState extends State<ProjectCapsule> {
       ),
       const ZsMenuSeparator(),
       ZsMenuItem(
-        label: 'Project Settings…',
+        label: strings.capsuleProjectSettings,
         enabled: widget.onProjectSettings != null,
         onSelected: widget.onProjectSettings,
         identifier: 'project-menu-project-settings',
       ),
       ZsMenuItem(
-        label: 'Settings…',
+        label: strings.settingsEllipsis,
         shortcut: '⌘,',
         enabled: widget.onSettings != null,
         onSelected: widget.onSettings,
@@ -170,7 +172,7 @@ class _ProjectCapsuleState extends State<ProjectCapsule> {
       width: ProjectCapsule.menuWidth,
       cmdMaxWidth: ProjectCapsule.bookmarkMaxWidth,
       // `<Menu aria-label="Project" …>` (DS components/menus/ProjectMenu.jsx:30): a name, no head.
-      semanticLabel: 'Project',
+      semanticLabel: context.l10n.capsuleMenuLabel,
       onOpen: _opened,
       onClose: _closed,
       identifier: 'project-menu',
@@ -191,7 +193,12 @@ class _ProjectCapsuleState extends State<ProjectCapsule> {
               },
             ),
           },
-          semantics: SemanticsProperties(button: true, label: project.name, value: status?.label, expanded: _open),
+          semantics: SemanticsProperties(
+            button: true,
+            label: project.name,
+            value: status?.labelIn(context.l10n),
+            expanded: _open,
+          ),
           ring: ZsRingPlacement.outside,
           ringRadius: ZsMetrics.of(context).radiusIsland,
           builder: (context, state) => _CapsuleFace(project: project, state: state),
@@ -258,7 +265,7 @@ class _CapsuleFace extends StatelessWidget {
                 ),
                 if (status != null)
                   ZsTooltip(
-                    message: status.label,
+                    message: status.labelIn(context.l10n),
                     child: SizedBox.square(
                       dimension: _dot,
                       child: DecoratedBox(

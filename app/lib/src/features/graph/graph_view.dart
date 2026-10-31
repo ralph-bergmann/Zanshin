@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import '../shell/graph_insets.dart';
 import '../shell/shell_scope.dart';
 import 'graph_canvas.dart';
@@ -172,17 +173,17 @@ class _GraphViewState extends State<GraphView> {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Text(
-              'The graph could not be loaded (${error.code}).',
+              context.l10n.graphLoadFailed(error.code),
               style: ZsType.control.copyWith(color: colors.text),
             ),
             const SizedBox(width: 13),
-            ZsButton(label: 'Retry', onPressed: model.retry, identifier: 'graph.retry'),
+            ZsButton(label: context.l10n.graphRetry, onPressed: model.retry, identifier: 'graph.retry'),
           ],
         ),
       );
     }
     if (model.empty && model.revsetError == null) {
-      return Text('No changes match this revset.', style: ZsType.control.copyWith(color: colors.textMuted));
+      return Text(context.l10n.graphEmpty, style: ZsType.control.copyWith(color: colors.textMuted));
     }
     return null;
   }

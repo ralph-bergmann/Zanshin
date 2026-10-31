@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
+import 'package:zanshin/l10n/app_localizations_en.dart';
 import 'package:zanshin/main.dart' show MainComponent;
 import 'package:zanshin/src/app/worker_lifecycle_module.dart';
 import 'package:zanshin/src/features/bootstrap/icon_module.dart';
@@ -31,6 +32,8 @@ import '../../helpers/recording_shell.dart';
 import '../../helpers/shell_host.dart';
 
 const ZsMotion _m = ZsMotion.full;
+
+final _en = AppLocalizationsEn();
 
 /// How long `_Rig.settle` waits, in real time, for work started in the fake zone.
 const _settleBudget = Duration(seconds: 10);
@@ -320,7 +323,7 @@ void main() {
       final rig = _Rig(tester);
       await rig.pump(demo: false);
 
-      expect(find.text(ProjectsTree.emptyText), findsOneWidget);
+      expect(find.text(_en.treeEmpty), findsOneWidget);
     });
   });
 
@@ -625,6 +628,11 @@ void main() {
       await tester.pump();
       await rig.sheetIn();
       expect(find.text('Add the enclosing repository root?'), findsOneWidget);
+      expect(
+        find.text('~/root/src lies inside the jj repository at ~/root.', findRichText: true),
+        findsOneWidget,
+        reason: 'the chosen folder first, then the repository',
+      );
       await tester.tap(find.text('Add'));
       await rig.settle(() => rig.session.current != null);
       expect(rig.session.current?.path, root);
@@ -647,6 +655,15 @@ void main() {
       expect(find.text('Convert legacy to a jj repository?'), findsOneWidget);
       expect(find.text("jj git init --colocate '$root'"), findsOneWidget);
       expect(find.textContaining('lies inside the Git repository at'), findsOneWidget, reason: 'the sheet says why');
+      expect(
+        find.text(
+          '~/legacy/src lies inside the Git repository at ~/legacy. It stays a Git repository; jj joins it and shares '
+          'its working copy.',
+          findRichText: true,
+        ),
+        findsOneWidget,
+        reason: 'the chosen folder first, then the repository',
+      );
       await tester.tap(find.text('Convert'));
       await rig.settle(() => rig.session.current != null);
       expect(rig.repos.log, <String>['detect $root/src', 'convert $root', 'read $root']);
@@ -883,6 +900,16 @@ void main() {
       await choose(tester, 'projects-menu-remove');
       await rig.sheetIn();
       expect(find.text('Remove top from the list?'), findsOneWidget);
+      final Finder body = find.text('~/code/top stays on disk; only the list forgets it.', findRichText: true);
+      expect(body, findsOneWidget);
+      TextSpan? pathSpan;
+      tester.widget<RichText>(body).text.visitChildren((span) {
+        if (span is TextSpan && span.text == '~/code/top') {
+          pathSpan = span;
+        }
+        return pathSpan == null;
+      });
+      expect(pathSpan?.style?.fontFamily, ZsType.id.fontFamily, reason: 'the path stays mono');
       await tester.tap(find.descendant(of: rig.id('projects-question'), matching: find.text('Cancel')));
       await rig.sheetOut();
       expect(rig.registry.entry(path), isNotNull, reason: 'Cancel changes nothing');
@@ -1305,7 +1332,7 @@ void main() {
       final ProjectsSettings before = rig.registry.value;
       final TestGesture gesture = await grab(tester, tester.getCenter(rig.row('gone')));
       await hoverAt(tester, gesture, tester.getRect(rig.row('top')).topCenter + const Offset(0, 6));
-      expect(ghostText(tester), ProjectsTree.topLevelWords);
+      expect(ghostText(tester), _en.treeTopLevel);
       expect(tree(tester).dropHover?.placement, TreeDropPlacement.before);
       final String? focusedBefore = rig.focused;
 
@@ -1367,10 +1394,10 @@ void main() {
       );
 
       await hoverAt(tester, gesture, tester.getRect(rig.row('gone')).topCenter + const Offset(0, 6));
-      expect(ghostText(tester), ProjectsTree.topLevelWords, reason: 'between top and gone');
+      expect(ghostText(tester), _en.treeTopLevel, reason: 'between top and gone');
 
       await hoverAt(tester, gesture, tester.getRect(rig.row('gone')).bottomCenter + const Offset(0, 30));
-      expect(ghostText(tester), ProjectsTree.topLevelWords, reason: 'below the last row');
+      expect(ghostText(tester), _en.treeTopLevel, reason: 'below the last row');
       expect(tree(tester).dropHover, (id: 'project:$gone', placement: TreeDropPlacement.after, depth: 0));
       await gesture.up();
       await rig.settle(() => rig.registry.entry(myApp)!.group == null);
@@ -1386,7 +1413,7 @@ void main() {
       final ProjectsSettings before = rig.registry.value;
       final TestGesture gesture = await grab(tester, tester.getCenter(rig.row('WORK')));
       await hoverAt(tester, gesture, tester.getCenter(rig.row('MyApp')));
-      expect(ghostText(tester), ProjectsTree.dropHint);
+      expect(ghostText(tester), _en.treeDropHint);
       expect(tree(tester).dropHover, isNull);
       await gesture.up();
       await tester.pump();
@@ -1402,7 +1429,7 @@ void main() {
       final TestGesture gesture = await grab(tester, tester.getCenter(rig.row('gone')));
       await hoverAt(tester, gesture, tester.getRect(rig.row('WORK')).topCenter + const Offset(0, 4));
       expect(tree(tester).dropHover?.placement, TreeDropPlacement.before);
-      expect(ghostText(tester), ProjectsTree.topLevelWords);
+      expect(ghostText(tester), _en.treeTopLevel);
       await gesture.up();
       await rig.settle(() => rig.registry.entry(gone)!.group == null && rig.registry.entry(gone)!.order == 0);
     });

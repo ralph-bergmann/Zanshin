@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import '../design/zs_colors.dart';
 import '../design/zs_metrics.dart';
 import '../design/zs_motion.dart';
+import '../zs_strings.dart';
 import 'zs_control.dart';
 
 /// The inline busy mark (DS components/controls/Spinner.{d.ts,jsx,prompt.md}; controls.css:6-7): a quarter arc on a
@@ -72,7 +73,13 @@ class _ZsSpinnerState extends State<ZsSpinner> with SingleTickerProviderStateMix
         child: widget.identifier == null ? mark : Semantics(identifier: widget.identifier, child: mark),
       );
     }
-    return Semantics(container: true, identifier: widget.identifier, label: label, value: 'busy', child: mark);
+    return Semantics(
+      container: true,
+      identifier: widget.identifier,
+      label: label,
+      value: zsStrings(context).busyValue,
+      child: mark,
+    );
   }
 }
 

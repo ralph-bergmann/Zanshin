@@ -6,6 +6,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
+
 /// The top bar's three groups (DS readme.md:84).
 enum TopBarGroup {
   /// Left: the project capsule (11.5).
@@ -68,7 +70,7 @@ class ShellTopBar extends StatelessWidget {
         : Semantics(
             container: true,
             explicitChildNodes: true,
-            label: 'View',
+            label: context.l10n.topBarView,
             child: ZsIsland(child: content),
           );
     final FocusNode? focus = viewFocus;

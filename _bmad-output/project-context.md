@@ -594,6 +594,19 @@ the `zanshin-graph` lane crate was removed)*
 - The catalogue runs with `flutter run -d macos -t widgetbook/main.dart` from `app/`, in a window of its own.
 - `marionette_mcp` is installed with `dart pub global activate marionette_mcp` and must match the app's
   `marionette_flutter` version exactly.
+- **Strings (Story 11.16):** the app is English only but l10n-ready — user-facing strings (labels, tooltips, captions,
+  menus, dialogs, VoiceOver labels, splash status, window titles) go through ARB files; no hard-coded UI text.
+  `app/lib/l10n/app_en.arb` → `AppLocalizations` (`context.l10n`; `platformStrings()` where no context exists),
+  `packages/zanshin_ui/lib/l10n/zs_en.arb` → `ZsLocalizations` (`zsStrings(context)` inside the package). Every entry
+  has a key and an `@key` description; plurals and placeholders use ICU; dates go through `intl` at the strings'
+  `localeName`, after `ensureDateFormatting()` (no window registers flutter's date data). The generated `lib/l10n/*_localizations*.dart` are committed: after an ARB edit run `flutter gen-l10n`
+  in `app/` or `packages/zanshin_ui/` (`flutter: generate: true` is set only because Flutter 3.48's `gen-l10n` refuses
+  to run without it; the build then regenerates the same files). Window roots register `zanshinLocalizationsDelegates`
+  (`AppLocalizations.delegate` + `ZsLocalizations.delegate`), never `AppLocalizations.localizationsDelegates` (flutter's
+  `GlobalMaterialLocalizations`, the wrong type for `material_ui`). jj's own words shown verbatim (commands, jj's errors
+  and hints), the product name and pure symbols stay literals with a trailing `// l10n-ignore: <reason>`; the guard
+  `app/test/l10n/hard_coded_strings_test.dart` fails on an unmarked UI literal in `app/lib` (widgetbook and tests are
+  exempt).
 - The catalogue's Marionette extension `zanshinCatalogue.open` (debug builds) opens a use case by its
   Widgetbook path in an appearance: `path=controls/switch/state-matrix` (names joined by `/`, spaces as `-`,
   lower case), optional `theme`, `accent`, `contrast`, `reduceMotion`, `reduceTransparency`, `inactive`.

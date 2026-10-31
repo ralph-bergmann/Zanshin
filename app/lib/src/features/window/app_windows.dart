@@ -12,6 +12,7 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 
+import '../../l10n/strings.dart';
 import 'remembered_dialog_window_controller.dart';
 import 'remembered_window_controller.dart';
 
@@ -82,8 +83,8 @@ class DialogWindowSpec {
   final bool keepsAppAlive;
 }
 
-/// The Projects window's title, for the Window menu and Mission Control (Story 11.6).
-const projectsWindowTitle = 'Projects';
+/// The Projects window's title, for the Window menu and Mission Control (Story 11.6), in the platform's strings.
+String get projectsWindowTitle => platformStrings().projectsTitle;
 
 /// The Projects window (Story 11.6 item 1; DS readme.md:191): 900 × 640, resizable down to 680 × 440, the full frame
 /// remembered, the normal level, and it keeps the app alive.

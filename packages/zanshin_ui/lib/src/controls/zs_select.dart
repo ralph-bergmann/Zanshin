@@ -12,6 +12,7 @@ import '../design/zs_metrics.dart';
 import '../design/zs_motion.dart';
 import '../design/zs_type.dart';
 import '../icons/zanshin_icon.dart';
+import '../zs_strings.dart';
 import 'zs_control.dart';
 import 'zs_control_core.dart';
 import 'zs_control_text.dart';
@@ -63,10 +64,10 @@ final class ZsSelectHeader<T> extends ZsSelectEntry<T> {
 /// The last row, "Custom…": it calls `ZsSelect.onCustom` instead of choosing a value.
 final class ZsSelectCustom<T> extends ZsSelectEntry<T> {
   /// A custom row labelled [label].
-  const ZsSelectCustom({this.label = 'Custom…'});
+  const ZsSelectCustom({this.label});
 
-  /// The row's label.
-  final String label;
+  /// The row's label; "Custom…" when null.
+  final String? label;
 }
 
 /// Where a select's list opens (DS components/forms/Select.d.ts).
@@ -247,7 +248,10 @@ class _ZsSelectState<T> extends State<ZsSelect<T>> {
         ),
         ZsSelectSeparator<T>() => const ZsMenuSeparator(),
         ZsSelectHeader<T>(:final String label) => ZsMenuHeader(label),
-        ZsSelectCustom<T>(:final String label) => ZsMenuItem(label: label, onSelected: widget.onCustom),
+        ZsSelectCustom<T>(:final String? label) => ZsMenuItem(
+          label: label ?? zsStrings(context).selectCustom,
+          onSelected: widget.onCustom,
+        ),
       },
   ];
 

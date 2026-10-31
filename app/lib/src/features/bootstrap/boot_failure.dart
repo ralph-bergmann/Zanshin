@@ -3,6 +3,8 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
+
 /// The main window's content when the boot failed: a headline and the
 /// selectable error text on the app's own background. No retry — ⌘Q quits as
 /// usual.
@@ -22,6 +24,8 @@ class BootFailure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
+    localizationsDelegates: zanshinLocalizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     theme: ZsAppTheme.build(const ZsAppearance(theme: ZsTheme.paper)),
     darkTheme: ZsAppTheme.build(const ZsAppearance()),
     themeMode: mode,
@@ -29,17 +33,19 @@ class BootFailure extends StatelessWidget {
       appearance: ZsAppearance(theme: ZsTheme.of(Theme.of(context).brightness)),
       child: child ?? const SizedBox.shrink(),
     ),
-    home: Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            spacing: 12,
-            children: [
-              const Text('Zanshin could not start.'),
-              SelectableText('$error'),
-            ],
+    home: Builder(
+      builder: (context) => Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 12,
+              children: [
+                Text(context.l10n.bootFailed),
+                SelectableText('$error'),
+              ],
+            ),
           ),
         ),
       ),

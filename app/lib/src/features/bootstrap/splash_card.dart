@@ -3,6 +3,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../l10n/strings.dart';
 import 'splash_card_render.dart';
 import 'zanshin_bootstrap.dart';
 
@@ -77,10 +78,12 @@ class _SplashCardState extends State<SplashCard> with SingleTickerProviderStateM
                   ? const TextSpan(text: '', style: splashVersionStyle)
                   : TextSpan(
                       style: splashVersionStyle,
-                      children: <InlineSpan>[
-                        TextSpan(text: value.version),
-                        TextSpan(text: ' · Build ${value.build}', style: splashBuildStyle),
-                      ],
+                      // The version, then the rest of the line in the dimmer build style.
+                      children: slotSpans(
+                        context.l10n.versionBuild(slot(0), value.build),
+                        <InlineSpan>[TextSpan(text: value.version)],
+                        style: splashBuildStyle,
+                      ),
                     ),
             ),
           ),

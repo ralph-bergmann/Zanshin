@@ -8,9 +8,11 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../l10n/zs_localizations.dart';
 import '../design/zs_colors.dart';
 import '../design/zs_metrics.dart';
 import '../design/zs_motion.dart';
+import '../zs_strings.dart';
 import 'zs_control.dart';
 import 'zs_control_core.dart';
 import 'zs_focus_ring.dart';
@@ -289,13 +291,12 @@ class _ZsResizeEdgeState extends State<ZsResizeEdge> with SingleTickerProviderSt
     return SystemMouseCursors.resizeColumn;
   }
 
-  static String _points(double value) {
-    final String number = value == value.roundToDouble() ? value.toInt().toString() : value.toStringAsFixed(1);
-    return '$number points';
-  }
+  // One decimal at most; the ARB's `decimalPattern` drops a zero fraction ("300", "300.5").
+  static String _points(ZsLocalizations strings, double value) => strings.resizePoints((value * 10).round() / 10);
 
   @override
   Widget build(BuildContext context) {
+    final ZsLocalizations strings = zsStrings(context);
     final double value = _value;
     final double grow = widget.side._grow;
     // The value at the moment of the key, which a step earlier in the same frame may already have moved.
@@ -327,9 +328,9 @@ class _ZsResizeEdgeState extends State<ZsResizeEdge> with SingleTickerProviderSt
       semantics: SemanticsProperties(
         slider: true,
         label: widget.label,
-        value: _points(value),
-        increasedValue: _points(_clamp(value + ZsResizeEdge._step)),
-        decreasedValue: _points(_clamp(value - ZsResizeEdge._step)),
+        value: _points(strings, value),
+        increasedValue: _points(strings, _clamp(value + ZsResizeEdge._step)),
+        decreasedValue: _points(strings, _clamp(value - ZsResizeEdge._step)),
         onIncrease: () => by(ZsResizeEdge._step),
         onDecrease: () => by(-ZsResizeEdge._step),
       ),

@@ -10,6 +10,7 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'project_status_style.dart';
 import 'projects_tree_model.dart';
 import 'relative_time.dart';
@@ -188,21 +189,6 @@ class ProjectsTree extends StatefulWidget {
 
   /// The tree's padding (`.zk-tree{padding:8px 10px 12px}`, DS ui_kits/desktop/kit.css:200).
   static const padding = EdgeInsets.fromLTRB(10, 8, 10, 12);
-
-  /// The empty registry's sentence (Claude's proposal).
-  static const emptyText = 'No projects yet. Add a directory or drop a folder here.';
-
-  /// The ghost's hint while nothing valid is under the pointer (DS components/overlays/DragGhost.prompt.md:12).
-  static const dropHint = 'Drop between rows or on a group';
-
-  /// The ghost's words for a drop at the top level (DragGhost.prompt.md:12).
-  static const topLevelWords = 'To the top level';
-
-  /// The ghost's words for a drop into the group named [name] (DragGhost.prompt.md:12).
-  static String intoWords(String name) => 'Into $name';
-
-  /// The search's empty result (DS ui_kits/desktop/dialogs.jsx:51).
-  static String noResultsText(String query) => 'No projects match “$query”';
 
   /// A row's height for [item].
   static double heightOf(ProjectsItem item) => switch (item) {
@@ -699,9 +685,10 @@ class ProjectsTreeState extends State<ProjectsTree> {
     placement: (group: null, index: (registryMembers(widget.projects, null)..remove(moving.id)).length),
   );
 
-  /// The ghost's words for a drop into [group] (the top level when null): its stored name (Design note "Ghost words").
+  /// The ghost's words for a drop into [group] (the top level when null): its stored name (Design note "Ghost words";
+  /// DragGhost.prompt.md:12).
   String _wordsFor(String? group) =>
-      group == null ? ProjectsTree.topLevelWords : ProjectsTree.intoWords(_groupName(group) ?? group);
+      group == null ? context.l10n.treeTopLevel : context.l10n.treeInto(_groupName(group) ?? group);
 
   void _showLanding(_Landing? landing, {bool finder = false}) {
     final _Hover? hover = landing?.hover;
@@ -824,7 +811,9 @@ class ProjectsTreeState extends State<ProjectsTree> {
               // `.zk-empty{padding:30px 16px}` (DS ui_kits/desktop/kit.css:201).
               padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 16),
               child: Text(
-                widget.query.trim().isEmpty ? ProjectsTree.emptyText : ProjectsTree.noResultsText(widget.query),
+                // The empty registry's sentence (Claude's proposal); the search's empty result (DS
+                // ui_kits/desktop/dialogs.jsx:51).
+                widget.query.trim().isEmpty ? context.l10n.treeEmpty : context.l10n.treeNoResults(widget.query),
                 textAlign: TextAlign.center,
                 style: ZsType.secondary.copyWith(fontSize: ZsType.fsMd, color: colors.textDim),
               ),
@@ -841,10 +830,10 @@ class ProjectsTreeState extends State<ProjectsTree> {
       identifier: 'projects-tree',
       container: true,
       explicitChildNodes: true,
-      label: 'Projects',
+      label: context.l10n.treeLabel,
       child: ZsScrollArea(
         controller: _scroll,
-        label: 'Projects',
+        label: context.l10n.treeLabel,
         child: CustomScrollView(
           controller: _scroll,
           slivers: <Widget>[
@@ -894,7 +883,7 @@ class ProjectsTreeState extends State<ProjectsTree> {
         depth: node.depth ?? 0,
         controller: _name,
         focusNode: _nameFocus,
-        label: 'New group',
+        label: context.l10n.projectsNewGroup,
         identifier: 'projects-new-group-name',
         onSubmitted: (name) {
           _fieldKeyed = true;
@@ -909,7 +898,7 @@ class ProjectsTreeState extends State<ProjectsTree> {
         depth: node.depth ?? 0,
         controller: _name,
         focusNode: _nameFocus,
-        label: 'Rename group',
+        label: context.l10n.renameGroup,
         identifier: 'projects-rename-group-name',
         onSubmitted: (name) {
           _fieldKeyed = true;
@@ -937,10 +926,10 @@ class ProjectsTreeState extends State<ProjectsTree> {
     final metrics = ZsMetrics.of(context);
     final String? value = switch (item) {
       ProjectsProjectItem(:final ProjectEntry entry) => <String>[
-        ?entry.status?.label,
-        if (entry.path == widget.openPath) 'open',
+        ?entry.status?.labelIn(context.l10n),
+        if (entry.path == widget.openPath) context.l10n.projectOpen,
       ].join(', '),
-      ProjectsGroupItem(:final String count) => count,
+      ProjectsGroupItem() => item.countIn(context.l10n),
       ProjectsNewGroupItem() => null,
     };
     // The keys are handled at the row, inside the ••• menu's anchor, which would take the arrow keys otherwise.
@@ -1090,7 +1079,8 @@ class ProjectsTreeState extends State<ProjectsTree> {
             label: item.name,
             dot: item is ProjectsProjectItem ? item.entry.status?.colorIn(ZsColors.of(context)) : null,
             target: target,
-            hint: target == null ? ProjectsTree.dropHint : null,
+            // The ghost's hint while nothing valid is under the pointer (DS components/overlays/DragGhost.prompt.md:12).
+            hint: target == null ? context.l10n.treeDropHint : null,
           );
         },
       ),
@@ -1114,13 +1104,13 @@ class ProjectsTreeState extends State<ProjectsTree> {
   List<ZsMenuEntry> _menuEntries(ProjectsItem item) => switch (item) {
     ProjectsProjectItem(:final ProjectEntry entry) => <ZsMenuEntry>[
       ZsMenuItem(
-        label: 'Open',
+        label: context.l10n.menuOpen,
         enabled: !item.missing,
         onSelected: () => widget.onOpen(entry),
         identifier: 'projects-menu-open',
       ),
       ZsMenuItem(
-        label: 'Reveal in Finder',
+        label: context.l10n.menuRevealInFinder,
         enabled: !item.missing,
         onSelected: () => widget.onReveal(entry),
         identifier: 'projects-menu-reveal',
@@ -1128,18 +1118,22 @@ class ProjectsTreeState extends State<ProjectsTree> {
       _moveTo(item, entry.group),
       const ZsMenuSeparator(),
       ZsMenuItem(
-        label: 'Remove from list',
+        label: context.l10n.menuRemoveFromList,
         enabled: entry.path != widget.openPath,
         onSelected: () => widget.onRemove(entry),
         identifier: 'projects-menu-remove',
       ),
     ],
     ProjectsGroupItem(:final ProjectGroup group) => <ZsMenuEntry>[
-      ZsMenuItem(label: 'Rename…', onSelected: () => widget.onRename(group.id), identifier: 'projects-menu-rename'),
+      ZsMenuItem(
+        label: context.l10n.menuRename,
+        onSelected: () => widget.onRename(group.id),
+        identifier: 'projects-menu-rename',
+      ),
       _moveTo(item, group.parent),
       const ZsMenuSeparator(),
       ZsMenuItem(
-        label: 'Delete group',
+        label: context.l10n.deleteGroup,
         onSelected: () => widget.onDeleteGroup(group.id),
         identifier: 'projects-menu-delete',
       ),
@@ -1169,11 +1163,11 @@ class ProjectsTreeState extends State<ProjectsTree> {
         if (self == null || !_isWithin(g.id, self)) (g.id, pathOf(g.id)),
     ]..sort((a, b) => a.$2.toLowerCase().compareTo(b.$2.toLowerCase()));
     return ZsMenuItem(
-      label: 'Move to group',
+      label: context.l10n.menuMoveToGroup,
       identifier: 'projects-menu-move',
       submenu: <ZsMenuEntry>[
         ZsMenuItem(
-          label: 'Top level',
+          label: context.l10n.menuTopLevel,
           checked: current == null,
           radio: true,
           onSelected: () => widget.onMoveToGroup(item, null),
@@ -1189,7 +1183,7 @@ class ProjectsTreeState extends State<ProjectsTree> {
           ),
         const ZsMenuSeparator(),
         ZsMenuItem(
-          label: 'New group…',
+          label: context.l10n.menuNewGroup,
           onSelected: () => widget.onNewGroupFor(item),
           identifier: 'projects-menu-move-new',
         ),
@@ -1331,7 +1325,7 @@ class _GroupFace extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    item.count,
+                    item.countIn(context.l10n),
                     maxLines: 1,
                     softWrap: false,
                     style: ZsType.id.copyWith(fontSize: ZsType.fsXs, color: rung.faint),
@@ -1397,7 +1391,7 @@ class _ProjectFace extends StatelessWidget {
             child: projectStatus == null
                 ? const SizedBox.square(dimension: _dot)
                 : ZsTooltip(
-                    message: projectStatus.label,
+                    message: projectStatus.labelIn(context.l10n),
                     child: Opacity(
                       opacity: missing ? .5 : 1,
                       child: SizedBox.square(
@@ -1430,7 +1424,7 @@ class _ProjectFace extends StatelessWidget {
                       ),
                       if (open)
                         Text(
-                          ZsType.caps('open'),
+                          ZsType.caps(context.l10n.projectOpen),
                           style: _weighted(ZsType.meta, FontWeight.w600).copyWith(
                             fontSize: ZsType.fs2xs,
                             letterSpacing: ZsType.trackingPill * ZsType.fs2xs,
@@ -1472,7 +1466,7 @@ class _ProjectFace extends StatelessWidget {
                       if (lastOpened != null) ...<Widget>[
                         Text('·', style: mono.copyWith(color: rung.faint)),
                         Text(
-                          lastOpenedLabel(lastOpened, now),
+                          lastOpenedLabel(context.l10n, lastOpened, now),
                           maxLines: 1,
                           softWrap: false,
                           style: ZsType.meta.copyWith(fontSize: ZsType.fsXs, color: rung.dim),
@@ -1516,12 +1510,12 @@ class _MoreButton extends StatelessWidget {
     final metrics = ZsMetrics.of(context);
     final ZsMotion motion = ZsMotion.of(context);
     return ZsTooltip(
-      message: 'More…',
+      message: context.l10n.moreTooltip,
       child: ZsControlCore(
         focusNode: focusNode,
         identifier: identifier,
         onActivate: () => onPressed(context),
-        semantics: const SemanticsProperties(button: true, label: 'More'),
+        semantics: SemanticsProperties(button: true, label: context.l10n.moreLabel),
         ring: ZsRingPlacement.inside,
         ringRadius: metrics.radiusSm,
         builder: (context, status) {
@@ -1596,7 +1590,7 @@ class _NameField extends StatelessWidget {
               child: ZsTextField(
                 controller: controller,
                 focusNode: focusNode,
-                placeholder: 'Group name',
+                placeholder: context.l10n.groupNamePlaceholder,
                 label: label,
                 identifier: identifier,
                 onSubmitted: onSubmitted,
