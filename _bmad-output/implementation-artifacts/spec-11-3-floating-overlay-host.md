@@ -49,6 +49,8 @@ deferred:
     location: >-
       packages/zanshin_ui/lib/src/controls/zs_resize_edge.dart
     severity: medium (unverified)
+    resolved: >-
+      2026-10-31 — fixed (spec-10-8-inspector, commit 21fa91de): ZsResizeEdge.dispose ends an active drag; ZsControlCore ignores a pointer-up after removal.
   - summary: >-
       HomePage injects ZanshinFfiVersion and never reads it.
     evidence: |-

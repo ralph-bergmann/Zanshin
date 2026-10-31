@@ -25,6 +25,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_view_model.dart
     severity: low
+    resolved: >-
+      2026-10-31 — fixed (spec-10-8-inspector, commit 21fa91de): _succeeded selects the born change after a GraphRevert whenever something was selected.
   - summary: >-
       The real action port is not wired into the app, and the commands are not checked through the parity oracle.
     evidence: |-

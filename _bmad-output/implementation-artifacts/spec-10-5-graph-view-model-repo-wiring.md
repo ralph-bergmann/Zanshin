@@ -45,6 +45,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_view.dart
     severity: low
+    resolved: >-
+      2026-10-31 — fixed (spec-10-6 for the pill; spec-10-8-inspector, commit 21fa91de, for the covered-selection scroll and its witnesses); the extra margins stay dropped.
 ---
 
 <intent-contract>
