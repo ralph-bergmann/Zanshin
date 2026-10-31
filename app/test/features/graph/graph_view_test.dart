@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -92,13 +94,27 @@ class _Host {
   }
 }
 
+/// Each run waits on [gate] while it is set, else writes one operation.
 class _Actions implements GraphActions {
   final ran = <GraphAction>[];
+  Completer<MutationResult>? gate;
 
   @override
-  Future<GraphActionResult> run(GraphAction action) async {
+  Future<String> headOpId() async => 'op${ran.length}';
+
+  @override
+  Future<MutationResult> run(GraphAction action) async {
     ran.add(action);
-    return const GraphActionDone();
+    if (gate case final gate?) {
+      return gate.future;
+    }
+    return MutationResult(
+      newOpId: 'op${ran.length}',
+      newChangeIds: const <String>[],
+      abandonedChangeIds: const <String>[],
+      workingCopyChangeId: null,
+      finish: null,
+    );
   }
 }
 
@@ -609,8 +625,74 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tapAt(at);
       await tester.pumpAndSettle();
-      expect(actions.ran.map((a) => '${a.verb} ${a.ids.join(',')}'), <String>['edit r100']);
+      expect(actions.ran.map((a) => a.command), <String>['jj edit r100']);
       expect(model.selected, isNull);
+      await finish(tester);
+    });
+
+    testWidgets("while an action runs the viewport anchors on the model's anchor hint, then on the selection", (
+      tester,
+    ) async {
+      final actions = _Actions()..gate = Completer<MutationResult>();
+      create(actions: actions);
+      await pump(tester);
+      model.select('r150');
+      unawaited(model.run(const GraphAbandon(<String>['r100'])));
+      await tester.pump();
+      expect(model.anchorHint, 'r99');
+      expect(viewportOf(tester).anchorKey, model.anchorHint);
+      actions.gate!.complete(
+        const MutationResult(
+          newOpId: 'op9',
+          newChangeIds: <String>[],
+          abandonedChangeIds: <String>['r100'],
+          workingCopyChangeId: null,
+          finish: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(model.anchorHint, isNull);
+      expect(viewportOf(tester).anchorKey, isNull, reason: 'abandon cleared the selection');
+      await finish(tester);
+    });
+
+    testWidgets('while edit runs its card paints pending, the affordances are off and a second double-click runs '
+        'nothing (I2)', (tester) async {
+      final actions = _Actions()..gate = Completer<MutationResult>();
+      create(actions: actions);
+      await pump(tester);
+      Future<void> doubleClick(String key) async {
+        final Offset at = tester.getCenter(cardOf(key));
+        await tester.tapAt(at);
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tapAt(at);
+        await tester.pump();
+      }
+
+      await doubleClick('r100');
+      await tester.pump();
+      final GraphLayout layout = model.layout!;
+      final double disabled = ZsMetrics.of(tester.element(find.byType(GraphCanvas))).disabledOpacity;
+      expect(viewportOf(tester).opacityOf!(layout.indexOfKey('r100')!), disabled);
+      expect(viewportOf(tester).opacityOf!(layout.indexOfKey('r99')!), 1);
+      expect(cardsOf(tester).actionsEnabled.value, isFalse);
+      await doubleClick('r100');
+      await doubleClick('r99');
+      expect(actions.ran, hasLength(1));
+
+      actions.gate!.complete(
+        const MutationResult(
+          newOpId: 'op9',
+          newChangeIds: <String>[],
+          abandonedChangeIds: <String>[],
+          workingCopyChangeId: null,
+          finish: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(viewportOf(tester).opacityOf, isNull);
+      expect(cardsOf(tester).actionsEnabled.value, isTrue);
+      expect(source.requests, hasLength(2), reason: 'one reload after the edit');
       await finish(tester);
     });
 

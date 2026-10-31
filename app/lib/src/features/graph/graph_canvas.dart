@@ -56,6 +56,8 @@ class GraphCanvas extends StatefulWidget {
     this.insets = EdgeInsets.zero,
     this.reveal,
     this.pulse,
+    this.pendingKeys = const <String>{},
+    this.anchorHint,
     this.onUserScroll,
     this.onWorkingCopyDirection,
     super.key,
@@ -78,6 +80,12 @@ class GraphCanvas extends StatefulWidget {
 
   /// The go-to pulses; each new value runs once.
   final ValueListenable<GraphPulse?>? pulse;
+
+  /// The cards of a running action (10.9): they paint at `--disabled-opacity`.
+  final Set<String> pendingKeys;
+
+  /// The anchor of a running action's reload (10.9); null anchors on the selection.
+  final String? anchorHint;
 
   /// Receives user scrolling.
   final ValueChanged<double>? onUserScroll;
@@ -475,6 +483,10 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     final double leftInset = widget.insets.left;
     final Color accent = ZsColors.of(context).accent;
     final GraphCardController cards = widget.cards;
+    final double disabledOpacity = ZsMetrics.of(context).disabledOpacity;
+    final pending = <int>{
+      for (final String key in widget.pendingKeys) ?widget.layout.indexOfKey(key),
+    };
     // After layout: the layout, the insets or the size may have moved @ in or out of view.
     SchedulerBinding.instance.addPostFrameCallback((_) => _measureDirection());
     return Stack(
@@ -509,8 +521,12 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                 selectedKey: cards.selected.value,
                 hoveredKey: hoveredKey,
                 pinnedKeys: <String>{?menu, ?_peekKey, ?_pulseKey},
-                opacityOf: focus == null || dim == 0 ? null : (node) => focus[node] != 0 ? 1 : 1 - .6 * dim,
-                anchorKey: cards.selected.value,
+                opacityOf: (focus == null || dim == 0) && pending.isEmpty
+                    ? null
+                    : (node) =>
+                          (pending.contains(node) ? disabledOpacity : 1) *
+                          (focus == null || focus[node] != 0 ? 1 : 1 - .6 * dim),
+                anchorKey: widget.anchorHint ?? cards.selected.value,
                 reveal: widget.reveal,
                 onUserPan: _userPanned,
                 paintBackground: axis.paintGuides,

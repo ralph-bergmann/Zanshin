@@ -30,6 +30,10 @@ import 'stale_notice.dart';
 /// or Space selects it, and Esc closes an open card menu, then clears the selection (no window-level listener). A
 /// double-click runs [GraphViewModel.edit]. Hover is off during calm scrolling and in an inactive window. The @ pill
 /// is [atPill]'s.
+///
+/// Story 10.9: the card affordances follow [GraphViewModel.actionsEnabled]; the running action's cards paint at
+/// `--disabled-opacity` (Claude's proposal for 10.3 design question (e)) and its reload is anchored on
+/// [GraphViewModel.anchorHint].
 class GraphView extends StatefulWidget {
   /// The graph of [model].
   const GraphView({
@@ -196,7 +200,8 @@ class _GraphViewState extends State<GraphView> {
       ..now.addListener(_nowChanged);
     _cards
       ..selected.value = model.selected
-      ..now.value = model.now.value;
+      ..now.value = model.now.value
+      ..actionsEnabled.value = model.actionsEnabled;
   }
 
   void _detach(GraphViewModel model) {
@@ -206,7 +211,9 @@ class _GraphViewState extends State<GraphView> {
   }
 
   void _modelChanged() {
-    _cards.selected.value = widget.model.selected;
+    _cards
+      ..selected.value = widget.model.selected
+      ..actionsEnabled.value = widget.model.actionsEnabled;
     _focusChanged();
     setState(() {});
   }
@@ -252,6 +259,8 @@ class _GraphViewState extends State<GraphView> {
                 insets: insets,
                 reveal: model.reveal,
                 pulse: model.pulse,
+                pendingKeys: model.pendingKeys,
+                anchorHint: model.anchorHint,
                 onUserScroll: _reportUserScroll,
                 onWorkingCopyDirection: model.setWorkingCopyDirection,
               ),

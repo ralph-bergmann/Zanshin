@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin/src/features/graph/graph_viewport.dart' show GraphRevealAlignment;
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
@@ -487,43 +488,385 @@ void main() {
     });
   });
 
-  test('run reloads after a finished action, not after a refusal', () {
-    fakeAsync((async) {
-      final actions = _Actions();
-      final GraphViewModel model = start(async, actions: actions);
+  group('Story 10.9: the action runner', () {
+    late _Actions actions;
+    setUp(() => actions = _Actions());
+
+    /// Runs [action] on [model] and settles; the result.
+    GraphActionResult? run(FakeAsync async, GraphViewModel model, GraphAction action) {
       GraphActionResult? result;
-      unawaited(model.run(const GraphAction('edit', ids: <String>['b'])).then((r) => result = r));
+      unawaited(model.run(action).then((r) => result = r));
       async.flushMicrotasks();
-      expect(result, isA<GraphActionDone>());
-      expect(source.requests, hasLength(2));
-      actions.refuse = true;
-      unawaited(model.run(const GraphAction('abandon')).then((r) => result = r));
-      async.flushMicrotasks();
-      expect(result, isA<GraphActionRefused>());
-      expect(source.requests, hasLength(2));
-      expect(actions.ran.map((a) => a.verb), <String>['edit', 'abandon']);
-      model.dispose();
+      return result;
+    }
+
+    test('edit: one port call, then exactly one layout request; no selection change, no anchor, no reveal', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        final anchors = <String?>[];
+        model.addListener(() => anchors.add(model.anchorHint));
+        final GraphActionResult? result = run(async, model, const GraphEdit('b'));
+        expect(result, isA<GraphActionDone>());
+        expect(actions.ran.single, isA<GraphEdit>().having((a) => a.id, 'id', 'b'));
+        expect(source.requests, hasLength(2));
+        expect(model.selected, isNull);
+        expect(anchors, everyElement(isNull));
+        expect(model.reveal, isNull);
+        model.dispose();
+      });
     });
-  });
 
-  test('edit runs jj edit on the key and reloads; without an actions port it does nothing', () {
-    fakeAsync((async) {
-      final actions = _Actions();
-      final GraphViewModel model = start(async, actions: actions);
-      unawaited(model.edit('b'));
-      async.flushMicrotasks();
-      expect(actions.ran.single.verb, 'edit');
-      expect(actions.ran.single.ids, <String>['b']);
-      expect(source.requests, hasLength(2));
-      expect(model.selected, isNull, reason: 'edit selects nothing');
-      model.dispose();
+    test(
+      'new on the selected parent: anchored on it during the reload, the new change selected and revealed covered',
+      () {
+        fakeAsync((async) {
+          final GraphViewModel model = start(async, actions: actions)..select('b');
+          actions.born = <String>['n'];
+          source.hold = true;
+          run(async, model, const GraphNew(parents: <String>['b']));
+          expect(model.anchorHint, 'b', reason: 'held while the reload runs');
+          expect(model.selected, 'n');
+          expect(source.requests.last.keepOpenKeys, contains('n'));
+          source.held.single.complete(GraphLoad(keysLayout(<String>['n', 'a', 'b', 'c'], at: 'n')));
+          async.flushMicrotasks();
+          expect(model.anchorHint, isNull);
+          expect(model.selected, 'n');
+          expect(model.reveal?.key, 'n');
+          expect(model.reveal?.alignment, GraphRevealAlignment.covered);
+          expect(model.outcome.value?.born, <String>['n']);
+          expect(model.outcome.value?.anchor, 'b');
+          model.dispose();
+        });
+      },
+    );
 
-      final GraphViewModel bare = start(async);
-      GraphActionResult? result = const GraphActionDone();
-      unawaited(bare.edit('b').then((r) => result = r));
-      async.flushMicrotasks();
-      expect(result, isNull);
-      bare.dispose();
+    test('new on a parent that is not selected: the selection stays, the new change is revealed covered', () {
+      fakeAsync((async) {
+        source.respond = (_) => keysLayout(<String>['n', 'a', 'b', 'c'], at: 'a');
+        final GraphViewModel model = start(async, actions: actions)..select('c');
+        actions.born = <String>['n'];
+        run(async, model, const GraphNew(parents: <String>['b']));
+        expect(model.selected, 'c');
+        expect(model.reveal?.key, 'n');
+        expect(model.reveal?.alignment, GraphRevealAlignment.covered);
+        model.dispose();
+      });
+    });
+
+    test("abandon: the selection clears, the reload is anchored on the change's first shown parent", () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions)..select('b');
+        source.hold = true;
+        run(async, model, const GraphAbandon(<String>['b']));
+        expect(model.selected, isNull);
+        expect(model.anchorHint, 'c');
+        model.dispose();
+      });
+    });
+
+    test('squash -r: the vanished source hands the selection to its parent, the destination is anchor and flash', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions)..select('b');
+        actions.abandoned = <String>['b'];
+        run(async, model, const GraphSquash(revision: 'b'));
+        expect(model.selected, 'c');
+        expect(model.outcome.value?.anchor, 'c');
+        expect(model.outcome.value?.flash, <String>['c']);
+        model.dispose();
+      });
+    });
+
+    test('squash --from --into: the selection moves to the destination when the source vanished', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions)..select('b');
+        actions.abandoned = <String>['b'];
+        run(async, model, const GraphSquash(from: <String>['b'], into: 'a'));
+        expect(model.selected, 'a');
+        expect(model.outcome.value?.anchor, 'a');
+        expect(model.outcome.value?.flash, <String>['a']);
+
+        // A kept source keeps the selection.
+        actions.abandoned = const <String>[];
+        run(async, model, const GraphSquash(from: <String>['c'], into: 'b', keepEmptied: true));
+        expect(model.selected, 'a');
+        model.dispose();
+      });
+    });
+
+    test('squash with the defaults: @ into its first parent, which takes the selection, the anchor and the flash', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions)..select('a');
+        actions.abandoned = <String>['a'];
+        run(async, model, const GraphSquash());
+        expect(model.selected, 'b');
+        expect(model.outcome.value?.anchor, 'b');
+        expect(model.outcome.value?.flash, <String>['b']);
+        model.dispose();
+      });
+    });
+
+    test('squash --from without --into goes into @: @ is anchor and flash', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        run(async, model, const GraphSquash(from: <String>['b']));
+        expect(model.outcome.value?.anchor, 'a');
+        expect(model.outcome.value?.flash, <String>['a']);
+        model.dispose();
+      });
+    });
+
+    test('new -A after the selected change selects the new change', () {
+      fakeAsync((async) {
+        source.respond = (_) => keysLayout(<String>['a', 'n', 'b', 'c'], at: 'n');
+        final GraphViewModel model = start(async, actions: actions)..select('b');
+        actions.born = <String>['n'];
+        run(async, model, const GraphNew(insertAfter: <String>['b']));
+        expect(model.selected, 'n');
+        model.dispose();
+      });
+    });
+
+    test('a non-jj error from the port is rethrown and leaves the runner free', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        actions.crash = StateError('RepoHandle is already closed');
+        Object? thrown;
+        unawaited(model.run(const GraphEdit('b')).then<void>((_) {}, onError: (Object error) => thrown = error));
+        async.flushMicrotasks();
+        expect(thrown, isA<StateError>());
+        expect(model.actionsEnabled, isTrue);
+        expect(model.pendingKeys, isEmpty);
+        expect(model.anchorHint, isNull);
+        actions.crash = null;
+        expect(run(async, model, const GraphEdit('b')), isA<GraphActionDone>());
+        model.dispose();
+      });
+    });
+
+    test('revert: anchored on the reverted change, the new change born and revealed covered, no selection change', () {
+      fakeAsync((async) {
+        source.respond = (_) => keysLayout(<String>['a', 'n', 'b', 'c'], at: 'a');
+        final GraphViewModel model = start(async, actions: actions);
+        actions.born = <String>['n'];
+        run(async, model, const GraphRevert('b'));
+        expect(actions.ran.single.command, 'jj revert -r b -B @');
+        expect(model.outcome.value?.anchor, 'b');
+        expect(model.outcome.value?.born, <String>['n']);
+        expect(model.reveal?.key, 'n');
+        expect(model.reveal?.alignment, GraphRevealAlignment.covered);
+        expect(model.selected, isNull);
+        model.dispose();
+      });
+    });
+
+    test('a refusal is published verbatim and reloads nothing; a stale refusal reloads into the stale state', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        const refusal = ZanshinFfiException.withReport(
+          'jj.immutable',
+          'ctx',
+          precondition: null,
+          warnings: <ZanshinWarning>[ZanshinWarning(code: 'jj.identity_missing', message: 'w')],
+          hints: <String>['hint'],
+        );
+        actions.refuse = refusal;
+        final GraphActionResult? result = run(async, model, const GraphEdit('c'));
+        expect(result, isA<GraphActionRefused>().having((r) => r.error, 'error', same(refusal)));
+        expect(model.outcome.value?.error, same(refusal));
+        expect(model.outcome.value?.warnings, refusal.warnings);
+        expect(source.requests, hasLength(1));
+        expect(model.actionsEnabled, isTrue);
+        expect(model.anchorHint, isNull);
+
+        actions.refuse = staleError('stale');
+        source.respond = (_) => throw staleError('stale');
+        run(async, model, const GraphEdit('c'));
+        expect(source.requests, hasLength(2));
+        expect(model.stale, isNotNull);
+        expect(model.actionsEnabled, isFalse);
+        model.dispose();
+      });
+    });
+
+    test("a success's warnings are on the outcome", () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        actions.warnings = const <ZanshinWarning>[
+          ZanshinWarning(code: ZanshinWarningCode.identityMissing, message: 'm'),
+        ];
+        run(async, model, const GraphNew(parents: <String>['a']));
+        expect(model.outcome.value?.warnings.single.code, 'jj.identity_missing');
+        model.dispose();
+      });
+    });
+
+    test('pending: the action keys and no actions while the port runs; cleared after', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        final Completer<MutationResult> gate = actions.gate = Completer<MutationResult>();
+        unawaited(model.run(const GraphAbandon(<String>['b', 'c'])));
+        async.flushMicrotasks();
+        expect(model.pendingKeys, <String>{'b', 'c'});
+        expect(model.actionsEnabled, isFalse);
+        gate.complete(_result('op1'));
+        async.flushMicrotasks();
+        expect(model.pendingKeys, isEmpty);
+        expect(model.actionsEnabled, isTrue);
+        model.dispose();
+      });
+    });
+
+    test('a second double-click while edit runs calls nothing and reports busy (I2)', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        final Completer<MutationResult> gate = actions.gate = Completer<MutationResult>();
+        unawaited(model.edit('b'));
+        GraphActionResult? second;
+        unawaited(model.edit('b').then((r) => second = r));
+        async.flushMicrotasks();
+        expect(actions.ran, hasLength(1));
+        expect(second, isA<GraphActionDisabled>().having((r) => r.reason, 'reason', GraphDisabledReason.busy));
+        gate.complete(_result('op1'));
+        async.flushMicrotasks();
+        expect(source.requests, hasLength(2));
+        model.dispose();
+      });
+    });
+
+    test('stale: run, undoLast and redoLast are disabled with the reason and touch no port', () {
+      fakeAsync((async) {
+        source.respond = (_) => throw staleError('stale');
+        final GraphViewModel model = start(async, actions: actions);
+        expect(model.actionsEnabled, isFalse);
+        for (final trigger in <Future<GraphActionResult> Function()>[
+          () => model.run(const GraphEdit('b')),
+          model.undoLast,
+          model.redoLast,
+        ]) {
+          GraphActionResult? result;
+          unawaited(trigger().then((r) => result = r));
+          async.flushMicrotasks();
+          expect(result, isA<GraphActionDisabled>().having((r) => r.reason, 'reason', GraphDisabledReason.stale));
+        }
+        expect(actions.ran, isEmpty);
+        expect(actions.headReads, 0);
+        model.dispose();
+      });
+    });
+
+    test('undo while the head is the own operation: jj undo of that action, then redo is offered', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        expect(model.undoable, isNull);
+        GraphActionResult? result;
+        unawaited(model.undoLast().then((r) => result = r));
+        async.flushMicrotasks();
+        expect(result, isA<GraphActionDisabled>().having((r) => r.reason, 'reason', GraphDisabledReason.nothingToUndo));
+
+        run(async, model, const GraphEdit('b'));
+        final GraphOutcome? own = model.undoable;
+        expect(own?.action, isA<GraphEdit>());
+        expect(own?.undoable, isTrue);
+        unawaited(model.undoLast().then((r) => result = r));
+        async.flushMicrotasks();
+        expect(result, isA<GraphActionDone>());
+        expect(actions.ran.last, isA<GraphUndo>().having((a) => a.of, 'of', same(own!.action)));
+        expect(model.outcome.value?.action, isA<GraphUndo>());
+        expect(model.undoable, isNull);
+        expect(model.redoable?.action, isA<GraphUndo>());
+        expect(source.requests, hasLength(3));
+
+        unawaited(model.redoLast());
+        async.flushMicrotasks();
+        expect(actions.ran.last, isA<GraphRedo>().having((a) => a.of, 'of', same(own.action)));
+        expect(model.redoable, isNull);
+        expect(model.undoable?.action, isA<GraphRedo>());
+        unawaited(model.undoLast());
+        async.flushMicrotasks();
+        expect(actions.ran.last, isA<GraphUndo>().having((a) => a.of, 'of', same(own.action)), reason: 'unwrapped');
+        model.dispose();
+      });
+    });
+
+    test('a foreign operation drops the undo: on the op-heads event, and on demand', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        run(async, model, const GraphEdit('b'));
+        expect(model.undoable, isNotNull);
+        actions.head = 'foreign';
+        heads(async);
+        expect(model.undoable, isNull);
+        GraphActionResult? result;
+        unawaited(model.undoLast().then((r) => result = r));
+        async.flushMicrotasks();
+        expect(result, isA<GraphActionDisabled>().having((r) => r.reason, 'reason', GraphDisabledReason.nothingToUndo));
+
+        run(async, model, const GraphEdit('c'));
+        expect(model.undoable, isNotNull);
+        actions.head = 'foreign2';
+        unawaited(model.undoLast().then((r) => result = r));
+        async.flushMicrotasks();
+        expect(
+          result,
+          isA<GraphActionDisabled>().having((r) => r.reason, 'reason', GraphDisabledReason.foreignOperation),
+        );
+        expect(model.undoable, isNull);
+        expect(actions.ran.whereType<GraphUndo>(), isEmpty);
+        model.dispose();
+      });
+    });
+
+    test('an own operation still at the head survives its op-heads event', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        run(async, model, const GraphEdit('b'));
+        heads(async);
+        expect(model.undoable, isNotNull);
+        model.dispose();
+      });
+    });
+
+    test('a verb that wrote no operation is not undoable', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        actions.noOp = true;
+        final GraphActionResult? result = run(async, model, const GraphEdit('a'));
+        expect((result! as GraphActionDone).outcome.undoable, isFalse);
+        expect(model.undoable, isNull);
+        model.dispose();
+      });
+    });
+
+    test('updateStale drops the undo', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        run(async, model, const GraphEdit('b'));
+        unawaited(model.updateStale());
+        async.flushMicrotasks();
+        expect(model.undoable, isNull);
+        model.dispose();
+      });
+    });
+
+    test('the action target is the selection, else @', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        expect(model.actionTarget, 'a');
+        model.select('c');
+        expect(model.actionTarget, 'c');
+        model.dispose();
+      });
+    });
+
+    test('edit without an actions port does nothing', () {
+      fakeAsync((async) {
+        final GraphViewModel bare = start(async);
+        GraphActionResult? result = const GraphActionDisabled(GraphDisabledReason.busy);
+        unawaited(bare.edit('b').then((r) => result = r));
+        async.flushMicrotasks();
+        expect(result, isNull);
+        bare.dispose();
+      });
     });
   });
 
@@ -576,14 +919,56 @@ void main() {
   });
 }
 
+MutationResult _result(
+  String op, {
+  List<String> born = const <String>[],
+  List<String> abandoned = const <String>[],
+  List<ZanshinWarning> warnings = const <ZanshinWarning>[],
+}) => MutationResult(
+  newOpId: op,
+  newChangeIds: born,
+  abandonedChangeIds: abandoned,
+  workingCopyChangeId: null,
+  finish: null,
+  warnings: warnings,
+);
+
+/// A fake port: each run writes operation `op<n>` (the head follows) with [born], [abandoned] and [warnings], or
+/// nothing ([noOp]), or throws [refuse], or waits on [gate].
 class _Actions implements GraphActions {
-  var refuse = false;
   final ran = <GraphAction>[];
+  var head = 'op0';
+  var headReads = 0;
+  ZanshinFfiException? refuse;
+  Object? crash;
+  Completer<MutationResult>? gate;
+  var noOp = false;
+  var born = const <String>[];
+  var abandoned = const <String>[];
+  var warnings = const <ZanshinWarning>[];
 
   @override
-  Future<GraphActionResult> run(GraphAction action) async {
+  Future<String> headOpId() async {
+    headReads++;
+    return head;
+  }
+
+  @override
+  Future<MutationResult> run(GraphAction action) async {
     ran.add(action);
-    return refuse ? const GraphActionRefused('immutable') : const GraphActionDone();
+    if (refuse case final error?) {
+      throw error;
+    }
+    if (crash case final error?) {
+      throw error;
+    }
+    if (gate case final gate?) {
+      return gate.future;
+    }
+    if (!noOp) {
+      head = 'op${ran.length}';
+    }
+    return _result(head, born: born, abandoned: abandoned, warnings: warnings);
   }
 }
 

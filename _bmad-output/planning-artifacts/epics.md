@@ -9960,7 +9960,7 @@ This story implements 10.5's `GraphActions` port: the one runner that every affo
 
 **Scope.**
 1. **Verbs.**
-   - **Shipped:** `edit` (`handle.dart:257`), `describe` (`:228`), `newChange([id])` = new on top (`:242`), `abandon` (`:271`), `bookmarkCreate` (`:861`), `bookmarkDelete` (`:891`), `undo` (`:284`).
+   - **Shipped:** `RepoHandle.edit`, `RepoHandle.describe`, `RepoHandle.newChange([id])` = new on top, `RepoHandle.abandon`, `RepoHandle.bookmarkCreate`, `RepoHandle.bookmarkDelete`, `RepoHandle.undo` (all in `packages/zanshin_core/lib/src/worker/handle.dart`).
    - **Backlog:** `squash` (9.15), `rebase` (9.16), bookmark rename / move / move-here (9.19), and `new --insert-before` / `-A`. The last has no backend story; 9.31's preview matrix models it.
    - An affordance whose verb is in the backlog is disabled, with the reason.
 2. **Parameters.** Every parameter the shipped verb exposes is offered, pre-filled with the CLI's default. CLI flags the verbs lack are backend gaps (`deferred-work.md`).

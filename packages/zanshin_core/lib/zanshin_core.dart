@@ -55,12 +55,13 @@ export 'src/ffi/fetch.dart'
         PatternFetchRefs,
         TrackedFetchRefs;
 export 'src/ffi/file_ops.dart' show FileNotAutoTracked, FileTooLarge, SnapshotStats, UntrackedPath, UntrackedReason;
-export 'src/ffi/git.dart' show GitColocationResult, GitColocationStatus;
+export 'src/ffi/git.dart' show GitColocationResult, GitColocationStatus, GitExportFailure;
 export 'src/ffi/graph.dart' show GraphTopologyView, TopologyRef, TopologyRefKind, defaultGraphAnchors;
 export 'src/ffi/log_defaults.dart' show LogDefaults;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
 export 'src/ffi/metaedit_duplicate_fix.dart' show FixResult, FixToolStderr;
 export 'src/ffi/movement.dart' show MovementDirection, MovementTarget, MovementTargets;
+export 'src/ffi/mutate.dart' show MutationResult;
 export 'src/ffi/op_log.dart'
     show
         OpAbandonResult,
@@ -77,7 +78,7 @@ export 'src/ffi/op_log.dart'
         Operation,
         OperationTag,
         RestoreWhat;
-export 'src/ffi/precondition.dart' show Precondition;
+export 'src/ffi/precondition.dart' show FinishFacts, Precondition;
 export 'src/ffi/push.dart'
     show
         GitPushResult,
