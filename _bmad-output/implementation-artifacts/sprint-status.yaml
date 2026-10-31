@@ -40,6 +40,10 @@
 #     10.5   View-Model und Anbindung ans Repo. Braucht 10.1.
 #     11.10  Alte Mock-UI entfernen. Braucht nur noch 10.1; alles andere, worauf sie gewartet hat, ist fertig.
 #     5.5    Diff: das Datenformat (FlatBuffers), vorerst ohne Wort-Segmente. Braucht 5.1.
+#     4.16   Free-Layout: keine Karte im Band um die Tages-Trennlinie (Mitternacht). Braucht 4.11, 4.13 und 10.2
+#            (alle fertig). Neu seit 2026-10-31.
+#     11.16  l10n-bereit: alle UI-Texte in ARB-Dateien (nur Englisch). Braucht 11.10 (fertig). Neu seit 2026-10-31;
+#            möglichst früh, weil jede spätere UI-Story die Regel "Texte über die ARB" schon einhalten soll.
 #
 #   Stufe 3:
 #     10.6   Auswahl, Hover und Tastatur. Braucht 10.3 und 10.4.
