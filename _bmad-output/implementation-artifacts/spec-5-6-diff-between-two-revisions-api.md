@@ -5,7 +5,7 @@ created: '2026-10-31'
 status: 'done'
 baseline_revision: 'c3f0fbf18167d6359488c41bcf055d9e28eb29ba'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
@@ -140,6 +140,36 @@ deferred:
   - `[false]` `reject` (intent) Verification outcomes not recorded. — Written at finalize, below.
   - Verification-gap layer: 3 gap findings (rows above), all patched.
 
+### 2026-10-31 — Review pass (follow-up)
+- verdicts: 25 findings — high 0, medium 2, low 13, false 3, maybe-false 0 (7 carried)
+- findings:
+  - `[medium]` `patch` (blind) The fingerprint's bytes depend on jj-lib's `ContentHash` encoding, and the unit test computed its expected value with the same `blake2b_hash`, so a pin bump changing the encoding would silently reset every persisted Viewed key. — `the_fingerprint_keys_the_changed_lines_only` now also locks the literal 128-char hex.
+  - `[low]` `reject` (blind) carried: summary mode computes the hunks and discards them. — As logged in the first pass (one code path keeps counts equal).
+  - `[low]` `reject` (blind) carried: binary fingerprints copy both contents before hashing. — As logged.
+  - `[low]` `reject` (blind) carried: the Dart decoder turns absent pins/fingerprint into `''`. — As logged (only a corrupt buffer reaches it).
+  - `[low]` `reject` (blind) A `FileDiff` written without `kind` reads as `Added` (the enum default). — The builder always writes `kind`; only a corrupt buffer omits it, and an absent enum field reading its default is the FlatBuffers convention every wire enum here follows.
+  - `[low]` `reject` (blind) carried: `kind_from_wire`'s `_ => Copied` wildcard. — As logged.
+  - `[low]` `reject` (blind) carried: the FFI integration test's two-way kind guess. — As logged.
+  - `[low]` `reject` (blind) No end-to-end test with a real copy record. — The git backend's rewrite tracking produced no `Copy` in any fixture (already a recorded residual risk); `Copied` round-trips on the wire in Rust and Dart.
+  - `[low]` `patch` (blind) No test of a path filter matching only a rename's target. — `a_rename_is_one_file_with_its_source` asserts `paths: ["new.txt"]` keeps the one renamed file; the root prefix part rejected (shared `build_matcher`, tested by its own callers).
+  - `[medium]` `patch` (blind) `whitespace` / `context` are never exercised through `Repo::diff`. — Same root cause as the gap layer's first finding; same test (conflicted sides / binary under summary run through the shared reader, rejected).
+  - `[low]` `reject` (blind) carried: prefix paths instead of filesets. — As logged (ADR-0003 house rule).
+  - `[false]` `reject` (blind) carried: `-r` takes one revision, not a revset. — As logged.
+  - `[low]` `patch` (blind) `ChangeKind`'s doc still says only "between `@-` and `@`". — Doc now also names `FileDiff::kind`'s two sides.
+  - `[low]` `patch` (blind) The Dart `fingerprint` doc omits binary contents and the mode marker. — Added.
+  - `[low]` `reject` (edge) A file↔symlink type change with equal materialized text gets the content-less fingerprint. — Rare (same bytes as a symlink target), the Viewed key carries the path, and the fix adds a branch.
+  - `[low]` `reject` (edge) carried: absent pins/fingerprint decode as `''`. — As logged.
+  - `[medium]` `patch` (gap) `Repo::diff`'s `context` / `whitespace` pass-through is untested (every call uses the defaults). — New `context_and_whitespace_reach_the_reader`: `context: Some(0)` drops the context lines; a whitespace-only edit under `IgnoreAllSpace` has no hunks and a different fingerprint.
+  - `[low]` `patch` (gap) A rename's hunk language (target path) is untested. — New `a_rename_takes_its_language_from_the_target` (`main.txt` → `main.rs`, symbol `fn main() {`).
+  - `[low]` `reject` (intent) The fingerprint row is witnessed by a unit test, not at `Repo::diff`. — One function over the reader's hunks; the new whitespace test also shows the fingerprint at `Repo::diff`.
+  - `[low]` `patch` (intent) The rename row's "hunks source→target" checks only counts. — The rename test now asserts the changed lines are `-line 5` / `+line five` (left side read at the source).
+  - `[low]` `reject` (intent) Copy-record accumulation over several parents is untested. — A plain loop over parents; the merge test runs it (no records) and the rename tests run the add.
+  - `[low]` `reject` (intent) `Copied` only on the wire. — Same as the blind copy-record row.
+  - `[low]` `patch` (intent) "Language from the target" untested. — Same root cause as the gap layer's language row; same test.
+  - `[low]` `reject` (intent) carried: the Dart `''` coercion. — As logged.
+  - `[false]` `reject` (intent) `compute_hunks` output can no longer be serialized without pins. — The intent makes `diff_to_envelope` carry a `RevisionDiff`; `compute_hunks` has no extern (Story 5.8 wires `diff`).
+- Coverage (orchestrator note): `a_missing_object_is_a_backend_error` deletes C's root tree object (fails in `get_copy_records` → `read_tree_for_commit`, `add_copy_records`' first `map_err`) and then C's commit object (D's `parents()` fails in `diff`). Not reachable without a mid-stream gix failure: `add_copy_records`' stream `map_err` and `merge_commit_trees`' (lazy for one parent).
+
 ## Design Notes
 
 Why `Repo::diff` returns `MutateError`: it shares `compute_hunks`' config/backend errors and `select_tree`'s resolution errors, and 5.8 maps one taxonomy. Why reuse `ChangeKind`: it is already the wire `ChangeKind` + `from_path` pair `show`/`status` ship, so Dart reuses `FileChangeKind`. Fingerprint shape (example): lines `-foo\n`, `+bar\n` → `blake2b_hash(&vec![b"-foo\n".to_vec(), b"+bar\n".to_vec()])` hex; binary appends `b"<"+before`, `b">"+after`; mode change appends `b"x"`. Summary mode computes hunks and drops them: one code path guarantees equal counts (the AC); performance is a soft target only.
@@ -162,6 +192,7 @@ Why `Repo::diff` returns `MutateError`: it shares `compute_hunks`' config/backen
 - `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings` -- clean. `cargo fmt --all --check` -- clean.
 - `cargo make --allow-private test-core` -- 1167 passed, after the review patches.
 - `dart analyze --fatal-infos --fatal-warnings packages/zanshin_core` -- no issues; `dart format --set-exit-if-changed packages/zanshin_core` -- 0 changed.
+- Follow-up review pass (2026-10-31): `cargo test -p zanshin-jj --test it diff::` -- 31 passed (3 new tests); `cargo test -p zanshin-jj --lib hunks` -- 10 passed (fingerprint hex locked); `cargo clippy -p zanshin-jj --all-targets -- -D warnings` -- clean; `cargo fmt --all --check` -- clean; `dart analyze --fatal-infos --fatal-warnings packages/zanshin_core` -- no issues; `dart format --set-exit-if-changed packages/zanshin_core` -- 0 changed. No FFI/schema change (no codegen), no verb change (no oracle).
 - Not run: the parity oracle (no existing jj verb changed; `diff` is a new read verb whose only repo effect is the shared pre-verb snapshot), coverage and the full gate (story-loop gate rule).
 
 ## Auto Run Result
@@ -189,3 +220,5 @@ Status: done.
 - Coverage of `hunks.rs` (above) and `crates/zanshin-ffi/src/diff.rs` is measured only at the loop's final gate.
 - Rust-written `Diff` bytes are first decoded in Dart once Story 5.8's extern and its real-cdylib test land.
 - `ChangeKind::Copied` is only round-tripped synthetically: the git backend's copy records produced no copy in any fixture.
+
+**Follow-up review pass (2026-10-31).** 25 findings: 0 high, 2 medium, 13 low, 3 false (7 carried from the first pass). Patched: 2 medium (fingerprint hex locked against a jj-lib encoding change; `context`/`whitespace` through `Repo::diff`) and 6 low (target-only path filter, rename hunk lines read at the source, rename language from the target, `ChangeKind` and Dart `fingerprint` docs). Deferred: none. Rejected, with reasons in the triage log: the carried rows, wire `kind` default, the end-to-end copy test, the type-change fingerprint, the unit-level fingerprint row, multi-parent copy accumulation, `compute_hunks` wire serialization. Added `a_missing_object_is_a_backend_error` for the backend-error closures in `add_copy_records` / `diff` that a deleted object reaches. Files: `crates/zanshin-jj/tests/it/diff.rs` (3 new tests, 2 extended assertions), `crates/zanshin-jj/src/hunks.rs` (locked hex), `crates/zanshin-jj/src/status.rs` and `packages/zanshin_core/lib/src/ffi/diff.dart` (docs). Follow-up review recommended: false (no high patched). Residual: `add_copy_records`' stream-error closure and `merge_commit_trees`' closure stay unreached; coverage is measured at the loop's final gate.

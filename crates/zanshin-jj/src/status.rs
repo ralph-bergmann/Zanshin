@@ -31,7 +31,8 @@ pub struct FileChange {
     pub kind: ChangeKind,
 }
 
-/// How the file changed between `@-` and `@`.
+/// How the file changed between `@-` and `@` (as [`crate::FileDiff::kind`]: between the diff's
+/// two sides).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChangeKind {
     /// The file was added in `@` (not present in `@-`).

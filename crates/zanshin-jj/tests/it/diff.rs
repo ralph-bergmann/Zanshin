@@ -12,8 +12,8 @@ use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
-    Backend, ChangeId, ChangeKind, CommitId, DiffOptions, DiffRevisions, FileDiff, HunksOptions, MutateError,
-    OperationId, Repo, RevisionDiff, SelectedTreeId, WarningKind,
+    Backend, ChangeId, ChangeKind, CommitId, DiffOptions, DiffRevisions, FileDiff, HunkLine, HunksOptions, MutateError,
+    OperationId, Repo, RevisionDiff, SelectedTreeId, WarningKind, Whitespace,
 };
 
 struct Fx {
@@ -233,6 +233,28 @@ fn a_rename_is_one_file_with_its_source() {
     );
     assert_eq!(paths(&filtered.files), ["old.txt"]);
     assert_eq!(filtered.files[0].kind, ChangeKind::Removed);
+    // The left side is read at the source: only the edited line differs.
+    let changed: Vec<_> = file.hunks[0]
+        .lines
+        .iter()
+        .filter(|line| !matches!(line, HunkLine::Context(_)))
+        .collect();
+    assert_eq!(
+        changed,
+        [
+            &HunkLine::Removed("line 5\n".to_owned()),
+            &HunkLine::Added("line five\n".to_owned())
+        ]
+    );
+    // A filter on the target keeps the record: still the one renamed file.
+    let target_only = run(
+        &mut fx,
+        &DiffOptions {
+            paths: vec!["new.txt".to_owned()],
+            ..revision(&c.0)
+        },
+    );
+    assert_eq!(target_only.files, result.files);
     // `--from A --to C` uses the records from A to C: the same single renamed file.
     let from_to = run(
         &mut fx,
@@ -301,6 +323,102 @@ fn paths_filter_warn_and_refuse() {
         fx.repo.diff(&with(&["/x"])),
         Err(MutateError::InvalidInput { .. })
     ));
+}
+
+/// A rename's hunk symbol comes from the target's language (`show_git_diff`).
+#[test]
+fn a_rename_takes_its_language_from_the_target() {
+    let mut fx = init();
+    let body = "fn main() {\n    a();\n    1;\n    2;\n    3;\n    4;\n    5;\n    6;\n}\n";
+    write(&fx.root, "main.txt", body);
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    fs::remove_file(fx.root.join("main.txt")).expect("rm");
+    write(&fx.root, "main.rs", &body.replace("6;", "seven;"));
+    let c = commit(&mut fx, "C\n");
+    let result = run(
+        &mut fx,
+        &DiffOptions {
+            context: Some(0),
+            ..revision(&c.0)
+        },
+    );
+    assert_eq!(paths(&result.files), ["main.rs"]);
+    assert!(matches!(result.files[0].kind, ChangeKind::Renamed { .. }));
+    assert_eq!(result.files[0].hunks[0].symbol.as_deref(), Some("fn main() {"));
+}
+
+/// `context` and `whitespace` reach the reader (`--context`, `-w`).
+#[test]
+fn context_and_whitespace_reach_the_reader() {
+    let (mut fx, _, (c, _)) = plain();
+    let has_context = |result: &RevisionDiff| {
+        result.files[0].hunks[0]
+            .lines
+            .iter()
+            .any(|line| matches!(line, HunkLine::Context(_)))
+    };
+    assert!(has_context(&run(&mut fx, &revision(&c))));
+    let no_context = DiffOptions {
+        context: Some(0),
+        ..revision(&c)
+    };
+    assert!(!has_context(&run(&mut fx, &no_context)));
+
+    fx.repo.new_change(std::slice::from_ref(&c), &[], &[]).expect("new");
+    write(&fx.root, "f.txt", "a\nB \nc\n");
+    let (d, _) = commit(&mut fx, "D\n");
+    let exact = run(&mut fx, &revision(&d));
+    let ignoring = run(
+        &mut fx,
+        &DiffOptions {
+            whitespace: Whitespace::IgnoreAllSpace,
+            ..revision(&d)
+        },
+    );
+    assert_eq!(exact.files[0].hunks.len(), 1);
+    assert!(ignoring.files[0].hunks.is_empty());
+    assert_ne!(ignoring.files[0].fingerprint, exact.files[0].fingerprint);
+}
+
+/// The git object at `id` (a hex id) removed from the internal git store.
+fn remove_object(root: &Path, id: &str) {
+    let objects = root.join(".jj/repo/store/git/objects");
+    fs::remove_file(objects.join(&id[..2]).join(&id[2..])).expect("remove loose object");
+}
+
+/// A store read failing mid-call (a parent commit, a tree for the copy records) is a backend
+/// error, not a panic.
+#[test]
+fn a_missing_object_is_a_backend_error() {
+    let (mut fx, _, (c, c_commit)) = plain();
+    // `@` moves off C's tree so the pre-verb snapshot never reads it.
+    fx.repo.new_change(std::slice::from_ref(&c), &[], &[]).expect("new");
+    write(&fx.root, "h.txt", "h\n");
+    let (d, _) = commit(&mut fx, "D\n");
+    let c_tree = load_head(&fx.root)
+        .store()
+        .get_commit(&jj_lib::backend::CommitId::try_from_hex(&c_commit.0).expect("hex"))
+        .expect("C")
+        .tree_ids()
+        .as_resolved()
+        .expect("resolved tree")
+        .hex();
+    remove_object(&fx.root, &c_tree);
+    let mut repo = Repo::open(&fx.root).expect("reopen");
+    let from_to = DiffOptions {
+        revisions: DiffRevisions::FromTo {
+            from: Some(c.clone()),
+            to: Some(d.clone()),
+        },
+        ..DiffOptions::default()
+    };
+    // Fails in `get_copy_records` (`read_tree_for_commit`), before any tree is diffed.
+    assert!(matches!(repo.diff(&from_to), Err(MutateError::Backend(_))));
+    // D's parent C is gone.
+    remove_object(&fx.root, &c_commit.0);
+    let mut repo = Repo::open(&fx.root).expect("reopen");
+    assert!(matches!(repo.diff(&revision(&d)), Err(MutateError::Backend(_))));
 }
 
 /// An unknown revision is not found.

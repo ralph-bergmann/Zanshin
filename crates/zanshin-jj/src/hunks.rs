@@ -609,6 +609,12 @@ mod tests {
             b"+bar\n".to_vec(),
         ]));
         assert_eq!(fingerprint(&base, None, false), expected);
+        // Persisted by 10.24: a jj-lib bump that changes `ContentHash`'s encoding must fail here.
+        assert_eq!(
+            expected,
+            "cb4845dbda6d5268db932dca5672c91110bd540e265f6777b4c1d532d0b8d8f5\
+             a09406656c836d1a66f72e7758ee7eca63cce6c80a9fc9b2809ff821eef44b30"
+        );
         assert_eq!(expected.len(), 128);
         let empty = fingerprint(&[], None, false);
         assert_ne!(fingerprint(&[], None, true), empty);

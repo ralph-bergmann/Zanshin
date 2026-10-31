@@ -130,7 +130,8 @@ final class FileDiff {
   final int added;
 
   /// A stable fingerprint of the changed lines (no line numbers, no context),
-  /// lowercase hex — equal changes at shifted line numbers share it. It depends
+  /// plus a binary change's contents and a mode change's marker, lowercase
+  /// hex — equal changes at shifted line numbers share it. It depends
   /// on the call's whitespace mode and the effective `ui.conflict-marker-style`
   /// and covers content only (no path, no kind): every content-less change (a
   /// pure rename, an empty file added) shares one value, so a Viewed key
