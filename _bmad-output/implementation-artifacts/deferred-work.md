@@ -1277,6 +1277,7 @@ _Ralph re-downloaded the design-system project twice (rounds 2 and 3; the DS rea
   - DS `components/surfaces/surfaces.css:17-18` defines only the left arrow and `.no-arrow`; flipping and anchoring are 11.3's (epics.md Story 11.2 non-goals); `app/lib/src/shared/materials/zs_menu_material.dart` takes `arrow: bool`.
   - **Follow-up:** 11.3 adds the arrow side and offset together with the placement and flip.
   - **2026-10-18, Story 11.3:** rejected for 11.3's part (spec-11-3-floating-overlay-host, no code): its one callout, the rail preview, sits at a fixed place right of its button with the arrow tip on the button's centre and its height bounded by the window, so it never flips or shifts and needs no other side or offset; left: the commit and gap callouts of 10.6 and 10.19.
+  - **Resolved in Story 10.6 (2026-10-31), for 10.6's part:** rejected — the commit callout is the DS peek (`.zs-peek`, overlays.css:24-39), which has no arrow, so flipping it to the card's left needs no other arrow side (`app/lib/src/features/graph/graph_peek.dart`); left: 10.19's gap callout.
 - ~~**Focus goes nowhere after a sheet when the node that had focus as it opened has unmounted meanwhile, for example a sheet opened from a context-menu row whose menu then finishes its exit.**~~ — RESOLVED 2026-10-18 (spec-11-11-zs-control-library-widgetbook, commit ff1ccc6): `ZsMenuAnchor` refocuses its opener before the command runs, so `ZsSheet` records the opener, not the leaving row; a test checks focus on the opener before the dialog and again after Cancel; `ZsSheet` unchanged. Medium (unverified).
   - `app/lib/src/shared/materials/zs_sheet.dart:116` records `FocusManager.instance.primaryFocus` when the sheet opens and returns focus only to that node if it is still mounted; if 11.11's Menu still holds focus in its row when the command opens a ConfirmDialog, the row unmounts after the menu's 120 ms exit (review pass 2026-10-17, edge-case hunter).
   - **Follow-up:** 11.11 checks that the Menu returns focus to its opener when it starts closing, before the command runs; if it cannot, `ZsSheet` falls back to a mounted ancestor or takes a return node from its caller.
@@ -2218,9 +2219,10 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in Story 10.3 (bmad-build-auto, 2026-10-30)
 
-- **The commit card's affordances carry no tooltips: the `+N` workspace tag does not list the folded names on hover, and ••• lacks its title "Actions (or right-click the card)".** Low.
+- ~~**The commit card's affordances carry no tooltips: the `+N` workspace tag does not list the folded names on hover, and ••• lacks its title "Actions (or right-click the card)".**~~ — RESOLVED 2026-10-31 (Story 10.6). Low.
   - The 2026-10-16 note asks for the `+N` tooltip, the 2026-10-14 note for •••'s title (GV:320). The card is one leaf RenderBox (`app/lib/src/features/graph/graph_card_render.dart`); a tooltip needs the overlay host and hover-delay machinery that 10.6's commit callout builds. VoiceOver gets the names through the card's label meanwhile.
   - **Follow-up:** Story 10.6 shows both through its callout/tooltip layer.
+  - **Resolved in Story 10.6 (2026-10-31):** the card reports the part under the pointer (`GraphCardHoverArea`), and `GraphCanvas`'s layer shows `ZsTooltipBubble` after `--delay-tooltip`: ••• "Actions (or right-click the card)", `+N` the folded names, the bookmark control 10.3's label.
 - ~~**The commit cards were not checked visually (Marionette) in the running catalogue.**~~ — RESOLVED 2026-10-31 (console session, Marionette): `graph/card/states` in night and paper matches graph.card.html; the change id stays jj's (Ralph). Low.
   - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session. Widget tests cover layout, yield order, rings, hatch, hit areas, input and semantics (`app/test/features/graph/graph_card_test.dart`); the smoke test pumps `graph/card/states`.
   - **Follow-up:** in a console session, open `graph/card/states` and `graph/viewport/recording` via `zanshinCatalogue.open`, screenshot them in night and paper, and compare with the DS cards (`design_system/components/graph/graph.card.html`, `immutable.card.html`, `workspaces.card.html`).
@@ -2245,6 +2247,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **Parts of epics 10.5 item 14 are handed on, not built: @'s off-screen direction (10.6's pill), the inspector's scroll for a covered selection with its witnesses (10.8), and the plane's extra margins (dropped as Claude's proposal).** Low.
   - Recorded in the epics.md "Built 2026-10-30" note under Story 10.5; 10.6 item 6 and 10.8 read them as 10.5's. `GraphView` (`app/lib/src/features/graph/graph_view.dart`) takes the shell's insets as they are.
   - **Follow-up:** 10.6 publishes @'s direction against the visible rect; 10.8 scrolls a covered selection when the inspector opens.
+  - **Resolved in Story 10.6 (2026-10-31), for 10.6's part:** `GraphCanvas` publishes @'s direction against the unobscured area deflated by 8 px into `GraphViewModel.workingCopyDirection`, and `GraphView.atPill` shows the pill; left: 10.8's inspector scroll.
 
 ## Surfaced in Story 11.10 (bmad-build-auto, 2026-10-30)
 
@@ -2280,3 +2283,12 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The native macOS strings are outside the l10n setup.** Low.
   - `app/macos/Runner/Base.lproj/MainMenu.xib` keeps its English menu titles (e.g. "Preferences…" at line 35), and `app/macos/Runner/Info.plist` declares no `CFBundleLocalizations`. Story 11.16's scope was `app/lib` and `packages/zanshin_ui/lib`.
   - **Follow-up:** Story 11.13 (the app menu) builds its items from the ARB or a `.strings` file, and adds `CFBundleLocalizations` once a second language exists; none while the app stays English only.
+
+## Surfaced in Story 10.6 (bmad-build-auto, 2026-10-31)
+
+- **The peek, the affordance tooltips, the focus path and the @ pill were not checked visually (Marionette) in the running catalogue.** Low.
+  - The unattended run cannot hold a `flutter run -d macos -t widgetbook/main.dart` session; widget tests and the smoke test cover `graph/peek/open` and `graph/@-pill/directions` (`app/widgetbook/folders/graph.dart`).
+  - **Follow-up:** in a console session, open both use cases and the View model use case through `zanshinCatalogue.open`, hover a card in night and paper, and compare with `design_system/components/overlays/PeekCard.jsx` and `components/actions/AtPill.jsx`.
+- **The peek's IMMUTABLE eyebrow shows no reason yet.** Low.
+  - `app/lib/src/features/graph/graph_peek.dart` draws `HatchSwatch` + IMMUTABLE only; the 2026-10-26 note's reason needs one `revsetCounts` call per `immutable_heads()` term in 11.7's term order, and `GraphSource` has no such port.
+  - **Follow-up:** 11.7 (its Immutable commits page defines the term order) or 10.12 (the real source) adds the port and the cached reason; the peek shows it beside IMMUTABLE.
