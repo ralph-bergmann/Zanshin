@@ -18,6 +18,9 @@ of Story 4.14 are §2, §3, §4.2, §4.3, §4.7, §4.8, §6, §7.2, §7.3 and §
 `zanshin_core` library. Its rules are the new §14; the dated amendments of Story 4.15 are §4.5,
 §7.2 and §12. No layout output changes: `route`, `blocked`, the grid format and every golden stay.)*
 
+*(Amended 2026-10-31, Story 4.16: free's day band — with joint columns no card sits in the band
+around a day divider. The dated amendments of Story 4.16 are §4.2, §4.8, §6, §7.3, §9 (new D12) and §13.)*
+
 The contract for both implementations (`rust/`, `dart/`). Each one is written from this
 document alone and MUST produce **byte-identical output** for every input × mode × order.
 Where this spec and the design differ, the spec wins; every deliberate difference is listed
@@ -338,6 +341,17 @@ on head-first input.)
 
    y never decreases in visit order. It is a time axis, stretched locally where a chain needs
    one pitch per commit. `now_ms` is not used, so `free` never relayouts on a clock tick.
+
+   *Amended 2026-10-31, Story 4.16: the day step.* With joint columns (`--columns joint`, §6; the
+   product always, §13) the base becomes y(v′) + step(v′, i), where step = gap(T(i) − T(v′)) when
+   dk(T(v′)) = dk(T(i)) (dk of step 4, at `utc_offset_min`, for every node incl. the `is_root` one,
+   whose T is tmin) and max(gap(T(i) − T(v′)), U) when they differ. T and y never decrease in the
+   walk, so the older day's newest node is the walk predecessor of the newer day's oldest; the newer
+   day's oldest node therefore sits ≥ U above every older-day node in every column, and nodes above
+   shift up with it. `rows` grows only at such boundaries, and only where gap < U (ΔT < ~255 min):
+   a boundary already a pitch apart, by its gap or by a parent edge, is unchanged. The free model
+   is laid out with the step in both request modes (it feeds the joint packing, §4.3), so I8 holds.
+   Without joint columns (`--columns mode`, the Rust reference) step = gap, as before.
 4. **Day buckets.** *(Added 2026-10-01, Story 4.11.)* After the walk, every node i with
    `is_root` false belongs to the calendar day of its clamped T(i) at the fixed offset (D7); a
    non-root node with a null ts counts by its T(i) too. With off = utc_offset_min·60000:
@@ -348,8 +362,10 @@ on head-first input.)
      buckets in order, with no sort.
    - The `is_root` node is in no bucket. `free` emits no `root` or `age` bucket, and no bucket at
      all when every node is `is_root` (or n = 0).
-   - Two days can share a y value (two unrelated commits less than a minute apart across a local
-     midnight), so neighbouring ranges may meet: end of one = start of the next.
+   - Without joint columns two days can share a y value (two unrelated commits less than a minute
+     apart across a local midnight), so neighbouring ranges may meet: end of one = start of the
+     next. *(Amended 2026-10-31, Story 4.16:)* with joint columns (the product) the day step of
+     step 3 keeps them a pitch apart: end of one + U ≤ start of the next.
 
    `now_ms` stays unused.
 
@@ -769,7 +785,9 @@ are the **least** solution with y′ ≥ 0 of these constraints, each y′(targe
 - **(F)**, `free` only. W is §4.2's walk (T ascending, i descending); X(w_0) = 0 and X(w_j) =
   X(w_{j−1}) + gap(T(w_j) − T(w_{j−1})), the ungrouped walk's gaps summed. W′ is W without the
   hidden nodes, each m_k replaced by its stack node, which takes X(m_k) and T(m_k). For
-  consecutive u, v in W′: y′(v) ≥ y′(u) + X(v) − X(u).
+  consecutive u, v in W′: y′(v) ≥ y′(u) + X(v) − X(u). *(Amended 2026-10-31, Story 4.16:)* with
+  joint columns X sums the walk's day-aware steps (§4.2 free.3, amended), so a sum across a day
+  change holds a step ≥ U and consecutive W′ buckets stay a pitch apart.
 - **(C)** Per column, take the grouped nodes of that column by ascending Y (distinct there). A
   **segment** is a maximal stretch of consecutive nodes in which every node's fp′ is the node right
   before it. For each two adjacent segments, S below with its top node u and T above with its
@@ -954,6 +972,8 @@ bench  --mode compact|time|free --order greedy|optimized --runs N [--warmup W] <
   other combination, or another value, is exit 2. `bench` then echoes `"columns":"joint"` after
   `"order"`. The Rust binary has no `--columns` (an unknown flag, exit 2); the product engine's CLI
   always lays out joint columns and has no flag for it.
+  *Amended 2026-10-31, Story 4.16:* `joint` also turns on `free`'s day step (§4.2 free.3, amended),
+  so `mode`'s rows stay the Rust reference's.
 
 ## 7. Verification
 
@@ -1114,6 +1134,11 @@ difference at H 40 (d = 12, Story 4.15's derivation). The router was not changed
   - every node with `is_root` false lies in the bucket of dk(i), start ≤ y(i) ≤ end;
   - each bucket's start and end are the least and the largest y of its members;
   - there is no bucket iff there is no node with `is_root` false.
+
+  *Amended 2026-10-31, Story 4.16:* with joint columns (the product) consecutive `free` buckets
+  keep one pitch: end_k + U ≤ start_{k+1} (the band around a day divider holds no card), with
+  stacks too. The core checkers (`invariants.dart`, `stack_invariants.dart`) and the app's
+  `checkLayoutInvariants` (`dayBandClear`, row model only) enforce it.
 - I6: in `free`, y never decreases in (T asc, i desc) order.
 
 *Amended 2026-10-01, Story 4.13: with stacks (§4.8).*
@@ -1251,6 +1276,14 @@ Record the CPU, the OS, and the rustc and Dart versions.
   may reach into cards); the route report's Compact gate and a D11 hand case witness it. In Free a
   gutter route whose every gutter is blocked is the router's reported fallback (`fallbackEdges`) and
   may still pass behind a card.
+- **D12 — `free`'s day band** *(added 2026-10-31, Story 4.16)*. The design places y by time
+  alone, so two commits on either side of local midnight less than ~25 min apart in different
+  columns overlap vertically, and the painter's day divider (Story 10.2, midway between the older
+  day's newest and the newer day's oldest card) runs behind both cards (prototype defect 45). With
+  joint columns the walk's step across a day change is at least one pitch (§4.2 free.3, amended),
+  so the band around a divider is card-free (I5, amended). This closes the known midnight overlap;
+  `rows` grows by at most U − gap per close boundary. Compact's rows and the painter are unchanged; compact's lanes and columns can
+  move, since the free model feeds the joint packing (§4.3), and I8 still holds.
 
 ## 10. Project layout and detaching
 
@@ -1467,6 +1500,11 @@ topology, whose own errors (and its precondition and warnings) reach the caller 
   request (both models are laid out, and every node has a day key); `utc_offset_min` is read in
   both modes. `compact` therefore pays the timestamp load too (Story 4.10: ~59 ms packed, ~1.24 s
   loose at 10k).
+
+*Amended 2026-10-31, Story 4.16: the day band.* Being always joint, the product engine always
+applies `free`'s day step (§4.2 free.3, amended; `freeStep` in `layout_engine.dart`, used by the
+walk and by §4.8's (F)), in both request modes, byte for byte with the spike's `--columns joint`.
+I5 (amended) holds on every product grid; D12.
 
 ## 14. Routing (Story 4.15)
 

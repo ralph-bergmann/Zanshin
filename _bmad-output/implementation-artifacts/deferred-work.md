@@ -963,7 +963,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - The export's pixel test leaves room from 13 units at H 62 and from 12 at H 40 (GL:162-172). 4.15's unit rule (12) detours a little more often with compact cards.
   - **Follow-up:** 4.15's oracle lists the cases; tune the rule if they show.
   - **2026-10-27, Story 4.15:** the router oracle (132 cases: the sample and the Lines Study at W 160/240/400 × H 40/62 × both modes) lists none — no direct run is judged differently by the unit rule and GL's pixel test, and all 132 cases equal GL's routing; the rule is not tuned. Left: nothing, unless a real repo shows visible detours where GL's line would sit cleanly above a card.
-- **Day dividers can cross cards around midnight.** Low; accepted in 10.2.
+- ~~**Day dividers can cross cards around midnight.**~~ — RESOLVED 2026-10-31 (spec-4-16-free-day-boundary-band): Free's walk step across a day change is at least one pitch (GLD §4.2 free.3, I5 and D12 amended), so the band around a divider holds no card; the core checkers and the app's `checkLayoutInvariants` (`dayBandClear`) enforce it. Low; accepted in 10.2.
   - Commits on either side of midnight less than about 25 min apart (about 11 min with compact cards) overlap vertically. So SYNC #8's "the band around a divider never holds cards" fails there (GL:597-602; prototype defect 45).
   - **Follow-up:** none, unless real repos show it often.
   - **2026-10-31, Ralph (after a catalogue demo):** fix it in the layout engine — in Free the first card of a new day keeps at least one card height plus gap above the last card of the day before, so the band around a divider holds no card; Story 4.16.

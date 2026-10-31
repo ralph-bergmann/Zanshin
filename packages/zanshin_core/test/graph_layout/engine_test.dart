@@ -247,22 +247,113 @@ void main() {
   });
 
   group('free day buckets', () {
-    test('two_days_less_than_a_minute_apart_across_local_midnight_share_one_row', () {
+    test('two_days_less_than_a_minute_apart_across_local_midnight_end_a_pitch_apart', () {
+      // Story 4.16: the walk step across a day change is max(gap, U) = 16, not gap(30 s) = 0.
       const midnight = 1000072800000; // 2001-09-10T00:00 at UTC+2
       final GraphGridView r = run(
         specGraph([[], [], []], ts: [midnight + 10000, midnight - 20000, null], roots: {2}, offset: 120),
         LayoutMode.free,
       );
-      expect(r.nodeRows, [0, 0, 0]);
+      expect(r.nodeRows, [16, 0, 0]);
       expect(r.bucketKinds, [GraphGridView.bucketKindDay, GraphGridView.bucketKindDay]);
       expect(r.bucketValues, [midnight - day, midnight]);
       expect(
         [r.bucketStarts, r.bucketEnds],
         [
-          [0, 0],
-          [0, 0],
+          [0, 16],
+          [0, 16],
         ],
       );
+    });
+
+    // Story 4.16 (docs/graph-layout.md §4.2 free.3, amended 2026-10-31): the day band.
+    const int midnight = 1000080000000 - 1000080000000 % day; // a UTC midnight
+    test('day_band_the_demo_hand_case_2350_and_0010_in_two_columns_end_a_pitch_apart', () {
+      // 0:B 00:10 → R, 1:A 23:50 → R, 2:R. Walk R 0, A 16, B 16 + max(gap(20 min) = 8, 16).
+      final LayoutInput g = specGraph(
+        [
+          [2],
+          [2],
+          [],
+        ],
+        ts: [midnight + 10 * minute, midnight - 10 * minute, null],
+        roots: {2},
+      );
+      final GraphGridView r = run(g, LayoutMode.free, LaneOrder.compact);
+      expect(r.nodeRows, [32, 16, 0]);
+      expect(r.rows, 48);
+      expect(
+        [r.bucketValues, r.bucketStarts, r.bucketEnds],
+        [
+          [midnight - day, midnight],
+          [16, 32],
+          [16, 32],
+        ],
+      );
+      expect(r.nodeCols[0], isNot(r.nodeCols[1]));
+      expect(invariantFailures(g, r), isEmpty);
+      final GraphGridView c = run(g, LayoutMode.compact, LaneOrder.compact);
+      expect([c.nodeLanes, c.nodeCols], [r.nodeLanes, r.nodeCols], reason: 'I8');
+
+      // The pre-4.16 walk (B at A's 16, the buckets meet) fails the strengthened I5.
+      final meet = GraphGridView.fromBytes(
+        writeGraphGrid(
+          mode: r.mode,
+          order: r.order,
+          unit: r.unit,
+          rows: 32,
+          lanes: r.lanes,
+          nodeRows: Int64List.fromList([16, 16, 0]),
+          nodeLanes: Int32List.fromList(r.nodeLanes),
+          nodeCols: Int32List.fromList(r.nodeCols),
+          nodeDays: Int64List.fromList(r.nodeDays),
+          edgeFroms: Int32List.fromList(r.edgeFroms),
+          edgeTos: Int32List.fromList(r.edgeTos),
+          edgeKinds: Uint8List.fromList(r.edgeKinds),
+          edgeRoutes: Uint8List.fromList(r.edgeRoutes),
+          edgeBlocked: Uint8List.fromList(r.edgeBlocked),
+          bucketValues: Int64List.fromList(r.bucketValues),
+          bucketStarts: Int64List.fromList([16, 16]),
+          bucketEnds: Int64List.fromList([16, 16]),
+        ),
+      );
+      expect(invariantFailures(g, meet), contains('I5 free: bucket 1 a pitch above 0'));
+    });
+
+    test('day_band_steps_already_a_pitch_apart_or_on_one_day_are_unchanged', () {
+      // 0:B → 1:A → 2:R across midnight: the parent edge already spaces B 16 above A.
+      final GraphGridView chain = run(
+        specGraph(
+          [
+            [1],
+            [2],
+            [],
+          ],
+          ts: [midnight + 10 * minute, midnight - 10 * minute, null],
+          roots: {2},
+        ),
+        LayoutMode.free,
+      );
+      expect(chain.nodeRows, [32, 16, 0]);
+      // Two columns: 21:00 / 02:00 across midnight, gap(5 h) = 16; 23:30 / 23:50 on one day, gap = 8.
+      for (final (int a, int b, int want) in [
+        (midnight - 3 * hour, midnight + 2 * hour, 32),
+        (midnight - 30 * minute, midnight - 10 * minute, 24),
+      ]) {
+        final GraphGridView r = run(
+          specGraph(
+            [
+              [2],
+              [2],
+              [],
+            ],
+            ts: [b, a, null],
+            roots: {2},
+          ),
+          LayoutMode.free,
+        );
+        expect(r.nodeRows, [want, 16, 0], reason: 'A $a B $b');
+      }
     });
 
     test('the_root_is_in_no_bucket_and_a_root_only_graph_has_none', () {

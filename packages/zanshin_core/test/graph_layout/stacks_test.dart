@@ -413,6 +413,52 @@ void main() {
       );
       expect(r.nodeRows[6], 76);
     });
+
+    test('free_a_run_across_midnight_keeps_the_day_band_collapsed_expanded_or_by_default', () {
+      // Story 4.16: X 00:10 → R in its own column; m3 00:20 ← m2 23:50 ← m1 23:40 ← B (a ref) 20:00 ← R.
+      const int midnight = 10 * _day;
+      final Graph g = specStackGraph(
+        [
+          [5],
+          [2],
+          [3],
+          [4],
+          [5],
+          [],
+        ],
+        refs: {4},
+        ts: [
+          midnight + 10 * _minute,
+          midnight + 20 * _minute,
+          midnight - 10 * _minute,
+          midnight - 20 * _minute,
+          midnight - 4 * 60 * _minute,
+          null,
+        ],
+      );
+      final GraphGridView off = ungrouped(g, mode: LayoutMode.free);
+      final GraphGridView collapsed = grouped(
+        g,
+        stacks: specStackRequest(g.facts, collapsed: [1, 2, 3]),
+        mode: LayoutMode.free,
+      );
+      final GraphGridView expanded = grouped(
+        g,
+        stacks: specStackRequest(g.facts, expanded: [1, 2, 3]),
+        mode: LayoutMode.free,
+      );
+      expect(runs(collapsed), isNotEmpty);
+      for (final (String name, GraphGridView r) in [
+        ('none', off),
+        ('default', grouped(g, mode: LayoutMode.free)),
+        ('collapsed', collapsed),
+        ('expanded', expanded),
+      ]) {
+        expect(r.bucketCount, 2, reason: name);
+        expect(r.bucketEnds[0] + 16, lessThanOrEqualTo(r.bucketStarts[1]), reason: '$name: a pitch apart');
+      }
+      expect(expanded.nodeRows.sublist(0, 6), off.nodeRows, reason: 'all expanded = ungrouped');
+    });
   });
 
   group('a stack as an edge endpoint', () {

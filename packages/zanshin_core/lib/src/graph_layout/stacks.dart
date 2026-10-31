@@ -485,7 +485,7 @@ final class StackLayout {
       for (var j = 0; j < n; j++) {
         final int w = walk[j];
         if (j > 0) {
-          x += freeGap(t[w] - t[walk[j - 1]]);
+          x += freeStep(t[walk[j - 1]], t[w], engine.input.utcOffsetMin);
         }
         if (hidden[w] != 0 && _newest(nodeRun[w]) != w) {
           continue;

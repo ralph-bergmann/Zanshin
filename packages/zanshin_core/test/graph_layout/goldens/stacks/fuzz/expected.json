@@ -137,11 +137,11 @@
         "bytes": 3914
       },
       "free.greedy": {
-        "fnv1a64": "10ffb10b2cf9882a",
+        "fnv1a64": "7410818e026e3335",
         "bytes": 4715
       },
       "free.compact": {
-        "fnv1a64": "728e2bf9aace0a53",
+        "fnv1a64": "8b65a371e75525b8",
         "bytes": 4716
       }
     },
@@ -209,11 +209,11 @@
         "bytes": 3313
       },
       "free.greedy": {
-        "fnv1a64": "150ae541ab6426ea",
+        "fnv1a64": "a4ff8f5772fbcb65",
         "bytes": 3816
       },
       "free.compact": {
-        "fnv1a64": "d2a8dfb30f450b5d",
+        "fnv1a64": "d3014b5313a9860a",
         "bytes": 3817
       }
     },
@@ -335,11 +335,11 @@
         "bytes": 3452
       },
       "free.greedy": {
-        "fnv1a64": "ba0f522316a4af8c",
+        "fnv1a64": "7d4816cd85ed5598",
         "bytes": 4180
       },
       "free.compact": {
-        "fnv1a64": "d9912a86202ff18f",
+        "fnv1a64": "82a9d0de7cfe50bb",
         "bytes": 4181
       }
     },

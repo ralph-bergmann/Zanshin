@@ -4381,6 +4381,8 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 ### Story 4.16: Free — no card in the band around a day divider [bridge]
 *(Added 2026-10-31, Ralph — console session after the story loop 10.2–5.5, on a catalogue demo of the case; Claude builds it.)*
 
+> **Delivered 2026-10-31** (`spec-4-16-free-day-boundary-band.md`): the rule is GLD §4.2 free step 3's walk step, step = max(gap(ΔT), U) when the day key changes between consecutive walk nodes (`freeStep` in `layout_engine.dart`, also summed by §4.8's (F)); in the spike only under `--columns joint`, the product always. I5 gains end_k + U ≤ start_{k+1} (core `invariants.dart` / `stack_invariants.dart`, the app's `LayoutInvariant.dayBandClear`); GLD §4.2, §4.8, §6, §7.3, §9 (D12), §13 amended. Only the fuzz goldens' hashes changed; no design golden and no app recording moved.
+
 **Motivation.** In Free, y follows time, so two commits on either side of local midnight that lie less than about 25 minutes apart (about 11 with compact cards) in different columns overlap vertically. The day divider (10.2) runs midway between the older day's newest card and the newer day's oldest card, so it passes behind both, and a card of yesterday sits under the "Today" label (deferred-work.md "Day dividers can cross cards around midnight"; DS SYNC #8 assumes "the band around a divider never holds cards"; prototype defect 45). Ralph chose to fix it in the engine rather than accept it.
 
 **Scope.**

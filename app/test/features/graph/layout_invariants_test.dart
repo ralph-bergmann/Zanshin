@@ -97,6 +97,20 @@ void main() {
       expect(violated(handLayout(const <(String, int, int)>[('a', 21, 0), ('b', 5, 0)], unit: 16)), isEmpty);
     });
 
+    test("free: day buckets that meet, 23:50 and 00:10 in two columns (Story 4.16's day band)", () {
+      const day = 86400000;
+      // Root 0, A (day 1) and B (day 2) both its children, in two columns.
+      RecordedGraphLayout layout(int rowB) => handLayout(
+        <(String, int, int)>[('b', rowB, 1), ('a', 16, 0), ('root', 0, 0)],
+        edges: const <(int, int)>[(0, 2), (1, 2)],
+        unit: 16,
+        root: 2,
+        buckets: <(int, int, int)>[(day, 16, 16), (2 * day, rowB, rowB)],
+      );
+      expect(violated(layout(24)), <LayoutInvariant>{LayoutInvariant.dayBandClear});
+      expect(violated(layout(32)), isEmpty);
+    });
+
     test('PerNodeTops: overlapping tops in a column, and a child less than a pitch above its parent', () {
       final RecordedGraphLayout layout = handLayout(
         const <(String, int, int)>[('child', 1, 0), ('parent', 0, 0), ('other', 0, 1)],

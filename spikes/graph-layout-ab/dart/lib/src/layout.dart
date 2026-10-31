@@ -70,6 +70,15 @@ int freeGap(int g) {
   return gap < 48 ? gap : 48;
 }
 
+/// `free` walk step in units between consecutive walk nodes with clamped T [tPrev] ≤ [t] (SPEC §4.2
+/// free.3, amended 2026-10-31, Story 4.16): with [joint], a step across a day change is at least
+/// one pitch (16), so no card sits in the band around a day divider.
+int freeStep(int tPrev, int t, int utcOffsetMin, {required bool joint}) {
+  final gap = freeGap(t - tPrev);
+  if (!joint || gap >= 16 || dayKey(tPrev, utcOffsetMin) == dayKey(t, utcOffsetMin)) return gap;
+  return 16;
+}
+
 /// The result, index-aligned with the input (SPEC §3).
 final class LayoutResult {
   LayoutResult({
@@ -454,7 +463,7 @@ final class GraphLayout {
     var prevY = 0, prevT = 0;
     for (var k = 0; k < n; k++) {
       final i = order[k];
-      var r = k == 0 ? 0 : prevY + freeGap(t[i] - prevT);
+      var r = k == 0 ? 0 : prevY + freeStep(prevT, t[i], input.utcOffsetMin, joint: joint);
       for (var e = lpStart[i]; e < lpStart[i + 1]; e++) {
         final v = y[edgeParent[e]] + u;
         if (v > r) r = v;

@@ -153,3 +153,11 @@ answer — with the option taken and its basis, under its story's heading.)*
 | The oracle's difference categories | Equal; or every class / slot difference explained — unit rule (GL's decision vs the same decision under the unit rule, with the cards' unit distances) or shared-entry grouping (`via` vs `parentCount`) — with the remaining geometry differences of that case consequential. Also listed: direct runs the two tests judge differently even when the class ends equal. | taken during this run | Stricter: no consequential differences allowed. |
 | Reports per edge | Besides the counts, `fallbackEdges` and `overfullEdges` flag the edges, so the Free gate attributes every card hit (spec Change Log). | taken during this run | Counts only (the gate could not attribute hits). |
 | An entry approach at the child's centre | Counts as the right side (GL leaves it without a port); only a heavily stepped gutter line can reach it. | taken during this run | Leave it portless like GL (NaN geometry). |
+
+### 4.16
+
+| Question | Answer taken | Basis | If overruled |
+|---|---|---|---|
+| Where the day band lives | In the free walk's step (GLD §4.2 free.3): max(gap, U) when dk changes between consecutive walk nodes, the root included (T = tmin); §4.8's (F) sums the same steps. | the spec (Approach, Design Notes) | A separate pass after the walk (shifting every later node). |
+| The spike reference | Gated on `--columns joint`, so `--columns mode`, Rust ≡ Dart and `fuzz.mjs` stay untouched; the product always applies it. | the spec (Boundaries) | Ungated in the spike (the Rust reference would need the rule too). |
+| The app checker | `LayoutInvariant.dayBandClear`, checked in the row model (not `PerNodeTops`) for free layouts only. | the spec (Code Map) | Also over pixel tops. |

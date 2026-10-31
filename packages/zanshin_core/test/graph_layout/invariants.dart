@@ -252,9 +252,10 @@ List<String> invariantFailures(LayoutInput g, GraphGridView r) {
   return fails;
 }
 
-/// §7.3 I5 for `free` (amended 2026-10-01): `day` buckets only, values strictly ascending,
-/// start ≤ end, end_k ≤ start_{k+1}, every non-root node inside the bucket of its clamped T's day,
-/// start / end its members' min / max y, and no bucket iff no non-root node.
+/// §7.3 I5 for `free` (amended 2026-10-01 and 2026-10-31, Story 4.16): `day` buckets only, values
+/// strictly ascending, start ≤ end, end_k + U ≤ start_{k+1} (the band around a divider is
+/// card-free), every non-root node inside the bucket of its clamped T's day, start / end its
+/// members' min / max y, and no bucket iff no non-root node.
 void _freeDayBuckets(LayoutInput g, GraphGridView r, List<int> tt, void Function(bool, String) check) {
   final int count = r.bucketCount;
   for (var b = 0; b < count; b++) {
@@ -262,7 +263,7 @@ void _freeDayBuckets(LayoutInput g, GraphGridView r, List<int> tt, void Function
     check(r.bucketStarts[b] <= r.bucketEnds[b], 'I5 free: bucket $b start ≤ end');
     if (b > 0) {
       check(r.bucketValues[b - 1] < r.bucketValues[b], 'I5 free: bucket $b ascending');
-      check(r.bucketEnds[b - 1] <= r.bucketStarts[b], 'I5 free: bucket $b ranges in order');
+      check(r.bucketEnds[b - 1] + modelUnits[1] <= r.bucketStarts[b], 'I5 free: bucket $b a pitch above ${b - 1}');
     }
   }
   final List<int> lo = List.filled(count, 1 << 62);

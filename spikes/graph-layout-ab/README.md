@@ -101,6 +101,11 @@ viewer/       throwaway HTML viewer (index.html, viewer.js, viewer.css); viewer/
    its equal cases witness gutter, stepped, deep, left, right, shared-exit-side, shared-entry-side
    and compact gutter lines (1,815 / 108 / 132 / 1,170 / 645 / 399 / 12 / 294) and the generation
    counts stay pinned (frozen moves 115 / 269 / 67 / 87 / 91, 1,485 cases).
+13. **Done (2026-10-31, Story 4.16):** free's day band, [`docs/graph-layout.md`](../../docs/graph-layout.md)
+   §4.2 free.3 (amended) — with `--columns joint` the walk's step across a day change is
+   max(gap, U), so no card sits in the band around a day divider (I5 amended, D12). The default
+   `--columns mode` keeps the old walk (Rust ≡ Dart, `fuzz.mjs` unchanged); `goldens.mjs` rewrote the
+   fuzz hashes whose day boundaries were closer than a pitch.
 
 ## Run
 

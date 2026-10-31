@@ -61,6 +61,18 @@ int freeGap(int g) {
   return gap < 48 ? gap : 48;
 }
 
+/// `free`'s walk step in units between consecutive walk nodes with clamped T [tPrev] ≤ [t]
+/// (§4.2 free, step 3, amended 2026-10-31, Story 4.16): [freeGap], but at least one pitch (16)
+/// across a day change, so no card sits in the band around a day divider.
+int freeStep(int tPrev, int t, int utcOffsetMin) {
+  final int gap = freeGap(t - tPrev);
+  final int pitch = modelUnits[1];
+  if (gap >= pitch || dayKey(tPrev, utcOffsetMin) == dayKey(t, utcOffsetMin)) {
+    return gap;
+  }
+  return pitch;
+}
+
 /// Lays out [input] (docs/graph-layout.md §4) in [mode] with the lane [order], whose `compact`
 /// search may spend [budget] work units, and returns the grid buffer [GraphGridView] reads.
 ///
@@ -381,7 +393,7 @@ final class LayoutEngine {
     var prevT = 0;
     for (var k = 0; k < n; k++) {
       final int i = order[k];
-      int r = k == 0 ? 0 : prevY + freeGap(t[i] - prevT);
+      int r = k == 0 ? 0 : prevY + freeStep(prevT, t[i], input.utcOffsetMin);
       for (int e = lpStart[i]; e < lpStart[i + 1]; e++) {
         final int v = y[edgeParent[e]] + u;
         if (v > r) {

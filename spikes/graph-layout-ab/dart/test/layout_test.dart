@@ -69,7 +69,103 @@ void main() {
   randomized();
   stacks();
   jointColumns();
+  dayBand();
   finish();
+}
+
+// ---- Story 4.16: free's day band (docs/graph-layout.md §4.2 free.3, amended 2026-10-31) ----------
+
+void dayBand() {
+  LayoutResult joint(LayoutInput g, [StackInput? stacks]) =>
+      computeLayout(g, Mode.free, LaneOrder.compact, joint: true, stacks: stacks);
+  final midnight = floorDiv(now, day) * day;
+
+  // 0:B 00:10 day 2 → R, 1:A 23:50 day 1 → R, 2:R root (two columns).
+  final demo = graph(
+    [
+      [2],
+      [2],
+      [],
+    ],
+    ts: [midnight + 10 * minute, midnight - 10 * minute, null],
+    roots: {2},
+  );
+
+  test('day band: the demo hand case — 23:50 and 00:10 in two columns end a pitch apart', () {
+    // Walk R (0), A (R + 16), B: gap(20 min) = 8 < 16, so the day step is 16.
+    expectEq(run(demo, Mode.free).row, [24, 16, 0], 'without joint columns: the old walk');
+    final r = joint(demo);
+    expectEq(r.row, [32, 16, 0], 'rows');
+    expectEq(
+      [r.rows, r.bucketStart, r.bucketEnd],
+      [
+        48,
+        [16, 32],
+        [16, 32],
+      ],
+    );
+    checkInvariants(demo, r, 'demo', joint: true);
+    check(r.col[0] != r.col[1], 'two columns');
+    final c = computeLayout(demo, Mode.compact, LaneOrder.compact, joint: true);
+    expectEq([c.lane, c.col], [r.lane, r.col], 'I8');
+  });
+
+  test('day band: steps already a pitch (a parent edge, or ≥ ~4.3 h) and same-day steps are unchanged', () {
+    // 0:B 00:10 → A, 1:A 23:50 → R, 2:R (one column, the parent edge spaces them).
+    final chain = graph(
+      [
+        [1],
+        [2],
+        [],
+      ],
+      ts: [midnight + 10 * minute, midnight - 10 * minute, null],
+      roots: {2},
+    );
+    expectEq(joint(chain).row, run(chain, Mode.free).row, 'parent edge');
+    // Two columns (B, A → R): 21:00 / 02:00 (gap(5 h) = 16) across midnight; 23:30 / 23:50 one day.
+    for (final (a, b) in [
+      (midnight - 3 * hour, midnight + 2 * hour),
+      (midnight - 30 * minute, midnight - 10 * minute),
+    ]) {
+      final g = graph(
+        [
+          [2],
+          [2],
+          [],
+        ],
+        ts: [b, a, null],
+        roots: {2},
+      );
+      expectEq(joint(g).row, run(g, Mode.free).row, 'A $a B $b');
+    }
+  });
+
+  test('day band: stacks collapsed / expanded / none keep the band; all expanded = ungrouped', () {
+    // 0:B 00:10 → 4, a chain 3:S1 21:00 → 2:S2 23:50 → 1:S3 00:20, 4:R root.
+    final g = stackGraph(
+      [
+        [4],
+        [2],
+        [3],
+        [4],
+        [],
+      ],
+      ts: [midnight + 10 * minute, midnight + 20 * minute, midnight - 10 * minute, midnight - 3 * hour, null],
+    );
+    final ungrouped = joint(g);
+    checkInvariants(g, ungrouped, 'ungrouped', joint: true);
+    for (final (name, s) in [
+      ('none', stackRequest(g)),
+      ('collapsed', stackRequest(g, collapsed: [1, 2, 3])),
+      ('expanded', stackRequest(g, expanded: [1, 2, 3])),
+    ]) {
+      final r = joint(g, s);
+      for (var b = 1; b < r.bucketStart.length; b++) {
+        check(r.bucketEnd[b - 1] + 16 <= r.bucketStart[b], '$name: buckets a pitch apart');
+      }
+      if (name == 'expanded') expectEq(r.row.sublist(0, g.n), ungrouped.row, 'all expanded = ungrouped');
+    }
+  });
 }
 
 // ---- Story 4.14: joint columns (docs/graph-layout.md §4.3 / §4.7, amended 2026-10-27) -----------
@@ -78,7 +174,7 @@ void main() {
 /// interval there except the excluded owner's overlaps it in either model; packed once in each
 /// model's visit order, the fewer lanes kept, `compact`'s on a tie. Also returns both counts.
 (List<int>, int, int) naiveJointLanes(LayoutInput g) {
-  final ls = [GraphLayout(g, Mode.compact)..layering(), GraphLayout(g, Mode.free)..layering()];
+  final ls = [GraphLayout(g, Mode.compact)..layering(), GraphLayout(g, Mode.free, joint: true)..layering()];
   final n = g.n, fp = ls[0].fp, prio = g.priority;
   final cont = List.filled(n, -1);
   for (var i = 0; i < n; i++) {
@@ -270,7 +366,7 @@ void jointColumns() {
         final c = joint(g, Mode.compact, order), f = joint(g, Mode.free, order);
         final what = 'case $t $order';
         checkInvariants(g, c, '$what compact');
-        checkInvariants(g, f, '$what free');
+        checkInvariants(g, f, '$what free', joint: true);
         expectEq([c.lanes, c.lane, c.col], [f.lanes, f.lane, f.col], '$what: I8');
         expectEq(encodeOutput(joint(g, Mode.free, order)), encodeOutput(f), '$what: deterministic');
       }
@@ -1839,8 +1935,9 @@ List<int> clampedT(LayoutInput g, List<List<int>> lp) {
 
 /// SPEC §7.3 I5 for `free` (amended 2026-10-01): `day` buckets only, values strictly ascending,
 /// start ≤ end, end_k ≤ start_{k+1}, every non-root node inside the bucket of its clamped T's day,
-/// start / end its members' min / max y, and no bucket iff no non-root node.
-void checkFreeDayBuckets(LayoutInput g, LayoutResult r, List<List<int>> lp, String what) {
+/// start / end its members' min / max y, and no bucket iff no non-root node. With [joint]
+/// (amended 2026-10-31, Story 4.16) end_k + U ≤ start_{k+1}: the band around a divider is card-free.
+void checkFreeDayBuckets(LayoutInput g, LayoutResult r, List<List<int>> lp, String what, {bool joint = false}) {
   final tt = clampedT(g, lp);
   final count = r.bucketKind.length;
   for (var b = 0; b < count; b++) {
@@ -1848,7 +1945,7 @@ void checkFreeDayBuckets(LayoutInput g, LayoutResult r, List<List<int>> lp, Stri
     check(r.bucketStart[b] <= r.bucketEnd[b], '$what: I5 free start ≤ end');
     if (b > 0) {
       check(r.bucketValue[b - 1] < r.bucketValue[b], '$what: I5 free ascending');
-      check(r.bucketEnd[b - 1] <= r.bucketStart[b], '$what: I5 free ranges in order');
+      check(r.bucketEnd[b - 1] + (joint ? r.unit : 0) <= r.bucketStart[b], '$what: I5 free ranges in order');
     }
   }
   final lo = List.filled(count, 1 << 62), hi = List.filled(count, -(1 << 62));
@@ -1868,8 +1965,8 @@ void checkFreeDayBuckets(LayoutInput g, LayoutResult r, List<List<int>> lp, Stri
   }
 }
 
-/// SPEC §7.3 I1–I6.
-void checkInvariants(LayoutInput g, LayoutResult r, String what) {
+/// SPEC §7.3 I1–I6; [joint] = the layout came from `--columns joint` (I5's day band, Story 4.16).
+void checkInvariants(LayoutInput g, LayoutResult r, String what, {bool joint = false}) {
   final n = g.n, u = r.unit, y = r.row;
   // Layout parents, fp, pos.
   final lp = [
@@ -1925,7 +2022,7 @@ void checkInvariants(LayoutInput g, LayoutResult r, String what) {
   if (r.mode == Mode.compact) {
     check(r.bucketKind.isEmpty, '$what: I5 no buckets');
   } else if (r.mode == Mode.free) {
-    checkFreeDayBuckets(g, r, lp, what);
+    checkFreeDayBuckets(g, r, lp, what, joint: joint);
   } else {
     int keyOf(int b) => switch (r.bucketKind[b]) {
       bucketRoot => rootKey,

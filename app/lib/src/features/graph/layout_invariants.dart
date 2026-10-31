@@ -25,6 +25,10 @@ enum LayoutInvariant {
   /// No two cards in one column overlap: in the row modes no two nodes closer than one pitch (at U = 1, no shared
   /// (row, col) cell); for [PerNodeTops], no vertical overlap.
   noOverlappingCards,
+
+  /// Free's day band is card-free (Story 4.16): consecutive buckets keep one pitch, bucketLastRowOf(b − 1) + U ≤
+  /// bucketFirstRowOf(b). Checked in the row model only (not for [PerNodeTops]).
+  dayBandClear,
 }
 
 /// One violated invariant, with what violates it.
@@ -102,6 +106,15 @@ List<LayoutViolation> checkLayoutInvariants(GraphLayout layout, {VerticalLayout?
             LayoutInvariant.noOverlappingCards,
             'column $col: ${layout.keyOf(a)} and ${layout.keyOf(b)} overlap',
           ),
+        );
+      }
+    }
+  }
+  if (tops == null && layout.mode == GraphMode.free) {
+    for (var b = 1; b < layout.bucketCount; b++) {
+      if (layout.bucketLastRowOf(b - 1) + u > layout.bucketFirstRowOf(b)) {
+        violations.add(
+          LayoutViolation(LayoutInvariant.dayBandClear, 'day bucket $b is less than a pitch above bucket ${b - 1}'),
         );
       }
     }

@@ -328,6 +328,9 @@ List<String> stackInvariantFailures(LayoutInput g, StackInput s, GraphGridView o
     }
     check(_same(r.bucketValues, days), 'I5 bucket days');
     check(_same(r.bucketStarts, lo) && _same(r.bucketEnds, hi), 'I5 bucket ranges');
+    for (var b = 1; b < hi.length; b++) {
+      check(hi[b - 1] + modelUnits[1] <= lo[b], 'I5 day band: bucket $b a pitch above ${b - 1}');
+    }
     for (var k = 1; k < walk.length; k++) {
       check(y[walk[k]] >= y[walk[k - 1]], 'I6 at ${walk[k]}');
     }
@@ -365,14 +368,19 @@ List<int> _freeWalk(LayoutInput g, List<int> image, Map<int, NaiveRun> stackOf, 
   ];
 }
 
-/// X along the ungrouped walk: the gaps summed (§4.8 step 6, (F)).
+/// X along the ungrouped walk: the steps summed (§4.8 step 6, (F)); a step across a day change is
+/// at least one pitch (§4.2 free.3, amended 2026-10-31, Story 4.16).
 List<int> _walkX(LayoutInput g) {
   final int n = g.n;
   final List<int> tt = clampedT(g, layoutParents(g));
   final List<int> order = List.generate(n, (i) => i)..sort((a, b) => tt[a] != tt[b] ? tt[a].compareTo(tt[b]) : b - a);
   final List<int> x = List.filled(n, 0);
   for (var k = 1; k < n; k++) {
-    x[order[k]] = x[order[k - 1]] + freeGap(tt[order[k]] - tt[order[k - 1]]);
+    final int a = tt[order[k - 1]];
+    final int b = tt[order[k]];
+    final int gap = freeGap(b - a);
+    final newDay = dayKey(a, g.utcOffsetMin) != dayKey(b, g.utcOffsetMin);
+    x[order[k]] = x[order[k - 1]] + (newDay ? max(gap, modelUnits[1]) : gap);
   }
   return x;
 }

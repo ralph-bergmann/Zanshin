@@ -416,7 +416,7 @@ final class StackLayout {
       var x = 0, prev = -1, prevX = 0;
       for (var j = 0; j < n; j++) {
         final w = walk[j];
-        if (j > 0) x += freeGap(t[w] - t[walk[j - 1]]);
+        if (j > 0) x += freeStep(t[walk[j - 1]], t[w], layout.input.utcOffsetMin, joint: layout.joint);
         if (hidden[w] != 0 && _newest(nodeRun[w]) != w) continue;
         final v = image[w];
         if (prev >= 0) {
