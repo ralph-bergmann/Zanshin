@@ -71,7 +71,7 @@ deferred: []
 
 Status: done
 
-- **Failure 1 (coverage: hunks.rs 99.76% < 100.00%)** — fixed by adding `a_copy_names_its_source_which_stays_modified` (`crates/zanshin-jj/tests/it/diff.rs`), which reaches the only uncovered line, hunks.rs:430 (`CopyOperation::Copy => ChangeKind::Copied`). The suspected `map_err` closures were already covered. Commit: see the fix commit on main after aa0561b6 (message "test(diff): loop fix-up — cover the Copied kind in Repo::diff").
+- **Failure 1 (coverage: hunks.rs 99.76% < 100.00%)** — fixed by adding `a_copy_names_its_source_which_stays_modified` (`crates/zanshin-jj/tests/it/diff.rs`), which reaches the only uncovered line, hunks.rs:430 (`CopyOperation::Copy => ChangeKind::Copied`). The suspected `map_err` closures were already covered. Commit: b6a8ba12d1cca6a9a9ff43b8569cc31eab1b7e5a.
 - Files: `crates/zanshin-jj/tests/it/diff.rs` — one new integration test; this spec.
 - Review: 4 patches applied (all low), 4 lows rejected, 3 false; nothing deferred. Follow-up review recommended: false (patched: high 0, medium 0, low 4).
 - Verification: `cargo test -p zanshin-jj --test it diff::` passed; full `cargo make test` exit 0, "coverage-check: OK — coverage held at 99.43% (35179/35381 lines)". `coverage-baseline.txt` unchanged: hunks.rs is back at its 100.00% baseline, nothing rose.
