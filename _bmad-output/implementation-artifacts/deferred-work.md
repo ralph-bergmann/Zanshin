@@ -711,6 +711,7 @@ _Ralph decided to run the commit-graph layout in Dart on the worker isolate (`sp
   - On the real repo that is 115 ms of today's 163 ms `collect_lanes(all())`. The CLI's default `jj log` template pays the same (138 ms).
   - `large-10k` has one merge, so fixture numbers hide this.
   - **Follow-up:** tune 10.11's page and buffer size on a real repo, not on the fixtures, and measure a content page with a changed-path index present (4.10 item 8). Building one is an Epic 9 verb for CLI parity (`jj debug index-changed-paths`), never a background job.
+  - **2026-10-31, Ralph:** the tuning moves to Story 10.12 (its real `content` call), measured on a copy of the real 1.4k repo kept outside git and on a packed `large-10k`; recorded in epics.md Story 10.12 item 7.
 - **Real-repo data stays out of git.** None; a standing rule.
   - The 2026-09-26 real-repo dumps, metadata sidecars (descriptions, authors, bookmarks) and layout outputs live outside the repository.
   - The spike's `.gitignore` covers `/inputs/`, `/outputs/` and `/viewer/data/`.
@@ -844,7 +845,7 @@ _The spec (`spec-4-10-graph-topology-content-split-op-pinned.md`) carries the fi
   - The decision (OQ 1 = (b)) says: adopt the per-handle timestamp cache when a first timestamped topology call exceeds ~50 ms on a packed store, or loose commits accumulate.
   - Measured: the FIRST `graph_topology(all(), with_timestamps)` call on a fresh handle is 53 ms (median) on `large-10k` packed, of which ~31 ms are the commit loads; 105 ms on `medium` and ~1.04 s on `large-10k` as committed (every object loose). A repeat call on a reused handle costs the same. Zanshin never packs, so a repo that only Zanshin writes accumulates loose commits.
   - **Follow-up:** Ralph decides whether (c) (a commit id → timestamp cache on `zanshin_jj::Repo`, with its ADR-0002 Addendum clause and bound) or (d) (a Dart-side cache in the worker) is built now, or whether 10k packed at 53 ms stays acceptable. Nothing in 4.10 depends on it.
-- **Memoising the pinned `ReadonlyRepo` — does its load dominate a page? Decision for Ralph.** Low.
+- ~~**Memoising the pinned `ReadonlyRepo` — does its load dominate a page? Decision for Ralph.**~~ — DECIDED 2026-10-31 (Ralph): larger pages, no repo cache. 10.11's `GraphContent` already sends every missing id of the visible range + buffer in one uncapped call; 10.12 item 7 tunes the buffer (or a minimum page) so the pinned load stays a small share, and a per-operation memo becomes a story only if 10.12's real-repo numbers still show it dominating. Low.
   - The non-goal says: memoise the pinned repo within one operation id only if `load_operation` + `load_at` dominates a page.
   - Measured (empty-list call ÷ page, medians, cold commit cache, no changed-path index): the pinned load is 0.19 ms on `medium` loose, 0.86 ms on `large-10k` loose and 0.78 ms on `large-10k` packed — ~8 %, ~28 % and ~45 % of a 60-id page (~51 % packed with a changed-path index), and ~3 %, ~12 % and ~33 % of a 200-id page. So on a packed 10k store it is about half of a 60-id page.
   - **Follow-up:** Ralph decides whether that dominates enough to memoise the pinned repo per operation id (handle state, an ADR-0002 Addendum clause) or whether 10.11 should page in larger batches instead. Nothing in 4.10 depends on it.

@@ -10279,6 +10279,7 @@ Because of 10.1's accessor rule, adopting them changes no painter and no card.
 4. **Bridge part.** Export 4.10–4.12's Dart types from `zanshin_core.dart`.
 5. **Real-repo host.** Until a project-open flow exists, a dev entry point opens an explicitly given path. Where the graph mounts in the shell is Ralph's call.
 6. **Debug relayout on reassemble** (4.11's guardrail). A hot reload swaps the engine's code in the worker, which shares the UI isolate's group, but the worker lays out only when asked. In debug builds, `reassemble` re-issues the current layout request, so a layout edit shows at once.
+7. **Content paging tuned on real data** *(added 2026-10-31, Ralph, after Story 10.11)*. With the real `content` call wired, measure a content page on a copy of the real 1.4k repo (kept outside git) and on a packed `large-10k`, with and without a changed-path index, and tune 10.11's buffer (one viewport vertically, 250 px sideways today). Pages stay uncapped; if the pinned `ReadonlyRepo` load is still a large share of a page, a larger buffer or a minimum page size comes first. A per-operation repo memo (handle state, an ADR-0002 Addendum clause) is a story of its own only if the numbers still demand it (deferred-work.md "Memoising the pinned `ReadonlyRepo`", decided 2026-10-31). Numbers recorded, not gated.
 
 **Non-goals.**
 - Painter or card changes.
