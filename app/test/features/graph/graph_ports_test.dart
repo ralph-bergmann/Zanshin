@@ -189,6 +189,60 @@ void main() {
       expect((await repo.handle.status()).parentChangeId, born);
     });
 
+    Future<String> descriptionOf(ProjectRepo repo, String id) async =>
+        (await repo.handle.show(revset: id)).single.change.description.trim();
+
+    Future<Map<String, String?>> bookmarksOf(ProjectRepo repo) async => <String, String?>{
+      for (final Bookmark bookmark in await repo.handle.bookmarks()) bookmark.name: bookmark.target,
+    };
+
+    test('describe sets the description of its change', () async {
+      final (ProjectRepo repo, GraphViewModel model, String first, _) = await setUpRepo('describe-action');
+      expect(await model.run(GraphDescribe(first, 'from the runner')), isA<GraphActionDone>());
+      expect(await descriptionOf(repo, first), 'from the runner');
+    });
+
+    test('abandon removes its change', () async {
+      final (ProjectRepo repo, GraphViewModel model, String first, _) = await setUpRepo('abandon');
+      expect(await model.run(GraphAbandon(<String>[first])), isA<GraphActionDone>());
+      expect((await repo.handle.status()).parentChangeId, isNot(first));
+    });
+
+    test('squash -r -m -k: the message lands on the destination and the emptied source stays', () async {
+      final (ProjectRepo repo, GraphViewModel model, String first, String second) = await setUpRepo('squash');
+      // jj squashes nothing (and sets no message) from an empty source kept with -k: give @ a file.
+      File('${pathOf('squash')}/b.txt').writeAsStringSync('b\n');
+      final GraphActionResult result = await model.run(
+        GraphSquash(revision: second, message: const <String>['squashed'], keepEmptied: true),
+      );
+      expect(result, isA<GraphActionDone>());
+      expect(await descriptionOf(repo, first), 'squashed');
+      expect((await repo.handle.status()).workingCopyChangeId, second);
+    });
+
+    test('new with no target sits on @ (the CLI default)', () async {
+      final (ProjectRepo repo, GraphViewModel model, _, String second) = await setUpRepo('new-at');
+      final GraphActionResult result = await model.run(const GraphNew());
+      final WorkingCopyStatus status = await repo.handle.status();
+      expect(status.workingCopyChangeId, (result as GraphActionDone).outcome.born.single);
+      expect(status.parentChangeId, second);
+    });
+
+    test('bookmark create -r, move of a glob-like name, rename', () async {
+      final (ProjectRepo repo, GraphViewModel model, String first, String second) = await setUpRepo('bookmarks');
+      expect(
+        await model.run(GraphBookmarkCreate(const <String>['f*', 'foo'], revision: first)),
+        isA<GraphActionDone>(),
+      );
+      expect(await bookmarksOf(repo), <String, String?>{'f*': first, 'foo': first});
+
+      expect(await model.run(GraphBookmarkMove(const <String>['f*'], to: second)), isA<GraphActionDone>());
+      expect(await bookmarksOf(repo), <String, String?>{'f*': second, 'foo': first});
+
+      expect(await model.run(const GraphBookmarkRename('foo', 'bar')), isA<GraphActionDone>());
+      expect(await bookmarksOf(repo), <String, String?>{'bar': first, 'f*': second});
+    });
+
     for (final (String name, GraphAction Function(String first, String second) action)
         in <(String, GraphAction Function(String, String))>[
           ('-A', (first, _) => GraphNew(insertAfter: <String>[first])),
@@ -253,6 +307,8 @@ void main() {
         'jj bookmark move \'exact:"feat*"\' --from fff --to kkk --allow-backwards',
       );
       expect(const GraphBookmarkMove(<String>['main']).command, 'jj bookmark move main');
+      // jj-core's is_glob_char also counts `]`, `{`, `}`: `{a,b}` bare would delete `a` and `b`.
+      expect(const GraphBookmarkDelete(<String>['{a,b}', 'x]']).patterns, <String>['exact:"{a,b}"', 'exact:"x]"']);
     });
 
     test('shell quoting: a single quote, a leading dash, an empty text, a newline', () {

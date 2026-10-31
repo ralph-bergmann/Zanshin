@@ -429,9 +429,10 @@ final _revsetIdentifier = RegExp(r'^[A-Za-z0-9_*/]+(?:(?:\.|-+|\+)[A-Za-z0-9_*/]
 /// [name] as a revset symbol: bare when it is an identifier, else a string literal.
 String _revsetSymbol(String name) => _revsetIdentifier.hasMatch(name) ? name : _stringLiteral(name);
 
-/// [name] as a name pattern matching only itself: a bare pattern is a glob, so a name with `*`, `?` or `[` is `exact:`.
+/// [name] as a name pattern matching only itself: a bare pattern is a glob, so a name with a glob character (jj-core
+/// `is_glob_char` @ v0.46.0: `?*[]{}\`) is `exact:`.
 String _exactPattern(String name) =>
-    name.contains(RegExp(r'[*?[]')) ? 'exact:${_stringLiteral(name)}' : _revsetSymbol(name); // l10n-ignore: jj
+    name.contains(RegExp(r'[*?[\]{}\\]')) ? 'exact:${_stringLiteral(name)}' : _revsetSymbol(name); // l10n-ignore: jj
 
 // fileset.pest's `identifier` @ v0.46.0, without the glob characters.
 final _filesetIdentifier = RegExp(r'^[A-Za-z0-9+\-.@_/]+$');
@@ -560,11 +561,10 @@ class RepoGraphActions implements GraphActions {
     return switch (action) {
       GraphEdit(:final id) => handle.edit(id),
       GraphDescribe(:final id, :final description) => handle.describe(changeId: id, description: description),
-      GraphNew(:final parents, :final insertAfter, :final insertBefore) => handle.newChange(
-        parents,
-        insertAfter: insertAfter,
-        insertBefore: insertBefore,
-      ),
+      GraphNew(:final parents, :final insertAfter, :final insertBefore) =>
+        parents.isEmpty && insertAfter.isEmpty && insertBefore.isEmpty
+            ? _newOnAt(handle)
+            : handle.newChange(parents, insertAfter: insertAfter, insertBefore: insertBefore),
       GraphAbandon(:final ids) => handle.abandon(ids),
       GraphRevert(:final id) => _revertBeforeAt(handle, id),
       GraphSquash() => handle.squash(
@@ -599,6 +599,12 @@ class RepoGraphActions implements GraphActions {
   static Future<MutationResult> _revertBeforeAt(RepoHandle handle, String id) async {
     final String? at = (await handle.status()).workingCopyChangeId;
     return handle.revert(revisions: <String>[id], insertBefore: <String>[?at]);
+  }
+
+  /// `jj new` (the CLI's default parent @): the handle needs @ passed explicitly, so it is read when the verb runs.
+  static Future<MutationResult> _newOnAt(RepoHandle handle) async {
+    final String? at = (await handle.status()).workingCopyChangeId;
+    return handle.newChange(<String>[?at]);
   }
 
   @override
