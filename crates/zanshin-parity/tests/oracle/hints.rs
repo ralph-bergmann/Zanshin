@@ -9,6 +9,9 @@
 use std::ops::ControlFlow;
 use std::path::Path;
 
+use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
+use jj_lib::op_store::OperationId;
+use jj_lib::workspace::Workspace;
 use zanshin_jj::{ChangeId, GitPushArgs, MovementOptions, Repo};
 
 use crate::driver::{fresh_repo, jj, Step};
@@ -182,4 +185,65 @@ fn stale_working_copy_message_is_the_cli_error_line() {
         err.hints().first().and_then(|h| h.lines().next()),
         Some(cli_hint.as_str())
     );
+}
+
+/// Finishes the working copy at `root` at the operation `op_hex` — how jj's own tests and
+/// zanshin-jj's `snapshot_precondition` reach the sibling and missing-operation causes, which no
+/// CLI command leaves behind.
+fn finish_working_copy_at(root: &Path, op_hex: &str) {
+    let mut workspace = Workspace::load(
+        &test_helpers::test_settings(),
+        root,
+        &default_backend_factories(),
+        &default_working_copy_factories(),
+    )
+    .expect("load workspace");
+    let op = OperationId::try_from_hex(op_hex).expect("hex operation id");
+    let locked = pollster::block_on(workspace.start_working_copy_mutation()).expect("lock");
+    pollster::block_on(locked.finish(op)).expect("finish");
+}
+
+/// The stale working copy at `root`: Zanshin's snapshot refuses with the CLI's error line (its
+/// `Error: ` or `Internal error: ` label stripped) and its first hint line starting with
+/// `hint_prefix`.
+#[track_caller]
+fn assert_stale_matches_cli(root: &Path, hint_prefix: &str) {
+    let run = jj(root, &["status"]);
+    assert!(!run.success, "the CLI refuses a stale working copy");
+    let cli = run
+        .stderr
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("Error: ")
+                .or_else(|| line.strip_prefix("Internal error: "))
+        })
+        .unwrap_or_else(|| panic!("no Error line in:\n{}", run.stderr));
+    let err = Repo::open(root).expect("open").snapshot().expect_err("stale");
+    assert_eq!(err.message().as_deref(), Some(cli), "{err:?}");
+    let cli_hint = cli_hint(&["status"], root, hint_prefix);
+    assert_eq!(
+        err.hints().first().and_then(|h| h.lines().next()),
+        Some(cli_hint.as_str())
+    );
+}
+
+/// The SIBLING cause: the working copy sits at an unpublished operation while another
+/// operation from the same parent was published.
+#[test]
+fn stale_working_copy_at_a_sibling_operation_matches_the_cli() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = fresh_repo(&["git", "init"], &[BASE]);
+    let (op, _) = test_helpers::add_unpublished_op(&root, "unpublished");
+    finish_working_copy_at(&root, &op);
+    let _ = test_helpers::add_commit_off_root(&root, "published sibling");
+    assert_stale_matches_cli(&root, "Run `jj op integrate");
+}
+
+/// The NOT-FOUND cause: the working copy names an operation that does not exist.
+#[test]
+fn stale_working_copy_at_a_missing_operation_matches_the_cli() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = fresh_repo(&["git", "init"], &[BASE]);
+    finish_working_copy_at(&root, &"ab".repeat(64));
+    assert_stale_matches_cli(&root, "Run `jj workspace update-stale`");
 }

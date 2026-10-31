@@ -22,6 +22,8 @@ deferred:
     location: >-
       crates/zanshin-parity/tests/oracle/hints.rs
     severity: low
+    resolved: >-
+      2026-10-31 — fixed (console session): two oracle tests build a working copy at a sibling and at a missing operation (through jj-lib, as zanshin-jj's snapshot_precondition does) and compare jj status's error and hint lines with message() / hints().
 ---
 
 <intent-contract>

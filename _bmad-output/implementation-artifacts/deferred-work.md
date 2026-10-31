@@ -2254,7 +2254,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in the fix run after the 10.2–10.5 review (bmad-build-auto, 2026-10-31)
 
-- **The parity oracle witnesses jj's stale-working-copy message and hint only for the `stale` cause; the `sibling_operation` and `operation_not_found` texts are still hand-ported from the CLI.** Low.
+- ~~**The parity oracle witnesses jj's stale-working-copy message and hint only for the `stale` cause; the `sibling_operation` and `operation_not_found` texts are still hand-ported from the CLI.**~~ — RESOLVED 2026-10-31 (console session): `hints::stale_working_copy_at_a_sibling_operation_matches_the_cli` and `…_at_a_missing_operation_matches_the_cli` compare `jj status`'s error and hint lines with `message()` / `hints()` for both causes. Low.
   - `crates/zanshin-parity/tests/oracle/hints.rs::stale_working_copy_message_is_the_cli_error_line` builds only a stale second workspace; `PreconditionError::message()` / `hints()` (`crates/zanshin-jj/src/snapshot.rs`) are checked against literals for the other two causes, which match `cli_util.rs:3040-3075` @ v0.46.0 but would not catch a reword at a pin bump (Story 9.56's hints had the same gap).
   - **Follow-up:** an oracle witness that builds a sibling-operation and a missing-operation working copy and compares the CLI's `Error:`/`Internal error:` and `Hint:` lines, or a pin-bump step that re-reads `handle_stale_working_copy`.
 
