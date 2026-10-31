@@ -146,7 +146,7 @@ Status: done
 **Summary.** Free's walk step across a day change is now max(gap(ΔT), U = 16) (GLD §4.2 free.3; the stack pass (F) sums the same steps), so the newer day's oldest card sits at least one pitch above the older day's newest card in every column and the band around 10.2's day divider holds no card. Spike Dart reference (under `--columns joint`, the product's mode) and product engine (always) changed together; product ≡ spike (`compare.mjs --core`). I5 (free) is now end_k + U ≤ start_{k+1} in the core checkers and the app's `checkLayoutInvariants` (`dayBandClear`, row model, Free).
 
 **Items.**
-- I1 (day dividers can cross cards around midnight): fixed — commit recorded in the run report (the feature commit `feat(graph-layout): Story 4.16 …`); deferred-work.md bullet marked RESOLVED.
+- I1 (day dividers can cross cards around midnight): fixed (7872308a453c73532ecd597bbc246ad8384cb68c); deferred-work.md bullet marked RESOLVED.
 
 **Files changed.**
 - `docs/graph-layout.md` — dated 4.16 amendments: top note, §4.2 free.3/4, §4.8 (F), §6, §7.3 I5, §9 D12, §13.
