@@ -5,7 +5,7 @@ created: '2026-10-31'
 status: 'done'
 baseline_revision: 'd634e8985ca698f04e463036ac67ff94f693a0b1'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
   - '{project-root}/_bmad-output/project-context.md'
@@ -184,6 +184,68 @@ deferred:
   - `[maybe-false]` `[reject]` I2 still issues one unbounded `files()` count for a highlighted File row — that is the chosen mitigation (one per pause, ~55 ms packed / ~2 ms with the changed-path index, ~2.4 s on the loose-object fixture), and recent File filters follow the same rule.
   - `[false]` `[reject]` I3 takes no hold outside a shell (`ShellScope.maybeOf`) — outside a shell there is no calm scrolling to hold; the same pattern as 10.7 and 11.5.
 
+### 2026-11-01 — Review pass (follow-up)
+- verdicts: 54 findings — high 0, medium 8, low 36, false 8, maybe-false 2
+- findings:
+  - Blind Hunter:
+  - `[low]` `[defer]` no production caller for the search's pieces; `RepoGraphSearchSource.files` untested — carried: the existing deferred item (wiring with 10.12).
+  - `[low]` `[reject]` `logDefaults()` re-read on every request costs a round trip — carried: required by the story (a config edit writes no operation).
+  - `[low]` `[reject]` `configChanged()`'s doc says it re-reads `logDefaults()`, which every request now does — still true; the doc was reworded with the revset patch below anyway.
+  - `[medium]` `[patch]` controller and model disagree when a shown `all()`/filter equals the old `revsets.log` and the log changes — the model reset `_revset` to null by text equality; the default search is the null revset since 10.21, so the reset is removed (`graph_view_model.dart` `_run`); view-model test added.
+  - `[false]` `[reject]` `goToHidden` sets `all()` behind the controller's back on a failed request — the controller sets `GraphAllView` before `goToHidden` (`graph_search_controller.dart` `goTo`), so both say `all()`.
+  - `[false]` `[reject]` a short `revsetCounts` answer leaves rows stuck — carried: one entry per expression by contract.
+  - `[low]` `[patch]` a failed count batch is cached for the operation — carried: the batch's error counts are the answer at that operation (row shows no count); no new action.
+  - `[low]` `[reject]` non-revset `ZanshinFfiException`s in lookups cached — carried: rare transient worker errors; asked again at the next operation.
+  - `[low]` `[reject]` a failed `bookmarks()`/`files()` read is cached empty for the operation — rare transient worker error, asked again at the next operation; a retry policy adds state for a case not met.
+  - `[medium]` `[patch]` `prepare()` with no layout re-issues three reads on every notification — `prepare()` returns while there is no layout (nothing to pin the reads to; the landing layout's notify asks again); widget test asserts no reads without a layout.
+  - `[low]` `[patch]` `_lookupBatch` treats a change the layout keys by commit id as beyond the view and fetches its content — the check now also tries `indexOfKey(f.commitId)`, as `_change` does.
+  - `[low]` `[reject]` an id match before the hash check, and one letter matching every change id — the design's scoring (`graph-search.jsx:119-120`) does exactly this.
+  - `[low]` `[reject]` a conflicted bookmark (null target) has no row — rare; the symbol lookup still reaches it via jj; a row needs a new design state.
+  - `[medium]` `[patch]` Enter/arrows/Backspace during an input method's composition run search rows — macOS sends key events to the framework before the input method (`FlutterKeyboardManager` primary responders first); `_onKey` now ignores keys while a composing range is open; widget test added.
+  - `[low]` `[patch]` a held Enter (`KeyRepeatEvent`) re-runs the keyboard row — Enter acts on `KeyDownEvent` only.
+  - `[low]` `[reject]` the footer's `files(cwd:"…")` differs when pasted in a subdirectory — the intent prescribes the `cwd:"…"` prefix (Boundaries: paths `cwd:"…"`).
+  - `[low]` `[patch]` two copies of jj's `format_string` (`graph_layout.dart` `_formatString` and `revsetStringLiteral`) — `jjRevsetSymbol`/`jjRefSymbol` now use `revsetStringLiteral`; the copy is deleted (graph_layout tests pass unchanged).
+  - `[low]` `[reject]` a bookmark go-to and a plain go-to of one change are separate Recent entries — by design: a bookmark go-to keeps the bookmark's name.
+  - `[low]` `[reject]` "you" stores the email, which can go stale after a `user.email` change — rare; the row re-applies `mine()` either way.
+  - `[false]` `[reject]` Recent hides a missing go-to only under `all()` — the intent states exactly that rule.
+  - `[low]` `[reject]` a go-to picked while a request is in flight can be re-centred on @ when it lands — needs a pick inside the request latency; a fix needs request sequencing in the model.
+  - `[low]` `[reject]` the worker builder test assumes fixture shapes (name length, folder, extension) — the medium fixture is fixed and the test passes against it; regenerating fixtures is forbidden anyway.
+  - `[low]` `[patch]` missing controller-level tests for errored counts — added "a failed count batch shows no count and does not dim the row"; the other listed cases are carried rejects or unreachable (layout never returns to null).
+  - `[low]` `[reject]` `ProjectSearchStore._write` swallows only `FileSystemException` — carried: mirrors `ProjectStackStore`.
+  - `[low]` `[reject]` session-only state for an unregistered path is not migrated when it registers — mirrors `ProjectStackStore`; the path registers before the window opens.
+  - Edge Case Hunter:
+  - `[medium]` `[patch]` endless `prepare()` read loop while a list is open and the layout is null — same root cause as the Blind Hunter `prepare()` row; fixed with it.
+  - `[false]` `[reject]` `_flush` with a null layout leaves asked keys blocking — `wantCounts`/`lookup` need a non-null operation and `_layout` is never set back to null (only assignment `graph_view_model.dart` `_land`).
+  - `[false]` `[reject]` fewer count entries than expressions — carried.
+  - `[low]` `[reject]` non-`ZanshinFfiException` errors escape the unawaited flush — carried.
+  - `[low]` `[reject]` `_write` unhandled for other errors — carried.
+  - `[medium]` `[patch]` model drops to the new `revsets.log` while the controller says `all()`/filter — same root cause as the Blind Hunter revset row; fixed with it.
+  - `[low]` `[reject]` highlight offsets shift for `İ` — carried.
+  - `[low]` `[reject]` `GraphSearchIndex.change(key)` scans the changes per matching bookmark — a few ms at 10k nodes; an O(1) map needs a field on a const class.
+  - `[low]` `[patch]` content fetched for changes keyed by commit id — same root cause as the Blind Hunter `_lookupBatch` row; fixed with it.
+  - `[low]` `[patch]` ⌘F on the already focused field with its list closed opens nothing — `_focusFromShortcut` opens the suggestions when the field already had focus; widget test added.
+  - `[low]` `[patch]` held Enter activates rows repeatedly — same root cause as the Blind Hunter key-repeat row; fixed with it.
+  - Verification Gap:
+  - `[medium]` `[patch]` the content of changes found beyond the view is never checked — test: a `description(substring-i:"deep")` find beyond the view shows its loaded subject, content asked once for its commit id.
+  - `[medium]` `[patch]` forwarding the commit id of a hidden go-to is not pinned at the field — test: `all()` keys the change by commit id; Enter lands selected and pulsed on it.
+  - `[low]` `[patch]` a failed count batch and the per-row count error have no test — test added (same as the Blind Hunter tests row).
+  - `[low]` `[patch]` picking an "N more" row is untested — test: `k` gives "1 more in Change", a tap narrows to Change and lists the fourth change.
+  - Intent Alignment:
+  - `[low]` `[reject]` the inactive-window look is untested — part of the existing deferred visual check against the DS cards.
+  - `[low]` `[reject]` "hover never moves the keyboard row" not asserted here — owned and tested by `ZsFieldListController` in `zanshin_ui`.
+  - `[false]` `[reject]` Home/End in the suggestions untested — they fall through to the `TextField`'s caret handling by design.
+  - `[low]` `[patch]` the broken `jj log` menu row is untested — test: with the default search failing, the menu's row reads "Fails: …".
+  - `[low]` `[patch]` "count error → row shows no count" untested — same as the Verification Gap count row.
+  - `[low]` `[reject]` a folded member opening via keepOpenKeys on a visible go-to — `GraphViewModel.goTo` (10.6) owns and tests it.
+  - `[low]` `[reject]` "rows render before counts" only implicit — asserted in the counts test ("rows render before their counts").
+  - `[low]` `[reject]` non-ASCII before the span tested only in the helper — the field passes jj's span straight to `revsetSpanUtf16`; the helper test covers the conversion.
+  - `[false]` `[reject]` the field tests mount the field outside `GraphViewControls` — the catalogue smoke test asserts the placement.
+  - `[maybe-false]` `[reject]` no calm hold with an empty Recent — nothing opens then; if true it would be low (no surface, no scrolling to hold).
+  - `[maybe-false]` `[reject]` one Esc closes the menu and restores — the intent's Esc row covers the suggestions only; if true it would be low.
+  - `[medium]` `[patch]` the `_revset` reset carried over from `configChanged` — same root cause as the Blind Hunter revset row; fixed with it.
+  - `[false]` `[reject]` `'all()'` literals outside the builder — not filter text from user input; the Never clause covers composed filter text.
+  - `[low]` `[reject]` R2 (real jj) exercised only partially — the story is a fake-port build until 10.12; the builder strings run against the real fixture.
+
 ## Design Notes
 
 - Default search = `jj log` until 10.22 adds configurations and a settable default; the controller's `GraphShownView.defaultSearch` is the seam.
@@ -204,6 +266,7 @@ deferred:
 - `dart analyze --fatal-infos .` -- no issues in app (incl. widgetbook), packages/zanshin_core, packages/zanshin_settings.
 - `dart format --set-exit-if-changed -o none .` -- 0 changed in app and packages/zanshin_core; zanshin_settings clean.
 - Not run: cargo checks (no Rust changed), `cargo make codegen` (no FFI or schema change), the parity oracle (no jj verb changed), the full gate and coverage (the loop runs them once at its end), the Marionette visual check (deferred).
+- Follow-up review pass (2026-11-01, same gate rule): `flutter test test/features/graph test/widgetbook test/l10n` (app) -- 854 passed (7 new field tests, 1 new view-model test); `dart analyze --fatal-infos .` (app) -- no issues; `dart format --set-exit-if-changed -o none .` (app) -- 0 changed. No zanshin_core, zanshin_settings or Rust change; no cargo checks, codegen, parity oracle, full gate or coverage run.
 - Implementer's note: a whole-app `flutter test` fails 5 tests in `worker_project_repos_test.dart` with "XDG_CONFIG_HOME is not pinned — run via cargo make"; they need the gate's environment, and none of their code changed here.
 
 ## Auto Run Result
@@ -255,3 +318,14 @@ One finding was deferred (production wiring). The rejected rows and their reason
 - No true combobox/listbox semantics (deferred).
 - No production caller until 10.12 (deferred).
 - The default search is always `jj log` until 10.22 adds configurations and a settable default.
+
+**Follow-up review (2026-11-01).** 54 findings: 0 high, 8 medium, 36 low, 8 false, 2 maybe-false. Patched entries by verdict: 5 medium, 7 low (rows grouped by root cause):
+- `graph_view_model.dart` -- the text-equality reset of `_revset` on a `revsets.log` change is removed (the default search is the null revset); a shown `all()`/filter no longer drops to the default behind the controller.
+- `graph_search_controller.dart` -- `prepare()` does nothing without a layout (it looped reads on every notify); `_lookupBatch` also checks the commit-id key before fetching content.
+- `graph_search_field.dart` -- keys are left to an open input-method composition; Enter acts on key-down only; ⌘F on the focused field reopens the suggestions.
+- `graph_layout.dart` -- `jjRevsetSymbol`/`jjRefSymbol` quote through `revsetStringLiteral`; the duplicate `_formatString` is gone.
+- Tests: found-beyond-view content, the commit-id go-to through the field, a failed count batch, the "N more" row, the broken `jj log` row with no reads before a layout, Enter during composition, ⌘F reopen, an explicit revset equal to the old log staying.
+
+No new deferrals (the production-wiring row is carried). Rejected rows and their reasons are in the triage log.
+
+**Follow-up review: not recommended.** A follow-up pass recommends another only for a patched high; none.
