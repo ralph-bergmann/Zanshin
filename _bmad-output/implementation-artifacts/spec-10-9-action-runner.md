@@ -39,6 +39,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_canvas.dart:524
     severity: low
+    resolved: >-
+      2026-10-31 — fixed (spec-10-9-closing-pending-opacity-under-focus-dim, commit 92e84d36): a test pins the pending fade times the focus dim.
 ---
 
 <intent-contract>

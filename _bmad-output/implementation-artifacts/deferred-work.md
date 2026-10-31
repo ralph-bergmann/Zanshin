@@ -2314,7 +2314,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in the follow-up review of Story 10.9 (bmad-build-auto, 2026-10-31)
 
-- **No test pins a pending card's opacity while a focus dim is also active.** Low.
+- ~~**No test pins a pending card's opacity while a focus dim is also active.**~~ — RESOLVED 2026-10-31 (spec-10-9-closing-pending-opacity-under-focus-dim, commit 92e84d36): a test beside the hover-dim test runs a gated abandon on an off-path and an on-path card and pins `disabledOpacity * .4`, `disabledOpacity` and 1. Low.
   - `GraphCanvas.opacityOf` multiplies `disabledOpacity` by the focus-dim factor (app/lib/src/features/graph/graph_canvas.dart:524-528); `graph_view_test.dart` checks the pending fade and the hover dim only one at a time, so replacing the product with either factor passes.
   - **Follow-up:** next to the hover-dim test (graph_view_test.dart:852), start a gated action on an off-path card and expect `disabledOpacity * .4`.
   - **Fixed** in the closing run of Story 10.9 (2026-10-31, commit `92e84d36292d0a33d2cca35add56c0aa98edbcfb`).
