@@ -18,6 +18,8 @@ deferred:
     location: >-
       _bmad-output/implementation-artifacts/design_system/assets/app-icon/Zanshin-NamiIndigo.icon/icon.json
     severity: low
+    resolved: >-
+      2026-10-31 — fixed (console session, design-artifacts): the DS bundle is byte-equal to the app's (stroked waves, no layer fill), its README explains it; the DS artifact is republished.
 ---
 
 <intent-contract>

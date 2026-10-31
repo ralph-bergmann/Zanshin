@@ -1,50 +1,65 @@
 {
-  "fill": {
-    "linear-gradient": {
-      "angle": 90,
-      "stops": [
-        {
-          "position": 0,
-          "color": "#1d2540"
-        },
-        {
-          "position": 1,
-          "color": "#131831"
-        }
-      ]
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.13283,0.15513,0.24739,1.00000",
+      "display-p3:0.11060,0.11580,0.19307,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
     }
   },
-  "groups": [
+  "groups" : [
     {
-      "layers": [
+      "blur-material" : null,
+      "layers" : [
         {
-          "image-name": "Wave-Top.svg",
-          "fill": {
-            "solid": "#f4cf80"
-          },
-          "name": "Wave-Top"
+          "blend-mode" : "normal",
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "Wave-Top.svg",
+          "name" : "Wave-Top"
         },
         {
-          "image-name": "Wave-Mid.svg",
-          "fill": {
-            "solid": "#dca85b"
-          },
-          "name": "Wave-Mid"
+          "blend-mode" : "normal",
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "Wave-Mid.svg",
+          "name" : "Wave-Mid"
         },
         {
-          "image-name": "Wave-Bottom.svg",
-          "fill": {
-            "solid": "#b58346"
-          },
-          "name": "Wave-Bottom"
+          "blend-mode" : "normal",
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "Wave-Bottom.svg",
+          "name" : "Wave-Bottom"
         }
-      ]
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
     }
   ],
-  "supported-platforms": {
-    "circles": [
+  "supported-platforms" : {
+    "circles" : [
       "watchOS"
     ],
-    "squares": "shared"
+    "squares" : "shared"
   }
 }

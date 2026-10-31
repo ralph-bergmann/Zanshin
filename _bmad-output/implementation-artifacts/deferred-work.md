@@ -2248,7 +2248,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in Story 11.10 (bmad-build-auto, 2026-10-30)
 
-- **The DS's app-icon bundle prescribes solid layer fills over white-stroked open paths, which Icon Composer renders as three filled crescents, not waves.** Low.
+- ~~**The DS's app-icon bundle prescribes solid layer fills over white-stroked open paths, which Icon Composer renders as three filled crescents, not waves.**~~ — RESOLVED 2026-10-31 (console session, design-artifacts): the DS bundle is now byte-equal to the app's (Icon Composer's schema, waves stroked in their golds, no layer fill), its README says why; DS artifact republished (version 9). Low.
   - `design_system/assets/app-icon/Zanshin-NamiIndigo.icon/icon.json` (`"fill": {"solid": …}` per layer) and `README.txt` ("each fills with the listed color") over `Wave-*.svg` drawn `stroke="#ffffff"`; an `xcrun actool` render of exactly that showed crescents. The app's `app/macos/Runner/NamiIndigo.icon` therefore strokes each layer in its gold with `"fill" : "none"` (spec-11-10 Spec Change Log).
   - **Follow-up:** the next design-artifacts round strokes the DS layers in their golds (or notes "no layer fill") so a re-sync does not bring the crescents back.
 
