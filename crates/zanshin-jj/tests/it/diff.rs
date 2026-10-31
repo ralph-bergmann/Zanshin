@@ -269,6 +269,36 @@ fn a_rename_is_one_file_with_its_source() {
     assert_eq!(from_to.files, result.files);
 }
 
+/// A copy on the git backend (its source changed in the same commit, as git's copy detection
+/// requires — jj-lib `git_backend.rs` `CopySource::FromSetOfModifiedFiles`) is kind `Copied` with
+/// its source; the source itself stays `Modified`.
+#[test]
+fn a_copy_names_its_source_which_stays_modified() {
+    let mut fx = init();
+    let lines = "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\n";
+    write(&fx.root, "old.txt", lines);
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    write(&fx.root, "old.txt", &lines.replace("line 5\n", "line five\n"));
+    write(&fx.root, "new.txt", lines);
+    let c = commit(&mut fx, "C\n");
+    let result = run(&mut fx, &revision(&c.0));
+    assert_eq!(paths(&result.files), ["new.txt", "old.txt"]);
+    assert_eq!(
+        result.files[0].kind,
+        ChangeKind::Copied {
+            from: PathBuf::from("old.txt")
+        }
+    );
+    // The copy's left side is read at the source in the before tree: identical content.
+    assert!(result.files[0].hunks.is_empty());
+    assert_eq!((result.files[0].removed, result.files[0].added), (0, 0));
+    let source = &result.files[1];
+    assert_eq!(source.kind, ChangeKind::Modified);
+    assert_eq!(source.hunks.len(), 1);
+    assert_eq!((source.removed, source.added), (1, 1));
+}
+
 /// A dirty `@` is snapshotted first; the pin names the operation after that snapshot.
 #[test]
 fn the_operation_pin_is_the_post_snapshot_head() {
