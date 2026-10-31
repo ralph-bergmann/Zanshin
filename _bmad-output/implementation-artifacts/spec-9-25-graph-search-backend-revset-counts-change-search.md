@@ -36,6 +36,8 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/ffi/revset_search.dart (RevsetSpan)
     severity: low
+    resolved: >-
+      2026-11-01 — fixed (spec-10-21-graph-search, commit 5258103): a shared `zanshin_core` helper `revsetSpanUtf16` converts the UTF-8 byte spans to UTF-16; the search's error footer uses it.
   - summary: >-
       The CLI's revset hint lines reach only MutateError verbs, graph_topology and the two new calls; show/evolog, the bookmark reads and op diff still drop them.
     evidence: |-
