@@ -31,8 +31,8 @@ import 'graph_harness.dart';
 const _pause = Duration(milliseconds: 160);
 
 /// `k0` (@) … `k3`, newest first; `k1` is Lena König's "Fix cache"; [extra] adds `hid1` (what `all()` shows more).
-GraphLayout _layout({bool extra = false, String op = 'op1'}) {
-  final keys = <String>['k0', 'k1', 'k2', 'k3', if (extra) 'hid1'];
+GraphLayout _layout({bool extra = false, String op = 'op1', String hidden = 'hid1'}) {
+  final keys = <String>['k0', 'k1', 'k2', 'k3', if (extra) hidden];
   return handLayout(
     <(String, int, int)>[for (var i = 0; i < keys.length; i++) (keys[i], keys.length - 1 - i, 0)],
     edges: <(int, int)>[for (var i = 0; i + 1 < keys.length; i++) (i, i + 1)],
@@ -469,6 +469,126 @@ void main() {
       expect(rig.searchSource.countCalls.last.expressions, contains('author(exact:"Lena König")'));
       expect(rig.searchSource.findCalls.last.operationId, 'op2');
       expect(rig.searchSource.bookmarkReads, greaterThan(reads));
+    });
+  });
+
+  group('second review follow-ups', () {
+    FoundChanges found(List<FoundChange> entries) =>
+        FoundChanges(entries: entries, truncated: false, warnings: const <ZanshinWarning>[]);
+
+    _testWidgets('a change found beyond the view by its description shows its loaded content', (tester) async {
+      final _Rig rig = await _start(tester);
+      rig.searchSource.find = (expression, limit) => found(<FoundChange>[
+        if (expression == 'description(substring-i:"deep")')
+          const FoundChange(commitId: 'chid2', changeId: 'hid2', commitPrefixLen: 2, changePrefixLen: 3),
+      ]);
+      rig.searchSource.foundContent = <String, GraphCommitContent>{
+        'chid2': const GraphCommitContent(subject: 'Deep fix', authorName: 'Lena König', authorEmail: 'lena@x.org'),
+      };
+      await tester.tap(_field());
+      await _type(tester, 'd: deep');
+      await tester.pump();
+      expect(find.text('Deep fix'), findsOneWidget);
+      expect(rig.searchSource.contentCalls, <List<String>>[
+        <String>['chid2'],
+      ]);
+    });
+
+    _testWidgets('a hidden go-to lands on its commit id when all() keys the change that way', (tester) async {
+      final _Rig rig = await _start(tester);
+      rig.respond = (request) => _layout(extra: request.revset == 'all()', hidden: 'chid1');
+      rig.source.respond = rig.respond;
+      rig.searchSource.find = (expression, limit) => found(<FoundChange>[
+        if (expression == 'hid1')
+          const FoundChange(commitId: 'chid1', changeId: 'hid1', commitPrefixLen: 2, changePrefixLen: 3),
+      ]);
+      await tester.tap(_field());
+      await _type(tester, 'c: hid1');
+      await _key(tester, LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(rig.source.requests.last.revset, 'all()');
+      expect(rig.model.selected, 'chid1');
+      expect(rig.model.pulse.value?.key, 'chid1');
+    });
+
+    _testWidgets('a failed count batch shows no count and does not dim the row', (tester) async {
+      final _Rig rig = await _start(tester);
+      rig.searchSource.count = (_) => throw const ZanshinFfiException('jj.internal', 'counting failed');
+      await tester.tap(_field());
+      await _type(tester, 'lena');
+      expect(rig.searchSource.countCalls, isNotEmpty);
+      expect(find.text('Lena König'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((w) => w is Text && RegExp(r'^[\d,]+\+? changes?$').hasMatch(w.data ?? '')),
+        findsNothing,
+      );
+      expect(
+        find.ancestor(
+          of: find.text('Lena König'),
+          matching: find.byWidgetPredicate((w) => w is Opacity && w.opacity == .5),
+        ),
+        findsNothing,
+      );
+    });
+
+    _testWidgets('an "N more" row narrows the search to its scope', (tester) async {
+      await _start(tester);
+      await tester.tap(_field());
+      await _type(tester, 'k');
+      expect(find.text('1 more in Change'), findsOneWidget);
+      await tester.tap(find.text('1 more in Change'));
+      await tester.pump();
+      expect(find.descendant(of: _pill(), matching: find.text('Change')), findsOneWidget);
+      expect(_fieldText(tester), 'k');
+      expect(find.text('Work k3'), findsOneWidget);
+    });
+
+    _testWidgets('with the default search failing: the jj log row is marked broken; no reads without a layout', (
+      tester,
+    ) async {
+      final rig = _Rig();
+      rig.source.respond = (request) =>
+          throw const ZanshinFfiException('jj.revset_parse_error', 'Failed to parse revset');
+      _rigs.add(rig);
+      useShellWindow(tester);
+      await tester.pumpWidget(rig.host());
+      await tester.pump();
+      expect(rig.model.layout, isNull);
+      await tester.tap(_pill());
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Fails: Failed to parse revset'), findsOneWidget);
+      expect(rig.searchSource.bookmarkReads, 0, reason: 'nothing to pin the reads to: no loop of reads either');
+    });
+
+    _testWidgets('Enter during an input method composition commits it, not a row', (tester) async {
+      final _Rig rig = await _start(tester);
+      await tester.tap(_field());
+      await _type(tester, 'a: lena');
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: 'lena',
+          selection: TextSelection.collapsed(offset: 4),
+          composing: TextRange(start: 0, end: 4),
+        ),
+      );
+      await tester.pump();
+      final int before = rig.source.requests.length;
+      await _key(tester, LogicalKeyboardKey.enter);
+      expect(rig.source.requests, hasLength(before));
+    });
+
+    _testWidgets('⌘F on the focused field with its list closed opens the suggestions again', (tester) async {
+      await _start(tester);
+      await tester.tap(_field());
+      await _type(tester, 'lena');
+      await _key(tester, LogicalKeyboardKey.escape);
+      expect(find.byType(ZsFieldListRow), findsNothing);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+      expect(find.byType(ZsFieldListRow), findsWidgets);
     });
   });
 

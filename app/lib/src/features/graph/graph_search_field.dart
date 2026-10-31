@@ -214,8 +214,13 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     if (_model.stale != null || !mounted) {
       return false;
     }
+    // Already focused, the focus listener does not fire: open the suggestions here.
+    final bool focused = _focus.hasFocus;
     _focus.requestFocus();
     _text.selection = TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+    if (focused && _popup == _Popup.none) {
+      _open(_Popup.suggestions);
+    }
     return true;
   }
 
@@ -468,7 +473,8 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is KeyUpEvent) {
+    // An input method's composition owns its keys (Enter commits the candidate).
+    if (event is KeyUpEvent || (_text.value.isComposingRangeValid && !_text.value.composing.isCollapsed)) {
       return KeyEventResult.ignored;
     }
     final LogicalKeyboardKey key = event.logicalKey;
@@ -487,6 +493,10 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+      if (event is! KeyDownEvent) {
+        // A held Enter runs its row once.
+        return KeyEventResult.handled;
+      }
       if (_popup != _Popup.none) {
         _list.activate();
       } else if (_text.text.trim().isNotEmpty) {

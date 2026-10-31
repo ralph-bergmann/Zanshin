@@ -481,8 +481,8 @@ class GraphViewModel extends ChangeNotifier {
   /// Requests again after an [error].
   void retry() => _requestLayout();
 
-  /// The effective config changed without an operation (item 16): re-reads `logDefaults()` — a revset still on the
-  /// old `revsets.log` follows the new one — and requests under the anchor.
+  /// The effective config changed without an operation (item 16): re-reads `logDefaults()` — the default search
+  /// follows the new `revsets.log` — and requests under the anchor.
   void configChanged() => _requestLayout();
 
   /// Sets [now] fresh (the window turned active).
@@ -788,7 +788,6 @@ class GraphViewModel extends ChangeNotifier {
     try {
       // Re-read with every request (Story 10.21): a config edit writes no operation.
       final LogDefaults? cached = _defaults;
-      final String? old = cached?.log;
       LogDefaults fresh;
       try {
         fresh = await _source.logDefaults();
@@ -803,9 +802,7 @@ class GraphViewModel extends ChangeNotifier {
       if (_disposed) {
         return;
       }
-      if (fresh.log != old && _revset == old) {
-        _revset = null;
-      }
+      // The default search is the null revset, so it follows `revsets.log`; an explicit one stays as sent.
       _defaults = fresh;
       final GraphRequest request = _request = _build(_defaults!);
       final GraphLoad load = await _source.layout(request);

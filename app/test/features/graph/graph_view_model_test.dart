@@ -557,6 +557,28 @@ void main() {
     });
   });
 
+  test('an explicit revset equal to the old revsets.log stays when the log changes; only the default follows', () {
+    fakeAsync((async) {
+      final GraphViewModel model = start(async);
+      final String old = source.defaults.log;
+      model.setRevset(old);
+      async.flushMicrotasks();
+      source.defaults = const LogDefaults(
+        log: 'L2',
+        logGraphPrioritize: 'P',
+        shortPrefixes: 'S',
+        syntheticElided: false,
+      );
+      model.configChanged();
+      async.flushMicrotasks();
+      expect(source.requests.last.revset, old);
+      model.setRevset(null);
+      async.flushMicrotasks();
+      expect(source.requests.last.revset, 'L2');
+      model.dispose();
+    });
+  });
+
   test('now: fresh on each layout and on refreshNow, ticked at each minute boundary, midnight on time', () {
     final start0 = DateTime(2026, 10, 30, 23, 59, 30);
     fakeAsync((async) {

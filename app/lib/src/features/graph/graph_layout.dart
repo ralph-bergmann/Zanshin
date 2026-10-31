@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter/foundation.dart';
+import 'package:zanshin_core/zanshin_core.dart' show revsetStringLiteral;
 
 /// How a layout spaces its rows (docs/graph-layout.md §4.2): `free` follows compressed commit time (U = 16, the
 /// default), `compact` the dependency depth (U = 1).
@@ -52,44 +53,17 @@ enum GraphBucketKind {
 final _identifier = RegExp(r'^[\p{XID_Continue}_*/]+(?:(?:\.|-+|\+)[\p{XID_Continue}_*/]+)*$', unicode: true);
 
 /// [name] as jj prints a revset symbol (`format_symbol`, revset_parser.rs:676-710 @ v0.46.0): plain when it is a
-/// revset `identifier`, otherwise quoted by [_formatString].
-String jjRevsetSymbol(String name) => _identifier.hasMatch(name) ? name : _formatString(name);
+/// revset `identifier`, otherwise quoted by [revsetStringLiteral].
+String jjRevsetSymbol(String name) => _identifier.hasMatch(name) ? name : revsetStringLiteral(name);
 
 // core/src/ref_name.rs `is_safe_identifier` @ v0.46.0: split on `.`, `-`, `+`; every part non-empty ASCII
 // alphanumerics, `_` and `/`.
 final _safeRefPart = RegExp(r'^[A-Za-z0-9_/]+$');
 
 /// [name] as jj prints a ref or workspace name (`RefName::as_symbol()`'s Display, core/src/ref_name.rs @ v0.46.0):
-/// plain when `is_safe_identifier` holds, otherwise quoted by [_formatString].
+/// plain when `is_safe_identifier` holds, otherwise quoted by [revsetStringLiteral].
 String jjRefSymbol(String name) =>
-    name.split(RegExp('[.+-]')).every(_safeRefPart.hasMatch) ? name : _formatString(name);
-
-/// jj's `format_string` (core/src/symbol_util.rs @ v0.46.0): double-quoted, with `\"` `\\` `\t` `\r` `\n` `\0` and
-/// `\xHH` for the other ASCII controls.
-String _formatString(String text) {
-  final out = StringBuffer('"');
-  for (final int c in text.runes) {
-    switch (c) {
-      case 0x22:
-        out.write(r'\"');
-      case 0x5C:
-        out.write(r'\\');
-      case 0x09:
-        out.write(r'\t');
-      case 0x0D:
-        out.write(r'\r');
-      case 0x0A:
-        out.write(r'\n');
-      case 0x00:
-        out.write(r'\0');
-      case < 0x20 || 0x7F:
-        out.write('\\x${c.toRadixString(16).padLeft(2, '0')}');
-      default:
-        out.writeCharCode(c);
-    }
-  }
-  return (out..write('"')).toString();
-}
+    name.split(RegExp('[.+-]')).every(_safeRefPart.hasMatch) ? name : revsetStringLiteral(name);
 
 /// A bookmark ref on a commit, a view fact (Story 10.3): jj's `CommitRef` (commit_templater.rs @ v0.46.0).
 @immutable

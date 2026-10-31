@@ -66,12 +66,17 @@ class FakeGraphSearchSource implements GraphSearchSource {
   @override
   Future<String?> userEmail() async => email;
 
+  /// Every content call's commit ids.
+  final contentCalls = <List<String>>[];
+
   @override
-  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds) async =>
-      <String, GraphCommitContent>{
-        for (final String id in commitIds)
-          if (foundContent[id] case final GraphCommitContent c) id: c,
-      };
+  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds) async {
+    contentCalls.add(commitIds);
+    return <String, GraphCommitContent>{
+      for (final String id in commitIds)
+        if (foundContent[id] case final GraphCommitContent c) id: c,
+    };
+  }
 }
 
 /// A local bookmark [name] on [target].

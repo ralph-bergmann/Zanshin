@@ -161,7 +161,8 @@ class GraphSearchController extends ChangeNotifier {
   /// Reads `bookmarks()` and @'s paths once per operation, and `user.email` once it answers (the field opened).
   Future<void> prepare() async {
     final String? op = model.layout?.operationId;
-    if (op == _preparedOp && _preparedOp != null) {
+    // No layout yet: nothing to pin the reads to; the landing layout's notify asks again.
+    if (op == null || op == _preparedOp) {
       return;
     }
     _preparedOp = op;
@@ -403,7 +404,9 @@ class GraphSearchController extends ChangeNotifier {
             _lookups[_cacheKey(op, l.expression)] = result;
             final GraphLayout? layout = model.layout;
             for (final FoundChange f in result.entries) {
-              if (layout?.indexOfKey(f.changeId) == null && !_foundContent.containsKey(f.commitId)) {
+              if (layout?.indexOfKey(f.changeId) == null &&
+                  layout?.indexOfKey(f.commitId) == null &&
+                  !_foundContent.containsKey(f.commitId)) {
                 hidden.add(f.commitId);
               }
             }
