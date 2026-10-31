@@ -628,7 +628,7 @@ _Added the same day after Ralph's answers and his near-final HTML design (`_bmad
   - The design shows +/− per file and per commit, in the detail panel and in the describe editor.
   - No API returns line counts, and Epic 5 has no stats story.
   - 10.8 hides them until a backend exists, e.g. a `jj diff --stat`-like count.
-- **The "shown / total" counter needs `|all()|`** [design GV:223, :304]. Low.
+- ~~**The "shown / total" counter needs `|all()|`**~~ — REJECTED 2026-10-31 (spec-10-7-graph-toolbar): no longer applies — 4.10 already returns `all_count`, and 10.7's count reads it through `GraphLayout.totalCount`. Original entry: [design GV:223, :304]. Low.
   - The design's total counts every commit, independent of the revset.
   - Story 4.10 as written returns `total_rows` for the requested revset only.
   - An index-only `|all()|` count must be added to 4.10's geometry result, or a separate count call. Otherwise 10.7 shows the shown count only.
