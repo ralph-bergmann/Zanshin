@@ -41589,7 +41589,18 @@ pub mod zanshin {
         /// sides are file-like and differ in the executable bit (the builtin diff editor's mode toggle,
         /// `FileSelection.mode`). `sections`: every `HunkKey` `SelectTreeRequest` accepts for the file;
         /// empty when it can only be selected whole, or by its mode when `mode_change`. `hunks`: in file
-        /// order. Vectors are always present.
+        /// order; empty in summary mode. Vectors are always present.
+        ///
+        /// Story 5.6 appends: `kind` (a copy record's source first, then presence; `path` is the copy's
+        /// TARGET) and `from_path` (the source, set ONLY for Renamed/Copied, as in `FileChange`; a copied
+        /// or renamed file has no `sections`); `removed` / `added`, the sums of its hunks' counts (0 for
+        /// binary and mode-only changes, kept in summary mode); `fingerprint`, the lowercase hex of
+        /// jj-lib's blake2b over the changed lines (removed `-`-tagged, added `+`-tagged, no line
+        /// numbers, no context), then a binary change's two contents and a mode change's marker — stable
+        /// across processes, but dependent on the call's whitespace mode and the effective
+        /// `ui.conflict-marker-style`. It covers content only (no path, no kind): every content-less
+        /// change (a pure rename, an empty file added) shares one value, so a Viewed key combines it with
+        /// the path.
         pub struct FileDiff<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -41610,6 +41621,11 @@ pub mod zanshin {
             pub const VT_MODE_CHANGE: ::flatbuffers::VOffsetT = 8;
             pub const VT_SECTIONS: ::flatbuffers::VOffsetT = 10;
             pub const VT_HUNKS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 14;
+            pub const VT_FROM_PATH: ::flatbuffers::VOffsetT = 16;
+            pub const VT_REMOVED: ::flatbuffers::VOffsetT = 18;
+            pub const VT_ADDED: ::flatbuffers::VOffsetT = 20;
+            pub const VT_FINGERPRINT: ::flatbuffers::VOffsetT = 22;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -41621,6 +41637,14 @@ pub mod zanshin {
                 args: &'args FileDiffArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<FileDiff<'bldr>> {
                 let mut builder = FileDiffBuilder::new(_fbb);
+                if let Some(x) = args.fingerprint {
+                    builder.add_fingerprint(x);
+                }
+                builder.add_added(args.added);
+                builder.add_removed(args.removed);
+                if let Some(x) = args.from_path {
+                    builder.add_from_path(x);
+                }
                 if let Some(x) = args.hunks {
                     builder.add_hunks(x);
                 }
@@ -41630,6 +41654,7 @@ pub mod zanshin {
                 if let Some(x) = args.path {
                     builder.add_path(x);
                 }
+                builder.add_kind(args.kind);
                 builder.add_mode_change(args.mode_change);
                 builder.add_binary(args.binary);
                 builder.finish()
@@ -41681,6 +41706,51 @@ pub mod zanshin {
                     >>(FileDiff::VT_HUNKS, None)
                 }
             }
+            #[inline]
+            pub fn kind(&self) -> ChangeKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ChangeKind>(FileDiff::VT_KIND, Some(ChangeKind::Added))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn from_path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileDiff::VT_FROM_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn removed(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(FileDiff::VT_REMOVED, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn added(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(FileDiff::VT_ADDED, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn fingerprint(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileDiff::VT_FINGERPRINT, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for FileDiff<'_> {
@@ -41695,6 +41765,11 @@ pub mod zanshin {
      .visit_field::<bool>("mode_change", Self::VT_MODE_CHANGE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<HunkKey>>>>("sections", Self::VT_SECTIONS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<Hunk>>>>("hunks", Self::VT_HUNKS, false)?
+     .visit_field::<ChangeKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from_path", Self::VT_FROM_PATH, false)?
+     .visit_field::<u32>("removed", Self::VT_REMOVED, false)?
+     .visit_field::<u32>("added", Self::VT_ADDED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("fingerprint", Self::VT_FINGERPRINT, false)?
      .finish();
                 Ok(())
             }
@@ -41708,6 +41783,11 @@ pub mod zanshin {
             >,
             pub hunks:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Hunk<'a>>>>>,
+            pub kind: ChangeKind,
+            pub from_path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub removed: u32,
+            pub added: u32,
+            pub fingerprint: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for FileDiffArgs<'a> {
             #[inline]
@@ -41718,6 +41798,11 @@ pub mod zanshin {
                     mode_change: false,
                     sections: None,
                     hunks: None,
+                    kind: ChangeKind::Added,
+                    from_path: None,
+                    removed: 0,
+                    added: 0,
+                    fingerprint: None,
                 }
             }
         }
@@ -41760,6 +41845,29 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDiff::VT_HUNKS, hunks);
             }
             #[inline]
+            pub fn add_kind(&mut self, kind: ChangeKind) {
+                self.fbb_
+                    .push_slot::<ChangeKind>(FileDiff::VT_KIND, kind, ChangeKind::Added);
+            }
+            #[inline]
+            pub fn add_from_path(&mut self, from_path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDiff::VT_FROM_PATH, from_path);
+            }
+            #[inline]
+            pub fn add_removed(&mut self, removed: u32) {
+                self.fbb_.push_slot::<u32>(FileDiff::VT_REMOVED, removed, 0);
+            }
+            #[inline]
+            pub fn add_added(&mut self, added: u32) {
+                self.fbb_.push_slot::<u32>(FileDiff::VT_ADDED, added, 0);
+            }
+            #[inline]
+            pub fn add_fingerprint(&mut self, fingerprint: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDiff::VT_FINGERPRINT, fingerprint);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileDiffBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 FileDiffBuilder {
@@ -41782,14 +41890,21 @@ pub mod zanshin {
                 ds.field("mode_change", &self.mode_change());
                 ds.field("sections", &self.sections());
                 ds.field("hunks", &self.hunks());
+                ds.field("kind", &self.kind());
+                ds.field("from_path", &self.from_path());
+                ds.field("removed", &self.removed());
+                ds.field("added", &self.added());
+                ds.field("fingerprint", &self.fingerprint());
                 ds.finish()
             }
         }
         pub enum DiffOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// A line-level diff between two trees (Story 5.5) — `zanshin_jj::Repo::compute_hunks`' files,
-        /// in its order. `files` is always present.
+        /// A line-level diff (Story 5.5) — `zanshin_jj::Repo::diff`'s files, in its order. `files` is
+        /// always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
+        /// at; `commit_id`, the revision (`-r`) or `to` (`--from`/`--to`); `from_commit_id`, `from`,
+        /// ABSENT for the revision form.
         pub struct Diff<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -41806,6 +41921,9 @@ pub mod zanshin {
 
         impl<'a> Diff<'a> {
             pub const VT_FILES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_OPERATION_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 8;
+            pub const VT_FROM_COMMIT_ID: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -41817,6 +41935,15 @@ pub mod zanshin {
                 args: &'args DiffArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<Diff<'bldr>> {
                 let mut builder = DiffBuilder::new(_fbb);
+                if let Some(x) = args.from_commit_id {
+                    builder.add_from_commit_id(x);
+                }
+                if let Some(x) = args.commit_id {
+                    builder.add_commit_id(x);
+                }
+                if let Some(x) = args.operation_id {
+                    builder.add_operation_id(x);
+                }
                 if let Some(x) = args.files {
                     builder.add_files(x);
                 }
@@ -41834,6 +41961,36 @@ pub mod zanshin {
                     >>(Diff::VT_FILES, None)
                 }
             }
+            #[inline]
+            pub fn operation_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Diff::VT_OPERATION_ID, None)
+                }
+            }
+            #[inline]
+            pub fn commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Diff::VT_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn from_commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Diff::VT_FROM_COMMIT_ID, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Diff<'_> {
@@ -41844,6 +42001,9 @@ pub mod zanshin {
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileDiff>>>>("files", Self::VT_FILES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation_id", Self::VT_OPERATION_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from_commit_id", Self::VT_FROM_COMMIT_ID, false)?
      .finish();
                 Ok(())
             }
@@ -41852,11 +42012,19 @@ pub mod zanshin {
             pub files: Option<
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileDiff<'a>>>>,
             >,
+            pub operation_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub from_commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for DiffArgs<'a> {
             #[inline]
             fn default() -> Self {
-                DiffArgs { files: None }
+                DiffArgs {
+                    files: None,
+                    operation_id: None,
+                    commit_id: None,
+                    from_commit_id: None,
+                }
             }
         }
 
@@ -41874,6 +42042,21 @@ pub mod zanshin {
             ) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diff::VT_FILES, files);
+            }
+            #[inline]
+            pub fn add_operation_id(&mut self, operation_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diff::VT_OPERATION_ID, operation_id);
+            }
+            #[inline]
+            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diff::VT_COMMIT_ID, commit_id);
+            }
+            #[inline]
+            pub fn add_from_commit_id(&mut self, from_commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diff::VT_FROM_COMMIT_ID, from_commit_id);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiffBuilder<'a, 'b, A> {
@@ -41894,6 +42077,9 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("Diff");
                 ds.field("files", &self.files());
+                ds.field("operation_id", &self.operation_id());
+                ds.field("commit_id", &self.commit_id());
+                ds.field("from_commit_id", &self.from_commit_id());
                 ds.finish()
             }
         }

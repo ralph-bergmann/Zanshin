@@ -3106,19 +3106,40 @@ table Hunk {
 /// sides are file-like and differ in the executable bit (the builtin diff editor's mode toggle,
 /// `FileSelection.mode`). `sections`: every `HunkKey` `SelectTreeRequest` accepts for the file;
 /// empty when it can only be selected whole, or by its mode when `mode_change`. `hunks`: in file
-/// order. Vectors are always present.
+/// order; empty in summary mode. Vectors are always present.
+///
+/// Story 5.6 appends: `kind` (a copy record's source first, then presence; `path` is the copy's
+/// TARGET) and `from_path` (the source, set ONLY for Renamed/Copied, as in `FileChange`; a copied
+/// or renamed file has no `sections`); `removed` / `added`, the sums of its hunks' counts (0 for
+/// binary and mode-only changes, kept in summary mode); `fingerprint`, the lowercase hex of
+/// jj-lib's blake2b over the changed lines (removed `-`-tagged, added `+`-tagged, no line
+/// numbers, no context), then a binary change's two contents and a mode change's marker — stable
+/// across processes, but dependent on the call's whitespace mode and the effective
+/// `ui.conflict-marker-style`. It covers content only (no path, no kind): every content-less
+/// change (a pure rename, an empty file added) shares one value, so a Viewed key combines it with
+/// the path.
 table FileDiff {
   path: string;
   binary: bool;
   mode_change: bool;
   sections: [HunkKey];
   hunks: [Hunk];
+  kind: ChangeKind;
+  from_path: string;
+  removed: uint;
+  added: uint;
+  fingerprint: string;
 }
 
-/// A line-level diff between two trees (Story 5.5) — `zanshin_jj::Repo::compute_hunks`' files,
-/// in its order. `files` is always present.
+/// A line-level diff (Story 5.5) — `zanshin_jj::Repo::diff`'s files, in its order. `files` is
+/// always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
+/// at; `commit_id`, the revision (`-r`) or `to` (`--from`/`--to`); `from_commit_id`, `from`,
+/// ABSENT for the revision form.
 table Diff {
   files: [FileDiff];
+  operation_id: string;
+  commit_id: string;
+  from_commit_id: string;
 }
 
 union Payload {

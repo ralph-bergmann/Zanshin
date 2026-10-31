@@ -44,6 +44,7 @@ mod convert;
 mod convert_alias_write_failure;
 mod creation_warnings;
 mod detect;
+mod diff;
 mod diffedit;
 mod drop_actions;
 mod duplicate;

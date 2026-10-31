@@ -8,11 +8,13 @@ import '../worker/responses.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'precondition.dart' show decodeEnvelopeErrorInternal;
 import 'select_tree.dart' show HunkKey;
+import 'status.dart' show FileChangeKind, mapChangeKind;
 import 'warning.dart';
 
 // This file owns the Dart half of Story 5.5's line-level `Diff` payload: the
-// models mirroring `zanshin_jj::FileDiff` / `Hunk` / `HunkLine` and their
-// decoder. The extern, worker command and `RepoHandle` method are Story 5.8's.
+// models mirroring `zanshin_jj::RevisionDiff` / `FileDiff` / `Hunk` /
+// `HunkLine` and their decoder (Story 5.6 adds kinds, counts, fingerprints and
+// pins). The extern, worker command and `RepoHandle` method are Story 5.8's.
 
 // ── Models ───────────────────────────────────────────────────────────────────
 
@@ -83,14 +85,27 @@ final class Hunk {
 final class FileDiff {
   const FileDiff({
     required this.path,
+    required this.kind,
+    required this.fromPath,
     required this.binary,
     required this.modeChange,
     required this.sections,
     required this.hunks,
+    required this.removed,
+    required this.added,
+    required this.fingerprint,
   });
 
-  /// The repo-relative path, in jj's internal `/`-separated form.
+  /// The repo-relative path, in jj's internal `/`-separated form — a copy's or
+  /// rename's target.
   final String path;
+
+  /// How the path changed: a copy record's source first, then presence.
+  final FileChangeKind kind;
+
+  /// The source path for [FileChangeKind.renamed] and [FileChangeKind.copied];
+  /// null for all other kinds.
+  final String? fromPath;
 
   /// The contents differ and either side's is binary: no hunks.
   final bool binary;
@@ -100,19 +115,51 @@ final class FileDiff {
   final bool modeChange;
 
   /// Every section `selectTree` accepts for the file; empty when it can only
-  /// be selected whole, or by its mode when [modeChange].
+  /// be selected whole (always for a copy or rename), or by its mode when
+  /// [modeChange].
   final List<HunkKey> sections;
 
-  /// The hunks, in file order; none for binary content or a mode-only change.
+  /// The hunks, in file order; none for binary content, a mode-only change, or
+  /// in summary mode.
   final List<Hunk> hunks;
+
+  /// The sum of its hunks' removed lines (kept in summary mode).
+  final int removed;
+
+  /// The sum of its hunks' added lines (kept in summary mode).
+  final int added;
+
+  /// A stable fingerprint of the changed lines (no line numbers, no context),
+  /// lowercase hex — equal changes at shifted line numbers share it. It depends
+  /// on the call's whitespace mode and the effective `ui.conflict-marker-style`
+  /// and covers content only (no path, no kind): every content-less change (a
+  /// pure rename, an empty file added) shares one value, so a Viewed key
+  /// combines it with [path].
+  final String fingerprint;
 }
 
-/// A line-level diff between two trees: `compute_hunks`' files, in order.
+/// A line-level diff between two revisions: `diff`'s files, in order, pinned
+/// to the operation and commit(s) it was computed at.
 final class Diff {
-  const Diff({required this.files, this.warnings = const []});
+  const Diff({
+    required this.files,
+    required this.operationId,
+    required this.commitId,
+    this.fromCommitId,
+    this.warnings = const [],
+  });
 
   /// The changed files, in order.
   final List<FileDiff> files;
+
+  /// The operation the diff was read at, full hex.
+  final String operationId;
+
+  /// The revision (`-r`) or `to` (`--from`/`--to`), full hex.
+  final String commitId;
+
+  /// `from` for `--from`/`--to`; null for the revision form.
+  final String? fromCommitId;
 
   /// The call's warnings; empty when there were none.
   final List<ZanshinWarning> warnings;
@@ -141,16 +188,24 @@ Diff decodeDiffEnvelopeInternal(Uint8List bytes) {
   }
   return Diff(
     files: [for (final fbs.FileDiff file in payload.files ?? const []) _file(file)],
+    operationId: payload.operationId ?? '',
+    commitId: payload.commitId ?? '',
+    fromCommitId: payload.fromCommitId,
     warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 
 FileDiff _file(fbs.FileDiff file) => FileDiff(
   path: file.path ?? '',
+  kind: mapChangeKind(file.kind),
+  fromPath: file.fromPath,
   binary: file.binary,
   modeChange: file.modeChange,
   sections: _keys(file.sections),
   hunks: [for (final fbs.Hunk hunk in file.hunks ?? const []) _hunk(hunk)],
+  removed: file.removed,
+  added: file.added,
+  fingerprint: file.fingerprint ?? '',
 );
 
 Hunk _hunk(fbs.Hunk hunk) => Hunk(

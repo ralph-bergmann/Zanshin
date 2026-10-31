@@ -8,6 +8,7 @@ import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/diff.dart';
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import 'package:zanshin_core/src/ffi/select_tree.dart' show HunkKey;
+import 'package:zanshin_core/src/ffi/status.dart' show FileChangeKind;
 import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
 
@@ -24,11 +25,17 @@ void main() {
         ok: true,
         dataType: fbs.PayloadTypeId.Diff,
         data: fbs.DiffObjectBuilder(
+          operationId: 'op1',
+          commitId: 'c1',
           files: [
             fbs.FileDiffObjectBuilder(
               path: 'src/a.rs',
               binary: false,
               modeChange: false,
+              kind: fbs.ChangeKind.Modified,
+              removed: 2,
+              added: 1,
+              fingerprint: 'ab12',
               sections: [_key(1, 2, 1, 3), _key(9, 1, 10, 0)],
               hunks: [
                 fbs.HunkObjectBuilder(
@@ -59,16 +66,28 @@ void main() {
               ],
             ),
             fbs.FileDiffObjectBuilder(path: 'bin.dat', binary: true, modeChange: false, sections: [], hunks: []),
-            fbs.FileDiffObjectBuilder(path: 'run.sh', binary: false, modeChange: true),
+            fbs.FileDiffObjectBuilder(path: 'run.sh', binary: false, modeChange: true, kind: fbs.ChangeKind.Removed),
+            fbs.FileDiffObjectBuilder(path: 'new.txt', kind: fbs.ChangeKind.Renamed, fromPath: 'old.txt'),
+            fbs.FileDiffObjectBuilder(path: 'copy.txt', kind: fbs.ChangeKind.Copied, fromPath: 'src.txt'),
           ],
         ),
         warnings: [fbs.WarningObjectBuilder(code: 'jj.commit_paths_unmatched', message: 'm')],
       ).toBytes(),
     );
 
-    expect(diff.files.map((f) => f.path), ['src/a.rs', 'bin.dat', 'run.sh']);
+    expect(diff.files.map((f) => f.path), ['src/a.rs', 'bin.dat', 'run.sh', 'new.txt', 'copy.txt']);
+    expect((diff.operationId, diff.commitId, diff.fromCommitId), ('op1', 'c1', null));
+    expect(diff.files.map((f) => (f.kind, f.fromPath)), [
+      (FileChangeKind.modified, null),
+      (FileChangeKind.added, null),
+      (FileChangeKind.removed, null),
+      (FileChangeKind.renamed, 'old.txt'),
+      (FileChangeKind.copied, 'src.txt'),
+    ]);
     final FileDiff a = diff.files[0];
     expect((a.binary, a.modeChange), (false, false));
+    expect((a.removed, a.added, a.fingerprint), (2, 1, 'ab12'));
+    expect((diff.files[1].removed, diff.files[1].added, diff.files[1].fingerprint), (0, 0, ''));
     expect(a.sections, const [
       HunkKey(oldStart: 1, oldCount: 2, newStart: 1, newCount: 3),
       HunkKey(oldStart: 9, oldCount: 1, newStart: 10, newCount: 0),
@@ -117,6 +136,17 @@ void main() {
     );
     expect(diff.files, isEmpty);
     expect(diff.warnings, isEmpty);
+  });
+
+  test('a from/to diff carries both pins', () {
+    final Diff diff = decodeDiffEnvelope(
+      fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Diff,
+        data: fbs.DiffObjectBuilder(operationId: 'op', commitId: 'to', fromCommitId: 'from', files: []),
+      ).toBytes(),
+    );
+    expect((diff.operationId, diff.commitId, diff.fromCommitId), ('op', 'to', 'from'));
   });
 
   test('an error envelope throws ZanshinFfiException with its code and context', () {

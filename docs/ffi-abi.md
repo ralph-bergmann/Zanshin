@@ -2443,17 +2443,19 @@ operation's description names the target). Dart: `RepoHandle.opRestore(operation
 
 ---
 
-## `Diff` payload (Story 5.5)
+## `Diff` payload (Story 5.5; kinds, counts, fingerprints and pins: Story 5.6)
 
-The line-level diff between two trees — `zanshin_jj::Repo::compute_hunks`' output, field for field
-and in its order. Built by `zanshin_ffi::diff::diff_to_envelope(&[FileDiff], &CallReport)` (an
+The line-level diff between two revisions — `zanshin_jj::Repo::diff`'s `RevisionDiff` (Story 5.6),
+field for field and in its order (its files are `compute_hunks`' for the same trees, plus copy
+records). Built by `zanshin_ffi::diff::diff_to_envelope(&RevisionDiff, &CallReport)` (an
 infallible builder: the call's `CallReport` rides as `warnings` / `precondition` as on every
 envelope). **No extern yet** — Story 5.8 adds `zanshin_diff_*` to `diff.rs`, the worker command
 and the `RepoHandle` method.
 
 ```
-Diff     { files: [FileDiff] }
-FileDiff { path, binary, mode_change, sections: [HunkKey], hunks: [Hunk] }
+Diff     { files: [FileDiff], operation_id, commit_id, from_commit_id }       // pins: Story 5.6
+FileDiff { path, binary, mode_change, sections: [HunkKey], hunks: [Hunk],
+           kind: ChangeKind, from_path, removed, added, fingerprint }        // 5.6 appended
 Hunk     { before_start, before_end, after_start, after_end, symbol,
            sections: [HunkKey], removed, added, lines: [HunkLine] }
 HunkLine { kind: HunkLineKind (Context | Removed | Added), text }
@@ -2468,8 +2470,25 @@ HunkLine { kind: HunkLineKind (Context | Removed | Added), text }
 - **`symbol`** ABSENT = no source symbol (Dart `null`); `text` keeps its `\n`, so a last line
   without one shows the EOF state; a `Context` line carries the right side's text.
 - **Vectors** are always written (empty, not absent); files, hunks, lines and sections keep
-  their input order. `binary` and mode-only files carry no hunks.
+  their input order. `binary` and mode-only files carry no hunks; in summary mode no file does.
+- **Kinds (5.6).** `kind` is the `ChangeKind` `FileChange` uses: a copy record's source first
+  (`Renamed` / `Copied`, `path` = the target, `from_path` = the source), then presence.
+  `from_path` is ABSENT for every other kind (Dart `null`). A copied or renamed file has empty
+  `sections` (the builtin diff editor has no copy records, so it is selected whole).
+- **Counts and fingerprint (5.6).** `removed` / `added` are saturating sums of the hunks' counts
+  (0 for binary and mode-only, kept in summary mode). `fingerprint` = 128 lowercase hex chars
+  (blake2b-512, jj-lib's `blake2b_hash`) over the changed lines (removed prefixed `-`, added `+`,
+  no line numbers or context), then a binary change's two contents and a mode change's marker —
+  stable across processes, but dependent on the call's whitespace mode and the effective
+  `ui.conflict-marker-style`. It covers content only (no path, no kind): every content-less
+  change (a pure rename, an empty file added) shares one value, so 10.24's Viewed key combines it
+  with the path.
+- **Pins (5.6),** full hex: `operation_id` = the operation read at (after the pre-verb snapshot);
+  `commit_id` = the revision (`-r`) or `to`; `from_commit_id` = `from`, ABSENT for the revision
+  form (Dart `null`).
 
-Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart`) → `Diff`,
-`FileDiff`, `Hunk` (ranges as `({int start, int end})` records), `HunkLine`, `HunkLineKind`;
-keys are `select_tree.dart`'s `HunkKey`. Not exported from `zanshin_core.dart` until Story 5.8.
+Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart`) → `Diff`
+(with `operationId` / `commitId` / `fromCommitId`), `FileDiff` (`kind` as `status.dart`'s
+`FileChangeKind`, `fromPath`, `removed`, `added`, `fingerprint`), `Hunk` (ranges as
+`({int start, int end})` records), `HunkLine`, `HunkLineKind`; keys are `select_tree.dart`'s
+`HunkKey`. Not exported from `zanshin_core.dart` until Story 5.8.

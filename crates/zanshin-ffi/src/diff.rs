@@ -1,23 +1,36 @@
 // SPDX-License-Identifier: MIT
 
-//! The line-level `Diff` payload (Story 5.5): `zanshin_jj::Repo::compute_hunks`' files, hunks,
-//! lines and section keys on the FFI wire. Story 5.8 adds this noun's `zanshin_diff_*` externs.
+//! The line-level `Diff` payload (Story 5.5): `zanshin_jj::Repo::diff`'s files, hunks, lines,
+//! section keys and pins (Story 5.6) on the FFI wire. Story 5.8 adds this noun's `zanshin_diff_*`
+//! externs.
 
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, WIPOffset};
-use zanshin_jj::{FileDiff, Hunk, HunkKey, HunkLine};
+use zanshin_jj::{FileDiff, Hunk, HunkKey, HunkLine, RevisionDiff};
 
 use crate::envelope::{finish_envelope, CallReport};
 use crate::fbs;
+use crate::status::change_kind_offset;
 
 /// Build a success `Envelope` with a `Diff` payload and return the finished buffer: the files
-/// exactly as `compute_hunks` returned them, in order, every vector written (empty, not absent),
-/// a `None` symbol absent. `report` rides as on every envelope.
+/// exactly as `diff` returned them, in order, every vector written (empty, not absent), a `None`
+/// symbol, `from_path` or `from_commit_id` absent. `report` rides as on every envelope.
 #[must_use]
-pub fn diff_to_envelope(files: &[FileDiff], report: &CallReport) -> Vec<u8> {
+pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
-    let files: Vec<_> = files.iter().map(|f| file_offset(&mut b, f)).collect();
+    let files: Vec<_> = diff.files.iter().map(|f| file_offset(&mut b, f)).collect();
     let files = b.create_vector(&files);
-    let diff = fbs::Diff::create(&mut b, &fbs::DiffArgs { files: Some(files) });
+    let operation_id = b.create_string(&diff.operation_id.0);
+    let commit_id = b.create_string(&diff.commit_id.0);
+    let from_commit_id = diff.from_commit_id.as_ref().map(|id| b.create_string(&id.0));
+    let diff = fbs::Diff::create(
+        &mut b,
+        &fbs::DiffArgs {
+            files: Some(files),
+            operation_id: Some(operation_id),
+            commit_id: Some(commit_id),
+            from_commit_id,
+        },
+    );
     finish_envelope(b, fbs::Payload::Diff, Some(diff.as_union_value()), report)
 }
 
@@ -26,6 +39,8 @@ fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs
     let sections = keys_vector(b, &f.sections);
     let hunks: Vec<_> = f.hunks.iter().map(|h| hunk_offset(b, h)).collect();
     let hunks = b.create_vector(&hunks);
+    let (kind, from_path) = change_kind_offset(b, &f.kind);
+    let fingerprint = b.create_string(&f.fingerprint);
     fbs::FileDiff::create(
         b,
         &fbs::FileDiffArgs {
@@ -34,6 +49,11 @@ fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs
             mode_change: f.mode_change,
             sections: Some(sections),
             hunks: Some(hunks),
+            kind,
+            from_path,
+            removed: f.removed,
+            added: f.added,
+            fingerprint: Some(fingerprint),
         },
     )
 }
@@ -92,8 +112,10 @@ fn keys_vector<'b>(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use flatbuffers::VerifierOptions;
-    use zanshin_jj::{FileDiff, Hunk, HunkKey, HunkLine};
+    use zanshin_jj::{ChangeKind, CommitId, FileDiff, Hunk, HunkKey, HunkLine, OperationId, RevisionDiff};
 
     use super::diff_to_envelope;
     use crate::envelope::CallReport;
@@ -144,35 +166,89 @@ mod tests {
         }
     }
 
-    /// Map a `Diff` envelope back into the `compute_hunks` shape, through the generated accessors.
-    fn files_from_wire(bytes: &[u8]) -> Vec<FileDiff> {
+    fn kind_from_wire(kind: fbs::ChangeKind, from_path: Option<&str>) -> ChangeKind {
+        let from = || PathBuf::from(from_path.expect("from_path present for a copy"));
+        match kind {
+            fbs::ChangeKind::Added => ChangeKind::Added,
+            fbs::ChangeKind::Modified => ChangeKind::Modified,
+            fbs::ChangeKind::Removed => ChangeKind::Removed,
+            fbs::ChangeKind::Renamed => ChangeKind::Renamed { from: from() },
+            _ => ChangeKind::Copied { from: from() },
+        }
+    }
+
+    /// Map a `Diff` envelope back into the `diff` shape, through the generated accessors.
+    fn diff_from_wire(bytes: &[u8]) -> RevisionDiff {
         let env = verified_envelope(bytes);
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::Diff);
-        env.data_as_diff()
-            .expect("Diff payload")
+        let diff = env.data_as_diff().expect("Diff payload");
+        let files = diff
             .files()
             .expect("files always present")
             .iter()
-            .map(|f| FileDiff {
-                path: f.path().expect("path present").to_owned(),
-                binary: f.binary(),
-                mode_change: f.mode_change(),
-                sections: keys_from_wire(f.sections()),
-                hunks: f
-                    .hunks()
-                    .expect("hunks always present")
-                    .iter()
-                    .map(hunk_from_wire)
-                    .collect(),
+            .map(|f| {
+                let kind = kind_from_wire(f.kind(), f.from_path());
+                if matches!(kind, ChangeKind::Added | ChangeKind::Modified | ChangeKind::Removed) {
+                    assert_eq!(f.from_path(), None, "from_path only for a copy");
+                }
+                FileDiff {
+                    path: f.path().expect("path present").to_owned(),
+                    kind,
+                    binary: f.binary(),
+                    mode_change: f.mode_change(),
+                    sections: keys_from_wire(f.sections()),
+                    hunks: f
+                        .hunks()
+                        .expect("hunks always present")
+                        .iter()
+                        .map(hunk_from_wire)
+                        .collect(),
+                    removed: f.removed(),
+                    added: f.added(),
+                    fingerprint: f.fingerprint().expect("fingerprint present").to_owned(),
+                }
             })
-            .collect()
+            .collect();
+        RevisionDiff {
+            operation_id: OperationId(diff.operation_id().expect("operation_id present").to_owned()),
+            commit_id: CommitId(diff.commit_id().expect("commit_id present").to_owned()),
+            from_commit_id: diff.from_commit_id().map(|id| CommitId(id.to_owned())),
+            files,
+        }
     }
 
-    fn sample() -> Vec<FileDiff> {
-        vec![
+    fn pinned(files: Vec<FileDiff>) -> RevisionDiff {
+        RevisionDiff {
+            operation_id: OperationId("aa".repeat(64)),
+            commit_id: CommitId("cc".repeat(20)),
+            from_commit_id: None,
+            files,
+        }
+    }
+
+    fn file(path: &str, kind: ChangeKind) -> FileDiff {
+        FileDiff {
+            path: path.into(),
+            kind,
+            binary: false,
+            mode_change: false,
+            sections: vec![],
+            hunks: vec![],
+            removed: 0,
+            added: 0,
+            fingerprint: "f0".into(),
+        }
+    }
+
+    fn sample() -> RevisionDiff {
+        pinned(vec![
             FileDiff {
                 path: "src/a.rs".into(),
+                kind: ChangeKind::Modified,
+                removed: 3,
+                added: 7,
+                fingerprint: "0123abcd".into(),
                 binary: false,
                 mode_change: false,
                 sections: vec![key(1, 2, 1, 3), key(9, 1, 10, 0), key(20, 0, 20, 4)],
@@ -213,35 +289,50 @@ mod tests {
                 ],
             },
             FileDiff {
-                path: "bin.dat".into(),
                 binary: true,
-                mode_change: false,
-                sections: vec![],
-                hunks: vec![],
+                ..file("bin.dat", ChangeKind::Added)
             },
             FileDiff {
-                path: "run.sh".into(),
-                binary: false,
                 mode_change: true,
-                sections: vec![],
-                hunks: vec![],
+                ..file("run.sh", ChangeKind::Removed)
             },
-        ]
+            file(
+                "new.txt",
+                ChangeKind::Renamed {
+                    from: PathBuf::from("old.txt"),
+                },
+            ),
+            file(
+                "copy.txt",
+                ChangeKind::Copied {
+                    from: PathBuf::from("src.txt"),
+                },
+            ),
+        ])
     }
 
     #[test]
     fn a_diff_round_trips_through_the_generated_accessors() {
-        let files = sample();
-        let bytes = diff_to_envelope(&files, &CallReport::default());
-        assert_eq!(files_from_wire(&bytes), files);
+        let diff = sample();
+        let bytes = diff_to_envelope(&diff, &CallReport::default());
+        assert_eq!(diff_from_wire(&bytes), diff);
         let env = verified_envelope(&bytes);
         assert!(env.warnings().is_none());
         assert!(env.precondition().is_none());
+        assert_eq!(env.data_as_diff().expect("Diff payload").from_commit_id(), None);
+        let from_to = RevisionDiff {
+            from_commit_id: Some(CommitId("dd".repeat(20))),
+            ..sample()
+        };
+        assert_eq!(
+            diff_from_wire(&diff_to_envelope(&from_to, &CallReport::default())),
+            from_to
+        );
     }
 
     #[test]
     fn an_empty_diff_writes_an_empty_files_vector() {
-        let bytes = diff_to_envelope(&[], &CallReport::default());
+        let bytes = diff_to_envelope(&pinned(vec![]), &CallReport::default());
         let env = verified_envelope(&bytes);
         assert!(env.ok());
         let files = env
@@ -267,6 +358,6 @@ mod tests {
             (warning.code(), warning.message()),
             (Some("jj.config_deprecated"), Some("Deprecated user-level config: d"))
         );
-        assert_eq!(files_from_wire(&bytes), sample());
+        assert_eq!(diff_from_wire(&bytes), sample());
     }
 }

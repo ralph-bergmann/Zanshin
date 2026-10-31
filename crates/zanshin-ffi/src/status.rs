@@ -49,13 +49,7 @@ pub(crate) fn file_changes_vector<'a>(
     let mut file_offsets = Vec::with_capacity(files.len());
     for fc in files {
         let path_off = b.create_string(&fc.path.to_string_lossy());
-        let (kind, from_off) = match &fc.kind {
-            ChangeKind::Added => (fbs::ChangeKind::Added, None),
-            ChangeKind::Modified => (fbs::ChangeKind::Modified, None),
-            ChangeKind::Removed => (fbs::ChangeKind::Removed, None),
-            ChangeKind::Renamed { from } => (fbs::ChangeKind::Renamed, Some(b.create_string(&from.to_string_lossy()))),
-            ChangeKind::Copied { from } => (fbs::ChangeKind::Copied, Some(b.create_string(&from.to_string_lossy()))),
-        };
+        let (kind, from_off) = change_kind_offset(b, &fc.kind);
         let fc_off = fbs::FileChange::create(
             b,
             &fbs::FileChangeArgs {
@@ -67,6 +61,21 @@ pub(crate) fn file_changes_vector<'a>(
         file_offsets.push(fc_off);
     }
     b.create_vector(&file_offsets)
+}
+
+/// The wire `ChangeKind` and its `from_path` — written ONLY for Renamed/Copied. Shared with the
+/// `Diff` payload's `FileDiff` (Story 5.6).
+pub(crate) fn change_kind_offset<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    kind: &ChangeKind,
+) -> (fbs::ChangeKind, Option<flatbuffers::WIPOffset<&'a str>>) {
+    match kind {
+        ChangeKind::Added => (fbs::ChangeKind::Added, None),
+        ChangeKind::Modified => (fbs::ChangeKind::Modified, None),
+        ChangeKind::Removed => (fbs::ChangeKind::Removed, None),
+        ChangeKind::Renamed { from } => (fbs::ChangeKind::Renamed, Some(b.create_string(&from.to_string_lossy()))),
+        ChangeKind::Copied { from } => (fbs::ChangeKind::Copied, Some(b.create_string(&from.to_string_lossy()))),
+    }
 }
 
 /// Serialise `&Status` into a finished `FlatBuffers` `Envelope<Status>` buffer.

@@ -1795,6 +1795,12 @@ fn compute_hunks_surface_resolves() {
     assert_ne!(zanshin_jj::Whitespace::IgnoreSpaceChange, zanshin_jj::Whitespace::Exact);
     let file = zanshin_jj::FileDiff {
         path: "a".to_owned(),
+        kind: zanshin_jj::ChangeKind::Renamed {
+            from: std::path::PathBuf::from("b"),
+        },
+        removed: 1,
+        added: 1,
+        fingerprint: String::new(),
         binary: false,
         mode_change: false,
         sections: vec![key],
@@ -1818,6 +1824,34 @@ fn compute_hunks_surface_resolves() {
             &mut zanshin_jj::Repo,
             &zanshin_jj::HunksOptions,
         ) -> Result<Vec<zanshin_jj::FileDiff>, zanshin_jj::MutateError>;
+    // Story 5.6: the revision diff.
+    let options = zanshin_jj::DiffOptions {
+        revisions: zanshin_jj::DiffRevisions::FromTo {
+            from: Some(zanshin_jj::ChangeId("a".to_owned())),
+            to: None,
+        },
+        paths: vec!["a".to_owned()],
+        context: Some(3),
+        whitespace: zanshin_jj::Whitespace::Exact,
+        summary: true,
+    };
+    assert_eq!(options.clone(), options);
+    assert_eq!(
+        zanshin_jj::DiffOptions::default().revisions,
+        zanshin_jj::DiffRevisions::Revision(None)
+    );
+    let result = zanshin_jj::RevisionDiff {
+        operation_id: zanshin_jj::OperationId("0".to_owned()),
+        commit_id: zanshin_jj::CommitId("1".to_owned()),
+        from_commit_id: None,
+        files: vec![file],
+    };
+    assert_eq!(result.clone(), result);
+    _ = zanshin_jj::Repo::diff
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::DiffOptions,
+        ) -> Result<zanshin_jj::RevisionDiff, zanshin_jj::MutateError>;
 }
 
 /// The Story 9.17 surface: `resolve_list`'s payload, `resolve`'s tools and `diffedit`'s options

@@ -1,0 +1,315 @@
+// SPDX-License-Identifier: MIT
+
+//! Story 5.6 — `Repo::diff`, one witness per row of the I/O matrix. Every repo is built in-test
+//! with Zanshin's own verbs on a non-colocated internal-git repo.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use jj_lib::object_id::ObjectId as _;
+use jj_lib::ref_name::WorkspaceName;
+use jj_lib::repo::Repo as _;
+use jj_lib::workspace::Workspace;
+use tempfile::TempDir;
+use zanshin_jj::{
+    Backend, ChangeId, ChangeKind, CommitId, DiffOptions, DiffRevisions, FileDiff, HunksOptions, MutateError,
+    OperationId, Repo, RevisionDiff, SelectedTreeId, WarningKind,
+};
+
+struct Fx {
+    _tmp: TempDir,
+    root: PathBuf,
+    repo: Repo,
+}
+
+fn load_head(root: &Path) -> std::sync::Arc<jj_lib::repo::ReadonlyRepo> {
+    let workspace = Workspace::load(
+        &test_helpers::test_settings(),
+        root,
+        &jj_lib::default_backend_factories::default_backend_factories(),
+        &jj_lib::default_backend_factories::default_working_copy_factories(),
+    )
+    .expect("load workspace");
+    pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head")
+}
+
+fn head_op(root: &Path) -> String {
+    load_head(root).op_id().hex()
+}
+
+/// `@`'s change id and commit id.
+fn wc(root: &Path) -> (ChangeId, CommitId) {
+    let repo = load_head(root);
+    let id = repo
+        .view()
+        .get_wc_commit_id(WorkspaceName::new("default"))
+        .expect("workspace has an @");
+    let commit = repo.store().get_commit(id).expect("@ commit");
+    (ChangeId(commit.change_id().reverse_hex()), CommitId(id.hex()))
+}
+
+fn write(root: &Path, path: &str, content: &str) {
+    fs::write(root.join(path), content).expect("write");
+}
+
+fn init() -> Fx {
+    test_helpers::pin_test_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let main = tmp.path().join("main");
+    fs::create_dir(&main).expect("main dir");
+    let root = Repo::init(&zanshin_jj::InitOptions {
+        path: main,
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init")
+    .workspace_root()
+    .to_owned();
+    let repo = Repo::open(&root).expect("open");
+    Fx { _tmp: tmp, root, repo }
+}
+
+/// Describes `@` (snapshotting the working copy) and returns its ids.
+fn commit(fx: &mut Fx, message: &str) -> (ChangeId, CommitId) {
+    let (change, _) = wc(&fx.root);
+    fx.repo.describe(change, message).expect("describe");
+    wc(&fx.root)
+}
+
+/// `A` adds `f.txt` and `g.txt`; `C` (`@`, on `A`) changes a line of each.
+fn plain() -> (Fx, (ChangeId, CommitId), (ChangeId, CommitId)) {
+    let mut fx = init();
+    write(&fx.root, "f.txt", "a\nb\nc\n");
+    write(&fx.root, "g.txt", "g\n");
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    write(&fx.root, "f.txt", "a\nB\nc\n");
+    write(&fx.root, "g.txt", "G\n");
+    let c = commit(&mut fx, "C\n");
+    let _ = fx.repo.take_warnings();
+    (fx, a, c)
+}
+
+fn run(fx: &mut Fx, options: &DiffOptions) -> RevisionDiff {
+    fx.repo.diff(options).expect("diff")
+}
+
+fn revision(id: &ChangeId) -> DiffOptions {
+    DiffOptions {
+        revisions: DiffRevisions::Revision(Some(id.clone())),
+        ..DiffOptions::default()
+    }
+}
+
+fn paths(files: &[FileDiff]) -> Vec<&str> {
+    files.iter().map(|file| file.path.as_str()).collect()
+}
+
+/// A plain change diffs like `compute_hunks` over the trees `show` reports, pinned to the head
+/// operation and the revision; the default is `@`; nothing enters the op log.
+#[test]
+fn a_revision_diffs_against_its_parent_and_is_pinned() {
+    let (mut fx, _, (c, c_commit)) = plain();
+    let head = head_op(&fx.root);
+    let result = run(&mut fx, &revision(&c));
+    assert_eq!(head_op(&fx.root), head, "no operation");
+    assert_eq!(result.operation_id, OperationId(head));
+    assert_eq!(result.commit_id, c_commit);
+    assert_eq!(result.from_commit_id, None);
+    assert_eq!(paths(&result.files), ["f.txt", "g.txt"]);
+    assert!(result.files.iter().all(|file| file.kind == ChangeKind::Modified));
+    let f = &result.files[0];
+    assert_eq!((f.removed, f.added), (1, 1));
+    assert_eq!(f.fingerprint.len(), 128);
+    assert_ne!(f.fingerprint, result.files[1].fingerprint);
+
+    let mut entries = fx.repo.show(None, None).expect("show");
+    let entry = entries.remove(0);
+    let hunks = fx
+        .repo
+        .compute_hunks(&HunksOptions {
+            from: SelectedTreeId {
+                tree_ids: entry.parent_tree_ids,
+                labels: entry.parent_tree_labels,
+            },
+            to: SelectedTreeId {
+                tree_ids: entry.tree_ids,
+                labels: entry.tree_labels,
+            },
+            ..HunksOptions::default()
+        })
+        .expect("compute_hunks");
+    assert_eq!(result.files, hunks);
+    assert_eq!(run(&mut fx, &DiffOptions::default()), result);
+}
+
+/// Summary mode keeps every field but the hunks.
+#[test]
+fn summary_mode_drops_only_the_hunks() {
+    let (mut fx, _, (c, _)) = plain();
+    let full = run(&mut fx, &revision(&c));
+    let summary = run(
+        &mut fx,
+        &DiffOptions {
+            summary: true,
+            ..revision(&c)
+        },
+    );
+    assert!(summary.files.iter().all(|file| file.hunks.is_empty()));
+    assert!(full.files.iter().all(|file| !file.hunks.is_empty()));
+    let stripped: Vec<FileDiff> = full
+        .files
+        .iter()
+        .cloned()
+        .map(|file| FileDiff {
+            hunks: Vec::new(),
+            ..file
+        })
+        .collect();
+    assert_eq!(summary.files, stripped);
+    assert_eq!(
+        (summary.operation_id, summary.commit_id),
+        (full.operation_id, full.commit_id)
+    );
+}
+
+/// A merge diffs against its merged parents: only what it adds itself.
+#[test]
+fn a_merge_lists_only_its_own_change() {
+    let mut fx = init();
+    write(&fx.root, "a.txt", "a\n");
+    let p1 = commit(&mut fx, "P1\n");
+    let root = ChangeId("z".repeat(32));
+    fx.repo
+        .new_change(std::slice::from_ref(&root), &[], &[])
+        .expect("new on root");
+    write(&fx.root, "b.txt", "b\n");
+    let p2 = commit(&mut fx, "P2\n");
+    fx.repo.new_change(&[p1.0, p2.0], &[], &[]).expect("merge");
+    write(&fx.root, "c.txt", "c\n");
+    let m = commit(&mut fx, "M\n");
+    let result = run(&mut fx, &revision(&m.0));
+    assert_eq!(paths(&result.files), ["c.txt"]);
+    assert_eq!(result.files[0].kind, ChangeKind::Added);
+    assert_eq!((result.files[0].removed, result.files[0].added), (0, 1));
+
+    // The root's diff is empty.
+    assert!(run(&mut fx, &revision(&root)).files.is_empty());
+}
+
+/// A rename on the git backend is one file: kind `Renamed`, hunks old → new content, no sections.
+#[test]
+fn a_rename_is_one_file_with_its_source() {
+    let mut fx = init();
+    let lines = "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\n";
+    write(&fx.root, "old.txt", lines);
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    fs::remove_file(fx.root.join("old.txt")).expect("rm");
+    write(&fx.root, "new.txt", &lines.replace("line 5\n", "line five\n"));
+    let c = commit(&mut fx, "C\n");
+    let result = run(&mut fx, &revision(&c.0));
+    assert_eq!(paths(&result.files), ["new.txt"]);
+    let file = &result.files[0];
+    assert_eq!(
+        file.kind,
+        ChangeKind::Renamed {
+            from: PathBuf::from("old.txt")
+        }
+    );
+    assert!(file.sections.is_empty());
+    assert_eq!(file.hunks.len(), 1);
+    assert_eq!((file.removed, file.added), (1, 1));
+    // A path filter on the source alone drops the record (it filters on the target): the
+    // deletion shows plain.
+    let filtered = run(
+        &mut fx,
+        &DiffOptions {
+            paths: vec!["old.txt".to_owned()],
+            ..revision(&c.0)
+        },
+    );
+    assert_eq!(paths(&filtered.files), ["old.txt"]);
+    assert_eq!(filtered.files[0].kind, ChangeKind::Removed);
+    // `--from A --to C` uses the records from A to C: the same single renamed file.
+    let from_to = run(
+        &mut fx,
+        &DiffOptions {
+            revisions: DiffRevisions::FromTo {
+                from: Some(a.0),
+                to: Some(c.0),
+            },
+            ..DiffOptions::default()
+        },
+    );
+    assert_eq!(from_to.files, result.files);
+}
+
+/// A dirty `@` is snapshotted first; the pin names the operation after that snapshot.
+#[test]
+fn the_operation_pin_is_the_post_snapshot_head() {
+    let (mut fx, _, _) = plain();
+    write(&fx.root, "dirty.txt", "d\n");
+    let before = head_op(&fx.root);
+    let result = run(&mut fx, &DiffOptions::default());
+    let after = head_op(&fx.root);
+    assert_ne!(after, before, "the pre-verb snapshot wrote an operation");
+    assert_eq!(result.operation_id, OperationId(after));
+    assert!(paths(&result.files).contains(&"dirty.txt"));
+}
+
+/// `--from` / `--to`: either tree against the other, `None` = `@`; equal sides are empty.
+#[test]
+fn from_to_diffs_two_revisions_and_pins_both() {
+    let (mut fx, (a, a_commit), (c, c_commit)) = plain();
+    let from_to = |from: Option<&ChangeId>, to: Option<&ChangeId>| DiffOptions {
+        revisions: DiffRevisions::FromTo {
+            from: from.cloned(),
+            to: to.cloned(),
+        },
+        ..DiffOptions::default()
+    };
+    let result = run(&mut fx, &from_to(Some(&a), Some(&c)));
+    assert_eq!(result.commit_id, c_commit);
+    assert_eq!(result.from_commit_id, Some(a_commit.clone()));
+    assert_eq!(result.files, run(&mut fx, &revision(&c)).files);
+    assert_eq!(run(&mut fx, &from_to(Some(&a), None)), result);
+    let reverse = run(&mut fx, &from_to(None, Some(&a)));
+    assert_eq!(reverse.commit_id, a_commit);
+    assert_eq!(reverse.from_commit_id, Some(c_commit));
+    assert_eq!(paths(&reverse.files), ["f.txt", "g.txt"]);
+    assert!(run(&mut fx, &from_to(Some(&c), Some(&c))).files.is_empty());
+}
+
+/// Paths restrict the diff; an unmatched one warns; an invalid one is refused.
+#[test]
+fn paths_filter_warn_and_refuse() {
+    let (mut fx, _, (c, _)) = plain();
+    let with = |list: &[&str]| DiffOptions {
+        paths: list.iter().map(|path| (*path).to_owned()).collect(),
+        ..revision(&c)
+    };
+    assert_eq!(paths(&run(&mut fx, &with(&["f.txt"])).files), ["f.txt"]);
+    assert!(fx.repo.take_warnings().is_empty());
+    assert!(run(&mut fx, &with(&["nope"])).files.is_empty());
+    let warnings = fx.repo.take_warnings();
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].kind, WarningKind::PathsUnmatched);
+    assert!(matches!(
+        fx.repo.diff(&with(&["/x"])),
+        Err(MutateError::InvalidInput { .. })
+    ));
+}
+
+/// An unknown revision is not found.
+#[test]
+fn an_unknown_revision_is_not_found() {
+    let (mut fx, _, _) = plain();
+    let missing = ChangeId("yyyyyyyyyyyyyyyy".to_owned());
+    assert!(matches!(
+        fx.repo.diff(&revision(&missing)),
+        Err(MutateError::ChangeNotFound { .. })
+    ));
+}

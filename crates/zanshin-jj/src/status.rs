@@ -32,7 +32,7 @@ pub struct FileChange {
 }
 
 /// How the file changed between `@-` and `@`.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChangeKind {
     /// The file was added in `@` (not present in `@-`).
     Added,

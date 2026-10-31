@@ -114,7 +114,7 @@ pub use file::{AnnotationLine, FileContents, FileEntry, FileError, FileSearch, F
 pub use fix::{FixOptions, FixResult, FixToolStderr};
 pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
-pub use hunks::{FileDiff, Hunk, HunkLine, HunksOptions, Whitespace};
+pub use hunks::{DiffOptions, DiffRevisions, FileDiff, Hunk, HunkLine, HunksOptions, RevisionDiff, Whitespace};
 pub use metaedit::MetaeditOptions;
 pub use movement::{Direction, MovementOptions, MovementTarget, MovementTargets};
 pub use mutate::{AbsorbResult, MutateError, MutationResult, SkippedPath};

@@ -132,9 +132,11 @@ List<FileChange> _mapFiles(fbs.Status payload) {
 /// `InterdiffView`. Every decoder goes through this one mapper, so a field added
 /// to `FileChange` cannot be wired into one decoder only.
 FileChange mapFileChangeTable(fbs.FileChange f) =>
-    FileChange(path: f.path ?? '', kind: _mapChangeKind(f.kind), fromPath: f.fromPath);
+    FileChange(path: f.path ?? '', kind: mapChangeKind(f.kind), fromPath: f.fromPath);
 
-FileChangeKind _mapChangeKind(fbs.ChangeKind kind) => switch (kind) {
+/// Map a generated `ChangeKind` into the Dart model — library-internal, shared
+/// with `diff.dart`'s `FileDiff` (Story 5.6).
+FileChangeKind mapChangeKind(fbs.ChangeKind kind) => switch (kind) {
   fbs.ChangeKind.Added => FileChangeKind.added,
   fbs.ChangeKind.Modified => FileChangeKind.modified,
   fbs.ChangeKind.Removed => FileChangeKind.removed,

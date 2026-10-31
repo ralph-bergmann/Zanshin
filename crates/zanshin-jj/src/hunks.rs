@@ -21,25 +21,42 @@
 //!   command, so a `--when.commands` scope can differ). A file has them when both sides are
 //!   file-like (a regular file or a file conflict) and text; a hunk lists those one of its
 //!   removed or added lines falls in.
+//! - **Revisions** (Story 5.6, [`crate::Repo::diff`]): `jj diff -r` (merged parents → revision)
+//!   or `--from` / `--to`, read through `diff_stream_with_copies` with the CLI's copy records —
+//!   the left side at the copy source, the right at the target; a copy or rename has no
+//!   sections. Each file carries its kind, its counts (the hunks' sums) and a fingerprint of its
+//!   changed lines; summary mode drops only the hunks. [`crate::Repo::compute_hunks`] uses no
+//!   copy records.
 
 use std::ops::Range;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use futures::StreamExt as _;
+use futures::{StreamExt as _, TryStreamExt as _};
+use jj_lib::backend::MergedTreeValue;
+use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
 use jj_lib::conflicts::{materialize_tree_value, ConflictMaterializeOptions, MaterializedTreeValue};
+use jj_lib::content_hash::blake2b_hash;
+use jj_lib::copies::{CopiesTreeDiffEntryPath, CopyOperation, CopyRecords};
 use jj_lib::diff_presentation::unified::{git_diff_part, unified_diff_hunks, DiffLineType, UnifiedDiffHunk};
 use jj_lib::diff_presentation::{DiffTokenType, LineCompareMode};
-use jj_lib::matchers::EverythingMatcher;
+use jj_lib::hex_util::encode_hex;
+use jj_lib::id_prefix::IdPrefixContext;
+use jj_lib::matchers::{EverythingMatcher, Matcher};
 use jj_lib::merge::Diff;
 use jj_lib::merged_tree::MergedTree;
-use jj_lib::repo_path::RepoPath;
+use jj_lib::object_id::ObjectId as _;
+use jj_lib::rewrite::merge_commit_trees;
 use jj_lib::store::Store;
+use jj_lib::workspace::Workspace;
 
-use crate::mutate::{be, cfg, MutateError};
+use crate::mutate::{be, cfg, res, MutateError};
 use crate::op_support::SelectedTree;
 use crate::select_tree::{is_text, sections, HunkKey, Piece, SelectedTreeId};
 use crate::source_symbol::{trim_source_symbol, SourceLanguage, SourceSymbolScanner};
+use crate::warning::Warnings;
+use crate::{ChangeId, ChangeKind, CommitId, OperationId};
 
 /// [`crate::Repo::compute_hunks`]'s arguments (Story 5.1).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -72,8 +89,13 @@ pub enum Whitespace {
 /// One changed path of a diff (Story 5.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileDiff {
-    /// The repo-relative path, in jj's internal `/`-separated form.
+    /// The repo-relative path, in jj's internal `/`-separated form — a copy's or rename's TARGET.
     pub path: String,
+    /// How the path changed (Story 5.6), classified as `jj diff --summary` does: a copy record's
+    /// source first ([`ChangeKind::Renamed`] / [`ChangeKind::Copied`] with the source path), then
+    /// presence. [`crate::Repo::compute_hunks`] uses no copy records, so its kinds are presence
+    /// only.
+    pub kind: ChangeKind,
     /// The contents differ and either side's is binary (a NUL byte in its first 8000 bytes): no
     /// hunks. A mode-only change of a binary file is not binary, as in the CLI.
     pub binary: bool,
@@ -81,11 +103,77 @@ pub struct FileDiff {
     /// bit — the builtin diff editor's mode toggle ([`crate::FileChoice::ModeAndHunks`]).
     pub mode_change: bool,
     /// The file's sections — every key [`crate::Repo::select_tree`] accepts for it (see the
-    /// module doc for when); empty when it can only be selected whole. They are cut exactly, so at
-    /// `-w` / `-b` a file can keep sections no hunk shows.
+    /// module doc for when); empty when it can only be selected whole — always for a copy or
+    /// rename, which the builtin diff editor (no copy records) cannot select by section. They are
+    /// cut exactly, so at `-w` / `-b` a file can keep sections no hunk shows.
     pub sections: Vec<HunkKey>,
-    /// The hunks, in file order; none for equal texts and binary content.
+    /// The hunks, in file order; none for equal texts and binary content, and none in
+    /// [`DiffOptions::summary`] mode.
     pub hunks: Vec<Hunk>,
+    /// The sum of its hunks' [`Hunk::removed`] (Story 5.6); 0 for binary and mode-only changes.
+    pub removed: u32,
+    /// The sum of its hunks' [`Hunk::added`] (Story 5.6); 0 for binary and mode-only changes.
+    pub added: u32,
+    /// A fingerprint of what changed (Story 5.6), stable across processes: the lowercase hex of
+    /// jj-lib's `blake2b_hash` over the changed lines in order (removed ones prefixed `-`, added
+    /// ones `+`; no line numbers, no context), then both sides' contents for a binary change and a
+    /// marker for a mode change. Equal changes at shifted line numbers share it. It depends on the
+    /// call's `whitespace` mode and the effective `ui.conflict-marker-style`, and covers content
+    /// only — no path, no kind — so every content-less change (a pure rename, an empty file
+    /// added) shares one value; a Viewed key combines it with the path.
+    pub fingerprint: String,
+}
+
+/// [`crate::Repo::diff`]'s arguments (Story 5.6) — `jj diff`'s.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DiffOptions {
+    /// Which revisions to diff (`-r` or `--from` / `--to`).
+    pub revisions: DiffRevisions,
+    /// Repo-relative path PREFIXES to restrict the diff to (the CLI's `[FILESETS]`, as plain
+    /// prefixes); empty = every path, `""` = the root.
+    pub paths: Vec<String>,
+    /// Context lines around each change (`--context`); `None` is the effective
+    /// `diff.git.context` (3 in jj's defaults).
+    pub context: Option<usize>,
+    /// How lines are compared.
+    pub whitespace: Whitespace,
+    /// Leave every file's [`FileDiff::hunks`] empty — kinds, flags, sections, counts and
+    /// fingerprints are those of the full diff.
+    pub summary: bool,
+}
+
+/// The two sides of a [`crate::Repo::diff`] (Story 5.6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiffRevisions {
+    /// `-r`: the revision (`None` = `@`) against its merged parents.
+    Revision(Option<ChangeId>),
+    /// `--from` / `--to`: `from`'s tree against `to`'s; an absent side is `@`.
+    FromTo {
+        /// The left side (`None` = `@`).
+        from: Option<ChangeId>,
+        /// The right side (`None` = `@`).
+        to: Option<ChangeId>,
+    },
+}
+
+impl Default for DiffRevisions {
+    /// `jj diff` without revision arguments: `-r @`.
+    fn default() -> Self {
+        Self::Revision(None)
+    }
+}
+
+/// A [`crate::Repo::diff`] result, pinned to what it was computed at (Story 5.6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionDiff {
+    /// The operation the diff was read at (after the pre-verb snapshot), full hex.
+    pub operation_id: OperationId,
+    /// The revision ([`DiffRevisions::Revision`]) or `to` ([`DiffRevisions::FromTo`]), full hex.
+    pub commit_id: CommitId,
+    /// `from` for [`DiffRevisions::FromTo`]; `None` for [`DiffRevisions::Revision`].
+    pub from_commit_id: Option<CommitId>,
+    /// The changed paths in jj-lib's order.
+    pub files: Vec<FileDiff>,
 }
 
 /// One hunk of a [`FileDiff`] — what `jj diff --git` prints under one `@@` header (Story 5.1).
@@ -133,25 +221,93 @@ pub(crate) fn compute_hunks(
     config: &StackedConfig,
     options: &HunksOptions,
 ) -> Result<Vec<FileDiff>, MutateError> {
-    let config_context = crate::config::diff_git_context(config).map_err(cfg)?;
-    let marker_style = crate::config::conflict_marker_style(config).map_err(cfg)?;
+    let reader = DiffReader::new(store, config, options.context, options.whitespace)?;
     let from = SelectedTree::from_tree_id(store, &options.from)?;
     let to = SelectedTree::from_tree_id(store, &options.to)?;
-    let reader = DiffReader {
-        store,
-        materialize: ConflictMaterializeOptions {
-            marker_style,
-            marker_len: None,
-            merge: store.merge_options().clone(),
-        },
-        context: options.context.unwrap_or(config_context),
-        mode: match options.whitespace {
-            Whitespace::Exact => LineCompareMode::Exact,
-            Whitespace::IgnoreAllSpace => LineCompareMode::IgnoreAllSpace,
-            Whitespace::IgnoreSpaceChange => LineCompareMode::IgnoreSpaceChange,
-        },
+    pollster::block_on(reader.files(
+        Diff::new(from.tree(), to.tree()),
+        &EverythingMatcher,
+        &CopyRecords::default(),
+    ))
+}
+
+/// `jj diff` between two revisions as data (Story 5.6) — see [`crate::Repo::diff`].
+///
+/// # Errors
+///
+/// See [`crate::Repo::diff`].
+pub(crate) fn diff(
+    workspace: &Workspace,
+    config: &StackedConfig,
+    sink: &mut Warnings,
+    prefixes: &IdPrefixContext,
+    options: &DiffOptions,
+) -> Result<RevisionDiff, MutateError> {
+    let matcher = crate::mutate::build_matcher(&options.paths)?;
+    let store = workspace.repo_loader().store();
+    let reader = DiffReader::new(store, config, options.context, options.whitespace)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
+    let repo: &dyn jj_lib::repo::Repo = readonly.as_ref();
+    let resolve = |id: Option<&ChangeId>| {
+        crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), prefixes, id).map_err(|e| res(e, id))
     };
-    pollster::block_on(reader.files(Diff::new(from.tree(), to.tree())))
+    pollster::block_on(async {
+        // `cmd_diff` (`cli/src/commands/diff.rs` @ v0.46.0), for a single revision.
+        let mut records = CopyRecords::default();
+        let (from_tree, to_commit, from_commit_id) = match &options.revisions {
+            DiffRevisions::Revision(revision) => {
+                let commit = resolve(revision.as_ref())?;
+                let parents = commit.parents().await.map_err(be)?;
+                for parent in &parents {
+                    add_copy_records(repo.store(), parent, &commit, matcher.as_ref(), &mut records).await?;
+                }
+                let from_tree = merge_commit_trees(repo, &parents).await.map_err(be)?;
+                (from_tree, commit, None)
+            }
+            DiffRevisions::FromTo { from, to } => {
+                let from = resolve(from.as_ref())?;
+                let to = resolve(to.as_ref())?;
+                add_copy_records(repo.store(), &from, &to, matcher.as_ref(), &mut records).await?;
+                (from.tree(), to, Some(CommitId(from.id().hex())))
+            }
+        };
+        let to_tree = to_commit.tree();
+        let mut files = reader
+            .files(Diff::new(&from_tree, &to_tree), matcher.as_ref(), &records)
+            .await?;
+        crate::mutate::warn_unmatched(workspace, sink, &options.paths, &[&from_tree, &to_tree])?;
+        if options.summary {
+            for file in &mut files {
+                file.hunks.clear();
+            }
+        }
+        Ok(RevisionDiff {
+            operation_id: OperationId(readonly.op_id().hex()),
+            commit_id: CommitId(to_commit.id().hex()),
+            from_commit_id,
+            files,
+        })
+    })
+}
+
+/// The CLI's `get_copy_records` (`cli/src/diff_util.rs:676-689` @ v0.46.0): the records from
+/// `root` to `head` whose TARGET `matcher` matches, added to `records`.
+async fn add_copy_records(
+    store: &Store,
+    root: &Commit,
+    head: &Commit,
+    matcher: &dyn Matcher,
+    records: &mut CopyRecords,
+) -> Result<(), MutateError> {
+    let found: Vec<_> = store
+        .get_copy_records(None, root.id(), head.id())
+        .map_err(be)?
+        .try_filter(|record| std::future::ready(matcher.matches(&record.target)))
+        .try_collect()
+        .await
+        .map_err(be)?;
+    records.add_records(found);
+    Ok(())
 }
 
 /// What one call reads every file with.
@@ -162,56 +318,150 @@ struct DiffReader<'a> {
     mode: LineCompareMode,
 }
 
-impl DiffReader<'_> {
-    async fn files(&self, trees: Diff<&MergedTree>) -> Result<Vec<FileDiff>, MutateError> {
+impl<'a> DiffReader<'a> {
+    /// The reader for `store` under the effective `diff.git.context` / `ui.conflict-marker-style`.
+    fn new(
+        store: &'a Store,
+        config: &StackedConfig,
+        context: Option<usize>,
+        whitespace: Whitespace,
+    ) -> Result<Self, MutateError> {
+        let config_context = crate::config::diff_git_context(config).map_err(cfg)?;
+        let marker_style = crate::config::conflict_marker_style(config).map_err(cfg)?;
+        Ok(Self {
+            store,
+            materialize: ConflictMaterializeOptions {
+                marker_style,
+                marker_len: None,
+                merge: store.merge_options().clone(),
+            },
+            context: context.unwrap_or(config_context),
+            mode: match whitespace {
+                Whitespace::Exact => LineCompareMode::Exact,
+                Whitespace::IgnoreAllSpace => LineCompareMode::IgnoreAllSpace,
+                Whitespace::IgnoreSpaceChange => LineCompareMode::IgnoreSpaceChange,
+            },
+        })
+    }
+
+    /// `show_git_diff`'s per-entry reads over `diff_stream_with_copies` (an empty `records`
+    /// behaves as the plain `diff_stream`).
+    async fn files(
+        &self,
+        trees: Diff<&MergedTree>,
+        matcher: &dyn Matcher,
+        records: &CopyRecords,
+    ) -> Result<Vec<FileDiff>, MutateError> {
         let labels = trees.map(MergedTree::labels);
-        let mut stream = trees.before.diff_stream(trees.after, &EverythingMatcher);
+        let mut stream = trees.before.diff_stream_with_copies(trees.after, matcher, records);
         let mut files = Vec::new();
         while let Some(entry) = stream.next().await {
             let values = entry.values.map_err(be)?;
+            let kind = change_kind(&entry.path, &values);
             let sides = Diff::new(
-                materialize_tree_value(self.store, &entry.path, values.before, labels.before)
+                materialize_tree_value(self.store, entry.path.source(), values.before, labels.before)
                     .await
                     .map_err(be)?,
-                materialize_tree_value(self.store, &entry.path, values.after, labels.after)
+                materialize_tree_value(self.store, entry.path.target(), values.after, labels.after)
                     .await
                     .map_err(be)?,
             );
-            files.push(self.file(&entry.path, sides).await?);
+            files.push(self.file(&entry.path, kind, sides).await?);
         }
         Ok(files)
     }
 
-    async fn file(&self, path: &RepoPath, sides: Diff<MaterializedTreeValue>) -> Result<FileDiff, MutateError> {
+    async fn file(
+        &self,
+        path: &CopiesTreeDiffEntryPath,
+        kind: ChangeKind,
+        sides: Diff<MaterializedTreeValue>,
+    ) -> Result<FileDiff, MutateError> {
         let executable = sides.as_ref().map(file_like_executable);
-        let left = git_diff_part(path, sides.before, &self.materialize).await.map_err(be)?;
-        let right = git_diff_part(path, sides.after, &self.materialize).await.map_err(be)?;
+        let left = git_diff_part(path.source(), sides.before, &self.materialize)
+            .await
+            .map_err(be)?;
+        let right = git_diff_part(path.target(), sides.after, &self.materialize)
+            .await
+            .map_err(be)?;
         let texts = Diff::new(&left.content.contents[..], &right.content.contents[..]);
         let file_like = executable.before.is_some() && executable.after.is_some();
-        let file_sections = if file_like && is_text(texts.before) && is_text(texts.after) {
-            section_keys(texts)
-        } else {
-            Vec::new()
-        };
+        // A copy's source→target keys are none the builtin diff editor (no copy records) accepts.
+        let file_sections =
+            if path.copy_operation().is_none() && file_like && is_text(texts.before) && is_text(texts.after) {
+                section_keys(texts)
+            } else {
+                Vec::new()
+            };
         // The CLI skips equal contents before its binary check (`show_git_diff`).
         let binary = texts.before != texts.after && (left.content.is_binary || right.content.is_binary);
         let hunks = if binary || texts.before == texts.after {
             Vec::new()
         } else {
             let language = path
+                .target()
                 .components()
                 .next_back()
                 .and_then(|name| SourceLanguage::from_file_name(name.as_internal_str()));
             hunks_of(texts, language, self.context, self.mode, &file_sections)
         };
+        let mode_change = file_like && executable.before != executable.after;
+        let (removed, added) = totals(&hunks);
         Ok(FileDiff {
-            path: path.as_internal_file_string().to_owned(),
+            path: path.target().as_internal_file_string().to_owned(),
+            kind,
             binary,
-            mode_change: file_like && executable.before != executable.after,
+            mode_change,
             sections: file_sections,
+            fingerprint: fingerprint(&hunks, binary.then_some(texts), mode_change),
             hunks,
+            removed,
+            added,
         })
     }
+}
+
+/// `tree_file_changes`' classification ([`crate::commit_views`]): a copy source first, then
+/// presence.
+fn change_kind(path: &CopiesTreeDiffEntryPath, values: &Diff<MergedTreeValue>) -> ChangeKind {
+    let from = || PathBuf::from(path.source().as_internal_file_string());
+    match path.copy_operation() {
+        Some(CopyOperation::Rename) => ChangeKind::Renamed { from: from() },
+        Some(CopyOperation::Copy) => ChangeKind::Copied { from: from() },
+        None if values.before.is_absent() && values.after.is_present() => ChangeKind::Added,
+        None if values.before.is_present() && values.after.is_absent() => ChangeKind::Removed,
+        None => ChangeKind::Modified,
+    }
+}
+
+/// The sums of the hunks' removed and added counts.
+fn totals(hunks: &[Hunk]) -> (u32, u32) {
+    hunks.iter().fold((0, 0), |(removed, added), hunk| {
+        (removed.saturating_add(hunk.removed), added.saturating_add(hunk.added))
+    })
+}
+
+/// [`FileDiff::fingerprint`]: the changed lines, then a binary change's contents, then a mode
+/// change's marker.
+fn fingerprint(hunks: &[Hunk], binary: Option<Diff<&[u8]>>, mode_change: bool) -> String {
+    let tagged = |tag: &[u8], text: &str| [tag, text.as_bytes()].concat();
+    let mut parts: Vec<Vec<u8>> = hunks
+        .iter()
+        .flat_map(|hunk| &hunk.lines)
+        .filter_map(|line| match line {
+            HunkLine::Context(_) => None,
+            HunkLine::Removed(text) => Some(tagged(b"-", text)),
+            HunkLine::Added(text) => Some(tagged(b"+", text)),
+        })
+        .collect();
+    if let Some(texts) = binary {
+        parts.push([&b"<"[..], texts.before].concat());
+        parts.push([&b">"[..], texts.after].concat());
+    }
+    if mode_change {
+        parts.push(b"x".to_vec());
+    }
+    encode_hex(&blake2b_hash(&parts))
 }
 
 /// A side's executable bit when it is file-like, as the builtin diff editor reads it
@@ -341,8 +591,41 @@ mod tests {
     use jj_lib::diff_presentation::LineCompareMode;
     use jj_lib::merge::Diff;
 
-    use super::{hunks_of, section_keys, Hunk, HunkKey, HunkLine};
+    use super::{fingerprint, hunks_of, section_keys, totals, Hunk, HunkKey, HunkLine};
     use crate::source_symbol::SourceLanguage;
+
+    /// The fingerprint keys the changed lines only: shifted line numbers keep it, a different
+    /// changed line, a binary change's contents and a mode change alter it; it is the documented
+    /// blake2b shape.
+    #[test]
+    fn the_fingerprint_keys_the_changed_lines_only() {
+        let base = diff("a\nfoo\n", "a\nbar\n", None, 3);
+        let shifted = diff("x\ny\na\nfoo\n", "x\ny\na\nbar\n", None, 3);
+        let other = diff("a\nfoo\n", "a\nbaz\n", None, 3);
+        assert_eq!(fingerprint(&base, None, false), fingerprint(&shifted, None, false));
+        assert_ne!(fingerprint(&base, None, false), fingerprint(&other, None, false));
+        let expected = jj_lib::hex_util::encode_hex(&jj_lib::content_hash::blake2b_hash(&vec![
+            b"-foo\n".to_vec(),
+            b"+bar\n".to_vec(),
+        ]));
+        assert_eq!(fingerprint(&base, None, false), expected);
+        assert_eq!(expected.len(), 128);
+        let empty = fingerprint(&[], None, false);
+        assert_ne!(fingerprint(&[], None, true), empty);
+        let one = fingerprint(&[], Some(Diff::new(&b"\0a"[..], &b"\0b"[..])), false);
+        let two = fingerprint(&[], Some(Diff::new(&b"\0a"[..], &b"\0c"[..])), false);
+        assert_ne!(one, two);
+        assert_ne!(one, empty);
+    }
+
+    /// A file's counts are its hunks' sums.
+    #[test]
+    fn totals_sum_the_hunk_counts() {
+        let hunks = diff(LEFT, RIGHT, None, 0);
+        assert_eq!(totals(&hunks), (3, 3));
+        assert_eq!(totals(&diff("a\n", "a\nb\nc\n", None, 3)), (0, 2));
+        assert_eq!(totals(&[]), (0, 0));
+    }
 
     fn key(old_start: u32, old_count: u32, new_start: u32, new_count: u32) -> HunkKey {
         HunkKey {

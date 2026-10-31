@@ -24323,7 +24323,18 @@ class HunkObjectBuilder extends fb.ObjectBuilder {
 ///  sides are file-like and differ in the executable bit (the builtin diff editor's mode toggle,
 ///  `FileSelection.mode`). `sections`: every `HunkKey` `SelectTreeRequest` accepts for the file;
 ///  empty when it can only be selected whole, or by its mode when `mode_change`. `hunks`: in file
-///  order. Vectors are always present.
+///  order; empty in summary mode. Vectors are always present.
+///
+///  Story 5.6 appends: `kind` (a copy record's source first, then presence; `path` is the copy's
+///  TARGET) and `from_path` (the source, set ONLY for Renamed/Copied, as in `FileChange`; a copied
+///  or renamed file has no `sections`); `removed` / `added`, the sums of its hunks' counts (0 for
+///  binary and mode-only changes, kept in summary mode); `fingerprint`, the lowercase hex of
+///  jj-lib's blake2b over the changed lines (removed `-`-tagged, added `+`-tagged, no line
+///  numbers, no context), then a binary change's two contents and a mode change's marker — stable
+///  across processes, but dependent on the call's whitespace mode and the effective
+///  `ui.conflict-marker-style`. It covers content only (no path, no kind): every content-less
+///  change (a pure rename, an empty file added) shares one value, so a Viewed key combines it with
+///  the path.
 class FileDiff {
   FileDiff._(this._bc, this._bcOffset);
   factory FileDiff(List<int> bytes) {
@@ -24341,10 +24352,15 @@ class FileDiff {
   bool get modeChange => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
   List<HunkKey>? get sections => const fb.ListReader<HunkKey>(HunkKey.reader).vTableGetNullable(_bc, _bcOffset, 10);
   List<Hunk>? get hunks => const fb.ListReader<Hunk>(Hunk.reader).vTableGetNullable(_bc, _bcOffset, 12);
+  ChangeKind get kind => ChangeKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 14, 0));
+  String? get fromPath => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 16);
+  int get removed => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 18, 0);
+  int get added => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 20, 0);
+  String? get fingerprint => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 22);
 
   @override
   String toString() {
-    return 'FileDiff{path: ${path}, binary: ${binary}, modeChange: ${modeChange}, sections: ${sections}, hunks: ${hunks}}';
+    return 'FileDiff{path: ${path}, binary: ${binary}, modeChange: ${modeChange}, sections: ${sections}, hunks: ${hunks}, kind: ${kind}, fromPath: ${fromPath}, removed: ${removed}, added: ${added}, fingerprint: ${fingerprint}}';
   }
 }
 
@@ -24361,7 +24377,7 @@ class FileDiffBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(10);
   }
 
   int addPathOffset(int? offset) {
@@ -24389,6 +24405,31 @@ class FileDiffBuilder {
     return fbBuilder.offset;
   }
 
+  int addKind(ChangeKind? kind) {
+    fbBuilder.addInt8(5, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addFromPathOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemoved(int? removed) {
+    fbBuilder.addUint32(7, removed);
+    return fbBuilder.offset;
+  }
+
+  int addAdded(int? added) {
+    fbBuilder.addUint32(8, added);
+    return fbBuilder.offset;
+  }
+
+  int addFingerprintOffset(int? offset) {
+    fbBuilder.addOffset(9, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -24400,6 +24441,11 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
   final bool? _modeChange;
   final List<HunkKeyObjectBuilder>? _sections;
   final List<HunkObjectBuilder>? _hunks;
+  final ChangeKind? _kind;
+  final String? _fromPath;
+  final int? _removed;
+  final int? _added;
+  final String? _fingerprint;
 
   FileDiffObjectBuilder({
     String? path,
@@ -24407,11 +24453,21 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
     bool? modeChange,
     List<HunkKeyObjectBuilder>? sections,
     List<HunkObjectBuilder>? hunks,
+    ChangeKind? kind,
+    String? fromPath,
+    int? removed,
+    int? added,
+    String? fingerprint,
   }) : _path = path,
        _binary = binary,
        _modeChange = modeChange,
        _sections = sections,
-       _hunks = hunks;
+       _hunks = hunks,
+       _kind = kind,
+       _fromPath = fromPath,
+       _removed = removed,
+       _added = added,
+       _fingerprint = fingerprint;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -24423,12 +24479,19 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
     final int? hunksOffset = _hunks == null
         ? null
         : fbBuilder.writeList(_hunks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(5);
+    final int? fromPathOffset = _fromPath == null ? null : fbBuilder.writeString(_fromPath!);
+    final int? fingerprintOffset = _fingerprint == null ? null : fbBuilder.writeString(_fingerprint!);
+    fbBuilder.startTable(10);
     fbBuilder.addOffset(0, pathOffset);
     fbBuilder.addBool(1, _binary);
     fbBuilder.addBool(2, _modeChange);
     fbBuilder.addOffset(3, sectionsOffset);
     fbBuilder.addOffset(4, hunksOffset);
+    fbBuilder.addInt8(5, _kind?.value);
+    fbBuilder.addOffset(6, fromPathOffset);
+    fbBuilder.addUint32(7, _removed);
+    fbBuilder.addUint32(8, _added);
+    fbBuilder.addOffset(9, fingerprintOffset);
     return fbBuilder.endTable();
   }
 
@@ -24441,8 +24504,10 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  A line-level diff between two trees (Story 5.5) — `zanshin_jj::Repo::compute_hunks`' files,
-///  in its order. `files` is always present.
+///  A line-level diff (Story 5.5) — `zanshin_jj::Repo::diff`'s files, in its order. `files` is
+///  always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
+///  at; `commit_id`, the revision (`-r`) or `to` (`--from`/`--to`); `from_commit_id`, `from`,
+///  ABSENT for the revision form.
 class Diff {
   Diff._(this._bc, this._bcOffset);
   factory Diff(List<int> bytes) {
@@ -24456,10 +24521,13 @@ class Diff {
   final int _bcOffset;
 
   List<FileDiff>? get files => const fb.ListReader<FileDiff>(FileDiff.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  String? get operationId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get fromCommitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'Diff{files: ${files}}';
+    return 'Diff{files: ${files}, operationId: ${operationId}, commitId: ${commitId}, fromCommitId: ${fromCommitId}}';
   }
 }
 
@@ -24476,11 +24544,26 @@ class DiffBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(4);
   }
 
   int addFilesOffset(int? offset) {
     fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addOperationIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFromCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
     return fbBuilder.offset;
   }
 
@@ -24491,10 +24574,19 @@ class DiffBuilder {
 
 class DiffObjectBuilder extends fb.ObjectBuilder {
   final List<FileDiffObjectBuilder>? _files;
+  final String? _operationId;
+  final String? _commitId;
+  final String? _fromCommitId;
 
   DiffObjectBuilder({
     List<FileDiffObjectBuilder>? files,
-  }) : _files = files;
+    String? operationId,
+    String? commitId,
+    String? fromCommitId,
+  }) : _files = files,
+       _operationId = operationId,
+       _commitId = commitId,
+       _fromCommitId = fromCommitId;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -24502,8 +24594,14 @@ class DiffObjectBuilder extends fb.ObjectBuilder {
     final int? filesOffset = _files == null
         ? null
         : fbBuilder.writeList(_files!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(1);
+    final int? operationIdOffset = _operationId == null ? null : fbBuilder.writeString(_operationId!);
+    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? fromCommitIdOffset = _fromCommitId == null ? null : fbBuilder.writeString(_fromCommitId!);
+    fbBuilder.startTable(4);
     fbBuilder.addOffset(0, filesOffset);
+    fbBuilder.addOffset(1, operationIdOffset);
+    fbBuilder.addOffset(2, commitIdOffset);
+    fbBuilder.addOffset(3, fromCommitIdOffset);
     return fbBuilder.endTable();
   }
 

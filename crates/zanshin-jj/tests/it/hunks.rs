@@ -16,8 +16,8 @@ use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
-    Backend, ChangeId, FileChoice, FileDiff, FileSelection, HunkKey, HunkLine, HunksOptions, MutateError, Repo,
-    SelectTreeOptions, SelectedTreeId, Whitespace,
+    Backend, ChangeId, ChangeKind, FileChoice, FileDiff, FileSelection, HunkKey, HunkLine, HunksOptions, MutateError,
+    Repo, SelectTreeOptions, SelectedTreeId, Whitespace,
 };
 
 /// The three sections of `f.txt`.
@@ -316,6 +316,13 @@ fn added_and_removed_files_have_no_sections() {
     let hunk = only_hunk(gone);
     assert_eq!((hunk.before_range.clone(), hunk.after_range.clone()), (0..1, 0..0));
     assert_eq!(hunk.lines, [HunkLine::Removed("g\n".to_owned())]);
+
+    // Story 5.6: kinds from presence (no copy records), counts the hunks' sums.
+    assert_eq!(new.kind, ChangeKind::Added);
+    assert_eq!(gone.kind, ChangeKind::Removed);
+    assert_eq!((new.removed, new.added, gone.removed, gone.added), (0, 1, 1, 0));
+    let f = file(&diffs, "f.txt");
+    assert_eq!((f.kind.clone(), f.removed, f.added), (ChangeKind::Modified, 3, 3));
 }
 
 /// A mode-only change has no hunks and no sections, but the mode toggle, which round-trips
@@ -328,6 +335,9 @@ fn a_mode_only_change_has_the_toggle_and_no_hunks() {
     let mode = file(&diffs, "mode.sh");
     assert!(mode.mode_change && !mode.binary);
     assert!(mode.hunks.is_empty() && mode.sections.is_empty());
+    assert_eq!((mode.removed, mode.added), (0, 0));
+    // Two mode-only changes share the mode marker's fingerprint.
+    assert_eq!(mode.fingerprint, file(&diffs, "binmode.dat").fingerprint);
     let both = file(&diffs, "both.sh");
     assert!(both.mode_change && both.sections == [key(0, 1, 0, 1)]);
     assert_sections_round_trip(&mut fx, &[mode.clone(), both.clone()]);
@@ -351,6 +361,8 @@ fn binary_content_is_marked_and_has_no_hunks() {
     let bin = file(&diffs, "bin.dat");
     assert!(bin.binary && !bin.mode_change);
     assert!(bin.hunks.is_empty() && bin.sections.is_empty());
+    assert_eq!((bin.removed, bin.added), (0, 0));
+    assert_ne!(bin.fingerprint, file(&diffs, "binmode.dat").fingerprint);
 }
 
 /// A last line without `\n` keeps that state on both sides.
