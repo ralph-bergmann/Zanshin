@@ -2359,3 +2359,15 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **A pending action on a member folded into a collapsed stack should dim the stack card, but no test renders that.** Low.
   - `GraphCanvas.build` maps `pendingKeys` through `layout.placeOfKey` (app/lib/src/features/graph/graph_canvas.dart); no canvas test renders a pending key (the pending look had no render test before this story either).
   - **Follow-up:** a one-case canvas test with `pendingKeys: {<folded member>}` asserting the stack card's disabled opacity, whenever the pending look gets a render test.
+
+## Surfaced in Story 10.21 (bmad-build-auto, 2026-11-01)
+
+- **The search field, its menu, suggestions and footer have not been compared against the DS search cards in the running catalogue; only widget tests check them.** Medium.
+  - The unattended run could not run the Widgetbook catalogue, so the Marionette visual check was not done; `app/test/features/graph/graph_search_field_test.dart` asserts texts, widths, rows and semantics only (`app/lib/src/features/graph/graph_search_field.dart`).
+  - **Follow-up:** run the Marionette / Playwright check of the floating shell's search states against `design_system/components/search/*.card.html` and fix what differs.
+- **The field is no true combobox with a listbox and an active descendant (item 9); VoiceOver gets the keyboard row only as the field's hint, unheard on a device.** Low.
+  - Flutter's `SemanticsRole.comboBox` is unimplemented in this SDK (`flutter/lib/src/semantics/semantics.dart:198`); `graph_search_field.dart` sets `textField: true` plus the keyboard row's label as hint.
+  - **Follow-up:** listen with VoiceOver; adopt the combobox/listbox roles once Flutter implements them.
+- **The search's production pieces have no production caller until 10.12 mounts the graph: `RepoGraphSearchSource`, `ProjectSearchStore`, `GraphSearchShortcuts` and the `logDefaults` re-read on window focus.** Low.
+  - No file in `app/lib` builds `GraphViewControls` or `RepoGraphSource`; the only mount is `app/widgetbook/folders/graph.dart`. `RepoGraphSearchSource.files` and `user.email` through `configGet` are untested for that reason (`app/lib/src/features/graph/graph_ports.dart`).
+  - **Follow-up:** 10.12 wires them in the project window (`ProjectSearchStore(store, root)`, `userEmail` via `ZanshinWorker.configGet('user.email', workspaceRoot:)`, `GraphSearchShortcuts` around the window, `model.configChanged()` on window focus) and tests the repo source.
