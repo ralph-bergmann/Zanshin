@@ -16,12 +16,12 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Story 10.5: Graph view model and repository wiring (done)
 - Story 10.6: Selection, hover focus, callout, @ locator, keyboard (done)
 - Story 10.7: Graph controls in the floating top bar (done)
-- Story 10.8: Inspector
+- Story 10.8: Inspector (done)
 - Story 10.9: Action runner (done)
 - Story 10.10: Drag-and-drop on the graph
 - Story 10.11: Content paging (done)
 - Story 10.12: Adopt the backend layout (real `GraphSource`)
-- Story 10.13: Time-layout lab, experiment (decided)
+- Story 10.13: Time-layout lab, experiment (done, outcome decided)
 - Story 10.14: Bookmarks in the floating rail
 - Story 10.15: Card action menu and bookmark popover
 - Story 10.16: Minimap
