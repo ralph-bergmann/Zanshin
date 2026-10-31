@@ -506,6 +506,55 @@ void main() {
     });
   });
 
+  test('edit runs jj edit on the key and reloads; without an actions port it does nothing', () {
+    fakeAsync((async) {
+      final actions = _Actions();
+      final GraphViewModel model = start(async, actions: actions);
+      unawaited(model.edit('b'));
+      async.flushMicrotasks();
+      expect(actions.ran.single.verb, 'edit');
+      expect(actions.ran.single.ids, <String>['b']);
+      expect(source.requests, hasLength(2));
+      expect(model.selected, isNull, reason: 'edit selects nothing');
+      model.dispose();
+
+      final GraphViewModel bare = start(async);
+      GraphActionResult? result = const GraphActionDone();
+      unawaited(bare.edit('b').then((r) => result = r));
+      async.flushMicrotasks();
+      expect(result, isNull);
+      bare.dispose();
+    });
+  });
+
+  test('goTo selects, reveals centred with animation and pulses; again restarts it; an absent key does nothing', () {
+    fakeAsync((async) {
+      final GraphViewModel model = start(async)..goTo('c');
+      expect(model.selected, 'c');
+      expect(model.reveal?.key, 'c');
+      expect(model.reveal?.animate, isTrue);
+      final GraphPulse? first = model.pulse.value;
+      expect(first?.key, 'c');
+      model.goTo('c');
+      expect(model.pulse.value, isNot(first), reason: 'a repeat is a new pulse');
+      final GraphPulse? second = model.pulse.value;
+      model.goTo('zzz');
+      expect(model.pulse.value, second);
+      expect(model.selected, 'c');
+      model.dispose();
+    });
+  });
+
+  test('workingCopyDirection is what the view reports', () {
+    fakeAsync((async) {
+      final GraphViewModel model = start(async);
+      expect(model.workingCopyDirection.value, isNull);
+      model.setWorkingCopyDirection(GraphDirection.down);
+      expect(model.workingCopyDirection.value, GraphDirection.down);
+      model.dispose();
+    });
+  });
+
   test('disposed while logDefaults is pending: no request follows', () {
     fakeAsync((async) {
       final Completer<LogDefaults> gate = source.defaultsGate = Completer<LogDefaults>();

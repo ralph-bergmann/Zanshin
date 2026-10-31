@@ -84,6 +84,27 @@ void main() {
     expect(g.log.taps, <String>[before, ...row.map(big.keyOf)]);
   });
 
+  testWidgets('Story 10.6: a far animated reveal on 100k jumps and builds only the target viewport, no card between', (
+    tester,
+  ) async {
+    final g = GraphHarness(big);
+    await pumpGraph(tester, g);
+    final Set<String> start = g.mounted(tester);
+    g.log.clear();
+    final String target = big.keyOf(big.nodeCount ~/ 2);
+    g.controller.reveal(target, animate: true);
+    await tester.pump();
+    final Set<String> built = g.log.inits.keys.toSet();
+    expect(built, g.expectedMounted().difference(start));
+    expect(g.mounted(tester), contains(target));
+    final double half = g.cardRect(big.indexOfKey(target)!).top;
+    for (final key in built) {
+      expect((g.cardRect(big.indexOfKey(key)!).top - half).abs(), lessThan(1200), reason: '$key lies between');
+    }
+    await tester.pumpAndSettle();
+    expect(g.log.inits.keys.toSet(), built, reason: 'no glide builds cards on the way');
+  });
+
   group('(d) input', () {
     late GraphHarness g;
     Future<void> pumpMid(WidgetTester tester) async {

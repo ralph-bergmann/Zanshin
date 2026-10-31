@@ -70,6 +70,40 @@ class GraphStale {
   int get hashCode => Object.hash(cause, message, command);
 }
 
+/// Where the working copy lies outside the unobscured area (Story 10.6 item 6).
+enum GraphDirection {
+  /// Wholly above it.
+  up,
+
+  /// Wholly below it.
+  down,
+
+  /// Beside it, to the left.
+  left,
+
+  /// Beside it, to the right.
+  right,
+}
+
+/// A go-to's pulse (Story 10.6 item 12): its [key] and a [serial] that tells a repeat onto the same card apart.
+@immutable
+class GraphPulse {
+  /// A pulse on [key].
+  const GraphPulse(this.key, this.serial);
+
+  /// The pulsing card's key.
+  final String key;
+
+  /// Increases with every go-to.
+  final int serial;
+
+  @override
+  bool operator ==(Object other) => other is GraphPulse && other.key == key && other.serial == serial;
+
+  @override
+  int get hashCode => Object.hash(key, serial);
+}
+
 /// The graph's view model (Story 10.5): it requests layouts through a [GraphSource] and keeps the view coherent while
 /// jj re-derives the graph after every operation (ADR-0002).
 ///
@@ -85,6 +119,8 @@ class GraphStale {
 ///   once (animated).
 /// - **States**: [loading], [empty], [revsetError] and [error] (the last layout kept), [stale], [degraded].
 /// - **One "now"** ([now]): fresh on every landed layout and on [refreshNow], ticked on each minute boundary.
+/// - **Story 10.6**: [edit] runs `jj edit` for a double-click, [goTo] selects, reveals and [pulse]s a change (10.21),
+///   and the view publishes where @ lies off screen as [workingCopyDirection] for the @ pill.
 @inject
 class GraphViewModel extends ChangeNotifier {
   /// A view model; [init] connects it.
@@ -96,6 +132,9 @@ class GraphViewModel extends ChangeNotifier {
   StreamSubscription<RepoEvent>? _events;
   Timer? _tick;
   final _now = ValueNotifier<int>(0);
+  final _workingCopyDirection = ValueNotifier<GraphDirection?>(null);
+  final _pulse = ValueNotifier<GraphPulse?>(null);
+  var _pulseSerial = 0;
   var _disposed = false;
 
   LogDefaults? _defaults;
@@ -202,6 +241,44 @@ class GraphViewModel extends ChangeNotifier {
 
   /// "Now" for the cards and the day axis, in epoch ms.
   ValueListenable<int> get now => _now;
+
+  /// Where @ lies outside the unobscured area, as the view last measured it; null while any part of it shows (or
+  /// there is no @).
+  ValueListenable<GraphDirection?> get workingCopyDirection => _workingCopyDirection;
+
+  /// The view's measurement of [workingCopyDirection].
+  void setWorkingCopyDirection(GraphDirection? direction) {
+    if (!_disposed) {
+      _workingCopyDirection.value = direction;
+    }
+  }
+
+  /// The last go-to's pulse; the canvas runs it once per instance.
+  ValueListenable<GraphPulse?> get pulse => _pulse;
+
+  /// Go-to-change (Story 10.6 items 11–12; 10.21 calls it): selects [key], reveals it centred and pulses it; nothing
+  /// when the shown layout lacks it.
+  void goTo(String key) {
+    if (_layout?.indexOfKey(key) == null) {
+      return;
+    }
+    select(key);
+    _revealExplicit(key);
+    _pulse.value = GraphPulse(key, ++_pulseSerial);
+  }
+
+  /// Runs `jj edit` on [key] (a double-click, no confirmation); null when [init] was given no [GraphActions].
+  Future<GraphActionResult?> edit(String key) async {
+    if (_actions == null) {
+      return null;
+    }
+    try {
+      return await run(GraphAction('edit', ids: <String>[key]));
+    } on ZanshinFfiException catch (error) {
+      _log.warning('jj edit failed: ${error.code}');
+      return null;
+    }
+  }
 
   /// Shows [revset] and re-centres on @ — or reveals [reveal] instead (the precedence).
   void setRevset(String revset, {String? reveal}) {
@@ -458,6 +535,8 @@ class GraphViewModel extends ChangeNotifier {
     unawaited(_events?.cancel());
     _tick?.cancel();
     _now.dispose();
+    _workingCopyDirection.dispose();
+    _pulse.dispose();
     super.dispose();
   }
 }

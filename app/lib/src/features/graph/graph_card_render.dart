@@ -441,6 +441,8 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
   Rect? _legend;
   Rect? _add;
   Rect _more = Rect.zero;
+  // The other workspaces folded into the `+N` tag.
+  var _folded = const <String>[];
 
   /// The laid-out slots in local coordinates, for the yield witnesses.
   @visibleForTesting
@@ -661,6 +663,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     }
 
     final List<(_Item, double)> items = line();
+    _folded = others.length > shown ? others.sublist(shown) : const <String>[];
     for (final (_Item item, double width) in items) {
       item.width = width;
       item.text?.layout(maxWidth: math.max(0, item.deco == _Deco.none ? width : width - 2 * _slotPadX));
@@ -1028,7 +1031,36 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
         _pointerOnAdd = onAdd;
         markNeedsPaint();
       }
+      _controller.enter(_data.key, _hoverAreaAt(entry.localPosition));
     }
+  }
+
+  /// The part of the card at [p] (local) for the peek and the affordance tooltips (Story 10.6).
+  GraphCardHoverArea _hoverAreaAt(Offset p) {
+    final Offset origin = _card.topLeft;
+    GraphCardHoverArea area(GraphCardHoverPart part, Rect rect, String? tooltip) =>
+        (part: part, rect: rect.shift(-origin), tooltip: tooltip);
+    if (_moreRevealed && _inCircle(_more, p)) {
+      return area(GraphCardHoverPart.more, _more, _strings.cardActionsTooltip);
+    }
+    final Rect? legend = _legend;
+    if (legend != null && RRect.fromRectAndRadius(legend, const Radius.circular(_pillH / 2)).contains(p)) {
+      return area(
+        GraphCardHoverPart.bookmarks,
+        legend,
+        _strings.cardBookmarks(_data.refs.map((r) => r.display).join(', ')),
+      );
+    }
+    final Rect? add = _add;
+    if (add != null && _addRevealed && _inCircle(add, p)) {
+      return area(GraphCardHoverPart.bookmarks, add, _strings.cardAddBookmark);
+    }
+    for (final _Item item in _items) {
+      if (item.kind == GraphCardSlot.moreTag && item.rect.contains(p)) {
+        return area(GraphCardHoverPart.moreTag, item.rect, _folded.join(', '));
+      }
+    }
+    return area(GraphCardHoverPart.body, _card, null);
   }
 
   Rect _global(Rect rect) => MatrixUtils.transformRect(getTransformTo(null), rect);
@@ -1045,7 +1077,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
           _controller.openBookmarks(_data.key, _global(_legend ?? _add ?? _card));
         }
       case _Area.body:
-        _controller.select(_data.key);
+        _controller.click(_data.key, editable: !_data.immutable);
       case null:
         break;
     }
@@ -1054,12 +1086,10 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
   void _onSecondaryTapUp(TapUpDetails details) =>
       _controller.openMenu(_data.key, Rect.fromLTWH(details.globalPosition.dx, details.globalPosition.dy, 0, 0));
 
-  void _enter(PointerEnterEvent event) => _controller.hovered.value = _data.key;
+  void _enter(PointerEnterEvent event) => _controller.enter(_data.key, _hoverAreaAt(event.localPosition));
 
   void _exit(PointerExitEvent event) {
-    if (_controller.hovered.value == _data.key) {
-      _controller.hovered.value = null;
-    }
+    _controller.leave(_data.key);
     _pointerOnMore = false;
     _pointerOnAdd = false;
   }

@@ -320,6 +320,9 @@ void main() {
 
     testWidgets('with motion an animated reveal glides there', (tester) async {
       final GraphHarness g = await pumpChain(tester);
+      // Start within 3 viewports of r50 (decision (g)).
+      g.v.jumpTo(g.cardRect(g.layout.indexOfKey('r50')!).center.dy - 300 - 1000);
+      await tester.pump();
       g.controller.reveal('r50', animate: true);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 16));
@@ -330,16 +333,69 @@ void main() {
         const Offset(400, 300),
       );
 
-      g.reveal = GraphReveal('r152', animate: true);
+      // Within 3 viewports (Story 10.6, decision (g)): r62 lies 12 rows (1,320 px) away, in a column it can centre.
+      g.reveal = GraphReveal('r62', animate: true);
       await tester.pumpWidget(g.build());
       await tester.pump(const Duration(milliseconds: 16));
-      final double target = g.cardRect(g.layout.indexOfKey('r152')!).center.dy - 300;
+      final double target = g.cardRect(g.layout.indexOfKey('r62')!).center.dy - 300;
       expect(g.v.offset, isNot(closeTo(target, 1)), reason: 'still gliding');
       await tester.pumpAndSettle();
+      expect(
+        tester.getCenter(find.byWidgetPredicate((w) => w is TestCard && w.nodeKey == 'r62')),
+        const Offset(400, 300),
+      );
+    });
+
+    testWidgets('an animated reveal beyond 3 viewports jumps (decision (g)), by the controller and by a relayout', (
+      tester,
+    ) async {
+      final GraphHarness g = await pumpChain(tester);
+      g.controller.reveal('r50', animate: true);
+      await tester.pumpAndSettle();
+      g.controller.reveal('r152', animate: true);
+      await tester.pump();
       expect(
         tester.getCenter(find.byWidgetPredicate((w) => w is TestCard && w.nodeKey == 'r152')),
         const Offset(400, 300),
       );
+      g.reveal = GraphReveal('r50', animate: true);
+      await tester.pumpWidget(g.build());
+      expect(
+        tester.getCenter(find.byWidgetPredicate((w) => w is TestCard && w.nodeKey == 'r50')),
+        const Offset(400, 300),
+      );
+    });
+
+    testWidgets('a covered reveal leaves a wholly visible card alone and centres one under the insets', (tester) async {
+      final GraphHarness g = await pumpChain(tester);
+      g.insets = const EdgeInsets.only(left: 300);
+      await tester.pumpWidget(g.build());
+      final Rect area = g.insets.deflateRect(Offset.zero & surface);
+      Rect screen(String key) =>
+          tester.getRect(find.byWidgetPredicate((w) => w is TestCard && w.nodeKey == key)).deflate(graphCardOverhang);
+      final String visible = g.layout.keyOf(
+        <int>[
+          for (var i = 0; i < g.layout.nodeCount; i++) i,
+        ].firstWhere((i) {
+          final Rect r = g.cardRect(i).shift(-g.scroll);
+          return r.left >= area.left && r.right <= area.right && r.top >= area.top && r.bottom <= area.bottom;
+        }),
+      );
+      final Offset before = g.scroll;
+      g.controller.reveal(visible, alignment: GraphRevealAlignment.covered);
+      await tester.pump();
+      expect(g.scroll, before);
+      final String covered = g.layout.keyOf(
+        <int>[
+          for (var i = 0; i < g.layout.nodeCount; i++) i,
+        ].firstWhere((i) {
+          final Rect r = g.cardRect(i).shift(-g.scroll);
+          return r.overlaps(Offset.zero & surface) && r.left > 0 && r.left < area.left;
+        }),
+      );
+      g.controller.reveal(covered, alignment: GraphRevealAlignment.covered);
+      await tester.pump();
+      expect(screen(covered).center, area.center);
     });
 
     testWidgets('a minimal reveal scrolls just enough to show the whole card', (tester) async {

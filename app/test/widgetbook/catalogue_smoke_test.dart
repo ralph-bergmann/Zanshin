@@ -73,6 +73,8 @@ void main() {
           'graph/viewport/scale',
           'graph/viewport/view-model',
           'graph/card/states',
+          'graph/peek/open',
+          'graph/@-pill/directions',
           'graph/stale-notice/variants',
         ]),
       );

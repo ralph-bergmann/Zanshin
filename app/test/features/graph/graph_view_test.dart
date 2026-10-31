@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
+import 'package:zanshin/src/features/graph/graph_card_render.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
+import 'package:zanshin/src/features/graph/graph_peek.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
@@ -425,5 +429,524 @@ void main() {
     expect(cardsOf(tester).now.value, clock.millisecondsSinceEpoch);
     expect(viewportOf(tester).paintBackground, isNot(before), reason: 'a new day, a new painter');
     await finish(tester);
+  });
+
+  group('Story 10.6', () {
+    /// @ `w` on mutable `m`, on immutable `i`, on the root; each with content and a timestamp an hour before noon.
+    RecordedGraphLayout peekLayout() => handLayout(
+      const <(String, int, int)>[
+        ('wkmnvxoqrstl', 3, 0),
+        ('mzvqrstklnwp', 2, 0),
+        ('ivxzkqlmtnrw', 1, 0),
+        ('zzzzzzzz', 0, 0),
+      ],
+      edges: const <(int, int)>[(0, 1), (1, 2), (2, 3)],
+      workingCopy: 0,
+      root: 3,
+      flags: const <int>[0, 0, RecordedGraphLayout.flagImmutable, RecordedGraphLayout.flagImmutable],
+      prefixLengths: const <int>[2, 3, 2, 1],
+      // @ is also four other workspaces' working copy: its `+N` tag folds some of them.
+      workspaces: const <List<String>>[
+        <String>['default', 'ci', 'docs', 'release', 'scratch'],
+        <String>[],
+        <String>[],
+        <String>[],
+      ],
+      workspaceName: 'default',
+      timestamps: <int?>[for (var i = 0; i < 3; i++) noon.millisecondsSinceEpoch - 3600000, null],
+      contents: const <GraphCommitContent?>[
+        GraphCommitContent(subject: 'wip: the working copy', authorName: 'Ralph Stein'),
+        GraphCommitContent(subject: 'feat(onboarding): swipe gestures', authorName: 'Lena König'),
+        GraphCommitContent(subject: 'release: 1.4', authorEmail: 'bob@example.com'),
+        null,
+      ],
+    );
+
+    Future<TestGesture> hover(WidgetTester tester, Offset at) async {
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: at);
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      return mouse;
+    }
+
+    Future<void> leaveAll(WidgetTester tester, TestGesture mouse) async {
+      await mouse.moveTo(const Offset(799, 599));
+      await tester.pump(graphHoverIntent);
+      await tester.pumpAndSettle();
+    }
+
+    FocusNode graphFocus(WidgetTester tester) => tester
+        .widget<Focus>(find.byWidgetPredicate((w) => w is Focus && w.focusNode?.debugLabel == 'graph'))
+        .focusNode!;
+
+    testWidgets('Esc closes an open menu, then clears the selection, only while the graph has focus', (tester) async {
+      await pump(tester);
+      final GraphCardController cards = cardsOf(tester)..select('r104');
+      await tester.pumpAndSettle();
+      cards.menuOpen.value = 'r104';
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      expect(cards.menuOpen.value, 'r104', reason: 'the graph has no focus yet');
+      graphFocus(tester).requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      expect(cards.menuOpen.value, isNull);
+      expect(model.selected, 'r104');
+      await tester.pumpAndSettle();
+      final RenderGraphViewport render = viewportOf(tester);
+      final scroll = Offset(render.horizontalOffset.pixels, render.verticalOffset.pixels);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      expect(model.selected, isNull);
+      await tester.pumpAndSettle();
+      expect(cards.focused.value, 'r104', reason: 'the focus card stays, it does not fall back to @');
+      expect(
+        Offset(render.horizontalOffset.pixels, render.verticalOffset.pixels),
+        scroll,
+        reason: 'Esc scrolls nothing',
+      );
+
+      // A click still in its double-click window does not select after Esc.
+      await tester.tapAt(tester.getCenter(cardOf('r100')));
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump(graphDoubleClickWindow * 2);
+      expect(model.selected, isNull);
+      await finish(tester);
+    });
+
+    testWidgets('the graph is one Tab stop: its focus card is @, then the selection; Enter selects it', (tester) async {
+      await pump(tester);
+      final GraphCardController cards = cardsOf(tester);
+      final FocusNode node = graphFocus(tester);
+      expect(node.canRequestFocus && !node.skipTraversal, isTrue);
+      expect(
+        find.byWidgetPredicate((w) => w is Focus && w.focusNode != null && w.focusNode!.debugLabel == 'graph'),
+        findsOneWidget,
+      );
+      node.requestFocus();
+      await tester.pump();
+      expect(node.hasFocus, isTrue);
+      expect(cards.focused.value, 'r100');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      expect(model.selected, 'r100');
+      model.select('r99');
+      await tester.pump();
+      expect(cards.focused.value, 'r99');
+      model.select(null);
+      await tester.pump();
+      expect(cards.focused.value, 'r99', reason: 'a cleared selection keeps the focus card');
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      expect(model.selected, 'r99', reason: 'Space selects the focus card');
+      graphFocus(tester).unfocus();
+      await tester.pump();
+      expect(cards.focused.value, isNull);
+      await tester.pumpAndSettle();
+      await finish(tester);
+    });
+
+    testWidgets('keyboard focus on an off-screen focus card reveals it wholly inside the visible rect', (tester) async {
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
+      addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
+      await pump(tester);
+      model.select('r150');
+      await tester.pump();
+      final Rect area = visible(viewportOf(tester).insets);
+      bool inside() {
+        final Finder card = cardOf('r150');
+        if (card.evaluate().isEmpty) {
+          return false;
+        }
+        final Rect r = tester.getRect(card).deflate(graphCardOverhang);
+        return r.left >= area.left && r.top >= area.top && r.right <= area.right && r.bottom <= area.bottom;
+      }
+
+      expect(inside(), isFalse, reason: 'r150 starts off screen');
+      graphFocus(tester).requestFocus();
+      await tester.pumpAndSettle();
+      expect(cardsOf(tester).focused.value, 'r150');
+      expect(inside(), isTrue);
+      await finish(tester);
+    });
+
+    testWidgets('a click on a card under the left inset centres it in the visible rect; a visible one does not move', (
+      tester,
+    ) async {
+      create(shell: ShellController());
+      await pump(tester);
+      final RenderGraphViewport render = viewportOf(tester);
+      final Rect area = visible(render.insets);
+      // @ (r100) lies centred, wholly visible: selecting it scrolls nothing.
+      final scroll = Offset(render.horizontalOffset.pixels, render.verticalOffset.pixels);
+      await tester.tapAt(tester.getCenter(cardOf('r100')));
+      await tester.pump(graphDoubleClickWindow);
+      await tester.pumpAndSettle();
+      expect(model.selected, 'r100');
+      expect(Offset(render.horizontalOffset.pixels, render.verticalOffset.pixels), scroll);
+
+      final Rect r99 = tester.getRect(cardOf('r99')).deflate(graphCardOverhang);
+      expect(r99.left < area.left && r99.right > area.left, isTrue, reason: 'r99 sits half under the rail');
+      await tester.tapAt(Offset(r99.right - 20, r99.center.dy));
+      await tester.pump(graphDoubleClickWindow);
+      await tester.pumpAndSettle();
+      expect(model.selected, 'r99');
+      expect(tester.getCenter(cardOf('r99')), area.center);
+      await finish(tester);
+    });
+
+    testWidgets('calm scrolling and an inactive window clear the hover and keep it off', (tester) async {
+      final shell = ShellController();
+      create(shell: shell);
+      await pump(tester);
+      final GraphCardController cards = cardsOf(tester);
+      final TestGesture mouse = await hover(tester, tester.getCenter(cardOf('r100')));
+      expect(cards.hovered.value, 'r100');
+      shell.calm.addUserScroll(40);
+      await tester.pump();
+      expect(shell.calm.value.calm, isTrue);
+      expect(cards.hovered.value, isNull);
+      await mouse.moveBy(const Offset(1, 0));
+      await tester.pump();
+      expect(cards.hovered.value, isNull, reason: 'ignored while calm');
+      await tester.pump(const Duration(seconds: 2));
+      expect(shell.calm.value.calm, isFalse);
+      await mouse.moveBy(const Offset(1, 0));
+      await tester.pump();
+      expect(cards.hovered.value, 'r100');
+      host.appearance = const ZsAppearance(inactive: true);
+      await tester.pumpWidget(host.build());
+      expect(cards.hovered.value, isNull);
+      await leaveAll(tester, mouse);
+      await finish(tester);
+    });
+
+    testWidgets('@ wholly below: direction down, the pill reads "Working copy, below" and its tap reveals @ only', (
+      tester,
+    ) async {
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      create();
+      tester.view
+        ..physicalSize = surface
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        wrap(
+          Stack(
+            children: <Widget>[
+              Positioned.fill(child: GraphView(model: model)),
+              Positioned(bottom: 20, left: 0, right: 0, child: Center(child: GraphView.atPill(model))),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(model.workingCopyDirection.value, isNull);
+      expect(find.text('Working copy'), findsNothing);
+      model.select('r150');
+      final RenderGraphViewport render = viewportOf(tester);
+      render.verticalOffset.jumpTo(render.verticalOffset.pixels - 1000);
+      await tester.pump();
+      expect(model.workingCopyDirection.value, GraphDirection.down);
+      await tester.pumpAndSettle();
+      final Finder pill = find.bySemanticsLabel('Working copy, below');
+      expect(pill, findsOneWidget);
+      await tester.tap(find.text('Working copy'));
+      await tester.pumpAndSettle();
+      expect(tester.getCenter(cardOf('r100')), visible(viewportOf(tester).insets).center);
+      expect(model.selected, 'r150');
+      expect(model.workingCopyDirection.value, isNull);
+      await tester.pumpAndSettle();
+      expect(find.text('Working copy'), findsNothing, reason: 'the pill fades out');
+      semantics.dispose();
+      await finish(tester);
+    });
+
+    /// Pumps the view with the pill under it, @ at [at].
+    Future<void> pumpWithPill(WidgetTester tester, String at) async {
+      source = ScriptedGraphSource(respond: (_) => chainAt(200, at: at));
+      create();
+      tester.view
+        ..physicalSize = surface
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        wrap(
+          Stack(
+            children: <Widget>[
+              Positioned.fill(child: GraphView(model: model)),
+              Positioned(bottom: 20, left: 0, right: 0, child: Center(child: GraphView.atPill(model))),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    for (final (GraphDirection direction, String at, Offset by, String label)
+        in <(GraphDirection, String, Offset, String)>[
+          (GraphDirection.up, 'r100', const Offset(0, 1000), 'Working copy, above'),
+          (GraphDirection.right, 'r100', const Offset(-600, 0), 'Working copy, right'),
+          (GraphDirection.left, 'r96', const Offset(600, 0), 'Working copy, left'),
+        ]) {
+      testWidgets('@ wholly ${direction.name} of the visible rect: the pill reads "$label"', (tester) async {
+        final SemanticsHandle semantics = tester.ensureSemantics();
+        await pumpWithPill(tester, at);
+        expect(model.workingCopyDirection.value, isNull);
+        final RenderGraphViewport render = viewportOf(tester);
+        render.horizontalOffset.jumpTo(render.horizontalOffset.pixels + by.dx);
+        render.verticalOffset.jumpTo(render.verticalOffset.pixels + by.dy);
+        await tester.pump();
+        expect(model.workingCopyDirection.value, direction);
+        await tester.pumpAndSettle();
+        expect(find.bySemanticsLabel(label), findsOneWidget);
+        semantics.dispose();
+        await finish(tester);
+      });
+    }
+
+    testWidgets('@ within 8 px of the visible rect still has a direction; deeper inside it has none', (tester) async {
+      await pumpWithPill(tester, 'r100');
+      final RenderGraphViewport render = viewportOf(tester);
+      final double top = tester.getRect(cardOf('r100')).top + graphCardOverhang;
+      // The card's top 4 px below the bottom edge minus the margin (592): it still overlaps the viewport.
+      render.verticalOffset.jumpTo(render.verticalOffset.pixels - (596 - top));
+      await tester.pump();
+      expect(tester.getRect(cardOf('r100')).top + graphCardOverhang, 596);
+      expect(model.workingCopyDirection.value, GraphDirection.down);
+      render.verticalOffset.jumpTo(render.verticalOffset.pixels + 16);
+      await tester.pump();
+      expect(model.workingCopyDirection.value, isNull, reason: 'its top lies 12 px inside the margin');
+      await tester.pumpAndSettle();
+      await finish(tester);
+    });
+
+    testWidgets('a hover dims every card outside the focus path to .4 by opacity layers and builds no card', (
+      tester,
+    ) async {
+      source = ScriptedGraphSource(
+        respond: (_) => handLayout(
+          const <(String, int, int)>[('a', 2, 0), ('b', 1, 0), ('c', 1, 1), ('root', 0, 0)],
+          edges: const <(int, int)>[(0, 1), (1, 3), (2, 3)],
+          root: 3,
+        ),
+      );
+      await pump(tester);
+      // A card build makes a new leaf widget.
+      Set<Widget> leaves() =>
+          tester.widgetList(find.byWidgetPredicate((w) => w.runtimeType.toString() == '_GraphCardLeaf')).toSet();
+      final Set<Widget> before = leaves();
+      final TestGesture mouse = await hover(tester, tester.getCenter(cardOf('b')));
+      await tester.pump(ZsMotion.full.durHover);
+      final RenderGraphViewport render = viewportOf(tester);
+      final GraphLayout layout = model.layout!;
+      expect(render.opacityOf!(layout.indexOfKey('c')!), closeTo(.4, 1e-9));
+      for (final key in <String>['a', 'b', 'root']) {
+        expect(render.opacityOf!(layout.indexOfKey(key)!), 1, reason: key);
+      }
+      final Iterable<OpacityLayer> dimmed = tester.layers.whereType<OpacityLayer>().where(
+        (layer) => layer.alpha == Color.getAlphaFromOpacity(.4),
+      );
+      expect(dimmed, hasLength(1));
+      // The edges: c → root (off the path) dims to .28, a → b and b → root take the hover tone.
+      final GraphTheme theme = GraphTheme.of(tester.element(find.byType(GraphCanvas)));
+      final colors = <int>[];
+      expect(
+        render,
+        paints..everything((method, args) {
+          if (method == #drawPath) {
+            colors.add((args[1] as Paint).color.toARGB32());
+          }
+          return true;
+        }),
+      );
+      expect(colors, contains(theme.edge.withValues(alpha: theme.edge.a * (1 - .72)).toARGB32()));
+      expect(colors, contains(theme.edgeHover.toARGB32()));
+      expect(colors, isNot(contains(theme.edge.toARGB32())), reason: 'no off-path edge stays undimmed');
+      expect(leaves().every((leaf) => before.any((old) => identical(old, leaf))), isTrue, reason: 'no card was built');
+      await leaveAll(tester, mouse);
+      expect(viewportOf(tester).opacityOf, isNull, reason: 'the dim faded out');
+      await finish(tester);
+    });
+
+    group('the peek', () {
+      setUp(() => source = ScriptedGraphSource(respond: (_) => peekLayout()));
+
+      testWidgets('after 450 ms on a mutable body: subject, id, author, date and the hint; leaving closes it', (
+        tester,
+      ) async {
+        await pump(tester);
+        final TestGesture mouse = await hover(tester, tester.getCenter(cardOf('mzvqrstklnwp')));
+        await tester.pump(ZsMotion.full.delayPeek - const Duration(milliseconds: 1));
+        expect(find.byType(GraphPeek), findsNothing);
+        await tester.pump(const Duration(milliseconds: 1));
+        await tester.pump();
+        expect(find.byType(GraphPeek), findsOneWidget);
+        expect(find.text('feat(onboarding): swipe gestures'), findsOneWidget);
+        expect(find.text('Lena König'), findsOneWidget);
+        expect(find.text('1h'), findsOneWidget);
+        expect(find.text('Click: details · Double-click: jj edit'), findsOneWidget);
+        expect(find.textContaining('IMMUTABLE'), findsNothing);
+        final RichText id = tester
+            .widgetList<RichText>(find.descendant(of: find.byType(GraphPeek), matching: find.byType(RichText)))
+            .firstWhere((t) => t.text.toPlainText() == 'mzvqrstk');
+        final runs = <(String, FontWeight?)>[];
+        id.text.visitChildren((span) {
+          if (span is TextSpan && span.text != null) {
+            runs.add((span.text!, span.style?.fontWeight));
+          }
+          return true;
+        });
+        expect(runs, <(String, FontWeight?)>[('mzv', FontWeight.w700), ('qrstk', null)], reason: 'jj prefix bold');
+        expect(viewportOf(tester).pinnedKeys, contains('mzvqrstklnwp'));
+        final Rect peek = tester.getRect(find.byType(GraphPeek));
+        final Rect card = tester.getRect(cardOf('mzvqrstklnwp')).deflate(graphCardOverhang);
+        expect(peek.left, card.right + 8);
+        expect(peek.top, card.top);
+        // Across the 8 px gap into the peek: the hover and the peek stay.
+        await mouse.moveTo(Offset(card.right + 4, card.top + 20));
+        await tester.pump(const Duration(milliseconds: 50));
+        await mouse.moveTo(peek.center);
+        await tester.pump(graphHoverIntent * 2);
+        expect(cardsOf(tester).hovered.value, 'mzvqrstklnwp');
+        expect(find.byType(GraphPeek), findsOneWidget);
+        // Out of the peek onto empty canvas: both clear after the intent.
+        await mouse.moveTo(Offset(peek.right + 20, peek.center.dy));
+        await tester.pump(graphHoverIntent + const Duration(milliseconds: 1));
+        expect(cardsOf(tester).hovered.value, isNull);
+        await tester.pumpAndSettle();
+        expect(find.byType(GraphPeek), findsNothing);
+        await leaveAll(tester, mouse);
+        await finish(tester);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+      testWidgets('the eyebrow on an immutable change only; @ and the root have their own hints', (tester) async {
+        await pump(tester);
+        final TestGesture mouse = await hover(tester, tester.getCenter(cardOf('ivxzkqlmtnrw')));
+        await tester.pump(ZsMotion.full.delayPeek);
+        await tester.pump();
+        expect(find.text('IMMUTABLE'), findsOneWidget);
+        expect(find.text('Click: details'), findsOneWidget);
+        expect(find.text('bob@example.com'), findsOneWidget);
+
+        for (final (String key, String? hint) in <(String, String?)>[
+          ('wkmnvxoqrstl', 'Working copy (@) · Click for details'),
+          ('zzzzzzzz', null),
+        ]) {
+          await mouse.moveTo(tester.getCenter(cardOf(key)));
+          await tester.pump(ZsMotion.full.delayPeek);
+          await tester.pump();
+          expect(find.text('IMMUTABLE'), findsNothing, reason: key);
+          if (hint == null) {
+            expect(find.text('root()'), findsNWidgets(1));
+            expect(find.textContaining('Click'), findsNothing);
+          } else {
+            expect(find.text(hint), findsOneWidget);
+          }
+        }
+        await leaveAll(tester, mouse);
+        await finish(tester);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+      testWidgets('over •••: no peek, but the tooltip after its delay; an open menu and calm keep the peek closed', (
+        tester,
+      ) async {
+        final shell = ShellController();
+        create(shell: shell);
+        await pump(tester);
+        final GraphCardController cards = cardsOf(tester);
+        final Finder card = cardOf('mzvqrstklnwp');
+        final TestGesture mouse = await hover(tester, tester.getCenter(card));
+        await tester.pump(const Duration(milliseconds: 200));
+        final Rect box = tester.getRect(card);
+        // ••• sits 10 px from the right, its centre on the card's bottom edge (the overhang's 11 px below it).
+        await mouse.moveTo(Offset(box.right - graphCardOverhang - 20, box.bottom - graphCardOverhang));
+        await tester.pump(ZsMotion.full.delayTooltip);
+        await tester.pump();
+        expect(cards.hoverArea.value?.part, GraphCardHoverPart.more);
+        expect(find.byType(GraphPeek), findsNothing);
+        expect(find.text('Actions (or right-click the card)'), findsOneWidget);
+
+        // @'s `+N` tag: its bubble names the folded workspaces.
+        final RenderGraphCard at = tester.renderObject(cardOf('wkmnvxoqrstl'));
+        final ({GraphCardSlot kind, Rect rect, String? text, TextStyle? style}) tag = at.debugSlots.firstWhere(
+          (slot) => slot.kind == GraphCardSlot.moreTag,
+        );
+        await mouse.moveTo(at.localToGlobal(tag.rect.center));
+        await tester.pump(ZsMotion.full.delayTooltip);
+        await tester.pump();
+        expect(cards.hoverArea.value?.part, GraphCardHoverPart.moreTag);
+        final int folded = int.parse(tag.text!.substring(1));
+        final others = <String>['ci', 'docs', 'release', 'scratch'];
+        expect(find.text(others.sublist(others.length - folded).join(', ')), findsOneWidget);
+        expect(find.text('Actions (or right-click the card)'), findsNothing);
+
+        cards.menuOpen.value = 'mzvqrstklnwp';
+        await mouse.moveTo(tester.getCenter(card));
+        await tester.pump(ZsMotion.full.delayPeek * 2);
+        expect(find.byType(GraphPeek), findsNothing, reason: 'a card menu is open');
+        expect(find.text('Actions (or right-click the card)'), findsNothing);
+        cards.menuOpen.value = null;
+        shell.calm.addUserScroll(40);
+        await tester.pump(ZsMotion.full.delayPeek * 2);
+        expect(find.byType(GraphPeek), findsNothing, reason: 'calm');
+        await tester.pump(const Duration(seconds: 2));
+        await leaveAll(tester, mouse);
+        await finish(tester);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+    });
+
+    group('goTo', () {
+      /// The outer rect of every `drawDRRect` the viewport paints: only the pulse ring draws one.
+      List<RRect> rings(WidgetTester tester) {
+        final found = <RRect>[];
+        expect(
+          viewportOf(tester),
+          paints..everything((method, args) {
+            if (method == #drawDRRect) {
+              found.add(args[0] as RRect);
+            }
+            return true;
+          }),
+        );
+        return found;
+      }
+
+      for (final reduce in <bool>[false, true]) {
+        testWidgets(
+          'goTo selects and centres its target and pulses it 3 × 650 ms, then idles (reduce motion $reduce)',
+          (
+            tester,
+          ) async {
+            create();
+            host.appearance = ZsAppearance(reduceMotion: reduce);
+            await pump(tester);
+            model.goTo('r104');
+            await tester.pump();
+            expect(model.selected, 'r104');
+            expect(viewportOf(tester).pinnedKeys, contains('r104'));
+            await tester.pump(graphPulseCycle ~/ 2);
+            final RRect outer = rings(tester).single;
+            final double spread = (outer.width - 240) / 2;
+            if (reduce) {
+              expect(spread, closeTo(2, 1e-6), reason: 'the spread holds under reduce motion');
+            } else {
+              expect(spread, greaterThan(10));
+            }
+            await tester.pump(graphPulseCycle);
+            expect(rings(tester), hasLength(1), reason: 'the second pulse');
+            // A repeat restarts it.
+            model.goTo('r104');
+            await tester.pump();
+            await tester.pump(graphPulseCycle * 2 + graphPulseCycle ~/ 2);
+            expect(rings(tester), hasLength(1));
+            await tester.pumpAndSettle();
+            expect(rings(tester), isEmpty);
+            expect(viewportOf(tester).pinnedKeys, isNot(contains('r104')));
+            expect(tester.getCenter(cardOf('r104')), visible(viewportOf(tester).insets).center);
+            await finish(tester);
+          },
+        );
+      }
+    });
   });
 }

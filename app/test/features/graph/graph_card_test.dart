@@ -919,6 +919,8 @@ void main() {
         expect(controller.calls.last.$1, 'bookmarks');
         await mouse.moveTo(const Offset(700, 500));
         await tester.pump();
+        expect(controller.hovered.value, 'kxwsnptmqrvl', reason: 'the hover intent keeps it for 140 ms');
+        await tester.pump(graphHoverIntent);
         expect(controller.hovered.value, isNull);
       },
       variant: macOS,
@@ -937,6 +939,8 @@ void main() {
       await tester.tapAt(body, buttons: kSecondaryMouseButton, kind: PointerDeviceKind.mouse);
       expect(controller.calls.single, ('menu', 'kxwsnptmqrvl', Rect.fromLTWH(body.dx, body.dy, 0, 0)));
       await tester.tapAt(body);
+      expect(controller.calls.last.$1, 'menu', reason: 'the double-click window is still open');
+      await tester.pump(graphDoubleClickWindow);
       expect(controller.calls.last.$1, 'select');
       expect(controller.selected.value, 'kxwsnptmqrvl');
       await tester.tapAt(_at + rectOf(card, GraphCardSlot.legend).center);
@@ -1177,6 +1181,8 @@ void main() {
       await press(canvas, const Offset(-5, -5));
       expect(Offset(host.h.offset, host.v.offset), isNot(Offset.zero));
       expect(controller.calls, isEmpty);
+      // The hover intent's timer runs out before the test ends.
+      await tester.pump(graphHoverIntent);
     }, variant: macOS);
 
     testWidgets('a hovered card that leaves the viewport gives its hover back', (tester) async {
@@ -1223,5 +1229,123 @@ void main() {
       expect(label(), endsWith(', 1 day ago, Sep 27'));
       semantics.dispose();
     });
+  });
+
+  group('Story 10.6: click, double-click, hover intent, hover areas', () {
+    RecordedGraphLayout threeCards() => handLayout(
+      const <(String, int, int)>[('a', 1, 0), ('b', 1, 1), ('root', 0, 0)],
+      edges: const <(int, int)>[(0, 2), (1, 2)],
+      root: 2,
+      flags: const <int>[0, _imm, _imm],
+      contents: const <GraphCommitContent?>[_content, _content, null],
+    );
+
+    testWidgets('a click selects only after 220 ms; A then B selects B and builds no card', (tester) async {
+      final controller = GraphCardController(now: _now);
+      addTearDown(controller.dispose);
+      final host = Host(threeCards(), controller);
+      await host.pump(tester);
+      host.builds = 0;
+      await tester.tapAt(host.rectOf(0).center);
+      await tester.pump(graphDoubleClickWindow - const Duration(milliseconds: 1));
+      expect(controller.selected.value, isNull, reason: 'not before the double-click window passed');
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(controller.selected.value, 'a');
+      await tester.tapAt(host.rectOf(1).center);
+      await tester.pump(graphDoubleClickWindow);
+      expect(controller.selected.value, 'b');
+      expect(host.builds, 0);
+    });
+
+    testWidgets('a double-click edits a mutable card once and selects nothing; immutable and root do nothing', (
+      tester,
+    ) async {
+      final edits = <String>[];
+      final controller = GraphCardController(now: _now)..onEdit = edits.add;
+      addTearDown(controller.dispose);
+      final host = Host(threeCards(), controller);
+      await host.pump(tester);
+      for (final node in <int>[0, 1, 2]) {
+        await tester.tapAt(host.rectOf(node).center);
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.tapAt(host.rectOf(node).center);
+        await tester.pump(graphDoubleClickWindow);
+      }
+      expect(edits, <String>['a']);
+      expect(controller.selected.value, isNull);
+    });
+
+    testWidgets('leaving clears the hover 140 ms later; re-entering within it keeps it', (tester) async {
+      final controller = GraphCardController(now: _now);
+      addTearDown(controller.dispose);
+      final host = Host(threeCards(), controller);
+      await host.pump(tester);
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: host.rectOf(0).center);
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      expect(controller.hovered.value, 'a');
+      expect(controller.hoverArea.value?.part, GraphCardHoverPart.body);
+      await mouse.moveTo(const Offset(790, 590));
+      await tester.pump(const Duration(milliseconds: 100));
+      await mouse.moveTo(host.rectOf(0).center);
+      await tester.pump(graphHoverIntent);
+      expect(controller.hovered.value, 'a', reason: 're-entered within the intent');
+      await mouse.moveTo(const Offset(790, 590));
+      await tester.pump(graphHoverIntent - const Duration(milliseconds: 1));
+      expect(controller.hovered.value, 'a');
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(controller.hovered.value, isNull);
+      expect(controller.hoverArea.value, isNull);
+
+      controller.hoverEnabled = false;
+      await mouse.moveTo(host.rectOf(1).center);
+      await tester.pump();
+      expect(controller.hovered.value, isNull, reason: 'hover is off');
+    }, variant: macOS);
+
+    testWidgets('the hover area names •••, the bookmark control and the +N tag with their tooltips', (tester) async {
+      final controller = GraphCardController(now: _now);
+      final RenderGraphCard card = await pumpCard(
+        tester,
+        one(
+          workingCopy: true,
+          workspaces: const <String>['default', 'ci', 'docs', 'release', 'scratch'],
+          workspaceName: 'default',
+          refs: const <GraphRef>[GraphRef('main')],
+        ),
+        controller,
+      );
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: _at + card.cardRect.center);
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      expect(controller.hoverArea.value, (
+        part: GraphCardHoverPart.body,
+        rect: Offset.zero & card.cardRect.size,
+        tooltip: null,
+      ));
+      Future<GraphCardHoverArea?> at(Offset local) async {
+        await mouse.moveTo(_at + local);
+        await tester.pump();
+        return controller.hoverArea.value;
+      }
+
+      final GraphCardHoverArea? more = await at(rectOf(card, GraphCardSlot.more).center);
+      expect(more?.part, GraphCardHoverPart.more);
+      expect(more?.tooltip, 'Actions (or right-click the card)');
+      expect(more?.rect, rectOf(card, GraphCardSlot.more).shift(-card.cardRect.topLeft));
+      final GraphCardHoverArea? legend = await at(rectOf(card, GraphCardSlot.legend).center);
+      expect(legend?.part, GraphCardHoverPart.bookmarks);
+      expect(legend?.tooltip, 'Bookmarks: main');
+      final GraphCardHoverArea? tag = await at(rectOf(card, GraphCardSlot.moreTag).center);
+      expect(tag?.part, GraphCardHoverPart.moreTag);
+      final int folded = int.parse(textOf(card, GraphCardSlot.moreTag)!.substring(1));
+      final others = <String>['ci', 'docs', 'release', 'scratch'];
+      expect(tag?.tooltip, others.sublist(others.length - folded).join(', '));
+      await mouse.moveTo(const Offset(790, 590));
+      await tester.pump(graphHoverIntent);
+      controller.dispose();
+    }, variant: macOS);
   });
 }

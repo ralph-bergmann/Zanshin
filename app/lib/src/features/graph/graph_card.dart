@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
@@ -10,11 +11,38 @@ import 'day_axis.dart';
 import 'graph_card_render.dart';
 import 'graph_layout.dart';
 
+/// The double-click window (Story 10.6 item 2; the prototype's 220 ms, GV:550-558): a click selects only after it.
+const graphDoubleClickWindow = Duration(milliseconds: 220);
+
+/// The hover intent (Story 10.6, the 2026-10-14 note; GV:954-960): leaving a card clears the hover after it.
+const graphHoverIntent = Duration(milliseconds: 140);
+
+/// The part of a card under the pointer (Story 10.6): the body, or an affordance.
+enum GraphCardHoverPart {
+  /// The card body.
+  body,
+
+  /// The ••• circle.
+  more,
+
+  /// The bookmark control: the legend pill or the add circle.
+  bookmarks,
+
+  /// The `+N` tag of the folded workspaces.
+  moreTag,
+}
+
+/// Where the pointer rests on the hovered card: the `part`, its `rect` relative to the card rect's top-left, and the
+/// affordance's `tooltip` (null on the body).
+typedef GraphCardHoverArea = ({GraphCardHoverPart part, Rect rect, String? tooltip});
+
 /// The cards' interaction state (Story 10.3): one controller for the whole graph, read by every card through
 /// listeners, so hover, selection, focus, an open menu and the minute tick build no card.
 ///
-/// 10.6 drives [hovered] beyond the card, [focused] and the keyboard; 10.15 overrides [openMenu] and [openBookmarks];
-/// 10.5 owns [now] in the app.
+/// Story 10.6 adds the pointer model: [click] selects after [graphDoubleClickWindow], and a second click inside it runs
+/// [onEdit] on an editable card instead; [enter] and [leave] keep [hovered] with [graphHoverIntent], [holdHover] keeps
+/// it while the pointer is in the card's peek, [hoverEnabled] turns hover off (calm scrolling, an inactive window).
+/// 10.15 overrides [openMenu] and [openBookmarks]; 10.5 owns [now] in the app.
 class GraphCardController {
   /// A controller whose "now" starts at [now] (epoch ms).
   GraphCardController({required int now}) : now = ValueNotifier<int>(now);
@@ -22,8 +50,23 @@ class GraphCardController {
   /// The hovered card's key.
   final hovered = ValueNotifier<String?>(null);
 
+  /// Where the pointer rests on the hovered card; null without a hover.
+  final hoverArea = ValueNotifier<GraphCardHoverArea?>(null);
+
   /// The selected card's key.
   final selected = ValueNotifier<String?>(null);
+
+  /// Counts the user's selections through [select] (a click, VoiceOver, the keyboard), so the canvas can reveal a
+  /// covered card; the model's own selection changes do not count.
+  final userSelections = ValueNotifier<int>(0);
+
+  /// Runs `jj edit` for a double-clicked editable card.
+  ValueChanged<String>? onEdit;
+
+  Timer? _click;
+  String? _clickKey;
+  Timer? _leave;
+  var _hoverEnabled = true;
 
   /// The key of the card that holds the keyboard focus (10.6's roving focus).
   final focused = ValueNotifier<String?>(null);
@@ -39,8 +82,84 @@ class GraphCardController {
 
   /// Selects [key] and closes an open menu.
   void select(String key) {
+    cancelClick();
     selected.value = key;
     menuOpen.value = null;
+    userSelections.value++;
+  }
+
+  /// A primary click on [key]'s body: it selects after [graphDoubleClickWindow]; a second click on the same card
+  /// inside it cancels the select and, when [editable], runs [onEdit] (design question (a): an immutable card does
+  /// nothing). A click on another card selects the pending one at once.
+  void click(String key, {required bool editable}) {
+    final Timer? pending = _click;
+    _click = null;
+    if (pending != null && pending.isActive) {
+      pending.cancel();
+      if (_clickKey == key) {
+        if (editable) {
+          onEdit?.call(key);
+        }
+        return;
+      }
+      select(_clickKey!);
+    }
+    _clickKey = key;
+    _click = Timer(graphDoubleClickWindow, () {
+      _click = null;
+      select(key);
+    });
+  }
+
+  /// Drops a click still waiting for its double-click window (Esc, another select).
+  void cancelClick() {
+    _click?.cancel();
+    _click = null;
+  }
+
+  /// Whether hover is taken; turning it off clears the hover.
+  bool get hoverEnabled => _hoverEnabled;
+  set hoverEnabled(bool value) {
+    _hoverEnabled = value;
+    if (!value) {
+      _leave?.cancel();
+      _leave = null;
+      hovered.value = null;
+      hoverArea.value = null;
+    }
+  }
+
+  /// The pointer is on [key] at [area]: it becomes the hover at once (a pending leave is cancelled).
+  void enter(String key, GraphCardHoverArea area) {
+    _leave?.cancel();
+    _leave = null;
+    if (!_hoverEnabled) {
+      return;
+    }
+    hovered.value = key;
+    hoverArea.value = area;
+  }
+
+  /// The pointer left [key] (its card or its peek): the hover clears after [graphHoverIntent] unless the pointer
+  /// enters a card or the peek first.
+  void leave(String key) {
+    if (hovered.value != key) {
+      return;
+    }
+    _leave?.cancel();
+    _leave = Timer(graphHoverIntent, () {
+      _leave = null;
+      if (hovered.value == key) {
+        hovered.value = null;
+        hoverArea.value = null;
+      }
+    });
+  }
+
+  /// The pointer entered the hovered card's peek: the hover stays.
+  void holdHover() {
+    _leave?.cancel();
+    _leave = null;
   }
 
   /// Opens [key]'s card menu at [anchor] (global), or closes it when it is open.
@@ -52,8 +171,12 @@ class GraphCardController {
   /// Releases the notifiers.
   void dispose() {
     _disposed = true;
+    _click?.cancel();
+    _leave?.cancel();
     hovered.dispose();
+    hoverArea.dispose();
     selected.dispose();
+    userSelections.dispose();
     focused.dispose();
     menuOpen.dispose();
     now.dispose();

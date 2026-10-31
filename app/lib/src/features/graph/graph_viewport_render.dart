@@ -34,6 +34,10 @@ enum GraphRevealAlignment {
 
   /// The least scroll that shows the whole card in the unobscured area.
   minimal,
+
+  /// No scroll while the whole card lies in the unobscured area, else [centre] (Story 10.6: a select under the
+  /// chrome).
+  covered,
 }
 
 /// A reveal carried by a relayout (Story 10.1 item 10): consumed once, by identity, in the layout it arrives with; an
@@ -67,9 +71,28 @@ class GraphViewportController {
   bool get isAttached => _viewport != null;
 
   /// Scrolls [key] into the unobscured area; does nothing when the key is absent or no viewport is attached. An
-  /// animated reveal jumps under reduce motion.
+  /// animated reveal jumps under reduce motion and beyond 3 viewports.
   void reveal(String key, {GraphRevealAlignment alignment = GraphRevealAlignment.centre, bool animate = false}) =>
       _viewport?._revealNow(key, alignment, animate: animate);
+
+  /// [key]'s card rect in viewport coordinates at the current scroll, or null when absent or detached.
+  Rect? cardRectOf(String key) {
+    final RenderGraphViewport? viewport = _viewport;
+    final int? node = viewport?.graphLayout.indexOfKey(key);
+    if (viewport == null || node == null || !viewport.hasSize) {
+      return null;
+    }
+    return viewport.cardRect(node).shift(-viewport._scroll);
+  }
+
+  /// The part of the viewport the chrome leaves free, in viewport coordinates; null while detached.
+  Rect? get unobscured {
+    final RenderGraphViewport? viewport = _viewport;
+    return viewport == null || !viewport.hasSize ? null : viewport._unobscured;
+  }
+
+  /// Whether a canvas pan is held.
+  bool get isPanning => _viewport?.isPanning ?? false;
 
   /// Jumps both axes to [offset] (horizontal, vertical).
   void jumpTo(Offset offset) {
@@ -383,7 +406,9 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
       _consumedReveal = reveal;
       final Offset? target = _revealTarget(reveal.key, reveal.alignment, maxX, maxY);
       if (target != null) {
-        if (reveal.animate && motion.durMove > Duration.zero) {
+        final Offset distance = target - _scroll;
+        final bool near = distance.dx.abs() <= 3 * view.width && distance.dy.abs() <= 3 * view.height;
+        if (reveal.animate && near && motion.durMove > Duration.zero) {
           SchedulerBinding.instance.addPostFrameCallback(
             (_) => _revealNow(reveal.key, reveal.alignment, animate: true),
           );
@@ -500,8 +525,12 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
       return hi - current > areaHi ? hi - areaHi : current;
     }
 
+    final Rect shown = card.shift(-scroll);
+    final bool inside =
+        shown.left >= area.left && shown.top >= area.top && shown.right <= area.right && shown.bottom <= area.bottom;
     final Offset target = switch (alignment) {
       GraphRevealAlignment.centre => card.center - area.center,
+      GraphRevealAlignment.covered => inside ? scroll : card.center - area.center,
       GraphRevealAlignment.minimal => Offset(
         minimal(card.left, card.right, area.left, area.right, scroll.dx),
         minimal(card.top, card.bottom, area.top, area.bottom, scroll.dy),
@@ -524,7 +553,10 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
     if (target == null) {
       return;
     }
-    if (animate && motion.durMove > Duration.zero) {
+    // Decision (g): an animation over more than 3 viewports would build every card on the way, so it jumps.
+    final Offset distance = target - _scroll;
+    final bool near = distance.dx.abs() <= 3 * size.width && distance.dy.abs() <= 3 * size.height;
+    if (animate && near && motion.durMove > Duration.zero) {
       horizontalOffset.animateTo(target.dx, duration: motion.durMove, curve: motion.easeGlide);
       verticalOffset.animateTo(target.dy, duration: motion.durMove, curve: motion.easeGlide);
     } else {

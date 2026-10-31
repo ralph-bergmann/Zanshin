@@ -188,7 +188,7 @@ class _ZsTooltipState extends State<ZsTooltip> {
           reverseCurve: motion.easeExit.flipped,
         ),
         positionDelegate: _position,
-        tooltipBuilder: (context, animation) => _Bubble(
+        tooltipBuilder: (context, animation) => ZsTooltipBubble(
           animation: animation,
           message: widget.message,
           cmd: widget.cmd,
@@ -218,29 +218,44 @@ class _ZsTooltipScope extends InheritedWidget {
   bool updateShouldNotify(_ZsTooltipScope oldWidget) => description != oldWidget.description;
 }
 
-/// The bubble; it reports its own closing to the shared warm window.
-class _Bubble extends StatefulWidget {
-  const _Bubble({
+/// The [ZsTooltip]'s bubble, for a layer that places it itself (the graph's affordance tooltips, Story 10.6): it fades
+/// in with [animation] and a 2 px drift × `--motion` from the [placement] side, takes no pointer of its own (the host
+/// puts it under `IgnorePointer`), is not in the semantics tree, and reports its closing to the shared warm window.
+class ZsTooltipBubble extends StatefulWidget {
+  /// A bubble showing [message].
+  const ZsTooltipBubble({
     required this.animation,
     required this.message,
-    required this.cmd,
-    required this.shortcut,
-    required this.placement,
-    required this.identifier,
+    this.cmd,
+    this.shortcut,
+    this.placement = ZsTooltipPlacement.below,
+    this.identifier,
+    super.key,
   });
 
+  /// The entrance (forward) and exit (reverse).
   final Animation<double> animation;
+
+  /// The label.
   final String message;
+
+  /// The exact jj command, in mono on the second line.
   final String? cmd;
+
+  /// A plain-text shortcut right of the label.
   final String? shortcut;
+
+  /// The side the bubble sits on; the drift comes from it.
   final ZsTooltipPlacement placement;
+
+  /// The bubble's identifier.
   final String? identifier;
 
   @override
-  State<_Bubble> createState() => _BubbleState();
+  State<ZsTooltipBubble> createState() => _ZsTooltipBubbleState();
 }
 
-class _BubbleState extends State<_Bubble> {
+class _ZsTooltipBubbleState extends State<ZsTooltipBubble> {
   @override
   void initState() {
     super.initState();
@@ -248,7 +263,7 @@ class _BubbleState extends State<_Bubble> {
   }
 
   @override
-  void didUpdateWidget(_Bubble oldWidget) {
+  void didUpdateWidget(ZsTooltipBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.animation != widget.animation) {
       oldWidget.animation.removeStatusListener(_onStatus);

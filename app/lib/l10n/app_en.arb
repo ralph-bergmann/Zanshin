@@ -329,5 +329,26 @@
   "@cardBookmarks": {
     "description": "VoiceOver custom action listing a card's bookmarks (comma-separated).",
     "placeholders": {"names": {"type": "String", "example": "main, feat/x"}}
+  },
+  "cardActionsTooltip": "Actions (or right-click the card)",
+  "@cardActionsTooltip": {"description": "Tooltip over a card's ••• affordance."},
+
+  "peekImmutable": "Immutable",
+  "@peekImmutable": {"description": "The eyebrow of an immutable change's hover card (shown in caps)."},
+  "peekHintMutable": "Click: details · Double-click: jj edit",
+  "@peekHintMutable": {"description": "The hover card's hint line on a mutable change; 'jj edit' is jj's command."},
+  "peekHintImmutable": "Click: details",
+  "@peekHintImmutable": {"description": "The hover card's hint line on an immutable change."},
+  "peekHintWorkingCopy": "Working copy (@) · Click for details",
+  "@peekHintWorkingCopy": {"description": "The hover card's hint line on the working copy (@)."},
+
+  "atPillLabel": "Working copy",
+  "@atPillLabel": {"description": "The @ pill's label: it scrolls to the working copy."},
+  "atPillTooltip": "Scroll to the working copy",
+  "@atPillTooltip": {"description": "Tooltip of the @ pill."},
+  "atPillSemantics": "{direction, select, up{Working copy, above} down{Working copy, below} left{Working copy, left} other{Working copy, right}}",
+  "@atPillSemantics": {
+    "description": "VoiceOver label of the @ pill: where the working copy lies (up, down, left, right).",
+    "placeholders": {"direction": {"type": "String"}}
   }
 }

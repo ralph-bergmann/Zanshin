@@ -817,6 +817,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Bookmarks: {names}'**
   String cardBookmarks(String names);
+
+  /// Tooltip over a card's ••• affordance.
+  ///
+  /// In en, this message translates to:
+  /// **'Actions (or right-click the card)'**
+  String get cardActionsTooltip;
+
+  /// The eyebrow of an immutable change's hover card (shown in caps).
+  ///
+  /// In en, this message translates to:
+  /// **'Immutable'**
+  String get peekImmutable;
+
+  /// The hover card's hint line on a mutable change; 'jj edit' is jj's command.
+  ///
+  /// In en, this message translates to:
+  /// **'Click: details · Double-click: jj edit'**
+  String get peekHintMutable;
+
+  /// The hover card's hint line on an immutable change.
+  ///
+  /// In en, this message translates to:
+  /// **'Click: details'**
+  String get peekHintImmutable;
+
+  /// The hover card's hint line on the working copy (@).
+  ///
+  /// In en, this message translates to:
+  /// **'Working copy (@) · Click for details'**
+  String get peekHintWorkingCopy;
+
+  /// The @ pill's label: it scrolls to the working copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Working copy'**
+  String get atPillLabel;
+
+  /// Tooltip of the @ pill.
+  ///
+  /// In en, this message translates to:
+  /// **'Scroll to the working copy'**
+  String get atPillTooltip;
+
+  /// VoiceOver label of the @ pill: where the working copy lies (up, down, left, right).
+  ///
+  /// In en, this message translates to:
+  /// **'{direction, select, up{Working copy, above} down{Working copy, below} left{Working copy, left} other{Working copy, right}}'**
+  String atPillSemantics(String direction);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

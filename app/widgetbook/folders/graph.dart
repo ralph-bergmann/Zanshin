@@ -5,10 +5,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
+import 'package:zanshin/src/features/graph/at_pill.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_metrics.dart';
+import 'package:zanshin/src/features/graph/graph_peek.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
@@ -27,8 +29,9 @@ import '../graph/synthetic_layout.dart';
 /// shows the recorded layouts of the design sample and medium-narrow, "Viewport / Scale" the synthetic 10k–100k
 /// fixtures, both with fake content (Story 10.3); every `GraphViewOptions` field is a knob, and the left and right
 /// insets stand in for the floating chrome. "Viewport / View model" drives a `GraphViewModel` on a fake source over the
-/// recordings, with the stale notice over it (Story 10.5). "Card / States" shows one commit card per state (Story
-/// 10.3); "Stale notice / Variants" the notice with its action, busy, and with Copy (Story 10.5).
+/// recordings, with the stale notice and the @ pill over it (Stories 10.5, 10.6). "Card / States" shows one commit card
+/// per state (Story 10.3); "Peek / Open" the commit callout and "@ pill / Directions" the pill (Story 10.6); "Stale
+/// notice / Variants" the notice with its action, busy, and with Copy (Story 10.5).
 final graphFolder = WidgetbookFolder(
   name: 'Graph',
   children: <WidgetbookNode>[
@@ -94,6 +97,14 @@ final graphFolder = WidgetbookFolder(
           },
         ),
       ],
+    ),
+    WidgetbookComponent(
+      name: 'Peek',
+      useCases: <WidgetbookUseCase>[WidgetbookUseCase(name: 'Open', builder: (context) => const _Peeks())],
+    ),
+    WidgetbookComponent(
+      name: '@ pill',
+      useCases: <WidgetbookUseCase>[WidgetbookUseCase(name: 'Directions', builder: (context) => const _AtPills())],
     ),
     WidgetbookComponent(
       name: 'Stale notice',
@@ -316,6 +327,74 @@ class _ViewModelDemoState extends State<_ViewModelDemo> {
             listenable: _model,
             builder: (context, _) => GraphView.staleNotice(_model) ?? const SizedBox.shrink(),
           ),
+        ),
+      ),
+      // The shell's bottom slot: 20 px up, centred over the visible graph.
+      Positioned(
+        left: widget.insets.left,
+        right: widget.insets.right,
+        bottom: 20,
+        child: Center(heightFactor: 1, child: GraphView.atPill(_model)),
+      ),
+    ],
+  );
+}
+
+/// "Peek / Open" (Story 10.6): the commit callout as the hover opens it, for a mutable change, an immutable one, @
+/// and the root.
+class _Peeks extends StatelessWidget {
+  const _Peeks();
+
+  @override
+  Widget build(BuildContext context) {
+    const int imm = RecordedGraphLayout.flagImmutable;
+    final peeks = <GraphCardData>[
+      GraphCardData.of(_single('kxwsnptmqrvl', prefix: 3), 0),
+      GraphCardData.of(
+        _single(
+          'vruxwmqvnklt',
+          flags: imm,
+          content: const GraphCommitContent(subject: 'release: 1.4.2', authorEmail: 'bob@example.com'),
+        ),
+        0,
+      ),
+      GraphCardData.of(_single('ovknlmrotwqs', workingCopy: true), 0),
+      GraphCardData.of(_single('zzzzzzzzzzzz', prefix: 1, root: true, flags: imm, content: null), 0),
+    ];
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ZsCanvas(),
+        SingleChildScrollView(
+          padding: const EdgeInsets.all(32),
+          child: Wrap(
+            spacing: 24,
+            runSpacing: 24,
+            children: <Widget>[for (final GraphCardData data in peeks) GraphPeek(data: data, nowMs: _statesNow)],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// "@ pill / Directions" (Story 10.6): the pill pointing to each side @ can lie on.
+class _AtPills extends StatelessWidget {
+  const _AtPills();
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: <Widget>[
+      const ZsCanvas(),
+      Center(
+        child: Wrap(
+          spacing: 24,
+          runSpacing: 24,
+          children: <Widget>[
+            for (final GraphDirection direction in GraphDirection.values)
+              AtPill(direction: direction, onPressed: () {}),
+          ],
         ),
       ),
     ],

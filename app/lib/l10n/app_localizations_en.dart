@@ -474,4 +474,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String cardBookmarks(String names) {
     return 'Bookmarks: $names';
   }
+
+  @override
+  String get cardActionsTooltip => 'Actions (or right-click the card)';
+
+  @override
+  String get peekImmutable => 'Immutable';
+
+  @override
+  String get peekHintMutable => 'Click: details · Double-click: jj edit';
+
+  @override
+  String get peekHintImmutable => 'Click: details';
+
+  @override
+  String get peekHintWorkingCopy => 'Working copy (@) · Click for details';
+
+  @override
+  String get atPillLabel => 'Working copy';
+
+  @override
+  String get atPillTooltip => 'Scroll to the working copy';
+
+  @override
+  String atPillSemantics(String direction) {
+    String _temp0 = intl.Intl.selectLogic(
+      direction,
+      {
+        'up': 'Working copy, above',
+        'down': 'Working copy, below',
+        'left': 'Working copy, left',
+        'other': 'Working copy, right',
+      },
+    );
+    return '$_temp0';
+  }
 }
