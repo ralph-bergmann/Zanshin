@@ -865,6 +865,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{direction, select, up{Working copy, above} down{Working copy, below} left{Working copy, left} other{Working copy, right}}'**
   String atPillSemantics(String direction);
+
+  /// The top bar's count while the graph shows fewer than all changes; shown is the bold number of changes shown, total the number of all changes.
+  ///
+  /// In en, this message translates to:
+  /// **'{shown} of {total}'**
+  String graphCountFiltered(String shown, int total);
+
+  /// The top bar's count while the graph shows every change (or before the total is known); number is the bold count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{number} change} other{{number} changes}}'**
+  String graphCountAll(int count, String number);
+
+  /// Tooltip of the top bar's count: changes shown out of all changes.
+  ///
+  /// In en, this message translates to:
+  /// **'{total, plural, =1{{shown} of 1 change shown} other{{shown} of {total} changes shown}}'**
+  String graphCountTooltip(int shown, int total);
+
+  /// The top bar's button (and its popover's VoiceOver name) with the graph's view options.
+  ///
+  /// In en, this message translates to:
+  /// **'View options'**
+  String get graphViewOptions;
+
+  /// Heading of the View options popover (shown in caps).
+  ///
+  /// In en, this message translates to:
+  /// **'Graph view'**
+  String get graphViewTitle;
+
+  /// View options row: the graph's layout mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Layout'**
+  String get graphLayout;
+
+  /// Layout segment: rows follow commit time.
+  ///
+  /// In en, this message translates to:
+  /// **'Free'**
+  String get graphLayoutFree;
+
+  /// Tooltip of the Free layout segment.
+  ///
+  /// In en, this message translates to:
+  /// **'Rows follow commit time'**
+  String get graphLayoutFreeTooltip;
+
+  /// Layout segment: rows are the dependency depth.
+  ///
+  /// In en, this message translates to:
+  /// **'Compact'**
+  String get graphLayoutCompact;
+
+  /// Tooltip of the Compact layout segment.
+  ///
+  /// In en, this message translates to:
+  /// **'Rows = dependency depth'**
+  String get graphLayoutCompactTooltip;
+
+  /// View options row: detailed (taller) commit cards.
+  ///
+  /// In en, this message translates to:
+  /// **'Detailed cards'**
+  String get graphDetailedCards;
+
+  /// View options row: group linear runs of changes into stack cards.
+  ///
+  /// In en, this message translates to:
+  /// **'Group stacks'**
+  String get graphGroupStacks;
+
+  /// Tooltip of the Group stacks row.
+  ///
+  /// In en, this message translates to:
+  /// **'Collapse linear runs of changes into one stack card'**
+  String get graphGroupStacksTooltip;
+
+  /// View options row: the commit cards' width.
+  ///
+  /// In en, this message translates to:
+  /// **'Card width'**
+  String get graphCardWidth;
+
+  /// Unit after the card width readout (pixels).
+  ///
+  /// In en, this message translates to:
+  /// **'px'**
+  String get graphCardWidthUnit;
+
+  /// View options popover's last row: opens Settings on the General tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance, diffs and more'**
+  String get graphMoreSettings;
+
+  /// The top bar's primary button: runs jj new on the working copy.
+  ///
+  /// In en, this message translates to:
+  /// **'New change'**
+  String get newChange;
+
+  /// Tooltip of the New change button; 'jj new' is jj's command, @ the working copy.
+  ///
+  /// In en, this message translates to:
+  /// **'jj new — start a new change on top of @'**
+  String get newChangeTooltip;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

@@ -509,4 +509,76 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String graphCountFiltered(String shown, int total) {
+    return '$shown of $total';
+  }
+
+  @override
+  String graphCountAll(int count, String number) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$number changes',
+      one: '$number change',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String graphCountTooltip(int shown, int total) {
+    String _temp0 = intl.Intl.pluralLogic(
+      total,
+      locale: localeName,
+      other: '$shown of $total changes shown',
+      one: '$shown of 1 change shown',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get graphViewOptions => 'View options';
+
+  @override
+  String get graphViewTitle => 'Graph view';
+
+  @override
+  String get graphLayout => 'Layout';
+
+  @override
+  String get graphLayoutFree => 'Free';
+
+  @override
+  String get graphLayoutFreeTooltip => 'Rows follow commit time';
+
+  @override
+  String get graphLayoutCompact => 'Compact';
+
+  @override
+  String get graphLayoutCompactTooltip => 'Rows = dependency depth';
+
+  @override
+  String get graphDetailedCards => 'Detailed cards';
+
+  @override
+  String get graphGroupStacks => 'Group stacks';
+
+  @override
+  String get graphGroupStacksTooltip => 'Collapse linear runs of changes into one stack card';
+
+  @override
+  String get graphCardWidth => 'Card width';
+
+  @override
+  String get graphCardWidthUnit => 'px';
+
+  @override
+  String get graphMoreSettings => 'Appearance, diffs and more';
+
+  @override
+  String get newChange => 'New change';
+
+  @override
+  String get newChangeTooltip => 'jj new — start a new change on top of @';
 }

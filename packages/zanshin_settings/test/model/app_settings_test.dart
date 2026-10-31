@@ -22,6 +22,7 @@ void main() {
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
       'general': {'hideControls': true},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
+      'graph': {'layout': 'free', 'detailedCards': true, 'groupStacks': true, 'cardWidth': 240.0},
     });
   });
 
@@ -41,6 +42,7 @@ void main() {
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
       'general': {'hideControls': true},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
+      'graph': {'layout': 'free', 'detailedCards': true, 'groupStacks': true, 'cardWidth': 240.0},
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
@@ -80,6 +82,46 @@ void main() {
   test('a wrongly typed width or flag throws CheckedFromJsonException', () {
     expect(() => LayoutSettings.fromJson({'panelWidth': 'wide'}), throwsA(isA<CheckedFromJsonException>()));
     expect(() => GeneralSettings.fromJson({'hideControls': 'yes'}), throwsA(isA<CheckedFromJsonException>()));
+  });
+
+  test('the graph options default to Free, detailed cards, grouped stacks and 240 px', () {
+    const graph = GraphSettings();
+    expect(graph.layout, GraphLayoutSetting.free);
+    expect(graph.detailedCards, isTrue);
+    expect(graph.groupStacks, isTrue);
+    expect(graph.cardWidth, 240);
+  });
+
+  test('changed graph options survive a JSON round trip', () {
+    const settings = AppSettings(
+      graph: GraphSettings(
+        layout: GraphLayoutSetting.compact,
+        detailedCards: false,
+        groupStacks: false,
+        cardWidth: 300,
+      ),
+    );
+    expect(settings.toJson()['graph'], {
+      'layout': 'compact',
+      'detailedCards': false,
+      'groupStacks': false,
+      'cardWidth': 300.0,
+    });
+    expect(AppSettings.fromJson(settings.toJson()), settings);
+  });
+
+  test('a file without graph, or with it partial, takes the defaults for what is missing', () {
+    expect(AppSettings.fromJson({'appearance': <String, Object?>{}}).graph, const GraphSettings());
+    expect(
+      AppSettings.fromJson({
+        'graph': {'cardWidth': 320},
+      }).graph,
+      const GraphSettings(cardWidth: 320),
+    );
+  });
+
+  test('an unknown graph layout throws CheckedFromJsonException', () {
+    expect(() => GraphSettings.fromJson({'layout': 'time'}), throwsA(isA<CheckedFromJsonException>()));
   });
 
   test('a missing sub-model takes its default', () {

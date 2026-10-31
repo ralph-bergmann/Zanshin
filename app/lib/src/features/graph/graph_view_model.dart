@@ -149,6 +149,7 @@ class GraphViewModel extends ChangeNotifier {
   String? _revset;
   GraphMode _mode = GraphMode.free;
   GraphLaneOrder _order = GraphLaneOrder.compact;
+  var _stacks = false;
   String? _selected;
 
   var _inFlight = false;
@@ -177,9 +178,17 @@ class GraphViewModel extends ChangeNotifier {
   StaleRecovery? _lastStaleRecovery;
   ZanshinFfiException? _staleUpdateError;
 
-  /// One-shot setup for `ViewModelBuilder`'s `init`: reads from [source], runs verbs through [actions] (10.9) and
-  /// takes "now" from [clock].
-  void init(GraphSource source, {GraphActions? actions, DateTime Function()? clock}) {
+  /// One-shot setup for `ViewModelBuilder`'s `init`: reads from [source], runs verbs through [actions] (10.9), takes
+  /// "now" from [clock], and sends [mode] and [stacks] (the stored preferences, 10.7) with the first request.
+  void init(
+    GraphSource source, {
+    GraphActions? actions,
+    DateTime Function()? clock,
+    GraphMode mode = GraphMode.free,
+    bool stacks = false,
+  }) {
+    _mode = mode;
+    _stacks = stacks;
     _source = source;
     _content = GraphContent(source.content);
     _actions = actions;
@@ -213,6 +222,9 @@ class GraphViewModel extends ChangeNotifier {
 
   /// The lane order.
   GraphLaneOrder get laneOrder => _order;
+
+  /// Whether linear runs group into stacks (Story 10.7's Group stacks).
+  bool get stacks => _stacks;
 
   /// The selected node's key; null when none, or when a landed layout lacks it.
   String? get selected => _selected;
@@ -288,6 +300,9 @@ class GraphViewModel extends ChangeNotifier {
   /// [GraphActions].
   Future<GraphActionResult?> edit(String key) async => _actions == null ? null : run(GraphEdit(key));
 
+  /// Whether [init] was given [GraphActions].
+  bool get hasActions => _actions != null;
+
   /// Whether a trigger may run an action now: none runs and the working copy is not stale.
   bool get actionsEnabled => _running == null && _stale == null;
 
@@ -341,6 +356,15 @@ class GraphViewModel extends ChangeNotifier {
     }
     _order = order;
     _recentre = true;
+    _requestLayout();
+  }
+
+  /// Groups linear runs into stacks, or not, under the anchor (no re-centre on @).
+  void setStacks(bool stacks) {
+    if (stacks == _stacks) {
+      return;
+    }
+    _stacks = stacks;
     _requestLayout();
   }
 
@@ -700,6 +724,7 @@ class GraphViewModel extends ChangeNotifier {
     revset: _revset ?? defaults.log,
     mode: _mode,
     order: _order,
+    stacks: _stacks,
     prioritize: defaults.logGraphPrioritize,
     shortPrefixes: defaults.shortPrefixes,
     anchors: defaultGraphAnchors,

@@ -350,5 +350,51 @@
   "@atPillSemantics": {
     "description": "VoiceOver label of the @ pill: where the working copy lies (up, down, left, right).",
     "placeholders": {"direction": {"type": "String"}}
-  }
+  },
+
+  "graphCountFiltered": "{shown} of {total}",
+  "@graphCountFiltered": {
+    "description": "The top bar's count while the graph shows fewer than all changes; shown is the bold number of changes shown, total the number of all changes.",
+    "placeholders": {"shown": {"type": "String", "example": "12"}, "total": {"type": "int"}}
+  },
+  "graphCountAll": "{count, plural, =1{{number} change} other{{number} changes}}",
+  "@graphCountAll": {
+    "description": "The top bar's count while the graph shows every change (or before the total is known); number is the bold count.",
+    "placeholders": {"count": {"type": "int"}, "number": {"type": "String", "example": "340"}}
+  },
+  "graphCountTooltip": "{total, plural, =1{{shown} of 1 change shown} other{{shown} of {total} changes shown}}",
+  "@graphCountTooltip": {
+    "description": "Tooltip of the top bar's count: changes shown out of all changes.",
+    "placeholders": {"shown": {"type": "int"}, "total": {"type": "int"}}
+  },
+  "graphViewOptions": "View options",
+  "@graphViewOptions": {"description": "The top bar's button (and its popover's VoiceOver name) with the graph's view options."},
+  "graphViewTitle": "Graph view",
+  "@graphViewTitle": {"description": "Heading of the View options popover (shown in caps)."},
+  "graphLayout": "Layout",
+  "@graphLayout": {"description": "View options row: the graph's layout mode."},
+  "graphLayoutFree": "Free",
+  "@graphLayoutFree": {"description": "Layout segment: rows follow commit time."},
+  "graphLayoutFreeTooltip": "Rows follow commit time",
+  "@graphLayoutFreeTooltip": {"description": "Tooltip of the Free layout segment."},
+  "graphLayoutCompact": "Compact",
+  "@graphLayoutCompact": {"description": "Layout segment: rows are the dependency depth."},
+  "graphLayoutCompactTooltip": "Rows = dependency depth",
+  "@graphLayoutCompactTooltip": {"description": "Tooltip of the Compact layout segment."},
+  "graphDetailedCards": "Detailed cards",
+  "@graphDetailedCards": {"description": "View options row: detailed (taller) commit cards."},
+  "graphGroupStacks": "Group stacks",
+  "@graphGroupStacks": {"description": "View options row: group linear runs of changes into stack cards."},
+  "graphGroupStacksTooltip": "Collapse linear runs of changes into one stack card",
+  "@graphGroupStacksTooltip": {"description": "Tooltip of the Group stacks row."},
+  "graphCardWidth": "Card width",
+  "@graphCardWidth": {"description": "View options row: the commit cards' width."},
+  "graphCardWidthUnit": "px",
+  "@graphCardWidthUnit": {"description": "Unit after the card width readout (pixels)."},
+  "graphMoreSettings": "Appearance, diffs and more",
+  "@graphMoreSettings": {"description": "View options popover's last row: opens Settings on the General tab."},
+  "newChange": "New change",
+  "@newChange": {"description": "The top bar's primary button: runs jj new on the working copy."},
+  "newChangeTooltip": "jj new — start a new change on top of @",
+  "@newChangeTooltip": {"description": "Tooltip of the New change button; 'jj new' is jj's command, @ the working copy."}
 }

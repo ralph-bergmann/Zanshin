@@ -352,6 +352,36 @@ void main() {
       });
     });
 
+    test('a stacks switch issues one request and keeps the anchor; no switch, no request', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async);
+        expect(source.requests.single.stacks, isFalse);
+        expect(model.stacks, isFalse);
+        model.setStacks(true);
+        async.flushMicrotasks();
+        expect(source.requests, hasLength(2));
+        expect(source.requests.last.stacks, isTrue);
+        expect(model.stacks, isTrue);
+        expect(model.reveal, isNull, reason: 'no re-centre on @');
+        model.setStacks(true);
+        async.flushMicrotasks();
+        expect(source.requests, hasLength(2));
+        model.dispose();
+      });
+    });
+
+    test('init sends the given mode and stacks with the first request', () {
+      fakeAsync((async) {
+        final model = GraphViewModel()..init(source, clock: () => noon, mode: GraphMode.compact, stacks: true);
+        async.flushMicrotasks();
+        expect(source.requests.single.mode, GraphMode.compact);
+        expect(source.requests.single.stacks, isTrue);
+        expect(model.mode, GraphMode.compact);
+        expect(model.reveal?.key, 'a', reason: 'the first layout still re-centres on @');
+        model.dispose();
+      });
+    });
+
     test('a pending reveal survives a superseded request and is consumed once', () {
       fakeAsync((async) {
         source.hold = true;

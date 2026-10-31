@@ -3,6 +3,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
+import 'package:zanshin/src/features/graph/graph_controls.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport_render.dart';
@@ -76,6 +77,7 @@ void main() {
           'graph/peek/open',
           'graph/@-pill/directions',
           'graph/stale-notice/variants',
+          'graph/floating-shell/controls',
         ]),
       );
       expect(catalogueUseCasePaths, paths.toSet());
@@ -178,6 +180,22 @@ void main() {
         isNot(same(model)),
         reason: 'a re-open of the route shown starts afresh',
       );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'graph/floating-shell/controls at 1440: VIEW shows the count, a separator and View options; ACTION shows New change',
+    (tester) async {
+      useCatalogueWindow(tester);
+      await tester.pumpWidget(catalogueAt('/?path=graph/floating-shell/controls&appearance={theme:night}'));
+      await tester.pump();
+      await tester.pump();
+      final Finder view = find.byType(GraphViewControls);
+      expect(find.descendant(of: view, matching: find.byType(GraphCount)), findsOneWidget);
+      expect(find.descendant(of: view, matching: find.byType(ZsIslandSeparator)), findsOneWidget);
+      expect(find.descendant(of: view, matching: find.byType(GraphViewOptionsButton)), findsOneWidget);
+      expect(find.descendant(of: find.byType(NewChangeButton), matching: find.text('New change')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

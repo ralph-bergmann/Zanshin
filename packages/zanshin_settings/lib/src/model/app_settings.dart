@@ -4,6 +4,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'appearance_settings.dart';
 import 'general_settings.dart';
+import 'graph_settings.dart';
 import 'layout_settings.dart';
 import 'projects_settings.dart';
 
@@ -32,6 +33,9 @@ abstract class AppSettings with _$AppSettings {
 
     /// The project registry (Story 11.5).
     @Default(ProjectsSettings()) ProjectsSettings projects,
+
+    /// The graph's View options (Story 10.7).
+    @Default(GraphSettings()) GraphSettings graph,
   }) = _AppSettings;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -8,9 +10,12 @@ import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/graph/at_pill.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
+import 'package:zanshin/src/features/graph/graph_controls.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_metrics.dart';
 import 'package:zanshin/src/features/graph/graph_peek.dart';
+import 'package:zanshin/src/features/graph/graph_ports.dart';
+import 'package:zanshin/src/features/graph/graph_preferences.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
@@ -18,12 +23,17 @@ import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/layout_invariants.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/stale_notice.dart';
+import 'package:zanshin/src/features/shell/floating_shell.dart';
+import 'package:zanshin/src/features/shell/shell_controller.dart';
+import 'package:zanshin_core/zanshin_core.dart' show MutationResult;
+import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../graph/fake_content.dart';
 import '../graph/fake_graph_source.dart';
 import '../graph/graph_recordings.g.dart';
 import '../graph/synthetic_layout.dart';
+import 'projects.dart' show demoCapsule;
 
 /// The "Graph" folder (Story 10.1, decision 16.30): the fake-data host of every Epic 10 story. "Viewport / Recording"
 /// shows the recorded layouts of the design sample and medium-narrow, "Viewport / Scale" the synthetic 10k–100k
@@ -31,7 +41,8 @@ import '../graph/synthetic_layout.dart';
 /// insets stand in for the floating chrome. "Viewport / View model" drives a `GraphViewModel` on a fake source over the
 /// recordings, with the stale notice and the @ pill over it (Stories 10.5, 10.6). "Card / States" shows one commit card
 /// per state (Story 10.3); "Peek / Open" the commit callout and "@ pill / Directions" the pill (Story 10.6); "Stale
-/// notice / Variants" the notice with its action, busy, and with Copy (Story 10.5).
+/// notice / Variants" the notice with its action, busy, and with Copy (Story 10.5). "Floating shell / Controls" hosts
+/// the graph's top-bar controls in the floating shell (Story 10.7).
 final graphFolder = WidgetbookFolder(
   name: 'Graph',
   children: <WidgetbookNode>[
@@ -93,6 +104,37 @@ final graphFolder = WidgetbookFolder(
               options: _options(context),
               insets: _insets(context),
               staleCause: stale == 'none' ? null : stale,
+            );
+          },
+        ),
+      ],
+    ),
+    WidgetbookComponent(
+      name: 'Floating shell',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(
+          name: 'Controls',
+          builder: (context) {
+            final double width = context.knobs.double.slider(
+              label: 'window width',
+              initialValue: 1440,
+              min: 880,
+              max: 1440,
+              divisions: 56,
+            );
+            const size = Size.fromHeight(900);
+            return FittedBox(
+              child: SizedBox(
+                width: width,
+                height: size.height,
+                // The 1040 / 920 rules read the window width.
+                child: MediaQuery(
+                  data: MediaQuery.of(context).copyWith(size: Size(width, size.height)),
+                  child: _ShellControlsDemo(
+                    key: _shellControlsDemoKeys[WidgetbookState.of(context)] ??= GlobalKey<_ShellControlsDemoState>(),
+                  ),
+                ),
+              ),
             );
           },
         ),
@@ -340,6 +382,97 @@ class _ViewModelDemoState extends State<_ViewModelDemo> {
         child: Center(heightFactor: 1, child: GraphView.atPill(_model)),
       ),
     ],
+  );
+}
+
+/// One key per Widgetbook instance, as [_viewModelDemoKeys]: the width knob keeps the store, model and shell.
+final _shellControlsDemoKeys = Expando<GlobalKey<_ShellControlsDemoState>>('shell controls demo key');
+
+/// "Floating shell / Controls" (Story 10.7): the floating shell over a [GraphView] on the view-model demo's fake
+/// source, the graph's controls in VIEW and ACTION and the @ pill; the View options are [GraphPreferences] on a
+/// settings file in a temp folder, and New change runs on [_DemoActions]. The width knob sizes the window (its
+/// `MediaQuery` too, so the 1040 / 920 rules show).
+class _ShellControlsDemo extends StatefulWidget {
+  const _ShellControlsDemo({super.key});
+
+  @override
+  State<_ShellControlsDemo> createState() => _ShellControlsDemoState();
+}
+
+class _ShellControlsDemoState extends State<_ShellControlsDemo> {
+  final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_graph');
+  final _source = FakeGraphSource(
+    (request) => recordedLayout(
+      'design-default',
+      GraphViewOptions(layout: request.mode, laneOrder: request.order),
+      inlineContent: false,
+    ),
+  );
+  final _model = GraphViewModel();
+  final _shell = ShellController();
+  GraphPreferences? _preferences;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final SettingsStore store = await SettingsStore.load(File('${_dir.path}/settings.json'));
+    if (!mounted) {
+      return;
+    }
+    final int now = recordedNowMs('design-default');
+    final preferences = GraphPreferences(store)
+      ..init(_model, _source, actions: _DemoActions(), clock: () => DateTime.fromMillisecondsSinceEpoch(now));
+    setState(() => _preferences = preferences);
+  }
+
+  @override
+  void dispose() {
+    _preferences?.dispose();
+    _model.dispose();
+    _shell.dispose();
+    _dir.deleteSync(recursive: true);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final GraphPreferences? preferences = _preferences;
+    if (preferences == null) {
+      return const ZsCanvas();
+    }
+    return FloatingShell(
+      controller: _shell,
+      canvas: const ZsCanvas(),
+      graph: ListenableBuilder(
+        listenable: preferences,
+        builder: (context, _) => GraphView(model: _model, options: preferences.options),
+      ),
+      projectCapsule: demoCapsule(),
+      view: GraphViewControls(model: _model, preferences: preferences),
+      newChange: NewChangeButton(model: _model),
+      atPill: GraphView.atPill(_model),
+    );
+  }
+}
+
+/// The demo's verbs: each writes one operation; `jj new` gives birth to a change the recording does not show.
+class _DemoActions implements GraphActions {
+  var _ops = 0;
+
+  @override
+  Future<String> headOpId() async => 'op$_ops';
+
+  @override
+  Future<MutationResult> run(GraphAction action) async => MutationResult(
+    newOpId: 'op${++_ops}',
+    newChangeIds: <String>[if (action is GraphNew) 'born$_ops'],
+    abandonedChangeIds: const <String>[],
+    workingCopyChangeId: null,
+    finish: null,
   );
 }
 
