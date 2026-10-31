@@ -2298,3 +2298,15 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **A double-click `jj edit` has no in-flight guard, so a second double-click while one runs starts another run and reload.** Medium (unverified).
   - `app/lib/src/features/graph/graph_view_model.dart:271` `edit` awaits `run` with no busy flag; no real `GraphActions` exists yet (test fakes only), so whether 10.9's runner serialises jj calls is unsettled.
   - **Follow-up:** when 10.9 wires the real port, make overlapping actions queue or refuse (one jj call at a time) and test two quick double-clicks.
+
+## Surfaced in Story 10.9 (bmad-build-auto, 2026-10-31)
+
+- **The runner has no actions for `commit`, `split`, `rebase` and `duplicate`, though their backend verbs exist.** Medium.
+  - `app/lib/src/features/graph/graph_ports.dart` `GraphAction` covers edit, describe, new (-A/-B), abandon, revert, squash, bookmark create/delete/move/rename, undo, redo; `RepoHandle.commit`, `split`, `rebase`, `duplicate` have no subtype, and their per-verb selection/anchor rules (commit: new @ selected; split: selection stays; both anchored on the source) are not in `GraphViewModel._succeeded`.
+  - **Follow-up:** 10.10 (drop rows: rebase, duplicate) and 10.25 (composer: commit, split) add their subtypes, the `RepoGraphActions` mapping and the selection/anchor rule beside the existing ones.
+- **Revert does not select the new change while the inspector is open.** Low.
+  - The 2026-10-26 note: "the new change is selected only while the inspector is open"; `GraphViewModel._succeeded` leaves the selection on revert because no inspector state exists yet (the outcome carries the born id).
+  - **Follow-up:** 10.8 selects `outcome.born.first` after a `GraphRevert` while its inspector is open.
+- **The real action port is not wired into the app, and the commands are not checked through the parity oracle.** Low.
+  - `RepoGraphActions` (graph_ports.dart) is constructed only in tests, like `RepoGraphSource`; `GraphAction.command` strings are checked against literal expectations in `app/test/features/graph/graph_ports_test.dart`, not parsed by jj.
+  - **Follow-up:** 10.12 passes `RepoGraphActions(repo)` to `GraphViewModel.init(actions:)` where it builds the real source; the first story that shows a command (10.15) runs a sample of `command` strings through `crates/zanshin-parity`'s oracle.

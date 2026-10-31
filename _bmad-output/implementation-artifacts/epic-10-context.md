@@ -14,10 +14,10 @@ Build the app's main view: the commit graph that owns the window, with every oth
 - Story 10.3: Commit cards (detailed / compact) (done)
 - Story 10.4: Graph edges (router B lines, dashed, bridges, @ lineage) (done)
 - Story 10.5: Graph view model and repository wiring (done)
-- Story 10.6: Selection, hover focus, callout, @ locator, go-to, keyboard
+- Story 10.6: Selection, hover focus, callout, @ locator, go-to, keyboard (done)
 - Story 10.7: Graph controls in the floating top bar
 - Story 10.8: Inspector panel
-- Story 10.9: Action runner
+- Story 10.9: Action runner (done)
 - Story 10.10: Drag-and-drop on the graph
 - Story 10.11: Content paging
 - Story 10.12: Adopt the backend layout
@@ -74,6 +74,7 @@ Build the app's main view: the commit graph that owns the window, with every oth
 
 ## Cross-Story Dependencies
 
-- Done and available: 10.1–10.5, 4.10–4.15, 11.1 (tokens), 11.10 (POC removed), 11.11 (catalogue, controls), 11.15 (`ZsDragGhost`), 11.16 (ARB strings); 5.1 (line-level hunks, Rust `compute_hunks`) for the diff stories.
-- 10.6 next (needs 10.3 + 10.4); 10.7 after 10.6 and 11.11; 10.8 after 10.5/10.6; 10.9 after 10.3/10.5; 10.15 after 10.8/10.9; 10.10 after 10.9/10.15; 10.11 after 10.3/10.5; 10.14 after 10.5/10.6/10.7 (full rows need 9.29); 10.16 after 10.6 and 11.13.
+- Done and available: 10.1–10.6, 4.10–4.16 (4.16: Free keeps the band around a day divider card-free), 11.1 (tokens), 11.10 (POC removed), 11.11 (catalogue, controls), 11.15 (`ZsDragGhost`), 11.16 (ARB strings); 5.1 (line-level hunks, Rust `compute_hunks`) for the diff stories.
+- 10.6 shipped selection (220 ms double-click window; double-click = `GraphViewModel.edit` on mutable cards), hover intent + `graphFocusSet` focus path, scoped Esc, the one-Tab-stop graph, the @ pill (`GraphView.atPill`), `GraphPeek` callout, public `ZsTooltipBubble`, and `GraphViewModel.goTo` (select, reveal centred, pulse; reveals beyond 3 viewports jump). Handed on: immutable-reason `revsetCounts` (11.7); peek description/commit id/loading (10.11/10.12); stack popover (10.17); gap callout and flash (10.19); search calling `goTo` (10.21); arrow keys and ⌘J/⇧⌘J (11.13); drag/hunk/describe Esc steps (10.10/10.26/10.8); inspector's covered-selection scroll (10.8); card/context menu content and the "Drag"/"Right-click" hint parts (10.15/10.10).
+- 10.7 next, after 10.6 and 11.11; 10.8 after 10.5/10.6; 10.9 after 10.3/10.5; 10.15 after 10.8/10.9; 10.10 after 10.9/10.15; 10.11 after 10.3/10.5; 10.14 after 10.5/10.6/10.7 (full rows need 9.29); 10.16 after 10.6 and 11.13.
 - 10.12 adopts 4.10–4.15 for real data; 10.17 needs 4.13 recordings; 10.19 follows 10.4–10.7; 10.20 follows 10.4/10.5/10.17; 10.21 after 10.5/10.6/10.11 and needs 9.25; 10.22 after 10.21, 11.11 and 11.12; 10.23 after 10.9; 11.13 follows 10.9 and 10.23; 10.24–10.27 need Epic 5's diff and 9.15/9.49/9.50/9.31.
