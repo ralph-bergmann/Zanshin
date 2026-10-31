@@ -32,6 +32,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_view_model.dart:271
     severity: medium (unverified)
+    resolved: >-
+      2026-10-31 — fixed (spec-10-9-action-runner, commit 4d32de6a): the runner refuses a second action while one runs (GraphActionDisabled(busy)); two quick double-clicks run jj edit once.
 ---
 
 <intent-contract>

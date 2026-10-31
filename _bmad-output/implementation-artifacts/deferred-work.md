@@ -1084,6 +1084,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **10.8's and 10.9's `handle.dart` citations are stale.** Low.
   - 10.8 cites `handle.dart:690` for `show`; 10.9 cites :228, :242, :257, :271, :284, :861 and :891. The file is `packages/zanshin_core/lib/src/worker/handle.dart`: describe :344, newChange :358, edit :373, abandon :387, undo :407, show :813, bookmarkCreate :986, bookmarkDelete :1016.
   - **Follow-up:** re-point them when each story is refined.
+  - **2026-10-31, Story 10.9:** Story 10.9 item 1 in epics.md cites `RepoHandle` method names instead of line numbers (commit 4d32de6a); left: 10.8's citation.
 
 ### The floating chrome and the shell
 
@@ -2295,7 +2296,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in the follow-up review of Story 10.6 (bmad-build-auto, 2026-10-31)
 
-- **A double-click `jj edit` has no in-flight guard, so a second double-click while one runs starts another run and reload.** Medium (unverified).
+- ~~**A double-click `jj edit` has no in-flight guard, so a second double-click while one runs starts another run and reload.**~~ — RESOLVED 2026-10-31 (spec-10-9-action-runner, commit 4d32de6a, I2): the runner runs one action at a time; a second trigger gets `GraphActionDisabled(busy)` and calls nothing; model and widget tests run two quick double-clicks → one `jj edit`. Medium (unverified).
   - `app/lib/src/features/graph/graph_view_model.dart:271` `edit` awaits `run` with no busy flag; no real `GraphActions` exists yet (test fakes only), so whether 10.9's runner serialises jj calls is unsettled.
   - **Follow-up:** when 10.9 wires the real port, make overlapping actions queue or refuse (one jj call at a time) and test two quick double-clicks.
 
