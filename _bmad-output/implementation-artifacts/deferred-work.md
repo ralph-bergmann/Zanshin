@@ -2311,3 +2311,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The real action port is not wired into the app, and the commands are not checked through the parity oracle.** Low.
   - `RepoGraphActions` (graph_ports.dart) is constructed only in tests, like `RepoGraphSource`; `GraphAction.command` strings are checked against literal expectations in `app/test/features/graph/graph_ports_test.dart`, not parsed by jj.
   - **Follow-up:** 10.12 passes `RepoGraphActions(repo)` to `GraphViewModel.init(actions:)` where it builds the real source; the first story that shows a command (10.15) runs a sample of `command` strings through `crates/zanshin-parity`'s oracle.
+
+## Surfaced in the follow-up review of Story 10.9 (bmad-build-auto, 2026-10-31)
+
+- **No test pins a pending card's opacity while a focus dim is also active.** Low.
+  - `GraphCanvas.opacityOf` multiplies `disabledOpacity` by the focus-dim factor (app/lib/src/features/graph/graph_canvas.dart:524-528); `graph_view_test.dart` checks the pending fade and the hover dim only one at a time, so replacing the product with either factor passes.
+  - **Follow-up:** next to the hover-dim test (graph_view_test.dart:852), start a gated action on an off-path card and expect `disabledOpacity * .4`.

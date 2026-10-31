@@ -5,7 +5,7 @@ created: '2026-10-31'
 status: 'done'
 baseline_revision: '37102ab40f2b22453e10f8b9283b6586a33af804'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
@@ -31,6 +31,13 @@ deferred:
       RepoGraphActions is constructed only in tests (like RepoGraphSource, wired by 10.12); command strings are checked against literals, not parsed by jj.
     location: >-
       app/lib/src/features/graph/graph_ports.dart
+    severity: low
+  - summary: >-
+      No test pins a pending card's opacity while a focus dim is also active.
+    evidence: |-
+      GraphCanvas.opacityOf multiplies disabledOpacity by the focus-dim factor; graph_view_test.dart checks the pending fade and the hover dim only one at a time, so replacing the product with either factor passes.
+    location: >-
+      app/lib/src/features/graph/graph_canvas.dart:524
     severity: low
 ---
 
@@ -150,6 +157,44 @@ deferred:
   - `[low]` `[defer]` A6 revert inspector selection and the oracle check of commands — deferred to 10.8 / 10.15.
 - note: the real-repo tests added for B8 found a further bug, fixed in the same patch round: `RepoHandle.revert` takes change ids only, so `insertBefore: ['@']` was refused `jj.change_not_found`; `RepoGraphActions` now reads @'s change id via `status()` and passes it (the command still shows `-B @`). The epics.md 2026-10-26 note's `insertBefore: ['@']` is the call's meaning, not its literal argument.
 
+### 2026-10-31 — Review pass (follow-up)
+- verdicts: 33 findings — high 0, medium 4, low 19, false 10, maybe-false 0 (intent-auditor divergences counted as findings)
+- findings:
+  - `[false]` `[reject]` B1 abandon clears an unrelated selection — carried: the 2026-10-14 note (GV:782) says after abandon nothing is selected.
+  - `[low]` `[reject]` B2 a multi-abandon anchors on a vanished card — carried: the viewport falls back to the centre node; no multi-abandon trigger exists yet.
+  - `[low]` `[reject]` B3 a failed head read is published as a refusal of the verb — the error is jj's verbatim op-log refusal and the verb did not run; a rare path, and the fix restructures `_execute`'s error handling.
+  - `[low]` `[reject]` B4 `_checkHead` / `status()`→`revert()` can interleave with other jj calls — only a foreign jj process can land between two worker calls; rare, and closing it needs a worker-side revert-before-@.
+  - `[false]` `[reject]` B5a the per-event head read drops the undo after file edits — carried (B6): item 7 prescribes exactly this check.
+  - `[low]` `[reject]` B5b `_checkHead`'s error branch untested — a log-and-return branch; no user-visible effect.
+  - `[low]` `[reject]` B6 pendingKeys/flash miss an implicit @ — carried (B5): cosmetic for a sub-second state.
+  - `[false]` `[reject]` B7 `new -B` does not move the selection — carried (B10c): the new change's parent is the target's parent.
+  - `[false]` `[reject]` B8 disabled results are not published on `outcome` — a `GraphActionDisabled` is returned to the calling surface, which owns its words; no jj outcome exists to publish.
+  - `[false]` `[reject]` B9 dispose mid-run — carried (B10a): `_notify`, `_publish`, `_requestLayout` guard `_disposed`.
+  - `[low]` `[reject]` B10 the @-less revert path is untested — only a forgotten workspace has no @, and the handle then refuses the empty location (no silent default).
+  - `[low]` `[defer]` B11 pending fade combined with the focus dim untested — grouped with V2.
+  - `[low]` `[reject]` B12 `GraphSquash` has no `trees` — the GUI-tree (interactive) squash is 10.8's form, not a CLI parameter.
+  - `[low]` `[reject]` B13 no model test for a bookmark move's flash / `new -B`'s anchor — both are one-line plan arms beside tested siblings.
+  - `[medium]` `[patch]` V1 RepoGraphActions mapping never executed for describe, abandon, squash, bookmark create/move/rename — real-repo tests added (describe, abandon, squash `-r -m -k`, bookmark create `-r` / move of `f*` beside `foo` / rename).
+  - `[low]` `[defer]` V2 pending opacity × focus dim unpinned — deferred (the layer's own disposition), mirrored into deferred-work.md.
+  - `[medium]` `[patch]` E1 bookmark names with `]`, `{`, `}` or `\` are sent as globs — jj-core `is_glob_char` @ v0.46.0 counts `?*[]{}\`; `_exactPattern` now uses that set; pattern test added (`{a,b}`, `x]`).
+  - `[low]` `[patch]` E2 `GraphNew()` with no target is refused by the handle — `RepoGraphActions` resolves @ via `status()` (as revert does), the CLI's default parent; real-repo test added.
+  - `[low]` `[reject]` E3 a foreign op between the head read and the verb makes a no-write verb undoable — a narrow window; closing it needs the worker to return the pre-call head.
+  - `[low]` `[reject]` E4 multi-abandon anchor — carried, as B2.
+  - `[low]` `[reject]` E5 @ moves between `status()` and `revert()` — as B4.
+  - `[low]` `[reject]` E6 `_checkHead` skipped while running leaves a stale undo offer — `undoLast` re-checks the head on demand before calling anything.
+  - `[medium]` `[patch]` E7 claim: glob-like names beyond `*?[` break "one valid command" — fixed with E1.
+  - `[false]` `[reject]` E8 no label field — carried: the outcome's action is the label.
+  - `[false]` `[reject]` E9 revert passes a resolved @ id, not `'@'` — carried: the handle takes change ids only (prior pass note).
+  - `[false]` `[reject]` I1 revert literal vs semantic — as E9.
+  - `[low]` `[reject]` I2 the no-op test starts without a prior undoable — the keep-previous branch is one assignment-free path.
+  - `[false]` `[reject]` I3 abandon clears the selection unconditionally — as B1.
+  - `[low]` `[defer]` I4 commands not checked through the oracle — carried (A6), already deferred to 10.15.
+  - `[medium]` `[patch]` I5 describe/abandon/squash/bookmark verbs not run against a real repo — fixed with V1.
+  - `[low]` `[reject]` I6 `_checkHead` reads the head while stale — the read fails and is caught and logged.
+  - `[false]` `[reject]` I7 the anchor hint is set before the port call — deliberate (Design Notes: set at run start, cleared in `_land`).
+  - `[low]` `[reject]` I8 two jj calls per action — already recorded as a residual risk.
+- note: the first squash test (empty @ squashed with `-k -m`) failed against jj itself: jj squashes nothing and sets no message from an empty kept source (squash.rs `squash_commits` → `None`), the CLI's behaviour; the test now gives @ a file first.
+
 ## Design Notes
 
 - Anchor: the viewport records `anchorKey`'s position each layout pass and re-applies it on the next layout (graph_viewport_render.dart `_recordAnchor`/`_applyAnchor`); setting `anchorHint` when the run starts and clearing it in `_land` anchors the reload on the hinted card.
@@ -171,6 +216,7 @@ deferred:
 - `dart format --set-exit-if-changed lib test` -- exit 0 in `app/` and `packages/zanshin_core/`.
 - `cargo make --allow-private test-flutter` (run by the implementer) -- 1172 passed on the last run; one earlier run failed once in `projects_window_test.dart` ("Story 11.15 closing — focus New group…", untouched by this story), passing alone and on the rerun (flaky).
 - No Rust, FFI or schema change: no cargo test / clippy / codegen / parity oracle needed. The Marionette catalogue check was not run (unattended).
+- Follow-up review (2026-10-31): `cargo make --allow-private test-flutter` -- 1177 passed (one run before the squash test fix failed on that test only, see the triage note); `dart analyze --fatal-infos` (app/) -- no issues; `dart format --set-exit-if-changed lib test` (app/) -- exit 0. No Rust, FFI or zanshin_core change.
 
 ## Auto Run Result
 
@@ -193,5 +239,7 @@ Status: done
 **Items.**
 - I1 -- fixed (4d32de6a48262ead5ea44cbfff2792799066f5ab): epics.md 10.9 item 1 now cites `RepoHandle.edit`, `.describe`, `.newChange`, `.abandon`, `.bookmarkCreate`, `.bookmarkDelete`, `.undo` instead of line numbers. 10.8's part (`handle.dart:690` for `show`) stays open as asked.
 - I2 -- fixed (4d32de6a48262ead5ea44cbfff2792799066f5ab): overlapping actions are refused (`GraphActionDisabled(busy)`, no port call); a model test and a widget test show two quick double-clicks run one `edit`.
+
+**Follow-up review (2026-10-31).** 33 findings: 3 patch entries applied (medium: bookmark glob set now jj-core's `?*[]{}\`; medium: real-repo mapping tests for describe, abandon, squash, bookmark create/move/rename; low: `GraphNew()` resolves @ like the CLI default); 1 new deferral (pending × focus-dim opacity test, mirrored into deferred-work.md), 1 carried deferral (oracle check); 28 rejected with reasons in the triage log. Files: `app/lib/src/features/graph/graph_ports.dart` (glob set, `_newOnAt`), `app/test/features/graph/graph_ports_test.dart` (tests). Follow-up review recommended: false -- follow-up pass patched no high (patched counts: high 0, medium 2 entries, low 1 entry).
 
 **Residual risks.** One extra `opLog(limit: 1)` (snapshotting) per action and per op-heads event while an undo/redo is offered; a watcher op-heads event after an own action adds a second, unanchored reload; the runner is not reachable from the running app until 10.12 wires `RepoGraphActions`.
