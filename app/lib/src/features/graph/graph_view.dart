@@ -261,6 +261,7 @@ class _GraphViewState extends State<GraphView> {
                 pulse: model.pulse,
                 pendingKeys: model.pendingKeys,
                 anchorHint: model.anchorHint,
+                content: model.content,
                 onUserScroll: _reportUserScroll,
                 onWorkingCopyDirection: model.setWorkingCopyDirection,
               ),

@@ -91,6 +91,22 @@ class GraphViewportController {
     return viewport == null || !viewport.hasSize ? null : viewport._unobscured;
   }
 
+  /// The nodes whose card (inflated by [graphCardOverhang], as mounted) meets the plane window the viewport shows at the
+  /// current scroll, inflated by [dx] horizontally and [dy] vertically (Story 10.11's content page), in ascending top
+  /// order; empty while detached.
+  List<int> nodesNear(double dx, double dy) {
+    final RenderGraphViewport? viewport = _viewport;
+    if (viewport == null || !viewport.hasSize) {
+      return const <int>[];
+    }
+    final Rect visible = (viewport._scroll - viewport._insets.topLeft) & viewport.size;
+    // The overhang the viewport mounts cards with: every card mounted inside the window is in the page.
+    return viewport.vertical.visibleNodes(
+      Rect.fromLTRB(visible.left - dx, visible.top - dy, visible.right + dx, visible.bottom + dy),
+      graphCardOverhang,
+    );
+  }
+
   /// Whether a canvas pan is held.
   bool get isPanning => _viewport?.isPanning ?? false;
 

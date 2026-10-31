@@ -9,6 +9,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import 'day_axis.dart';
 import 'graph_card_render.dart';
+import 'graph_content.dart';
 import 'graph_layout.dart';
 
 /// The double-click window (Story 10.6 item 2; the prototype's 220 ms, GV:550-558): a click selects only after it.
@@ -212,9 +213,11 @@ class GraphCardData {
     this.content,
   });
 
-  /// The facts of [node] in [layout].
-  factory GraphCardData.of(GraphLayout layout, int node) {
+  /// The facts of [node] in [layout]; the content is [content]'s cache entry, else the layout's own (Story 10.11), and
+  /// the date the layout's timestamp, else the content's.
+  factory GraphCardData.of(GraphLayout layout, int node, {GraphContent? content}) {
     final isRoot = node == layout.rootIndex;
+    final GraphCommitContent? loaded = content == null ? layout.contentOf(node) : content.of(layout, node);
     return GraphCardData(
       key: layout.keyOf(node),
       changeId: layout.changeIdOf(node),
@@ -227,12 +230,12 @@ class GraphCardData {
       divergent: layout.isDivergent(node),
       // Missing parents included (10.1 item 2): the edge count would drop a merge whose other parent is outside.
       merge: layout.parentCountOf(node) >= 2,
-      timestampMs: layout.timestampOf(node),
+      timestampMs: layout.timestampOf(node) ?? loaded?.timestampMs,
       utcOffsetMinutes: layout.utcOffsetMinutes,
       refs: layout.refsOf(node),
       workingCopies: layout.workingCopiesOf(node),
       workspaceName: layout.workspaceName,
-      content: layout.contentOf(node),
+      content: loaded,
     );
   }
 
@@ -458,14 +461,19 @@ typedef GraphCardIcons = ({
   ui.Picture? merge,
 });
 
+/// A shown skeleton bar (Story 10.11): its sweep and its `--skeleton` / `--skeleton-hi` colours.
+typedef GraphCardSkeleton = ({Animation<double> sweep, Color base, Color high});
+
 /// One commit card (Story 10.3): the detailed (62) or compact (40) card, drawn by one leaf [RenderGraphCard] in the
 /// box the viewport gives it — the card rect inflated by `graphCardOverhang` on every side.
 ///
 /// Hover, selection, focus, an open menu, [GraphCardController.actionsEnabled] and the minute tick reach the render
-/// object through listeners and build nothing; the State owns only the affordances' reveal animation.
+/// object through listeners and build nothing; the State owns the affordances' reveal animation and, with a [content]
+/// loader (Story 10.11), the skeleton: a non-root card still without content paints a skeleton bar in its subject slot
+/// once `--delay-skeleton` has passed, swept every `--dur-shimmer`, and rebuilds when its entry arrives.
 class GraphCard extends StatefulWidget {
   /// The card of [node] in [layout].
-  const GraphCard({required this.layout, required this.node, required this.controller, super.key});
+  const GraphCard({required this.layout, required this.node, required this.controller, this.content, super.key});
 
   /// The layout [node] belongs to.
   final GraphLayout layout;
@@ -476,15 +484,56 @@ class GraphCard extends StatefulWidget {
   /// The graph's card controller.
   final GraphCardController controller;
 
+  /// The content cache; null shows the layout's own content and never a skeleton.
+  final GraphContent? content;
+
   @override
   State<GraphCard> createState() => _GraphCardState();
 }
 
-class _GraphCardState extends State<GraphCard> with SingleTickerProviderStateMixin {
+class _GraphCardState extends State<GraphCard> with TickerProviderStateMixin {
   late final _reveal = AnimationController(vsync: this, duration: ZsMotion.full.durHover);
+  late final _sweep = AnimationController(vsync: this, duration: ZsMotion.full.durShimmer);
   var _inactive = false;
+  Duration _delaySkeleton = ZsMotion.full.delaySkeleton;
+  Timer? _skeletonWait;
+  var _skeletonShown = false;
+  GraphCommitContent? _content;
 
   String get _key => widget.layout.keyOf(widget.node);
+
+  GraphCommitContent? _contentNow() => widget.content?.of(widget.layout, widget.node);
+
+  /// Whether this card waits for its content: a loader exists, it is not the root, and nothing has arrived.
+  bool get _waiting => widget.content != null && widget.node != widget.layout.rootIndex && _contentNow() == null;
+
+  /// Starts the skeleton delay while the card waits, ends the skeleton once it does not.
+  void _syncSkeleton() {
+    if (!_waiting) {
+      _skeletonWait?.cancel();
+      _skeletonWait = null;
+      if (_skeletonShown) {
+        _skeletonShown = false;
+        _sweep.stop();
+      }
+      return;
+    }
+    if (!_skeletonShown && _skeletonWait == null) {
+      _skeletonWait = Timer(_delaySkeleton, () {
+        _skeletonWait = null;
+        if (mounted && _waiting) {
+          setState(() => _skeletonShown = true);
+          _sweep.repeat();
+        }
+      });
+    }
+  }
+
+  void _contentChanged() {
+    if (!identical(_contentNow(), _content)) {
+      setState(_syncSkeleton);
+    }
+  }
 
   bool get _revealed {
     final GraphCardController c = widget.controller;
@@ -496,6 +545,7 @@ class _GraphCardState extends State<GraphCard> with SingleTickerProviderStateMix
   void initState() {
     super.initState();
     _listen(widget.controller);
+    widget.content?.addListener(_contentChanged);
   }
 
   @override
@@ -505,15 +555,24 @@ class _GraphCardState extends State<GraphCard> with SingleTickerProviderStateMix
       _unlisten(oldWidget.controller);
       _listen(widget.controller);
     }
+    if (!identical(oldWidget.content, widget.content)) {
+      oldWidget.content?.removeListener(_contentChanged);
+      widget.content?.addListener(_contentChanged);
+    }
     _update();
+    _syncSkeleton();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _inactive = ZsAppearance.maybeOf(context)?.inactive ?? false;
-    _reveal.duration = ZsMotion.of(context).durHover;
+    final ZsMotion motion = ZsMotion.of(context);
+    _reveal.duration = motion.durHover;
+    _sweep.duration = motion.durShimmer;
+    _delaySkeleton = motion.delaySkeleton;
     _update();
+    _syncSkeleton();
   }
 
   void _listen(GraphCardController c) {
@@ -539,15 +598,22 @@ class _GraphCardState extends State<GraphCard> with SingleTickerProviderStateMix
   @override
   void dispose() {
     _unlisten(widget.controller);
+    widget.content?.removeListener(_contentChanged);
+    _skeletonWait?.cancel();
     _reveal.dispose();
+    _sweep.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final IconRegistry? registry = IconRegistryScope.maybeOf(context);
+    final data = GraphCardData.of(widget.layout, widget.node, content: widget.content);
+    _content = widget.content == null ? null : data.content;
+    final ZsColors colors = ZsColors.of(context);
     return _GraphCardLeaf(
-      data: GraphCardData.of(widget.layout, widget.node),
+      data: data,
+      skeleton: _skeletonShown ? (sweep: _sweep, base: colors.skeleton, high: colors.skeletonHi) : null,
       theme: GraphTheme.of(context),
       elevation: ZsElevation.of(context),
       metrics: ZsMetrics.of(context),
@@ -570,6 +636,7 @@ class _GraphCardState extends State<GraphCard> with SingleTickerProviderStateMix
 class _GraphCardLeaf extends LeafRenderObjectWidget {
   const _GraphCardLeaf({
     required this.data,
+    required this.skeleton,
     required this.theme,
     required this.elevation,
     required this.metrics,
@@ -582,6 +649,7 @@ class _GraphCardLeaf extends LeafRenderObjectWidget {
   });
 
   final GraphCardData data;
+  final GraphCardSkeleton? skeleton;
   final GraphTheme theme;
   final ZsElevation elevation;
   final ZsMetrics metrics;
@@ -595,6 +663,7 @@ class _GraphCardLeaf extends LeafRenderObjectWidget {
   @override
   RenderGraphCard createRenderObject(BuildContext context) => RenderGraphCard(
     data: data,
+    skeleton: skeleton,
     theme: theme,
     elevation: elevation,
     metrics: metrics,
@@ -609,6 +678,7 @@ class _GraphCardLeaf extends LeafRenderObjectWidget {
   @override
   void updateRenderObject(BuildContext context, RenderGraphCard renderObject) => renderObject
     ..data = data
+    ..skeleton = skeleton
     ..theme = theme
     ..elevation = elevation
     ..metrics = metrics

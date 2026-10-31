@@ -860,6 +860,9 @@ void main() {
         ),
       );
       await pump(tester);
+      // Content landing rebuilds its cards (Story 10.11): let it land first.
+      await tester.pump(graphContentSettle);
+      await tester.pump();
       // A card build makes a new leaf widget.
       Set<Widget> leaves() =>
           tester.widgetList(find.byWidgetPredicate((w) => w.runtimeType.toString() == '_GraphCardLeaf')).toSet();

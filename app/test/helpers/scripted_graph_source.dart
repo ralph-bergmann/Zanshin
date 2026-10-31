@@ -66,6 +66,31 @@ class ScriptedGraphSource implements GraphSource {
 
   var updates = 0;
 
+  /// The answer to a content page (it may throw); the default gives each id a subject naming it, so a view's cards
+  /// fill before any skeleton shows.
+  Map<String, GraphCommitContent> Function(String? operationId, List<String> commitIds) contentRespond = (_, ids) =>
+      <String, GraphCommitContent>{for (final String id in ids) id: GraphCommitContent(subject: 'about $id')};
+
+  /// Holds every content page on a completer in [heldContent].
+  var holdContent = false;
+
+  /// The held content pages' completers, oldest first.
+  final heldContent = <Completer<Map<String, GraphCommitContent>>>[];
+
+  /// Every content page, oldest first.
+  final contentRequests = <({String? operationId, List<String> commitIds})>[];
+
+  @override
+  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds) {
+    contentRequests.add((operationId: operationId, commitIds: commitIds));
+    if (holdContent) {
+      final completer = Completer<Map<String, GraphCommitContent>>();
+      heldContent.add(completer);
+      return completer.future;
+    }
+    return Future<Map<String, GraphCommitContent>>.sync(() => contentRespond(operationId, commitIds));
+  }
+
   final _events = StreamController<RepoEvent>.broadcast(sync: true);
 
   /// Emits [event] on [events].

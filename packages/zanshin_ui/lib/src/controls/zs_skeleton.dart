@@ -185,6 +185,34 @@ Rect zsSkeletonBand(Size size, double t, double motion) {
   return Rect.fromLTWH(centre - band / 2, 0, band, size.height);
 }
 
+/// Paints one skeleton bar into [rect] at [t] of a sweep: `--skeleton` ([base]) with radius [radius] and the
+/// [high] (`--skeleton-hi`) band of [zsSkeletonBand]; under reduce motion ([motion] 0) no band, the bar pulses. The
+/// one skeleton look, shared by [ZsSkeleton] and painters that draw a bar in a text slot (the graph card, Story 10.11).
+void paintZsSkeletonBar(
+  Canvas canvas,
+  Rect rect, {
+  required double t,
+  required Color base,
+  required Color high,
+  required double radius,
+  required double motion,
+}) {
+  // The pulse: opacity `1 − .45 × (1 − --motion)` halfway (DS components/controls/controls.css:67).
+  final double opacity = 1 - (1 - ZsSkeleton._pulse) * (1 - motion) * (1 - (2 * t - 1).abs());
+  final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+  canvas
+    ..save()
+    ..clipRRect(rrect)
+    ..drawRRect(rrect, Paint()..color = base.withValues(alpha: base.a * opacity));
+  if (motion > 0) {
+    final Shader shader = LinearGradient(
+      colors: <Color>[high.withValues(alpha: 0), high, high.withValues(alpha: 0)],
+    ).createShader(zsSkeletonBand(rect.size, t, motion).shift(rect.topLeft));
+    canvas.drawRect(rect, Paint()..shader = shader);
+  }
+  canvas.restore();
+}
+
 class _SkeletonPainter extends CustomPainter {
   _SkeletonPainter({
     required this.sweep,
@@ -201,24 +229,15 @@ class _SkeletonPainter extends CustomPainter {
   final double motion;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final double t = sweep.value;
-    // The pulse: opacity `1 − .45 × (1 − --motion)` halfway (DS components/controls/controls.css:67).
-    final double opacity = 1 - (1 - ZsSkeleton._pulse) * (1 - motion) * (1 - (2 * t - 1).abs());
-    final Rect box = Offset.zero & size;
-    final rrect = RRect.fromRectAndRadius(box, Radius.circular(radius));
-    canvas
-      ..save()
-      ..clipRRect(rrect)
-      ..drawRRect(rrect, Paint()..color = base.withValues(alpha: base.a * opacity));
-    if (motion > 0) {
-      final Shader shader = LinearGradient(
-        colors: <Color>[high.withValues(alpha: 0), high, high.withValues(alpha: 0)],
-      ).createShader(zsSkeletonBand(size, t, motion));
-      canvas.drawRect(box, Paint()..shader = shader);
-    }
-    canvas.restore();
-  }
+  void paint(Canvas canvas, Size size) => paintZsSkeletonBar(
+    canvas,
+    Offset.zero & size,
+    t: sweep.value,
+    base: base,
+    high: high,
+    radius: radius,
+    motion: motion,
+  );
 
   @override
   bool shouldRepaint(_SkeletonPainter oldDelegate) =>

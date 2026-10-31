@@ -11,6 +11,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import 'day_axis.dart';
 import 'graph_card.dart';
+import 'graph_content.dart';
 import 'graph_edges.dart';
 import 'graph_focus.dart';
 import 'graph_layout.dart';
@@ -24,6 +25,13 @@ const _dayMs = 86400000;
 
 /// One go-to pulse (Story 10.6 item 12): 650 ms, three times.
 const graphPulseCycle = Duration(milliseconds: 650);
+
+/// How long the viewport rests before the canvas loads the content on screen (Story 10.11).
+const graphContentSettle = Duration(milliseconds: 100);
+
+/// The content page's horizontal buffer beside the visible window: the cache extent (Story 10.11). Vertically it is
+/// one viewport height.
+const double graphContentBufferX = 250;
 
 /// A viewport over [layout] with commit cards (Story 10.3), router B's edges (Story 10.4) and Free's day axis (Story
 /// 10.2): the composition the catalogue and `GraphView` share (Story 10.5). It owns its scroll controllers, its rows
@@ -44,6 +52,11 @@ const graphPulseCycle = Duration(milliseconds: 650);
 ///   under reduce motion) while fading 80 % → 0 %, painted in the overlay hook with the card raised and pinned.
 /// - **@:** where @ lies outside the unobscured area deflated by 8 px goes to [onWorkingCopyDirection].
 ///
+/// **Content (Story 10.11):** with a [content] cache, once the viewport has settled — no scroll change for
+/// [graphContentSettle], no canvas pan held, no drag or fling on either axis — and after a new layout or card size, it
+/// loads the content of the visible nodes plus a buffer (one viewport height, [graphContentBufferX] beside); cards and
+/// the peek read the cache.
+///
 /// User scrolling it reports to [onUserScroll]: canvas mouse pans (|dx| + |dy| per move) and fling glides (per axis,
 /// the updates without drag details that follow ones with them, until that axis's scroll end). Wheel and trackpad
 /// pans are the shell's own; programmatic scrolls are never reported.
@@ -58,6 +71,7 @@ class GraphCanvas extends StatefulWidget {
     this.pulse,
     this.pendingKeys = const <String>{},
     this.anchorHint,
+    this.content,
     this.onUserScroll,
     this.onWorkingCopyDirection,
     super.key,
@@ -86,6 +100,9 @@ class GraphCanvas extends StatefulWidget {
 
   /// The anchor of a running action's reload (10.9); null anchors on the selection.
   final String? anchorHint;
+
+  /// The card content cache it loads into (Story 10.11); null shows the layout's own content.
+  final GraphContent? content;
 
   /// Receives user scrolling.
   final ValueChanged<double>? onUserScroll;
@@ -136,13 +153,47 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   GraphDirection? _direction;
   var _directionReported = false;
 
+  // The content settle: restarted by every scroll change, a new layout or card size.
+  Timer? _settle;
+
   @override
   void initState() {
     super.initState();
     _listen(widget.cards);
     widget.pulse?.addListener(_pulseChanged);
-    _vertical.addListener(_measureDirection);
-    _horizontal.addListener(_measureDirection);
+    _vertical
+      ..addListener(_measureDirection)
+      ..addListener(_scheduleContent);
+    _horizontal
+      ..addListener(_measureDirection)
+      ..addListener(_scheduleContent);
+    _scheduleContent();
+  }
+
+  void _scheduleContent() {
+    _settle?.cancel();
+    _settle = widget.content == null ? null : Timer(graphContentSettle, _loadContent);
+  }
+
+  static bool _scrolling(ScrollController controller) =>
+      controller.hasClients && controller.position.isScrollingNotifier.value;
+
+  void _loadContent() {
+    _settle = null;
+    final GraphContent? content = widget.content;
+    if (!mounted || content == null || !_vertical.hasClients) {
+      return;
+    }
+    // A held pan or a drag without movement changes no offset: look again after another rest.
+    if (_viewport.isPanning || _scrolling(_vertical) || _scrolling(_horizontal)) {
+      _scheduleContent();
+      return;
+    }
+    final List<int> nodes = _viewport.nodesNear(graphContentBufferX, _vertical.position.viewportDimension);
+    // An empty window (no size yet) must not supersede the page in flight.
+    if (nodes.isNotEmpty) {
+      content.load(widget.layout, nodes);
+    }
   }
 
   @override
@@ -167,6 +218,15 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     }
     if (!identical(oldWidget.layout, widget.layout)) {
       _updateFocus();
+    }
+    // A reveal or an anchor jump corrects the offset without notifying its listeners.
+    if (!identical(oldWidget.layout, widget.layout) ||
+        !identical(oldWidget.reveal, widget.reveal) ||
+        !identical(oldWidget.content, widget.content) ||
+        oldWidget.options.cardWidth != widget.options.cardWidth ||
+        oldWidget.options.detailedCards != widget.options.detailedCards ||
+        oldWidget.insets != widget.insets) {
+      _scheduleContent();
     }
   }
 
@@ -194,6 +254,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     widget.pulse?.removeListener(_pulseChanged);
     _peekTimer?.cancel();
     _tipTimer?.cancel();
+    _settle?.cancel();
     _dim.dispose();
     _pulse.dispose();
     _routes.dispose();
@@ -406,6 +467,12 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
 
   // ---- build ----
 
+  // A viewport resize changes the window without changing an offset.
+  bool _onMetrics(ScrollMetricsNotification notification) {
+    _scheduleContent();
+    return false;
+  }
+
   bool _onScroll(ScrollNotification notification) {
     final Axis axis = notification.metrics.axis;
     if (notification is ScrollUpdateNotification) {
@@ -422,7 +489,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
 
   // A tear-off of this state's method is equal across builds, so the delegate rebuilds no card.
   Widget _card(BuildContext context, int node) =>
-      GraphCard(layout: widget.layout, node: node, controller: widget.cards);
+      GraphCard(layout: widget.layout, node: node, controller: widget.cards, content: widget.content);
 
   /// The rows, built once per layout and remapped once per metrics change.
   VerticalLayout _rowsFor(GraphMetrics metrics) {
@@ -492,58 +559,61 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        NotificationListener<ScrollNotification>(
-          onNotification: _onScroll,
-          // The viewport's z-order, dim and pulse follow the card controller and the animations; rebuilding it builds
-          // no card.
-          child: ListenableBuilder(
-            listenable: Listenable.merge(<Listenable>[cards.selected, cards.hovered, cards.menuOpen, _dim, _pulse]),
-            builder: (context, _) {
-              final String? menu = cards.menuOpen.value;
-              final String? hoveredKey = cards.hovered.value;
-              // A set of another layout (a reload during the fade) is dropped.
-              final Uint8List? focus = identical(_focusLayout, widget.layout) ? _focus : null;
-              final double dim = _dim.value;
-              final highlight = GraphEdgeHighlight(
-                hoveredNode: hoveredKey == null ? null : widget.layout.indexOfKey(hoveredKey),
-                focus: focus,
-                dim: dim,
-              );
-              return GraphViewport(
-                layout: widget.layout,
-                metrics: metrics,
-                verticalLayout: rows,
-                cardBuilder: _card,
-                verticalController: _vertical,
-                horizontalController: _horizontal,
-                controller: _viewport,
-                insets: widget.insets,
-                selectedKey: cards.selected.value,
-                hoveredKey: hoveredKey,
-                pinnedKeys: <String>{?menu, ?_peekKey, ?_pulseKey},
-                opacityOf: (focus == null || dim == 0) && pending.isEmpty
-                    ? null
-                    : (node) =>
-                          (pending.contains(node) ? disabledOpacity : 1) *
-                          (focus == null || focus[node] != 0 ? 1 : 1 - .6 * dim),
-                anchorKey: widget.anchorHint ?? cards.selected.value,
-                reveal: widget.reveal,
-                onUserPan: _userPanned,
-                paintBackground: axis.paintGuides,
-                paintEdges: edges == null
-                    ? null
-                    : (context, origin, visible) => edges.paint(context, origin, visible, highlight: highlight),
-                paintOverlay: (context, origin, visible) {
-                  axis.paintLabels(context, origin, visible, leftInset: leftInset);
-                  _paintPulse(context.canvas, origin, rows, metrics, accent);
-                },
-              );
-            },
+        NotificationListener<ScrollMetricsNotification>(
+          onNotification: _onMetrics,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _onScroll,
+            // The viewport's z-order, dim and pulse follow the card controller and the animations; rebuilding it builds
+            // no card.
+            child: ListenableBuilder(
+              listenable: Listenable.merge(<Listenable>[cards.selected, cards.hovered, cards.menuOpen, _dim, _pulse]),
+              builder: (context, _) {
+                final String? menu = cards.menuOpen.value;
+                final String? hoveredKey = cards.hovered.value;
+                // A set of another layout (a reload during the fade) is dropped.
+                final Uint8List? focus = identical(_focusLayout, widget.layout) ? _focus : null;
+                final double dim = _dim.value;
+                final highlight = GraphEdgeHighlight(
+                  hoveredNode: hoveredKey == null ? null : widget.layout.indexOfKey(hoveredKey),
+                  focus: focus,
+                  dim: dim,
+                );
+                return GraphViewport(
+                  layout: widget.layout,
+                  metrics: metrics,
+                  verticalLayout: rows,
+                  cardBuilder: _card,
+                  verticalController: _vertical,
+                  horizontalController: _horizontal,
+                  controller: _viewport,
+                  insets: widget.insets,
+                  selectedKey: cards.selected.value,
+                  hoveredKey: hoveredKey,
+                  pinnedKeys: <String>{?menu, ?_peekKey, ?_pulseKey},
+                  opacityOf: (focus == null || dim == 0) && pending.isEmpty
+                      ? null
+                      : (node) =>
+                            (pending.contains(node) ? disabledOpacity : 1) *
+                            (focus == null || focus[node] != 0 ? 1 : 1 - .6 * dim),
+                  anchorKey: widget.anchorHint ?? cards.selected.value,
+                  reveal: widget.reveal,
+                  onUserPan: _userPanned,
+                  paintBackground: axis.paintGuides,
+                  paintEdges: edges == null
+                      ? null
+                      : (context, origin, visible) => edges.paint(context, origin, visible, highlight: highlight),
+                  paintOverlay: (context, origin, visible) {
+                    axis.paintLabels(context, origin, visible, leftInset: leftInset);
+                    _paintPulse(context.canvas, origin, rows, metrics, accent);
+                  },
+                );
+              },
+            ),
           ),
         ),
         if (_shownPeekKey != null || _tip != null)
           ListenableBuilder(
-            listenable: Listenable.merge(<Listenable>[_vertical, _horizontal]),
+            listenable: Listenable.merge(<Listenable?>[_vertical, _horizontal, widget.content]),
             builder: (context, _) => Stack(
               fit: StackFit.expand,
               children: <Widget>[
@@ -583,7 +653,10 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
               closing: closing,
               // The drift on leaving points back at the card.
               drift: card.right + 8 + graphPeekWidth > area.right ? 4 : -4,
-              child: GraphPeek(data: GraphCardData.of(widget.layout, node), nowMs: cards.now.value),
+              child: GraphPeek(
+                data: GraphCardData.of(widget.layout, node, content: widget.content),
+                nowMs: cards.now.value,
+              ),
             ),
           ),
         ),

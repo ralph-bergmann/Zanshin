@@ -116,6 +116,10 @@ abstract interface class GraphSource {
   /// Lays out [request].
   Future<GraphLoad> layout(GraphRequest request);
 
+  /// The content of [commitIds], read at [operationId] (the layout's, pinning the page; Story 10.11), keyed by commit
+  /// id. An id the source cannot read is left out.
+  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds);
+
   /// The repository's watcher events.
   Stream<RepoEvent> get events;
 
@@ -612,16 +616,22 @@ class RepoGraphActions implements GraphActions {
 }
 
 /// [GraphSource] over an open [ProjectRepo] (`ProjectSession.repo`): its handle's events, `logDefaults` and
-/// `workspaceUpdateStale`; the layout is the passed [layout] function until 10.12 adopts the backend layout.
+/// `workspaceUpdateStale`; the layout and the content are the passed [layout] and [content] functions until 10.12
+/// adopts the backend layout and `commitContents`.
 class RepoGraphSource implements GraphSource {
-  /// The source of [_repo], laying out with [layout].
-  RepoGraphSource(this._repo, {required this._layout});
+  /// The source of [_repo], laying out with [layout] and reading card content with [content].
+  RepoGraphSource(this._repo, {required this._layout, required this._content});
 
   final ProjectRepo _repo;
   final Future<GraphLoad> Function(GraphRequest request) _layout;
+  final Future<Map<String, GraphCommitContent>> Function(String? operationId, List<String> commitIds) _content;
 
   @override
   Future<GraphLoad> layout(GraphRequest request) => _layout(request);
+
+  @override
+  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds) =>
+      _content(operationId, commitIds);
 
   @override
   Stream<RepoEvent> get events => _repo.events;

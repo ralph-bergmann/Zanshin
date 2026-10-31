@@ -991,6 +991,10 @@ class _FailingDefaults implements GraphSource {
   Future<GraphLoad> layout(GraphRequest request) => source.layout(request);
 
   @override
+  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds) =>
+      source.content(operationId, commitIds);
+
+  @override
   Stream<RepoEvent> get events => source.events;
 
   @override

@@ -7,6 +7,7 @@ import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
+import 'graph_content.dart';
 import 'graph_layout.dart';
 import 'graph_ports.dart';
 import 'graph_viewport.dart' show GraphReveal, GraphRevealAlignment;
@@ -132,6 +133,7 @@ class GraphViewModel extends ChangeNotifier {
   GraphViewModel();
 
   late GraphSource _source;
+  GraphContent? _content;
   GraphActions? _actions;
   DateTime Function() _clock = DateTime.now;
   StreamSubscription<RepoEvent>? _events;
@@ -179,6 +181,7 @@ class GraphViewModel extends ChangeNotifier {
   /// takes "now" from [clock].
   void init(GraphSource source, {GraphActions? actions, DateTime Function()? clock}) {
     _source = source;
+    _content = GraphContent(source.content);
     _actions = actions;
     _clock = clock ?? DateTime.now;
     _now.value = _nowMs;
@@ -189,6 +192,9 @@ class GraphViewModel extends ChangeNotifier {
 
   /// The last landed layout; null before the first.
   GraphLayout? get layout => _layout;
+
+  /// The card content cache and loader (Story 10.11); the view loads what is on screen.
+  GraphContent get content => _content!;
 
   /// The reveal the viewport applies with [layout], by identity.
   GraphReveal? get reveal => _reveal;
@@ -762,6 +768,7 @@ class GraphViewModel extends ChangeNotifier {
     _workingCopyDirection.dispose();
     _pulse.dispose();
     _outcome.dispose();
+    _content?.dispose();
     super.dispose();
   }
 }

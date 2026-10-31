@@ -33,7 +33,7 @@ export 'src/controls/zs_scroll_area.dart' show ZsScrollArea;
 export 'src/controls/zs_segmented.dart' show ZsSegment, ZsSegmented, ZsSegmentedSize, ZsSegmentedVariant;
 export 'src/controls/zs_select.dart'
     show ZsSelect, ZsSelectCustom, ZsSelectEntry, ZsSelectHeader, ZsSelectOption, ZsSelectPlacement, ZsSelectSeparator;
-export 'src/controls/zs_skeleton.dart' show ZsSkeleton, ZsSkeletonKind;
+export 'src/controls/zs_skeleton.dart' show ZsSkeleton, ZsSkeletonKind, paintZsSkeletonBar;
 export 'src/controls/zs_slider.dart' show ZsSlider;
 export 'src/controls/zs_spinner.dart' show ZsSpinner;
 export 'src/controls/zs_switch.dart' show ZsSwitch;

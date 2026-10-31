@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/graph/graph_layout.dart' show GraphCommitContent;
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
@@ -26,6 +27,10 @@ Future<void> until(bool Function() done) async {
 
 /// Lets the watcher's debounced events of what just ran arrive.
 Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 600));
+
+/// The content port until 10.12 adopts `commitContents`: these tests read no content.
+Future<Map<String, GraphCommitContent>> _noContent(String? operationId, List<String> commitIds) async =>
+    const <String, GraphCommitContent>{};
 
 void main() {
   late ZanshinWorker worker;
@@ -71,6 +76,7 @@ void main() {
         requests.add(request);
         return GraphLoad(keysLayout(<String>['x'], at: 'x'));
       },
+      content: _noContent,
     );
     final model = GraphViewModel()..init(source);
     addTearDown(model.dispose);
@@ -92,6 +98,7 @@ void main() {
     final StreamSubscription<RepoEvent> subscription = RepoGraphSource(
       a,
       layout: (_) => throw UnimplementedError(),
+      content: _noContent,
     ).events.listen(events.add);
     addTearDown(subscription.cancel);
 
@@ -117,6 +124,7 @@ void main() {
     final StaleRecovery recovery = await RepoGraphSource(
       repo,
       layout: (_) => throw UnimplementedError(),
+      content: _noContent,
     ).updateStale();
     expect(recovery.outcome, StaleRecoveryOutcome.notStale);
   });
@@ -138,6 +146,7 @@ void main() {
               requests.add(request);
               return GraphLoad(keysLayout(<String>[second, first], at: second));
             },
+            content: _noContent,
           ),
           actions: RepoGraphActions(repo),
         );
@@ -167,7 +176,11 @@ void main() {
       final String second = (await repo.handle.newChange(<String>[first])).newChangeIds.single;
       final model = GraphViewModel()
         ..init(
-          RepoGraphSource(repo, layout: (_) async => GraphLoad(keysLayout(<String>[second, first], at: second))),
+          RepoGraphSource(
+            repo,
+            layout: (_) async => GraphLoad(keysLayout(<String>[second, first], at: second)),
+            content: _noContent,
+          ),
           actions: RepoGraphActions(repo),
         );
       addTearDown(model.dispose);

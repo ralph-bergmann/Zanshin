@@ -6,15 +6,28 @@ import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
+import 'fake_content.dart';
+
 /// The catalogue's [GraphSource] (Story 10.5): [layoutOf] answers each request (the recordings), jj's builtin `jj log`
 /// defaults, no events; while [staleCause] is set every layout refuses `jj.stale_working_copy` with it, and
-/// [updateStale] clears it after a short wait.
+/// [updateStale] clears it after a short wait. Content pages (Story 10.11) answer [fakeContent] by commit id after
+/// [contentLatency].
 class FakeGraphSource implements GraphSource {
   /// A source answering with [layoutOf].
-  FakeGraphSource(this.layoutOf, {this.staleCause});
+  FakeGraphSource(this.layoutOf, {this.staleCause, this.contentLatency = const Duration(milliseconds: 400)});
 
   /// The layout of a request.
   final GraphLayout Function(GraphRequest request) layoutOf;
+
+  /// How long a content page takes.
+  final Duration contentLatency;
+
+  @override
+  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds) async {
+    await Future<void>.delayed(contentLatency);
+    // The recordings' commit id is the key; its hash picks a deterministic sample.
+    return <String, GraphCommitContent>{for (final String id in commitIds) id: fakeContent(id.hashCode, id)};
+  }
 
   /// `stale`, `sibling_operation` or `operation_not_found`; null answers.
   String? staleCause;

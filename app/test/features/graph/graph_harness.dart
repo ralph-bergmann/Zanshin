@@ -43,6 +43,8 @@ RecordedGraphLayout handLayout(
   List<List<String>>? workspaces,
   String? workspaceName,
   List<int>? parentCounts,
+  List<String>? commitIds,
+  String? operationId,
 }) {
   // Dart's sort is not stable: sort positions by child, then by position.
   final order = List<int>.generate(edges.length, (k) => k)
@@ -75,6 +77,8 @@ RecordedGraphLayout handLayout(
     changeOffsets: offsets,
     workingCopies: workspaces,
     workspaceName: workspaceName,
+    commitIds: commitIds,
+    operationId: operationId,
     edgeChildren: Int32List.fromList(<int>[for (final (int child, _) in sorted) child]),
     edgeParents: Int32List.fromList(<int>[for (final (_, int parent) in sorted) parent]),
     edgeKinds: <GraphEdgeKind>[

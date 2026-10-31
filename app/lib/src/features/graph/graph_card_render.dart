@@ -113,6 +113,9 @@ const double _pillPadR = 8;
 const double _pillGap = 4;
 const double _pillMoreGap = 2;
 const double _hatchPeriod = 6;
+// The skeleton bar in the subject slot (DS components/controls/Skeleton.jsx: the card's 9 px subject bar, 58 %).
+const double _skeletonBarH = 9;
+const _skeletonShare = .58;
 
 /// The render box of a `GraphCard` (Story 10.3): one leaf that lays out its texts with [TextPainter]s and paints
 /// rings, fill, tint, hatch, border, content, focus ring, the bookmark control and •••.
@@ -134,6 +137,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     required this._strings,
     required this._controller,
     required this._reveal,
+    this._skeleton,
   });
 
   // A press released within the DS drag threshold clicks, as on macOS; past it nothing opens (without a slop a render
@@ -273,6 +277,27 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     markNeedsPaint();
   }
 
+  /// The skeleton bar while it shows (Story 10.11): painted in the subject slot of a non-root card without content;
+  /// null paints none.
+  GraphCardSkeleton? get skeleton => _skeleton;
+  GraphCardSkeleton? _skeleton;
+  set skeleton(GraphCardSkeleton? value) {
+    if (value == _skeleton) {
+      return;
+    }
+    if (attached) {
+      _skeleton?.sweep.removeListener(markNeedsPaint);
+      value?.sweep.addListener(markNeedsPaint);
+    }
+    final toggled = (value == null) != (_skeleton == null);
+    _skeleton = value;
+    if (toggled) {
+      markNeedsLayout();
+    } else {
+      markNeedsPaint();
+    }
+  }
+
   // ---- interaction state, from the controller ----
 
   var _hovered = false;
@@ -400,6 +425,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     _sync();
     _listen();
     _reveal.addListener(markNeedsPaint);
+    _skeleton?.sweep.addListener(markNeedsPaint);
     FocusManager.instance.addHighlightModeListener(_onHighlightMode);
   }
 
@@ -420,6 +446,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     _pointerOnAdd = false;
     _unlisten();
     _reveal.removeListener(markNeedsPaint);
+    _skeleton?.sweep.removeListener(markNeedsPaint);
     FocusManager.instance.removeHighlightModeListener(_onHighlightMode);
     super.detach();
   }
@@ -441,6 +468,8 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
   Rect? _legend;
   Rect? _add;
   Rect _more = Rect.zero;
+  // The skeleton bar: set for a non-root card without content while [skeleton] is set.
+  Rect? _bar;
   // The other workspaces folded into the `+N` tag.
   var _folded = const <String>[];
 
@@ -461,6 +490,10 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
 
   /// The card rect in local coordinates.
   Rect get cardRect => _card;
+
+  /// The skeleton bar this card paints now, in local coordinates; null when it paints none.
+  @visibleForTesting
+  Rect? get debugSkeletonBar => _bar;
 
   void _disposeTexts() {
     for (final TextPainter text in _texts) {
@@ -512,6 +545,8 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     final GraphCommitContent? content = d.content;
     final double avail = math.max(0, _card.width - 2 * _metrics.cardPadX);
     final double gap = _detailed ? _metaGap : _compactGap;
+    // A compact card reserves the bar's slot only while the bar shows, so a card without a loader lays out as before.
+    final bool waiting = content == null && !d.isRoot && _skeleton != null;
 
     // The subject (graph.css:11-14).
     final Color subjectColor = d.immutable ? t.cardTextMuted : t.cardText;
@@ -647,7 +682,8 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     } else {
       final double rest = total();
       final double ellipsis = _plain('…', subject.text!.style!).width;
-      subjectW = math.min(subject.width, avail - rest - gap);
+      // Without content the slot holds the skeleton bar, up to its 58 %.
+      subjectW = math.min(waiting ? avail * _skeletonShare : subject.width, avail - rest - gap);
       if (subjectW < ellipsis) {
         subjectW = 0;
       }
@@ -680,6 +716,15 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     } else {
       _place(<_Item>[for (final (_Item item, _) in items) item], _card.center.dy, gap);
     }
+    final double barWidth = _detailed ? avail * _skeletonShare : subjectW;
+    _bar = waiting && barWidth > 0
+        ? Rect.fromLTWH(
+            subjectItem.rect.left,
+            subjectItem.rect.center.dy - _skeletonBarH / 2,
+            barWidth,
+            _skeletonBarH,
+          )
+        : null;
   }
 
   void _place(List<_Item> line, double centreY, double gap) {
@@ -829,6 +874,19 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
       );
     for (final _Item item in _items) {
       _paintItem(canvas, item);
+    }
+    final GraphCardSkeleton? skeleton = _skeleton;
+    final Rect? bar = _bar;
+    if (skeleton != null && bar != null) {
+      paintZsSkeletonBar(
+        canvas,
+        bar,
+        t: skeleton.sweep.value,
+        base: skeleton.base,
+        high: skeleton.high,
+        radius: _metrics.radiusXs,
+        motion: _motion.motion,
+      );
     }
     canvas.restore();
 

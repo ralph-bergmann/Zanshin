@@ -36,6 +36,7 @@ class RecordedGraphLayout extends GraphLayout {
     this.totalCount,
     this.operationId,
     List<String>? changeIds,
+    List<String>? commitIds,
     Int32List? changeIdPrefixLengths,
     List<int?>? changeOffsets,
     Uint8List? flags,
@@ -45,6 +46,7 @@ class RecordedGraphLayout extends GraphLayout {
     this.workspaceName,
   }) : _keys = keys,
        _changeIds = changeIds,
+       _commitIds = commitIds,
        _givenPrefixLengths = changeIdPrefixLengths,
        _changeOffsets = changeOffsets,
        _flags = flags,
@@ -69,6 +71,7 @@ class RecordedGraphLayout extends GraphLayout {
     assert(cols.length == n && nodeRows.length == n && parentCounts.length == n && elided.length == n);
     assert(timestamps == null || timestamps.length == n);
     assert(changeIds == null || changeIds.length == n);
+    assert(commitIds == null || commitIds.length == n);
     assert(changeIdPrefixLengths == null || changeIdPrefixLengths.length == n);
     assert(changeOffsets == null || changeOffsets.length == n);
     assert(flags == null || flags.length == n);
@@ -227,6 +230,7 @@ class RecordedGraphLayout extends GraphLayout {
   final String? workspaceName;
 
   final List<String>? _changeIds;
+  final List<String>? _commitIds;
   final Int32List? _givenPrefixLengths;
   final List<int?>? _changeOffsets;
   final Uint8List? _flags;
@@ -261,6 +265,10 @@ class RecordedGraphLayout extends GraphLayout {
 
   @override
   String changeIdOf(int node) => _changeIds?[node] ?? _keys[node];
+
+  // shortcut: recordings carry no commit ids, so the key stands in; real ids come with 10.12's engine layout.
+  @override
+  String commitIdOf(int node) => _commitIds?[node] ?? _keys[node];
 
   @override
   int changeIdPrefixLengthOf(int node) => _prefixLengths[node];

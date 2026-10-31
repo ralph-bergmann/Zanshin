@@ -147,6 +147,7 @@ class GraphCommitContent {
     this.authorEmail = '',
     this.empty = false,
     this.conflict = false,
+    this.timestampMs,
   });
 
   /// The description's first line, `''` when the description is empty (jj's `description.first_line()`).
@@ -163,6 +164,10 @@ class GraphCommitContent {
 
   /// Whether the commit has a conflict (jj's `conflict()`).
   final bool conflict;
+
+  /// The committer timestamp in epoch ms, when the content carries one: the card's date when the layout has none
+  /// (Story 10.11).
+  final int? timestampMs;
 }
 
 /// One computed layout of a revset (Story 10.1 item 2), read only through accessors so the backing store can be
@@ -270,6 +275,9 @@ abstract class GraphLayout {
 
   /// The full change id of [node] (jj's `change_id()`, in jj's reverse-hex letters).
   String changeIdOf(int node);
+
+  /// The full commit id of [node] (jj's `commit_id()`): the key content is cached and loaded by (Story 10.11).
+  String commitIdOf(int node);
 
   /// The length of [node]'s shortest unique change-id prefix (jj's `shortest()`, commit_templater.rs:2295-2302 @
   /// v0.46.0, which honours `revsets.short-prefixes`).

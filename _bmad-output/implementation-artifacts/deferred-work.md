@@ -2318,3 +2318,15 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
   - `GraphCanvas.opacityOf` multiplies `disabledOpacity` by the focus-dim factor (app/lib/src/features/graph/graph_canvas.dart:524-528); `graph_view_test.dart` checks the pending fade and the hover dim only one at a time, so replacing the product with either factor passes.
   - **Follow-up:** next to the hover-dim test (graph_view_test.dart:852), start a gated action on an off-path card and expect `disabledOpacity * .4`.
   - **Fixed** in the closing run of Story 10.9 (2026-10-31, commit `92e84d36292d0a33d2cca35add56c0aa98edbcfb`).
+
+## Surfaced in Story 10.11 (bmad-build-auto, 2026-10-31)
+
+- **A commit id the source leaves out of its page stays uncached, so its card shows the skeleton until it arrives and every later settle asks for it again.** Medium.
+  - `GraphSource.content` documents "an id the source cannot read is left out" (app/lib/src/features/graph/graph_ports.dart); `GraphContent` (app/lib/src/features/graph/graph_content.dart) caches only returned entries and the card waits while its entry is null.
+  - **Follow-up:** when 10.12 wires `commitContents`, decide from 4.10's error contract what an unreadable id shows (e.g. mark it missing and end the skeleton).
+- **A failed page is retried only by the next settle; at rest the visible cards keep their skeleton.** Medium.
+  - `GraphContent._drain` logs the failure and caches nothing (app/lib/src/features/graph/graph_content.dart); no timer retries, and at rest no scroll, layout, card-size or resize change follows.
+  - **Follow-up:** 10.12 adds a retry (or an error look) for the real call's failure modes.
+- **The peek shows an empty subject and author while its content loads, and still lacks the full description and commit id.** Low.
+  - `GraphCanvas._peekLayer` builds `GraphPeek` from `GraphCardData.of(..., content:)` (app/lib/src/features/graph/graph_canvas.dart); `GraphCommitContent` has no description field.
+  - **Follow-up:** 10.12 adds the description and commit id from 4.10's object half and a loading look for the peek.

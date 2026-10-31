@@ -159,12 +159,13 @@ EdgeInsets _insets(BuildContext context) => EdgeInsets.only(
   right: context.knobs.double.slider(label: 'right inset', initialValue: 0, max: 480),
 );
 
-/// The recording of [sample] that [options] ask for, with fake content and refs.
-RecordedGraphLayout recordedLayout(String sample, GraphViewOptions options) {
-  final name = '$sample ${options.layout.name} ${options.laneOrder.name}';
-  return _fixture(name, () {
-    final (String input, String output) = graphRecordings[name]!;
-    return RecordedGraphLayout.fromSpec(input, output, content: fakeContent, refs: fakeRefs);
+/// The recording of [sample] that [options] ask for, with fake refs and — unless [inlineContent] is false (the content
+/// is paged, Story 10.11) — fake content.
+RecordedGraphLayout recordedLayout(String sample, GraphViewOptions options, {bool inlineContent = true}) {
+  final recording = '$sample ${options.layout.name} ${options.laneOrder.name}';
+  return _fixture(inlineContent ? recording : '$recording paged', () {
+    final (String input, String output) = graphRecordings[recording]!;
+    return RecordedGraphLayout.fromSpec(input, output, content: inlineContent ? fakeContent : null, refs: fakeRefs);
   });
 }
 
@@ -238,7 +239,8 @@ class _GraphDemoState extends State<_GraphDemo> {
 }
 
 /// "Viewport / View model" (Story 10.5): a [GraphViewModel] on a [FakeGraphSource] over the recordings (`jj log` →
-/// design-default, `all()` → design-all), bound by [GraphView]; the knobs switch the revset, mode and lane order
+/// design-default, `all()` → design-all), bound by [GraphView]; their content is paged with the fake's latency, so
+/// the cards show skeletons first (Story 10.11). The knobs switch the revset, mode and lane order
 /// through the model (each re-centres on @), and a stale cause makes every layout refuse, so the notice stands over
 /// the last layout (or, picked before the first, over the empty canvas).
 ///
@@ -271,6 +273,7 @@ class _ViewModelDemoState extends State<_ViewModelDemo> {
     (request) => recordedLayout(
       request.revset == 'all()' ? 'design-all' : 'design-default',
       GraphViewOptions(layout: request.mode, laneOrder: request.order),
+      inlineContent: false,
     ),
     staleCause: widget.staleCause,
   );
