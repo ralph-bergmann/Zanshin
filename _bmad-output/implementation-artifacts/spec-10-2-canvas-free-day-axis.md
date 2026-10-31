@@ -36,6 +36,8 @@ deferred:
     location: >-
       app/widgetbook/folders/graph.dart
     severity: low
+    resolved: >-
+      2026-10-31 — fixed (console session, Marionette): dividers and pills in the Scale case match days.card.html; the pill has the CSS geometry (2 × 7, 1 px border, radius 5), its rounding moves it at most 0.5 px. The midnight crossing went to Story 4.16 (Ralph).
 ---
 
 <intent-contract>

@@ -25,6 +25,8 @@ deferred:
     location: >-
       app/widgetbook/folders/graph.dart
     severity: low
+    resolved: >-
+      2026-10-31 — fixed (console session, Marionette): `graph/card/states` in night and paper matches graph.card.html; the change id stays jj's (no gap, shortest(8)/(5)) by Ralph's decision; the click slop became the 4 px drag threshold (spec-fix-10-2-10-5-review, commit 20b5b0d).
 ---
 
 <intent-contract>

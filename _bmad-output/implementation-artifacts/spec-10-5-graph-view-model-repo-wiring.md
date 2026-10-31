@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/widgetbook/folders/graph.dart
     severity: low
+    resolved: >-
+      2026-10-31 — fixed (console session, Marionette; spec-fix-10-2-10-5-review, commit 20b5b0d): the notice matches stale.card.html; the View model use case lost its model on every knob change (Widgetbook keys a use case on its route) and now keeps it.
   - summary: >-
       The empty and failed-load captions are Claude's proposal for design question (d); the DS has no design for them.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_view.dart
     severity: low
+    resolved: >-
+      2026-10-31 — accepted (Ralph): the captions stay as proposed.
   - summary: >-
       The stale notice's three jj messages and hint commands are Dart copies of the CLI's text at v0.46.0 that no oracle or pin-bump step keeps in step.
     evidence: |-
@@ -32,6 +36,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_view_model.dart (GraphStale.fromContext)
     severity: low
+    resolved: >-
+      2026-10-31 — fixed (spec-fix-10-2-10-5-review, commit 20b5b0d): the Rust error carries jj's message (PreconditionError::message), Dart shows it (GraphStale.fromError); an oracle test checks the `stale` cause.
   - summary: >-
       Parts of epics 10.5 item 14 are handed on, not built: @'s off-screen direction (10.6's pill), the inspector's scroll for a covered selection and the inspector witnesses (10.8), and the plane's extra margins (dropped as Claude's proposal).
     evidence: |-

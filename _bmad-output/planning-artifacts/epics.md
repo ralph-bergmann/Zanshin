@@ -4378,6 +4378,25 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 
 ---
 
+### Story 4.16: Free — no card in the band around a day divider [bridge]
+*(Added 2026-10-31, Ralph — console session after the story loop 10.2–5.5, on a catalogue demo of the case; Claude builds it.)*
+
+**Motivation.** In Free, y follows time, so two commits on either side of local midnight that lie less than about 25 minutes apart (about 11 with compact cards) in different columns overlap vertically. The day divider (10.2) runs midway between the older day's newest card and the newer day's oldest card, so it passes behind both, and a card of yesterday sits under the "Today" label (deferred-work.md "Day dividers can cross cards around midnight"; DS SYNC #8 assumes "the band around a divider never holds cards"; prototype defect 45). Ralph chose to fix it in the engine rather than accept it.
+
+**Scope.**
+1. **The rule** (GLD §4.2 free, a new step after the walk; Claude's proposal for the exact form): when the day key dk changes between consecutive y-ordered visible nodes, the newer day's oldest node keeps at least one pitch (16 units) above the older day's newest node, in any column. Nodes above shift up with it (y stays monotone in time within a day); `rows` grows only at such boundaries. Stacks (4.13) and the root are handled as §4.2 step 4 already treats them.
+2. **Invariants.** I5 (free) gains "the y ranges of consecutive day buckets are at least one pitch apart"; the checker (`layout_invariants`) and the app's `checkLayoutInvariants` follow.
+3. **Docs.** GLD §4.2 and §9 (the known limit) get dated amendments; deferred-work.md's bullet is closed.
+4. **Goldens.** Recordings whose day boundaries move are regenerated with the engine's recorder; every changed golden is listed with the reason in the spec.
+
+**Non-goals.** Compact (no days); the painter (10.2's divider stays midway, which is now always free of cards); the view-side time-gap variant (10.13).
+
+**Witnesses.** A hand case of the demo (23:50 in one column, 00:10 in another): the divider's band holds no card; a day boundary between same-column cards already a pitch apart changes nothing; the invariant fails on a layout without the gap; the recorded goldens pass.
+
+**Depends on.** 4.11, 4.13, 10.2 (all done). **Related:** 10.2, 10.12, 10.13.
+
+---
+
 ## Epic 5: `zanshin-diff` — Word-Diff + Syntax Highlight
 
 Produce structured diff JSON (hunks → lines → segments) with word-level diff inside changed lines plus tree-sitter syntax classification, served via the FFI surface. Hit the < 500ms target for a 5k-line changed file (NFR-P-3).
@@ -9201,7 +9220,7 @@ NEEDS DESIGN:
 >   - **What still answers:** only the calls without a snapshot, `commit_contents`, `logDefaults()` and the workspace root. Every other call refuses, as jj does: the inspector's `show()`, search, the Undo Timeline, the bookmark list, Push and every verb. Their surfaces show "Working copy is stale" as the disabled reason (DS components/overlays/StaleNotice.prompt.md:9). Zanshin offers no `--ignore-working-copy` reads (CLI parity; decision 16.28).
 >   - **No Retry** (StaleNotice.prompt.md:10): retrying cannot help.
 >   - **Cold start.** A project that is stale when it opens has no layout. The notice then stands over the empty canvas.
->   - **The cause** comes from the error context, `<cause>\n<working_copy_op_id>\n<repo_op_id>` with `stale`, `sibling_operation` or `operation_not_found` (`docs/rust-error-codes.md:80`). The notice shows jj's own message for that cause, with the op id (cli_util.rs:3040–3075 @ v0.46.0).
+>   - **The cause** comes from the error context, `<cause>\n<working_copy_op_id>\n<repo_op_id>` with `stale`, `sibling_operation` or `operation_not_found` (`docs/rust-error-codes.md:80`). The notice shows jj's own message for that cause, with the op id (cli_util.rs:3040–3075 @ v0.46.0). *(Changed 2026-10-31, Ralph; spec-fix-10-2-10-5-review, commit 20b5b0d: the context's fourth line is jj's message as the CLI prints it, from Rust's `PreconditionError::message()`; the Dart side shows it and holds no copy of jj's text.)*
 >   - **The notice.** This story fills 11.3's slot top-centre under the bar with the DS `StaleNotice` (Claude's proposal; no story owned the widget): "Working copy is stale · ‹command›", the command copyable (DS readme.md:225). The command is the one jj's hint names for the cause: `jj workspace update-stale` for `stale` and `operation_not_found` (cli_util.rs:3047, :3071 @ v0.46.0), `jj op integrate <working_copy_op_id>` for `sibling_operation` (cli_util.rs:3061–3065 @ v0.46.0); the DS sentence shows the first case. 9.23's "Update working copy" runs `jj workspace update-stale`, which recovers all three (cli_util.rs:681–682, :751–763 @ v0.46.0). The notice has role status, is announced once and fades in on `--dur-panel` (StaleNotice.prompt.md:13). Until 9.23 lands, the CLI remedy is all it offers; 9.23 adds "Update working copy".
 >   - **Exit.** `jj workspace update-stale` run in a terminal often writes no operation. So the view model re-requests on the watcher's checkout events as well as on op-heads changes, and leaves the state when a request no longer refuses.
 >   - This also answers design question (d) for the stale state: its look is the DS's.
@@ -9321,8 +9340,8 @@ Anchoring matters more in the design than it did before. Pixel y depends on the 
 NEEDS DESIGN:
 - (a) The anchor node on reloads and resizes. Recommendation: the selected node while visible, otherwise the centre node.
 - (b) The fallback when the anchor node vanishes.
-- (c) The refresh policy for file edits.
-- (d) The looks and wording of the loading, empty, error and degraded states; the design has none.
+- (c) The refresh policy for file edits. *(Answered 2026-10-31, Ralph: window focus plus a reload button — no timer, no file watcher; "nichts ist schlimmer als wenn ein User warten muss". The focus trigger reloads the graph and the project reading (spec-fix-10-2-10-5-review, commit 20b5b0d); the button is 10.12's (in the window) and 11.13's (View › Reload, ⌘R).)*
+- (d) The looks and wording of the loading, empty, error and degraded states; the design has none. *(Answered 2026-10-31, Ralph: the empty and failed-load captions stay as Claude proposed them in 10.5; degraded and the warnings remain 10.23's, (e).)*
 - (e) Where warnings and snapshot reports appear.
 - (f) Should an external operation that moves @ make the view follow @, or keep the anchor?
 
@@ -10197,6 +10216,8 @@ The design needs content only on visible cards (subject, author, date, empty, co
 
 ### Story 10.12: Adopt the backend layout — the real `GraphSource` over Stories 4.10, 4.11 and 4.12 [UI/bridge]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26: the design's layout engine is now Story 4.11, and the landing lanes and segment colours this story was first written for belong to the `jj log` lane model the view no longer draws.)*
+
+> **Added 2026-10-31 (Ralph; 10.5 design question (c)):** the project window gets a **reload button** that runs `GraphViewModel.reload()` and `ProjectSession.refresh()` (both coalesced), so file edits made elsewhere show at once — "nichts ist schlimmer als wenn ein User warten muss". Its place and look follow the DS (Claude's proposal where the DS has none: a quiet icon button in the bar's action group, tooltip "Reload (⌘R)"). Window focus already triggers the same reload (spec-fix-10-2-10-5-review, commit 20b5b0d). No timer and no file watcher. Witness: the button reloads the graph and the project reading once, also while a reload is in flight (one queued).
 
 > **Design update 2026-09-28 (the Epic 10 header):** real stacks need 4.13: its request fields (10.5) and its result view's stack arrays behind 10.17's accessors. 4.13's column invariant I7 gates every real layout, like 10.1 item 14's hard invariants. This story therefore also depends on 4.13.
 
@@ -11915,7 +11936,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
   - Supersedes DS readme.md:217 and :219, and PushDialog.prompt.md:12, :14 (a bulk flag "only while … the selection … holds no refused ref"), :18 and :22.
 
 *Workstreams and workspaces*
-- **16.26 Workstreams are dropped everywhere,** not "hidden": they are not a jj concept. Reviews stay hidden until a backend exists. Supersedes the Workstreams part of the Epic 10 header's decision (g) and defect 63's "hidden". *(Ralph, 2026-10-15; V1 §6.)*
+- **16.26 Workstreams are dropped everywhere,** not "hidden": they are not a jj concept. Reviews stay hidden until a backend exists. Supersedes the Workstreams part of the Epic 10 header's decision (g) and defect 63's "hidden". *(Ralph, 2026-10-15; V1 §6.)* *Changed 2026-10-31 (Ralph): **Reviews is dropped too** — "erst mal streichen; später kommt ggf. eine Anbindung an GitHub und Co., dann bauen wir es wieder ein". Every "Reviews stays hidden" in these stories now reads "Reviews is dropped"; the unused `reviews` glyph stays in the DS set. Also 2026-10-31: the app stays English but **l10n-ready** — user-facing strings go through ARB files (Story 11.16 sets it up; every UI story keeps to it).*
 - **16.27 No Workspaces section** in the Project menu, and no `<name>@` go-to in the search. *(Ralph, 2026-10-15, declined; the round-2 prompt's header, item 4; V2 §6.)*
 - **16.28 Workspaces** show as `name@` on cards (ours included, as the CLI does; ours first, the others by name) and as a project-level stale-working-copy state. In that state there is no Retry. Only reads without a snapshot keep working (`commit_contents`, `log_defaults`, `workspace_root`); there are no `--ignore-working-copy` reads (CLI parity). A cold start shows the notice over an empty canvas. The state ends through the watcher. jj's three causes keep jj's text. There is no Undo after `update-stale`. 9.23 gains priority. *(Ralph, 2026-10-15/16; V2 §4; DS readme.md:222-225.)*
 
@@ -13387,6 +13408,8 @@ This story builds the plumbing once, so 11.5–11.7, 11.13 and 10.22 only fill i
 ### Story 11.13: Menu bar and shortcuts [UI/native]
 *(Added 2026-10-16, Ralph — console session on the design-system rounds 1–3; decisions 16.7, 16.14, 16.16, 16.18, 16.34, 16.42, 16.46 and 16.47; Claude builds it under the scope change of 11.0.)*
 
+> **Added 2026-10-31 (Ralph; 10.5 design question (c)):** the View menu gains **Reload ⌘R**: the same action as 10.12's reload button (graph and project reading, coalesced). Witness: View › Reload and ⌘R reload once.
+
 > **Design update 2026-10-26 (the Epic 10 header; DS #11; DS synced through #13):** the Change menu gains Revert, between Squash into Parent and Abandon: New Change ⌘N · Describe… · Edit · Squash into Parent · **Revert** · Abandon ⌘⌫ · Fetch · Push… ⇧⌘P (DS readme.md:207). It has no shortcut. Like the other Change items it targets the selection, else @, and names it ("Revert kmnvxoqp"). It is greyed by 10.15's availability: on @, on a change outside @'s history and on an empty change. With no selection the target is @, so it is greyed. It runs 10.9's revert. Witness (added): Change › Revert runs the revert for the selected change and is greyed while the target is @.
 
 **Motivation.** Every command also lives in the menu bar: that is where shortcuts are learned, and where Help search and VoiceOver find them (DS readme.md:198). Today the runner's `MainMenu.xib` has "Preferences… ⌘," without an action (`MainMenu.xib:35`), no File menu and no Close ⌘W. Its stock Edit › Find submenu already claims ⌘F ("Find…", `:120`) and ⌘J ("Jump to Selection", `:146`). The DS now specifies the whole menu bar and the shortcut map (DS readme.md:196–209). No story owns it yet (r4out windows W-9).
@@ -13588,5 +13611,25 @@ Nothing NEEDS DESIGN.
 - **Delete group and Remove from list ask first** (`ZsConfirmDialog`, tone destructive: the red button, focus on Cancel, ⌘↩ confirms). Neither edit has an undo. "Delete the group ‹name›?" — "Its projects and groups take its place; nothing leaves the list." / "Remove ‹name› from the list?" — "‹path› stays on disk; only the list forgets it." The edit runs once the sheet has gone, so focus is back at its opener and the tree hands it on as before. Cancel changes nothing. This supersedes item 5's "no confirmation" and departs from DS ConfirmDialog's "local edits never ask", which assumes an undo.
 
 **Related:** 11.6, 11.11, 10.10 (the ghost); DS #14, #15.
+
+---
+
+### Story 11.16: l10n-ready — the app's strings move into ARB files (English only) [UI]
+*(Added 2026-10-31, Ralph — console session after the story loop 10.2–5.5; Claude builds it under the scope change of 11.0.)*
+
+**Motivation.** The app is English only, and stays so for now: some jj terms read oddly in German. Ralph decided "English, l10n-ready" (deferred-work.md "English-only app, or translated?"): the strings live in ARB files from now on, so a translation later costs the translation and nothing else. Today every string is hard-coded and there is no l10n setup.
+
+**Scope.**
+1. **Setup.** Flutter's `gen-l10n` with `flutter_localizations` in `app/` (and in `packages/zanshin_ui` for its controls' own strings, if any — Claude's proposal: one ARB per package that ships UI text), `l10n.yaml`, `lib/l10n/app_en.arb`, generated code checked in per the project's codegen rules, `supportedLocales: [en]`.
+2. **The move.** Every user-facing string in `app/lib` and `packages/zanshin_ui/lib` (labels, tooltips, captions, menu items, dialog texts, VoiceOver labels) goes into the ARB with a key and a description; plurals and placeholders use ICU syntax. jj's own words that the UI shows verbatim (command lines, jj's error and hint text from Rust) stay out of the ARB — they are jj's, not ours.
+3. **Dates.** Relative dates and day labels keep their per-locale formatting through `intl` (10.2, 10.3), driven by the app's locale.
+4. **The house rule.** project-context.md (UI) and the Epic 10 / Epic 11 house rules gain: "user-facing strings go through the ARB; no hard-coded UI text" — every later UI story keeps to it.
+5. **A guard.** A test or lint that fails on a hard-coded user-facing string in `app/lib` (Claude's proposal for its form; widgetbook and tests exempt).
+
+**Non-goals.** A second language; a language setting.
+
+**Witnesses.** The app builds and shows the same text as before (golden/widget tests unchanged apart from the lookup); the guard fails on a planted literal; `flutter gen-l10n` output is current.
+
+**Depends on.** 11.10 (done). **Related:** 10.2, 10.3, 11.7.
 
 ---

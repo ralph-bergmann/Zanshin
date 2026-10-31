@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/widgetbook/folders/graph.dart
     severity: low
+    resolved: >-
+      2026-10-31 — fixed (console session, Marionette): rounded routes, dashed indirect edges, tracks and bridges match lines.card.html (gap markers are 10.19's); a profile build scrolled 50k/100k nodes at ≤ 7.1 ms per frame, none over 8.3 ms.
 ---
 
 <intent-contract>

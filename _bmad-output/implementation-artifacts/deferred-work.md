@@ -556,6 +556,7 @@ _Ralph showed a mockup of the main view (commit cards at (row, lane), elbow line
   - The watcher reports only op-heads and checkout changes. A file edit writes no operation until something snapshots, so @'s `empty` badge and its content go stale while the user edits.
   - jj's own answer is `fsmonitor.watchman.register-snapshot-trigger`. It is off by default and runs the `jj` binary. FR-RX-2 (Story 3.10's external-edit test) assumes that trigger.
   - 10.5 asks Ralph for a UI refresh policy. A Zanshin-side snapshot trigger, such as a debounced `snapshot()` on file events, would be its own backend story. Severity medium.
+  - **2026-10-31, Ralph:** window focus + a reload button, no timer and no file watcher ("nichts ist schlimmer als wenn ein User warten muss"); the focus trigger reloads the graph and the project reading (spec-fix-10-2-10-5-review, commit 20b5b0d); left: the reload button — Story 10.12 (in the window) and Story 11.13 (View › Reload, ⌘R).
 - **The UI has no open-project flow** [`app/lib/src/features/projects/home_dialog.dart` lists the mock `kProjects` (`app/lib/src/shared/data/mock_data.dart:377`)] — the graph needs an open `RepoHandle`, and the FR-JJ-17 detect → open/convert UI has no story. Until one exists, 10.5 opens an explicitly given path. Severity medium: it blocks real use, not development.
 - ~~**The running app does not show the real UI**~~ — RESOLVED 2026-10-30 (spec-11-10-retire-docked-mock-ui, commit 9a7f3c6): the mock UI, `ZanshinColors`/`context.zc` and the Yaru test page's leftover theme code are gone; the app boots into the floating shell. [`app/lib/src/features/app/zanshin_app.dart:26-28`, `:124-149`; `app/lib/src/shared/theme/zanshin_colors.dart:170`]
   - `ZanshinApp` renders the Yaru test page, and `HomePage` → `AppShell` (mock data) is "temporarily unused".
@@ -765,6 +766,7 @@ _Ralph decided which layout modes and lane orders the product keeps: Free by def
   - For now the graph's labels stay as the viewer has them: formatted per locale, English by default as in the design (`?lang=de` gives "Heute", "Gestern", "24. Sept.").
   - Ralph is not sure the app should be translated at all: some terms may sound odd in German.
   - **Follow-up:** Ralph decides; then the app's other strings (his UI) and Epic 10's labels follow one rule.
+  - **2026-10-31, Ralph:** English only, but l10n-ready — the strings move into ARB files (English only), and every UI story keeps to it; left: the setup and the move, Story 11.16.
 - **The spike viewer keeps what the product dropped.** None; a record.
   - It still offers Time, Time+gaps, the `optimized` order and the crossing-gap toggle, and it draws the branch-off side exit (Ralph: record the top-centre exit, do not update the viewer).
   - Its screenshots and `tools/lane-metrics.mjs`'s drawn crossing counts are side-exit numbers.
@@ -896,7 +898,7 @@ _The spec (`spec-4-11-dart-layout-engine-worker-isolate.md`) carries all six ite
 
 _The spec (`spec-4-13-commit-stacks-layout-engine.md`) carries every item in its `deferred:` list. Numbers: its § Measurements; decisions: `decisions-review-4-10-to-4-13.md` ### 4.13._
 
-- ~~**D11: a split run's stack node leaves its parent edge unprotected below the card.**~~ — RESOLVED 2026-10-30 (spec-10-4-graph-edges-rounded-routes, commit 4ad948d): router B sends the edge up a gutter, so the painter marks nothing and `rows` does not grow (Claude's proposal); a D11 hand case and the Compact route-report gate witness it. Low; a known limit, recorded in `docs/graph-layout.md` §4.8 and §9.
+- ~~**D11: a split run's stack node leaves its parent edge unprotected below the card.**~~ — RESOLVED 2026-10-30 (spec-10-4-graph-edges-rounded-routes, commit 4ad948d): router B sends the edge up a gutter, so the painter marks nothing and `rows` does not grow (Claude's proposal); a D11 hand case and the Compact route-report gate witness it; confirmed by Ralph 2026-10-31 after a catalogue demo of both variants. Low; a known limit, recorded in `docs/graph-layout.md` §4.8 and §9.
   - The stack reserves its column from its own card, so its parent edge (a branch-off from m_1's parent) rises in the stack's column without a reservation and may pass behind a lower card there. Reserving from one pitch above the parent (§4.3) would let collapsing grow `rows`. The 1,000-DAG invariants test produces 637 split runs (compact, greedy).
   - **Follow-up:** 10.4 / 10.17 decide whether the painter marks such an edge, or Ralph prefers a growing `rows` (a SPEC amendment + goldens).
   - Resolved in Story 10.4 (2026-10-30), Claude's proposal: the painter marks nothing and `rows` does not grow. Router B classifies a first-parent edge into another column as `fork` only when the child's column is free between the rows, else `gutter` (docs/graph-layout.md §14.2), so the D11 edge climbs a gutter instead of the stack's column; the route report's Compact gate and a D11 hand case (`layout_invariants_test.dart`) witness it; §4.8 and §9 carry a dated note.
@@ -964,6 +966,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **Day dividers can cross cards around midnight.** Low; accepted in 10.2.
   - Commits on either side of midnight less than about 25 min apart (about 11 min with compact cards) overlap vertically. So SYNC #8's "the band around a divider never holds cards" fails there (GL:597-602; prototype defect 45).
   - **Follow-up:** none, unless real repos show it often.
+  - **2026-10-31, Ralph (after a catalogue demo):** fix it in the layout engine — in Free the first card of a new day keeps at least one card height plus gap above the last card of the day before, so the band around a divider holds no card; Story 4.16.
 - **Equal timestamps sort differently from the export.** Low; a record.
   - A rebase gives many commits the same committer time. GL orders ties by generation depth, priority and design index (GL:395); the engine orders them by index (D3; LE:324-329). Both keep parents first.
   - Only unrelated commits with identical timestamps can end up at different heights.
@@ -1084,7 +1087,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 
 ### The floating chrome and the shell
 
-- **Workstreams and Reviews have no backend.** Low; a record.
+- ~~**Workstreams and Reviews have no backend.**~~ — RESOLVED 2026-10-31 (Ralph): Reviews is dropped like Workstreams ("erst mal streichen; später kommt ggf. eine Anbindung an GitHub und Co., dann bauen wir es wieder ein"); `rail.dart` says so (spec-fix-10-2-10-5-review, commit 20b5b0d); the unused `reviews` glyph stays in the DS set. Low; a record.
   - The export's rail lists both (AF:22-23), and its empty state names `jj workstream new` (AF:124). jj v0.46.0 has no `workstream` command, and reviews exist only as `jj gerrit` (`cli/src/commands/` at v0.46.0).
   - 11.3 hides both items (decision (g)).
   - **Follow-up:** Ralph decides what each should mean, for example Gerrit or forge reviews. Backend stories follow, and then 11.3 shows the items.
@@ -1425,6 +1428,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **The open project's dot refreshes only on jj operations, not on plain file edits, because the watcher reports op heads and the checkout only.** Low.
   - `packages/zanshin_core/lib/src/worker/events.dart:17-33`; the same gap is 10.5 design question (c) (epics.md:9014-9015), whose refresh policy (window focus, timer, register-snapshot-trigger) Ralph decides.
   - **Follow-up:** whatever 10.5 decides also triggers a reading in `ProjectSession` (`app/lib/src/features/projects/project_session.dart`).
+  - **2026-10-31, Ralph:** window focus + reload button; `ProjectSession.refresh()` runs when the window turns active (spec-fix-10-2-10-5-review, commit 20b5b0d); left: the reload button (Stories 10.12, 11.13).
   - **Story 10.5 (2026-10-30):** still open — design question (c) stays Ralph's; 10.5 adds no file-edit refresh (its view model reloads on op heads, `reload()`, `retry()`, `configChanged()` and, while stale, on checkout heartbeats).
 - ~~**10.5 receives the open handle from `ProjectSession.repo.handle` (an `OpenedRepoHandle`) and refreshes its own graph; 10.5's text still says only that the handle "arrives at init".**~~ — RESOLVED 2026-10-30 (spec-10-5-graph-view-model-repo-wiring, commit 5d5548c): `RepoGraphSource` over `ProjectSession.repo` (whose `ProjectRepo` gained `events`); the epic text is reconciled; wiring into `HomePage` is 10.12's. Low.
   - epics.md:8970 (10.5 item 1); 11.5 owns opening and switching, so the session is where the handle lives; a switch replaces the session's repo before the old handle closes.
@@ -2203,11 +2207,12 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 - ~~**Nothing refreshes the day axis's "now" on window focus or at local midnight; the labels re-format only when their owner passes a new `nowMs`.**~~ — RESOLVED 2026-10-30 (spec-10-5-graph-view-model-repo-wiring, commit 5d5548c): `GraphViewModel.now` is fresh on every reload and on window focus and ticks on each minute boundary, so midnight lands on time; it is the one "now" the cards share. Low.
   - Design question (a), Claude's proposal: freeze "now" per reload, re-format on window focus and at midnight (a repaint). 10.2 makes `nowMs` a paint-only input of `GraphDayAxisPainter` (`app/lib/src/features/graph/day_axis.dart`) and witnesses the repaint. The clock and the reload belong to 10.5's view model, whose story text names neither trigger.
-  - **Follow-up:** Story 10.5 owns "now". It freezes it per reload, and passes a fresh one on window focus and from a timer at the next local midnight (at the layout's offset).- ~~**Day labels are excluded from semantics, so each card's semantics label must carry its date (design question (d), Claude's proposal). The placeholder cards carry none.**~~ — RESOLVED 2026-10-30 (spec-10-3-commit-cards, commit ecfa75e): the card's label ends with the spoken relative date and the axis's day label, refreshed on the minute tick. Low.
+  - **Follow-up:** Story 10.5 owns "now". It freezes it per reload, and passes a fresh one on window focus and from a timer at the next local midnight (at the layout's offset).
+- ~~**Day labels are excluded from semantics, so each card's semantics label must carry its date (design question (d), Claude's proposal). The placeholder cards carry none.**~~ — RESOLVED 2026-10-30 (spec-10-3-commit-cards, commit ecfa75e): the card's label ends with the spoken relative date and the axis's day label, refreshed on the minute tick. Low.
   - The axis only paints and adds no semantics node (`app/lib/src/features/graph/day_axis.dart`). Cards and their semantics are Story 10.3's.
   - **Follow-up:** Story 10.3's card semantics label includes the commit's date.
   - **Resolved in Story 10.3 (2026-10-30):** the label carries the spoken relative date plus the axis's day label ("40 minutes ago, Today"), and refreshes on the minute tick (`graphCardLabel`, `app/lib/src/features/graph/graph_card.dart`).
-- **The day axis was not checked visually (Marionette) in the running catalogue.** Low.
+- ~~**The day axis was not checked visually (Marionette) in the running catalogue.**~~ — RESOLVED 2026-10-31 (console session, Marionette): dividers and pills in the Scale case match days.card.html; the pill has the CSS geometry, rounding moves it at most 0.5 px; the midnight crossing went to Story 4.16. Low.
   - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session. Widget tests cover placement, paint order, stickiness and pass-through, and the smoke test covers building (`app/test/features/graph/day_axis_test.dart`, `app/test/widgetbook/catalogue_smoke_test.dart`). Nobody has compared the pills and dividers with the DS card `design_system/components/graph/days.card.html`.
   - **Follow-up:** in a console session, open `graph/viewport/recording` (design-all, free; left inset 76) and `graph/viewport/scale` via `zanshinCatalogue.open`, screenshot them, and compare with the DS card.
 
@@ -2216,25 +2221,25 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **The commit card's affordances carry no tooltips: the `+N` workspace tag does not list the folded names on hover, and ••• lacks its title "Actions (or right-click the card)".** Low.
   - The 2026-10-16 note asks for the `+N` tooltip, the 2026-10-14 note for •••'s title (GV:320). The card is one leaf RenderBox (`app/lib/src/features/graph/graph_card_render.dart`); a tooltip needs the overlay host and hover-delay machinery that 10.6's commit callout builds. VoiceOver gets the names through the card's label meanwhile.
   - **Follow-up:** Story 10.6 shows both through its callout/tooltip layer.
-- **The commit cards were not checked visually (Marionette) in the running catalogue.** Low.
+- ~~**The commit cards were not checked visually (Marionette) in the running catalogue.**~~ — RESOLVED 2026-10-31 (console session, Marionette): `graph/card/states` in night and paper matches graph.card.html; the change id stays jj's (Ralph). Low.
   - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session. Widget tests cover layout, yield order, rings, hatch, hit areas, input and semantics (`app/test/features/graph/graph_card_test.dart`); the smoke test pumps `graph/card/states`.
   - **Follow-up:** in a console session, open `graph/card/states` and `graph/viewport/recording` via `zanshinCatalogue.open`, screenshot them in night and paper, and compare with the DS cards (`design_system/components/graph/graph.card.html`, `immutable.card.html`, `workspaces.card.html`).
 
 ## Surfaced in Story 10.4 (bmad-build-auto, 2026-10-30)
 
-- **The graph edges were not checked visually (Marionette) in the running catalogue against the DS cards.** Low.
+- ~~**The graph edges were not checked visually (Marionette) in the running catalogue against the DS cards.**~~ — RESOLVED 2026-10-31 (console session, Marionette): routes, dashes, tracks and bridges match lines.card.html (gap markers are 10.19's); a profile build scrolled 50k/100k nodes at ≤ 7.1 ms per frame. Low.
   - The unattended loop cannot hold a `flutter run -d macos -t widgetbook/main.dart` session. Widget tests cover geometry, dashes, bridges, lineage, classification, culling, the hit lookup and paint order (`app/test/features/graph/graph_edges_test.dart`); the smoke tests show `graph/viewport/recording` and the 50k Scale case paint edges.
   - **Follow-up:** in a console session, open `graph/viewport/recording` (design-all, free and compact; hover a card) and `graph/viewport/scale` via `zanshinCatalogue.open`, screenshot them in night and paper, and compare with the DS cards (`design_system/components/graph/lines.card.html`, `fanout.card.html`, `graph.card.html`).
 
 ## Surfaced in Story 10.5 (bmad-build-auto, 2026-10-30)
 
-- **The view model use case and the stale notice were not checked visually (Marionette) in the running catalogue.** Low.
+- ~~**The view model use case and the stale notice were not checked visually (Marionette) in the running catalogue.**~~ — RESOLVED 2026-10-31 (console session, Marionette; spec-fix-10-2-10-5-review, commit 20b5b0d): the notice matches stale.card.html; the View model use case lost its model on every knob change and now keeps it. Low.
   - The unattended run cannot hold a `flutter run -d macos -t widgetbook/main.dart` session. Widget tests cover the notice's content, tooltips, busy, Copy and semantics (`app/test/features/graph/stale_notice_test.dart`) and the view's insets, centring, anchoring, calm reports and states (`graph_view_test.dart`); the smoke test pumps `graph/viewport/view-model` and `graph/stale-notice/variants`.
   - **Follow-up:** in a console session, open `graph/viewport/view-model` (switch the revset, mode and lane order; pick each stale cause) and `graph/stale-notice/variants` via `zanshinCatalogue.open`, screenshot them in night and paper, and compare the notice with the DS card (`design_system/components/overlays/` StaleNotice).
-- **The empty and failed-load captions are Claude's proposal for design question (d); the DS has no design for them.** Low.
+- ~~**The empty and failed-load captions are Claude's proposal for design question (d); the DS has no design for them.**~~ — RESOLVED 2026-10-31 (Ralph): the proposal is accepted. Low.
   - `GraphView` centres "No changes match this revset." (`--text-muted`) or "The graph could not be loaded (<code>)." with a quiet Retry on an island in the visible rect; loading shows nothing; the degraded state (`GraphViewModel.degraded`) and the warnings are not shown yet (10.23 decides where, design question (e)).
   - **Follow-up:** a DS round designs the states, or Ralph accepts the proposal.
-- **The stale notice's three jj messages and hint commands are Dart copies of the CLI's text at v0.46.0 that no oracle or pin-bump step keeps in step.** Low.
+- ~~**The stale notice's three jj messages and hint commands are Dart copies of the CLI's text at v0.46.0 that no oracle or pin-bump step keeps in step.**~~ — RESOLVED 2026-10-31 (spec-fix-10-2-10-5-review, commit 20b5b0d): the Rust error carries jj's message, Dart shows it; the oracle checks the `stale` cause (the other two: "Surfaced in the fix run after the 10.2–10.5 review"). Low.
   - `GraphStale.fromContext` (`app/lib/src/features/graph/graph_view_model.dart`) composes them from `cli_util.rs:3040-3075` @ v0.46.0; the parity oracle runs verbs, not this text. The error's `hints` (Story 9.56) carry jj's hint verbatim, but not the message.
   - **Follow-up:** the pin-bump steps (project-context.md § zanshin-jj) name `GraphStale.fromContext`, or the Rust side carries jj's message in the error.
 - **Parts of epics 10.5 item 14 are handed on, not built: @'s off-screen direction (10.6's pill), the inspector's scroll for a covered selection with its witnesses (10.8), and the plane's extra margins (dropped as Claude's proposal).** Low.
@@ -2252,3 +2257,17 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **The parity oracle witnesses jj's stale-working-copy message and hint only for the `stale` cause; the `sibling_operation` and `operation_not_found` texts are still hand-ported from the CLI.** Low.
   - `crates/zanshin-parity/tests/oracle/hints.rs::stale_working_copy_message_is_the_cli_error_line` builds only a stale second workspace; `PreconditionError::message()` / `hints()` (`crates/zanshin-jj/src/snapshot.rs`) are checked against literals for the other two causes, which match `cli_util.rs:3040-3075` @ v0.46.0 but would not catch a reword at a pin bump (Story 9.56's hints had the same gap).
   - **Follow-up:** an oracle witness that builds a sibling-operation and a missing-operation working copy and compares the CLI's `Error:`/`Internal error:` and `Hint:` lines, or a pin-bump step that re-reads `handle_stale_working_copy`.
+
+## Surfaced 2026-10-31 in the console review of Stories 10.2–10.5 (Marionette, Ralph)
+
+_Claude checked the day axis, the cards, the edges, the view model and the stale notice in the running catalogue against the DS cards, demonstrated D11 and the midnight case with temporary hand layouts (not committed), and measured paint times; Ralph decided the open questions of the story loop 10.2–5.5. The fixes are spec-fix-10-2-10-5-review (commit 20b5b0d)._
+
+- **Graph paint times at 50k and 100k nodes, measured.** None; a record.
+  - Profile build, synthetic layouts of the Scale case, 420 frames of wheel scrolling each (300 vertical at 60 px, 120 horizontal at 40 px), `FrameTiming` totals: 50k compact mean 3.1 / p99 5.3 / max 5.9 ms; 50k free 2.6 / 4.3 / 7.0; 100k compact 2.4 / 4.5 / 7.0; 100k free 2.6 / 4.8 / 6.7; no frame over 8.3 ms. Paint only: the real engine's layout time on large repos is 10.12's measurement. A covered window gets no vsync on macOS, so a profiling run needs the window in front.
+  - **Follow-up:** none.
+- **The change id stays jj's: prefix and rest without a gap, shortest(8) on detailed cards and shortest(5) on @ and compact cards; the DS draws "ov knl" (4 px gap, 5 characters).** Low; a decision (Ralph, 2026-10-31).
+  - DS `components/graph/ChangeId.jsx` and `graph.css:34` (`gap:4px`, `length = 5`) vs spec-10-3-commit-cards.md:55-59.
+  - **Follow-up:** the next design-artifacts round notes it in the DS (ChangeId).
+- **Widgetbook 3.25 rebuilds a use case's whole subtree on every knob change (`workbench.dart:82`, `ValueKey(state.uri)`), so a use case's `State` does not survive a knob.** Low; a record for catalogue authors.
+  - Found when `graph/viewport/view-model` never showed the stale notice over the last layout; fixed there by a key per Widgetbook instance (commit 20b5b0d).
+  - **Follow-up:** none; a use case that must keep state across knobs holds it outside the keyed subtree.
