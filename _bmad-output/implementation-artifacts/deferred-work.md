@@ -2292,3 +2292,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The peek's IMMUTABLE eyebrow shows no reason yet.** Low.
   - `app/lib/src/features/graph/graph_peek.dart` draws `HatchSwatch` + IMMUTABLE only; the 2026-10-26 note's reason needs one `revsetCounts` call per `immutable_heads()` term in 11.7's term order, and `GraphSource` has no such port.
   - **Follow-up:** 11.7 (its Immutable commits page defines the term order) or 10.12 (the real source) adds the port and the cached reason; the peek shows it beside IMMUTABLE.
+
+## Surfaced in the follow-up review of Story 10.6 (bmad-build-auto, 2026-10-31)
+
+- **A double-click `jj edit` has no in-flight guard, so a second double-click while one runs starts another run and reload.** Medium (unverified).
+  - `app/lib/src/features/graph/graph_view_model.dart:271` `edit` awaits `run` with no busy flag; no real `GraphActions` exists yet (test fakes only), so whether 10.9's runner serialises jj calls is unsettled.
+  - **Follow-up:** when 10.9 wires the real port, make overlapping actions queue or refuse (one jj call at a time) and test two quick double-clicks.

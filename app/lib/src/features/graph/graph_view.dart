@@ -74,6 +74,9 @@ class GraphView extends StatefulWidget {
 class _GraphViewState extends State<GraphView> {
   late final _cards = GraphCardController(now: widget.model.now.value)..onEdit = _edit;
   final _focus = FocusNode(debugLabel: 'graph');
+
+  /// The focus came from a press: no focus card (no ring, no reveal) until Enter or Space, or focus leaves.
+  var _pointerFocus = false;
   bool? _inactive;
   ValueListenable<CalmPhase>? _calm;
 
@@ -136,6 +139,10 @@ class _GraphViewState extends State<GraphView> {
   /// question (c)).
   void _focusChanged() {
     if (!_focus.hasFocus) {
+      _pointerFocus = false;
+    }
+    // macOS's highlight mode stays traditional under a mouse, so a press must hide the focus card itself.
+    if (!_focus.hasFocus || _pointerFocus) {
       _cards.focused.value = null;
       return;
     }
@@ -170,6 +177,10 @@ class _GraphViewState extends State<GraphView> {
       return KeyEventResult.ignored;
     }
     if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter || key == LogicalKeyboardKey.space) {
+      if (_pointerFocus) {
+        _pointerFocus = false;
+        _focusChanged();
+      }
       final String? focused = _cards.focused.value;
       if (focused != null) {
         _cards.select(focused);
@@ -225,7 +236,10 @@ class _GraphViewState extends State<GraphView> {
       onKeyEvent: _onKey,
       child: Listener(
         // A press in the graph gives it focus (Esc acts then), without showing the keyboard ring.
-        onPointerDown: (_) => _focus.requestFocus(),
+        onPointerDown: (_) {
+          _pointerFocus = true;
+          _focus.hasFocus ? _focusChanged() : _focus.requestFocus();
+        },
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[

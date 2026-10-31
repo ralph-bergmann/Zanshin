@@ -92,6 +92,16 @@ class _Host {
   }
 }
 
+class _Actions implements GraphActions {
+  final ran = <GraphAction>[];
+
+  @override
+  Future<GraphActionResult> run(GraphAction action) async {
+    ran.add(action);
+    return const GraphActionDone();
+  }
+}
+
 /// [child] in the shell tests' window root (an Overlay for the tooltips).
 Widget wrap(Widget child, {ZsAppearance appearance = const ZsAppearance()}) => shellHost(child, appearance: appearance);
 
@@ -129,9 +139,9 @@ void main() {
   });
 
   /// Creates the model inside the test, so its first request runs on the test's clock.
-  void create({ShellController? shell}) {
+  void create({ShellController? shell, GraphActions? actions}) {
     created = true;
-    model = GraphViewModel()..init(source, clock: () => clock);
+    model = GraphViewModel()..init(source, actions: actions, clock: () => clock);
     host = _Host(model)..shell = shell;
   }
 
@@ -564,6 +574,43 @@ void main() {
       await tester.pumpAndSettle();
       expect(cardsOf(tester).focused.value, 'r150');
       expect(inside(), isTrue);
+      await finish(tester);
+    });
+
+    testWidgets(
+      'a mouse press that focuses the graph shows no focus card and does not scroll to the selection (macOS)',
+      (tester) async {
+        await pump(tester);
+        model.select('r150');
+        await tester.pumpAndSettle();
+        final RenderGraphViewport render = viewportOf(tester);
+        final scroll = Offset(render.horizontalOffset.pixels, render.verticalOffset.pixels);
+        final TestGesture mouse = await tester.startGesture(const Offset(790, 590), kind: PointerDeviceKind.mouse);
+        await mouse.up();
+        await tester.pumpAndSettle();
+        expect(graphFocus(tester).hasFocus, isTrue);
+        expect(FocusManager.instance.highlightMode, FocusHighlightMode.traditional);
+        expect(cardsOf(tester).focused.value, isNull, reason: 'no keyboard ring after a press');
+        expect(Offset(render.horizontalOffset.pixels, render.verticalOffset.pixels), scroll);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+        expect(cardsOf(tester).focused.value, 'r150', reason: 'a key shows the focus card again');
+        await finish(tester);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    );
+
+    testWidgets('a double-click on a mutable card in the view runs edit through the model', (tester) async {
+      final actions = _Actions();
+      create(actions: actions);
+      await pump(tester);
+      final Offset at = tester.getCenter(cardOf('r100'));
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      expect(actions.ran.map((a) => '${a.verb} ${a.ids.join(',')}'), <String>['edit r100']);
+      expect(model.selected, isNull);
       await finish(tester);
     });
 

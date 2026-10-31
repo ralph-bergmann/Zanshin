@@ -5,7 +5,7 @@ created: '2026-10-31'
 status: 'done'
 baseline_revision: 'e403a5185e7c5f67bde91df5cf9dfe8b1220d3b9'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
@@ -25,6 +25,13 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_peek.dart
     severity: low
+  - summary: >-
+      A double-click edit has no in-flight guard, so a second double-click while `jj edit` runs starts another run and reload.
+    evidence: |-
+      `GraphViewModel.edit` awaits `run` with no busy flag; no real `GraphActions` exists yet (test fakes only), so whether 10.9's runner serialises jj calls is unsettled. Settle it when 10.9 wires the real port: two overlapping edits must not run concurrently.
+    location: >-
+      app/lib/src/features/graph/graph_view_model.dart:271
+    severity: medium (unverified)
 ---
 
 <intent-contract>
@@ -171,6 +178,38 @@ deferred:
   - `[low]` `[patch]` (intent #5) Grouped with verification-gap #2.
   - `[low]` `[reject]` (intent #6) deferred-work strikes only I1's heading. I2 and I3 stay open for 10.19 and 10.8, so their headings stay unstruck by design.
 
+### 2026-10-31 — Review pass (follow-up)
+- verdicts: 28 findings — high 0, medium 4, low 20, false 3, maybe-false 1 (blind 12, edge 9, verification-gap 2, intent-alignment 5)
+- findings:
+  - `[medium]` `[patch]` (blind #1, grouped with edge #1, verification-gap gap and other #1) On macOS the highlight mode stays `traditional` under a mouse, so a press that gives the graph focus set the focus card to the old selection, glided to it and painted the keyboard ring; tests only tapped with touch. Patched: `GraphView` marks focus that came from a press (`_pointerFocus`) and keeps no focus card until Enter/Space or focus leaves; a macOS-variant mouse-press test asserts no scroll and no focus card (fails without the fix), then Enter brings the focus card back.
+  - `[low]` `[reject]` (blind #2) The pill's arrow turns the long way between left and up. Needs a running turn count in a stateless widget; a rare direction pair.
+  - `[maybe-false]` `[defer]` (blind #3) `edit()` has no in-flight guard, so a second double-click starts a second `jj edit` while one runs. No real `GraphActions` exists yet (only test fakes); whether the 10.9 runner serialises is unknown. If true medium (unverified).
+  - `[low]` `[reject]` (blind #4) The ARB `select` keys follow `GraphDirection`'s Dart names. A rename is unlikely; the fix adds a mapping.
+  - `[false]` `[reject]` (blind #5) "Working copy, left/right" reads unevenly. That is the intent's wording ("Working copy, below|above|left|right").
+  - `[low]` `[reject]` (blind #6) The peek fades through `Opacity`, not `ZsFade`. Cosmetic, no visible defect named.
+  - `[low]` `[reject]` (blind #7) An open peek's relative date does not tick. A peek open across a minute boundary is rare; the card beneath updates.
+  - `[low]` `[reject]` (blind #8) `_paintPulse` computes the card rect itself. Matches the cards today (the pulse test checks the ring at the card); harm only on a future `cardRect` change.
+  - `[low]` `[reject]` (blind #9) The pan path closing peek/tooltip is untested. Test-only gap on a guard that a pan in the shell also covers through calm.
+  - `[low]` `[patch]` (blind #10, grouped with intent #2) No test drove a double-click through `GraphView` to the actions port. Patched: `graph_view_test` double-clicks @ and asserts one `edit r100`, selection unchanged.
+  - `[low]` `[reject]` (blind #11) The relayout copy of the 3-viewport jump rule is untested. Test-only gap; the same rule is tested on the reveal path.
+  - `[low]` `[reject]` (blind #12) `ZsTooltipBubble` has no zanshin_ui test of its own; the graph host never reports to the warm window. `ZsTooltip`'s tests run the bubble; the warm window is carried (first pass blind #7).
+  - `[low]` `[reject]` (edge #2) carried — a refused edit is only logged (first pass blind #8).
+  - `[false]` `[reject]` (edge #3) carried — ports throw only `ZanshinFfiException` (first pass blind #8 / 10.5 triage).
+  - `[low]` `[reject]` (edge #4) carried — a tooltip flipped below near the bottom (first pass edge #8).
+  - `[low]` `[reject]` (edge #5) carried — narrow-area peek clamp (first pass edge #7).
+  - `[low]` `[reject]` (edge #6) An unobscured area under 16 px inverts the deflated rect. Only with a near-zero viewport; no user-visible case.
+  - `[false]` `[reject]` (edge #7) carried — a double-click on an immutable card does nothing (first pass edge #12).
+  - `[low]` `[reject]` (edge #8) carried — `hoverArea.rect` is card-relative (first pass edge #13).
+  - `[low]` `[reject]` (edge #9) `GraphDirection` lives in graph_view_model.dart, not at_pill.dart as Tasks says. Moved there by the first pass's patch; the fix would edit this spec.
+  - `[medium]` `[patch]` (edge #1) Grouped with blind #1.
+  - `[medium]` `[patch]` (verification-gap gap) Grouped with blind #1.
+  - `[medium]` `[patch]` (verification-gap other #1) Grouped with blind #1.
+  - `[low]` `[reject]` (intent #1) carried — the pill is not mounted in `FloatingShell` (first pass intent #4; 10.12's host).
+  - `[low]` `[patch]` (intent #2) Grouped with blind #10.
+  - `[low]` `[reject]` (intent #3) No real Tab traversal is sent in tests and the keyboard-only ring is not asserted. The new mouse-press test now asserts no focus card after a press; `requestFocus` is what Tab traversal calls.
+  - `[low]` `[reject]` (intent #4) The peek's `ExcludeSemantics` is untested. One wrapper line; test-only gap.
+  - `[low]` `[reject]` (intent #5) VoiceOver's tap-selects-at-once has no new test. The path (`_semanticSelect` → `select`) is unchanged by this story.
+
 ## Design Notes
 
 - **The peek counts as hovering its card.** Entering the peek holds the card's hover (cancels the 140 ms intent), leaving it starts the intent again, so the card→peek gap needs no extra bridge and the card stays pinned and undimmed while the peek is open. 10.17/10.19 extend the same layer.
@@ -197,6 +236,12 @@ Gate rule for this run: no `cargo make test` / `test-full` / `coverage`.
 - `test/features/projects` (not in the list; run as a dependent check): 5–6 `worker_project_repos_test.dart` real-worker tests fail with "XDG_CONFIG_HOME is not pinned to target/test-xdg-config — run via cargo make" — the test's own environment guard, not this change; the loop's gate runs them under cargo make.
 - No Rust, FFI, schema or jj verb changed: no cargo test, clippy, codegen or parity oracle. No full gate, per this run's gate rule.
 - Marionette check: not run — the unattended synchronous run cannot hold a `flutter run` catalogue session. Deferred (frontmatter, deferred-work.md "Surfaced in Story 10.6").
+
+**Verification notes (follow-up review, 2026-10-31):**
+- `flutter test --reporter=failures-only test/features/graph test/features/shell test/widgetbook test/l10n` (app, same env pins): 726 passed.
+- The new macOS mouse-press test fails with `graph_view.dart` stashed to its pre-patch state (proves it witnesses the fix).
+- `dart analyze --fatal-infos app packages/zanshin_ui`: no issues. `dart format --set-exit-if-changed app packages/zanshin_ui`: 0 changed.
+- zanshin_ui untouched in this pass: its suite not re-run. No Rust/FFI/jj change: no cargo checks. No full gate, per this run's gate rule.
 
 ## Auto Run Result
 
@@ -230,3 +275,21 @@ Status: done. Code commit `1d6e63dd7871978bb871b93ba34da03f4ebce2a0` (implementa
 - Nobody has looked at the peek, the tooltips, the dimming or the pill on screen (deferred Marionette check).
 - `GraphView` and the pill are not mounted in the app yet (10.12's host), so the behaviour is proven on fakes and widget tests only.
 - The roving focus cannot move by keyboard until 11.13 binds Go › Parent/Child (arrow map still design question (c)).
+
+### Follow-up review pass (2026-10-31)
+
+**Summary.** A follow-up review of the shipped 10.6 diff found one real defect: on macOS a mouse press that gives the graph focus showed the keyboard ring on the old selection and glided to it (the highlight mode stays `traditional` under a mouse, so the canvas's keyboard-only guard never held). `GraphView` now tracks focus that came from a press and keeps no focus card until Enter/Space or until focus leaves.
+
+**Files:**
+- `app/lib/src/features/graph/graph_view.dart`: `_pointerFocus`; the press sets it, `_focusChanged` keeps no focus card while it holds, Enter/Space clear it.
+- `app/test/features/graph/graph_view_test.dart`: macOS mouse-press test (no scroll, no focus card, Enter restores it); double-click through `GraphView` runs `edit` on the actions port; `create(actions:)` + `_Actions` fake.
+
+**Review.** 28 findings: 0 high, 4 medium, 20 low, 3 false, 1 maybe-false.
+- Patched: 1 medium entry (the press-focus ring/scroll; 4 members), 1 low entry (double-click through the view untested).
+- Deferred (1, mirrored to deferred-work.md): no in-flight guard on a double-click edit (medium, unverified; settles with 10.9's real port).
+- Rejected, each with its reason in the triage log: the pill arrow's long turn, ARB keys tied to enum names, the peek's `Opacity` fade, the frozen peek date, the pulse's own rect math, the untested pan path and relayout jump copy, `ZsTooltipBubble`'s own tests, a sub-16 px area, the `GraphDirection` file in Tasks, no real Tab traversal, the peek's `ExcludeSemantics` test, the VoiceOver tap; seven carried from the first pass; three false.
+- Follow-up review recommended: **false** — a follow-up pass that patched no high (patched by verdict: 1 medium, 1 low).
+
+**Commits:** listed in the run report (the follow-up commit carrying this spec, the code fix and deferred-work.md).
+
+**Residual risks:** unchanged from the first pass (no on-screen check; the graph is not mounted in the app until 10.12).
