@@ -82,10 +82,13 @@ class _GraphViewState extends State<GraphView> {
     super.didChangeDependencies();
     final bool inactive = ZsAppearance.of(context).inactive;
     if (_inactive == true && !inactive) {
-      // After this build: the new "now" rebuilds the canvas's day axis.
+      // After this build: the new "now" rebuilds the canvas's day axis; the reload's snapshot takes in what other
+      // apps changed in the working copy meanwhile.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          widget.model.refreshNow();
+          widget.model
+            ..refreshNow()
+            ..reload();
         }
       });
     }

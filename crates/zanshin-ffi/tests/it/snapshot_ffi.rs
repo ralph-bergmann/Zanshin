@@ -171,7 +171,7 @@ fn snapshot_of_handle_zero_is_ffi_invalid_handle_without_a_report() {
 }
 
 #[test]
-fn a_stale_working_copy_is_jj_stale_working_copy_with_the_three_line_context() {
+fn a_stale_working_copy_is_jj_stale_working_copy_with_the_four_line_context() {
     let (_tmp, root) = fresh_repo();
     let at = {
         let mut repo = Repo::open(&root).expect("open");
@@ -189,10 +189,22 @@ fn a_stale_working_copy_is_jj_stale_working_copy_with_the_three_line_context() {
     let err = env.error().expect("error");
     assert_eq!(err.code(), Some(JJ_STALE_WORKING_COPY));
     let context: Vec<&str> = err.context().expect("context").split('\n').collect();
-    assert_eq!(context.len(), 3, "<cause>\\n<wc_op>\\n<repo_op>: {context:?}");
+    assert_eq!(
+        context.len(),
+        4,
+        "<cause>\\n<wc_op>\\n<repo_op>\\n<message>: {context:?}"
+    );
     assert_eq!(context[0], "stale");
     assert_eq!(context[1].len(), 128, "the working copy's operation id");
     assert_eq!(context[2].len(), 128, "the repo's operation id");
+    assert_eq!(
+        context[3],
+        format!(
+            "The working copy is stale (not updated since operation {}).",
+            &context[1][..12]
+        ),
+        "the CLI's message"
+    );
     let p = env.precondition().expect("the partial report rides the error envelope");
     assert!(!p.was_snapshot_taken());
     close_handle(handle);

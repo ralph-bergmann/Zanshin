@@ -16,6 +16,10 @@ import 'graph_layout.dart';
 import 'graph_viewport_render.dart' show graphCardOverhang;
 import 'hatch_swatch.dart';
 
+/// The DS drag threshold (DS components/content/ProjectRow.prompt.md:11, "4px threshold"): a press on a card or an
+/// affordance that travels further is no click.
+const double graphDragThreshold = 4;
+
 /// A laid-out part of a card, for the yield witnesses ([RenderGraphCard.debugSlots]).
 enum GraphCardSlot {
   /// The subject.
@@ -130,9 +134,16 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     required this._reveal,
   });
 
-  late final _tap = TapGestureRecognizer(debugOwner: this)
-    ..onTapUp = _onTapUp
-    ..onSecondaryTapUp = _onSecondaryTapUp;
+  // A press released within the DS drag threshold clicks, as on macOS; past it nothing opens (without a slop a render
+  // recognizer would take `kTouchSlop`, 18 px).
+  late final _tap =
+      TapGestureRecognizer(
+          debugOwner: this,
+          preAcceptSlopTolerance: graphDragThreshold,
+          postAcceptSlopTolerance: graphDragThreshold,
+        )
+        ..onTapUp = _onTapUp
+        ..onSecondaryTapUp = _onSecondaryTapUp;
 
   /// The facts shown.
   GraphCardData get data => _data;

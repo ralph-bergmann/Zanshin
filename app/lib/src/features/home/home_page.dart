@@ -43,16 +43,20 @@ class HomePage extends StatelessWidget {
   final ProjectSession projects;
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: projects,
-    builder: (context, shell) => ProjectWindowTitle(title: projects.current?.name ?? mainWindowTitle, child: shell!),
-    child: viewModelFactory(
-      builder: (context, vm, _) => FloatingShell(
-        controller: vm.shell,
-        canvas: const ZsCanvas(),
-        // An opaque target, so a press in the bar's row moves the window and never reaches the graph below.
-        barRow: const WindowDragArea(child: ColoredBox(color: Color(0x00000000))),
-        projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place(context)),
+  Widget build(BuildContext context) => _OnWindowActive(
+    // What other apps changed in the working copy meanwhile.
+    onActive: projects.refresh,
+    child: ListenableBuilder(
+      listenable: projects,
+      builder: (context, shell) => ProjectWindowTitle(title: projects.current?.name ?? mainWindowTitle, child: shell!),
+      child: viewModelFactory(
+        builder: (context, vm, _) => FloatingShell(
+          controller: vm.shell,
+          canvas: const ZsCanvas(),
+          // An opaque target, so a press in the bar's row moves the window and never reaches the graph below.
+          barRow: const WindowDragArea(child: ColoredBox(color: Color(0x00000000))),
+          projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place(context)),
+        ),
       ),
     ),
   );
@@ -73,4 +77,33 @@ class HomePage extends StatelessWidget {
       onAllProjects: windows == null ? null : () => unawaited(windows.openProjects()),
     );
   }
+}
+
+/// Runs [onActive] each time the window turns active again ([ZsAppearance.inactive] true → false).
+class _OnWindowActive extends StatefulWidget {
+  const _OnWindowActive({required this.onActive, required this.child});
+
+  final VoidCallback onActive;
+
+  final Widget child;
+
+  @override
+  State<_OnWindowActive> createState() => _OnWindowActiveState();
+}
+
+class _OnWindowActiveState extends State<_OnWindowActive> {
+  bool? _inactive;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bool inactive = ZsAppearance.of(context).inactive;
+    if (_inactive == true && !inactive) {
+      widget.onActive();
+    }
+    _inactive = inactive;
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

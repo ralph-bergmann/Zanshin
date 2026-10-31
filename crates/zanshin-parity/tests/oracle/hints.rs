@@ -142,3 +142,44 @@ fn next_not_found_hint_renders_the_working_copy_parent_summary() {
     assert_eq!(err.hints(), std::slice::from_ref(&cli), "{err:?}");
     assert!(cli.ends_with(" b-mark | B"), "{cli}");
 }
+
+/// Fix run 10.2–10.5: a second workspace whose `@`'s tree the default one rewrote is stale (a new
+/// description alone keeps it fresh); Zanshin's snapshot there refuses with the CLI's `Error: `
+/// line verbatim (without the label) and the CLI's hint.
+#[test]
+fn stale_working_copy_message_is_the_cli_error_line() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = fresh_repo(
+        &["git", "init"],
+        &[
+            BASE,
+            &[
+                Step::Jj(&["workspace", "add", "../ws2"]),
+                Step::Write("stale.txt", "x\n"),
+                Step::Jj(&["squash", "--into", "ws2@"]),
+            ],
+        ],
+    );
+    let ws2 = root.join("..").join("ws2");
+    let run = jj(&ws2, &["status"]);
+    assert!(!run.success, "the CLI refuses a stale working copy");
+    let cli = run
+        .stderr
+        .lines()
+        .find_map(|line| line.strip_prefix("Error: "))
+        .unwrap_or_else(|| panic!("no Error line in:\n{}", run.stderr));
+    let err = Repo::open(&ws2)
+        .expect("open ws2")
+        .snapshot()
+        .expect_err("ws2 is stale");
+    assert_eq!(err.message().as_deref(), Some(cli), "{err:?}");
+    assert!(
+        cli.starts_with("The working copy is stale (not updated since operation "),
+        "{cli}"
+    );
+    let cli_hint = cli_hint(&["status"], &ws2, "Run `jj workspace update-stale`");
+    assert_eq!(
+        err.hints().first().and_then(|h| h.lines().next()),
+        Some(cli_hint.as_str())
+    );
+}

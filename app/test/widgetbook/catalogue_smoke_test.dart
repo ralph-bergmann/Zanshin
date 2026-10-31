@@ -2,7 +2,11 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:widgetbook/widgetbook.dart';
+import 'package:zanshin/src/features/graph/graph_card.dart';
+import 'package:zanshin/src/features/graph/graph_view.dart';
+import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport_render.dart';
+import 'package:zanshin/src/features/graph/stale_notice.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -140,4 +144,39 @@ void main() {
     expect(render(), edges());
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'graph/viewport/view-model keeps its model across knob changes: a stale cause stands over the layout; a re-open '
+    'starts afresh',
+    (tester) async {
+      useCatalogueWindow(tester);
+      const route = '/?path=graph/viewport/view-model&appearance={theme:night}';
+      await tester.pumpWidget(catalogueAt(route));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(GraphCard), findsWidgets, reason: 'the first layout landed');
+      expect(find.byType(StaleNotice), findsNothing);
+      final GraphViewModel model = tester.widget<GraphView>(find.byType(GraphView)).model;
+
+      // What the knob panel does on a pick: the route's query changes, so Widgetbook rebuilds the use case afresh.
+      WidgetbookState.of(
+        tester.element(find.byType(GraphView)),
+      ).updateQueryField(group: 'knobs', field: 'stale cause', value: 'stale');
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(StaleNotice), findsOneWidget);
+      expect(find.byType(GraphCard), findsWidgets, reason: 'the notice stands over the last layout');
+      expect(tester.widget<GraphView>(find.byType(GraphView)).model, same(model), reason: 'the knob kept the model');
+
+      tester.state<ZanshinCatalogueState>(find.byType(ZanshinCatalogue)).open(route);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester.widget<GraphView>(find.byType(GraphView)).model,
+        isNot(same(model)),
+        reason: 'a re-open of the route shown starts afresh',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

@@ -85,6 +85,7 @@ final graphFolder = WidgetbookFolder(
               options: const <String>['none', 'stale', 'sibling_operation', 'operation_not_found'],
             );
             return _ViewModelDemo(
+              key: _viewModelDemoKeys[WidgetbookState.of(context)] ??= GlobalKey<_ViewModelDemoState>(),
               revset: revset,
               options: _options(context),
               insets: _insets(context),
@@ -229,8 +230,17 @@ class _GraphDemoState extends State<_GraphDemo> {
 /// design-default, `all()` → design-all), bound by [GraphView]; the knobs switch the revset, mode and lane order
 /// through the model (each re-centres on @), and a stale cause makes every layout refuse, so the notice stands over
 /// the last layout (or, picked before the first, over the empty canvas).
+///
+/// Widgetbook 3.25 keys a use case on its route, knobs included (`workbench.dart:82`), so a knob change would build a
+/// fresh state with a fresh model; [_viewModelDemoKeys] moves the one state, source and model into the new subtree.
 class _ViewModelDemo extends StatefulWidget {
-  const _ViewModelDemo({required this.revset, required this.options, required this.insets, required this.staleCause});
+  const _ViewModelDemo({
+    required this.revset,
+    required this.options,
+    required this.insets,
+    required this.staleCause,
+    super.key,
+  });
 
   final String revset;
   final GraphViewOptions options;
@@ -240,6 +250,10 @@ class _ViewModelDemo extends StatefulWidget {
   @override
   State<_ViewModelDemo> createState() => _ViewModelDemoState();
 }
+
+/// One key per Widgetbook instance: its [WidgetbookState] lives as long as the instance, across knob changes, while a
+/// re-open (`ZanshinCatalogueState.open`, a fresh Widgetbook) starts afresh with a new state and model.
+final _viewModelDemoKeys = Expando<GlobalKey<_ViewModelDemoState>>('view model demo key');
 
 class _ViewModelDemoState extends State<_ViewModelDemo> {
   late final _source = FakeGraphSource(
@@ -576,7 +590,7 @@ class _StaleNotices extends StatelessWidget {
   Widget build(BuildContext context) {
     final causes = <GraphStale>[
       for (final String cause in <String>['stale', 'sibling_operation', 'operation_not_found'])
-        GraphStale.fromContext('$cause\n${'3f9a2c71d0e4' * 2}\n${'b81e6d09c5a7' * 2}'),
+        GraphStale.fromError(FakeGraphSource.staleError(cause)),
     ];
     return Stack(
       fit: StackFit.expand,

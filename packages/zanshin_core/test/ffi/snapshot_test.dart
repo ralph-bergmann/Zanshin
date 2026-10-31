@@ -144,10 +144,11 @@ void main() {
       );
     });
 
-    test('a stale refusal travels through with its three-line context', () {
+    test('a stale refusal travels through with its four-line context', () {
+      const context = 'stale\nwc-op\nrepo-op\nThe working copy is stale (not updated since operation wc-op).';
       final Uint8List bytes = fbs.EnvelopeObjectBuilder(
         ok: false,
-        error: fbs.FfiErrorObjectBuilder(code: 'jj.stale_working_copy', context: 'stale\nwc-op\nrepo-op'),
+        error: fbs.FfiErrorObjectBuilder(code: 'jj.stale_working_copy', context: context),
         precondition: fbs.PreconditionObjectBuilder(),
       ).toBytes();
 
@@ -156,7 +157,7 @@ void main() {
         throwsA(
           isA<ZanshinFfiException>()
               .having((e) => e.code, 'code', 'jj.stale_working_copy')
-              .having((e) => e.context, 'context', 'stale\nwc-op\nrepo-op'),
+              .having((e) => e.context, 'context', context),
         ),
       );
     });

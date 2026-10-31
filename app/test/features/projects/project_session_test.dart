@@ -399,6 +399,26 @@ void main() {
       expect(repos.repoAt('/r/a').reads, 2);
     });
 
+    test(
+      'refresh reads the open project once more; calls before it runs coalesce; without a project it reads nothing',
+      () async {
+        session.refresh();
+        await register(<String>['/r/a']);
+        await session.open('/r/a');
+        expect(repos.log, <String>['detect /r/a', 'open /r/a', 'read /r/a'], reason: 'the queued refresh read nothing');
+        final FakeProjectRepo repo = repos.repoAt('/r/a');
+        repos.readings['/r/a'] = const ProjectReading(status: ProjectStatus.dirty);
+
+        session
+          ..refresh()
+          ..refresh();
+        await drain();
+
+        expect(repo.reads, 2);
+        expect(session.current!.status, ProjectStatus.dirty);
+      },
+    );
+
     test("the old project's operations no longer read once it was switched away from", () async {
       await register(<String>['/r/a', '/r/b']);
       await session.open('/r/a');

@@ -401,23 +401,38 @@ fn a_jjconflict_entry_is_not_reported_outside_a_colocated_workspace() {
 // ── Stale working copies ─────────────────────────────────────────────────────────
 
 fn assert_stale(err: &PreconditionError, expected: StaleCause) {
-    assert!(
-        matches!(err, PreconditionError::StaleWorkingCopy { cause, working_copy_op_id, repo_op_id }
-            if *cause == expected && working_copy_op_id.len() == 128 && repo_op_id.len() == 128),
-        "expected {expected:?}, got {err:?}"
-    );
-    // Story 9.56: the CLI's hint per cause (`cli/src/cli_util.rs:3046-3074` @ v0.46.0).
+    let PreconditionError::StaleWorkingCopy {
+        cause,
+        working_copy_op_id: wc_op,
+        repo_op_id: repo_op,
+    } = err
+    else {
+        panic!("expected {expected:?}, got {err:?}")
+    };
+    assert_eq!(*cause, expected);
+    assert_eq!((wc_op.len(), repo_op.len()), (128, 128));
+    let (wc_op, repo_op) = (&wc_op[..12], &repo_op[..12]);
+    // Story 9.56: the CLI's hint per cause (`cli/src/cli_util.rs:3046-3074` @ v0.46.0), and its
+    // message (`:3041-3071`).
     let see = "See https://docs.jj-vcs.dev/latest/working-copy/#stale-working-copy for more information.";
-    let hint = match (expected, err) {
-        (StaleCause::Stale, _) => format!("Run `jj workspace update-stale` to update it.\n{see}"),
-        (StaleCause::SiblingOperation, PreconditionError::StaleWorkingCopy { working_copy_op_id, .. }) => format!(
-            "Run `jj op integrate {}` to add the working copy's operation to the operation log.",
-            &working_copy_op_id[..12]
+    let (message, hint) = match expected {
+        StaleCause::Stale => (
+            format!("The working copy is stale (not updated since operation {wc_op})."),
+            format!("Run `jj workspace update-stale` to update it.\n{see}"),
         ),
-        (StaleCause::OperationNotFound, _) => format!("Run `jj workspace update-stale` to recover.\n{see}"),
-        (cause, _) => panic!("unexpected cause {cause:?}"),
+        StaleCause::SiblingOperation => (
+            format!(
+                "The repo was loaded at operation {repo_op}, which seems to be a sibling of the working copy's operation {wc_op}"
+            ),
+            format!("Run `jj op integrate {wc_op}` to add the working copy's operation to the operation log."),
+        ),
+        StaleCause::OperationNotFound => (
+            "Could not read working copy's operation.".to_owned(),
+            format!("Run `jj workspace update-stale` to recover.\n{see}"),
+        ),
     };
     assert_eq!(err.hints(), [hint]);
+    assert_eq!(err.message(), Some(message));
 }
 
 /// "Stale WC": `@` rewritten by another writer that never checked it out.

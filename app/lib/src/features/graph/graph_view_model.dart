@@ -28,49 +28,37 @@ enum GraphStaleCause {
 }
 
 /// The project-level stale state (Story 10.5 item 9, 2026-10-16): jj's message for the [cause] and the command its
-/// hint names (cli_util.rs:3040-3075 @ v0.46.0).
+/// hint names, both as Rust sent them (cli_util.rs:3040-3075 @ v0.46.0).
 @immutable
 class GraphStale {
   /// A stale state.
   const GraphStale({required this.cause, required this.message, required this.command});
 
-  /// Parses `jj.stale_working_copy`'s context, `<cause>\n<working_copy_op_id>\n<repo_op_id>`; an unknown cause reads
-  /// as [GraphStaleCause.stale].
-  factory GraphStale.fromContext(String? context) {
-    final List<String> parts = (context ?? '').split('\n');
-    // jj's `short_operation_hash`: the first 12 hex.
-    String op(int i) => i < parts.length ? (parts[i].length > 12 ? parts[i].substring(0, 12) : parts[i]) : '';
-    final String wc = op(1);
-    return switch (parts.first) {
-      'sibling_operation' => GraphStale(
-        cause: GraphStaleCause.siblingOperation,
-        message:
-            "The repo was loaded at operation ${op(2)}, which seems to be a sibling of the working copy's operation $wc",
-        command: 'jj op integrate $wc',
-      ),
-      'operation_not_found' => const GraphStale(
-        cause: GraphStaleCause.operationNotFound,
-        message: "Could not read working copy's operation.",
-        command: updateStaleCommand,
-      ),
-      _ => GraphStale(
-        cause: GraphStaleCause.stale,
-        message: 'The working copy is stale (not updated since operation $wc).',
-        command: updateStaleCommand,
-      ),
-    };
+  /// Reads a `jj.stale_working_copy` refusal: the cause from its context's first line
+  /// (`<cause>\n<working_copy_op_id>\n<repo_op_id>\n<message>`, docs/rust-error-codes.md; an unknown cause reads as
+  /// [GraphStaleCause.stale]), the message from its fourth, the command from the first backticked span of its first
+  /// hint.
+  factory GraphStale.fromError(ZanshinFfiException error) {
+    final List<String> lines = (error.context ?? '').split('\n');
+    final String? hint = error.hints.firstOrNull;
+    return GraphStale(
+      cause: switch (lines.first) {
+        'sibling_operation' => GraphStaleCause.siblingOperation,
+        'operation_not_found' => GraphStaleCause.operationNotFound,
+        _ => GraphStaleCause.stale,
+      },
+      message: lines.length > 3 ? lines[3] : null,
+      command: hint == null ? '' : (RegExp('`([^`]*)`').firstMatch(hint)?.group(1) ?? ''),
+    );
   }
-
-  /// The command 9.23's action runs; it recovers all three causes.
-  static const updateStaleCommand = 'jj workspace update-stale';
 
   /// The cause.
   final GraphStaleCause cause;
 
-  /// jj's message.
-  final String message;
+  /// jj's message, null when the error carries none.
+  final String? message;
 
-  /// The command jj's hint names.
+  /// The command jj's hint names, empty when the error has no hint.
   final String command;
 
   @override
@@ -451,7 +439,7 @@ class GraphViewModel extends ChangeNotifier {
       case 'jj.revset_parse_error' || 'jj.revset_resolution_error':
         _revsetError = error;
       case 'jj.stale_working_copy':
-        _stale = GraphStale.fromContext(error.context);
+        _stale = GraphStale.fromError(error);
       default:
         _error = error;
         _log.warning('loading the graph failed: ${error.code}');

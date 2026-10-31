@@ -4,6 +4,7 @@
 // imports; see https://github.com/flutter/flutter/issues/30701.
 // ignore_for_file: invalid_use_of_internal_member
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/src/foundation/_features.dart';
@@ -192,6 +193,30 @@ void main() {
     await tester.pump();
     expect(find.byType(ProjectCapsule), findsNothing);
     expect(find.byType(ShellEmptyIsland), findsNWidgets(4));
+  });
+
+  testWidgets('the window turning active again reads the open project once; turning inactive reads nothing', (
+    tester,
+  ) async {
+    final ProjectSession session = await pumpHome(tester);
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+    final repo = session.repo! as FakeProjectRepo;
+    expect(repo.reads, 1);
+    final HomePage home = tester.widget<HomePage>(find.byType(HomePage));
+
+    /// Shows [appearance], then waits for everything the session queued (opening the open project only takes its turn).
+    Future<void> show(ZsAppearance appearance) async {
+      await tester.pumpWidget(shellHost(home, appearance: appearance));
+      var drained = false;
+      unawaited(session.open('/r/zanshin').then((_) => drained = true));
+      await settle(tester, () => drained);
+    }
+
+    await show(const ZsAppearance(inactive: true));
+    expect(repo.reads, 1);
+    await show(const ZsAppearance());
+    expect(repo.reads, 2);
   });
 
   testWidgets("a Recent row of the capsule's menu switches the project; the capsule shows the new one", (tester) async {

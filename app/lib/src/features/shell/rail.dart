@@ -7,7 +7,7 @@ import 'shell_controller.dart';
 
 /// The rail (epics.md Story 11.3 item 4; DS ui_kits/desktop/chrome.jsx:140-157; kit.css:65-66): a rail island of
 /// `ZsIconButton.lg` buttons, `--chrome-col` (52) wide, one per item — Bookmarks (10.14) and the Undo Timeline
-/// (11.9); Workstreams is dropped and Reviews stays hidden (decision 16.26).
+/// (11.9); Workstreams is dropped (decision 16.26), and so is Reviews (decision 2026-10-31).
 ///
 /// Each button is a Tab stop with its ring inside; it shows no tooltip — its hover preview takes that place — and
 /// reports its pin as its toggled state; its identifier is `rail-<id>`. Hovering a button drives the controller's

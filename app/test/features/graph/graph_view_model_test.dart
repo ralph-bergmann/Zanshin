@@ -231,20 +231,33 @@ void main() {
       });
     });
 
-    test('each cause parses to jj message and hint command', () {
+    test('the refusal reads as the cause, Rust message and the hint command', () {
       expect(
-        GraphStale.fromContext('operation_not_found\n${'a' * 40}\n${'b' * 40}'),
+        GraphStale.fromError(
+          const ZanshinFfiException.withReport(
+            'jj.stale_working_copy',
+            'operation_not_found\nw\nr\nmessage from Rust',
+            precondition: null,
+            warnings: <ZanshinWarning>[],
+            hints: <String>['Run `some command` to recover.\nSee `elsewhere`.', 'Run `second`.'],
+          ),
+        ),
         const GraphStale(
           cause: GraphStaleCause.operationNotFound,
-          message: "Could not read working copy's operation.",
-          command: 'jj workspace update-stale',
+          message: 'message from Rust',
+          command: 'some command',
         ),
       );
+      expect(GraphStale.fromError(staleError('sibling_operation')).cause, GraphStaleCause.siblingOperation);
+      // An older or hand-built error: no fourth line, no hint.
       expect(
-        GraphStale.fromContext('stale\nabc\ndef').message,
-        'The working copy is stale (not updated since operation abc).',
+        GraphStale.fromError(const ZanshinFfiException('jj.stale_working_copy', 'stale\nabc\ndef')),
+        const GraphStale(cause: GraphStaleCause.stale, message: null, command: ''),
       );
-      expect(GraphStale.fromContext(null).cause, GraphStaleCause.stale);
+      expect(
+        GraphStale.fromError(const ZanshinFfiException('jj.stale_working_copy')),
+        const GraphStale(cause: GraphStaleCause.stale, message: null, command: ''),
+      );
     });
 
     test('updateStale: busy, then the recovery and one reload; a failure keeps it stale, logged, no reload', () {

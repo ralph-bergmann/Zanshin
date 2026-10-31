@@ -1108,7 +1108,7 @@ void main() {
       await tester.pump();
       expect(Offset(host.h.offset, host.v.offset), Offset.zero);
 
-      // Within the mouse's tap slop (1 px) the press opens the menu, still without a scroll.
+      // Within the drag threshold (4 px) the press opens the menu, still without a scroll.
       await mouse.moveTo(below);
       await mouse.down(below);
       await mouse.moveBy(const Offset(-1, 0));
@@ -1116,6 +1116,53 @@ void main() {
       await tester.pump();
       expect(Offset(host.h.offset, host.v.offset), Offset.zero);
       expect(controller.calls.last.$1, 'menu');
+    }, variant: macOS);
+
+    testWidgets('a click that wobbles up to the drag threshold (4 px) still clicks; past it nothing opens or pans', (
+      tester,
+    ) async {
+      final RecordedGraphLayout layout = chainLayout(60, cols: 2);
+      final controller = RecordingController();
+      addTearDown(controller.dispose);
+      final host = Host(layout, controller);
+      await host.pump(tester);
+      final int node = onScreen(host);
+      final RenderGraphCard card = host.render(tester, layout.keyOf(node));
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: host.rectOf(node).center);
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      final Offset more = card.localToGlobal(rectOf(card, GraphCardSlot.more).center);
+      final Offset add = card.localToGlobal(rectOf(card, GraphCardSlot.addBookmark).center);
+
+      Future<void> press(Offset at, Offset wobble) async {
+        await mouse.moveTo(at);
+        await tester.pump();
+        await mouse.down(at);
+        await mouse.moveBy(wobble);
+        await mouse.up();
+        await tester.pump();
+      }
+
+      for (final (Offset at, String call) in <(Offset, String)>[(more, 'menu'), (add, 'bookmarks')]) {
+        for (final wobble in const <Offset>[Offset(2, 0), Offset(0, -3), Offset(-2, 2)]) {
+          controller.calls.clear();
+          await press(at, wobble);
+          expect(controller.calls.map((c) => c.$1), <String>[call], reason: '$call after a $wobble wobble');
+          expect(Offset(host.h.offset, host.v.offset), Offset.zero);
+        }
+        controller.calls.clear();
+        await press(at, const Offset(5, 0));
+        expect(controller.calls, isEmpty, reason: 'past the threshold nothing opens ($call)');
+        expect(Offset(host.h.offset, host.v.offset), Offset.zero, reason: 'nor pans');
+      }
+
+      // Empty canvas still pans by a short move: between the two columns, beside the card.
+      final Offset canvas = host.rectOf(node).centerRight + const Offset(28, 0);
+      expect(card.hitTest(BoxHitTestResult(), position: card.globalToLocal(canvas)), isFalse);
+      await press(canvas, const Offset(-5, -5));
+      expect(Offset(host.h.offset, host.v.offset), isNot(Offset.zero));
+      expect(controller.calls, isEmpty);
     }, variant: macOS);
 
     testWidgets('a hovered card that leaves the viewport gives its hover back', (tester) async {

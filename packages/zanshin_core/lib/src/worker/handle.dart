@@ -2763,8 +2763,9 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.stale_working_copy` — `"<cause>\n<working_copy_op_id>\n<repo_op_id>"`
-  /// in the context, `jj.config_error`, `jj.jj_lib_error`). The exception
+  /// `jj.stale_working_copy` —
+  /// `"<cause>\n<working_copy_op_id>\n<repo_op_id>\n<message>"` in the context,
+  /// `message` the CLI's error text, `jj.config_error`, `jj.jj_lib_error`). The exception
   /// carries the PARTIAL report as its `precondition` (whose `warnings` stay
   /// empty) and the call's warnings as its `warnings` (Story 9.35).
   Future<Precondition> snapshot() {

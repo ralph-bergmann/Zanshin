@@ -4182,8 +4182,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_simplify_parents(
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
-/// - `jj.stale_working_copy` — the working copy is stale; `"<cause>\n<working_copy_op_id>\n<repo_op_id>"`
-/// in `context`. Nothing is written.
+/// - `jj.stale_working_copy` — the working copy is stale;
+/// `"<cause>\n<working_copy_op_id>\n<repo_op_id>\n<message>"` in `context` (`message` the CLI's
+/// error text). Nothing is written.
 /// - `jj.config_error` — the effective jj config no longer reads, or a value the snapshot reads
 /// has the wrong type (the key in `context`). Each is refused where the CLI reads it (Story
 /// 9.34): the start-up environment (the alias tables, the `immutable_heads()` parse) before the

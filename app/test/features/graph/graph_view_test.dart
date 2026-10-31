@@ -249,19 +249,24 @@ void main() {
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
 
-  testWidgets("now: the model's now reaches the cards, and the window turning active refreshes it", (tester) async {
+  testWidgets("now: the model's now reaches the cards, and the window turning active refreshes it and reloads once", (
+    tester,
+  ) async {
     await pump(tester);
     expect(cardsOf(tester).now.value, noon.millisecondsSinceEpoch);
+    final int requests = source.requests.length;
     clock = noon.add(const Duration(minutes: 7));
     host.appearance = const ZsAppearance(inactive: true);
     await tester.pumpWidget(host.build());
     await tester.pump();
     expect(cardsOf(tester).now.value, noon.millisecondsSinceEpoch);
+    expect(source.requests, hasLength(requests), reason: 'turning inactive reloads nothing');
     host.appearance = const ZsAppearance();
     await tester.pumpWidget(host.build());
     await tester.pump();
     expect(model.now.value, clock.millisecondsSinceEpoch);
     expect(cardsOf(tester).now.value, clock.millisecondsSinceEpoch);
+    expect(source.requests, hasLength(requests + 1), reason: 'turning active reloads the graph once');
     await finish(tester);
   });
 

@@ -47,8 +47,9 @@ pub const JJ_NO_WORKING_COPY: &str = "jj.no_working_copy";
 pub const JJ_CONCURRENT_WORKING_COPY: &str = "jj.concurrent_working_copy";
 /// AR-P-4: emitted by EVERY wrapper whose verb runs the pre-verb snapshot (Story 9.26) when the
 /// working copy is stale — the CLI's `handle_stale_working_copy` refusals. `context` is
-/// `"<cause>\n<working_copy_op_id>\n<repo_op_id>"` (full hex ids), `cause` one of `stale`,
-/// `sibling_operation`, `operation_not_found`. Nothing is snapshotted or written.
+/// `"<cause>\n<working_copy_op_id>\n<repo_op_id>\n<message>"` (full hex ids), `cause` one of
+/// `stale`, `sibling_operation`, `operation_not_found`, `message` the CLI's error text without
+/// its `Error: ` / `Internal error: ` label. Nothing is snapshotted or written.
 pub const JJ_STALE_WORKING_COPY: &str = "jj.stale_working_copy";
 /// AR-P-4: emitted by `file_ops.rs::zanshin_file_untrack` when matched paths are NOT ignored, so
 /// the next snapshot would add them straight back; EVERY offending path in `context`, joined
@@ -614,6 +615,7 @@ impl FfiErrorObj {
 pub(crate) fn map_precondition_err(e: zanshin_jj::PreconditionError) -> FfiErrorObj {
     use zanshin_jj::PreconditionError as P;
     let hints = e.hints();
+    let message = e.message();
     let (code, context) = match e {
         P::StaleWorkingCopy {
             cause,
@@ -621,7 +623,11 @@ pub(crate) fn map_precondition_err(e: zanshin_jj::PreconditionError) -> FfiError
             repo_op_id,
         } => (
             JJ_STALE_WORKING_COPY,
-            format!("{}\n{working_copy_op_id}\n{repo_op_id}", cause.as_str()),
+            format!(
+                "{}\n{working_copy_op_id}\n{repo_op_id}\n{}",
+                cause.as_str(),
+                message.unwrap_or_default()
+            ),
         ),
         P::Config { reason } => (JJ_CONFIG_ERROR, reason),
         P::ConcurrentWorkingCopy => {

@@ -214,6 +214,33 @@ pub enum PreconditionError {
 }
 
 impl PreconditionError {
+    /// The jj CLI's error message for this refusal, verbatim without its `Error: ` /
+    /// `Internal error: ` label (`cli/src/cli_util.rs:3041-3071` @ v0.46.0): a stale working
+    /// copy's, naming operations by their 12-digit short ids; `None` otherwise.
+    #[must_use]
+    pub fn message(&self) -> Option<String> {
+        let Self::StaleWorkingCopy {
+            cause,
+            working_copy_op_id,
+            repo_op_id,
+        } = self
+        else {
+            return None;
+        };
+        Some(match cause {
+            StaleCause::Stale => format!(
+                "The working copy is stale (not updated since operation {}).",
+                short_op_id(working_copy_op_id)
+            ),
+            StaleCause::SiblingOperation => format!(
+                "The repo was loaded at operation {}, which seems to be a sibling of the working copy's operation {}",
+                short_op_id(repo_op_id),
+                short_op_id(working_copy_op_id)
+            ),
+            StaleCause::OperationNotFound => "Could not read working copy's operation.".to_owned(),
+        })
+    }
+
     /// The jj CLI's hint lines for this refusal, verbatim and in the CLI's order (Story 9.56):
     /// a stale working copy's remedy (`cli/src/cli_util.rs:3046-3074` @ v0.46.0); none otherwise.
     #[must_use]
@@ -227,7 +254,7 @@ impl PreconditionError {
             } => vec![match cause {
                 StaleCause::Stale => format!("Run `jj workspace update-stale` to update it.\n{SEE}"),
                 StaleCause::SiblingOperation => {
-                    let short: String = working_copy_op_id.chars().take(12).collect();
+                    let short = short_op_id(working_copy_op_id);
                     format!("Run `jj op integrate {short}` to add the working copy's operation to the operation log.")
                 }
                 StaleCause::OperationNotFound => format!("Run `jj workspace update-stale` to recover.\n{SEE}"),
@@ -235,6 +262,11 @@ impl PreconditionError {
             Self::Config { .. } | Self::ConcurrentWorkingCopy | Self::Backend(_) => Vec::new(),
         }
     }
+}
+
+/// The CLI's `short_operation_hash`: the first 12 hex digits.
+fn short_op_id(hex: &str) -> &str {
+    hex.get(..12).unwrap_or(hex)
 }
 
 impl From<MutateError> for PreconditionError {
@@ -929,6 +961,37 @@ mod tests {
         ] {
             assert!(e.hints().is_empty(), "{e:?}");
         }
+    }
+
+    /// Fix run 10.2–10.5: a stale working copy carries the CLI's message per cause, naming the
+    /// operations by their 12-digit short ids; no other refusal carries one.
+    #[test]
+    fn only_a_stale_working_copy_carries_the_cli_message() {
+        let stale = |cause| PreconditionError::StaleWorkingCopy {
+            cause,
+            working_copy_op_id: format!("abcdef012345{}", "0".repeat(116)),
+            repo_op_id: format!("0123456789ab{}", "1".repeat(116)),
+        };
+        assert_eq!(
+            stale(StaleCause::Stale).message().as_deref(),
+            Some("The working copy is stale (not updated since operation abcdef012345).")
+        );
+        assert_eq!(
+            stale(StaleCause::SiblingOperation).message().as_deref(),
+            Some("The repo was loaded at operation 0123456789ab, which seems to be a sibling of the working copy's operation abcdef012345")
+        );
+        assert_eq!(
+            stale(StaleCause::OperationNotFound).message().as_deref(),
+            Some("Could not read working copy's operation.")
+        );
+        for e in [
+            PreconditionError::Config { reason: String::new() },
+            PreconditionError::ConcurrentWorkingCopy,
+            PreconditionError::Backend(String::new()),
+        ] {
+            assert_eq!(e.message(), None, "{e:?}");
+        }
+        assert_eq!(super::short_op_id("abc"), "abc");
     }
 
     fn failure(name: &str) -> GitExportFailure {

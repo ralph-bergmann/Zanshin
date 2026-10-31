@@ -99,6 +99,30 @@ class ScriptedGraphSource implements GraphSource {
   }
 }
 
-/// `jj.stale_working_copy` for [cause] with full 40-hex op ids `aaaa…` (working copy) and `bbbb…` (repo).
-ZanshinFfiException staleError(String cause) =>
-    ZanshinFfiException('jj.stale_working_copy', '$cause\n${'a' * 40}\n${'b' * 40}');
+/// `jj.stale_working_copy` for [cause] shaped as Rust sends it (docs/rust-error-codes.md): 40-hex stand-ins `aaaa…`
+/// (working copy) and `bbbb…` (repo) for the 128-hex op ids, jj's message as the context's fourth line, jj's hint.
+ZanshinFfiException staleError(String cause) {
+  const wc = 'aaaaaaaaaaaa';
+  const see = 'See https://docs.jj-vcs.dev/latest/working-copy/#stale-working-copy for more information.';
+  final (String message, String hint) = switch (cause) {
+    'sibling_operation' => (
+      "The repo was loaded at operation bbbbbbbbbbbb, which seems to be a sibling of the working copy's operation $wc",
+      "Run `jj op integrate $wc` to add the working copy's operation to the operation log.",
+    ),
+    'operation_not_found' => (
+      "Could not read working copy's operation.",
+      'Run `jj workspace update-stale` to recover.\n$see',
+    ),
+    _ => (
+      'The working copy is stale (not updated since operation $wc).',
+      'Run `jj workspace update-stale` to update it.\n$see',
+    ),
+  };
+  return ZanshinFfiException.withReport(
+    'jj.stale_working_copy',
+    '$cause\n${'a' * 40}\n${'b' * 40}\n$message',
+    precondition: null,
+    warnings: const <ZanshinWarning>[],
+    hints: <String>[hint],
+  );
+}

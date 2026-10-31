@@ -352,7 +352,7 @@ class ProjectSession extends ChangeNotifier {
     var changedEarly = false;
     _incoming = repo.changes.listen((_) {
       if (identical(repo, _repo)) {
-        _refresh();
+        refresh();
       } else {
         changedEarly = true;
       }
@@ -373,7 +373,7 @@ class ProjectSession extends ChangeNotifier {
     _incoming = null;
     _notify();
     if (changedEarly) {
-      _refresh();
+      refresh();
     }
     if (old != null) {
       await _closeRepo(old);
@@ -435,8 +435,9 @@ class ProjectSession extends ChangeNotifier {
     }
   }
 
-  /// A jj operation landed in the open project: one more reading, unless one is already waiting its turn.
-  void _refresh() {
+  /// A jj operation landed in the open project, or its window turned active again: one more reading, unless one is
+  /// already waiting its turn. Without an open project it reads nothing.
+  void refresh() {
     if (_refreshQueued) {
       return;
     }
