@@ -577,6 +577,10 @@ void main() {
       await rig.sheetIn();
       expect(find.text('Convert legacy to a jj repository?'), findsOneWidget);
       expect(find.text("jj git init --colocate '$git'"), findsOneWidget);
+      expect(
+        find.text('~/legacy stays a Git repository; jj joins it and shares its working copy.', findRichText: true),
+        findsOneWidget,
+      );
       await tester.tap(find.text('Cancel'));
       await rig.sheetOut();
       expect(rig.id('projects-offer'), findsNothing);
@@ -608,6 +612,10 @@ void main() {
       await rig.sheetIn();
       expect(find.text('Create a jj repository in plain?'), findsOneWidget);
       expect(find.text("jj git init --no-colocate '$plain'"), findsOneWidget);
+      expect(
+        find.text('~/plain becomes a jj repository, its Git store inside .jj.', findRichText: true),
+        findsOneWidget,
+      );
       await tester.tap(find.text('Create'));
       await rig.settle(() => rig.session.current != null);
       expect(rig.repos.log, <String>['detect $plain', 'init $plain', 'read $plain']);

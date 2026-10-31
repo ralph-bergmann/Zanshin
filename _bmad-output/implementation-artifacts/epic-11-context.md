@@ -24,7 +24,7 @@ Build the macOS app around the commit graph: one project window in which the gra
 - Story 11.13: Menu bar and shortcuts
 - Story 11.14: The `zanshin_ui` package (done)
 - Story 11.15: Projects window — deselect, groups, row menu, drag ghost (done)
-- Story 11.16: l10n-ready — the app's strings move into ARB files (English only)
+- Story 11.16: l10n-ready — the app's strings move into ARB files (English only) (done)
 
 ## Requirements & Constraints
 
@@ -66,7 +66,7 @@ Build the macOS app around the commit graph: one project window in which the gra
 
 ## Cross-Story Dependencies
 
-- **Order of what remains:** 11.13 after 11.12, 10.9, 10.23; 11.7 and 11.8 wire their shortcuts to 11.13's items (an item stays grey until its handler story lands). 11.7 also needs 10.3 (`HatchSwatch`) for the Immutable commits page. 11.8 also needs 10.23 (the toast) and finishes the clone form (live progress events, Cancel, no app-side destination rules); its timed poll gets no special auth handling (an unconfirmed credential prompt fails that tick quietly; ticks never overlap). 11.9 after 10.9, 10.23 (both still backlog). 11.16 can run now (11.10 is done) and touches every UI string, so later UI stories keep to its ARB rule.
+- **Order of what remains:** 11.13 after 11.12, 10.9, 10.23; 11.7 and 11.8 wire their shortcuts to 11.13's items (an item stays grey until its handler story lands). 11.7 also needs 10.3 (`HatchSwatch`) for the Immutable commits page. 11.8 also needs 10.23 (the toast) and finishes the clone form (live progress events, Cancel, no app-side destination rules); its timed poll gets no special auth handling (an unconfirmed credential prompt fails that tick quietly; ticks never overlap). 11.9 after 10.9, 10.23 (both still backlog). 11.16 is done; later UI stories keep to its ARB rule.
 - **Epic 10:** 10.5 (done) consumes 11.3's slots — insets in, user-scroll reports out, the graph source is `RepoGraphSource` over `ProjectSession.repo`; `GraphView` is not in `HomePage` until 10.12. 10.8 puts the inspector on 11.3's `ZsResizeEdge`; 10.22 hosts Configurations (`revsetConfigsWindowKey`, floating while active, close guard "Discard changes?"); 10.23's toast takes over the warnings Projects keeps today; 10.10 adds `change`/`bookmark`/`diff` kinds to 11.15's `ZsDragGhost`; 10.15's card menu opens Settings' Immutable commits page. Glass fades only through `ZsFade`; glass never mounts through an `OverlayPortal` inside other glass.
 - **Hand-offs still open from done stories:** 11.7 hosts Settings (`settingsWindowKey`, content-sized, no minimum, root without a navigator) and adds `openSettings` to `AppWindowActions`; it passes Project Settings…, Settings… and Set identity… to the Project menu and Projects window. 11.13 routes ⌘W on the project window to `AppWindowCoordinator`'s red-button path, ⇧⌘O to `openProjects`, ⌘F to Projects' search, and greys window shortcuts while a sheet is open. 10.22 checks dirty state before a switch, a close and quitting (via `AppWindows` close guards). 9.29 and 11.8 add ahead, behind, diverged and syncing to `ProjectStatus`. Open measurements: another callout arrow side for 10.6/10.19, the glass cost once 10.1 exists.
 - **11.10 removed** Yaru, the icon font, `flutter_svg`, the workstream glyph, the `main2/3/4.dart` hosts, `ZanshinColors` and the mock widgets; the Widgetbook entrypoint is the only dev host.

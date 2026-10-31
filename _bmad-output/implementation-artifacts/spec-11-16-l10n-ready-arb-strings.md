@@ -5,12 +5,26 @@ created: '2026-10-31'
 status: 'done'
 baseline_revision: '2e3980286cea8c743b9949d750249fefa330edbc'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-11-context.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The story was closed without the Marionette check in the running catalogue; the rendered text is checked only by widget tests.
+    evidence: |-
+      Verification lists "Not done: the Marionette visual check in the catalogue". Whether the live Projects window, graph cards, splash and window titles show the same text is unchecked; a Marionette pass over the catalogue would settle it.
+    location: >-
+      app/widgetbook (catalogue), Projects window and graph use cases
+    severity: medium (unverified)
+  - summary: >-
+      The native macOS strings (MainMenu.xib menu titles, no CFBundleLocalizations in Info.plist) are outside the l10n setup.
+    evidence: |-
+      MainMenu.xib keeps English titles such as "Preferences…"; Info.plist declares no CFBundleLocalizations. The story's scope was app/lib and packages/zanshin_ui/lib, so this predates it. Story 11.13 (the app menu) is where it closes.
+    location: >-
+      app/macos/Runner/Base.lproj/MainMenu.xib:35
+    severity: low
 ---
 
 <intent-contract>
@@ -110,6 +124,32 @@ deferred: []
   - `[false]` `[reject]` (intent) "tests unchanged apart from the lookup" — the auditor confirms it holds; no defect.
   - `[false]` `[reject]` (intent) widgetbook exercises only the fallback — widgetbook is exempt (scope item 5) and the fallback is the designed path there.
 
+### 2026-10-31 — Review pass (follow-up)
+- verdicts: 22 findings — high 0, medium 1, low 17, false 3, maybe-false 1
+- findings:
+  - `[low]` `[reject]` (blind) VoiceOver sentences (`graphCardLabel`, bookmark/working-copy lists, project row value) are joined with `', '` in Dart — English only by Ralph's decision; reordering for a translation is that translation's work and needs new ARB keys, not a correction.
+  - `[low]` `[reject]` (blind) abbreviated counts (`{n}m ago`, `{n}h`, `resizePoints`, `groupCount`'s project part) are plain `{n}`, and these placeholders lack `example` — the English abbreviations do not change with the number; a language that needs a plural adds it in its ARB. `example` is optional.
+  - `[low]` `[patch]` (blind) the guard misses `TextSpan(style: …, text: '…')`, raw `r'…'` and `SelectableText('…')` — added `text` to the named args, `SelectableText` to the positional calls and an optional `r` prefix in `hard_coded_strings_test.dart`, with three scanner cases; the real-tree scan stays clean. Wrapped literals (`ZsType.caps('…')`) stay in the shortcut's "other helpers" gap.
+  - `[low]` `[reject]` carried (blind) gen-l10n drift has no automated check / project-context's codegen rule — same as the logged "gen-l10n currency" rows; the "Build never auto-regenerates" section names only the FFI header and `bindings.dart`, so it does not contradict `generate: true`.
+  - `[false]` `[reject]` (blind) `platformStrings()` resolution outside `Localizations` and `appVersion()` formatting the version line — no harm named: both paths resolve the same `[en]` strings, and the window title and splash run before any `Localizations` exists.
+  - `[low]` `[reject]` (blind) deferred-work I1's sub-bullets read unresolved and the triage log calls them struck through — the entry's heading is struck and marked RESOLVED; the sub-bullets are the original record. The triage wording lives in this spec.
+  - `[low]` `[patch]` (blind) epic-11-context.md lists 11.16 without "(done)" and still says it "can run now" — marked done and the dependency sentence updated.
+  - `[maybe-false]` `[defer]` (blind) closed without the Marionette catalogue check — the suites pin the text; only a live catalogue pass settles whether the rendered UI matches. Deferred, medium (unverified), mirrored in deferred-work.md.
+  - `[low]` `[defer]` (blind) native macOS strings (MainMenu.xib, no `CFBundleLocalizations`) outside the setup — predates the story, outside its `app/lib`/`zanshin_ui/lib` scope; deferred to 11.13, mirrored in deferred-work.md.
+  - `[low]` `[reject]` (blind) the previous triage header's counts do not match its rows — the fix edits this spec's record only.
+  - `[false]` `[reject]` (edge) a non-finite `ZsResizeEdge` value makes `(v * 10).round()` throw — the only caller (`pinned_panel.dart:123-124`) passes finite `panelWMin`/`panelMax`, and the value is clamped between them.
+  - `[low]` `[patch]` (edge) guard misses `TextSpan(style:, text:)`, raw strings, `SelectableText` — same root as the blind guard row; fixed there.
+  - `[low]` `[reject]` (edge) `slotSpans` would replace a U+E000+ character in a placeholder value — the values are paths, versions and names; a private-use character in them is not met in practice and a guard adds a branch.
+  - `[low]` `[reject]` (edge) both pubspecs set `generate: true` against the intent — the deviation is forced by Flutter 3.48 and recorded in the Spec Change Log; the fix would edit this spec.
+  - `[low]` `[reject]` (edge) 312.04 points now reads "312 points" instead of "312.0 points" — only within 0.05 of a whole number; the rounding to one decimal was the previous pass's patch and the new form is what VoiceOver users hear for whole widths anyway.
+  - `[medium]` `[patch]` (verification-gap) the plain convert and init sheet bodies, now built by `slotSpans`, are never asserted — added full-body `findRichText` asserts ("~/legacy stays a Git repository; …", "~/plain becomes a jj repository, …") in `projects_window_test.dart`.
+  - `[low]` `[reject]` (intent) the resize edge's VoiceOver value groups above 999 ("1,200 points") — VoiceOver speaks "1,200" and "1200" alike; recorded residual risk of the previous pass.
+  - `[low]` `[patch]` (intent) the guard is a line-based heuristic, not complete — same root as the blind guard row; three more positions covered, the remaining gap stays named in the shortcut comment.
+  - `[low]` `[reject]` (intent) codegen D1 vs D2 — same as the edge `generate: true` row.
+  - `[false]` `[reject]` (intent) tests go beyond lookup swaps — the intent's own matrix and ACs require the delegate, fallback and guard witnesses; no defect.
+  - `[low]` `[reject]` (intent) no test of a non-`en` platform locale list — with `supportedLocales: [en]`, `basicLocaleListResolution` returns `en` for any list; a test would pin Flutter's behaviour.
+  - `[low]` `[reject]` carried (intent) no guard over `packages/zanshin_ui/lib` — same as the logged row: the intent names `app/lib`.
+
 ## Design Notes
 
 The fallback in `context.l10n` keeps widget tests and the catalogue (which pump without the delegates) working with no change; in the app the root always registers the delegates, which a root test pins. Guard regex is line-based: a literal passed positionally on its own line (e.g. a confirm-dialog title argument) is not caught — `shortcut: line-based scan, upgrade to an analyzer-based check if literals slip through`.
@@ -149,3 +189,23 @@ Status: done (commit `ad7abf6d1f3af0da8b3d1d40af946e2c940d461a`).
 
 **Items.**
 - I1 (English-only app, or translated?): fixed (`ad7abf6d1f3af0da8b3d1d40af946e2c940d461a`) — Ralph's decision "English only, l10n-ready" is implemented: the setup and the move are done, deferred-work.md marks the item resolved, and later UI stories keep to the recorded house rule.
+
+### Follow-up review pass (2026-10-31)
+
+Status: done.
+
+**Changes.**
+- `app/test/features/projects/projects_window_test.dart` — full-body asserts for the plain convert and init sheets (the two `slotSpans` bodies no test read).
+- `app/test/l10n/hard_coded_strings_test.dart` — the guard also catches `text:` anywhere in a call, `SelectableText('…')` and raw `r'…'` literals; three scanner cases.
+- `_bmad-output/implementation-artifacts/epic-11-context.md` — 11.16 marked done.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — new section "Surfaced in the follow-up review of Story 11.16" with the two deferrals.
+
+**Review.** 22 findings: 3 entries patched (medium 1: sheet-body asserts; low 2: guard positions, epic context), 2 deferred (Marionette catalogue check, medium unverified; native macOS strings, low), 17 rejected with reasons in the triage log. Follow-up review recommended: false — no `high` was patched on this follow-up pass.
+
+**Verification** (targeted, gate rule of this run — no `cargo make test`):
+- `flutter test test/l10n/hard_coded_strings_test.dart test/features/projects/projects_window_test.dart` in `app/`: 76 passed.
+- `dart analyze --fatal-infos --fatal-warnings` in `app/`: no issues.
+- `dart format --output=none --set-exit-if-changed` on both edited test files: 0 changed.
+- No `lib/` code changed, so `packages/zanshin_ui` and the rest of the app suite were not rerun.
+
+**Residual risks.** Unchanged from the first pass: the guard stays line-based (positional helper literals and wrapped literals such as `ZsType.caps('…')` slip through); the live catalogue check is still open (deferred).

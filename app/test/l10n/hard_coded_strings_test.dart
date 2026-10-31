@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// Guards the l10n house rule (Story 11.16): user-facing text in `app/lib` comes from the ARB (`lib/l10n/app_en.arb`),
 /// never a hard-coded literal. It scans `app/lib/**/*.dart` — the generated `lib/l10n/`, `*.g.dart`, `*.inject.dart`
 /// and `*.factory.dart` skipped — for a string literal with a letter outside its interpolations in a UI position:
-/// `Text('…'`, `TextSpan(text: '…'`, `ZsMenuHeader('…'` or a `label`, `message`, `tooltip`, `placeholder`, `title`,
+/// `Text('…'`, `SelectableText('…'`, `ZsMenuHeader('…'` (raw `r'…'` too) or a `text`, `label`, `message`, `tooltip`, `placeholder`, `title`,
 /// `semanticLabel`, `semanticsLabel`, `hint`, `prompt`, `cancelLabel`, `confirmLabel`, `value`, `dotLabel`,
 /// `increasedValue` or `decreasedValue` argument. A line marked
 /// `// l10n-ignore: <reason>` (jj's own words, the product name) passes, and so do comment lines.
@@ -20,6 +20,9 @@ void main() {
       expect(uiLiteralLines("a();\n    label: 'Planted',\n"), <int>[2]);
       expect(uiLiteralLines("const Text('Hello')"), <int>[1]);
       expect(uiLiteralLines('TextSpan(text: "Hi there")'), <int>[1]);
+      expect(uiLiteralLines("TextSpan(style: s, text: 'Hi')"), <int>[1]);
+      expect(uiLiteralLines("SelectableText('Hi')"), <int>[1]);
+      expect(uiLiteralLines("label: r'Raw'"), <int>[1]);
       expect(uiLiteralLines("ZsMenuHeader('Recent')"), <int>[1]);
       expect(uiLiteralLines(r"tooltip: '${a.b} items'"), <int>[1]);
       expect(uiLiteralLines("value: widget.busy ? s.v : null,\n      value: 'busy',"), <int>[2]);
@@ -62,7 +65,7 @@ bool _skipped(String path) =>
 
 /// A UI position followed by a string literal; group 1 is the literal's body.
 final _uiLiteral = RegExp(
-  r'''(?:\b(?:Text|ZsMenuHeader)\(\s*|\bTextSpan\(text:\s*|\b(?:label|message|tooltip|placeholder|title|semanticLabel|semanticsLabel|hint|prompt|cancelLabel|confirmLabel|value|dotLabel|increasedValue|decreasedValue):\s*)(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")''',
+  r'''(?:\b(?:Text|SelectableText|ZsMenuHeader)\(\s*|\b(?:text|label|message|tooltip|placeholder|title|semanticLabel|semanticsLabel|hint|prompt|cancelLabel|confirmLabel|value|dotLabel|increasedValue|decreasedValue):\s*)r?(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")''',
 );
 
 final _interpolation = RegExp(r'\$\{[^}]*\}|\$\w+');

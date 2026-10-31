@@ -2271,3 +2271,12 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **Widgetbook 3.25 rebuilds a use case's whole subtree on every knob change (`workbench.dart:82`, `ValueKey(state.uri)`), so a use case's `State` does not survive a knob.** Low; a record for catalogue authors.
   - Found when `graph/viewport/view-model` never showed the stale notice over the last layout; fixed there by a key per Widgetbook instance (commit 20b5b0d).
   - **Follow-up:** none; a use case that must keep state across knobs holds it outside the keyed subtree.
+
+## Surfaced in the follow-up review of Story 11.16 (bmad-build-auto, 2026-10-31)
+
+- **Story 11.16 was closed without the Marionette check in the running catalogue, so the rendered text is checked only by widget tests.** Medium (unverified).
+  - spec-11-16-l10n-ready-arb-strings.md, Verification: "Not done: the Marionette visual check in the catalogue". The suites assert the English text, but no one has looked at the live Projects window, graph cards, splash or window titles.
+  - **Follow-up:** open the catalogue's Projects window and graph use cases through Marionette and compare the text with the design cards; anything that differs is a fix in the ARB or its lookup.
+- **The native macOS strings are outside the l10n setup.** Low.
+  - `app/macos/Runner/Base.lproj/MainMenu.xib` keeps its English menu titles (e.g. "Preferences…" at line 35), and `app/macos/Runner/Info.plist` declares no `CFBundleLocalizations`. Story 11.16's scope was `app/lib` and `packages/zanshin_ui/lib`.
+  - **Follow-up:** Story 11.13 (the app menu) builds its items from the ARB or a `.strings` file, and adds `CFBundleLocalizations` once a second language exists; none while the app stays English only.
