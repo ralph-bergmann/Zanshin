@@ -855,6 +855,9 @@ class GraphViewModel extends ChangeNotifier {
     if (_running == null) {
       _anchorHint = null;
     }
+    // A failed expand or go-to must not fade or pulse with a later, unrelated layout.
+    _enteringNext = null;
+    _pulseOnLand = null;
     _revsetError = null;
     _error = null;
     _stale = null;

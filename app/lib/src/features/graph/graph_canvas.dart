@@ -554,7 +554,8 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
               if (run == hot && widget.onCollapseStack != null)
                 Positioned(
                   left: strip.left + 12 - 10,
-                  top: strip.center.dy - 10,
+                  // Centred on the strip's visible part: a run taller than the view keeps its button reachable.
+                  top: strip.intersect(view).center.dy - 10,
                   width: 20,
                   height: 20,
                   child: _CollapseButton(

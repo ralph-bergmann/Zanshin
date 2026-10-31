@@ -23,6 +23,7 @@ import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/l10n/strings.dart';
+import 'package:zanshin_core/zanshin_core.dart' show ZanshinFfiException;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -292,6 +293,44 @@ void main() {
       model.dispose();
     });
 
+    testWidgets('a collapse while a request is in flight notifies at once: the inspector closes', (tester) async {
+      await create(tester, mode: GraphMode.compact);
+      final String oldest = model.layout!.keyOf(model.layout!.runMembersOf(0).first);
+      model.expandStack(oldest);
+      await tester.pump();
+      final String member = model.layout!.keyOf(model.layout!.runMembersOf(0).last);
+      model.select(member);
+      source.hold = true;
+      model.reload();
+      await tester.pump();
+      var notified = 0;
+      model
+        ..addListener(() => notified++)
+        ..collapseStack(member);
+      expect(model.selected, isNull);
+      expect(notified, greaterThan(0), reason: 'before the held request lands');
+      source.held.single.complete(GraphLoad(_respond(source.requests.last)));
+      await tester.pump();
+      source.held.last.complete(GraphLoad(_respond(source.requests.last)));
+      await tester.pump();
+      model.dispose();
+    });
+
+    testWidgets('a failed expand leaves no fade for a later layout', (tester) async {
+      await create(tester);
+      final String oldest = model.layout!.keyOf(model.layout!.runMembersOf(0).first);
+      source.hold = true;
+      model.expandStack(oldest);
+      await tester.pump();
+      source.held.single.completeError(const ZanshinFfiException('jj.io_error'));
+      await tester.pump();
+      source.hold = false;
+      model.reload();
+      await tester.pump();
+      expect(model.entering, isNull);
+      model.dispose();
+    });
+
     testWidgets('the counter counts collapsed members as shown', (tester) async {
       await create(tester);
       final GraphLayout ungrouped = recording('design-default free compact');
@@ -364,6 +403,26 @@ void main() {
         expect(memory.load(), toggles);
         expect(store.value, before);
         expect(ProjectStackStore(store, '/r/none').load(), const GraphStackToggles());
+      });
+
+      test('a failed write keeps the toggles in memory and throws nothing', () async {
+        final blocker = File('${dir.path}/blocker')..writeAsStringSync('');
+        // The settings file's folder is a regular file: every write fails.
+        final SettingsStore blocked = await SettingsStore.load(File('${blocker.path}/settings.json'));
+        await blocked
+            .update(
+              (s) => s.copyWith(
+                projects: const ProjectsSettings(
+                  projects: <ProjectEntry>[ProjectEntry(path: '/r/a', name: 'a')],
+                ),
+              ),
+            )
+            .onError<FileSystemException>((_, _) {});
+        final stacks = ProjectStackStore(blocked, '/r/a');
+        const toggles = GraphStackToggles(expanded: <String>{'x'}, collapsed: <String>{'y'});
+        stacks.save(toggles);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(stacks.load(), toggles);
       });
 
       testWidgets('a stored key that is no oldest member changes nothing: the run shows its default', (tester) async {
@@ -671,6 +730,47 @@ void main() {
       final RenderGraphStackCard back = _stackRender(tester, graphStackKey(oldest))!;
       expect(collapsed.stackNodeOf(run), isNotNull);
       expect(_globalCard(back, back.cardRect), anchorRect);
+      await tester.pumpAndSettle();
+      await finish(tester);
+    });
+
+    testWidgets('a run taller than the view shows its collapse button on the visible part of the bracket', (
+      tester,
+    ) async {
+      await pumpView(tester, window: _window);
+      final GraphLayout grouped = model.layout!;
+      var run = 0;
+      for (var r = 1; r < grouped.runCount; r++) {
+        if (grouped.runMembersOf(r).length > grouped.runMembersOf(run).length) {
+          run = r;
+        }
+      }
+      final String oldest = grouped.keyOf(grouped.runMembersOf(run).first);
+      model.expandStack(oldest);
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      final GraphLayout expanded = model.layout!;
+      final members = <String>[for (final int m in expanded.runMembersOf(run)) expanded.keyOf(m)];
+      final String top = members.reduce((a, b) => _cardRect(tester, a).top <= _cardRect(tester, b).top ? a : b);
+      final String bottom = members.reduce(
+        (a, b) => _cardRect(tester, a).bottom >= _cardRect(tester, b).bottom ? a : b,
+      );
+      final double span = _cardRect(tester, bottom).bottom - _cardRect(tester, top).top;
+      // A view cut just below the run's top member: the bracket's centre lies outside it.
+      final double height = _cardRect(tester, top).bottom + 4;
+      useShellWindow(tester, Size(_window.width, height));
+      await tester.pump();
+      await tester.pump();
+      final Rect first = _cardRect(tester, top);
+      expect(first.top + span / 2, greaterThan(height), reason: 'precondition');
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: first.center);
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      final Finder button = find.byKey(ValueKey<String>('graph-stack-collapse-$oldest'));
+      expect(button, findsOneWidget);
+      expect(tester.getCenter(button).dy, inInclusiveRange(first.top, height));
       await tester.pumpAndSettle();
       await finish(tester);
     });
