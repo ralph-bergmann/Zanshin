@@ -79,12 +79,15 @@ class UniformRows extends VerticalLayout {
   /// Indexes [layout]'s rows: O(n log n).
   factory UniformRows(GraphLayout layout, GraphMetrics metrics, {double bottomExtra = 0}) {
     final int n = layout.nodeCount;
-    // Ascending top = descending row; ties keep the node order.
-    final sorted = List<int>.generate(n, (i) => i)
-      ..sort((a, b) {
-        final int byRow = layout.rowOf(b).compareTo(layout.rowOf(a));
-        return byRow != 0 ? byRow : a.compareTo(b);
-      });
+    // Ascending top = descending row; ties keep the node order. A folded stack member (row −1) is never laid out.
+    final sorted =
+        <int>[
+          for (var i = 0; i < n; i++)
+            if (layout.rowOf(i) >= 0) i,
+        ]..sort((a, b) {
+          final int byRow = layout.rowOf(b).compareTo(layout.rowOf(a));
+          return byRow != 0 ? byRow : a.compareTo(b);
+        });
     return UniformRows._(layout, metrics, bottomExtra, Int32List.fromList(sorted));
   }
 
@@ -117,11 +120,14 @@ class PerNodeTops extends VerticalLayout {
   /// Indexes [tops] (one per node): O(n log n).
   factory PerNodeTops(GraphLayout layout, GraphMetrics metrics, Float64List tops, {double bottomExtra = 0}) {
     assert(tops.length == layout.nodeCount);
-    final sorted = List<int>.generate(tops.length, (i) => i)
-      ..sort((a, b) {
-        final int byTop = tops[a].compareTo(tops[b]);
-        return byTop != 0 ? byTop : a.compareTo(b);
-      });
+    final sorted =
+        <int>[
+          for (var i = 0; i < tops.length; i++)
+            if (layout.rowOf(i) >= 0) i,
+        ]..sort((a, b) {
+          final int byTop = tops[a].compareTo(tops[b]);
+          return byTop != 0 ? byTop : a.compareTo(b);
+        });
     return PerNodeTops._(layout, metrics, bottomExtra, tops, Int32List.fromList(sorted));
   }
 
@@ -141,7 +147,8 @@ class PerNodeTops extends VerticalLayout {
 
   /// The top of the first node at each row, built once on first use.
   late final _byRow = <int, double>{
-    for (int node = _byNode.length - 1; node >= 0; node--) layout.rowOf(node): _byNode[node],
+    for (int node = _byNode.length - 1; node >= 0; node--)
+      if (layout.rowOf(node) >= 0) layout.rowOf(node): _byNode[node],
   };
 
   @override

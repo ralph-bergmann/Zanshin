@@ -944,6 +944,24 @@ abstract class AppLocalizations {
   /// **'Collapse linear runs of changes into one stack card'**
   String get graphGroupStacksTooltip;
 
+  /// A stack card's VoiceOver label: its member count, its newest member's subject and its change-id range (newest‥oldest).
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{1 change} other{{n} changes}}, {subject}, {range}'**
+  String stackLabel(int n, String subject, String range);
+
+  /// The hint at the bottom of a stack card's member list.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Click to expand 1 change} other{Click to expand {n} changes}}'**
+  String stackExpandHint(int n);
+
+  /// Tooltip of the button on an expanded run's bracket that folds it back into a stack card.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{Collapse 1 change into a stack} other{Collapse {n} changes into a stack}}'**
+  String stackCollapseTooltip(int n);
+
   /// View options row: the commit cards' width.
   ///
   /// In en, this message translates to:

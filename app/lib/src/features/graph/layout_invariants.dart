@@ -48,7 +48,8 @@ class LayoutViolation {
 }
 
 /// The hard invariants [layout] violates (test/debug only; a violation is an engine or recording bug, never patched
-/// in the view). With a [vertical] [PerNodeTops], the card checks use its pixel tops instead of the rows.
+/// in the view). With a [vertical] [PerNodeTops], the card checks use its pixel tops instead of the rows. Folded stack
+/// members (Story 10.17) have no card and are skipped by the card checks.
 List<LayoutViolation> checkLayoutInvariants(GraphLayout layout, {VerticalLayout? vertical}) {
   final violations = <LayoutViolation>[];
   final int n = layout.nodeCount;
@@ -83,10 +84,12 @@ List<LayoutViolation> checkLayoutInvariants(GraphLayout layout, {VerticalLayout?
       );
     }
   }
-  // Per column, consecutive cards by their vertical position.
+  // Per column, consecutive cards by their vertical position; a folded stack member has no card.
   final byCol = <int, List<int>>{};
   for (var i = 0; i < n; i++) {
-    (byCol[layout.colOf(i)] ??= <int>[]).add(i);
+    if (!layout.isFolded(i)) {
+      (byCol[layout.colOf(i)] ??= <int>[]).add(i);
+    }
   }
   for (final MapEntry<int, List<int>>(key: col, value: nodes) in byCol.entries) {
     if (tops == null) {

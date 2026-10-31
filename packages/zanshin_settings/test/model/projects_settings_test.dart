@@ -16,6 +16,8 @@ void main() {
         lastOpened: opened,
         status: ProjectStatus.conflict,
         bookmark: 'main',
+        expandedStacks: <String>['kxwsnptm'],
+        collapsedStacks: <String>['qmsvtlkr', 'nqxwrptl'],
       ),
       const ProjectEntry(path: '/r/b', name: 'b'),
     ],
@@ -45,6 +47,8 @@ void main() {
       'lastOpened': '2026-10-18T09:30:15.250Z',
       'status': 'conflict',
       'bookmark': 'main',
+      'expandedStacks': <Object?>['kxwsnptm'],
+      'collapsedStacks': <Object?>['qmsvtlkr', 'nqxwrptl'],
     });
     expect(projects['openProject'], '/r/a');
     final decoded = AppSettings.fromJson(json);
@@ -59,6 +63,12 @@ void main() {
     });
     expect(settings.projects, const ProjectsSettings());
     expect(settings.general.hideControls, isFalse);
+  });
+
+  test('an entry written before the stack toggles existed loads with none', () {
+    final entry = ProjectEntry.fromJson(<String, Object?>{'path': '/r/a', 'name': 'a'});
+    expect(entry.expandedStacks, isEmpty);
+    expect(entry.collapsedStacks, isEmpty);
   });
 
   test('a status this version does not know reads as null; the rest of the entry and the file load', () {

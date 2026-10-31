@@ -18,6 +18,9 @@
 //     {free, compact} × {compact, greedy};
 //   - goldens/fixtures/medium-narrow.input.json (the switched dumper's output, with indirect and
 //     Missing edges) in {free, compact} × {compact, greedy}.
+// Story 10.17 also writes app/widgetbook/graph/graph_stack_recordings.g.dart: the design sample
+// (design-default, design-all) laid out with --stacks in {free, compact} × compact, in its default
+// stack state, all expanded, and each run flipped alone from the default.
 // Needs: dart on PATH. Deterministic: a second run leaves `git status` clean. Exit code 1 on any
 // failure. The large 10k–100k spike outputs are never committed; the catalogue and the tests
 // generate scale fixtures with app/widgetbook/graph/synthetic_layout.dart instead.
@@ -33,6 +36,11 @@ const repo = path.resolve(spike, "../..");
 const core = path.join(repo, "packages/zanshin_core");
 const goldens = path.join(core, "test/graph_layout/goldens");
 const target = path.join(repo, "app/widgetbook/graph/graph_recordings.g.dart");
+const stackTarget = path.join(repo, "app/widgetbook/graph/graph_stack_recordings.g.dart");
+
+/** Story 10.17: the samples and modes recorded with `--stacks` (lane order `compact`). */
+const STACK_SAMPLES = ["design-default", "design-all"];
+const STACK_MODES = ["free", "compact"];
 
 const COMBOS = [["free", "compact"], ["free", "greedy"], ["compact", "compact"], ["compact", "greedy"]];
 
@@ -81,10 +89,29 @@ function rawString(json) {
   return `r'''${text}'''`;
 }
 
+/** Runs the engine CLI on `inFile` (with the stack request `stacksFile`, or without) and returns its output. */
+function layoutOf(label, inFile, mode, order, outFile, stacksFile = null) {
+  const stacks = stacksFile === null ? [] : ["--stacks", stacksFile];
+  const run = spawnSync(
+    "dart",
+    ["run", "benchmark/graph_layout_cli.dart", "layout", "--mode", mode, "--order", order, ...stacks, inFile, outFile],
+    { cwd: core, encoding: "utf8" },
+  );
+  if (run.status !== 0) {
+    fail(`${label}: exit ${run.status}\n${run.stderr}`);
+  }
+  return fs.readFileSync(outFile, "utf8");
+}
+
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "record-graph-"));
 const inputs = [];
 const outputs = [];
 const recordings = [];
+// Story 10.17: the stack recordings, their inputs, outputs and requests, and each sample's default state.
+const stackInputs = [];
+const stackOutputs = [];
+const stackRecordings = [];
+const stackDefaults = [];
 try {
   for (const [name, file, derive, combos] of SOURCES) {
     let inFile = path.join(goldens, file);
@@ -97,17 +124,41 @@ try {
     inputs.push(`const ${inputId} = ${rawString(fs.readFileSync(inFile, "utf8"))};`);
     for (const [mode, order] of combos) {
       const outFile = path.join(work, `${name}.${mode}.${order}.json`);
-      const run = spawnSync(
-        "dart",
-        ["run", "benchmark/graph_layout_cli.dart", "layout", "--mode", mode, "--order", order, inFile, outFile],
-        { cwd: core, encoding: "utf8" },
-      );
-      if (run.status !== 0) {
-        fail(`${name} ${mode} ${order}: exit ${run.status}\n${run.stderr}`);
-      }
       const outputId = `_${identifier(name, mode, order)}`;
-      outputs.push(`const ${outputId} = ${rawString(fs.readFileSync(outFile, "utf8"))};`);
+      outputs.push(`const ${outputId} = ${rawString(layoutOf(`${name} ${mode} ${order}`, inFile, mode, order, outFile))};`);
       recordings.push([`${name} ${mode} ${order}`, inputId, outputId]);
+    }
+  }
+
+  // The stack states (docs/graph-layout.md §4.8): the default, all expanded, and each run flipped alone from the
+  // default, each run named by its oldest member's key.
+  for (const name of STACK_SAMPLES) {
+    const file = SOURCES.find(([n]) => n === name)[1];
+    const inFile = path.join(goldens, file);
+    const input = JSON.parse(fs.readFileSync(inFile, "utf8"));
+    const keyOf = (idx) => input.nodes[idx].key ?? input.nodes[idx].id;
+    const inputId = `_${identifier(name)}`;
+    stackInputs.push(`const ${inputId} = ${rawString(fs.readFileSync(inFile, "utf8"))};`);
+    for (const mode of STACK_MODES) {
+      const record = (state, request) => {
+        const reqFile = path.join(work, `${name}.${mode}.${state}.request.json`);
+        const requestJson = JSON.stringify({ expanded: request.expanded ?? [], collapsed: request.collapsed ?? [], keep_open: [] });
+        fs.writeFileSync(reqFile, requestJson);
+        const label = `${name} ${mode} ${state}`;
+        const output = layoutOf(label, inFile, mode, "compact", path.join(work, `${name}.${mode}.${state}.json`), reqFile);
+        const id = `_${identifier(name, mode, ...state.split(" "))}`;
+        stackOutputs.push(`const ${id} = ${rawString(output)};`);
+        stackOutputs.push(`const ${id}Request = ${rawString(requestJson)};`);
+        stackRecordings.push([label, inputId, id, `${id}Request`]);
+        return JSON.parse(output);
+      };
+      const defaults = record("default", {});
+      stackDefaults.push([`${name} ${mode}`, `${name} ${mode} default`]);
+      const runs = defaults.runs.map((run) => ({ key: keyOf(run.members[0]), state: run.state }));
+      record("expanded", { expanded: runs.map((run) => run.key) });
+      for (const run of runs) {
+        record(`flip ${run.key}`, run.state === "collapsed" ? { expanded: [run.key] } : { collapsed: [run.key] });
+      }
     }
   }
 } finally {
@@ -134,10 +185,32 @@ ${inputs.join("\n\n")}
 ${outputs.join("\n\n")}
 `;
 
-fs.mkdirSync(path.dirname(target), { recursive: true });
-fs.writeFileSync(target, dart);
-const format = spawnSync("dart", ["format", target], { cwd: path.join(repo, "app"), encoding: "utf8" });
-if (format.status !== 0) {
-  fail(`dart format: exit ${format.status}\n${format.stderr}`);
+const stackDart = `// GENERATED by spikes/graph-layout-ab/tools/record-graph.mjs (Story 10.17) — do not edit; re-run the tool.
+// Inputs: packages/zanshin_core/test/graph_layout/goldens/stacks/{design-default,design-all}.json;
+// outputs: the product engine CLI with --stacks (packages/zanshin_core/benchmark/graph_layout_cli.dart), lane order compact.
+
+/// The stack recordings by name (\`<input> <mode> <state>\`, state \`default\`, \`expanded\` or \`flip <oldest key>\`): a
+/// docs/graph-layout.md §2 input, the engine's grouped §3 output for it and the §4.8 stack request it was laid out with.
+const graphStackRecordings = <String, (String, String, String)>{
+${stackRecordings.map(([name, input, output, request]) => `  '${name}': (${input}, ${output}, ${request}),`).join("\n")}
+};
+
+/// The default-state recording of each \`<input> <mode>\`.
+const graphStackDefaults = <String, String>{
+${stackDefaults.map(([sample, name]) => `  '${sample}': '${name}',`).join("\n")}
+};
+
+${stackInputs.join("\n\n")}
+
+${stackOutputs.join("\n\n")}
+`;
+
+for (const [file, text, count] of [[target, dart, recordings.length], [stackTarget, stackDart, stackRecordings.length]]) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, text);
+  const format = spawnSync("dart", ["format", file], { cwd: path.join(repo, "app"), encoding: "utf8" });
+  if (format.status !== 0) {
+    fail(`dart format: exit ${format.status}\n${format.stderr}`);
+  }
+  console.log(`record-graph: ${count} recordings → ${path.relative(repo, file)}`);
 }
-console.log(`record-graph: ${recordings.length} recordings → ${path.relative(repo, target)}`);

@@ -159,10 +159,12 @@ class _GraphViewState extends State<GraphView> {
     final GraphLayout? layout = widget.model.layout;
     final int? at = layout?.workingCopyIndex;
     final String? current = _cards.focused.value;
+    // A folded focus key moves to its stack card (Story 10.17), which is shown and expands on Enter.
+    final int? place = current == null ? null : layout?.placeOfKey(current);
     // A cleared selection keeps the focus card where it is, so Esc scrolls nothing.
     _cards.focused.value =
         _cards.selected.value ??
-        (current != null && layout?.indexOfKey(current) != null ? current : null) ??
+        (place != null ? layout!.keyOf(place) : null) ??
         (at == null ? null : layout!.keyOf(at));
   }
 
@@ -192,6 +194,13 @@ class _GraphViewState extends State<GraphView> {
         _focusChanged();
       }
       final String? focused = _cards.focused.value;
+      final GraphLayout? layout = widget.model.layout;
+      final int? node = focused == null ? null : layout?.indexOfKey(focused);
+      if (node != null && layout!.isStackNode(node)) {
+        // A stack card expands; it is never selected (Story 10.17).
+        _cards.onExpandStack?.call(focused!);
+        return KeyEventResult.handled;
+      }
       if (focused != null) {
         _cards.select(focused);
         return KeyEventResult.handled;
@@ -269,6 +278,9 @@ class _GraphViewState extends State<GraphView> {
                 onUserScroll: _reportUserScroll,
                 onWorkingCopyDirection: model.setWorkingCopyDirection,
                 inspectorOpen: (shell?.inspectorWidth ?? 0) > 0,
+                entering: model.entering,
+                onExpandStack: model.expandStack,
+                onCollapseStack: model.collapseStack,
               ),
             if (caption != null)
               Padding(

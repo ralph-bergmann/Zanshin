@@ -152,6 +152,15 @@ class GraphViewModel extends ChangeNotifier {
   var _stacks = false;
   String? _selected;
 
+  // Story 10.17: the stack toggles (oldest member keys), their store, an expand's entering keys for the layout it
+  // requests, and a go-to's pulse waiting for a folded key to land.
+  GraphStackStore? _stackStore;
+  final _expanded = <String>{};
+  final _collapsed = <String>{};
+  Set<String>? _enteringNext;
+  Set<String>? _entering;
+  String? _pulseOnLand;
+
   var _inFlight = false;
   var _queued = false;
   GraphRequest? _request;
@@ -179,16 +188,23 @@ class GraphViewModel extends ChangeNotifier {
   ZanshinFfiException? _staleUpdateError;
 
   /// One-shot setup for `ViewModelBuilder`'s `init`: reads from [source], runs verbs through [actions] (10.9), takes
-  /// "now" from [clock], and sends [mode] and [stacks] (the stored preferences, 10.7) with the first request.
+  /// "now" from [clock], and sends [mode] and [stacks] (the stored preferences, 10.7) and [stackStore]'s toggles
+  /// (10.17) with the first request.
   void init(
     GraphSource source, {
     GraphActions? actions,
     DateTime Function()? clock,
     GraphMode mode = GraphMode.free,
     bool stacks = false,
+    GraphStackStore? stackStore,
   }) {
     _mode = mode;
     _stacks = stacks;
+    _stackStore = stackStore;
+    if (stackStore?.load() case final GraphStackToggles toggles) {
+      _expanded.addAll(toggles.expanded);
+      _collapsed.addAll(toggles.collapsed);
+    }
     _source = source;
     _content = GraphContent(source.content);
     _actions = actions;
@@ -288,12 +304,62 @@ class GraphViewModel extends ChangeNotifier {
   /// Go-to-change (Story 10.6 items 11–12; 10.21 calls it): selects [key], reveals it centred and pulses it; nothing
   /// when the shown layout lacks it.
   void goTo(String key) {
-    if (_layout?.indexOfKey(key) == null) {
+    final GraphLayout? layout = _layout;
+    final int? node = layout?.indexOfKey(key);
+    if (node == null) {
       return;
     }
     select(key);
     _revealExplicit(key);
-    _pulse.value = GraphPulse(key, ++_pulseSerial);
+    // A folded key pulses once its stack opened (Story 10.17).
+    if (layout!.isFolded(node)) {
+      _pulseOnLand = key;
+    } else {
+      _pulse.value = GraphPulse(key, ++_pulseSerial);
+    }
+  }
+
+  /// The keys that fade in with the current layout (an expand's members but the anchor), once per instance; null
+  /// otherwise (Story 10.17).
+  Set<String>? get entering => _entering;
+
+  /// Expands the run of [key] (a member's key or the stack's): one request keeping the run's anchor member in place;
+  /// the members but the anchor fade in when it lands. The toggle persists (Story 10.17).
+  void expandStack(String key) => _toggleStack(key, expand: true);
+
+  /// Collapses the run of [key] (a member's key): one request, the stack taking the anchor member's place; a selection
+  /// inside the run clears. The toggle persists (Story 10.17).
+  void collapseStack(String key) => _toggleStack(key, expand: false);
+
+  void _toggleStack(String key, {required bool expand}) {
+    final GraphLayout? layout = _layout;
+    final int? node = layout?.indexOfKey(key);
+    final int? run = node == null ? null : layout!.runOf(node);
+    if (run == null) {
+      return;
+    }
+    final List<int> members = layout!.runMembersOf(run);
+    final String oldest = layout.keyOf(members.first);
+    final String anchor = graphStackAnchorKey(layout, run);
+    (expand ? _expanded : _collapsed).add(oldest);
+    (expand ? _collapsed : _expanded).remove(oldest);
+    _stackStore?.save(GraphStackToggles(expanded: <String>{..._expanded}, collapsed: <String>{..._collapsed}));
+    _anchorHint = anchor;
+    if (expand) {
+      _enteringNext = <String>{
+        for (final int member in members)
+          if (layout.keyOf(member) != anchor) layout.keyOf(member),
+      };
+    } else {
+      _enteringNext = null;
+      final String? selected = _selected;
+      if (selected != null && members.any((member) => layout.keyOf(member) == selected)) {
+        _selected = null;
+        // A request in flight notifies only when it finishes: the inspector closes now.
+        _notify();
+      }
+    }
+    _requestLayout();
   }
 
   /// Runs `jj edit` on [key] through [run] (a double-click, no confirmation); null when [init] was given no
@@ -662,8 +728,19 @@ class GraphViewModel extends ChangeNotifier {
 
   void _revealExplicit(String? key) {
     final GraphLayout? layout = _layout;
+    final int? node = key == null ? null : layout?.indexOfKey(key);
     if (_inFlight || layout == null) {
       _explicit = (key: key, alignment: GraphRevealAlignment.centre);
+      // The request in flight was built without a folded key in keepOpenKeys: queue one that keeps it open.
+      if (node != null && layout!.isFolded(node)) {
+        _requestLayout();
+      }
+      return;
+    }
+    if (node != null && layout.isFolded(node)) {
+      // Story 10.17: a folded key opens its stack (it rides in keepOpenKeys) and is revealed when that layout lands.
+      _explicit = (key: key, alignment: GraphRevealAlignment.centre);
+      _requestLayout();
       return;
     }
     final String? target = key ?? _workingCopyKey(layout);
@@ -730,6 +807,8 @@ class GraphViewModel extends ChangeNotifier {
     mode: _mode,
     order: _order,
     stacks: _stacks,
+    expandedKeys: <String>{..._expanded},
+    collapsedKeys: <String>{..._collapsed},
     prioritize: defaults.logGraphPrioritize,
     shortPrefixes: defaults.shortPrefixes,
     anchors: defaultGraphAnchors,
@@ -758,6 +837,13 @@ class GraphViewModel extends ChangeNotifier {
         : GraphReveal(target, alignment: explicit?.alignment ?? GraphRevealAlignment.centre);
     _explicit = null;
     _recentre = false;
+    // An expand's members fade in once, with the layout its request brought.
+    _entering = _enteringNext;
+    _enteringNext = null;
+    if (_pulseOnLand case final String key? when layout.indexOfKey(key) != null) {
+      _pulse.value = GraphPulse(key, ++_pulseSerial);
+    }
+    _pulseOnLand = null;
     // A layout landing while the action still runs keeps its anchor for the reload after it.
     if (_running == null) {
       _anchorHint = null;

@@ -568,6 +568,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get graphGroupStacksTooltip => 'Collapse linear runs of changes into one stack card';
 
   @override
+  String stackLabel(int n, String subject, String range) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n changes',
+      one: '1 change',
+    );
+    return '$_temp0, $subject, $range';
+  }
+
+  @override
+  String stackExpandHint(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Click to expand $n changes',
+      one: 'Click to expand 1 change',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String stackCollapseTooltip(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Collapse $n changes into a stack',
+      one: 'Collapse 1 change into a stack',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get graphCardWidth => 'Card width';
 
   @override

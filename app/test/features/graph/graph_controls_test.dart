@@ -113,6 +113,15 @@ class _Rig {
   }
 }
 
+/// A stack store holding one expanded and one collapsed toggle (Story 10.17).
+class _Toggles implements GraphStackStore {
+  @override
+  GraphStackToggles load() => const GraphStackToggles(expanded: <String>{'up'}, collapsed: <String>{'down'});
+
+  @override
+  void save(GraphStackToggles toggles) {}
+}
+
 /// A store on a missing file in a fresh temp folder, holding [graph]. Loading a missing file reads nothing, and the
 /// value changes synchronously; the writes run in the background, their outcome unobserved.
 Future<SettingsStore> _store([GraphSettings? graph]) async {
@@ -491,6 +500,21 @@ void main() {
       expect(notified, 1);
       expect(model.mode, GraphMode.compact);
       expect(model.stacks, isFalse);
+    });
+
+    test('init forwards the stack store: the first request carries its toggles (Story 10.17)', () async {
+      final SettingsStore store = await _store();
+      final preferences = GraphPreferences(store);
+      final source = ScriptedGraphSource();
+      final model = GraphViewModel();
+      addTearDown(() {
+        preferences.dispose();
+        model.dispose();
+      });
+      preferences.init(model, source, stackStore: _Toggles());
+      await Future<void>.delayed(Duration.zero);
+      expect(source.requests.first.expandedKeys, <String>{'up'});
+      expect(source.requests.first.collapsedKeys, <String>{'down'});
     });
 
     test('a failed write keeps the value in memory and throws nothing', () async {

@@ -44,7 +44,11 @@ class RecordedGraphLayout extends GraphLayout {
     List<List<String>>? workingCopies,
     List<GraphCommitContent?>? contents,
     this.workspaceName,
-  }) : _keys = keys,
+    List<List<int>> runMembers = const <List<int>>[],
+    List<int?>? runStackNodes,
+  }) : _runMembers = runMembers,
+       _runStackNodes = runStackNodes ?? List<int?>.filled(runMembers.length, null),
+       _keys = keys,
        _changeIds = changeIds,
        _commitIds = commitIds,
        _givenPrefixLengths = changeIdPrefixLengths,
@@ -83,6 +87,18 @@ class RecordedGraphLayout extends GraphLayout {
     for (var i = 0; i < n; i++) {
       _indexOfKey[keys[i]] = i;
     }
+    assert(_runStackNodes.length == runMembers.length);
+    _runOf = Int32List(n)..fillRange(0, n, -1);
+    for (var r = 0; r < runMembers.length; r++) {
+      for (final int member in runMembers[r]) {
+        _runOf[member] = r;
+      }
+      final int? stack = _runStackNodes[r];
+      if (stack != null) {
+        _runOf[stack] = r;
+        _stackCount++;
+      }
+    }
     // CSR over the given order: parent ranges by counting the children, child ranges by a counting sort on parents.
     // A dangling end is left out of the index, so the invariant checker can report it instead of a RangeError.
     bool valid(int node) => node >= 0 && node < n;
@@ -113,7 +129,10 @@ class RecordedGraphLayout extends GraphLayout {
   /// Joins a docs/graph-layout.md §2 input (the view facts: `key` ?? `id`, `parent_count` ?? the parent entries,
   /// `working_copy == "this"`, a Missing parent, `ts_ms`) with the engine's §3 output for it (rows, unit, lanes,
   /// columns, edges with their routes, buckets). `immutable` goes into the flags (the root is immutable); the
-  /// recordings carry no content and no refs, so [content] and [refs] may supply them per node.
+  /// recordings carry no content and no refs, so [content] and [refs] may supply them per node. A grouped output
+  /// (format 4, `--stacks`, Story 10.17) carries n + S nodes and `runs`: a folded member gets row and column −1, and
+  /// each stack node the key [graphStackKey] of its oldest member, its newest member's timestamp, one parent, and the
+  /// immutable flag when every member has it.
   factory RecordedGraphLayout.fromSpec(
     String inputJson,
     String outputJson, {
@@ -124,17 +143,29 @@ class RecordedGraphLayout extends GraphLayout {
     final output = jsonDecode(outputJson) as Map<String, Object?>;
     final inNodes = input['nodes']! as List<Object?>;
     final outNodes = output['nodes']! as List<Object?>;
-    if (inNodes.length != outNodes.length) {
-      throw FormatException('input has ${inNodes.length} nodes, output ${outNodes.length}');
+    // Format 4 (§3 amended, Story 4.13): n + S nodes, a folded member null, then the stack nodes in run order.
+    final runMembers = <List<int>>[];
+    final runStackNodes = <int?>[];
+    for (final Object? entry in (output['runs'] as List<Object?>?) ?? const <Object?>[]) {
+      final run = entry! as Map<String, Object?>;
+      runMembers.add(<int>[for (final Object? m in run['members']! as List<Object?>) m! as int]);
+      runStackNodes.add(run['node'] as int?);
+      if ((run['node'] == null) != (run['state'] == 'expanded')) {
+        throw FormatException('run ${runMembers.length - 1} is ${run['state']} with node ${run['node']}');
+      }
     }
     final int n = inNodes.length;
+    final int total = n + runStackNodes.nonNulls.length;
+    if (outNodes.length != total) {
+      throw FormatException('input has $n nodes and ${total - n} stacks, output ${outNodes.length} nodes');
+    }
     final keys = <String>[];
-    final cols = Int32List(n);
-    final nodeRows = Int32List(n);
-    final parentCounts = Int32List(n);
-    final elided = Uint8List(n);
+    final cols = Int32List(total);
+    final nodeRows = Int32List(total);
+    final parentCounts = Int32List(total);
+    final elided = Uint8List(total);
     final timestamps = <int?>[];
-    final flags = Uint8List(n);
+    final flags = Uint8List(total);
     int? workingCopy;
     int? root;
     for (var i = 0; i < n; i++) {
@@ -153,9 +184,29 @@ class RecordedGraphLayout extends GraphLayout {
       if (node['is_root'] == true) {
         root = i;
       }
-      final cell = outNodes[i]! as Map<String, Object?>;
-      cols[i] = cell['col']! as int;
-      nodeRows[i] = cell['row']! as int;
+      final cell = outNodes[i] as Map<String, Object?>?;
+      cols[i] = (cell?['col'] as int?) ?? -1;
+      nodeRows[i] = (cell?['row'] as int?) ?? -1;
+    }
+    // A stack node: its oldest member's stack key, its newest member's timestamp, immutable when every member is.
+    for (var r = 0; r < runMembers.length; r++) {
+      final int? s = runStackNodes[r];
+      if (s == null) {
+        continue;
+      }
+      if (s != keys.length) {
+        throw FormatException('run $r has stack node $s, expected ${keys.length}');
+      }
+      final List<int> members = runMembers[r];
+      keys.add(graphStackKey(keys[members.first]));
+      timestamps.add(timestamps[members.last]);
+      parentCounts[s] = 1;
+      if (members.every((m) => flags[m] & flagImmutable != 0)) {
+        flags[s] = flagImmutable;
+      }
+      final cell = outNodes[s]! as Map<String, Object?>;
+      cols[s] = cell['col']! as int;
+      nodeRows[s] = cell['row']! as int;
     }
     final outEdges = output['edges']! as List<Object?>;
     final int e = outEdges.length;
@@ -210,8 +261,21 @@ class RecordedGraphLayout extends GraphLayout {
       rootIndex: root,
       workingCopyIndex: workingCopy,
       flags: flags,
-      contents: content == null ? null : <GraphCommitContent?>[for (var i = 0; i < n; i++) content(i, keys[i])],
-      refs: refs == null ? null : <List<GraphRef>>[for (var i = 0; i < n; i++) refs(i, keys[i])],
+      // A stack node has no content and no refs of its own: the card reads its members'.
+      contents: content == null
+          ? null
+          : <GraphCommitContent?>[
+              for (var i = 0; i < n; i++) content(i, keys[i]),
+              for (var i = n; i < total; i++) null,
+            ],
+      refs: refs == null
+          ? null
+          : <List<GraphRef>>[
+              for (var i = 0; i < n; i++) refs(i, keys[i]),
+              for (var i = n; i < total; i++) const <GraphRef>[],
+            ],
+      runMembers: runMembers,
+      runStackNodes: runStackNodes,
     );
   }
 
@@ -238,13 +302,16 @@ class RecordedGraphLayout extends GraphLayout {
   final List<List<String>>? _workingCopies;
   final List<GraphCommitContent?>? _contents;
 
-  // A fixture stand-in for jj's `changeIdPrefixLen`: the shortest prefix unique among this layout's change ids, from
-  // its sorted neighbours, computed once on first use.
+  // A fixture stand-in for jj's `changeIdPrefixLen`: the shortest prefix unique among this layout's change ids (the
+  // stack nodes' synthetic keys left out), from its sorted neighbours, computed once on first use.
   late final Int32List _prefixLengths = _givenPrefixLengths ?? _shortestPrefixes();
 
   Int32List _shortestPrefixes() {
-    final int n = _keys.length;
-    final order = List<int>.generate(n, (i) => i)..sort((a, b) => changeIdOf(a).compareTo(changeIdOf(b)));
+    final order = <int>[
+      for (var i = 0; i < _keys.length; i++)
+        if (!isStackNode(i)) i,
+    ]..sort((a, b) => changeIdOf(a).compareTo(changeIdOf(b)));
+    final int n = order.length;
     int common(String a, String b) {
       var k = 0;
       while (k < a.length && k < b.length && a.codeUnitAt(k) == b.codeUnitAt(k)) {
@@ -253,7 +320,7 @@ class RecordedGraphLayout extends GraphLayout {
       return k;
     }
 
-    final lengths = Int32List(n);
+    final lengths = Int32List(_keys.length);
     for (var r = 0; r < n; r++) {
       final String id = changeIdOf(order[r]);
       final int before = r > 0 ? common(id, changeIdOf(order[r - 1])) : 0;
@@ -344,11 +411,28 @@ class RecordedGraphLayout extends GraphLayout {
   late final Int32List _childStart;
   late final Int32List _childEdges;
 
+  final List<List<int>> _runMembers;
+  final List<int?> _runStackNodes;
+  late final Int32List _runOf;
+  var _stackCount = 0;
+
+  @override
+  int get runCount => _runMembers.length;
+
+  @override
+  List<int> runMembersOf(int run) => _runMembers[run];
+
+  @override
+  int? stackNodeOf(int run) => _runStackNodes[run];
+
+  @override
+  int? runOf(int node) => _runOf[node] < 0 ? null : _runOf[node];
+
   @override
   int get nodeCount => _keys.length;
 
   @override
-  int get shownCount => _keys.length;
+  int get shownCount => _keys.length - _stackCount;
 
   @override
   String keyOf(int node) => _keys[node];

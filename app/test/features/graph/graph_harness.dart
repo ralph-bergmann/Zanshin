@@ -11,7 +11,9 @@ import 'package:zanshin/src/features/graph/graph_viewport.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/vertical_layout.dart';
 
+import '../../../widgetbook/graph/fake_content.dart';
 import '../../../widgetbook/graph/graph_recordings.g.dart';
+import '../../../widgetbook/graph/graph_stack_recordings.g.dart';
 
 /// The witnesses' surface (Story 10.1): 800 × 600 at dpr 1.
 const surface = Size(800, 600);
@@ -20,6 +22,57 @@ const surface = Size(800, 600);
 RecordedGraphLayout recording(String name) {
   final (String input, String output) = graphRecordings[name]!;
   return RecordedGraphLayout.fromSpec(input, output);
+}
+
+/// The stack recording [name] (`<input> <mode> <state>`, Story 10.17), with the catalogue's fake content inline unless
+/// [inlineContent] is false.
+RecordedGraphLayout stackRecording(String name, {bool inlineContent = true}) {
+  final (String input, String output, _) = graphStackRecordings[name]!;
+  return RecordedGraphLayout.fromSpec(input, output, content: inlineContent ? fakeContent : null);
+}
+
+/// A constructed grouped layout (Story 10.17's scale witness, never an engine output): `head` (row 2) over one
+/// collapsed run of [members] changes `m0` (the oldest) … `m<members−1>`, folded into the stack node `stack:m0` (row
+/// 1), over `base` (row 0); every member has a timestamp a minute apart and a subject.
+RecordedGraphLayout hugeStackLayout(int members) {
+  final keys = <String>['head', for (var i = 0; i < members; i++) 'm$i', 'base', graphStackKey('m0')];
+  final int base = members + 1;
+  final int stack = members + 2;
+  final int n = keys.length;
+  int rowOf(int i) => i == 0
+      ? 2
+      : i == stack
+      ? 1
+      : i == base
+      ? 0
+      : -1;
+  return RecordedGraphLayout(
+    mode: GraphMode.compact,
+    unit: 1,
+    rows: 3,
+    colCount: 1,
+    keys: keys,
+    cols: Int32List.fromList(<int>[for (var i = 0; i < n; i++) math.min(rowOf(i), 0)]),
+    nodeRows: Int32List.fromList(<int>[for (var i = 0; i < n; i++) rowOf(i)]),
+    parentCounts: Int32List.fromList(<int>[
+      for (var i = 0; i < n; i++)
+        if (i == base) 0 else 1,
+    ]),
+    elided: Uint8List(n),
+    timestamps: <int?>[for (var i = 0; i < n; i++) 1790000000000 + 60000 * (i == stack ? members : i)],
+    contents: <GraphCommitContent?>[
+      for (var i = 0; i < n; i++)
+        if (i == stack) null else GraphCommitContent(subject: 'change ${keys[i]}'),
+    ],
+    edgeChildren: Int32List.fromList(<int>[0, stack]),
+    edgeParents: Int32List.fromList(<int>[stack, base]),
+    edgeKinds: const <GraphEdgeKind>[GraphEdgeKind.direct, GraphEdgeKind.direct],
+    edgeShapes: const <GraphEdgeShape>[GraphEdgeShape.straight, GraphEdgeShape.straight],
+    runMembers: <List<int>>[
+      <int>[for (var i = 1; i <= members; i++) i],
+    ],
+    runStackNodes: <int?>[stack],
+  );
 }
 
 /// A hand-built layout: one (key, row, col) per node, edges as (child, parent) node indices (in any order; a child's

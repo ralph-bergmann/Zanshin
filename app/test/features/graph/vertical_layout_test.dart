@@ -125,4 +125,20 @@ void main() {
       expectQueryMatchesScan(PerNodeTops(big, GraphMetrics(), scattered), seed: 11);
     });
   });
+
+  test('folded stack members (Story 10.17) are never in the visible query; their stack nodes are', () {
+    final RecordedGraphLayout layout = stackRecording('design-default compact default', inlineContent: false);
+    final metrics = GraphMetrics();
+    const huge = Rect.fromLTWH(-1000000, -1000000, 2000000, 20000000);
+    for (final vertical in <VerticalLayout>[
+      UniformRows(layout, metrics),
+      PerNodeTops(layout, metrics, Float64List.fromList(<double>[for (var i = 0; i < layout.nodeCount; i++) 80.0 * i])),
+    ]) {
+      final Set<int> shown = vertical.visibleNodes(huge, 0).toSet();
+      expect(shown, <int>{
+        for (var i = 0; i < layout.nodeCount; i++)
+          if (!layout.isFolded(i)) i,
+      });
+    }
+  });
 }

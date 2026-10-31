@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -17,6 +18,8 @@ import 'graph_focus.dart';
 import 'graph_layout.dart';
 import 'graph_metrics.dart';
 import 'graph_peek.dart';
+import 'graph_stack_card.dart';
+import 'graph_stack_popover.dart';
 import 'graph_view_model.dart' show GraphDirection, GraphPulse;
 import 'graph_viewport.dart';
 import 'vertical_layout.dart';
@@ -75,8 +78,21 @@ class GraphCanvas extends StatefulWidget {
     this.onUserScroll,
     this.onWorkingCopyDirection,
     this.inspectorOpen = false,
+    this.entering,
+    this.onExpandStack,
+    this.onCollapseStack,
     super.key,
   });
+
+  /// The keys that fade in once with [layout] (Story 10.17: an expand's members but its anchor); each new set runs
+  /// once, by identity.
+  final Set<String>? entering;
+
+  /// Expands the stack of a key (a stack card's click, Enter or Space); null leaves stacks closed.
+  final ValueChanged<String>? onExpandStack;
+
+  /// Collapses the expanded run of a key (its bracket's button); null shows no button.
+  final ValueChanged<String>? onCollapseStack;
 
   /// Whether the inspector covers the plane's right side (Story 10.8): when it opens, a selection it covers scrolls
   /// clear ([GraphRevealAlignment.covered], animated); a width change moves nothing.
@@ -161,6 +177,11 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   // The content settle: restarted by every scroll change, a new layout or card size.
   Timer? _settle;
 
+  // Story 10.17: the expand's fade-in (one ticker for every entering card) and the hovered bracket's run.
+  late final _enter = AnimationController(vsync: this, value: 1);
+  var _enterKeys = const <String>{};
+  final _bracketRun = ValueNotifier<int?>(null);
+
   @override
   void initState() {
     super.initState();
@@ -206,6 +227,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     super.didChangeDependencies();
     _motion = ZsMotion.of(context);
     _dim.duration = _motion.durHover;
+    _enter.duration = _motion.durSlide;
   }
 
   ZsMotion _motion = ZsMotion.full;
@@ -223,6 +245,17 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     }
     if (!identical(oldWidget.layout, widget.layout)) {
       _updateFocus();
+      if (_bracketRun.value != null) {
+        _bracketRun.value = null;
+      }
+    }
+    final Set<String>? entering = widget.entering;
+    if (!identical(oldWidget.entering, entering) && entering != null && entering.isNotEmpty) {
+      // Before this build lays the new layout's cards out: they read the set.
+      _enterKeys = entering;
+      _enter.forward(from: 0);
+    } else if (!identical(oldWidget.layout, widget.layout)) {
+      _enterKeys = const <String>{};
     }
     if (widget.inspectorOpen && !oldWidget.inspectorOpen) {
       // After the frame that hands the viewport the inspector's inset.
@@ -251,6 +284,9 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     cards.menuOpen.addListener(_hoverChanged);
     cards.userSelections.addListener(_userSelected);
     cards.focused.addListener(_focusedChanged);
+    cards
+      ..onExpandStack = _expandStack
+      ..onCollapseStack = _collapseStackOf;
   }
 
   void _unlisten(GraphCardController cards) {
@@ -260,6 +296,12 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     cards.menuOpen.removeListener(_hoverChanged);
     cards.userSelections.removeListener(_userSelected);
     cards.focused.removeListener(_focusedChanged);
+    if (cards.onExpandStack == _expandStack) {
+      cards.onExpandStack = null;
+    }
+    if (cards.onCollapseStack == _collapseStackOf) {
+      cards.onCollapseStack = null;
+    }
   }
 
   @override
@@ -271,6 +313,8 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     _settle?.cancel();
     _dim.dispose();
     _pulse.dispose();
+    _enter.dispose();
+    _bracketRun.dispose();
     _routes.dispose();
     _axis?.dispose();
     _vertical.dispose();
@@ -334,7 +378,10 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       if (_peekTimerKey != key) {
         _peekTimer?.cancel();
         _peekTimerKey = key;
-        _peekTimer = Timer(_motion.delayPeek, _openPeek);
+        // A stack opens its member list instead of the peek, sooner (Story 10.17).
+        final int? node = widget.layout.indexOfKey(key);
+        final bool stack = node != null && widget.layout.isStackNode(node);
+        _peekTimer = Timer(stack ? _motion.delayStackList : _motion.delayPeek, _openPeek);
       }
     } else if (!body || _peekKey != null) {
       _peekTimer?.cancel();
@@ -372,6 +419,156 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     }
     setState(() => _peekKey = _shownPeekKey = key);
   }
+
+  // ---- stacks (Story 10.17) ----
+
+  /// The run [key] is a member or the stack of, with the member a toggle keeps in place.
+  ({int run, String anchor})? _runOfKey(String key) {
+    final GraphLayout layout = widget.layout;
+    final int? node = layout.indexOfKey(key);
+    final int? run = node == null ? null : layout.runOf(node);
+    return run == null ? null : (run: run, anchor: graphStackAnchorKey(layout, run));
+  }
+
+  /// A stack card asked to expand: its anchor member keeps the card's viewport rect, then the owner relays out.
+  void _expandStack(String key) {
+    final ValueChanged<String>? expand = widget.onExpandStack;
+    final ({int run, String anchor})? run = _runOfKey(key);
+    if (expand == null || run == null) {
+      return;
+    }
+    _viewport.holdAnchor(run.anchor);
+    expand(key);
+  }
+
+  /// A member's VoiceOver collapse action: as the bracket's button.
+  void _collapseStackOf(String key) {
+    final ({int run, String anchor})? run = _runOfKey(key);
+    if (run != null && widget.layout.stackNodeOf(run.run) == null) {
+      _collapseStack(run.run);
+    }
+  }
+
+  /// A bracket's button: the stack takes the anchor member's viewport rect.
+  void _collapseStack(int run) {
+    final ValueChanged<String>? collapse = widget.onCollapseStack;
+    if (collapse == null) {
+      return;
+    }
+    final GraphLayout layout = widget.layout;
+    _viewport.holdAnchor(graphStackAnchorKey(layout, run));
+    _bracketRun.value = null;
+    collapse(layout.keyOf(layout.runMembersOf(run).first));
+  }
+
+  /// The expanded run whose bracket is hot: a member hovered, or the bracket itself.
+  int? _hotRun() {
+    final String? hovered = widget.cards.hovered.value;
+    final int? node = hovered == null ? null : widget.layout.indexOfKey(hovered);
+    final int? run = node == null ? null : widget.layout.runOf(node);
+    if (run != null && widget.layout.stackNodeOf(run) == null) {
+      return run;
+    }
+    return _bracketRun.value;
+  }
+
+  /// The brackets of the expanded runs (plane coordinates): 7 px wide at the leftmost member's x − 16, from the newest
+  /// member's top + 6 to the oldest member's bottom − 6.
+  List<(int, Rect)> _brackets(VerticalLayout rows, GraphMetrics metrics) {
+    final GraphLayout layout = widget.layout;
+    return <(int, Rect)>[
+      for (var run = 0; run < layout.runCount; run++)
+        if (layout.stackNodeOf(run) == null) (run, _bracketOf(layout.runMembersOf(run), rows, metrics)),
+    ];
+  }
+
+  Rect _bracketOf(List<int> members, VerticalLayout rows, GraphMetrics metrics) {
+    double left = double.infinity;
+    for (final member in members) {
+      left = math.min(left, metrics.x(widget.layout.colOf(member)));
+    }
+    return Rect.fromLTRB(
+      left - 16,
+      rows.top(members.last) + 6,
+      left - 9,
+      rows.top(members.first) + metrics.cardHeight - 6,
+    );
+  }
+
+  void _paintBrackets(Canvas canvas, Offset origin, Rect visible, List<(int, Rect)> brackets, GraphTheme theme) {
+    if (brackets.isEmpty) {
+      return;
+    }
+    final int? hot = _hotRun();
+    for (final (int run, Rect rect) in brackets) {
+      if (!rect.inflate(2).overlaps(visible)) {
+        continue;
+      }
+      final Rect r = rect.shift(origin);
+      final double radius = math.min(7, r.height / 2);
+      canvas.drawPath(
+        Path()
+          ..moveTo(r.right, r.top)
+          ..arcToPoint(Offset(r.left, r.top + radius), radius: Radius.circular(radius), clockwise: false)
+          ..lineTo(r.left, r.bottom - radius)
+          ..arcToPoint(Offset(r.right, r.bottom), radius: Radius.circular(radius), clockwise: false),
+        Paint()
+          ..color = run == hot ? theme.cardBorderHover : theme.cardBorder
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5,
+      );
+    }
+  }
+
+  /// The brackets' hover strips (translucent: a press there still pans) and the hot run's collapse button (opaque).
+  Widget _bracketLayer(List<(int, Rect)> brackets) => ListenableBuilder(
+    listenable: Listenable.merge(<Listenable>[_vertical, _horizontal, widget.cards.hovered, _bracketRun]),
+    builder: (context, _) {
+      if (!_vertical.hasClients || !_horizontal.hasClients) {
+        return const SizedBox.shrink();
+      }
+      final Offset shift = widget.insets.topLeft - Offset(_horizontal.offset, _vertical.offset);
+      final size = Size(_horizontal.position.viewportDimension, _vertical.position.viewportDimension);
+      final Rect view = Offset.zero & size;
+      final int? hot = _hotRun();
+      final GraphLayout layout = widget.layout;
+      return Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          for (final (int run, Rect rect) in brackets)
+            if (Rect.fromLTRB(rect.left - 12, rect.top, rect.right + 8, rect.bottom).shift(shift) case final strip
+                when strip.overlaps(view)) ...<Widget>[
+              Positioned.fromRect(
+                rect: strip,
+                child: MouseRegion(
+                  opaque: false,
+                  hitTestBehavior: HitTestBehavior.translucent,
+                  onEnter: (_) => _bracketRun.value = run,
+                  onExit: (_) {
+                    if (_bracketRun.value == run) {
+                      _bracketRun.value = null;
+                    }
+                  },
+                ),
+              ),
+              if (run == hot && widget.onCollapseStack != null)
+                Positioned(
+                  left: strip.left + 12 - 10,
+                  top: strip.center.dy - 10,
+                  width: 20,
+                  height: 20,
+                  child: _CollapseButton(
+                    key: ValueKey<String>('graph-stack-collapse-${layout.keyOf(layout.runMembersOf(run).first)}'),
+                    count: layout.runMembersOf(run).length,
+                    onEnter: () => _bracketRun.value = run,
+                    onPressed: () => _collapseStack(run),
+                  ),
+                ),
+            ],
+        ],
+      );
+    },
+  );
 
   void _openTip() {
     final ({String key, GraphCardHoverArea area})? tip = _tipPending;
@@ -460,7 +657,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
 
   void _paintPulse(Canvas canvas, Offset origin, VerticalLayout rows, GraphMetrics metrics, Color accent) {
     final String? key = _pulseKey;
-    final int? node = key == null ? null : widget.layout.indexOfKey(key);
+    final int? node = key == null ? null : widget.layout.placeOfKey(key);
     if (node == null || !_pulse.isAnimating) {
       return;
     }
@@ -502,8 +699,13 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   }
 
   // A tear-off of this state's method is equal across builds, so the delegate rebuilds no card.
-  Widget _card(BuildContext context, int node) =>
-      GraphCard(layout: widget.layout, node: node, controller: widget.cards, content: widget.content);
+  Widget _card(BuildContext context, int node) {
+    final GraphLayout layout = widget.layout;
+    final Widget card = layout.isStackNode(node)
+        ? GraphStackCard(layout: layout, node: node, controller: widget.cards, content: widget.content)
+        : GraphCard(layout: layout, node: node, controller: widget.cards, content: widget.content);
+    return _enterKeys.contains(layout.keyOf(node)) ? _Entering(animation: _enter, motion: _motion, child: card) : card;
+  }
 
   /// The rows, built once per layout and remapped once per metrics change.
   VerticalLayout _rowsFor(GraphMetrics metrics) {
@@ -566,8 +768,10 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     final GraphCardController cards = widget.cards;
     final double disabledOpacity = ZsMetrics.of(context).disabledOpacity;
     final pending = <int>{
-      for (final String key in widget.pendingKeys) ?widget.layout.indexOfKey(key),
+      // A pending folded member gives its stack card the pending look.
+      for (final String key in widget.pendingKeys) ?widget.layout.placeOfKey(key),
     };
+    final List<(int, Rect)> brackets = _brackets(rows, metrics);
     // After layout: the layout, the insets or the size may have moved @ in or out of view.
     SchedulerBinding.instance.addPostFrameCallback((_) => _measureDirection());
     return Stack(
@@ -580,7 +784,14 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
             // The viewport's z-order, dim and pulse follow the card controller and the animations; rebuilding it builds
             // no card.
             child: ListenableBuilder(
-              listenable: Listenable.merge(<Listenable>[cards.selected, cards.hovered, cards.menuOpen, _dim, _pulse]),
+              listenable: Listenable.merge(<Listenable>[
+                cards.selected,
+                cards.hovered,
+                cards.menuOpen,
+                _dim,
+                _pulse,
+                _bracketRun,
+              ]),
               builder: (context, _) {
                 final String? menu = cards.menuOpen.value;
                 final String? hoveredKey = cards.hovered.value;
@@ -613,9 +824,13 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                   reveal: widget.reveal,
                   onUserPan: _userPanned,
                   paintBackground: axis.paintGuides,
-                  paintEdges: edges == null
+                  // The brackets after the edges, never dimmed (Story 10.17).
+                  paintEdges: edges == null && brackets.isEmpty
                       ? null
-                      : (context, origin, visible) => edges.paint(context, origin, visible, highlight: highlight),
+                      : (context, origin, visible) {
+                          edges?.paint(context, origin, visible, highlight: highlight);
+                          _paintBrackets(context.canvas, origin, visible, brackets, theme);
+                        },
                   paintOverlay: (context, origin, visible) {
                     axis.paintLabels(context, origin, visible, leftInset: leftInset);
                     _paintPulse(context.canvas, origin, rows, metrics, accent);
@@ -625,6 +840,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
             ),
           ),
         ),
+        if (brackets.isNotEmpty) _bracketLayer(brackets),
         if (_shownPeekKey != null || _tip != null)
           ListenableBuilder(
             listenable: Listenable.merge(<Listenable?>[_vertical, _horizontal, widget.content]),
@@ -654,6 +870,17 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       return const SizedBox.shrink();
     }
     final GraphCardController cards = widget.cards;
+    if (widget.layout.isStackNode(node)) {
+      return GraphStackPopover(
+        layout: widget.layout,
+        node: node,
+        card: card,
+        area: area,
+        controller: cards,
+        closing: closing,
+        content: widget.content,
+      );
+    }
     // Not announced (DS PeekCard.prompt.md:14): VoiceOver gets the facts from the card and the inspector.
     return ExcludeSemantics(
       child: CustomSingleChildLayout(
@@ -828,4 +1055,85 @@ class _TipBubbleState extends State<_TipBubble> with SingleTickerProviderStateMi
     message: widget.message,
     placement: ZsTooltipPlacement.above,
   );
+}
+
+/// An expand's entering card (Story 10.17): opacity 0 → 1 on `--dur-slide`, a 6 px rise and scale .98 → 1, all on
+/// `--ease-glide`, the distances × `--motion` — paint-only, on the canvas's one ticker.
+class _Entering extends StatelessWidget {
+  const _Entering({required this.animation, required this.motion, required this.child});
+
+  final Animation<double> animation;
+  final ZsMotion motion;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: animation,
+    builder: (context, child) {
+      final double rest = 1 - motion.easeGlide.transform(animation.value);
+      return Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.translationValues(0, 6 * motion.motion * rest, 0)
+          ..scaleByDouble(1 - .02 * motion.motion * rest, 1 - .02 * motion.motion * rest, 1, 1),
+        child: Opacity(opacity: 1 - rest, child: child),
+      );
+    },
+    child: child,
+  );
+}
+
+/// An expanded run's collapse button (Story 10.17): a 20 px circle with the `stack-collapse` glyph on the bracket's
+/// left edge, in the card affordances' look; opaque, so a press on it never pans.
+class _CollapseButton extends StatefulWidget {
+  const _CollapseButton({required this.count, required this.onEnter, required this.onPressed, super.key});
+
+  final int count;
+  final VoidCallback onEnter;
+  final VoidCallback onPressed;
+
+  @override
+  State<_CollapseButton> createState() => _CollapseButtonState();
+}
+
+class _CollapseButtonState extends State<_CollapseButton> {
+  var _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final GraphTheme t = GraphTheme.of(context);
+    final String label = context.l10n.stackCollapseTooltip(widget.count);
+    return ZsTooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        onTap: widget.onPressed,
+        child: MouseRegion(
+          onEnter: (_) {
+            widget.onEnter();
+            setState(() => _hovered = true);
+          },
+          onExit: (_) => setState(() => _hovered = false),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onPressed,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _hovered ? t.cardFillHover : t.cardFill,
+                border: Border.all(color: _hovered ? t.cardBorderHover : t.cardBorder),
+              ),
+              child: Center(
+                child: ZanshinIcon(
+                  ZI.stackCollapse,
+                  size: ZsIconSize.sm,
+                  color: _hovered ? t.cardText : t.cardTextFaint,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

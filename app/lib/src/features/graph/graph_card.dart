@@ -64,6 +64,12 @@ class GraphCardController {
   /// Runs `jj edit` for a double-clicked editable card.
   ValueChanged<String>? onEdit;
 
+  /// Expands the stack card of the given key (Story 10.17: a click, Enter or Space, VoiceOver).
+  ValueChanged<String>? onExpandStack;
+
+  /// Collapses the expanded run the given member key belongs to (Story 10.17: VoiceOver's action on a member).
+  ValueChanged<String>? onCollapseStack;
+
   Timer? _click;
   String? _clickKey;
   Timer? _leave;
@@ -211,6 +217,7 @@ class GraphCardData {
     this.workingCopies = const <String>[],
     this.workspaceName,
     this.content,
+    this.expandedRunSize,
   });
 
   /// The facts of [node] in [layout]; the content is [content]'s cache entry, else the layout's own (Story 10.11), and
@@ -218,7 +225,9 @@ class GraphCardData {
   factory GraphCardData.of(GraphLayout layout, int node, {GraphContent? content}) {
     final isRoot = node == layout.rootIndex;
     final GraphCommitContent? loaded = content == null ? layout.contentOf(node) : content.of(layout, node);
+    final int? run = layout.runOf(node);
     return GraphCardData(
+      expandedRunSize: run != null && layout.stackNodeOf(run) == null ? layout.runMembersOf(run).length : null,
       key: layout.keyOf(node),
       changeId: layout.changeIdOf(node),
       prefixLength: layout.changeIdPrefixLengthOf(node),
@@ -286,6 +295,9 @@ class GraphCardData {
 
   /// The content, null until loaded.
   final GraphCommitContent? content;
+
+  /// The member count of the expanded run this change belongs to (Story 10.17), else null.
+  final int? expandedRunSize;
 
   /// The other workspaces whose working copy this is, by name.
   List<String> get otherWorkspaces => <String>[

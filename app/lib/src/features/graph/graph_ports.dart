@@ -94,6 +94,36 @@ class GraphRequest {
   String toString() => 'GraphRequest($revset, ${mode.name}, ${order.name}, keepOpen: $keepOpenKeys)';
 }
 
+/// The user's stack toggles of one repository (Story 10.17): the runs expanded and collapsed, each by its oldest
+/// member's key. A run neither names shows the engine's default.
+@immutable
+class GraphStackToggles {
+  /// The toggles; empty by default.
+  const GraphStackToggles({this.expanded = const <String>{}, this.collapsed = const <String>{}});
+
+  /// The runs the user expanded.
+  final Set<String> expanded;
+
+  /// The runs the user collapsed.
+  final Set<String> collapsed;
+
+  @override
+  bool operator ==(Object other) =>
+      other is GraphStackToggles && setEquals(other.expanded, expanded) && setEquals(other.collapsed, collapsed);
+
+  @override
+  int get hashCode => Object.hash(Object.hashAllUnordered(expanded), Object.hashAllUnordered(collapsed));
+}
+
+/// Where one repository's [GraphStackToggles] persist (Story 10.17).
+abstract interface class GraphStackStore {
+  /// The stored toggles.
+  GraphStackToggles load();
+
+  /// Stores [toggles]; a failed write keeps them for the session.
+  void save(GraphStackToggles toggles);
+}
+
 /// What one layout call returned: the [layout], the call's [warnings] in the CLI's print order, and its pre-verb
 /// snapshot report.
 @immutable

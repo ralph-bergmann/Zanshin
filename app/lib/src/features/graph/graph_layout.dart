@@ -174,8 +174,13 @@ class GraphCommitContent {
 /// swapped (10.12). Consumers add accessors, never backing objects.
 ///
 /// Rows are in units of 1/[unit] pitch, row 0 is the oldest (at the bottom). A node's key is its change id, or its
-/// commit id when the commit is hidden or divergent; there are no synthetic keys. Edges are ordered by child, then by
-/// the parent's position, so [parentEdges] is a contiguous range.
+/// commit id when the commit is hidden or divergent; the one synthetic key is a stack node's, [graphStackKey] of its
+/// run's oldest member (never a jj id). Edges are ordered by child, then by the parent's position, so [parentEdges] is
+/// a contiguous range.
+///
+/// **Stacks (Story 10.17, docs/graph-layout.md §4.8):** a grouped layout has [runCount] linear runs; a collapsed run's
+/// members are [isFolded] (they stay in the node index, with `rowOf` and `colOf` −1, and are never laid out) and its
+/// [stackNodeOf] node stands in for them. [shownCount] excludes the stack nodes, so folded members count as shown.
 abstract class GraphLayout {
   /// Abstract constructor for implementers.
   const GraphLayout();
@@ -312,6 +317,50 @@ abstract class GraphLayout {
   /// Identifies this layout: two layouts with one version are the same layout (the delegate's `shouldRebuild`), so a
   /// version must be unique across every [GraphLayout] implementation, not only within one.
   int get version;
+
+  /// The number of linear runs (Story 10.17); 0 in an ungrouped layout.
+  int get runCount => 0;
+
+  /// [run]'s members as node indices, oldest first (the engine's order).
+  List<int> runMembersOf(int run) => throw RangeError.range(run, 0, runCount - 1, 'run');
+
+  /// [run]'s stack node, or null while it is expanded.
+  int? stackNodeOf(int run) => null;
+
+  /// The run [node] is a member or the stack node of, or null.
+  int? runOf(int node) => null;
+
+  /// Whether [node] is a stack node.
+  bool isStackNode(int node) {
+    final int? run = runOf(node);
+    return run != null && stackNodeOf(run) == node;
+  }
+
+  /// Whether [node] is a member of a collapsed run: it has no position and is never laid out.
+  bool isFolded(int node) {
+    final int? run = runOf(node);
+    final int? stack = run == null ? null : stackNodeOf(run);
+    return stack != null && stack != node;
+  }
+
+  /// Where [key] is shown: its node, or a folded member's stack node; null when the key is absent.
+  int? placeOfKey(String key) {
+    final int? node = indexOfKey(key);
+    if (node == null || !isFolded(node)) {
+      return node;
+    }
+    return stackNodeOf(runOf(node)!);
+  }
+}
+
+/// A stack node's key (Story 10.17): `stack:` and its run's oldest member key, never a jj id.
+String graphStackKey(String oldestMemberKey) => 'stack:$oldestMemberKey';
+
+/// The member of [run] a stack toggle keeps in place (Story 10.17): the oldest in compact (where the stack sits at its
+/// oldest member's row), the newest in free (where it keeps its newest member's time).
+String graphStackAnchorKey(GraphLayout layout, int run) {
+  final List<int> members = layout.runMembersOf(run);
+  return layout.keyOf(layout.mode == GraphMode.compact ? members.first : members.last);
 }
 
 /// The view's options (Story 10.1 item 2); every field is a knob of the catalogue's Graph folder.

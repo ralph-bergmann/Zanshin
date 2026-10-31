@@ -58,6 +58,12 @@ abstract class ProjectEntry with _$ProjectEntry {
     /// Its last known bookmark label — the first by name of the local bookmarks on @'s closest bookmarked ancestor
     /// (design question (b)) — or null when there was none ("—").
     String? bookmark,
+
+    /// The graph's stacks the user expanded, by their run's oldest member key (Story 10.17).
+    @Default(<String>[]) List<String> expandedStacks,
+
+    /// The graph's stacks the user collapsed, by their run's oldest member key (Story 10.17).
+    @Default(<String>[]) List<String> collapsedStacks,
   }) = _ProjectEntry;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

@@ -75,15 +75,21 @@ class GraphViewportController {
   void reveal(String key, {GraphRevealAlignment alignment = GraphRevealAlignment.centre, bool animate = false}) =>
       _viewport?._revealNow(key, alignment, animate: animate);
 
-  /// [key]'s card rect in viewport coordinates at the current scroll, or null when absent or detached.
+  /// [key]'s card rect in viewport coordinates at the current scroll (a folded stack member's: its stack's), or null
+  /// when absent or detached.
   Rect? cardRectOf(String key) {
     final RenderGraphViewport? viewport = _viewport;
-    final int? node = viewport?.graphLayout.indexOfKey(key);
+    final int? node = viewport?.graphLayout.placeOfKey(key);
     if (viewport == null || node == null || !viewport.hasSize) {
       return null;
     }
     return viewport.cardRect(node).shift(-viewport._scroll);
   }
+
+  /// Makes [key] the anchor the next geometry change keeps at its current viewport position (a folded key at its
+  /// stack's), as if the last layout had recorded it (Story 10.17: a stack toggle's anchor member, even when the new
+  /// layout lands before another frame).
+  void holdAnchor(String key) => _viewport?._holdAnchor(key);
 
   /// The part of the viewport the chrome leaves free, in viewport coordinates; null while detached.
   Rect? get unobscured {
@@ -457,7 +463,7 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
       // vicinity could be taken by another node after a reload.
       final Set<int> laidOut = nodes.toSet();
       for (final String key in _pinnedKeys) {
-        final int? node = _layout.indexOfKey(key);
+        final int? node = _layout.placeOfKey(key);
         if (node != null && !laidOut.contains(node)) {
           _layoutNode(node, size, scroll);
         }
@@ -485,7 +491,8 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
   /// Keeps the anchor's viewport position across a geometry change: its content position moved by the correction.
   void _applyAnchor(double maxX, double maxY) {
     final ({String key, Offset position})? anchor = _anchor;
-    final int? node = anchor == null ? null : _layout.indexOfKey(anchor.key);
+    // A folded anchor resolves to its stack, an expanded one to itself: a stack toggle keeps the anchor member's rect.
+    final int? node = anchor == null ? null : _layout.placeOfKey(anchor.key);
     // No anchor node (nothing laid out, or its key is gone): a left or top inset change alone still shifts the offset.
     final EdgeInsets before = _anchorInsets ?? _insets;
     final Offset correction = node == null
@@ -501,12 +508,14 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
 
   void _recordAnchor(List<int> nodes, Offset scroll, Size view) {
     _anchorInsets = _insets;
-    int? node = _anchorKey == null ? null : _layout.indexOfKey(_anchorKey!);
+    String? key = _anchorKey;
+    int? node = key == null ? null : _layout.placeOfKey(key);
     // On screen means in the unobscured area: a card under the chrome gives way to the centre node.
     if (node != null && !cardRect(node).overlaps(_unobscured.shift(scroll))) {
       node = null;
     }
     if (node == null) {
+      key = null;
       final Offset centre = scroll + view.center(Offset.zero);
       double best = double.infinity;
       for (final candidate in nodes) {
@@ -517,7 +526,16 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
         }
       }
     }
-    _anchor = node == null ? null : (key: _layout.keyOf(node), position: cardRect(node).topLeft);
+    // The anchor key itself with its place's rect: a folded anchor member records its stack card's rect.
+    _anchor = node == null ? null : (key: key ?? _layout.keyOf(node), position: cardRect(node).topLeft);
+  }
+
+  void _holdAnchor(String key) {
+    final int? node = _layout.placeOfKey(key);
+    if (node != null && hasSize) {
+      _anchor = (key: key, position: cardRect(node).topLeft);
+      _anchorInsets = _insets;
+    }
   }
 
   /// The unobscured part of the viewport: inside the insets, or the whole viewport when they leave nothing.
@@ -527,7 +545,7 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
   }
 
   Offset? _revealTarget(String key, GraphRevealAlignment alignment, double maxX, double maxY) {
-    final int? node = _layout.indexOfKey(key);
+    final int? node = _layout.placeOfKey(key);
     if (node == null) {
       return null;
     }

@@ -17,6 +17,7 @@ import 'package:zanshin/src/features/graph/graph_metrics.dart';
 import 'package:zanshin/src/features/graph/graph_peek.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_preferences.dart';
+import 'package:zanshin/src/features/graph/graph_stack_store.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
@@ -44,6 +45,8 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../graph/fake_content.dart';
 import '../graph/fake_graph_source.dart';
 import '../graph/graph_recordings.g.dart';
+import '../graph/graph_stack_recordings.g.dart';
+import '../graph/stack_recordings.dart';
 import '../graph/synthetic_layout.dart';
 import 'projects.dart' show demoCapsule;
 
@@ -114,6 +117,7 @@ final graphFolder = WidgetbookFolder(
             return _ViewModelDemo(
               key: _viewModelDemoKeys[WidgetbookState.of(context)] ??= GlobalKey<_ViewModelDemoState>(),
               revset: revset,
+              stacks: context.knobs.boolean(label: 'group stacks', initialValue: true),
               options: _options(context),
               insets: _insets(context),
               staleCause: stale == 'none' ? null : stale,
@@ -224,6 +228,24 @@ RecordedGraphLayout recordedLayout(String sample, GraphViewOptions options, {boo
   });
 }
 
+/// The fakes' answer to [request] on [sample] (Story 10.17): with Group stacks, the stack recording matching its run
+/// states ([stackRecordingFor]); otherwise, or for a sample without stack recordings, the ungrouped recording. Content
+/// is paged.
+RecordedGraphLayout requestedLayout(String sample, GraphRequest request) {
+  final String? stacks = stackRecordingFor(sample, request);
+  if (stacks == null) {
+    return recordedLayout(
+      sample,
+      GraphViewOptions(layout: request.mode, laneOrder: request.order),
+      inlineContent: false,
+    );
+  }
+  return _fixture('$stacks paged', () {
+    final (String input, String output, _) = graphStackRecordings[stacks]!;
+    return RecordedGraphLayout.fromSpec(input, output, refs: fakeRefs);
+  });
+}
+
 final _fixtures = <String, RecordedGraphLayout>{};
 
 /// Each fixture is built once, and checked once in debug builds: a fixture that fails a hard invariant is a recording
@@ -304,6 +326,7 @@ class _GraphDemoState extends State<_GraphDemo> {
 class _ViewModelDemo extends StatefulWidget {
   const _ViewModelDemo({
     required this.revset,
+    required this.stacks,
     required this.options,
     required this.insets,
     required this.staleCause,
@@ -311,6 +334,9 @@ class _ViewModelDemo extends StatefulWidget {
   });
 
   final String revset;
+
+  /// Group stacks (Story 10.17).
+  final bool stacks;
   final GraphViewOptions options;
   final EdgeInsets insets;
   final String? staleCause;
@@ -325,11 +351,7 @@ final _viewModelDemoKeys = Expando<GlobalKey<_ViewModelDemoState>>('view model d
 
 class _ViewModelDemoState extends State<_ViewModelDemo> {
   late final _source = FakeGraphSource(
-    (request) => recordedLayout(
-      request.revset == 'all()' ? 'design-all' : 'design-default',
-      GraphViewOptions(layout: request.mode, laneOrder: request.order),
-      inlineContent: false,
-    ),
+    (request) => requestedLayout(request.revset == 'all()' ? 'design-all' : 'design-default', request),
     staleCause: widget.staleCause,
   );
   late final _model = GraphViewModel();
@@ -340,7 +362,7 @@ class _ViewModelDemoState extends State<_ViewModelDemo> {
   void initState() {
     super.initState();
     final int now = recordedNowMs('design-default');
-    _model.init(_source, clock: () => DateTime.fromMillisecondsSinceEpoch(now));
+    _model.init(_source, clock: () => DateTime.fromMillisecondsSinceEpoch(now), stacks: widget.stacks);
     _apply(null);
   }
 
@@ -353,7 +375,8 @@ class _ViewModelDemoState extends State<_ViewModelDemo> {
   void _apply(_ViewModelDemo? old) {
     _model
       ..setMode(widget.options.layout)
-      ..setLaneOrder(widget.options.laneOrder);
+      ..setLaneOrder(widget.options.laneOrder)
+      ..setStacks(widget.stacks);
     if (old == null ? widget.revset == 'all()' : old.revset != widget.revset) {
       _model.setRevset(_revset);
     }
@@ -414,13 +437,7 @@ class _ShellControlsDemo extends StatefulWidget {
 
 class _ShellControlsDemoState extends State<_ShellControlsDemo> {
   final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_graph');
-  final _source = FakeGraphSource(
-    (request) => recordedLayout(
-      'design-default',
-      GraphViewOptions(layout: request.mode, laneOrder: request.order),
-      inlineContent: false,
-    ),
-  );
+  final _source = FakeGraphSource((request) => requestedLayout('design-default', request));
   final _model = GraphViewModel();
   final _shell = ShellController();
   final _descriptions = <String, String>{};
@@ -445,6 +462,8 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
         _source,
         actions: _DemoActions(_descriptions),
         clock: () => DateTime.fromMillisecondsSinceEpoch(now),
+        // A path outside the registry: the stack toggles live in memory for the demo (Story 10.17).
+        stackStore: ProjectStackStore(store, '/demo'),
       );
     _model.addListener(_selectFirst);
     setState(() {

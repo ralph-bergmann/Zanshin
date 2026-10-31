@@ -34,12 +34,19 @@ class GraphContent extends ChangeNotifier {
   /// [node]'s content: the cache entry, else the layout's own (recordings and fixtures carry it inline).
   GraphCommitContent? of(GraphLayout layout, int node) => _cache[layout.commitIdOf(node)] ?? layout.contentOf(node);
 
-  /// Loads the content of [nodes] of [layout] that is neither cached nor inline; nothing missing asks nothing.
+  /// Loads the content of [nodes] of [layout] that is neither cached nor inline; nothing missing asks nothing. A stack
+  /// node stands for its members (Story 10.17): their content is what its card and its list show.
   void load(GraphLayout layout, Iterable<int> nodes) {
     if (_disposed) {
       return;
     }
-    _queued = (layout: layout, nodes: nodes.toList());
+    _queued = (
+      layout: layout,
+      nodes: <int>[
+        for (final int node in nodes)
+          if (layout.isStackNode(node)) ...layout.runMembersOf(layout.runOf(node)!) else node,
+      ],
+    );
     if (!_running) {
       unawaited(_drain());
     }

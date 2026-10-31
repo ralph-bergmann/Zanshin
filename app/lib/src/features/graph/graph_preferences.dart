@@ -52,9 +52,16 @@ class GraphPreferences extends ChangeNotifier {
     );
   }
 
-  /// Initialises [model] on [source] with the stored layout and Group stacks in its first request, and binds it as [model].
-  void init(GraphViewModel model, GraphSource source, {GraphActions? actions, DateTime Function()? clock}) {
-    model.init(source, actions: actions, clock: clock, mode: layout, stacks: groupStacks);
+  /// Initialises [model] on [source] with the stored layout and Group stacks in its first request, and [stackStore]'s
+  /// toggles (Story 10.17), and binds it as [model].
+  void init(
+    GraphViewModel model,
+    GraphSource source, {
+    GraphActions? actions,
+    DateTime Function()? clock,
+    GraphStackStore? stackStore,
+  }) {
+    model.init(source, actions: actions, clock: clock, mode: layout, stacks: groupStacks, stackStore: stackStore);
     this.model = model;
   }
 

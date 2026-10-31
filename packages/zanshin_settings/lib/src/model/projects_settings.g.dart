@@ -58,6 +58,18 @@ _ProjectEntry _$ProjectEntryFromJson(Map<String, dynamic> json) =>
           ),
         ),
         bookmark: $checkedConvert('bookmark', (v) => v as String?),
+        expandedStacks: $checkedConvert(
+          'expandedStacks',
+          (v) =>
+              (v as List<dynamic>?)?.map((e) => e as String).toList() ??
+              const <String>[],
+        ),
+        collapsedStacks: $checkedConvert(
+          'collapsedStacks',
+          (v) =>
+              (v as List<dynamic>?)?.map((e) => e as String).toList() ??
+              const <String>[],
+        ),
       );
       return val;
     });
@@ -71,6 +83,8 @@ Map<String, dynamic> _$ProjectEntryToJson(_ProjectEntry instance) =>
       'lastOpened': instance.lastOpened?.toIso8601String(),
       'status': _$ProjectStatusEnumMap[instance.status],
       'bookmark': instance.bookmark,
+      'expandedStacks': instance.expandedStacks,
+      'collapsedStacks': instance.collapsedStacks,
     };
 
 const _$ProjectStatusEnumMap = {

@@ -1189,10 +1189,14 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
                 ? _strings.cardAddBookmark
                 : _strings.cardBookmarks(d.refs.map((r) => r.display).join(', ')),
           ): _semanticBookmarks,
+        if (d.expandedRunSize case final int count)
+          CustomSemanticsAction(label: _strings.stackCollapseTooltip(count)): _semanticCollapse,
       };
   }
 
   void _semanticSelect() => _controller.select(_data.key);
+
+  void _semanticCollapse() => _controller.onCollapseStack?.call(_data.key);
 
   void _semanticMenu() => _controller.openMenu(_data.key, _global(_more));
 
