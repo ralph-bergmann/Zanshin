@@ -1072,9 +1072,10 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **No commit affordance on an empty @.** Low.
   - The composer needs files on @ (IN:177). `jj commit -m` on an empty @ is `describe` plus `new` in one operation (`cli/src/commands/commit.rs:35-36`).
   - **Follow-up:** Ralph decides whether 10.25 shows the composer on an empty @ (Claude's proposal: no; describe and "New change" cover it, in two operations).
-- **9.47's ledger row `describe_gui_text` retires with 10.8's Save.** Low.
+- ~~**9.47's ledger row `describe_gui_text` retires with 10.8's Save.**~~ — RESOLVED 2026-10-31 (spec-10-8-inspector, I1). Low.
   - The row exists because the GUI was assumed to send the text without the CLI's trailing newline (`crates/zanshin-parity/tests/oracle/ledger.rs:71-78`).
   - **Follow-up:** when 10.8 lands, its scenario sends "S\n\nD\n" and the row goes.
+  - **2026-10-31, Story 10.8 (I1):** `describe_gui_text` sends what Save sends ("C described\n\nDetails\n" against `jj describe -m 'C described' -m Details`) and agrees with the CLI; its ledger row is gone, and the CHANGED witness `a_ledgered_aspect_with_other_values_fails` now uses `new_unresolvable_immutable`'s row.
 - ~~**A hunk selection's staleness under constant snapshots.**~~ — RESOLVED 2026-10-23 (spec-9-50-hunk-selection-select-tree, Story 9.50, I1; commit 90612be): confirmed — stale is the revision's parent tree no longer being the selection's `left` (`ShowEntry.parent_tree_ids`), or a key that is not a current section, refused `jj.stale_selection` by `select_tree` and by each tree arm; an edit to the revision's own content is not stale (`crates/zanshin-jj/tests/it/select_tree.rs::commit_takes_the_tree_and_leaves_the_rest_and_a_later_edit_in_the_new_at`). Medium.
   - Every verb snapshots @ first (9.26), so an editor that autosaves changes @ between selecting hunks and running the composer. If staleness were judged by @'s commit id, commits would keep failing.
   - **Follow-up:** 9.50 judges staleness by the left side, the revision's parent tree (Claude's proposal); confirm it in 9.50's spec.
@@ -1083,10 +1084,11 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - **Follow-up:** 9.15's plan phase returns the combined text when needed (its note); 9.31's `diff` source can carry the flag.
   - **2026-10-19, Story 9.15:** `Repo::squash_plan` / `zanshin_squash_plan` / `RepoHandle.squashPlan` return the text the CLI's editor holds, saved unchanged, from the same `prepare_squash` the verb runs; the oracle's `squash_plan_as_message` passes it back as `-m` against the CLI's editor (commit 96a3b35); left: 9.31's `diff` source carries the flag.
   - **2026-10-21, Story 9.31 (I3):** every squash row (`drop_actions`' `Squash`, `change_actions`' `squash_into_parent`) carries `combined_description_needed`, from ONE rule shared with `squashed_description` (`squash_split::single_description`: Combine mode and `try_combine_messages` → `None`); the UI then asks `squash_plan` for the text.
-- **10.8's and 10.9's `handle.dart` citations are stale.** Low.
+- ~~**10.8's and 10.9's `handle.dart` citations are stale.**~~ — RESOLVED 2026-10-31 (spec-10-8-inspector, I2). Low.
   - 10.8 cites `handle.dart:690` for `show`; 10.9 cites :228, :242, :257, :271, :284, :861 and :891. The file is `packages/zanshin_core/lib/src/worker/handle.dart`: describe :344, newChange :358, edit :373, abandon :387, undo :407, show :813, bookmarkCreate :986, bookmarkDelete :1016.
   - **Follow-up:** re-point them when each story is refined.
   - **2026-10-31, Story 10.9:** Story 10.9 item 1 in epics.md cites `RepoHandle` method names instead of line numbers (commit 4d32de6a); left: 10.8's citation.
+  - **2026-10-31, Story 10.8 (I2):** both 10.8 citations (the 2026-10-14 note's "Depends on" and Scope item 2) name `RepoHandle.show` (`handle.dart:2088` on that day).
 
 ### The floating chrome and the shell
 
@@ -1380,9 +1382,10 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
   - **Follow-up:** 10.7, 10.21, 11.5 and 11.8 hold calm for each surface their slots open; `ZsSelect` gains open/close callbacks when a slot needs one.
   - **2026-10-18, Story 11.5:** the project capsule holds the shell's calm while its Project menu is open (`ShellScope.maybeOf(context)?.openSurface()` on open, released on close and on dispose; a test covers it) (commit d8c86a3); left: 10.7, 10.21 and 11.8 hold calm for their slots' surfaces.
   - **2026-10-31, Story 10.7 (spec-10-7-graph-toolbar):** the View options popover holds the shell's calm while open, its exit included (`ShellScope.maybeOf(context)?.openSurface()` on open, released once the exit has run and on dispose; `app/lib/src/features/graph/graph_controls.dart`, witnessed in `graph_controls_test.dart`); left: 10.21 and 11.8.
-- **A resize edge removed during its own drag never reports the drag's end, so the shell would keep its calm hold and its edge-drag flag until the window closes.** Medium (unverified). (Surfaced in the review.)
+- ~~**A resize edge removed during its own drag never reports the drag's end, so the shell would keep its calm hold and its edge-drag flag until the window closes.**~~ — RESOLVED 2026-10-31 (spec-10-8-inspector, I3). Medium (unverified). (Surfaced in the review.)
   - `ZsResizeEdge` (`packages/zanshin_ui/lib/src/controls/zs_resize_edge.dart`) calls onDragEnd only from the recognizer's end and cancel, and a recognizer disposed with its widget fires neither; in 11.3 nothing removes the panel edge during a mouse drag (a window resize, the inspector opening and an unpin each need a second input).
   - **Follow-up:** 10.8 checks whether its inspector can close while its edge is dragged (a deselect from elsewhere); if any path removes an edge mid-drag, `ZsResizeEdge` ends the drag in `dispose`.
+  - **2026-10-31, Story 10.8 (I3):** it can (graph Esc, a reload dropping the selection). `ZsResizeEdge.dispose` ends an active drag — `onDragEnd`, then `onChangeEnd` when the width changed, deferred to a microtask past the locked tree — and `ZsControlCore` ignores the pointer-up a removed control still receives; witnessed in `zs_resize_edge_test.dart` and `floating_shell_test.dart` ("closing during an edge drag ends the drag").
 - ~~**`HomePage` injects `ZanshinFfiVersion` and never reads it.**~~ — RESOLVED 2026-10-18 (spec-11-3-closing-home-page-unused-ffi-version, commit d96bb16): `HomePage` drops the parameter and `MainComponent` drops `ZanshinFfiModule`, whose only consumer it was. Low. (Surfaced in the review; pre-existing.)
   - `app/lib/src/features/home/home_page.dart:22-27`; before this story `HomePage` returned `const AppShell()` and did not read it either.
   - **Follow-up:** drop it with the next change to the home (11.10).
@@ -2248,10 +2251,11 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - ~~**The stale notice's three jj messages and hint commands are Dart copies of the CLI's text at v0.46.0 that no oracle or pin-bump step keeps in step.**~~ — RESOLVED 2026-10-31 (spec-fix-10-2-10-5-review, commit 20b5b0d): the Rust error carries jj's message, Dart shows it; the oracle checks the `stale` cause (the other two: "Surfaced in the fix run after the 10.2–10.5 review"). Low.
   - `GraphStale.fromContext` (`app/lib/src/features/graph/graph_view_model.dart`) composes them from `cli_util.rs:3040-3075` @ v0.46.0; the parity oracle runs verbs, not this text. The error's `hints` (Story 9.56) carry jj's hint verbatim, but not the message.
   - **Follow-up:** the pin-bump steps (project-context.md § zanshin-jj) name `GraphStale.fromContext`, or the Rust side carries jj's message in the error.
-- **Parts of epics 10.5 item 14 are handed on, not built: @'s off-screen direction (10.6's pill), the inspector's scroll for a covered selection with its witnesses (10.8), and the plane's extra margins (dropped as Claude's proposal).** Low.
+- ~~**Parts of epics 10.5 item 14 are handed on, not built: @'s off-screen direction (10.6's pill), the inspector's scroll for a covered selection with its witnesses (10.8), and the plane's extra margins (dropped as Claude's proposal).**~~ — RESOLVED 2026-10-31 (spec-10-8-inspector, I4). Low.
   - Recorded in the epics.md "Built 2026-10-30" note under Story 10.5; 10.6 item 6 and 10.8 read them as 10.5's. `GraphView` (`app/lib/src/features/graph/graph_view.dart`) takes the shell's insets as they are.
   - **Follow-up:** 10.6 publishes @'s direction against the visible rect; 10.8 scrolls a covered selection when the inspector opens.
   - **Resolved in Story 10.6 (2026-10-31), for 10.6's part:** `GraphCanvas` publishes @'s direction against the unobscured area deflated by 8 px into `GraphViewModel.workingCopyDirection`, and `GraphView.atPill` shows the pill; left: 10.8's inspector scroll.
+  - **2026-10-31, Story 10.8 (I4):** `GraphInsets.inspectorWidth` is 0 while the inspector is closed; when it turns non-zero `GraphCanvas` reveals the selection with `GraphRevealAlignment.covered` (animated, after the frame that hands the viewport the new inset); an uncovered card and a width drag move nothing (`graph_view_test.dart`, "I4").
 
 ## Surfaced in Story 11.10 (bmad-build-auto, 2026-10-30)
 
@@ -2303,14 +2307,21 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
   - `app/lib/src/features/graph/graph_view_model.dart:271` `edit` awaits `run` with no busy flag; no real `GraphActions` exists yet (test fakes only), so whether 10.9's runner serialises jj calls is unsettled.
   - **Follow-up:** when 10.9 wires the real port, make overlapping actions queue or refuse (one jj call at a time) and test two quick double-clicks.
 
+## Surfaced in Story 10.8 (bmad-build-auto, 2026-10-31)
+
+- **The inspector's Immutable flag shows no reason yet.** Low.
+  - The 2026-10-26 note wants "Immutable · <reason>"; 10.6 handed the `revsetCounts` reason producer to 11.7 (epics.md, Story 10.6), so the flag's tooltip reads "Immutable" (`app/lib/src/features/graph/graph_inspector.dart`, `_Header`).
+  - **Follow-up:** 11.7's cached producer lands; 10.8's flag and 10.15's menu read it.
+
 ## Surfaced in Story 10.9 (bmad-build-auto, 2026-10-31)
 
 - **The runner has no actions for `commit`, `split`, `rebase` and `duplicate`, though their backend verbs exist.** Medium.
   - `app/lib/src/features/graph/graph_ports.dart` `GraphAction` covers edit, describe, new (-A/-B), abandon, revert, squash, bookmark create/delete/move/rename, undo, redo; `RepoHandle.commit`, `split`, `rebase`, `duplicate` have no subtype, and their per-verb selection/anchor rules (commit: new @ selected; split: selection stays; both anchored on the source) are not in `GraphViewModel._succeeded`.
   - **Follow-up:** 10.10 (drop rows: rebase, duplicate) and 10.25 (composer: commit, split) add their subtypes, the `RepoGraphActions` mapping and the selection/anchor rule beside the existing ones.
-- **Revert does not select the new change while the inspector is open.** Low.
+- ~~**Revert does not select the new change while the inspector is open.**~~ — RESOLVED 2026-10-31 (spec-10-8-inspector, I5). Low.
   - The 2026-10-26 note: "the new change is selected only while the inspector is open"; `GraphViewModel._succeeded` leaves the selection on revert because no inspector state exists yet (the outcome carries the born id).
   - **Follow-up:** 10.8 selects `outcome.born.first` after a `GraphRevert` while its inspector is open.
+  - **2026-10-31, Story 10.8 (I5):** the inspector is open exactly while something is selected, so `_succeeded` selects the born change after a `GraphRevert` whenever the selection was non-null (`graph_view_model_test.dart`, "revert with a selection"); the catalogue's demo actions answer a revert with a born id.
 - **The real action port is not wired into the app, and the commands are not checked through the parity oracle.** Low.
   - `RepoGraphActions` (graph_ports.dart) is constructed only in tests, like `RepoGraphSource`; `GraphAction.command` strings are checked against literal expectations in `app/test/features/graph/graph_ports_test.dart`, not parsed by jj.
   - **Follow-up:** 10.12 passes `RepoGraphActions(repo)` to `GraphViewModel.init(actions:)` where it builds the real source; the first story that shows a command (10.15) runs a sample of `command` strings through `crates/zanshin-parity`'s oracle.

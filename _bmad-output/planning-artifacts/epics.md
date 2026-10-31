@@ -9754,7 +9754,7 @@ NEEDS DESIGN:
 >   - Superseded: "Edit is hidden on @ and on immutable commits; Describe is hidden on immutable commits" and "Squash and Rebase are disabled, with the reason". New: the action row per state, and Squash disabled with the backend's reason.
 >   - "Opening and closing the panel follows (e)" becomes: a covered card scrolls clear, and an uncovered one does not.
 >   - Added: Save sends "S\n\nD\n" once, and nothing when unchanged; a draft survives a selection change; the Esc order; "Describe…" opens the form; the minimap hides; the panel steps aside while scrolling unless a field has focus; the empty states; the unique prefix.
-> - **Depends on** also 11.1 (tokens), 11.2, 11.3 and 10.23. Item 2's `handle.dart:690` (show) is now `packages/zanshin_core/lib/src/worker/handle.dart:813`. Prototype defects 12a–12d are fixed in the export (IN:264, :249-255, :215-222); 12e stays a rule.
+> - **Depends on** also 11.1 (tokens), 11.2, 11.3 and 10.23. Item 2's `handle.dart:690` (show) is now `RepoHandle.show` (`packages/zanshin_core/lib/src/worker/handle.dart:2088` on 2026-10-31). Prototype defects 12a–12d are fixed in the export (IN:264, :249-255, :215-222); 12e stays a rule.
 
 > **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the inspector is drag-resizable at its left edge, sits at top 60, uses the Zs controls, shows commands in full and handles the stale and inactive states. This note amends the Motivation, the 2026-10-14 note's items 1, 3 and 7, its token bullet and its describe form. It adds items 9–11 and witnesses.
 > - **Item 1, frame: resizable** (decisions 16.22, 16.23; DS tokens/spacing.css:42–43; DS components/surfaces/ResizeEdge.prompt.md:5, :10–13).
@@ -9791,6 +9791,8 @@ NEEDS DESIGN:
 
 > **Design update 2026-10-26 (the Epic 10 header; DS #12, #13; DS synced through #13):** the inspector's Immutable flag carries the hatch swatch and the reason. This supersedes the 2026-10-14 note's flag "◆ Immutable" with the tooltip "Part of trunk history" and the scope's tag "◆ immutable". The flag is `Flag` with `HatchSwatch` (10.3) before "Immutable", neutral like Empty and Merge, and not on the root. Its tooltip is "Immutable · <reason>", 10.6's reason (DS components/graph/Flag.prompt.md:7; inspector.jsx:230; SYNC:122). `Flag`'s icon slot takes a widget for it (DS readme.md:35). Witness (added): an immutable change's flag shows the swatch and the reason as its tooltip, and no ◆ appears anywhere in the inspector.
 
+> **Built 2026-10-31** (spec `_bmad-output/implementation-artifacts/spec-10-8-inspector.md`): `GraphInspector` + `InspectorViewModel` (`app/lib/src/features/graph/graph_inspector.dart`) over the new `GraphDetails` port (`show` + `changeActions`, `RepoGraphDetails`), the slot factory `GraphView.inspector`, the inspector's `ZsResizeEdge` and exit in `FloatingShell`, the covered reveal on open in `GraphCanvas`, the describe form saving the CLI's `-m` paragraphs (`joinMessageParagraphs`, `GraphDescribe.fromParagraphs`), drafts per change for the session, the catalogue's Floating shell › Controls hosting it over fakes. `describe_gui_text` now sends what the GUI sends and agrees with the CLI (ledger row gone). Handed on: the card menu's "Describe…" row to 10.15 (it calls `InspectorViewModel.describe`); the diff, ± and Viewed to 10.24; Squash's enablement, the checkboxes and the composer to 10.25; chip and file drags to 10.10 / 10.27; the Immutable flag's reason to 11.7's producer; ↓ behind / ↕ diverged chips to 9.29; mounting in the project window to 10.12.
+
 **Motivation.** Selecting a card opens the design's right-hand panel (GV:445-479, APP:735-862, GC:150-159). The design extraction lists this panel and its describe mode among the design's dialogs and popups, which Ralph says are not final and will look different.
 - So this story is thin by default. It wires the real data and the verbs into a minimal `material_ui` column and invests nothing in polish. Design question (a) asks whether that reading is right.
 - The design's review workflow reviews diffs that do not exist before Epic 5: the review meter, the per-file Viewed state, auto-advance and Inline/Split. It moves to the Epic 5 diff follow-up (deferred-work).
@@ -9810,7 +9812,7 @@ NEEDS DESIGN:
    - The design's 220 ms slide is optional.
 2. **Data from two sources.**
    - **The node's view facts** from `GraphLayout`: bookmark refs with their sync state, immutable, empty, @, root, and merge (`parentCountOf(i)` ≥ 2, Missing parents included; the same rule as 10.3's glyph).
-   - **`RepoHandle.show(revset: <commit id>)`** (Story 9.6, `handle.dart:690`). It returns a `WarnedList<ShowEntry>` with a single entry:
+   - **`RepoHandle.show(revset: <commit id>)`** (Story 9.6, `RepoHandle.show`, `packages/zanshin_core/lib/src/worker/handle.dart:2088` on 2026-10-31). It returns a `WarnedList<ShowEntry>` with a single entry:
      - its `Change` provides the full description, `parents`, the author and committer `Signature`s, `isSigned`, and `conflict` with its `conflictedPaths`;
      - its `fileChanges` provide path, kind and `fromPath`.
    - The panel re-fetches when the selection changes and after every reload. A rewritten commit updates the panel; a vanished one closes it.
