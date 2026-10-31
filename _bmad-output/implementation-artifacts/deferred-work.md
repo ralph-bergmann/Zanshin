@@ -2279,7 +2279,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in the follow-up review of Story 11.16 (bmad-build-auto, 2026-10-31)
 
-- **Story 11.16 was closed without the Marionette check in the running catalogue, so the rendered text is checked only by widget tests.** Medium (unverified).
+- ~~**Story 11.16 was closed without the Marionette check in the running catalogue, so the rendered text is checked only by widget tests.**~~ — RESOLVED 2026-10-31 (console session, Marionette): `graph/peek/open` (night, paper) and `graph/viewport/view-model` show the same English text as before (hints, "Working copy", "Today"/"Yesterday", "(no description set)"). Medium (unverified).
   - spec-11-16-l10n-ready-arb-strings.md, Verification: "Not done: the Marionette visual check in the catalogue". The suites assert the English text, but no one has looked at the live Projects window, graph cards, splash or window titles.
   - **Follow-up:** open the catalogue's Projects window and graph use cases through Marionette and compare the text with the design cards; anything that differs is a fix in the ARB or its lookup.
 - **The native macOS strings are outside the l10n setup.** Low.
@@ -2288,7 +2288,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 10.6 (bmad-build-auto, 2026-10-31)
 
-- **The peek, the affordance tooltips, the focus path and the @ pill were not checked visually (Marionette) in the running catalogue.** Low.
+- ~~**The peek, the affordance tooltips, the focus path and the @ pill were not checked visually (Marionette) in the running catalogue.**~~ — RESOLVED 2026-10-31 (console session, Marionette, partly): the peek (night, paper) matches overlays.card.html's PeekCard in size, type and spacing (description, commit id and the stats row are known gaps: 10.12, and the row was dropped by Ralph); the @ pill's four directions match actions.card.html's locator; in `graph/viewport/view-model` the pill points to an off-screen @ and 4.16's day bands hold no card, and 10.11's content arrives with no stuck skeleton. Not checked: the hover-only tooltips and the focus-path dim (Marionette cannot hover). Low.
   - The unattended run cannot hold a `flutter run -d macos -t widgetbook/main.dart` session; widget tests and the smoke test cover `graph/peek/open` and `graph/@-pill/directions` (`app/widgetbook/folders/graph.dart`).
   - **Follow-up:** in a console session, open both use cases and the View model use case through `zanshinCatalogue.open`, hover a card in night and paper, and compare with `design_system/components/overlays/PeekCard.jsx` and `components/actions/AtPill.jsx`.
 - **The peek's IMMUTABLE eyebrow shows no reason yet.** Low.
