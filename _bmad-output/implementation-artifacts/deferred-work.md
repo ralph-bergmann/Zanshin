@@ -2246,3 +2246,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **The DS's app-icon bundle prescribes solid layer fills over white-stroked open paths, which Icon Composer renders as three filled crescents, not waves.** Low.
   - `design_system/assets/app-icon/Zanshin-NamiIndigo.icon/icon.json` (`"fill": {"solid": …}` per layer) and `README.txt` ("each fills with the listed color") over `Wave-*.svg` drawn `stroke="#ffffff"`; an `xcrun actool` render of exactly that showed crescents. The app's `app/macos/Runner/NamiIndigo.icon` therefore strokes each layer in its gold with `"fill" : "none"` (spec-11-10 Spec Change Log).
   - **Follow-up:** the next design-artifacts round strokes the DS layers in their golds (or notes "no layer fill") so a re-sync does not bring the crescents back.
+
+## Surfaced in the fix run after the 10.2–10.5 review (bmad-build-auto, 2026-10-31)
+
+- **The parity oracle witnesses jj's stale-working-copy message and hint only for the `stale` cause; the `sibling_operation` and `operation_not_found` texts are still hand-ported from the CLI.** Low.
+  - `crates/zanshin-parity/tests/oracle/hints.rs::stale_working_copy_message_is_the_cli_error_line` builds only a stale second workspace; `PreconditionError::message()` / `hints()` (`crates/zanshin-jj/src/snapshot.rs`) are checked against literals for the other two causes, which match `cli_util.rs:3040-3075` @ v0.46.0 but would not catch a reword at a pin bump (Story 9.56's hints had the same gap).
+  - **Follow-up:** an oracle witness that builds a sibling-operation and a missing-operation working copy and compares the CLI's `Error:`/`Internal error:` and `Hint:` lines, or a pin-bump step that re-reads `handle_stale_working_copy`.
