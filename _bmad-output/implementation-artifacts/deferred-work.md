@@ -2350,3 +2350,12 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **A renamed or copied file from `Repo::diff` cannot be selected through `select_tree` as one entry: the diff shows it as its target path (no sections), while `select_tree` sees a removed source path plus an added target path.** Medium.
   - `Repo::diff` uses copy records like `jj diff`, folding the source's removal into the target entry; `select_tree` mirrors the builtin diff editor, which uses no copy records (`builtin.rs:567` @ v0.46.0). Choosing the target "whole" leaves the source path unselected (`crates/zanshin-jj/src/hunks.rs` `DiffReader::file` empties a copy's sections).
   - **Follow-up:** Story 10.26 (hunk selection) also selects the source path's removal when a renamed file is chosen whole, or offers renamed files whole-only with that pairing.
+
+## Surfaced in the follow-up review of Story 10.17 (bmad-build-auto, 2026-10-31)
+
+- **The stack card, its offset layers, hatch, member list and bracket have not been compared against the DS cards in the running catalogue; only widget tests check them.** Medium (unverified).
+  - The story's verification notes record "Not done: the Widgetbook/Marionette visual check against the DS cards"; the DS measurements (graph.css:27-29, the menu material, the 7 px bracket, the 20 px button) are checked only as rects, texts and semantics in `app/test/features/graph/graph_stacks_test.dart`.
+  - **Follow-up:** run the Marionette / Playwright check of the `graph` catalogue's stack states against the DS cards and fix what differs.
+- **A pending action on a member folded into a collapsed stack should dim the stack card, but no test renders that.** Low.
+  - `GraphCanvas.build` maps `pendingKeys` through `layout.placeOfKey` (app/lib/src/features/graph/graph_canvas.dart); no canvas test renders a pending key (the pending look had no render test before this story either).
+  - **Follow-up:** a one-case canvas test with `pendingKeys: {<folded member>}` asserting the stack card's disabled opacity, whenever the pending look gets a render test.

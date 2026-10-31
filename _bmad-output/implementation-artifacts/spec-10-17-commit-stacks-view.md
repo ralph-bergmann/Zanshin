@@ -5,12 +5,26 @@ created: '2026-10-31'
 status: 'done'
 baseline_revision: '9ebb2d436ef93a83dd60b1abc7077824a2443224'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
   - '{project-root}/_bmad-output/project-context.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The stack card, its offset layers, hatch, member list and bracket have not been compared against the DS cards in the running catalogue; only widget tests check them.
+    evidence: |-
+      The verification notes record that the Widgetbook/Marionette visual check was not run; the DS measurements are checked only as rects, texts and semantics in graph_stacks_test.dart. Settled by a Marionette / Playwright check of the catalogue's stack states against the DS cards.
+    location: >-
+      app/lib/src/features/graph/graph_stack_card.dart, graph_stack_popover.dart, graph_canvas.dart
+    severity: medium (unverified)
+  - summary: >-
+      A pending action on a member folded into a collapsed stack should dim the stack card, but no test renders that.
+    evidence: |-
+      GraphCanvas.build maps pendingKeys through layout.placeOfKey; no canvas test renders a pending key (the pending look had no render test before this story either).
+    location: >-
+      app/lib/src/features/graph/graph_canvas.dart
+    severity: low
 ---
 
 <intent-contract>
@@ -137,6 +151,44 @@ deferred: []
   - `[low]` `[reject]` edge: record-graph.mjs may throw a TypeError instead of `fail()` — a dev tool that still exits non-zero.
   - `[false]` `[reject]` edge (claim): `ProjectStackStore` is never constructed in `app/lib` — same as the intent row: no production mount of `GraphView` exists until 10.12.
 
+### 2026-10-31 — Review pass (follow-up)
+- verdicts: 34 findings — high 0, medium 2, low 22, false 8, maybe-false 2 (intent-alignment 6, verification-gap 4, blind 12, edge-case 12)
+- findings:
+  - `[false]` `[reject]` intent: per-repository persistence is unmounted in `app/lib` — carried: no production mount of `GraphView` exists until 10.12.
+  - `[low]` `[reject]` intent: "changed oldest → default" is witnessed through the fake `stackRecordingFor`, not the engine — the intent itself says the view runs on recordings until 10.12 (`shortcut:` comment); the engine rule is 4.13's.
+  - `[false]` `[reject]` intent: the rise and scale run on `durSlide`, not `durMove` — both tokens are 260 ms in full motion (zs_motion.dart:30, :38); under reduce motion `durMove` is zero and the rise and scale are already × `motion` = 0 (graph_canvas.dart `_Entering`), so the observable result is the same.
+  - `[maybe-false]` `[defer]` intent: visual fidelity to the DS cards is checked only by widget tests (no Marionette check) — would be medium if a measurement deviates; settled by the catalogue check against the DS cards. Deferred (spec `deferred`, deferred-work.md).
+  - `[low]` `[reject]` intent: "Group stacks off: no brackets" is implied by `runCount == 0`, not asserted — `_brackets` iterates `runCount`, so no bracket can exist; a test would restate the loop bound.
+  - `[false]` `[reject]` intent: `_brackets` builds a bracket per expanded run without checking a member is laid out — an expanded run's members always have cells (only collapsed runs fold); viewport culling handles the rest.
+  - `[medium]` `[patch]` verification-gap: the collapse's immediate `_notify()` during an in-flight request is untested — added "a collapse while a request is in flight notifies at once: the inspector closes".
+  - `[low]` `[defer]` verification-gap: a pending folded member's stack card pending look is never rendered in a test — filed disposition `defer`; the pending look had no render test before. Deferred (spec `deferred`, deferred-work.md).
+  - `[low]` `[patch]` verification-gap: `ProjectStackStore.save`'s failed-write path is untested — added "a failed write keeps the toggles in memory and throws nothing" (blocker-file pattern of graph_controls_test).
+  - `[false]` `[reject]` verification-gap (other): `ProjectStackStore` is not constructed in `app/lib` — carried: no production mount until 10.12.
+  - `[false]` `[reject]` blind: the pulse fires on the still-folded stack when a go-to lands behind an in-flight request — a request queued while one is in flight discards the in-flight result (`!_queued`, graph_view_model.dart:788), so only the queued, keep-open layout lands and pulses.
+  - `[false]` `[reject]` blind: a toggle's fade and anchor are consumed by an in-flight reload's stale layout — same refutation: the in-flight result is dropped when a toggle queues a request.
+  - `[false]` `[reject]` blind: production never wires `ProjectStackStore` — carried: no production mount until 10.12; listed under residual risks.
+  - `[maybe-false]` `[defer]` blind: done without the Marionette check — same root as the intent visual-fidelity row; deferred there.
+  - `[low]` `[reject]` blind: stored toggles grow without limit — carried from the first pass.
+  - `[low]` `[reject]` blind: the stack card's VoiceOver label omits conflict, authors, dates — the label is the intent's exact wording (`N changes, <newest subject>, <range>`); the empty subject while content loads is transient.
+  - `[low]` `[reject]` blind: the ⚠ glyph can be clipped on narrow cards — the card width is the view's card width (min well above badge + two 5-char ids + icon); unreachable in everyday use and the fix adds a yield rule.
+  - `[low]` `[reject]` blind: collapsing is not reachable from the plain keyboard — the intent's keyboard item covers only Enter/Space expand; VoiceOver has the collapse action; a shortcut is a new key binding the intent does not name (question for Ralph in the run report).
+  - `[low]` `[reject]` blind: format-4 validation holes in `RecordedGraphLayout.fromSpec` — carried ("malformed `runs` data").
+  - `[low]` `[reject]` blind: the callout drifts when the list scrolls; `_pad + 1` — carried.
+  - `[low]` `[reject]` blind: `GraphStackData` has no `==`, every rebuild re-lays out; `_brackets` walks all expanded members — carried ("per-notification recompute"); the walk covers expanded runs only.
+  - `[low]` `[reject]` blind: missing tests (drag slop, hover reset on detach, hatch, save failure, popover `nowMs`) — the save failure shares the verification-gap row's root and is patched there; the rest are breadth with no named defect (hatch carried).
+  - `[low]` `[patch]` edge: `_fail` leaves `_enteringNext` / `_pulseOnLand` set, so a later unrelated layout fades in stale keys or pulses an old go-to target — `_fail` now clears both; test "a failed expand leaves no fade for a later layout" (fails without the fix).
+  - `[low]` `[reject]` edge: a toggle is saved before its request succeeds — the toggle is the user's explicit state; the next successful layout applies it.
+  - `[low]` `[reject]` edge: toggles never pruned — carried.
+  - `[low]` `[reject]` edge: pulse on a landed layout that keeps the run collapsed — carried ("the pulse can land on a still-folded key").
+  - `[low]` `[reject]` edge: only `FileSystemException` swallowed on save — carried (house pattern).
+  - `[medium]` `[patch]` edge: an expanded run taller than the view puts its collapse button at the bracket's centre, off-screen, while a visible member is hovered — the button is now centred on the strip's visible part (`strip.intersect(view)`, graph_canvas.dart `_bracketLayer`); test "a run taller than the view shows its collapse button on the visible part of the bracket" (fails without the fix).
+  - `[low]` `[reject]` edge: callout drift on scroll — carried.
+  - `[low]` `[reject]` edge: a relayout under an open popover keeps the callout's row index — the callout shows the member now in the row the pointer rests on; rare and harmless.
+  - `[low]` `[reject]` edge: runs with empty / out-of-range / duplicate members — carried (run validation).
+  - `[low]` `[reject]` edge: a null cell for a non-member node becomes row −1 — carried (same root).
+  - `[low]` `[reject]` edge: an unknown run state is read as collapsed — carried (same root).
+  - `[false]` `[reject]` edge: Enter/Space is swallowed while `onExpandStack` is null — `GraphCanvas` installs `_expandStack` on the controller while mounted (graph_canvas.dart:288) and `GraphView` always passes `model.expandStack`.
+
 ## Design Notes
 
 - **Folded members stay in the node index** (Claude's proposal) because the engine's format 4 does, router B already skips row −1 nodes (`router.dart:110-165`), and the popover needs each member's id, timestamp and content through the existing accessors. The stack node gets its own `stack:<oldest>` key so selection, z-order and hover never confuse it with a member; the anchor survives a toggle because the viewport resolves the anchor member's key to its stack's place.
@@ -161,6 +213,12 @@ deferred: []
 - Whole-app `flutter test` — 1299 passed, 5 failed, all in `test/features/projects/worker_project_repos_test.dart` (real-worker bookmark-tracking reads, a file and a feature this story does not touch; it runs against the cdylib the gate builds). Left for the loop's final gate.
 - No Rust, FFI or schema change: no cargo, codegen or parity checks apply.
 - Not done: the Widgetbook/Marionette visual check against the DS cards.
+
+**Verification notes (follow-up review, 2026-10-31, gate rule: targeted checks only):**
+- `flutter test test/features/graph/graph_stacks_test.dart` (app) — 31 passed; with the two code fixes reverted, the two new regression tests fail (checked), then pass again with them restored.
+- `flutter test test/features/graph test/widgetbook test/l10n` (app) — 802 passed.
+- `dart analyze --fatal-infos`, `dart format --set-exit-if-changed .` (app) — clean.
+- No Rust, FFI, schema or zanshin_settings change: no cargo, codegen, parity or zanshin_settings checks apply.
 
 ## Auto Run Result
 
@@ -188,3 +246,20 @@ Status: done
 **Follow-up review:** recommended `true` — four medium entries were patched in one pass (patched counts: high 0, medium 4, low 5); the unverified risk is the keyboard-focus and in-flight go-to paths, which the patches changed after the review read them.
 
 **Residual risks.** No production mount yet (10.12 wires `GraphView`, the real engine and `ProjectStackStore`); the catalogue's stack states are recorded only (deeper toggle combinations take the nearest state); a toggle's anchor is clamped at the scroll range's edges; keyboard collapse exists only through VoiceOver actions (no shortcut); the Marionette visual check was not run; 5 real-worker tests in `worker_project_repos_test.dart` failed in the whole-app run (untouched by this story; for the loop's gate).
+
+### Follow-up review pass (2026-10-31)
+
+Status: done
+
+**Summary.** A fresh four-layer review of the whole story diff (34 findings). Two fixes and three tests.
+- `app/lib/src/features/graph/graph_view_model.dart` — `_fail` clears `_enteringNext` and `_pulseOnLand`, so a failed expand or go-to no longer fades or pulses with a later layout.
+- `app/lib/src/features/graph/graph_canvas.dart` — the collapse button sits at the centre of the bracket strip's visible part, so a run taller than the view keeps it reachable.
+- `app/test/features/graph/graph_stacks_test.dart` — tests: collapse during an in-flight request notifies at once; a failed expand leaves no fade; `ProjectStackStore`'s failed write keeps the toggles; a tall run's button is on screen.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — the two deferred items mirrored.
+
+**Review.** high 0, medium 2, low 22, false 8, maybe-false 2. Patched: 2 medium (tall-run button, in-flight collapse notify test) and 2 low (`_fail` clearing, save-failure test). Deferred: the DS visual check not run (medium, unverified) and the pending-folded-member render test (low). Rejected with reasons in the triage log, many carried from the first pass.
+
+**Follow-up review:** `false` — a follow-up pass that patched no high (patched counts: high 0, medium 2, low 2).
+
+**Residual risks.** Unchanged from the first pass, plus: plain-keyboard collapse is still VoiceOver-only (open question for Ralph); the DS visual check is still not done.
+
