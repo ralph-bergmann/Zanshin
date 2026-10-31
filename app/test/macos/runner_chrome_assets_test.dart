@@ -107,13 +107,10 @@ void main() {
       final Map<String, Object?> layer = layers[i];
       expect(layer['image-name'], '$name.svg', reason: name);
       expect(layer['fill'], 'none', reason: name);
-      final String ds = File('$_dsAppIcon/Assets/$name.svg').readAsStringSync();
-      expect(ds, contains('stroke="#ffffff"'), reason: 'the DS layer $name is drawn white for its fill');
-      expect(
-        File('$_appIcon/Assets/$name.svg').readAsStringSync().trimRight(),
-        ds.replaceFirst('stroke="#ffffff"', 'stroke="${_hex(stroke)}"').trimRight(),
-        reason: '$name.svg is the DS layer with another stroke colour',
-      );
+      final String app = File('$_appIcon/Assets/$name.svg').readAsStringSync();
+      expect(app, contains('stroke="${_hex(stroke)}"'), reason: '$name is stroked in its gold');
+      // Since 2026-10-31 the DS bundle is byte-equal to the app's (DS assets/app-icon/README.txt).
+      expect(app, File('$_dsAppIcon/Assets/$name.svg').readAsStringSync(), reason: '$name.svg is the DS layer');
     }
     final List<String> files = Directory(
       '$_appIcon/Assets',
