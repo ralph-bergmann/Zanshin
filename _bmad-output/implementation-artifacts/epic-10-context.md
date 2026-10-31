@@ -15,7 +15,7 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Story 10.4: Graph edges, router B (done)
 - Story 10.5: Graph view model and repository wiring (done)
 - Story 10.6: Selection, hover focus, callout, @ locator, keyboard (done)
-- Story 10.7: Graph controls in the floating top bar
+- Story 10.7: Graph controls in the floating top bar (done)
 - Story 10.8: Inspector
 - Story 10.9: Action runner (done)
 - Story 10.10: Drag-and-drop on the graph
@@ -52,7 +52,7 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 ## Technical Decisions
 
 - **The view never lays out the graph.** It consumes an abstract `GraphLayout` via accessors (node key, column, row in 1/U pitch units, view facts, lazy content; edges child/parent/kind/shape; @; counts; op id) and only maps to pixels. `GraphMetrics` maps columns to x (no gutter, offX 0); a `VerticalLayout` (`UniformRows`, `PerNodeTops` for fixtures) maps nodes to y. Visible sets come from a y-sorted index and an interval index over edges.
-- Rows and columns are independent of card size, so a layout is requested once per operation, never on resize. Router B's pixel geometry (one line per parent→child pair, fan-out exits, tracks, gutter detours) comes from `zanshin_core`'s router per card size (Story 4.15).
+- Rows and columns are independent of card size, so a layout is requested once per operation, never on resize (Detailed cards and Card width issue no request; Layout and Group stacks one each). View preferences persist through `GraphPreferences` over the app settings (`AppSettings.graph`: Free, detailed, stacks on, width 240). Router B's pixel geometry (one line per parent→child pair, fan-out exits, tracks, gutter detours) comes from `zanshin_core`'s router per card size (Story 4.15).
 - Viewport: `TwoDimensionalScrollView` with a custom `RenderTwoDimensionalViewport`; the viewport paints background and edges; cards are lazy widgets whose body is a `RenderBox` with text slots (no nested Column/Row for designed visuals).
 - Ports: the view model declares `GraphSource` (layout) and `GraphActions` (runner); unfinished backends are wired as fakes until their story lands. 10.10 runs on a fake `drop_actions` port.
 - Scroll precedence: explicit reveal (bookmark pick, locate @, go-to) beats re-centre on @ after a revset/layout switch, which beats the anchor. Panels float over the graph; reveals centre in the area the chrome leaves free.
@@ -76,4 +76,5 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 
 - Backend: 10.12 needs 4.10 (topology, view facts, timestamps), 4.11 (layout), 4.12 (wire and lazy view), 4.13 (stacks), 4.14 (shared columns), 4.15 (router B). Search needs 9.25; inspector needs Epic 5's line-level diff and 9.15, 9.49, 9.50; drag-and-drop rows need 9.31, 9.16, 9.9, 9.19, 9.48; 10.14's full rows need 9.29.
 - Epic 11: 11.1 (tokens) and 11.2 (glass) precede floating surfaces; 11.11 (Zs controls, Widgetbook) precedes 10.7 and every later control user; 11.12 (window foundation) precedes 10.22; 11.13 (menu bar) follows 10.9 and 10.23 and binds the shortcuts of 10.6, 10.7, 10.9; 11.3 gives 10.23 its slot.
+- Hand-offs from 10.7's controls: 10.12 mounts them in the project window with the graph and maps 4.10's `all_count` to `GraphLayout.totalCount`; 10.19's gap legend and 10.21's search go before the count in the VIEW island (10.19 also hides at ≤ 1040 px); 10.20 owns the born card's grow/rise and its reduce-motion fade; 11.7 wires the popover's "Appearance, diffs and more" action; 11.13 binds ⌘1/⌘2, Detailed Cards, Group Stacks and ⌘N.
 - Within the epic: 10.7 after 10.2/10.3/10.5/10.6; 10.8 after 10.5/10.6; 10.15 after 10.8/10.9; 10.10 after 10.9/10.15; 10.14 after 10.5/10.6/10.7; 10.16 after 10.1/10.4–10.6; 10.17 after 10.1/10.3/10.5/10.6; 10.19 after 10.4–10.7; 10.20 after 10.1/10.3/10.4/10.5/10.17; 10.21 after 10.5/10.6/10.11; 10.22 after 10.21/11.12/11.11; 10.23 after 10.9; 10.24 after 10.8 + Epic 5; 10.25 after 10.8/10.9/9.15/9.49; 10.26 after 10.24/10.25/9.50; 10.27 after 10.10/10.26.
