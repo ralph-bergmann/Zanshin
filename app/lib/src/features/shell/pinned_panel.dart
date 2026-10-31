@@ -258,13 +258,17 @@ class _PinnedPanelState extends State<PinnedPanel> {
 /// The panel's entrance and exit (DS ui_kits/desktop/kit.css:82-83; decision 16.40): in, a fade over `--dur-panel`
 /// and a slide from −8 px × `--motion` on `--ease-glide`; out while [closing], a fade and a drift to −8 px ×
 /// `--motion` over `--dur-exit-lg` on `--ease-exit`. The glass fades through [ZsFade]; under reduce motion only the
-/// slide goes. It takes no pointer and no focus while it leaves.
+/// slide goes. It takes no pointer and no focus while it leaves. The inspector (Story 10.8) uses it with a [drift] of
+/// +12 px from the right.
 class ShellPanelMotion extends StatefulWidget {
   /// Animates [child] in, and out while [closing].
-  const ShellPanelMotion({required this.closing, required this.child, super.key});
+  const ShellPanelMotion({required this.closing, required this.child, this.drift = panelDrift, super.key});
 
   /// The panel's drift (DS ui_kits/desktop/kit.css:83, `translateX(calc(-8px * var(--motion)))`).
-  static const double drift = -8;
+  static const double panelDrift = -8;
+
+  /// The horizontal offset the island slides in from and drifts out to, before × `--motion`.
+  final double drift;
 
   /// Whether the panel is leaving.
   final bool closing;
@@ -333,7 +337,7 @@ class _ShellPanelMotionState extends State<ShellPanelMotion> with SingleTickerPr
             return ZsFade(
               opacity: shown.clamp(0, 1),
               child: Transform.translate(
-                offset: Offset(ShellPanelMotion.drift * motion.motion * (1 - shown), 0),
+                offset: Offset(widget.drift * motion.motion * (1 - shown), 0),
                 child: child,
               ),
             );

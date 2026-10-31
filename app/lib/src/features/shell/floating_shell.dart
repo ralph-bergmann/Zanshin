@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../l10n/strings.dart';
 import 'calm_controller.dart';
 import 'graph_insets.dart';
 import 'pinned_panel.dart';
@@ -52,10 +53,12 @@ import 'top_bar.dart';
 ///   `LayoutBuilder` directly in a bar slot throws.
 /// - A slot's menus, popovers, selects and sheets hold calm while open through `ShellScope.of(context).openSurface()`,
 ///   and its item drags through `startItemDrag()` (the shell sees neither on its own).
-/// - The inspector slot is exactly the inspector's effective width, so its resize edge (10.8) cannot live inside it:
-///   10.8 adds it here as a sibling, as `ShellPanels` does for the panel's edge — `ZsResizeEdge(side: left)` at the
-///   inspector's left edge, bound to `ShellLayout.inspectorMax`, `ShellController.inspectorWidth`,
-///   `commitInspectorWidth`, `edgeDragStarted`/`edgeDragEnded` and `itemDragging`.
+/// - The inspector slot is exactly the inspector's effective width, so its resize edge lives here as a sibling
+///   (Story 10.8), as `ShellPanels` does for the panel's edge — `ZsResizeEdge(side: left)` at the inspector's left
+///   edge, "Inspector width", bound to `ShellLayout.inspectorMax`, `ShellController.inspectorWidth`,
+///   `commitInspectorWidth`, `edgeDragStarted`/`edgeDragEnded` and `itemDragging`. The slot open means non-null: the
+///   inspector enters and leaves through [ShellPanelMotion] with a 12 px slide from the right; the shell keeps the
+///   last one mounted for its exit and removes the edge as the exit starts.
 class FloatingShell extends StatefulWidget {
   /// The shell over [controller]; every slot left null stays empty (an empty island in the bar).
   const FloatingShell({
@@ -127,6 +130,10 @@ class FloatingShell extends StatefulWidget {
   /// The drift of the inspector (DS ui_kits/desktop/kit.css:183, `translateX(calc(16px * …))`).
   static const inspectorDrift = Offset(16, 0);
 
+  /// The inspector's entrance slide and mirrored exit drift, before × `--motion` (epics.md Story 10.8, 2026-10-16
+  /// note; DS tokens/motion.css:31).
+  static const double inspectorSlide = 12;
+
   /// The bottom slot's distance from the window's bottom (DS ui_kits/desktop/kit.css:167, :169, `bottom:20px`).
   static const double bottomSlot = 20;
 
@@ -152,6 +159,9 @@ class _FloatingShellState extends State<FloatingShell> {
 
   ShellRailItem? _preview;
   Widget? _stale;
+
+  /// The last inspector, kept for its exit.
+  Widget? _inspector;
 
   @override
   void initState() {
@@ -264,6 +274,10 @@ class _FloatingShellState extends State<FloatingShell> {
     final Widget? graph = widget.graph;
     final Widget? barRow = widget.barRow;
     final Widget? inspector = widget.inspector;
+    if (inspector != null) {
+      _inspector = inspector;
+    }
+    final Widget? shownInspector = _inspector;
     final Widget? minimap = widget.minimap;
     final Widget? stale = widget.staleNotice;
     if (stale != null) {
@@ -294,7 +308,7 @@ class _FloatingShellState extends State<FloatingShell> {
           ),
         ),
       ),
-      if (inspector != null)
+      if (shownInspector != null)
         Positioned(
           key: const ValueKey<String>('shell-inspector'),
           right: metrics.chromeInset,
@@ -307,7 +321,48 @@ class _FloatingShellState extends State<FloatingShell> {
             child: _CalmGroup(
               aside: calm && !phase.inspectorPinned,
               drift: FloatingShell.inspectorDrift,
-              child: inspector,
+              child: ZsPresence(
+                open: inspector != null,
+                exit: motion.durExitLg,
+                builder: (context, closing) => ShellPanelMotion(
+                  closing: closing,
+                  drift: FloatingShell.inspectorSlide,
+                  child: shownInspector,
+                ),
+              ),
+            ),
+          ),
+        ),
+      // The edge goes as the exit starts; removing it mid-drag ends the drag (`ZsResizeEdge.dispose`).
+      if (inspector != null)
+        Positioned(
+          key: const ValueKey<String>('shell-inspector-edge'),
+          right: metrics.chromeInset + layout.inspectorWidth - (metrics.resizeHit - metrics.resizeHitOut),
+          top: metrics.chromeTop + metrics.radiusPanel,
+          bottom: metrics.chromeInset + metrics.radiusPanel,
+          width: metrics.resizeHit,
+          child: _CalmGroup(
+            aside: calm && !phase.inspectorPinned,
+            drift: FloatingShell.inspectorDrift,
+            // Not a material: it fades with the inspector itself, its line and focus ring included (`ZsFade`).
+            child: Builder(
+              builder: (context) => Opacity(
+                opacity: ZsFade.of(context),
+                child: ZsResizeEdge(
+                  side: ZsResizeSide.left,
+                  value: layout.inspectorWidth,
+                  min: metrics.inspectorWMin,
+                  max: layout.inspectorMax,
+                  defaultValue: metrics.inspectorW,
+                  label: context.l10n.inspectorWidth,
+                  identifier: 'inspector-edge',
+                  inert: controller.itemDragging,
+                  onChanged: (width) => controller.inspectorWidth = width,
+                  onChangeEnd: controller.commitInspectorWidth,
+                  onDragStart: controller.edgeDragStarted,
+                  onDragEnd: controller.edgeDragEnded,
+                ),
+              ),
             ),
           ),
         ),

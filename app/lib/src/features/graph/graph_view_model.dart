@@ -559,6 +559,11 @@ class GraphViewModel extends ChangeNotifier {
         if (born != null && selected != null && (parents.contains(selected) || insertAfter.contains(selected))) {
           _selected = born;
         }
+      case GraphRevert():
+        // The inspector is open exactly while something is selected: it follows the revert to the born change.
+        if (born != null && selected != null) {
+          _selected = born;
+        }
       case GraphAbandon():
         _selected = null;
       case GraphSquash():

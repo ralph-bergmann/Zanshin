@@ -119,6 +119,23 @@ void main() {
     await _settleTaps(tester);
   });
 
+  testWidgets('an edge removed mid-drag still ends the drag and commits the width (Story 10.8 I3)', (tester) async {
+    final log = _Log();
+    await tester.pumpWidget(_edge(log));
+    final TestGesture drag = await tester.startGesture(tester.getCenter(_strip), kind: PointerDeviceKind.mouse);
+    await drag.moveBy(const Offset(25, 0));
+    await tester.pump();
+    expect(log.events, <String>['start']);
+    await tester.pumpWidget(zsHost(const SizedBox(), overlay: true));
+    await tester.pump();
+    expect(log.events, <String>['start', 'end']);
+    expect(log.ends, <double>[325]);
+    await drag.up();
+    await tester.pump();
+    expect(log.events, <String>['start', 'end'], reason: 'the release after removal reports nothing');
+    await _settleTaps(tester);
+  });
+
   testWidgets('a drag back to its start, a drag held at a limit and a key against a limit commit nothing', (
     tester,
   ) async {

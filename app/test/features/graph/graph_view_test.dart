@@ -219,6 +219,60 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets('the inspector opening scrolls a covered selection clear; an uncovered one and a width drag stay (I4)', (
+    tester,
+  ) async {
+    const closed = GraphInsets(top: 60, left: 76, right: 158, bottom: 12, inspectorWidth: 0, minimapWidth: 134);
+    const open = GraphInsets(top: 60, left: 76, right: 484, bottom: 12, inspectorWidth: 460, minimapWidth: 0);
+    create(shell: ShellController());
+    host.insets = closed;
+    await pump(tester);
+    final Rect openArea = visible(const EdgeInsets.fromLTRB(76, 60, 484, 12));
+    Rect rectOf(String key) => tester.getRect(cardOf(key));
+    final Map<String, Offset> shown = onScreen(tester);
+    // Covered: wholly in the closed visible rect, but not inside the open one.
+    final String covered = shown.keys.firstWhere((key) {
+      final Rect card = rectOf(key);
+      return card.left >= 76 && card.right <= 800 - 158 && card.right > openArea.right;
+    });
+    model.select(covered);
+    await tester.pump();
+    host.insets = open;
+    await tester.pumpWidget(host.build());
+    await tester.pumpAndSettle();
+    // A covered card is centred in the rect the open inspector leaves (`GraphRevealAlignment.covered`).
+    expect(rectOf(covered).center.dx, moreOrLessEquals(openArea.center.dx, epsilon: 1));
+
+    // A width drag moves nothing.
+    final Map<String, Offset> before = onScreen(tester);
+    host.insets = const GraphInsets(top: 60, left: 76, right: 544, bottom: 12, inspectorWidth: 520, minimapWidth: 0);
+    await tester.pumpWidget(host.build());
+    await tester.pumpAndSettle();
+    for (final MapEntry<String, Offset>(:key, :value) in before.entries) {
+      expect(tester.getTopLeft(cardOf(key)), value, reason: key);
+    }
+
+    // Closed again, then opened over an uncovered selection: nothing moves.
+    host.insets = closed;
+    await tester.pumpWidget(host.build());
+    await tester.pumpAndSettle();
+    final Map<String, Offset> rest = onScreen(tester);
+    // Uncovered: the card itself (inside its overhang) lies wholly in the open visible rect.
+    final String inside = rest.keys.firstWhere((key) {
+      final Rect card = rectOf(key).deflate(graphCardOverhang);
+      return card.left >= openArea.left && card.right <= openArea.right && card.top >= openArea.top + 40;
+    });
+    model.select(inside);
+    await tester.pump();
+    host.insets = open;
+    await tester.pumpWidget(host.build());
+    await tester.pumpAndSettle();
+    for (final MapEntry<String, Offset>(:key, :value) in rest.entries) {
+      expect(tester.getTopLeft(cardOf(key)), value, reason: key);
+    }
+    await finish(tester);
+  });
+
   testWidgets('outside a shell the insets parameter applies', (tester) async {
     create();
     await tester.pumpWidget(wrap(GraphView(model: model, insets: const EdgeInsets.only(left: 30))));

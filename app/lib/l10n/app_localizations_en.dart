@@ -581,4 +581,110 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get newChangeTooltip => 'jj new — start a new change on top of @';
+
+  @override
+  String get inspectorLabel => 'Change details';
+
+  @override
+  String get inspectorWidth => 'Inspector width';
+
+  @override
+  String get inspectorClose => 'Close (Esc)';
+
+  @override
+  String get inspectorFlagWorkingCopy => '@ Working copy';
+
+  @override
+  String get inspectorFlagImmutable => 'Immutable';
+
+  @override
+  String get inspectorFlagEmpty => 'Empty';
+
+  @override
+  String get inspectorFlagMerge => 'Merge';
+
+  @override
+  String get inspectorFlagConflict => 'Conflict';
+
+  @override
+  String get inspectorDescribePlaceholder => 'Describe this change…';
+
+  @override
+  String get inspectorNoDescription => '(no description set)';
+
+  @override
+  String get inspectorDescribeHint => 'Edit description';
+
+  @override
+  String get inspectorSummary => 'Summary';
+
+  @override
+  String get inspectorDetails => 'Details (optional)';
+
+  @override
+  String get inspectorCancel => 'Cancel';
+
+  @override
+  String get inspectorSave => 'Save';
+
+  @override
+  String inspectorParents(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'parents',
+      one: 'parent',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get inspectorNewOnTop => 'New change on top';
+
+  @override
+  String get inspectorEdit => 'Edit';
+
+  @override
+  String get inspectorSquash => 'Squash into parent';
+
+  @override
+  String get inspectorSquashLater => 'Comes with the commit composer';
+
+  @override
+  String get inspectorAbandon => 'Abandon';
+
+  @override
+  String get inspectorBusy => 'Another action is running';
+
+  @override
+  String get inspectorChanges => 'Changes';
+
+  @override
+  String inspectorFileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files',
+      one: '1 file',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get inspectorEmptyWorkingCopy => 'No changes yet — whatever you edit in your editor lands here.';
+
+  @override
+  String get inspectorEmptyMerge => 'A merge — no changes of its own.';
+
+  @override
+  String get inspectorEmptyRoot => 'The root of all history.';
+
+  @override
+  String get inspectorEmpty => 'This change has no file changes.';
+
+  @override
+  String get inspectorBookmarkLocal => 'local';
+
+  @override
+  String get inspectorBookmarkRemote => 'remote';
 }

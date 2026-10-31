@@ -20,9 +20,10 @@ Future<void> _ms(WidgetTester tester, int ms) => tester.pump(Duration(millisecon
 Finder _button(String id) =>
     find.byWidgetPredicate((widget) => widget is ZsIconButton && widget.identifier == 'rail-$id');
 
-Finder get _edge => find.byType(ZsResizeEdge);
+Finder get _edge => find.byWidgetPredicate((widget) => widget is ZsResizeEdge && widget.identifier == 'panel-edge');
 
-Finder get _motion => find.byType(ShellPanelMotion);
+Finder get _motion =>
+    find.byWidgetPredicate((widget) => widget is ShellPanelMotion && widget.drift == ShellPanelMotion.panelDrift);
 
 double _opacity(WidgetTester tester) =>
     tester.widget<ZsFade>(find.descendant(of: _motion, matching: find.byType(ZsFade)).first).opacity;

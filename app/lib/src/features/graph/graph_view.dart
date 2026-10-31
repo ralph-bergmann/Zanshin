@@ -14,6 +14,7 @@ import '../shell/shell_scope.dart';
 import 'at_pill.dart';
 import 'graph_canvas.dart';
 import 'graph_card.dart';
+import 'graph_inspector.dart';
 import 'graph_layout.dart';
 import 'graph_view_model.dart';
 import 'stale_notice.dart';
@@ -70,6 +71,11 @@ class GraphView extends StatefulWidget {
   /// The shell's `atPill` slot for [model] (Story 10.6 item 6): the @ pill while @ lies outside the unobscured area,
   /// fading out when it shows again.
   static Widget atPill(GraphViewModel model) => GraphAtPill(model: model);
+
+  /// The shell's `inspector` slot for [inspector] (Story 10.8): the inspector while its graph has a selection, else
+  /// null (the shell plays its exit). The host rebuilds it when the graph's model notifies.
+  static Widget? inspector(InspectorViewModel inspector) =>
+      inspector.graph.selected == null ? null : GraphInspector(model: inspector);
 
   @override
   State<GraphView> createState() => _GraphViewState();
@@ -227,15 +233,13 @@ class _GraphViewState extends State<GraphView> {
 
   void _reportUserScroll(double amount) => ShellScope.maybeOf(context)?.reportUserScroll(amount);
 
-  EdgeInsets _insets(BuildContext context) {
-    final GraphInsets? shell = context.dependOnInheritedWidgetOfExactType<ShellScope>()?.layout.insets;
-    return shell == null ? widget.insets : EdgeInsets.fromLTRB(shell.left, shell.top, shell.right, shell.bottom);
-  }
-
   @override
   Widget build(BuildContext context) {
     final GraphViewModel model = widget.model;
-    final EdgeInsets insets = _insets(context);
+    final GraphInsets? shell = context.dependOnInheritedWidgetOfExactType<ShellScope>()?.layout.insets;
+    final EdgeInsets insets = shell == null
+        ? widget.insets
+        : EdgeInsets.fromLTRB(shell.left, shell.top, shell.right, shell.bottom);
     final GraphLayout? layout = model.layout;
     final Widget? caption = _caption(context, model);
     return Focus(
@@ -264,6 +268,7 @@ class _GraphViewState extends State<GraphView> {
                 content: model.content,
                 onUserScroll: _reportUserScroll,
                 onWorkingCopyDirection: model.setWorkingCopyDirection,
+                inspectorOpen: (shell?.inspectorWidth ?? 0) > 0,
               ),
             if (caption != null)
               Padding(

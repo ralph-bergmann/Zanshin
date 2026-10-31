@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_controls.dart';
+import 'package:zanshin/src/features/graph/graph_inspector.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport_render.dart';
 import 'package:zanshin/src/features/graph/stale_notice.dart';
+import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -196,6 +199,38 @@ void main() {
       expect(find.descendant(of: view, matching: find.byType(ZsIslandSeparator)), findsOneWidget);
       expect(find.descendant(of: view, matching: find.byType(GraphViewOptionsButton)), findsOneWidget);
       expect(find.descendant(of: find.byType(NewChangeButton), matching: find.text('New change')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'graph/floating-shell/controls opens with a mutable change selected: the inspector at top 60 with its header, '
+    'title, meta, action row and files (Story 10.8)',
+    (tester) async {
+      useCatalogueWindow(tester);
+      await tester.pumpWidget(catalogueAt('/?path=graph/floating-shell/controls&appearance={theme:night}'));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final Finder inspector = find.byType(GraphInspector);
+      expect(inspector, findsOneWidget);
+      final GraphViewModel model = tester.widget<GraphView>(find.byType(GraphView)).model;
+      expect(model.selected, isNotNull);
+      final Finder island = find.descendant(of: inspector, matching: find.byType(ZsIsland)).first;
+      final Rect shell = tester.getRect(find.byType(FloatingShell));
+      // The use case scales the window into the catalogue's frame: compare in the shell's own coordinates.
+      final double scale = shell.width / 1440;
+      expect((tester.getRect(island).top - shell.top) / scale, moreOrLessEquals(60, epsilon: 0.5));
+      Finder within(String identifier) => find.descendant(
+        of: inspector,
+        matching: find.byWidgetPredicate((w) => w is ZsButton && w.identifier == identifier),
+      );
+      expect(within('inspector-edit'), findsOneWidget);
+      expect(within('inspector-squash'), findsOneWidget);
+      expect(within('inspector-abandon'), findsOneWidget);
+      expect(find.descendant(of: inspector, matching: find.byKey(const ValueKey<String>('inspector-meta'))), findsOne);
+      expect(find.byWidgetPredicate((w) => w is ZsResizeEdge && w.identifier == 'inspector-edge'), findsOneWidget);
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );

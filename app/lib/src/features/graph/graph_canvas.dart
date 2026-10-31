@@ -74,8 +74,13 @@ class GraphCanvas extends StatefulWidget {
     this.content,
     this.onUserScroll,
     this.onWorkingCopyDirection,
+    this.inspectorOpen = false,
     super.key,
   });
+
+  /// Whether the inspector covers the plane's right side (Story 10.8): when it opens, a selection it covers scrolls
+  /// clear ([GraphRevealAlignment.covered], animated); a width change moves nothing.
+  final bool inspectorOpen;
 
   /// The layout shown.
   final GraphLayout layout;
@@ -218,6 +223,15 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     }
     if (!identical(oldWidget.layout, widget.layout)) {
       _updateFocus();
+    }
+    if (widget.inspectorOpen && !oldWidget.inspectorOpen) {
+      // After the frame that hands the viewport the inspector's inset.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final String? key = widget.cards.selected.value;
+        if (mounted && key != null) {
+          _viewport.reveal(key, alignment: GraphRevealAlignment.covered, animate: true);
+        }
+      });
     }
     // A reveal or an anchor jump corrects the offset without notifying its listeners.
     if (!identical(oldWidget.layout, widget.layout) ||

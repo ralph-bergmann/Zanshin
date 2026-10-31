@@ -334,6 +334,22 @@ void main() {
       expect(const GraphBookmarkCreate(<String>['-x']).command, 'jj bookmark create \'"-x"\'');
     });
 
+    test("describe paragraphs: the CLI's join_message_paragraphs and one -m per paragraph (Story 10.8)", () {
+      expect(joinMessageParagraphs(<String>['S', 'D']), 'S\n\nD\n');
+      expect(joinMessageParagraphs(<String>['S']), 'S\n');
+      expect(joinMessageParagraphs(<String>['S\n', 'D']), 'S\n\nD\n', reason: 'a paragraph ending in \\n keeps one');
+      expect(joinMessageParagraphs(<String>['']), '');
+      final describe = GraphDescribe.fromParagraphs('k', const <String>['S', 'two words']);
+      expect(describe.description, 'S\n\ntwo words\n');
+      expect(describe.command, "jj describe k -m S -m 'two words'");
+      // The exact text the parity oracle's `describe_gui_text` scenario
+      // (crates/zanshin-parity/tests/oracle/scenarios.rs) sends against `jj describe -m 'C described' -m Details`.
+      expect(
+        GraphDescribe.fromParagraphs('k', const <String>['C described', 'Details']).description,
+        'C described\n\nDetails\n',
+      );
+    });
+
     test('pending keys are the changes the action names', () {
       expect(const GraphEdit('a').pendingKeys, <String>{'a'});
       expect(const GraphNew(parents: <String>['a'], insertBefore: <String>['b']).pendingKeys, <String>{'a', 'b'});

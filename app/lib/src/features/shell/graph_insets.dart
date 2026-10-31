@@ -12,7 +12,8 @@ import 'package:flutter/widgets.dart';
 /// - [right] the inspector's effective width + 24 while the inspector is open, else the minimap column 158 while a
 ///   minimap shows, else 12;
 /// - [bottom] 12;
-/// - [inspectorWidth] the inspector's effective width, [minimapWidth] `--minimap-w` (134) while a minimap shows,
+/// - [inspectorWidth] the inspector's effective width while it is open, else 0 (Story 10.8: the canvas reveals a
+///   covered selection when it turns non-zero), [minimapWidth] `--minimap-w` (134) while a minimap shows,
 ///   else 0.
 ///
 /// Calm scrolling never changes them; a flyout changes none of them.

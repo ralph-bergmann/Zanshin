@@ -11,6 +11,7 @@ import 'package:zanshin/src/features/graph/at_pill.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_controls.dart';
+import 'package:zanshin/src/features/graph/graph_inspector.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_metrics.dart';
 import 'package:zanshin/src/features/graph/graph_peek.dart';
@@ -25,7 +26,18 @@ import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/stale_notice.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
-import 'package:zanshin_core/zanshin_core.dart' show MutationResult;
+import 'package:zanshin_core/zanshin_core.dart'
+    show
+        ActionOutcome,
+        ActionStatus,
+        Change,
+        ChangeActions,
+        ConflictState,
+        FileChange,
+        FileChangeKind,
+        MutationResult,
+        ShowEntry,
+        Signature;
 import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -42,7 +54,8 @@ import 'projects.dart' show demoCapsule;
 /// recordings, with the stale notice and the @ pill over it (Stories 10.5, 10.6). "Card / States" shows one commit card
 /// per state (Story 10.3); "Peek / Open" the commit callout and "@ pill / Directions" the pill (Story 10.6); "Stale
 /// notice / Variants" the notice with its action, busy, and with Copy (Story 10.5). "Floating shell / Controls" hosts
-/// the graph's top-bar controls in the floating shell (Story 10.7).
+/// the graph's top-bar controls in the floating shell (Story 10.7) and the inspector of the selection, a mutable change
+/// selected when it opens (Story 10.8).
 final graphFolder = WidgetbookFolder(
   name: 'Graph',
   children: <WidgetbookNode>[
@@ -410,7 +423,9 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
   );
   final _model = GraphViewModel();
   final _shell = ShellController();
+  final _descriptions = <String, String>{};
   GraphPreferences? _preferences;
+  InspectorViewModel? _inspector;
 
   @override
   void initState() {
@@ -425,12 +440,38 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
     }
     final int now = recordedNowMs('design-default');
     final preferences = GraphPreferences(store)
-      ..init(_model, _source, actions: _DemoActions(), clock: () => DateTime.fromMillisecondsSinceEpoch(now));
-    setState(() => _preferences = preferences);
+      ..init(
+        _model,
+        _source,
+        actions: _DemoActions(_descriptions),
+        clock: () => DateTime.fromMillisecondsSinceEpoch(now),
+      );
+    _model.addListener(_selectFirst);
+    setState(() {
+      _preferences = preferences;
+      _inspector = InspectorViewModel(graph: _model, details: _DemoDetails(_model, _descriptions));
+    });
+  }
+
+  /// Once the first layout landed, selects its first mutable change other than @, so the inspector shows.
+  void _selectFirst() {
+    final GraphLayout? layout = _model.layout;
+    if (layout == null) {
+      return;
+    }
+    _model.removeListener(_selectFirst);
+    for (var node = 0; node < layout.nodeCount; node++) {
+      if (node != layout.workingCopyIndex && node != layout.rootIndex && !layout.isImmutable(node)) {
+        _model.select(layout.keyOf(node));
+        return;
+      }
+    }
   }
 
   @override
   void dispose() {
+    _model.removeListener(_selectFirst);
+    _inspector?.dispose();
     _preferences?.dispose();
     _model.dispose();
     _shell.dispose();
@@ -441,38 +482,137 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
   @override
   Widget build(BuildContext context) {
     final GraphPreferences? preferences = _preferences;
-    if (preferences == null) {
+    final InspectorViewModel? inspector = _inspector;
+    if (preferences == null || inspector == null) {
       return const ZsCanvas();
     }
-    return FloatingShell(
-      controller: _shell,
-      canvas: const ZsCanvas(),
-      graph: ListenableBuilder(
-        listenable: preferences,
-        builder: (context, _) => GraphView(model: _model, options: preferences.options),
+    return ListenableBuilder(
+      listenable: _model,
+      builder: (context, _) => FloatingShell(
+        controller: _shell,
+        canvas: const ZsCanvas(),
+        graph: ListenableBuilder(
+          listenable: preferences,
+          builder: (context, _) => GraphView(model: _model, options: preferences.options),
+        ),
+        projectCapsule: demoCapsule(),
+        view: GraphViewControls(model: _model, preferences: preferences),
+        newChange: NewChangeButton(model: _model),
+        inspector: GraphView.inspector(inspector),
+        atPill: GraphView.atPill(_model),
       ),
-      projectCapsule: demoCapsule(),
-      view: GraphViewControls(model: _model, preferences: preferences),
-      newChange: NewChangeButton(model: _model),
-      atPill: GraphView.atPill(_model),
     );
   }
 }
 
-/// The demo's verbs: each writes one operation; `jj new` gives birth to a change the recording does not show.
+/// The demo's verbs: each writes one operation; `jj new` and `jj revert` give birth to a change the recording does
+/// not show; `jj describe` keeps its text in [descriptions] for [_DemoDetails].
 class _DemoActions implements GraphActions {
+  _DemoActions(this.descriptions);
+
+  /// The described changes' descriptions, by key.
+  final Map<String, String> descriptions;
+
   var _ops = 0;
 
   @override
   Future<String> headOpId() async => 'op$_ops';
 
   @override
-  Future<MutationResult> run(GraphAction action) async => MutationResult(
-    newOpId: 'op${++_ops}',
-    newChangeIds: <String>[if (action is GraphNew) 'born$_ops'],
-    abandonedChangeIds: const <String>[],
-    workingCopyChangeId: null,
-    finish: null,
+  Future<MutationResult> run(GraphAction action) async {
+    if (action is GraphDescribe) {
+      descriptions[action.id] = action.description;
+    }
+    return MutationResult(
+      newOpId: 'op${++_ops}',
+      newChangeIds: <String>[if (action is GraphNew || action is GraphRevert) 'born$_ops'],
+      abandonedChangeIds: const <String>[],
+      workingCopyChangeId: null,
+      finish: null,
+    );
+  }
+}
+
+/// The demo's inspector reads (Story 10.8), derived from the shown layout: the fake content's subject and author, a
+/// body on every third change, the layout's direct parents, and up to four files whose kinds cycle (a rename among
+/// them); a merge and the root change no files. Every verb preview is available.
+class _DemoDetails implements GraphDetails {
+  _DemoDetails(this._model, this._descriptions);
+
+  final GraphViewModel _model;
+  final Map<String, String> _descriptions;
+
+  static const _paths = <String>['lib/auth/session.dart', 'lib/ui/onboarding.dart', 'README.md', 'test/api_test.dart'];
+
+  static const _kinds = <FileChangeKind>[
+    FileChangeKind.modified,
+    FileChangeKind.added,
+    FileChangeKind.renamed,
+    FileChangeKind.removed,
+  ];
+
+  @override
+  Future<ShowEntry> show(String commitId) async {
+    final GraphLayout layout = _model.layout!;
+    final int node = List<int>.generate(layout.nodeCount, (i) => i).firstWhere((i) => layout.commitIdOf(i) == commitId);
+    final String key = layout.keyOf(node);
+    final GraphCommitContent content = fakeContent(commitId.hashCode, commitId);
+    final ({int start, int end}) edges = layout.parentEdges(node);
+    final bool merge = layout.parentCountOf(node) >= 2;
+    final int files = merge || node == layout.rootIndex ? 0 : commitId.hashCode % 5;
+    final author = Signature(
+      name: content.authorName,
+      email: content.authorEmail,
+      timestampMillis: layout.timestampOf(node) ?? 0,
+      tzOffsetMinutes: 0,
+    );
+    return ShowEntry(
+      change: Change(
+        id: layout.changeIdOf(node),
+        commitId: commitId,
+        parents: <String>[for (var e = edges.start; e < edges.end; e++) layout.keyOf(layout.parentOf(e))],
+        description:
+            _descriptions[key] ??
+            (content.subject.isEmpty
+                ? ''
+                : node % 3 == 0
+                ? '${content.subject}\n\nWhy: the catalogue shows a body under the title.\n'
+                : '${content.subject}\n'),
+        author: author,
+        committer: author,
+        isSigned: false,
+        conflict: content.conflict ? ConflictState.conflicted : ConflictState.clean,
+        conflictedPaths: const <String>[],
+        isAnonymous: content.subject.isEmpty,
+        divergent: false,
+      ),
+      fileChanges: <FileChange>[
+        for (var i = 0; i < files; i++)
+          FileChange(
+            path: _paths[i],
+            kind: _kinds[i],
+            fromPath: _kinds[i] == FileChangeKind.renamed ? 'lib/ui/welcome.dart' : null,
+          ),
+      ],
+    );
+  }
+
+  static const _available = ActionOutcome(
+    status: ActionStatus.available,
+    refusal: null,
+    combinedDescriptionNeeded: false,
+    allowBackwardsNeeded: false,
+  );
+
+  @override
+  Future<ChangeActions> changeActions(String changeId) async => const ChangeActions(
+    newOnto: _available,
+    newInsertAfter: _available,
+    newInsertBefore: _available,
+    edit: _available,
+    describe: _available,
+    squashIntoParent: _available,
+    abandon: _available,
   );
 }
 

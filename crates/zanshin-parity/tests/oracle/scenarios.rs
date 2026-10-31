@@ -850,10 +850,11 @@ pub fn scenarios() -> Vec<Scenario> {
         simple(
             "describe_gui_text",
             |repo, _, s| {
-                let result = repo.describe(s.change("@"), "C described");
+                // The inspector's Save: summary and details joined as the CLI's -m paragraphs.
+                let result = repo.describe(s.change("@"), "C described\n\nDetails\n");
                 zanshin_outcome(repo, &result)
             },
-            |_| args(&["describe", "-m", "C described"]),
+            |_| args(&["describe", "-m", "C described", "-m", "Details"]),
         ),
         simple(
             "describe_cli_text",

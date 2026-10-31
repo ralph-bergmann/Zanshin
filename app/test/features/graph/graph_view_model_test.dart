@@ -689,6 +689,17 @@ void main() {
       });
     });
 
+    test('revert with a selection (the inspector open) selects the born change (Story 10.8 I5)', () {
+      fakeAsync((async) {
+        source.respond = (_) => keysLayout(<String>['a', 'n', 'b', 'c'], at: 'a');
+        final GraphViewModel model = start(async, actions: actions)..select('b');
+        actions.born = <String>['n'];
+        run(async, model, const GraphRevert('b'));
+        expect(model.selected, 'n');
+        model.dispose();
+      });
+    });
+
     test('a refusal is published verbatim and reloads nothing; a stale refusal reloads into the stale state', () {
       fakeAsync((async) {
         final GraphViewModel model = start(async, actions: actions);

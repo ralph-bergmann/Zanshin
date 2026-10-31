@@ -973,6 +973,186 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'jj new — start a new change on top of @'**
   String get newChangeTooltip;
+
+  /// VoiceOver name of the inspector panel showing the selected change.
+  ///
+  /// In en, this message translates to:
+  /// **'Change details'**
+  String get inspectorLabel;
+
+  /// VoiceOver name of the inspector's resize edge.
+  ///
+  /// In en, this message translates to:
+  /// **'Inspector width'**
+  String get inspectorWidth;
+
+  /// The inspector's close button; Esc also closes it.
+  ///
+  /// In en, this message translates to:
+  /// **'Close (Esc)'**
+  String get inspectorClose;
+
+  /// Inspector header flag: the change is the working copy (@ is jj's symbol).
+  ///
+  /// In en, this message translates to:
+  /// **'@ Working copy'**
+  String get inspectorFlagWorkingCopy;
+
+  /// Inspector header flag (and its tooltip): the change is immutable.
+  ///
+  /// In en, this message translates to:
+  /// **'Immutable'**
+  String get inspectorFlagImmutable;
+
+  /// Inspector header flag: the change changes no files.
+  ///
+  /// In en, this message translates to:
+  /// **'Empty'**
+  String get inspectorFlagEmpty;
+
+  /// Inspector header flag: the change has two or more parents.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge'**
+  String get inspectorFlagMerge;
+
+  /// Inspector header flag: the change has a conflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Conflict'**
+  String get inspectorFlagConflict;
+
+  /// The title of an undescribed mutable change; a click opens the describe form.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe this change…'**
+  String get inspectorDescribePlaceholder;
+
+  /// The title of an undescribed immutable change.
+  ///
+  /// In en, this message translates to:
+  /// **'(no description set)'**
+  String get inspectorNoDescription;
+
+  /// VoiceOver hint of the inspector's title on a mutable change: activating it opens the describe form.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit description'**
+  String get inspectorDescribeHint;
+
+  /// Describe form: the description's first line.
+  ///
+  /// In en, this message translates to:
+  /// **'Summary'**
+  String get inspectorSummary;
+
+  /// Describe form: the rest of the description.
+  ///
+  /// In en, this message translates to:
+  /// **'Details (optional)'**
+  String get inspectorDetails;
+
+  /// Describe form: closes the form, keeping the draft.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get inspectorCancel;
+
+  /// Describe form: runs jj describe with the summary and details.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get inspectorSave;
+
+  /// Inspector meta line: the word before the parents' short ids.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{parent} other{parents}}'**
+  String inspectorParents(int count);
+
+  /// Inspector action on an immutable change: jj new on it.
+  ///
+  /// In en, this message translates to:
+  /// **'New change on top'**
+  String get inspectorNewOnTop;
+
+  /// Inspector action: jj edit, moving the working copy to the change.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get inspectorEdit;
+
+  /// Inspector action: jj squash -r, folding the change into its parent.
+  ///
+  /// In en, this message translates to:
+  /// **'Squash into parent'**
+  String get inspectorSquash;
+
+  /// Why Squash into parent is disabled when jj would run it: it ships with a later feature.
+  ///
+  /// In en, this message translates to:
+  /// **'Comes with the commit composer'**
+  String get inspectorSquashLater;
+
+  /// Inspector action: jj abandon, with no confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Abandon'**
+  String get inspectorAbandon;
+
+  /// Why the inspector's actions are disabled while another jj action runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Another action is running'**
+  String get inspectorBusy;
+
+  /// Heading of the inspector's file list.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes'**
+  String get inspectorChanges;
+
+  /// The number of changed files beside the Changes heading.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file} other{{count} files}}'**
+  String inspectorFileCount(int count);
+
+  /// File list of an empty working copy.
+  ///
+  /// In en, this message translates to:
+  /// **'No changes yet — whatever you edit in your editor lands here.'**
+  String get inspectorEmptyWorkingCopy;
+
+  /// File list of a merge that changes nothing itself.
+  ///
+  /// In en, this message translates to:
+  /// **'A merge — no changes of its own.'**
+  String get inspectorEmptyMerge;
+
+  /// File list of the root commit.
+  ///
+  /// In en, this message translates to:
+  /// **'The root of all history.'**
+  String get inspectorEmptyRoot;
+
+  /// File list of any other empty change.
+  ///
+  /// In en, this message translates to:
+  /// **'This change has no file changes.'**
+  String get inspectorEmpty;
+
+  /// Bookmark chip state: the local bookmark is not in sync with a remote.
+  ///
+  /// In en, this message translates to:
+  /// **'local'**
+  String get inspectorBookmarkLocal;
+
+  /// Bookmark chip state: a remote-tracking bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'remote'**
+  String get inspectorBookmarkRemote;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

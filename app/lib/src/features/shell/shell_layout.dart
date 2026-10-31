@@ -102,7 +102,7 @@ class ShellLayout {
         left: left,
         right: right,
         bottom: metrics.chromeInset,
-        inspectorWidth: inspector,
+        inspectorWidth: inspectorOpen ? inspector : 0,
         minimapWidth: minimapShown ? metrics.minimapW : 0,
       ),
       panelMax: math.max(metrics.panelWMin, math.min(metrics.panelWMax, w - railSide - right - graph)),

@@ -159,10 +159,13 @@ final class GraphEdit extends GraphAction {
   Set<String> get pendingKeys => <String>{id};
 }
 
-/// `jj describe <id> -m <description>`.
+/// `jj describe <id> -m <paragraph>…`.
 final class GraphDescribe extends GraphAction {
-  /// Sets [id]'s description to [description].
-  const GraphDescribe(this.id, this.description);
+  /// Sets [id]'s description to [description], shown as one `-m` unless [paragraphs] says how it was joined.
+  const GraphDescribe(this.id, this.description, {this.paragraphs});
+
+  /// The CLI's `-m` [paragraphs], joined as `jj describe -m … -m …` joins them ([joinMessageParagraphs]).
+  GraphDescribe.fromParagraphs(this.id, List<String> this.paragraphs) : description = joinMessageParagraphs(paragraphs);
 
   /// The change to describe.
   final String id;
@@ -170,8 +173,14 @@ final class GraphDescribe extends GraphAction {
   /// The new description.
   final String description;
 
+  /// The `-m` paragraphs [description] was joined from; null shows [description] as one.
+  final List<String>? paragraphs;
+
   @override
-  String get command => _jj(<String>['describe', id, ..._message(description)]); // l10n-ignore: jj command
+  String get command => _jj(<String>[
+    'describe', id, // l10n-ignore: jj command
+    for (final String paragraph in paragraphs ?? <String>[description]) ..._message(paragraph),
+  ]);
 
   @override
   Set<String> get pendingKeys => <String>{id};
@@ -415,6 +424,11 @@ final class GraphRedo extends GraphAction {
   Set<String> get pendingKeys => const <String>{};
 }
 
+/// The description `-m` [paragraphs] make (`join_message_paragraphs`, `../jj` v0.46.0 cli/src/description_util.rs:421):
+/// each non-empty paragraph ends with a newline, and the paragraphs are joined by one more.
+String joinMessageParagraphs(List<String> paragraphs) =>
+    paragraphs.map((p) => p.isEmpty || p.endsWith('\n') ? p : '$p\n').join('\n');
+
 /// `jj` plus [args], each POSIX shell-quoted.
 String _jj(List<String> args) => <String>['jj', ...args.map(_shellQuote)].join(' '); // l10n-ignore: jj command
 
@@ -613,6 +627,29 @@ class RepoGraphActions implements GraphActions {
 
   @override
   Future<String> headOpId() async => (await _repo.handle.opLog(limit: 1)).first.id;
+}
+
+/// What the inspector reads (Story 10.8). A failed call throws [ZanshinFfiException].
+abstract interface class GraphDetails {
+  /// `jj show <commitId>`: the change's full metadata and its file changes (it snapshots first, as the CLI does).
+  Future<ShowEntry> show(String commitId);
+
+  /// The previews of the verbs on [changeId] (`RepoHandle.changeActions`): what each would do, or why it would refuse.
+  Future<ChangeActions> changeActions(String changeId);
+}
+
+/// [GraphDetails] over an open [ProjectRepo]'s handle.
+class RepoGraphDetails implements GraphDetails {
+  /// The details of [_repo].
+  RepoGraphDetails(this._repo);
+
+  final ProjectRepo _repo;
+
+  @override
+  Future<ShowEntry> show(String commitId) async => (await _repo.handle.show(revset: commitId)).single;
+
+  @override
+  Future<ChangeActions> changeActions(String changeId) => _repo.handle.changeActions(changeId);
 }
 
 /// [GraphSource] over an open [ProjectRepo] (`ProjectSession.repo`): its handle's events, `logDefaults` and

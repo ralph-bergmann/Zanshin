@@ -136,12 +136,4 @@ pub const LEDGER: &[Expected] = &[
         zanshin: "0",
         cli: "7",
     },
-    Expected {
-        scenario: "describe_gui_text",
-        aspect: "descriptions",
-        reason: "Repo::describe stores the caller's text verbatim; the CLI's -m ends it with a newline",
-        reference: "Story 10.15 design question (c)",
-        zanshin: r#"A="A\n"  B="B\n"  C described="C described""#,
-        cli: r#"A="A\n"  B="B\n"  C described="C described\n""#,
-    },
 ];

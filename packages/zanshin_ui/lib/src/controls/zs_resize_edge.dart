@@ -172,6 +172,17 @@ class _ZsResizeEdgeState extends State<ZsResizeEdge> with SingleTickerProviderSt
     if (_portal.isShowing) {
       _portal.hide();
     }
+    // A host that removes the edge mid-drag (the inspector closing) still gets the drag's end; deferred, because the
+    // host's callbacks may set state, which the tree being torn down forbids.
+    if (_dragging) {
+      final VoidCallback? onDragEnd = widget.onDragEnd;
+      final ValueChanged<double>? onChangeEnd = _value != _dragValue ? widget.onChangeEnd : null;
+      final double value = _value;
+      scheduleMicrotask(() {
+        onDragEnd?.call();
+        onChangeEnd?.call(value);
+      });
+    }
     super.dispose();
   }
 

@@ -129,6 +129,9 @@ Future<void> _wheel(WidgetTester tester, double dy, {Offset at = const Offset(70
   await tester.pump();
 }
 
+Finder _edge(String identifier) =>
+    find.byWidgetPredicate((widget) => widget is ZsResizeEdge && widget.identifier == identifier);
+
 double _fade(WidgetTester tester, Key key) => ZsFade.of(tester.element(find.byKey(key, skipOffstage: false)));
 
 bool _ignored(WidgetTester tester, Key key) => tester
@@ -286,7 +289,7 @@ void main() {
       shell.activate('bookmarks');
       await tester.pumpAndSettle();
       final TestGesture drag = await tester.startGesture(
-        tester.getCenter(find.byType(ZsResizeEdge)),
+        tester.getCenter(_edge('panel-edge')),
         kind: PointerDeviceKind.mouse,
       );
       await drag.moveBy(const Offset(10, 0));
@@ -305,11 +308,15 @@ void main() {
 
       final CalmHold item = shell.startItemDrag();
       await tester.pump();
-      expect(tester.widget<ZsResizeEdge>(find.byType(ZsResizeEdge)).inert, isTrue, reason: 'edges are inert');
+      for (final ZsResizeEdge edge in tester.widgetList<ZsResizeEdge>(find.byType(ZsResizeEdge))) {
+        expect(edge.inert, isTrue, reason: '${edge.identifier} is inert');
+      }
       await expectStill('an item drag');
       item.release();
       await tester.pump();
-      expect(tester.widget<ZsResizeEdge>(find.byType(ZsResizeEdge)).inert, isFalse);
+      for (final ZsResizeEdge edge in tester.widgetList<ZsResizeEdge>(find.byType(ZsResizeEdge))) {
+        expect(edge.inert, isFalse);
+      }
 
       await _wheel(tester, 31);
       await tester.pump();
@@ -347,6 +354,7 @@ void main() {
         backgroundCursorColor: const Color(0xFF000000),
       );
     await _pump(tester, rig);
+    await _ms(tester, 250);
     focus.requestFocus();
     // The caret blinks while the field has focus, so the test steps the clock instead of settling.
     await tester.pump();
@@ -406,6 +414,7 @@ void main() {
         ),
       );
     await _pump(tester, rig);
+    await _ms(tester, 250);
     focus.requestFocus();
     await tester.pump();
     final Offset rest = tester.getTopLeft(find.byKey(_inspector));
@@ -441,13 +450,12 @@ void main() {
     rig.controller.activate('bookmarks');
     await tester.pumpAndSettle();
     final Element inner = tester.element(
-      find.descendant(of: find.byType(ZsResizeEdge), matching: find.byType(MouseRegion)).last,
+      find.descendant(of: _edge('panel-edge'), matching: find.byType(MouseRegion)).last,
     );
     Focus.of(inner).requestFocus();
     await tester.pump();
-    double edgeOpacity() => tester
-        .widget<Opacity>(find.ancestor(of: find.byType(ZsResizeEdge), matching: find.byType(Opacity)).first)
-        .opacity;
+    double edgeOpacity() =>
+        tester.widget<Opacity>(find.ancestor(of: _edge('panel-edge'), matching: find.byType(Opacity)).first).opacity;
     expect(edgeOpacity(), 1);
     await _wheel(tester, 40);
     await _ms(tester, 200);
@@ -616,6 +624,165 @@ void main() {
     await tester.pumpAndSettle();
     expect(rig.controller.flyoutOpen, isTrue);
     expect(tester.takeException(), isNull);
+  });
+
+  group('the inspector (Story 10.8)', () {
+    Rect island(WidgetTester tester) =>
+        tester.getRect(find.ancestor(of: find.byKey(_inspector), matching: find.byType(ZsIsland)));
+
+    testWidgets('sits at top 60, right 12, 12 above the bottom, with its edge on its left side', (tester) async {
+      await _pump(tester, _Rig(minimap: false));
+      await tester.pumpAndSettle();
+      expect(island(tester), const Rect.fromLTRB(1440 - 12 - 460, 60, 1440 - 12, 900 - 12));
+      final Rect edge = tester.getRect(_edge('inspector-edge'));
+      expect(edge.left, 1440 - 12 - 460 - 7, reason: '7 in the gap, 3 over the island');
+      expect(edge.width, 10);
+      expect(tester.widget<ZsResizeEdge>(_edge('inspector-edge')).side, ZsResizeSide.left);
+    });
+
+    testWidgets('a drag on its edge sets the width between 380 and 720, commits on release; double-click is 460', (
+      tester,
+    ) async {
+      final _Rig rig = await _pump(tester, _Rig(minimap: false));
+      final commits = <double>[];
+      rig.controller.onInspectorWidthCommitted = commits.add;
+      await tester.pumpAndSettle();
+      final TestGesture drag = await tester.startGesture(
+        tester.getCenter(_edge('inspector-edge')),
+        kind: PointerDeviceKind.mouse,
+      );
+      await drag.moveBy(const Offset(-60, 0));
+      await tester.pump();
+      expect(rig.controller.inspectorWidth, 520, reason: 'dragging left widens it');
+      expect(island(tester).width, 520);
+      await drag.moveBy(const Offset(-900, 0));
+      await tester.pump();
+      expect(rig.controller.inspectorWidth, 720);
+      await drag.moveBy(const Offset(2000, 0));
+      await tester.pump();
+      expect(rig.controller.inspectorWidth, 380);
+      expect(commits, isEmpty);
+      await drag.up();
+      await tester.pump();
+      expect(commits, <double>[380]);
+      await tester.pump(const Duration(milliseconds: 500));
+
+      await tester.tap(_edge('inspector-edge'), kind: PointerDeviceKind.mouse);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(_edge('inspector-edge'), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(rig.controller.inspectorWidth, 460);
+      expect(commits.last, 460);
+    });
+
+    testWidgets('a narrow window stops the drag where 320 px of graph stay', (tester) async {
+      final _Rig rig = await _pump(tester, _Rig(minimap: false));
+      useShellWindow(tester, const Size(1000, 900));
+      await tester.pumpAndSettle();
+      expect(tester.widget<ZsResizeEdge>(_edge('inspector-edge')).max, 1000 - 76 - 24 - 320);
+      final TestGesture drag = await tester.startGesture(
+        tester.getCenter(_edge('inspector-edge')),
+        kind: PointerDeviceKind.mouse,
+      );
+      await drag.moveBy(const Offset(-400, 0));
+      await tester.pump();
+      expect(rig.controller.inspectorWidth, 580);
+      await drag.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('keys on the edge: ← 10 wider, ⇧← 50, Home 380, End 720, ↩ 460', (tester) async {
+      final _Rig rig = await _pump(tester, _Rig(minimap: false));
+      await tester.pumpAndSettle();
+      final Element inner = tester.element(
+        find.descendant(of: _edge('inspector-edge'), matching: find.byType(MouseRegion)).last,
+      );
+      Focus.of(inner).requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      expect(rig.controller.inspectorWidth, 470);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+      expect(rig.controller.inspectorWidth, 520);
+      await tester.sendKeyEvent(LogicalKeyboardKey.home);
+      await tester.pump();
+      expect(rig.controller.inspectorWidth, 380);
+      await tester.sendKeyEvent(LogicalKeyboardKey.end);
+      await tester.pump();
+      expect(rig.controller.inspectorWidth, 720);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(rig.controller.inspectorWidth, 460);
+    });
+
+    testWidgets('closing during an edge drag ends the drag: no edge dragging, calm released (I3)', (tester) async {
+      final _Rig rig = await _pump(tester, _Rig(minimap: false));
+      await tester.pumpAndSettle();
+      final TestGesture drag = await tester.startGesture(
+        tester.getCenter(_edge('inspector-edge')),
+        kind: PointerDeviceKind.mouse,
+      );
+      await drag.moveBy(const Offset(-20, 0));
+      await tester.pump();
+      expect(rig.controller.edgeDragging, isTrue);
+      expect(rig.controller.calm.held, isTrue);
+      rig.inspector = false;
+      await tester.pumpWidget(rig.shell());
+      await tester.pump();
+      expect(_edge('inspector-edge'), findsNothing, reason: 'the edge goes as the exit starts');
+      expect(rig.controller.edgeDragging, isFalse);
+      expect(rig.controller.calm.held, isFalse);
+      await drag.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('enters with a fade and a 12 px slide over 200 ms; the exit keeps it until the fade is done', (
+      tester,
+    ) async {
+      final rig = _Rig(minimap: false)..inspector = false;
+      await _pump(tester, rig);
+      rig.inspector = true;
+      await tester.pumpWidget(rig.shell());
+      const double rest = 1440 - 12 - 460;
+      expect(_fade(tester, _inspector), 0);
+      expect(island(tester).left, rest + 12);
+      await _ms(tester, 100);
+      expect(_fade(tester, _inspector), allOf(greaterThan(0), lessThan(1)));
+      await _ms(tester, 110);
+      expect(_fade(tester, _inspector), 1);
+      expect(island(tester).left, rest);
+
+      rig.inspector = false;
+      await tester.pumpWidget(rig.shell());
+      await _ms(tester, 90);
+      expect(find.byKey(_inspector), findsOneWidget, reason: 'kept for the exit');
+      expect(_fade(tester, _inspector), allOf(greaterThan(0), lessThan(1)));
+      expect(_ignored(tester, _inspector), isTrue);
+      await _ms(tester, 100);
+      await tester.pump();
+      expect(find.byKey(_inspector), findsNothing);
+    });
+
+    testWidgets('under reduce motion it fades in and out without a slide', (tester) async {
+      final rig = _Rig(minimap: false)..inspector = false;
+      const appearance = ZsAppearance(reduceMotion: true);
+      await _pump(tester, rig, appearance: appearance);
+      rig.inspector = true;
+      await tester.pumpWidget(rig.shell(appearance: appearance));
+      const double rest = 1440 - 12 - 460;
+      await _ms(tester, 100);
+      expect(_fade(tester, _inspector), allOf(greaterThan(0), lessThan(1)));
+      expect(island(tester).left, rest);
+      await tester.pumpAndSettle();
+      rig.inspector = false;
+      await tester.pumpWidget(rig.shell(appearance: appearance));
+      await _ms(tester, 90);
+      expect(island(tester).left, rest);
+      await tester.pumpAndSettle();
+    });
   });
 
   testWidgets('ShellScope.maybeOf finds the controller in a slot and nothing outside a shell', (tester) async {

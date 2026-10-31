@@ -9,8 +9,8 @@ library;
 export 'src/environment/login_shell.dart' show LoginShellEnvironmentResult, adoptLoginShellEnvironment;
 export 'src/ffi/bookmarks.dart'
     show Bookmark, BookmarkKind, BookmarkSortKey, LocalBookmark, RefDistance, RemoteBookmark;
-export 'src/ffi/change.dart' show ConflictState;
-export 'src/ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
+export 'src/ffi/change.dart' show Change, ConflictState, Signature;
+export 'src/ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef, ShowEntry;
 export 'src/ffi/config.dart'
     show
         ConfigEntry,
@@ -105,7 +105,7 @@ export 'src/ffi/revset_search.dart'
     show FoundChange, FoundChanges, RevsetCount, RevsetCounts, RevsetErrorDetail, RevsetErrorKind, RevsetSpan;
 export 'src/ffi/select_tree.dart' show FileSelection, HunkKey, SelectTreeVerb, SelectedTree, SourceTree, TreeSelection;
 export 'src/ffi/squash_split.dart' show SplitResult, SquashPlan;
-export 'src/ffi/status.dart' show WorkingCopyStatus;
+export 'src/ffi/status.dart' show FileChange, FileChangeKind, WorkingCopyStatus;
 export 'src/ffi/warning.dart' show WarnedList, ZanshinWarning, ZanshinWarningCode;
 export 'src/ffi/workspace.dart'
     show

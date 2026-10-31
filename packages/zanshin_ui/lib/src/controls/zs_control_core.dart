@@ -281,7 +281,8 @@ class _ZsControlCoreState extends State<ZsControlCore> {
   }
 
   void _pointerUp(PointerEvent event) {
-    if (!_keyDown) {
+    // The pointer's hit path outlives a control removed mid-press (the inspector's edge closing during a drag).
+    if (mounted && !_keyDown) {
       _states.update(WidgetState.pressed, false);
     }
   }
