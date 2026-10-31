@@ -2330,3 +2330,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The peek shows an empty subject and author while its content loads, and still lacks the full description and commit id.** Low.
   - `GraphCanvas._peekLayer` builds `GraphPeek` from `GraphCardData.of(..., content:)` (app/lib/src/features/graph/graph_canvas.dart); `GraphCommitContent` has no description field.
   - **Follow-up:** 10.12 adds the description and commit id from 4.10's object half and a loading look for the peek.
+
+## Surfaced in Story 5.6 (bmad-build-auto, 2026-10-31)
+
+- **A renamed or copied file from `Repo::diff` cannot be selected through `select_tree` as one entry: the diff shows it as its target path (no sections), while `select_tree` sees a removed source path plus an added target path.** Medium.
+  - `Repo::diff` uses copy records like `jj diff`, folding the source's removal into the target entry; `select_tree` mirrors the builtin diff editor, which uses no copy records (`builtin.rs:567` @ v0.46.0). Choosing the target "whole" leaves the source path unselected (`crates/zanshin-jj/src/hunks.rs` `DiffReader::file` empties a copy's sections).
+  - **Follow-up:** Story 10.26 (hunk selection) also selects the source path's removal when a renamed file is chosen whole, or offers renamed files whole-only with that pairing.
