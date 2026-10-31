@@ -60,8 +60,17 @@ class GraphPreferences extends ChangeNotifier {
     GraphActions? actions,
     DateTime Function()? clock,
     GraphStackStore? stackStore,
+    String? revset,
   }) {
-    model.init(source, actions: actions, clock: clock, mode: layout, stacks: groupStacks, stackStore: stackStore);
+    model.init(
+      source,
+      actions: actions,
+      clock: clock,
+      mode: layout,
+      stacks: groupStacks,
+      stackStore: stackStore,
+      revset: revset,
+    );
     this.model = model;
   }
 

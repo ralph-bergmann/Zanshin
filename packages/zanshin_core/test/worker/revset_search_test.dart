@@ -19,10 +19,13 @@
 import 'dart:io';
 
 import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/change.dart';
+import 'package:zanshin_core/src/ffi/commit_views.dart';
 import 'package:zanshin_core/src/ffi/graph.dart';
 import 'package:zanshin_core/src/ffi/precondition.dart';
 import 'package:zanshin_core/src/ffi/revset_search.dart';
 import 'package:zanshin_core/src/ffi/warning.dart';
+import 'package:zanshin_core/src/revset_text.dart';
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
@@ -217,6 +220,47 @@ void main() {
         ),
       );
       await handle.close();
+    });
+
+    test('every_builder_string_counts_without_error_and_selects_its_commit', () async {
+      final RepoHandle handle = await medium();
+      final GraphTopologyView view = await handle.graphTopology(
+        revset: 'all()',
+        anchors: const [],
+        withTimestamps: false,
+      );
+      final ShowEntry entry = (await handle.show(revset: 'latest(~empty() & ~merges() & ~root())')).single;
+      final Change change = entry.change;
+      final String name = change.author.name;
+      final String subject = change.description.split('\n').first;
+      final String path = entry.fileChanges.first.path;
+      final int slash = path.lastIndexOf('/');
+      final String folder = slash < 0 ? path : path.substring(0, slash);
+      final String extension = path.contains('.') ? path.substring(path.lastIndexOf('.')) : path;
+      final exprs = <String>[
+        authorRevset(name),
+        authorRevset(name.toUpperCase(), caseInsensitive: true),
+        authorRevset(name.substring(1), pattern: RevsetTextPattern.substring),
+        authorRevset(name.toLowerCase(), pattern: RevsetTextPattern.substring, caseInsensitive: true),
+        authorRevset('${name.substring(0, 1)}*', pattern: RevsetTextPattern.glob),
+        authorRevset('^${RegExp.escape(name)}\$', pattern: RevsetTextPattern.regex),
+        descriptionRevset(subject.substring(0, subject.length ~/ 2)),
+        descriptionRevset(subject.toUpperCase(), caseInsensitive: true),
+        descriptionRevset(change.description, pattern: RevsetTextPattern.exact),
+        filesRevset(folder),
+        filesRevset('$folder/'),
+        filesRevset(path, pattern: RevsetPathPattern.file),
+        filesRevset('**/*$extension', pattern: RevsetPathPattern.glob),
+      ];
+      final RevsetCounts counts = await handle.revsetCounts(view.operationId, [
+        for (final String expr in exprs) '($expr) & ${change.commitId}',
+        mineRevset(),
+      ], cap: 10000);
+      for (var i = 0; i < exprs.length; i++) {
+        expect(counts[i].error, isNull, reason: exprs[i]);
+        expect(counts[i].n, 1, reason: exprs[i]);
+      }
+      expect(counts.last.error, isNull);
     });
 
     test('the_calling_side_guards_fire_before_the_worker', () async {

@@ -64,6 +64,12 @@ abstract class ProjectEntry with _$ProjectEntry {
 
     /// The graph's stacks the user collapsed, by their run's oldest member key (Story 10.17).
     @Default(<String>[]) List<String> collapsedStacks,
+
+    /// What the graph shows, as the search's JSON text (Story 10.21), or null for the default search.
+    String? graphView,
+
+    /// The graph search's recent go-tos and filters, newest first, each as its JSON text (Story 10.21).
+    @Default(<String>[]) List<String> recentSearches,
   }) = _ProjectEntry;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

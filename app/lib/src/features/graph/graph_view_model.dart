@@ -145,7 +145,6 @@ class GraphViewModel extends ChangeNotifier {
   var _disposed = false;
 
   LogDefaults? _defaults;
-  var _rereadDefaults = false;
   String? _revset;
   GraphMode _mode = GraphMode.free;
   GraphLaneOrder _order = GraphLaneOrder.compact;
@@ -188,8 +187,8 @@ class GraphViewModel extends ChangeNotifier {
   ZanshinFfiException? _staleUpdateError;
 
   /// One-shot setup for `ViewModelBuilder`'s `init`: reads from [source], runs verbs through [actions] (10.9), takes
-  /// "now" from [clock], and sends [mode] and [stacks] (the stored preferences, 10.7) and [stackStore]'s toggles
-  /// (10.17) with the first request.
+  /// "now" from [clock], and sends [mode] and [stacks] (the stored preferences, 10.7), [stackStore]'s toggles (10.17)
+  /// and [revset] (the search's shown view, 10.21; null = `revsets.log`) with the first request.
   void init(
     GraphSource source, {
     GraphActions? actions,
@@ -197,7 +196,9 @@ class GraphViewModel extends ChangeNotifier {
     GraphMode mode = GraphMode.free,
     bool stacks = false,
     GraphStackStore? stackStore,
+    String? revset,
   }) {
+    _revset = revset;
     _mode = mode;
     _stacks = stacks;
     _stackStore = stackStore;
@@ -395,8 +396,25 @@ class GraphViewModel extends ChangeNotifier {
         null => null,
       };
 
-  /// Shows [revset] and re-centres on @ — or reveals [reveal] instead (the precedence).
-  void setRevset(String revset, {String? reveal}) {
+  /// Go-to-change for a key the shown layout lacks (Story 10.21 item 5): one request for `all()` that selects
+  /// [key], reveals it and pulses it when it lands — no re-centre on @. `all()` keys a hidden or divergent commit by
+  /// its [commitId]: when the landed layout lacks [key] but has [commitId], that key is the target.
+  void goToHidden(String key, {String? commitId}) {
+    _revset = 'all()'; // l10n-ignore: jj revset
+    _recentre = false;
+    _selected = key;
+    _explicit = (key: key, alignment: GraphRevealAlignment.centre);
+    _pulseOnLand = key;
+    _hiddenCommitId = commitId == null ? null : (key: key, commitId: commitId);
+    _requestLayout();
+  }
+
+  // A hidden go-to's change id and commit id, until its layout lands.
+  ({String key, String commitId})? _hiddenCommitId;
+
+  /// Shows [revset] — null for the effective `revsets.log` — and re-centres on @, or reveals [reveal] instead (the
+  /// precedence).
+  void setRevset(String? revset, {String? reveal}) {
     _revset = revset;
     _recentre = true;
     if (reveal != null) {
@@ -465,10 +483,7 @@ class GraphViewModel extends ChangeNotifier {
 
   /// The effective config changed without an operation (item 16): re-reads `logDefaults()` — a revset still on the
   /// old `revsets.log` follows the new one — and requests under the anchor.
-  void configChanged() {
-    _rereadDefaults = true;
-    _requestLayout();
-  }
+  void configChanged() => _requestLayout();
 
   /// Sets [now] fresh (the window turned active).
   void refreshNow() => _now.value = _nowMs;
@@ -771,18 +786,27 @@ class GraphViewModel extends ChangeNotifier {
     _queued = false;
     _notify();
     try {
-      if (_defaults == null || _rereadDefaults) {
-        final String? old = _defaults?.log;
-        final LogDefaults fresh = await _source.logDefaults();
-        if (_disposed) {
-          return;
+      // Re-read with every request (Story 10.21): a config edit writes no operation.
+      final LogDefaults? cached = _defaults;
+      final String? old = cached?.log;
+      LogDefaults fresh;
+      try {
+        fresh = await _source.logDefaults();
+      } on ZanshinFfiException catch (error) {
+        // Read before: a transient failure keeps the cached defaults.
+        if (cached == null) {
+          rethrow;
         }
-        _rereadDefaults = false;
-        if (_revset == old) {
-          _revset = null;
-        }
-        _defaults = fresh;
+        _log.warning('re-reading logDefaults failed: ${error.code}');
+        fresh = cached;
       }
+      if (_disposed) {
+        return;
+      }
+      if (fresh.log != old && _revset == old) {
+        _revset = null;
+      }
+      _defaults = fresh;
       final GraphRequest request = _request = _build(_defaults!);
       final GraphLoad load = await _source.layout(request);
       if (!_disposed && !_queued) {
@@ -824,6 +848,19 @@ class GraphViewModel extends ChangeNotifier {
     _revsetError = null;
     _error = null;
     _stale = null;
+    if (_hiddenCommitId case (:final String key, :final String commitId)
+        when layout.indexOfKey(key) == null && layout.indexOfKey(commitId) != null) {
+      if (_selected == key) {
+        _selected = commitId;
+      }
+      if (_explicit?.key == key) {
+        _explicit = (key: commitId, alignment: _explicit!.alignment);
+      }
+      if (_pulseOnLand == key) {
+        _pulseOnLand = commitId;
+      }
+    }
+    _hiddenCommitId = null;
     final String? selected = _selected;
     if (selected != null && layout.indexOfKey(selected) == null) {
       _selected = null;
@@ -858,6 +895,7 @@ class GraphViewModel extends ChangeNotifier {
     // A failed expand or go-to must not fade or pulse with a later, unrelated layout.
     _enteringNext = null;
     _pulseOnLand = null;
+    _hiddenCommitId = null;
     _revsetError = null;
     _error = null;
     _stale = null;

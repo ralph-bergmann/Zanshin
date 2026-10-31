@@ -18,6 +18,8 @@ void main() {
         bookmark: 'main',
         expandedStacks: <String>['kxwsnptm'],
         collapsedStacks: <String>['qmsvtlkr', 'nqxwrptl'],
+        graphView: '{"view":"all"}',
+        recentSearches: <String>['{"change":"kxwsnptm"}'],
       ),
       const ProjectEntry(path: '/r/b', name: 'b'),
     ],
@@ -49,6 +51,8 @@ void main() {
       'bookmark': 'main',
       'expandedStacks': <Object?>['kxwsnptm'],
       'collapsedStacks': <Object?>['qmsvtlkr', 'nqxwrptl'],
+      'graphView': '{"view":"all"}',
+      'recentSearches': <Object?>['{"change":"kxwsnptm"}'],
     });
     expect(projects['openProject'], '/r/a');
     final decoded = AppSettings.fromJson(json);
@@ -69,6 +73,8 @@ void main() {
     final entry = ProjectEntry.fromJson(<String, Object?>{'path': '/r/a', 'name': 'a'});
     expect(entry.expandedStacks, isEmpty);
     expect(entry.collapsedStacks, isEmpty);
+    expect(entry.graphView, isNull, reason: 'nor the graph search state (Story 10.21)');
+    expect(entry.recentSearches, isEmpty);
   });
 
   test('a status this version does not know reads as null; the rest of the entry and the file load', () {

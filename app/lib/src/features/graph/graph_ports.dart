@@ -459,6 +459,9 @@ final class GraphRedo extends GraphAction {
 String joinMessageParagraphs(List<String> paragraphs) =>
     paragraphs.map((p) => p.isEmpty || p.endsWith('\n') ? p : '$p\n').join('\n');
 
+/// `jj log -r <revset>`, shell-quoted as the action commands are (Story 10.21's footer).
+String jjLogCommand(String revset) => _jj(<String>['log', '-r', revset]); // l10n-ignore: jj command
+
 /// `jj` plus [args], each POSIX shell-quoted.
 String _jj(List<String> args) => <String>['jj', ...args.map(_shellQuote)].join(' '); // l10n-ignore: jj command
 
@@ -708,4 +711,70 @@ class RepoGraphSource implements GraphSource {
 
   @override
   Future<StaleRecovery> updateStale() => _repo.handle.workspaceUpdateStale();
+}
+
+/// What the graph search reads (Story 10.21). Only counts, finds and content are pinned to the shown layout's
+/// operation; `bookmarks()`, `files()` and `userEmail()` read the live repository. A failed call throws
+/// [ZanshinFfiException].
+abstract interface class GraphSearchSource {
+  /// How many commits each of [expressions] denotes at [operationId], at most [cap] each (9.25).
+  Future<RevsetCounts> revsetCounts(String operationId, List<String> expressions, {required int cap});
+
+  /// At most [limit] commits [expression] denotes at [operationId] (9.25).
+  Future<FoundChanges> findChanges(
+    String operationId,
+    String expression, {
+    required int limit,
+    required String shortPrefixes,
+  });
+
+  /// `jj bookmark list`: the local bookmarks and their tracked remotes.
+  Future<List<Bookmark>> bookmarks();
+
+  /// The paths of @'s tree (`jj file list`), as the CLI's `jj log` path completion reads them.
+  Future<List<String>> files();
+
+  /// `user.email`, or null when it is unset.
+  Future<String?> userEmail();
+
+  /// The content of [commitIds] at [operationId], keyed by commit id (as [GraphSource.content]).
+  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds);
+}
+
+/// [GraphSearchSource] over an open [ProjectRepo]'s handle; `user.email` and the content are the passed functions
+/// (`configGet` runs on the worker only; the content is 10.12's `commitContents`).
+class RepoGraphSearchSource implements GraphSearchSource {
+  /// The search reads of [_repo].
+  RepoGraphSearchSource(this._repo, {required this._userEmail, required this._content});
+
+  final ProjectRepo _repo;
+  final Future<String?> Function() _userEmail;
+  final Future<Map<String, GraphCommitContent>> Function(String? operationId, List<String> commitIds) _content;
+
+  @override
+  Future<RevsetCounts> revsetCounts(String operationId, List<String> expressions, {required int cap}) =>
+      _repo.handle.revsetCounts(operationId, expressions, cap: cap);
+
+  @override
+  Future<FoundChanges> findChanges(
+    String operationId,
+    String expression, {
+    required int limit,
+    required String shortPrefixes,
+  }) => _repo.handle.findChanges(operationId, expression, limit: limit, shortPrefixes: shortPrefixes);
+
+  @override
+  Future<List<Bookmark>> bookmarks() => _repo.handle.bookmarks();
+
+  @override
+  Future<List<String>> files() async => <String>[
+    for (final FileEntry entry in await _repo.handle.fileList(revision: '@')) entry.path,
+  ];
+
+  @override
+  Future<String?> userEmail() => _userEmail();
+
+  @override
+  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds) =>
+      _content(operationId, commitIds);
 }

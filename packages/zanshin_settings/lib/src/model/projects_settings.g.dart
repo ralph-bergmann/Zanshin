@@ -70,6 +70,13 @@ _ProjectEntry _$ProjectEntryFromJson(Map<String, dynamic> json) =>
               (v as List<dynamic>?)?.map((e) => e as String).toList() ??
               const <String>[],
         ),
+        graphView: $checkedConvert('graphView', (v) => v as String?),
+        recentSearches: $checkedConvert(
+          'recentSearches',
+          (v) =>
+              (v as List<dynamic>?)?.map((e) => e as String).toList() ??
+              const <String>[],
+        ),
       );
       return val;
     });
@@ -85,6 +92,8 @@ Map<String, dynamic> _$ProjectEntryToJson(_ProjectEntry instance) =>
       'bookmark': instance.bookmark,
       'expandedStacks': instance.expandedStacks,
       'collapsedStacks': instance.collapsedStacks,
+      'graphView': instance.graphView,
+      'recentSearches': instance.recentSearches,
     };
 
 const _$ProjectStatusEnumMap = {

@@ -17,6 +17,9 @@ import 'package:zanshin/src/features/graph/graph_metrics.dart';
 import 'package:zanshin/src/features/graph/graph_peek.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_preferences.dart';
+import 'package:zanshin/src/features/graph/graph_search_controller.dart';
+import 'package:zanshin/src/features/graph/graph_search_field.dart';
+import 'package:zanshin/src/features/graph/graph_search_store.dart';
 import 'package:zanshin/src/features/graph/graph_stack_store.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
@@ -43,6 +46,7 @@ import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../graph/fake_content.dart';
+import '../graph/fake_graph_search_source.dart';
 import '../graph/fake_graph_source.dart';
 import '../graph/graph_recordings.g.dart';
 import '../graph/graph_stack_recordings.g.dart';
@@ -437,8 +441,28 @@ class _ShellControlsDemo extends StatefulWidget {
 
 class _ShellControlsDemoState extends State<_ShellControlsDemo> {
   final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_graph');
-  final _source = FakeGraphSource((request) => requestedLayout('design-default', request));
+  // Anything but the default search shows the `all()` recording (Story 10.21's fake ports).
+  final _source = FakeGraphSource(
+    (request) =>
+        requestedLayout(request.revset == FakeGraphSource.defaults.log ? 'design-default' : 'design-all', request),
+  );
   final _model = GraphViewModel();
+  late final _search = GraphSearchController(
+    model: _model,
+    source: FakeGraphSearchSource(
+      () => requestedLayout(
+        'design-all',
+        GraphRequest(
+          revset: 'all()',
+          prioritize: FakeGraphSource.defaults.logGraphPrioritize,
+          shortPrefixes: FakeGraphSource.defaults.shortPrefixes,
+          anchors: const <String>[],
+          utcOffsetMin: 0,
+        ),
+      ),
+    ),
+    store: MemoryGraphSearchStore(),
+  );
   final _shell = ShellController();
   final _descriptions = <String, String>{};
   GraphPreferences? _preferences;
@@ -464,6 +488,7 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
         clock: () => DateTime.fromMillisecondsSinceEpoch(now),
         // A path outside the registry: the stack toggles live in memory for the demo (Story 10.17).
         stackStore: ProjectStackStore(store, '/demo'),
+        revset: _search.revset,
       );
     _model.addListener(_selectFirst);
     setState(() {
@@ -492,6 +517,7 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
     _model.removeListener(_selectFirst);
     _inspector?.dispose();
     _preferences?.dispose();
+    _search.dispose();
     _model.dispose();
     _shell.dispose();
     _dir.deleteSync(recursive: true);
@@ -507,18 +533,21 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
     }
     return ListenableBuilder(
       listenable: _model,
-      builder: (context, _) => FloatingShell(
-        controller: _shell,
-        canvas: const ZsCanvas(),
-        graph: ListenableBuilder(
-          listenable: preferences,
-          builder: (context, _) => GraphView(model: _model, options: preferences.options),
+      builder: (context, _) => GraphSearchShortcuts(
+        search: _search,
+        child: FloatingShell(
+          controller: _shell,
+          canvas: const ZsCanvas(),
+          graph: ListenableBuilder(
+            listenable: preferences,
+            builder: (context, _) => GraphView(model: _model, options: preferences.options),
+          ),
+          projectCapsule: demoCapsule(),
+          view: GraphViewControls(model: _model, preferences: preferences, search: _search),
+          newChange: NewChangeButton(model: _model),
+          inspector: GraphView.inspector(inspector),
+          atPill: GraphView.atPill(_model),
         ),
-        projectCapsule: demoCapsule(),
-        view: GraphViewControls(model: _model, preferences: preferences),
-        newChange: NewChangeButton(model: _model),
-        inspector: GraphView.inspector(inspector),
-        atPill: GraphView.atPill(_model),
       ),
     );
   }

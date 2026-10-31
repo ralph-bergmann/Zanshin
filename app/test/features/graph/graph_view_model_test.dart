@@ -455,6 +455,76 @@ void main() {
     });
   });
 
+  test('Story 10.21: every request re-reads logDefaults; setRevset(null) sends the effective revsets.log', () {
+    fakeAsync((async) {
+      final GraphViewModel model = start(async)..setRevset('all()');
+      async.flushMicrotasks();
+      source.defaults = const LogDefaults(
+        log: 'L2',
+        logGraphPrioritize: 'P',
+        shortPrefixes: 'S',
+        syntheticElided: false,
+      );
+      model.setRevset(null);
+      async.flushMicrotasks();
+      expect(source.defaultsReads, 3);
+      expect(source.requests.map((r) => r.revset), <String>['L', 'all()', 'L2']);
+      model.dispose();
+    });
+  });
+
+  test(
+    'Story 10.21: once read, a failed re-read of logDefaults keeps the cached defaults and the request goes out',
+    () {
+      fakeAsync((async) {
+        var fail = false;
+        final failing = _FailingDefaults(source, () => fail);
+        final model = GraphViewModel()..init(failing, clock: () => noon);
+        async.flushMicrotasks();
+        fail = true;
+        model.setRevset('all()');
+        async.flushMicrotasks();
+        expect(model.error, isNull);
+        expect(source.requests.map((r) => r.revset), <String>['L', 'all()']);
+        expect(source.requests.last.prioritize, 'P');
+        model.dispose();
+      });
+    },
+  );
+
+  test('Story 10.21: goToHidden lands on the commit-id key when all() keys the change by its commit id', () {
+    fakeAsync((async) {
+      source.respond = (request) => keysLayout(<String>['a', 'b', if (request.revset == 'all()') 'cid'], at: 'a');
+      final GraphViewModel model = start(async)..goToHidden('h', commitId: 'cid');
+      async.flushMicrotasks();
+      expect(model.selected, 'cid');
+      expect(model.reveal?.key, 'cid');
+      expect(model.pulse.value?.key, 'cid');
+      model.dispose();
+    });
+  });
+
+  test('Story 10.21: goToHidden asks for all() once and selects, reveals and pulses the key when it lands', () {
+    fakeAsync((async) {
+      source.respond = (request) => keysLayout(<String>[
+        'a',
+        'b',
+        if (request.revset == 'all()') 'h',
+      ], at: 'a');
+      final GraphViewModel model = start(async)..goToHidden('h');
+      async.flushMicrotasks();
+      expect(source.requests, hasLength(2));
+      expect(source.requests.last.revset, 'all()');
+      expect(source.requests.last.keepOpenKeys, contains('h'));
+      expect(model.selected, 'h');
+      expect(model.reveal?.key, 'h');
+      expect(model.pulse.value?.key, 'h');
+      heads(async);
+      expect(model.reveal, isNull, reason: 'no later re-centre on @');
+      model.dispose();
+    });
+  });
+
   test('configChanged re-reads logDefaults: one request, no reveal, the log revset follows; an explicit one stays', () {
     fakeAsync((async) {
       final GraphViewModel model = start(async);

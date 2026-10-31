@@ -54,6 +54,7 @@ export 'src/ffi/fetch.dart'
         NamedFetchRemotes,
         PatternFetchRefs,
         TrackedFetchRefs;
+export 'src/ffi/file.dart' show FileEntry;
 export 'src/ffi/file_ops.dart' show FileNotAutoTracked, FileTooLarge, SnapshotStats, UntrackedPath, UntrackedReason;
 export 'src/ffi/git.dart' show GitColocationResult, GitColocationStatus, GitExportFailure;
 export 'src/ffi/graph.dart' show GraphTopologyView, TopologyRef, TopologyRefKind, defaultGraphAnchors;
@@ -118,6 +119,16 @@ export 'src/ffi/workspace.dart'
         WorkspaceRootResult;
 export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;
 export 'src/graph_layout/router.dart' show RouteBridges, RouteClasses, RouteGeometry, RouteMetrics, routeSyncNodeLimit;
+export 'src/revset_text.dart'
+    show
+        RevsetPathPattern,
+        RevsetTextPattern,
+        authorRevset,
+        descriptionRevset,
+        filesRevset,
+        mineRevset,
+        revsetSpanUtf16,
+        revsetStringLiteral;
 export 'src/worker/events.dart'
     show OpHeadsChangedEvent, ProgressEvent, RepoEvent, WatchErrorEvent, WorkingCopyHeartbeatEvent;
 export 'src/worker/handle.dart' show CreatedRepoHandle, OpenedRepoHandle, RepoHandle;

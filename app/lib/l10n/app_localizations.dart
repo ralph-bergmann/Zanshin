@@ -980,6 +980,276 @@ abstract class AppLocalizations {
   /// **'Appearance, diffs and more'**
   String get graphMoreSettings;
 
+  /// VoiceOver name of the graph search field (a combobox).
+  ///
+  /// In en, this message translates to:
+  /// **'Search the graph'**
+  String get graphSearchLabel;
+
+  /// VoiceOver name of the search field's pill and of its menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Search menu'**
+  String get graphSearchMenu;
+
+  /// VoiceOver name of the search field's suggestion list.
+  ///
+  /// In en, this message translates to:
+  /// **'Suggestions'**
+  String get graphSearchSuggestions;
+
+  /// The graph search field's placeholder while it searches every scope.
+  ///
+  /// In en, this message translates to:
+  /// **'Search changes, bookmarks, authors, files…'**
+  String get graphSearchPlaceholder;
+
+  /// The graph search field's placeholder in a narrow window.
+  ///
+  /// In en, this message translates to:
+  /// **'Search…'**
+  String get graphSearchPlaceholderShort;
+
+  /// A search scope's label (pill, menu rows, more rows).
+  ///
+  /// In en, this message translates to:
+  /// **'{scope, select, change{Change} bookmark{Bookmark} author{Author} file{File} description{Description} other{Any}}'**
+  String graphSearchScope(String scope);
+
+  /// A search scope in lower-case plural ("Recent changes", "Narrows the search to files").
+  ///
+  /// In en, this message translates to:
+  /// **'{scope, select, change{changes} bookmark{bookmarks} author{authors} file{files} description{descriptions} other{results}}'**
+  String graphSearchScopePlural(String scope);
+
+  /// The heading of a suggestion group.
+  ///
+  /// In en, this message translates to:
+  /// **'{scope, select, change{Changes} bookmark{Bookmarks} author{Authors} file{Files} description{Descriptions} other{Results}}'**
+  String graphSearchScopeGroup(String scope);
+
+  /// The search field's placeholder in a scope.
+  ///
+  /// In en, this message translates to:
+  /// **'{scope, select, change{Change ID, commit ID or description} bookmark{Bookmark name} author{Author name} file{Path, folder or glob} description{Text in descriptions} other{Search changes, bookmarks, authors, files…}}'**
+  String graphSearchScopePlaceholder(String scope);
+
+  /// The search field's placeholder in a scope, in a narrow window.
+  ///
+  /// In en, this message translates to:
+  /// **'{scope, select, change{Change ID or hash} bookmark{Bookmark name} author{Author name} file{Path or glob} description{Text} other{Search…}}'**
+  String graphSearchScopePlaceholderShort(String scope);
+
+  /// The menu's Change row: what it searches.
+  ///
+  /// In en, this message translates to:
+  /// **'change ID · commit ID · description'**
+  String get graphSearchChangeDetail;
+
+  /// The menu's Bookmark row: what it searches.
+  ///
+  /// In en, this message translates to:
+  /// **'name'**
+  String get graphSearchBookmarkDetail;
+
+  /// Tooltip of the search field's ✕: it shows the default search again; name is jj's command (jj log).
+  ///
+  /// In en, this message translates to:
+  /// **'Back to the default search — {name}'**
+  String graphSearchBackToDefault(String name);
+
+  /// The search field's ✕ while it only holds a draft, and Recent's Clear action.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get graphSearchClear;
+
+  /// Tag on the menu row of the default search.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get graphSearchDefaultTag;
+
+  /// The menu's jj log row while revsets.log is jj's builtin.
+  ///
+  /// In en, this message translates to:
+  /// **'Your mutable changes plus trunk context'**
+  String get graphSearchLogDetail;
+
+  /// The menu's all() row.
+  ///
+  /// In en, this message translates to:
+  /// **'Every visible commit, incl. immutable history'**
+  String get graphSearchAllDetail;
+
+  /// Menu heading over the scopes that select a change.
+  ///
+  /// In en, this message translates to:
+  /// **'Go to'**
+  String get graphSearchGoTo;
+
+  /// The note beside the Go to heading.
+  ///
+  /// In en, this message translates to:
+  /// **'selects a change · graph stays'**
+  String get graphSearchGoToHint;
+
+  /// Menu heading over the scopes that redraw the graph.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter by'**
+  String get graphSearchFilterBy;
+
+  /// The note beside the Filter by heading.
+  ///
+  /// In en, this message translates to:
+  /// **'redraws the graph'**
+  String get graphSearchFilterByHint;
+
+  /// The menu's last row: opens the jj log Configurations window.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Configurations…'**
+  String get graphSearchEditConfigurations;
+
+  /// The menu's jj log row while the effective revsets.log fails; message is jj's.
+  ///
+  /// In en, this message translates to:
+  /// **'Fails: {message}'**
+  String graphSearchBroken(String message);
+
+  /// Heading of the recent searches in Any.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent'**
+  String get graphSearchRecent;
+
+  /// Heading of the recent searches in a scope; scope is graphSearchScopePlural.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent {scope}'**
+  String graphSearchRecentIn(String scope);
+
+  /// A suggestion row that narrows the search to one scope.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} more in {scope}'**
+  String graphSearchMore(int count, String scope);
+
+  /// Note over matches found in other scopes; scope is lower-case singular.
+  ///
+  /// In en, this message translates to:
+  /// **'No {scope} matches “{query}” — found elsewhere:'**
+  String graphSearchFallback(String scope, String query);
+
+  /// The suggestions' empty text in Any.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing matches “{query}”.'**
+  String graphSearchNothing(String query);
+
+  /// The suggestions' empty text in a single scope.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing matches “{query}” — in any scope.'**
+  String graphSearchNothingAnywhere(String query);
+
+  /// Tag on a suggestion whose change the graph does not show.
+  ///
+  /// In en, this message translates to:
+  /// **'not in view'**
+  String get graphSearchNotInView;
+
+  /// Tag on the author row of the user (followed by jj's mine()).
+  ///
+  /// In en, this message translates to:
+  /// **'you'**
+  String get graphSearchYou;
+
+  /// A suggestion row: filter by authors whose name contains the value (value is quoted).
+  ///
+  /// In en, this message translates to:
+  /// **'Authors containing {value}'**
+  String graphSearchAuthorsContaining(String value);
+
+  /// A suggestion row: filter by descriptions containing the value (value is quoted).
+  ///
+  /// In en, this message translates to:
+  /// **'Descriptions containing {value}'**
+  String graphSearchDescriptionsContaining(String value);
+
+  /// A typed value quoted in a message (curly quotes: messages only).
+  ///
+  /// In en, this message translates to:
+  /// **'“{value}”'**
+  String graphSearchQuoted(String value);
+
+  /// A filter row's count; number is the formatted count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 change} other{{number} changes}}'**
+  String graphSearchCount(int count, String number);
+
+  /// A filter row's count when it reached the cap.
+  ///
+  /// In en, this message translates to:
+  /// **'{number}+ changes'**
+  String graphSearchCountCapped(String number);
+
+  /// Footer of a more row; scope is graphSearchScopePlural.
+  ///
+  /// In en, this message translates to:
+  /// **'Narrows the search to {scope}'**
+  String graphSearchNarrows(String scope);
+
+  /// Footer of a go-to row whose change is shown.
+  ///
+  /// In en, this message translates to:
+  /// **'Selects the change — the graph stays as it is'**
+  String get graphSearchSelects;
+
+  /// Footer of a go-to row whose change is not shown; all is jj's all().
+  ///
+  /// In en, this message translates to:
+  /// **'Not in this view — switches to {all} and selects it'**
+  String graphSearchSwitches(String all);
+
+  /// Footer key label: Enter shows (a scope, or a change beyond the view).
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get graphSearchKeyShow;
+
+  /// Footer key label: Enter selects the change.
+  ///
+  /// In en, this message translates to:
+  /// **'Select'**
+  String get graphSearchKeySelect;
+
+  /// Footer key label: Enter filters the graph.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter'**
+  String get graphSearchKeyFilter;
+
+  /// Tooltip of the search pill while a scope is typed in; scope is graphSearchScope.
+  ///
+  /// In en, this message translates to:
+  /// **'Search in: {scope}'**
+  String graphSearchSearchIn(String scope);
+
+  /// Tooltip of the search pill while a variant shows; name is jj's.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing {name}'**
+  String graphSearchShowing(String name);
+
+  /// Tooltip of the search pill at the default search; name is jj's command.
+  ///
+  /// In en, this message translates to:
+  /// **'Default search: {name}'**
+  String graphSearchDefault(String name);
+
   /// The top bar's primary button: runs jj new on the working copy.
   ///
   /// In en, this message translates to:

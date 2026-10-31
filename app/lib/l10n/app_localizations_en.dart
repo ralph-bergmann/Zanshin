@@ -610,6 +610,246 @@ class AppLocalizationsEn extends AppLocalizations {
   String get graphMoreSettings => 'Appearance, diffs and more';
 
   @override
+  String get graphSearchLabel => 'Search the graph';
+
+  @override
+  String get graphSearchMenu => 'Search menu';
+
+  @override
+  String get graphSearchSuggestions => 'Suggestions';
+
+  @override
+  String get graphSearchPlaceholder => 'Search changes, bookmarks, authors, files…';
+
+  @override
+  String get graphSearchPlaceholderShort => 'Search…';
+
+  @override
+  String graphSearchScope(String scope) {
+    String _temp0 = intl.Intl.selectLogic(
+      scope,
+      {
+        'change': 'Change',
+        'bookmark': 'Bookmark',
+        'author': 'Author',
+        'file': 'File',
+        'description': 'Description',
+        'other': 'Any',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String graphSearchScopePlural(String scope) {
+    String _temp0 = intl.Intl.selectLogic(
+      scope,
+      {
+        'change': 'changes',
+        'bookmark': 'bookmarks',
+        'author': 'authors',
+        'file': 'files',
+        'description': 'descriptions',
+        'other': 'results',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String graphSearchScopeGroup(String scope) {
+    String _temp0 = intl.Intl.selectLogic(
+      scope,
+      {
+        'change': 'Changes',
+        'bookmark': 'Bookmarks',
+        'author': 'Authors',
+        'file': 'Files',
+        'description': 'Descriptions',
+        'other': 'Results',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String graphSearchScopePlaceholder(String scope) {
+    String _temp0 = intl.Intl.selectLogic(
+      scope,
+      {
+        'change': 'Change ID, commit ID or description',
+        'bookmark': 'Bookmark name',
+        'author': 'Author name',
+        'file': 'Path, folder or glob',
+        'description': 'Text in descriptions',
+        'other': 'Search changes, bookmarks, authors, files…',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String graphSearchScopePlaceholderShort(String scope) {
+    String _temp0 = intl.Intl.selectLogic(
+      scope,
+      {
+        'change': 'Change ID or hash',
+        'bookmark': 'Bookmark name',
+        'author': 'Author name',
+        'file': 'Path or glob',
+        'description': 'Text',
+        'other': 'Search…',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get graphSearchChangeDetail => 'change ID · commit ID · description';
+
+  @override
+  String get graphSearchBookmarkDetail => 'name';
+
+  @override
+  String graphSearchBackToDefault(String name) {
+    return 'Back to the default search — $name';
+  }
+
+  @override
+  String get graphSearchClear => 'Clear';
+
+  @override
+  String get graphSearchDefaultTag => 'Default';
+
+  @override
+  String get graphSearchLogDetail => 'Your mutable changes plus trunk context';
+
+  @override
+  String get graphSearchAllDetail => 'Every visible commit, incl. immutable history';
+
+  @override
+  String get graphSearchGoTo => 'Go to';
+
+  @override
+  String get graphSearchGoToHint => 'selects a change · graph stays';
+
+  @override
+  String get graphSearchFilterBy => 'Filter by';
+
+  @override
+  String get graphSearchFilterByHint => 'redraws the graph';
+
+  @override
+  String get graphSearchEditConfigurations => 'Edit Configurations…';
+
+  @override
+  String graphSearchBroken(String message) {
+    return 'Fails: $message';
+  }
+
+  @override
+  String get graphSearchRecent => 'Recent';
+
+  @override
+  String graphSearchRecentIn(String scope) {
+    return 'Recent $scope';
+  }
+
+  @override
+  String graphSearchMore(int count, String scope) {
+    return '$count more in $scope';
+  }
+
+  @override
+  String graphSearchFallback(String scope, String query) {
+    return 'No $scope matches “$query” — found elsewhere:';
+  }
+
+  @override
+  String graphSearchNothing(String query) {
+    return 'Nothing matches “$query”.';
+  }
+
+  @override
+  String graphSearchNothingAnywhere(String query) {
+    return 'Nothing matches “$query” — in any scope.';
+  }
+
+  @override
+  String get graphSearchNotInView => 'not in view';
+
+  @override
+  String get graphSearchYou => 'you';
+
+  @override
+  String graphSearchAuthorsContaining(String value) {
+    return 'Authors containing $value';
+  }
+
+  @override
+  String graphSearchDescriptionsContaining(String value) {
+    return 'Descriptions containing $value';
+  }
+
+  @override
+  String graphSearchQuoted(String value) {
+    return '“$value”';
+  }
+
+  @override
+  String graphSearchCount(int count, String number) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$number changes',
+      one: '1 change',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String graphSearchCountCapped(String number) {
+    return '$number+ changes';
+  }
+
+  @override
+  String graphSearchNarrows(String scope) {
+    return 'Narrows the search to $scope';
+  }
+
+  @override
+  String get graphSearchSelects => 'Selects the change — the graph stays as it is';
+
+  @override
+  String graphSearchSwitches(String all) {
+    return 'Not in this view — switches to $all and selects it';
+  }
+
+  @override
+  String get graphSearchKeyShow => 'Show';
+
+  @override
+  String get graphSearchKeySelect => 'Select';
+
+  @override
+  String get graphSearchKeyFilter => 'Filter';
+
+  @override
+  String graphSearchSearchIn(String scope) {
+    return 'Search in: $scope';
+  }
+
+  @override
+  String graphSearchShowing(String name) {
+    return 'Showing $name';
+  }
+
+  @override
+  String graphSearchDefault(String name) {
+    return 'Default search: $name';
+  }
+
+  @override
   String get newChange => 'New change';
 
   @override

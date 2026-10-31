@@ -14,6 +14,8 @@ import 'graph_layout.dart';
 import 'graph_metrics.dart';
 import 'graph_ports.dart';
 import 'graph_preferences.dart';
+import 'graph_search_controller.dart';
+import 'graph_search_field.dart';
 import 'graph_view_model.dart';
 
 // The graph's controls in the floating top bar (Story 10.7; DS ui_kits/desktop/chrome.jsx:80-106, kit.css:59-62,
@@ -91,8 +93,9 @@ class GraphCount extends StatelessWidget {
   );
 }
 
-/// The VIEW island's graph controls (Story 10.7): the [GraphCount], a separator and the View options button with its
-/// popover. Room is left before the count for 10.21's search and 10.19's gap legend. At a window width of at most
+/// The VIEW island's graph controls (Story 10.7): 10.21's [GraphSearchField] (when a search is given) and a separator,
+/// the [GraphCount], a separator and the View options button with its popover. Room is left before the count for
+/// 10.19's gap legend. At a window width of at most
 /// [graphCountHideWidth] the count and its separator are not built.
 ///
 /// **View options** (DS chrome.jsx:87-98; kit.css:62): a [ZsPopover] 340 wide, 14 below the button, its right edge 5
@@ -103,10 +106,19 @@ class GraphCount extends StatelessWidget {
 /// consumed and never reaches the graph. While open — its exit included — it holds the shell's calm scrolling.
 class GraphViewControls extends StatelessWidget {
   /// The controls of [model] over [preferences].
-  const GraphViewControls({required this.model, required this.preferences, this.onSettings, super.key});
+  const GraphViewControls({
+    required this.model,
+    required this.preferences,
+    this.search,
+    this.onSettings,
+    super.key,
+  });
 
   /// The view model (the count).
   final GraphViewModel model;
+
+  /// The graph search (Story 10.21), first in the island; none when null.
+  final GraphSearchController? search;
 
   /// The View options.
   final GraphPreferences preferences;
@@ -120,6 +132,10 @@ class GraphViewControls extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
+        if (search case final GraphSearchController search) ...<Widget>[
+          GraphSearchField(search: search),
+          const ZsIslandSeparator(),
+        ],
         if (wide) ...<Widget>[GraphCount(model: model), const ZsIslandSeparator()],
         GraphViewOptionsButton(preferences: preferences, onSettings: onSettings),
       ],
