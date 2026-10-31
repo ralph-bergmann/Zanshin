@@ -897,6 +897,51 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets(
+      'pending cards paint at disabledOpacity on the focus path and × .4 off it; the hovered card stays at 1',
+      (
+        tester,
+      ) async {
+        source = ScriptedGraphSource(
+          respond: (_) => handLayout(
+            const <(String, int, int)>[('a', 2, 0), ('b', 1, 0), ('c', 1, 1), ('root', 0, 0)],
+            edges: const <(int, int)>[(0, 1), (1, 3), (2, 3)],
+            root: 3,
+          ),
+        );
+        final actions = _Actions()..gate = Completer<MutationResult>();
+        create(actions: actions);
+        await pump(tester);
+        final TestGesture mouse = await hover(tester, tester.getCenter(cardOf('b')));
+        await tester.pump(ZsMotion.full.durHover);
+        unawaited(model.run(const GraphAbandon(<String>['a', 'c'])));
+        await tester.pump();
+        expect(actions.ran, hasLength(1));
+        final RenderGraphViewport render = viewportOf(tester);
+        final GraphLayout layout = model.layout!;
+        final double disabled = ZsMetrics.of(tester.element(find.byType(GraphCanvas))).disabledOpacity;
+        expect(render.opacityOf!(layout.indexOfKey('c')!), closeTo(disabled * .4, 1e-9));
+        expect(render.opacityOf!(layout.indexOfKey('a')!), closeTo(disabled, 1e-9), reason: 'pending, on the path');
+        expect(render.opacityOf!(layout.indexOfKey('b')!), 1);
+
+        actions.gate!.complete(
+          const MutationResult(
+            newOpId: 'op9',
+            newChangeIds: <String>[],
+            abandonedChangeIds: <String>[],
+            workingCopyChangeId: null,
+            finish: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+        // The run is over, the hover stays: only the dim is left.
+        expect(viewportOf(tester).opacityOf!(model.layout!.indexOfKey('c')!), closeTo(.4, 1e-9));
+        expect(viewportOf(tester).opacityOf!(model.layout!.indexOfKey('a')!), 1);
+        await leaveAll(tester, mouse);
+        await finish(tester);
+      },
+    );
+
     group('the peek', () {
       setUp(() => source = ScriptedGraphSource(respond: (_) => peekLayout()));
 
