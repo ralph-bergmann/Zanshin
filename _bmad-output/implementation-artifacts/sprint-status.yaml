@@ -27,31 +27,25 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-# Nächster Schritt: die offenen Stories der Epics 4, 5, 9, 10 und 11 in Reihenfolge (Stand 2026-10-20)
+# Nächster Schritt: die offenen Stories der Epics 4, 5, 9, 10 und 11 in Reihenfolge (Stand 2026-10-31)
 #
 #   So ist die Liste zu lesen: Eine Story kann starten, sobald die Stories fertig sind, die hinter
 #   "Braucht" stehen. Diese stehen immer in einer früheren Stufe. Innerhalb einer Stufe ist die
 #   Reihenfolge frei. Gestrichen ist keine Story: Keine offene Story der fünf Epics ist überholt.
+#   Fertige Stories stehen nicht mehr in der Liste (zuletzt 2026-10-30/31: 10.2, 10.3, 10.4, 10.5,
+#   11.10 und 5.5); "Braucht" nennt sie trotzdem weiter.
 #
-#   Stufe 2:
-#     10.2   Hintergrund und Tages-Achse. Braucht 10.1.
-#     10.3   Commit-Karten. Braucht 10.1.
-#     10.4   Kanten. Braucht 10.1 und 4.15.
-#     10.5   View-Model und Anbindung ans Repo. Braucht 10.1.
-#     11.10  Alte Mock-UI entfernen. Braucht nur noch 10.1; alles andere, worauf sie gewartet hat, ist fertig.
-#     5.5    Diff: das Datenformat (FlatBuffers), vorerst ohne Wort-Segmente. Braucht 5.1.
-#     4.16   Free-Layout: keine Karte im Band um die Tages-Trennlinie (Mitternacht). Braucht 4.11, 4.13 und 10.2
-#            (alle fertig). Neu seit 2026-10-31.
-#     11.16  l10n-bereit: alle UI-Texte in ARB-Dateien (nur Englisch). Braucht 11.10 (fertig). Neu seit 2026-10-31;
+#   Stufe 1 (kann sofort starten):
+#     11.16  l10n-bereit: alle UI-Texte in ARB-Dateien (nur Englisch). Braucht 11.10. Neu seit 2026-10-31;
 #            möglichst früh, weil jede spätere UI-Story die Regel "Texte über die ARB" schon einhalten soll.
-#
-#   Stufe 3:
+#     4.16   Free-Layout: keine Karte im Band um die Tages-Trennlinie (Mitternacht). Braucht 4.11, 4.13 und 10.2.
+#            Neu seit 2026-10-31.
 #     10.6   Auswahl, Hover und Tastatur. Braucht 10.3 und 10.4.
 #     10.9   Action-Runner. Braucht 10.3 und 10.5.
 #     10.11  Karten-Inhalte seitenweise laden. Braucht 10.3 und 10.5.
 #     5.6    Diff zwischen zwei Revisionen (jj diff -r). Braucht 5.1 und 5.5.
 #
-#   Stufe 4:
+#   Stufe 2:
 #     10.7   Toolbar. Braucht 10.2, 10.3, 10.5 und 10.6.
 #     10.8   Inspector. Braucht 10.5 und 10.6.
 #     10.17  Commit-Stacks in der Ansicht. Braucht 10.3, 10.5 und 10.6.
@@ -59,7 +53,7 @@
 #     10.23  Toast nach einer Operation. Braucht 10.6 und 10.9.
 #     5.8    Diff über die FFI, damit Dart ihn abrufen kann. Braucht 5.5 und 5.6.
 #
-#   Stufe 5:
+#   Stufe 3:
 #     11.13  Menüleiste und Shortcuts. Braucht 10.9 und 10.23. Damit funktionieren auch ⌘W und ⇧⌘O aus 11.5 und 11.6.
 #     11.9   Undo Timeline. Braucht 10.9 und 10.23. Redo und "Show changes" kommen erst mit 9.21, "Restore to here" mit 9.12.
 #     10.12  Echtes Layout aus dem Backend. Braucht 4.14, 4.15 und 10.17.
@@ -71,7 +65,7 @@
 #     10.24  Diff im Inspector. Braucht 10.8 und 5.8.
 #     10.25  Composer für commit und split. Braucht 10.8, 10.9, 10.23 und 9.54 (9.15 und 9.49 sind fertig).
 #
-#   Stufe 6:
+#   Stufe 4:
 #     10.16  Minimap. Braucht 10.4, 10.5, 10.6 und 11.13.
 #     11.7   Settings-Fenster. Braucht 11.13.
 #     11.8   Fetch, Push und Abfrage entfernter Änderungen, dazu das Clone-Formular. Braucht 11.13 und 10.23 (9.20 ist
@@ -82,7 +76,7 @@
 #     10.10  Drag-and-Drop. Braucht 10.9 und 10.15. Die echten Aktionen erst mit 9.31, 9.16, 9.9, 9.19 und 9.48.
 #     10.26  Hunks auswählen. Braucht 10.24, 10.25 und 9.50.
 #
-#   Stufe 7:
+#   Stufe 5:
 #     10.27  Dateien und Hunks ziehen. Braucht 10.10, 10.26, 9.15, 9.31 und 9.50.
 #
 #
