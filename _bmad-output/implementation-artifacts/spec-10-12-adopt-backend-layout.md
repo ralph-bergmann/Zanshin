@@ -5,7 +5,7 @@ created: '2026-11-01'
 status: 'done'
 baseline_revision: '51bd5b1054c899df2b89fbec64e1d22de216af35'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
   - '{project-root}/_bmad-output/project-context.md'
@@ -185,6 +185,45 @@ deferred:
   - `false` `reject` (intent) `files()` drops `revision: '@'` — a bug fix: the handle takes a change id there, `'@'` always failed.
   - `low` `reject` (intent) The fake handle's error type changed — same as the blind row.
 
+### 2026-11-01 — Review pass (follow-up)
+- verdicts: 35 findings — high 0, medium 5, low 18, false 10, maybe-false 2
+- findings:
+  - `false` `reject` (blind) Stack nodes never report elision — carried: matches 10.17's recorded stack facts (one parent, not elided).
+  - `low` `reject` (blind) `empty ?? false` turns unknown into not empty — carried: the documented choice.
+  - `low` `reject` (blind) The peek's body `.trim()` drops a first body line's indent and keeps inner `\r` of a CRLF body (`graph_peek.dart:128-129`) — real but rare (indented first body line, CRLF descriptions); a correct strip of only the leading blank line is more than a direct correction for a cosmetic case.
+  - `low` `reject` (blind) A failed content page shows the loading bar until the next load — carried: asked again on the next settle or landed layout (I10).
+  - `medium` `patch` (blind) Graph state carries over on a project switch: `GraphView` / `GraphViewControls` (and its `GraphSearchField`, whose `didUpdateWidget` keeps text and scope) are reused — keyed by the graph set (`ObjectKey(graph)`) in `ProjectGraphHost.build`; `home_page_test` asserts fresh `GraphView` and `GraphSearchField` states after the switch.
+  - `maybe-false` `reject` (blind) Old graph objects disposed before the tree stops using them — disposed `ChangeNotifier`s neither notify nor reject `removeListener`; settling it needs a post-frame callback of the old subtree that reads a disposed object, none found; if true only a debug assertion (low).
+  - `false` `reject` (blind) `didUpdateWidget` re-syncs only on a changed session — carried: `HomePage` passes DI singletons.
+  - `false` `reject` (blind) Reload test does not pin the session's coalescing — carried: `ProjectSession.refresh` coalesces itself and is tested so.
+  - `low` `patch` (blind) ⌘F now only through the menu (Widgetbook has none) — carried: binding test added in the first pass; the catalogue without a menu bar is accepted.
+  - `low` `defer` (blind) `LayoutContractException` tested only through the mapping function — carried: deferred in the first pass.
+  - `medium` `patch` (blind) Extra-operation map grows and unions every revset at an operation — carried: the per-operation union is the first pass's fix, marked `shortcut:`.
+  - `low` `reject` (blind) Duplicate keys would make `indexOfKey` lie silently — keys are jj's unique change/commit ids from the backend; a check for impossible data adds a branch.
+  - `low` `reject` (blind) Run arrays force-unwrapped while `nodeRuns` is null-checked — carried ("stack-run mapping silent on bad data").
+  - `low` `reject` (blind) Real-repo tests heavy and print route reports — carried: the spec's choice, the reports are the recorded witness.
+  - `low` `reject` (blind) The benchmark accepts only `jj 0.46.0` exactly — it prints that the changed-path runs are skipped (`graph_content_page.dart:31-33`), not silent; a dev-only benchmark.
+  - `low` `reject` (blind) The Reload tooltip hardcodes "⌘R" — the ARB already writes shortcuts into tooltips (`projectsSettingsTooltip`); deriving them from the menu adds plumbing for a rebinding nobody has.
+  - `low` `defer` (verification-gap) The `LayoutContractException` catch at `RepoGraphSource.layout` is untested — carried: same deferred item.
+  - `low` `reject` (verification-gap) `refsOf`'s remote/synced/conflicted copy and tag filter untested — tags carried as false (bookmarks only by contract); the remote fields are a one-to-one field copy, and a remote-tracking bookmark in a Dart test needs a second repo plus fetch, disproportionate for that line.
+  - `medium` `patch` (edge) A queued graph toast outlives its model across a project switch; its Undo/Redo/Retry would run on the disposed model (`graph_toasts.dart`, `ShellToasts` keeps one current entry) — `GraphToasts` remembers the entry it showed and `dispose` dismisses it if still current; `graph_toasts_test` covers both (own toast hidden, a later foreign toast kept).
+  - `medium` `patch` (edge) The search field shows the old project's text after a switch — same root cause and fix as the blind state-carry-over row.
+  - `low` `reject` (edge) The peek shows the loading bar forever after a failed page — carried.
+  - `false` `reject` (edge) `handle.lastPrecondition` read after `await` could carry another call's report — the reply's port event completes the future and its continuation runs in that event's microtasks, before the worker's next reply event is processed.
+  - `maybe-false` `reject` (edge) `graphLayout` can throw a non-FFI `StateError` that `GraphViewModel` does not catch — only for a call started on an already-closed handle; the host drops the model with the repository and in-flight calls finish before the queued close; settling it needs a layout request issued after the close; if true an unhandled zone error of a disposed model (low).
+  - `false` `reject` (edge) Changed `appMenu`/`settings`/`environment`/`sourceOf` are not re-synced — carried: DI singletons.
+  - `false` `reject` (edge) A throwing constructor in `_Graph` leaks the earlier objects — the constructors only assign fields and add listeners; none has a throwing path.
+  - `low` `reject` (intent) Window level and real repository never joined in one test — carried (fake handle in the home tests; real layouts in the graph tests).
+  - `low` `patch` (intent) The menu's key path for ⌘F not exercised — carried: binding test from the first pass (and `app_menu_test`).
+  - `false` `reject` (intent) Session-side Reload coalescing not pinned — carried.
+  - `low` `defer` (intent) The contract-violation row's caption with Retry not exercised — carried: same deferred item.
+  - `false` `reject` (intent) The content row's "next settle" re-ask untested — `graph_content_test.dart:135` ("a failed page … is asked again by the next load").
+  - `low` `reject` (intent) `workspaceName` null for a single workspace too — carried: jj's `working_copies()` is empty with one workspace, so jj shows no name there either.
+  - `medium` `patch` (intent) Extra operations read as any extras seen at that operation — carried: the first pass's union.
+  - `false` `reject` (intent) `reassemble` reloads without a `kDebugMode` guard — Flutter calls `reassemble` only on hot reload, a debug-only path.
+  - `false` `reject` (intent) Measurements only printed, not gated — the spec says recorded, not gated.
+  - `low` `reject` (intent) Changes beyond the listed scope (`_openInBrowser`, `files()` revision, fake error type, Widgetbook island, `GraphEdgeIndex`) — carried: each justified in the first pass.
+
 ## Design Notes
 
 - **Why a dedicated `BackendGraphLayout` and not a conversion to `RecordedGraphLayout`:** 4.12's point is a lazy view — no per-node strings or objects up front at 10k–100k nodes. Ids are formatted on access; only `indexOfKey`'s map is built, on first use.
@@ -226,6 +265,12 @@ deferred:
 
   Every page stays under one 16.7 ms frame, so 10.11's buffer is not tuned. graphLayout is the worker round trip (topology + layout), not event-to-paint.
 - Marionette/Widgetbook visual check: not run (unattended loop) — deferred.
+
+**Verification notes, follow-up review (2026-11-01, targeted checks; no `cargo make test`):**
+- `flutter test test/features/graph/graph_toasts_test.dart test/features/home/` (app): 39 passed.
+- `cargo make --allow-private test-flutter` (the app suite in its gate env, real cdylib): 1509 passed.
+- `dart analyze --fatal-infos --fatal-warnings` (app): no issues. `dart format --output=none --set-exit-if-changed .` (app): 0 changed.
+- No Rust, schema, jj-verb or `packages/zanshin_core` change: no cargo, codegen, parity-oracle or zanshin_core run needed.
 
 ## Auto Run Result
 
@@ -279,3 +324,21 @@ Status: done. Blocking condition: none.
 **Follow-up review: recommended (true).** Six medium findings were patched, among them the window's composition (host and shortcut wrappers) and the extra-operations bookkeeping; the mounted window has not been exercised in a running app (no Marionette run), so a follow-up should check the project window with a real repository.
 
 **Residual risks.** The full gate has not run (the loop runs it). The extra-operations map grows for the session (marked `shortcut:`). The whole shell rebuilds on every graph-model notification, as the catalogue does.
+
+### Follow-up review pass (2026-11-01)
+
+**Summary.** Two project-switch defects fixed: the graph's slot widgets are keyed by their graph set, so a switch mounts fresh `GraphView` / `GraphViewControls` / `GraphSearchField` states (no old search text, scope, selection or scroll); `GraphToasts.dispose` hides the toast it showed if still current, so no Undo/Redo/Retry runs on a disposed model.
+
+**Files changed.**
+- `app/lib/src/features/home/project_graph_host.dart` — `ObjectKey(graph)` on `GraphView` and `GraphViewControls`.
+- `app/lib/src/features/graph/graph_toasts.dart` — remembers its shown entry; `dispose` dismisses it.
+- `app/test/features/home/home_page_test.dart` — fresh states after a switch.
+- `app/test/features/graph/graph_toasts_test.dart` — dispose hides its own toast, keeps a later one.
+
+**Review.** 35 findings — high 0, medium 5, low 18, false 10, maybe-false 2. Patched this pass: 2 entries, both medium (state carry-over, 2 rows; toast outliving its model). Carried from the first pass: the extras union, ⌘F binding, the deferred contract catch. Deferred: none new. Rejected: the rest, each with its reason in the triage log.
+
+**Follow-up review: not recommended (false).** A follow-up pass patched no high finding (patched: medium 2, low 0); the work has converged.
+
+**Verification.** See the follow-up verification notes: app suite 1509 passed in its gate env, analyze and format clean.
+
+**Residual risks.** As above; the full gate and a Marionette run of the project window are still outstanding.
