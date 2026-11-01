@@ -1105,7 +1105,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - 9.5's `git remote add`, `remove`, `rename` and `set-url` (done) have no UI consumer.
   - The Projects dialog's Remotes tab is inert (SH:2067), and 11.6 proposes to drop it. 11.7's Project tab only picks the fetch and push remotes.
   - **Follow-up:** a "Remotes" group in 11.7's Project tab (add, rename, remove, set URL), when Ralph wants it.
-- **Bookmark tracking has no surface.** Low.
+- ~~**Bookmark tracking has no surface.**~~ — RESOLVED 2026-11-01 (spec-10-15-card-action-menu, commit de471e9e): with 10.14's panel action (e1f77309), the bookmark popover offers Track / Untrack for the card's remote bookmarks. Low.
   - 9.29's untracked rows and 9.11's `track` and `untrack` (backlog) are outside 10.14 (its non-goals).
   - **Follow-up:** a row action in 10.14's panel, through 10.15 and 10.9, once 9.11 and 9.29 land.
   - **2026-11-01, Story 10.14** (commit e1f773091695a3bcd19c1484df44f8fda0f79b0a): the panel's remote rows offer Track / Untrack (`jj bookmark track|untrack <name>@<remote>`) through the graph's runner; left: 10.15's action popup/menu entry.
@@ -2338,7 +2338,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
   - The 2026-10-26 note: "the new change is selected only while the inspector is open"; `GraphViewModel._succeeded` leaves the selection on revert because no inspector state exists yet (the outcome carries the born id).
   - **Follow-up:** 10.8 selects `outcome.born.first` after a `GraphRevert` while its inspector is open.
   - **2026-10-31, Story 10.8 (I5):** the inspector is open exactly while something is selected, so `_succeeded` selects the born change after a `GraphRevert` whenever the selection was non-null (`graph_view_model_test.dart`, "revert with a selection"); the catalogue's demo actions answer a revert with a born id.
-- **The real action port is not wired into the app, and the commands are not checked through the parity oracle.** Low.
+- ~~**The real action port is not wired into the app, and the commands are not checked through the parity oracle.**~~ — RESOLVED 2026-11-01 (spec-10-15-card-action-menu, commit de471e9e): the card menu's commands live in test-fixtures/commands/card-menu.txt, matched line for line by an app test and run through the parity oracle (card_menu_commands.rs) with the pinned jj. Low.
   - `RepoGraphActions` (graph_ports.dart) is constructed only in tests, like `RepoGraphSource`; `GraphAction.command` strings are checked against literal expectations in `app/test/features/graph/graph_ports_test.dart`, not parsed by jj.
   - **Follow-up:** 10.12 passes `RepoGraphActions(repo)` to `GraphViewModel.init(actions:)` where it builds the real source; the first story that shows a command (10.15) runs a sample of `command` strings through `crates/zanshin-parity`'s oracle.
   - **2026-11-01, Story 10.12:** `RepoGraphActions(repo)` is passed to `GraphViewModel.init(actions:)` in the project window (commit 6b9feacb); left: the oracle sample (Story 10.15).

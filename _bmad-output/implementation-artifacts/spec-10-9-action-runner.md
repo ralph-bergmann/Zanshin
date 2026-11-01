@@ -34,6 +34,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_ports.dart
     severity: low
+    resolved: >-
+      2026-11-01 — fixed (10.12 commit 6b9feacb wired RepoGraphActions; spec-10-15-card-action-menu, commit de471e9e: the parity oracle runs the card menu's commands).
   - summary: >-
       No test pins a pending card's opacity while a focus dim is also active.
     evidence: |-
