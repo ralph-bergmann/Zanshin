@@ -2513,7 +2513,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 10.24 (bmad-build-auto, 2026-11-01)
 
-- **A hidden or divergent change (a graph node keyed by its commit id) shows no diff in the inspector: `RepoHandle.diff` resolves only change ids, unlike `jj diff -r <commit id>`.** Medium.
+- ~~**A hidden or divergent change (a graph node keyed by its commit id) shows no diff in the inspector: `RepoHandle.diff` resolves only change ids, unlike `jj diff -r <commit id>`.**~~ — RESOLVED 2026-11-01 (spec-10-24-closing-diff-any-revision, commit ca8dee73): diff's -r/--from/--to take any single-commit revision as jj diff does; the inspector reads the node's diff by its commit id. Medium.
   - `crates/zanshin-jj/src/hunks.rs:251` resolves the revision through `op_support::resolve_or_wc` (a `ChangeId`); a commit id fails `jj.change_not_found`. The inspector skips the reads for such a node rather than show another commit's diff (`app/lib/src/features/graph/graph_inspector.dart`, `_fetch`).
   - **Follow-up:** let `diff`'s revision (and `--from`/`--to`) take a commit id or revset as `show(revset:)` does, then pass the node's commit id from `RepoGraphDetails.diff`.
 - **The inspector's diff block lays out every line of the focused file eagerly; a multi-thousand-line file may jank.** Medium (unverified).

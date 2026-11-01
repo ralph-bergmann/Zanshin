@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/hunks.rs:251
     severity: medium
+    resolved: >-
+      2026-11-01 — fixed (spec-10-24-closing-diff-any-revision, commit ca8dee73): diff's -r/--from/--to take any single-commit revision as jj diff does; the inspector reads the node's diff by its commit id.
   - summary: >-
       The diff block lays out every line of the focused file eagerly; a multi-thousand-line file may jank.
     evidence: |-
