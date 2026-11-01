@@ -106,6 +106,15 @@ class GraphSearchController extends ChangeNotifier {
     model.goToHidden(key, commitId: commitId == null || commitId.isEmpty ? null : commitId);
   }
 
+  /// A gap's "Show in `all()`" (Story 10.19): [GraphViewModel.showGap]'s one `show` and one request; once that is
+  /// issued the field reads `$ all()` (an active filter is replaced, it stays in Recent). A failed `show` changes
+  /// nothing.
+  Future<void> showGap(GraphGapTarget gap) async {
+    if (await model.showGap(gap) && !_disposed) {
+      _setView(const GraphAllView());
+    }
+  }
+
   void _setView(GraphShownView view) {
     _view = view;
     _store.saveView(view);

@@ -18,6 +18,7 @@ import 'graph_card.dart';
 import 'graph_card_menu.dart';
 import 'graph_inspector.dart';
 import 'graph_layout.dart';
+import 'graph_search_controller.dart';
 import 'graph_view_model.dart';
 import 'stale_notice.dart';
 
@@ -48,8 +49,12 @@ class GraphView extends StatefulWidget {
     this.insets = EdgeInsets.zero,
     this.inspectorModel,
     this.bookmarks,
+    this.search,
     super.key,
   });
+
+  /// The graph search a gap's "Show in `all()`" switches (Story 10.19); without one the model switches alone.
+  final GraphSearchController? search;
 
   /// The view model; its owner initialises and disposes it.
   final GraphViewModel model;
@@ -176,6 +181,8 @@ class _GraphViewState extends State<GraphView> {
   void _hoverGate() => _cards.hoverEnabled = !(_inactive ?? false) && !(_calm?.value.calm ?? false);
 
   void _edit(String key) => unawaited(widget.model.edit(key));
+
+  void _showGap(GraphGapTarget gap) => unawaited(widget.search?.showGap(gap) ?? widget.model.showGap(gap).then((_) {}));
 
   /// While the graph has focus, the focus card is the selection, else @ (the roving focus rests there, design
   /// question (c)).
@@ -340,6 +347,9 @@ class _GraphViewState extends State<GraphView> {
                 entering: model.entering,
                 onExpandStack: model.expandStack,
                 onCollapseStack: model.collapseStack,
+                flash: model.flash,
+                onShowGap: _showGap,
+                showChange: model.showChange,
               ),
             if (layout != null) ...<Widget>[
               GraphCardMenuHost(cards: _cards, model: model, inspector: widget.inspectorModel),

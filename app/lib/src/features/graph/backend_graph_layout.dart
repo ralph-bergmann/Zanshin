@@ -100,16 +100,21 @@ class BackendGraphLayout extends GraphLayout {
   int parentCountOf(int node) => _isStack(node) ? 1 : topology.parentCount(node);
 
   @override
-  bool elidedOf(int node) {
+  bool elidedOf(int node) => missingCountOf(node) > 0;
+
+  @override
+  int missingCountOf(int node) {
     if (_isStack(node)) {
-      return false;
+      // A stack's edges leave from its oldest member.
+      return missingCountOf(runMembersOf(_stackRuns[node - _n]).first);
     }
+    var count = 0;
     for (int e = topology.edgeStart(node); e < topology.edgeEnd(node); e++) {
       if (topology.edgeTarget(e) == null) {
-        return true;
+        count++;
       }
     }
-    return false;
+    return count;
   }
 
   @override

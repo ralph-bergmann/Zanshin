@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
+import 'package:material_ui/material_ui.dart' show Theme, ThemeData;
 import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/graph/at_pill.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
@@ -60,7 +61,8 @@ import 'projects.dart' show demoCapsule;
 /// The "Graph" folder (Story 10.1, decision 16.30): the fake-data host of every Epic 10 story. "Viewport / Recording"
 /// shows the recorded layouts of the design sample and medium-narrow, "Viewport / Scale" the synthetic 10k–100k
 /// fixtures, both with fake content (Story 10.3); every `GraphViewOptions` field is a knob, and the left and right
-/// insets stand in for the floating chrome. "Viewport / View model" drives a `GraphViewModel` on a fake source over the
+/// insets stand in for the floating chrome; its design-default recording shows the hidden-history marks, with the gap
+/// clearance as a knob (Story 10.19). "Viewport / View model" drives a `GraphViewModel` on a fake source over the
 /// recordings, with the stale notice and the @ pill over it (Stories 10.5, 10.6). "Card / States" shows one commit card
 /// per state (Story 10.3); "Peek / Open" the commit callout and "@ pill / Directions" the pill (Story 10.6); "Stale
 /// notice / Variants" the notice with its action, busy, and with Copy (Story 10.5). "Floating shell / Controls" hosts
@@ -80,11 +82,22 @@ final graphFolder = WidgetbookFolder(
               options: const <String>['design-default', 'design-all', 'design-cli-default', 'medium-narrow'],
             );
             final GraphViewOptions options = _options(context);
-            return _GraphDemo(
-              layout: recordedLayout(sample, options),
-              options: options,
-              insets: _insets(context),
-              nowMs: recordedNowMs(sample),
+            // Story 10.19: the visible line a gap marker keeps to every card, bend, crossing and mark.
+            final double clearance = context.knobs.double.slider(
+              label: 'gap clearance',
+              initialValue: 12,
+              min: 4,
+              max: 24,
+              divisions: 20,
+            );
+            return _withClearance(
+              clearance,
+              _GraphDemo(
+                layout: recordedLayout(sample, options),
+                options: options,
+                insets: _insets(context),
+                nowMs: recordedNowMs(sample),
+              ),
             );
           },
         ),
@@ -245,6 +258,25 @@ RecordedGraphLayout recordedLayout(String sample, GraphViewOptions options, {boo
   });
 }
 
+/// The design sample's every commit with its real parents (design-all, ungrouped): the fakes' `show` (Story 10.19).
+GraphLayout _allParents() => recordedLayout('design-all', const GraphViewOptions(), inlineContent: false);
+
+/// [child] with the gap clearance set to [clearance] (Story 10.19's knob, decision 16.30).
+Widget _withClearance(double clearance, Widget child) => Builder(
+  builder: (context) {
+    final ThemeData theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(
+        // A later extension of a type replaces the earlier one.
+        extensions: theme.extensions.values.followedBy(<GraphTheme>[
+          GraphTheme.of(context).copyWith(gapClearance: clearance),
+        ]),
+      ),
+      child: child,
+    );
+  },
+);
+
 /// The one operation every catalogue layout is pinned to, as a worker layout is to its topology's: the search's counts
 /// and lookups ask the fakes only with one.
 const catalogueOperationId = 'catalogue';
@@ -374,7 +406,7 @@ class _ViewModelDemoState extends State<_ViewModelDemo> {
   late final _source = FakeGraphSource(
     (request) => requestedLayout(request.revset == 'all()' ? 'design-all' : 'design-default', request),
     staleCause: widget.staleCause,
-  );
+  )..parentsLayout = _allParents;
   late final _model = GraphViewModel();
 
   String get _revset => widget.revset == 'all()' ? 'all()' : FakeGraphSource.defaults.log;
@@ -462,7 +494,7 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
   final _source = FakeGraphSource(
     (request) =>
         requestedLayout(request.revset == FakeGraphSource.defaults.log ? 'design-default' : 'design-all', request),
-  );
+  )..parentsLayout = _allParents;
   final _model = GraphViewModel();
   late final _search = GraphSearchController(
     model: _model,
@@ -563,7 +595,7 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
           canvas: const ZsCanvas(),
           graph: ListenableBuilder(
             listenable: preferences,
-            builder: (context, _) => GraphView(model: _model, options: preferences.options),
+            builder: (context, _) => GraphView(model: _model, options: preferences.options, search: _search),
           ),
           projectCapsule: demoCapsule(),
           view: GraphViewControls(model: _model, preferences: preferences, search: _search),

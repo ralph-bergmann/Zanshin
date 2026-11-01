@@ -604,6 +604,91 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get gapElided => 'elided';
+
+  @override
+  String get gapTitleIndirect => 'Commits hidden between these changes';
+
+  @override
+  String get gapTitleHiddenMerge => 'A hidden merge sits below this change';
+
+  @override
+  String get gapTitleMissing => 'History continues outside this revset';
+
+  @override
+  String get gapHiddenCommits => 'Hidden commits';
+
+  @override
+  String get gapOlderHistory => 'Older history not shown';
+
+  @override
+  String get gapParentNotInRevset => 'parent, not in revset';
+
+  @override
+  String get gapDescIndirect =>
+      'The dashed edge skips commits the revset doesn\'t include and links to the nearest visible ancestor.';
+
+  @override
+  String get gapDescHiddenMerge =>
+      'The only parent is hidden and is itself a merge, so the gap leads to two visible ancestors.';
+
+  @override
+  String get gapDescMissing => 'No ancestor reached through this parent is part of the current revset.';
+
+  @override
+  String gapShowIn(String revset) {
+    return 'Show in $revset';
+  }
+
+  @override
+  String get gapShowInHint => 'switches revset · centers here';
+
+  @override
+  String gapCount(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n gaps',
+      one: '1 gap',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get gapLegendTitle => 'This revset hides part of the history';
+
+  @override
+  String get gapLegendSolid => 'Solid';
+
+  @override
+  String get gapLegendSolidText => 'direct parent';
+
+  @override
+  String get gapLegendDashed => 'Dashed';
+
+  @override
+  String get gapLegendDashedText => 'commits in between are hidden';
+
+  @override
+  String get gapLegendEnd => 'End';
+
+  @override
+  String get gapLegendEndText => 'older history isn\'t in the revset';
+
+  @override
+  String gapLegendTimes(int n) {
+    return '$n×';
+  }
+
+  @override
+  String get gapLegendNote => 'Stacks never span a gap. Hover a marker for details.';
+
+  @override
+  String gapLegendShow(String revset) {
+    return 'Show $revset';
+  }
+
+  @override
   String get graphCardWidth => 'Card width';
 
   @override

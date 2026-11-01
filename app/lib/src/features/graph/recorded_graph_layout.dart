@@ -154,7 +154,7 @@ class RecordedGraphLayout extends GraphLayout {
         flags[i] = flagImmutable;
       }
       parentCounts[i] = (node['parent_count'] as int?) ?? parents.length;
-      elided[i] = parents.any((p) => (p! as Map<String, Object?>)['kind'] == 'missing') ? 1 : 0;
+      elided[i] = parents.where((p) => (p! as Map<String, Object?>)['kind'] == 'missing').length;
       timestamps.add(node['ts_ms'] as int?);
       if (node['working_copy'] == 'this') {
         workingCopy = i;
@@ -428,7 +428,12 @@ class RecordedGraphLayout extends GraphLayout {
   int parentCountOf(int node) => _parentCounts[node];
 
   @override
-  bool elidedOf(int node) => _elided[node] != 0;
+  bool elidedOf(int node) => missingCountOf(node) > 0;
+
+  @override
+  int missingCountOf(int node) =>
+      // A stack's edges leave from its oldest member.
+      isStackNode(node) ? _elided[runMembersOf(runOf(node)!).first] : _elided[node];
 
   @override
   int get edgeCount => _edgeChildren.length;

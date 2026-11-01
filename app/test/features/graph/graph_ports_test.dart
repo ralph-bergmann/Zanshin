@@ -42,6 +42,9 @@ class _Counting implements GraphSource {
 
   @override
   Future<StaleRecovery> updateStale() => _source.updateStale();
+
+  @override
+  Future<ShowEntry> show(String commitId) => _source.show(commitId);
 }
 
 /// Waits (real time) until [done] holds, at most 10 s.

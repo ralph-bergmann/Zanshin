@@ -10,13 +10,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_card_render.dart';
+import 'package:zanshin/src/features/graph/graph_edges.dart';
+import 'package:zanshin/src/features/graph/graph_gap_callout.dart';
+import 'package:zanshin/src/features/graph/graph_gaps.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
+import 'package:zanshin/src/features/graph/graph_metrics.dart';
 import 'package:zanshin/src/features/graph/graph_peek.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
+import 'package:zanshin/src/features/graph/graph_search_controller.dart';
+import 'package:zanshin/src/features/graph/graph_search_model.dart';
+import 'package:zanshin/src/features/graph/graph_search_store.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
+import 'package:zanshin/src/features/graph/vertical_layout.dart';
 import 'package:zanshin/src/features/shell/graph_insets.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
 import 'package:zanshin/src/features/shell/shell_layout.dart';
@@ -24,6 +32,7 @@ import 'package:zanshin/src/features/shell/shell_scope.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../helpers/fake_graph_search_source.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
 import '../../helpers/shell_host.dart';
@@ -1190,5 +1199,69 @@ void main() {
         );
       }
     });
+  });
+
+  testWidgets('Story 10.19: a marker\'s Show in all() goes through the search: one all() request, the field on all(), '
+      'the hidden commits flash', (tester) async {
+    // Shown: c --dashed--> a. All: c → h → a.
+    final RecordedGraphLayout shownLayout = handLayout(
+      <(String, int, int)>[('c', 1, 0), ('a', 0, 0)],
+      edges: <(int, int)>[(0, 1)],
+      indirect: <int>{0},
+      parentCounts: <int>[1, 0],
+      workingCopy: 0,
+      commitIds: <String>['c', 'a'],
+    );
+    final RecordedGraphLayout allLayout = handLayout(
+      <(String, int, int)>[('c', 2, 0), ('h', 1, 0), ('a', 0, 0)],
+      edges: <(int, int)>[(0, 1), (1, 2)],
+      parentCounts: <int>[1, 1, 0],
+      workingCopy: 0,
+      commitIds: <String>['c', 'h', 'a'],
+    );
+    source = ScriptedGraphSource(respond: (request) => request.revset == 'all()' ? allLayout : shownLayout)
+      ..parentsOf = <String, List<String>>{
+        'c': <String>['h'],
+      };
+    model = GraphViewModel()..init(source, clock: () => clock);
+    final search = GraphSearchController(
+      model: model,
+      source: FakeGraphSearchSource(),
+      store: MemoryGraphSearchStore(),
+    );
+    tester.view
+      ..physicalSize = surface
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(wrap(GraphView(model: model, search: search)));
+    await tester.pump();
+
+    // The marker where the canvas places it: no insets, nothing to scroll.
+    final metrics = GraphMetrics();
+    final rows = UniformRows(shownLayout, metrics, bottomExtra: graphGapsBottomExtraOf(shownLayout));
+    final gaps = GraphGaps.compute(
+      layout: shownLayout,
+      geometry: routeGraph(shownLayout, metrics) as RouteGeometry,
+      rows: rows,
+    );
+    final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: const Offset(790, 590));
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(gaps.gaps.single.point);
+    await tester.pump(const Duration(milliseconds: 390));
+    await tester.pump();
+    expect(find.byType(GraphGapCallout), findsOneWidget);
+    await tester.tap(find.text('Show in all()'));
+    await tester.pump();
+    await tester.pump();
+    expect(source.shows, <String>['c']);
+    expect(source.requests.last.revset, 'all()');
+    expect(search.view, isA<GraphAllView>());
+    expect(model.flash.value?.keys, <String>{'h'});
+    await mouse.moveTo(const Offset(790, 590));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpWidget(const SizedBox());
+    search.dispose();
+    model.dispose();
   });
 }

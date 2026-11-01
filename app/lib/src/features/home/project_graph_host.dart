@@ -245,6 +245,7 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
             options: graph.preferences.options,
             inspectorModel: graph.inspector,
             bookmarks: graph.bookmarks,
+            search: graph.search,
           ),
           view: GraphViewControls(
             key: ObjectKey(graph),

@@ -97,4 +97,35 @@ class FakeGraphSource implements GraphSource {
       opId: '',
     );
   }
+
+  /// The layout `show` reads a commit's real parents from (a revset holding them all, e.g. `all()`'s recording); a
+  /// commit it lacks, or no [parentsLayout], refuses `jj.not_found`.
+  GraphLayout Function()? parentsLayout;
+
+  @override
+  Future<ShowEntry> show(String commitId) async {
+    final GraphLayout? layout = parentsLayout?.call();
+    final int? node = layout?.indexOfKey(commitId);
+    if (node == null) {
+      throw const ZanshinFfiException('jj.not_found');
+    }
+    final (:int start, :int end) = layout!.parentEdges(node);
+    const nobody = Signature(name: '', email: '', timestampMillis: 0, tzOffsetMinutes: 0);
+    return ShowEntry(
+      change: Change(
+        id: layout.changeIdOf(node),
+        commitId: commitId,
+        parents: <String>[for (var e = start; e < end; e++) layout.keyOf(layout.parentOf(e))],
+        description: '',
+        author: nobody,
+        committer: nobody,
+        isSigned: false,
+        conflict: ConflictState.clean,
+        conflictedPaths: const <String>[],
+        isAnonymous: true,
+        divergent: false,
+      ),
+      fileChanges: const <FileChange>[],
+    );
+  }
 }

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/graph/graph_gaps.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/layout_invariants.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
@@ -44,6 +46,8 @@ void main() {
     expect(layout.parentCountOf(1), 1, reason: 'without parent_count, the parent entries');
     expect(layout.elidedOf(0), isTrue);
     expect(layout.elidedOf(1), isFalse);
+    expect(layout.missingCountOf(0), 1);
+    expect(layout.missingCountOf(1), 0);
     expect(layout.workingCopyIndex, 0);
     expect(layout.rootIndex, 2);
     expect(layout.utcOffsetMinutes, 120);
@@ -105,6 +109,33 @@ void main() {
       expect(parentSlots, layout.edgeCount, reason: name);
       expect(childSlots, layout.edgeCount, reason: name);
     }
+  });
+
+  test("Story 10.19: a collapsed stack node reports its oldest member's Missing parents (a constructed layout: the "
+      'engine never groups a member with a Missing parent, docs/graph-layout.md §4.8)', () {
+    final RecordedGraphLayout base = hugeStackLayout(3);
+    final int stack = base.stackNodeOf(0)!;
+    final int oldest = base.runMembersOf(0).first;
+    final layout = RecordedGraphLayout(
+      mode: base.mode,
+      unit: base.unit,
+      rows: base.rows,
+      colCount: base.colCount,
+      keys: <String>[for (var i = 0; i < base.nodeCount; i++) base.keyOf(i)],
+      cols: Int32List.fromList(<int>[for (var i = 0; i < base.nodeCount; i++) base.colOf(i)]),
+      nodeRows: Int32List.fromList(<int>[for (var i = 0; i < base.nodeCount; i++) base.rowOf(i)]),
+      parentCounts: Int32List.fromList(<int>[for (var i = 0; i < base.nodeCount; i++) base.parentCountOf(i)]),
+      elided: Uint8List(base.nodeCount)..[oldest] = 2,
+      edgeChildren: Int32List.fromList(<int>[for (var k = 0; k < base.edgeCount; k++) base.childOf(k)]),
+      edgeParents: Int32List.fromList(<int>[for (var k = 0; k < base.edgeCount; k++) base.parentOf(k)]),
+      edgeKinds: <GraphEdgeKind>[for (var k = 0; k < base.edgeCount; k++) base.kindOf(k)],
+      edgeShapes: <GraphEdgeShape>[for (var k = 0; k < base.edgeCount; k++) base.shapeOf(k)],
+      runMembers: <List<int>>[base.runMembersOf(0)],
+      runStackNodes: <int?>[stack],
+    );
+    expect(layout.missingCountOf(stack), 2);
+    expect(layout.elidedOf(stack), isTrue);
+    expect(graphGapCounts(layout).ends, 2, reason: 'the folded member is not counted twice');
   });
 
   test("the CLI-faithful design variant drops wq and makes vr's parent Missing", () {

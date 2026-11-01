@@ -968,6 +968,144 @@ abstract class AppLocalizations {
   /// **'{n, plural, =1{Collapse 1 change into a stack} other{Collapse {n} changes into a stack}}'**
   String stackCollapseTooltip(int n);
 
+  /// Label beside an end stub under a card whose parent is outside the revset; shown after a tilde ("~ elided"), as jj's log says.
+  ///
+  /// In en, this message translates to:
+  /// **'elided'**
+  String get gapElided;
+
+  /// Title of the gap callout on a dashed edge: the revset skips commits between the two changes.
+  ///
+  /// In en, this message translates to:
+  /// **'Commits hidden between these changes'**
+  String get gapTitleIndirect;
+
+  /// Title of the gap callout when the change's only parent is hidden and is itself a merge.
+  ///
+  /// In en, this message translates to:
+  /// **'A hidden merge sits below this change'**
+  String get gapTitleHiddenMerge;
+
+  /// Title of the gap callout on an end stub: a parent has no ancestor in the revset.
+  ///
+  /// In en, this message translates to:
+  /// **'History continues outside this revset'**
+  String get gapTitleMissing;
+
+  /// Gap callout, the middle line of the chain on a dashed edge.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden commits'**
+  String get gapHiddenCommits;
+
+  /// Gap callout, the middle line of the chain on an end stub.
+  ///
+  /// In en, this message translates to:
+  /// **'Older history not shown'**
+  String get gapOlderHistory;
+
+  /// Gap callout: beside the id of a parent the revset does not include.
+  ///
+  /// In en, this message translates to:
+  /// **'parent, not in revset'**
+  String get gapParentNotInRevset;
+
+  /// Gap callout description on a dashed edge.
+  ///
+  /// In en, this message translates to:
+  /// **'The dashed edge skips commits the revset doesn\'t include and links to the nearest visible ancestor.'**
+  String get gapDescIndirect;
+
+  /// Gap callout description on a hidden merge.
+  ///
+  /// In en, this message translates to:
+  /// **'The only parent is hidden and is itself a merge, so the gap leads to two visible ancestors.'**
+  String get gapDescHiddenMerge;
+
+  /// Gap callout description on an end stub.
+  ///
+  /// In en, this message translates to:
+  /// **'No ancestor reached through this parent is part of the current revset.'**
+  String get gapDescMissing;
+
+  /// Gap callout button: switches the graph to the revset and centres on the gap's hidden commits.
+  ///
+  /// In en, this message translates to:
+  /// **'Show in {revset}'**
+  String gapShowIn(String revset);
+
+  /// Hint beside the gap callout's button.
+  ///
+  /// In en, this message translates to:
+  /// **'switches revset · centers here'**
+  String get gapShowInHint;
+
+  /// The top bar's gap legend chip: how many gaps the revset leaves in the history.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{1 gap} other{{n} gaps}}'**
+  String gapCount(int n);
+
+  /// Title of the gap legend popover.
+  ///
+  /// In en, this message translates to:
+  /// **'This revset hides part of the history'**
+  String get gapLegendTitle;
+
+  /// Gap legend row name: a solid edge.
+  ///
+  /// In en, this message translates to:
+  /// **'Solid'**
+  String get gapLegendSolid;
+
+  /// Gap legend: what a solid edge means.
+  ///
+  /// In en, this message translates to:
+  /// **'direct parent'**
+  String get gapLegendSolidText;
+
+  /// Gap legend row name: a dashed edge.
+  ///
+  /// In en, this message translates to:
+  /// **'Dashed'**
+  String get gapLegendDashed;
+
+  /// Gap legend: what a dashed edge means.
+  ///
+  /// In en, this message translates to:
+  /// **'commits in between are hidden'**
+  String get gapLegendDashedText;
+
+  /// Gap legend row name: an end stub.
+  ///
+  /// In en, this message translates to:
+  /// **'End'**
+  String get gapLegendEnd;
+
+  /// Gap legend: what an end stub means.
+  ///
+  /// In en, this message translates to:
+  /// **'older history isn\'t in the revset'**
+  String get gapLegendEndText;
+
+  /// Gap legend: how many times a kind occurs.
+  ///
+  /// In en, this message translates to:
+  /// **'{n}×'**
+  String gapLegendTimes(int n);
+
+  /// Gap legend's closing line.
+  ///
+  /// In en, this message translates to:
+  /// **'Stacks never span a gap. Hover a marker for details.'**
+  String get gapLegendNote;
+
+  /// Gap legend button: switches the graph to the revset.
+  ///
+  /// In en, this message translates to:
+  /// **'Show {revset}'**
+  String gapLegendShow(String revset);
+
   /// View options row: the commit cards' width.
   ///
   /// In en, this message translates to:

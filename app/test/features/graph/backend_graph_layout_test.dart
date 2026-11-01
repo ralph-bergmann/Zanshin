@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/backend_graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_edges.dart';
+import 'package:zanshin/src/features/graph/graph_gaps.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_metrics.dart';
 import 'package:zanshin/src/features/graph/layout_invariants.dart';
@@ -184,6 +185,7 @@ void main() {
     late String first;
     late String second;
     late String third;
+    late String merge;
     late String rewrittenCommit;
 
     setUpAll(() async {
@@ -200,6 +202,9 @@ void main() {
       final String fourth = (await handle.newChange(<String>[third])).newChangeIds.single;
       // Described, so leaving it does not abandon it (an empty, undescribed @ goes when @ moves).
       await handle.describe(changeId: fourth, description: 'four');
+      // Story 10.19: a merge of first and the root, described so leaving it keeps it.
+      merge = (await handle.newChange(<String>[first, 'z' * 32])).newChangeIds.single;
+      await handle.describe(changeId: merge, description: 'merge');
       await handle.newChange(<String>[first]);
       await handle.bookmarkCreate(<String>['feat'], revision: first);
       final BackendGraphLayout before = await _layout(handle, 'all()', mode: LayoutMode.free);
@@ -230,6 +235,14 @@ void main() {
       expect(layout.elidedOf(0), isTrue);
       expect(layout.parentCountOf(0), 1);
       expect(layout.edgeCount, 0);
+      expect(layout.missingCountOf(0), 1);
+    });
+
+    test('Story 10.19: a merge shown alone has two Missing parents', () async {
+      final BackendGraphLayout layout = await _layout(handle, merge, mode: LayoutMode.compact);
+      expect(layout.shownCount, 1);
+      expect(layout.missingCountOf(0), 2);
+      expect(graphGapCounts(layout).ends, 2);
     });
 
     test('bookmarks are its refs; one workspace names none', () async {

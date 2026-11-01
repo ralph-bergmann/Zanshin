@@ -34,4 +34,42 @@ void main() {
     search.goTo('c', bookmark: 'dev');
     expect(search.recent, <GraphRecent>[const GraphRecentGoTo('c', bookmark: 'dev')]);
   });
+
+  test('Story 10.19: a gap\'s Show in all() reads `\$ all()` and ✕ returns to the default search; a failed show '
+      'changes nothing; an active filter is replaced and stays in Recent', () async {
+    final source = ScriptedGraphSource();
+    final model = GraphViewModel();
+    final search = GraphSearchController(
+      model: model,
+      source: FakeGraphSearchSource(),
+      store: MemoryGraphSearchStore(),
+    );
+    addTearDown(() {
+      search.dispose();
+      model.dispose();
+    });
+    model.init(source, revset: search.revset);
+    await pumpEventQueue();
+
+    const gap = GraphGapTarget(child: 'a', commitId: 'a', targets: <String>['b']);
+    await search.showGap(gap);
+    expect(search.view, isNot(isA<GraphAllView>()), reason: 'show refused: nothing changes');
+    expect(source.requests, hasLength(1));
+
+    final filter = GraphFilter.author('me');
+    search.apply(filter);
+    await pumpEventQueue();
+    source.parentsOf = <String, List<String>>{
+      'a': <String>['h'],
+    };
+    await search.showGap(gap);
+    await pumpEventQueue();
+    expect(search.view, isA<GraphAllView>());
+    expect(source.requests.last.revset, 'all()');
+    expect(search.recent, contains(GraphRecentFilter(filter)));
+    search.showDefault();
+    await pumpEventQueue();
+    expect(search.view, GraphShownView.defaultSearch);
+    expect(source.requests.last.revset, 'L');
+  });
 }

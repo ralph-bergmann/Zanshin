@@ -162,6 +162,9 @@ abstract interface class GraphSource {
 
   /// `jj workspace update-stale` (Story 9.23).
   Future<StaleRecovery> updateStale();
+
+  /// `jj show <commitId>` (Story 9.6): a gap's real parents (Story 10.19).
+  Future<ShowEntry> show(String commitId);
 }
 
 /// One jj verb on the graph's changes (Story 10.9): its parameters passed through with the CLI's defaults, the one jj
@@ -849,6 +852,9 @@ class RepoGraphSource implements GraphSource {
 
   @override
   Future<StaleRecovery> updateStale() => _repo.handle.workspaceUpdateStale();
+
+  @override
+  Future<ShowEntry> show(String commitId) async => (await _repo.handle.show(revset: commitId)).single;
 }
 
 /// A broken layout-input contract as the model's error caption shows it (`ffi.unknown`, Story 10.12): the engine

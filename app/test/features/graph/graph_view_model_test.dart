@@ -12,6 +12,7 @@ import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
 import '../../helpers/scripted_graph_source.dart';
+import 'graph_harness.dart';
 
 /// Story 10.5's view model on fake ports: the I/O matrix and the epic's witnesses.
 void main() {
@@ -1122,6 +1123,117 @@ void main() {
       expect(async.pendingTimers, isEmpty);
     });
   });
+
+  group('Story 10.19: Show in all()', () {
+    /// A model whose default revset shows [shown] and whose `all()` shows [all].
+    GraphViewModel gapModel(FakeAsync async, RecordedGraphLayout shown, RecordedGraphLayout all) {
+      source.respond = (request) => request.revset == 'all()' ? all : shown;
+      return start(async);
+    }
+
+    test('an Indirect gap: one show, one all() request with the hidden parent kept open, it is revealed and exactly '
+        'the hidden commits on the path flash', () {
+      fakeAsync((async) {
+        // Shown: c --dashed--> a. All: c → h1 → h2 → a, and x → a beside the gap.
+        final RecordedGraphLayout shown = handLayout(
+          <(String, int, int)>[('c', 1, 0), ('a', 0, 0)],
+          edges: <(int, int)>[(0, 1)],
+          indirect: <int>{0},
+          parentCounts: <int>[1, 0],
+          workingCopy: 0,
+        );
+        final RecordedGraphLayout all = handLayout(
+          <(String, int, int)>[('c', 3, 0), ('x', 2, 1), ('h1', 2, 0), ('h2', 1, 0), ('a', 0, 0)],
+          edges: <(int, int)>[(0, 2), (2, 3), (3, 4), (1, 4)],
+          parentCounts: <int>[1, 1, 1, 1, 0],
+          workingCopy: 0,
+        );
+        source.parentsOf = <String, List<String>>{
+          'c': <String>['h1'],
+        };
+        final GraphViewModel model = gapModel(async, shown, all);
+        expect(
+          model.showGap(const GraphGapTarget(child: 'c', commitId: 'c', targets: <String>['a'])),
+          completion(isTrue),
+        );
+        async.flushMicrotasks();
+        expect(source.shows, <String>['c']);
+        expect(source.requests, hasLength(2));
+        expect(source.requests.last.revset, 'all()');
+        expect(source.requests.last.keepOpenKeys, contains('h1'));
+        expect(model.reveal?.key, 'h1');
+        expect(model.reveal?.alignment, GraphRevealAlignment.centre);
+        expect(model.flash.value?.keys, <String>{'h1', 'h2'});
+        model.dispose();
+      });
+    });
+
+    test('a hidden merge: the merge is revealed and flashes, and the paths to both targets', () {
+      fakeAsync((async) {
+        final RecordedGraphLayout shown = handLayout(
+          <(String, int, int)>[('c', 1, 0), ('a', 0, 0), ('b', 0, 1)],
+          edges: <(int, int)>[(0, 1), (0, 2)],
+          indirect: <int>{0, 1},
+          parentCounts: <int>[1, 0, 0],
+          workingCopy: 0,
+        );
+        final RecordedGraphLayout all = handLayout(
+          <(String, int, int)>[('c', 3, 0), ('m', 2, 0), ('n', 1, 1), ('a', 0, 0), ('b', 0, 1)],
+          edges: <(int, int)>[(0, 1), (1, 3), (1, 2), (2, 4)],
+          parentCounts: <int>[1, 2, 1, 0, 0],
+          workingCopy: 0,
+        );
+        source.parentsOf = <String, List<String>>{
+          'c': <String>['m'],
+        };
+        final GraphViewModel model = gapModel(async, shown, all);
+        unawaited(model.showGap(const GraphGapTarget(child: 'c', commitId: 'c', targets: <String>['a', 'b'])));
+        async.flushMicrotasks();
+        expect(source.requests, hasLength(2));
+        expect(model.reveal?.key, 'm');
+        expect(model.flash.value?.keys, <String>{'m', 'n'});
+        model.dispose();
+      });
+    });
+
+    test('a Missing gap: the hidden parent is revealed, it and its new ancestors flash', () {
+      fakeAsync((async) {
+        final RecordedGraphLayout shown = handLayout(
+          <(String, int, int)>[('c', 0, 0)],
+          parentCounts: <int>[1],
+          workingCopy: 0,
+        );
+        final RecordedGraphLayout all = handLayout(
+          <(String, int, int)>[('c', 2, 0), ('p', 1, 0), ('q', 0, 0)],
+          edges: <(int, int)>[(0, 1), (1, 2)],
+          parentCounts: <int>[1, 1, 0],
+          workingCopy: 0,
+        );
+        source.parentsOf = <String, List<String>>{
+          'c': <String>['p'],
+        };
+        final GraphViewModel model = gapModel(async, shown, all);
+        unawaited(model.showGap(const GraphGapTarget(child: 'c', commitId: 'c')));
+        async.flushMicrotasks();
+        expect(source.requests.last.keepOpenKeys, contains('p'));
+        expect(model.reveal?.key, 'p');
+        expect(model.flash.value?.keys, <String>{'p', 'q'});
+        model.dispose();
+      });
+    });
+
+    test('a failed show issues no request and answers false', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async);
+        expect(model.showGap(const GraphGapTarget(child: 'a', commitId: 'a')), completion(isFalse));
+        async.flushMicrotasks();
+        expect(source.shows, <String>['a']);
+        expect(source.requests, hasLength(1));
+        expect(model.revset, 'L');
+        model.dispose();
+      });
+    });
+  });
 }
 
 MutationResult _result(
@@ -1204,4 +1316,7 @@ class _FailingDefaults implements GraphSource {
 
   @override
   Future<StaleRecovery> updateStale() => source.updateStale();
+
+  @override
+  Future<ShowEntry> show(String commitId) => source.show(commitId);
 }

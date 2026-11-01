@@ -42,6 +42,11 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     required this.edgeHover,
     required this.lineage,
     required this.lineageGlow,
+    required this.gapCut,
+    required this.gapCutHover,
+    required this.gapText,
+    required this.gapTextHover,
+    this.gapClearance = 12,
   });
 
   /// The graph roles of [colors].
@@ -73,6 +78,10 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     edgeHover: colors.edgeHov,
     lineage: colors.co,
     lineageGlow: colors.coGlow,
+    gapCut: colors.textFaint,
+    gapCutHover: colors.text,
+    gapText: colors.textFaint,
+    gapTextHover: colors.textMuted,
   );
 
   /// The graph roles [appearance] shows.
@@ -168,6 +177,22 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
   /// The @ lineage's 4 px drop-shadow glow, `--co-glow` (graph.css:68).
   final Color lineageGlow;
 
+  /// A gap marker's two 1.5 px cuts, `--text-faint` (Story 10.19; graph.css:73 `.zs-gap-cut`).
+  final Color gapCut;
+
+  /// A hovered gap marker's cuts, `--text` (graph.css:75 `.zs-gap.is-hover`).
+  final Color gapCutHover;
+
+  /// An end stub's "~ elided", `--text-faint` (graph.css:74 `.zs-gap-txt`).
+  final Color gapText;
+
+  /// A hovered end stub's label, `--text-muted` (graph.css:75).
+  final Color gapTextHover;
+
+  /// The visible line a gap marker keeps to every card, bend, crossing and other mark, in px (Story 10.19; the
+  /// export's CLEAR).
+  final double gapClearance;
+
   @override
   GraphTheme copyWith({
     ZsCanvasGradient? canvas,
@@ -197,6 +222,11 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     Color? edgeHover,
     Color? lineage,
     Color? lineageGlow,
+    Color? gapCut,
+    Color? gapCutHover,
+    Color? gapText,
+    Color? gapTextHover,
+    double? gapClearance,
   }) => GraphTheme(
     canvas: canvas ?? this.canvas,
     canvasBase: canvasBase ?? this.canvasBase,
@@ -225,6 +255,11 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     edgeHover: edgeHover ?? this.edgeHover,
     lineage: lineage ?? this.lineage,
     lineageGlow: lineageGlow ?? this.lineageGlow,
+    gapCut: gapCut ?? this.gapCut,
+    gapCutHover: gapCutHover ?? this.gapCutHover,
+    gapText: gapText ?? this.gapText,
+    gapTextHover: gapTextHover ?? this.gapTextHover,
+    gapClearance: gapClearance ?? this.gapClearance,
   );
 
   @override
@@ -261,6 +296,11 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
       edgeHover: mix(edgeHover, other.edgeHover),
       lineage: mix(lineage, other.lineage),
       lineageGlow: mix(lineageGlow, other.lineageGlow),
+      gapCut: mix(gapCut, other.gapCut),
+      gapCutHover: mix(gapCutHover, other.gapCutHover),
+      gapText: mix(gapText, other.gapText),
+      gapTextHover: mix(gapTextHover, other.gapTextHover),
+      gapClearance: gapClearance + (other.gapClearance - gapClearance) * t,
     );
   }
 
@@ -294,7 +334,12 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
           other.edge == edge &&
           other.edgeHover == edgeHover &&
           other.lineage == lineage &&
-          other.lineageGlow == lineageGlow;
+          other.lineageGlow == lineageGlow &&
+          other.gapCut == gapCut &&
+          other.gapCutHover == gapCutHover &&
+          other.gapText == gapText &&
+          other.gapTextHover == gapTextHover &&
+          other.gapClearance == gapClearance;
 
   @override
   int get hashCode => Object.hashAll(<Object>[
@@ -325,5 +370,10 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     edgeHover,
     lineage,
     lineageGlow,
+    gapCut,
+    gapCutHover,
+    gapText,
+    gapTextHover,
+    gapClearance,
   ]);
 }

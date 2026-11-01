@@ -284,8 +284,12 @@ class GraphEdgeHighlight {
 /// painter, a repaint, never a layout.
 class GraphEdgePainter {
   /// A painter of [geometry] (router B's output for [layout]) in [theme]'s edge roles.
-  GraphEdgePainter({required this.layout, required this.geometry, required this.theme})
-    : assert(geometry.classes.edgeCount == layout.edgeCount, 'the geometry is not of this layout') {
+  GraphEdgePainter({
+    required this.layout,
+    required this.geometry,
+    required this.theme,
+    this.gapCuts = const <int, List<GraphEdgeCut>>{},
+  }) : assert(geometry.classes.edgeCount == layout.edgeCount, 'the geometry is not of this layout') {
     final int e = layout.edgeCount;
     final Int32List starts = geometry.pointStarts;
     final Float64List points = geometry.points;
@@ -346,14 +350,33 @@ class GraphEdgePainter {
   /// The colours.
   final GraphTheme theme;
 
-  // DS graph.css:65-69 and GraphEdge.d.ts: widths, the dash (3 on, 5 off), the dim, the corner radius.
-  static const _width = 1.5;
-  static const _lineageWidth = 2.25;
-  static const double _glowSigma = 2;
-  static const double _dash = 3;
-  static const double _period = 8;
-  static const _dimDrop = .72;
+  /// Per dashed edge, the points of its gap markers (Story 10.19): each breaks the line [gapCutHalf] either side.
+  final Map<int, List<GraphEdgeCut>> gapCuts;
+
+  // DS graph.css:65-69 and GraphEdge.d.ts: widths, the dash (3 on, 5 off), the dim, the corner radius. Public for the
+  // gap marks (Story 10.19), which follow their edges.
+
+  /// A line's width.
+  static const lineWidth = 1.5;
+
+  /// The @ lineage's width.
+  static const lineageWidth = 2.25;
+
+  /// The lineage glow's blur sigma.
+  static const double glowSigma = 2;
+
+  /// A dash's length.
+  static const double dashOn = 3;
+
+  /// The dash period (3 on, 5 off).
+  static const double dashPeriod = 8;
+
+  /// How much a dimmed line fades: opacity 1 − [dimDrop]·dim.
+  static const dimDrop = .72;
   static const double _radius = 10;
+
+  /// A gap marker's cut's half length along its run (Story 10.19: 8 px along).
+  static const double gapCutHalf = 4;
 
   /// The paint query's margin around the visible window (the glow and the cuts reach past a line).
   static const double _margin = 8;
@@ -503,6 +526,7 @@ class GraphEdgePainter {
     final arc = _Arc(p, _radius);
     final holes = <(double, double)>[
       for (final GraphEdgeCut cut in cuts ?? const <GraphEdgeCut>[]) ?arc.cut(cut, _cutHalf),
+      for (final GraphEdgeCut cut in gapCuts[edge] ?? const <GraphEdgeCut>[]) ?arc.cut(cut, gapCutHalf),
     ]..sort((a, b) => a.$1.compareTo(b.$1));
     void piece(double a, double b) {
       var from = a;
@@ -529,8 +553,8 @@ class GraphEdgePainter {
       return;
     }
     final (double lo, double hi) = arc.visible(clip);
-    for (double at = (lo / _period).floorToDouble() * _period; at < math.min(hi, total); at += _period) {
-      piece(at, math.min(at + _dash, total));
+    for (double at = (lo / dashPeriod).floorToDouble() * dashPeriod; at < math.min(hi, total); at += dashPeriod) {
+      piece(at, math.min(at + dashOn, total));
     }
   }
 
@@ -561,7 +585,7 @@ class GraphEdgePainter {
       };
       _addStroke(groups[group] ??= Path(), k, clip, cuts[k], dx, dy);
     }
-    final double fade = 1 - _dimDrop * highlight.dim.clamp(0, 1);
+    final double fade = 1 - dimDrop * highlight.dim.clamp(0, 1);
     Paint stroke(Color color, double width, {bool dimmed = false}) => Paint()
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.butt
@@ -577,17 +601,17 @@ class GraphEdgePainter {
       }
       switch (g) {
         case 0 || 1:
-          canvas.drawPath(path, stroke(theme.edge, _width, dimmed: g == 1));
+          canvas.drawPath(path, stroke(theme.edge, lineWidth, dimmed: g == 1));
         case 2:
-          canvas.drawPath(path, stroke(theme.edgeHover, _width));
+          canvas.drawPath(path, stroke(theme.edgeHover, lineWidth));
         default:
           canvas
             ..drawPath(
               path,
-              stroke(theme.lineageGlow, _lineageWidth, dimmed: g == 4)
-                ..maskFilter = const MaskFilter.blur(BlurStyle.normal, _glowSigma),
+              stroke(theme.lineageGlow, lineageWidth, dimmed: g == 4)
+                ..maskFilter = const MaskFilter.blur(BlurStyle.normal, glowSigma),
             )
-            ..drawPath(path, stroke(theme.lineage, _lineageWidth, dimmed: g == 4));
+            ..drawPath(path, stroke(theme.lineage, lineageWidth, dimmed: g == 4));
       }
     }
     canvas.restore();

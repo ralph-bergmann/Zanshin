@@ -199,6 +199,10 @@ abstract class GraphLayout {
   /// Whether [node] has a Missing parent (an elided stub).
   bool elidedOf(int node);
 
+  /// The number of Missing parents of [node] (one end stub each, Story 10.19); a stack node's are its oldest
+  /// member's.
+  int missingCountOf(int node);
+
   /// The number of layout edges.
   int get edgeCount;
 

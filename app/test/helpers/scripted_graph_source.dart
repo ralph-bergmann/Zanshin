@@ -122,6 +122,43 @@ class ScriptedGraphSource implements GraphSource {
     updates++;
     return update();
   }
+
+  /// The real parents (change ids) `show` answers per commit id; an id without an entry throws `jj.not_found`.
+  var parentsOf = <String, List<String>>{};
+
+  /// Every `show`, oldest first.
+  final shows = <String>[];
+
+  @override
+  Future<ShowEntry> show(String commitId) async {
+    shows.add(commitId);
+    final List<String>? parents = parentsOf[commitId];
+    if (parents == null) {
+      throw const ZanshinFfiException('jj.not_found');
+    }
+    return showEntryOf(commitId, parents);
+  }
+}
+
+/// A `show` answer for [commitId] with [parents] and nothing else.
+ShowEntry showEntryOf(String commitId, List<String> parents) {
+  const nobody = Signature(name: '', email: '', timestampMillis: 0, tzOffsetMinutes: 0);
+  return ShowEntry(
+    change: Change(
+      id: commitId,
+      commitId: commitId,
+      parents: parents,
+      description: '',
+      author: nobody,
+      committer: nobody,
+      isSigned: false,
+      conflict: ConflictState.clean,
+      conflictedPaths: const <String>[],
+      isAnonymous: true,
+      divergent: false,
+    ),
+    fileChanges: const <FileChange>[],
+  );
 }
 
 /// `jj.stale_working_copy` for [cause] shaped as Rust sends it (docs/rust-error-codes.md): 40-hex stand-ins `aaaa…`

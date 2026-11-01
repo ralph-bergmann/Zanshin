@@ -4,12 +4,16 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart' show SemanticsNode;
+import 'package:flutter/semantics.dart' show SemanticsAction;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' as material;
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_controls.dart';
+import 'package:zanshin/src/features/graph/graph_gap_legend.dart';
+import 'package:zanshin/src/features/graph/graph_gaps.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_preferences.dart';
@@ -267,6 +271,161 @@ void main() {
         find.descendant(of: find.byType(GraphViewControls), matching: find.byType(ZsIslandSeparator)),
         findsOneWidget,
       );
+    });
+  });
+
+  group('the gap legend (Story 10.19)', () {
+    GraphLayout design(GraphRequest request) => recording('design-default free compact');
+    final Finder chip = find.byType(GraphGapLegend);
+
+    _testWidgets('the design-default recording: the chip shows its gap count; hidden at 1040 px, shown at 1041', (
+      tester,
+    ) async {
+      final ({int dashed, int ends}) counts = graphGapCounts(recording('design-default free compact'));
+      final int n = counts.dashed + counts.ends;
+      expect(n, greaterThan(1));
+      await _start(tester, window: const Size(1040, 900), respond: design);
+      expect(find.byType(GraphGapLegend), findsNothing);
+      tester.view.physicalSize = const Size(1041, 900);
+      await tester.pump();
+      expect(find.text('$n gaps'), findsOneWidget);
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      await tester.pump();
+      expect(
+        tester.getSemantics(find.bySemanticsIdentifier('graph-gap-legend')),
+        matchesSemantics(label: '$n gaps', isButton: true, hasTapAction: true, identifier: 'graph-gap-legend'),
+      );
+      semantics.dispose();
+    });
+
+    _testWidgets('no gaps: no chip', (tester) async {
+      await _start(tester);
+      expect(find.byType(GraphGapLegend), findsOneWidget);
+      expect(find.textContaining('gap'), findsNothing);
+    });
+
+    _testWidgets('its popover opens 90 ms after hover, lists the rows, closes 200 ms after leaving; Show all() '
+        'switches to all() and re-centres on @', (tester) async {
+      final _Rig rig = await _start(tester, respond: design);
+      final ({int dashed, int ends}) counts = graphGapCounts(recording('design-default free compact'));
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(5, 895));
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(chip));
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(find.text('This revset hides part of the history'), findsNothing);
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.pump(_m.durPop);
+      expect(find.text('This revset hides part of the history'), findsOneWidget);
+      expect(find.text('Stacks never span a gap. Hover a marker for details.'), findsOneWidget);
+      expect(find.textContaining('direct parent', findRichText: true), findsOneWidget);
+      expect(
+        find.textContaining('commits in between are hidden · ${counts.dashed}×', findRichText: true),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining("older history isn't in the revset · ${counts.ends}×", findRichText: true),
+        findsOneWidget,
+      );
+      await mouse.moveTo(const Offset(5, 895));
+      await tester.pump(const Duration(milliseconds: 190));
+      expect(find.text('This revset hides part of the history'), findsOneWidget, reason: 'held 200 ms');
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.pump(_m.durExit + const Duration(milliseconds: 1));
+      expect(find.text('This revset hides part of the history'), findsNothing);
+
+      await mouse.moveTo(tester.getCenter(chip));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(_m.durPop);
+      final int requests = rig.source.requests.length;
+      await tester.tap(find.text('Show all()'));
+      await tester.pump();
+      await tester.pump();
+      expect(rig.source.requests, hasLength(requests + 1));
+      expect(rig.source.requests.last.revset, 'all()');
+      expect(rig.model.reveal?.key, rig.model.layout!.keyOf(rig.model.layout!.workingCopyIndex!));
+      await mouse.moveTo(const Offset(5, 895));
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    const title = 'This revset hides part of the history';
+
+    _testWidgets('VoiceOver activation and Enter open the popover at once, and close it', (tester) async {
+      await _start(tester, respond: design);
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      await tester.pump();
+      final SemanticsNode node = tester.getSemantics(find.bySemanticsIdentifier('graph-gap-legend'));
+      node.owner!.performAction(node.id, SemanticsAction.tap);
+      await tester.pump();
+      await tester.pump(_m.durPop);
+      expect(find.text(title), findsOneWidget, reason: 'no hover delay');
+      node.owner!.performAction(node.id, SemanticsAction.tap);
+      await tester.pump();
+      await tester.pump(_m.durExit + const Duration(milliseconds: 1));
+      expect(find.text(title), findsNothing);
+      semantics.dispose();
+
+      final FocusNode focus = Focus.of(
+        tester.element(find.byWidgetPredicate((w) => w is Semantics && w.properties.identifier == 'graph-gap-legend')),
+      )..requestFocus();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(_m.durPop);
+      expect(find.text(title), findsOneWidget, reason: 'focus opens it after the delay');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      await tester.pump(_m.durExit + const Duration(milliseconds: 1));
+      expect(find.text(title), findsNothing, reason: 'Enter closes it');
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      await tester.pump(_m.durPop);
+      expect(find.text(title), findsOneWidget, reason: 'Space opens it at once');
+      focus.unfocus();
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    _testWidgets('when the gaps go away the popover and a pending open go with them and do not come back', (
+      tester,
+    ) async {
+      var gaps = true;
+      final _Rig rig = await _start(tester, respond: (request) => gaps ? design(request) : _layout(3, total: 3));
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(5, 895));
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(chip));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(_m.durPop);
+      expect(find.text(title), findsOneWidget);
+
+      gaps = false;
+      rig.model.reload();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text(title), findsNothing, reason: 'the shown popover goes');
+
+      // A pending open: the pointer arrives, the gaps go before 90 ms.
+      gaps = true;
+      rig.model.reload();
+      await tester.pump();
+      await tester.pump();
+      await mouse.moveTo(const Offset(5, 895));
+      await tester.pump(const Duration(seconds: 1));
+      await mouse.moveTo(tester.getCenter(chip));
+      await tester.pump(const Duration(milliseconds: 40));
+      gaps = false;
+      rig.model.reload();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text(title), findsNothing, reason: 'the pending open is dropped');
+
+      await mouse.moveTo(const Offset(5, 895));
+      gaps = true;
+      rig.model.reload();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text(title), findsNothing, reason: 'unhovered, it does not reappear');
     });
   });
 

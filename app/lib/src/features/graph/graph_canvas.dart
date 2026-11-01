@@ -6,7 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:zanshin_core/zanshin_core.dart' show RouteGeometry;
+import 'package:zanshin_core/zanshin_core.dart' show RouteGeometry, ShowEntry;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -15,12 +15,14 @@ import 'graph_card.dart';
 import 'graph_content.dart';
 import 'graph_edges.dart';
 import 'graph_focus.dart';
+import 'graph_gap_callout.dart';
+import 'graph_gaps.dart';
 import 'graph_layout.dart';
 import 'graph_metrics.dart';
 import 'graph_peek.dart';
 import 'graph_stack_card.dart';
 import 'graph_stack_popover.dart';
-import 'graph_view_model.dart' show GraphDirection, GraphPulse;
+import 'graph_view_model.dart' show GraphDirection, GraphFlash, GraphGapTarget, GraphPulse;
 import 'graph_viewport.dart';
 import 'vertical_layout.dart';
 
@@ -81,8 +83,20 @@ class GraphCanvas extends StatefulWidget {
     this.entering,
     this.onExpandStack,
     this.onCollapseStack,
+    this.flash,
+    this.onShowGap,
+    this.showChange,
     super.key,
   });
+
+  /// The gap reveals' flashes (Story 10.19); each new value runs once.
+  final ValueListenable<GraphFlash?>? flash;
+
+  /// A gap callout's "Show in `all()`" (Story 10.19); null disables it.
+  final ValueChanged<GraphGapTarget>? onShowGap;
+
+  /// `jj show` of a commit id: a Missing edge's hidden parents in the gap callout (Story 10.19).
+  final Future<ShowEntry> Function(String commitId)? showChange;
 
   /// The keys that fade in once with [layout] (Story 10.17: an expand's members but its anchor); each new set runs
   /// once, by identity.
@@ -145,6 +159,21 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   int? _axisDay;
   late final _routes = GraphRouteCache(onRouted: () => setState(() {}));
   GraphEdgePainter? _edges;
+  GraphGaps? _gaps;
+
+  // Story 10.19: the hovered gap target (paint-only), the callout's open gap and its target point (plane), the timers.
+  final _gapHover = ValueNotifier<int?>(null);
+  int? _gapOpen;
+  Offset? _gapPoint;
+  Offset? _gapPendingPoint;
+  Timer? _gapTimer;
+  Timer? _gapCloseTimer;
+  var _inGapCallout = false;
+
+  // Story 10.19: the gap reveal's flash.
+  late final _flash = AnimationController(vsync: this)..addStatusListener(_flashStatus);
+  GraphFlash? _lastFlash;
+  var _flashKeys = const <String>{};
 
   // The axes whose drag has delivered an update since their last scroll end.
   final _dragged = <Axis>{};
@@ -187,6 +216,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     super.initState();
     _listen(widget.cards);
     widget.pulse?.addListener(_pulseChanged);
+    widget.flash?.addListener(_flashChanged);
     _vertical
       ..addListener(_measureDirection)
       ..addListener(_scheduleContent);
@@ -228,6 +258,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     _motion = ZsMotion.of(context);
     _dim.duration = _motion.durHover;
     _enter.duration = _motion.durSlide;
+    _flash.duration = _motion.durFlash;
   }
 
   ZsMotion _motion = ZsMotion.full;
@@ -243,7 +274,13 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       oldWidget.pulse?.removeListener(_pulseChanged);
       widget.pulse?.addListener(_pulseChanged);
     }
+    if (!identical(oldWidget.flash, widget.flash)) {
+      oldWidget.flash?.removeListener(_flashChanged);
+      widget.flash?.addListener(_flashChanged);
+    }
     if (!identical(oldWidget.layout, widget.layout)) {
+      // A gap index belongs to its layout.
+      _closeGap();
       _updateFocus();
       if (_bracketRun.value != null) {
         _bracketRun.value = null;
@@ -308,11 +345,16 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   void dispose() {
     _unlisten(widget.cards);
     widget.pulse?.removeListener(_pulseChanged);
+    widget.flash?.removeListener(_flashChanged);
     _peekTimer?.cancel();
     _tipTimer?.cancel();
+    _gapTimer?.cancel();
+    _gapCloseTimer?.cancel();
     _settle?.cancel();
     _dim.dispose();
     _pulse.dispose();
+    _flash.dispose();
+    _gapHover.dispose();
     _enter.dispose();
     _bracketRun.dispose();
     _routes.dispose();
@@ -336,6 +378,12 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   void _hoverChanged() {
     _updateFocus();
     _syncPeek();
+    // A card menu suppresses the gap callout; a card under the pointer takes the hover from a gap.
+    if (widget.cards.menuOpen.value != null) {
+      _closeGap();
+    } else if (widget.cards.hovered.value != null && _gapHover.value != null) {
+      _setGapHover(null, null);
+    }
   }
 
   /// The focus set of the hovered key in this layout (cached per key and layout), and the dim toward it.
@@ -581,8 +629,213 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     setState(() => _tip = tip);
   }
 
-  /// A canvas pan: no peek, no tooltip.
+  // ---- gaps (Story 10.19) ----
+
+  /// The placed gaps of the shown layout; null while a new layout is still being routed (the old placement's indices
+  /// belong to the old layout).
+  GraphGaps? get _currentGaps => identical(_gaps?.layout, widget.layout) ? _gaps : null;
+
+  /// Where the plane's (0, 0) sits in the canvas's local coordinates.
+  Offset get _planeShift => widget.insets.topLeft - Offset(_horizontal.offset, _vertical.offset);
+
+  /// A hover over the canvas: the gap target under it (never over a card, while a menu is open or a pan runs).
+  void _hoverAt(Offset local) {
+    final GraphGaps? gaps = _currentGaps;
+    final GraphEdgePainter? edges = identical(_edges?.layout, widget.layout) ? _edges : null;
+    if (gaps == null || edges == null || !_vertical.hasClients || !_horizontal.hasClients) {
+      return;
+    }
+    final GraphCardController cards = widget.cards;
+    final Offset plane = local - _planeShift;
+    final int? gap = cards.hovered.value != null || cards.menuOpen.value != null || _viewport.isPanning
+        ? null
+        : gaps.gapAt(plane, edges);
+    _setGapHover(gap, plane);
+  }
+
+  void _setGapHover(int? gap, Offset? plane) {
+    if (_gapHover.value != gap) {
+      _gapHover.value = gap;
+      _gapTimer?.cancel();
+      _gapTimer = null;
+      if (gap != null && gap != _gapOpen) {
+        _gapPendingPoint = plane;
+        _gapTimer = Timer(_motion.delayStackList, () => _openGap(gap));
+      }
+    }
+    if (gap != null && gap == _gapOpen) {
+      _gapCloseTimer?.cancel();
+      _gapCloseTimer = null;
+    } else if (_gapOpen != null && !_inGapCallout) {
+      _scheduleGapClose();
+    }
+  }
+
+  void _openGap(int gap) {
+    _gapTimer = null;
+    final GraphGaps? gaps = _currentGaps;
+    if (!mounted || gaps == null || gap >= gaps.gaps.length || _viewport.isPanning || _gapHover.value != gap) {
+      return;
+    }
+    final GraphGap g = gaps.gaps[gap];
+    _gapCloseTimer?.cancel();
+    _gapCloseTimer = null;
+    setState(() {
+      _gapOpen = gap;
+      // A mark's point is its centre; a band's where the pointer rests.
+      final Offset? at = _gapPendingPoint;
+      _gapPoint = at == null || g.box.contains(at) ? g.point : at;
+    });
+  }
+
+  void _scheduleGapClose() {
+    _gapCloseTimer ??= Timer(const Duration(milliseconds: 180), () {
+      _gapCloseTimer = null;
+      if (mounted && !_inGapCallout && _gapHover.value != _gapOpen) {
+        _closeGap();
+      }
+    });
+  }
+
+  /// Closes the callout and drops the pending one (a pan, a menu, a new layout).
+  void _closeGap() {
+    _gapTimer?.cancel();
+    _gapCloseTimer?.cancel();
+    _gapTimer = _gapCloseTimer = null;
+    _inGapCallout = false;
+    if (_gapHover.value != null) {
+      _gapHover.value = null;
+    }
+    if (_gapOpen != null) {
+      setState(() {
+        _gapOpen = null;
+        _gapPoint = null;
+      });
+    }
+  }
+
+  void _showGap(GraphGap gap) {
+    final ValueChanged<GraphGapTarget>? show = widget.onShowGap;
+    if (show == null) {
+      return;
+    }
+    final GraphLayout layout = widget.layout;
+    show(
+      GraphGapTarget(
+        child: layout.keyOf(gap.node),
+        commitId: layout.commitIdOf(graphGapCommitNode(layout, gap.node)),
+        targets: <String>[for (final int edge in gap.edges) layout.keyOf(layout.parentOf(edge))],
+      ),
+    );
+  }
+
+  Widget _gapLayer() {
+    final int? open = _gapOpen;
+    final GraphGaps? gaps = _currentGaps;
+    final Offset? point = _gapPoint;
+    final Rect? area = _viewport.unobscured;
+    if (open == null || gaps == null || point == null || area == null || open >= gaps.gaps.length) {
+      return const SizedBox.shrink();
+    }
+    final GraphGap gap = gaps.gaps[open];
+    return CustomSingleChildLayout(
+      delegate: _GapCalloutLayout(point: point + _planeShift, area: area),
+      child: MouseRegion(
+        onEnter: (_) {
+          _inGapCallout = true;
+          _gapCloseTimer?.cancel();
+          _gapCloseTimer = null;
+        },
+        onExit: (_) {
+          _inGapCallout = false;
+          if (_gapHover.value != _gapOpen) {
+            _scheduleGapClose();
+          }
+        },
+        child: _GapFade(
+          key: ValueKey<int>(open),
+          child: GraphGapCallout(
+            layout: widget.layout,
+            gap: gap,
+            content: widget.content,
+            show: widget.showChange,
+            onShow: widget.onShowGap == null
+                ? null
+                : () {
+                    _showGap(gap);
+                  },
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---- the gap reveal's flash (Story 10.19) ----
+
+  void _flashChanged() {
+    final GraphFlash? flash = widget.flash?.value;
+    if (flash == null || flash == _lastFlash) {
+      return;
+    }
+    _lastFlash = flash;
+    setState(() => _flashKeys = flash.keys);
+    _flash.forward(from: 0);
+  }
+
+  void _flashStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && mounted) {
+      setState(() => _flashKeys = const <String>{});
+    }
+  }
+
+  /// The flash (DS components/graph/graph.css:83-85): a 2 px `--accent-live-line` ring plus a 6 px
+  /// `--accent-live-ring` one, held for 35 % of `--dur-flash`, then fading out; the rings shrink with the fade, held
+  /// at their size under reduce motion. A collapsed stack with a flashed member flashes as one card.
+  void _paintFlash(Canvas canvas, Offset origin, Rect visible, VerticalLayout rows, GraphMetrics metrics, ZsColors c) {
+    if (_flashKeys.isEmpty || !_flash.isAnimating) {
+      return;
+    }
+    final double t = _flash.value;
+    final double fade = t <= .35 ? 1 : 1 - _motion.easeState.transform((t - .35) / .65);
+    final double size = _motion.motion == 0 ? 1 : fade;
+    final GraphLayout layout = widget.layout;
+    final painted = <int>{};
+    for (final String key in _flashKeys) {
+      final int? node = layout.placeOfKey(key);
+      if (node == null || !painted.add(node) || layout.rowOf(node) < 0) {
+        continue;
+      }
+      final card = Rect.fromLTWH(
+        metrics.x(layout.colOf(node)),
+        rows.top(node),
+        metrics.cardWidth,
+        metrics.cardHeight,
+      );
+      if (!card.inflate(8).overlaps(visible)) {
+        continue;
+      }
+      final Rect r = card.shift(origin);
+      final radius = Radius.circular(metrics.radius);
+      final inner = RRect.fromRectAndRadius(r, radius);
+      final double ring = 6 * size;
+      final double line = 2 * size;
+      canvas
+        ..drawDRRect(
+          RRect.fromRectAndRadius(r.inflate(ring), Radius.circular(metrics.radius + ring)),
+          inner,
+          Paint()..color = c.accentLiveRing.withValues(alpha: c.accentLiveRing.a * fade),
+        )
+        ..drawDRRect(
+          RRect.fromRectAndRadius(r.inflate(line), Radius.circular(metrics.radius + line)),
+          inner,
+          Paint()..color = c.accentLiveLine.withValues(alpha: c.accentLiveLine.a * fade),
+        );
+    }
+  }
+
+  /// A canvas pan: no peek, no tooltip, no gap callout.
   void _userPanned(double amount) {
+    _closeGap();
     _peekTimer?.cancel();
     _tipTimer?.cancel();
     _peekTimer = _tipTimer = null;
@@ -714,7 +967,8 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     if (rows != null && rows.layout == widget.layout) {
       return rows.metrics == metrics ? rows : _rows = rows.withMetrics(metrics);
     }
-    return _rows = UniformRows(widget.layout, metrics);
+    // The end stub under the oldest row needs room (Story 10.19).
+    return _rows = UniformRows(widget.layout, metrics, bottomExtra: graphGapsBottomExtraOf(widget.layout));
   }
 
   /// The day-axis painter, recreated (the old one disposed) when the rows, the theme, the strings or the local day
@@ -744,17 +998,30 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   }
 
   /// The edge painter of the current layout, metrics and theme (recreated when one changes), or null while its
-  /// geometry is being routed.
-  GraphEdgePainter? _edgesFor(GraphMetrics metrics, GraphTheme theme) {
+  /// geometry is being routed; with it the gaps placed on that geometry (Story 10.19, once per geometry and
+  /// clearance), whose cuts the painter breaks its dashed lines with.
+  GraphEdgePainter? _edgesFor(GraphMetrics metrics, GraphTheme theme, VerticalLayout rows) {
     final RouteGeometry? geometry = _routes.geometryFor(widget.layout, metrics);
     if (geometry == null) {
       return null;
     }
+    GraphGaps? gaps = _gaps;
+    if (gaps == null || !identical(gaps.geometry, geometry) || gaps.clearance != theme.gapClearance) {
+      gaps = _gaps = GraphGaps.compute(
+        layout: widget.layout,
+        geometry: geometry,
+        rows: rows,
+        clearance: theme.gapClearance,
+      );
+    }
     final GraphEdgePainter? edges = _edges;
-    if (edges != null && identical(edges.geometry, geometry) && edges.theme == theme) {
+    if (edges != null &&
+        identical(edges.geometry, geometry) &&
+        edges.theme == theme &&
+        identical(edges.gapCuts, gaps.cuts)) {
       return edges;
     }
-    return _edges = GraphEdgePainter(layout: widget.layout, geometry: geometry, theme: theme);
+    return _edges = GraphEdgePainter(layout: widget.layout, geometry: geometry, theme: theme, gapCuts: gaps.cuts);
   }
 
   @override
@@ -763,9 +1030,12 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     final VerticalLayout rows = _rowsFor(metrics);
     final GraphTheme theme = GraphTheme.of(context);
     final GraphDayAxisPainter axis = _axisFor(rows, theme);
-    final GraphEdgePainter? edges = _edgesFor(metrics, theme);
+    final GraphEdgePainter? edges = _edgesFor(metrics, theme, rows);
+    final GraphGaps? gaps = edges == null ? null : _gaps;
+    final elided = '~ ${context.l10n.gapElided}'; // l10n-ignore: jj's end-of-history mark
     final double leftInset = widget.insets.left;
-    final Color accent = ZsColors.of(context).accent;
+    final ZsColors colors = ZsColors.of(context);
+    final Color accent = colors.accent;
     final GraphCardController cards = widget.cards;
     final double disabledOpacity = ZsMetrics.of(context).disabledOpacity;
     final pending = <int>{
@@ -791,7 +1061,9 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                 cards.menuOpen,
                 _dim,
                 _pulse,
+                _flash,
                 _bracketRun,
+                _gapHover,
               ]),
               builder: (context, _) {
                 final String? menu = cards.menuOpen.value;
@@ -825,20 +1097,42 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                   reveal: widget.reveal,
                   onUserPan: _userPanned,
                   paintBackground: axis.paintGuides,
-                  // The brackets after the edges, never dimmed (Story 10.17).
+                  // The gap marks after the edges, the brackets after them, never dimmed (Stories 10.17, 10.19).
                   paintEdges: edges == null && brackets.isEmpty
                       ? null
                       : (context, origin, visible) {
                           edges?.paint(context, origin, visible, highlight: highlight);
+                          if (edges != null) {
+                            gaps?.paint(
+                              context.canvas,
+                              origin,
+                              visible,
+                              edges: edges,
+                              label: elided,
+                              highlight: highlight,
+                              hovered: _gapHover.value,
+                            );
+                          }
                           _paintBrackets(context.canvas, origin, visible, brackets, theme);
                         },
                   paintOverlay: (context, origin, visible) {
                     axis.paintLabels(context, origin, visible, leftInset: leftInset);
                     _paintPulse(context.canvas, origin, rows, metrics, accent);
+                    _paintFlash(context.canvas, origin, visible, rows, metrics, colors);
                   },
                 );
               },
             ),
+          ),
+        ),
+        // The gap targets (Story 10.19): a translucent sibling above the viewport that only hovers — it hits nothing,
+        // so a press on a band still pans and the cards keep their own hover.
+        Positioned.fill(
+          child: MouseRegion(
+            opaque: false,
+            hitTestBehavior: HitTestBehavior.translucent,
+            onHover: (event) => _hoverAt(event.localPosition),
+            onExit: (_) => _setGapHover(null, null),
           ),
         ),
         if (brackets.isNotEmpty) _bracketLayer(brackets),
@@ -858,6 +1152,11 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                 if (_tip case final tip?) _tipLayer(tip.key, tip.area),
               ],
             ),
+          ),
+        if (_gapOpen != null)
+          ListenableBuilder(
+            listenable: Listenable.merge(<Listenable?>[_vertical, _horizontal, widget.content]),
+            builder: (context, _) => _gapLayer(),
           ),
       ],
     );
@@ -953,6 +1252,54 @@ class _TipLayout extends SingleChildLayoutDelegate {
 
   @override
   bool shouldRelayout(_TipLayout oldDelegate) => target != oldDelegate.target || area != oldDelegate.area;
+}
+
+class _GapCalloutLayout extends SingleChildLayoutDelegate {
+  _GapCalloutLayout({required this.point, required this.area});
+
+  final Offset point;
+  final Rect area;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) => constraints.loosen();
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) => graphGapCalloutPosition(point, childSize, area);
+
+  @override
+  bool shouldRelayout(_GapCalloutLayout oldDelegate) => point != oldDelegate.point || area != oldDelegate.area;
+}
+
+/// The gap callout's entrance: a fade on `--dur-pop` (design/graph.css:315 `ggap-in`).
+class _GapFade extends StatefulWidget {
+  const _GapFade({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  State<_GapFade> createState() => _GapFadeState();
+}
+
+class _GapFadeState extends State<_GapFade> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(vsync: this);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller.duration = ZsMotion.of(context).durPop;
+    if (_controller.isDismissed) {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(opacity: _controller, child: widget.child);
 }
 
 /// The peek's motion (DS PeekCard.prompt.md:14; decisions 16.4, 16.40): it fades in on `--dur-hover`; it leaves with a

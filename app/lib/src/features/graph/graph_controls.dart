@@ -10,6 +10,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import '../shell/calm_controller.dart';
 import '../shell/shell_scope.dart';
+import 'graph_gap_legend.dart';
 import 'graph_layout.dart';
 import 'graph_metrics.dart';
 import 'graph_ports.dart';
@@ -94,9 +95,8 @@ class GraphCount extends StatelessWidget {
 }
 
 /// The VIEW island's graph controls (Story 10.7): 10.21's [GraphSearchField] (when a search is given) and a separator,
-/// the [GraphCount], a separator and the View options button with its popover. Room is left before the count for
-/// 10.19's gap legend. At a window width of at most
-/// [graphCountHideWidth] the count and its separator are not built.
+/// 10.19's [GraphGapLegend], the [GraphCount], a separator and the View options button with its popover. At a window
+/// width of at most [graphCountHideWidth] the legend, the count and its separator are not built.
 ///
 /// **View options** (DS chrome.jsx:87-98; kit.css:62): a [ZsPopover] 340 wide, 14 below the button, its right edge 5
 /// right of the button's, kept 8 inside the window: "Graph view" over Layout (Free | Compact), Detailed cards, Group
@@ -136,7 +136,12 @@ class GraphViewControls extends StatelessWidget {
           GraphSearchField(search: search),
           const ZsIslandSeparator(),
         ],
-        if (wide) ...<Widget>[GraphCount(model: model), const ZsIslandSeparator()],
+        // The gap legend before the count, hidden with it (Story 10.19).
+        if (wide) ...<Widget>[
+          GraphGapLegend(model: model, search: search),
+          GraphCount(model: model),
+          const ZsIslandSeparator(),
+        ],
         GraphViewOptionsButton(preferences: preferences, onSettings: onSettings),
       ],
     );

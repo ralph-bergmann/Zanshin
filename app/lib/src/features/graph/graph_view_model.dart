@@ -106,6 +106,48 @@ class GraphPulse {
   int get hashCode => Object.hash(key, serial);
 }
 
+/// One gap's "Show in `all()`" (Story 10.19): the gap's [child] key, its [commitId] (the one `show`), and the shown
+/// ancestors its dashed edges reach ([targets]; empty for a Missing edge's stub).
+@immutable
+class GraphGapTarget {
+  /// The gap below [child].
+  const GraphGapTarget({required this.child, required this.commitId, this.targets = const <String>[]});
+
+  /// The gap's child.
+  final String child;
+
+  /// The child's commit id.
+  final String commitId;
+
+  /// The keys of the visible ancestors its dashed edges reach; empty for a Missing edge.
+  final List<String> targets;
+
+  /// Whether the gap is a Missing edge's.
+  bool get missing => targets.isEmpty;
+}
+
+/// A gap reveal's flash (Story 10.19): every commit the gap hid, and a [serial] that tells a repeat apart.
+@immutable
+class GraphFlash {
+  /// A flash of [keys].
+  const GraphFlash(this.keys, this.serial);
+
+  /// The flashed keys (a folded member flashes its stack card).
+  final Set<String> keys;
+
+  /// Increases with every flash.
+  final int serial;
+
+  @override
+  bool operator ==(Object other) => other is GraphFlash && other.serial == serial;
+
+  @override
+  int get hashCode => serial.hashCode;
+}
+
+/// The cap of a gap's flash (Story 10.19): the walk over the hidden commits stops there, so at most this many flash.
+const graphGapFlashCap = 10000;
+
 /// The graph's view model (Story 10.5): it requests layouts through a [GraphSource] and keeps the view coherent while
 /// jj re-derives the graph after every operation (ADR-0002).
 ///
@@ -144,6 +186,12 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   final _workingCopyDirection = ValueNotifier<GraphDirection?>(null);
   final _pulse = ValueNotifier<GraphPulse?>(null);
   var _pulseSerial = 0;
+  final _flash = ValueNotifier<GraphFlash?>(null);
+  var _flashSerial = 0;
+
+  // Story 10.19: a gap's "Show in all()" until its layout lands: the layout it was shown in, the gap, and the child's
+  // real parents that layout lacks.
+  ({GraphLayout old, GraphGapTarget gap, List<String> hidden})? _gap;
   var _disposed = false;
 
   LogDefaults? _defaults;
@@ -303,6 +351,86 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
 
   /// The last go-to's pulse; the canvas runs it once per instance.
   ValueListenable<GraphPulse?> get pulse => _pulse;
+
+  /// The last gap reveal's flash (Story 10.19); the canvas runs it once per instance.
+  ValueListenable<GraphFlash?> get flash => _flash;
+
+  /// `jj show <commitId>` through the source: the gap callout's hidden parents (Story 10.19).
+  Future<ShowEntry> showChange(String commitId) => _source.show(commitId);
+
+  /// "Show in `all()`" of [gap] (Story 10.19): one `show` of its child for the real parents, then one request for
+  /// `all()` carrying the parents the shown layout lacks in `keepOpenKeys`. When it lands, the real parent from which
+  /// the gap's targets are reached through commits the old layout lacked (for a Missing edge, the hidden parent) is
+  /// revealed centred (its stack card while folded), and every commit the gap hid flashes. A failed `show` issues no
+  /// request and answers false.
+  Future<bool> showGap(GraphGapTarget gap) async {
+    final GraphLayout? old = _layout;
+    if (old == null) {
+      return false;
+    }
+    final ShowEntry entry;
+    try {
+      entry = await _source.show(gap.commitId);
+    } on ZanshinFfiException catch (error) {
+      _log.warning('reading a gap\'s parents failed: ${error.code}');
+      return false;
+    }
+    if (_disposed) {
+      return false;
+    }
+    final hidden = <String>[
+      for (final String parent in entry.change.parents)
+        if (old.indexOfKey(parent) == null) parent,
+    ];
+    _revset = 'all()'; // l10n-ignore: jj revset
+    _recentre = false;
+    _gap = (old: old, gap: gap, hidden: hidden);
+    _explicit = (key: hidden.firstOrNull ?? gap.child, alignment: GraphRevealAlignment.centre);
+    _requestLayout();
+    return true;
+  }
+
+  /// [gap]'s reveal key and flashed keys on [layout].
+  (String?, Set<String>) _gapLanding(
+    ({GraphLayout old, GraphGapTarget gap, List<String> hidden}) gap,
+    GraphLayout layout,
+  ) {
+    bool isNew(int node) => gap.old.indexOfKey(layout.keyOf(node)) == null;
+    final starts = <int>[for (final String key in gap.hidden) ?layout.indexOfKey(key)];
+    // The new nodes reached from the hidden parents through new nodes only.
+    final reached = <int>{};
+    final work = <int>[
+      for (final int start in starts)
+        if (isNew(start) && reached.add(start)) start,
+    ];
+    while (work.isNotEmpty && reached.length < graphGapFlashCap) {
+      final (:int start, :int end) = layout.parentEdges(work.removeLast());
+      for (var e = start; e < end && reached.length < graphGapFlashCap; e++) {
+        final int parent = layout.parentOf(e);
+        if (isNew(parent) && reached.add(parent)) {
+          work.add(parent);
+        }
+      }
+    }
+    var flashed = reached;
+    if (!gap.gap.missing) {
+      // Those of them from which a target is reached through them.
+      flashed = <int>{};
+      final back = <int>[for (final String key in gap.gap.targets) ?layout.indexOfKey(key)];
+      while (back.isNotEmpty) {
+        final (:int start, :int end) = layout.childEdges(back.removeLast());
+        for (var slot = start; slot < end; slot++) {
+          final int child = layout.childOf(layout.childEdgeAt(slot));
+          if (reached.contains(child) && flashed.add(child)) {
+            back.add(child);
+          }
+        }
+      }
+    }
+    final int? reveal = starts.where(flashed.contains).firstOrNull ?? starts.firstOrNull;
+    final int? place = reveal == null ? null : layout.placeOfKey(layout.keyOf(reveal));
+    return (place == null ? null : layout.keyOf(place), <String>{for (final int node in flashed) layout.keyOf(node)});
+  }
 
   /// Go-to-change (Story 10.6 items 11–12; 10.21 calls it): selects [key], reveals it centred and pulses it; nothing
   /// when the shown layout lacks it.
@@ -853,7 +981,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     shortPrefixes: defaults.shortPrefixes,
     anchors: defaultGraphAnchors,
     utcOffsetMin: _clock().timeZoneOffset.inMinutes,
-    keepOpenKeys: <String>{?_selected, ?_explicit?.key},
+    keepOpenKeys: <String>{?_selected, ?_explicit?.key, ...?_gap?.hidden},
   );
 
   void _land(GraphLoad load) {
@@ -877,6 +1005,16 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       }
     }
     _hiddenCommitId = null;
+    if (_gap case final gap?) {
+      _gap = null;
+      final (String? reveal, Set<String> flashed) = _gapLanding(gap, layout);
+      if (reveal != null) {
+        _explicit = (key: reveal, alignment: GraphRevealAlignment.centre);
+      }
+      if (flashed.isNotEmpty) {
+        _flash.value = GraphFlash(flashed, ++_flashSerial);
+      }
+    }
     final String? selected = _selected;
     if (selected != null && layout.indexOfKey(selected) == null) {
       _selected = null;
@@ -912,6 +1050,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     _enteringNext = null;
     _pulseOnLand = null;
     _hiddenCommitId = null;
+    _gap = null;
     _revsetError = null;
     _error = null;
     _stale = null;
@@ -940,6 +1079,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     _now.dispose();
     _workingCopyDirection.dispose();
     _pulse.dispose();
+    _flash.dispose();
     _outcome.dispose();
     _content?.dispose();
     super.dispose();
