@@ -338,9 +338,12 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       // A later layout of the running landing (a same-op reload): it keeps going onto that layout.
       _moving = transition;
       _bornEdges = _bornEdgesOf(transition);
+      if (widget.reveal != null && !identical(oldWidget.reveal, widget.reveal)) {
+        _bornReveal = null; // The layout's own reveal (a go-to, an expand) wins over the born card's.
+      }
     } else if (!identical(oldWidget.layout, widget.layout) && _moving != null) {
       // A layout without a transition ends the running one; its covered born card is still revealed, unless the
-      // layout brings a reveal of its own.
+      // layout brings a new reveal of its own.
       final String? born = _bornReveal;
       _moving = null;
       _bornEdges = const <int>{};

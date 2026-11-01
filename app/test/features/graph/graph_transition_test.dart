@@ -443,6 +443,20 @@ void main() {
       expect(viewport(tester).verticalOffset.pixels, 0, reason: 'revealed once the glide landed');
     });
 
+    testWidgets('a continuation that brings a reveal of another key ends at that key, not the born card', (
+      tester,
+    ) async {
+      final GraphTransition t = await bornOperation(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      final GraphLayout again = chainLayout(6, cols: 3, head: 'n');
+      await tester.pumpWidget(
+        canvasOf(again, transition: GraphTransition.continued(t, again), reveal: GraphReveal('r0')),
+      );
+      expect(viewport(tester).transition?.to, same(again), reason: 'still running');
+      await tester.pumpAndSettle();
+      expect(viewport(tester).verticalOffset.pixels, greaterThan(0), reason: 'at r0, not scrolled up to n');
+    });
+
     testWidgets('a continuation after the end animates nothing', (tester) async {
       final GraphTransition t = await bornOperation(tester);
       await tester.pumpAndSettle();

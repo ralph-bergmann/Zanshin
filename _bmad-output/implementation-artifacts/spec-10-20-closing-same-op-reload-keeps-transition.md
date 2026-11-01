@@ -5,7 +5,7 @@ created: '2026-11-01'
 status: 'done'
 baseline_revision: '4f0e203330570121741544cd1124d822734ab663'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
@@ -99,6 +99,35 @@ deferred: []
   - `false` `reject` [intent-alignment] "No snap" is witnessed only for an equal layout. — The intent's case is the watcher's same-op reload, an equal layout.
   - `false` `reject` [intent-alignment] No Auto Run Result / commit hash yet. — Written at finalization.
 
+### 2026-11-01 — Review pass (follow-up)
+- verdicts: 25 findings — high 0, medium 4, low 18, false 3, maybe-false 0
+- findings:
+  - `low` `reject` [blind] The retarget `fx.delta + was(old) − now(node)` jumps a card whose rect changes in the continuation. — carried: as the logged edge-case row (accepted in Design Notes; exact for an equal layout).
+  - `low` `reject` [blind] The continuation carries only cards that already had an effect; at-rest movers, new keys and leaving cards snap. — carried: as the logged carry rows.
+  - `false` `reject` [blind] `identical(from, running.to)` fails on coalesced layouts and falls through to fresh deltas mid-curve. — carried: as the logged "deltas rebuilt mid-run (unreachable)" row; the render object syncs only at layout, so the last pass's layout is the applied transition's `to`.
+  - `low` `reject` [blind] The model never releases `_transition`, keeping `from` alive and making `transition` no "this animates" signal. — carried: as the logged retained-`from` row; the canvas is the only reader (`graph_view.dart:353`).
+  - `medium` `patch` [blind] `goToHidden` and the gap expand (`_recentre = false`, revset `all()`) at the same op mid-run become continuations. — Real: the canvas kept `_bornReveal` on a continuation, so after the glide `_revealBorn` scrolled away from the go-to's/expand's own reveal (before this change the switch ended the run and the new reveal won). Fixed: the continue branch drops `_bornReveal` when the layout brings a new reveal (`graph_canvas.dart`); witness "a continuation that brings a reveal of another key ends at that key", red with the guard disabled. The partial animation of such a switch stays the Design Notes' moved-layout behaviour.
+  - `low` `reject` [blind] The stack toggle is asserted to continue though the doc says "no switch asked for". — carried: as the logged stack-toggle row.
+  - `low` `patch` [blind] A continuation lets an explicit reveal of the born key through while the canvas still reveals it after the glide (double reveal). — Same root cause and fix as the medium row: a new reveal now clears the pending born reveal, so it scrolls once.
+  - `low` `reject` [blind] The early-end born reveal ignores a user scroll during the glide. — Needs a ~0.7 s window with a fling and an unrelated same-op layout; the fix adds scroll-tracking state; the regular `_revealBorn` (Story 10.20) behaves the same.
+  - `low` `patch` [blind] The early-end comment says "a reveal of its own" while the code means a new one. — Comment now says "a new reveal of its own".
+  - `false` `reject` [blind] The continue branch never re-checks `_bornReveal` against a layout that lacks the born key. — `_revealBorn` returns without scrolling when `widget.layout.placeOfKey(key)` is null (`graph_canvas.dart:889`).
+  - `low` `reject` [blind] Two tests prove less than their titles (only `.dx`; glide-out continuation pumped at land time). — `colOf` moves cards only horizontally; the mid-glide continuation test (pumped at 200 ms, ends at 460 ms) already pins no restart.
+  - `low` `reject` [edge-case] A continuation mid-glide onto a moved rect jumps by (old − new)·progress. — carried: as the logged row.
+  - `low` `reject` [edge-case] Moved or newly shown cards without a running effect snap or pop in. — carried: as the logged carry rows.
+  - `medium` `patch` [edge-case] `goToHidden`/gap expand at the same op mid-run are treated as continuations. — Same group as the blind medium row; patched there.
+  - `low` `reject` [edge-case] A stack toggle at the same op mid-run is half-animated. — carried: as the logged stack-toggle row.
+  - `low` `reject` [edge-case] A carried arrival whose card moved jumps. — carried: as the logged arrival row.
+  - `false` `reject` [edge-case] A continuation of an older landing arriving while a newer transition runs falls into the early end. — The model builds a continuation only from its latest `_transition`, which is the one the canvas runs; a newer landing replaces it before any continuation of the old one can exist.
+  - `low` `patch` [edge-case] An explicit reveal of the born key during a continuation scrolls twice. — Same group as the medium row; patched there.
+  - `low` `reject` [edge-case] Claim "keeps its origin and retargets" reads as seamless. — carried: as the logged claim rows (Design Notes say it jumps by the done share).
+  - `medium` `patch` [edge-case] Claim "a same-op layout no switch asked for" fails for go-to/expand/stacks. — Same group as the medium row: the user-visible harm (the switch's reveal overridden) is patched; animation part as Design Notes.
+  - `low` `reject` [verification-gap] No test continues onto a layout that differs from the running `to` (retarget term, re-keying, born edges). — carried: as the logged "No viewport test for a continuation onto a layout that moves cards" row.
+  - `medium` `patch` [intent-alignment] The model continues every non-`_recentre` same-op layout (stack toggle, go-to-hidden), wider than "no switch asked for". — Same group as the medium row; patched there.
+  - `low` `reject` [intent-alignment] Born edges recomputed are witnessed only with a layout equal to `to`. — Same location and claim as the carried verification-gap row.
+  - `low` `reject` [intent-alignment] The viewport retarget is witnessed only for an equal layout. — carried: as the logged row.
+  - `low` `reject` [intent-alignment] No end-to-end model → canvas → viewport test. — carried: as the logged row.
+
 ## Design Notes
 
 A continuation keeps each effect's origin (`was + delta` of the old pass) and retargets to the new rect; for an equal layout (the watcher's reload) that is exact, for a same-op layout that moved cards (a stack toggle mid-glide) the card jumps by the retarget's progress share — preferred over snapping, simpler than a velocity-preserving blend. A token object instead of a `continues` back-reference keeps continuations from chaining layouts in memory. The alternative "skip a reload whose head equals the shown op" was not taken: it still snaps every other same-op landing and adds a head read per event.
@@ -117,6 +146,7 @@ A continuation keeps each effect's origin (`was + delta` of the old pass) and re
 - After the review patches: `flutter test test/features/graph` — 705 passed; `dart analyze --fatal-infos .` — no issues; `dart format --set-exit-if-changed lib test widgetbook` — 0 changed. Mutation runs (implementer): removing `!isContinued` from the model's suppression, the old reveal guard without `_moving == null`, and the old start condition each turn their new test red; restored.
 - Matrix → tests: watcher reload after own verb (`graph_view_model_test.dart`, "the watcher's reload … continues its transition"); same-op layout mid-glide and its glide-out variant (`graph_transition_test.dart`, viewport group); same-op layout mid-transition, continuation after the end, fresh canvas given a continuation, early end (with no reveal, with another key's reveal, with reveal → null) (canvas group); switch mid-transition (view-model switches test: `setRevset` at the same op lands no transition).
 - Not run: the app (the timing log of the watcher's reload is Ralph's manual check).
+- Follow-up review pass (2026-11-01, same gate rule): new witness "a continuation that brings a reveal of another key ends at that key" passes, and fails with the new guard disabled (mutation, restored); `flutter test test/features/graph` — 706 passed; `dart analyze --fatal-infos .` — no issues; `dart format --set-exit-if-changed lib test widgetbook` — 0 changed.
 
 ## Auto Run Result
 
@@ -138,5 +168,11 @@ Blocking condition: none
 - **Rejected:** double reveal of the born key within 720 ms; partial carry for a same-op layout that moves cards (accepted in Design Notes); one retained `from` layout; stack toggles continuing a glide; no end-to-end model→canvas test (both seams pinned); flash/moved-layout tests; manual scroll reset in a test; stale spec line numbers; false: spec/Auto Run Result incomplete, ledger close (the loop's job), deltas rebuilt mid-run (unreachable), duplicates of the patched rows.
 
 **Follow-up review recommended:** true — two medium entries were patched (the remount replay and the reveal guard); the unverified risk is the continuation path in the running app, witnessed only by widget tests with hand-built continuations and a fake source.
+
+**Follow-up review pass (2026-11-01):** 25 findings (high 0, medium 4, low 18, false 3; § Review Triage Log, "follow-up").
+- **Patched** (one medium entry, 4 medium + 2 low members; plus one low): a same-op layout that brings a new reveal (a go-to-hidden, a gap expand, an explicit reveal) continued the landing but kept the pending born reveal, so the scroll went back to the born card after the glide — the continue branch in `graph_canvas.dart` now drops it, which also ends the double reveal of the born key; the early-end comment says "a new reveal". Witness in `graph_transition_test.dart`.
+- **Deferred:** none.
+- **Rejected:** carried rows of the first pass (retarget jump, partial carry, stack toggle, retained `from`, equal-layout-only tests, no end-to-end test); the early-end reveal overriding a user fling (rare, needs scroll-tracking state); weak test titles (no restart already pinned). False: coalesced-layout fall-through, `_bornReveal` against a missing key (`_revealBorn` checks it), a continuation of an older landing (unreachable).
+- **Follow-up review recommended:** false — a follow-up pass that patched no high; patched counts: medium 1 entry, low 1.
 
 **Residual risks:** a same-op layout that moves cards mid-glide (a stack toggle) retargets with a jump of the done share; the model keeps a continuation (and one old `from` layout) until the next switch or op; not checked in the running app.
