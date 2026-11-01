@@ -1824,6 +1824,9 @@ class ZanshinWorker {
     if (context != null && context < 0) {
       throw ArgumentError.value(context, 'context', 'must not be negative');
     }
+    if (context != null && context > 0xFFFFFFFF) {
+      throw ArgumentError.value(context, 'context', 'must fit in 32 bits');
+    }
     final Uint8List bytes = await send(
       DiffCommand(
         commandId: _correlator.allocateId(),

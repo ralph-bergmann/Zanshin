@@ -5,7 +5,7 @@ created: '2026-11-01'
 status: 'done'
 baseline_revision: 'c244780069f206f6502ba28967679bbbf54bb087'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
@@ -120,6 +120,33 @@ deferred: []
   - `[low]` `patch` (intent) The Rust `-w` assertion is weak alone. — Same as the blind row; same patch.
   - `[low]` `reject` (intent) `assert_wire_is` maps non-Added kinds to Modified. — Pre-existing 5.6 helper; the fixtures hold no rename/copy; kinds round-trip in the builder unit test.
 
+### 2026-11-01 — Review pass (follow-up)
+- verdicts: 23 findings — high 0, medium 0, low 15, false 8, maybe-false 0 (verification-gap layer: no gaps)
+- findings:
+  - `[low]` `reject` (blind) `docs/rust-error-codes.md` does not name `zanshin_diff`. — The registry lists emitters selectively (the `ffi.invalid_argument` row names no `zanshin_select_tree` either), 5.8 adds no code, and `jj.paths_unmatched` from `Repo::diff` is Story 5.6's; the Code Map scoped the file to "only if a new code".
+  - `[low]` `patch` (blind) A Dart `context` above `0xFFFFFFFF` passes the negative-only guard and `putUint32` truncates it (`1 << 32` → 0). — `zanshinDiff` and `ZanshinWorker.diff` now throw `ArgumentError` ("must fit in 32 bits", `repo.dart`'s `depth` precedent); new test `a_context_beyond_32_bits_is_refused_on_the_calling_side`.
+  - `[false]` `reject` (blind) `DiffWhitespace.wire` is `@visibleForTesting` but production code. — The annotation means "public only for tests"; the one production use is inside the declaring library (`diff.dart`), which the analyzer allows (`dart analyze` clean).
+  - `[low]` `reject` (blind) Error precedence (handle 0 + junk buffer → `ffi.invalid_argument`) undocumented. — The request-before-handle order is the intent's rule, the same as `zanshin_select_tree`; no caller depends on the order.
+  - `[low]` `reject` (blind) No FFI test for an invalid `paths` entry. — carried: the prior pass's "error arms untested through the extern" row (from `build_matcher`, tested in zanshin-jj).
+  - `[low]` `reject` (blind) No test that a post-snapshot refusal carries `precondition`. — `precondition_envelope` is the shared helper every precondition extern uses and is tested there; the extern adds no branch.
+  - `[false]` `reject` (blind) The `to_only` check is weak (`assert_ne!`). — The same call goes through `assert_matches_repo_diff`, which asserts the wire equals `Repo::diff(FromTo { from: None, to: C })` pins included, so a wrong `from` fails there.
+  - `[low]` `reject` (blind) `assert_matches_repo_diff` compares `operation_id` across two sessions. — Holds while the fixture's `@` is clean, as it is; a dirty fixture would fail loudly, not silently.
+  - `[low]` `reject` (blind) Empty-string inputs unspecified. — carried: the prior pass's empty-id row.
+  - `[false]` `reject` (blind) `context: 0` may read as absent. — Absent is `diff.git.context` (3), `Some(0)` drops the context lines, and the wire is compared to `Repo::diff(Some(0))` line by line.
+  - `[low]` `reject` (blind) Labels' "one per id" length never asserted; label doc line doesn't parse. — The wire is compared to `Repo::show`'s labels, which own the invariant; the doc line reads "the tree [parentTreeIds] name" (= that they name).
+  - `[low]` `reject` (blind) The worker's unknown-handle branch is untested. — carried: prior pass row.
+  - `[false]` `reject` (blind) No `coverage-baseline.txt` change. — Coverage runs once at the story loop's final gate (gate rule).
+  - `[low]` `patch` (edge) `zanshinDiff` lets `context > 0xFFFFFFFF` through. — Same root cause and patch as the blind row.
+  - `[low]` `patch` (edge) `ZanshinWorker.diff` lets `context > 0xFFFFFFFF` through. — Same patch.
+  - `[low]` `reject` (edge) Dart labels tested only by a synthetic decode. — carried: prior pass's labels row.
+  - `[low]` `reject` (intent) `mode_change` / binary never through the extern or Dart. — carried: prior pass's conflicted/mode-change row.
+  - `[low]` `reject` (intent) Shown labels in Dart only transitively. — carried: prior pass's labels row.
+  - `[low]` `reject` (intent) Unknown whitespace refused only in the reader unit test. — The extern calls the same reader; surface difference only.
+  - `[false]` `reject` (intent) To-only `from = @` checked only negatively. — Same refutation as the blind `to_only` row.
+  - `[false]` `reject` (intent) Unknown revision uses `q…` not `zzzz…`. — `z…` is the root's change id and would resolve; `q…` is the matrix row's meaning.
+  - `[false]` `reject` (intent) Negative-context refusal and the duplicate NUL guard go beyond the intent. — House pattern: guards on both calling sides (`isolate.dart`: "See [bookmarkCreate] for why"); the wire type is `uint`.
+  - `[false]` `reject` (intent) Handle 0 with a conflicting request returns `jj.invalid_input`. — Follows from the intent's request-first order, as the auditor itself notes.
+
 ## Design Notes
 
 Why a request buffer, not lone C strings (the epic's `zanshin_diff_compute(handle, from_id, to_id)`): 5.6 grew the read to `jj diff`'s full option set (`-r`, `--from/--to`, paths, context, `-w/-b`, summary); ADR-0001's composite-input pattern carries that set, and ids still cross as plain strings inside it. The extern is named `zanshin_diff` (noun = verb, like `zanshin_select_tree`, `zanshin_interdiff`). FromTo is inferred from `from`/`to` presence: `FromTo { None, None }` (= `@` vs `@`, always empty) is the only `DiffRevisions` value it cannot express, and the CLI has no spelling for it either.
@@ -140,6 +167,11 @@ Why a request buffer, not lone C strings (the epic's `zanshin_diff_compute(handl
 - `cargo clippy -p zanshin-ffi --all-targets -- -D warnings` -- clean. `cargo fmt --all --check` -- clean.
 - `cargo make --allow-private test-core` -- 1183 passed after the review patches (1182 before). `dart analyze --fatal-infos --fatal-warnings packages/zanshin_core` -- no issues. `dart format --set-exit-if-changed packages/zanshin_core` -- 0 changed.
 - Not run: the parity oracle (no jj verb changed), coverage and the full gate (story-loop gate rule).
+
+**Verification notes, follow-up review pass (2026-11-01; Dart-only patch):**
+- `cargo make --allow-private test-core` -- 1184 passed (new `a_context_beyond_32_bits_is_refused_on_the_calling_side`).
+- `dart analyze --fatal-infos --fatal-warnings packages/zanshin_core` -- no issues. `dart format --set-exit-if-changed packages/zanshin_core` -- 0 changed.
+- Not run: Rust checks (no Rust file touched), codegen (no schema/FFI change), parity oracle, coverage, full gate (story-loop gate rule).
 
 ## Auto Run Result
 
@@ -169,3 +201,19 @@ Status: done.
 **Residual risks.**
 - Coverage of `crates/zanshin-ffi/src/diff.rs` / `commit_views.rs` is measured only at the loop's final gate (the zanshin_core cdylib test credits the extern).
 - The worker's unknown-handle branch for `DiffCommand` is untested (as for most commands).
+
+### Follow-up review pass (2026-11-01)
+
+Status: done.
+
+**Summary.** Follow-up review of Story 5.8. One patch: a Dart `context` above `0xFFFFFFFF` is refused with `ArgumentError` in `zanshinDiff` and `ZanshinWorker.diff`, where `putUint32` used to truncate it.
+
+**Files changed.** `packages/zanshin_core/lib/src/ffi/diff.dart` and `lib/src/worker/isolate.dart` add the upper-bound guard. `packages/zanshin_core/test/worker/diff_test.dart` adds a test for it.
+
+**Review.** 23 findings: 0 high, 0 medium, 15 low, 8 false. The verification-gap layer reported no gaps. Patched: 1 low entry (three rows, same root cause: the context upper bound). Deferred: none. Rejected, with reasons in the triage log: the error-code registry, the error-precedence docs, the untested error arms, `precondition` on post-snapshot refusals, `operation_id` across sessions, the empty strings, the label length invariant, the unknown-handle branch, Dart labels tested by decode only, mode_change through the extern, and unknown whitespace tested only in the unit test. False: `@visibleForTesting`, `to_only`, `context: 0`, the coverage baseline, `q…` vs `zzzz…`, guards beyond the intent, and handle-0 precedence.
+
+**Follow-up review recommended: false.** This was a follow-up pass and patched no high finding (patched: 0 high, 0 medium, 1 low).
+
+**Verification.** Listed in the follow-up verification notes above; every check passed.
+
+**Residual risks.** Same as before: per-file coverage of `diff.rs` and `commit_views.rs` is measured only at the loop's final gate.

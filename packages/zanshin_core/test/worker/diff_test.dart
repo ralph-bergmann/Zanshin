@@ -147,6 +147,11 @@ void main() {
       expect(() => zanshinDiff(0, context: -1), throwsArgumentError);
     });
 
+    test('a_context_beyond_32_bits_is_refused_on_the_calling_side', () async {
+      await expectLater(repo.diff(context: 1 << 32), throwsArgumentError);
+      expect(() => zanshinDiff(0, context: 1 << 32), throwsArgumentError);
+    });
+
     test('a_closed_handle_refuses_synchronously', () async {
       final RepoHandle other = await worker.openRepo(tempDir.path);
       await other.close();
