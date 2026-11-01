@@ -55,6 +55,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/project_session.dart
     severity: low
+    resolved: >-
+      2026-11-01 — fixed (spec-10-12-adopt-backend-layout, commit 6b9feacb): Ralph's refresh rule is complete — window focus (20b5b0d), View › Reload Cmd-R (11.13, 0d7811d) and the in-window Reload button run ProjectSession.refresh().
   - summary: >-
       10.5 receives the open handle from ProjectSession.repo.handle (an OpenedRepoHandle) and refreshes its own graph; 10.5's text still says only that the handle "arrives at init".
     evidence: |-

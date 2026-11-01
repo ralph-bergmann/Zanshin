@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/shell/app_menu.dart
     severity: medium
+    resolved: >-
+      2026-11-01 — fixed (spec-10-12-adopt-backend-layout, commit 6b9feacb): the mounted graph is published as appMenu.graph (GraphMenuBinding) and cleared on unmount; GraphSearchShortcuts' own Cmd-F is retired.
   - summary: >-
       Toggles carry no checkmark and Minimize, Zoom, Enter Full Screen are not greyed for dialog windows.
     evidence: |-

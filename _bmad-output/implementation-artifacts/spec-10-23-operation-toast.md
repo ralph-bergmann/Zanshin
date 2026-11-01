@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_toasts.dart
     severity: medium
+    resolved: >-
+      2026-11-01 — fixed (spec-10-12-adopt-backend-layout, commit 6b9feacb): the project window creates GraphToasts(model, vm.toasts) where it mounts the graph and disposes it with the model.
   - summary: >-
       The toast's look, motion and the backdrop blur during its fade (I1) have not been checked in the running catalogue against the DS Toast card; only widget tests check them.
     evidence: |-

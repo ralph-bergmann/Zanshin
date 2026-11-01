@@ -552,7 +552,7 @@ _Ralph showed a mockup of the main view (commit cards at (row, lane), elbow line
   - `graphSlice` has no `--limit`, no `--reversed` and no path arguments.
 
   Under the pass-through rule each of these is a backend gap. Epic 10 offers only what the verbs expose (10.9). Severity medium (parity).
-- **No backend path from a file edit to a graph refresh** [`packages/zanshin_core/lib/src/worker/events.dart:17-33`; jj-lib 0.44.0 `lib/src/config/misc.toml:10`, `lib/src/fsmonitor.rs:290`; `handle.dart:961` `snapshot()`]
+- ~~**No backend path from a file edit to a graph refresh**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the project window's Reload button (bar's ACTION group) runs the graph reload and ProjectSession.refresh(), coalesced; with focus (20b5b0d) and Cmd-R (11.13) Ralph's refresh rule is complete. [`packages/zanshin_core/lib/src/worker/events.dart:17-33`; jj-lib 0.44.0 `lib/src/config/misc.toml:10`, `lib/src/fsmonitor.rs:290`; `handle.dart:961` `snapshot()`]
   - The watcher reports only op-heads and checkout changes. A file edit writes no operation until something snapshots, so @'s `empty` badge and its content go stale while the user edits.
   - jj's own answer is `fsmonitor.watchman.register-snapshot-trigger`. It is off by default and runs the `jj` binary. FR-RX-2 (Story 3.10's external-edit test) assumes that trigger.
   - 10.5 asks Ralph for a UI refresh policy. A Zanshin-side snapshot trigger, such as a debounced `snapshot()` on file events, would be its own backend story. Severity medium.
@@ -714,6 +714,7 @@ _Ralph decided to run the commit-graph layout in Dart on the worker isolate (`sp
   - `large-10k` has one merge, so fixture numbers hide this.
   - **Follow-up:** tune 10.11's page and buffer size on a real repo, not on the fixtures, and measure a content page with a changed-path index present (4.10 item 8). Building one is an Epic 9 verb for CLI parity (`jj debug index-changed-paths`), never a background job.
   - **2026-10-31, Ralph:** the tuning moves to Story 10.12 (its real `content` call), measured on a copy of the real 1.4k repo kept outside git and on a packed `large-10k`; recorded in epics.md Story 10.12 item 7.
+  - **2026-11-01, Story 10.12:** measured on medium-1k and large-10k, loose and packed, with and without the changed-path index: every content page stays under one frame (300 ids on loose 10k included), so 10.11's page and buffer stay (commit 6b9feacb, numbers in spec-10-12-adopt-backend-layout.md); left: the copy of the real 1.4k repo — its location is Ralph's.
 - **Real-repo data stays out of git.** None; a standing rule.
   - The 2026-09-26 real-repo dumps, metadata sidecars (descriptions, authors, bookmarks) and layout outputs live outside the repository.
   - The spike's `.gitignore` covers `/inputs/`, `/outputs/` and `/viewer/data/`.
@@ -890,7 +891,7 @@ _The spec (`spec-4-11-dart-layout-engine-worker-isolate.md`) carries all six ite
 - **`test/worker/graph_layout_test.dart`'s large-10k `free` case costs ~20 s of the `zanshin_core` suite.** Low.
   - The first timestamped topology call on the freshly extracted loose fixture took ~20 s (cold object reads); the three other `large-all` layouts ~0.5–2 s. One extraction and one worker per fixture (`setUpAll`); timeout 10 minutes for the coverage run.
   - **Follow-up:** if the gate time bites, keep `large-all` to its `compact` cases (no timestamps) and leave `free` at 10k to the CLI differential, which already covers it.
-- **The barrel export of the layout's public types is 10.12's, but 10.12's sprint-status entry does not say so.** Low; found by the review pass.
+- ~~**The barrel export of the layout's public types is 10.12's, but 10.12's sprint-status entry does not say so.**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the barrel exports the layout's public types (show GraphGridView only). Low; found by the review pass.
   - decisions-review-4-10-to-4-13.md (### 4.11) and `epic-4-context.md` leave `GraphGridView`, `LayoutMode`, `LaneOrder`, the `default*` pre-fills and `LayoutContractException` to 10.12's barrel export; the `10-12-adopt-backend-layout-4-10-4-12` entry does not mention it (Story 4.11 may change only its own sprint-status line). Until then the exported `ZanshinWorker.graphLayout` takes `LayoutMode` / `LaneOrder` arguments a barrel-only caller cannot name.
   - **Follow-up:** 10.12 adds the export (`show GraphGridView`, … only: `writeGraphGrid` in the same file is `@internal`), or the 10.12 entry gains the line.
 - **`project-context.md` has no rules for the new layout engine.** Low; found by the review pass.
@@ -1440,7 +1441,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
   - epics.md:12339-12345 (design question (a)); 9.29 and 11.8 are backlog. `ProjectStatus` holds clean, dirty, conflict, missing, stale; an unknown stored value reads as null (`JsonKey.unknownEnumValue`), so a newer file never corrupts an older app's settings.
   - **Follow-up:** 9.29 / 11.8 extend `ProjectStatus` (`packages/zanshin_settings/lib/src/model/projects_settings.dart`) and `ProjectStatusStyle` with the DS's `--proj-ahead/behind/diverged/syncing`.
   - **2026-10-19, Story 9.29:** `ProjectStatus` gains `ahead`, `behind`, `diverged` with the DS colours, read from the tracked remotes of the bookmarks on `heads(::@ & bookmarks())` (commit b5c3b95); left: `syncing` (11.8).
-- **The open project's dot refreshes only on jj operations, not on plain file edits, because the watcher reports op heads and the checkout only.** Low.
+- ~~**The open project's dot refreshes only on jj operations, not on plain file edits, because the watcher reports op heads and the checkout only.**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the in-window Reload button also runs ProjectSession.refresh(); focus and Cmd-R already did. Low.
   - `packages/zanshin_core/lib/src/worker/events.dart:17-33`; the same gap is 10.5 design question (c) (epics.md:9014-9015), whose refresh policy (window focus, timer, register-snapshot-trigger) Ralph decides.
   - **Follow-up:** whatever 10.5 decides also triggers a reading in `ProjectSession` (`app/lib/src/features/projects/project_session.dart`).
   - **2026-10-31, Ralph:** window focus + reload button; `ProjectSession.refresh()` runs when the window turns active (spec-fix-10-2-10-5-review, commit 20b5b0d); left: the reload button (Stories 10.12, 11.13).
@@ -1531,7 +1532,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 9.23 (bmad-build-auto, 2026-10-19)
 
-- **The StaleNotice's "Update working copy" action, its no-Undo rule and the error toast with Retry (epics 9.23 items 3, 4 and 6) wait for Story 10.5, which builds the StaleNotice; Story 9.23 ships only the wire (`RepoHandle.workspaceUpdateStale` and its `StaleRecovery` result).** Low.
+- ~~**The StaleNotice's "Update working copy" action, its no-Undo rule and the error toast with Retry (epics 9.23 items 3, 4 and 6) wait for Story 10.5, which builds the StaleNotice; Story 9.23 ships only the wire (`RepoHandle.workspaceUpdateStale` and its `StaleRecovery` result).**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): with GraphToasts created in the project window, the stale notice's result and error toast with Retry reach the running app. Low.
   - `app/lib` has only the shell's empty `staleNotice: Widget?` slot (`app/lib/src/features/shell/floating_shell.dart:75`) and a widgetbook placeholder (`app/widgetbook/folders/shell.dart:167-169`); `10-5-graph-view-model-repo-wiring` is backlog, and epics 9.23 item 6 says 10.5 owns the notice.
   - **Follow-up:** 10.5 adds the notice's quiet Zs Button with `jj workspace update-stale` in its tooltip, busy while it runs, then the `StaleRecovery` result; no Undo afterwards (item 3), Retry only on the failed action's error toast (item 4).
   - **2026-10-30, Story 10.5:** `StaleNotice` with "Update working copy" (quiet `ZsButton`, `jj workspace update-stale` tooltip, busy while it runs), the `StaleRecovery` result kept as `lastStaleRecovery`, a failure as `staleUpdateError`, no Undo (commit 5d5548c); left: the result toast and the failure's error toast with Retry — Story 10.23's.
@@ -2338,6 +2339,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The real action port is not wired into the app, and the commands are not checked through the parity oracle.** Low.
   - `RepoGraphActions` (graph_ports.dart) is constructed only in tests, like `RepoGraphSource`; `GraphAction.command` strings are checked against literal expectations in `app/test/features/graph/graph_ports_test.dart`, not parsed by jj.
   - **Follow-up:** 10.12 passes `RepoGraphActions(repo)` to `GraphViewModel.init(actions:)` where it builds the real source; the first story that shows a command (10.15) runs a sample of `command` strings through `crates/zanshin-parity`'s oracle.
+  - **2026-11-01, Story 10.12:** `RepoGraphActions(repo)` is passed to `GraphViewModel.init(actions:)` in the project window (commit 6b9feacb); left: the oracle sample (Story 10.15).
 
 ## Surfaced in the follow-up review of Story 10.9 (bmad-build-auto, 2026-10-31)
 
@@ -2348,13 +2350,13 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 10.11 (bmad-build-auto, 2026-10-31)
 
-- **A commit id the source leaves out of its page stays uncached, so its card shows the skeleton until it arrives and every later settle asks for it again.** Medium.
+- ~~**A commit id the source leaves out of its page stays uncached, so its card shows the skeleton until it arrives and every later settle asks for it again.**~~ — REJECTED 2026-11-01 (spec-10-12-adopt-backend-layout): the real commitContents returns every requested id or throws, so no id is left out; a throw takes the failed-page path. Medium.
   - `GraphSource.content` documents "an id the source cannot read is left out" (app/lib/src/features/graph/graph_ports.dart); `GraphContent` (app/lib/src/features/graph/graph_content.dart) caches only returned entries and the card waits while its entry is null.
   - **Follow-up:** when 10.12 wires `commitContents`, decide from 4.10's error contract what an unreadable id shows (e.g. mark it missing and end the skeleton).
-- **A failed page is retried only by the next settle; at rest the visible cards keep their skeleton.** Medium.
+- ~~**A failed page is retried only by the next settle; at rest the visible cards keep their skeleton.**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): a failed page is asked again on the next settle or the next landed layout (Reload, Cmd-R, window focus); no timer, per Ralph's refresh rule; tested. Medium.
   - `GraphContent._drain` logs the failure and caches nothing (app/lib/src/features/graph/graph_content.dart); no timer retries, and at rest no scroll, layout, card-size or resize change follows.
   - **Follow-up:** 10.12 adds a retry (or an error look) for the real call's failure modes.
-- **The peek shows an empty subject and author while its content loads, and still lacks the full description and commit id.** Low.
+- ~~**The peek shows an empty subject and author while its content loads, and still lacks the full description and commit id.**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the peek shows the description and commit id and a loading look. Low.
   - `GraphCanvas._peekLayer` builds `GraphPeek` from `GraphCardData.of(..., content:)` (app/lib/src/features/graph/graph_canvas.dart); `GraphCommitContent` has no description field.
   - **Follow-up:** 10.12 adds the description and commit id from 4.10's object half and a loading look for the peek.
 
@@ -2383,13 +2385,13 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
   - Flutter's `SemanticsRole.comboBox` is unimplemented in this SDK (`flutter/lib/src/semantics/semantics.dart:198`); `graph_search_field.dart` sets `textField: true` plus the keyboard row's label as hint.
   - **Follow-up:** listen with VoiceOver; adopt the combobox/listbox roles once Flutter implements them.
   - **2026-11-01, Ralph (console session):** wait — no rework while Flutter lacks the role; listen with VoiceOver at the next Flutter bump and adopt the roles then.
-- **The search's production pieces have no production caller until 10.12 mounts the graph: `RepoGraphSearchSource`, `ProjectSearchStore`, `GraphSearchShortcuts` and the `logDefaults` re-read on window focus.** Low.
+- ~~**The search's production pieces have no production caller until 10.12 mounts the graph: `RepoGraphSearchSource`, `ProjectSearchStore`, `GraphSearchShortcuts` and the `logDefaults` re-read on window focus.**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the project window wires the search's production pieces and tests the repo source. Low.
   - No file in `app/lib` builds `GraphViewControls` or `RepoGraphSource`; the only mount is `app/widgetbook/folders/graph.dart`. `RepoGraphSearchSource.files` and `user.email` through `configGet` are untested for that reason (`app/lib/src/features/graph/graph_ports.dart`).
   - **Follow-up:** 10.12 wires them in the project window (`ProjectSearchStore(store, root)`, `userEmail` via `ZanshinWorker.configGet('user.email', workspaceRoot:)`, `GraphSearchShortcuts` around the window, `model.configChanged()` on window focus) and tests the repo source.
 
 ## Surfaced in Story 10.23 (bmad-build-auto, 2026-11-01)
 
-- **The graph's toasts (every outcome text, Undo/Redo, and I3's stale-recovery result and failure toast with Retry) reach no production surface until 10.12 mounts the graph in the project window.** Medium.
+- ~~**The graph's toasts (every outcome text, Undo/Redo, and I3's stale-recovery result and failure toast with Retry) reach no production surface until 10.12 mounts the graph in the project window.**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the project window creates GraphToasts(model, vm.toasts) and disposes it with the model. Medium.
   - `GraphToasts(` is built only in `app/widgetbook/folders/graph.dart` and the tests; `HomePage`'s `FloatingShell` has no graph slot yet (`app/lib/src/features/graph/graph_toasts.dart`).
   - **Follow-up:** 10.12 creates `GraphToasts(model, vm.toasts)` where it mounts the graph in `HomePage` and disposes it with the model.
 - **The toast's look, motion and the backdrop blur during its fade (I1) are unchecked in the running catalogue against the DS Toast card; only widget tests check them.** Medium.
@@ -2405,13 +2407,13 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in the graph-search DS check (bmad-build-auto, 2026-11-01)
 
-- **The graph search's counts and lookups fire only for a layout carrying an operation id, and the production layout 10.12 adopts must carry the topology's.** Medium (unverified: no production layout exists yet).
+- ~~**The graph search's counts and lookups fire only for a layout carrying an operation id, and the production layout 10.12 adopts must carry the topology's.**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the real layout carries the topology's operation_id as operationId. Medium (unverified: no production layout exists yet).
   - `GraphSearchController.wantCounts` / `lookup` / `countOf` return early when `model.layout?.operationId == null` (`app/lib/src/features/graph/graph_search_controller.dart:241-296`); the catalogue's `RecordedGraphLayout.fromSpec` had none, which is why no "N changes" showed (fixed in spec-fix-graph-search-ds-check-2026-11-01). `RecordedGraphLayout` is the only `GraphLayout` in `app/lib`, and `RepoGraphSource` takes its layout from outside until 10.12.
   - **Follow-up:** when 10.12 builds the layout from the backend topology, pass the topology's `operation_id` as `operationId`, and test that a filter row in the mounted search shows its count.
 
 ## Surfaced in Story 11.13 (bmad-build-auto, 2026-11-01)
 
-- **No project window publishes its graph to the menu bar yet, so Change, Go, View (Free/Compact/Detailed Cards/Group Stacks), Undo/Redo and Find stay grey in the running app.** Medium.
+- ~~**No project window publishes its graph to the menu bar yet, so Change, Go, View (Free/Compact/Detailed Cards/Group Stacks), Undo/Redo and Find stay grey in the running app.**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the mounted graph is published as appMenu.graph and cleared on unmount; GraphSearchShortcuts' own Cmd-F is retired. Medium.
   - `AppMenuModel.graph` (`app/lib/src/features/shell/app_menu.dart`) is written only by `app_menu_test.dart`; `GraphView` is not in `HomePage` until 10.12. Reload ⌘R refreshes the session only, until then.
   - **Follow-up:** 10.12 sets `appMenu.graph.value = GraphMenuBinding(model:, preferences:, focusSearch:)` when it mounts the graph and clears it when the graph unmounts; it also retires `GraphSearchShortcuts`' own ⌘F so the menu's ⌘F is the only one.
 - **The menu bar's toggles carry no checkmark, and Minimize, Zoom and Enter Full Screen are not greyed for the dialog windows.** Low.
@@ -2426,7 +2428,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 11.9 (bmad-build-auto, 2026-11-01)
 
-- **The Undo Timeline in the project window has no runner yet: Undo, Redo and Restore to here show disabled ("Available once the commit graph is shown").** Medium (hand-off).
+- ~~**The Undo Timeline in the project window has no runner yet: Undo, Redo and Restore to here show disabled ("Available once the commit graph is shown").**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the mounted GraphViewModel is passed as actions: to undoTimelineRailItem. Medium (hand-off).
   - `HomePage`'s `_UndoTimelineHost` (`app/lib/src/features/home/home_page.dart`) builds `undoTimelineRailItem(strings, model)` without `actions:`; the runner is the graph's `GraphViewModel` (it implements `UndoTimelineActions`), which is not in `HomePage` until 10.12.
   - **Follow-up:** 10.12 passes its mounted `GraphViewModel` as `actions:` to `undoTimelineRailItem`.
 - **Show changes (`jj op show <id>`) stays disabled ("Not available yet").** Low.

@@ -32,6 +32,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_ports.dart
     severity: low
+    resolved: >-
+      2026-11-01 — fixed (spec-10-12-adopt-backend-layout, commit 6b9feacb): the project window wires RepoGraphSearchSource, ProjectSearchStore, user.email via configGet and the logDefaults re-read on focus, and tests the repo source.
 ---
 
 <intent-contract>

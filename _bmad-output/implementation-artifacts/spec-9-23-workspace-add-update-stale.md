@@ -17,6 +17,8 @@ deferred:
     location: >-
       app/lib/src/features/shell/floating_shell.dart (staleNotice slot); Story 10.5
     severity: low
+    resolved: >-
+      2026-11-01 — fixed (10.5 commit 5d5548c, 10.23 commit e2da414, spec-10-12-adopt-backend-layout commit 6b9feacb): the notice, its result toast and the error toast with Retry now reach the project window.
   - summary: >-
       snapshot_locked's error arm still reloads the head with jj-lib's load_at_head, so a reconcile operation written on that path carries no workspace name (pre-existing; the other head loads moved to snapshot::load_head in 9.23).
     evidence: |-

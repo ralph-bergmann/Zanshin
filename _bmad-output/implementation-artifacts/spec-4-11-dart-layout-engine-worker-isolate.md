@@ -77,6 +77,8 @@ deferred:
       packages/zanshin_core/lib/zanshin_core.dart,
       _bmad-output/implementation-artifacts/sprint-status.yaml (10-12 entry)
     severity: low
+    resolved: >-
+      2026-11-01 — fixed (spec-10-12-adopt-backend-layout, commit 6b9feacb): the barrel exports the layout's public types (show GraphGridView only).
   - summary: >-
       project-context.md, the canonical ruleset, carries no rules for the new layout engine.
     evidence: |-

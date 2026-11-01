@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/home/home_page.dart
     severity: medium
+    resolved: >-
+      2026-11-01 — fixed (spec-10-12-adopt-backend-layout, commit 6b9feacb): the mounted GraphViewModel is passed as actions: to undoTimelineRailItem.
   - summary: >-
       Show changes (jj op show <id>) stays disabled; no view renders RepoHandle.opShow yet.
     evidence: |-

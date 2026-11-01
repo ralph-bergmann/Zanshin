@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_content.dart (load / _drain)
     severity: medium
+    resolved: >-
+      2026-11-01 — rejected (spec-10-12-adopt-backend-layout): the real commitContents returns every requested id or throws, so no id is left out; a throw takes the failed-page path.
   - summary: >-
       A failed page is retried only by the next settle (scroll, layout, card size, resize); at rest the visible cards keep their skeleton.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_content.dart (_drain catch)
     severity: medium
+    resolved: >-
+      2026-11-01 — fixed (spec-10-12-adopt-backend-layout, commit 6b9feacb): a failed page is asked again on the next settle or the next landed layout (Reload, Cmd-R, window focus); no timer, per Ralph's refresh rule; tested.
   - summary: >-
       The peek (10.6's callout) shows an empty subject and author while its content loads, with no loading state, and still lacks the full description and commit id.
     evidence: |-
@@ -32,6 +36,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_canvas.dart (_peekLayer), graph_peek.dart
     severity: low
+    resolved: >-
+      2026-11-01 — fixed (spec-10-12-adopt-backend-layout, commit 6b9feacb): the peek shows the description and commit id from 4.10's object half and a loading look.
 ---
 
 <intent-contract>
