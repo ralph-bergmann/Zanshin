@@ -1997,7 +1997,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in the follow-up review of Story 9.21 (bmad-build-auto, 2026-10-24)
 
-- **`Operation` carries only the operation's end time, so a typed op-log entry cannot show the start time and duration that `jj op log` shows.** Low.
+- ~~**`Operation` carries only the operation's end time, so a typed op-log entry cannot show the start time and duration that `jj op log` shows.**~~ — RESOLVED 2026-11-01 (spec-11-9-undo-timeline-panel, Story 11.9, I1): settled without a field. The Undo Timeline's row shows the relative end time only — the DS row is `cmd · when` (`design_system/ui_kits/desktop/chrome.jsx:133`, kit.css:69-72) and epics.md item 2 names description + relative time, no duration and no user; no other consumer wants the start time. Original entry: Low.
   - The CLI's op-log entry renders `format_time_range(op.time())` (end time plus ", lasted <duration>", `cli/src/config/templates.toml:345-347` @ v0.46.0); `crates/zanshin-jj/src/op_log.rs` `Operation.timestamp` is `metadata.time.end` only. Pre-existing since Epic 2's op-log read; 9.21 widened `Operation` with `workspace_name` and `tags` only.
   - **Follow-up:** append a `started` timestamp (`metadata.time.start`) to `Operation` (zanshin-jj, `.fbs` field appended, Dart model) when the Undo Timeline (11.9 / 11.13) wants the duration; otherwise none.
 
@@ -2423,3 +2423,21 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **Help › jj Documentation's URL carries the jj version separately from the jj-lib pin.** Low.
   - `jjDocumentationUrl` = `https://docs.jj-vcs.dev/v0.46.0/` (`app/lib/src/features/shell/app_menu.dart`); the pin-bump checklist in project-context.md does not name it.
   - **Follow-up:** add the URL to the pin-bump checklist (an agent-context edit).
+
+## Surfaced in Story 11.9 (bmad-build-auto, 2026-11-01)
+
+- **The Undo Timeline in the project window has no runner yet: Undo, Redo and Restore to here show disabled ("Available once the commit graph is shown").** Medium (hand-off).
+  - `HomePage`'s `_UndoTimelineHost` (`app/lib/src/features/home/home_page.dart`) builds `undoTimelineRailItem(strings, model)` without `actions:`; the runner is the graph's `GraphViewModel` (it implements `UndoTimelineActions`), which is not in `HomePage` until 10.12.
+  - **Follow-up:** 10.12 passes its mounted `GraphViewModel` as `actions:` to `undoTimelineRailItem`.
+- **Show changes (`jj op show <id>`) stays disabled ("Not available yet").** Low.
+  - The row shows the button with its command (spec 11.9); no view renders `RepoHandle.opShow` yet.
+  - **Follow-up:** a story that adds the operation's diff view enables it.
+- **A log of exactly a multiple of 50 operations costs one extra read at the end.** Low.
+  - The bridge's `opLog` has no count or offset, so a full page cannot tell it was the last: `UndoTimelineModel.loadMore` asks for 50 more once and finds none (witnessed in `undo_timeline_view_test.dart`, 1,000 ops → limits 50 … 1050).
+  - **Follow-up:** none until a cheap count exists (design question (b) waits on the same).
+- **A disabled timeline action reads "Another action is running" also while the runner reports a stale working copy.** Low.
+  - `UndoTimelineActions` exposes `actionsEnabled` only; a stale working copy normally shows the panel's "Working copy is stale" first, since `opLog` refuses it too.
+  - **Follow-up:** none unless the two disagree in the running app.
+- **The Undo Timeline use cases are not yet checked visually in the catalogue against the DS Callout "Undo Timeline" card and the kit's panel.** Medium.
+  - Widget tests cover structure, colours and opacity only; the Marionette check (`zanshinCatalogue.open` on `undo-timeline/undo-timeline/*`) is pending.
+  - **Follow-up:** run it, record the result in the spec's verification notes.

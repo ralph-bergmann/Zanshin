@@ -17,7 +17,7 @@ Build the macOS app around the commit graph: one project window in which the gra
 - Story 11.6: Projects window on real data (done)
 - Story 11.7: Settings window
 - Story 11.8: Sync (Fetch, Push, remote-change poll, badge)
-- Story 11.9: Undo Timeline panel
+- Story 11.9: Undo Timeline panel (done)
 - Story 11.10: Retire the docked mock UI (done)
 - Story 11.11: Zs control library, Widgetbook catalogue, Marionette configuration (done)
 - Story 11.12: Window foundation (done)
