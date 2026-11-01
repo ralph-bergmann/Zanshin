@@ -2534,3 +2534,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **A revision that resolves to several commits is refused without the CLI's "resolved to these revisions" hint.** Low.
   - `crates/zanshin-jj/src/push.rs` (`single_commit`) returns `hints: vec![]`; the CLI's `format_multiple_revisions_error` (`cli/src/revset_util.rs` @ v0.46.0) lists up to five commit summaries. Shared by git push, bookmark advance and now diff.
   - **Follow-up:** add the hint with the commit summaries in `single_commit`.
+
+## Surfaced in Story 10.25 (bmad-build-auto, 2026-11-01)
+
+- **The commit/split composer, its checkboxes and the squash form have not been compared against the DS inspector in the running catalogue; the Widgetbook has no composer use case of its own.** Low.
+  - Unattended run: no Marionette / Playwright check; only widget tests check the look (`app/lib/src/features/graph/graph_inspector.dart` `_Composer`; `app/widgetbook/folders/graph.dart` shows it only through the inspector demo).
+  - **Follow-up:** a Marionette check of the composer (@ commit, split, the all-selected hint, the warn line) and the squash form against DS `ui_kits/desktop/inspector.jsx` / `kit.css:128-144`.
