@@ -34,6 +34,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/project_session.dart
     severity: medium
+    resolved: >-
+      2026-11-01 — fixed (spec-10-22-jj-log-configurations-window, commit b6e20939): ⌘W (11.13) and the red button (11.12) run the close guards; the dirty Configurations window registers its "Discard changes?" guard and ProjectSession.mayLeave asks it before a project switch.
   - summary: >-
       A failed open keeps the current project and records the failure on the session, but nothing shows it: the DS has no design for a repository that will not load.
     evidence: |-
