@@ -593,7 +593,7 @@ _Added the same day after Ralph's answers and his near-final HTML design (`_bmad
   - Modified and uncommitted (`M`): `design/app.jsx` and `design/JJ Desktop Client.html`. So every APP:line citation also fails to reproduce at HEAD.
   - Every re-planned Epic 10 story cites these files by file:line.
   - **Follow-up:** commit them with the re-plan, by explicit path, or drop the mockup. That is Ralph's call.
-- **Epic 10's thin detail panel drops the design's review workflow; no story owns it** — **MOVED 2026-10-14 → Story 10.24** (the inspector's diff view: ±, Unified / Side by side, Viewed per repository with Mark all / Reset; the floating client itself drops the review meter, auto-advance and the V shortcut). Original entry: [design APP:69-89, :736-757, :804-807, :835-838, :865; GV:475; tweak "Diff mode" APP:7-16]. Low.
+- **Epic 10's thin detail panel drops the design's review workflow; no story owns it** — **MOVED 2026-10-14 → Story 10.24** (the inspector's diff view: ±, Unified / Side by side, Viewed per repository with Mark all / Reset; the floating client itself drops the review meter, auto-advance and the V shortcut). Original entry: [design APP:69-89, :736-757, :804-807, :835-838, :865; GV:475; tweak "Diff mode" APP:7-16]. Low. — **RESOLVED 2026-11-01** (spec-10-24-inspector-diff-view, commit 6b6b2e66): the inspector shows ±, the "n/N viewed" / "✓ all viewed" counter with Mark all / Reset, the focused file's hunks in Unified / Side by side (`general.diffLayout`) and the Viewed toggle per repository; meter bar, auto-advance and V stay dropped by the floating client.
   - The dropped parts:
     - the "x / N viewed" review meter with Mark all / Reset;
     - the per-file Viewed state, persisted per change id;
@@ -1057,7 +1057,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 
 ### The inspector and the diff
 
-- **Viewed state needs a per-repository store.** Low.
+- ~~**Viewed state needs a per-repository store.**~~ — RESOLVED 2026-11-01 (spec-10-24-inspector-diff-view, commit 6b6b2e66): `ProjectEntry.viewedFiles` through `ProjectViewedStore` (keys change id : fingerprint : path, newest 2000), next to 10.17's stack toggles. Low.
   - The design keeps "viewed" in `localStorage` per change id and path (SH:56-76). Decision (g) keys it per repository by (change id, path, diff fingerprint), and no store holds that kind of per-repository UI state yet.
   - **Follow-up:** 10.24 picks the store, next to 10.17's per-repository stack toggles (Claude's proposal).
 - **jj prints no hunk-header symbol for Dart.** Low.
@@ -1070,6 +1070,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - `jj diff` materializes conflict markers into the diff text (`cli/src/diff_util.rs:1884`); the design shows only the "Conflict" flag (IN:233).
   - **Follow-up:** 10.24 shows jj's text; a designed conflict view comes with 9.17's `resolve`.
   - **2026-10-24, Story 9.17:** `Repo::resolve_list` / `zanshin_resolve_list` / `RepoHandle.resolveList` give each conflicted file its sides and base hunk by hunk (`ConflictedFile.hunks`, `jj_lib::files::merge_hunks` terms in `Merge` order) plus labels and whether `resolve` can take it (commit aeefd82); left: the designed conflict view itself (Epic 10/11 UI work) and 10.24's jj-text display.
+  - **2026-11-01, Story 10.24:** partly done (commit 6b6b2e66) — the inspector's diff shows a conflicted file's hunks as the backend materializes them (jj's conflict-marker text, `crates/zanshin-jj/src/hunks.rs:362`); left: the designed conflict view with 9.17's `resolve`.
 - **Word-level and syntax marks have no consumer story.** Low.
   - With line-level first (decision (g)), 5.2–5.4 come later, and no Epic 10 story renders segments.
   - **Follow-up:** a follow-up story to 10.24 when 5.2–5.4 are scheduled.
@@ -2509,3 +2510,18 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The jj log Configurations window has not been compared against the DS RevsetDialog cards in the running catalogue; only widget tests check it.** Medium.
   - Unattended run: no Marionette / Playwright check; Windows › Configurations window (`app/widgetbook/folders/windows.dart`) has no project, so it shows no count and `mine()` without an email (`app/lib/src/features/graph/revset_configs/revset_configs_window.dart`).
   - **Follow-up:** a Marionette check of the window in the running app (with a project) against DS components/search/RevsetDialog.
+
+## Surfaced in Story 10.24 (bmad-build-auto, 2026-11-01)
+
+- **A hidden or divergent change (a graph node keyed by its commit id) shows no diff in the inspector: `RepoHandle.diff` resolves only change ids, unlike `jj diff -r <commit id>`.** Medium.
+  - `crates/zanshin-jj/src/hunks.rs:251` resolves the revision through `op_support::resolve_or_wc` (a `ChangeId`); a commit id fails `jj.change_not_found`. The inspector skips the reads for such a node rather than show another commit's diff (`app/lib/src/features/graph/graph_inspector.dart`, `_fetch`).
+  - **Follow-up:** let `diff`'s revision (and `--from`/`--to`) take a commit id or revset as `show(revset:)` does, then pass the node's commit id from `RepoGraphDetails.diff`.
+- **The inspector's diff block lays out every line of the focused file eagerly; a multi-thousand-line file may jank.** Medium (unverified).
+  - `app/lib/src/features/graph/inspector_diff.dart` builds a non-lazy `Column` under `IntrinsicWidth` (Unified) and an `IntrinsicHeight` per row (Side by side).
+  - **Follow-up:** profile a large generated file in the running app; if it janks, build the hunks lazily or cap them with a "show more".
+- **The witness "the Settings row changes the diff layout" waits for the Settings window.** Low.
+  - `GeneralSettings.diffLayout` exists and the inspector follows another writer's change (tested in `app/test/features/graph/graph_inspector_test.dart`); the Diffs › Layout row is Story 11.7 item 3.
+  - **Follow-up:** 11.7 binds the row to `general.diffLayout`.
+- **The inspector's diff view has not been compared against the DS DiffView / DiffHunk / FileRow cards in the running catalogue; only widget tests check it.** Low.
+  - Unattended run: no Marionette / Playwright check (`app/widgetbook/folders/graph.dart` demo details carry a diff).
+  - **Follow-up:** a Marionette check of the inspector's Changes and diff block against DS components/content.
