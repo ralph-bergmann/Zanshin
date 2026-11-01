@@ -12,10 +12,13 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import '../bootstrap/boot_window_host.dart' show mainWindowTitle;
+import '../graph/graph_search_field.dart' show GraphSearchShortcuts;
 import '../projects/project_capsule.dart';
 import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/project_window_title.dart';
+import '../projects/projects_environment.dart';
+import '../shell/app_menu.dart';
 import '../shell/floating_shell.dart';
 import '../shell/floating_shell_view_model.dart';
 import '../shell/shell_controller.dart' show ShellRailItem;
@@ -24,6 +27,7 @@ import '../shell/top_bar.dart';
 import '../undo_timeline/undo_timeline_model.dart';
 import '../undo_timeline/undo_timeline_view.dart';
 import '../window/app_window_actions.dart';
+import 'project_graph_host.dart';
 
 part 'home_page.factory.dart';
 
@@ -31,16 +35,23 @@ part 'home_page.factory.dart';
 ///
 /// PLACE holds the open project's capsule (Story 11.5), the empty island while none is open; the window takes the
 /// project's name as its title, "Zanshin" without one. The toast slot hosts the view model's [ShellToasts] while one
-/// shows or leaves, a creation's warnings among them (Story 10.23). Every other slot stays empty until its story fills it
-/// (Claude's proposal). The bar's row is the window's drag region (design question (a), decision (g); Story 11.4):
-/// from the window's top edge down to the content top, the part the islands leave empty moves the window on a drag
-/// and runs the system's titlebar action on a double-click.
+/// shows or leaves, a creation's warnings and the graph's toasts among them (Story 10.23).
+///
+/// Story 10.12: while a project is open the shell holds its commit graph ([ProjectGraphHost]): the graph, VIEW's
+/// controls and search, New change, the inspector, the @ pill and the stale notice; the graph is published to
+/// [appMenu], and the rail's Undo Timeline runs through its model. ACTION's sync island is Reload (⌘R's tooltip):
+/// one [ProjectSession.refresh] and one graph reload per press, each coalesced; disabled without a project. Without
+/// one VIEW and New change stay empty islands. The bar's row is the window's drag region (design question (a),
+/// decision (g); Story 11.4): from the window's top edge down to the content top, the part the islands leave empty
+/// moves the window on a drag and runs the system's titlebar action on a double-click.
 @immutable
 class HomePage extends StatelessWidget {
   @assistedInject
   const HomePage({
     required this.viewModelFactory,
     required this.projects,
+    required this.environment,
+    required this.appMenu,
     @assisted super.key,
   });
 
@@ -49,6 +60,12 @@ class HomePage extends StatelessWidget {
 
   /// The open project.
   final ProjectSession projects;
+
+  /// Reads the graph search's `user.email`.
+  final ProjectsEnvironment environment;
+
+  /// The menu bar the graph is published to.
+  final AppMenuModel appMenu;
 
   @override
   Widget build(BuildContext context) => _OnWindowActive(
@@ -63,16 +80,34 @@ class HomePage extends StatelessWidget {
           toasts: vm.toasts,
           child: ListenableBuilder(
             listenable: vm.toasts,
-            builder: (context, _) => _UndoTimelineHost(
+            builder: (context, _) => ProjectGraphHost(
               session: projects,
-              builder: (context, railItems) => FloatingShell(
-                controller: vm.shell,
-                railItems: railItems,
-                canvas: const ZsCanvas(),
-                // An opaque target, so a press in the bar's row moves the window and never reaches the graph below.
-                barRow: const WindowDragArea(child: ColoredBox(color: Color(0x00000000))),
-                projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place(context)),
-                toast: vm.toasts.occupied ? ShellToastView(toasts: vm.toasts) : null,
+              settings: vm.settings,
+              environment: environment,
+              appMenu: appMenu,
+              toasts: vm.toasts,
+              builder: (context, graph) => _UndoTimelineHost(
+                session: projects,
+                actions: graph.model,
+                builder: (context, railItems) {
+                  final shell = FloatingShell(
+                    controller: vm.shell,
+                    railItems: railItems,
+                    canvas: const ZsCanvas(),
+                    graph: graph.graph,
+                    // An opaque target, so a press in the bar's row moves the window and never reaches the graph below.
+                    barRow: const WindowDragArea(child: ColoredBox(color: Color(0x00000000))),
+                    projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place(context)),
+                    view: graph.view,
+                    syncGroup: graph.reload,
+                    newChange: graph.newChange,
+                    inspector: graph.inspector,
+                    atPill: graph.atPill,
+                    staleNotice: graph.staleNotice,
+                    toast: vm.toasts.occupied ? ShellToastView(toasts: vm.toasts) : null,
+                  );
+                  return GraphSearchShortcuts(search: graph.search, child: shell);
+                },
               ),
             ),
           ),
@@ -172,12 +207,13 @@ class _OpenReportToastState extends State<_OpenReportToast> {
 }
 
 /// The rail's Undo Timeline (Story 11.9) while [session] has a repository open: one [UndoTimelineModel] per
-/// [ProjectRepo], recreated when the repository changes and disposed on unmount. No runner until 10.12 mounts the
-/// graph's view model here (hand-off): the timeline reads and updates live, its actions show disabled.
+/// [ProjectRepo], recreated when the repository changes and disposed on unmount. Its Undo, Redo and Restore run through
+/// [actions], the graph's view model (Story 10.12); without one they show disabled.
 class _UndoTimelineHost extends StatefulWidget {
-  const _UndoTimelineHost({required this.session, required this.builder});
+  const _UndoTimelineHost({required this.session, required this.builder, this.actions});
 
   final ProjectSession session;
+  final UndoTimelineActions? actions;
   final Widget Function(BuildContext context, List<ShellRailItem> railItems) builder;
 
   @override
@@ -229,7 +265,7 @@ class _UndoTimelineHostState extends State<_UndoTimelineHost> {
   Widget build(BuildContext context) {
     final UndoTimelineModel? model = _model;
     return widget.builder(context, <ShellRailItem>[
-      if (model != null) undoTimelineRailItem(context.l10n, model),
+      if (model != null) undoTimelineRailItem(context.l10n, model, actions: widget.actions),
     ]);
   }
 }

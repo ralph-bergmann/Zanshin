@@ -417,6 +417,30 @@ class _PopoverLayout extends SingleChildLayoutDelegate {
   bool shouldRelayout(_PopoverLayout oldDelegate) => oldDelegate.anchor != anchor;
 }
 
+/// The top bar's Reload (Story 10.12), the ACTION group's sync island: a ghost "Reload" with the ⌘R tooltip (the DS has
+/// no reload glyph, Claude's proposal; Fetch and Push join this island in their own story). [onPressed] reads the
+/// project and the graph again, as View › Reload does; null disables it (no project open).
+class GraphReloadIsland extends StatelessWidget {
+  /// Reload running [onPressed].
+  const GraphReloadIsland({required this.onPressed, super.key});
+
+  /// What a press runs; null while nothing can reload.
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => ZsIsland(
+    child: ZsTooltip(
+      message: context.l10n.graphReloadTooltip,
+      child: ZsButton(
+        label: context.l10n.menuReload,
+        variant: ZsButtonVariant.ghost,
+        onPressed: onPressed,
+        identifier: 'graph.reload',
+      ),
+    ),
+  );
+}
+
 /// New change, the top bar's one primary action (Story 10.7; DS chrome.jsx:105, kit.css:211): `jj new` on @ through
 /// [GraphViewModel.run] (the model moves a selected @ to the born change and reveals it). Disabled while an action
 /// runs or the working copy is stale, without [GraphActions], or without @ in the layout. At a window width of at most

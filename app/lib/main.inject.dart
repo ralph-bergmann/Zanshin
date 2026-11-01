@@ -90,15 +90,17 @@ class MainComponent$Component implements _i1.MainComponent {
         _ViewModelFactoryOfFloatingShellViewModel$Provider(
           floatingShellViewModel$Provider,
         );
-    final homePageFactory$Provider = _HomePageFactory$Provider(
-      viewModelFactoryOfFloatingShellViewModel$Provider,
-      _projectSession$Provider,
-    );
-    final iconRegistry$Provider = _IconRegistry$Provider(iconModule);
     final projectsEnvironment$Provider = _ProjectsEnvironment$Provider(
       getDiagnostics$Provider,
       projectsModule,
     );
+    final homePageFactory$Provider = _HomePageFactory$Provider(
+      viewModelFactoryOfFloatingShellViewModel$Provider,
+      _projectSession$Provider,
+      projectsEnvironment$Provider,
+      _appMenuModel$Provider,
+    );
+    final iconRegistry$Provider = _IconRegistry$Provider(iconModule);
     _projectsWindowFactory$Provider = _ProjectsWindowFactory$Provider(
       _projectSession$Provider,
       projectRegistry$Provider,
@@ -223,6 +225,8 @@ class _HomePageFactory$Factory implements _i18.HomePageFactory {
   const _HomePageFactory$Factory(
     this._viewModelFactoryOfFloatingShellViewModel$Provider,
     this._projectSession$Provider,
+    this._projectsEnvironment$Provider,
+    this._appMenuModel$Provider,
   );
 
   final _ViewModelFactoryOfFloatingShellViewModel$Provider
@@ -230,10 +234,16 @@ class _HomePageFactory$Factory implements _i18.HomePageFactory {
 
   final _ProjectSession$Provider _projectSession$Provider;
 
+  final _ProjectsEnvironment$Provider _projectsEnvironment$Provider;
+
+  final _AppMenuModel$Provider _appMenuModel$Provider;
+
   @override
   _i18.HomePage create({_i19.Key? key}) => _i18.HomePage(
     viewModelFactory: _viewModelFactoryOfFloatingShellViewModel$Provider.get(),
     projects: _projectSession$Provider.get(),
+    environment: _projectsEnvironment$Provider.get(),
+    appMenu: _appMenuModel$Provider.get(),
     key: key,
   );
 }
@@ -242,6 +252,8 @@ class _HomePageFactory$Provider implements _i15.Provider<_i18.HomePageFactory> {
   _HomePageFactory$Provider(
     this._viewModelFactoryOfFloatingShellViewModel$Provider,
     this._projectSession$Provider,
+    this._projectsEnvironment$Provider,
+    this._appMenuModel$Provider,
   );
 
   final _ViewModelFactoryOfFloatingShellViewModel$Provider
@@ -249,9 +261,15 @@ class _HomePageFactory$Provider implements _i15.Provider<_i18.HomePageFactory> {
 
   final _ProjectSession$Provider _projectSession$Provider;
 
+  final _ProjectsEnvironment$Provider _projectsEnvironment$Provider;
+
+  final _AppMenuModel$Provider _appMenuModel$Provider;
+
   late final _i18.HomePageFactory _factory = _HomePageFactory$Factory(
     _viewModelFactoryOfFloatingShellViewModel$Provider,
     _projectSession$Provider,
+    _projectsEnvironment$Provider,
+    _appMenuModel$Provider,
   );
 
   @override

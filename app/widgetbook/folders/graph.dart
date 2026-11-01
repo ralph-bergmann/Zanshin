@@ -481,7 +481,7 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
     store: MemoryGraphSearchStore(),
   );
   final _shell = ShellController();
-  // Story 10.23: the graph's toasts, until 10.12 wires them in the project window.
+  // Story 10.23: the graph's toasts, as the project window wires them.
   final _toasts = ShellToasts();
   late final _graphToasts = GraphToasts(_model, _toasts);
   final _descriptions = <String, String>{};
@@ -567,6 +567,7 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
           ),
           projectCapsule: demoCapsule(),
           view: GraphViewControls(model: _model, preferences: preferences, search: _search),
+          syncGroup: GraphReloadIsland(onPressed: _model.reload),
           newChange: NewChangeButton(model: _model),
           inspector: GraphView.inspector(inspector),
           atPill: GraphView.atPill(_model),

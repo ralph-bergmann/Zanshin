@@ -357,6 +357,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get graphReloadTooltip => 'Reload (⌘R)';
+
+  @override
   String get graphRetry => 'Retry';
 
   @override

@@ -125,13 +125,15 @@ class FakeProjectRepo implements ProjectRepo {
   /// Reports a jj operation in this repository.
   void emitChange() => _changes.add(null);
 
-  /// How often its [handle] was asked for (the Undo Timeline reads its op log through it).
+  /// How often its [handle] was asked for (the Undo Timeline reads its op log through it, the graph its
+  /// `logDefaults` once per layout request).
   var handleReads = 0;
 
+  /// Throws `ffi.invalid_handle`, as a closed handle's call does: the readers keep their error state and stay alive.
   @override
   RepoHandle get handle {
     handleReads++;
-    throw UnsupportedError('a fake repository has no worker handle');
+    throw const ZanshinFfiException('ffi.invalid_handle', 'a fake repository has no worker handle');
   }
 
   @override

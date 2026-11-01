@@ -342,6 +342,30 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets('a failed page is asked again once a new layout lands (I10: a reload, no timer)', (tester) async {
+      source.contentRespond = (_, _) => throw const ZanshinFfiException('jj.operation_not_found', 'gone');
+      await pump(tester);
+      await settle(tester);
+      expect(source.contentRequests, hasLength(1));
+      // Nothing asks again on its own.
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(graphContentSettle);
+      }
+      expect(source.contentRequests, hasLength(1));
+      source
+        ..contentRespond = ((_, ids) => <String, GraphCommitContent>{
+          for (final String id in ids) id: GraphCommitContent(subject: 'about $id'),
+        })
+        ..emit(const OpHeadsChangedEvent(0, <String>[]));
+      await tester.pump();
+      await tester.pump();
+      await settle(tester);
+      expect(source.contentRequests, hasLength(2));
+      expect(source.contentRequests.last.commitIds.toSet(), source.contentRequests.first.commitIds.toSet());
+      expect(model.content['c-r100']?.subject, 'about c-r100');
+      await finish(tester);
+    });
+
     testWidgets('a reload with new commits on screen asks for exactly those ids', (tester) async {
       await pump(tester);
       await settle(tester);

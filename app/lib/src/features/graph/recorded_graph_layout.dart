@@ -69,7 +69,7 @@ class RecordedGraphLayout extends GraphLayout {
        _bucketValues = bucketValues ?? const <int>[],
        _bucketFirstRows = bucketFirstRows ?? Int32List(0),
        _bucketLastRows = bucketLastRows ?? Int32List(0),
-       version = _nextVersion++ {
+       version = nextGraphLayoutVersion() {
     final int n = keys.length;
     final int e = edgeChildren.length;
     assert(cols.length == n && nodeRows.length == n && parentCounts.length == n && elided.length == n);
@@ -99,31 +99,7 @@ class RecordedGraphLayout extends GraphLayout {
         _stackCount++;
       }
     }
-    // CSR over the given order: parent ranges by counting the children, child ranges by a counting sort on parents.
-    // A dangling end is left out of the index, so the invariant checker can report it instead of a RangeError.
-    bool valid(int node) => node >= 0 && node < n;
-    _parentStart = Int32List(n + 1);
-    _childStart = Int32List(n + 1);
-    for (var k = 0; k < e; k++) {
-      assert(k == 0 || edgeChildren[k - 1] <= edgeChildren[k], 'edges must be ordered by child');
-      if (valid(edgeChildren[k])) {
-        _parentStart[edgeChildren[k] + 1]++;
-      }
-      if (valid(edgeParents[k])) {
-        _childStart[edgeParents[k] + 1]++;
-      }
-    }
-    for (var i = 0; i < n; i++) {
-      _parentStart[i + 1] += _parentStart[i];
-      _childStart[i + 1] += _childStart[i];
-    }
-    _childEdges = Int32List(_childStart[n]);
-    final fill = Int32List.fromList(_childStart.sublist(0, n));
-    for (var k = 0; k < e; k++) {
-      if (valid(edgeParents[k])) {
-        _childEdges[fill[edgeParents[k]]++] = k;
-      }
-    }
+    _edges = GraphEdgeIndex.build(edgeChildren, edgeParents, n);
   }
 
   /// Joins a docs/graph-layout.md §2 input (the view facts: `key` ?? `id`, `parent_count` ?? the parent entries,
@@ -291,8 +267,6 @@ class RecordedGraphLayout extends GraphLayout {
   /// The `flags` bit of a divergent node.
   static const flagDivergent = 4;
 
-  static var _nextVersion = 0;
-
   @override
   final String? workspaceName;
 
@@ -336,7 +310,7 @@ class RecordedGraphLayout extends GraphLayout {
   @override
   String changeIdOf(int node) => _changeIds?[node] ?? _keys[node];
 
-  // shortcut: recordings carry no commit ids, so the key stands in; real ids come with 10.12's engine layout.
+  // shortcut: recordings carry no commit ids, so the key stands in; the worker's BackendGraphLayout has real ones.
   @override
   String commitIdOf(int node) => _commitIds?[node] ?? _keys[node];
 
@@ -410,9 +384,7 @@ class RecordedGraphLayout extends GraphLayout {
   final Int32List _bucketFirstRows;
   final Int32List _bucketLastRows;
   final _indexOfKey = <String, int>{};
-  late final Int32List _parentStart;
-  late final Int32List _childStart;
-  late final Int32List _childEdges;
+  late final GraphEdgeIndex _edges;
 
   final List<List<int>> _runMembers;
   final List<int?> _runStackNodes;
@@ -474,13 +446,13 @@ class RecordedGraphLayout extends GraphLayout {
   GraphEdgeShape shapeOf(int edge) => _edgeShapes[edge];
 
   @override
-  ({int start, int end}) parentEdges(int node) => (start: _parentStart[node], end: _parentStart[node + 1]);
+  ({int start, int end}) parentEdges(int node) => _edges.parentEdges(node);
 
   @override
-  ({int start, int end}) childEdges(int node) => (start: _childStart[node], end: _childStart[node + 1]);
+  ({int start, int end}) childEdges(int node) => _edges.childEdgeRange(node);
 
   @override
-  int childEdgeAt(int slot) => _childEdges[slot];
+  int childEdgeAt(int slot) => _edges.childEdges[slot];
 
   @override
   int get bucketCount => _bucketValues.length;

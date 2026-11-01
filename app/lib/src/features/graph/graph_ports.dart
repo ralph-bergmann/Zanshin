@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
 import '../projects/project_repos.dart';
+import 'backend_graph_layout.dart';
 import 'graph_layout.dart';
+
+final _log = Logger('zanshin.graph');
 
 /// One layout request (Story 10.5 item 2): the revset and the view's mode and lane order, plus the jj parameters
 /// passed through explicitly (FR-JJ-17) — `prioritize` and `shortPrefixes` pre-filled from `logDefaults()`, `anchors`
@@ -727,23 +731,68 @@ class RepoGraphDetails implements GraphDetails {
   Future<ChangeActions> changeActions(String changeId) => _repo.handle.changeActions(changeId);
 }
 
-/// [GraphSource] over an open [ProjectRepo] (`ProjectSession.repo`): its handle's events, `logDefaults` and
-/// `workspaceUpdateStale`; the layout and the content are the passed [layout] and [content] functions until 10.12
-/// adopts the backend layout and `commitContents`.
+/// [GraphSource] over an open [ProjectRepo] (`ProjectSession.repo`, Story 10.12): the worker's layout
+/// (`RepoHandle.graphLayout`, read as a [BackendGraphLayout]), the card content (`commitContents` at the layout's
+/// operation), its handle's events, `logDefaults` and `workspaceUpdateStale`.
 class RepoGraphSource implements GraphSource {
-  /// The source of [_repo], laying out with [layout] and reading card content with [content].
-  RepoGraphSource(this._repo, {required this._layout, required this._content});
+  /// The source of [_repo].
+  RepoGraphSource(this._repo);
 
   final ProjectRepo _repo;
-  final Future<GraphLoad> Function(GraphRequest request) _layout;
-  final Future<Map<String, GraphCommitContent>> Function(String? operationId, List<String> commitIds) _content;
+
+  // The operations the landed layouts' revsets brought in, by operation: content reads pass them along. Kept per
+  // operation (never cleared), so a dropped later reply or another revset at that operation loses none.
+  // shortcut: unbounded — one small set per operation in a session; bound it if sessions grow past that.
+  final _extraOperationIds = <String, Set<String>>{};
 
   @override
-  Future<GraphLoad> layout(GraphRequest request) => _layout(request);
+  Future<GraphLoad> layout(GraphRequest request) async {
+    final RepoHandle handle = _repo.handle;
+    final ({GraphTopologyView topology, GraphGridView grid}) reply;
+    try {
+      reply = await handle.graphLayout(
+        revset: request.revset,
+        anchors: request.anchors,
+        utcOffsetMin: request.utcOffsetMin,
+        prioritize: request.prioritize,
+        shortPrefixes: request.shortPrefixes,
+        mode: switch (request.mode) {
+          GraphMode.free => LayoutMode.free,
+          GraphMode.compact => LayoutMode.compact,
+        },
+        order: switch (request.order) {
+          GraphLaneOrder.compact => LaneOrder.compact,
+          GraphLaneOrder.greedy => LaneOrder.greedy,
+        },
+        stacks: request.stacks,
+        expandedKeys: request.expandedKeys.toList(),
+        collapsedKeys: request.collapsedKeys.toList(),
+        keepOpenKeys: request.keepOpenKeys.toList(),
+      );
+    } on LayoutContractException catch (error) {
+      // The caption shows only the code: the rule and its message go to the log.
+      _log.severe('the layout engine refused the topology: $error');
+      throw layoutContractFailure(error);
+    }
+    final layout = BackendGraphLayout(reply.topology, reply.grid, utcOffsetMinutes: request.utcOffsetMin);
+    _extraOperationIds
+        .putIfAbsent(reply.topology.operationId, () => <String>{})
+        .addAll(reply.topology.extraOperationIds);
+    return GraphLoad(layout, warnings: reply.topology.warnings, precondition: handle.lastPrecondition);
+  }
 
   @override
-  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds) =>
-      _content(operationId, commitIds);
+  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds) async {
+    if (operationId == null || commitIds.isEmpty) {
+      return const <String, GraphCommitContent>{};
+    }
+    final WarnedList<CommitContent> page = await _repo.handle.commitContents(
+      operationId: operationId,
+      commitIds: commitIds,
+      extraOperationIds: _extraOperationIds[operationId]?.toList() ?? const <String>[],
+    );
+    return <String, GraphCommitContent>{for (final CommitContent c in page) c.commitId: graphCommitContentOf(c)};
+  }
 
   @override
   Stream<RepoEvent> get events => _repo.events;
@@ -753,6 +802,29 @@ class RepoGraphSource implements GraphSource {
 
   @override
   Future<StaleRecovery> updateStale() => _repo.handle.workspaceUpdateStale();
+}
+
+/// A broken layout-input contract as the model's error caption shows it (`ffi.unknown`, Story 10.12): the engine
+/// refused the topology, which only a backend bug produces, so Retry is all the user can do.
+ZanshinFfiException layoutContractFailure(LayoutContractException error) =>
+    ZanshinFfiException('ffi.unknown', '${error.rule}: ${error.message}');
+
+/// A card's content from the worker's [content]: the subject is the description's first line (jj's
+/// `description.first_line()`), an undecidable `empty` (a merge read outside its index) reads as not empty.
+GraphCommitContent graphCommitContentOf(CommitContent content) {
+  final String description = content.description;
+  final int newline = description.indexOf('\n');
+  final String line = newline < 0 ? description : description.substring(0, newline);
+  return GraphCommitContent(
+    // Rust's `lines()` drops a CRLF's `\r` too.
+    subject: line.endsWith('\r') ? line.substring(0, line.length - 1) : line,
+    description: description,
+    authorName: content.authorName,
+    authorEmail: content.authorEmail,
+    empty: content.empty ?? false,
+    conflict: content.conflict,
+    timestampMs: content.committerTimestampMillis,
+  );
 }
 
 /// What the graph search reads (Story 10.21). Only counts, finds and content are pinned to the shown layout's
@@ -784,7 +856,7 @@ abstract interface class GraphSearchSource {
 }
 
 /// [GraphSearchSource] over an open [ProjectRepo]'s handle; `user.email` and the content are the passed functions
-/// (`configGet` runs on the worker only; the content is 10.12's `commitContents`).
+/// (`configGet` runs on the worker only; the project window passes its [RepoGraphSource.content]).
 class RepoGraphSearchSource implements GraphSearchSource {
   /// The search reads of [_repo].
   RepoGraphSearchSource(this._repo, {required this._userEmail, required this._content});
@@ -810,7 +882,8 @@ class RepoGraphSearchSource implements GraphSearchSource {
 
   @override
   Future<List<String>> files() async => <String>[
-    for (final FileEntry entry in await _repo.handle.fileList(revision: '@')) entry.path,
+    // No revision: the CLI's `-r` default @ (the handle takes a change id there, never the revset `@`).
+    for (final FileEntry entry in await _repo.handle.fileList()) entry.path,
   ];
 
   @override

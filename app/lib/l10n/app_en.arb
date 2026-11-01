@@ -262,6 +262,8 @@
     "description": "Caption when the commit graph failed to load; code is the error code.",
     "placeholders": {"code": {"type": "String", "example": "jj.io"}}
   },
+  "graphReloadTooltip": "Reload (⌘R)",
+  "@graphReloadTooltip": {"description": "Tooltip of the top bar's Reload button (the View menu's Reload, its shortcut): reads the project and the graph again."},
   "graphRetry": "Retry",
   "@graphRetry": {"description": "Button that loads the graph again."},
   "graphEmpty": "No changes match this revset.",

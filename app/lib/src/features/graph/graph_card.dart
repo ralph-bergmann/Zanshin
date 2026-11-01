@@ -204,6 +204,8 @@ class GraphCardData {
     required this.key,
     required this.changeId,
     required this.prefixLength,
+    this.commitId,
+    this.commitPrefixLength = 0,
     this.changeOffset,
     this.isRoot = false,
     this.isWorkingCopy = false,
@@ -231,6 +233,8 @@ class GraphCardData {
       key: layout.keyOf(node),
       changeId: layout.changeIdOf(node),
       prefixLength: layout.changeIdPrefixLengthOf(node),
+      commitId: layout.isStackNode(node) ? null : layout.commitIdOf(node),
+      commitPrefixLength: layout.commitIdPrefixLengthOf(node),
       changeOffset: layout.changeOffsetOf(node),
       isRoot: isRoot,
       isWorkingCopy: node == layout.workingCopyIndex,
@@ -256,6 +260,12 @@ class GraphCardData {
 
   /// jj's shortest unique prefix length.
   final int prefixLength;
+
+  /// The full commit id; null for a stack node.
+  final String? commitId;
+
+  /// jj's shortest unique commit-id prefix length; 0 when the layout carries none.
+  final int commitPrefixLength;
 
   /// jj's change offset, when hidden or divergent.
   final int? changeOffset;

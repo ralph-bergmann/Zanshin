@@ -14,15 +14,21 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inject_annotation/inject_annotation.dart' show Provider;
 import 'package:inject_flutter/inject_flutter.dart';
+import 'package:zanshin/src/features/graph/graph_controls.dart';
+import 'package:zanshin/src/features/graph/graph_search_field.dart';
+import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
 import 'package:zanshin/src/features/projects/project_capsule.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
+import 'package:zanshin/src/features/shell/app_menu.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin/src/features/shell/pinned_panel.dart';
 import 'package:zanshin/src/features/shell/rail.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
+import 'package:zanshin/src/features/undo_timeline/undo_timeline_view.dart';
+import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart'
     show RepoDetectResult, RepoKind, ZanshinFfiException, ZanshinWarning, ZanshinWarningCode;
@@ -32,6 +38,7 @@ import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interfac
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_projects.dart';
+import '../../helpers/fake_projects_environment.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/recording_shell.dart';
 import '../../helpers/shell_host.dart';
@@ -80,8 +87,10 @@ void main() {
   setUp(() => ZanshinShellPlatform.instance = shell = RecordingShell());
   tearDown(() => shell.close());
 
+  late AppMenuModel appMenu;
+
   /// Pumps the home page over a fresh settings store and a project session on fake repositories in a 1440 × 900
-  /// window showing [appearance], wrapped by [wrap]; returns the session.
+  /// window showing [appearance], wrapped by [wrap]; returns the session. The menu bar's model is [appMenu].
   Future<ProjectSession> pumpHome(
     WidgetTester tester, {
     ZsAppearance appearance = const ZsAppearance(),
@@ -98,8 +107,15 @@ void main() {
     if (before != null) {
       await tester.runAsync(() => before(session));
     }
+    appMenu = AppMenuModel(ActiveWindowTracker(), session);
+    addTearDown(appMenu.dispose);
     final Widget home = shellHost(
-      HomePage(viewModelFactory: _factory(store), projects: session),
+      HomePage(
+        viewModelFactory: _factory(store),
+        projects: session,
+        environment: FakeProjectsEnvironment(),
+        appMenu: appMenu,
+      ),
       appearance: appearance,
     );
     await tester.pumpWidget(wrap?.call(home) ?? home);
@@ -129,10 +145,12 @@ void main() {
   Finder capsuleName(String name) => find.descendant(of: find.byType(ProjectCapsule), matching: find.text(name));
 
   testWidgets(
-    'the home is the floating shell: the window canvas, a drag row over the bar, four empty islands, no rail',
+    'the home is the floating shell: the window canvas, a drag row over the bar, three empty islands and a disabled '
+    'Reload, no rail',
     (
       tester,
     ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
       await pumpHome(tester);
 
       expect(find.byType(FloatingShell), findsOneWidget);
@@ -145,13 +163,20 @@ void main() {
       expect(reachesCanvas(const Offset(600, 30)), isFalse, reason: 'a press in the bar row moves the window only');
       expect(reachesCanvas(const Offset(600, 400)), isTrue, reason: 'below it the canvas (the graph) takes it');
       final Finder empty = find.byType(ShellEmptyIsland);
-      expect(empty, findsNWidgets(4));
-      for (var i = 0; i < 4; i++) {
+      expect(empty, findsNWidgets(3));
+      for (var i = 0; i < 3; i++) {
         expect(tester.getSize(empty.at(i)), const Size.square(44));
       }
       expect(tester.getTopLeft(empty.first), const Offset(91, 4));
+      expect(
+        tester.getSemantics(find.bySemanticsIdentifier('graph.reload')),
+        isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
+        reason: 'no project open: nothing to reload',
+      );
+      expect(find.byType(GraphView), findsNothing);
       expect(find.byType(ShellRail), findsNothing);
       expect(find.byType(PinnedPanel), findsNothing);
+      handle.dispose();
     },
   );
 
@@ -181,11 +206,13 @@ void main() {
     expect(shell.calls, hasLength(2), reason: 'below the row a pan reaches the canvas, not the window');
   });
 
-  testWidgets('with a project open PLACE is its capsule at 91, 4, the others stay empty; closing it empties PLACE', (
+  testWidgets('with a project open PLACE is its capsule at 91, 4 and the graph fills VIEW and ACTION; closing it '
+      'empties them', (
     tester,
   ) async {
     final ProjectSession session = await pumpHome(tester);
     expect(find.byType(ProjectCapsule), findsNothing);
+    final State shellState = tester.state(find.byType(FloatingShell));
 
     await tester.runAsync(() => session.open('/r/zanshin'));
     await tester.pump();
@@ -193,13 +220,88 @@ void main() {
     expect(find.byType(ProjectCapsule), findsOneWidget);
     expect(tester.getTopLeft(find.byType(ProjectCapsule)), const Offset(91, 4));
     expect(find.descendant(of: find.byType(ProjectCapsule), matching: find.text('zanshin')), findsOneWidget);
-    expect(find.byType(ShellEmptyIsland), findsNWidgets(3));
+    expect(find.byType(ShellEmptyIsland), findsNothing);
+    expect(find.byType(GraphView), findsOneWidget);
+    expect(find.byType(GraphViewControls), findsOneWidget);
+    expect(find.byType(NewChangeButton), findsOneWidget);
+    expect(tester.widget<GraphSearchShortcuts>(find.byType(GraphSearchShortcuts)).search, isNotNull);
     expect(session.current?.status, ProjectStatus.clean);
+    expect(tester.state(find.byType(FloatingShell)), same(shellState), reason: 'opening remounts no shell');
 
     await tester.runAsync(session.closeProject);
     await tester.pump();
     expect(find.byType(ProjectCapsule), findsNothing);
-    expect(find.byType(ShellEmptyIsland), findsNWidgets(4));
+    expect(find.byType(GraphView), findsNothing);
+    expect(tester.widget<GraphSearchShortcuts>(find.byType(GraphSearchShortcuts)).search, isNull);
+    expect(find.byType(ShellEmptyIsland), findsNWidgets(3));
+    expect(tester.state(find.byType(FloatingShell)), same(shellState), reason: 'closing remounts no shell');
+  });
+
+  testWidgets("Edit › Find's binding focuses the graph search field", (tester) async {
+    final ProjectSession session = await pumpHome(tester);
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+    final Finder field = find.descendant(of: find.byType(GraphSearchField), matching: find.byType(EditableText));
+    expect(tester.widget<EditableText>(field).focusNode.hasFocus, isFalse);
+
+    appMenu.graph.value!.focusSearch!();
+    await tester.pump();
+    expect(tester.widget<EditableText>(field).focusNode.hasFocus, isTrue);
+  });
+
+  testWidgets('the graph is published to the menu bar per repository and cleared when the project switches or closes', (
+    tester,
+  ) async {
+    final ProjectSession session = await pumpHome(tester);
+    expect(appMenu.graph.value, isNull);
+
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+    final GraphMenuBinding? first = appMenu.graph.value;
+    expect(first, isNotNull);
+    expect(tester.widget<GraphView>(find.byType(GraphView)).model, same(first!.model));
+    expect(first.focusSearch, isNotNull);
+
+    await tester.runAsync(() => session.open('/r/jj'));
+    await tester.pump();
+    final GraphMenuBinding? second = appMenu.graph.value;
+    expect(second, isNotNull);
+    expect(second!.model, isNot(same(first.model)), reason: 'a new set of graph objects for the new repository');
+    expect(tester.widget<GraphView>(find.byType(GraphView)).model, same(second.model));
+    expect(() => first.model.addListener(() {}), throwsFlutterError, reason: 'the old model is disposed');
+
+    await tester.runAsync(session.closeProject);
+    await tester.pump();
+    expect(appMenu.graph.value, isNull);
+  });
+
+  testWidgets('the Undo Timeline runs through the graph model; Reload refreshes the session and reloads the graph', (
+    tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    final repos = FakeProjectRepos();
+    final ProjectSession session = await pumpHome(tester, repos: repos);
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+
+    final FloatingShell shell = tester.widget<FloatingShell>(find.byType(FloatingShell));
+    final panel = shell.railItems.single.panel as UndoTimelinePanel;
+    expect(panel.actions, same(appMenu.graph.value!.model));
+
+    final FakeProjectRepo repo = repos.repoAt('/r/zanshin');
+    expect(
+      tester.getSemantics(find.bySemanticsIdentifier('graph.reload')),
+      isSemantics(isButton: true, hasEnabledState: true, isEnabled: true),
+    );
+    final int reads = repo.reads;
+    final int handleReads = repo.handleReads;
+    await tester.tap(find.bySemanticsIdentifier('graph.reload'));
+    var drained = false;
+    unawaited(session.open('/r/zanshin').then((_) => drained = true));
+    await settle(tester, () => drained);
+    expect(repo.reads, reads + 1, reason: 'one ProjectSession.refresh');
+    expect(repo.handleReads, handleReads + 1, reason: "one layout request, reading the handle's logDefaults");
+    handle.dispose();
   });
 
   testWidgets("a creation's warnings show as the toast \"Opened ‹name›\" with a warn clause, reported once", (
@@ -278,13 +380,15 @@ void main() {
     await tester.runAsync(() => session.open('/r/zanshin'));
     await tester.pump();
     expect(find.bySemanticsIdentifier('rail-undo'), findsOneWidget);
-    expect(repos.repoAt('/r/zanshin').handleReads, 1, reason: 'its op log was read');
+    // The op log and the graph's logDefaults.
+    final int first = repos.repoAt('/r/zanshin').handleReads;
+    expect(first, greaterThan(0), reason: 'its op log was read');
 
     await tester.runAsync(() => session.open('/r/jj'));
     await tester.pump();
     expect(find.bySemanticsIdentifier('rail-undo'), findsOneWidget);
-    expect(repos.repoAt('/r/jj').handleReads, 1, reason: 'the switch reads the new repository');
-    expect(repos.repoAt('/r/zanshin').handleReads, 1);
+    expect(repos.repoAt('/r/jj').handleReads, greaterThan(0), reason: 'the switch reads the new repository');
+    expect(repos.repoAt('/r/zanshin').handleReads, first);
 
     await tester.runAsync(session.closeProject);
     await tester.pump();

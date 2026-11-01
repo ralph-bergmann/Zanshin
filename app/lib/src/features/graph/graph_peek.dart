@@ -52,12 +52,15 @@ const double _gap = 8;
 /// material, 340 wide, padding 12 14 10, gap 8:
 /// - an immutable non-root change first shows the eyebrow: `HatchSwatch` and IMMUTABLE in `--type-caps` /
 ///   `--text-muted` (its reason is 11.7's);
-/// - the full subject, wrapped ("no description" when empty, `root()` on the root);
-/// - the meta row: the change id (jj's prefix bold, then the rest up to max(prefix, 8), one `Text.rich`), the author's
-///   full name (else the email), the relative date in `--text-faint` mono;
+/// - the full subject, wrapped ("no description" when empty, `root()` on the root); while a non-root change's content
+///   loads, one static skeleton bar in its place (Story 10.12);
+/// - the description's body below it (`.zs-peek-desc`: `--fs-md`, line height 1.45, `--text-dim`, its line breaks
+///   kept);
+/// - the meta row: the change id (jj's prefix bold, then the rest up to max(prefix, 8), one `Text.rich`), the commit
+///   id (max(prefix, 8) hex in `--text-faint` mono), the author's full name (else the email), the relative date in
+///   `--text-faint` mono;
 /// - the hint line: mutable "Click: details · Double-click: jj edit", immutable "Click: details", @ "Working copy (@)
 ///   · Click for details", the root none.
-/// The description, the commit id and loading content on hover are 10.11/10.12's.
 class GraphPeek extends StatelessWidget {
   /// The peek of [data] at "now" [nowMs].
   const GraphPeek({required this.data, required this.nowMs, super.key});
@@ -80,13 +83,32 @@ class GraphPeek extends StatelessWidget {
       fontVariations: const <FontVariation>[FontVariation.weight(600)],
       color: colors.text,
     );
-    final Widget? subject = d.isRoot
+    final Widget subject = d.isRoot
         ? Text(
             'root()', // l10n-ignore: jj's text
             style: subjectStyle.copyWith(fontFamily: ZsType.monoFamily, color: colors.textMuted),
           )
         : content == null
-        ? null
+        // Loading (Story 10.12): one static bar in the subject's place, the card skeleton's colour and 58 %.
+        ? Align(
+            key: const ValueKey<String>('peek-skeleton'),
+            alignment: AlignmentDirectional.centerStart,
+            child: FractionallySizedBox(
+              widthFactor: .58,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: SizedBox(
+                  height: 9,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: colors.skeleton,
+                      borderRadius: BorderRadius.circular(ZsMetrics.of(context).radiusXs),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          )
         : content.subject.isEmpty
         ? Text(
             strings.cardNoDescription,
@@ -102,6 +124,12 @@ class GraphPeek extends StatelessWidget {
         : content.authorEmail.trim().isEmpty
         ? null
         : content.authorEmail.trim();
+    // The body below the subject: the description after its first line.
+    final String body = switch (content?.description) {
+      final String text when text.contains('\n') => text.substring(text.indexOf('\n') + 1).trim(),
+      _ => '',
+    };
+    final String? commitId = d.commitId;
     final int? ts = d.timestampMs;
     final TextStyle meta = ZsType.meta.copyWith(fontSize: ZsType.fsId, color: colors.textDim);
     final String? hint = d.isRoot
@@ -131,7 +159,13 @@ class GraphPeek extends StatelessWidget {
                   ),
                 ],
               ),
-            ?subject,
+            subject,
+            if (body.isNotEmpty)
+              Text(
+                body,
+                key: const ValueKey<String>('peek-description'),
+                style: ZsType.meta.copyWith(fontSize: ZsType.fsMd, height: 1.45, color: colors.textDim),
+              ),
             Wrap(
               spacing: 10,
               runSpacing: 4,
@@ -154,6 +188,13 @@ class GraphPeek extends StatelessWidget {
                     ],
                   ),
                 ),
+                // A recording carries no commit ids (prefix 0): its key stands in, so nothing shows.
+                if (commitId != null && !d.isRoot && d.commitPrefixLength > 0)
+                  Text(
+                    commitId.substring(0, math.max(d.commitPrefixLength, 8).clamp(0, commitId.length)),
+                    key: const ValueKey<String>('peek-commit'),
+                    style: ZsType.id.copyWith(fontSize: ZsType.fsId, color: colors.textFaint),
+                  ),
                 if (author != null) Text(author, style: meta),
                 if (ts != null)
                   Text(

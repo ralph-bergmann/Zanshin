@@ -17,6 +17,7 @@ import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/projects/projects_module.dart';
 import 'package:zanshin/src/features/projects/projects_window.dart';
+import 'package:zanshin/src/features/shell/app_menu.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
@@ -30,6 +31,7 @@ import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interfac
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_projects.dart';
+import '../../helpers/fake_projects_environment.dart';
 import '../../helpers/recording_shell.dart';
 
 /// The home page the DI graph would build, over [_store].
@@ -41,11 +43,16 @@ class _HomePageFactory implements HomePageFactory {
   /// The app's one session, as the DI graph's singleton.
   late final _projects = ProjectSession(registry: ProjectRegistry(_store), repos: FakeProjectRepos());
 
+  /// The menu bar's model, as the DI graph's singleton.
+  late final _appMenu = AppMenuModel(ActiveWindowTracker(), _projects);
+
   @override
   HomePage create({Key? key}) => HomePage(
     key: key,
     viewModelFactory: _viewModels(() => FloatingShellViewModel(_store)),
     projects: _projects,
+    environment: FakeProjectsEnvironment(),
+    appMenu: _appMenu,
   );
 }
 

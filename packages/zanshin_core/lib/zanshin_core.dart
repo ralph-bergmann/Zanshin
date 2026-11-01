@@ -10,6 +10,7 @@ export 'src/environment/login_shell.dart' show LoginShellEnvironmentResult, adop
 export 'src/ffi/bookmarks.dart'
     show Bookmark, BookmarkKind, BookmarkSortKey, LocalBookmark, RefDistance, RemoteBookmark;
 export 'src/ffi/change.dart' show Change, ConflictState, Signature;
+export 'src/ffi/commit_contents.dart' show CommitContent;
 export 'src/ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef, ShowEntry;
 export 'src/ffi/config.dart'
     show
@@ -119,6 +120,9 @@ export 'src/ffi/workspace.dart'
         WorkspaceRemoveResult,
         WorkspaceRootResult;
 export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;
+export 'src/graph_layout/graph_grid_view.dart' show GraphGridView;
+export 'src/graph_layout/layout_request.dart'
+    show LaneOrder, LayoutContractException, LayoutMode, defaultLaneOrder, defaultLayoutBudget, defaultLayoutMode;
 export 'src/graph_layout/router.dart' show RouteBridges, RouteClasses, RouteGeometry, RouteMetrics, routeSyncNodeLimit;
 export 'src/revset_text.dart'
     show

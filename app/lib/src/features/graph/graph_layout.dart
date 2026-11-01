@@ -117,6 +117,7 @@ class GraphCommitContent {
   /// The content of one commit.
   const GraphCommitContent({
     required this.subject,
+    this.description = '',
     this.authorName = '',
     this.authorEmail = '',
     this.empty = false,
@@ -126,6 +127,9 @@ class GraphCommitContent {
 
   /// The description's first line, `''` when the description is empty (jj's `description.first_line()`).
   final String subject;
+
+  /// The full description (jj's `description`), `''` when it is empty; the peek shows it below [subject].
+  final String description;
 
   /// The author's name.
   final String authorName;
@@ -262,6 +266,9 @@ abstract class GraphLayout {
   /// v0.46.0, which honours `revsets.short-prefixes`).
   int changeIdPrefixLengthOf(int node);
 
+  /// The length of [node]'s shortest unique commit-id prefix; 0 when the source carries none (the recordings).
+  int commitIdPrefixLengthOf(int node) => 0;
+
   /// jj's `change_offset()` of [node]; non-null only when it is hidden or divergent (templates.toml
   /// `format_change_offset` @ v0.46.0).
   int? changeOffsetOf(int node);
@@ -325,6 +332,64 @@ abstract class GraphLayout {
     }
     return stackNodeOf(runOf(node)!);
   }
+}
+
+var _nextLayoutVersion = 0;
+
+/// The next [GraphLayout.version]: one counter for every implementation, so versions stay unique across them.
+int nextGraphLayoutVersion() => _nextLayoutVersion++;
+
+/// A CSR index over a layout's edges (Story 10.12, shared by every implementation): the edges whose child is a node
+/// (`parentStart[i] ..< parentStart[i + 1]`, edges ordered by child) and the edges whose parent is a node
+/// (`childEdges[childStart[i] ..< childStart[i + 1]]`).
+@immutable
+class GraphEdgeIndex {
+  const GraphEdgeIndex._(this.parentStart, this.childStart, this.childEdges);
+
+  /// Indexes [edgeChildren] / [edgeParents] (one entry per edge, ordered by child ascending) over [n] nodes. A dangling
+  /// end is left out of the index, so the invariant checker can report it instead of a RangeError.
+  factory GraphEdgeIndex.build(List<int> edgeChildren, List<int> edgeParents, int n) {
+    final int e = edgeChildren.length;
+    bool valid(int node) => node >= 0 && node < n;
+    final parentStart = Int32List(n + 1);
+    final childStart = Int32List(n + 1);
+    for (var k = 0; k < e; k++) {
+      assert(k == 0 || edgeChildren[k - 1] <= edgeChildren[k], 'edges must be ordered by child');
+      if (valid(edgeChildren[k])) {
+        parentStart[edgeChildren[k] + 1]++;
+      }
+      if (valid(edgeParents[k])) {
+        childStart[edgeParents[k] + 1]++;
+      }
+    }
+    for (var i = 0; i < n; i++) {
+      parentStart[i + 1] += parentStart[i];
+      childStart[i + 1] += childStart[i];
+    }
+    final childEdges = Int32List(childStart[n]);
+    final fill = Int32List.fromList(childStart.sublist(0, n));
+    for (var k = 0; k < e; k++) {
+      if (valid(edgeParents[k])) {
+        childEdges[fill[edgeParents[k]]++] = k;
+      }
+    }
+    return GraphEdgeIndex._(parentStart, childStart, childEdges);
+  }
+
+  /// n + 1 offsets into the edges, by child.
+  final Int32List parentStart;
+
+  /// n + 1 offsets into [childEdges], by parent.
+  final Int32List childStart;
+
+  /// The edges grouped by parent.
+  final Int32List childEdges;
+
+  /// The edges whose child is [node].
+  ({int start, int end}) parentEdges(int node) => (start: parentStart[node], end: parentStart[node + 1]);
+
+  /// The [childEdges] slots of the edges whose parent is [node].
+  ({int start, int end}) childEdgeRange(int node) => (start: childStart[node], end: childStart[node + 1]);
 }
 
 /// A stack node's key (Story 10.17): `stack:` and its run's oldest member key, never a jj id.

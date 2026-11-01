@@ -2,7 +2,7 @@
 
 // RepoGraphSource against the REAL worker isolate and cdylib (project-context "Worker / isolate testing"): temp
 // repositories with the native backend; JJ_CONFIG, GIT_CONFIG_GLOBAL and XDG_CONFIG_HOME are pinned by Makefile.toml's
-// test-flutter. The layout stays a counting fake until 10.12.
+// test-flutter. Since 10.12 the source lays out through the worker; [_Counting] records the requests.
 
 import 'dart:async';
 import 'dart:io';
@@ -16,7 +16,32 @@ import 'package:zanshin/src/features/projects/worker_project_repos.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
-import '../../helpers/scripted_graph_source.dart';
+/// [RepoGraphSource] recording every layout request.
+class _Counting implements GraphSource {
+  _Counting(ProjectRepo repo) : _source = RepoGraphSource(repo);
+
+  final RepoGraphSource _source;
+  final requests = <GraphRequest>[];
+
+  @override
+  Future<GraphLoad> layout(GraphRequest request) {
+    requests.add(request);
+    return _source.layout(request);
+  }
+
+  @override
+  Future<Map<String, GraphCommitContent>> content(String? operationId, List<String> commitIds) =>
+      _source.content(operationId, commitIds);
+
+  @override
+  Stream<RepoEvent> get events => _source.events;
+
+  @override
+  Future<LogDefaults> logDefaults() => _source.logDefaults();
+
+  @override
+  Future<StaleRecovery> updateStale() => _source.updateStale();
+}
 
 /// Waits (real time) until [done] holds, at most 10 s.
 Future<void> until(bool Function() done) async {
@@ -28,10 +53,6 @@ Future<void> until(bool Function() done) async {
 
 /// Lets the watcher's debounced events of what just ran arrive.
 Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 600));
-
-/// The content port until 10.12 adopts `commitContents`: these tests read no content.
-Future<Map<String, GraphCommitContent>> _noContent(String? operationId, List<String> commitIds) async =>
-    const <String, GraphCommitContent>{};
 
 void main() {
   late ZanshinWorker worker;
@@ -70,15 +91,8 @@ void main() {
 
   test('a describe through the handle fires exactly one more layout request', () async {
     final ProjectRepo repo = await openRepo('describe');
-    final requests = <GraphRequest>[];
-    final source = RepoGraphSource(
-      repo,
-      layout: (request) async {
-        requests.add(request);
-        return GraphLoad(keysLayout(<String>['x'], at: 'x'));
-      },
-      content: _noContent,
-    );
+    final source = _Counting(repo);
+    final List<GraphRequest> requests = source.requests;
     final model = GraphViewModel()..init(source);
     addTearDown(model.dispose);
     await until(() => model.layout != null);
@@ -96,11 +110,7 @@ void main() {
     final ProjectRepo a = await openRepo('a');
     final ProjectRepo b = await openRepo('b');
     final events = <RepoEvent>[];
-    final StreamSubscription<RepoEvent> subscription = RepoGraphSource(
-      a,
-      layout: (_) => throw UnimplementedError(),
-      content: _noContent,
-    ).events.listen(events.add);
+    final StreamSubscription<RepoEvent> subscription = RepoGraphSource(a).events.listen(events.add);
     addTearDown(subscription.cancel);
 
     await describeAt(b, 'in b');
@@ -122,11 +132,7 @@ void main() {
 
   test('updateStale passes through: a fresh working copy is not stale', () async {
     final ProjectRepo repo = await openRepo('fresh');
-    final StaleRecovery recovery = await RepoGraphSource(
-      repo,
-      layout: (_) => throw UnimplementedError(),
-      content: _noContent,
-    ).updateStale();
+    final StaleRecovery recovery = await RepoGraphSource(repo).updateStale();
     expect(recovery.outcome, StaleRecoveryOutcome.notStale);
   });
 
@@ -138,19 +144,9 @@ void main() {
       final ProjectRepo repo = await openRepo('action');
       final String first = (await repo.handle.status()).workingCopyChangeId!;
       final String second = (await repo.handle.newChange(<String>[first])).newChangeIds.single;
-      final requests = <GraphRequest>[];
-      final model = GraphViewModel()
-        ..init(
-          RepoGraphSource(
-            repo,
-            layout: (request) async {
-              requests.add(request);
-              return GraphLoad(keysLayout(<String>[second, first], at: second));
-            },
-            content: _noContent,
-          ),
-          actions: RepoGraphActions(repo),
-        );
+      final source = _Counting(repo);
+      final List<GraphRequest> requests = source.requests;
+      final model = GraphViewModel()..init(source, actions: RepoGraphActions(repo));
       addTearDown(model.dispose);
       await until(() => model.layout != null);
       await settle();
@@ -175,15 +171,7 @@ void main() {
       File('${pathOf(name)}/a.txt').writeAsStringSync('a\n');
       final String first = (await repo.handle.status()).workingCopyChangeId!;
       final String second = (await repo.handle.newChange(<String>[first])).newChangeIds.single;
-      final model = GraphViewModel()
-        ..init(
-          RepoGraphSource(
-            repo,
-            layout: (_) async => GraphLoad(keysLayout(<String>[second, first], at: second)),
-            content: _noContent,
-          ),
-          actions: RepoGraphActions(repo),
-        );
+      final model = GraphViewModel()..init(RepoGraphSource(repo), actions: RepoGraphActions(repo));
       addTearDown(model.dispose);
       await until(() => model.layout != null);
       return (repo, model, first, second);

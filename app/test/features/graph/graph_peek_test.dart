@@ -1,11 +1,76 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:ui';
-
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/graph/graph_card.dart';
+import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_peek.dart';
 
+import '../../helpers/icon_registry.dart';
+import '../../helpers/shell_host.dart';
+
 void main() {
+  setUpIconRegistry();
+
+  group('GraphPeek (Story 10.12)', () {
+    const content = GraphCommitContent(
+      subject: 'Fix the cache',
+      description: 'Fix the cache\n\nIt evicted too early.\nNow it does not.\n',
+      authorName: 'Lena König',
+    );
+    GraphCardData data({GraphCommitContent? content, bool root = false}) => GraphCardData(
+      key: 'kmnvxoqprstu',
+      changeId: 'kmnvxoqprstu',
+      prefixLength: 2,
+      commitId: '0123456789abcdef0123',
+      commitPrefixLength: 3,
+      isRoot: root,
+      content: content,
+    );
+
+    Future<void> pumpPeek(WidgetTester tester, GraphCardData d) =>
+        tester.pumpWidget(shellHost(Center(child: GraphPeek(data: d, nowMs: 0))));
+
+    testWidgets('the description body below the subject, the commit id in the meta row after the change id', (
+      tester,
+    ) async {
+      await pumpPeek(tester, data(content: content));
+      expect(find.text('Fix the cache'), findsOneWidget);
+      final Text body = tester.widget<Text>(find.byKey(const ValueKey<String>('peek-description')));
+      expect(body.data, 'It evicted too early.\nNow it does not.');
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey<String>('peek-description'))).dy,
+        greaterThan(tester.getTopLeft(find.text('Fix the cache')).dy),
+      );
+      final Text commit = tester.widget<Text>(find.byKey(const ValueKey<String>('peek-commit')));
+      expect(commit.data, '01234567', reason: 'max(prefix, 8) hex');
+      expect(find.byKey(const ValueKey<String>('peek-skeleton')), findsNothing);
+    });
+
+    testWidgets('a one-line description shows no body', (tester) async {
+      await pumpPeek(
+        tester,
+        data(
+          content: const GraphCommitContent(subject: 'One', description: 'One\n'),
+        ),
+      );
+      expect(find.byKey(const ValueKey<String>('peek-description')), findsNothing);
+    });
+
+    testWidgets('while the content loads: a skeleton bar in the subject place', (tester) async {
+      await pumpPeek(tester, data());
+      expect(find.byKey(const ValueKey<String>('peek-skeleton')), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('peek-description')), findsNothing);
+    });
+
+    testWidgets('the root keeps root() and never shows the loading look or a commit id', (tester) async {
+      await pumpPeek(tester, data(root: true));
+      expect(find.text('root()'), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('peek-skeleton')), findsNothing);
+      expect(find.byKey(const ValueKey<String>('peek-commit')), findsNothing);
+    });
+  });
+
   const area = Rect.fromLTRB(76, 60, 800, 600);
   const peek = Size(340, 160);
 

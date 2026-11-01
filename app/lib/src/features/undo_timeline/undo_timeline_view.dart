@@ -14,8 +14,8 @@ import '../shell/shell_controller.dart';
 import 'undo_timeline_model.dart';
 
 /// The rail's "Undo Timeline" item (Story 11.9): [model]'s hover preview and pinned panel; [actions] is the runner
-/// (null until 10.12 mounts the graph's view model: every action then shows disabled with its command). No count
-/// (design question (b)).
+/// (the project window passes the graph's view model, Story 10.12; null shows every action disabled with its
+/// command). No count (design question (b)).
 ShellRailItem undoTimelineRailItem(AppLocalizations strings, UndoTimelineModel model, {UndoTimelineActions? actions}) =>
     ShellRailItem(
       id: 'undo',

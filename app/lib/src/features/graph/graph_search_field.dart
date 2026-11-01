@@ -1674,14 +1674,16 @@ class _WellPainter extends CustomPainter {
       old.haloWidth != haloWidth;
 }
 
-/// ⌘F, and `/` outside a text field, focus the graph search with its text selected (Story 10.21 item 2) — not while a
-/// modal route covers [child]. Put it above the project window's content; key events reach it along the focus chain.
+/// `/` outside a text field focuses the graph search with its text selected (Story 10.21 item 2) — not while a modal
+/// route covers [child]. ⌘F is the menu bar's Edit › Find alone (Story 10.12): it focuses the search through
+/// `GraphMenuBinding.focusSearch`. Put it above the project window's content; key events reach it along the focus
+/// chain.
 class GraphSearchShortcuts extends StatelessWidget {
   /// The shortcuts of [search] over [child].
   const GraphSearchShortcuts({required this.search, required this.child, super.key});
 
-  /// The search.
-  final GraphSearchController search;
+  /// The search; null (no project open) ignores every key, so the window keeps its tree when one opens.
+  final GraphSearchController? search;
 
   /// The window's content.
   final Widget child;
@@ -1696,18 +1698,13 @@ class GraphSearchShortcuts extends StatelessWidget {
         return KeyEventResult.ignored;
       }
       final HardwareKeyboard keys = HardwareKeyboard.instance;
-      final bool cmdF =
-          event.logicalKey == LogicalKeyboardKey.keyF &&
-          keys.isMetaPressed &&
-          !keys.isShiftPressed &&
-          !keys.isAltPressed;
       final bool slash =
           (event.character == '/' || event.logicalKey == LogicalKeyboardKey.slash) &&
           !keys.isMetaPressed &&
           !keys.isControlPressed &&
           !keys.isAltPressed &&
           !_inTextField();
-      if ((cmdF || slash) && search.focusField()) {
+      if (slash && (search?.focusField() ?? false)) {
         return KeyEventResult.handled;
       }
       return KeyEventResult.ignored;

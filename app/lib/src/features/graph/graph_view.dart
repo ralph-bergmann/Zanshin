@@ -131,6 +131,13 @@ class _GraphViewState extends State<GraphView> {
     _hoverGate();
   }
 
+  // Debug only (hot reload): a changed layout or router shows without a jj operation.
+  @override
+  void reassemble() {
+    super.reassemble();
+    widget.model.reload();
+  }
+
   @override
   void dispose() {
     _calm?.removeListener(_hoverGate);

@@ -656,6 +656,12 @@ abstract class AppLocalizations {
   /// **'The graph could not be loaded ({code}).'**
   String graphLoadFailed(String code);
 
+  /// Tooltip of the top bar's Reload button (the View menu's Reload, its shortcut): reads the project and the graph again.
+  ///
+  /// In en, this message translates to:
+  /// **'Reload (⌘R)'**
+  String get graphReloadTooltip;
+
   /// Button that loads the graph again.
   ///
   /// In en, this message translates to:

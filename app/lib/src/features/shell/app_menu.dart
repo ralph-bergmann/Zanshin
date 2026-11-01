@@ -30,7 +30,8 @@ final _log = Logger('zanshin.menu');
 final Uri jjDocumentationUrl = Uri.parse('https://docs.jj-vcs.dev/v0.46.0/'); // l10n-ignore: a URL
 
 Future<void> _openInBrowser(Uri url) async {
-  await Process.run('/usr/bin/open', <String>[url.toString()]);
+  // Detached: a non-detached Dart child lets the VM reap the cdylib's children (project-context.md § Dart).
+  await Process.start('/usr/bin/open', <String>[url.toString()], mode: ProcessStartMode.detached);
 }
 
 /// What the project window publishes for the menu bar once its graph is mounted (10.12): the graph's view model, its

@@ -37,6 +37,9 @@ class FloatingShellViewModel extends ChangeNotifier {
 
   final SettingsStore _settings;
 
+  /// The app settings the shell reads; the project window's graph keeps its preferences there (Story 10.12).
+  SettingsStore get settings => _settings;
+
   /// The shell's controller.
   late final ShellController shell;
 

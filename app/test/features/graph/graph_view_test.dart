@@ -202,6 +202,17 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets('a hot reload (reassemble, debug only) requests the layout once more', (tester) async {
+    await pump(tester);
+    final int requests = source.requests.length;
+    // Not awaited: its future waits on a frame, which only the pumps below produce.
+    unawaited(tester.binding.reassembleApplication());
+    await tester.pump();
+    await tester.pump();
+    expect(source.requests, hasLength(requests + 1));
+    await finish(tester);
+  });
+
   testWidgets('insets come from the ShellScope; pinning and an edge drag move no card', (tester) async {
     create(shell: ShellController());
     await pump(tester);

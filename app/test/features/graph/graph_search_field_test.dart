@@ -630,15 +630,14 @@ void main() {
       expect(rig.source.requests, hasLength(before));
     });
 
-    _testWidgets('⌘F on the focused field with its list closed opens the suggestions again', (tester) async {
-      await _start(tester);
+    _testWidgets('Edit › Find on the focused field with its list closed opens the suggestions again', (tester) async {
+      final _Rig rig = await _start(tester);
       await tester.tap(_field());
       await _type(tester, 'lena');
       await _key(tester, LogicalKeyboardKey.escape);
       expect(find.byType(ZsFieldListRow), findsNothing);
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      // The menu's ⌘F runs GraphMenuBinding.focusSearch, the search's focusField (Story 10.12).
+      expect(rig.search.focusField(), isTrue);
       await tester.pump();
       expect(find.byType(ZsFieldListRow), findsWidgets);
     });
@@ -748,7 +747,9 @@ void main() {
   });
 
   group('shortcuts', () {
-    _testWidgets('⌘F focuses the field with its text selected', (tester) async {
+    _testWidgets('⌘F is the menu\'s alone: the shortcuts ignore it, Edit › Find focuses the field, text selected', (
+      tester,
+    ) async {
       final _Rig rig = await _start(tester, view: GraphFilterView(GraphFilter.author('Lena König')));
       rig.plain.requestFocus();
       await tester.pump();
@@ -757,6 +758,9 @@ void main() {
       await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
       await tester.pump();
       final TextField field = tester.widget<TextField>(_field());
+      expect(field.focusNode!.hasFocus, isFalse, reason: 'the menu bar owns ⌘F (Story 10.12)');
+      expect(rig.search.focusField(), isTrue);
+      await tester.pump();
       expect(field.focusNode!.hasFocus, isTrue);
       expect(field.controller!.selection, const TextSelection(baseOffset: 0, extentOffset: 10));
     });
