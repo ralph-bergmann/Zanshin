@@ -326,6 +326,26 @@ void main() {
       expect(controller.selected.value, 'k');
     });
 
+    test('GraphCardController: the menu and the bookmark popover close each other; select closes the popover', () {
+      final controller = GraphCardController(now: _now);
+      addTearDown(controller.dispose);
+      const anchor = Rect.fromLTWH(10, 20, 30, 16);
+      controller
+        ..openMenu('k', Rect.zero)
+        ..openBookmarks('k', anchor);
+      expect(controller.menuOpen.value, isNull);
+      expect(controller.bookmarksOpen.value, 'k');
+      expect(controller.bookmarksAnchor, anchor);
+      controller.openMenu('j', anchor);
+      expect(controller.bookmarksOpen.value, isNull);
+      expect(controller.menuOpen.value, 'j');
+      expect(controller.menuAnchor, anchor);
+      controller
+        ..openBookmarks('k', anchor)
+        ..select('j');
+      expect(controller.bookmarksOpen.value, isNull);
+    });
+
     test("jjRevsetSymbol: identifiers plain, everything else quoted with format_string's escapes", () {
       expect(jjRevsetSymbol('default'), 'default');
       expect(jjRevsetSymbol('feature/x-1.2+b'), 'feature/x-1.2+b');

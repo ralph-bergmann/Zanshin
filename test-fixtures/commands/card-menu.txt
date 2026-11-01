@@ -1,0 +1,15 @@
+jj new kmnvxoqp
+jj new -A kmnvxoqp
+jj new -B kmnvxoqp
+jj edit kmnvxoqp
+jj describe kmnvxoqp
+jj squash -r kmnvxoqp
+jj revert -r kmnvxoqp -B @
+jj abandon kmnvxoqp
+jj bookmark delete b-mark
+jj bookmark track b-mark@origin
+jj bookmark untrack b-mark@origin
+jj bookmark rename b-mark feature/x
+jj bookmark move b-mark --to @
+jj bookmark create '"ü"' -r kmnvxoqp
+jj bookmark move b-mark --to kmnvxoqp

@@ -23,7 +23,7 @@ export 'src/controls/zs_focus_ring.dart' show ZsFocusRing, ZsRingPlacement, zsRi
 export 'src/controls/zs_kbd.dart' show ZsKbd;
 export 'src/controls/zs_link.dart' show ZsLink;
 export 'src/controls/zs_menu.dart'
-    show ZsMenuAnchor, ZsMenuController, ZsMenuEntry, ZsMenuHeader, ZsMenuItem, ZsMenuSeparator;
+    show ZsMenuAnchor, ZsMenuController, ZsMenuEntry, ZsMenuHeader, ZsMenuItem, ZsMenuNote, ZsMenuSeparator;
 export 'src/controls/zs_popover.dart' show ZsOptionLink, ZsOptionRow, ZsPopover, ZsPopoverHeader, ZsPopoverSeparator;
 export 'src/controls/zs_presence.dart' show ZsPresence;
 export 'src/controls/zs_progress_bar.dart' show ZsProgressBar;

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin_ui/src/controls/zs_button.dart';
 import 'package:zanshin_ui/src/controls/zs_confirm_dialog.dart';
 import 'package:zanshin_ui/src/controls/zs_menu.dart';
+import 'package:zanshin_ui/src/controls/zs_tooltip.dart';
 import 'package:zanshin_ui/src/design/zs_colors.dart';
 import 'package:zanshin_ui/src/design/zs_motion.dart';
 import 'package:zanshin_ui/src/design/zs_type.dart';
@@ -581,6 +582,40 @@ void main() {
       handle.dispose();
     },
   );
+
+  testWidgets('a note is passed by ↓; a disabled row shows its tooltip on hover and reads it as its hint', (
+    tester,
+  ) async {
+    ZsTooltip.resetWarmWindow();
+    handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _host(
+        button: button,
+        entries: const <ZsMenuEntry>[
+          ZsMenuItem(label: 'New change'),
+          ZsMenuNote('Immutable'),
+          ZsMenuItem(label: 'Edit'),
+          ZsMenuItem(label: 'Revert', enabled: false, tooltip: 'Nothing to revert'),
+        ],
+      ),
+    );
+    await _openByKey(tester, button);
+    expect(find.text('Immutable'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(_highlighted(tester, 'Edit'), isTrue, reason: 'the note is skipped');
+    expect(tester.getSemantics(find.bySemanticsLabel('Revert')), isSemantics(hint: 'Nothing to revert'));
+    final TestGesture mouse = await hover(tester, find.text('Revert'));
+    await tester.pump(_m.delayTooltip);
+    await tester.pump(_m.durHover);
+    expect(find.byType(ZsTooltipBubble), findsOneWidget);
+    expect(find.text('Nothing to revert'), findsOneWidget);
+    await mouse.removePointer();
+    await tester.pump(_m.durExit);
+    ZsTooltip.resetWarmWindow();
+    handle.dispose();
+  });
 }
 
 /// Records the focus at the moment it is first built.

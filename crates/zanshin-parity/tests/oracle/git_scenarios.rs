@@ -377,7 +377,7 @@ const REMOTE: &[Step] = &[
 ];
 
 /// [`REMOTE`] with `b-mark` pushed (and so tracked).
-const PUSHED: &[Step] = &[
+pub const PUSHED: &[Step] = &[
     Step::Git(&["init", "-q", "--bare", "../remote.git"]),
     Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
     Step::Jj(&["git", "push", "-b", "b-mark"]),

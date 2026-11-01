@@ -1378,4 +1378,125 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get bookmarksBusy => 'Another action is running';
+
+  @override
+  String get cardMenuNewOnTop => 'New change on top';
+
+  @override
+  String get cardMenuInsertAfter => 'Insert after';
+
+  @override
+  String get cardMenuInsertBefore => 'Insert before';
+
+  @override
+  String get cardMenuEdit => 'Edit';
+
+  @override
+  String get cardMenuEditAlready => 'Already the working copy';
+
+  @override
+  String get cardMenuDescribe => 'Describe…';
+
+  @override
+  String get cardMenuSquash => 'Squash into parent';
+
+  @override
+  String get cardMenuSquashMerge => 'A merge has more than one parent';
+
+  @override
+  String get cardMenuSquashParentImmutable => 'The parent is immutable';
+
+  @override
+  String get cardMenuCopy => 'Copy';
+
+  @override
+  String get cardMenuCopyChangeId => 'Change id';
+
+  @override
+  String get cardMenuCopyDescription => 'Description';
+
+  @override
+  String get cardMenuRevert => 'Revert';
+
+  @override
+  String get cardMenuRevertAt => 'The revert lands below @ — @ itself can\'t be reverted';
+
+  @override
+  String get cardMenuRevertNotAncestor => 'The revert lands below @ — only changes in @\'s history';
+
+  @override
+  String get cardMenuRevertEmpty => 'Nothing to revert — the change is empty';
+
+  @override
+  String get cardMenuAbandon => 'Abandon';
+
+  @override
+  String get cardMenuImmutable => 'Immutable';
+
+  @override
+  String get cardMenuImmutableCommits => 'Immutable commits…';
+
+  @override
+  String get cardMenuSettingsLater => 'Comes with the Settings window';
+
+  @override
+  String get cardMenuNoDescription => '(no description set)';
+
+  @override
+  String get bookmarkMenuLabel => 'Bookmarks';
+
+  @override
+  String get bookmarkMenuRename => 'Rename…';
+
+  @override
+  String get bookmarkMenuMoveTo => 'Move to…';
+
+  @override
+  String get bookmarkMenuDelete => 'Delete';
+
+  @override
+  String get bookmarkMenuReading => 'Reading bookmarks…';
+
+  @override
+  String get bookmarkMenuReadFailed => 'Couldn\'t read the bookmarks';
+
+  @override
+  String get bookmarkMenuCreate => 'Create bookmark here…';
+
+  @override
+  String get bookmarkMenuMoveHere => 'Move existing here…';
+
+  @override
+  String nameSheetRenameTitle(String name) {
+    return 'Rename $name';
+  }
+
+  @override
+  String nameSheetMoveToTitle(String name) {
+    return 'Move $name to';
+  }
+
+  @override
+  String get nameSheetCreateTitle => 'Create bookmark here';
+
+  @override
+  String get nameSheetMoveHereTitle => 'Move a bookmark here';
+
+  @override
+  String get nameSheetNameLabel => 'Bookmark name';
+
+  @override
+  String get nameSheetRevisionLabel => 'Revision';
+
+  @override
+  String get nameSheetCancel => 'Cancel';
+
+  @override
+  String get nameSheetRename => 'Rename';
+
+  @override
+  String get nameSheetMove => 'Move';
+
+  @override
+  String get nameSheetCreate => 'Create';
 }

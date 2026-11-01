@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter/widgets.dart';
+import 'package:zanshin_core/zanshin_core.dart' show Bookmark;
 import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 
 import '../graph/graph_controls.dart';
@@ -129,6 +130,7 @@ class _Graph {
         revset: search.revset,
       );
     inspector = InspectorViewModel(graph: model, details: RepoGraphDetails(repo));
+    bookmarks = () => repo.handle.bookmarks(allRemotes: true);
     toasts = GraphToasts(model, host.toasts);
     binding = GraphMenuBinding(model: model, preferences: preferences, focusSearch: () => search.focusField());
   }
@@ -137,6 +139,9 @@ class _Graph {
   late final GraphSearchController search;
   late final GraphPreferences preferences;
   late final InspectorViewModel inspector;
+
+  /// The bookmark popover's `jj bookmark list --all-remotes`.
+  late final Future<List<Bookmark>> Function() bookmarks;
   late final GraphToasts toasts;
   late final GraphMenuBinding binding;
 
@@ -234,7 +239,13 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
           model: model,
           search: graph.search,
           // Keyed by the graph set, so a project switch mounts fresh states (no old search text, selection or scroll).
-          graph: GraphView(key: ObjectKey(graph), model: model, options: graph.preferences.options),
+          graph: GraphView(
+            key: ObjectKey(graph),
+            model: model,
+            options: graph.preferences.options,
+            inspectorModel: graph.inspector,
+            bookmarks: graph.bookmarks,
+          ),
           view: GraphViewControls(
             key: ObjectKey(graph),
             model: model,

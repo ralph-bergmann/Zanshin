@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:zanshin_core/zanshin_core.dart' show Bookmark;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -14,6 +15,7 @@ import '../shell/shell_scope.dart';
 import 'at_pill.dart';
 import 'graph_canvas.dart';
 import 'graph_card.dart';
+import 'graph_card_menu.dart';
 import 'graph_inspector.dart';
 import 'graph_layout.dart';
 import 'graph_view_model.dart';
@@ -35,17 +37,28 @@ import 'stale_notice.dart';
 /// Story 10.9: the card affordances follow [GraphViewModel.actionsEnabled]; the running action's cards paint at
 /// `--disabled-opacity` (Claude's proposal for 10.3 design question (e)) and its reload is anchored on
 /// [GraphViewModel.anchorHint].
+///
+/// Story 10.15: the card menu and the bookmark popover ([GraphCardMenuHost], [GraphBookmarkMenuHost]) float over the
+/// graph; a scroll over it, a window resize and the window turning inactive close them.
 class GraphView extends StatefulWidget {
   /// The graph of [model].
   const GraphView({
     required this.model,
     this.options = const GraphViewOptions(),
     this.insets = EdgeInsets.zero,
+    this.inspectorModel,
+    this.bookmarks,
     super.key,
   });
 
   /// The view model; its owner initialises and disposes it.
   final GraphViewModel model;
+
+  /// The inspector the card menu's Describe… opens (Story 10.15); not `inspector`, the shell slot's name.
+  final InspectorViewModel? inspectorModel;
+
+  /// `jj bookmark list --all-remotes`, read by the bookmark popover for Track / Untrack (Story 10.15).
+  final Future<List<Bookmark>> Function()? bookmarks;
 
   /// The card width and detail.
   final GraphViewOptions options;
@@ -88,6 +101,7 @@ class _GraphViewState extends State<GraphView> {
   /// The focus came from a press: no focus card (no ring, no reveal) until Enter or Space, or focus leaves.
   var _pointerFocus = false;
   bool? _inactive;
+  Size? _windowSize;
   ValueListenable<CalmPhase>? _calm;
 
   @override
@@ -122,6 +136,17 @@ class _GraphViewState extends State<GraphView> {
         }
       });
     }
+    final Size? size = MediaQuery.maybeSizeOf(context);
+    // A window that turns inactive or changes size closes an open card menu or bookmark popover (Story 10.15); after
+    // this build, since the menus close through setState.
+    if ((inactive && _inactive == false) || (_windowSize != null && size != _windowSize)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _cards.closeMenus();
+        }
+      });
+    }
+    _windowSize = size;
     _inactive = inactive;
     final ValueListenable<CalmPhase>? calm = ShellScope.maybeOf(context)?.calm;
     if (!identical(calm, _calm)) {
@@ -291,6 +316,9 @@ class _GraphViewState extends State<GraphView> {
           _pointerFocus = true;
           _focus.hasFocus ? _focusChanged() : _focus.requestFocus();
         },
+        // A wheel or trackpad scroll over the graph closes an open card menu or bookmark popover (Story 10.15).
+        onPointerSignal: (_) => _cards.closeMenus(),
+        onPointerPanZoomStart: (_) => _cards.closeMenus(),
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
@@ -313,6 +341,10 @@ class _GraphViewState extends State<GraphView> {
                 onExpandStack: model.expandStack,
                 onCollapseStack: model.collapseStack,
               ),
+            if (layout != null) ...<Widget>[
+              GraphCardMenuHost(cards: _cards, model: model, inspector: widget.inspectorModel),
+              GraphBookmarkMenuHost(cards: _cards, model: model, bookmarks: widget.bookmarks),
+            ],
             if (caption != null)
               Padding(
                 key: const ValueKey<String>('graph-caption'),

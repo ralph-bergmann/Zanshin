@@ -17,6 +17,7 @@ import '../materials/zs_surface_transition.dart';
 import 'zs_control.dart';
 import 'zs_control_text.dart';
 import 'zs_text_rung.dart';
+import 'zs_tooltip.dart';
 
 /// One entry of a command menu (DS components/menus/Menu.d.ts).
 sealed class ZsMenuEntry {
@@ -44,6 +45,7 @@ final class ZsMenuItem extends ZsMenuEntry {
     this.submenu,
     this.onSelected,
     this.identifier,
+    this.tooltip,
   });
 
   /// The action's name.
@@ -97,6 +99,10 @@ final class ZsMenuItem extends ZsMenuEntry {
   /// The row's `Semantics(identifier:)`.
   final String? identifier;
 
+  /// A tooltip the row shows on hover, also while disabled (a disabled row's reason); VoiceOver reads it as the row's
+  /// hint.
+  final String? tooltip;
+
   /// Whether the row takes the highlight and activation.
   bool get actionable => enabled;
 
@@ -116,6 +122,19 @@ final class ZsMenuHeader extends ZsMenuEntry {
 
   /// The heading.
   final String label;
+}
+
+/// A note in the menu (Epic 10's "Immutable" row): `--fs-id` in `--text-dim`, wrapping, an optional [leading] widget
+/// in the rows' 16 px column; not actionable, so keys, typeahead and the highlight pass it by.
+final class ZsMenuNote extends ZsMenuEntry {
+  /// A note reading [label].
+  const ZsMenuNote(this.label, {this.leading});
+
+  /// The text.
+  final String label;
+
+  /// A widget in the leading column (a swatch, a glyph).
+  final Widget? leading;
 }
 
 /// Opens and closes a [ZsMenuAnchor]'s menu.
@@ -825,6 +844,7 @@ class ZsMenuPanelState extends State<ZsMenuPanel> {
       children.add(switch (widget.entries[i]) {
         ZsMenuSeparator() => _Separator(key: key),
         ZsMenuHeader(:final String label) => _Header(key: key, label: label, first: i == 0 && children.isEmpty),
+        ZsMenuNote(:final String label, :final Widget? leading) => _Note(key: key, label: label, leading: leading),
         final ZsMenuItem item => _row(context, i, item, key),
       });
     }
@@ -977,6 +997,32 @@ class _Header extends StatelessWidget {
   );
 }
 
+class _Note extends StatelessWidget {
+  const _Note({required this.label, required this.leading, super.key});
+
+  final String label;
+  final Widget? leading;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    // The rows' padding and 16 | label grid (DS components/menus/menus.css:15), 6 above and below the wrapped text.
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    child: Row(
+      spacing: 10,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(width: 16, child: Center(child: leading)),
+        Expanded(
+          child: Text(
+            label,
+            style: zsSans(ZsType.fsId, height: ZsType.lhSnug).copyWith(color: ZsColors.of(context).textDim),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class _Separator extends StatelessWidget {
   const _Separator({super.key});
 
@@ -1106,12 +1152,13 @@ class _Row extends StatelessWidget {
     if (!item.enabled) {
       row = Opacity(opacity: metrics.disabledOpacity, child: row);
     }
-    return Semantics(
+    final Widget semantics = Semantics(
       container: true,
       identifier: item.identifier,
       button: true,
       enabled: item.enabled,
       label: <String>[item.label, ?item.dotLabel, ?item.cmd].join(', '),
+      hint: item.tooltip,
       checked: checked,
       inMutuallyExclusiveGroup: checked != null && item.radio ? true : null,
       selected: highlighted,
@@ -1125,6 +1172,10 @@ class _Row extends StatelessWidget {
         ),
       ),
     );
+    final String? tooltip = item.tooltip;
+    return tooltip == null
+        ? semantics
+        : ZsTooltip(message: tooltip, placement: ZsTooltipPlacement.right, child: semantics);
   }
 }
 

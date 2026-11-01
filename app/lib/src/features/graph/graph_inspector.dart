@@ -357,7 +357,7 @@ class _GraphInspectorState extends State<GraphInspector> {
                             changeKey: data.key,
                             initial:
                                 _model.draftOf(data.key) ?? InspectorViewModel.draftFrom(editing.change.description),
-                            blocked: _blocked(strings, graph),
+                            blocked: graphBlockedReason(strings, graph),
                             // A save can end after the inspector went (a reload dropped the selection, Close).
                             onClosed: () {
                               if (mounted) {
@@ -384,8 +384,8 @@ class _GraphInspectorState extends State<GraphInspector> {
   }
 }
 
-/// Why the inspector's actions are disabled, or null when they may run.
-String? _blocked(AppLocalizations strings, GraphViewModel graph) => graph.stale != null
+/// Why the graph's actions are disabled (the inspector's, the card menu's), or null when they may run.
+String? graphBlockedReason(AppLocalizations strings, GraphViewModel graph) => graph.stale != null
     ? strings.staleTitle
     : !graph.actionsEnabled
     ? strings.inspectorBusy
@@ -393,7 +393,7 @@ String? _blocked(AppLocalizations strings, GraphViewModel graph) => graph.stale 
 
 /// [node]'s id as a command shows it: max(jj's unique prefix, 8) of the change id; a hidden or divergent node's key is
 /// its commit id.
-String _shortId(GraphLayout layout, int node) {
+String graphShortId(GraphLayout layout, int node) {
   final String key = layout.keyOf(node);
   final String changeId = layout.changeIdOf(node);
   if (key != changeId) {
@@ -825,7 +825,7 @@ class _Meta extends StatelessWidget {
       return <String>[
         for (final String id in shown)
           switch (layout.indexOfKey(id)) {
-            final int parent => _shortId(layout, parent),
+            final int parent => graphShortId(layout, parent),
             null => id.substring(0, math.min(8, id.length)),
           },
       ];
@@ -833,7 +833,7 @@ class _Meta extends StatelessWidget {
     final ({int start, int end}) edges = layout.parentEdges(node);
     return <String>[
       for (var e = edges.start; e < edges.end; e++)
-        if (layout.kindOf(e) == GraphEdgeKind.direct) _shortId(layout, layout.parentOf(e)),
+        if (layout.kindOf(e) == GraphEdgeKind.direct) graphShortId(layout, layout.parentOf(e)),
     ];
   }
 
@@ -971,8 +971,8 @@ class _Actions extends StatelessWidget {
     final ZsColors colors = ZsColors.of(context);
     final GraphViewModel graph = model.graph;
     final String key = data.key;
-    final String short = _shortId(layout, node);
-    final String? blocked = _blocked(strings, graph);
+    final String short = graphShortId(layout, node);
+    final String? blocked = graphBlockedReason(strings, graph);
     final bool can = blocked == null && graph.hasActions;
 
     Widget button(

@@ -2101,6 +2101,240 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Another action is running'**
   String get bookmarksBusy;
+
+  /// Card menu row: jj new on the change.
+  ///
+  /// In en, this message translates to:
+  /// **'New change on top'**
+  String get cardMenuNewOnTop;
+
+  /// Card menu row: jj new -A, a new change inserted after this one.
+  ///
+  /// In en, this message translates to:
+  /// **'Insert after'**
+  String get cardMenuInsertAfter;
+
+  /// Card menu row: jj new -B, a new change inserted before this one.
+  ///
+  /// In en, this message translates to:
+  /// **'Insert before'**
+  String get cardMenuInsertBefore;
+
+  /// Card menu row: jj edit, making the change the working copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get cardMenuEdit;
+
+  /// Why the card menu's Edit is disabled on the working copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Already the working copy'**
+  String get cardMenuEditAlready;
+
+  /// Card menu row: opens the inspector's describe form for the change.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe…'**
+  String get cardMenuDescribe;
+
+  /// Card menu row: jj squash -r, the change folded into its parent.
+  ///
+  /// In en, this message translates to:
+  /// **'Squash into parent'**
+  String get cardMenuSquash;
+
+  /// Why the card menu's Squash into parent is disabled on a merge.
+  ///
+  /// In en, this message translates to:
+  /// **'A merge has more than one parent'**
+  String get cardMenuSquashMerge;
+
+  /// Why the card menu's Squash into parent is disabled when the parent is immutable.
+  ///
+  /// In en, this message translates to:
+  /// **'The parent is immutable'**
+  String get cardMenuSquashParentImmutable;
+
+  /// Card menu row: the submenu that copies the change id or the description.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get cardMenuCopy;
+
+  /// Card menu Copy submenu row: copies the full change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Change id'**
+  String get cardMenuCopyChangeId;
+
+  /// Card menu Copy submenu row: copies the full description.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get cardMenuCopyDescription;
+
+  /// Card menu row: jj revert -r <id> -B @.
+  ///
+  /// In en, this message translates to:
+  /// **'Revert'**
+  String get cardMenuRevert;
+
+  /// Why the card menu's Revert is disabled on the working copy.
+  ///
+  /// In en, this message translates to:
+  /// **'The revert lands below @ — @ itself can\'t be reverted'**
+  String get cardMenuRevertAt;
+
+  /// Why the card menu's Revert is disabled on a change that is not an ancestor of the working copy.
+  ///
+  /// In en, this message translates to:
+  /// **'The revert lands below @ — only changes in @\'s history'**
+  String get cardMenuRevertNotAncestor;
+
+  /// Why the card menu's Revert is disabled on an empty change.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to revert — the change is empty'**
+  String get cardMenuRevertEmpty;
+
+  /// Card menu row: jj abandon.
+  ///
+  /// In en, this message translates to:
+  /// **'Abandon'**
+  String get cardMenuAbandon;
+
+  /// Card menu note on an immutable change.
+  ///
+  /// In en, this message translates to:
+  /// **'Immutable'**
+  String get cardMenuImmutable;
+
+  /// Card menu row on an immutable change: opens the immutable-commits settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Immutable commits…'**
+  String get cardMenuImmutableCommits;
+
+  /// Why the card menu's Immutable commits… is disabled until the Settings window exists.
+  ///
+  /// In en, this message translates to:
+  /// **'Comes with the Settings window'**
+  String get cardMenuSettingsLater;
+
+  /// Card menu header subject of a change without a description, as jj prints it.
+  ///
+  /// In en, this message translates to:
+  /// **'(no description set)'**
+  String get cardMenuNoDescription;
+
+  /// VoiceOver name of a card's bookmark popover.
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmarks'**
+  String get bookmarkMenuLabel;
+
+  /// Bookmark popover row: renames the local bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename…'**
+  String get bookmarkMenuRename;
+
+  /// Bookmark popover row: moves the local bookmark to another revision.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to…'**
+  String get bookmarkMenuMoveTo;
+
+  /// Bookmark popover row: deletes the local bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get bookmarkMenuDelete;
+
+  /// Why Track / Untrack is disabled until the bookmark list is read.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading bookmarks…'**
+  String get bookmarkMenuReading;
+
+  /// Why Track / Untrack is disabled after the bookmark list could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read the bookmarks'**
+  String get bookmarkMenuReadFailed;
+
+  /// Bookmark popover row: creates a bookmark on this change.
+  ///
+  /// In en, this message translates to:
+  /// **'Create bookmark here…'**
+  String get bookmarkMenuCreate;
+
+  /// Bookmark popover row: moves an existing bookmark to this change.
+  ///
+  /// In en, this message translates to:
+  /// **'Move existing here…'**
+  String get bookmarkMenuMoveHere;
+
+  /// Name sheet title: renaming a bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename {name}'**
+  String nameSheetRenameTitle(String name);
+
+  /// Name sheet title: moving a bookmark to a revision.
+  ///
+  /// In en, this message translates to:
+  /// **'Move {name} to'**
+  String nameSheetMoveToTitle(String name);
+
+  /// Name sheet title: a new bookmark on the change.
+  ///
+  /// In en, this message translates to:
+  /// **'Create bookmark here'**
+  String get nameSheetCreateTitle;
+
+  /// Name sheet title: an existing bookmark moved to the change.
+  ///
+  /// In en, this message translates to:
+  /// **'Move a bookmark here'**
+  String get nameSheetMoveHereTitle;
+
+  /// Name sheet field label: a bookmark name.
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmark name'**
+  String get nameSheetNameLabel;
+
+  /// Name sheet field label: the revision a bookmark moves to.
+  ///
+  /// In en, this message translates to:
+  /// **'Revision'**
+  String get nameSheetRevisionLabel;
+
+  /// Name sheet button: closes it without running anything.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get nameSheetCancel;
+
+  /// Name sheet confirm button: jj bookmark rename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get nameSheetRename;
+
+  /// Name sheet confirm button: jj bookmark move.
+  ///
+  /// In en, this message translates to:
+  /// **'Move'**
+  String get nameSheetMove;
+
+  /// Name sheet confirm button: jj bookmark create.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get nameSheetCreate;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

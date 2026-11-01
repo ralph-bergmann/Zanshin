@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart' show GraphLoad;
+import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/home/project_graph_host.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
@@ -63,6 +64,9 @@ void main() {
     await tester.pump();
     expect(source.requests, hasLength(1));
     expect(appMenu.graph.value?.model.layout, isNotNull);
+    final GraphView view = tester.widget<GraphView>(find.byType(GraphView));
+    expect(view.inspectorModel, isNotNull, reason: "the card menu's Describe… opens the inspector");
+    expect(view.bookmarks, isNotNull, reason: "the bookmark popover's Track / Untrack read");
 
     source.hold = true;
     final int reads = repos.repoAt('/r/zanshin').reads;

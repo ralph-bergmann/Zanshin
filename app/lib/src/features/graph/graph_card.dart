@@ -43,7 +43,7 @@ typedef GraphCardHoverArea = ({GraphCardHoverPart part, Rect rect, String? toolt
 /// Story 10.6 adds the pointer model: [click] selects after [graphDoubleClickWindow], and a second click inside it runs
 /// [onEdit] on an editable card instead; [enter] and [leave] keep [hovered] with [graphHoverIntent], [holdHover] keeps
 /// it while the pointer is in the card's peek, [hoverEnabled] turns hover off (calm scrolling, an inactive window).
-/// 10.15 overrides [openMenu] and [openBookmarks]; 10.5 owns [now] in the app.
+/// [openMenu] and [openBookmarks] record what the graph's menu hosts show (Story 10.15); 10.5 owns [now] in the app.
 class GraphCardController {
   /// A controller whose "now" starts at [now] (epoch ms).
   GraphCardController({required int now}) : now = ValueNotifier<int>(now);
@@ -91,7 +91,7 @@ class GraphCardController {
   void select(String key) {
     cancelClick();
     selected.value = key;
-    menuOpen.value = null;
+    closeMenus();
     userSelections.value++;
   }
 
@@ -169,11 +169,42 @@ class GraphCardController {
     _leave = null;
   }
 
-  /// Opens [key]'s card menu at [anchor] (global), or closes it when it is open.
-  void openMenu(String key, Rect anchor) => menuOpen.value = menuOpen.value == key ? null : key;
+  /// Where the open card menu hangs (global): the ••• circle, or a zero-size box at the pointer for a right-click.
+  Rect? menuAnchor;
 
-  /// Opens [key]'s bookmark popover at [anchor] (global); 10.15 builds it.
-  void openBookmarks(String key, Rect anchor) {}
+  /// The key of the card whose bookmark popover is open (Story 10.15).
+  final bookmarksOpen = ValueNotifier<String?>(null);
+
+  /// Where the open bookmark popover hangs (global): the card's bookmark control.
+  Rect? bookmarksAnchor;
+
+  /// Opens [key]'s card menu at [anchor] (global), or closes it when it is open; an open bookmark popover closes.
+  void openMenu(String key, Rect anchor) {
+    if (menuOpen.value == key) {
+      menuOpen.value = null;
+      return;
+    }
+    bookmarksOpen.value = null;
+    menuAnchor = anchor;
+    menuOpen.value = key;
+  }
+
+  /// Opens [key]'s bookmark popover at [anchor] (global), or closes it when it is open; an open card menu closes.
+  void openBookmarks(String key, Rect anchor) {
+    if (bookmarksOpen.value == key) {
+      bookmarksOpen.value = null;
+      return;
+    }
+    menuOpen.value = null;
+    bookmarksAnchor = anchor;
+    bookmarksOpen.value = key;
+  }
+
+  /// Closes the card menu and the bookmark popover.
+  void closeMenus() {
+    menuOpen.value = null;
+    bookmarksOpen.value = null;
+  }
 
   /// Releases the notifiers.
   void dispose() {
@@ -186,6 +217,7 @@ class GraphCardController {
     userSelections.dispose();
     focused.dispose();
     menuOpen.dispose();
+    bookmarksOpen.dispose();
     now.dispose();
     actionsEnabled.dispose();
   }

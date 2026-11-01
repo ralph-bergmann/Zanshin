@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::path::Path;
 
+mod card_menu_commands;
 mod compare;
 mod driver;
 mod git_scenarios;
