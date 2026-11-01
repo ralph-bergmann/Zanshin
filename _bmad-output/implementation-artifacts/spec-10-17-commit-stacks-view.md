@@ -25,6 +25,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_canvas.dart
     severity: low
+    resolved: >-
+      RESOLVED 2026-11-01 (spec-fix-story-loop-leftovers-2026-11-01, commit cc4065b): a canvas test in graph_stacks_test.dart renders pendingKeys {a folded member} and pins its stack card at disabledOpacity.
 ---
 
 <intent-contract>
