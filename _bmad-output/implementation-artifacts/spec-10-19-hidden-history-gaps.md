@@ -193,7 +193,7 @@ Status: done
 - `app/lib/l10n/*` — strings; `app/widgetbook/…` — knob, fake `show`; tests and `scripted_graph_source.dart`.
 
 **Deferred-work items.**
-- I1 — rejected (settled, no change needed beyond building the callout without an arrow): the design's gap callout (`design/graph.css:314-317`, `.ggap-pop` around `.gpeek-inner`; DS `PeekCard.d.ts` lists gap callouts as a peek use) is peek material and draws no arrow, so a flip or shift needs no arrow side or offset; `GraphGapCallout` uses `ZsMenuMaterial` with `arrow: false` and a flip only mirrors its x (`graphGapCalloutPosition` tests cover flip and clamps).
+- I1 — rejected (settled in a245af8e991623a9be9fd724fd6b04b16e0004eb, which builds the callout without an arrow): the design's gap callout (`design/graph.css:314-317`, `.ggap-pop` around `.gpeek-inner`; DS `PeekCard.d.ts` lists gap callouts as a peek use) is peek material and draws no arrow, so a flip or shift needs no arrow side or offset; `GraphGapCallout` uses `ZsMenuMaterial` with `arrow: false` and a flip only mirrors its x (`graphGapCalloutPosition` tests cover flip and clamps).
 
 **Review.** 33 findings: 15 patched (6 medium, 9 low; the medium ones: stale gaps during routing, stack Missing count, legend activation, canvas wiring tests), 18 rejected (7 false, 11 low not worth fixing) — reasons in the Review Triage Log. Nothing deferred.
 
