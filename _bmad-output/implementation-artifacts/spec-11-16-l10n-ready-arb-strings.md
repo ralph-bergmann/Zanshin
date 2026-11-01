@@ -25,6 +25,8 @@ deferred:
     location: >-
       app/macos/Runner/Base.lproj/MainMenu.xib:35
     severity: low
+    resolved: >-
+      2026-11-01 — fixed (spec-11-13-menu-bar-shortcuts, commit 0d7811d): every Dart menu label is an ARB string in the PlatformMenuBar; system items keep the xib titles; CFBundleLocalizations waits for a second language.
 ---
 
 <intent-contract>

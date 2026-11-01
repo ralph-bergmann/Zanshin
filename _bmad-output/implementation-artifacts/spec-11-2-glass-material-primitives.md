@@ -52,6 +52,8 @@ deferred:
     location: >-
       app/lib/src/shared/materials/zs_sheet.dart
     severity: medium
+    resolved: >-
+      2026-11-01 — fixed (spec-11-13-menu-bar-shortcuts, commit 0d7811d): ZsSheet.openViews is the modal flag; while a sheet shows, every menu item acting on that window is disabled.
 ---
 
 <intent-contract>
