@@ -2372,3 +2372,12 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The search's production pieces have no production caller until 10.12 mounts the graph: `RepoGraphSearchSource`, `ProjectSearchStore`, `GraphSearchShortcuts` and the `logDefaults` re-read on window focus.** Low.
   - No file in `app/lib` builds `GraphViewControls` or `RepoGraphSource`; the only mount is `app/widgetbook/folders/graph.dart`. `RepoGraphSearchSource.files` and `user.email` through `configGet` are untested for that reason (`app/lib/src/features/graph/graph_ports.dart`).
   - **Follow-up:** 10.12 wires them in the project window (`ProjectSearchStore(store, root)`, `userEmail` via `ZanshinWorker.configGet('user.email', workspaceRoot:)`, `GraphSearchShortcuts` around the window, `model.configChanged()` on window focus) and tests the repo source.
+
+## Surfaced in Story 10.23 (bmad-build-auto, 2026-11-01)
+
+- **The graph's toasts (every outcome text, Undo/Redo, and I3's stale-recovery result and failure toast with Retry) reach no production surface until 10.12 mounts the graph in the project window.** Medium.
+  - `GraphToasts(` is built only in `app/widgetbook/folders/graph.dart` and the tests; `HomePage`'s `FloatingShell` has no graph slot yet (`app/lib/src/features/graph/graph_toasts.dart`).
+  - **Follow-up:** 10.12 creates `GraphToasts(model, vm.toasts)` where it mounts the graph in `HomePage` and disposes it with the model.
+- **The toast's look, motion and the backdrop blur during its fade (I1) are unchecked in the running catalogue against the DS Toast card; only widget tests check them.** Medium.
+  - Unattended run: no Marionette / Playwright check; `app/test/features/shell/shell_toast_test.dart` asserts `ZsFade` under the motion and no `Opacity`/`FadeTransition` above the glass, not the rendered blur (`app/lib/src/features/shell/shell_toast.dart`).
+  - **Follow-up:** run the catalogue's Graph › Toast › Tones use case and compare it with `design_system/components/overlays/Toast.*` mid-fade.
