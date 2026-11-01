@@ -27,6 +27,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/projects_window.dart (onOpened)
     severity: low
+    resolved: >-
+      2026-11-01 — fixed (spec-10-23-operation-toast, commit e2da414): the project window shows the creation's warnings once as a toast via `ProjectSession.openReport`, and Projects always closes after an open.
   - summary: >-
       Groups can be created, nested and moved, but not renamed or deleted: the DS gives group rows no ••• and no other surface.
     evidence: |-
