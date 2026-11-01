@@ -609,6 +609,7 @@ _Added the same day after Ralph's answers and his near-final HTML design (`_bmad
   - 10.14 therefore ships local and remote states only until 9.29 lands.
   - **Follow-up:** schedule 9.29 before or with 10.14.
   - **2026-10-19, Story 9.29:** `bookmarks()` now returns untracked remote rows, `(deleted)` / `(not created yet)` rows and the synced/conflicted flags (commit b5c3b95); left: 10.14's panel shows them.
+  - **RESOLVED 2026-11-01, Story 10.14** (spec-10-14-bookmark-list-panel, commit e1f773091695a3bcd19c1484df44f8fda0f79b0a): the rail's Bookmarks panel lists those rows with 9.29's flags and ↑/↓/↕ distances, never a "synced" derived by pairing.
 - **The PRD's graph FRs still describe the `jj log` lane model, and FR-GR-4 / NFR-P-2 point at a renumbered item** [`_bmad-output/planning-artifacts/prd.md:234-237`, `:312`]. Low.
   - FR-GR-1 (pvigier "straight branches" lane assignment) and FR-GR-2 (rows with `lane`, `edges_below`, `color_idx`) describe the lane graph that the re-planned view no longer draws. Epic 10 consumes Story 4.11's layered layout instead.
   - FR-GR-4's 2026-09-26 amendment (NFR-P-2 refers to it) cites "epics.md Story 10.2 item 7", which the re-plan renumbered.
@@ -1107,6 +1108,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **Bookmark tracking has no surface.** Low.
   - 9.29's untracked rows and 9.11's `track` and `untrack` (backlog) are outside 10.14 (its non-goals).
   - **Follow-up:** a row action in 10.14's panel, through 10.15 and 10.9, once 9.11 and 9.29 land.
+  - **2026-11-01, Story 10.14** (commit e1f773091695a3bcd19c1484df44f8fda0f79b0a): the panel's remote rows offer Track / Untrack (`jj bookmark track|untrack <name>@<remote>`) through the graph's runner; left: 10.15's action popup/menu entry.
 - **Raw config editing has no surface.** Low.
   - 9.28's `configFileRead` and `configFileWrite` (done), the GUI split of `jj config edit`, have no consumer. 11.7 edits only its own rows.
   - **Follow-up:** an "Open config file…" link per tab, if Ralph wants one.
@@ -2452,3 +2454,12 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The Reload island and the peek's description, commit id and loading bar are not yet checked in the catalogue against the DS (`PeekCard`, the bar's ACTION group).** Low.
   - Widget tests cover structure and text only (`graph_peek_test.dart`, `home_page_test.dart`); the Marionette check of "Floating shell / Controls" and a hovered card's peek did not run in the unattended loop.
   - **Follow-up:** run it, record the result in spec-10-12-adopt-backend-layout.md's verification notes.
+
+## Surfaced in Story 10.14 (bmad-build-auto, 2026-11-01)
+
+- **A bookmark row in the rail starts no drag yet: dragging a local row onto a change (and its stale/remote/`@` refusals) waits for 10.10's drop side.** Medium.
+  - epics.md Story 10.14's 2026-10-14 note "Drag (GV:416)"; `app/lib/src/features/bookmarks/bookmark_list_view.dart` has no drag source, and 10.10 (backlog) owns the drop targets.
+  - **Follow-up:** 10.10 adds the row's drag source (local rows only; remote rows and names containing `@` do not drag; disabled with "Working copy is stale").
+- **The Bookmarks preview and panel are not yet checked visually in the catalogue against the DS rows.** Low.
+  - Widget tests cover structure, text, opacity and colours only; the Marionette check of `bookmarks/bookmarks/{preview,panel,empty,stale}` (`app/widgetbook/folders/bookmarks.dart`) did not run in the unattended loop.
+  - **Follow-up:** run it, record the result in spec-10-14-bookmark-list-panel.md's verification notes.
