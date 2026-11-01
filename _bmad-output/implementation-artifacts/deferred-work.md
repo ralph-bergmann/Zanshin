@@ -2441,3 +2441,12 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The Undo Timeline use cases are not yet checked visually in the catalogue against the DS Callout "Undo Timeline" card and the kit's panel.** Medium.
   - Widget tests cover structure, colours and opacity only; the Marionette check (`zanshinCatalogue.open` on `undo-timeline/undo-timeline/*`) is pending.
   - **Follow-up:** run it, record the result in the spec's verification notes.
+
+## Surfaced in Story 10.12 (bmad-build-auto, 2026-11-01)
+
+- **No test drives `RepoGraphSource.layout` into a `LayoutContractException`, so its conversion to the `ffi.unknown` caption is checked only as a function.** Low.
+  - `layoutContractFailure` is unit-tested (`app/test/features/graph/repo_graph_source_test.dart`); the `on LayoutContractException` at the call site (`app/lib/src/features/graph/graph_ports.dart`, `RepoGraphSource.layout`) needs a `RepoHandle` that throws, and a healthy backend never does.
+  - **Follow-up:** a fake-handle seam in a later story that needs one anyway; none otherwise.
+- **The Reload island and the peek's description, commit id and loading bar are not yet checked in the catalogue against the DS (`PeekCard`, the bar's ACTION group).** Low.
+  - Widget tests cover structure and text only (`graph_peek_test.dart`, `home_page_test.dart`); the Marionette check of "Floating shell / Controls" and a hovered card's peek did not run in the unattended loop.
+  - **Follow-up:** run it, record the result in spec-10-12-adopt-backend-layout.md's verification notes.
