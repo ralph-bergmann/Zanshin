@@ -2497,3 +2497,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The graph animations were not checked in the running app or the Widgetbook catalogue.** Low.
   - Unattended run: the timings are witnessed by widget tests only (`app/test/features/graph/graph_transition_test.dart`); Graph / Viewport / Operation (`app/widgetbook/folders/graph.dart`) was not looked at.
   - **Follow-up:** a Marionette check of Graph / Viewport / Operation (TimeDilation ×5) and of a real `jj new` / abandon / undo in the app.
+
+## Surfaced in the follow-up review of Story 10.20 (bmad-build-auto, 2026-11-01)
+
+- **A same-op reload landing inside the 720 ms transition ends it at once: the glide and edge fade snap to their end and a covered born card is never revealed.** High (unverified).
+  - The watcher's `OpHeadsChangedEvent` for Zanshin's own verb triggers a second reload (`app/lib/src/features/graph/graph_view_model.dart:890-894`, 50 ms debouncer in `crates/zanshin-ffi/src/watcher.rs:184`); its layout lands with the same op id, so `_land` builds no transition and the canvas's "a layout without a transition ends the running one" branch stops it and drops `_bornReveal` (`app/lib/src/features/graph/graph_canvas.dart:334-341`), while the model already removed the born key from `reveal` (`graph_view_model.dart:1067-1070`). Unverified: whether that event usually lands after the verb's own reload (then nearly every own verb snaps) or before it (then the queued request absorbs it).
+  - **Follow-up:** log in the running app when the own verb's `OpHeadsChangedEvent` reload lands relative to the transition; if inside it, keep the running transition across a same-op layout (or skip a reload whose head equals the shown op) and reveal the born card on an early end.

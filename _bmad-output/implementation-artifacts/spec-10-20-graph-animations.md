@@ -5,7 +5,7 @@ created: '2026-11-01'
 status: 'done'
 baseline_revision: '8cc81ae17bea493e45ec9e4f2d9b95ef95c060ac'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
@@ -29,6 +29,18 @@ deferred:
     location: >-
       app/widgetbook/folders/graph.dart (Viewport / Operation)
     severity: low
+  - summary: >-
+      A same-op reload landing inside the 720 ms transition ends it at once: the glide and edge fade snap to their
+      end and a covered born card is never revealed.
+    evidence: |-
+      The own verb's OpHeadsChangedEvent (50 ms debouncer) requests a second reload; it lands with the same op id, so
+      _land builds no transition, the canvas ends the running one and drops _bornReveal, and the model already took
+      the born key out of reveal. Unverified: whether that event usually lands after the verb's own reload (then
+      nearly every own verb snaps) or before it (the queued request absorbs it). Settle by logging in the running app
+      when that reload lands relative to the transition.
+    location: >-
+      app/lib/src/features/graph/graph_canvas.dart:334-341; app/lib/src/features/graph/graph_view_model.dart:890-894, 1067-1070
+    severity: high (unverified)
 ---
 
 <intent-contract>
@@ -150,6 +162,40 @@ deferred:
   - (intent) `[low]` `[defer]` no running-app or Marionette check — unattended run; deferred as a manual check.
   - (intent) `[maybe-false]` `[reject]` the flash's held spread under reduce motion is not re-tested — it is 10.19's unchanged painter (`size = motion == 0 ? 1 : fade`), tested there; if real, low.
 
+### 2026-11-01 — Review pass (follow-up)
+- verdicts: 30 findings — high 0, medium 0, low 15, false 8, maybe-false 7
+- findings:
+  - (verification-gap) `[low]` `[patch]` a gliding-out card's paint/hit visibility (`paintOrder`'s shifted-rect check) is untested — the glide-out test now taps r10's old rect mid-glide and expects the tap; reverting the check to `data.isVisible` fails it (mutation run).
+  - (verification-gap) `[low]` `[patch]` the reduce-motion born reveal (post-frame path in `_startTransition`) is untested — added "reduce motion: a covered born card is revealed after its landing frame"; removing the post-frame callback fails it (mutation run).
+  - (verification-gap) `[low]` `[reject]` the born card's child edges drawing in are never exercised — cosmetic timing; the parent-edge path shares the mechanism and is pinned; a new fixture with a born child is more than a direct correction.
+  - (verification-gap) `[low]` `[reject]` the covered-born reveal test bounds the reveal only from below — a weak bound, not a defect.
+  - (blind) `[false]` `[reject]` stale hints after a failed reload attach to a later op — the next new-op layout is the first to show the verb's result, so its anchor, born and flash still describe shown → new.
+  - (blind) `[false]` `[reject]` hints go to the first new op, not the verb's op — a layout landing after the verb ran contains the verb's effects, so the hints still apply; the pre-verb in-flight race is the carried 2026-11-01 maybe-false row.
+  - (blind) `[low]` `[reject]` cards laid out after the transition's first pass get no effect — effects are computed once per transition; a covered born revealed at 460 ms is 85 % into its birth; recomputing per pass adds state for a near-invisible case.
+  - (blind) `[low]` `[reject]` the born card can grow out of an off-screen anchor — verbs run from a visible card, whose anchor the viewport keeps still; an on-screen check in two places adds branches for a rare case.
+  - (blind) `[low]` `[reject]` the "does the born card grow" rule is written twice (canvas, viewport) — the two agree today (aligned in the first pass); the harm is conditional on a future one-sided edit.
+  - (blind) `[false]` `[reject]` the draw-in fraction is of the clipped stroke for every edge — `_addStroke` clips only dashed edges (`graph_edges.dart:517-519` adds a solid edge's whole path); the `shortcut:` comment names exactly that limit.
+  - (blind) `[maybe-false]` `[defer]` the born reveal is dropped when a layout arrives mid-transition — same root as the same-op-reload row below; deferred with it.
+  - (blind) `[false]` `[reject]` the two transition end paths clean up differently — `_bornEdges`/`_bornReveal` left after completion are gated by `_moving`/`elapsed`, so nothing paints or reveals from them.
+  - (blind) `[low]` `[reject]` redo, undoOperation, restoreOperation untested — all route through `_execute` (`graph_view_model.dart:661-696`), the path the own-verb and undo tests pin.
+  - (blind) `[low]` `[reject]` `_moved` ignores edge-only changes — such an op snaps its edges with no card moving; animating it adds an edge comparison for a rare case.
+  - (blind) `[low]` `[reject]` the model keeps `transition.from` alive until the next land — one extra layout in memory; clearing it needs a timer.
+  - (blind) `[low]` `[reject]` no direct test of `graphTransitionDuration` — exercised by the canvas tests and the 10k test; not a defect.
+  - (blind) `[low]` `[reject]` only the first born change grows — today's verbs create one change; the rest fade as arrivals.
+  - (edge-case) `[false]` `[reject]` `_landing` survives `_fail` — same refutation as the stale-hints row.
+  - (edge-case) `[maybe-false]` `[reject]` a null `operationId` leaves hints pending — would need a layout without an op id after a verb; if real, low.
+  - (edge-case) `[maybe-false]` `[defer]` a same-op reload (the watcher's event for the own verb) landing within 720 ms ends the running transition and drops the born reveal — the code path is verified (`graph_canvas.dart:334-341`, `graph_view_model.dart:890-894`, `:1067-1070`); whether the event lands after the verb's reload depends on runtime timing (50 ms debouncer); if true, high; deferred with a logging check in the running app.
+  - (edge-case) `[maybe-false]` `[reject]` the viewport's last pass is not `transition.from` (two lands before one layout pass) — needs two layouts landing in one frame; if real, low.
+  - (edge-case) `[low]` `[reject]` a second own verb before the first's layout lands overwrites `_landing` — the layout that lands shows both; only the first's flash is lost; queueing outcomes adds state for a rare overlap.
+  - (edge-case) `[false]` `[reject]` claim: `_landing` survives failed reloads and attaches to a different later op — same refutation as the stale-hints row.
+  - (intent) `[false]` `[reject]` a stack toggle or `configChanged` landing with a different op id would animate — the intent's trigger is the op id; a new op is an operation, whatever request fetched it.
+  - (intent) `[maybe-false]` `[reject]` "no card builds" is proven at render level, not through `GraphCanvas` — the canvas rebuilds the viewport widget per tick, but `GraphChildDelegate.shouldRebuild` keys on `layout.version`; if real, low.
+  - (intent) `[false]` `[reject]` 140/520/220/240 and .94/.3 are module constants, not tokens — `ZsMotion` has no such tokens; the intent requires tokens only for tokened values.
+  - (intent) `[maybe-false]` `[reject]` a child edge's draw direction ("from the parent end") is unverified — needs the edge path's start for a child edge; if real, low.
+  - (intent) `[low]` `[reject]` carried: the Widgetbook demo animates revset-like pairs — the only real-data pairs with shared keys; demo only.
+  - (intent) `[maybe-false]` `[reject]` carried: external/undo's anchorless glide witnessed only at view-model level — no undo-specific viewport path; if real, low.
+  - (intent) `[low]` `[reject]` hit testing is checked only at elapsed 0 — the shift is the same effect paint uses, tested over time; plus the new mid-glide glide-out tap.
+
 ## Design Notes
 
 - Why a last-pass snapshot instead of `transition.from`'s geometry: the viewport must glide from what was on screen (old vertical, metrics, insets and scroll), and a running transition is "finished" by taking the landed rects, not the painted ones. `transition.to` must be the layout being laid out; a transition for another layout is ignored.
@@ -174,6 +220,14 @@ deferred:
 - Matrix audit: every I/O row has a passing test — rebase-like glide, `jj new` birth (+ no-old-anchor fade), abandon vanish, describe, revset/mode/lane-order switch (no transition), second op, reduce motion, born off-screen reveal (`graph_transition_test.dart`, `graph_view_model_test.dart`); undo/external at the view-model level.
 - Not run: the Marionette / Widgetbook visual check (deferred, Ralph).
 
+**Verification notes (2026-11-01, follow-up review; gate rule: no `cargo make test`; only `app/test/features/graph/graph_transition_test.dart` changed, no Rust/FFI/schema, so no cargo/codegen/oracle checks apply):**
+- `flutter test test/features/graph/graph_transition_test.dart` (app/) — 18 passed.
+- Mutation runs: the reduce-motion post-frame reveal removed → the new reduce-motion reveal test fails; `paintOrder`'s visibility reverted to `data.isVisible` → the glide-out test fails at the new tap. Both mutations reverted.
+- `flutter test test/features/graph` (app/) — 696 passed.
+- `dart analyze --fatal-infos .` (app/) — no issues.
+- `dart format --set-exit-if-changed lib test widgetbook` (app/) — 0 changed.
+- `flutter test` (app/, whole suite, the gate's test environment as above) — 1658 passed.
+
 ## Auto Run Result
 
 Status: done
@@ -197,4 +251,6 @@ Status: done
 **Items.**
 - **I1 — partly done.** The 1.5 s cap and the 30-card limit are rejected: the 2026-10-14 design note dropped both as moot (durations are fixed, at most 720 ms plus the 2.4 s flash), so there is nothing to make tunable. The trigger set is implemented and pinned by tests (own verb, external op, undo, revert; no transition for revset/mode/lane-order switches, stack toggles, same-op reloads or ops that move nothing) in commit `6d9b21e613961d9aeda12a6278fb94f582a25094`; a synthetic 10k → 10k+1 test checks that only window cards build and every effect rests within the fixed duration. The demo host has "Graph / Viewport / Operation" for the TimeDilation addon. Left: Ralph's by-eye tuning on real data (manual check).
 
-**Residual risks.** Glide deltas are fixed in screen space when the layout lands, so a user scroll during the 460 ms glide moves the gliding cards with the content; the flash ring sits at the destination while its card glides in; a dashed born edge's draw-in fraction counts only the dashes near the window (`shortcut:` comment in `graph_edges.dart`).
+**Follow-up review (2026-11-01).** 30 findings (high 0, medium 0, low 15, false 8, maybe-false 7): 2 low test gaps patched in `app/test/features/graph/graph_transition_test.dart` (a mid-glide tap on a gliding-out card; the reduce-motion covered-born reveal), each proven by a mutation run; 1 entry deferred (2 rows): a same-op reload — likely the watcher's event for Zanshin's own verb — landing inside the 720 ms ends the running transition and drops the born reveal, high if the timing holds, unverified (mirrored in deferred-work.md); 27 rejected with the reasons in the triage log. Patched: high 0, medium 0, low 2. Follow-up review recommended: **false** — a follow-up pass that patched no high has converged. Verification: see the follow-up verification notes.
+
+**Residual risks.** The deferred same-op-reload snap (above) is the main open risk for the running app. Glide deltas are fixed in screen space when the layout lands, so a user scroll during the 460 ms glide moves the gliding cards with the content; the flash ring sits at the destination while its card glides in; a dashed born edge's draw-in fraction counts only the dashes near the window (`shortcut:` comment in `graph_edges.dart`).

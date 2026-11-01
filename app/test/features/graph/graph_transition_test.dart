@@ -141,6 +141,9 @@ void main() {
       await land(tester, h, chainLayout(12, cols: 3, colOf: const <String, int>{'r10': 40}));
       expect(h.mounted(tester), contains('r10'));
       expect(h.screenOf(tester, 'r10'), r10);
+      // Painted and hit at its old rect, though laid out off screen.
+      await tester.tapAt(r10 + const Offset(graphCardOverhang + 20, graphCardOverhang + 20));
+      expect(h.log.taps, <String>['r10']);
       await at(tester, h, 459);
       expect(h.mounted(tester), contains('r10'));
       await at(tester, h, 460);
@@ -412,6 +415,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(viewport(tester).verticalOffset.pixels, landed);
       await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+      expect(viewport(tester).verticalOffset.pixels, 0);
+    });
+
+    testWidgets('reduce motion: a covered born card is revealed after its landing frame', (tester) async {
+      await bornOperation(tester, reduce: true);
       await tester.pumpAndSettle();
       expect(viewport(tester).verticalOffset.pixels, 0);
     });
