@@ -295,6 +295,44 @@ void main() {
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
 
+  testWidgets('sizes like its scrollable: hugs short content under a loose max, fills a tight box', (tester) async {
+    final ScrollController controller = _controller();
+    await tester.pumpWidget(
+      zsHost(
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300, maxHeight: 200),
+          child: ZsScrollArea(
+            controller: controller,
+            child: SingleChildScrollView(
+              controller: controller,
+              child: const SizedBox(width: 300, height: 50),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(tester.getSize(find.byType(ZsScrollArea)).height, 50);
+    final ScrollController long = _controller();
+    await tester.pumpWidget(
+      zsHost(
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300, maxHeight: 200),
+          child: ZsScrollArea(
+            controller: long,
+            child: SingleChildScrollView(
+              controller: long,
+              child: const SizedBox(width: 300, height: 500),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(tester.getSize(find.byType(ZsScrollArea)).height, 200, reason: 'longer content stops at the max');
+    expect(long.position.maxScrollExtent, 300, reason: 'and scrolls');
+    await tester.pumpWidget(_area(_controller(), content: 50));
+    expect(tester.getSize(find.byType(ZsScrollArea)), const Size(300, 200));
+  });
+
   testWidgets('VoiceOver: a region named by its label', (tester) async {
     final SemanticsHandle handle = tester.ensureSemantics();
     await tester.pumpWidget(_area(_controller()));

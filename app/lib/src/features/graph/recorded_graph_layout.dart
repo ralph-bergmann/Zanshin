@@ -132,12 +132,14 @@ class RecordedGraphLayout extends GraphLayout {
   /// recordings carry no content and no refs, so [content] and [refs] may supply them per node. A grouped output
   /// (format 4, `--stacks`, Story 10.17) carries n + S nodes and `runs`: a folded member gets row and column −1, and
   /// each stack node the key [graphStackKey] of its oldest member, its newest member's timestamp, one parent, and the
-  /// immutable flag when every member has it.
+  /// immutable flag when every member has it. [operationId] pins the layout to an operation, as a worker layout is
+  /// (the search's counts and lookups need one).
   factory RecordedGraphLayout.fromSpec(
     String inputJson,
     String outputJson, {
     GraphCommitContent? Function(int node, String key)? content,
     List<GraphRef> Function(int node, String key)? refs,
+    String? operationId,
   }) {
     final input = jsonDecode(inputJson) as Map<String, Object?>;
     final output = jsonDecode(outputJson) as Map<String, Object?>;
@@ -260,6 +262,7 @@ class RecordedGraphLayout extends GraphLayout {
       utcOffsetMinutes: (input['utc_offset_min'] as int?) ?? 0,
       rootIndex: root,
       workingCopyIndex: workingCopy,
+      operationId: operationId,
       flags: flags,
       // A stack node has no content and no refs of its own: the card reads its members'.
       contents: content == null

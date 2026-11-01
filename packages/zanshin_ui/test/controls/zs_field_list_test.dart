@@ -111,6 +111,24 @@ void main() {
       );
     });
 
+    testWidgets('a leading widget takes the icon column instead of the glyph', (tester) async {
+      await tester.pumpWidget(
+        zsHost(
+          const SizedBox(
+            width: 300,
+            child: ZsFieldListRow(
+              icon: ZI.bookmark,
+              leading: SizedBox(key: ValueKey<String>('lead'), width: 18, height: 18),
+              child: Text('main'),
+            ),
+          ),
+          icons: true,
+        ),
+      );
+      expect(find.byKey(const ValueKey<String>('lead')), findsOneWidget);
+      expect(find.byType(ZanshinIcon), findsNothing);
+    });
+
     testWidgets('it takes no focus', (tester) async {
       await tester.pumpWidget(_row());
       expect(find.descendant(of: find.byType(ZsFieldListRow), matching: find.byType(Focus)), findsNothing);

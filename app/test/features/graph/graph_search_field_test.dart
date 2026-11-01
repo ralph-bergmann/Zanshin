@@ -44,8 +44,11 @@ GraphLayout _layout({bool extra = false, String op = 'op1', String hidden = 'hid
       for (final String k in keys)
         GraphCommitContent(
           subject: k == 'k1' ? 'Fix cache' : 'Work $k',
-          authorName: k == 'k1' ? 'Lena König' : 'Ralph',
-          authorEmail: k == 'k1' ? 'lena@x.org' : 'ralph@x.org',
+          // k3 has no author: its row reads the date alone.
+          authorName: k == 'k1' ? 'Lena König' : (k == 'k3' ? '' : 'Ralph'),
+          authorEmail: k == 'k1' ? 'lena@x.org' : (k == 'k3' ? '' : 'ralph@x.org'),
+          // Two days before the rig's clock.
+          timestampMs: k == 'k1' || k == 'k3' ? DateTime.utc(2026, 10, 29).millisecondsSinceEpoch : null,
         ),
     ],
   );
@@ -278,6 +281,55 @@ void main() {
       expect(rig.source.requests.last.revset, 'author(exact:"Lena König")');
       expect(rig.store.loadRecent().first, GraphRecentFilter(GraphFilter.author('Lena König')));
       expect(_fieldText(tester), 'Lena König');
+    });
+
+    _testWidgets('one author: the popover hugs its row and footer; the row shows the initial avatar', (tester) async {
+      await _start(tester);
+      await tester.tap(_field());
+      await _type(tester, 'a:lena');
+      expect(_rows(tester), hasLength(1), reason: 'exactly one name matches: no "Authors containing" row');
+      expect(tester.getSize(find.byType(ZsMenuMaterial)).height, lessThan(560));
+      final Finder initial = find.descendant(of: find.byType(ZsFieldListRow), matching: find.text('L'));
+      final ZsColors colors = ZsColors.of(tester.element(initial));
+      expect(tester.widget<Text>(initial).style!.color, colors.accentText, reason: 'the keyboard row');
+      final Finder circle = find.ancestor(of: initial, matching: find.byType(Container)).first;
+      expect(tester.getSize(circle), const Size(18, 18));
+      final decoration = tester.widget<Container>(circle).decoration! as BoxDecoration;
+      expect(decoration.border, Border.all(color: colors.accentRing));
+    });
+
+    _testWidgets('two authors: the "Authors containing" row; a resting avatar is flOn without a ring', (tester) async {
+      await _start(tester);
+      await tester.tap(_field());
+      await _type(tester, 'a:l');
+      expect(find.text('Authors containing “l”'), findsOneWidget);
+      final Finder initial = find.descendant(of: find.byType(ZsFieldListRow), matching: find.text('R'));
+      final ZsColors colors = ZsColors.of(tester.element(initial));
+      final ZsFieldListRow row = tester.widget(find.ancestor(of: initial, matching: find.byType(ZsFieldListRow)));
+      expect(row.active, isFalse);
+      expect(tester.widget<Text>(initial).style!.color, colors.textMuted);
+      final decoration =
+          tester.widget<Container>(find.ancestor(of: initial, matching: find.byType(Container)).first).decoration!
+              as BoxDecoration;
+      expect(decoration.color, colors.flOn);
+      expect(decoration.border, isNull);
+    });
+
+    _testWidgets('a change row reads the first name and the relative date', (tester) async {
+      await _start(tester);
+      await tester.tap(_field());
+      await _type(tester, 'fix cache');
+      expect(find.text('Lena · 2d'), findsOneWidget);
+      await _type(tester, 'work k');
+      expect(find.text('Ralph'), findsWidgets, reason: 'no timestamp: the first name alone');
+      expect(find.text('2d'), findsOneWidget, reason: 'no author: the date alone');
+    });
+
+    _testWidgets('the menu ends after its last row, below its max height', (tester) async {
+      await _start(tester);
+      await tester.tap(_pill());
+      await tester.pump();
+      expect(tester.getSize(find.byType(ZsMenuMaterial)).height, lessThan(640));
     });
 
     _testWidgets('Backspace in an empty field returns to Any; Esc closes, a second Esc restores and blurs', (

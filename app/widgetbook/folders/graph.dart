@@ -235,9 +235,19 @@ RecordedGraphLayout recordedLayout(String sample, GraphViewOptions options, {boo
   final recording = '$sample ${options.layout.name} ${options.laneOrder.name}';
   return _fixture(inlineContent ? recording : '$recording paged', () {
     final (String input, String output) = graphRecordings[recording]!;
-    return RecordedGraphLayout.fromSpec(input, output, content: inlineContent ? fakeContent : null, refs: fakeRefs);
+    return RecordedGraphLayout.fromSpec(
+      input,
+      output,
+      content: inlineContent ? fakeContent : null,
+      refs: fakeRefs,
+      operationId: catalogueOperationId,
+    );
   });
 }
+
+/// The one operation every catalogue layout is pinned to, as a worker layout is to its topology's: the search's counts
+/// and lookups ask the fakes only with one.
+const catalogueOperationId = 'catalogue';
 
 /// The fakes' answer to [request] on [sample] (Story 10.17): with Group stacks, the stack recording matching its run
 /// states ([stackRecordingFor]); otherwise, or for a sample without stack recordings, the ungrouped recording. Content
@@ -253,7 +263,7 @@ RecordedGraphLayout requestedLayout(String sample, GraphRequest request) {
   }
   return _fixture('$stacks paged', () {
     final (String input, String output, _) = graphStackRecordings[stacks]!;
-    return RecordedGraphLayout.fromSpec(input, output, refs: fakeRefs);
+    return RecordedGraphLayout.fromSpec(input, output, refs: fakeRefs, operationId: catalogueOperationId);
   });
 }
 

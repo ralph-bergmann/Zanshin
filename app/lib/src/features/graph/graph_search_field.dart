@@ -13,6 +13,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import '../shell/calm_controller.dart';
 import '../shell/shell_scope.dart';
+import 'graph_card.dart' show graphRelativeDate;
 import 'graph_ports.dart' show jjLogCommand;
 import 'graph_search_controller.dart';
 import 'graph_search_index.dart';
@@ -1057,6 +1058,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
       fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
     );
     String? icon;
+    Widget? leading;
     Widget main;
     final metaParts = <Widget>[];
     var dim = false;
@@ -1095,8 +1097,20 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         if (!change.inView) {
           metaParts.add(_Tag(s.graphSearchNotInView));
         }
-        if (change.authorName.isNotEmpty) {
-          metaParts.add(Text(change.authorName.split(' ').first, style: meta));
+        // DS search-suggestions.card.html: "Lena · 2d".
+        final int? ts = change.timestampMs;
+        final String byline = <String>[
+          if (change.authorName.isNotEmpty) change.authorName.split(' ').first,
+          if (ts != null)
+            graphRelativeDate(
+              s,
+              ts,
+              nowMs: _model.now.value,
+              utcOffsetMinutes: _model.layout?.utcOffsetMinutes ?? 0,
+            ),
+        ].join(' · ');
+        if (byline.isNotEmpty) {
+          metaParts.add(Text(byline, style: meta));
         }
       case GraphBookmarkRow(:final name, :final key, :final change, :final match):
         icon = ZI.bookmark;
@@ -1109,7 +1123,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         final TextStyle path = ZsType.id.copyWith(fontSize: ZsType.fsControl, height: 1.2, color: colors.text);
         switch (kind) {
           case GraphFilterRowKind.author:
-            icon = ZI.user;
+            leading = _Avatar(name: text, active: active);
             main = Row(
               spacing: 9,
               children: <Widget>[
@@ -1191,6 +1205,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
       key: _rowKeys.length > i ? _rowKeys[i] : null,
       active: active,
       icon: icon,
+      leading: leading,
       onPressed: row is GraphRefusalRow ? null : () => _pick(row),
       identifier: 'graph-search-row-$i',
       child: content,
@@ -1421,6 +1436,39 @@ class _Dollar extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// An author's initial in an 18 px circle (DS search.css:73-74, SearchPopover.jsx `SearchAvatar`): `--fs-xs` 600 in
+/// `--text-muted` on `--fl-on`; on the keyboard row `--accent-text`, transparent, an inset 1 px `--accent-ring`.
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.name, required this.active});
+
+  final String name;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final ZsColors colors = ZsColors.of(context);
+    return ExcludeSemantics(
+      child: Container(
+        width: 18,
+        height: 18,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: active ? null : colors.flOn,
+          border: active ? Border.all(color: colors.accentRing) : null,
+        ),
+        child: Text(
+          name.trim().characters.take(1).toString(),
+          style: _weight(
+            ZsType.body,
+            600,
+          ).copyWith(fontSize: ZsType.fsXs, height: 1, color: active ? colors.accentText : colors.textMuted),
+        ),
+      ),
+    );
+  }
 }
 
 /// A small tag (DS search.css:72).

@@ -135,6 +135,7 @@ class ZsFieldListRow extends StatefulWidget implements ZsControl {
     this.shown = false,
     this.danger = false,
     this.icon,
+    this.leading,
     this.onPressed,
     this.semanticLabel,
     this.identifier,
@@ -155,6 +156,9 @@ class ZsFieldListRow extends StatefulWidget implements ZsControl {
 
   /// A `ZI` glyph in the icon column.
   final String? icon;
+
+  /// A widget in the icon column instead of [icon] (e.g. an author's initial avatar); it styles itself for [active].
+  final Widget? leading;
 
   /// Runs on a click.
   final VoidCallback? onPressed;
@@ -232,7 +236,9 @@ class _ZsFieldListRowState extends State<ZsFieldListRow> {
                       children: <Widget>[
                         SizedBox(
                           width: ZsFieldListRow._iconColumn,
-                          child: glyph == null
+                          child: widget.leading != null
+                              ? Center(child: widget.leading)
+                              : glyph == null
                               ? null
                               : Center(
                                   child: ZanshinIcon(glyph, size: ZsIconSize.md, color: look.icon),

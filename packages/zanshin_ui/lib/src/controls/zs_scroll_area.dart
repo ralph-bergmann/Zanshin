@@ -270,23 +270,24 @@ class _ZsScrollAreaState extends State<ZsScrollArea> {
           child: ZsFocusRing(
             visible: _focused,
             placement: ZsRingPlacement.inside,
-            child: LayoutBuilder(
-              builder: (context, box) => MouseRegion(
-                onHover: (event) => _pointerHover(event.localPosition, box.biggest, metrics.scrollGutter),
+            child: Builder(
+              builder: (context) => MouseRegion(
+                onHover: (event) => _pointerHover(event.localPosition, context.size!, metrics.scrollGutter),
                 onExit: (_) {
                   if (_hover != null) {
                     setState(() => _hover = null);
                   }
                 },
+                // WHY: the content is the one non-positioned child, so the area takes its size — it fills under tight
+                // constraints and hugs a short scrollable under loose ones (a popover below its max height).
                 child: Stack(
+                  fit: StackFit.passthrough,
                   children: <Widget>[
                     // WHY: on macOS the default scroll behaviour wraps every scrollable in a `RawScrollbar` of its
                     // own, a second bar beside this one while scrolling; the area draws the only bar.
-                    Positioned.fill(
-                      child: ScrollConfiguration(
-                        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-                        child: widget.child,
-                      ),
+                    ScrollConfiguration(
+                      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                      child: widget.child,
                     ),
                     Positioned(
                       top: ZsScrollArea._inset,

@@ -6,16 +6,20 @@ import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_controls.dart';
 import 'package:zanshin/src/features/graph/graph_inspector.dart';
+import 'package:zanshin/src/features/graph/graph_ports.dart' show GraphRequest;
 import 'package:zanshin/src/features/graph/graph_search_field.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport_render.dart';
+import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/stale_notice.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../widgetbook/catalogue.dart';
+import '../../widgetbook/folders/graph.dart' show catalogueOperationId, requestedLayout;
+import '../../widgetbook/graph/fake_graph_source.dart';
 import '../helpers/catalogue.dart';
 import '../helpers/icon_registry.dart';
 import '../helpers/recording_shell.dart';
@@ -114,6 +118,23 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  test('the fakes\' layouts carry an operation, so the search asks counts and lookups', () {
+    for (final stacks in <bool>[false, true]) {
+      final RecordedGraphLayout layout = requestedLayout(
+        'design-default',
+        GraphRequest(
+          revset: 'all()',
+          prioritize: FakeGraphSource.defaults.logGraphPrioritize,
+          shortPrefixes: FakeGraphSource.defaults.shortPrefixes,
+          anchors: const <String>[],
+          utcOffsetMin: 0,
+          stacks: stacks,
+        ),
+      );
+      expect(layout.operationId, catalogueOperationId, reason: 'stacks: $stacks');
+    }
+  });
 
   testWidgets('graph/viewport/recording paints edges (Story 10.4)', (tester) async {
     useCatalogueWindow(tester);
