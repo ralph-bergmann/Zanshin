@@ -166,6 +166,11 @@ void main() {
     expect(buttons(tester), <String>['Undo']);
   });
 
+  toastTest('revert without a new change: "Reverted ‹x›"', (tester) async {
+    await run(tester, const GraphRevert(_b));
+    expect(text(tester), 'Reverted vruxwmqvz');
+  });
+
   toastTest('squash: -r into its parent, --from into --into, the source falling back to what jj abandoned', (
     tester,
   ) async {
@@ -181,6 +186,8 @@ void main() {
   toastTest('bookmarks: created on the revision or @, deleted, moved, renamed', (tester) async {
     await run(tester, const GraphBookmarkCreate(<String>['main'], revision: _b));
     expect(text(tester), 'Created main on vruxwmqvz');
+    await run(tester, const GraphBookmarkCreate(<String>['main']));
+    expect(text(tester), 'Created main on @');
     actions.at = _a;
     await run(tester, const GraphBookmarkCreate(<String>['main', 'dev']));
     expect(text(tester), 'Created main and dev on ovknlmro');
@@ -188,6 +195,8 @@ void main() {
     expect(text(tester), 'Deleted main');
     await run(tester, const GraphBookmarkMove(<String>['main'], to: _c));
     expect(text(tester), 'Moved main to kxqpsytn');
+    await run(tester, const GraphBookmarkMove(<String>['main']));
+    expect(text(tester), 'Moved main to ovknlmro');
     await run(tester, const GraphBookmarkRename('main', 'trunk'));
     expect(text(tester), 'Renamed main to trunk');
     expect(buttons(tester), <String>['Undo']);

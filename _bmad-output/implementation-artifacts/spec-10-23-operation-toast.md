@@ -5,7 +5,7 @@ created: '2026-11-01'
 status: 'done'
 baseline_revision: 'ec2d953b905b2d4867dc69a775ed31801db56866'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
   - '{project-root}/_bmad-output/project-context.md'
@@ -161,6 +161,38 @@ deferred:
   - (intent) `[false]` `[reject]` the matrix's stale text vs the code — as the first false row.
   - (intent) `[low]` `[reject]` the readings of item 6 / "Undid" are informational — settled by the rows above.
 
+### 2026-11-01 — Review pass (follow-up)
+- verdicts: 28 findings — high 0, medium 5, low 18, false 5, maybe-false 0
+- findings:
+  - (blind) `[medium]` `[defer]` graph toasts never run in the app — carried: `GraphToasts(` is still built only in the catalogue and tests; already in `deferred` (production wiring until 10.12).
+  - (blind) `[low]` `[patch]` the Projects warnings notice is unseen and the class doc (`projects_window.dart:51`) contradicts the line-64 paragraph — the notice itself carried (it stays the surface when Projects does not close); the doc now says the notice shows while the window stays open and the project window's toast shows them once it opens.
+  - (blind) `[false]` `[reject]` `_openedInProjects(ProjectOpened outcome)` keeps an unused parameter — the signature is the `onOpened` callback's type (`buildProjects(_openedInProjects)`, `app_window_coordinator.dart:249`).
+  - (blind) `[low]` `[reject]` `_OpenReportToast` lacks `didUpdateWidget` — carried: session and toasts are fixed for a HomePage's life.
+  - (blind) `[low]` `[reject]` `withActionFocusSkip` hand-copies fields — carried: developer-only, the fix is a refactor for no current harm.
+  - (blind) `[low]` `[reject]` the tone is stated twice (entry and `ZsToast`) — every call site passes the same tone; the harm is hypothetical and deriving one from the other is a refactor of the entry API.
+  - (blind) `[low]` `[reject]` a bare squash can say "into @" — carried: only when the destination is not in the shown layout; naming it needs a new read.
+  - (blind) `[low]` `[patch]` several message branches untested — added tests: revert without a new change ("Reverted ‹x›"), create without a revision and no `workingCopyChangeId` ("on @"), move without `to` falling back to `workingCopyChangeId`; the null-commit-id part carried false (`commitId` null only for `notStale`).
+  - (blind) `[low]` `[reject]` F6 is one-way and Esc in the toast does not dismiss it — the intent asks F6 into the toast and Tab between its buttons only; cycling and an Esc dismiss add behaviour and branches nobody asked for.
+  - (blind) `[low]` `[reject]` toast changes rebuild the whole shell — carried: a few rebuilds per operation.
+  - (blind) `[low]` `[patch]` doc lines over 120 columns — the one ASCII overlong line (`projects_window.dart` identifiers list, 134 chars) rewrapped; the other lines flagged are within 120 characters (byte counts inflated by `—`, `‹›`, `×`).
+  - (blind) `[low]` `[reject]` widgetbook samples duplicate the id spans and use a literal code — carried: catalogue-only.
+  - (blind) `[low]` `[reject]` `ZsToast` relies on `ZsGlass`'s default blur — passing `blur: ZsGlassBlur.regular` is refused by `avoid_redundant_argument_values` under `--fatal-infos` (tried, reverted); `zs_toast_test.dart` pins `ZsGlassBlur.regular`, so a changed default fails a test.
+  - (edge) `[false]` `[reject]` undo/redo throwing leaves an unhandled async error — `_execute` rethrows only programming errors (`StateError`, a closed handle; `graph_view_model.dart:577-581`); failing loudly there is correct.
+  - (edge) `[low]` `[reject]` busy/stale/nothingToUndo Undo gives no feedback — carried.
+  - (edge) `[low]` `[reject]` squash "into @" with an unknown destination — carried (same as the blind row).
+  - (edge) `[false]` `[reject]` empty id for a null commit id — carried.
+  - (edge) `[low]` `[reject]` `_OpenReportToast` didUpdateWidget — carried.
+  - (edge) `[false]` `[reject]` the report also shows for non-creation opens with warnings — the matrix row is `ProjectOpened` with warnings, which is what `_switchTo` reports.
+  - (verification-gap) `[low]` `[patch]` revert with no new change untested — test added (same fix as the blind row).
+  - (verification-gap) `[low]` `[patch]` the `@` fallback target untested — test added ("Created main on @").
+  - (verification-gap, other) `[low]` `[patch]` the Projects notice is dead UI and its doc contradicts — same doc fix as the blind row.
+  - (verification-gap, other) `[medium]` `[defer]` nothing in the app creates `GraphToasts` — carried, in `deferred`.
+  - (intent) `[medium]` `[defer]` graph and stale toasts at the library, not the app surface — carried, in `deferred`.
+  - (intent) `[medium]` `[defer]` no HomePage test of a graph-sourced toast or F6 — grouped with the production-wiring entry (10.12 mounts the graph and its test belongs there); already in `deferred`.
+  - (intent) `[false]` `[reject]` stale-recovery wording vs the matrix — carried: jj's own sentence, as the row asks.
+  - (intent) `[low]` `[reject]` "Nothing changed." and "Nothing redone…" lie outside the matrix — refinements for existing verbs from the previous pass; no new `GraphAction`, the Never list holds.
+  - (intent) `[medium]` `[defer]` the look is checked only by widget tests, no DS comparison — carried, in `deferred` (unverified).
+
 ## Design Notes
 
 - Why a host in the shell, not in the graph: the project window's slot takes toasts from several sources (graph outcomes, stale recovery, a creation's report, later 11.8's fetch/push and 11.9's timeline); `ShellToasts` is the one queue, sources only `show`. 10.12 wires `GraphToasts(model, vm.toasts)` when it mounts the graph; until then the catalogue mounts it.
@@ -182,6 +214,12 @@ deferred:
 - `flutter test` in `app` -- all passed except the 5 real-worker tests in `worker_project_repos_test.dart`, which refuse to run without `cargo make`'s pinned `XDG_CONFIG_HOME`; rerun with the Makefile.toml test env (`JJ_CONFIG`, `GIT_CONFIG_GLOBAL`, `JJ_USER`, `JJ_EMAIL`, `JJ_OP_*`, `ZANSHIN_LOG_DIR`, `XDG_CONFIG_HOME=target/test-xdg-config`) -- 33 passed. Includes `test/l10n/hard_coded_strings_test.dart` and `test/widgetbook/catalogue_smoke_test.dart`.
 - `dart analyze --fatal-infos` in both packages -- no issues. `dart format --set-exit-if-changed .` in both -- 0 changed.
 - Not run: cargo checks (no Rust changed), `cargo make codegen` (no FFI/schema change), the parity oracle (no jj verb changed), the full gate and coverage (the loop runs them), the Marionette visual check (deferred).
+
+**Verification notes (2026-11-01, follow-up review, same gate rule):**
+- `flutter test test/features/graph/graph_toasts_test.dart test/features/projects/projects_window_test.dart test/features/projects/project_session_test.dart` in `app` -- 133 passed (incl. the 3 new branch assertions).
+- `flutter test test/controls/zs_toast_test.dart` in `packages/zanshin_ui` -- 6 passed (file reverted to its committed state).
+- `dart analyze --fatal-infos app packages/zanshin_ui` -- no issues (an explicit `blur:` was tried and refused by `avoid_redundant_argument_values`, reverted). `dart format --set-exit-if-changed app packages/zanshin_ui` -- 0 changed.
+- Not run: cargo checks, codegen, parity oracle (no Rust/FFI/jj verb change), full gate and coverage (the loop runs them).
 
 ## Auto Run Result
 
@@ -209,5 +247,7 @@ Status: done. Commits: `e2da414d42f5d8c56d0c26e1e8cc1a0b2575a517` (code), plus t
 - **I1** -- fixed (`e2da414d`): the toast fades its glass through `ZsFade` only (`ShellToastView`; test "the glass fades through ZsFade, never an Opacity above it"); the rendered blur mid-fade is unchecked in a running window (deferred: catalogue visual check).
 - **I2** -- fixed (`e2da414d`): `ProjectSession.openReport` carries a creation's warnings, the project window shows "Opened ‹name›" with warn clauses (at mount or on arrival, once), and the coordinator always closes Projects (the keep-and-bring-forward branch and its 2 s timeout are gone).
 - **I3** -- partly done (`e2da414d`): the result toast (jj's three sentences, no Undo) and the failure's error toast with Retry (`jj workspace update-stale`) are built and tested in `GraphToasts`; left: they reach the running app only when 10.12 mounts the graph and creates `GraphToasts` in the project window (deferred, Surfaced in Story 10.23).
+
+**Follow-up review (2026-11-01).** 28 findings (medium 5, low 18, false 5): patched 3 low entries -- tests for the untested `_text` branches (revert without a new change, "on @", move falling back to `workingCopyChangeId`) in `app/test/features/graph/graph_toasts_test.dart`; the Projects class doc now says the notice shows only while Projects stays open (`app/lib/src/features/projects/projects_window.dart`); the overlong identifiers doc line rewrapped. Deferred: nothing new (the medium entries are the existing production-wiring and visual-check items). Rejected with reasons in the triage log. Patched by verdict: high 0, medium 0, low 3. Follow-up review recommendation: false (no high patched; converged).
 
 **Residual risks.** No production caller of `GraphToasts` until 10.12; ⌘Z/⇧⌘Z are 11.13's; texts for drops, split, commit, duplicate, push ("Undoing a push…") and `op abandon` come with those verbs' stories; every graph error is a warn-tone refusal (the error tone first appears with 11.8's fetch).

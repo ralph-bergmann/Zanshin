@@ -48,7 +48,8 @@ final _log = Logger('zanshin.projects');
 /// registered (canonical path) and opened; a Git repository gets the offer to convert it (`jj git init --colocate`), a
 /// plain folder the offer to create one (`jj git init --no-colocate`), a folder inside a repository the offer to add
 /// that repository — sheets (`ZsConfirmDialog`, tone standard) showing the exact command; Cancel changes nothing. A
-/// creation's warnings show verbatim in the notice under the header. New projects land in the selected group, else at
+/// creation's warnings show verbatim in the notice under the header while the window stays open (the project window
+/// shows them as its toast once it opens). New projects land in the selected group, else at
 /// the top level (Claude's proposal); a drop lands where `tree_drop.dart` places it. Several dropped folders register
 /// their jj workspaces without opening them and skip what the list holds; one dropped folder opens.
 ///
@@ -62,8 +63,8 @@ final _log = Logger('zanshin.projects');
 ///
 /// Every successful open reaches [onOpened] (11.12's window coordinator closes the `projects` dialog window there; a
 /// creation's warnings show in the project window's toast, Story 10.23). The identity is read again whenever the window
-/// becomes key. Identifiers: `projects-window` (also the root's key), `projects-search`, `projects-add-directory`, `projects-clone`,
-/// `projects-new-group`, `projects-settings`, `projects-identity-settings`, `projects-notice`, `projects-offer`,
+/// becomes key. Identifiers: `projects-window` (also the root's key), `projects-search`, `projects-add-directory`,
+/// `projects-clone`, `projects-new-group`, `projects-settings`, `projects-identity-settings`, `projects-notice`, `projects-offer`,
 /// `projects-clone-url`, `projects-clone-destination`, `projects-clone-choose`, `projects-clone-submit`,
 /// `projects-clone-cancel`, `projects-drop-hint`, and the tree's.
 class ProjectsWindow extends StatefulWidget {
