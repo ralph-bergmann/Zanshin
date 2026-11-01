@@ -5,7 +5,7 @@ created: '2026-11-01'
 status: 'done'
 baseline_revision: '40c6371fe73b93e7143011160a6270c09b2d0837'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
   - '{project-root}/_bmad-output/project-context.md'
@@ -149,6 +149,43 @@ deferred:
   - `[false]` `[reject]` "ask first, then close with the project window" ordering untested — the existing coordinator test "a close guard that refuses keeps the project and the window" covers it.
   - `[false]` `[reject]` guarding `initRepo`/`convert`/`clone` is wider than I1 — each switches away from the open project, the epic's "a project switch"; scope consistent, not a defect.
 
+### 2026-11-01 — Review pass (follow-up)
+- verdicts: 28 findings — high 0, medium 1, low 17, false 8, maybe-false 2 (27 from the four layers plus the follow-up focus check the previous pass named)
+- findings:
+  - Follow-up focus check (the previous pass's named risk):
+  - `[medium]` `[patch]` ↩ = OK was unreachable in practice and could change the selection — the window opens with focus on the selected entry, a click selects without moving the focus, and the entry's own ↩ shortcut re-selected the focused entry (open, click c2, ↩ → selects `jj log`, no OK); only a programmatic root focus reached OK. The entries now take Space only, so ↩ goes on to the window's OK with the clicked selection (revset_configs_window.dart `_ListItemState._keys`); tests: Tab to an entry + ↩ runs OK with the selected (not focused) entry, click another entry + ↩ shows the clicked one.
+  - Blind Hunter:
+  - `[false]` `[reject]` "N of M" compares two revsets — carried: M is `GraphViewModel.total` = the `all()` count (backend_graph_layout.dart:56).
+  - `[false]` `[reject]` the project-switch guard is unnecessary for global edits — carried: the epic's design update ("Leaving") and I1 name the switch; the survive-a-switch test covers the window following the graph, the guard covers the switch question; no contradiction.
+  - `[low]` `[reject]` a failed save is silent and the draft becomes clean — carried: `SettingsStore.update` keeps the value in memory on a failed write, the `GraphPreferences._write` pattern.
+  - `[low]` `[reject]` an unknown enum value breaks the whole settings file — carried: hand-edited / downgraded settings, not an everyday path; the fix is new decoding policy.
+  - `[false]` `[reject]` the copied command depends on the directory (`cwd:`/`file:`/`glob:`) — the intent prescribes `files(cwd:"v" | file:"v" | glob:"v")` (DS `exprOf`), and the GUI evaluates from the workspace root as `jj log` in the root does.
+  - `[low]` `[reject]` OK saves and shows a revset already known to fail — the design has no warn-before-OK step; the graph shows jj's error state and the menu row reads "Fails: …"; a confirmation adds a flow the intent does not ask for.
+  - `[false]` `[reject]` rule value fields and `Aa` have no VoiceOver name — `ZsTextField` names itself by its placeholder when `label` is null (zs_text_field.dart:563), and a Zs control inside `ZsTooltip` takes the tooltip text into its own node (zs_tooltip.dart:49).
+  - `[low]` `[reject]` blank-with-spaces names and duplicate names — not everyday; trimming/uniqueness is new validation policy.
+  - `[low]` `[patch]` "in menu order" doc comments ignore that the default leads the menu — `RevsetConfigsDraft.configs` and `GraphSettings.revsetConfigs` now say so (freezed output regenerated).
+  - `[low]` `[reject]` `show()` reloads an unchanged view — pre-existing 10.21 behaviour (`showDefault`/`showAll` always called `setRevset`); a dedupe guard adds a branch for a rare re-pick.
+  - `[low]` `[reject]` `build()` calls `wantCounts` — carried: idempotent per (op, expression).
+  - `[low]` `[reject]` "Copied" shows before `Clipboard.setData` completes — a failing clipboard write is not an everyday case; awaiting adds async state to a 1.2 s label.
+  - Edge Case Hunter:
+  - `[low]` `[reject]` Discard, then the open/creation fails — carried: asking after a creation would leave a created-but-unopened project on Cancel; `open` already asks after detection.
+  - `[low]` `[reject]` hand-edited ids `log`/`all`/duplicates — carried.
+  - `[low]` `[reject]` a hand-edited mode from the other family — carried.
+  - `[low]` `[reject]` a failed save keeps the window clean — carried (same as the Blind Hunter save row).
+  - `[maybe-false]` `[reject]` Apply while the search menu popup is open leaves a stale row — would need a check that the popup survives the project window losing focus to the Configurations window; if true only low (a stale row until the menu reopens).
+  - Verification Gap:
+  - `[low]` `[patch]` a default-only change redrawing a graph on the default search is unpinned — controller test "a change of only the default search redraws … once" (`['L', 'author(substring:"lena")']`).
+  - `[low]` `[patch]` a failing configuration's "Fails:" menu row is untested — field test "with a shown configuration failing, its row reads jj's message", scoped to `graph-search-menu-config-c1`.
+  - `[low]` `[reject]` the `mayLeave` wiring in `_startApp` is untested — carried: boot code no test reaches.
+  - Intent Alignment:
+  - `[false]` `[reject]` the rule fold lives in the app, not `zanshin_core` — the core gained the builder extension (committer/subject/not/join, `all()` for none); the fold reads a `zanshin_settings` type, which `zanshin_core` does not depend on.
+  - `[low]` `[patch]` the Revset reference host differs from the intent's literal URL — carried: deliberately derived from `jjDocumentationUrl` in the first pass.
+  - `[low]` `[reject]` the leaving guards are tested at the seams, not ⌘Q/Open Recent — carried.
+  - `[false]` `[reject]` the Apply redraw lives in the settings listener — Apply's write is what triggers it, with exactly one request, as the window test counts.
+  - `[maybe-false]` `[reject]` "Esc in an open Select closes only its list" has no code in the diff — `ZsMenuPanel` handles Esc itself and returns handled (zs_menu.dart:818); whether the key reaches the panel before the window's root would need a widget test; if not, Esc cancels (asking first when dirty), so only low.
+  - `[false]` `[reject]` "Discard changes" not destructive — `ZsConfirmDialog.tone` defaults to `ZsConfirmTone.destructive` (zs_confirm_dialog.dart:50).
+  - `[false]` `[reject]` "Copied" for 1.2 s unverified — `durCopied` is 1200 ms (zs_motion.dart:54).
+
 ## Design Notes
 
 - The default search stays a symbolic view (`GraphDefaultSearch`); its revset is resolved at request time from the store, so changing the default redraws only repositories showing the default (and only through the current project's controller).
@@ -174,6 +211,13 @@ deferred:
 - `dart analyze --fatal-infos .` -- no issues in app (incl. widgetbook), zanshin_core, zanshin_settings; `dart format --set-exit-if-changed -o none .` -- 0 changed in all three.
 - Not run: cargo test/clippy/fmt (no Rust changed), `cargo make codegen` (no FFI or schema change), the parity oracle (no jj verb changed), the full gate and coverage (the loop runs them once at its end), the Marionette visual check (deferred).
 - Without the env pins, 5 real-worker tests in `worker_project_repos_test.dart` fail with "XDG_CONFIG_HOME is not pinned" — environment, not this change.
+
+**Verification notes (follow-up review pass, 2026-11-01, same gate rule and env pins):**
+- `dart run build_runner build` (packages/zanshin_settings) -- regenerated `graph_settings.freezed.dart` for the doc-comment change.
+- `flutter test test/features test/widgetbook test/l10n test/app` (app, env pinned) -- 1697 passed (1694 + 3 new). An unpinned run first failed the 5 known real-worker tests plus the window's restart test; with the pins all pass, and the window test file passes alone unpinned (19 tests).
+- `flutter test` (packages/zanshin_settings) -- 40 passed.
+- `dart analyze --fatal-infos app packages/zanshin_settings` -- no issues; `dart format --set-exit-if-changed -o none app packages/zanshin_settings` -- 0 changed.
+- Not run: zanshin_core tests (untouched), cargo checks/codegen/parity oracle (no Rust, FFI or jj verb change), the full gate and coverage (the loop runs them at its end), the Marionette visual check (still deferred).
 
 ## Auto Run Result
 
@@ -206,3 +250,22 @@ Status: done (commit b6e2093950abebcc25d2f794b1b0ac045dd0f4d9; review patches in
 - No visual check against the DS RevsetDialog cards (deferred).
 - `Aa` sits beside the value field rather than inside it; the `~ not` chip has a 52 px minimum, so rule rows can shift slightly.
 - Hand-edited settings with unknown enum values or duplicate ids are not tolerated (rejected low).
+
+### Follow-up review pass (2026-11-01)
+
+**Summary.** The previous pass's named risk was real: the list entries' ↩ shortcut swallowed ↩ = OK, and because a click selects without moving the focus, ↩ after clicking another entry re-selected the entry that held the focus (the one selected at open) instead of running OK. The entries now take Space only; ↩ outside a text field reaches OK and shows the selected entry. Two verification gaps closed (a default-only change redraws the default search once; a failing configuration's menu row reads "Fails: …"), and the "menu order" doc comments now say the default leads the menu.
+
+**Files.**
+- `app/lib/src/features/graph/revset_configs/revset_configs_window.dart` -- list entries: Space selects, ↩ falls through to OK.
+- `app/lib/src/features/graph/revset_configs/revset_configs_draft.dart`, `packages/zanshin_settings/lib/src/model/graph_settings.dart` (+ regenerated freezed) -- doc comments.
+- `app/test/features/graph/revset_configs/revset_configs_window_test.dart` -- ↩ on a focused entry runs OK with the selected entry; click + ↩ shows the clicked entry.
+- `app/test/features/graph/graph_search_controller_test.dart`, `app/test/features/graph/graph_search_field_test.dart` -- the two gap witnesses.
+
+**Review.** 28 findings: 0 high, 1 medium, 17 low, 8 false, 2 maybe-false. Patched by verdict: 1 medium (↩ = OK on entries), 3 low (doc comments, two test gaps). Deferred: none. Rejected rows and their reasons are in the triage log (carried rows keep the first pass's verdicts).
+
+**Follow-up review: not recommended.** A follow-up pass patched no high; the work has converged.
+
+**Residual risks.**
+- ↩ while a text field holds the focus stays in the field; a click on empty window space does not move the focus out of it (the spec's "outside a text field"; macOS keeps field focus on such clicks too).
+- Esc inside an open Select is not witnessed by a test (maybe-false, low if true).
+- The visual DS check remains deferred.

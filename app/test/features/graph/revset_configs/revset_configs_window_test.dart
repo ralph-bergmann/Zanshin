@@ -472,8 +472,10 @@ void main() {
     expect(valueOf(tester, 'revset-configs-rule-1-value'), 'lena');
   });
 
-  _testWindow('focus starts on the selected entry; Tab reaches the next one, Space selects it, ↩ there selects '
-      'rather than OK', (tester, rig) async {
+  _testWindow('focus starts on the selected entry; Tab reaches the next one, Space selects it, ↩ there runs OK', (
+    tester,
+    rig,
+  ) async {
     await rig.setUp(tester);
     Element focused() => FocusManager.instance.primaryFocus!.context! as Element;
     bool inEntry(String identifier) =>
@@ -491,9 +493,22 @@ void main() {
     await tester.pump();
     expect(inEntry('revset-configs-item-c1'), isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pump();
-    expect(rig.state.draft.selected, 'c1');
-    expect(rig.windows.closed, isEmpty, reason: '↩ on an entry selects it');
+    await rig.settle(tester);
+    expect(rig.windows.closed, <String>[revsetConfigsWindowKey], reason: '↩ on an entry is OK, not a selection');
+    expect(rig.search.view, const GraphAllView(), reason: 'OK shows the selected entry, not the focused one');
+  });
+
+  _testWindow('a click on another entry, then ↩: OK shows the clicked entry (the focus stayed where it was)', (
+    tester,
+    rig,
+  ) async {
+    await rig.setUp(tester);
+    await rig.tap(tester, 'revset-configs-item-c2');
+    expect(rig.state.draft.selected, 'c2');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await rig.settle(tester);
+    expect(rig.windows.closed, <String>[revsetConfigsWindowKey]);
+    expect(rig.search.view, const GraphConfigView('c2'));
   });
 
   _testWindow('↩ outside a text field runs OK: one request, the window closes', (tester, rig) async {

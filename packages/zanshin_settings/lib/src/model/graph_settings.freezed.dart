@@ -20,7 +20,7 @@ mixin _$GraphSettings {
  GraphLayoutSetting get layout;/// Detailed (62 px) or compact (40 px) cards; detailed by default.
  bool get detailedCards;/// Whether linear runs of changes collapse into stack cards; on by default.
  bool get groupStacks;/// The card width, 240 by default (160–400; the app clamps it where it uses it).
- double get cardWidth;/// The jj log configurations (Story 10.22), in search-menu order; global, not per repository.
+ double get cardWidth;/// The jj log configurations (Story 10.22), in search-menu order (the default search leads the menu, the rest keep this order); global, not per repository.
  List<RevsetConfiguration> get revsetConfigs;/// The default search: `log` (the built-in `jj log`), `all` (`all()`) or a [RevsetConfiguration.id]. An id no
 /// configuration has reads as `log` ([effectiveRevsetDefault]).
  String get revsetDefault;
@@ -238,9 +238,9 @@ class _GraphSettings extends GraphSettings {
 @override@JsonKey() final  bool groupStacks;
 /// The card width, 240 by default (160–400; the app clamps it where it uses it).
 @override@JsonKey() final  double cardWidth;
-/// The jj log configurations (Story 10.22), in search-menu order; global, not per repository.
+/// The jj log configurations (Story 10.22), in search-menu order (the default search leads the menu, the rest keep this order); global, not per repository.
  final  List<RevsetConfiguration> _revsetConfigs;
-/// The jj log configurations (Story 10.22), in search-menu order; global, not per repository.
+/// The jj log configurations (Story 10.22), in search-menu order (the default search leads the menu, the rest keep this order); global, not per repository.
 @override@JsonKey() List<RevsetConfiguration> get revsetConfigs {
   if (_revsetConfigs is EqualUnmodifiableListView) return _revsetConfigs;
   // ignore: implicit_dynamic_type

@@ -687,6 +687,46 @@ void main() {
       expect(rig.searchSource.bookmarkReads, 0, reason: 'nothing to pin the reads to: no loop of reads either');
     });
 
+    _testWidgets("Story 10.22: with a shown configuration failing, its row reads jj's message", (tester) async {
+      final rig = _Rig(
+        view: const GraphConfigView('c1'),
+        settings: ValueNotifier<AppSettings>(
+          const AppSettings(
+            graph: GraphSettings(
+              revsetConfigs: <RevsetConfiguration>[
+                RevsetConfiguration(
+                  id: 'c1',
+                  name: 'Mine',
+                  rules: <RevsetRule>[RevsetRule(fn: RevsetRuleFunction.mine)],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      rig.source.respond = (request) =>
+          throw const ZanshinFfiException('jj.revset_parse_error', 'Failed to parse revset');
+      _rigs.add(rig);
+      useShellWindow(tester);
+      await tester.pumpWidget(rig.host());
+      await tester.pump();
+      await tester.tap(_pill());
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.descendant(
+          of: find.bySemanticsIdentifier('graph-search-menu-config-c1'),
+          matching: find.text('Fails: Failed to parse revset'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: find.bySemanticsIdentifier('graph-search-menu-config-c1'), matching: find.text('mine()')),
+        findsNothing,
+        reason: 'the message replaces the expression in the row',
+      );
+    });
+
     _testWidgets('Enter during an input method composition commits it, not a row', (tester) async {
       final _Rig rig = await _start(tester);
       await tester.tap(_field());

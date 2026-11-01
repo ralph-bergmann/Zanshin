@@ -1155,10 +1155,9 @@ class _ListItemState extends State<_ListItem> {
   var _pressed = false;
   var _ring = false;
 
-  // ↩ and Space select the focused entry; ↩ never reaches the window's OK.
+  // Space selects the focused entry; ↩ goes on to the window's OK (a click selects without moving the focus, so a
+  // ↩ here must not re-select the focused entry).
   static const _keys = <ShortcutActivator, Intent>{
-    SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-    SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
     SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
   };
 

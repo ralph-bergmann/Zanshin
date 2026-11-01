@@ -32,7 +32,7 @@ abstract class GraphSettings with _$GraphSettings {
     /// The card width, 240 by default (160–400; the app clamps it where it uses it).
     @Default(240) double cardWidth,
 
-    /// The jj log configurations (Story 10.22), in search-menu order; global, not per repository.
+    /// The jj log configurations (Story 10.22), in search-menu order (the default search leads the menu, the rest keep this order); global, not per repository.
     @Default(<RevsetConfiguration>[]) List<RevsetConfiguration> revsetConfigs,
 
     /// The default search: `log` (the built-in `jj log`), `all` (`all()`) or a [RevsetConfiguration.id]. An id no

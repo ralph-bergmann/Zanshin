@@ -24,7 +24,7 @@ class RevsetConfigsDraft extends ChangeNotifier {
   String _home;
   String? _selected;
 
-  /// The configurations, in menu order.
+  /// The configurations, in menu order (the default search leads the menu, the rest keep this order).
   List<RevsetConfiguration> get configs => List<RevsetConfiguration>.unmodifiable(_configs);
 
   /// The default search: `log`, `all` or a configuration id.

@@ -172,6 +172,15 @@ void main() {
       ]);
     });
 
+    test('a change of only the default search redraws a graph that shows the default search, once', () async {
+      final ({GraphSearchController search, ValueNotifier<AppSettings> settings, ScriptedGraphSource source}) r =
+          await rig();
+      r.settings.value = r.settings.value.copyWith(graph: r.settings.value.graph.copyWith(revsetDefault: 'c2'));
+      await pumpEventQueue();
+      expect(r.search.view, GraphShownView.defaultSearch);
+      expect(r.source.requests.map((q) => q.revset), <String?>['L', 'author(substring:"lena")']);
+    });
+
     test('showSaving sends one request with what the save wrote', () async {
       final ({GraphSearchController search, ValueNotifier<AppSettings> settings, ScriptedGraphSource source}) r =
           await rig(view: const GraphConfigView('c2'));
