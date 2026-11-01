@@ -840,6 +840,7 @@ _Ralph re-downloaded the Claude Design export (`e243dd2`). It adds a study of hi
 - **10.20's limits are untested proposals.** Low.
   - The duration cap (1.5 s), the count limit (30 arriving cards in view) and the trigger set (every reload with a new operation, external `jj` included) were accepted without being tried on real data.
   - **Follow-up:** tune them in the demo host with the slow-motion switch when 10.20 is built.
+  - **2026-11-01, Story 10.20 (spec-10-20-graph-animations, commit 6d9b21e6): partly done.** The cap and the count limit are moot (dropped by the 2026-10-14 note: fixed durations); the trigger set is built and pinned by tests; Widgetbook Graph / Viewport / Operation hosts the TimeDilation tuning. Left: Ralph's by-eye tuning on real data.
 
 ## Surfaced in Story 4.10 (bmad-build-auto, 2026-09-30)
 
@@ -2487,3 +2488,12 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - ~~**Marker placement's vertical-strip lookup scans every vertical run of the x strip over the whole plane height, near the forbidden O(D·E) on a long one-lane history.**~~ — RESOLVED 2026-11-01 (spec-10-19-closing-gap-legend-stack-keys-vertical-index, commit 34ffbba): vertical runs indexed per x by top with a running max bottom (GraphVerticalRuns): 885 → 30 ms at 20k one-lane nodes, placement unchanged. Medium (unverified).
   - Router B's `verticalXs` tie in polyline order, so the scan cannot binary-search by y (`app/lib/src/features/graph/graph_gaps.dart:656-664`, `:679-685`, `shortcut:` comment).
   - **Follow-up:** time placement on a filtered revset over a long linear history; if slow, index each x's runs by y.
+
+## Surfaced in Story 10.20 (bmad-build-auto, 2026-11-01)
+
+- **A dropped change's glide from the drag ghost's rect, and the runner hints of verbs not built yet (rebase, insert, duplicate, split, commit), are missing from the graph animations.** Low.
+  - The 2026-10-14 note's drop origin needs 10.10; `GraphAction` has no such verbs, so `_plan`/`_succeeded` (`app/lib/src/features/graph/graph_view_model.dart`) give them no anchor, flash or born key.
+  - **Follow-up:** 10.10 passes the ghost rect into `GraphTransition` and 10.10/10.25 add each new verb's anchor/flash/born mapping in `_plan`/`_succeeded`.
+- **The graph animations were not checked in the running app or the Widgetbook catalogue.** Low.
+  - Unattended run: the timings are witnessed by widget tests only (`app/test/features/graph/graph_transition_test.dart`); Graph / Viewport / Operation (`app/widgetbook/folders/graph.dart`) was not looked at.
+  - **Follow-up:** a Marionette check of Graph / Viewport / Operation (TimeDilation ×5) and of a real `jj new` / abandon / undo in the app.
