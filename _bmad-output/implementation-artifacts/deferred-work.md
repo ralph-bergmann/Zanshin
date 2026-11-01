@@ -2478,12 +2478,12 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in the follow-up review of Story 10.19 (bmad-build-auto, 2026-11-01)
 
-- **The gap legend popover hangs 320 px right of the chip's left edge with no clamp and may be clipped at the window's right edge.** Medium (unverified).
+- ~~**The gap legend popover hangs 320 px right of the chip's left edge with no clamp and may be clipped at the window's right edge.**~~ — RESOLVED 2026-11-01 (spec-10-19-closing-gap-legend-stack-keys-vertical-index, commit 34ffbba): the popover shifts left to stay 8 px inside the window like View options; checked in the real FloatingShell rig at 1041 px. Medium (unverified).
   - `CompositedTransformFollower(targetAnchor: Alignment.bottomLeft)` with no flip or clamp (`app/lib/src/features/graph/graph_gap_legend.dart:180`), unlike the View options popover; the design anchors it `left:0` too (`design/graph.css:337`).
   - **Follow-up:** check the chip's position in the floating shell at 1041+ px; if it clips, right-align or clamp the popover inside the window like View options.
-- **A gap whose child or target is a collapsed stack hands `stack:` keys to "Show in all()", which may miss in the `all()` layout and leave the flash empty.** Medium (unverified).
+- ~~**A gap whose child or target is a collapsed stack hands `stack:` keys to "Show in all()", which may miss in the `all()` layout and leave the flash empty.**~~ — RESOLVED 2026-11-01 (spec-10-19-closing-gap-legend-stack-keys-vertical-index, commit 34ffbba): Show in all() passes member keys (oldest member of a stacked child, newest of a stacked target), found via placeOfKey; a test flashes h1 where the old code flashed nothing. Medium (unverified).
   - `_showGap` passes `layout.keyOf(...)` of the folded card (`app/lib/src/features/graph/graph_canvas.dart:725-727`); `_gapLanding` looks targets up by key in the new layout (`graph_view_model.dart:419`).
   - **Follow-up:** a view-model case where a target stack changes its oldest member in `all()`; if the flash is empty, pass member keys (the edge's entry member) instead of the stack key.
-- **Marker placement's vertical-strip lookup scans every vertical run of the x strip over the whole plane height, near the forbidden O(D·E) on a long one-lane history.** Medium (unverified).
+- ~~**Marker placement's vertical-strip lookup scans every vertical run of the x strip over the whole plane height, near the forbidden O(D·E) on a long one-lane history.**~~ — RESOLVED 2026-11-01 (spec-10-19-closing-gap-legend-stack-keys-vertical-index, commit 34ffbba): vertical runs indexed per x by top with a running max bottom (GraphVerticalRuns): 885 → 30 ms at 20k one-lane nodes, placement unchanged. Medium (unverified).
   - Router B's `verticalXs` tie in polyline order, so the scan cannot binary-search by y (`app/lib/src/features/graph/graph_gaps.dart:656-664`, `:679-685`, `shortcut:` comment).
   - **Follow-up:** time placement on a filtered revset over a long linear history; if slow, index each x's runs by y.

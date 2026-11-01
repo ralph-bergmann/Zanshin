@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_gap_legend.dart:180
     severity: medium (unverified)
+    resolved: >-
+      2026-11-01 — fixed (spec-10-19-closing-gap-legend-stack-keys-vertical-index, commit 34ffbba): popover clamped 8 px inside the window.
   - summary: >-
       A gap whose child or target is a collapsed stack hands stack keys to Show in all(), which may miss in the all() layout and leave the flash empty.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_canvas.dart:725-727; graph_view_model.dart:419
     severity: medium (unverified)
+    resolved: >-
+      2026-11-01 — fixed (spec-10-19-closing-gap-legend-stack-keys-vertical-index, commit 34ffbba): member keys instead of stack keys.
   - summary: >-
       Marker placement's vertical-strip lookup scans every vertical run of the x strip over the whole plane height, near the forbidden O(D·E) on a long one-lane history.
     evidence: |-
@@ -32,6 +36,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_gaps.dart:656-664, 679-685
     severity: medium (unverified)
+    resolved: >-
+      2026-11-01 — fixed (spec-10-19-closing-gap-legend-stack-keys-vertical-index, commit 34ffbba): per-x index of runs by top (GraphVerticalRuns).
 ---
 
 <intent-contract>
