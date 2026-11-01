@@ -1520,11 +1520,101 @@ abstract class AppLocalizations {
   /// **'Squash into parent'**
   String get inspectorSquash;
 
-  /// Why Squash into parent is disabled when jj would run it: it ships with a later feature.
+  /// The describe form in squash mode: runs jj squash with the combined description as edited.
   ///
   /// In en, this message translates to:
-  /// **'Comes with the commit composer'**
-  String get inspectorSquashLater;
+  /// **'Squash'**
+  String get inspectorSquashConfirm;
+
+  /// The Changes header's checkbox: checks every file for the composer.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all'**
+  String get inspectorSelectAll;
+
+  /// The Changes header's checkbox while every file is checked: unchecks them all.
+  ///
+  /// In en, this message translates to:
+  /// **'Deselect all'**
+  String get inspectorDeselectAll;
+
+  /// Composer on the working copy: runs jj commit with the checked files.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit'**
+  String get inspectorCommit;
+
+  /// Composer on another change: runs jj split with the checked files.
+  ///
+  /// In en, this message translates to:
+  /// **'Split'**
+  String get inspectorSplit;
+
+  /// Composer on the working copy: the placeholder of the new commit's first line.
+  ///
+  /// In en, this message translates to:
+  /// **'Summary of what you did'**
+  String get inspectorComposerSummaryAt;
+
+  /// Composer on another change: the placeholder of the selected part's first line.
+  ///
+  /// In en, this message translates to:
+  /// **'Summary of the selected changes'**
+  String get inspectorComposerSummarySplit;
+
+  /// Composer result preview on the working copy: the new @ that keeps the unchecked files.
+  ///
+  /// In en, this message translates to:
+  /// **'New working copy'**
+  String get inspectorComposerNewWorkingCopy;
+
+  /// Composer result preview: what the new working copy is for.
+  ///
+  /// In en, this message translates to:
+  /// **'stays here to keep working'**
+  String get inspectorComposerStays;
+
+  /// Composer result preview on another change: the part that keeps the unchecked files.
+  ///
+  /// In en, this message translates to:
+  /// **'Rest'**
+  String get inspectorComposerRest;
+
+  /// Composer result preview: the rest keeps the change's description.
+  ///
+  /// In en, this message translates to:
+  /// **'keeps “{subject}”'**
+  String inspectorComposerKeeps(String subject);
+
+  /// Composer result preview: the part with the checked files.
+  ///
+  /// In en, this message translates to:
+  /// **'Selected'**
+  String get inspectorComposerSelected;
+
+  /// Composer result preview: a part without files.
+  ///
+  /// In en, this message translates to:
+  /// **'empty'**
+  String get inspectorComposerEmpty;
+
+  /// Composer result preview: no file is checked.
+  ///
+  /// In en, this message translates to:
+  /// **'nothing yet'**
+  String get inspectorComposerNothingYet;
+
+  /// Composer result preview: the summary field is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'no description yet'**
+  String get inspectorComposerNoDescription;
+
+  /// Composer result preview: the selected part's summary, quoted.
+  ///
+  /// In en, this message translates to:
+  /// **'“{summary}”'**
+  String inspectorComposerMessage(String summary);
 
   /// Inspector action: jj abandon, with no confirmation.
   ///
@@ -1699,6 +1789,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Squashed {source} into {destination}'**
   String toastSquashed(String source, String destination);
+
+  /// Operation toast after jj commit: change is the committed change id, subject its first line.
+  ///
+  /// In en, this message translates to:
+  /// **'Committed {change} · “{subject}”'**
+  String toastCommitted(String change, String subject);
+
+  /// Operation toast after jj commit without a description.
+  ///
+  /// In en, this message translates to:
+  /// **'Committed {change}'**
+  String toastCommittedAlone(String change);
+
+  /// Operation toast after jj split: change kept the selected files, the new change rest holds the others.
+  ///
+  /// In en, this message translates to:
+  /// **'Split {change} — the rest is now {rest}'**
+  String toastSplit(String change, String rest);
+
+  /// Operation toast after jj split when jj reported no new change.
+  ///
+  /// In en, this message translates to:
+  /// **'Split {change}'**
+  String toastSplitAlone(String change);
 
   /// Operation toast after jj bookmark create; names are bookmark names, target a change id.
   ///
@@ -1993,6 +2107,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Squash {target} into Parent'**
   String menuSquashTarget(String target);
+
+  /// Undo/Redo menu name of a jj commit; target is the committed change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit {target}'**
+  String menuCommitTarget(String target);
+
+  /// Undo/Redo menu name of a jj split; target is the split change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Split {target}'**
+  String menuSplitTarget(String target);
 
   /// Change menu: jj revert, without a target to name.
   ///

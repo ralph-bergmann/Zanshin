@@ -769,7 +769,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
         return (anchor: <String>[...parents, ...insertAfter, ...insertBefore].firstOrNull, destination: null);
       case GraphAbandon(:final ids):
         return (anchor: _firstParent(ids.firstOrNull), destination: null);
-      case GraphRevert(:final id):
+      case GraphRevert(:final id) || GraphCommit(:final id) || GraphSplit(:final id):
         return (anchor: id, destination: null);
       case GraphSquash(:final revision, :final from, :final into):
         final GraphLayout? layout = _layout;
@@ -812,6 +812,11 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
         if (born != null && selected != null) {
           _selected = born;
         }
+      case GraphCommit(:final id):
+        // The new @ is the working change now: the inspector follows it.
+        if (born != null && selected == id) {
+          _selected = born;
+        }
       case GraphAbandon():
         _selected = null;
       case GraphSquash():
@@ -821,7 +826,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       default:
         break;
     }
-    if (born != null && (action is GraphNew || action is GraphRevert)) {
+    if (born != null && (action is GraphNew || action is GraphRevert || action is GraphCommit)) {
       _explicit = (key: born, alignment: GraphRevealAlignment.covered);
     }
     final outcome = GraphOutcome(
@@ -832,6 +837,8 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       flash: <String>[
         if (action is GraphSquash) ?plan.destination,
         if (action is GraphBookmarkMove) ?action.to,
+        if (action is GraphCommit) action.id,
+        if (action is GraphSplit) action.id,
       ],
     );
     switch (action) {

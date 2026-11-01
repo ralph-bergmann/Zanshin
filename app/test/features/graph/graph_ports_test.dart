@@ -262,6 +262,65 @@ void main() {
       expect((await repo.handle.status()).workingCopyChangeId, second);
     });
 
+    List<String> filesOf(ShowEntry entry) => <String>[for (final FileChange f in entry.fileChanges) f.path];
+
+    test('Story 10.25: commit of one of two files leaves the other in the new @', () async {
+      final (ProjectRepo repo, GraphViewModel model, _, String second) = await setUpRepo('commit');
+      File('${pathOf('commit')}/b.txt').writeAsStringSync('b\n');
+      File('${pathOf('commit')}/c.txt').writeAsStringSync('c\n');
+      await repo.handle.show(revset: second);
+      final GraphActionResult result = await model.run(
+        GraphCommit(second, message: const <String>['Fix', 'Body'], paths: const <String>['b.txt']),
+      );
+      final String born = (result as GraphActionDone).outcome.born.single;
+      expect((await repo.handle.status()).workingCopyChangeId, born);
+      final ShowEntry committed = (await repo.handle.show(revset: second)).single;
+      expect(committed.change.description, 'Fix\n\nBody\n');
+      expect(filesOf(committed), <String>['b.txt']);
+      expect(filesOf((await repo.handle.show(revset: born)).single), <String>['c.txt']);
+    });
+
+    test('Story 10.25: split through the runner keeps the selected files on the change, the rest on a new @', () async {
+      final (ProjectRepo repo, GraphViewModel model, _, String second) = await setUpRepo('split');
+      File('${pathOf('split')}/b.txt').writeAsStringSync('b\n');
+      File('${pathOf('split')}/c.txt').writeAsStringSync('c\n');
+      // `show` snapshots the new files into @ first, as the inspector's read does.
+      await repo.handle.show(revset: second);
+      final GraphActionResult result = await model.run(
+        GraphSplit(second, message: const <String>['Part'], paths: const <String>['b.txt']),
+      );
+      final String rest = (result as GraphActionDone).outcome.born.single;
+      final ShowEntry selected = (await repo.handle.show(revset: second)).single;
+      expect(selected.change.description, 'Part\n');
+      expect(filesOf(selected), <String>['b.txt']);
+      expect(filesOf((await repo.handle.show(revset: rest)).single), <String>['c.txt']);
+      expect((await repo.handle.status()).workingCopyChangeId, rest, reason: '@ ends on the remaining commit');
+    });
+
+    test("Story 10.25: split selecting every path carries jj's split-all-selected warning", () async {
+      final (ProjectRepo repo, GraphViewModel model, _, String second) = await setUpRepo('split-all');
+      File('${pathOf('split-all')}/b.txt').writeAsStringSync('b\n');
+      await repo.handle.show(revset: second);
+      final GraphActionResult result = await model.run(
+        GraphSplit(second, message: const <String>['All'], paths: const <String>['b.txt']),
+      );
+      expect(
+        (result as GraphActionDone).outcome.warnings.map((w) => w.code),
+        contains(ZanshinWarningCode.splitAllSelected),
+      );
+    });
+
+    test('Story 10.25: squashPlan combines two descriptions; an undescribed child asks nothing', () async {
+      final (ProjectRepo repo, _, String first, String second) = await setUpRepo('squash-plan');
+      File('${pathOf('squash-plan')}/b.txt').writeAsStringSync('b\n');
+      await repo.handle.describe(changeId: first, description: 'parent text\n');
+      final details = RepoGraphDetails(repo);
+      expect((await details.squashPlan(second)).combinedDescription, isNull);
+      await repo.handle.describe(changeId: second, description: 'child text\n');
+      final String? combined = (await details.squashPlan(second)).combinedDescription;
+      expect(combined, allOf(contains('parent text'), contains('child text')));
+    });
+
     test('new with no target sits on @ (the CLI default)', () async {
       final (ProjectRepo repo, GraphViewModel model, _, String second) = await setUpRepo('new-at');
       final GraphActionResult result = await model.run(const GraphNew());
@@ -465,6 +524,33 @@ void main() {
         GraphDescribe.fromParagraphs('k', const <String>['C described', 'Details']).description,
         'C described\n\nDetails\n',
       );
+    });
+
+    test('Story 10.25: commit and split, an empty summary as -m \'\', paths as root: filesets', () {
+      expect(const GraphCommit('w', message: <String>['']).command, "jj commit -m ''");
+      expect(
+        const GraphCommit('w', message: <String>['Fix', 'Body'], paths: <String>['a.txt']).command,
+        'jj commit -m Fix -m Body root:a.txt',
+      );
+      expect(
+        const GraphCommit('w', message: <String>['Fix'], paths: <String>['a[1].txt']).command,
+        'jj commit -m Fix \'root:"a[1].txt"\'',
+      );
+      expect(
+        const GraphSplit(
+          'kmnvxoqpzz',
+          message: <String>['Part'],
+          paths: <String>['a.txt', 'b c'],
+          shown: 'kmnvxoqp',
+        ).command,
+        'jj split -r kmnvxoqp -m Part root:a.txt \'root:"b c"\'',
+      );
+      expect(
+        const GraphSplit('k', message: <String>[''], paths: <String>['a.txt']).command,
+        "jj split -r k -m '' root:a.txt",
+      );
+      expect(const GraphCommit('w', message: <String>['']).pendingKeys, <String>{'w'});
+      expect(const GraphSplit('k', message: <String>[''], paths: <String>['a']).pendingKeys, <String>{'k'});
     });
 
     test('pending keys are the changes the action names', () {

@@ -239,7 +239,7 @@ class _Rig {
   );
 
   /// Binds a graph of `_wc` (@) over `_mid` over `_base`.
-  Future<void> bindGraph(WidgetTester tester) async {
+  Future<void> bindGraph(WidgetTester tester, {ValueChanged<String>? squash}) async {
     final ScriptedGraphSource source = this.source = ScriptedGraphSource(
       respond: (_) => keysLayout(<String>[_wc, _mid, _base], at: _wc),
     );
@@ -250,6 +250,7 @@ class _Rig {
       model: model,
       preferences: preferences,
       focusSearch: () => searches++,
+      squash: squash,
     );
     await tester.pump();
   }
@@ -417,6 +418,21 @@ void main() {
     rig.unbindGraph();
   });
 
+  testWidgets('Squash into Parent goes through the bound squash callback (the inspector) when there is one', (
+    tester,
+  ) async {
+    final rig = _Rig();
+    await rig.setUp(tester);
+    final squashed = <String>[];
+    await rig.bindGraph(tester, squash: squashed.add);
+    rig.model!.select(_mid);
+    rig.select('Squash kmnvxoqp into Parent');
+    await tester.pump();
+    expect(squashed, <String>[_mid]);
+    expect(rig.graphActions!.ran, isEmpty);
+    rig.unbindGraph();
+  });
+
   testWidgets('a selection: the Change items name its id, Go › Selection, Parent and Child are enabled', (
     tester,
   ) async {
@@ -469,6 +485,24 @@ void main() {
     expect(
       AppMenuModel.actionName(s, model, const GraphUndo(GraphBookmarkUntrack('main', 'origin'))),
       'Untrack main@origin',
+    );
+  });
+
+  test('Undo and Redo name Commit / Split by the change (Story 10.25)', () {
+    final model = GraphViewModel();
+    addTearDown(model.dispose);
+    final AppLocalizations s = platformStrings();
+    expect(
+      AppMenuModel.actionName(s, model, const GraphCommit('kmnvxoqpzzzz', message: <String>['Fix'])),
+      'Commit kmnvxoqp',
+    );
+    expect(
+      AppMenuModel.actionName(s, model, const GraphSplit('kmnvxoqpzzzz', message: <String>[''], paths: <String>['a'])),
+      'Split kmnvxoqp',
+    );
+    expect(
+      AppMenuModel.actionName(s, model, const GraphRedo(GraphCommit('kmnvxoqpzzzz', message: <String>['']))),
+      'Commit kmnvxoqp',
     );
   });
 

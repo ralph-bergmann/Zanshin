@@ -337,6 +337,61 @@ final class GraphSquash extends GraphAction {
   Set<String> get pendingKeys => <String>{?revision, ...from, ?into};
 }
 
+/// `jj commit -m <paragraph>… [root:<path>…]` (Story 10.25): commits @ — the CLI takes no revision — with [paths]
+/// (empty: everything), its description the `-m` [message] paragraphs.
+final class GraphCommit extends GraphAction {
+  /// Commits [paths] of @, whose key is [id].
+  const GraphCommit(this.id, {required this.message, this.paths = const <String>[]});
+
+  /// @'s key: the anchor and the pending card, not part of [command].
+  final String id;
+
+  /// `-m`, one entry per paragraph.
+  final List<String> message;
+
+  /// Repo-relative path prefixes (`root:` filesets); empty = everything.
+  final List<String> paths;
+
+  @override
+  String get command => _jj(<String>[
+    'commit', // l10n-ignore: jj command
+    for (final paragraph in message) ..._message(paragraph),
+    for (final path in paths) 'root:${_filesetString(path)}', // l10n-ignore: jj command
+  ]);
+
+  @override
+  Set<String> get pendingKeys => <String>{id};
+}
+
+/// `jj split -r <id> -m <paragraph>… root:<path>…` (Story 10.25): [paths] go into the selected change, which keeps
+/// the change id; the rest becomes its child.
+final class GraphSplit extends GraphAction {
+  /// Splits [paths] out of [id]; the command names it [shown] (the inspector's short id) when given.
+  const GraphSplit(this.id, {required this.message, required this.paths, this.shown});
+
+  /// The change to split.
+  final String id;
+
+  /// `-m`, one entry per paragraph.
+  final List<String> message;
+
+  /// Repo-relative path prefixes (`root:` filesets) of the selected part.
+  final List<String> paths;
+
+  /// The id [command] shows; null shows [id].
+  final String? shown;
+
+  @override
+  String get command => _jj(<String>[
+    'split', '-r', shown ?? id, // l10n-ignore: jj command
+    for (final paragraph in message) ..._message(paragraph),
+    for (final path in paths) 'root:${_filesetString(path)}', // l10n-ignore: jj command
+  ]);
+
+  @override
+  Set<String> get pendingKeys => <String>{id};
+}
+
 /// `jj bookmark create <names> [-r <revision>]` (`null` = @).
 final class GraphBookmarkCreate extends GraphAction {
   /// Creates [names] on [revision].
@@ -720,6 +775,8 @@ class RepoGraphActions implements GraphActions {
         keepEmptied: action.keepEmptied,
         editedDescription: action.editedDescription,
       ),
+      GraphCommit(:final message, :final paths) => handle.commit(message: message, paths: paths),
+      GraphSplit(:final id, :final message, :final paths) => _split(handle, id, message, paths),
       GraphBookmarkCreate(:final names, :final revision) => handle.bookmarkCreate(names, revision: revision),
       GraphBookmarkDelete() => handle.bookmarkDelete(action.patterns),
       GraphBookmarkMove(:final names, :final from, :final to, :final allowBackwards) => handle.bookmarkMove(
@@ -748,6 +805,20 @@ class RepoGraphActions implements GraphActions {
     return handle.revert(revisions: <String>[id], insertBefore: <String>[?at]);
   }
 
+  /// `jj split`: the split's mutation, carrying the call's warnings (the nested result has none).
+  static Future<MutationResult> _split(RepoHandle handle, String id, List<String> message, List<String> paths) async {
+    final SplitResult split = await handle.split(revision: id, paths: paths, message: message);
+    final MutationResult m = split.mutation;
+    return MutationResult(
+      newOpId: m.newOpId,
+      newChangeIds: m.newChangeIds,
+      abandonedChangeIds: m.abandonedChangeIds,
+      workingCopyChangeId: m.workingCopyChangeId,
+      finish: m.finish,
+      warnings: split.warnings,
+    );
+  }
+
   /// `jj new` (the CLI's default parent @): the handle needs @ passed explicitly, so it is read when the verb runs.
   static Future<MutationResult> _newOnAt(RepoHandle handle) async {
     final String? at = (await handle.status()).workingCopyChangeId;
@@ -769,6 +840,9 @@ abstract interface class GraphDetails {
   /// `jj diff -r <commitId>` as data (Story 10.24): [paths] limits it to those prefixes (empty: every path), [summary]
   /// drops the hunks but keeps the counts and fingerprints. A commit id reaches a hidden or divergent commit too.
   Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false});
+
+  /// What `jj squash -r <changeId>` would ask its editor for (Story 9.15): the combined description, or null.
+  Future<SquashPlan> squashPlan(String changeId);
 }
 
 /// [GraphDetails] over an open [ProjectRepo]'s handle.
@@ -787,6 +861,9 @@ class RepoGraphDetails implements GraphDetails {
   @override
   Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) =>
       _repo.handle.diff(revision: commitId, paths: paths, summary: summary);
+
+  @override
+  Future<SquashPlan> squashPlan(String changeId) => _repo.handle.squashPlan(revision: changeId);
 }
 
 /// [GraphSource] over an open [ProjectRepo] (`ProjectSession.repo`, Story 10.12): the worker's layout

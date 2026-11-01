@@ -583,8 +583,44 @@
   "@inspectorEdit": {"description": "Inspector action: jj edit, moving the working copy to the change."},
   "inspectorSquash": "Squash into parent",
   "@inspectorSquash": {"description": "Inspector action: jj squash -r, folding the change into its parent."},
-  "inspectorSquashLater": "Comes with the commit composer",
-  "@inspectorSquashLater": {"description": "Why Squash into parent is disabled when jj would run it: it ships with a later feature."},
+  "inspectorSquashConfirm": "Squash",
+  "@inspectorSquashConfirm": {"description": "The describe form in squash mode: runs jj squash with the combined description as edited."},
+  "inspectorSelectAll": "Select all",
+  "@inspectorSelectAll": {"description": "The Changes header's checkbox: checks every file for the composer."},
+  "inspectorDeselectAll": "Deselect all",
+  "@inspectorDeselectAll": {"description": "The Changes header's checkbox while every file is checked: unchecks them all."},
+  "inspectorCommit": "Commit",
+  "@inspectorCommit": {"description": "Composer on the working copy: runs jj commit with the checked files."},
+  "inspectorSplit": "Split",
+  "@inspectorSplit": {"description": "Composer on another change: runs jj split with the checked files."},
+  "inspectorComposerSummaryAt": "Summary of what you did",
+  "@inspectorComposerSummaryAt": {"description": "Composer on the working copy: the placeholder of the new commit's first line."},
+  "inspectorComposerSummarySplit": "Summary of the selected changes",
+  "@inspectorComposerSummarySplit": {"description": "Composer on another change: the placeholder of the selected part's first line."},
+  "inspectorComposerNewWorkingCopy": "New working copy",
+  "@inspectorComposerNewWorkingCopy": {"description": "Composer result preview on the working copy: the new @ that keeps the unchecked files."},
+  "inspectorComposerStays": "stays here to keep working",
+  "@inspectorComposerStays": {"description": "Composer result preview: what the new working copy is for."},
+  "inspectorComposerRest": "Rest",
+  "@inspectorComposerRest": {"description": "Composer result preview on another change: the part that keeps the unchecked files."},
+  "inspectorComposerKeeps": "keeps “{subject}”",
+  "@inspectorComposerKeeps": {
+    "description": "Composer result preview: the rest keeps the change's description.",
+    "placeholders": {"subject": {"type": "String", "example": "Fix the parser"}}
+  },
+  "inspectorComposerSelected": "Selected",
+  "@inspectorComposerSelected": {"description": "Composer result preview: the part with the checked files."},
+  "inspectorComposerEmpty": "empty",
+  "@inspectorComposerEmpty": {"description": "Composer result preview: a part without files."},
+  "inspectorComposerNothingYet": "nothing yet",
+  "@inspectorComposerNothingYet": {"description": "Composer result preview: no file is checked."},
+  "inspectorComposerNoDescription": "no description yet",
+  "@inspectorComposerNoDescription": {"description": "Composer result preview: the summary field is empty."},
+  "inspectorComposerMessage": "“{summary}”",
+  "@inspectorComposerMessage": {
+    "description": "Composer result preview: the selected part's summary, quoted.",
+    "placeholders": {"summary": {"type": "String", "example": "Fix the parser"}}
+  },
   "inspectorAbandon": "Abandon",
   "@inspectorAbandon": {"description": "Inspector action: jj abandon, with no confirmation."},
   "inspectorBusy": "Another action is running",
@@ -664,6 +700,26 @@
   "@toastSquashed": {
     "description": "Operation toast after jj squash; both are change ids.",
     "placeholders": {"source": {"type": "String", "example": "ovknlmro"}, "destination": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "toastCommitted": "Committed {change} · “{subject}”",
+  "@toastCommitted": {
+    "description": "Operation toast after jj commit: change is the committed change id, subject its first line.",
+    "placeholders": {"change": {"type": "String", "example": "ovknlmro"}, "subject": {"type": "String", "example": "Fix the parser"}}
+  },
+  "toastCommittedAlone": "Committed {change}",
+  "@toastCommittedAlone": {
+    "description": "Operation toast after jj commit without a description.",
+    "placeholders": {"change": {"type": "String", "example": "ovknlmro"}}
+  },
+  "toastSplit": "Split {change} — the rest is now {rest}",
+  "@toastSplit": {
+    "description": "Operation toast after jj split: change kept the selected files, the new change rest holds the others.",
+    "placeholders": {"change": {"type": "String", "example": "ovknlmro"}, "rest": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "toastSplitAlone": "Split {change}",
+  "@toastSplitAlone": {
+    "description": "Operation toast after jj split when jj reported no new change.",
+    "placeholders": {"change": {"type": "String", "example": "ovknlmro"}}
   },
   "toastBookmarkCreated": "Created {names} on {target}",
   "@toastBookmarkCreated": {
@@ -813,6 +869,16 @@
   "@menuSquashTarget": {
     "description": "Change menu: jj squash -r on the target; target is @ or the change id.",
     "placeholders": {"target": {"type": "String", "example": "@"}}
+  },
+  "menuCommitTarget": "Commit {target}",
+  "@menuCommitTarget": {
+    "description": "Undo/Redo menu name of a jj commit; target is the committed change id.",
+    "placeholders": {"target": {"type": "String", "example": "kmnvxoqp"}}
+  },
+  "menuSplitTarget": "Split {target}",
+  "@menuSplitTarget": {
+    "description": "Undo/Redo menu name of a jj split; target is the split change id.",
+    "placeholders": {"target": {"type": "String", "example": "kmnvxoqp"}}
   },
   "menuRevert": "Revert",
   "@menuRevert": {"description": "Change menu: jj revert, without a target to name."},

@@ -221,6 +221,20 @@ class _Details implements GraphDetails {
     return diffOf(changeId, paths: paths, summary: summary);
   }
 
+  /// Every `squashPlan` call's change id; [combined] is its answer, [refusePlan] its refusal.
+  final plans = <String>[];
+  String? combined;
+  ZanshinFfiException? refusePlan;
+
+  @override
+  Future<SquashPlan> squashPlan(String changeId) async {
+    plans.add(changeId);
+    if (refusePlan case final error?) {
+      throw error;
+    }
+    return SquashPlan(combinedDescription: combined);
+  }
+
   /// What [diff] answers for [changeId].
   Diff diffOf(String changeId, {List<String> paths = const [], bool summary = false}) {
     final List<FileDiff> files = fileDiffs[changeId] ?? const <FileDiff>[];
@@ -294,6 +308,9 @@ class _Actions implements GraphActions {
   /// While set, every run refuses with it.
   ZanshinFfiException? refuse;
 
+  /// The changes each run reports as new.
+  var born = const <String>[];
+
   @override
   Future<String> headOpId() async => 'op${ran.length}';
 
@@ -308,7 +325,7 @@ class _Actions implements GraphActions {
     }
     return MutationResult(
       newOpId: 'op${ran.length}',
-      newChangeIds: const <String>[],
+      newChangeIds: born,
       abandonedChangeIds: const <String>[],
       workingCopyChangeId: null,
       finish: null,
@@ -365,7 +382,12 @@ void main() {
 
   tearDown(() => dir.deleteSync(recursive: true));
 
-  Future<void> pump(WidgetTester tester, {String? select = _mutable, String repo = '/r/a'}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    String? select = _mutable,
+    String repo = '/r/a',
+    ZsAppearance appearance = const ZsAppearance(),
+  }) async {
     useShellWindow(tester);
     graph = GraphViewModel()..init(source, actions: actions, clock: () => DateTime.utc(2026, 10, 30, 12));
     inspector = InspectorViewModel(
@@ -380,6 +402,7 @@ void main() {
           alignment: Alignment.topRight,
           child: SizedBox(width: 460, height: 840, child: GraphInspector(model: inspector)),
         ),
+        appearance: appearance,
       ),
     );
     await tester.pump();
@@ -433,15 +456,13 @@ void main() {
     await unmount(tester);
   });
 
-  testWidgets('a mutable change: Edit, Squash into parent disabled, Abandon; tooltips are the commands', (
-    tester,
-  ) async {
+  testWidgets('a mutable change: Edit, Squash into parent, Abandon; tooltips are the commands', (tester) async {
     await pump(tester);
     expect(_tooltipOf(tester, 'inspector-edit'), 'jj edit mmmmmmmm');
     expect(tester.widget<ZsButton>(_button('inspector-edit')).variant, ZsButtonVariant.primary);
     expect(tester.widget<ZsButton>(_button('inspector-edit')).icon, ZI.workingCopyAt);
-    expect(_tooltipOf(tester, 'inspector-squash'), 'Comes with the commit composer');
-    expect(tester.widget<ZsButton>(_button('inspector-squash')).onPressed, isNull);
+    expect(_tooltipOf(tester, 'inspector-squash'), 'jj squash -r mmmmmmmm');
+    expect(tester.widget<ZsButton>(_button('inspector-squash')).onPressed, isNotNull);
     expect(_tooltipOf(tester, 'inspector-abandon'), 'jj abandon mmmmmmmm');
     expect(_button('inspector-new'), findsNothing);
     await tester.tap(_button('inspector-edit'));
@@ -1056,6 +1077,403 @@ void main() {
         await unmount(tester);
       });
     }
+  });
+
+  group('the composer (Story 10.25)', () {
+    setUp(() {
+      details.files[_at] = const <FileChange>[
+        FileChange(path: 'a.txt', kind: FileChangeKind.added),
+        FileChange(path: 'b.txt', kind: FileChangeKind.modified),
+      ];
+      details.fileDiffs[_at] = <FileDiff>[
+        fileDiff('a.txt', kind: FileChangeKind.added, added: 2, fingerprint: 'fa'),
+        fileDiff('b.txt', added: 1, removed: 1, fingerprint: 'fb'),
+      ];
+      // A fresh @: the composer starts empty, as the CLI's editor does.
+      details.descriptions[_at] = '';
+    });
+
+    Finder box(String label) => find.byWidgetPredicate((w) => w is ZsCheckbox && w.label == label);
+    bool? checked(WidgetTester tester, String label) => tester.widget<ZsCheckbox>(box(label)).value;
+    final Finder composer = find.byKey(const ValueKey<String>('inspector-composer'));
+    String shown(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-composer-command'))).data!;
+    Finder field(String identifier) => find.descendant(of: _id(identifier), matching: find.byType(EditableText));
+
+    /// Taps [finder] and lets the composer's entrance or exit finish.
+    Future<void> tap(WidgetTester tester, Finder finder) async {
+      await tester.tap(finder);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    Future<void> type(WidgetTester tester, String identifier, String text) async {
+      await tester.enterText(field(identifier), text);
+      await tester.pump();
+    }
+
+    Future<void> runIt(WidgetTester tester) async {
+      await tester.tap(_button('inspector-composer-run'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    testWidgets("@ opens with every file checked; the composer shows Commit and `jj commit -m ''`", (tester) async {
+      await pump(tester, select: _at);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(checked(tester, 'a.txt'), isTrue);
+      expect(checked(tester, 'b.txt'), isTrue);
+      expect(checked(tester, 'Deselect all'), isTrue);
+      expect(composer, findsOneWidget);
+      expect(find.descendant(of: _button('inspector-composer-run'), matching: find.text('Commit')), findsOneWidget);
+      expect(shown(tester), "jj commit -m ''");
+      expect(_button('inspector-composer-cancel'), findsNothing, reason: 'Cancel only on split');
+      expect(tester.widget<ZsTextField>(_id('inspector-composer-summary')).placeholder, 'Summary of what you did');
+      for (final text in <String>['New working copy', 'empty', 'stays here to keep working', 'Selected']) {
+        expect(
+          find.descendant(of: composer, matching: find.text(text)),
+          findsOneWidget,
+          reason: text,
+        );
+      }
+      expect(find.descendant(of: composer, matching: find.text('2 files')), findsOneWidget);
+      expect(find.descendant(of: composer, matching: find.text('+3')), findsOneWidget);
+      expect(find.descendant(of: composer, matching: find.text('−1')), findsOneWidget);
+      expect(find.descendant(of: composer, matching: find.text('no description yet')), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('commit all: one commit with both paragraphs and no paths; the draft clears', (tester) async {
+      await pump(tester, select: _at);
+      await type(tester, 'inspector-composer-summary', 'Fix');
+      await type(tester, 'inspector-composer-details', 'Body');
+      expect(shown(tester), 'jj commit -m Fix -m Body');
+      expect(find.descendant(of: composer, matching: find.text('“Fix”')), findsOneWidget);
+      actions.born = const <String>['nnnnnnnnnnnn'];
+      await runIt(tester);
+      final commit = actions.ran.single as GraphCommit;
+      expect(commit.message, <String>['Fix', 'Body']);
+      expect(commit.paths, isEmpty);
+      expect(commit.command, 'jj commit -m Fix -m Body');
+      expect(inspector.composerDraftOf(_at), isNull);
+      await unmount(tester);
+    });
+
+    testWidgets('commit a subset: only the checked path, the command shows it', (tester) async {
+      await pump(tester, select: _at);
+      await tap(tester, box('b.txt'));
+      expect(checked(tester, 'b.txt'), isFalse);
+      expect(checked(tester, 'Select all'), isFalse);
+      await type(tester, 'inspector-composer-summary', 'Fix');
+      expect(shown(tester), 'jj commit -m Fix root:a.txt');
+      expect(
+        find.descendant(of: composer, matching: find.text('1 file')),
+        findsNWidgets(2),
+        reason: 'rest and selected',
+      );
+      await runIt(tester);
+      expect((actions.ran.single as GraphCommit).paths, <String>['a.txt']);
+      await unmount(tester);
+    });
+
+    testWidgets('nothing checked on @: the composer stays, Commit is disabled; select all checks every file', (
+      tester,
+    ) async {
+      await pump(tester, select: _at);
+      await tap(tester, box('Deselect all'));
+      expect(checked(tester, 'a.txt'), isFalse);
+      expect(checked(tester, 'b.txt'), isFalse);
+      expect(composer, findsOneWidget);
+      expect(find.descendant(of: composer, matching: find.text('nothing yet')), findsOneWidget);
+      expect(tester.widget<ZsButton>(_button('inspector-composer-run')).onPressed, isNull);
+      expect(shown(tester), isEmpty, reason: 'no command: a bare jj commit would take everything');
+      await tap(tester, box('Select all'));
+      expect(checked(tester, 'a.txt'), isTrue);
+      expect(checked(tester, 'b.txt'), isTrue);
+      await unmount(tester);
+    });
+
+    testWidgets('a path with `[` goes as a quoted fileset in the command and verbatim to the call', (tester) async {
+      details.files[_at] = const <FileChange>[
+        FileChange(path: 'a[1].txt', kind: FileChangeKind.added),
+        FileChange(path: 'b.txt', kind: FileChangeKind.modified),
+      ];
+      await pump(tester, select: _at);
+      await tap(tester, box('b.txt'));
+      expect(shown(tester), 'jj commit -m \'\' \'root:"a[1].txt"\'');
+      await runIt(tester);
+      expect((actions.ran.single as GraphCommit).paths, <String>['a[1].txt']);
+      await unmount(tester);
+    });
+
+    testWidgets('another change: none checked, no composer; one checked shows Split; it runs the shown command', (
+      tester,
+    ) async {
+      await pump(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(checked(tester, 'src/a.dart'), isFalse);
+      expect(checked(tester, 'src/new.dart'), isFalse);
+      expect(composer, findsNothing);
+      await tap(tester, box('src/a.dart'));
+      expect(composer, findsOneWidget);
+      expect(find.descendant(of: _button('inspector-composer-run'), matching: find.text('Split')), findsOneWidget);
+      expect(_button('inspector-composer-cancel'), findsOneWidget);
+      expect(
+        tester.widget<ZsTextField>(_id('inspector-composer-summary')).placeholder,
+        'Summary of the selected changes',
+      );
+      expect(find.descendant(of: composer, matching: find.text('Rest')), findsOneWidget);
+      expect(find.descendant(of: composer, matching: find.text('keeps “about mmmmmmmmmmmm”')), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('inspector-composer-hint')), findsNothing);
+      await type(tester, 'inspector-composer-summary', 'Part');
+      final String command = shown(tester);
+      expect(command, 'jj split -r mmmmmmmm -m Part root:src/a.dart');
+      await runIt(tester);
+      final split = actions.ran.single as GraphSplit;
+      expect(split.id, _mutable);
+      expect(split.paths, <String>['src/a.dart']);
+      expect(split.message, <String>['Part']);
+      expect(split.command, command);
+      expect(graph.selected, _mutable, reason: 'the selection stays');
+      expect(checked(tester, 'src/a.dart'), isFalse, reason: 'done clears the checks');
+      expect(composer, findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('Cancel unchecks everything and keeps the draft; the composer fades out', (tester) async {
+      await pump(tester);
+      await tap(tester, box('src/a.dart'));
+      await type(tester, 'inspector-composer-summary', 'Part');
+      await tester.tap(_button('inspector-composer-cancel'));
+      await tester.pump();
+      expect(checked(tester, 'src/a.dart'), isFalse);
+      expect(composer, findsOneWidget, reason: 'the exit plays');
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(composer, findsNothing);
+      expect(inspector.composerDraftOf(_mutable)?.summary, 'Part');
+      await unmount(tester);
+    });
+
+    testWidgets("split with everything checked shows jj's hint and runs", (tester) async {
+      await pump(tester);
+      await tap(tester, box('Select all'));
+      expect(
+        find.text('All changes have been selected, so the original revision will become empty.'),
+        findsOneWidget,
+      );
+      await runIt(tester);
+      expect((actions.ran.single as GraphSplit).paths, <String>['src/a.dart', 'src/new.dart']);
+      await unmount(tester);
+    });
+
+    testWidgets("a refusal keeps the draft and the checks; the composer shows jj's text in the warn colour", (
+      tester,
+    ) async {
+      await pump(tester);
+      await tap(tester, box('src/a.dart'));
+      await type(tester, 'inspector-composer-summary', 'Part');
+      actions.refuse = const ZanshinFfiException('jj.immutable', 'Commit mmmmmmmm is immutable');
+      await runIt(tester);
+      final Text error = tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-composer-error')));
+      expect(error.data, 'Commit mmmmmmmm is immutable');
+      expect(error.style!.color, ZsColors.of(tester.element(composer)).warn);
+      expect(checked(tester, 'src/a.dart'), isTrue);
+      expect(inspector.composerDraftOf(_mutable)?.summary, 'Part');
+      await tap(tester, box('src/new.dart'));
+      expect(
+        find.byKey(const ValueKey<String>('inspector-composer-error')),
+        findsNothing,
+        reason: 'a change clears it',
+      );
+      await unmount(tester);
+    });
+
+    testWidgets("a described @ with untouched fields commits its description's paragraphs", (tester) async {
+      details.descriptions[_at] = 'Fix it\n\nBecause.\n';
+      await pump(tester, select: _at);
+      expect(tester.widget<EditableText>(field('inspector-composer-summary')).controller.text, 'Fix it');
+      expect(shown(tester), "jj commit -m 'Fix it' -m Because.");
+      await runIt(tester);
+      expect((actions.ran.single as GraphCommit).message, <String>['Fix it', 'Because.']);
+      await unmount(tester);
+    });
+
+    testWidgets('the draft survives a selection change and a reload; the checks reset on the change only', (
+      tester,
+    ) async {
+      await pump(tester);
+      await tap(tester, box('src/a.dart'));
+      await type(tester, 'inspector-composer-summary', 'Keep');
+      graph.select(_at);
+      await tester.pump();
+      await tester.pump();
+      graph.select(_mutable);
+      await tester.pump();
+      await tester.pump();
+      expect(checked(tester, 'src/a.dart'), isFalse, reason: 'a selection change resets the checks');
+      await tap(tester, box('src/a.dart'));
+      expect(tester.widget<EditableText>(field('inspector-composer-summary')).controller.text, 'Keep');
+      await reload(tester);
+      await tester.pump();
+      expect(checked(tester, 'src/a.dart'), isTrue, reason: 'a reload keeps the still-listed checks');
+      expect(tester.widget<EditableText>(field('inspector-composer-summary')).controller.text, 'Keep');
+      await unmount(tester);
+    });
+
+    testWidgets('Esc in a composer field with a draft only leaves the field; the next one closes the inspector', (
+      tester,
+    ) async {
+      await pump(tester, select: _at);
+      await tester.tap(field('inspector-composer-summary'));
+      await type(tester, 'inspector-composer-summary', 'x');
+      expect(tester.widget<EditableText>(field('inspector-composer-summary')).focusNode.hasFocus, isTrue);
+      await esc(tester);
+      expect(graph.selected, _at);
+      expect(tester.widget<EditableText>(field('inspector-composer-summary')).focusNode.hasFocus, isFalse);
+      await esc(tester);
+      expect(graph.selected, isNull);
+      await unmount(tester);
+    });
+
+    double rise(WidgetTester tester) => tester
+        .widget<Transform>(find.byKey(const ValueKey<String>('inspector-composer-motion')))
+        .transform
+        .getTranslation()
+        .y;
+    double opacity(WidgetTester tester) => tester
+        .widget<ZsFade>(
+          find.descendant(
+            of: find.byKey(const ValueKey<String>('inspector-composer-motion')),
+            matching: find.byType(ZsFade),
+          ),
+        )
+        .opacity;
+
+    testWidgets('the composer rises 12 px and fades in; under reduce motion it only fades', (tester) async {
+      await pump(tester);
+      await tester.tap(box('src/a.dart'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(rise(tester), greaterThan(0));
+      expect(rise(tester), lessThanOrEqualTo(12));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(rise(tester), 0);
+      expect(opacity(tester), 1);
+      // Out it drifts back down as it fades.
+      await tester.tap(_button('inspector-composer-cancel'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(rise(tester), greaterThan(0));
+      expect(opacity(tester), lessThan(1));
+      await tester.pump(const Duration(milliseconds: 200));
+      await unmount(tester);
+
+      await pump(tester, appearance: const ZsAppearance(reduceMotion: true));
+      await tester.tap(box('src/a.dart'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(rise(tester), 0, reason: 'no movement');
+      expect(opacity(tester), lessThan(1), reason: 'the fade keeps its token');
+      await tester.pump(const Duration(milliseconds: 300));
+      await unmount(tester);
+    });
+  });
+
+  group('Squash into parent (Story 10.25)', () {
+    testWidgets('two descriptions: the form pre-filled with the combined text; Save sends it as editedDescription', (
+      tester,
+    ) async {
+      details.combined = 'A\n\nB\n';
+      await pump(tester);
+      await tester.tap(_button('inspector-squash'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(details.plans, <String>[_mutable]);
+      expect(
+        tester
+            .widget<EditableText>(find.descendant(of: _id('inspector-summary'), matching: find.byType(EditableText)))
+            .controller
+            .text,
+        'A',
+      );
+      expect(
+        tester
+            .widget<EditableText>(find.descendant(of: _id('inspector-details'), matching: find.byType(EditableText)))
+            .controller
+            .text,
+        'B',
+      );
+      expect(find.descendant(of: _button('inspector-save'), matching: find.text('Squash')), findsOneWidget);
+      expect(find.text('jj squash -r mmmmmmmm'), findsOneWidget);
+      expect(actions.ran, isEmpty);
+      await tester.tap(_button('inspector-save'));
+      await tester.pump();
+      await tester.pump();
+      final squash = actions.ran.single as GraphSquash;
+      expect(squash.revision, _mutable);
+      expect(squash.editedDescription, 'A\n\nB\n');
+      expect(squash.message, isNull);
+      expect(_id('inspector-summary'), findsNothing, reason: 'the form closes once it ran');
+      await unmount(tester);
+    });
+
+    testWidgets('a new operation closes the squash form: its combined description may be gone', (tester) async {
+      details.combined = 'A\n\nB\n';
+      await pump(tester);
+      await tester.tap(_button('inspector-squash'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(_id('inspector-summary'), findsOneWidget);
+      await reload(tester);
+      expect(_id('inspector-summary'), findsNothing);
+      expect(inspector.squashFormOf(_mutable), isNull);
+      expect(actions.ran, isEmpty);
+      await unmount(tester);
+    });
+
+    testWidgets('Esc and Cancel close the squash form with no call', (tester) async {
+      details.combined = 'A\n\nB\n';
+      await pump(tester);
+      await tester.tap(_button('inspector-squash'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(_id('inspector-summary'), findsOneWidget);
+      await esc(tester);
+      expect(_id('inspector-summary'), findsNothing);
+      expect(graph.selected, _mutable);
+      await tester.tap(_button('inspector-squash'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(_button('inspector-cancel'));
+      await tester.pump();
+      expect(_id('inspector-summary'), findsNothing);
+      expect(actions.ran, isEmpty);
+      await unmount(tester);
+    });
+
+    testWidgets('one description: squash runs at once; a refused plan runs it too so the runner reports jj', (
+      tester,
+    ) async {
+      await pump(tester, select: null);
+      await inspector.squash(_mutable);
+      await tester.pump();
+      expect(graph.selected, _mutable, reason: 'squash(key) selects the change');
+      expect(actions.ran.single, isA<GraphSquash>().having((a) => a.editedDescription, 'edited', isNull));
+      expect((actions.ran.single as GraphSquash).revision, _mutable);
+      await tester.pump();
+      details.refusePlan = const ZanshinFfiException('jj.immutable', 'Commit gggggggg is immutable');
+      await inspector.squash(_mutable);
+      await tester.pump();
+      expect(actions.ran, hasLength(2));
+      expect(details.plans, <String>[_mutable, _mutable]);
+      await tester.pump();
+      await unmount(tester);
+    });
   });
 
   test('the layout persists in the settings file and opens from it after a restart', () async {

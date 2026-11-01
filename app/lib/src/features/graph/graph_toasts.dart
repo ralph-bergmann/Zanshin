@@ -133,7 +133,8 @@ class GraphToasts {
 ShellToastEntry? graphOutcomeEntry(GraphOutcome outcome, {required GraphViewModel model, required ShellToasts toasts}) {
   final ZanshinFfiException? error = outcome.error;
   if (error != null) {
-    if (error.code == 'jj.stale_working_copy') {
+    // The composer shows its own refusals (Story 10.25).
+    if (error.code == 'jj.stale_working_copy' || outcome.action is GraphCommit || outcome.action is GraphSplit) {
       return null;
     }
     return ShellToastEntry(
@@ -261,6 +262,14 @@ InlineSpan _text(AppLocalizations strings, ZsColors colors, GraphOutcome outcome
           target(result?.abandonedChangeIds.firstOrNull),
         target(outcome.flash.firstOrNull),
       ];
+    case GraphCommit(id: final String committed, message: final List<String> paragraphs):
+      final String subject = (paragraphs.firstOrNull ?? '').split('\n').first;
+      message = subject.isEmpty ? strings.toastCommittedAlone(s0) : strings.toastCommitted(s0, s1);
+      parts = <InlineSpan>[id(committed), TextSpan(text: subject)];
+    case GraphSplit(id: final String split):
+      final String? rest = outcome.born.firstOrNull;
+      message = rest == null ? strings.toastSplitAlone(s0) : strings.toastSplit(s0, s1);
+      parts = <InlineSpan>[id(split), ?(rest == null ? null : id(rest))];
     case GraphBookmarkCreate(names: final List<String> created, :final String? revision):
       message = strings.toastBookmarkCreated(s0, s1);
       parts = <InlineSpan>[names(created), target(revision ?? result?.workingCopyChangeId)];

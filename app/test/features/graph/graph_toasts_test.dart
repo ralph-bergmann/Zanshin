@@ -293,6 +293,30 @@ void main() {
     expect(buttons(tester), isEmpty);
   });
 
+  toastTest('commit: "Committed ‹x› · “subject”", or "Committed ‹x›" without one; split names the rest', (
+    tester,
+  ) async {
+    actions.born = const <String>[_c];
+    await run(tester, const GraphCommit(_a, message: <String>['Fix the parser', 'Body']));
+    expect(text(tester), 'Committed ovknlmro · “Fix the parser”');
+    expect(buttons(tester), <String>['Undo']);
+    await run(tester, const GraphCommit(_a, message: <String>['']));
+    expect(text(tester), 'Committed ovknlmro');
+    await run(tester, const GraphSplit(_b, message: <String>['Part'], paths: <String>['a.txt']));
+    expect(text(tester), 'Split vruxwmqvz — the rest is now kxqpsytn');
+    expect(buttons(tester), <String>['Undo']);
+  });
+
+  toastTest('a refused commit or split shows no toast: the composer shows it', (tester) async {
+    actions.refuse = const ZanshinFfiException('jj.immutable', 'Commit 1234 is immutable');
+    await tester.runAsync(() => model.run(const GraphCommit(_a, message: <String>['Fix'])));
+    await tester.pump();
+    expect(toasts.current, isNull);
+    await tester.runAsync(() => model.run(const GraphSplit(_b, message: <String>['P'], paths: <String>['a'])));
+    await tester.pump();
+    expect(toasts.current, isNull);
+  });
+
   toastTest('a refusal: the warn tone with jj’s message, no Undo, gone after 6.5 s; a stale one shows none', (
     tester,
   ) async {

@@ -102,6 +102,7 @@ List<ZsMenuEntry> graphCardMenuEntries(
   required ValueChanged<GraphAction> run,
   GraphContent? content,
   ValueChanged<String>? onDescribe,
+  ValueChanged<String>? onSquash,
 }) {
   final data = GraphCardData.of(layout, node, content: content);
   final String key = data.key;
@@ -114,6 +115,7 @@ List<ZsMenuEntry> graphCardMenuEntries(
     required String identifier,
     String? reason,
     bool danger = false,
+    ValueChanged<String>? select,
   }) {
     final String? why = blocked ?? reason;
     return ZsMenuItem(
@@ -124,7 +126,7 @@ List<ZsMenuEntry> graphCardMenuEntries(
       enabled: why == null,
       tooltip: why,
       identifier: identifier,
-      onSelected: () => run(action(key)),
+      onSelected: select == null ? () => run(action(key)) : () => select(key),
     );
   }
 
@@ -206,6 +208,8 @@ List<ZsMenuEntry> graphCardMenuEntries(
       ZI.squash,
       (id) => GraphSquash(revision: id),
       identifier: 'card-menu-squash',
+      // Through the inspector, which asks for a combined description as the CLI's editor does (Story 10.25).
+      select: onSquash,
       reason: data.merge
           ? strings.cardMenuSquashMerge
           : _parentImmutable(layout, node)
@@ -603,7 +607,8 @@ class _MenuHostState extends State<_MenuHost> {
 }
 
 /// The card menu (Story 10.15): `GraphCardController.menuOpen` and its anchor as a [ZsMenuAnchor] with
-/// [graphCardMenuEntries]; every row runs through [model]'s runner, Describe… through [inspector].
+/// [graphCardMenuEntries]; every row runs through [model]'s runner, Describe… and Squash into parent through
+/// [inspector].
 class GraphCardMenuHost extends StatelessWidget {
   /// The menu of [cards]' open card in [model].
   const GraphCardMenuHost({required this.cards, required this.model, this.inspector, super.key});
@@ -645,6 +650,7 @@ class GraphCardMenuHost extends StatelessWidget {
         run: (action) => unawaited(model.run(action)),
         content: model.content,
         onDescribe: inspector?.describe,
+        onSquash: inspector?.squash,
       ),
     );
   }

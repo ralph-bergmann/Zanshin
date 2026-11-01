@@ -51,6 +51,7 @@ import 'package:zanshin_core/zanshin_core.dart'
         MutationResult,
         ShowEntry,
         Signature,
+        SquashPlan,
         ZanshinWarning;
 import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -893,6 +894,21 @@ class _DemoDetails implements GraphDetails {
       operationId: 'op',
       commitId: commitId,
     );
+  }
+
+  /// Story 10.25: the change's and its first parent's descriptions combined as jj's editor shows them, when both are
+  /// set; else none.
+  @override
+  Future<SquashPlan> squashPlan(String changeId) async {
+    final GraphLayout layout = _model.layout!;
+    final int node = layout.indexOfKey(changeId)!;
+    final ({int start, int end}) edges = layout.parentEdges(node);
+    if (edges.start == edges.end) {
+      return const SquashPlan(combinedDescription: null);
+    }
+    final String own = (await show(layout.commitIdOf(node))).change.description;
+    final String parent = (await show(layout.commitIdOf(layout.parentOf(edges.start)))).change.description;
+    return SquashPlan(combinedDescription: own.isEmpty || parent.isEmpty ? null : '$parent\n$own');
   }
 
   static HunkLine _line(HunkLineKind kind, String text) => HunkLine(kind: kind, text: '$text\n');

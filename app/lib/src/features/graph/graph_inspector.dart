@@ -39,6 +39,10 @@ typedef InspectorDraft = ({String summary, String details});
 ///   The first file starts focused; a reload keeps the focused path while it is
 ///   listed. A file is viewed while `viewedKey(change id, path, its summary fingerprint)` is in the viewed store's set; the
 ///   layout is `general.diffLayout` in [settings], followed when another writer changes it.
+/// - **Composer** (Story 10.25): the checked files of the selection — @ starts with all, another change with none,
+///   reset on a selection change, kept to the still-listed paths on a reload — and a composer draft per change key;
+///   [runComposer] runs [composerAction] (`jj commit` / `jj split -r`). [squash] asks `squashPlan` first and opens the
+///   squash form with the combined description when jj would open its editor.
 class InspectorViewModel extends ChangeNotifier {
   /// The inspector of [graph]'s selection, reading through [details]; Viewed marks in [viewed], the diff layout in
   /// [settings].
@@ -87,6 +91,15 @@ class InspectorViewModel extends ChangeNotifier {
   final _drafts = <String, InspectorDraft>{};
   final _open = <String>{};
   var _disposed = false;
+
+  // The composer (Story 10.25): the checked paths of [_key] (set up once per key by the first read), the drafts per key.
+  final _picked = <String>{};
+  String? _pickedFor;
+  final _composerDrafts = <String, InspectorDraft>{};
+  ZanshinFfiException? _composerError;
+
+  // The squash form: the key it was opened for and the combined description's fields.
+  ({String key, InspectorDraft initial})? _squashForm;
 
   /// The selection's `show` entry; null until it is read, while stale, and after a refusal.
   ShowEntry? get entry => _entry;
@@ -323,6 +336,189 @@ class InspectorViewModel extends ChangeNotifier {
     return result;
   }
 
+  /// The selection's node while it is a mutable, non-root change in the shown layout; else null.
+  ({GraphLayout layout, int node})? get _mutableNode {
+    final String? key = _key;
+    final GraphLayout? layout = graph.layout;
+    final int? node = key == null ? null : layout?.indexOfKey(key);
+    if (node == null || graph.stale != null || node == layout!.rootIndex || layout.isImmutable(node)) {
+      return null;
+    }
+    return (layout: layout, node: node);
+  }
+
+  /// Whether the selection's files take checkboxes: a read, mutable, non-root change with files.
+  bool get selectable => _mutableNode != null && _listed.isNotEmpty;
+
+  /// Whether [path] is checked for the composer.
+  bool isPicked(String path) => _picked.contains(path);
+
+  /// How many files are checked.
+  int get pickedCount => _picked.length;
+
+  /// Whether every listed file is checked.
+  bool get allPicked => _listed.isNotEmpty && _listed.every(_picked.contains);
+
+  /// Checks or unchecks [path].
+  void togglePick(String path) {
+    if (!selectable) {
+      return;
+    }
+    if (!_picked.remove(path)) {
+      _picked.add(path);
+    }
+    _composerError = null;
+    _notify();
+  }
+
+  /// Select all: checks every listed file, or unchecks them all when all are checked.
+  void pickAll() {
+    if (!selectable) {
+      return;
+    }
+    final bool all = allPicked;
+    _picked.clear();
+    if (!all) {
+      _picked.addAll(_listed);
+    }
+    _composerError = null;
+    _notify();
+  }
+
+  /// The composer's Cancel: unchecks every file (the draft stays).
+  void clearPicks() {
+    if (_picked.isNotEmpty || _composerError != null) {
+      _picked.clear();
+      _composerError = null;
+      _notify();
+    }
+  }
+
+  /// [key]'s composer draft, when it was edited.
+  InspectorDraft? composerDraftOf(String key) => _composerDrafts[key];
+
+  /// What the selection's composer fields hold: its draft, else the change's description — the text the CLI's editor
+  /// starts with (an undescribed change starts empty).
+  InspectorDraft get composerFields => (_key == null ? null : _composerDrafts[_key]) ?? draftFrom(description ?? '');
+
+  /// Keeps [draft] as [key]'s composer draft.
+  void updateComposerDraft(String key, InspectorDraft draft) {
+    _composerDrafts[key] = draft;
+    _clearComposerError();
+  }
+
+  void _clearComposerError() {
+    if (_composerError != null) {
+      _composerError = null;
+      _notify();
+    }
+  }
+
+  /// The last composer run's refusal, for the selection.
+  ZanshinFfiException? get composerError => _composerError;
+
+  /// Whether the composer shows: on a mutable change, @ with files or another change with a file checked.
+  bool get composing {
+    final ({GraphLayout layout, int node})? at = _mutableNode;
+    if (at == null || _entry == null) {
+      return false;
+    }
+    return at.layout.workingCopyIndex == at.node ? _listed.isNotEmpty : _picked.isNotEmpty;
+  }
+
+  /// What the composer runs for the selection — `jj commit` on @ (no paths when every file is checked), else
+  /// `jj split -r` with the checked paths; null when it shows no composer or nothing is checked.
+  GraphAction? get composerAction {
+    final ({GraphLayout layout, int node})? at = _mutableNode;
+    final String? key = _key;
+    if (at == null || key == null || !composing || _picked.isEmpty) {
+      return null;
+    }
+    final List<String> paragraphs = paragraphsOf(composerFields);
+    final paths = <String>[
+      for (final String path in _listed)
+        if (_picked.contains(path)) path,
+    ];
+    if (at.layout.workingCopyIndex == at.node) {
+      return GraphCommit(key, message: paragraphs, paths: allPicked ? const <String>[] : paths);
+    }
+    return GraphSplit(key, message: paragraphs, paths: paths, shown: graphShortId(at.layout, at.node));
+  }
+
+  /// Runs [composerAction] through the runner: done clears the key's draft and checks; a refusal stays in
+  /// [composerError], the draft and checks with it.
+  Future<GraphActionResult?> runComposer() async {
+    final GraphAction? action = composerAction;
+    final String? key = _key;
+    if (action == null || key == null) {
+      return null;
+    }
+    _composerError = null;
+    _notify();
+    final GraphActionResult result = await graph.run(action);
+    switch (result) {
+      case GraphActionDone():
+        _composerDrafts.remove(key);
+        if (_key == key) {
+          _picked.clear();
+        }
+      case GraphActionRefused(:final error):
+        if (_key == key) {
+          _composerError = error;
+        }
+      case GraphActionDisabled():
+        break;
+    }
+    _notify();
+    return result;
+  }
+
+  /// Squash into parent (the inspector's, the card menu's, Change › Squash): selects [key], then asks
+  /// `squashPlan`; a combined description opens the squash form pre-filled with it, else — none, or a refused plan,
+  /// which the squash refuses alike — `jj squash -r` runs at once.
+  Future<void> squash(String key) async {
+    graph.select(key);
+    String? combined;
+    try {
+      combined = (await details.squashPlan(key)).combinedDescription;
+    } on ZanshinFfiException catch (error) {
+      _log.warning('squashPlan refused: ${error.code}');
+    }
+    if (_disposed) {
+      return;
+    }
+    if (combined == null) {
+      await graph.run(GraphSquash(revision: key));
+      return;
+    }
+    if (graph.selected == key) {
+      _squashForm = (key: key, initial: draftFrom(combined));
+      _notify();
+    }
+  }
+
+  /// The squash form's prefill while it is open for [key].
+  InspectorDraft? squashFormOf(String key) => _squashForm?.key == key ? _squashForm!.initial : null;
+
+  /// Closes the squash form; nothing runs.
+  void closeSquash() {
+    if (_squashForm != null) {
+      _squashForm = null;
+      _notify();
+    }
+  }
+
+  /// Saves the squash form: `jj squash -r` with [draft] as the edited description; the form closes once it ran.
+  Future<GraphActionResult> saveSquash(String key, InspectorDraft draft) async {
+    final GraphActionResult result = await graph.run(
+      GraphSquash(revision: key, editedDescription: joinMessageParagraphs(paragraphsOf(draft))),
+    );
+    if (result is GraphActionDone && _squashForm?.key == key) {
+      closeSquash();
+    }
+    return result;
+  }
+
   void _graphChanged() {
     final String? key = graph.selected;
     final GraphLayout? layout = graph.layout;
@@ -336,6 +532,13 @@ class InspectorViewModel extends ChangeNotifier {
       _entry = null;
       _actions = null;
       _clearDiff();
+      _picked.clear();
+      _pickedFor = null;
+      _composerError = null;
+    }
+    // A new operation may have rewritten the change or its parent: the combined description is gone with it.
+    if (key != _key || op != _op || stale) {
+      _squashForm = null;
     }
     _key = key;
     _op = op;
@@ -382,6 +585,15 @@ class InspectorViewModel extends ChangeNotifier {
         _changeId = changeId;
         _commitId = commitId;
         final List<String> paths = _listed;
+        if (_pickedFor != _key) {
+          // @ starts with every file checked, another change with none.
+          _pickedFor = _key;
+          _picked
+            ..clear()
+            ..addAll(mutable && node == layout.workingCopyIndex ? paths : const <String>[]);
+        } else {
+          _picked.retainAll(paths);
+        }
         final String? focused = paths.contains(_focused) ? _focused : paths.firstOrNull;
         if (focused != _focused) {
           _focusedDiff = null;
@@ -442,12 +654,14 @@ class InspectorViewModel extends ChangeNotifier {
 ///   command, Cancel and the gold Save.
 /// - **Meta:** author · date · parents; **chips:** the bookmarks with ✓ / local / remote.
 /// - **Actions** (hidden while the form is open): immutable "New change on top"; @ "New change", "Squash into parent",
-///   "Abandon"; else "Edit", "Squash into parent", "Abandon" — each tooltip the full command; Squash stays disabled
-///   (10.25).
+///   "Abandon"; else "Edit", "Squash into parent", "Abandon" — each tooltip the full command; Squash is disabled only
+///   with jj's refusal and opens the squash form when jj would ask for a combined description (Story 10.25).
 /// - **Changes:** the file count with the summary's totals, the viewed counter with Mark all / Reset, one row per file
 ///   with its ± and ✓ (one Tab stop, ↑ ↓ move the highlight, a click or ↩ focuses), and the focused file's diff block
-///   (Story 10.24); or the empty, stale or refusal text.
-/// - **Esc:** in a field with a changed draft it leaves the field; else it closes the form, else the selection.
+///   (Story 10.24); or the empty, stale or refusal text. On a mutable change each row and the header have a checkbox.
+/// - **Composer** (Story 10.25; DS inspector.jsx:40-79, kit.css:129-144): at the island's bottom while composing.
+/// - **Esc:** the squash form closes; in a composer field with a draft it leaves the field; in a field with a changed
+///   describe draft it leaves the field; else it closes the form, else the selection.
 class GraphInspector extends StatefulWidget {
   /// The inspector of [model].
   const GraphInspector({required this.model, super.key});
@@ -462,6 +676,7 @@ class GraphInspector extends StatefulWidget {
 class _GraphInspectorState extends State<GraphInspector> {
   final _scroll = ScrollController();
   final _root = FocusNode(debugLabel: 'inspector', skipTraversal: true);
+  final _composerFocus = FocusNode(debugLabel: 'inspector composer', skipTraversal: true);
 
   /// The last panel built, shown while the shell plays the exit after the selection went.
   Widget? _last;
@@ -470,6 +685,7 @@ class _GraphInspectorState extends State<GraphInspector> {
   void dispose() {
     _scroll.dispose();
     _root.dispose();
+    _composerFocus.dispose();
     super.dispose();
   }
 
@@ -489,6 +705,19 @@ class _GraphInspectorState extends State<GraphInspector> {
     final String? key = _model.graph.selected;
     if (key == null) {
       return KeyEventResult.ignored;
+    }
+    if (_model.squashFormOf(key) != null) {
+      _model.closeSquash();
+      _root.requestFocus();
+      return KeyEventResult.handled;
+    }
+    final InspectorDraft? composed = _model.composerDraftOf(key);
+    if (_typing &&
+        _composerFocus.hasFocus &&
+        composed != null &&
+        (composed.summary.isNotEmpty || composed.details.isNotEmpty)) {
+      _root.requestFocus();
+      return KeyEventResult.handled;
     }
     final GraphLayout? layout = _model.graph.layout;
     final int? node = layout?.indexOfKey(key);
@@ -532,6 +761,16 @@ class _GraphInspectorState extends State<GraphInspector> {
     final data = GraphCardData.of(layout, node, content: graph.content);
     final ShowEntry? entry = _model.entry;
     final ShowEntry? editing = _editing(layout, node);
+    final bool mutable = node != layout.rootIndex && !layout.isImmutable(node) && graph.stale == null;
+    final InspectorDraft? squashing = mutable ? _model.squashFormOf(data.key) : null;
+    final ZsMotion motion = ZsMotion.of(context);
+    void refocus() {
+      // A save can end after the inspector went (a reload dropped the selection, Close).
+      if (mounted) {
+        _root.requestFocus();
+      }
+    }
+
     return Semantics(
       container: true,
       explicitChildNodes: true,
@@ -555,7 +794,17 @@ class _GraphInspectorState extends State<GraphInspector> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
-                        if (editing != null)
+                        if (squashing != null)
+                          _DescribeForm(
+                            key: ValueKey<String>('squash ${data.key}'),
+                            model: _model,
+                            changeKey: data.key,
+                            initial: squashing,
+                            blocked: graphBlockedReason(strings, graph),
+                            squashCommand: GraphSquash(revision: graphShortId(layout, node)).command,
+                            onClosed: refocus,
+                          )
+                        else if (editing != null)
                           _DescribeForm(
                             key: ValueKey<String>(data.key),
                             model: _model,
@@ -563,20 +812,36 @@ class _GraphInspectorState extends State<GraphInspector> {
                             initial:
                                 _model.draftOf(data.key) ?? InspectorViewModel.draftFrom(editing.change.description),
                             blocked: graphBlockedReason(strings, graph),
-                            // A save can end after the inspector went (a reload dropped the selection, Close).
-                            onClosed: () {
-                              if (mounted) {
-                                _root.requestFocus();
-                              }
-                            },
+                            onClosed: refocus,
                           )
                         else
                           _Title(model: _model, data: data, entry: entry),
                         _Meta(data: data, layout: layout, node: node, entry: entry, nowMs: graph.now.value),
                         if (data.refs.isNotEmpty) _Chips(refs: data.refs),
-                        if (editing == null) _Actions(model: _model, data: data, layout: layout, node: node),
+                        if (editing == null && squashing == null)
+                          _Actions(model: _model, data: data, layout: layout, node: node),
                         _Changes(model: _model, data: data),
                       ],
+                    ),
+                  ),
+                ),
+              ),
+              ZsPresence(
+                key: ValueKey<String>('composer ${data.key}'),
+                open: _model.composing,
+                exit: motion.durExitLg,
+                builder: (context, closing) => _ComposerMotion(
+                  closing: closing,
+                  child: ExcludeFocus(
+                    excluding: closing,
+                    child: Focus(
+                      focusNode: _composerFocus,
+                      child: _Composer(
+                        model: _model,
+                        data: data,
+                        shortId: graphShortId(layout, node),
+                        blocked: graphBlockedReason(strings, graph),
+                      ),
                     ),
                   ),
                 ),
@@ -867,6 +1132,7 @@ class _DescribeForm extends StatefulWidget {
     required this.initial,
     required this.blocked,
     required this.onClosed,
+    this.squashCommand,
     super.key,
   });
 
@@ -876,6 +1142,10 @@ class _DescribeForm extends StatefulWidget {
 
   /// Why Save is disabled.
   final String? blocked;
+
+  /// In squash mode (Story 10.25) the command shown — `jj squash -r <id>`, where the CLI opens its editor — and the
+  /// form saves the edited combined description through [InspectorViewModel.saveSquash]; null: describe.
+  final String? squashCommand;
 
   /// Runs after the form closed itself.
   final VoidCallback onClosed;
@@ -911,7 +1181,9 @@ class _DescribeFormState extends State<_DescribeForm> {
   InspectorDraft get _draft => (summary: _summary.text, details: _details.text);
 
   void _changed(String _) {
-    widget.model.updateDraft(widget.changeKey, _draft);
+    if (widget.squashCommand == null) {
+      widget.model.updateDraft(widget.changeKey, _draft);
+    }
     setState(() {});
   }
 
@@ -920,6 +1192,16 @@ class _DescribeFormState extends State<_DescribeForm> {
       return;
     }
     final String key = widget.changeKey;
+    if (widget.squashCommand != null) {
+      unawaited(
+        widget.model.saveSquash(key, _draft).then((_) {
+          if (widget.model.squashFormOf(key) == null) {
+            widget.onClosed();
+          }
+        }),
+      );
+      return;
+    }
     unawaited(
       widget.model.save(key, _draft).then((_) {
         if (!widget.model.isOpen(key)) {
@@ -930,7 +1212,11 @@ class _DescribeFormState extends State<_DescribeForm> {
   }
 
   void _cancel() {
-    widget.model.closeForm(widget.changeKey);
+    if (widget.squashCommand != null) {
+      widget.model.closeSquash();
+    } else {
+      widget.model.closeForm(widget.changeKey);
+    }
     widget.onClosed();
   }
 
@@ -939,10 +1225,9 @@ class _DescribeFormState extends State<_DescribeForm> {
     final AppLocalizations strings = context.l10n;
     final ZsColors colors = ZsColors.of(context);
     final String? blocked = widget.blocked;
-    final String command = GraphDescribe.fromParagraphs(
-      widget.changeKey,
-      InspectorViewModel.paragraphsOf(_draft),
-    ).command;
+    final String command =
+        widget.squashCommand ??
+        GraphDescribe.fromParagraphs(widget.changeKey, InspectorViewModel.paragraphsOf(_draft)).command;
     return CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
         const SingleActivator(LogicalKeyboardKey.enter, meta: true): _save,
@@ -996,7 +1281,7 @@ class _DescribeFormState extends State<_DescribeForm> {
                   message: blocked ?? command,
                   cmd: blocked == null ? null : command,
                   child: ZsButton(
-                    label: strings.inspectorSave,
+                    label: widget.squashCommand == null ? strings.inspectorSave : strings.inspectorSquashConfirm,
                     variant: ZsButtonVariant.primary,
                     onPressed: blocked == null && widget.model.graph.hasActions ? _save : null,
                     disabledReason: blocked,
@@ -1188,6 +1473,7 @@ class _Actions extends StatelessWidget {
       ZsButtonVariant variant = ZsButtonVariant.quiet,
       String? icon,
       String? disabled,
+      VoidCallback? onPressed,
     }) {
       final String? reason = blocked ?? disabled;
       return ZsTooltip(
@@ -1197,7 +1483,7 @@ class _Actions extends StatelessWidget {
           label: label,
           variant: variant,
           icon: icon,
-          onPressed: can && disabled == null ? () => unawaited(graph.run(action)) : null,
+          onPressed: can && disabled == null ? onPressed ?? () => unawaited(graph.run(action)) : null,
           disabledReason: reason,
           identifier: identifier,
         ),
@@ -1240,8 +1526,8 @@ class _Actions extends StatelessWidget {
               strings.inspectorSquash,
               GraphSquash(revision: key),
               GraphSquash(revision: short).command,
-              // 10.25 enables it with the composer.
-              disabled: refusal == null ? strings.inspectorSquashLater : refusal.context ?? refusal.code,
+              disabled: refusal == null ? null : refusal.context ?? refusal.code,
+              onPressed: () => unawaited(model.squash(key)),
               identifier: 'inspector-squash',
             ),
           ];
@@ -1382,6 +1668,14 @@ class _ChangesState extends State<_Changes> {
             child: Row(
               spacing: 10,
               children: <Widget>[
+                if (model.selectable)
+                  ZsCheckbox(
+                    value: model.allPicked,
+                    onChanged: (_) => model.pickAll(),
+                    label: model.allPicked ? strings.inspectorDeselectAll : strings.inspectorSelectAll,
+                    size: ZsCheckboxSize.sm,
+                    identifier: 'inspector-select-all',
+                  ),
                 Text(
                   strings.inspectorChanges,
                   style: ZsType.secondary.copyWith(
@@ -1472,6 +1766,8 @@ class _ChangesState extends State<_Changes> {
                         focused: files[i].path == focused,
                         highlighted: _focus.hasFocus && i == highlight,
                         viewed: model.isViewed(files[i].path),
+                        picked: model.selectable ? model.isPicked(files[i].path) : null,
+                        onPick: () => model.togglePick(files[i].path),
                       ),
                     ),
                 ],
@@ -1507,6 +1803,8 @@ class _FileRow extends StatelessWidget {
     required this.focused,
     required this.highlighted,
     required this.viewed,
+    required this.picked,
+    required this.onPick,
   });
 
   final FileChange file;
@@ -1514,6 +1812,10 @@ class _FileRow extends StatelessWidget {
   final bool focused;
   final bool highlighted;
   final bool viewed;
+
+  /// Whether the composer takes the file; null: no checkbox (an immutable change).
+  final bool? picked;
+  final VoidCallback onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -1542,6 +1844,14 @@ class _FileRow extends StatelessWidget {
       child: Row(
         spacing: 8,
         children: <Widget>[
+          if (picked case final bool picked)
+            ZsCheckbox(
+              value: picked,
+              onChanged: (_) => onPick(),
+              label: file.path,
+              size: ZsCheckboxSize.sm,
+              identifier: 'inspector-file-check',
+            ),
           Container(
             width: 14,
             height: 14,
@@ -1587,5 +1897,364 @@ class _FileRow extends StatelessWidget {
       ),
     );
     return Semantics(selected: focused, child: row);
+  }
+}
+
+/// The composer's entrance (DS kit.css:129-130): it rises 12 px × `--motion` and fades in on `--dur-slide` /
+/// `--ease-glide`, and leaves with a fade on `--dur-exit-lg` / `--ease-exit`; reduce motion keeps only the fades.
+class _ComposerMotion extends StatefulWidget {
+  const _ComposerMotion({required this.closing, required this.child});
+
+  final bool closing;
+  final Widget child;
+
+  @override
+  State<_ComposerMotion> createState() => _ComposerMotionState();
+}
+
+class _ComposerMotionState extends State<_ComposerMotion> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(vsync: this);
+  var _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ZsMotion motion = ZsMotion.of(context);
+    _controller
+      ..duration = motion.durSlide
+      ..reverseDuration = motion.durExitLg;
+    if (!_started) {
+      _started = true;
+      _controller.forward();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_ComposerMotion oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.closing != oldWidget.closing) {
+      if (widget.closing) {
+        _controller.reverse();
+      } else {
+        _controller.forward();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ZsMotion motion = ZsMotion.of(context);
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final double v = _controller.value;
+        final double eased = widget.closing ? motion.easeExit.flipped.transform(v) : motion.easeGlide.transform(v);
+        return Transform.translate(
+          key: const ValueKey<String>('inspector-composer-motion'),
+          // In it rises from 12 px below; out it drifts back down as it fades.
+          offset: Offset(0, 12 * motion.motion * (1 - eased)),
+          child: ZsFade(opacity: eased.clamp(0, 1), child: child!),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+/// `--fl-sheen` over the composer's box.
+class _SheenPainter extends CustomPainter {
+  const _SheenPainter(this.sheen);
+
+  final ZsLinearGradient sheen;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Rect rect = Offset.zero & size;
+    canvas.drawRect(rect, Paint()..shader = sheen.createShader(rect));
+  }
+
+  @override
+  bool shouldRepaint(_SheenPainter oldDelegate) => oldDelegate.sheen != sheen;
+}
+
+/// The composer (Story 10.25; DS inspector.jsx:40-79, kit.css:129-144): the island's bottom section, padding 14 16,
+/// gap 10, a top `--fl-border` over `--fl-sheen`. Summary and Details (md; ↩ in Summary or ⌘↩ run), the result preview
+/// (the rest — on @ the new working copy — above the selected part), the command [InspectorViewModel.composerAction]
+/// runs, Cancel (split only) and the gold Commit / Split; jj's hint when a split selects everything, and a refusal
+/// in the warn colour.
+class _Composer extends StatefulWidget {
+  const _Composer({required this.model, required this.data, required this.shortId, required this.blocked});
+
+  final InspectorViewModel model;
+  final GraphCardData data;
+  final String shortId;
+
+  /// Why the run is disabled.
+  final String? blocked;
+
+  @override
+  State<_Composer> createState() => _ComposerState();
+}
+
+class _ComposerState extends State<_Composer> {
+  late final InspectorDraft _initial = widget.model.composerFields;
+  late final _summary = ZsTextEditingController(text: _initial.summary);
+  late final _details = ZsTextEditingController(text: _initial.details);
+
+  @override
+  void dispose() {
+    _summary.dispose();
+    _details.dispose();
+    super.dispose();
+  }
+
+  void _changed(String _) {
+    widget.model.updateComposerDraft(widget.data.key, (summary: _summary.text, details: _details.text));
+    setState(() {});
+  }
+
+  bool get _ready => widget.blocked == null && widget.model.graph.hasActions && widget.model.composerAction != null;
+
+  void _run() {
+    if (!_ready) {
+      return;
+    }
+    unawaited(
+      widget.model.runComposer().then((result) {
+        if (result is GraphActionDone && mounted) {
+          _summary.clear();
+          _details.clear();
+        }
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations strings = context.l10n;
+    final ZsColors colors = ZsColors.of(context);
+    final InspectorViewModel model = widget.model;
+    final bool isAt = widget.data.isWorkingCopy;
+    final paths = <String>[for (final FileChange file in model.entry?.fileChanges ?? const []) file.path];
+    final List<String> selected = paths.where(model.isPicked).toList();
+    final List<String> rest = paths.where((p) => !model.isPicked(p)).toList();
+    final String summary = _summary.text.split('\n').first;
+    // Nothing checked: no command (a bare `jj commit` would take everything).
+    final String command = model.composerAction?.command ?? '';
+    final String? blocked = widget.blocked;
+    final ZanshinFfiException? error = model.composerError;
+    final TextStyle node = ZsType.secondary.copyWith(fontSize: 12, color: colors.textDim);
+    final TextStyle note = ZsType.secondary.copyWith(fontSize: 11.5, height: 1.45, color: colors.textDim);
+    final TextStyle stat = ZsType.id.copyWith(fontSize: ZsType.fsSm);
+
+    Widget count(List<String> files) {
+      final bool sums = model.hasSummary;
+      final int added = files.fold(0, (sum, p) => sum + (model.summaryOf(p)?.added ?? 0));
+      final int removed = files.fold(0, (sum, p) => sum + (model.summaryOf(p)?.removed ?? 0));
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 6,
+        children: <Widget>[
+          Text(strings.inspectorFileCount(files.length), style: node),
+          if (sums && added > 0) Text('+$added', style: stat.copyWith(color: colors.add)), // l10n-ignore: a count
+          if (sums && removed > 0) Text('−$removed', style: stat.copyWith(color: colors.rem)), // l10n-ignore: a count
+        ],
+      );
+    }
+
+    Widget dot({required bool chosen}) => Container(
+      width: 9,
+      height: 9,
+      margin: const EdgeInsets.symmetric(horizontal: 2.5),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: chosen ? colors.accent : null,
+        border: Border.all(
+          width: 1.5,
+          color: chosen
+              ? colors.accentLine
+              : isAt
+              ? colors.co
+              : colors.textFaint,
+        ),
+        boxShadow: !chosen && isAt ? <BoxShadow>[BoxShadow(color: colors.coSoft, spreadRadius: 3)] : null,
+      ),
+    );
+
+    Widget row({required Widget dot, required List<Widget> label, required Widget meta, required Widget note}) =>
+        SizedBox(
+          height: 24,
+          child: Row(
+            spacing: 8,
+            children: <Widget>[
+              dot,
+              ...label,
+              meta,
+              Expanded(
+                child: Align(alignment: Alignment.centerRight, child: note),
+              ),
+            ],
+          ),
+        );
+
+    final TextStyle labelStyle = node.copyWith(
+      fontWeight: FontWeight.w600,
+      fontVariations: const <FontVariation>[FontVariation.weight(600)],
+      color: colors.text,
+    );
+    Text noteText(String text, {Color? color}) => Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: note.copyWith(color: color, height: 1),
+    );
+    final String subject = InspectorViewModel.draftFrom(model.description ?? '').summary;
+    final Widget result = Stack(
+      key: const ValueKey<String>('inspector-composer-result'),
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Column(
+            spacing: 2,
+            children: <Widget>[
+              row(
+                dot: dot(chosen: false),
+                label: isAt
+                    ? <Widget>[
+                        ZanshinIcon(ZI.workingCopyAt, size: ZsIconSize.sm, color: colors.co),
+                        Text(strings.inspectorComposerNewWorkingCopy, style: labelStyle),
+                      ]
+                    : <Widget>[Text(strings.inspectorComposerRest, style: labelStyle)],
+                meta: rest.isEmpty ? Text(strings.inspectorComposerEmpty, style: node) : count(rest),
+                note: noteText(isAt ? strings.inspectorComposerStays : strings.inspectorComposerKeeps(subject)),
+              ),
+              row(
+                dot: dot(chosen: true),
+                label: <Widget>[Text(strings.inspectorComposerSelected, style: labelStyle)],
+                meta: selected.isEmpty ? Text(strings.inspectorComposerNothingYet, style: node) : count(selected),
+                note: summary.isEmpty
+                    ? noteText(strings.inspectorComposerNoDescription)
+                    : noteText(strings.inspectorComposerMessage(summary), color: colors.text),
+              ),
+            ],
+          ),
+        ),
+        // The line from the rest down to the selected part (DS kit.css:135).
+        Positioned(
+          left: 8.25,
+          top: 17,
+          width: 1.5,
+          height: 16,
+          child: ColoredBox(color: colors.textFaint.withValues(alpha: colors.textFaint.a * .7)),
+        ),
+      ],
+    );
+
+    final bool ready = _ready;
+    final String run = isAt ? strings.inspectorCommit : strings.inspectorSplit;
+    final runButton = ZsButton(
+      label: run,
+      variant: ZsButtonVariant.primary,
+      onPressed: ready ? _run : null,
+      disabledReason: blocked,
+      identifier: 'inspector-composer-run',
+    );
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.enter, meta: true): _run,
+        const SingleActivator(LogicalKeyboardKey.numpadEnter, meta: true): _run,
+      },
+      child: Semantics(
+        container: true,
+        label: run,
+        child: CustomPaint(
+          painter: _SheenPainter(colors.flSheen),
+          child: Container(
+            key: const ValueKey<String>('inspector-composer'),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: colors.flBorder)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 10,
+              children: <Widget>[
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  spacing: 6,
+                  children: <Widget>[
+                    ZsTextField(
+                      controller: _summary,
+                      size: ZsTextFieldSize.md,
+                      placeholder: isAt ? strings.inspectorComposerSummaryAt : strings.inspectorComposerSummarySplit,
+                      label: strings.inspectorSummary,
+                      identifier: 'inspector-composer-summary',
+                      onChanged: _changed,
+                      onSubmitted: (_) => _run(),
+                    ),
+                    ZsTextField(
+                      controller: _details,
+                      size: ZsTextFieldSize.md,
+                      multiline: true,
+                      placeholder: strings.inspectorDetails,
+                      label: strings.inspectorDetails,
+                      identifier: 'inspector-composer-details',
+                      onChanged: _changed,
+                    ),
+                  ],
+                ),
+                result,
+                Row(
+                  spacing: 6,
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        command,
+                        key: const ValueKey<String>('inspector-composer-command'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ZsType.command.copyWith(fontSize: ZsType.fsSm, color: colors.textFaint),
+                      ),
+                    ),
+                    if (!isAt)
+                      ZsButton(
+                        label: strings.inspectorCancel,
+                        onPressed: model.clearPicks,
+                        identifier: 'inspector-composer-cancel',
+                      ),
+                    if (blocked ?? (command.isEmpty ? null : command) case final String tip)
+                      ZsTooltip(
+                        message: tip,
+                        cmd: blocked == null || command.isEmpty ? null : command,
+                        child: runButton,
+                      )
+                    else
+                      runButton,
+                  ],
+                ),
+                if (!isAt && model.allPicked)
+                  Text(
+                    'All changes have been selected, so the original revision will become empty.', // l10n-ignore: jj's hint
+                    key: const ValueKey<String>('inspector-composer-hint'),
+                    style: note,
+                  ),
+                if (error != null)
+                  Text(
+                    error.context ?? error.code,
+                    key: const ValueKey<String>('inspector-composer-error'),
+                    style: note.copyWith(color: colors.warn),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

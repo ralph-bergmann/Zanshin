@@ -95,6 +95,7 @@ List<ZsMenuEntry> _menu(
   String? blocked,
   ValueChanged<GraphAction>? run,
   ValueChanged<String>? onDescribe,
+  ValueChanged<String>? onSquash,
 }) => graphCardMenuEntries(
   _en,
   _l,
@@ -102,6 +103,7 @@ List<ZsMenuEntry> _menu(
   blocked: blocked,
   run: run ?? (_) {},
   onDescribe: onDescribe ?? (_) {},
+  onSquash: onSquash,
 );
 
 List<ZsMenuItem> _items(List<ZsMenuEntry> entries) => entries.whereType<ZsMenuItem>().toList();
@@ -190,6 +192,15 @@ class _Details implements GraphDetails {
 
   @override
   Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) => Completer<Diff>().future;
+
+  /// Every plan asked for, by change id; none combines a description, so the squash runs at once.
+  final plans = <String>[];
+
+  @override
+  Future<SquashPlan> squashPlan(String changeId) async {
+    plans.add(changeId);
+    return const SquashPlan(combinedDescription: null);
+  }
 }
 
 void main() {
@@ -238,6 +249,16 @@ void main() {
         'jj abandon $_b',
       ]);
       expect(ran.last, isA<GraphAbandon>().having((a) => a.ids, 'ids', <String>[_b]));
+    });
+
+    test('with onSquash, Squash into parent calls it with the key instead of running (Story 10.25)', () {
+      final ran = <GraphAction>[];
+      final squashed = <String>[];
+      final ZsMenuItem row = _row(_menu(_b, run: ran.add, onSquash: squashed.add), 'Squash into parent');
+      expect(row.cmd, 'jj squash -r kmnvxoqp');
+      row.onSelected!();
+      expect(squashed, <String>[_b]);
+      expect(ran, isEmpty);
     });
 
     test('@: Edit and Revert disabled with their reasons', () {
@@ -533,6 +554,22 @@ void main() {
       await settle(tester);
       expect(model.selected, _side);
       expect(inspector!.isOpen(_side), isTrue);
+      await finish(tester);
+    });
+
+    testWidgets('Squash into parent goes through the inspector: it selects the change, asks the plan, squashes', (
+      tester,
+    ) async {
+      await pump(tester);
+      cards(tester).openMenu(_side, Rect.fromCenter(center: tester.getCenter(card(_side)), width: 18, height: 18));
+      await settle(tester);
+      await tester.tap(find.text('Squash into parent'));
+      await tester.pump(m.durBlink);
+      await tester.pump(m.durBlink);
+      await settle(tester);
+      expect(model.selected, _side);
+      expect((inspector!.details as _Details).plans, <String>[_side]);
+      expect(actions.ran.single, isA<GraphSquash>().having((a) => a.revision, 'revision', _side));
       await finish(tester);
     });
 

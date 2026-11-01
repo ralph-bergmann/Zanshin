@@ -144,6 +144,7 @@ class _Graph {
       preferences: preferences,
       search: search,
       focusSearch: () => search.focusField(),
+      squash: inspector.squash,
     );
   }
 

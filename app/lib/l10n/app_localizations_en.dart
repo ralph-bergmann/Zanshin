@@ -1009,7 +1009,56 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorSquash => 'Squash into parent';
 
   @override
-  String get inspectorSquashLater => 'Comes with the commit composer';
+  String get inspectorSquashConfirm => 'Squash';
+
+  @override
+  String get inspectorSelectAll => 'Select all';
+
+  @override
+  String get inspectorDeselectAll => 'Deselect all';
+
+  @override
+  String get inspectorCommit => 'Commit';
+
+  @override
+  String get inspectorSplit => 'Split';
+
+  @override
+  String get inspectorComposerSummaryAt => 'Summary of what you did';
+
+  @override
+  String get inspectorComposerSummarySplit => 'Summary of the selected changes';
+
+  @override
+  String get inspectorComposerNewWorkingCopy => 'New working copy';
+
+  @override
+  String get inspectorComposerStays => 'stays here to keep working';
+
+  @override
+  String get inspectorComposerRest => 'Rest';
+
+  @override
+  String inspectorComposerKeeps(String subject) {
+    return 'keeps “$subject”';
+  }
+
+  @override
+  String get inspectorComposerSelected => 'Selected';
+
+  @override
+  String get inspectorComposerEmpty => 'empty';
+
+  @override
+  String get inspectorComposerNothingYet => 'nothing yet';
+
+  @override
+  String get inspectorComposerNoDescription => 'no description yet';
+
+  @override
+  String inspectorComposerMessage(String summary) {
+    return '“$summary”';
+  }
 
   @override
   String get inspectorAbandon => 'Abandon';
@@ -1116,6 +1165,26 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String toastSquashed(String source, String destination) {
     return 'Squashed $source into $destination';
+  }
+
+  @override
+  String toastCommitted(String change, String subject) {
+    return 'Committed $change · “$subject”';
+  }
+
+  @override
+  String toastCommittedAlone(String change) {
+    return 'Committed $change';
+  }
+
+  @override
+  String toastSplit(String change, String rest) {
+    return 'Split $change — the rest is now $rest';
+  }
+
+  @override
+  String toastSplitAlone(String change) {
+    return 'Split $change';
   }
 
   @override
@@ -1297,6 +1366,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String menuSquashTarget(String target) {
     return 'Squash $target into Parent';
+  }
+
+  @override
+  String menuCommitTarget(String target) {
+    return 'Commit $target';
+  }
+
+  @override
+  String menuSplitTarget(String target) {
+    return 'Split $target';
   }
 
   @override

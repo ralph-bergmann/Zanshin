@@ -40,7 +40,7 @@ Future<void> _openInBrowser(Uri url) async {
 @immutable
 class GraphMenuBinding {
   /// The binding of [model] and [preferences].
-  const GraphMenuBinding({required this.model, required this.preferences, this.search, this.focusSearch});
+  const GraphMenuBinding({required this.model, required this.preferences, this.search, this.focusSearch, this.squash});
 
   /// The graph's view model: the Change, Go and Undo items act on it.
   final GraphViewModel model;
@@ -53,6 +53,10 @@ class GraphMenuBinding {
 
   /// Focuses the graph search (Edit › Find); null while there is none.
   final VoidCallback? focusSearch;
+
+  /// Change › Squash into Parent through the inspector (`InspectorViewModel.squash`, Story 10.25), which asks for the
+  /// combined description; null runs `jj squash -r` directly.
+  final ValueChanged<String>? squash;
 }
 
 /// The menu bar's state (Story 11.13; DS readme.md:196–209): the menus follow the key window, the open project, the
@@ -200,6 +204,8 @@ class AppMenuModel extends ChangeNotifier {
             ? names(from)
             : '@', // l10n-ignore: jj's symbol
       ),
+      GraphCommit(:final id) => s.menuCommitTarget(name(id)),
+      GraphSplit(:final id) => s.menuSplitTarget(name(id)),
       GraphBookmarkCreate(:final names) => s.menuBookmarkCreate(names.join(', ')),
       GraphBookmarkDelete(:final names) => s.menuBookmarkDelete(names.join(', ')),
       GraphBookmarkMove(:final names) => s.menuBookmarkMove(names.join(', ')),
@@ -483,7 +489,10 @@ class AppMenuModel extends ChangeNotifier {
               ),
               PlatformMenuItem(
                 label: named == null ? s.menuSquash : s.menuSquashTarget(named),
-                onSelected: change((id) => GraphSquash(revision: id)),
+                onSelected: switch (ready?.squash) {
+                  final ValueChanged<String> squash when target != null => () => squash(target),
+                  _ => change((id) => GraphSquash(revision: id)),
+                },
               ),
               PlatformMenuItem(
                 label: named == null || targetIsAt ? s.menuRevert : s.menuRevertTarget(named),

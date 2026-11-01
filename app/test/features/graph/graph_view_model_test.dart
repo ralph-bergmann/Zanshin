@@ -794,6 +794,48 @@ void main() {
       });
     });
 
+    test('commit on the selected @: anchored on it and flashing it, the new @ born, selected and revealed covered', () {
+      fakeAsync((async) {
+        source.respond = (_) => keysLayout(<String>['n', 'a', 'b', 'c'], at: 'n');
+        final GraphViewModel model = start(async, actions: actions)..select('a');
+        actions.born = <String>['n'];
+        run(async, model, const GraphCommit('a', message: <String>['Fix']));
+        expect(model.outcome.value?.anchor, 'a');
+        expect(model.outcome.value?.flash, <String>['a']);
+        expect(model.outcome.value?.born, <String>['n']);
+        expect(model.selected, 'n');
+        expect(model.reveal?.key, 'n');
+        expect(model.reveal?.alignment, GraphRevealAlignment.covered);
+        model.dispose();
+      });
+    });
+
+    test('commit while another change is selected: the selection stays', () {
+      fakeAsync((async) {
+        source.respond = (_) => keysLayout(<String>['n', 'a', 'b', 'c'], at: 'n');
+        final GraphViewModel model = start(async, actions: actions)..select('c');
+        actions.born = <String>['n'];
+        run(async, model, const GraphCommit('a', message: <String>['Fix']));
+        expect(model.selected, 'c');
+        model.dispose();
+      });
+    });
+
+    test('split: anchored on the change and flashing it, the rest born, the selection stays', () {
+      fakeAsync((async) {
+        source.respond = (_) => keysLayout(<String>['a', 'r', 'b', 'c'], at: 'a');
+        final GraphViewModel model = start(async, actions: actions)..select('b');
+        actions.born = <String>['r'];
+        run(async, model, const GraphSplit('b', message: <String>['Part'], paths: <String>['x.txt']));
+        expect(actions.ran.single.pendingKeys, <String>{'b'});
+        expect(model.outcome.value?.anchor, 'b');
+        expect(model.outcome.value?.flash, <String>['b']);
+        expect(model.outcome.value?.born, <String>['r']);
+        expect(model.selected, 'b');
+        model.dispose();
+      });
+    });
+
     test('a refusal is published verbatim and reloads nothing; a stale refusal reloads into the stale state', () {
       fakeAsync((async) {
         final GraphViewModel model = start(async, actions: actions);
