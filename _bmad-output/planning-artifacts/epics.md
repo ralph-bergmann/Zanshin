@@ -4963,6 +4963,8 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 **And** the C-string return mechanism handles this (CString can be arbitrarily large)
 **And** Dart-side memory consumption is bounded by the parse-into-typed-objects step.
 
+> **Delivered (2026-11-01, spec-5-8-ffi-wrapper-zanshin-ffi-src-diff-rs):** the extern is `zanshin_diff(handle, data, len)` taking a `DiffRequest` request buffer (`revision` / `from` / `to` as lone id strings, `paths`, `context`, `whitespace`, `summary` — Story 5.6's full `jj diff` option set) and answering the `Diff` envelope with the precondition report; `revision` with `from`/`to` is `jj.invalid_input` (the CLI's clap conflict). Dart: `DiffCommand`, `ZanshinWorker.diff`, `RepoHandle.diff` → `Future<Diff>`, `Diff`/`DiffWhitespace`/`FileDiff`/`Hunk`/`HunkLine`/`HunkLineKind` exported. The wire `ShowEntry` gained `parent_tree_labels` / `tree_labels` (Dart `parentTreeLabels` / `treeLabels`). No caching. The ACs above (JSON, `zanshin_diff_compute`, `DiffComputeCommand`) are superseded by this note.
+
 ---
 
 ## Epic 6: Write Path & `extern "C"` Mutation Exposure
