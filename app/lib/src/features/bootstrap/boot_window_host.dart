@@ -13,6 +13,7 @@ import 'package:logging/logging.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../shell/app_menu.dart';
 import '../window/app_windows.dart';
 import '../window/splash_window_controller.dart';
 import 'splash_card.dart';
@@ -34,10 +35,14 @@ final _log = Logger('zanshin.bootstrap');
 /// lines and the CGWindowList probe. The sequencing the host serves is tested
 /// against a fake host.
 class ZanshinWindowHost implements BootWindowHost {
-  ZanshinWindowHost({required this.windows, required this.icons});
+  ZanshinWindowHost({required this.windows, required this.icons, required this.menu});
 
   /// Keyed registry of the app's windows; also the exit rule.
   final AppWindows windows;
+
+  /// The menu bar's model (Story 11.13), null until the DI graph exists: until then the menu bar shows the system's
+  /// items only.
+  final ValueListenable<AppMenuModel?> menu;
 
   /// The boot-loaded icons, provided above every window (Claude's proposal,
   /// Story 11.1), so the dialog windows share them; null until loaded.
@@ -132,11 +137,16 @@ class ZanshinWindowHost implements BootWindowHost {
       return;
     }
     _presented = true;
+    // The menu bar sits above every window and keeps its shape from this first frame on.
     runWidget(
-      ValueListenableBuilder<IconRegistry?>(
-        valueListenable: icons,
-        builder: (context, registry, child) => IconRegistryScope(registry: registry, child: child!),
-        child: WindowManager(initialWindows: <WindowEntry>[entry]),
+      ValueListenableBuilder<AppMenuModel?>(
+        valueListenable: menu,
+        builder: (context, model, child) => AppMenuBar(model: model, child: child!),
+        child: ValueListenableBuilder<IconRegistry?>(
+          valueListenable: icons,
+          builder: (context, registry, child) => IconRegistryScope(registry: registry, child: child!),
+          child: WindowManager(initialWindows: <WindowEntry>[entry]),
+        ),
       ),
     );
   }

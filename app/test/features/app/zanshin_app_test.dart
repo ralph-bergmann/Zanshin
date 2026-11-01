@@ -205,6 +205,7 @@ void main() {
     expect(content, isA<ProjectsWindow>());
     expect((content as ProjectsWindow).onOpened, same(onOpened));
     expect(content.session, same(component.projectSession));
+    expect(content.key, same(component.appMenu.projectsKey), reason: "the menu bar's Find reaches Projects' search");
   });
 
   testWidgets('the home is HomePage over the floating shell, titled Zanshin; the Yaru test page is gone', (

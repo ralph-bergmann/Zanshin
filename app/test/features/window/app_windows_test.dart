@@ -540,6 +540,37 @@ void main() {
     );
   });
 
+  testWidgets('requestClose runs the close handler, else destroys; views map to keys both ways', (tester) async {
+    final (_, AppWindows windows, _, _) = newWindows();
+    await windows.openOrActivate(key: mainWindowKey, title: 'Zanshin', builder: _nothing);
+    await windows.openOrActivate(
+      key: projectsWindowKey,
+      title: projectsWindowTitle,
+      builder: _nothing,
+      dialog: projectsWindowSpec,
+    );
+    final int main = windows.viewIdOf(mainWindowKey)!;
+    final int projects = windows.viewIdOf(projectsWindowKey)!;
+    expect(main, isNot(projects));
+    expect(windows.keyOfView(main), mainWindowKey);
+    expect(windows.keyOfView(projects), projectsWindowKey);
+    expect(windows.keyOfView(-1), isNull);
+    expect(windows.viewIdOf(settingsWindowKey), isNull);
+
+    var asked = 0;
+    windows
+      ..setCloseHandler(mainWindowKey, () async => asked++)
+      ..requestClose(mainWindowKey);
+    await tester.pump();
+    expect(asked, 1);
+    expect(windows.isOpen(mainWindowKey), isTrue);
+
+    windows.requestClose(projectsWindowKey);
+    await tester.pump();
+    expect(windows.isOpen(projectsWindowKey), isFalse);
+    windows.requestClose(settingsWindowKey);
+  });
+
   testWidgets('register and unregister fail loudly while no registry is captured', (tester) async {
     // No attach(): a dropped capture() must not silently leave a native window
     // unrendered, nor silently skip the exit rule.

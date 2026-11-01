@@ -362,8 +362,28 @@ class AppWindows {
     }
   }
 
+  /// The Flutter view id of the open window [key], or null.
+  int? viewIdOf(String key) => controllerOf(key)?.rootView.viewId;
+
+  /// The key of the open window showing the Flutter view [viewId], or null.
+  String? keyOfView(int viewId) {
+    for (final MapEntry<String, _OpenWindow> open in _open.entries) {
+      if (open.value.entry.controller.rootView.viewId == viewId) {
+        return open.key;
+      }
+    }
+    return null;
+  }
+
   /// Destroys the window [key] (it unregisters itself); nothing when it is not open.
   void close(String key) => controllerOf(key)?.destroy();
+
+  /// Asks to close the open window [key] as its red button does (⌘W): its close handler, else it is destroyed.
+  void requestClose(String key) {
+    if (controllerOf(key) case final BaseWindowController controller) {
+      _closeRequested(key, controller);
+    }
+  }
 
   /// Runs [handler] instead of destroying the window [key] when the user asks to close it (the red button); null
   /// restores the default, which destroys it.

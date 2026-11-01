@@ -85,23 +85,23 @@ class HomePage extends StatelessWidget {
     return ProjectCapsule(
       project: project,
       recent: projects.recent,
-      onOpen: (path) => unawaited(_openRecent(path, windows)),
+      onOpen: (path) => unawaited(openRecentProject(projects, windows, path)),
       onAllProjects: windows == null ? null : () => unawaited(windows.openProjects()),
     );
   }
+}
 
-  /// A Recent row: a failed open or a missing folder shows the Projects window with its notice (Ralph, 2026-11-01);
-  /// the open project stays.
-  Future<void> _openRecent(String path, AppWindowActions? windows) async {
-    final ProjectOpenOutcome outcome = await projects.open(path);
-    switch (outcome) {
-      // Without the actions scope nothing opens Projects, so nothing is reported (it would show stale later).
-      case ProjectOpenFailed() || ProjectNotARepo(kind: RepoKind.pathNotFound) when windows != null:
-        projects.reportFailedOpen(path, outcome);
-        await windows.openProjects();
-      case _:
-        break;
-    }
+/// A Recent row (the capsule's, File › Open Recent's): opens [path] in [session]; a failed open or a missing folder
+/// shows the Projects window through [windows] with its notice (Ralph, 2026-11-01); the open project stays.
+Future<void> openRecentProject(ProjectSession session, AppWindowActions? windows, String path) async {
+  final ProjectOpenOutcome outcome = await session.open(path);
+  switch (outcome) {
+    // Without the actions scope nothing opens Projects, so nothing is reported (it would show stale later).
+    case ProjectOpenFailed() || ProjectNotARepo(kind: RepoKind.pathNotFound) when windows != null:
+      session.reportFailedOpen(path, outcome);
+      await windows.openProjects();
+    case _:
+      break;
   }
 }
 

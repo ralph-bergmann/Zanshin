@@ -27,6 +27,9 @@ class ActiveWindowTracker extends ChangeNotifier with WidgetsBindingObserver {
   var _seen = false;
   int? _keyView;
 
+  /// The Flutter view of the key window; null before the first focus event and while no Zanshin window is key.
+  int? get keyView => _keyView;
+
   /// Whether the window of the Flutter view [viewId] is the key window (or no focus event has arrived yet).
   bool isActive(int viewId) => !_seen || _keyView == viewId;
 

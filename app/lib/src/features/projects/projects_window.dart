@@ -242,6 +242,12 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     super.dispose();
   }
 
+  /// Focuses the search with its text selected (Edit › Find ⌘F while Projects is key, Story 11.13).
+  void focusSearch() {
+    _searchFocus.requestFocus();
+    _search.selection = TextSelection(baseOffset: 0, extentOffset: _search.text.length);
+  }
+
   // ---- catalogue hooks ----
 
   /// Shows the tree filtered by [query], as if it were typed.

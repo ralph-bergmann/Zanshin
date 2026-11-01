@@ -16,6 +16,7 @@ void main() {
 
     expect(tracker.isActive(1), isTrue);
     expect(tracker.isActive(2), isTrue);
+    expect(tracker.keyView, isNull);
   });
 
   testWidgets("the binding's focus events reach it: only the focused view is active, a later one takes over", (
@@ -34,6 +35,7 @@ void main() {
       ..handleViewFocusChanged(_focus(1, ViewFocusState.unfocused))
       ..handleViewFocusChanged(_focus(2, ViewFocusState.focused));
     expect((tracker.isActive(1), tracker.isActive(2)), (false, true));
+    expect(tracker.keyView, 2);
     expect(notified, 3);
   });
 

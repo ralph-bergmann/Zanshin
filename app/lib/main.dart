@@ -26,6 +26,7 @@ import 'src/features/bootstrap/zanshin_bootstrap.dart';
 import 'src/features/projects/project_session.dart';
 import 'src/features/projects/projects_module.dart';
 import 'src/features/projects/projects_window.dart';
+import 'src/features/shell/app_menu.dart';
 import 'src/features/window/app_window_coordinator.dart';
 import 'src/features/window/app_windows.dart';
 import 'src/features/window/zanshin_window_root.dart';
@@ -79,13 +80,14 @@ Future<void> main() async {
       // host and the DI graph through `startApp`. One AppWindows serves the
       // host, the coordinator and the quit's close guards.
       final icons = ValueNotifier<IconRegistry?>(null);
+      final menu = ValueNotifier<AppMenuModel?>(null);
       final windows = AppWindows();
       await ZanshinBootSequence(
-        host: ZanshinWindowHost(windows: windows, icons: icons),
+        host: ZanshinWindowHost(windows: windows, icons: icons, menu: menu),
         openSettings: SettingsStore.open,
         adoptShellEnvironment: _adoptShellEnvironment,
         loadIcons: () async => icons.value = await IconRegistry.load(),
-        startApp: (settings, registry) => _startApp(settings, registry, windows),
+        startApp: (settings, registry) => _startApp(settings, registry, windows, menu),
       ).run();
     },
     (error, stackTrace) {
@@ -116,8 +118,15 @@ Future<void> _adoptShellEnvironment() async {
 /// guards first), then the first window. The projects module gets the worker
 /// once it has started; the window coordinator (Story 11.12) then decides the
 /// first window, reopens the last open project without holding up the boot
-/// (Story 11.5) and keeps the windows in step with the open project.
-Future<BootFirstWindow> _startApp(SettingsStore settings, IconRegistry icons, AppWindows windows) async {
+/// (Story 11.5) and keeps the windows in step with the open project. The menu
+/// bar's model (Story 11.13) takes the windows and the coordinator and replaces
+/// the boot's menus in [menu].
+Future<BootFirstWindow> _startApp(
+  SettingsStore settings,
+  IconRegistry icons,
+  AppWindows windows,
+  ValueNotifier<AppMenuModel?> menu,
+) async {
   final worker = Completer<ZanshinWorker>();
   // ignore: specify_nonobvious_local_variable_types
   final mainComponent = MainComponent.create(
@@ -127,7 +136,10 @@ Future<BootFirstWindow> _startApp(SettingsStore settings, IconRegistry icons, Ap
     workerLifecycleModule: WorkerLifecycleModule(mayQuit: windows.mayClose),
   );
   worker.complete(await mainComponent.worker);
-  return appWindowCoordinator(mainComponent, windows).start();
+  final AppWindowCoordinator coordinator = appWindowCoordinator(mainComponent, windows);
+  final AppMenuModel appMenu = mainComponent.appMenu..attach(windows, coordinator);
+  menu.value = appMenu;
+  return coordinator.start();
 }
 
 /// The window coordinator over [component]'s session and window contents and the app's [windows]: the project window
@@ -140,7 +152,7 @@ AppWindowCoordinator appWindowCoordinator(MainComponent component, AppWindows wi
   buildProject: component.zanshinAppFactory.create,
   buildProjects: (onOpened) => component.zanshinWindowRootFactory.create(
     windowKey: projectsWindowKey,
-    child: component.projectsWindowFactory.create(onOpened: onOpened),
+    child: component.projectsWindowFactory.create(onOpened: onOpened, key: component.appMenu.projectsKey),
   ),
 );
 
@@ -177,4 +189,8 @@ abstract class MainComponent {
   /// The root of every window but the project window, whose content ([zanshinAppFactory]) brings its own.
   @inject
   ZanshinWindowRootFactory get zanshinWindowRootFactory;
+
+  /// The menu bar's state (Story 11.13), attached to the windows once the coordinator exists.
+  @inject
+  AppMenuModel get appMenu;
 }

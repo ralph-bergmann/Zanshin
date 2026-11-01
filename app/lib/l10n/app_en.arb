@@ -640,5 +640,140 @@
   "@toastListComma": {
     "description": "Joins the items before the last of a list in a toast: a, b and c.",
     "placeholders": {"head": {"type": "String", "example": "a"}, "next": {"type": "String", "example": "b"}}
+  },
+  "menuFile": "File",
+  "@menuFile": {"description": "Menu bar: the File menu (Title Case, as the whole menu bar)."},
+  "menuEdit": "Edit",
+  "@menuEdit": {"description": "Menu bar: the Edit menu."},
+  "menuView": "View",
+  "@menuView": {"description": "Menu bar: the View menu."},
+  "menuChange": "Change",
+  "@menuChange": {"description": "Menu bar: the Change menu (jj verbs on the selected change, else @)."},
+  "menuGo": "Go",
+  "@menuGo": {"description": "Menu bar: the Go menu (scrolling and moving the selection in the graph)."},
+  "menuWindow": "Window",
+  "@menuWindow": {"description": "Menu bar: the Window menu."},
+  "menuHelp": "Help",
+  "@menuHelp": {"description": "Menu bar: the Help menu."},
+  "menuOpenRecent": "Open Recent",
+  "@menuOpenRecent": {"description": "File menu: the submenu of recently opened projects."},
+  "menuCloseWindow": "Close Window",
+  "@menuCloseWindow": {"description": "File menu: closes the key window (the project window closes the project and shows Projects)."},
+  "menuUndo": "Undo {action}",
+  "@menuUndo": {
+    "description": "Edit menu: undoes Zanshin's own latest jj operation; action names it.",
+    "placeholders": {"action": {"type": "String", "example": "Abandon kmnvxoqp"}}
+  },
+  "menuUndoPlain": "Undo",
+  "@menuUndoPlain": {"description": "Edit menu: Undo when there is no own operation to name, or in a text field."},
+  "menuRedo": "Redo {action}",
+  "@menuRedo": {
+    "description": "Edit menu: redoes Zanshin's own latest undo; action names what is redone.",
+    "placeholders": {"action": {"type": "String", "example": "Abandon kmnvxoqp"}}
+  },
+  "menuRedoPlain": "Redo",
+  "@menuRedoPlain": {"description": "Edit menu: Redo when there is no own undo to name, or in a text field."},
+  "menuCut": "Cut",
+  "@menuCut": {"description": "Edit menu: cuts the selected text."},
+  "menuCopy": "Copy",
+  "@menuCopy": {"description": "Edit menu: copies the selected text."},
+  "menuPaste": "Paste",
+  "@menuPaste": {"description": "Edit menu: pastes into the focused field."},
+  "menuSelectAll": "Select All",
+  "@menuSelectAll": {"description": "Edit menu: selects all text in the focused field."},
+  "menuFind": "Find",
+  "@menuFind": {"description": "Edit menu: focuses the search (the graph's, or the Projects window's while it is key)."},
+  "menuFree": "Free",
+  "@menuFree": {"description": "View menu: the Free graph layout."},
+  "menuCompact": "Compact",
+  "@menuCompact": {"description": "View menu: the Compact graph layout."},
+  "menuDetailedCards": "Detailed Cards",
+  "@menuDetailedCards": {"description": "View menu: toggles detailed graph cards."},
+  "menuGroupStacks": "Group Stacks",
+  "@menuGroupStacks": {"description": "View menu: toggles grouping linear runs into stacks."},
+  "menuEditConfigurations": "Edit Configurations…",
+  "@menuEditConfigurations": {"description": "View menu: opens the jj log Configurations window."},
+  "menuShowMinimap": "Show Minimap",
+  "@menuShowMinimap": {"description": "View menu: toggles the graph's minimap."},
+  "menuReload": "Reload",
+  "@menuReload": {"description": "View menu: reads the project and the graph again."},
+  "menuNewChange": "New Change",
+  "@menuNewChange": {"description": "Change menu: jj new on the target change."},
+  "menuDescribe": "Describe…",
+  "@menuDescribe": {"description": "Change menu: edits the target change's description."},
+  "menuDescribeTarget": "Describe {target}",
+  "@menuDescribeTarget": {
+    "description": "Names a describe in Undo/Redo; target is @ or the change id.",
+    "placeholders": {"target": {"type": "String", "example": "kmnvxoqp"}}
+  },
+  "menuChangeEdit": "Edit",
+  "@menuChangeEdit": {"description": "Change menu: jj edit, without a target to name."},
+  "menuChangeEditTarget": "Edit {target}",
+  "@menuChangeEditTarget": {
+    "description": "Change menu: jj edit on the target; target is the change id.",
+    "placeholders": {"target": {"type": "String", "example": "kmnvxoqp"}}
+  },
+  "menuSquash": "Squash into Parent",
+  "@menuSquash": {"description": "Change menu: jj squash, without a target to name."},
+  "menuSquashTarget": "Squash {target} into Parent",
+  "@menuSquashTarget": {
+    "description": "Change menu: jj squash -r on the target; target is @ or the change id.",
+    "placeholders": {"target": {"type": "String", "example": "@"}}
+  },
+  "menuRevert": "Revert",
+  "@menuRevert": {"description": "Change menu: jj revert, without a target to name."},
+  "menuRevertTarget": "Revert {target}",
+  "@menuRevertTarget": {
+    "description": "Change menu: jj revert on the target; target is the change id.",
+    "placeholders": {"target": {"type": "String", "example": "kmnvxoqp"}}
+  },
+  "menuAbandon": "Abandon",
+  "@menuAbandon": {"description": "Change menu: jj abandon, without a target to name."},
+  "menuAbandonTarget": "Abandon {target}",
+  "@menuAbandonTarget": {
+    "description": "Change menu: jj abandon on the target; target is @ or the change id.",
+    "placeholders": {"target": {"type": "String", "example": "@"}}
+  },
+  "menuBookmarkCreate": "Create Bookmark {names}",
+  "@menuBookmarkCreate": {
+    "description": "Names a bookmark creation in Undo/Redo.",
+    "placeholders": {"names": {"type": "String", "example": "main"}}
+  },
+  "menuBookmarkDelete": "Delete Bookmark {names}",
+  "@menuBookmarkDelete": {
+    "description": "Names a bookmark deletion in Undo/Redo.",
+    "placeholders": {"names": {"type": "String", "example": "main"}}
+  },
+  "menuBookmarkMove": "Move Bookmark {names}",
+  "@menuBookmarkMove": {
+    "description": "Names a bookmark move in Undo/Redo.",
+    "placeholders": {"names": {"type": "String", "example": "main"}}
+  },
+  "menuBookmarkRename": "Rename Bookmark {names}",
+  "@menuBookmarkRename": {
+    "description": "Names a bookmark rename in Undo/Redo.",
+    "placeholders": {"names": {"type": "String", "example": "main"}}
+  },
+  "menuFetch": "Fetch",
+  "@menuFetch": {"description": "Change menu: jj git fetch."},
+  "menuPush": "Push…",
+  "@menuPush": {"description": "Change menu: opens the Push sheet."},
+  "menuGoSelection": "Selection",
+  "@menuGoSelection": {"description": "Go menu: scrolls to the selected change."},
+  "menuGoWorkingCopy": "Working Copy (@)",
+  "@menuGoWorkingCopy": {"description": "Go menu: scrolls to the working-copy change, @."},
+  "menuGoParent": "Parent",
+  "@menuGoParent": {"description": "Go menu: selects the selected change's first parent."},
+  "menuGoChild": "Child",
+  "@menuGoChild": {"description": "Go menu: selects the selected change's first child."},
+  "menuAppHelp": "{app} Help",
+  "@menuAppHelp": {
+    "description": "Help menu: the app's help; app is the product name.",
+    "placeholders": {"app": {"type": "String", "example": "Zanshin"}}
+  },
+  "menuToolDocumentation": "{tool} Documentation ↗",
+  "@menuToolDocumentation": {
+    "description": "Help menu: opens jj's documentation in the browser; tool is jj's name.",
+    "placeholders": {"tool": {"type": "String", "example": "jj"}}
   }
 }

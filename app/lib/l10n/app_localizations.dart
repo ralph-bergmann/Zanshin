@@ -1555,6 +1555,294 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{head}, {next}'**
   String toastListComma(String head, String next);
+
+  /// Menu bar: the File menu (Title Case, as the whole menu bar).
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get menuFile;
+
+  /// Menu bar: the Edit menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get menuEdit;
+
+  /// Menu bar: the View menu.
+  ///
+  /// In en, this message translates to:
+  /// **'View'**
+  String get menuView;
+
+  /// Menu bar: the Change menu (jj verbs on the selected change, else @).
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get menuChange;
+
+  /// Menu bar: the Go menu (scrolling and moving the selection in the graph).
+  ///
+  /// In en, this message translates to:
+  /// **'Go'**
+  String get menuGo;
+
+  /// Menu bar: the Window menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Window'**
+  String get menuWindow;
+
+  /// Menu bar: the Help menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Help'**
+  String get menuHelp;
+
+  /// File menu: the submenu of recently opened projects.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Recent'**
+  String get menuOpenRecent;
+
+  /// File menu: closes the key window (the project window closes the project and shows Projects).
+  ///
+  /// In en, this message translates to:
+  /// **'Close Window'**
+  String get menuCloseWindow;
+
+  /// Edit menu: undoes Zanshin's own latest jj operation; action names it.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo {action}'**
+  String menuUndo(String action);
+
+  /// Edit menu: Undo when there is no own operation to name, or in a text field.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get menuUndoPlain;
+
+  /// Edit menu: redoes Zanshin's own latest undo; action names what is redone.
+  ///
+  /// In en, this message translates to:
+  /// **'Redo {action}'**
+  String menuRedo(String action);
+
+  /// Edit menu: Redo when there is no own undo to name, or in a text field.
+  ///
+  /// In en, this message translates to:
+  /// **'Redo'**
+  String get menuRedoPlain;
+
+  /// Edit menu: cuts the selected text.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut'**
+  String get menuCut;
+
+  /// Edit menu: copies the selected text.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get menuCopy;
+
+  /// Edit menu: pastes into the focused field.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste'**
+  String get menuPaste;
+
+  /// Edit menu: selects all text in the focused field.
+  ///
+  /// In en, this message translates to:
+  /// **'Select All'**
+  String get menuSelectAll;
+
+  /// Edit menu: focuses the search (the graph's, or the Projects window's while it is key).
+  ///
+  /// In en, this message translates to:
+  /// **'Find'**
+  String get menuFind;
+
+  /// View menu: the Free graph layout.
+  ///
+  /// In en, this message translates to:
+  /// **'Free'**
+  String get menuFree;
+
+  /// View menu: the Compact graph layout.
+  ///
+  /// In en, this message translates to:
+  /// **'Compact'**
+  String get menuCompact;
+
+  /// View menu: toggles detailed graph cards.
+  ///
+  /// In en, this message translates to:
+  /// **'Detailed Cards'**
+  String get menuDetailedCards;
+
+  /// View menu: toggles grouping linear runs into stacks.
+  ///
+  /// In en, this message translates to:
+  /// **'Group Stacks'**
+  String get menuGroupStacks;
+
+  /// View menu: opens the jj log Configurations window.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Configurations…'**
+  String get menuEditConfigurations;
+
+  /// View menu: toggles the graph's minimap.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Minimap'**
+  String get menuShowMinimap;
+
+  /// View menu: reads the project and the graph again.
+  ///
+  /// In en, this message translates to:
+  /// **'Reload'**
+  String get menuReload;
+
+  /// Change menu: jj new on the target change.
+  ///
+  /// In en, this message translates to:
+  /// **'New Change'**
+  String get menuNewChange;
+
+  /// Change menu: edits the target change's description.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe…'**
+  String get menuDescribe;
+
+  /// Names a describe in Undo/Redo; target is @ or the change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe {target}'**
+  String menuDescribeTarget(String target);
+
+  /// Change menu: jj edit, without a target to name.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get menuChangeEdit;
+
+  /// Change menu: jj edit on the target; target is the change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit {target}'**
+  String menuChangeEditTarget(String target);
+
+  /// Change menu: jj squash, without a target to name.
+  ///
+  /// In en, this message translates to:
+  /// **'Squash into Parent'**
+  String get menuSquash;
+
+  /// Change menu: jj squash -r on the target; target is @ or the change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Squash {target} into Parent'**
+  String menuSquashTarget(String target);
+
+  /// Change menu: jj revert, without a target to name.
+  ///
+  /// In en, this message translates to:
+  /// **'Revert'**
+  String get menuRevert;
+
+  /// Change menu: jj revert on the target; target is the change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Revert {target}'**
+  String menuRevertTarget(String target);
+
+  /// Change menu: jj abandon, without a target to name.
+  ///
+  /// In en, this message translates to:
+  /// **'Abandon'**
+  String get menuAbandon;
+
+  /// Change menu: jj abandon on the target; target is @ or the change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Abandon {target}'**
+  String menuAbandonTarget(String target);
+
+  /// Names a bookmark creation in Undo/Redo.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Bookmark {names}'**
+  String menuBookmarkCreate(String names);
+
+  /// Names a bookmark deletion in Undo/Redo.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Bookmark {names}'**
+  String menuBookmarkDelete(String names);
+
+  /// Names a bookmark move in Undo/Redo.
+  ///
+  /// In en, this message translates to:
+  /// **'Move Bookmark {names}'**
+  String menuBookmarkMove(String names);
+
+  /// Names a bookmark rename in Undo/Redo.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename Bookmark {names}'**
+  String menuBookmarkRename(String names);
+
+  /// Change menu: jj git fetch.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch'**
+  String get menuFetch;
+
+  /// Change menu: opens the Push sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Push…'**
+  String get menuPush;
+
+  /// Go menu: scrolls to the selected change.
+  ///
+  /// In en, this message translates to:
+  /// **'Selection'**
+  String get menuGoSelection;
+
+  /// Go menu: scrolls to the working-copy change, @.
+  ///
+  /// In en, this message translates to:
+  /// **'Working Copy (@)'**
+  String get menuGoWorkingCopy;
+
+  /// Go menu: selects the selected change's first parent.
+  ///
+  /// In en, this message translates to:
+  /// **'Parent'**
+  String get menuGoParent;
+
+  /// Go menu: selects the selected change's first child.
+  ///
+  /// In en, this message translates to:
+  /// **'Child'**
+  String get menuGoChild;
+
+  /// Help menu: the app's help; app is the product name.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} Help'**
+  String menuAppHelp(String app);
+
+  /// Help menu: opens jj's documentation in the browser; tool is jj's name.
+  ///
+  /// In en, this message translates to:
+  /// **'{tool} Documentation ↗'**
+  String menuToolDocumentation(String tool);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

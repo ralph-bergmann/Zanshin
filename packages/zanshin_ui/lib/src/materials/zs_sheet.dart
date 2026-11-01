@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -81,6 +82,30 @@ class ZsSheet extends StatefulWidget {
   /// The sheet's content.
   final Widget child;
 
+  /// The ids of the Flutter views a sheet shows in, from its mount to its dispose — the menu bar greys what such a
+  /// window must not do while it waits for an answer (Story 11.13). It changes during build and tree finalisation, so a
+  /// listener must not rebuild synchronously; defer the rebuild (a microtask, as `AppMenuModel` does).
+  static ValueListenable<Set<int>> get openViews => _openViews;
+  static final _openViews = ValueNotifier<Set<int>>(const <int>{});
+
+  // Sheets never stack, but two in one view must not let the first dispose drop the view.
+  static final _sheetsPerView = <int, int>{};
+
+  static void _opened(int viewId) {
+    _sheetsPerView[viewId] = (_sheetsPerView[viewId] ?? 0) + 1;
+    _openViews.value = Set<int>.unmodifiable(_sheetsPerView.keys);
+  }
+
+  static void _gone(int viewId) {
+    final int left = (_sheetsPerView[viewId] ?? 1) - 1;
+    if (left > 0) {
+      _sheetsPerView[viewId] = left;
+      return;
+    }
+    _sheetsPerView.remove(viewId);
+    _openViews.value = Set<int>.unmodifiable(_sheetsPerView.keys);
+  }
+
   @override
   State<ZsSheet> createState() => _ZsSheetState();
 }
@@ -112,6 +137,9 @@ class _ZsSheetState extends State<ZsSheet> with SingleTickerProviderStateMixin {
   var _reported = false;
   var _started = false;
 
+  /// The view this sheet counts in [ZsSheet.openViews].
+  int? _viewId;
+
   @override
   void initState() {
     super.initState();
@@ -124,6 +152,8 @@ class _ZsSheetState extends State<ZsSheet> with SingleTickerProviderStateMixin {
     super.didChangeDependencies();
     if (!_started) {
       _started = true;
+      _viewId = View.of(context).viewId;
+      ZsSheet._opened(_viewId!);
       final ZsMotion motion = ZsMotion.of(context);
       _fadeIn = CurvedAnimation(parent: _fade, curve: motion.easeState);
       _fadeOut = CurvedAnimation(parent: _fade, curve: motion.easeExit.flipped);
@@ -198,6 +228,9 @@ class _ZsSheetState extends State<ZsSheet> with SingleTickerProviderStateMixin {
 
   @override
   void dispose() {
+    if (_viewId case final int viewId) {
+      ZsSheet._gone(viewId);
+    }
     _returnFocus();
     _fadeIn.dispose();
     _fadeOut.dispose();

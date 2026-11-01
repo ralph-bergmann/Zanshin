@@ -1045,4 +1045,174 @@ class AppLocalizationsEn extends AppLocalizations {
   String toastListComma(String head, String next) {
     return '$head, $next';
   }
+
+  @override
+  String get menuFile => 'File';
+
+  @override
+  String get menuEdit => 'Edit';
+
+  @override
+  String get menuView => 'View';
+
+  @override
+  String get menuChange => 'Change';
+
+  @override
+  String get menuGo => 'Go';
+
+  @override
+  String get menuWindow => 'Window';
+
+  @override
+  String get menuHelp => 'Help';
+
+  @override
+  String get menuOpenRecent => 'Open Recent';
+
+  @override
+  String get menuCloseWindow => 'Close Window';
+
+  @override
+  String menuUndo(String action) {
+    return 'Undo $action';
+  }
+
+  @override
+  String get menuUndoPlain => 'Undo';
+
+  @override
+  String menuRedo(String action) {
+    return 'Redo $action';
+  }
+
+  @override
+  String get menuRedoPlain => 'Redo';
+
+  @override
+  String get menuCut => 'Cut';
+
+  @override
+  String get menuCopy => 'Copy';
+
+  @override
+  String get menuPaste => 'Paste';
+
+  @override
+  String get menuSelectAll => 'Select All';
+
+  @override
+  String get menuFind => 'Find';
+
+  @override
+  String get menuFree => 'Free';
+
+  @override
+  String get menuCompact => 'Compact';
+
+  @override
+  String get menuDetailedCards => 'Detailed Cards';
+
+  @override
+  String get menuGroupStacks => 'Group Stacks';
+
+  @override
+  String get menuEditConfigurations => 'Edit Configurations…';
+
+  @override
+  String get menuShowMinimap => 'Show Minimap';
+
+  @override
+  String get menuReload => 'Reload';
+
+  @override
+  String get menuNewChange => 'New Change';
+
+  @override
+  String get menuDescribe => 'Describe…';
+
+  @override
+  String menuDescribeTarget(String target) {
+    return 'Describe $target';
+  }
+
+  @override
+  String get menuChangeEdit => 'Edit';
+
+  @override
+  String menuChangeEditTarget(String target) {
+    return 'Edit $target';
+  }
+
+  @override
+  String get menuSquash => 'Squash into Parent';
+
+  @override
+  String menuSquashTarget(String target) {
+    return 'Squash $target into Parent';
+  }
+
+  @override
+  String get menuRevert => 'Revert';
+
+  @override
+  String menuRevertTarget(String target) {
+    return 'Revert $target';
+  }
+
+  @override
+  String get menuAbandon => 'Abandon';
+
+  @override
+  String menuAbandonTarget(String target) {
+    return 'Abandon $target';
+  }
+
+  @override
+  String menuBookmarkCreate(String names) {
+    return 'Create Bookmark $names';
+  }
+
+  @override
+  String menuBookmarkDelete(String names) {
+    return 'Delete Bookmark $names';
+  }
+
+  @override
+  String menuBookmarkMove(String names) {
+    return 'Move Bookmark $names';
+  }
+
+  @override
+  String menuBookmarkRename(String names) {
+    return 'Rename Bookmark $names';
+  }
+
+  @override
+  String get menuFetch => 'Fetch';
+
+  @override
+  String get menuPush => 'Push…';
+
+  @override
+  String get menuGoSelection => 'Selection';
+
+  @override
+  String get menuGoWorkingCopy => 'Working Copy (@)';
+
+  @override
+  String get menuGoParent => 'Parent';
+
+  @override
+  String get menuGoChild => 'Child';
+
+  @override
+  String menuAppHelp(String app) {
+    return '$app Help';
+  }
+
+  @override
+  String menuToolDocumentation(String tool) {
+    return '$tool Documentation ↗';
+  }
 }

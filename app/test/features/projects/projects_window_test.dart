@@ -513,6 +513,24 @@ void main() {
       expect(rig.focused, 'projects search', reason: 'Esc clears and keeps focus; it closes nothing');
     });
 
+    testWidgets("focusSearch (the menu bar's Find) focuses the search with its text selected", (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final Finder field = find.descendant(of: rig.id('projects-search'), matching: find.byType(EditableText));
+      await tester.enterText(field, 'design');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(rig.focused, isNot('projects search'));
+
+      tester.state<ProjectsWindowState>(find.byType(ProjectsWindow)).focusSearch();
+      await tester.pump();
+      expect(rig.focused, 'projects search');
+      expect(
+        tester.widget<EditableText>(field).controller.selection,
+        const TextSelection(baseOffset: 0, extentOffset: 6),
+      );
+    });
+
     testWidgets('a group toggled during a search keeps its state for when the search is cleared', (tester) async {
       final rig = _Rig(tester);
       await rig.pump();

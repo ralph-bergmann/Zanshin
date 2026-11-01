@@ -206,6 +206,38 @@ void main() {
     });
   }
 
+  testWidgets('openViews holds the view while a sheet is mounted, through its exit, and drops it on dispose', (
+    tester,
+  ) async {
+    final int view = tester.view.viewId;
+    Widget sheet({bool closing = false}) =>
+        _window(ZsSheet(semanticLabel: 'Sheet', onCancel: () {}, closing: closing, child: const SizedBox()));
+    expect(ZsSheet.openViews.value, isNot(contains(view)));
+    await tester.pumpWidget(sheet());
+    expect(ZsSheet.openViews.value, <int>{view});
+    await tester.pumpWidget(sheet(closing: true));
+    expect(ZsSheet.openViews.value, <int>{view});
+    await tester.pumpWidget(_window(null));
+    expect(ZsSheet.openViews.value, isEmpty);
+    // Two sheets in one view: the first to go leaves the view counted.
+    await tester.pumpWidget(
+      _window(
+        Stack(
+          children: <Widget>[
+            ZsSheet(semanticLabel: 'A', onCancel: () {}, child: const SizedBox()),
+            ZsSheet(key: const ValueKey<String>('b'), semanticLabel: 'B', onCancel: () {}, child: const SizedBox()),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      _window(ZsSheet(key: const ValueKey<String>('b'), semanticLabel: 'B', onCancel: () {}, child: const SizedBox())),
+    );
+    expect(ZsSheet.openViews.value, <int>{view});
+    await tester.pumpWidget(_window(null));
+    expect(ZsSheet.openViews.value, isEmpty);
+  });
+
   testWidgets('focus starts on the initial focus after the first frame', (tester) async {
     final [FocusNode a, FocusNode b, FocusNode c] = _nodes(3);
     await tester.pumpWidget(

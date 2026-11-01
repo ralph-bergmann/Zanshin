@@ -4,11 +4,13 @@
 // imports; see https://github.com/flutter/flutter/issues/30701.
 // ignore_for_file: invalid_use_of_internal_member
 
+import 'package:flutter/services.dart';
 import 'package:flutter/src/foundation/_features.dart';
 import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/bootstrap/boot_window_host.dart';
+import 'package:zanshin/src/features/shell/app_menu.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_ui/zanshin_ui.dart' show IconRegistry, IconRegistryScope;
 
@@ -48,7 +50,15 @@ void main() {
         windows.controllerOf(key)?.destroy();
       }
     });
-    final host = ZanshinWindowHost(windows: windows, icons: icons);
+    final menu = ValueNotifier<AppMenuModel?>(null);
+    addTearDown(menu.dispose);
+    final menuCalls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.menu, (call) async {
+      menuCalls.add(call);
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.menu, null));
+    final host = ZanshinWindowHost(windows: windows, icons: icons, menu: menu);
 
     await host.openProjects(_projectsContent);
 
@@ -63,6 +73,12 @@ void main() {
     final WindowRegistry registry = WindowRegistry.of(tester.element(find.byKey(_projectsContent.key!)));
     expect(registry.windows.single.controller, same(windows.controllerOf(projectsWindowKey)));
     expect(IconRegistryScope.maybeOf(tester.element(find.byKey(_projectsContent.key!))), isNull, reason: 'not loaded');
+    expect(
+      tester.widget<PlatformMenuBar>(find.byType(PlatformMenuBar)).menus.map((menu) => (menu as PlatformMenu).label),
+      <String>['Zanshin', 'Window'],
+      reason: "the boot's menu bar holds the system's items until the model arrives",
+    );
+    expect(menuCalls.map((call) => call.method), contains('Menu.setMenus'));
 
     await host.openMain(_projectContent);
     await tester.pump();
@@ -85,5 +101,6 @@ void main() {
       expect(IconRegistryScope.maybeOf(tester.element(content)), same(testIconRegistry));
     }
     expect(exits, isEmpty);
-  });
+    // The menu bar's system items exist on macOS only.
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 }
