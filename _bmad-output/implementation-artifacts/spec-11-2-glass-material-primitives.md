@@ -27,6 +27,8 @@ deferred:
     evidence: 'DS components/surfaces/surfaces.css:17-18 defines only the left arrow and .no-arrow; flipping and anchoring are 11.3''s (epics.md Story 11.2 non-goals).'
     location: 'app/lib/src/shared/materials/zs_menu_material.dart'
     severity: low
+    resolved: >-
+      2026-11-01 — rejected (spec-10-19-hidden-history-gaps, with 11.3's and 10.6's parts before it): no flipping callout draws an arrow (rail preview fixed, the commit peek and the gap callout are the arrowless peek material), so no other side is needed.
   - summary: >-
       Focus goes nowhere after a sheet when the node that had focus as it opened has unmounted meanwhile, for example a sheet opened from a context-menu row whose menu then finishes its exit.
     evidence: |-
