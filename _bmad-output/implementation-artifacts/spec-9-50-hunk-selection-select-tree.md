@@ -19,6 +19,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/select_tree.rs (sections)
     severity: medium
+    resolved: >-
+      2026-11-01 — fixed (spec-5-8-ffi-wrapper-zanshin-ffi-src-diff-rs, commit b96036d): `RepoHandle.diff` (FFI `zanshin_diff`) brings every file's sections and HunkKeys to Dart; a real-cdylib test feeds a reported key back into `selectTree`.
   - summary: >-
       The builtin diff editor offers a mode change as a separate toggle and sections conflicted files over their materialized markers; Zanshin keeps both whole-only.
     evidence: |-

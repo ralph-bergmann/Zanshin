@@ -21,6 +21,8 @@ deferred:
     location: >-
       crates/zanshin-ffi/src/commit_views.rs
     severity: medium
+    resolved: >-
+      2026-11-01 — fixed (spec-5-8-ffi-wrapper-zanshin-ffi-src-diff-rs, commit b96036d): the wire and the Dart `ShowEntry` carry `parent_tree_labels` / `tree_labels`, checked against `Repo::show` on a conflicted merge.
   - summary: >-
       The repo ships Apache-2.0 code (the source_symbol port) without the Apache-2.0 licence text, and the manifests still say license = "MIT".
     evidence: |-
