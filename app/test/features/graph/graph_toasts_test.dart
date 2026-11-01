@@ -148,6 +148,24 @@ void main() {
     expect(leaves(tester).map((span) => span.text), contains('nlmro'));
   });
 
+  toastTest('dispose hides its own toast (its Undo names the disposed model), never a later one', (tester) async {
+    await run(tester, const GraphAbandon(<String>[_a]));
+    expect(toasts.current, isNotNull);
+    binding.dispose();
+    expect(toasts.current, isNull);
+
+    final other = ShellToastEntry(
+      tone: ZsToastTone.success,
+      build: (context, dismiss) => ZsToast(
+        message: const TextSpan(text: 'other'),
+        onDismiss: dismiss,
+      ),
+    );
+    toasts.show(other);
+    binding.dispose();
+    expect(toasts.current, same(other));
+  });
+
   toastTest('a prefix longer than 8 shows in full; an id the layout lacks takes prefix 2', (tester) async {
     await run(tester, const GraphAbandon(<String>[_b, 'zzzzzzzzzzzz']));
     expect(text(tester), 'Abandoned vruxwmqvz and zzzzzzzz');

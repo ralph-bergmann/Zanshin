@@ -31,12 +31,15 @@ class GraphToasts {
 
   StaleRecovery? _recovery;
   ZanshinFfiException? _failure;
+  ShellToastEntry? _shown;
+
+  void _show(ShellToastEntry entry) => toasts.show(_shown = entry);
 
   void _outcome() {
     final GraphOutcome? outcome = model.outcome.value;
     final ShellToastEntry? entry = outcome == null ? null : graphOutcomeEntry(outcome, model: model, toasts: toasts);
     if (entry != null) {
-      toasts.show(entry);
+      _show(entry);
     }
   }
 
@@ -45,14 +48,14 @@ class GraphToasts {
     if (!identical(recovery, _recovery)) {
       _recovery = recovery;
       if (recovery != null) {
-        toasts.show(_staleResultEntry(recovery));
+        _show(_staleResultEntry(recovery));
       }
     }
     final ZanshinFfiException? failure = model.staleUpdateError;
     if (!identical(failure, _failure)) {
       _failure = failure;
       if (failure != null) {
-        toasts.show(_staleFailureEntry(failure));
+        _show(_staleFailureEntry(failure));
       }
     }
   }
@@ -111,10 +114,14 @@ class GraphToasts {
     ),
   );
 
-  /// Stops listening.
+  /// Stops listening and hides its toast if it still shows: its Undo, Redo or Retry would run on a disposed model.
   void dispose() {
     model.outcome.removeListener(_outcome);
     model.removeListener(_changed);
+    final ShellToastEntry? shown = _shown;
+    if (shown != null) {
+      toasts.dismiss(shown);
+    }
   }
 }
 

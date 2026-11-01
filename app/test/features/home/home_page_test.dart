@@ -261,9 +261,13 @@ void main() {
     expect(first, isNotNull);
     expect(tester.widget<GraphView>(find.byType(GraphView)).model, same(first!.model));
     expect(first.focusSearch, isNotNull);
+    final State graphState = tester.state(find.byType(GraphView));
+    final State searchState = tester.state(find.byType(GraphSearchField));
 
     await tester.runAsync(() => session.open('/r/jj'));
     await tester.pump();
+    expect(tester.state(find.byType(GraphView)), isNot(same(graphState)), reason: 'a fresh graph state');
+    expect(tester.state(find.byType(GraphSearchField)), isNot(same(searchState)), reason: 'no old search text');
     final GraphMenuBinding? second = appMenu.graph.value;
     expect(second, isNotNull);
     expect(second!.model, isNot(same(first.model)), reason: 'a new set of graph objects for the new repository');

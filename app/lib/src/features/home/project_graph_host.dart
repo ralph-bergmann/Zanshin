@@ -233,8 +233,14 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
         ProjectGraphSlots._(
           model: model,
           search: graph.search,
-          graph: GraphView(model: model, options: graph.preferences.options),
-          view: GraphViewControls(model: model, preferences: graph.preferences, search: graph.search),
+          // Keyed by the graph set, so a project switch mounts fresh states (no old search text, selection or scroll).
+          graph: GraphView(key: ObjectKey(graph), model: model, options: graph.preferences.options),
+          view: GraphViewControls(
+            key: ObjectKey(graph),
+            model: model,
+            preferences: graph.preferences,
+            search: graph.search,
+          ),
           reload: GraphReloadIsland(onPressed: _reload),
           newChange: NewChangeButton(model: model),
           inspector: GraphView.inspector(graph.inspector),
