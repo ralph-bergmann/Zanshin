@@ -41,6 +41,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_canvas.dart:334-341; app/lib/src/features/graph/graph_view_model.dart:890-894, 1067-1070
     severity: high (unverified)
+    resolved: >-
+      2026-11-01 — fixed (spec-10-20-closing-same-op-reload-keeps-transition, commit c4579635): same-op layouts continue the transition; early end reveals the born card.
 ---
 
 <intent-contract>
