@@ -2365,13 +2365,14 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The stack card, its offset layers, hatch, member list and bracket have not been compared against the DS cards in the running catalogue; only widget tests check them.** Medium (unverified).
   - The story's verification notes record "Not done: the Widgetbook/Marionette visual check against the DS cards"; the DS measurements (graph.css:27-29, the menu material, the 7 px bracket, the 20 px button) are checked only as rects, texts and semantics in `app/test/features/graph/graph_stacks_test.dart`.
   - **Follow-up:** run the Marionette / Playwright check of the `graph` catalogue's stack states against the DS cards and fix what differs.
+  - **2026-11-01, console session (Marionette):** the collapsed stack card in `graph/floating-shell/controls` (night) matches graph.card.html and the UI kit — count badge, newest subject, id range, authors, date range (StackCard.prompt.md), offset layers; nothing to fix. Left: the hover member list, the bracket and its collapse button (hover-only; Marionette cannot hover — needs an "open" use case or a look by Ralph).
 - ~~**A pending action on a member folded into a collapsed stack should dim the stack card, but no test renders that.**~~ — RESOLVED 2026-11-01 (spec-fix-story-loop-leftovers-2026-11-01, commit cc4065b): a canvas test in graph_stacks_test.dart renders pendingKeys {a folded member} and pins its stack card at disabledOpacity. Low.
   - `GraphCanvas.build` maps `pendingKeys` through `layout.placeOfKey` (app/lib/src/features/graph/graph_canvas.dart); no canvas test renders a pending key (the pending look had no render test before this story either).
   - **Follow-up:** a one-case canvas test with `pendingKeys: {<folded member>}` asserting the stack card's disabled opacity, whenever the pending look gets a render test.
 
 ## Surfaced in Story 10.21 (bmad-build-auto, 2026-11-01)
 
-- **The search field, its menu, suggestions and footer have not been compared against the DS search cards in the running catalogue; only widget tests check them.** Medium.
+- ~~**The search field, its menu, suggestions and footer have not been compared against the DS search cards in the running catalogue; only widget tests check them.**~~ — RESOLVED 2026-11-01 (console session, Marionette; spec-fix-graph-search-ds-check-2026-11-01, commit 651b0f5): the check found four deviations (popover and menu stuck at max height, no counts in the catalogue, no date on change rows, no author avatar), all fixed and re-checked in the catalogue against search-suggestions/search-menu.card.html. Medium.
   - The unattended run could not run the Widgetbook catalogue, so the Marionette visual check was not done; `app/test/features/graph/graph_search_field_test.dart` asserts texts, widths, rows and semantics only (`app/lib/src/features/graph/graph_search_field.dart`).
   - **Follow-up:** run the Marionette / Playwright check of the floating shell's search states against `design_system/components/search/*.card.html` and fix what differs.
 - **The field is no true combobox with a listbox and an active descendant (item 9); VoiceOver gets the keyboard row only as the field's hint, unheard on a device.** Low.
@@ -2390,6 +2391,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The toast's look, motion and the backdrop blur during its fade (I1) are unchecked in the running catalogue against the DS Toast card; only widget tests check them.** Medium.
   - Unattended run: no Marionette / Playwright check; `app/test/features/shell/shell_toast_test.dart` asserts `ZsFade` under the motion and no `Opacity`/`FadeTransition` above the glass, not the rendered blur (`app/lib/src/features/shell/shell_toast.dart`).
   - **Follow-up:** run the catalogue's Graph › Toast › Tones use case and compare it with `design_system/components/overlays/Toast.*` mid-fade.
+  - **2026-11-01, console session (Marionette):** the four tones at rest match feedback.card.html's toasts (pill, tone icons, Undo/Retry chip, ×); nothing to fix. Left: the backdrop blur mid-fade — a still screenshot cannot catch it; a look by Ralph during Replay.
 
 ## Surfaced in the console-session fix run (bmad-build-auto, 2026-11-01)
 
