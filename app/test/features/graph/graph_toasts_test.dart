@@ -220,6 +220,15 @@ void main() {
     expect(buttons(tester), <String>['Undo']);
   });
 
+  toastTest('track / untrack: "Started tracking ‹name@remote›", "Stopped tracking ‹…›", with Undo', (tester) async {
+    await run(tester, const GraphBookmarkTrack('release/1.5.x', 'origin'));
+    expect(text(tester), 'Started tracking release/1.5.x@origin');
+    expect(buttons(tester), <String>['Undo']);
+    expect(leaves(tester).last.style?.fontFamily, ZsType.monoFamily);
+    await run(tester, const GraphBookmarkUntrack('main', 'origin'));
+    expect(text(tester), 'Stopped tracking main@origin');
+  });
+
   toastTest('new, edit and describe show no toast; with warnings, the warnings in the warn tone', (tester) async {
     await run(tester, const GraphNew(parents: <String>[_a]));
     await run(tester, const GraphEdit(_b));

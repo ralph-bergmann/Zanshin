@@ -11,6 +11,7 @@ import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import 'appearance_addon.dart';
+import 'folders/bookmarks.dart';
 import 'folders/controls.dart';
 import 'folders/graph.dart';
 import 'folders/icons.dart';
@@ -22,13 +23,14 @@ import 'folders/windows.dart';
 
 final _log = Logger('zanshin.catalogue');
 
-/// The catalogue's tree: Controls, Materials, Shell (Story 11.3), Projects (Story 11.5), Undo Timeline (Story 11.9),
-/// Windows, Icons and Graph (Story 10.1).
+/// The catalogue's tree: Controls, Materials, Shell (Story 11.3), Projects (Story 11.5), Bookmarks (Story 10.14), Undo
+/// Timeline (Story 11.9), Windows, Icons and Graph (Story 10.1).
 final catalogueDirectories = <WidgetbookNode>[
   controlsFolder,
   materialsFolder,
   shellFolder,
   projectsFolder,
+  bookmarksFolder,
   undoTimelineFolder,
   windowsFolder,
   iconsFolder,

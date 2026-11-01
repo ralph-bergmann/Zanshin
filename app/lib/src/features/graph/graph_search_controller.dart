@@ -92,9 +92,11 @@ class GraphSearchController extends ChangeNotifier {
 
   /// Goes to [key] (item 5): a shown one is selected, revealed and pulsed without a request; one beyond the view
   /// switches to `all()` in one request that lands it ([commitId] is its key there when `all()` keys it by commit id).
-  /// A bookmark go-to keeps the [bookmark]'s name in Recent.
-  void goTo(String key, {String? bookmark, String? commitId}) {
-    _addRecent(GraphRecentGoTo(key, bookmark: bookmark));
+  /// A bookmark go-to keeps the [bookmark]'s name in Recent; with [recent] false (a rail pick, 10.14) nothing enters it.
+  void goTo(String key, {String? bookmark, String? commitId, bool recent = true}) {
+    if (recent) {
+      _addRecent(GraphRecentGoTo(key, bookmark: bookmark));
+    }
     if (model.layout?.indexOfKey(key) != null) {
       model.goTo(key);
       notifyListeners();

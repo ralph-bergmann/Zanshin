@@ -200,6 +200,8 @@ class AppMenuModel extends ChangeNotifier {
       GraphBookmarkDelete(:final names) => s.menuBookmarkDelete(names.join(', ')),
       GraphBookmarkMove(:final names) => s.menuBookmarkMove(names.join(', ')),
       GraphBookmarkRename(:final oldName) => s.menuBookmarkRename(oldName),
+      GraphBookmarkTrack(:final name, :final remote) => s.menuBookmarkTrack('$name@$remote'), // l10n-ignore: symbol
+      GraphBookmarkUntrack(:final name, :final remote) => s.menuBookmarkUntrack('$name@$remote'), // l10n-ignore: symbol
       GraphUndo(:final of) || GraphRedo(:final of) => actionName(s, model, of),
       GraphLoggedOperation(:final command) => command,
       GraphOpRestore(:final operation) => s.menuRestoreOperation(operation),

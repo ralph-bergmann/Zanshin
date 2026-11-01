@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/bookmarks/bookmark_list_model.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart' show GraphCommitContent;
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
@@ -283,6 +284,60 @@ void main() {
     );
   });
 
+  test('Story 10.14 (real repo): the list reads an untracked remote row; Track and Untrack flip it', () async {
+    // A Git repository with `main@origin` (an untracked remote bookmark), converted: fixtures have no remotes.
+    final String path = pathOf('track');
+    await Directory(path).create();
+    Future<void> git(List<String> args) async {
+      final ProcessResult result = await Process.run('git', <String>['-C', path, ...args]);
+      if (result.exitCode != 0) {
+        fail('git ${args.join(' ')} failed: ${result.stderr}');
+      }
+    }
+
+    await git(<String>['init', '-b', 'main']);
+    await git(<String>['config', 'user.email', 'test@test.invalid']);
+    await git(<String>['config', 'user.name', 'Test']);
+    File('$path/README.md').writeAsStringSync('hello');
+    await git(<String>['add', '.']);
+    await git(<String>['commit', '-m', 'init', '--no-gpg-sign']);
+    await git(<String>['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+    final ProjectCreation creation = await repos.convert(path);
+    final ProjectRepo repo = creation.repo;
+    addTearDown(repo.close);
+
+    Future<RemoteBookmark?> origin() async {
+      for (final Bookmark b in await repo.handle.bookmarks(allRemotes: true)) {
+        if (b.kind case final RemoteBookmark remote when b.name == 'main' && remote.remoteName == 'origin') {
+          return remote;
+        }
+      }
+      return null;
+    }
+
+    final source = RepoBookmarkListSource(repo);
+    final Bookmark row = (await source.bookmarks()).singleWhere(
+      (b) => b.kind is RemoteBookmark && (b.kind as RemoteBookmark).remoteName == 'origin',
+    );
+    expect((row.name, (row.kind as RemoteBookmark).tracked), ('main', false));
+
+    final actions = RepoGraphActions(repo);
+    await actions.run(const GraphBookmarkTrack('main', 'origin'));
+    expect((await origin())?.tracked, isTrue);
+    await actions.run(const GraphBookmarkUntrack('main', 'origin'));
+    expect((await origin())?.tracked, isFalse);
+
+    final String op = (await repo.handle.opLog(limit: 1)).single.id;
+    final FoundChanges found = await source.findChanges(
+      op,
+      'change_id(${row.target})',
+      limit: 10,
+      shortPrefixes: (await repo.handle.logDefaults()).shortPrefixes,
+    );
+    final String commit = found.entries.single.commitId;
+    expect((await source.content(op, <String>[commit]))[commit]!.subject, 'init');
+  });
+
   group('Story 10.9: each action is one jj v0.46.0 command, its ids POSIX shell-quoted', () {
     test('the verbs', () {
       expect(const GraphEdit('kmnvxoqp').command, 'jj edit kmnvxoqp');
@@ -318,6 +373,13 @@ void main() {
         const GraphBookmarkRename('old', 'new', overwriteExisting: true).command,
         'jj bookmark rename old new --overwrite-existing',
       );
+      expect(const GraphBookmarkTrack('main', 'origin').command, 'jj bookmark track main@origin');
+      expect(const GraphBookmarkTrack('main', 'origin').symbol, 'main@origin');
+      expect(const GraphBookmarkUntrack('release/1.5.x', 'origin').command, 'jj bookmark untrack release/1.5.x@origin');
+      // A name or remote that is no revset identifier goes as a string literal, as jj reads `BOOKMARK@REMOTE`.
+      expect(const GraphBookmarkTrack('my topic', 'up stream').symbol, '"my topic"@"up stream"');
+      expect(const GraphBookmarkTrack('my topic', 'origin').command, 'jj bookmark track \'"my topic"@origin\'');
+      expect(const GraphBookmarkTrack('a', 'b').pendingKeys, isEmpty);
       expect(const GraphUndo(GraphEdit('k')).command, 'jj undo');
       expect(const GraphRedo(GraphEdit('k')).command, 'jj redo');
       expect(const GraphOpRestore('1a2b3c4d5e6f').command, 'jj op restore 1a2b3c4d5e6f');

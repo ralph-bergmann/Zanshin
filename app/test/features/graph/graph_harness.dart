@@ -97,6 +97,7 @@ RecordedGraphLayout handLayout(
   String? workspaceName,
   List<int>? parentCounts,
   List<String>? commitIds,
+  List<String>? changeIds,
   String? operationId,
   int? totalCount,
 }) {
@@ -132,6 +133,7 @@ RecordedGraphLayout handLayout(
     workingCopies: workspaces,
     workspaceName: workspaceName,
     commitIds: commitIds,
+    changeIds: changeIds,
     operationId: operationId,
     totalCount: totalCount,
     edgeChildren: Int32List.fromList(<int>[for (final (int child, _) in sorted) child]),

@@ -289,7 +289,7 @@ void main() {
     await tester.pump();
 
     final FloatingShell shell = tester.widget<FloatingShell>(find.byType(FloatingShell));
-    final panel = shell.railItems.single.panel as UndoTimelinePanel;
+    final panel = shell.railItems.singleWhere((item) => item.id == 'undo').panel as UndoTimelinePanel;
     expect(panel.actions, same(appMenu.graph.value!.model));
 
     final FakeProjectRepo repo = repos.repoAt('/r/zanshin');
@@ -384,6 +384,11 @@ void main() {
     await tester.runAsync(() => session.open('/r/zanshin'));
     await tester.pump();
     expect(find.bySemanticsIdentifier('rail-undo'), findsOneWidget);
+    // Story 10.14: Bookmarks first, then the Undo Timeline (DS chrome.jsx:7-11).
+    expect(tester.widget<FloatingShell>(find.byType(FloatingShell)).railItems.map((item) => item.id), <String>[
+      'bookmarks',
+      'undo',
+    ]);
     // The op log and the graph's logDefaults.
     final int first = repos.repoAt('/r/zanshin').handleReads;
     expect(first, greaterThan(0), reason: 'its op log was read');
@@ -397,6 +402,7 @@ void main() {
     await tester.runAsync(session.closeProject);
     await tester.pump();
     expect(find.bySemanticsIdentifier('rail-undo'), findsNothing);
+    expect(find.bySemanticsIdentifier('rail-bookmarks'), findsNothing);
     handle.dispose();
   });
 

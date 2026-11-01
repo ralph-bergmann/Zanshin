@@ -11,7 +11,10 @@ import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../bookmarks/bookmark_list_model.dart';
+import '../bookmarks/bookmark_list_view.dart';
 import '../bootstrap/boot_window_host.dart' show mainWindowTitle;
+import '../graph/graph_search_controller.dart' show GraphSearchController;
 import '../graph/graph_search_field.dart' show GraphSearchShortcuts;
 import '../projects/project_capsule.dart';
 import '../projects/project_repos.dart' show ProjectRepo;
@@ -86,28 +89,32 @@ class HomePage extends StatelessWidget {
               environment: environment,
               appMenu: appMenu,
               toasts: vm.toasts,
-              builder: (context, graph) => _UndoTimelineHost(
-                session: projects,
-                actions: graph.model,
-                builder: (context, railItems) {
-                  final shell = FloatingShell(
-                    controller: vm.shell,
-                    railItems: railItems,
-                    canvas: const ZsCanvas(),
-                    graph: graph.graph,
-                    // An opaque target, so a press in the bar's row moves the window and never reaches the graph below.
-                    barRow: const WindowDragArea(child: ColoredBox(color: Color(0x00000000))),
-                    projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place(context)),
-                    view: graph.view,
-                    syncGroup: graph.reload,
-                    newChange: graph.newChange,
-                    inspector: graph.inspector,
-                    atPill: graph.atPill,
-                    staleNotice: graph.staleNotice,
-                    toast: vm.toasts.occupied ? ShellToastView(toasts: vm.toasts) : null,
-                  );
-                  return GraphSearchShortcuts(search: graph.search, child: shell);
-                },
+              builder: (context, graph) => _BookmarksHost(
+                repo: projects.repo,
+                search: graph.search,
+                builder: (context, bookmarks) => _UndoTimelineHost(
+                  session: projects,
+                  actions: graph.model,
+                  builder: (context, railItems) {
+                    final shell = FloatingShell(
+                      controller: vm.shell,
+                      railItems: <ShellRailItem>[?bookmarks, ...railItems],
+                      canvas: const ZsCanvas(),
+                      graph: graph.graph,
+                      // An opaque target, so a press in the bar's row moves the window and never reaches the graph below.
+                      barRow: const WindowDragArea(child: ColoredBox(color: Color(0x00000000))),
+                      projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place(context)),
+                      view: graph.view,
+                      syncGroup: graph.reload,
+                      newChange: graph.newChange,
+                      inspector: graph.inspector,
+                      atPill: graph.atPill,
+                      staleNotice: graph.staleNotice,
+                      toast: vm.toasts.occupied ? ShellToastView(toasts: vm.toasts) : null,
+                    );
+                    return GraphSearchShortcuts(search: graph.search, child: shell);
+                  },
+                ),
               ),
             ),
           ),
@@ -267,6 +274,61 @@ class _UndoTimelineHostState extends State<_UndoTimelineHost> {
     return widget.builder(context, <ShellRailItem>[
       if (model != null) undoTimelineRailItem(context.l10n, model, actions: widget.actions),
     ]);
+  }
+}
+
+/// The rail's Bookmarks (Story 10.14) while [repo] is open with its graph [search]: one [BookmarkListModel] per graph,
+/// recreated when either changes and disposed on unmount; [builder] gets its item (first in the rail), rebuilt when the
+/// list changes (the preview's count), or null without a graph.
+class _BookmarksHost extends StatefulWidget {
+  const _BookmarksHost({required this.repo, required this.search, required this.builder});
+
+  final ProjectRepo? repo;
+  final GraphSearchController? search;
+  final Widget Function(BuildContext context, ShellRailItem? bookmarks) builder;
+
+  @override
+  State<_BookmarksHost> createState() => _BookmarksHostState();
+}
+
+class _BookmarksHostState extends State<_BookmarksHost> {
+  BookmarkListModel? _model;
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_BookmarksHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.repo, widget.repo) || !identical(oldWidget.search, widget.search)) {
+      _model?.dispose();
+      _sync();
+    }
+  }
+
+  @override
+  void dispose() {
+    _model?.dispose();
+    super.dispose();
+  }
+
+  void _sync() {
+    final ProjectRepo? repo = widget.repo;
+    final GraphSearchController? search = widget.search;
+    _model = repo == null || search == null ? null : BookmarkListModel(RepoBookmarkListSource(repo), search: search);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final BookmarkListModel? model = _model;
+    // One ListenableBuilder either way, so nothing below remounts when a project opens or closes.
+    return ListenableBuilder(
+      listenable: model ?? Listenable.merge(const <Listenable>[]),
+      builder: (context, _) => widget.builder(context, model == null ? null : bookmarksRailItem(context.l10n, model)),
+    );
   }
 }
 

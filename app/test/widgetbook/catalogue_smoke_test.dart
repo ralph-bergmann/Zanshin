@@ -38,13 +38,20 @@ void main() {
   ];
 
   test(
-    'the folders are Controls, Materials, Shell, Projects, Undo Timeline, Windows, Icons and Graph, and every use case '
-    'has its own path',
+    'the folders are Controls, Materials, Shell, Projects, Bookmarks, Undo Timeline, Windows, Icons and Graph, and '
+    'every use case has its own path',
     () {
-      expect(
-        catalogueDirectories.map((node) => node.name),
-        <String>['Controls', 'Materials', 'Shell', 'Projects', 'Undo Timeline', 'Windows', 'Icons', 'Graph'],
-      );
+      expect(catalogueDirectories.map((node) => node.name), <String>[
+        'Controls',
+        'Materials',
+        'Shell',
+        'Projects',
+        'Bookmarks',
+        'Undo Timeline',
+        'Windows',
+        'Icons',
+        'Graph',
+      ]);
       expect(paths.toSet(), hasLength(paths.length));
       expect(paths, contains('controls/switch/state-matrix'));
       expect(
@@ -93,6 +100,10 @@ void main() {
           'undo-timeline/undo-timeline/root-parent',
           'undo-timeline/undo-timeline/stale',
           'undo-timeline/undo-timeline/no-runner',
+          'bookmarks/bookmarks/preview',
+          'bookmarks/bookmarks/panel',
+          'bookmarks/bookmarks/empty',
+          'bookmarks/bookmarks/stale',
         ]),
       );
       expect(catalogueUseCasePaths, paths.toSet());

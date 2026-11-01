@@ -1496,6 +1496,18 @@ abstract class AppLocalizations {
   /// **'Renamed {oldName} to {newName}'**
   String toastBookmarkRenamed(String oldName, String newName);
 
+  /// Operation toast after jj bookmark track; name is the remote bookmark (name@remote).
+  ///
+  /// In en, this message translates to:
+  /// **'Started tracking {name}'**
+  String toastBookmarkTracked(String name);
+
+  /// Operation toast after jj bookmark untrack; name is the remote bookmark (name@remote).
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped tracking {name}'**
+  String toastBookmarkUntracked(String name);
+
   /// Operation toast after jj undo; command is the jj command that was undone.
   ///
   /// In en, this message translates to:
@@ -1802,6 +1814,18 @@ abstract class AppLocalizations {
   /// **'Rename Bookmark {names}'**
   String menuBookmarkRename(String names);
 
+  /// Names jj bookmark track in Undo/Redo; name is the remote bookmark (name@remote).
+  ///
+  /// In en, this message translates to:
+  /// **'Track {name}'**
+  String menuBookmarkTrack(String name);
+
+  /// Names jj bookmark untrack in Undo/Redo; name is the remote bookmark (name@remote).
+  ///
+  /// In en, this message translates to:
+  /// **'Untrack {name}'**
+  String menuBookmarkUntrack(String name);
+
   /// Change menu: jj git fetch.
   ///
   /// In en, this message translates to:
@@ -1933,6 +1957,150 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{description}, {when}, workspace {workspace}'**
   String undoTimelineRowWorkspace(String description, String when, String workspace);
+
+  /// The rail item, its preview's and its pinned panel's title: jj's bookmarks.
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmarks'**
+  String get bookmarksTitle;
+
+  /// Bookmarks preview: how many rows the preview leaves out; a click pins the panel.
+  ///
+  /// In en, this message translates to:
+  /// **'+{count} more'**
+  String bookmarksMore(int count);
+
+  /// Bookmarks: the repository has no bookmark; command is jj's command, verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'No bookmarks yet. Create one with `{command}`.'**
+  String bookmarksEmpty(String command);
+
+  /// Bookmarks: reading jj's bookmark list failed; detail is jj's error, verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'The bookmarks could not be read: {detail}'**
+  String bookmarksLoadFailed(String detail);
+
+  /// A bookmark row's tooltip and VoiceOver label: the bookmark and its state's long form.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} — {state}'**
+  String bookmarksRow(String name, String state);
+
+  /// Bookmark row state, short: a local bookmark no remote tracks.
+  ///
+  /// In en, this message translates to:
+  /// **'local'**
+  String get bookmarksStateLocalShort;
+
+  /// Bookmark row state, short: a remote bookmark that is not tracked.
+  ///
+  /// In en, this message translates to:
+  /// **'remote'**
+  String get bookmarksStateRemoteShort;
+
+  /// Bookmark row state, short: jj's (deleted) — a local bookmark deleted while it still tracks a remote.
+  ///
+  /// In en, this message translates to:
+  /// **'deleted'**
+  String get bookmarksStateDeletedShort;
+
+  /// Bookmark row state, short: jj's (not created yet) — a tracked remote bookmark not pushed yet.
+  ///
+  /// In en, this message translates to:
+  /// **'not created yet'**
+  String get bookmarksStateNotCreatedShort;
+
+  /// Bookmark row state, short: the target change is divergent (jj's term).
+  ///
+  /// In en, this message translates to:
+  /// **'divergent'**
+  String get bookmarksStateDivergentShort;
+
+  /// Bookmark row state, long: a local bookmark no remote tracks.
+  ///
+  /// In en, this message translates to:
+  /// **'local only'**
+  String get bookmarksStateLocal;
+
+  /// Bookmark row state, long: a remote bookmark that is not tracked.
+  ///
+  /// In en, this message translates to:
+  /// **'remote only, not tracked'**
+  String get bookmarksStateRemote;
+
+  /// Bookmark row state, long: jj's (deleted).
+  ///
+  /// In en, this message translates to:
+  /// **'deleted, still tracking a remote'**
+  String get bookmarksStateDeleted;
+
+  /// Bookmark row state, long: jj's (not created yet).
+  ///
+  /// In en, this message translates to:
+  /// **'not created on the remote yet'**
+  String get bookmarksStateNotCreated;
+
+  /// Bookmark row state, long: the bookmark's target is a conflict (jj's term).
+  ///
+  /// In en, this message translates to:
+  /// **'conflicted'**
+  String get bookmarksStateConflicted;
+
+  /// Bookmark row state, long: the target change is divergent (jj's term).
+  ///
+  /// In en, this message translates to:
+  /// **'divergent'**
+  String get bookmarksStateDivergent;
+
+  /// Bookmark row state, long: same target as other (a remote for a local row, the local bookmark for a remote row).
+  ///
+  /// In en, this message translates to:
+  /// **'in sync with {other}'**
+  String bookmarksStateSynced(String other);
+
+  /// Bookmark row state, long: it has count commits other lacks; count may end in + (at least).
+  ///
+  /// In en, this message translates to:
+  /// **'ahead of {other} by {count}'**
+  String bookmarksStateAhead(String other, String count);
+
+  /// Bookmark row state, long: other has count commits it lacks; count may end in + (at least).
+  ///
+  /// In en, this message translates to:
+  /// **'behind {other} by {count}'**
+  String bookmarksStateBehind(String other, String count);
+
+  /// Bookmark row state, long: both it and other have commits the other lacks.
+  ///
+  /// In en, this message translates to:
+  /// **'diverged from {other}'**
+  String bookmarksStateDiverged(String other);
+
+  /// Bookmark row state, long: a local bookmark whose tracked remote bookmark is not created yet.
+  ///
+  /// In en, this message translates to:
+  /// **'not on {other} yet'**
+  String bookmarksStateNotPushed(String other);
+
+  /// Bookmark row button: jj bookmark track of an untracked remote bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'Track'**
+  String get bookmarksTrack;
+
+  /// Bookmark row button: jj bookmark untrack of a tracked remote bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'Untrack'**
+  String get bookmarksUntrack;
+
+  /// Why Track and Untrack are disabled while another jj action runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Another action is running'**
+  String get bookmarksBusy;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

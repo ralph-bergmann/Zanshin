@@ -452,6 +452,17 @@ void main() {
     rig.unbindGraph();
   });
 
+  test('Undo and Redo name Track / Untrack by the remote bookmark (Story 10.14)', () {
+    final model = GraphViewModel();
+    addTearDown(model.dispose);
+    final AppLocalizations s = platformStrings();
+    expect(AppMenuModel.actionName(s, model, const GraphBookmarkTrack('main', 'origin')), 'Track main@origin');
+    expect(
+      AppMenuModel.actionName(s, model, const GraphUndo(GraphBookmarkUntrack('main', 'origin'))),
+      'Untrack main@origin',
+    );
+  });
+
   testWidgets('Undo names the own operation and runs undoLast; after a foreign operation it is grey', (tester) async {
     final rig = _Rig();
     await rig.setUp(tester);

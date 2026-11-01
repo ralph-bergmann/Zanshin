@@ -603,6 +603,16 @@
     "description": "Operation toast after jj bookmark rename.",
     "placeholders": {"oldName": {"type": "String", "example": "main"}, "newName": {"type": "String", "example": "trunk"}}
   },
+  "toastBookmarkTracked": "Started tracking {name}",
+  "@toastBookmarkTracked": {
+    "description": "Operation toast after jj bookmark track; name is the remote bookmark (name@remote).",
+    "placeholders": {"name": {"type": "String", "example": "main@origin"}}
+  },
+  "toastBookmarkUntracked": "Stopped tracking {name}",
+  "@toastBookmarkUntracked": {
+    "description": "Operation toast after jj bookmark untrack; name is the remote bookmark (name@remote).",
+    "placeholders": {"name": {"type": "String", "example": "main@origin"}}
+  },
   "toastUndid": "Undid {command}",
   "@toastUndid": {
     "description": "Operation toast after jj undo; command is the jj command that was undone.",
@@ -756,6 +766,16 @@
     "description": "Names a bookmark rename in Undo/Redo.",
     "placeholders": {"names": {"type": "String", "example": "main"}}
   },
+  "menuBookmarkTrack": "Track {name}",
+  "@menuBookmarkTrack": {
+    "description": "Names jj bookmark track in Undo/Redo; name is the remote bookmark (name@remote).",
+    "placeholders": {"name": {"type": "String", "example": "main@origin"}}
+  },
+  "menuBookmarkUntrack": "Untrack {name}",
+  "@menuBookmarkUntrack": {
+    "description": "Names jj bookmark untrack in Undo/Redo; name is the remote bookmark (name@remote).",
+    "placeholders": {"name": {"type": "String", "example": "main@origin"}}
+  },
   "menuFetch": "Fetch",
   "@menuFetch": {"description": "Change menu: jj git fetch."},
   "menuPush": "Push…",
@@ -824,5 +844,80 @@
       "when": {"type": "String", "example": "2h ago"},
       "workspace": {"type": "String", "example": "default"}
     }
-  }
+  },
+  "bookmarksTitle": "Bookmarks",
+  "@bookmarksTitle": {"description": "The rail item, its preview's and its pinned panel's title: jj's bookmarks."},
+  "bookmarksMore": "+{count} more",
+  "@bookmarksMore": {
+    "description": "Bookmarks preview: how many rows the preview leaves out; a click pins the panel.",
+    "placeholders": {"count": {"type": "int", "example": "12"}}
+  },
+  "bookmarksEmpty": "No bookmarks yet. Create one with `{command}`.",
+  "@bookmarksEmpty": {
+    "description": "Bookmarks: the repository has no bookmark; command is jj's command, verbatim.",
+    "placeholders": {"command": {"type": "String", "example": "jj bookmark create <name>"}}
+  },
+  "bookmarksLoadFailed": "The bookmarks could not be read: {detail}",
+  "@bookmarksLoadFailed": {
+    "description": "Bookmarks: reading jj's bookmark list failed; detail is jj's error, verbatim.",
+    "placeholders": {"detail": {"type": "String", "example": "jj.io_error"}}
+  },
+  "bookmarksRow": "{name} — {state}",
+  "@bookmarksRow": {
+    "description": "A bookmark row's tooltip and VoiceOver label: the bookmark and its state's long form.",
+    "placeholders": {"name": {"type": "String", "example": "main@origin"}, "state": {"type": "String", "example": "in sync with main"}}
+  },
+  "bookmarksStateLocalShort": "local",
+  "@bookmarksStateLocalShort": {"description": "Bookmark row state, short: a local bookmark no remote tracks."},
+  "bookmarksStateRemoteShort": "remote",
+  "@bookmarksStateRemoteShort": {"description": "Bookmark row state, short: a remote bookmark that is not tracked."},
+  "bookmarksStateDeletedShort": "deleted",
+  "@bookmarksStateDeletedShort": {"description": "Bookmark row state, short: jj's (deleted) — a local bookmark deleted while it still tracks a remote."},
+  "bookmarksStateNotCreatedShort": "not created yet",
+  "@bookmarksStateNotCreatedShort": {"description": "Bookmark row state, short: jj's (not created yet) — a tracked remote bookmark not pushed yet."},
+  "bookmarksStateDivergentShort": "divergent",
+  "@bookmarksStateDivergentShort": {"description": "Bookmark row state, short: the target change is divergent (jj's term)."},
+  "bookmarksStateLocal": "local only",
+  "@bookmarksStateLocal": {"description": "Bookmark row state, long: a local bookmark no remote tracks."},
+  "bookmarksStateRemote": "remote only, not tracked",
+  "@bookmarksStateRemote": {"description": "Bookmark row state, long: a remote bookmark that is not tracked."},
+  "bookmarksStateDeleted": "deleted, still tracking a remote",
+  "@bookmarksStateDeleted": {"description": "Bookmark row state, long: jj's (deleted)."},
+  "bookmarksStateNotCreated": "not created on the remote yet",
+  "@bookmarksStateNotCreated": {"description": "Bookmark row state, long: jj's (not created yet)."},
+  "bookmarksStateConflicted": "conflicted",
+  "@bookmarksStateConflicted": {"description": "Bookmark row state, long: the bookmark's target is a conflict (jj's term)."},
+  "bookmarksStateDivergent": "divergent",
+  "@bookmarksStateDivergent": {"description": "Bookmark row state, long: the target change is divergent (jj's term)."},
+  "bookmarksStateSynced": "in sync with {other}",
+  "@bookmarksStateSynced": {
+    "description": "Bookmark row state, long: same target as other (a remote for a local row, the local bookmark for a remote row).",
+    "placeholders": {"other": {"type": "String", "example": "origin"}}
+  },
+  "bookmarksStateAhead": "ahead of {other} by {count}",
+  "@bookmarksStateAhead": {
+    "description": "Bookmark row state, long: it has count commits other lacks; count may end in + (at least).",
+    "placeholders": {"other": {"type": "String", "example": "origin"}, "count": {"type": "String", "example": "3"}}
+  },
+  "bookmarksStateBehind": "behind {other} by {count}",
+  "@bookmarksStateBehind": {
+    "description": "Bookmark row state, long: other has count commits it lacks; count may end in + (at least).",
+    "placeholders": {"other": {"type": "String", "example": "origin"}, "count": {"type": "String", "example": "3"}}
+  },
+  "bookmarksStateDiverged": "diverged from {other}",
+  "@bookmarksStateDiverged": {
+    "description": "Bookmark row state, long: both it and other have commits the other lacks.",
+    "placeholders": {"other": {"type": "String", "example": "origin"}}
+  },
+  "bookmarksStateNotPushed": "not on {other} yet",
+  "@bookmarksStateNotPushed": {
+    "description": "Bookmark row state, long: a local bookmark whose tracked remote bookmark is not created yet.",
+    "placeholders": {"other": {"type": "String", "example": "origin"}}
+  },
+  "bookmarksTrack": "Track",
+  "@bookmarksTrack": {"description": "Bookmark row button: jj bookmark track of an untracked remote bookmark."},
+  "bookmarksUntrack": "Untrack",
+  "@bookmarksUntrack": {"description": "Bookmark row button: jj bookmark untrack of a tracked remote bookmark."},
+  "bookmarksBusy": "Another action is running",
+  "@bookmarksBusy": {"description": "Why Track and Untrack are disabled while another jj action runs."}
 }

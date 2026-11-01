@@ -428,6 +428,51 @@ final class GraphBookmarkRename extends GraphAction {
   Set<String> get pendingKeys => const <String>{};
 }
 
+/// `jj bookmark track <name>@<remote>` (Story 10.14): exactly that remote bookmark.
+final class GraphBookmarkTrack extends GraphAction {
+  /// Tracks [name]@[remote].
+  const GraphBookmarkTrack(this.name, this.remote);
+
+  /// The bookmark name.
+  final String name;
+
+  /// The remote.
+  final String remote;
+
+  /// The `BOOKMARK@REMOTE` symbol jj receives, the same text the command shows.
+  String get symbol => remoteBookmarkSymbol(name, remote);
+
+  @override
+  String get command => _jj(<String>['bookmark', 'track', symbol]); // l10n-ignore: jj command
+
+  @override
+  Set<String> get pendingKeys => const <String>{};
+}
+
+/// `jj bookmark untrack <name>@<remote>` (Story 10.14): exactly that remote bookmark.
+final class GraphBookmarkUntrack extends GraphAction {
+  /// Stops tracking [name]@[remote].
+  const GraphBookmarkUntrack(this.name, this.remote);
+
+  /// The bookmark name.
+  final String name;
+
+  /// The remote.
+  final String remote;
+
+  /// The `BOOKMARK@REMOTE` symbol jj receives, the same text the command shows.
+  String get symbol => remoteBookmarkSymbol(name, remote);
+
+  @override
+  String get command => _jj(<String>['bookmark', 'untrack', symbol]); // l10n-ignore: jj command
+
+  @override
+  Set<String> get pendingKeys => const <String>{};
+}
+
+/// [name]@[remote] as a remote bookmark symbol: each part bare when it is an identifier, else a string literal.
+String remoteBookmarkSymbol(String name, String remote) => '${_revsetSymbol(name)}@${_revsetSymbol(remote)}';
+
 /// `jj undo` of Zanshin's own latest operation, [of]'s.
 final class GraphUndo extends GraphAction {
   /// Undoes [of].
@@ -685,6 +730,8 @@ class RepoGraphActions implements GraphActions {
         newName,
         overwriteExisting: overwriteExisting,
       ),
+      GraphBookmarkTrack(:final symbol) => handle.bookmarkTrack(<String>[symbol]),
+      GraphBookmarkUntrack(:final symbol) => handle.bookmarkUntrack(<String>[symbol]),
       GraphUndo() => handle.undo(),
       GraphRedo() => handle.redo(),
       GraphOpRestore(:final operation) => handle.opRestore(operation),

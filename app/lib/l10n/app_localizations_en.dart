@@ -1005,6 +1005,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String toastBookmarkTracked(String name) {
+    return 'Started tracking $name';
+  }
+
+  @override
+  String toastBookmarkUntracked(String name) {
+    return 'Stopped tracking $name';
+  }
+
+  @override
   String toastUndid(String command) {
     return 'Undid $command';
   }
@@ -1192,6 +1202,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String menuBookmarkTrack(String name) {
+    return 'Track $name';
+  }
+
+  @override
+  String menuBookmarkUntrack(String name) {
+    return 'Untrack $name';
+  }
+
+  @override
   String get menuFetch => 'Fetch';
 
   @override
@@ -1268,4 +1288,94 @@ class AppLocalizationsEn extends AppLocalizations {
   String undoTimelineRowWorkspace(String description, String when, String workspace) {
     return '$description, $when, workspace $workspace';
   }
+
+  @override
+  String get bookmarksTitle => 'Bookmarks';
+
+  @override
+  String bookmarksMore(int count) {
+    return '+$count more';
+  }
+
+  @override
+  String bookmarksEmpty(String command) {
+    return 'No bookmarks yet. Create one with `$command`.';
+  }
+
+  @override
+  String bookmarksLoadFailed(String detail) {
+    return 'The bookmarks could not be read: $detail';
+  }
+
+  @override
+  String bookmarksRow(String name, String state) {
+    return '$name — $state';
+  }
+
+  @override
+  String get bookmarksStateLocalShort => 'local';
+
+  @override
+  String get bookmarksStateRemoteShort => 'remote';
+
+  @override
+  String get bookmarksStateDeletedShort => 'deleted';
+
+  @override
+  String get bookmarksStateNotCreatedShort => 'not created yet';
+
+  @override
+  String get bookmarksStateDivergentShort => 'divergent';
+
+  @override
+  String get bookmarksStateLocal => 'local only';
+
+  @override
+  String get bookmarksStateRemote => 'remote only, not tracked';
+
+  @override
+  String get bookmarksStateDeleted => 'deleted, still tracking a remote';
+
+  @override
+  String get bookmarksStateNotCreated => 'not created on the remote yet';
+
+  @override
+  String get bookmarksStateConflicted => 'conflicted';
+
+  @override
+  String get bookmarksStateDivergent => 'divergent';
+
+  @override
+  String bookmarksStateSynced(String other) {
+    return 'in sync with $other';
+  }
+
+  @override
+  String bookmarksStateAhead(String other, String count) {
+    return 'ahead of $other by $count';
+  }
+
+  @override
+  String bookmarksStateBehind(String other, String count) {
+    return 'behind $other by $count';
+  }
+
+  @override
+  String bookmarksStateDiverged(String other) {
+    return 'diverged from $other';
+  }
+
+  @override
+  String bookmarksStateNotPushed(String other) {
+    return 'not on $other yet';
+  }
+
+  @override
+  String get bookmarksTrack => 'Track';
+
+  @override
+  String get bookmarksUntrack => 'Untrack';
+
+  @override
+  String get bookmarksBusy => 'Another action is running';
 }

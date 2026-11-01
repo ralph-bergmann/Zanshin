@@ -273,6 +273,12 @@ InlineSpan _text(AppLocalizations strings, ZsColors colors, GraphOutcome outcome
     case GraphBookmarkRename(:final String oldName, :final String newName):
       message = strings.toastBookmarkRenamed(s0, s1);
       parts = <InlineSpan>[toastMono(colors, oldName), toastMono(colors, newName)];
+    case GraphBookmarkTrack(:final String name, :final String remote):
+      message = strings.toastBookmarkTracked(s0);
+      parts = <InlineSpan>[toastMono(colors, '$name@$remote')]; // l10n-ignore: jj's symbol
+    case GraphBookmarkUntrack(:final String name, :final String remote):
+      message = strings.toastBookmarkUntracked(s0);
+      parts = <InlineSpan>[toastMono(colors, '$name@$remote')]; // l10n-ignore: jj's symbol
     case GraphUndo(:final GraphAction of):
       message = strings.toastUndid(s0);
       parts = <InlineSpan>[toastMono(colors, of.command)];
