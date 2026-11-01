@@ -13,12 +13,16 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import '../bootstrap/boot_window_host.dart' show mainWindowTitle;
 import '../projects/project_capsule.dart';
+import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/project_window_title.dart';
 import '../shell/floating_shell.dart';
 import '../shell/floating_shell_view_model.dart';
+import '../shell/shell_controller.dart' show ShellRailItem;
 import '../shell/shell_toast.dart';
 import '../shell/top_bar.dart';
+import '../undo_timeline/undo_timeline_model.dart';
+import '../undo_timeline/undo_timeline_view.dart';
 import '../window/app_window_actions.dart';
 
 part 'home_page.factory.dart';
@@ -59,13 +63,17 @@ class HomePage extends StatelessWidget {
           toasts: vm.toasts,
           child: ListenableBuilder(
             listenable: vm.toasts,
-            builder: (context, _) => FloatingShell(
-              controller: vm.shell,
-              canvas: const ZsCanvas(),
-              // An opaque target, so a press in the bar's row moves the window and never reaches the graph below.
-              barRow: const WindowDragArea(child: ColoredBox(color: Color(0x00000000))),
-              projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place(context)),
-              toast: vm.toasts.occupied ? ShellToastView(toasts: vm.toasts) : null,
+            builder: (context, _) => _UndoTimelineHost(
+              session: projects,
+              builder: (context, railItems) => FloatingShell(
+                controller: vm.shell,
+                railItems: railItems,
+                canvas: const ZsCanvas(),
+                // An opaque target, so a press in the bar's row moves the window and never reaches the graph below.
+                barRow: const WindowDragArea(child: ColoredBox(color: Color(0x00000000))),
+                projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place(context)),
+                toast: vm.toasts.occupied ? ShellToastView(toasts: vm.toasts) : null,
+              ),
             ),
           ),
         ),
@@ -161,6 +169,69 @@ class _OpenReportToastState extends State<_OpenReportToast> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+/// The rail's Undo Timeline (Story 11.9) while [session] has a repository open: one [UndoTimelineModel] per
+/// [ProjectRepo], recreated when the repository changes and disposed on unmount. No runner until 10.12 mounts the
+/// graph's view model here (hand-off): the timeline reads and updates live, its actions show disabled.
+class _UndoTimelineHost extends StatefulWidget {
+  const _UndoTimelineHost({required this.session, required this.builder});
+
+  final ProjectSession session;
+  final Widget Function(BuildContext context, List<ShellRailItem> railItems) builder;
+
+  @override
+  State<_UndoTimelineHost> createState() => _UndoTimelineHostState();
+}
+
+class _UndoTimelineHostState extends State<_UndoTimelineHost> {
+  ProjectRepo? _repo;
+  UndoTimelineModel? _model;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.session.addListener(_sync);
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_UndoTimelineHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session != widget.session) {
+      oldWidget.session.removeListener(_sync);
+      widget.session.addListener(_sync);
+      _sync();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.session.removeListener(_sync);
+    _model?.dispose();
+    super.dispose();
+  }
+
+  void _sync() {
+    final ProjectRepo? repo = widget.session.repo;
+    if (identical(repo, _repo)) {
+      return;
+    }
+    _model?.dispose();
+    _repo = repo;
+    _model = repo == null ? null : UndoTimelineModel(RepoUndoTimelineSource(repo));
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final UndoTimelineModel? model = _model;
+    return widget.builder(context, <ShellRailItem>[
+      if (model != null) undoTimelineRailItem(context.l10n, model),
+    ]);
+  }
 }
 
 /// Runs [onActive] each time the window turns active again ([ZsAppearance.inactive] true → false).

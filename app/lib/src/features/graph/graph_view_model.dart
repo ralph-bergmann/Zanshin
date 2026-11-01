@@ -7,6 +7,7 @@ import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
+import '../undo_timeline/undo_timeline_model.dart' show UndoTimelineActions;
 import 'graph_content.dart';
 import 'graph_layout.dart';
 import 'graph_ports.dart';
@@ -127,8 +128,9 @@ class GraphPulse {
 ///   the reload after a success holds [anchorHint] and sets the selection and the reveal per verb from the
 ///   `MutationResult`. Every outcome, refusals included, is published as [outcome]; [undoLast] / [redoLast] take back
 ///   Zanshin's own latest operation only while it is the op-log head ([undoable], [redoable]).
+/// - **Story 11.9**: the Undo Timeline's runner — [undoOperation] undoes any op-log head, [restoreOperation] restores.
 @inject
-class GraphViewModel extends ChangeNotifier {
+class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   /// A view model; [init] connects it.
   GraphViewModel();
 
@@ -371,6 +373,7 @@ class GraphViewModel extends ChangeNotifier {
   bool get hasActions => _actions != null;
 
   /// Whether a trigger may run an action now: none runs and the working copy is not stale.
+  @override
   bool get actionsEnabled => _running == null && _stale == null;
 
   /// The cards of the running action.
@@ -386,6 +389,7 @@ class GraphViewModel extends ChangeNotifier {
   GraphOutcome? get undoable => _undoable;
 
   /// Zanshin's own latest undo while it is the op-log head; [redoLast] takes it back.
+  @override
   GraphOutcome? get redoable => _redoable;
 
   /// The change a menu verb acts on: the selection, else @ (11.13).
@@ -526,6 +530,7 @@ class GraphViewModel extends ChangeNotifier {
   }
 
   /// Redoes [redoable]'s undo, when the op-log head is still its operation.
+  @override
   Future<GraphActionResult> redoLast() async {
     final GraphOutcome? own = _redoable;
     if (_disabled ?? (own == null ? GraphDisabledReason.nothingToUndo : null) case final reason?) {
@@ -533,6 +538,20 @@ class GraphViewModel extends ChangeNotifier {
     }
     return _execute(GraphRedo((own!.action as GraphUndo).of), expectHead: own.result!.newOpId);
   }
+
+  /// `jj undo` while [head] is still the op-log head (Story 11.9's Undo Timeline, any head); [of] is what it undoes.
+  @override
+  Future<GraphActionResult> undoOperation(String head, GraphLoggedOperation of) =>
+      _execute(GraphUndo(of), expectHead: head);
+
+  /// `jj redo` while [head] is still the op-log head (Story 11.9, an undo the CLI made too); [of] is what it redoes.
+  @override
+  Future<GraphActionResult> redoOperation(String head, GraphLoggedOperation of) =>
+      _execute(GraphRedo(of), expectHead: head);
+
+  /// `jj op restore <operation>` (Story 11.9's Restore to here).
+  @override
+  Future<GraphActionResult> restoreOperation(String operation) => _execute(GraphOpRestore(operation));
 
   GraphDisabledReason? get _disabled => _stale != null
       ? GraphDisabledReason.stale

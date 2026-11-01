@@ -949,6 +949,78 @@ void main() {
       });
     });
 
+    test(
+      'undoOperation: jj undo of the logged head once, published with Redo; a moved head or a refusal runs none',
+      () {
+        fakeAsync((async) {
+          final GraphViewModel model = start(async, actions: actions);
+          const head = GraphLoggedOperation('op0', 'describe commit 1', args: 'jj describe -m wip');
+          GraphActionResult? result;
+          unawaited(model.undoOperation('op0', head).then((r) => result = r));
+          async.flushMicrotasks();
+          expect(result, isA<GraphActionDone>());
+          expect(actions.ran, hasLength(1));
+          expect(actions.ran.single, isA<GraphUndo>().having((a) => a.of, 'of', same(head)));
+          expect(model.outcome.value?.action, isA<GraphUndo>().having((a) => a.of.command, 'of', 'jj describe -m wip'));
+          expect(model.redoable?.action, isA<GraphUndo>());
+
+          unawaited(model.undoOperation('op0', head).then((r) => result = r));
+          async.flushMicrotasks();
+          expect(
+            result,
+            isA<GraphActionDisabled>().having((r) => r.reason, 'reason', GraphDisabledReason.foreignOperation),
+            reason: 'op0 is no longer the head',
+          );
+          expect(actions.ran, hasLength(1));
+
+          actions.refuse = const ZanshinFfiException('jj.user_error', 'Cannot undo a merge operation');
+          unawaited(
+            model.undoOperation(actions.head, GraphLoggedOperation(actions.head, 'merge')).then((r) => result = r),
+          );
+          async.flushMicrotasks();
+          expect(result, isA<GraphActionRefused>());
+          expect(model.outcome.value?.error?.context, 'Cannot undo a merge operation');
+          model.dispose();
+        });
+      },
+    );
+
+    test('redoOperation: jj redo once while the head is the expected one, then undoable; a moved head runs none', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        const undone = GraphLoggedOperation('opX', 'new empty commit', args: 'jj new');
+        GraphActionResult? result;
+        unawaited(model.redoOperation('elsewhere', undone).then((r) => result = r));
+        async.flushMicrotasks();
+        expect(
+          result,
+          isA<GraphActionDisabled>().having((r) => r.reason, 'reason', GraphDisabledReason.foreignOperation),
+        );
+        expect(actions.ran, isEmpty);
+
+        unawaited(model.redoOperation('op0', undone).then((r) => result = r));
+        async.flushMicrotasks();
+        expect(result, isA<GraphActionDone>());
+        expect(actions.ran.single, isA<GraphRedo>().having((a) => a.of, 'of', same(undone)));
+        expect(model.undoable?.action, isA<GraphRedo>());
+        model.dispose();
+      });
+    });
+
+    test('restoreOperation runs jj op restore of the id, undoable', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        unawaited(model.restoreOperation('1a2b3c4d5e6f'));
+        async.flushMicrotasks();
+        expect(
+          actions.ran.single,
+          isA<GraphOpRestore>().having((a) => a.command, 'command', 'jj op restore 1a2b3c4d5e6f'),
+        );
+        expect(model.undoable?.action, isA<GraphOpRestore>());
+        model.dispose();
+      });
+    });
+
     test('an own operation still at the head survives its op-heads event', () {
       fakeAsync((async) {
         final GraphViewModel model = start(async, actions: actions);

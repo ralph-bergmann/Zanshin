@@ -17,17 +17,19 @@ import 'folders/icons.dart';
 import 'folders/materials.dart';
 import 'folders/projects.dart';
 import 'folders/shell.dart';
+import 'folders/undo_timeline.dart';
 import 'folders/windows.dart';
 
 final _log = Logger('zanshin.catalogue');
 
-/// The catalogue's tree: Controls, Materials, Shell (Story 11.3), Projects (Story 11.5), Windows, Icons and Graph
-/// (Story 10.1).
+/// The catalogue's tree: Controls, Materials, Shell (Story 11.3), Projects (Story 11.5), Undo Timeline (Story 11.9),
+/// Windows, Icons and Graph (Story 10.1).
 final catalogueDirectories = <WidgetbookNode>[
   controlsFolder,
   materialsFolder,
   shellFolder,
   projectsFolder,
+  undoTimelineFolder,
   windowsFolder,
   iconsFolder,
   graphFolder,

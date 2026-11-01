@@ -1843,6 +1843,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{tool} Documentation ↗'**
   String menuToolDocumentation(String tool);
+
+  /// Names a jj op restore in Undo/Redo; operation is jj's 12-digit short operation id.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore to {operation}'**
+  String menuRestoreOperation(String operation);
+
+  /// The rail item, its preview's and its pinned panel's title: the operation log.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo Timeline'**
+  String get undoTimelineTitle;
+
+  /// Undo Timeline: jj undo of the newest operation.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get undoTimelineUndo;
+
+  /// Undo Timeline: jj redo of Zanshin's own latest undo.
+  ///
+  /// In en, this message translates to:
+  /// **'Redo'**
+  String get undoTimelineRedo;
+
+  /// Undo Timeline row action: jj op restore to this operation.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore to here'**
+  String get undoTimelineRestore;
+
+  /// Undo Timeline row action: jj op show, what the operation changed.
+  ///
+  /// In en, this message translates to:
+  /// **'Show changes'**
+  String get undoTimelineShowChanges;
+
+  /// Why Show changes is disabled: a later feature brings it.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available yet'**
+  String get undoTimelineShowLater;
+
+  /// Why the Undo Timeline's actions are disabled: the project window shows no commit graph yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Available once the commit graph is shown'**
+  String get undoTimelineNoRunner;
+
+  /// Why the Undo Timeline's actions are disabled while another jj action runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Another action is running'**
+  String get undoTimelineBusy;
+
+  /// Why Undo is disabled: the operation before the newest is jj's root operation.
+  ///
+  /// In en, this message translates to:
+  /// **'Undoing it would restore the root operation'**
+  String get undoTimelineRootParent;
+
+  /// Why Redo is disabled: Zanshin's own latest undo is not the newest operation.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to redo'**
+  String get undoTimelineNothingToRedo;
+
+  /// Undo Timeline: reading jj's operation log failed; detail is jj's error, verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'The operation log could not be read: {detail}'**
+  String undoTimelineLoadFailed(String detail);
+
+  /// VoiceOver label of an Undo Timeline row: the operation's description and when it ran.
+  ///
+  /// In en, this message translates to:
+  /// **'{description}, {when}'**
+  String undoTimelineRow(String description, String when);
+
+  /// VoiceOver label of an Undo Timeline row with the jj workspace the operation ran in.
+  ///
+  /// In en, this message translates to:
+  /// **'{description}, {when}, workspace {workspace}'**
+  String undoTimelineRowWorkspace(String description, String when, String workspace);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

@@ -1215,4 +1215,54 @@ class AppLocalizationsEn extends AppLocalizations {
   String menuToolDocumentation(String tool) {
     return '$tool Documentation ↗';
   }
+
+  @override
+  String menuRestoreOperation(String operation) {
+    return 'Restore to $operation';
+  }
+
+  @override
+  String get undoTimelineTitle => 'Undo Timeline';
+
+  @override
+  String get undoTimelineUndo => 'Undo';
+
+  @override
+  String get undoTimelineRedo => 'Redo';
+
+  @override
+  String get undoTimelineRestore => 'Restore to here';
+
+  @override
+  String get undoTimelineShowChanges => 'Show changes';
+
+  @override
+  String get undoTimelineShowLater => 'Not available yet';
+
+  @override
+  String get undoTimelineNoRunner => 'Available once the commit graph is shown';
+
+  @override
+  String get undoTimelineBusy => 'Another action is running';
+
+  @override
+  String get undoTimelineRootParent => 'Undoing it would restore the root operation';
+
+  @override
+  String get undoTimelineNothingToRedo => 'Nothing to redo';
+
+  @override
+  String undoTimelineLoadFailed(String detail) {
+    return 'The operation log could not be read: $detail';
+  }
+
+  @override
+  String undoTimelineRow(String description, String when) {
+    return '$description, $when';
+  }
+
+  @override
+  String undoTimelineRowWorkspace(String description, String when, String workspace) {
+    return '$description, $when, workspace $workspace';
+  }
 }

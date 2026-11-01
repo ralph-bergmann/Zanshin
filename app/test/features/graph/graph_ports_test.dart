@@ -13,6 +13,7 @@ import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin/src/features/projects/worker_project_repos.dart';
+import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
 import '../../helpers/scripted_graph_source.dart';
@@ -270,6 +271,28 @@ void main() {
         expect(status.parentChangeId, first);
       });
     }
+
+    test(
+      'the Undo Timeline: undoOperation undoes the logged head, restoreOperation restores by the short id',
+      () async {
+        final (ProjectRepo repo, GraphViewModel model, String first, _) = await setUpRepo('timeline');
+        final source = RepoUndoTimelineSource(repo);
+        final Operation before = (await source.opLog(limit: 1)).single;
+        expect(await model.run(GraphDescribe(first, 'described')), isA<GraphActionDone>());
+        final Operation head = (await source.opLog(limit: 1)).single;
+        expect(await model.undoOperation(head.id, loggedOperation(head)), isA<GraphActionDone>());
+        expect(await descriptionOf(repo, first), isEmpty);
+
+        expect(await model.run(GraphDescribe(first, 'again')), isA<GraphActionDone>());
+        expect(await model.restoreOperation(shortOperationId(before.id)), isA<GraphActionDone>());
+        expect(await descriptionOf(repo, first), isEmpty);
+        expect(
+          () => RepoGraphActions(repo).run(const GraphLoggedOperation('ff', 'x')),
+          throwsArgumentError,
+          reason: 'an op-log entry is not a verb',
+        );
+      },
+    );
   });
 
   group('Story 10.9: each action is one jj v0.46.0 command, its ids POSIX shell-quoted', () {
@@ -309,6 +332,11 @@ void main() {
       );
       expect(const GraphUndo(GraphEdit('k')).command, 'jj undo');
       expect(const GraphRedo(GraphEdit('k')).command, 'jj redo');
+      expect(const GraphOpRestore('1a2b3c4d5e6f').command, 'jj op restore 1a2b3c4d5e6f');
+      expect(jjOpShowCommand('1a2b3c4d5e6f'), 'jj op show 1a2b3c4d5e6f');
+      expect(const GraphLoggedOperation('ff', 'new empty commit', args: 'jj new main').command, 'jj new main');
+      expect(const GraphLoggedOperation('ff', 'new empty commit').command, 'new empty commit');
+      expect(const GraphUndo(GraphLoggedOperation('ff', 'x')).command, 'jj undo');
     });
 
     test('a bookmark name with glob characters is exact: in the command and in the patterns jj gets', () {

@@ -371,4 +371,31 @@ void main() {
     await tester.pump();
     expect(source.updates, before + 1);
   });
+
+  toastTest('the Undo Timeline: an undo of a logged operation reads "Undid ‹args› · Redo"; a restore "Restored to '
+      'operation: ‹id›" with Undo', (tester) async {
+    await tester.runAsync(
+      () => model.undoOperation(
+        'op0',
+        const GraphLoggedOperation('op0', 'describe commit 1', args: 'jj describe -m wip'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(text(tester), 'Undid jj describe -m wip');
+    expect(buttons(tester), <String>['Redo']);
+
+    await tester.runAsync(
+      () => model.undoOperation(actions.head, GraphLoggedOperation(actions.head, 'new empty commit')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(text(tester), 'Undid new empty commit', reason: 'no args tag: the description');
+
+    await tester.runAsync(() => model.restoreOperation('1a2b3c4d5e6f'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(text(tester), 'Restored to operation: 1a2b3c4d5e6f');
+    expect(buttons(tester), <String>['Undo']);
+  });
 }

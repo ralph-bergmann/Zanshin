@@ -20,7 +20,12 @@ class ShellRailItem {
     required this.preview,
     required this.panel,
     this.count,
+    this.scrolls = false,
   });
+
+  /// Whether [panel] is its own scroll view (a lazy list, 11.9): the panel hands it its scroll controller as the
+  /// [PrimaryScrollController] instead of wrapping it in one, and the body's bottom padding is the panel's.
+  final bool scrolls;
 
   /// The item's key; the rail button's identifier is `rail-<id>`.
   final String id;

@@ -269,6 +269,29 @@ void main() {
     expect(repo.reads, 2);
   });
 
+  testWidgets('the rail has the Undo Timeline while a project is open, reading the open repository', (tester) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    final repos = FakeProjectRepos();
+    final ProjectSession session = await pumpHome(tester, repos: repos);
+    expect(find.bySemanticsIdentifier('rail-undo'), findsNothing);
+
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+    expect(find.bySemanticsIdentifier('rail-undo'), findsOneWidget);
+    expect(repos.repoAt('/r/zanshin').handleReads, 1, reason: 'its op log was read');
+
+    await tester.runAsync(() => session.open('/r/jj'));
+    await tester.pump();
+    expect(find.bySemanticsIdentifier('rail-undo'), findsOneWidget);
+    expect(repos.repoAt('/r/jj').handleReads, 1, reason: 'the switch reads the new repository');
+    expect(repos.repoAt('/r/zanshin').handleReads, 1);
+
+    await tester.runAsync(session.closeProject);
+    await tester.pump();
+    expect(find.bySemanticsIdentifier('rail-undo'), findsNothing);
+    handle.dispose();
+  });
+
   testWidgets("a Recent row of the capsule's menu switches the project; the capsule shows the new one", (tester) async {
     final SemanticsHandle handle = tester.ensureSemantics();
     final ProjectSession session = await pumpHome(tester);

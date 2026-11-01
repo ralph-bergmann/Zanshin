@@ -475,6 +475,23 @@ void main() {
     rig.unbindGraph();
   });
 
+  testWidgets("the Undo Timeline's verbs name themselves: Redo ‹command› after an undo, Undo Restore to ‹id›", (
+    tester,
+  ) async {
+    final rig = _Rig();
+    await rig.setUp(tester);
+    await rig.bindGraph(tester);
+    unawaited(
+      rig.model!.undoOperation('op0', const GraphLoggedOperation('op0', 'new empty commit', args: 'jj new main')),
+    );
+    await tester.pump();
+    expect(rig.enabled('Redo jj new main'), isTrue);
+    unawaited(rig.model!.restoreOperation('1a2b3c4d5e6f'));
+    await tester.pump();
+    expect(rig.enabled('Undo Restore to 1a2b3c4d5e6f'), isTrue);
+    rig.unbindGraph();
+  });
+
   testWidgets('while an action runs the Change and Undo items are grey', (tester) async {
     final rig = _Rig();
     await rig.setUp(tester);

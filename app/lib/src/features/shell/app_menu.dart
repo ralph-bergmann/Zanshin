@@ -200,6 +200,8 @@ class AppMenuModel extends ChangeNotifier {
       GraphBookmarkMove(:final names) => s.menuBookmarkMove(names.join(', ')),
       GraphBookmarkRename(:final oldName) => s.menuBookmarkRename(oldName),
       GraphUndo(:final of) || GraphRedo(:final of) => actionName(s, model, of),
+      GraphLoggedOperation(:final command) => command,
+      GraphOpRestore(:final operation) => s.menuRestoreOperation(operation),
     };
   }
 

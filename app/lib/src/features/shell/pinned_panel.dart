@@ -245,7 +245,9 @@ class _PinnedPanelState extends State<PinnedPanel> {
                 controller: _scroll,
                 label: item.label,
                 identifier: '${widget.identifier}-body',
-                child: SingleChildScrollView(controller: _scroll, padding: PinnedPanel._body, child: item.panel),
+                child: item.scrolls
+                    ? PrimaryScrollController(controller: _scroll, child: item.panel)
+                    : SingleChildScrollView(controller: _scroll, padding: PinnedPanel._body, child: item.panel),
               ),
             ),
           ],

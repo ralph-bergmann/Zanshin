@@ -272,7 +272,11 @@ InlineSpan _text(AppLocalizations strings, ZsColors colors, GraphOutcome outcome
     case GraphRedo(:final GraphAction of):
       message = strings.toastRedid(s0);
       parts = <InlineSpan>[toastMono(colors, of.command)];
-    case GraphNew() || GraphEdit() || GraphDescribe():
+    case GraphOpRestore(:final String operation):
+      message = 'Restored to operation: $s0'; // l10n-ignore: jj's own words (`jj op restore`)
+      parts = <InlineSpan>[toastMono(colors, operation)];
+    // Never an outcome's own action: it only names what a GraphUndo undid.
+    case GraphNew() || GraphEdit() || GraphDescribe() || GraphLoggedOperation():
       return const TextSpan();
   }
   return toastSpan(message, parts);

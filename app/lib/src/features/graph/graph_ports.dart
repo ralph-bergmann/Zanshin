@@ -454,6 +454,46 @@ final class GraphRedo extends GraphAction {
   Set<String> get pendingKeys => const <String>{};
 }
 
+/// An operation from the op log (Story 11.9), as a [GraphUndo] names what it undid: not a verb of its own — [command]
+/// is its `args` tag (the command line that wrote it) or else its description.
+final class GraphLoggedOperation extends GraphAction {
+  /// The operation [id] (forward hex) with its [description] and `args` tag [args].
+  const GraphLoggedOperation(this.id, this.description, {this.args});
+
+  /// The operation's id.
+  final String id;
+
+  /// jj's description of the operation.
+  final String description;
+
+  /// The value of its `args` tag, when it has one.
+  final String? args;
+
+  @override
+  String get command => args ?? description;
+
+  @override
+  Set<String> get pendingKeys => const <String>{};
+}
+
+/// `jj op restore <operation>` (Story 9.12), with the CLI's defaults.
+final class GraphOpRestore extends GraphAction {
+  /// Restores the repository to [operation].
+  const GraphOpRestore(this.operation);
+
+  /// The operation id, as jj's 12-hex short id.
+  final String operation;
+
+  @override
+  String get command => _jj(<String>['op', 'restore', operation]); // l10n-ignore: jj command
+
+  @override
+  Set<String> get pendingKeys => const <String>{};
+}
+
+/// `jj op show <operation>`, as the Undo Timeline's disabled Show changes names it (Story 11.9).
+String jjOpShowCommand(String operation) => _jj(<String>['op', 'show', operation]); // l10n-ignore: jj command
+
 /// The description `-m` [paragraphs] make (`join_message_paragraphs`, `../jj` v0.46.0 cli/src/description_util.rs:421):
 /// each non-empty paragraph ends with a newline, and the paragraphs are joined by one more.
 String joinMessageParagraphs(List<String> paragraphs) =>
@@ -643,6 +683,8 @@ class RepoGraphActions implements GraphActions {
       ),
       GraphUndo() => handle.undo(),
       GraphRedo() => handle.redo(),
+      GraphOpRestore(:final operation) => handle.opRestore(operation),
+      GraphLoggedOperation() => throw ArgumentError.value(action, 'action', 'an op-log entry is not a verb'),
     };
   }
 

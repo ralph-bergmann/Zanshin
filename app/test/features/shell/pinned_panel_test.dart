@@ -336,8 +336,49 @@ void main() {
     expect(stops.sublist(close, edge).every((id) => id != null && id.startsWith('panel-')), isTrue, reason: '$stops');
   });
 
+  testWidgets("a scrolling item's panel is its own scroll view: it gets the panel's controller as the primary one", (
+    tester,
+  ) async {
+    useShellWindow(tester);
+    const item = ShellRailItem(
+      id: 'list',
+      label: 'List',
+      icon: ZI.undo,
+      preview: SizedBox.shrink(),
+      panel: _PrimaryList(),
+      scrolls: true,
+    );
+    await tester.pumpWidget(
+      shellHost(
+        SizedBox(
+          width: 300,
+          height: 400,
+          child: PinnedPanel(item: item, onClose: () {}),
+        ),
+      ),
+    );
+    expect(find.byType(SingleChildScrollView), findsNothing);
+    final ScrollController controller = tester.widget<ZsScrollArea>(find.byType(ZsScrollArea)).controller;
+    expect(controller.hasClients, isTrue, reason: "the item's list attached to the panel's controller");
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pump();
+    expect(controller.offset, greaterThan(0));
+  });
+
   testWidgets('Esc with nothing open is not handled', (tester) async {
     await _pump(tester);
     expect(await tester.sendKeyEvent(LogicalKeyboardKey.escape), isFalse);
   });
+}
+
+class _PrimaryList extends StatelessWidget {
+  const _PrimaryList();
+
+  @override
+  Widget build(BuildContext context) => ListView.builder(
+    primary: true,
+    itemCount: 100,
+    itemExtent: 30,
+    itemBuilder: (context, i) => Text('row $i'),
+  );
 }

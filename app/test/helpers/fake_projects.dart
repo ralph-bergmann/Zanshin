@@ -125,8 +125,14 @@ class FakeProjectRepo implements ProjectRepo {
   /// Reports a jj operation in this repository.
   void emitChange() => _changes.add(null);
 
+  /// How often its [handle] was asked for (the Undo Timeline reads its op log through it).
+  var handleReads = 0;
+
   @override
-  RepoHandle get handle => throw UnsupportedError('a fake repository has no worker handle');
+  RepoHandle get handle {
+    handleReads++;
+    throw UnsupportedError('a fake repository has no worker handle');
+  }
 
   @override
   Stream<void> get changes => _changes.stream;
