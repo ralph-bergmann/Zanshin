@@ -94,6 +94,15 @@ const projectsWindowSpec = DialogWindowSpec(
   keepsAppAlive: true,
 );
 
+/// The jj log Configurations window (Story 10.22; DS RevsetDialog.prompt.md, the story's 820 px minimum): 880 × 580,
+/// resizable down to 820 × 460, the full frame remembered, floating above the project window while Zanshin is active,
+/// and it does not keep the app alive.
+const revsetConfigsWindowSpec = DialogWindowSpec(
+  size: Size(880, 580),
+  constraints: BoxConstraints(minWidth: 820, minHeight: 460),
+  level: WindowLevel.floatingWhileActive,
+);
+
 /// What [AppWindows] asks its [AppWindowFactory] for: the window [key] titled [title], with [dialog]'s spec or, for a
 /// project window, of [size] within [constraints]; its lifecycle runs through [delegate].
 @immutable

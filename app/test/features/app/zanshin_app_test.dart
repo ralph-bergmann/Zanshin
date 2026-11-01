@@ -12,6 +12,7 @@ import 'package:zanshin/src/app/worker_lifecycle_module.dart';
 import 'package:zanshin/src/features/app/zanshin_app.dart';
 import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/bootstrap/icon_module.dart';
+import 'package:zanshin/src/features/graph/revset_configs/revset_configs_window.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
@@ -213,6 +214,22 @@ void main() {
     expect((content as ProjectsWindow).onOpened, same(onOpened));
     expect(content.session, same(component.projectSession));
     expect(content.key, same(component.appMenu.projectsKey), reason: "the menu bar's Find reaches Projects' search");
+  });
+
+  testWidgets("main.dart's coordinator builds jj log Configurations under its root over the settings and the graph", (
+    tester,
+  ) async {
+    final MainComponent component = await mainComponent(tester);
+    final windows = AppWindows(exitProcess: () async {});
+
+    final Widget root = appWindowCoordinator(component, windows).buildRevsetConfigs();
+
+    expect(root, isA<ZanshinWindowRoot>().having((root) => root.windowKey, 'windowKey', revsetConfigsWindowKey));
+    final Widget content = (root as ZanshinWindowRoot).child;
+    expect(content, isA<RevsetConfigsWindow>());
+    expect((content as RevsetConfigsWindow).settings, same(component.settings));
+    expect(content.graph, same(component.appMenu.graph));
+    expect(content.windows, same(windows));
   });
 
   testWidgets('the home is HomePage over the floating shell, titled Zanshin; the Yaru test page is gone', (

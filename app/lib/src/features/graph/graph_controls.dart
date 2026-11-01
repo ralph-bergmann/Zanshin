@@ -10,6 +10,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import '../shell/calm_controller.dart';
 import '../shell/shell_scope.dart';
+import '../window/app_window_actions.dart';
 import 'graph_gap_legend.dart';
 import 'graph_layout.dart';
 import 'graph_metrics.dart';
@@ -129,11 +130,15 @@ class GraphViewControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool wide = MediaQuery.sizeOf(context).width > graphCountHideWidth;
+    final AppWindowActions? windows = AppWindowActionsScope.maybeOf(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         if (search case final GraphSearchController search) ...<Widget>[
-          GraphSearchField(search: search),
+          GraphSearchField(
+            search: search,
+            onEditConfigurations: windows == null ? null : () => unawaited(windows.openRevsetConfigs()),
+          ),
           const ZsIslandSeparator(),
         ],
         // The gap legend before the count, hidden with it (Story 10.19).

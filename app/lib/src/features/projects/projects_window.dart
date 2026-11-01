@@ -437,6 +437,8 @@ class ProjectsWindowState extends State<ProjectsWindow> {
           <String?>[context, for (final ZanshinWarning warning in warnings) warning.message],
         );
         return false;
+      case ProjectSwitchCancelled():
+        return false;
       case ProjectRefused(:final String message):
         _note(
           made == _OfferKind.clone ? context.l10n.projectsCloneFailed : message,

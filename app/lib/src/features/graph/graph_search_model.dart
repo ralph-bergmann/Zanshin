@@ -165,16 +165,15 @@ class GraphFilter {
   String toString() => 'GraphFilter($revset)';
 }
 
-/// What the graph shows (Story 10.21 item 1): the default search, `all()`, or a typed filter run in `all()`.
+/// What the graph shows (Story 10.21 item 1; 10.22): the default search, the built-ins `jj log` and `all()`, a jj log
+/// configuration, or a typed filter run in `all()`. The default search and a configuration resolve their revset
+/// through the stored configurations (`GraphSearchController.revsetOf`).
 @immutable
 sealed class GraphShownView {
   const GraphShownView();
 
-  /// The default search: until 10.22 always `jj log`, the effective `revsets.log`.
+  /// The default search: `jj log`, `all()` or a configuration, as the settings say.
   static const GraphShownView defaultSearch = GraphDefaultSearch();
-
-  /// The revset the request sends; null for the effective `revsets.log`.
-  String? get revset;
 
   /// The stored form; null for the default search.
   String? encode();
@@ -190,6 +189,12 @@ sealed class GraphShownView {
         if (json['view'] == 'all') {
           return const GraphAllView();
         }
+        if (json['view'] == 'log') {
+          return const GraphLogView();
+        }
+        if (json['config'] case final String id) {
+          return GraphConfigView(id);
+        }
         if (GraphFilter.fromJson(json['filter']) case final GraphFilter filter) {
           return GraphFilterView(filter);
         }
@@ -201,13 +206,10 @@ sealed class GraphShownView {
   }
 }
 
-/// The default search: `jj log`.
+/// The default search, whichever variant the settings make it.
 final class GraphDefaultSearch extends GraphShownView {
   /// The default search.
   const GraphDefaultSearch();
-
-  @override
-  String? get revset => null;
 
   @override
   String? encode() => null;
@@ -219,6 +221,21 @@ final class GraphDefaultSearch extends GraphShownView {
   int get hashCode => 0;
 }
 
+/// The built-in `jj log`: the effective `revsets.log` (the request's null revset).
+final class GraphLogView extends GraphShownView {
+  /// `jj log`.
+  const GraphLogView();
+
+  @override
+  String encode() => jsonEncode(<String, Object?>{'view': 'log'});
+
+  @override
+  bool operator ==(Object other) => other is GraphLogView;
+
+  @override
+  int get hashCode => 2;
+}
+
 /// The built-in `all()`.
 final class GraphAllView extends GraphShownView {
   /// `all()`.
@@ -226,9 +243,6 @@ final class GraphAllView extends GraphShownView {
 
   /// `all()`.
   static const expression = 'all()'; // l10n-ignore: jj revset
-
-  @override
-  String get revset => expression;
 
   @override
   String encode() => jsonEncode(<String, Object?>{'view': 'all'});
@@ -240,6 +254,24 @@ final class GraphAllView extends GraphShownView {
   int get hashCode => 1;
 }
 
+/// The jj log configuration [id] (Story 10.22).
+final class GraphConfigView extends GraphShownView {
+  /// A view of configuration [id].
+  const GraphConfigView(this.id);
+
+  /// The configuration's id.
+  final String id;
+
+  @override
+  String encode() => jsonEncode(<String, Object?>{'config': id});
+
+  @override
+  bool operator ==(Object other) => other is GraphConfigView && other.id == id;
+
+  @override
+  int get hashCode => Object.hash(3, id);
+}
+
 /// A typed [filter].
 final class GraphFilterView extends GraphShownView {
   /// A view of [filter].
@@ -247,9 +279,6 @@ final class GraphFilterView extends GraphShownView {
 
   /// The filter.
   final GraphFilter filter;
-
-  @override
-  String get revset => filter.revset;
 
   @override
   String encode() => jsonEncode(<String, Object?>{'filter': filter.toJson()});

@@ -64,6 +64,7 @@ class _Rig {
   /// Every Projects content built, with its `onOpened`.
   final projectsContents = <_ProjectsContent>[];
   var projectContents = 0;
+  var revsetConfigsContents = 0;
 
   Future<void> setUp({String? openProject}) async {
     dir = await Directory.systemTemp.createTemp('app_window_coordinator_test');
@@ -99,6 +100,10 @@ class _Rig {
         final content = _ProjectsContent(onOpened);
         projectsContents.add(content);
         return content;
+      },
+      buildRevsetConfigs: () {
+        revsetConfigsContents++;
+        return const _ProjectContent();
       },
       folderExists: folders.contains,
       channel: channel,
@@ -255,6 +260,65 @@ void main() {
       expect(rig.session.current, isNull);
       expect(rig.repos.log, contains('close /r/zanshin'));
       expect(rig.exits, isEmpty);
+    });
+
+    test('Story 10.22: Edit Configurations… opens the floating 880 × 580 window once; again brings it forward with '
+        'its content kept; it closes with the project', () async {
+      final _Rig rig = await launched();
+
+      await rig.coordinator.openRevsetConfigs();
+      await rig.coordinator.openRevsetConfigs();
+
+      expect(rig.open, <String>[mainWindowKey, revsetConfigsWindowKey]);
+      final requests = <AppWindowRequest>[
+        ...rig.factory.requests.where((request) => request.key == revsetConfigsWindowKey),
+      ];
+      expect(requests, hasLength(1));
+      expect(requests.single.title, 'jj log Configurations');
+      final DialogWindowSpec spec = requests.single.dialog!;
+      expect(spec.size, const Size(880, 580));
+      expect(spec.constraints, const BoxConstraints(minWidth: 820, minHeight: 460));
+      expect(spec.frame, WindowFrameMode.full);
+      expect(spec.level, WindowLevel.floatingWhileActive);
+      expect(spec.keepsAppAlive, isFalse);
+      expect(rig.revsetConfigsContents, 1, reason: 'the edits live on: the content is built once');
+      expect((rig.windows.controllerOf(revsetConfigsWindowKey)! as DialogWindowController).isActivated, isTrue);
+
+      rig.close(mainWindowKey);
+      await rig.until(() => rig.open.length == 1 && rig.open.single == projectsWindowKey);
+    });
+
+    test('Story 10.22: a guard that refuses keeps the project on a switch (ProjectSwitchCancelled)', () async {
+      final _Rig rig = await launched();
+      rig.session.mayLeave = rig.windows.mayClose;
+      var refuse = true;
+      var asked = 0;
+      rig.windows.addCloseGuard(() async {
+        asked++;
+        return !refuse;
+      });
+
+      rig.repos.detections['/r/plain'] = const RepoDetectResult(kind: RepoKind.neither);
+      expect(await rig.session.open('/r/plain'), isA<ProjectNotARepo>());
+      expect(asked, 0, reason: 'a path that is no workspace asks nothing');
+
+      expect(await rig.session.open('/r/jj'), isA<ProjectSwitchCancelled>());
+      expect(asked, 1);
+      expect(rig.session.current?.path, '/r/zanshin');
+      expect(await rig.session.initRepo('/r/new'), isA<ProjectSwitchCancelled>());
+      expect(await rig.session.convert('/r/git'), isA<ProjectSwitchCancelled>());
+      final clone = '${rig.dir.path}/clone';
+      expect(
+        await rig.session.clone(url: 'https://example.org/r.git', destination: clone),
+        isA<ProjectSwitchCancelled>(),
+      );
+      expect(Directory(clone).existsSync(), isFalse, reason: 'refused before the destination is made');
+      expect(rig.session.current?.path, '/r/zanshin');
+      expect(await rig.session.open('/r/zanshin'), isA<ProjectOpened>(), reason: 'the open project asks nothing');
+
+      refuse = false;
+      expect(await rig.session.open('/r/jj'), isA<ProjectOpened>());
+      expect(rig.session.current?.path, '/r/jj');
     });
 
     test('a close guard that refuses keeps the project and the window', () async {

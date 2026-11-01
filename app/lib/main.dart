@@ -23,6 +23,7 @@ import 'src/features/app/zanshin_app.dart';
 import 'src/features/bootstrap/boot_window_host.dart';
 import 'src/features/bootstrap/icon_module.dart';
 import 'src/features/bootstrap/zanshin_bootstrap.dart';
+import 'src/features/graph/revset_configs/revset_configs_window.dart';
 import 'src/features/projects/project_session.dart';
 import 'src/features/projects/projects_module.dart';
 import 'src/features/projects/projects_window.dart';
@@ -136,6 +137,8 @@ Future<BootFirstWindow> _startApp(
     workerLifecycleModule: WorkerLifecycleModule(mayQuit: windows.mayClose),
   );
   worker.complete(await mainComponent.worker);
+  // A switch away from the open project asks the close guards first, as closing and quitting do (Story 10.22).
+  mainComponent.projectSession.mayLeave = windows.mayClose;
   final AppWindowCoordinator coordinator = appWindowCoordinator(mainComponent, windows);
   final AppMenuModel appMenu = mainComponent.appMenu..attach(windows, coordinator);
   menu.value = appMenu;
@@ -144,7 +147,8 @@ Future<BootFirstWindow> _startApp(
 
 /// The window coordinator over [component]'s session and window contents and the app's [windows]: the project window
 /// shows `ZanshinApp` (its `window:main` root over `HomePage`), Projects the Projects content under the
-/// `window:projects` root, its `onOpened` handed through.
+/// `window:projects` root, its `onOpened` handed through, and jj log Configurations its window under the
+/// `window:revset-configs` root over the settings and the graph the menu bar holds.
 @visibleForTesting
 AppWindowCoordinator appWindowCoordinator(MainComponent component, AppWindows windows) => AppWindowCoordinator(
   windows: windows,
@@ -153,6 +157,15 @@ AppWindowCoordinator appWindowCoordinator(MainComponent component, AppWindows wi
   buildProjects: (onOpened) => component.zanshinWindowRootFactory.create(
     windowKey: projectsWindowKey,
     child: component.projectsWindowFactory.create(onOpened: onOpened, key: component.appMenu.projectsKey),
+  ),
+  buildRevsetConfigs: () => component.zanshinWindowRootFactory.create(
+    windowKey: revsetConfigsWindowKey,
+    child: RevsetConfigsWindow(
+      settings: component.settings,
+      graph: component.appMenu.graph,
+      windows: windows,
+      openUrl: (url) => component.appMenu.openUrl(url),
+    ),
   ),
 );
 
@@ -193,4 +206,8 @@ abstract class MainComponent {
   /// The menu bar's state (Story 11.13), attached to the windows once the coordinator exists.
   @inject
   AppMenuModel get appMenu;
+
+  /// The settings, which the jj log Configurations window (Story 10.22) edits.
+  @inject
+  SettingsStore get settings;
 }

@@ -102,6 +102,13 @@ final class ProjectRefused extends ProjectOpenOutcome {
   final String message;
 }
 
+/// Leaving the open project was refused ([ProjectSession.mayLeave] answered false — "Discard changes?" was
+/// cancelled, Story 10.22); the current project stays.
+final class ProjectSwitchCancelled extends ProjectOpenOutcome {
+  /// The switch was cancelled.
+  const ProjectSwitchCancelled();
+}
+
 /// The project the project window shows (Story 11.5 item 2; Story 11.6): opens, switches, creates and closes
 /// repositories through [ProjectRepos] and keeps the registry's last known state of the open project current.
 ///
@@ -144,6 +151,16 @@ class ProjectSession extends ChangeNotifier {
   var _refreshQueued = false;
   var _queue = Future<void>.value();
   var _disposed = false;
+
+  /// Asked before an open or a creation would switch away from an open project (the window close guards, Story
+  /// 10.22): false cancels it with [ProjectSwitchCancelled]. Null asks nothing.
+  Future<bool> Function()? mayLeave;
+
+  /// Whether a switch to [target] may leave the open project: nothing to leave, the same project, or [mayLeave].
+  Future<bool> _mayLeaveFor(String? target) async {
+    final Future<bool> Function()? ask = mayLeave;
+    return _repo == null || (target != null && target == _path) || ask == null || await ask();
+  }
 
   /// The registry entry of the open project, or null when none is open.
   ProjectEntry? get current {
@@ -241,7 +258,7 @@ class ProjectSession extends ChangeNotifier {
         await _registry.setOpen(null);
       case final ProjectOpenFailed failed:
         reportFailedOpen(stored, failed);
-      case ProjectOpened() || ProjectAdded() || ProjectRefused():
+      case ProjectOpened() || ProjectAdded() || ProjectRefused() || ProjectSwitchCancelled():
         break;
     }
   });
@@ -258,6 +275,10 @@ class ProjectSession extends ChangeNotifier {
     final ProjectOpenOutcome? notOpened = await _detect(target);
     if (notOpened != null) {
       return notOpened;
+    }
+    // Asked only for a workspace that opens: a Discard is not spent on a path that is no repository.
+    if (!await _mayLeaveFor(target)) {
+      return const ProjectSwitchCancelled();
     }
     final ProjectRepo repo;
     try {
@@ -320,6 +341,9 @@ class ProjectSession extends ChangeNotifier {
     int? index,
   }) async {
     final String target = _target(path);
+    if (!await _mayLeaveFor(null)) {
+      return const ProjectSwitchCancelled();
+    }
     _log.fine('$doing a project at $target');
     final ProjectCreation creation;
     try {
@@ -342,6 +366,9 @@ class ProjectSession extends ChangeNotifier {
     if (existed && !_isEmptyDirectory(dir, type)) {
       _log.fine('$spelled is not an empty folder');
       return const ProjectRefused(cloneDestinationNotEmpty);
+    }
+    if (!await _mayLeaveFor(null)) {
+      return const ProjectSwitchCancelled();
     }
     try {
       dir.createSync(recursive: true);

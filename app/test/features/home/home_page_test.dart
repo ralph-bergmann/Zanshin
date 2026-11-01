@@ -52,6 +52,11 @@ class _Actions implements AppWindowActions {
 
   @override
   Future<void> openProjects() async => projects++;
+
+  var configurations = 0;
+
+  @override
+  Future<void> openRevsetConfigs() async => configurations++;
 }
 
 class _ViewModels implements Provider<FloatingShellViewModel> {
@@ -261,6 +266,7 @@ void main() {
     expect(first, isNotNull);
     expect(tester.widget<GraphView>(find.byType(GraphView)).model, same(first!.model));
     expect(first.focusSearch, isNotNull);
+    expect(first.search, isNotNull, reason: 'the Configurations window counts through it (Story 10.22)');
     final State graphState = tester.state(find.byType(GraphView));
     final State searchState = tester.state(find.byType(GraphSearchField));
 
@@ -473,6 +479,25 @@ void main() {
       },
     );
   }
+
+  testWidgets("the search menu's Edit Configurations… opens the Configurations window (Story 10.22)", (tester) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    final actions = _Actions();
+    final ProjectSession session = await pumpHome(
+      tester,
+      wrap: (home) => AppWindowActionsScope(actions: actions, child: home),
+    );
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsIdentifier('graph-search-pill'));
+    await tester.pump();
+    await tester.tap(find.bySemanticsIdentifier('graph-search-menu-edit'));
+    await tester.pump();
+
+    expect(actions.configurations, 1);
+    handle.dispose();
+  });
 
   testWidgets('a Recent row that opens shows no Projects', (tester) async {
     final SemanticsHandle handle = tester.ensureSemantics();

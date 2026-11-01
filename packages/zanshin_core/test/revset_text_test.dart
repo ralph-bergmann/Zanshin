@@ -37,6 +37,28 @@ void main() {
     expect(mineRevset(), 'mine()');
   });
 
+  test('committer and subject, every kind, with and without -i', () {
+    expect(committerRevset('lena'), 'committer(exact:"lena")');
+    expect(
+      committerRevset('lena', pattern: RevsetTextPattern.substring, caseInsensitive: true),
+      'committer(substring-i:"lena")',
+    );
+    expect(committerRevset('L*', pattern: RevsetTextPattern.glob), 'committer(glob:"L*")');
+    expect(committerRevset('^L', pattern: RevsetTextPattern.regex), 'committer(regex:"^L")');
+    expect(subjectRevset('fix'), 'subject(substring:"fix")');
+    expect(subjectRevset('Fix', pattern: RevsetTextPattern.exact, caseInsensitive: true), 'subject(exact-i:"Fix")');
+    expect(subjectRevset('f*', pattern: RevsetTextPattern.glob), 'subject(glob:"f*")');
+    expect(subjectRevset('^f', pattern: RevsetTextPattern.regex, caseInsensitive: true), 'subject(regex-i:"^f")');
+  });
+
+  test('not and join', () {
+    expect(revsetNot(filesRevset('*.lock', pattern: RevsetPathPattern.glob)), '~files(glob:"*.lock")');
+    expect(revsetJoin(['mine()', '~files(cwd:"a")'], any: false), 'mine() & ~files(cwd:"a")');
+    expect(revsetJoin(['mine()', 'author(exact:"x")'], any: true), 'mine() | author(exact:"x")');
+    expect(revsetJoin(['mine()'], any: true), 'mine()');
+    expect(revsetJoin(const [], any: false), 'all()');
+  });
+
   test('a span in UTF-8 bytes converts to UTF-16 offsets', () {
     // "ö" is 2 bytes and 1 unit, "😀" 4 bytes and 2 units.
     const text = 'author("ö😀") & x(';

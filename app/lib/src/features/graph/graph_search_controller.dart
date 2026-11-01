@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart';
 
 import 'graph_layout.dart';
 import 'graph_ports.dart';
@@ -12,6 +13,7 @@ import 'graph_search_index.dart';
 import 'graph_search_model.dart';
 import 'graph_search_store.dart';
 import 'graph_view_model.dart';
+import 'revset_configs/revset_config_expression.dart';
 
 final _log = Logger('zanshin.graph.search');
 
@@ -36,16 +38,29 @@ class GraphSearchController extends ChangeNotifier {
     required this.model,
     required this._source,
     required GraphSearchStore store,
+    ValueListenable<AppSettings>? settings,
     this.pause = const Duration(milliseconds: 150),
   }) : _store = store,
+       _settings = settings,
        _view = store.loadView(),
-       _recent = store.loadRecent();
+       _recent = store.loadRecent() {
+    _view = _resolvable(_view);
+    _sent = revsetOf(_view);
+    _seen = (configs: configurations.revsetConfigs, home: configurations.effectiveRevsetDefault);
+    settings?.addListener(_configurationsChanged);
+  }
+
+  late ({List<RevsetConfiguration> configs, String home}) _seen;
 
   /// The graph's view model.
   final GraphViewModel model;
 
   final GraphSearchSource _source;
   final GraphSearchStore _store;
+
+  /// The settings holding the jj log configurations and the default search (Story 10.22, `graph`), global; null
+  /// knows none (`jj log` is the default).
+  final ValueListenable<AppSettings>? _settings;
 
   /// The pause in typing a batch of counts and lookups waits for.
   final Duration pause;
@@ -54,11 +69,87 @@ class GraphSearchController extends ChangeNotifier {
   List<GraphRecent> _recent;
   var _disposed = false;
 
+  /// The revset the last request for [view] sent.
+  String? _sent;
+
+  /// While set, a configuration change sends nothing ([showSaving]).
+  var _holding = false;
+
   /// What the graph shows.
   GraphShownView get view => _view;
 
-  /// The revset [view] sends; null for the default search. Pass it to the model's first request.
-  String? get revset => _view.revset;
+  /// The revset [view] sends; null for the effective `revsets.log`. Pass it to the model's first request.
+  String? get revset => revsetOf(_view);
+
+  /// The configurations and the default search, as stored.
+  GraphSettings get configurations => _settings?.value.graph ?? const GraphSettings();
+
+  /// The default search's value: `log`, `all` or a configuration id ([GraphSettings.effectiveRevsetDefault]).
+  String get defaultSearch => configurations.effectiveRevsetDefault;
+
+  /// The revset [view] sends: null for `jj log` (the effective `revsets.log`); the default search and a configuration
+  /// resolve through [configurations] — a vanished configuration reads as the default search.
+  String? revsetOf(GraphShownView view) => switch (view) {
+    GraphDefaultSearch() => _defaultRevset(configurations),
+    GraphLogView() => null,
+    GraphAllView() => GraphAllView.expression,
+    GraphConfigView(:final String id) => switch (_configuration(configurations, id)) {
+      final RevsetConfiguration c => revsetConfigText(c),
+      null => _defaultRevset(configurations),
+    },
+    GraphFilterView(:final GraphFilter filter) => filter.revset,
+  };
+
+  /// The default search's revset ([revsetOf] of [GraphShownView.defaultSearch]).
+  String? get defaultSearchRevset => revsetOf(GraphShownView.defaultSearch);
+
+  static RevsetConfiguration? _configuration(GraphSettings settings, String id) {
+    for (final RevsetConfiguration c in settings.revsetConfigs) {
+      if (c.id == id) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  static String? _defaultRevset(GraphSettings settings) {
+    final String id = settings.effectiveRevsetDefault;
+    return switch (id) {
+      revsetDefaultLog => null,
+      revsetDefaultAll => GraphAllView.expression,
+      _ => revsetConfigText(_configuration(settings, id)!),
+    };
+  }
+
+  /// [view], or the default search when it names a configuration that is gone.
+  GraphShownView _resolvable(GraphShownView view) =>
+      view is GraphConfigView && _configuration(configurations, view.id) == null ? GraphShownView.defaultSearch : view;
+
+  /// The configurations changed: a vanished shown configuration falls back to the default search, and a changed
+  /// expression of what the graph shows redraws it in one request.
+  void _configurationsChanged() {
+    final GraphSettings now = configurations;
+    final ({List<RevsetConfiguration> configs, String home}) seen = (
+      configs: now.revsetConfigs,
+      home: now.effectiveRevsetDefault,
+    );
+    // Every other settings write (a card width, the view this controller saves) is none of its business.
+    if (_disposed || seen == _seen) {
+      return;
+    }
+    _seen = seen;
+    final GraphShownView view = _resolvable(_view);
+    if (view != _view) {
+      _view = view;
+      _store.saveView(view);
+    }
+    final String? revset = revsetOf(_view);
+    if (!_holding && revset != _sent) {
+      _sent = revset;
+      model.setRevset(revset);
+    }
+    _notify();
+  }
 
   /// Recent, newest first (at most [maxRecent]).
   List<GraphRecent> get recent => List<GraphRecent>.unmodifiable(_recent);
@@ -71,23 +162,40 @@ class GraphSearchController extends ChangeNotifier {
 
   // ── What the graph shows ──────────────────────────────────────────────────
 
-  /// The default search: one request for the effective `revsets.log`.
-  void showDefault() {
-    _setView(GraphShownView.defaultSearch);
-    model.setRevset(null);
-  }
+  /// The default search: one request for its revset ([defaultSearchRevset]).
+  void showDefault() => show(GraphShownView.defaultSearch);
+
+  /// The built-in `jj log`: one request for the effective `revsets.log`.
+  void showLog() => show(const GraphLogView());
 
   /// `all()`: one request.
-  void showAll() {
-    _setView(const GraphAllView());
-    model.setRevset(GraphAllView.expression);
+  void showAll() => show(const GraphAllView());
+
+  /// The configuration [id]: one request for its expression (the default search's when it is gone).
+  void showConfig(String id) => show(GraphConfigView(id));
+
+  /// Shows [view] in one request.
+  void show(GraphShownView view) {
+    _setView(_resolvable(view));
+    model.setRevset(_sent);
+  }
+
+  /// Runs [save] (a configurations write, which notifies synchronously) and shows [view] with what it saved: one
+  /// request, whatever [save] changed (the window's OK).
+  void showSaving(GraphShownView view, VoidCallback save) {
+    _holding = true;
+    try {
+      save();
+    } finally {
+      _holding = false;
+    }
+    show(view);
   }
 
   /// Applies [filter]: one request for its revset, run in `all()`, and a Recent entry.
   void apply(GraphFilter filter) {
     _addRecent(GraphRecentFilter(filter));
-    _setView(GraphFilterView(filter));
-    model.setRevset(filter.revset);
+    show(GraphFilterView(filter));
   }
 
   /// Goes to [key] (item 5): a shown one is selected, revealed and pulsed without a request; one beyond the view
@@ -117,6 +225,7 @@ class GraphSearchController extends ChangeNotifier {
 
   void _setView(GraphShownView view) {
     _view = view;
+    _sent = revsetOf(view);
     _store.saveView(view);
     _notify();
   }
@@ -453,6 +562,7 @@ class GraphSearchController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _settings?.removeListener(_configurationsChanged);
     _batch?.cancel();
     super.dispose();
   }

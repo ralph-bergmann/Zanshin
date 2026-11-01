@@ -16,6 +16,7 @@ import '../bootstrap/boot_window_host.dart' show mainWindowTitle;
 import '../graph/graph_layout.dart';
 import '../graph/graph_ports.dart';
 import '../graph/graph_preferences.dart';
+import '../graph/graph_search_controller.dart';
 import '../graph/graph_view_model.dart';
 import '../home/home_page.dart' show openRecentProject;
 import '../projects/project_session.dart';
@@ -39,13 +40,16 @@ Future<void> _openInBrowser(Uri url) async {
 @immutable
 class GraphMenuBinding {
   /// The binding of [model] and [preferences].
-  const GraphMenuBinding({required this.model, required this.preferences, this.focusSearch});
+  const GraphMenuBinding({required this.model, required this.preferences, this.search, this.focusSearch});
 
   /// The graph's view model: the Change, Go and Undo items act on it.
   final GraphViewModel model;
 
   /// The View items' setters.
   final GraphPreferences preferences;
+
+  /// The graph search: the jj log Configurations window counts, shows and redraws through it (Story 10.22).
+  final GraphSearchController? search;
 
   /// Focuses the graph search (Edit › Find); null while there is none.
   final VoidCallback? focusSearch;
@@ -64,8 +68,8 @@ class GraphMenuBinding {
 ///   "@", else max(prefix, 8) characters of the change id. Edit and Revert are grey while the target is @.
 /// - **Text first:** Undo and Redo act on a focused text field before the graph; Cut, Copy, Paste and Select All send
 ///   their text intents to the focused text field and are grey without one.
-/// - Items whose handler story has not landed stay grey: Settings…, Project Settings…, Edit Configurations…, Show
-///   Minimap, Describe…, Fetch, Push… and the app's Help.
+/// - Items whose handler story has not landed stay grey: Settings…, Project Settings…, Show Minimap, Describe…,
+///   Fetch, Push… and the app's Help. Edit Configurations… opens the jj log Configurations window (Story 10.22).
 ///
 /// Its listeners hear a change after the current frame's work (a microtask): sheets come and go while the tree builds.
 @inject
@@ -92,8 +96,8 @@ class AppMenuModel extends ChangeNotifier {
   final graph = ValueNotifier<GraphMenuBinding?>(null);
   GraphMenuBinding? _bound;
 
-  /// Opens a URL in the browser (Help › jj Documentation); a seam for tests.
-  @visibleForTesting
+  /// Opens a URL in the browser (Help › jj Documentation, the Configurations window's Revset reference); a seam for
+  /// tests.
   Future<void> Function(Uri url) openUrl = _openInBrowser;
 
   var _scheduled = false;
@@ -442,6 +446,7 @@ class AppMenuModel extends ChangeNotifier {
               PlatformMenuItem(
                 label: s.menuEditConfigurations,
                 shortcut: const SingleActivator(LogicalKeyboardKey.keyL, meta: true, alt: true),
+                onSelected: actions == null ? null : _run(actions.openRevsetConfigs),
               ),
               PlatformMenuItem(label: s.menuShowMinimap),
               PlatformMenuItem(

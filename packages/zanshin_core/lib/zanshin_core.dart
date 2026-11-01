@@ -129,11 +129,15 @@ export 'src/revset_text.dart'
         RevsetPathPattern,
         RevsetTextPattern,
         authorRevset,
+        committerRevset,
         descriptionRevset,
         filesRevset,
         mineRevset,
+        revsetJoin,
+        revsetNot,
         revsetSpanUtf16,
-        revsetStringLiteral;
+        revsetStringLiteral,
+        subjectRevset;
 export 'src/worker/events.dart'
     show OpHeadsChangedEvent, ProgressEvent, RepoEvent, WatchErrorEvent, WorkingCopyHeartbeatEvent;
 export 'src/worker/handle.dart' show CreatedRepoHandle, OpenedRepoHandle, RepoHandle;

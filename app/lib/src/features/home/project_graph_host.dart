@@ -120,6 +120,7 @@ class _Graph {
         content: source.content,
       ),
       store: ProjectSearchStore(host.settings, root),
+      settings: host.settings,
     );
     preferences = GraphPreferences(host.settings)
       ..init(
@@ -132,7 +133,12 @@ class _Graph {
     inspector = InspectorViewModel(graph: model, details: RepoGraphDetails(repo));
     bookmarks = () => repo.handle.bookmarks(allRemotes: true);
     toasts = GraphToasts(model, host.toasts);
-    binding = GraphMenuBinding(model: model, preferences: preferences, focusSearch: () => search.focusField());
+    binding = GraphMenuBinding(
+      model: model,
+      preferences: preferences,
+      search: search,
+      focusSearch: () => search.focusField(),
+    );
   }
 
   final model = GraphViewModel();

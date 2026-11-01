@@ -1584,4 +1584,173 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get nameSheetCreate => 'Create';
+
+  @override
+  String get revsetConfigsTitle => 'jj log Configurations';
+
+  @override
+  String get revsetConfigsUnnamed => 'Unnamed';
+
+  @override
+  String get revsetConfigsNewName => 'New configuration';
+
+  @override
+  String revsetConfigsCopyName(String name) {
+    return '$name copy';
+  }
+
+  @override
+  String get revsetConfigsAdd => 'Add configuration';
+
+  @override
+  String get revsetConfigsRemove => 'Remove';
+
+  @override
+  String get revsetConfigsDuplicate => 'Duplicate';
+
+  @override
+  String get revsetConfigsMoveUp => 'Move up';
+
+  @override
+  String get revsetConfigsMoveDown => 'Move down';
+
+  @override
+  String get revsetConfigsBuiltIn => 'Built-in';
+
+  @override
+  String get revsetConfigsCustom => 'Custom';
+
+  @override
+  String revsetConfigsBuiltInDetail(String detail) {
+    return 'Built-in · $detail';
+  }
+
+  @override
+  String get revsetConfigsEmpty => 'No custom configurations yet.';
+
+  @override
+  String get revsetConfigsName => 'Name';
+
+  @override
+  String get revsetConfigsDefaultSearch => 'Default search';
+
+  @override
+  String get revsetConfigsDefaultHint => 'Listed first in the search menu — ✕ in the search field returns to it';
+
+  @override
+  String get revsetConfigsDefaultLockedHint => 'Used whenever no other configuration is the default';
+
+  @override
+  String get revsetConfigsFilters => 'Filters';
+
+  @override
+  String get revsetConfigsCombine => 'Combine';
+
+  @override
+  String get revsetConfigsMatchAll => 'Match all &';
+
+  @override
+  String get revsetConfigsMatchAny => 'Match any |';
+
+  @override
+  String get revsetConfigsIs => 'is';
+
+  @override
+  String get revsetConfigsNot => '~ not';
+
+  @override
+  String get revsetConfigsNotOnTooltip => 'Negated (~) — click to include';
+
+  @override
+  String get revsetConfigsNotOffTooltip => 'Click to exclude matches (~)';
+
+  @override
+  String get revsetConfigsFunction => 'Function';
+
+  @override
+  String get revsetConfigsMatch => 'Match';
+
+  @override
+  String revsetConfigsMode(String mode) {
+    String _temp0 = intl.Intl.selectLogic(
+      mode,
+      {
+        'substring': 'contains',
+        'exact': 'is exactly',
+        'glob': 'matches glob',
+        'regex': 'matches regex',
+        'prefix': 'path or folder',
+        'file': 'exact file',
+        'fileGlob': 'glob',
+        'other': 'glob',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String revsetConfigsHint(String fn) {
+    String _temp0 = intl.Intl.selectLogic(
+      fn,
+      {
+        'author': 'Author name or email',
+        'committer': 'Committer name or email',
+        'mine': 'Changes authored by your user.email',
+        'subject': 'First line of the description',
+        'description': 'Full description text',
+        'other': 'Changes touching these paths',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get revsetConfigsCaseInsensitive => 'Case-insensitive (-i)';
+
+  @override
+  String get revsetConfigsRemoveFilter => 'Remove filter';
+
+  @override
+  String revsetConfigsNoFilters(String expression) {
+    return 'No filters — shows every commit ($expression).';
+  }
+
+  @override
+  String get revsetConfigsAuthoredBy => 'authored by';
+
+  @override
+  String get revsetConfigsCommand => 'Command';
+
+  @override
+  String revsetConfigsMatchesOf(String total) {
+    return ' of $total changes match';
+  }
+
+  @override
+  String get revsetConfigsCopy => 'Copy';
+
+  @override
+  String get revsetConfigsCopied => 'Copied';
+
+  @override
+  String get revsetConfigsReference => 'Revset reference ↗';
+
+  @override
+  String get revsetConfigsCancel => 'Cancel';
+
+  @override
+  String get revsetConfigsApply => 'Apply';
+
+  @override
+  String get revsetConfigsOk => 'OK';
+
+  @override
+  String get revsetConfigsDiscardTitle => 'Discard changes?';
+
+  @override
+  String get revsetConfigsDiscardBody =>
+      'Your edits to the configurations haven’t been applied. Cancel keeps them here.';
+
+  @override
+  String get revsetConfigsDiscard => 'Discard changes';
 }

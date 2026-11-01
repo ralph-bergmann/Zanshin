@@ -13,6 +13,7 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 
+import '../../l10n/strings.dart';
 import '../bootstrap/boot_window_host.dart' show mainWindowTitle;
 import '../bootstrap/zanshin_bootstrap.dart';
 import '../projects/project_session.dart';
@@ -56,6 +57,7 @@ class AppWindowCoordinator implements AppWindowActions {
     required this.session,
     required this.buildProject,
     required this.buildProjects,
+    required this.buildRevsetConfigs,
     this._folderExists = _defaultFolderExists,
     this._channel = windowFramesChannel,
   });
@@ -71,6 +73,9 @@ class AppWindowCoordinator implements AppWindowActions {
 
   /// The Projects window's content: its root over the Projects content, whose `onOpened` is the given callback.
   final Widget Function(ValueChanged<ProjectOpened> onOpened) buildProjects;
+
+  /// The jj log Configurations window's content (Story 10.22): its root over the window.
+  final Widget Function() buildRevsetConfigs;
 
   final bool Function(String path) _folderExists;
   final MethodChannel _channel;
@@ -110,6 +115,19 @@ class AppWindowCoordinator implements AppWindowActions {
   Future<void> openProjects() async {
     await _ready.future;
     await _serial(_openProjects);
+  }
+
+  @override
+  Future<void> openRevsetConfigs() async {
+    await _ready.future;
+    await _serial(
+      () => _show(
+        revsetConfigsWindowKey,
+        platformStrings().revsetConfigsTitle,
+        () => AppWindowActionsScope(actions: this, child: buildRevsetConfigs()),
+        dialog: revsetConfigsWindowSpec,
+      ),
+    );
   }
 
   /// The Dock's reopen with no window visible: the minimised project window comes back, else Projects. Before the

@@ -197,6 +197,18 @@ void main() {
     expect(projects.dialogs['widgetbook-projects-window'], same(projectsWindowSpec));
   });
 
+  testWidgets("Windows › Configurations window opens a dialog window with the app's spec over the window", (
+    tester,
+  ) async {
+    final _RecordingWindows windows = await openWindow(
+      tester,
+      'windows/configurations-window/configurations-window',
+      'open-revset-configs-window',
+    );
+
+    expect(windows.dialogs['widgetbook-revset-configs'], same(revsetConfigsWindowSpec));
+  });
+
   for (final (String useCase, String key, bool sized, bool resizable, WindowFrameMode frame, WindowLevel level)
       in const <(String, String, bool, bool, WindowFrameMode, WindowLevel)>[
         ('resizable', 'window-scaffold-resizable', true, true, WindowFrameMode.full, WindowLevel.normal),

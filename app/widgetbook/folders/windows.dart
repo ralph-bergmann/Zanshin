@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
+import 'package:zanshin/src/features/graph/revset_configs/revset_configs_window.dart';
+import 'package:zanshin/src/features/shell/app_menu.dart' show GraphMenuBinding;
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin/src/features/window/window_chrome_builder.dart';
+import 'package:zanshin/src/l10n/strings.dart';
+import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart' show ShellTheme;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -142,6 +147,15 @@ final windowsFolder = WidgetbookFolder(
         WidgetbookUseCase(
           name: 'Projects window',
           builder: (context) => const Center(child: _OpenProjectsWindow()),
+        ),
+      ],
+    ),
+    WidgetbookComponent(
+      name: 'Configurations window',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(
+          name: 'Configurations window',
+          builder: (context) => const Center(child: _OpenRevsetConfigsWindow()),
         ),
       ],
     ),
@@ -446,4 +460,110 @@ class _OpenProjectsWindow extends StatelessWidget {
       content: const DemoProjectsWindow(),
     ),
   );
+}
+
+/// Opens Story 10.22's jj log Configurations window over two demo configurations (a temp-folder settings store, no
+/// project: no count, `mine()` without an email) in a real dialog window with the app's spec
+/// ([revsetConfigsWindowSpec]: 880 × 580, down to 820 × 460, floating while active).
+class _OpenRevsetConfigsWindow extends StatelessWidget {
+  const _OpenRevsetConfigsWindow();
+
+  static const _key = 'widgetbook-revset-configs';
+
+  @override
+  Widget build(BuildContext context) => ZsButton(
+    label: 'Open the Configurations window',
+    variant: ZsButtonVariant.primary,
+    identifier: 'open-revset-configs-window',
+    onPressed: () {
+      final AppWindows windows = CatalogueWindows.of(context);
+      _open(
+        context,
+        key: _key,
+        title: platformStrings().revsetConfigsTitle,
+        dialog: revsetConfigsWindowSpec,
+        content: _DemoRevsetConfigsWindow(windows: windows, windowKey: _key),
+      );
+    },
+  );
+}
+
+/// The Configurations window over a temp-folder settings store holding two demo configurations.
+class _DemoRevsetConfigsWindow extends StatefulWidget {
+  const _DemoRevsetConfigsWindow({required this.windows, required this.windowKey});
+
+  final AppWindows windows;
+  final String windowKey;
+
+  @override
+  State<_DemoRevsetConfigsWindow> createState() => _DemoRevsetConfigsWindowState();
+}
+
+class _DemoRevsetConfigsWindowState extends State<_DemoRevsetConfigsWindow> {
+  late final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_configurations');
+  final _graph = ValueNotifier<GraphMenuBinding?>(null);
+  SettingsStore? _store;
+
+  static const _settings = GraphSettings(
+    revsetConfigs: <RevsetConfiguration>[
+      RevsetConfiguration(
+        id: 'c-mine',
+        name: 'My open work',
+        rules: <RevsetRule>[
+          RevsetRule(fn: RevsetRuleFunction.mine),
+          RevsetRule(fn: RevsetRuleFunction.files, mode: RevsetRuleMode.glob, value: '*.lock', not: true),
+        ],
+      ),
+      RevsetConfiguration(
+        id: 'c-lena',
+        name: 'Lena or fixes',
+        op: RevsetCombine.or,
+        rules: <RevsetRule>[
+          RevsetRule(fn: RevsetRuleFunction.author, value: 'lena', ci: true),
+          RevsetRule(fn: RevsetRuleFunction.subject, mode: RevsetRuleMode.regex, value: '^fix'),
+        ],
+      ),
+    ],
+    revsetDefault: 'c-mine',
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final SettingsStore store = await SettingsStore.load(File('${_dir.path}/settings.json'));
+    // The demo's writes go to the temp folder; a failed one changes nothing the demo shows.
+    unawaited(store.update((s) => s.copyWith(graph: _settings)).onError<FileSystemException>((_, _) {}));
+    if (mounted) {
+      setState(() => _store = store);
+    }
+  }
+
+  @override
+  void dispose() {
+    _graph.dispose();
+    try {
+      _dir.deleteSync(recursive: true);
+    } on FileSystemException {
+      // A write still under way; the temp folder goes with the system's clean-up.
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final SettingsStore? store = _store;
+    return store == null
+        ? const SizedBox.expand()
+        : RevsetConfigsWindow(
+            settings: store,
+            graph: _graph,
+            windows: widget.windows,
+            windowKey: widget.windowKey,
+            openUrl: (_) async {},
+          );
+  }
 }

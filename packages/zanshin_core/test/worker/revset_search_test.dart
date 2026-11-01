@@ -251,6 +251,19 @@ void main() {
         filesRevset('$folder/'),
         filesRevset(path, pattern: RevsetPathPattern.file),
         filesRevset('**/*$extension', pattern: RevsetPathPattern.glob),
+        committerRevset(change.committer.name),
+        committerRevset(
+          change.committer.name.toLowerCase(),
+          pattern: RevsetTextPattern.substring,
+          caseInsensitive: true,
+        ),
+        subjectRevset(subject),
+        subjectRevset(subject.toUpperCase(), pattern: RevsetTextPattern.exact, caseInsensitive: true),
+        revsetJoin([
+          authorRevset(name),
+          revsetNot(filesRevset('no/such/path', pattern: RevsetPathPattern.file)),
+        ], any: false),
+        revsetJoin([revsetNot(mineRevset()), filesRevset(path, pattern: RevsetPathPattern.file)], any: true),
       ];
       final RevsetCounts counts = await handle.revsetCounts(view.operationId, [
         for (final String expr in exprs) '($expr) & ${change.commitId}',

@@ -22,7 +22,14 @@ void main() {
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
       'general': {'hideControls': true},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
-      'graph': {'layout': 'free', 'detailedCards': true, 'groupStacks': true, 'cardWidth': 240.0},
+      'graph': {
+        'layout': 'free',
+        'detailedCards': true,
+        'groupStacks': true,
+        'cardWidth': 240.0,
+        'revsetConfigs': <Object?>[],
+        'revsetDefault': 'log',
+      },
     });
   });
 
@@ -42,7 +49,14 @@ void main() {
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
       'general': {'hideControls': true},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
-      'graph': {'layout': 'free', 'detailedCards': true, 'groupStacks': true, 'cardWidth': 240.0},
+      'graph': {
+        'layout': 'free',
+        'detailedCards': true,
+        'groupStacks': true,
+        'cardWidth': 240.0,
+        'revsetConfigs': <Object?>[],
+        'revsetDefault': 'log',
+      },
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
@@ -106,8 +120,50 @@ void main() {
       'detailedCards': false,
       'groupStacks': false,
       'cardWidth': 300.0,
+      'revsetConfigs': <Object?>[],
+      'revsetDefault': 'log',
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
+  });
+
+  test('jj log configurations and the default search survive a JSON round trip', () {
+    const settings = AppSettings(
+      graph: GraphSettings(
+        revsetConfigs: [
+          RevsetConfiguration(
+            id: 'c-1',
+            name: 'Mine, no locks',
+            op: RevsetCombine.or,
+            rules: [
+              RevsetRule(fn: RevsetRuleFunction.mine),
+              RevsetRule(fn: RevsetRuleFunction.files, mode: RevsetRuleMode.glob, value: '*.lock', not: true),
+              RevsetRule(fn: RevsetRuleFunction.author, value: 'lena', ci: true),
+            ],
+          ),
+        ],
+        revsetDefault: 'c-1',
+      ),
+    );
+    final Map<String, Object?> json = settings.toJson();
+    expect((json['graph']! as Map<String, Object?>)['revsetConfigs'], [
+      {
+        'id': 'c-1',
+        'name': 'Mine, no locks',
+        'op': 'or',
+        'rules': [
+          {'fn': 'mine', 'mode': 'substring', 'value': '', 'ci': false, 'not': false},
+          {'fn': 'files', 'mode': 'glob', 'value': '*.lock', 'ci': false, 'not': true},
+          {'fn': 'author', 'mode': 'substring', 'value': 'lena', 'ci': true, 'not': false},
+        ],
+      },
+    ]);
+    expect(AppSettings.fromJson(json), settings);
+    expect(settings.graph.effectiveRevsetDefault, 'c-1');
+  });
+
+  test('a default search naming no configuration reads as jj log', () {
+    expect(const GraphSettings(revsetDefault: 'gone').effectiveRevsetDefault, revsetDefaultLog);
+    expect(const GraphSettings(revsetDefault: 'all').effectiveRevsetDefault, revsetDefaultAll);
   });
 
   test('a file without graph, or with it partial, takes the defaults for what is missing', () {

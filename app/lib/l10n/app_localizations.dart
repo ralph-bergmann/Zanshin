@@ -2473,6 +2473,270 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create'**
   String get nameSheetCreate;
+
+  /// The jj log Configurations window's title (Story 10.22).
+  ///
+  /// In en, this message translates to:
+  /// **'jj log Configurations'**
+  String get revsetConfigsTitle;
+
+  /// A jj log configuration whose name is empty, in the list and the search menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Unnamed'**
+  String get revsetConfigsUnnamed;
+
+  /// The name a configuration added with Add configuration gets.
+  ///
+  /// In en, this message translates to:
+  /// **'New configuration'**
+  String get revsetConfigsNewName;
+
+  /// The name of a duplicated configuration.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} copy'**
+  String revsetConfigsCopyName(String name);
+
+  /// The list toolbar's add button and the empty list's action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add configuration'**
+  String get revsetConfigsAdd;
+
+  /// The list toolbar's remove button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get revsetConfigsRemove;
+
+  /// The list toolbar's duplicate button.
+  ///
+  /// In en, this message translates to:
+  /// **'Duplicate'**
+  String get revsetConfigsDuplicate;
+
+  /// The list toolbar's move-up button.
+  ///
+  /// In en, this message translates to:
+  /// **'Move up'**
+  String get revsetConfigsMoveUp;
+
+  /// The list toolbar's move-down button.
+  ///
+  /// In en, this message translates to:
+  /// **'Move down'**
+  String get revsetConfigsMoveDown;
+
+  /// The list's section over jj log and all().
+  ///
+  /// In en, this message translates to:
+  /// **'Built-in'**
+  String get revsetConfigsBuiltIn;
+
+  /// The list's section over the user's configurations.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get revsetConfigsCustom;
+
+  /// A built-in entry's read-only description in the editor.
+  ///
+  /// In en, this message translates to:
+  /// **'Built-in · {detail}'**
+  String revsetConfigsBuiltInDetail(String detail);
+
+  /// The editor while no configuration is selected and none exists.
+  ///
+  /// In en, this message translates to:
+  /// **'No custom configurations yet.'**
+  String get revsetConfigsEmpty;
+
+  /// The editor's name field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get revsetConfigsName;
+
+  /// The editor's Default search switch row.
+  ///
+  /// In en, this message translates to:
+  /// **'Default search'**
+  String get revsetConfigsDefaultSearch;
+
+  /// The Default search row's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Listed first in the search menu — ✕ in the search field returns to it'**
+  String get revsetConfigsDefaultHint;
+
+  /// The Default search row's hint for jj log while it is the default (the switch is locked on).
+  ///
+  /// In en, this message translates to:
+  /// **'Used whenever no other configuration is the default'**
+  String get revsetConfigsDefaultLockedHint;
+
+  /// The editor's rules block label.
+  ///
+  /// In en, this message translates to:
+  /// **'Filters'**
+  String get revsetConfigsFilters;
+
+  /// VoiceOver label of the Match all / Match any control.
+  ///
+  /// In en, this message translates to:
+  /// **'Combine'**
+  String get revsetConfigsCombine;
+
+  /// Rules joined with jj's & (every rule must match).
+  ///
+  /// In en, this message translates to:
+  /// **'Match all &'**
+  String get revsetConfigsMatchAll;
+
+  /// Rules joined with jj's | (any rule may match).
+  ///
+  /// In en, this message translates to:
+  /// **'Match any |'**
+  String get revsetConfigsMatchAny;
+
+  /// A rule's negation chip while it includes its matches.
+  ///
+  /// In en, this message translates to:
+  /// **'is'**
+  String get revsetConfigsIs;
+
+  /// A rule's negation chip while it excludes its matches (jj's ~).
+  ///
+  /// In en, this message translates to:
+  /// **'~ not'**
+  String get revsetConfigsNot;
+
+  /// Tooltip of a negated rule's chip.
+  ///
+  /// In en, this message translates to:
+  /// **'Negated (~) — click to include'**
+  String get revsetConfigsNotOnTooltip;
+
+  /// Tooltip of a rule's negation chip while it includes its matches.
+  ///
+  /// In en, this message translates to:
+  /// **'Click to exclude matches (~)'**
+  String get revsetConfigsNotOffTooltip;
+
+  /// VoiceOver label of a rule's function picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Function'**
+  String get revsetConfigsFunction;
+
+  /// VoiceOver label of a rule's match-mode picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Match'**
+  String get revsetConfigsMatch;
+
+  /// A rule's match mode; fileGlob is the files glob.
+  ///
+  /// In en, this message translates to:
+  /// **'{mode, select, substring{contains} exact{is exactly} glob{matches glob} regex{matches regex} prefix{path or folder} file{exact file} fileGlob{glob} other{glob}}'**
+  String revsetConfigsMode(String mode);
+
+  /// What a rule function matches: the function picker's and add chips' tooltip and the value's placeholder; other is files.
+  ///
+  /// In en, this message translates to:
+  /// **'{fn, select, author{Author name or email} committer{Committer name or email} mine{Changes authored by your user.email} subject{First line of the description} description{Full description text} other{Changes touching these paths}}'**
+  String revsetConfigsHint(String fn);
+
+  /// Tooltip of a text rule's Aa toggle (jj's -i).
+  ///
+  /// In en, this message translates to:
+  /// **'Case-insensitive (-i)'**
+  String get revsetConfigsCaseInsensitive;
+
+  /// A rule row's remove button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove filter'**
+  String get revsetConfigsRemoveFilter;
+
+  /// A configuration without rules; expression is all().
+  ///
+  /// In en, this message translates to:
+  /// **'No filters — shows every commit ({expression}).'**
+  String revsetConfigsNoFilters(String expression);
+
+  /// A mine() rule, before the project's user.email (bold) and jj's key · user.email.
+  ///
+  /// In en, this message translates to:
+  /// **'authored by'**
+  String get revsetConfigsAuthoredBy;
+
+  /// The command preview's label.
+  ///
+  /// In en, this message translates to:
+  /// **'Command'**
+  String get revsetConfigsCommand;
+
+  /// After the bold match count in the command preview; total is the shown graph's count.
+  ///
+  /// In en, this message translates to:
+  /// **' of {total} changes match'**
+  String revsetConfigsMatchesOf(String total);
+
+  /// Copies the previewed jj command.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get revsetConfigsCopy;
+
+  /// The Copy link for a moment after copying.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get revsetConfigsCopied;
+
+  /// The footer link to jj's revset documentation.
+  ///
+  /// In en, this message translates to:
+  /// **'Revset reference ↗'**
+  String get revsetConfigsReference;
+
+  /// The footer's Cancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get revsetConfigsCancel;
+
+  /// The footer's Apply: saves without closing.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get revsetConfigsApply;
+
+  /// The footer's OK: saves, shows the selected entry and closes.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get revsetConfigsOk;
+
+  /// The sheet before unsaved configuration edits are dropped.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard changes?'**
+  String get revsetConfigsDiscardTitle;
+
+  /// The Discard changes? sheet's body.
+  ///
+  /// In en, this message translates to:
+  /// **'Your edits to the configurations haven’t been applied. Cancel keeps them here.'**
+  String get revsetConfigsDiscardBody;
+
+  /// The Discard changes? sheet's destructive button.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard changes'**
+  String get revsetConfigsDiscard;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

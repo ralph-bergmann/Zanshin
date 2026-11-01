@@ -8,6 +8,8 @@ import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart' show NumberFormat;
 import 'package:material_ui/material_ui.dart' show Material, MaterialType, TextField;
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart'
+    show GraphSettings, RevsetConfiguration, revsetDefaultAll, revsetDefaultLog;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -19,6 +21,7 @@ import 'graph_search_controller.dart';
 import 'graph_search_index.dart';
 import 'graph_search_model.dart';
 import 'graph_view_model.dart';
+import 'revset_configs/revset_config_expression.dart';
 
 // The graph search field (Story 10.21 item 2; DS components/search/search.css; design/graph-search.jsx:470-491): the
 // well [pill ▾ | input | ✕ or ⌘F], and one field-attached list below it — the menu or the suggestions — whose keyboard
@@ -41,7 +44,7 @@ double graphSearchInputWidth(double window) => window > graphSearchMediumWidth
     ? 250
     : 170;
 
-/// The jj command the default search names until 10.22 (Story 10.21 item 1).
+/// The built-in `jj log` variant's name.
 const _jjLog = 'jj log'; // l10n-ignore: jj command
 
 /// jj's builtin `revsets.log` (cli/src/config/revsets.toml @ v0.46.0).
@@ -49,15 +52,51 @@ const _builtinLog = 'builtin_log()'; // l10n-ignore: jj revset
 
 enum _Popup { none, menu, suggestions }
 
-/// A menu row (item 3).
-enum _MenuRow { log, all, change, bookmark, author, file, description, edit }
+/// What a menu row is (item 3): a jj log variant, a scope, or Edit Configurations….
+enum _MenuKind { variant, change, bookmark, author, file, description, edit }
+
+/// A menu row; a variant row names its variant (`log`, `all` or a configuration id, Story 10.22).
+@immutable
+class _MenuRow {
+  const _MenuRow(this.kind) : variant = null;
+
+  const _MenuRow.variant(String this.variant) : kind = _MenuKind.variant;
+
+  static const scopes = <_MenuRow>[
+    _MenuRow(_MenuKind.change),
+    _MenuRow(_MenuKind.bookmark),
+    _MenuRow(_MenuKind.author),
+    _MenuRow(_MenuKind.file),
+    _MenuRow(_MenuKind.description),
+  ];
+
+  static const edit = _MenuRow(_MenuKind.edit);
+
+  final _MenuKind kind;
+  final String? variant;
+
+  /// The row's identifier suffix: `log`, `all`, `config-<id>` or the kind's name.
+  String get name => switch (variant) {
+    revsetDefaultLog || revsetDefaultAll => variant!,
+    final String id => 'config-$id',
+    null => kind.name,
+  };
+
+  @override
+  bool operator ==(Object other) => other is _MenuRow && other.kind == kind && other.variant == variant;
+
+  @override
+  int get hashCode => Object.hash(kind, variant);
+}
 
 /// The graph search field (Story 10.21). It shows what [search] shows the graph — the default search (empty, calm
 /// pill, placeholder and `⌘F`), a typed filter (the scope's icon and label, the value, a ✕ back to the default search)
-/// or `all()` (`$` and the name) — and opens one field-attached list: the menu (the pill) or the suggestions (typing,
-/// and Recent on an empty field). While either is open it holds the shell's calm.
+/// or another jj log variant (`$` and the name) — and opens one field-attached list: the menu (the pill) or the
+/// suggestions (typing, and Recent on an empty field). While either is open it holds the shell's calm.
 ///
-/// [onEditConfigurations] opens 10.22's window; until then "Edit Configurations…" is disabled.
+/// The menu lists the default search first, tagged Default, then the other variants — `jj log`, `all()` and the jj log
+/// configurations in order (Story 10.22). [onEditConfigurations] opens the configurations window; null disables the
+/// row.
 class GraphSearchField extends StatefulWidget {
   /// The field of [search].
   const GraphSearchField({required this.search, this.onEditConfigurations, super.key});
@@ -269,7 +308,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         _rows = const <GraphSearchRow>[];
         _suggestions = null;
       case _Popup.menu:
-        _menu = _MenuRow.values;
+        _menu = <_MenuRow>[for (final String v in _variants) _MenuRow.variant(v), ..._MenuRow.scopes, _MenuRow.edit];
         count = _menu.length;
         start = _menu.indexOf(_currentMenuRow);
         enabled = (i) => _menu[i] != _MenuRow.edit || widget.onEditConfigurations != null;
@@ -358,14 +397,67 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
   }
 
   _MenuRow get _currentMenuRow => switch (_view) {
-    GraphDefaultSearch() => _MenuRow.log,
-    GraphAllView() => _MenuRow.all,
-    GraphFilterView(:final GraphFilter filter) => switch (filter.scope) {
-      GraphSearchScope.file => _MenuRow.file,
-      GraphSearchScope.description => _MenuRow.description,
-      _ => _MenuRow.author,
+    GraphFilterView(:final GraphFilter filter) => _MenuRow(switch (filter.scope) {
+      GraphSearchScope.file => _MenuKind.file,
+      GraphSearchScope.description => _MenuKind.description,
+      _ => _MenuKind.author,
+    }),
+    _ => _MenuRow.variant(_currentVariant!),
+  };
+
+  /// The jj log variants in menu order (Story 10.22): the default search first, then `jj log`, `all()` and the
+  /// configurations.
+  List<String> get _variants {
+    final GraphSettings settings = _search.configurations;
+    final String home = settings.effectiveRevsetDefault;
+    return <String>[
+      home,
+      for (final String v in <String>[
+        revsetDefaultLog,
+        revsetDefaultAll,
+        for (final RevsetConfiguration c in settings.revsetConfigs) c.id,
+      ])
+        if (v != home) v,
+    ];
+  }
+
+  /// The variant the shown view is; null for a filter.
+  String? get _currentVariant => switch (_view) {
+    GraphDefaultSearch() => _search.defaultSearch,
+    GraphLogView() => revsetDefaultLog,
+    GraphAllView() => revsetDefaultAll,
+    // The controller falls a vanished configuration back to the default search.
+    GraphConfigView(:final String id) => _config(id) == null ? _search.defaultSearch : id,
+    GraphFilterView() => null,
+  };
+
+  RevsetConfiguration? _config(String id) => _search.configurations.revsetConfigs.where((c) => c.id == id).firstOrNull;
+
+  /// [variant]'s name: `jj log`, `all()` or the configuration's name ("Unnamed" when empty).
+  String _variantName(AppLocalizations s, String variant) => switch (variant) {
+    revsetDefaultLog => _jjLog,
+    revsetDefaultAll => GraphAllView.expression,
+    _ => switch (_config(variant)?.name) {
+      final String name when name.isNotEmpty => name,
+      _ => s.revsetConfigsUnnamed,
     },
   };
+
+  /// The configuration [id]'s expression.
+  String _configText(String id) => switch (_config(id)) {
+    final RevsetConfiguration c => revsetConfigText(c),
+    null => GraphAllView.expression,
+  };
+
+  /// The revset the variant [v] runs (the effective `revsets.log` for `jj log`).
+  String _variantRevset(String v) => switch (v) {
+    revsetDefaultLog => _model.logDefaults?.log ?? _builtinLog,
+    revsetDefaultAll => GraphAllView.expression,
+    _ => _configText(v),
+  };
+
+  /// Whether the field shows the default search: the default, or the variant the default is.
+  bool get _atDefault => _view is GraphDefaultSearch || _currentVariant == _search.defaultSearch;
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -378,28 +470,32 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
   }
 
   void _pickMenu(_MenuRow row) {
-    switch (row) {
-      case _MenuRow.log:
+    switch (row.kind) {
+      case _MenuKind.variant:
         _scope = GraphSearchScope.any;
         _setText('');
-        _search.showDefault();
+        switch (row.variant!) {
+          case final String v when v == _search.defaultSearch:
+            _search.showDefault();
+          case revsetDefaultLog:
+            _search.showLog();
+          case revsetDefaultAll:
+            _search.showAll();
+          case final String id:
+            _search.showConfig(id);
+        }
         _leave();
-      case _MenuRow.all:
-        _scope = GraphSearchScope.any;
-        _setText('');
-        _search.showAll();
-        _leave();
-      case _MenuRow.change:
+      case _MenuKind.change:
         _pickScope(GraphSearchScope.change);
-      case _MenuRow.bookmark:
+      case _MenuKind.bookmark:
         _pickScope(GraphSearchScope.bookmark);
-      case _MenuRow.author:
+      case _MenuKind.author:
         _pickScope(GraphSearchScope.author);
-      case _MenuRow.file:
+      case _MenuKind.file:
         _pickScope(GraphSearchScope.file);
-      case _MenuRow.description:
+      case _MenuKind.description:
         _pickScope(GraphSearchScope.description);
-      case _MenuRow.edit:
+      case _MenuKind.edit:
         _leave();
         widget.onEditConfigurations?.call();
     }
@@ -445,7 +541,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
   void _clear() {
     _scope = GraphSearchScope.any;
     _setText('');
-    if (_view is! GraphDefaultSearch) {
+    if (!_atDefault) {
       _search.showDefault();
     }
     if (_focus.hasFocus) {
@@ -542,14 +638,15 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     final bool narrow = window <= graphSearchNarrowWidth;
     final bool inactive = appearance.inactive;
     final bool focused = _focus.hasFocus && !inactive;
-    final GraphShownView view = _view;
-    final atDefault = view is GraphDefaultSearch;
-    final bool showView = !_focus.hasFocus && view is GraphAllView;
+    final bool atDefault = _atDefault;
+    final String? variant = _currentVariant;
+    final bool showView = !_focus.hasFocus && variant != null && !atDefault;
     final GraphStale? stale = _model.stale;
     final bool tinted = !atDefault;
-    final bool mono = showView || _scope == GraphSearchScope.change || _scope == GraphSearchScope.file;
+    final bool builtIn = variant == revsetDefaultLog || variant == revsetDefaultAll;
+    final bool mono = (showView && builtIn) || _scope == GraphSearchScope.change || _scope == GraphSearchScope.file;
     final String placeholder = showView
-        ? GraphAllView.expression
+        ? _variantName(s, variant)
         : narrow
         ? s.graphSearchScopePlaceholderShort(_scope.name)
         : s.graphSearchScopePlaceholder(_scope.name);
@@ -605,7 +702,9 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     );
     final Widget end = query || !atDefault
         ? _ClearButton(
-            tooltip: atDefault ? s.graphSearchClear : s.graphSearchBackToDefault(_jjLog),
+            tooltip: atDefault
+                ? s.graphSearchClear
+                : s.graphSearchBackToDefault(_variantName(s, _search.defaultSearch)),
             onPressed: _clear,
           )
         : (!_focus.hasFocus && !narrow
@@ -710,11 +809,12 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     final Color text = tinted || lit || _pillPressed ? colors.text : (any ? colors.textDim : colors.textMuted);
     final Color icon = tinted && !lit && !_pillPressed ? colors.accentText : text;
     final Color chevron = tinted ? text : colors.textFaint;
-    final String tooltip = _focus.hasFocus || _view is GraphFilterView
+    final String? variant = _currentVariant;
+    final String tooltip = _focus.hasFocus || variant == null
         ? s.graphSearchSearchIn(s.graphSearchScope(_scope.name))
-        : _view is GraphDefaultSearch
-        ? s.graphSearchDefault(_jjLog)
-        : s.graphSearchShowing(GraphAllView.expression);
+        : _atDefault
+        ? s.graphSearchDefault(_variantName(s, variant))
+        : s.graphSearchShowing(_variantName(s, variant));
     final TextStyle label = _weight(ZsType.control, 500).copyWith(color: text, height: 1);
     return ZsTooltip(
       message: tooltip,
@@ -820,42 +920,67 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     final ZsColors colors = ZsColors.of(context);
     final _MenuRow current = _currentMenuRow;
     final LogDefaults? defaults = _model.logDefaults;
-    final ZanshinFfiException? broken = _view is GraphDefaultSearch ? _model.revsetError : null;
+    // The shown variant's request failed: its row says why.
+    final ZanshinFfiException? broken = current.kind == _MenuKind.variant ? _model.revsetError : null;
+    final String home = _search.defaultSearch;
+    Widget variantRow(String v, {required bool shown}) {
+      final ZanshinFfiException? error = shown ? broken : null;
+      final String? tag = v == home ? s.graphSearchDefaultTag : null;
+      return switch (v) {
+        revsetDefaultLog => _variantRow(
+          colors,
+          _jjLog,
+          error != null
+              ? s.graphSearchBroken(error.context ?? error.code)
+              : (defaults == null || defaults.log == _builtinLog ? s.graphSearchLogDetail : defaults.log),
+          mono: !(defaults == null || defaults.log == _builtinLog) && error == null,
+          tag: tag,
+          danger: error != null,
+        ),
+        revsetDefaultAll => _variantRow(
+          colors,
+          GraphAllView.expression,
+          error != null ? s.graphSearchBroken(error.context ?? error.code) : s.graphSearchAllDetail,
+          tag: tag,
+          danger: error != null,
+        ),
+        _ => _variantRow(
+          colors,
+          _variantName(s, v),
+          error != null ? s.graphSearchBroken(error.context ?? error.code) : _configText(v),
+          nameMono: false,
+          mono: error == null,
+          tag: tag,
+          danger: error != null,
+        ),
+      };
+    }
+
     Widget row(int i) {
       final _MenuRow r = _menu[i];
       final shown = r == current;
-      final String? icon = switch (r) {
-        _MenuRow.log || _MenuRow.all => null,
-        _MenuRow.change => _scopeIcon(GraphSearchScope.change),
-        _MenuRow.bookmark => _scopeIcon(GraphSearchScope.bookmark),
-        _MenuRow.author => _scopeIcon(GraphSearchScope.author),
-        _MenuRow.file => _scopeIcon(GraphSearchScope.file),
-        _MenuRow.description => _scopeIcon(GraphSearchScope.description),
-        _MenuRow.edit => ZI.settings,
+      final String? icon = switch (r.kind) {
+        _MenuKind.variant => null,
+        _MenuKind.change => _scopeIcon(GraphSearchScope.change),
+        _MenuKind.bookmark => _scopeIcon(GraphSearchScope.bookmark),
+        _MenuKind.author => _scopeIcon(GraphSearchScope.author),
+        _MenuKind.file => _scopeIcon(GraphSearchScope.file),
+        _MenuKind.description => _scopeIcon(GraphSearchScope.description),
+        _MenuKind.edit => ZI.settings,
       };
-      final Widget child = switch (r) {
-        _MenuRow.log => _variantRow(
-          colors,
-          _jjLog,
-          broken != null
-              ? s.graphSearchBroken(broken.context ?? broken.code)
-              : (defaults == null || defaults.log == _builtinLog ? s.graphSearchLogDetail : defaults.log),
-          mono: !(defaults == null || defaults.log == _builtinLog) && broken == null,
-          tag: s.graphSearchDefaultTag,
-          danger: broken != null,
-        ),
-        _MenuRow.all => _variantRow(colors, GraphAllView.expression, s.graphSearchAllDetail),
-        _MenuRow.change => _scopeRow(colors, s, GraphSearchScope.change, s.graphSearchChangeDetail),
-        _MenuRow.bookmark => _scopeRow(colors, s, GraphSearchScope.bookmark, s.graphSearchBookmarkDetail),
-        _MenuRow.author => _scopeRow(colors, s, GraphSearchScope.author, 'author()'), // l10n-ignore: jj revset
-        _MenuRow.file => _scopeRow(colors, s, GraphSearchScope.file, 'files()'), // l10n-ignore: jj revset
-        _MenuRow.description => _scopeRow(
+      final Widget child = switch (r.kind) {
+        _MenuKind.variant => variantRow(r.variant!, shown: shown),
+        _MenuKind.change => _scopeRow(colors, s, GraphSearchScope.change, s.graphSearchChangeDetail),
+        _MenuKind.bookmark => _scopeRow(colors, s, GraphSearchScope.bookmark, s.graphSearchBookmarkDetail),
+        _MenuKind.author => _scopeRow(colors, s, GraphSearchScope.author, 'author()'), // l10n-ignore: jj revset
+        _MenuKind.file => _scopeRow(colors, s, GraphSearchScope.file, 'files()'), // l10n-ignore: jj revset
+        _MenuKind.description => _scopeRow(
           colors,
           s,
           GraphSearchScope.description,
           'description()',
         ), // l10n-ignore: jj revset
-        _MenuRow.edit => Text(s.graphSearchEditConfigurations, style: TextStyle(color: colors.textMuted)),
+        _MenuKind.edit => Text(s.graphSearchEditConfigurations, style: TextStyle(color: colors.textMuted)),
       };
       final bool disabled = r == _MenuRow.edit && widget.onEditConfigurations == null;
       final Widget built = ZsFieldListRow(
@@ -867,16 +992,16 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         identifier: 'graph-search-menu-${r.name}',
         child: child,
       );
-      return switch (r) {
-        _MenuRow.log => ZsTooltip(message: _jjLog, child: built),
-        _MenuRow.all => ZsTooltip(message: jjLogCommand(GraphAllView.expression), child: built),
-        _ when disabled => Opacity(opacity: ZsMetrics.of(context).disabledOpacity, child: built),
-        _ => built,
+      return switch (r.variant) {
+        revsetDefaultLog => ZsTooltip(message: _jjLog, child: built),
+        final String v => ZsTooltip(message: jjLogCommand(_variantRevset(v)), child: built),
+        null when disabled => Opacity(opacity: ZsMetrics.of(context).disabledOpacity, child: built),
+        null => built,
       };
     }
 
-    final int scopes = _menu.indexOf(_MenuRow.change);
-    final int filters = _menu.indexOf(_MenuRow.author);
+    final int scopes = _menu.indexOf(_MenuRow.scopes.first);
+    final int filters = _menu.indexOf(const _MenuRow(_MenuKind.author));
     final int edit = _menu.indexOf(_MenuRow.edit);
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -912,6 +1037,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     String name,
     String detail, {
     bool mono = false,
+    bool nameMono = true,
     String? tag,
     bool danger = false,
   }) => Row(
@@ -920,7 +1046,9 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
       _Dollar(color: colors.textDim),
       Text(
         name,
-        style: ZsType.id.copyWith(fontSize: ZsType.fsControl, color: colors.text),
+        style: nameMono
+            ? ZsType.id.copyWith(fontSize: ZsType.fsControl, color: colors.text)
+            : _weight(ZsType.body, 500).copyWith(height: 1.2, color: colors.text),
       ),
       Expanded(
         child: Text(
@@ -1376,15 +1504,15 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
   String? _activeLabel(AppLocalizations s) {
     final int active = _list.active;
     if (_popup == _Popup.menu && active >= 0 && active < _menu.length) {
-      return switch (_menu[active]) {
-        _MenuRow.log => _jjLog,
-        _MenuRow.all => GraphAllView.expression,
-        _MenuRow.change => s.graphSearchScope(GraphSearchScope.change.name),
-        _MenuRow.bookmark => s.graphSearchScope(GraphSearchScope.bookmark.name),
-        _MenuRow.author => s.graphSearchScope(GraphSearchScope.author.name),
-        _MenuRow.file => s.graphSearchScope(GraphSearchScope.file.name),
-        _MenuRow.description => s.graphSearchScope(GraphSearchScope.description.name),
-        _MenuRow.edit => s.graphSearchEditConfigurations,
+      final _MenuRow row = _menu[active];
+      return switch (row.kind) {
+        _MenuKind.variant => _variantName(s, row.variant!),
+        _MenuKind.change => s.graphSearchScope(GraphSearchScope.change.name),
+        _MenuKind.bookmark => s.graphSearchScope(GraphSearchScope.bookmark.name),
+        _MenuKind.author => s.graphSearchScope(GraphSearchScope.author.name),
+        _MenuKind.file => s.graphSearchScope(GraphSearchScope.file.name),
+        _MenuKind.description => s.graphSearchScope(GraphSearchScope.description.name),
+        _MenuKind.edit => s.graphSearchEditConfigurations,
       };
     }
     if (_popup == _Popup.suggestions && active >= 0 && active < _rows.length) {

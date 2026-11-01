@@ -7,6 +7,10 @@ import 'package:flutter/widgets.dart';
 abstract interface class AppWindowActions {
   /// Opens the Projects window, or brings it to the front (All Projects…, ⇧⌘O).
   Future<void> openProjects();
+
+  /// Opens the jj log Configurations window, or brings it forward with its edits kept (Edit Configurations…, ⌥⌘L;
+  /// Story 10.22).
+  Future<void> openRevsetConfigs();
 }
 
 /// Provides the [AppWindowActions] to a window's content; the window coordinator places one in each root it builds.

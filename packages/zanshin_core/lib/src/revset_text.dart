@@ -71,6 +71,30 @@ String authorRevset(
   bool caseInsensitive = false,
 }) => 'author(${_textPattern(pattern, value, caseInsensitive: caseInsensitive)})';
 
+/// `committer(<kind>[-i]:"<value>")`: commits whose committer name or email matches [value].
+String committerRevset(
+  String value, {
+  RevsetTextPattern pattern = RevsetTextPattern.exact,
+  bool caseInsensitive = false,
+}) => 'committer(${_textPattern(pattern, value, caseInsensitive: caseInsensitive)})';
+
+/// `subject(<kind>[-i]:"<value>")`: commits whose description's first line matches [value].
+String subjectRevset(
+  String value, {
+  RevsetTextPattern pattern = RevsetTextPattern.substring,
+  bool caseInsensitive = false,
+}) => 'subject(${_textPattern(pattern, value, caseInsensitive: caseInsensitive)})';
+
+/// `~<term>`: the commits [term] does not match. [term] must be a primary (a function call), as every builder here
+/// returns.
+String revsetNot(String term) => '~$term';
+
+/// [terms] joined with ` | ` when [any], else ` & `; `all()` when there are none.
+String revsetJoin(Iterable<String> terms, {required bool any}) {
+  final String joined = terms.join(any ? ' | ' : ' & ');
+  return joined.isEmpty ? 'all()' : joined;
+}
+
 /// `description(<kind>[-i]:"<value>")`: commits whose description matches [value].
 String descriptionRevset(
   String value, {

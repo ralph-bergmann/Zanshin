@@ -31,8 +31,129 @@ abstract class GraphSettings with _$GraphSettings {
 
     /// The card width, 240 by default (160–400; the app clamps it where it uses it).
     @Default(240) double cardWidth,
+
+    /// The jj log configurations (Story 10.22), in search-menu order; global, not per repository.
+    @Default(<RevsetConfiguration>[]) List<RevsetConfiguration> revsetConfigs,
+
+    /// The default search: `log` (the built-in `jj log`), `all` (`all()`) or a [RevsetConfiguration.id]. An id no
+    /// configuration has reads as `log` ([effectiveRevsetDefault]).
+    @Default(revsetDefaultLog) String revsetDefault,
   }) = _GraphSettings;
+
+  const GraphSettings._();
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.
   factory GraphSettings.fromJson(Map<String, Object?> json) => _$GraphSettingsFromJson(json);
+
+  /// [revsetDefault], with an id no configuration has read as [revsetDefaultLog].
+  String get effectiveRevsetDefault =>
+      revsetDefault == revsetDefaultLog ||
+          revsetDefault == revsetDefaultAll ||
+          revsetConfigs.any((c) => c.id == revsetDefault)
+      ? revsetDefault
+      : revsetDefaultLog;
+}
+
+/// [GraphSettings.revsetDefault] naming the built-in `jj log`.
+const revsetDefaultLog = 'log';
+
+/// [GraphSettings.revsetDefault] naming the built-in `all()`.
+const revsetDefaultAll = 'all';
+
+/// How a configuration joins its rules (Story 10.22).
+enum RevsetCombine {
+  /// ` & ` — every rule must match.
+  and,
+
+  /// ` | ` — any rule may match.
+  or,
+}
+
+/// A configuration rule's revset function (Story 10.22).
+enum RevsetRuleFunction {
+  /// `author(…)`.
+  author,
+
+  /// `committer(…)`.
+  committer,
+
+  /// `mine()`.
+  mine,
+
+  /// `subject(…)`.
+  subject,
+
+  /// `description(…)`.
+  description,
+
+  /// `files(…)`.
+  files,
+}
+
+/// A rule's match mode (Story 10.22): the text kinds for the text functions, the path kinds for `files`.
+enum RevsetRuleMode {
+  /// `substring:` — contains.
+  substring,
+
+  /// `exact:` — is exactly.
+  exact,
+
+  /// `glob:` — matches glob (text and files).
+  glob,
+
+  /// `regex:` — matches regex.
+  regex,
+
+  /// `cwd:` — path or folder (files only).
+  prefix,
+
+  /// `file:` — exact file (files only).
+  file,
+}
+
+/// One saved jj log configuration (Story 10.22): a name and structured rules joined by [op].
+@freezed
+abstract class RevsetConfiguration with _$RevsetConfiguration {
+  /// Creates configuration [id] named [name].
+  const factory RevsetConfiguration({
+    /// Its key, stable across renames.
+    required String id,
+
+    /// The name the search menu and the window show; may be empty ("Unnamed").
+    @Default('') String name,
+
+    /// How [rules] combine; `&` by default.
+    @Default(RevsetCombine.and) RevsetCombine op,
+
+    /// The rules, in order.
+    @Default(<RevsetRule>[]) List<RevsetRule> rules,
+  }) = _RevsetConfiguration;
+
+  /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.
+  factory RevsetConfiguration.fromJson(Map<String, Object?> json) => _$RevsetConfigurationFromJson(json);
+}
+
+/// One rule of a [RevsetConfiguration] (Story 10.22).
+@freezed
+abstract class RevsetRule with _$RevsetRule {
+  /// Creates a rule on [fn].
+  const factory RevsetRule({
+    /// The revset function.
+    required RevsetRuleFunction fn,
+
+    /// The match mode; ignored for `mine`.
+    @Default(RevsetRuleMode.substring) RevsetRuleMode mode,
+
+    /// The value; ignored for `mine`. A blank value drops the rule from the expression.
+    @Default('') String value,
+
+    /// Case-insensitive (`-i`); ignored for `mine` and `files`.
+    @Default(false) bool ci,
+
+    /// Negated (`~`).
+    @Default(false) bool not,
+  }) = _RevsetRule;
+
+  /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.
+  factory RevsetRule.fromJson(Map<String, Object?> json) => _$RevsetRuleFromJson(json);
 }

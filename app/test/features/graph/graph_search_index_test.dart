@@ -57,6 +57,8 @@ void main() {
     test('views and recent entries round-trip; unknown text reads as the default search', () {
       for (final view in <GraphShownView>[
         const GraphAllView(),
+        const GraphLogView(),
+        const GraphConfigView('c1'),
         GraphFilterView(GraphFilter.author('x', pattern: RevsetTextPattern.substring, ci: true)),
         const GraphFilterView(GraphFilter.mine('me@x.org')),
       ]) {

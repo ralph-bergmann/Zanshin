@@ -54,9 +54,13 @@ class _Session extends ProjectSession {
 
 class _WindowActions implements AppWindowActions {
   var projects = 0;
+  var configurations = 0;
 
   @override
   Future<void> openProjects() async => projects++;
+
+  @override
+  Future<void> openRevsetConfigs() async => configurations++;
 }
 
 /// Each run writes operation `op<n>`, the head following.
@@ -347,7 +351,6 @@ void main() {
     for (final label in <String>[
       'Settings…',
       'Project Settings…',
-      'Edit Configurations…',
       'Show Minimap',
       'Describe…',
       'Fetch',
@@ -368,6 +371,12 @@ void main() {
       ..select('All Projects…')
       ..select('Projects');
     expect(rig.actions.projects, 2);
+    // Story 10.22: View › Edit Configurations… (⌥⌘L) opens the jj log Configurations window, with or without a graph.
+    final PlatformMenuItem configurations = rig.item('Edit Configurations…');
+    expect(configurations.shortcut, const SingleActivator(LogicalKeyboardKey.keyL, meta: true, alt: true));
+    rig.select('Edit Configurations…');
+    await tester.pump();
+    expect(rig.actions.configurations, 1);
     rig.select('jj Documentation ↗');
     await tester.pump();
     expect(rig.urls, <Uri>[Uri.parse('https://docs.jj-vcs.dev/v0.46.0/')]);

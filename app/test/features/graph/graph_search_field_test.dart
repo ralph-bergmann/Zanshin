@@ -55,12 +55,18 @@ GraphLayout _layout({bool extra = false, String op = 'op1', String hidden = 'hid
 }
 
 class _Rig {
-  _Rig({GraphShownView view = GraphShownView.defaultSearch, List<GraphRecent>? recent}) {
+  _Rig({GraphShownView view = GraphShownView.defaultSearch, List<GraphRecent>? recent, this.settings, this.onEdit}) {
     source.respond = respond;
     store = MemoryGraphSearchStore(view: view, recent: recent);
-    search = GraphSearchController(model: model, source: searchSource, store: store);
+    search = GraphSearchController(model: model, source: searchSource, store: store, settings: settings);
     model.init(source, clock: () => DateTime.utc(2026, 10, 31), revset: search.revset);
   }
+
+  /// The jj log configurations (Story 10.22), or none.
+  final ValueNotifier<AppSettings>? settings;
+
+  /// Edit Configurations…, or null (disabled).
+  final VoidCallback? onEdit;
 
   final source = ScriptedGraphSource();
   final searchSource = FakeGraphSearchSource();
@@ -81,7 +87,7 @@ class _Rig {
         child: FloatingShell(
           controller: shell,
           graph: GraphView(model: model),
-          view: GraphSearchField(search: search),
+          view: GraphSearchField(search: search, onEditConfigurations: onEdit),
           newChange: SizedBox(
             width: 120,
             child: ZsTextField(controller: other, label: 'Other'),
@@ -93,6 +99,7 @@ class _Rig {
 
   void dispose() {
     search.dispose();
+    settings?.dispose();
     model.dispose();
     shell.dispose();
     other.dispose();
@@ -107,9 +114,11 @@ Future<_Rig> _start(
   Size window = shellWindow,
   GraphShownView? view,
   List<GraphRecent>? recent,
+  ValueNotifier<AppSettings>? settings,
+  VoidCallback? onEdit,
 }) async {
   useShellWindow(tester, window);
-  final rig = _Rig(view: view ?? GraphShownView.defaultSearch, recent: recent);
+  final rig = _Rig(view: view ?? GraphShownView.defaultSearch, recent: recent, settings: settings, onEdit: onEdit);
   _rigs.add(rig);
   await tester.pumpWidget(rig.host());
   await tester.pump();
@@ -246,6 +255,71 @@ void main() {
       await _key(tester, LogicalKeyboardKey.enter);
       expect(rig.source.requests.last.revset, rig.source.defaults.log);
       expect(rig.source.requests, hasLength(3));
+    });
+
+    _testWidgets('Story 10.22: the default search first, tagged Default, then jj log, all() and the configurations '
+        'in order; a configuration shows `\$ name`; ✕ returns to the default; Edit Configurations… opens', (
+      tester,
+    ) async {
+      var edits = 0;
+      final _Rig rig = await _start(
+        tester,
+        settings: ValueNotifier<AppSettings>(
+          const AppSettings(
+            graph: GraphSettings(
+              revsetConfigs: <RevsetConfiguration>[
+                RevsetConfiguration(
+                  id: 'c1',
+                  name: 'Mine',
+                  rules: <RevsetRule>[RevsetRule(fn: RevsetRuleFunction.mine)],
+                ),
+                RevsetConfiguration(id: 'c2', name: 'Locks'),
+              ],
+              revsetDefault: 'c2',
+            ),
+          ),
+        ),
+        onEdit: () => edits++,
+      );
+      expect(rig.source.requests.single.revset, 'all()', reason: 'c2 has no rules: all()');
+      await tester.tap(_pill());
+      await tester.pump();
+      expect(_rows(tester).map((r) => r.identifier), <String>[
+        'graph-search-menu-config-c2',
+        'graph-search-menu-log',
+        'graph-search-menu-all',
+        'graph-search-menu-config-c1',
+        'graph-search-menu-change',
+        'graph-search-menu-bookmark',
+        'graph-search-menu-author',
+        'graph-search-menu-file',
+        'graph-search-menu-description',
+        'graph-search-menu-edit',
+      ]);
+      expect(find.text('Default'), findsOneWidget);
+      expect(
+        find.descendant(of: find.bySemanticsIdentifier('graph-search-menu-config-c2'), matching: find.text('Default')),
+        findsOneWidget,
+      );
+      expect(_rows(tester).first.shown, isTrue);
+      expect(find.text('mine()'), findsOneWidget, reason: "a configuration's row shows its expression");
+
+      await tester.tap(find.bySemanticsIdentifier('graph-search-menu-config-c1'));
+      await tester.pump();
+      expect(rig.search.view, const GraphConfigView('c1'));
+      expect(rig.source.requests.last.revset, 'mine()');
+      expect(find.text('Mine'), findsOneWidget, reason: 'the field reads `\$ Mine`');
+
+      await tester.tap(_tooltip('Back to the default search — Locks'));
+      await tester.pump();
+      expect(rig.search.view, GraphShownView.defaultSearch);
+      expect(rig.source.requests.last.revset, 'all()');
+
+      await tester.tap(_pill());
+      await tester.pump();
+      await tester.tap(find.bySemanticsIdentifier('graph-search-menu-edit'));
+      await tester.pump();
+      expect(edits, 1);
     });
 
     _testWidgets('Esc closes the menu and restores the field; a scope pick keeps focus in the field', (tester) async {
