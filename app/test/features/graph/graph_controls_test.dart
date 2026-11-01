@@ -427,6 +427,38 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text(title), findsNothing, reason: 'unhovered, it does not reappear');
     });
+
+    _testWidgets('a focused chip whose gaps go away does not hold the popover open once they return', (tester) async {
+      var gaps = true;
+      final _Rig rig = await _start(tester, respond: (request) => gaps ? design(request) : _layout(3, total: 3));
+      Focus.of(
+        tester.element(find.byWidgetPredicate((w) => w is Semantics && w.properties.identifier == 'graph-gap-legend')),
+      ).requestFocus();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(_m.durPop);
+      expect(find.text(title), findsOneWidget);
+
+      gaps = false;
+      rig.model.reload();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      gaps = true;
+      rig.model.reload();
+      await tester.pump();
+      await tester.pump();
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(5, 895));
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(chip));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(_m.durPop);
+      expect(find.text(title), findsOneWidget);
+      await mouse.moveTo(const Offset(5, 895));
+      await tester.pump(const Duration(milliseconds: 210));
+      await tester.pump(_m.durExit + const Duration(milliseconds: 1));
+      expect(find.text(title), findsNothing, reason: 'the lost focus no longer holds it open');
+    });
   });
 
   group('the View options popover', () {

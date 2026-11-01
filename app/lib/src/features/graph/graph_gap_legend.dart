@@ -120,6 +120,8 @@ class _GraphGapLegendState extends State<GraphGapLegend> with SingleTickerProvid
     _timer = null;
     _hovered = 0;
     _hover = false;
+    // The chip's Focus is unmounted with it and reports no focus loss.
+    _focused = false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _portal.isShowing) {
         _fade.value = 0;
@@ -162,7 +164,7 @@ class _GraphGapLegendState extends State<GraphGapLegend> with SingleTickerProvid
           : (_counts[layout] ??= graphGapCounts(layout));
       final int n = counts.dashed + counts.ends;
       if (n == 0) {
-        if (_timer != null || _portal.isShowing || _hovered > 0) {
+        if (_timer != null || _portal.isShowing || _hovered > 0 || _focused) {
           _reset();
         }
         return const SizedBox.shrink();

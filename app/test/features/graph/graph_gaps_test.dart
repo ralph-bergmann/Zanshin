@@ -542,6 +542,19 @@ void main() {
       expect(render.verticalOffset.pixels, greaterThan(50));
     });
 
+    testWidgets('the canvas plane reserves bottomExtra under a stubbed node on the lowest row', (tester) async {
+      RecordedGraphLayout two(int missing) => _withMissing(
+        handLayout(<(String, int, int)>[('a', 1, 0), ('b', 0, 0)], edges: <(int, int)>[(0, 1)]),
+        <int>[0, missing],
+      );
+      double height() => tester.allRenderObjects.whereType<RenderGraphViewport>().single.contentSize.height;
+
+      await pump(tester, layout: two(0));
+      final double plain = height();
+      await pump(tester, layout: two(1));
+      expect(height(), plain + graphGapsBottomExtra);
+    });
+
     testWidgets("a marker's Show in all() names the dashed edge's parent as its target", (tester) async {
       final _Placed p = await pump(tester);
       final TestGesture mouse = await mouseAt(tester, away);

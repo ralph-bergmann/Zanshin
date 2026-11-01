@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1218,6 +1219,49 @@ void main() {
         expect(source.requests.last.keepOpenKeys, contains('p'));
         expect(model.reveal?.key, 'p');
         expect(model.flash.value?.keys, <String>{'p', 'q'});
+        model.dispose();
+      });
+    });
+
+    test('hidden commits folded into a stack in all(): the open parent is revealed and the stack flashes as one', () {
+      fakeAsync((async) {
+        final RecordedGraphLayout shown = handLayout(
+          <(String, int, int)>[('c', 1, 0), ('a', 0, 0)],
+          edges: <(int, int)>[(0, 1)],
+          indirect: <int>{0},
+          parentCounts: <int>[1, 0],
+          workingCopy: 0,
+        );
+        // All: c → h1 → [h2 (newest), h3 (oldest) folded] → a; h1 stays open (it is in keepOpenKeys).
+        final all = RecordedGraphLayout(
+          mode: GraphMode.compact,
+          unit: 1,
+          rows: 4,
+          colCount: 1,
+          keys: <String>['c', 'h1', 'h2', 'h3', 'a', graphStackKey('h3')],
+          cols: Int32List.fromList(<int>[0, 0, -1, -1, 0, 0]),
+          nodeRows: Int32List.fromList(<int>[3, 2, -1, -1, 0, 1]),
+          parentCounts: Int32List.fromList(<int>[1, 1, 1, 1, 0, 1]),
+          elided: Uint8List(6),
+          commitIds: const <String>['c', 'h1', 'h2', 'h3', 'a', 's'],
+          edgeChildren: Int32List.fromList(<int>[0, 1, 5]),
+          edgeParents: Int32List.fromList(<int>[1, 5, 4]),
+          edgeKinds: const <GraphEdgeKind>[GraphEdgeKind.direct, GraphEdgeKind.direct, GraphEdgeKind.direct],
+          edgeShapes: const <GraphEdgeShape>[GraphEdgeShape.straight, GraphEdgeShape.straight, GraphEdgeShape.straight],
+          runMembers: <List<int>>[
+            <int>[3, 2],
+          ],
+          runStackNodes: <int?>[5],
+          workingCopyIndex: 0,
+        );
+        source.parentsOf = <String, List<String>>{
+          'c': <String>['h1'],
+        };
+        final GraphViewModel model = gapModel(async, shown, all);
+        unawaited(model.showGap(const GraphGapTarget(child: 'c', commitId: 'c', targets: <String>['a'])));
+        async.flushMicrotasks();
+        expect(model.reveal?.key, 'h1');
+        expect(model.flash.value?.keys, <String>{'h1', graphStackKey('h3')});
         model.dispose();
       });
     });

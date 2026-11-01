@@ -9,7 +9,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/bookmarks/bookmark_list_model.dart';
-import 'package:zanshin/src/features/graph/graph_layout.dart' show GraphCommitContent;
+import 'package:zanshin/src/features/graph/graph_layout.dart' show GraphCommitContent, GraphLayout;
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
@@ -138,6 +138,19 @@ void main() {
     final ProjectRepo repo = await openRepo('fresh');
     final StaleRecovery recovery = await RepoGraphSource(repo).updateStale();
     expect(recovery.outcome, StaleRecoveryOutcome.notStale);
+  });
+
+  // Story 10.19: the gap request matches `Change.parents` against the layout's keys.
+  test('show passes through: the child\'s parents are the layout keys of its parent cards', () async {
+    final ProjectRepo repo = await openRepo('show');
+    final String first = (await repo.handle.status()).workingCopyChangeId!;
+    final String second = (await repo.handle.newChange(<String>[first])).newChangeIds.single;
+    final model = GraphViewModel()..init(RepoGraphSource(repo));
+    addTearDown(model.dispose);
+    await until(() => model.layout?.indexOfKey(second) != null && model.layout?.indexOfKey(first) != null);
+    final GraphLayout layout = model.layout!;
+    final ShowEntry entry = await RepoGraphSource(repo).show(layout.commitIdOf(layout.indexOfKey(second)!));
+    expect(entry.change.parents, contains(layout.keyOf(layout.indexOfKey(first)!)));
   });
 
   // Story 10.9: RepoGraphActions over the opened handle, through GraphViewModel.run, then the reload. `RepoHandle` is a
