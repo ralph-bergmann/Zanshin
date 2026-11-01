@@ -2404,3 +2404,18 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The graph search's counts and lookups fire only for a layout carrying an operation id, and the production layout 10.12 adopts must carry the topology's.** Medium (unverified: no production layout exists yet).
   - `GraphSearchController.wantCounts` / `lookup` / `countOf` return early when `model.layout?.operationId == null` (`app/lib/src/features/graph/graph_search_controller.dart:241-296`); the catalogue's `RecordedGraphLayout.fromSpec` had none, which is why no "N changes" showed (fixed in spec-fix-graph-search-ds-check-2026-11-01). `RecordedGraphLayout` is the only `GraphLayout` in `app/lib`, and `RepoGraphSource` takes its layout from outside until 10.12.
   - **Follow-up:** when 10.12 builds the layout from the backend topology, pass the topology's `operation_id` as `operationId`, and test that a filter row in the mounted search shows its count.
+
+## Surfaced in Story 11.13 (bmad-build-auto, 2026-11-01)
+
+- **No project window publishes its graph to the menu bar yet, so Change, Go, View (Free/Compact/Detailed Cards/Group Stacks), Undo/Redo and Find stay grey in the running app.** Medium.
+  - `AppMenuModel.graph` (`app/lib/src/features/shell/app_menu.dart`) is written only by `app_menu_test.dart`; `GraphView` is not in `HomePage` until 10.12. Reload ⌘R refreshes the session only, until then.
+  - **Follow-up:** 10.12 sets `appMenu.graph.value = GraphMenuBinding(model:, preferences:, focusSearch:)` when it mounts the graph and clears it when the graph unmounts; it also retires `GraphSearchShortcuts`' own ⌘F so the menu's ⌘F is the only one.
+- **The menu bar's toggles carry no checkmark, and Minimize, Zoom and Enter Full Screen are not greyed for the dialog windows.** Low.
+  - Flutter's `PlatformMenuItem` has no checked state, and the engine ignores `PlatformProvidedMenuItem.enabled` (`FlutterMenuPlugin.mm` returns the copied system item early); the DS greying table asks for both (epics.md Story 11.13 scope 3).
+  - **Follow-up:** a native method channel (design question (a)'s fallback) that sets `state` and `enabled` on those `NSMenuItem`s, or an engine change; none until Ralph wants it.
+- **The Window menu may not list the open windows.** Low (unverified in the running app).
+  - The engine builds a fresh `NSMenu` for `NSApp.mainMenu` and never sets `NSApp.windowsMenu`, so AppKit has no menu to add the window list to.
+  - **Follow-up:** check the running app; if the list is missing, set `NSApp.windowsMenu` to the Window submenu from the runner after each `Menu.setMenus`.
+- **Help › jj Documentation's URL carries the jj version separately from the jj-lib pin.** Low.
+  - `jjDocumentationUrl` = `https://docs.jj-vcs.dev/v0.46.0/` (`app/lib/src/features/shell/app_menu.dart`); the pin-bump checklist in project-context.md does not name it.
+  - **Follow-up:** add the URL to the pin-bump checklist (an agent-context edit).
