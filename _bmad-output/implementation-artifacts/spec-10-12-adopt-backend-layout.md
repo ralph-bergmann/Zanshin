@@ -253,6 +253,8 @@ Status: done. Blocking condition: none.
 - `app/widgetbook/folders/graph.dart` — Reload island in the shell demo.
 - Tests: new `backend_graph_layout_test.dart`, `repo_graph_source_test.dart`, `graph_real_repo_test.dart`, `home/project_graph_host_test.dart`; updated `graph_ports_test`, `graph_content_test`, `graph_peek_test`, `graph_search_field_test`, `graph_view_test`, `home_page_test`, `zanshin_app_test`, `helpers/fake_projects.dart`.
 
+**Commits.** Code: `6b9feacb107b9d9b4e52e1e66389e59ef7d32f4c` (every "fixed" item below); spec and docs: `8dbce65802237a74a78484bb41ced51a64decea0`.
+
 **Handed-over items (deferred-work.md).**
 - I1 — fixed: Reload in the bar's ACTION group (ghost "Reload", tooltip "Reload (⌘R)"; the DS has no reload glyph), runs `GraphViewModel.reload()`, coalesced.
 - I2 — fixed: the same press runs `ProjectSession.refresh()` (coalesced by the session).
