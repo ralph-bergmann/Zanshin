@@ -602,7 +602,7 @@ _Added the same day after Ralph's answers and his near-final HTML design (`_bmad
     - the "Mark as viewed (V)" shortcut.
   - It reviews diffs that do not exist before Epic 5 (5.6, 5.8). 10.8 ships a plain file list and a "not available yet" diff section, by default reading of Ralph's "the dialogs and popups are not final" (10.8 design question (a)).
   - **Follow-up:** a story next to Epic 5's diff view, once Ralph has decided the Viewed scope (per change id or per commit id, per repository).
-- **The bookmark list cannot show the design's rows before Story 9.29** [`packages/zanshin_core/lib/src/ffi/bookmarks.dart:26-67`; `handle.dart:183`; design GD:21, GV:242, GV:481-497]. Medium (the designed panel's main use case).
+- ~~**The bookmark list cannot show the design's rows before Story 9.29**~~ — RESOLVED 2026-11-01 (spec-10-14-bookmark-list-panel, commit e1f77309): the rail's Bookmarks panel shows 9.29's rows and flags. [`packages/zanshin_core/lib/src/ffi/bookmarks.dart:26-67`; `handle.dart:183`; design GD:21, GV:242, GV:481-497]. Medium (the designed panel's main use case).
   - `bookmarks()` returns only local and tracked-remote entries, each with a target change id: no synced or conflicted flag, and no untracked remote rows.
   - The design's own hidden example, `release/1.5.x@origin`, is an untracked remote bookmark. The panel exists to reveal exactly such rows.
   - "Synced" cannot be derived by pairing entries: after a local rewrite, both share a change id but point at different commits (9.29's motivation).
