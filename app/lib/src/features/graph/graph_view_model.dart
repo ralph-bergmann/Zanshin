@@ -11,7 +11,7 @@ import '../undo_timeline/undo_timeline_model.dart' show UndoTimelineActions;
 import 'graph_content.dart';
 import 'graph_layout.dart';
 import 'graph_ports.dart';
-import 'graph_viewport.dart' show GraphReveal, GraphRevealAlignment;
+import 'graph_viewport.dart' show GraphReveal, GraphRevealAlignment, GraphTransition;
 
 final _log = Logger('zanshin.graph');
 
@@ -171,6 +171,11 @@ const graphGapFlashCap = 10000;
 ///   the reload after a success holds [anchorHint] and sets the selection and the reveal per verb from the
 ///   `MutationResult`. Every outcome, refusals included, is published as [outcome]; [undoLast] / [redoLast] take back
 ///   Zanshin's own latest operation only while it is the op-log head ([undoable], [redoable]).
+/// - **Story 10.20**: a landed layout whose operation differs from the shown one's (both known) and that no revset,
+///   mode or lane-order switch asked for is a [transition] when a node's key, column or row changed or a change was
+///   born — Zanshin's verbs, an external `jj`, undo, redo and op restore alike. Every new operation takes the anchor,
+///   the born change and the flash of the last own operation's outcome not yet landed; without a transition its flash
+///   goes out as [flash]. The born change is revealed by the canvas after the glide, not with the layout.
 /// - **Story 11.9**: the Undo Timeline's runner — [undoOperation] undoes any op-log head, [restoreOperation] restores.
 @inject
 class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
@@ -227,6 +232,10 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
 
   GraphLayout? _layout;
   GraphReveal? _reveal;
+
+  // Story 10.20: the last landed operation's transition, and an own operation's outcome until its layout lands.
+  GraphTransition? _transition;
+  GraphOutcome? _landing;
   var _warnings = const <ZanshinWarning>[];
   Precondition? _precondition;
   ZanshinFfiException? _revsetError;
@@ -275,6 +284,9 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
 
   /// The reveal the viewport applies with [layout], by identity.
   GraphReveal? get reveal => _reveal;
+
+  /// The operation [layout] landed with, animated by the canvas (Story 10.20); null when it brought none.
+  GraphTransition? get transition => _transition;
 
   /// The last request issued.
   GraphRequest? get request => _request;
@@ -712,6 +724,10 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       final MutationResult result = await actions.run(action);
       _running = null;
       final GraphOutcome outcome = _succeeded(action, result, wrote: result.newOpId != head, plan: plan);
+      if (outcome.undoable) {
+        // Its hints ride with the first layout of a new operation.
+        _landing = outcome;
+      }
       _publish(outcome);
       _requestLayout();
       _notify();
@@ -988,6 +1004,29 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
 
   void _land(GraphLoad load) {
     final GraphLayout layout = load.layout;
+    final GraphLayout? previous = _layout;
+    final String? op = layout.operationId;
+    final String? was = previous?.operationId;
+    _transition = null;
+    if (previous != null && op != null && was != null && op != was) {
+      // A new operation takes the pending hints, whether it animates or not.
+      final GraphOutcome? hints = _landing;
+      _landing = null;
+      final String? born = hints?.born.firstOrNull;
+      final List<String> flash = hints?.flash ?? const <String>[];
+      // It animates when the user did not switch away and something moves or is born (Story 10.20).
+      if (!_recentre && (born != null || _moved(previous, layout))) {
+        _transition = GraphTransition(
+          from: previous,
+          to: layout,
+          anchor: hints?.anchor,
+          born: born,
+          flash: <String>{...flash},
+        );
+      } else if (flash.isNotEmpty) {
+        _flash.value = GraphFlash(<String>{...flash}, ++_flashSerial);
+      }
+    }
     _layout = layout;
     _warnings = load.warnings;
     _precondition = load.precondition;
@@ -1022,9 +1061,13 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       _selected = null;
     }
     final ({String? key, GraphRevealAlignment alignment})? explicit = _explicit;
-    final String? target = explicit != null
+    String? target = explicit != null
         ? explicit.key ?? _workingCopyKey(layout)
         : (_recentre ? _workingCopyKey(layout) : null);
+    if (target != null && target == _transition?.born) {
+      // The canvas reveals it after the glide.
+      target = null;
+    }
     _reveal = target == null
         ? null
         : GraphReveal(target, alignment: explicit?.alignment ?? GraphRevealAlignment.centre);
@@ -1042,6 +1085,19 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       _anchorHint = null;
     }
     _now.value = _nowMs;
+  }
+
+  /// Whether any node's key, column or row differs between [a] and [b].
+  static bool _moved(GraphLayout a, GraphLayout b) {
+    if (a.nodeCount != b.nodeCount) {
+      return true;
+    }
+    for (var node = 0; node < a.nodeCount; node++) {
+      if (a.keyOf(node) != b.keyOf(node) || a.colOf(node) != b.colOf(node) || a.rowOf(node) != b.rowOf(node)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void _fail(ZanshinFfiException error) {

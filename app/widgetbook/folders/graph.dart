@@ -63,11 +63,12 @@ import 'projects.dart' show demoCapsule;
 /// fixtures, both with fake content (Story 10.3); every `GraphViewOptions` field is a knob, and the left and right
 /// insets stand in for the floating chrome; its design-default recording shows the hidden-history marks, with the gap
 /// clearance as a knob (Story 10.19). "Viewport / View model" drives a `GraphViewModel` on a fake source over the
-/// recordings, with the stale notice and the @ pill over it (Stories 10.5, 10.6). "Card / States" shows one commit card
-/// per state (Story 10.3); "Peek / Open" the commit callout and "@ pill / Directions" the pill (Story 10.6); "Stale
-/// notice / Variants" the notice with its action, busy, and with Copy (Story 10.5). "Floating shell / Controls" hosts
-/// the graph's top-bar controls in the floating shell (Story 10.7) and the inspector of the selection, a mutable change
-/// selected when it opens (Story 10.8).
+/// recordings, with the stale notice and the @ pill over it (Stories 10.5, 10.6). "Viewport / Operation" lands one
+/// layout of a pair after the other with a `GraphTransition` (Story 10.20; slow it with the TimeDilation addon).
+/// "Card / States" shows one commit card per state (Story 10.3); "Peek / Open" the commit callout and "@ pill /
+/// Directions" the pill (Story 10.6); "Stale notice / Variants" the notice with its action, busy, and with Copy (Story
+/// 10.5). "Floating shell / Controls" hosts the graph's top-bar controls in the floating shell (Story 10.7) and the
+/// inspector of the selection, a mutable change selected when it opens (Story 10.8).
 final graphFolder = WidgetbookFolder(
   name: 'Graph',
   children: <WidgetbookNode>[
@@ -141,6 +142,34 @@ final graphFolder = WidgetbookFolder(
               options: _options(context),
               insets: _insets(context),
               staleCause: stale == 'none' ? null : stale,
+            );
+          },
+        ),
+        WidgetbookUseCase(
+          name: 'Operation',
+          builder: (context) {
+            final String pair = context.knobs.object.dropdown(label: 'pair', options: _operationPairs);
+            final synthetic = pair == _operationPairs.last;
+            final GraphViewOptions options = _options(context, laneOrder: !synthetic);
+            final free = options.layout == GraphMode.free;
+            final String sample = pair.split(' ').first;
+            final (GraphLayout from, GraphLayout to) = synthetic
+                ? (
+                    _fixture('synthetic 10000 ${options.layout.name}', () => syntheticLayout(10000, free: free)),
+                    _fixture('synthetic 10001 ${options.layout.name}', () => syntheticLayout(10001, free: free)),
+                  )
+                : (recordedLayout(sample, options), recordedLayout('design-all', options));
+            final int nowMs = synthetic ? _syntheticNowMs(from) : recordedNowMs(sample);
+            return _OperationDemo(
+              key: _operationDemoKeys[WidgetbookState.of(context)] ??= GlobalKey<_OperationDemoState>(),
+              from: from,
+              to: to,
+              ran: context.knobs.boolean(label: 'run operation'),
+              born: context.knobs.boolean(label: 'born', initialValue: true),
+              flash: context.knobs.boolean(label: 'flash', initialValue: true),
+              options: options,
+              insets: _insets(context),
+              nowMs: nowMs,
             );
           },
         ),
@@ -330,12 +359,21 @@ int _syntheticNowMs(GraphLayout layout) =>
 /// A [GraphCanvas] over [layout] on the window canvas, with a card controller whose "now" is [nowMs] (the app's view
 /// model owns "now"; the samples keep theirs).
 class _GraphDemo extends StatefulWidget {
-  const _GraphDemo({required this.layout, required this.options, required this.insets, required this.nowMs});
+  const _GraphDemo({
+    required this.layout,
+    required this.options,
+    required this.insets,
+    required this.nowMs,
+    this.transition,
+  });
 
   final GraphLayout layout;
   final GraphViewOptions options;
   final EdgeInsets insets;
   final int nowMs;
+
+  /// The operation [layout] lands with (Story 10.20).
+  final GraphTransition? transition;
 
   @override
   State<_GraphDemo> createState() => _GraphDemoState();
@@ -363,8 +401,118 @@ class _GraphDemoState extends State<_GraphDemo> {
     fit: StackFit.expand,
     children: <Widget>[
       const ZsCanvas(),
-      GraphCanvas(layout: widget.layout, cards: _cards, options: widget.options, insets: widget.insets),
+      GraphCanvas(
+        layout: widget.layout,
+        cards: _cards,
+        options: widget.options,
+        insets: widget.insets,
+        transition: widget.transition,
+      ),
     ],
+  );
+}
+
+/// "Viewport / Operation"'s pairs (Story 10.20): a recording and its `all()` view, or the synthetic 10k with one newest
+/// change more.
+const _operationPairs = <String>[
+  'design-default ⇄ design-all',
+  'design-cli-default ⇄ design-all',
+  'synthetic 10k ⇄ 10k + 1',
+];
+
+/// One key per Widgetbook instance (see [_viewModelDemoKeys]): the "run operation" toggle swaps the layouts of one
+/// state.
+final _operationDemoKeys = Expando<GlobalKey<_OperationDemoState>>('operation demo key');
+
+/// "Viewport / Operation" (Story 10.20): [ran] shows [to], else [from]; each toggle lands the other layout with a
+/// [GraphTransition] from the shown one — with [born], the first key new in the target whose parent was shown grows
+/// out of that parent; with [flash], the first key both show flashes. Slow it down with the TimeDilation addon.
+class _OperationDemo extends StatefulWidget {
+  const _OperationDemo({
+    required this.from,
+    required this.to,
+    required this.ran,
+    required this.born,
+    required this.flash,
+    required this.options,
+    required this.insets,
+    required this.nowMs,
+    super.key,
+  });
+
+  final GraphLayout from;
+  final GraphLayout to;
+  final bool ran;
+  final bool born;
+  final bool flash;
+  final GraphViewOptions options;
+  final EdgeInsets insets;
+  final int nowMs;
+
+  @override
+  State<_OperationDemo> createState() => _OperationDemoState();
+}
+
+class _OperationDemoState extends State<_OperationDemo> {
+  GraphTransition? _transition;
+
+  GraphLayout _shownBy(_OperationDemo demo) => demo.ran ? demo.to : demo.from;
+
+  @override
+  void didUpdateWidget(_OperationDemo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final GraphLayout before = _shownBy(oldWidget);
+    final GraphLayout after = _shownBy(widget);
+    if (oldWidget.ran == widget.ran || identical(before, after)) {
+      // Another pair or option: no operation.
+      _transition = null;
+      return;
+    }
+    final ({String born, String anchor})? birth = widget.born ? _birth(before, after) : null;
+    final String? kept = widget.flash ? _kept(before, after) : null;
+    _transition = GraphTransition(
+      from: before,
+      to: after,
+      anchor: birth?.anchor,
+      born: birth?.born,
+      flash: <String>{?kept},
+    );
+  }
+
+  /// The first shown key of [to] that [from] shows too.
+  static String? _kept(GraphLayout from, GraphLayout to) {
+    for (var node = 0; node < to.nodeCount; node++) {
+      if (!to.isFolded(node) && from.placeOfKey(to.keyOf(node)) != null) {
+        return to.keyOf(node);
+      }
+    }
+    return null;
+  }
+
+  /// The first key of [to] that [from] lacks with a parent [from] shows, and that parent.
+  static ({String born, String anchor})? _birth(GraphLayout from, GraphLayout to) {
+    for (var node = 0; node < to.nodeCount; node++) {
+      if (to.isFolded(node) || from.indexOfKey(to.keyOf(node)) != null) {
+        continue;
+      }
+      final ({int start, int end}) parents = to.parentEdges(node);
+      for (int e = parents.start; e < parents.end; e++) {
+        final String parent = to.keyOf(to.parentOf(e));
+        if (from.placeOfKey(parent) != null) {
+          return (born: to.keyOf(node), anchor: parent);
+        }
+      }
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) => _GraphDemo(
+    layout: _shownBy(widget),
+    options: widget.options,
+    insets: widget.insets,
+    nowMs: widget.nowMs,
+    transition: _transition,
   );
 }
 

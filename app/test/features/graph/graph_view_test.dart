@@ -44,6 +44,7 @@ RecordedGraphLayout chainAt(
   required String at,
   List<String> heads = const <String>[],
   Map<String, int> colOf = const <String, int>{},
+  String? operationId,
 }) {
   final nodes = <(String, int, int)>[
     for (var i = 0; i < heads.length; i++) (heads[i], rows + heads.length - 1 - i, 0),
@@ -54,6 +55,7 @@ RecordedGraphLayout chainAt(
     nodes,
     edges: <(int, int)>[for (var i = 0; i + 1 < nodes.length; i++) (i, i + 1)],
     workingCopy: wc < 0 ? null : wc,
+    operationId: operationId,
   );
 }
 
@@ -196,6 +198,18 @@ void main() {
     await tester.pump();
     await tester.pump();
   }
+
+  testWidgets("Story 10.20: a new operation's layout reaches the canvas with its transition", (tester) async {
+    source.respond = (_) => chainAt(200, at: 'r100', operationId: 'op0');
+    await pump(tester);
+    source.respond = (_) => chainAt(200, at: 'r100', colOf: const <String, int>{'r101': 3}, operationId: 'op1');
+    await heads(tester);
+    expect(model.transition, isNotNull);
+    expect(viewportOf(tester).transition, same(model.transition));
+    expect(viewportOf(tester).transitionEffectOf('r101'), isNotNull, reason: 'the moved card glides');
+    await tester.pump(const Duration(seconds: 1));
+    await finish(tester);
+  });
 
   testWidgets('the first layout centres @ in the visible rect in the relayout it lands with', (tester) async {
     source.hold = true;

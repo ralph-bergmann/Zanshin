@@ -560,13 +560,23 @@ class GraphEdgePainter {
 
   /// Paints the edges visible in [visible] (plane coordinates) at [origin] (where the plane's (0, 0) paints): normal,
   /// normal dimmed, hovered, lineage, lineage dimmed, one path each.
+  ///
+  /// Story 10.20: [only] paints just those edges, [except] all but those; [drawn] (0–1) paints each edge's stroke up to
+  /// that part of its length, from its parent end.
   void paint(
     PaintingContext context,
     Offset origin,
     Rect visible, {
     GraphEdgeHighlight highlight = const GraphEdgeHighlight(),
+    Set<int>? only,
+    Set<int>? except,
+    double drawn = 1,
   }) {
-    final List<int> edges = edgesIn(visible);
+    final edges = <int>[
+      if (drawn > 0)
+        for (final int k in edgesIn(visible))
+          if ((only == null || only.contains(k)) && (except == null || !except.contains(k))) k,
+    ];
     if (edges.isEmpty) {
       return;
     }
@@ -583,7 +593,13 @@ class GraphEdgePainter {
         GraphEdgeTone.hovered => 2,
         GraphEdgeTone.lineage => dimmed ? 4 : 3,
       };
-      _addStroke(groups[group] ??= Path(), k, clip, cuts[k], dx, dy);
+      if (drawn >= 1) {
+        _addStroke(groups[group] ??= Path(), k, clip, cuts[k], dx, dy);
+      } else {
+        final stroke = Path();
+        _addStroke(stroke, k, clip, cuts[k], dx, dy);
+        (groups[group] ??= Path()).addPath(_prefix(stroke, drawn), Offset.zero);
+      }
     }
     final double fade = 1 - dimDrop * highlight.dim.clamp(0, 1);
     Paint stroke(Color color, double width, {bool dimmed = false}) => Paint()
@@ -615,6 +631,23 @@ class GraphEdgePainter {
       }
     }
     canvas.restore();
+  }
+
+  /// The first [fraction] of [path]'s length, its contours in order.
+  // shortcut: a dashed edge's fraction is of its dashes near the window, not of its whole length; fine for a born
+  // change's short edges, measure the full polyline if a long dashed edge ever draws in.
+  static Path _prefix(Path path, double fraction) {
+    final List<PathMetric> metrics = path.computeMetrics().toList();
+    double left = fraction * metrics.fold(0.0, (sum, metric) => sum + metric.length);
+    final out = Path();
+    for (final metric in metrics) {
+      if (left <= 0) {
+        break;
+      }
+      out.addPath(metric.extractPath(0, math.min(left, metric.length)), Offset.zero);
+      left -= metric.length;
+    }
+    return out;
   }
 }
 

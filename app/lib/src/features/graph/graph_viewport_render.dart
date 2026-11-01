@@ -63,6 +63,60 @@ class GraphReveal {
   final bool animate;
 }
 
+/// One operation's landing (Story 10.20, FLIP): the viewport glides the cards it lays out from where they were on
+/// screen in [from] to their rects in [to]. [born] (a change the operation created) grows out of [anchor]'s old rect;
+/// the canvas flashes [flash] through 10.19's flash.
+///
+/// Consumed once, by identity, by the layout pass of [to]; a transition for another layout is ignored. Keep the
+/// instance across builds.
+@immutable
+class GraphTransition {
+  /// The landing of [to] after [from].
+  // WHY: a transition is consumed by identity, like a GraphReveal.
+  // ignore: prefer_const_constructors_in_immutables
+  GraphTransition({required this.from, required this.to, this.anchor, this.born, this.flash = const <String>{}});
+
+  /// The layout it leaves.
+  final GraphLayout from;
+
+  /// The layout it lands; the viewport must be laying it out.
+  final GraphLayout to;
+
+  /// The operation's anchor card (the runner's hint), the born card's origin.
+  final String? anchor;
+
+  /// The change the operation created.
+  final String? born;
+
+  /// The cards to flash.
+  final Set<String> flash;
+}
+
+/// A card new in a transition (not the born one) waits this long, then fades in over [graphArrivalFade].
+const graphArrivalDelay = Duration(milliseconds: 220);
+
+/// A new card's fade (after [graphArrivalDelay]).
+const graphArrivalFade = Duration(milliseconds: 240);
+
+/// The born card's scale when it starts growing out of the anchor.
+const graphBirthScale = .94;
+
+/// The part of `--dur-birth` after which the born card is opaque.
+const graphBirthOpaque = .3;
+
+enum _FxKind { glide, birth, arrival }
+
+/// One layout pass as it was on screen: what a transition glides from.
+typedef _Pass = ({
+  GraphLayout layout,
+  VerticalLayout vertical,
+  GraphMetrics metrics,
+  EdgeInsets insets,
+  Offset scroll,
+  Size view,
+  List<int> nodes,
+});
+
 /// The scroll primitives of a graph viewport (Story 10.1 item 8): reveal a key, jump or animate to an offset.
 class GraphViewportController {
   RenderGraphViewport? _viewport;
@@ -169,6 +223,8 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
     required super.childManager,
     super.scrollCacheExtent,
     super.clipBehavior,
+    this._transition,
+    this._transitionElapsed = Duration.zero,
   }) : assert(horizontalAxisDirection == AxisDirection.right && verticalAxisDirection == AxisDirection.down),
        _layout = graphLayout,
        _explicitVertical = verticalLayout {
@@ -348,6 +404,40 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
   /// The motion tokens; a reveal jumps when movement is reduced.
   ZsMotion motion;
 
+  /// The operation's landing the viewport animates (Story 10.20); null animates nothing.
+  GraphTransition? get transition => _transition;
+  GraphTransition? _transition;
+  set transition(GraphTransition? value) {
+    if (identical(value, _transition)) {
+      return;
+    }
+    _transition = value;
+    markNeedsLayout();
+  }
+
+  /// How far [transition] has run; a change repaints only (and lays out once, when the glide-out cards land).
+  Duration get transitionElapsed => _transitionElapsed;
+  Duration _transitionElapsed;
+  set transitionElapsed(Duration value) {
+    if (value == _transitionElapsed) {
+      return;
+    }
+    final bool landed = _glideOut.isNotEmpty && _transitionElapsed < motion.durFlip && value >= motion.durFlip;
+    _transitionElapsed = value;
+    if (landed) {
+      markNeedsLayout();
+    } else {
+      markNeedsPaint();
+    }
+  }
+
+  // Story 10.20: the last layout pass as it was on screen, the transition applied, its per-node effects (node indices
+  // of its `to`) and the cards gliding out of the window.
+  _Pass? _last;
+  GraphTransition? _applied;
+  var _effects = const <int, ({_FxKind kind, Offset delta})>{};
+  var _glideOut = const <int>[];
+
   /// Called with |dx| + |dy| of each canvas pan move.
   ValueChanged<double>? onUserPan;
 
@@ -458,19 +548,160 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
     for (final node in nodes) {
       _layoutNode(node, size, scroll);
     }
+    final Set<int> laidOut = nodes.toSet();
     if (_pinnedKeys.isNotEmpty) {
       // A pinned card stays laid out (off screen, unpainted) instead of entering the keep-alive bucket, whose
       // vicinity could be taken by another node after a reload.
-      final Set<int> laidOut = nodes.toSet();
       for (final String key in _pinnedKeys) {
         final int? node = _layout.placeOfKey(key);
-        if (node != null && !laidOut.contains(node)) {
+        if (node != null && laidOut.add(node)) {
+          _layoutNode(node, size, scroll);
+        }
+      }
+    }
+    _syncTransition(laidOut, scroll);
+    if (_transitionElapsed < motion.durFlip) {
+      // A card that glides out of the window stays laid out until it lands.
+      for (final int node in _glideOut) {
+        if (laidOut.add(node)) {
           _layoutNode(node, size, scroll);
         }
       }
     }
     _recordAnchor(nodes, scroll, view);
+    _last = (
+      layout: _layout,
+      vertical: vertical,
+      metrics: _metrics,
+      insets: _insets,
+      scroll: scroll,
+      view: view,
+      nodes: nodes,
+    );
   }
+
+  /// Applies a new [transition] of the layout being laid out, once: the screen-space deltas of the cards [laidOut]
+  /// now and of the cards that were on screen in the last pass, from the last pass's rects (a running transition is
+  /// finished by them, its landed rects).
+  void _syncTransition(Set<int> laidOut, Offset scroll) {
+    final GraphTransition? t = _transition;
+    if (t == null || !identical(t.to, _layout)) {
+      _applied = null;
+      _effects = const <int, ({_FxKind kind, Offset delta})>{};
+      _glideOut = const <int>[];
+      return;
+    }
+    if (identical(t, _applied)) {
+      return;
+    }
+    _applied = t;
+    final effects = <int, ({_FxKind kind, Offset delta})>{};
+    final glideOut = <int>[];
+    _effects = effects;
+    _glideOut = glideOut;
+    final _Pass? last = _last;
+    if (last == null || identical(last.layout, _layout)) {
+      return;
+    }
+    final GraphLayout from = last.layout;
+    final card = Size(last.metrics.cardWidth, last.metrics.cardHeight);
+    Offset was(int node) =>
+        Offset(last.insets.left + last.metrics.x(from.colOf(node)), last.insets.top + last.vertical.top(node)) -
+        last.scroll;
+    Offset now(int node) => cardRect(node).topLeft - scroll;
+
+    final String? born = t.born;
+    final int? bornNode = born == null || from.indexOfKey(born) != null ? null : _layout.placeOfKey(born);
+    final int? anchorWas = t.anchor == null ? null : from.placeOfKey(t.anchor!);
+    for (final node in laidOut) {
+      if (node == bornNode && anchorWas != null) {
+        // Centred on the anchor's old rect.
+        final Offset centre = was(anchorWas) + card.center(Offset.zero);
+        effects[node] = (kind: _FxKind.birth, delta: centre - (now(node) + cardRect(node).size.center(Offset.zero)));
+        continue;
+      }
+      final int? old = from.placeOfKey(_layout.keyOf(node));
+      if (old == null) {
+        effects[node] = (kind: _FxKind.arrival, delta: Offset.zero);
+      } else if (was(old) - now(node) case final delta when delta != Offset.zero) {
+        effects[node] = (kind: _FxKind.glide, delta: delta);
+      }
+    }
+    final Rect view = Offset.zero & last.view;
+    for (final int old in last.nodes) {
+      if (!(was(old) & card).overlaps(view)) {
+        continue;
+      }
+      final int? node = _layout.placeOfKey(from.keyOf(old));
+      if (node == null || laidOut.contains(node) || effects.containsKey(node)) {
+        continue;
+      }
+      if (was(old) - now(node) case final delta when delta != Offset.zero) {
+        effects[node] = (kind: _FxKind.glide, delta: delta);
+        glideOut.add(node);
+      }
+    }
+  }
+
+  /// [node]'s transition effect now: its shift from its laid-out position, its scale about its centre and its opacity;
+  /// null at rest.
+  ({Offset shift, double scale, double alpha})? _fxOf(int node) {
+    final ({_FxKind kind, Offset delta})? fx = _effects[node];
+    if (fx == null) {
+      return null;
+    }
+    final double ms = _transitionElapsed.inMicroseconds / 1000;
+    double part(Duration length, [Duration delay = Duration.zero]) {
+      final double t = ms - delay.inMicroseconds / 1000;
+      final double l = length.inMicroseconds / 1000;
+      return l <= 0 ? (t >= 0 ? 1 : 0) : clampDouble(t / l, 0, 1);
+    }
+
+    switch (fx.kind) {
+      case _FxKind.glide:
+        final double rest = 1 - motion.easeGlide.transform(part(motion.durFlip));
+        return rest == 0 ? null : (shift: fx.delta * rest, scale: 1, alpha: 1);
+      case _FxKind.birth:
+        final double b = part(motion.durBirth);
+        if (b >= 1) {
+          return null;
+        }
+        // Reduce motion: no growth, the fade over the whole birth.
+        if (motion.motion == 0) {
+          return (shift: Offset.zero, scale: 1, alpha: b);
+        }
+        final double rest = 1 - motion.easeGlide.transform(b);
+        return (
+          shift: fx.delta * rest,
+          scale: 1 - (1 - graphBirthScale) * rest,
+          alpha: math.min(1, b / graphBirthOpaque),
+        );
+      case _FxKind.arrival:
+        final double a = part(graphArrivalFade, graphArrivalDelay);
+        return a >= 1 ? null : (shift: Offset.zero, scale: 1, alpha: motion.easeState.transform(a));
+    }
+  }
+
+  /// [key]'s transition effect now (its place's), null at rest or when absent.
+  @visibleForTesting
+  ({Offset shift, double scale, double alpha})? transitionEffectOf(String key) {
+    final int? node = _layout.placeOfKey(key);
+    return node == null ? null : _fxOf(node);
+  }
+
+  /// [child]'s paint transform from the viewport's origin: its paint offset, shifted and scaled by its effect.
+  Matrix4 _childTransform(RenderBox child, ({Offset shift, double scale, double alpha})? fx) {
+    final Offset at = parentDataOf(child).paintOffset! + (fx?.shift ?? Offset.zero);
+    final transform = Matrix4.translationValues(at.dx, at.dy, 0);
+    if (fx != null && fx.scale != 1) {
+      transform.multiply(_scaleAbout(child.size.center(Offset.zero), fx.scale));
+    }
+    return transform;
+  }
+
+  static Matrix4 _scaleAbout(Offset centre, double scale) => Matrix4.translationValues(centre.dx, centre.dy, 0)
+    ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
+    ..multiply(Matrix4.translationValues(-centre.dx, -centre.dy, 0));
 
   void _layoutNode(int node, Size size, Offset scroll) {
     final RenderBox? child = buildOrObtainChildFor(ChildVicinity(xIndex: _layout.colOf(node), yIndex: node));
@@ -615,10 +846,15 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
   /// The visible cards in paint order: base, then `@`, then selected, then hovered or pinned (GC:73-77).
   List<RenderBox> get paintOrder {
     final layers = List<List<RenderBox>>.generate(4, (_) => <RenderBox>[]);
+    final Rect view = Offset.zero & size;
     for (RenderBox? child = firstChild; child != null; child = childAfter(child)) {
       final TwoDimensionalViewportParentData data = parentDataOf(child);
-      if (data.isVisible && _opacity(data.vicinity.yIndex) > 0) {
-        layers[_zOf(data.vicinity.yIndex)].add(child);
+      final int node = data.vicinity.yIndex;
+      final ({Offset shift, double scale, double alpha})? fx = _fxOf(node);
+      // A card in a transition shows where it paints, not where it is laid out.
+      final bool visible = fx == null ? data.isVisible : ((data.paintOffset! + fx.shift) & child.size).overlaps(view);
+      if (visible && _opacity(node) * (fx?.alpha ?? 1) > 0) {
+        layers[_zOf(node)].add(child);
       }
     }
     return <RenderBox>[for (final List<RenderBox> layer in layers) ...layer];
@@ -647,16 +883,26 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
     _paintEdges?.call(context, origin, visible);
     for (final RenderBox child in paintOrder) {
       final TwoDimensionalViewportParentData data = parentDataOf(child);
-      final double opacity = _opacity(data.vicinity.yIndex);
-      final Offset at = offset + data.paintOffset!;
+      final ({Offset shift, double scale, double alpha})? fx = _fxOf(data.vicinity.yIndex);
+      final double opacity = _opacity(data.vicinity.yIndex) * (fx?.alpha ?? 1);
+      final Offset at = offset + data.paintOffset! + (fx?.shift ?? Offset.zero);
+      void draw(PaintingContext context, Offset offset) {
+        if (fx == null || fx.scale == 1) {
+          context.paintChild(child, offset);
+        } else {
+          context.pushTransform(
+            needsCompositing,
+            offset,
+            _scaleAbout(child.size.center(Offset.zero), fx.scale),
+            (context, offset) => context.paintChild(child, offset),
+          );
+        }
+      }
+
       if (opacity >= 1) {
-        context.paintChild(child, at);
+        draw(context, at);
       } else {
-        context.pushOpacity(
-          at,
-          Color.getAlphaFromOpacity(opacity),
-          (context, offset) => context.paintChild(child, offset),
-        );
+        context.pushOpacity(at, Color.getAlphaFromOpacity(opacity), draw);
       }
     }
     _paintOverlay?.call(context, origin, visible);
@@ -674,18 +920,30 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
     _childHit = false;
     for (final RenderBox child in paintOrder.reversed) {
-      final Offset paintOffset = parentDataOf(child).paintOffset!;
-      final bool hit = result.addWithPaintOffset(
-        offset: paintOffset,
-        position: position,
-        hitTest: (result, transformed) => child.hitTest(result, position: transformed),
-      );
+      final TwoDimensionalViewportParentData data = parentDataOf(child);
+      final ({Offset shift, double scale, double alpha})? fx = _fxOf(data.vicinity.yIndex);
+      // A card in a transition is hit where it paints.
+      final bool hit = fx == null
+          ? result.addWithPaintOffset(
+              offset: data.paintOffset,
+              position: position,
+              hitTest: (result, transformed) => child.hitTest(result, position: transformed),
+            )
+          : result.addWithPaintTransform(
+              transform: _childTransform(child, fx),
+              position: position,
+              hitTest: (result, transformed) => child.hitTest(result, position: transformed),
+            );
       if (hit) {
         return _childHit = true;
       }
     }
     return false;
   }
+
+  @override
+  void applyPaintTransform(RenderBox child, Matrix4 transform) =>
+      transform.multiply(_childTransform(child, _fxOf(parentDataOf(child).vicinity.yIndex)));
 
   @override
   Rect? describeSemanticsClip(RenderObject? child) {

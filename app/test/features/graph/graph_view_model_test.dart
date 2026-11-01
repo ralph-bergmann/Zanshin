@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
-import 'package:zanshin/src/features/graph/graph_viewport.dart' show GraphRevealAlignment;
+import 'package:zanshin/src/features/graph/graph_viewport.dart' show GraphRevealAlignment, GraphTransition;
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
@@ -1321,6 +1321,168 @@ void main() {
         expect(source.shows, <String>['a']);
         expect(source.requests, hasLength(1));
         expect(model.revset, 'L');
+        model.dispose();
+      });
+    });
+  });
+
+  group('Story 10.20: the transition', () {
+    late _Actions actions;
+    setUp(() => actions = _Actions());
+
+    /// [keys] newest first in column 0 at operation [op], @ at [at].
+    RecordedGraphLayout opLayout(List<String> keys, String op, {String? at = 'a'}) => handLayout(
+      <(String, int, int)>[for (var i = 0; i < keys.length; i++) (keys[i], keys.length - 1 - i, 0)],
+      edges: <(int, int)>[for (var i = 0; i + 1 < keys.length; i++) (i, i + 1)],
+      workingCopy: at == null ? null : keys.indexOf(at),
+      operationId: op,
+    );
+
+    GraphViewModel opModel(FakeAsync async) {
+      source.respond = (_) => opLayout(<String>['a', 'b', 'c'], 'op0');
+      final GraphViewModel model = start(async, actions: actions);
+      expect(model.transition, isNull, reason: 'the first layout animates nothing');
+      return model;
+    }
+
+    void run(FakeAsync async, GraphViewModel model, GraphAction action) {
+      unawaited(model.run(action));
+      async.flushMicrotasks();
+    }
+
+    test("an own verb's layout carries its anchor and born change; the born change is not in reveal", () {
+      fakeAsync((async) {
+        final GraphViewModel model = opModel(async)..select('b');
+        final GraphLayout? before = model.layout;
+        actions.born = <String>['n'];
+        source.respond = (_) => opLayout(<String>['n', 'a', 'b', 'c'], 'op1', at: 'n');
+        run(async, model, const GraphNew(parents: <String>['b']));
+        final GraphTransition? t = model.transition;
+        expect(t?.from, same(before));
+        expect(t?.to, same(model.layout));
+        expect(t?.anchor, 'b');
+        expect(t?.born, 'n');
+        expect(t?.flash, isEmpty);
+        expect(model.selected, 'n');
+        expect(model.reveal, isNull, reason: 'the canvas reveals it after the glide');
+        model.dispose();
+      });
+    });
+
+    test("a squash's destination flashes with its layout", () {
+      fakeAsync((async) {
+        final GraphViewModel model = opModel(async)..select('b');
+        actions.abandoned = <String>['b'];
+        source.respond = (_) => opLayout(<String>['a', 'c'], 'op1');
+        run(async, model, const GraphSquash(revision: 'b'));
+        expect(model.transition?.anchor, 'c');
+        expect(model.transition?.flash, <String>{'c'});
+        expect(model.transition?.born, isNull);
+        model.dispose();
+      });
+    });
+
+    test('an external operation and an undo animate with no hints', () {
+      fakeAsync((async) {
+        final GraphViewModel model = opModel(async);
+        source.respond = (_) => opLayout(<String>['x', 'a', 'b', 'c'], 'ext');
+        heads(async);
+        expect(model.transition, isNotNull);
+        expect(model.transition?.anchor, isNull);
+        expect(model.transition?.born, isNull);
+
+        actions.born = <String>['n'];
+        source.respond = (_) => opLayout(<String>['n', 'x', 'a', 'b', 'c'], 'op1');
+        run(async, model, const GraphNew(parents: <String>['a']));
+        actions.born = const <String>[];
+        source.respond = (_) => opLayout(<String>['x', 'a', 'b', 'c'], 'op2');
+        unawaited(model.undoLast());
+        async.flushMicrotasks();
+        expect(actions.ran.last, isA<GraphUndo>());
+        expect(model.transition?.to, same(model.layout));
+        expect(model.transition?.born, isNull, reason: "the undo's own outcome, not the new's");
+        model.dispose();
+      });
+    });
+
+    test('no transition for a revset or mode switch, a stack toggle, or a reload without a new operation', () {
+      fakeAsync((async) {
+        final GraphViewModel model = opModel(async);
+        var op = 0;
+        source.respond = (_) => opLayout(<String>['a', 'b', 'c'], 'switch${op++}');
+        model.setRevset('all()');
+        async.flushMicrotasks();
+        expect(model.transition, isNull, reason: 'a revset switch, even at a new operation');
+        model.setMode(GraphMode.compact);
+        async.flushMicrotasks();
+        expect(model.transition, isNull, reason: 'a mode switch');
+        source.respond = (_) => opLayout(<String>['b', 'a', 'c'], 'switch${op++}');
+        model.setLaneOrder(GraphLaneOrder.greedy);
+        async.flushMicrotasks();
+        expect(model.transition, isNull, reason: 'a lane-order switch, even when cards move');
+
+        source.respond = (_) => opLayout(<String>['a', 'b', 'c'], 'same');
+        model.reload();
+        async.flushMicrotasks();
+        expect(model.transition, isNotNull, reason: 'a new operation that moves cards');
+        model.reload();
+        async.flushMicrotasks();
+        expect(model.transition, isNull, reason: 'the same operation');
+        model.setStacks(true);
+        async.flushMicrotasks();
+        expect(model.transition, isNull, reason: 'a stack toggle writes no operation');
+        model.dispose();
+      });
+    });
+
+    test('revert: the transition carries the reverted change as anchor and the new change as born', () {
+      fakeAsync((async) {
+        final GraphViewModel model = opModel(async);
+        actions.born = <String>['n'];
+        source.respond = (_) => opLayout(<String>['a', 'n', 'b', 'c'], 'op1');
+        run(async, model, const GraphRevert('b'));
+        expect(model.transition?.anchor, 'b');
+        expect(model.transition?.born, 'n');
+        model.dispose();
+      });
+    });
+
+    test('a new operation that moves nothing (a describe) does not animate; its flash goes out through flash', () {
+      fakeAsync((async) {
+        final GraphViewModel model = opModel(async);
+        source.respond = (_) => opLayout(<String>['a', 'b', 'c'], 'op1');
+        run(async, model, const GraphDescribe('b', 'x'));
+        expect(model.transition, isNull);
+        expect(model.flash.value, isNull);
+
+        source.respond = (_) => opLayout(<String>['a', 'b', 'c'], 'op2');
+        run(async, model, const GraphBookmarkMove(<String>['main'], to: 'c'));
+        expect(model.transition, isNull);
+        expect(model.flash.value?.keys, <String>{'c'});
+        model.dispose();
+      });
+    });
+
+    test("an own verb's layout landing under a revset switch takes its hints along: a later operation has none", () {
+      fakeAsync((async) {
+        final GraphViewModel model = opModel(async);
+        actions.born = <String>['n'];
+        source.hold = true;
+        run(async, model, const GraphNew(parents: <String>['b']));
+        model.setRevset('all()');
+        source.held[0].complete(GraphLoad(opLayout(<String>['n', 'a', 'b', 'c'], 'op1')));
+        async.flushMicrotasks();
+        source.held[1].complete(GraphLoad(opLayout(<String>['n', 'a', 'b', 'c'], 'op1')));
+        async.flushMicrotasks();
+        expect(model.transition, isNull, reason: 'the revset switch');
+        source
+          ..hold = false
+          ..respond = (_) => opLayout(<String>['x', 'n', 'a', 'b', 'c'], 'ext');
+        heads(async);
+        expect(model.transition, isNotNull);
+        expect(model.transition?.anchor, isNull);
+        expect(model.transition?.born, isNull);
+        expect(model.transition?.flash, isEmpty);
         model.dispose();
       });
     });

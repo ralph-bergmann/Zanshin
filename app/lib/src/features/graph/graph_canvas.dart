@@ -38,6 +38,20 @@ const graphContentSettle = Duration(milliseconds: 100);
 /// one viewport height.
 const double graphContentBufferX = 250;
 
+/// When the born card's edges start drawing in during a transition (Story 10.20).
+const graphBornEdgeDelay = Duration(milliseconds: 140);
+
+/// How long the born card's edges take to draw in.
+const graphBornEdgeDraw = Duration(milliseconds: 520);
+
+/// A transition's length under [motion]: its longest part (Story 10.20; 720 ms, 540 ms under reduce motion).
+Duration graphTransitionDuration(ZsMotion motion) => <Duration>[
+  motion.durFlip + motion.durSlide,
+  motion.durBirth,
+  graphArrivalDelay + graphArrivalFade,
+  if (motion.durFlip > Duration.zero) graphBornEdgeDelay + graphBornEdgeDraw,
+].reduce((a, b) => a > b ? a : b);
+
 /// A viewport over [layout] with commit cards (Story 10.3), router B's edges (Story 10.4) and Free's day axis (Story
 /// 10.2): the composition the catalogue and `GraphView` share (Story 10.5). It owns its scroll controllers, its rows
 /// (once per layout, remapped per metrics change), its day-axis painter (rebuilt when the rows, the theme or the local
@@ -61,6 +75,13 @@ const double graphContentBufferX = 250;
 /// [graphContentSettle], no canvas pan held, no drag or fling on either axis — and after a new layout or card size, it
 /// loads the content of the visible nodes plus a buffer (one viewport height, [graphContentBufferX] beside); cards and
 /// the peek read the cache.
+///
+/// **Operations (Story 10.20):** each new [transition] of the shown layout runs once on one ticker
+/// ([graphTransitionDuration]): the viewport glides, grows and fades the cards, paint-only; the edge layer is hidden
+/// for `--dur-flip` and fades back over `--dur-slide` on `--ease-state` while the born card's edges draw in from their
+/// parent end ([graphBornEdgeDelay], [graphBornEdgeDraw]; under reduce motion they come with the layer); its flash
+/// keys run 10.19's flash; the born card is revealed (covered, animated) after `--dur-flip`; the peek waits for the
+/// end.
 ///
 /// User scrolling it reports to [onUserScroll]: canvas mouse pans (|dx| + |dy| per move) and fling glides (per axis,
 /// the updates without drag details that follow ones with them, until that axis's scroll end). Wheel and trackpad
@@ -86,8 +107,12 @@ class GraphCanvas extends StatefulWidget {
     this.flash,
     this.onShowGap,
     this.showChange,
+    this.transition,
     super.key,
   });
+
+  /// The operation's landing of [layout] (Story 10.20); each new instance runs once.
+  final GraphTransition? transition;
 
   /// The gap reveals' flashes (Story 10.19); each new value runs once.
   final ValueListenable<GraphFlash?>? flash;
@@ -211,6 +236,14 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   var _enterKeys = const <String>{};
   final _bracketRun = ValueNotifier<int?>(null);
 
+  // Story 10.20: the running transition (one ticker), its born card's edges, the after-glide reveal.
+  late final _transition = AnimationController(vsync: this)
+    ..addListener(_transitionTicked)
+    ..addStatusListener(_transitionStatus);
+  GraphTransition? _moving;
+  var _bornEdges = const <int>{};
+  String? _bornReveal;
+
   @override
   void initState() {
     super.initState();
@@ -259,6 +292,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     _dim.duration = _motion.durHover;
     _enter.duration = _motion.durSlide;
     _flash.duration = _motion.durFlash;
+    _transition.duration = graphTransitionDuration(_motion);
   }
 
   ZsMotion _motion = ZsMotion.full;
@@ -293,6 +327,17 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       _enter.forward(from: 0);
     } else if (!identical(oldWidget.layout, widget.layout)) {
       _enterKeys = const <String>{};
+    }
+    final GraphTransition? transition = widget.transition;
+    if (!identical(oldWidget.transition, transition) && transition != null && identical(transition.to, widget.layout)) {
+      _startTransition(transition);
+    } else if (!identical(oldWidget.layout, widget.layout) && _moving != null) {
+      // A layout without a transition ends the running one.
+      _moving = null;
+      _bornEdges = const <int>{};
+      _bornReveal = null;
+      _transition.stop();
+      _openWaitingPeek();
     }
     if (widget.inspectorOpen && !oldWidget.inspectorOpen) {
       // After the frame that hands the viewport the inspector's inset.
@@ -351,6 +396,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     _gapTimer?.cancel();
     _gapCloseTimer?.cancel();
     _settle?.cancel();
+    _transition.dispose();
     _dim.dispose();
     _pulse.dispose();
     _flash.dispose();
@@ -461,6 +507,10 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   void _openPeek() {
     final String? key = _peekTimerKey;
     _peekTimer = null;
+    // A running transition holds the peek (its key stays pending) until it ends (Story 10.20).
+    if (mounted && _moving != null && _transition.isAnimating) {
+      return;
+    }
     _peekTimerKey = null;
     if (!mounted || key == null || _viewport.isPanning || widget.cards.hovered.value != key) {
       return;
@@ -774,6 +824,80 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     );
   }
 
+  // ---- operations (Story 10.20) ----
+
+  /// Runs [transition] from its start; a running one ends at once (the viewport starts from its landed rects).
+  void _startTransition(GraphTransition transition) {
+    _moving = transition;
+    final GraphLayout layout = transition.to;
+    final String? key = transition.born;
+    // The viewport's rule: a key new in `from` grown out of an anchor `from` shows.
+    final bool grows =
+        key != null &&
+        transition.from.indexOfKey(key) == null &&
+        transition.anchor != null &&
+        transition.from.placeOfKey(transition.anchor!) != null;
+    final int? born = grows ? layout.placeOfKey(key) : null;
+    _bornEdges = born == null
+        ? const <int>{}
+        : <int>{
+            for (int e = layout.parentEdges(born).start; e < layout.parentEdges(born).end; e++) e,
+            for (int s = layout.childEdges(born).start; s < layout.childEdges(born).end; s++) layout.childEdgeAt(s),
+          };
+    // After the glide, so the reveal scrolls from where the cards landed.
+    _bornReveal = key;
+    _transition.forward(from: 0);
+    if (transition.flash.isNotEmpty) {
+      _flashKeys = transition.flash;
+      _flash.forward(from: 0);
+    }
+    if (key != null && _motion.durFlip == Duration.zero) {
+      // No glide: after the frame that lays the new layout out.
+      SchedulerBinding.instance.addPostFrameCallback((_) => _revealBorn(transition));
+    }
+  }
+
+  /// Reveals the born card of [transition] once, while it still runs (or just completed).
+  void _revealBorn(GraphTransition transition) {
+    final String? key = _bornReveal;
+    if (!mounted || key == null || !identical(_moving, transition)) {
+      return;
+    }
+    _bornReveal = null;
+    if (widget.layout.placeOfKey(key) != null) {
+      _viewport.reveal(key, alignment: GraphRevealAlignment.covered, animate: true);
+    }
+  }
+
+  /// The transition's tick: the born reveal when the glide has landed.
+  void _transitionTicked() {
+    final GraphTransition? moving = _moving;
+    if (moving != null &&
+        _bornReveal != null &&
+        _motion.durFlip > Duration.zero &&
+        _transition.duration! * _transition.value >= _motion.durFlip) {
+      _revealBorn(moving);
+    }
+  }
+
+  void _transitionStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && mounted) {
+      setState(() => _moving = null);
+      _openWaitingPeek();
+    }
+  }
+
+  /// A peek that waited for the transition opens now.
+  void _openWaitingPeek() {
+    if (_peekTimerKey != null && _peekTimer == null) {
+      _openPeek();
+    }
+  }
+
+  /// How far the running transition is; null when none runs.
+  Duration? get _transitionElapsed =>
+      _moving != null && _transition.isAnimating ? _transition.duration! * _transition.value : null;
+
   // ---- the gap reveal's flash (Story 10.19) ----
 
   void _flashChanged() {
@@ -1068,6 +1192,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                 _flash,
                 _bracketRun,
                 _gapHover,
+                _transition,
               ]),
               builder: (context, _) {
                 final String? menu = cards.menuOpen.value;
@@ -1080,6 +1205,45 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                   focus: focus,
                   dim: dim,
                 );
+                final Duration? elapsed = _transitionElapsed;
+                final double ms = (elapsed?.inMicroseconds ?? 0) / 1000;
+                // The edge layer: hidden while the cards glide, then fading back (Story 10.20).
+                final double layer = elapsed == null
+                    ? 1
+                    : elapsed < _motion.durFlip
+                    ? 0
+                    : _motion.easeState.transform(
+                        clampDouble((ms - _motion.durFlip.inMilliseconds) / _motion.durSlide.inMilliseconds, 0, 1),
+                      );
+                // The born card's edges draw in on their own, except under reduce motion.
+                final Set<int>? born = elapsed == null || _motion.durFlip == Duration.zero || _bornEdges.isEmpty
+                    ? null
+                    : _bornEdges;
+                final double drawn = born == null
+                    ? 1
+                    : _motion.easeState.transform(
+                        clampDouble(
+                          (ms - graphBornEdgeDelay.inMilliseconds) / graphBornEdgeDraw.inMilliseconds,
+                          0,
+                          1,
+                        ),
+                      );
+                void paintLayer(PaintingContext context, Offset origin, Rect visible) {
+                  edges?.paint(context, origin, visible, highlight: highlight, except: born);
+                  if (edges != null) {
+                    gaps?.paint(
+                      context.canvas,
+                      origin,
+                      visible,
+                      edges: edges,
+                      label: elided,
+                      highlight: highlight,
+                      hovered: _gapHover.value,
+                    );
+                  }
+                  _paintBrackets(context.canvas, origin, visible, brackets, theme);
+                }
+
                 return GraphViewport(
                   layout: widget.layout,
                   metrics: metrics,
@@ -1105,20 +1269,21 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                   paintEdges: edges == null && brackets.isEmpty
                       ? null
                       : (context, origin, visible) {
-                          edges?.paint(context, origin, visible, highlight: highlight);
-                          if (edges != null) {
-                            gaps?.paint(
-                              context.canvas,
-                              origin,
-                              visible,
-                              edges: edges,
-                              label: elided,
-                              highlight: highlight,
-                              hovered: _gapHover.value,
+                          if (layer >= 1) {
+                            paintLayer(context, origin, visible);
+                          } else if (layer > 0) {
+                            context.pushOpacity(
+                              Offset.zero,
+                              Color.getAlphaFromOpacity(layer),
+                              (context, _) => paintLayer(context, origin, visible),
                             );
                           }
-                          _paintBrackets(context.canvas, origin, visible, brackets, theme);
+                          if (born != null && drawn > 0) {
+                            edges?.paint(context, origin, visible, highlight: highlight, only: born, drawn: drawn);
+                          }
                         },
+                  transition: elapsed == null ? null : _moving,
+                  transitionElapsed: elapsed ?? Duration.zero,
                   paintOverlay: (context, origin, visible) {
                     axis.paintLabels(context, origin, visible, leftInset: leftInset);
                     _paintPulse(context.canvas, origin, rows, metrics, accent);

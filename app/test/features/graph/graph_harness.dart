@@ -244,6 +244,8 @@ class GraphHarness {
   GraphPaintHook? overlay;
   var disableAnimations = false;
   GraphNodeOpacity? opacityOf;
+  GraphTransition? transition;
+  Duration transitionElapsed = Duration.zero;
 
   /// Called before each card is built.
   void Function()? onCardBuild;
@@ -318,6 +320,8 @@ class GraphHarness {
         paintBackground: background,
         paintEdges: edges,
         paintOverlay: overlay,
+        transition: transition,
+        transitionElapsed: transitionElapsed,
       ),
     ),
   );

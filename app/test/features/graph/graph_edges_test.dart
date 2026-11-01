@@ -694,4 +694,40 @@ void main() {
     await pumpGraph(tester, harness);
     expect(harness.render(tester), paintsExactlyCountTimes(#drawPath, 0));
   });
+
+  testWidgets('Story 10.20: only and except pick the edges; drawn strokes that part of each, from its parent end', (
+    tester,
+  ) async {
+    final RecordedGraphLayout layout = chainLayout(4, cols: 2);
+    final GraphEdgePainter painter = painterOf(layout);
+    const window = Rect.fromLTWH(0, 0, 800, 600);
+    double length(int k) => painter.strokePath(k, window).computeMetrics().fold<double>(0, (sum, m) => sum + m.length);
+    final harness = GraphHarness(layout);
+    await pumpGraph(tester, harness);
+    Future<List<PathMetric>> painted({Set<int>? only, Set<int>? except, double drawn = 1}) async {
+      harness.edges = (context, origin, visible) =>
+          painter.paint(context, origin, visible, only: only, except: except, drawn: drawn);
+      await tester.pumpWidget(harness.build());
+      final metrics = <PathMetric>[];
+      expect(
+        harness.render(tester),
+        paints..everything((method, args) {
+          if (method == #drawPath) {
+            metrics.addAll((args[0] as Path).computeMetrics());
+          }
+          return true;
+        }),
+      );
+      return metrics;
+    }
+
+    double total(List<PathMetric> metrics) => metrics.fold<double>(0, (sum, m) => sum + m.length);
+    expect(layout.edgeCount, 3);
+    expect(total(await painted(only: <int>{1})), moreOrLessEquals(length(1)));
+    expect(total(await painted(except: <int>{1})), moreOrLessEquals(length(0) + length(2)));
+    final List<PathMetric> half = await painted(only: <int>{1}, drawn: .5);
+    expect(total(half), moreOrLessEquals(length(1) / 2));
+    expect(half.first.getTangentForOffset(0)!.position, near(polyline(painter.geometry, 1).first));
+    expect(await painted(only: <int>{1}, drawn: 0), isEmpty);
+  });
 }

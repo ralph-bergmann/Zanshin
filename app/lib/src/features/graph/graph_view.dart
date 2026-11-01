@@ -350,6 +350,7 @@ class _GraphViewState extends State<GraphView> {
                 flash: model.flash,
                 onShowGap: _showGap,
                 showChange: model.showChange,
+                transition: model.transition,
               ),
             if (layout != null) ...<Widget>[
               GraphCardMenuHost(cards: _cards, model: model, inspector: widget.inspectorModel),

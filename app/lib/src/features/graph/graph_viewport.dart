@@ -17,8 +17,13 @@ export 'graph_viewport_render.dart'
         GraphPaintHook,
         GraphReveal,
         GraphRevealAlignment,
+        GraphTransition,
         GraphViewportController,
         RenderGraphViewport,
+        graphArrivalDelay,
+        graphArrivalFade,
+        graphBirthOpaque,
+        graphBirthScale,
         graphCardOverhang;
 
 /// The commit graph's two-axis virtualized viewport (Story 10.1): cards at positions from the data, several per row,
@@ -48,6 +53,8 @@ class GraphViewport extends TwoDimensionalScrollView {
     this.reveal,
     this.controller,
     this.onUserPan,
+    this.transition,
+    this.transitionElapsed = Duration.zero,
     super.scrollCacheExtent = defaultScrollCacheExtent,
     super.clipBehavior,
     super.key,
@@ -109,6 +116,12 @@ class GraphViewport extends TwoDimensionalScrollView {
   /// Called with |dx| + |dy| of each canvas mouse-pan move (user scrolling for calm, Story 10.5).
   final ValueChanged<double>? onUserPan;
 
+  /// The operation's landing it animates, by identity (Story 10.20); keep the instance across builds.
+  final GraphTransition? transition;
+
+  /// How far [transition] has run: a change only repaints.
+  final Duration transitionElapsed;
+
   @override
   Widget build(BuildContext context) => ScrollConfiguration(
     behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
@@ -166,6 +179,8 @@ class _GraphViewportWidget extends TwoDimensionalViewport {
     controller: owner.controller,
     onUserPan: owner.onUserPan,
     motion: motion,
+    transition: owner.transition,
+    transitionElapsed: owner.transitionElapsed,
     horizontalOffset: horizontalOffset,
     horizontalAxisDirection: horizontalAxisDirection,
     verticalOffset: verticalOffset,
@@ -195,6 +210,8 @@ class _GraphViewportWidget extends TwoDimensionalViewport {
     ..controller = owner.controller
     ..onUserPan = owner.onUserPan
     ..motion = motion
+    ..transition = owner.transition
+    ..transitionElapsed = owner.transitionElapsed
     ..horizontalOffset = horizontalOffset
     ..horizontalAxisDirection = horizontalAxisDirection
     ..verticalOffset = verticalOffset
