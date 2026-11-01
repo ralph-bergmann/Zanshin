@@ -24,6 +24,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/op_log.rs Operation
     severity: low
+    resolved: >-
+      2026-11-01 — rejected (spec-11-9-undo-timeline-panel): the Undo Timeline row shows no duration (DS row is `cmd · when`, epics 11.9 item 2), so no `started` field is needed.
 ---
 
 <intent-contract>
