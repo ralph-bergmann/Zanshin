@@ -207,7 +207,7 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-set-ft{padding:12px 24px 15px;border-top:1px solid var(--fl-border);text-align:center;font-size:var(--fs-id);color:var(--text-dim)}
 .zk-set-ft b{font-weight:500;color:var(--text-muted)}
 
-@media (max-width:1040px){.zk-n,.zk-n+.zs-island-sep{display:none}}
+@media (max-width:1040px){.zk-gaps,.zk-n,.zk-n+.zs-island-sep{display:none}}
 @media (max-width:920px){.zk-tr .zs-btn--lg span{display:none}.zk-tr .zs-btn--lg{padding:0 14px}}
 
 /* thin scrollbars wherever a panel scrolls (the graph itself scrolls without one — the minimap is its indicator) */

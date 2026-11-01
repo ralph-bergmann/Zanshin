@@ -1177,7 +1177,7 @@ _Ralph re-downloaded the design-system project twice (rounds 2 and 3; the DS rea
   - Push: PushDialog.jsx:218 drops the `--allow-*` flags; readme.md:217 and :219 claim behaviour jj v0.46.0 does not have (decision 16.25).
   - `--delay-drop-menu` 520 against the decided 260 (decision (a4) of 2026-10-14); ConfirmDialog's body does not name the evolog loss of `jj op abandon` (DS ConfirmDialog.prompt.md:4–5; 9.21); menu examples with bare commands (decisions 16.39, 16.44); the menu bar's Title Case (readme.md:200–207) against the sentence-case rule (readme.md:49; decision 16.42 (o) keeps Title Case for the menu bar only); the pressed scope pill in night yellow at 4.40:1 (left as is under decision 16.12); the Fetch card's ⇧⌘F (decision 16.42 (m)); "branch" in ProjectRow and ProjectMenu (11.5 says "bookmark"); ResizeEdge's "detach" and "splitter" (decisions 16.23, 16.24).
   - **Follow-up:** mention them with the next round, if Ralph wants the DS cleaned up.
-- **The gap legend's breakpoint is not in the DS.** Low.
+- ~~**The gap legend's breakpoint is not in the DS.**~~ — RESOLVED 2026-11-01 (Ralph, console session): Claude's proposal adopted — the DS readme and the UI kit's `kit.css` hide the gap legend with the count at ≤ 1040 px; DS artifact republished (version 10). Low.
   - The DS defines no width at which the toolbar's gap legend hides. Claude's proposal, used by 10.7 and 10.19: it hides together with the count at ≤ 1040 px (decision 16.37).
   - **Follow-up:** ask for a DS value with the next round.
 - **⇧⌘J against the AtPill's "select it".** None; a record.
@@ -1270,6 +1270,7 @@ _Ralph re-downloaded the design-system project twice (rounds 2 and 3; the DS rea
 - **The cost of glass (design question (a)) is not measured: profile-mode frame times over a scrolling 10k graph with the six islands need 10.1's synthetic recording and 11.3's host.** Medium.
   - epics.md Story 11.2 Design status (a) and its witness "In profile mode, frame build and raster times over a scrolling 10k graph with six islands are recorded, not gated"; `sprint-status.yaml` lists `10-1-graph-viewport-2d-virtualized` and `11-3-floating-overlay-host` as backlog.
   - **Follow-up:** once 10.1 and 11.3 land, measure in profile mode with the three top-bar islands, the rail, the inspector and the minimap open, record the numbers in that story's notes; a missed frame budget goes to Ralph (solid while scrolling, or fewer blurred surfaces).
+  - **2026-11-01, Ralph:** handed to Story 10.12 — it mounts all six islands in the project window, so its run measures (10.1 is done). Covered by Story 10.12.
   - **2026-10-29, Ralph:** 10.1 and 11.3 are done, but the measurement waits until the inspector (10.8) and the minimap (10.16) exist, so all six islands are open. Covered by Stories 10.8 and 10.16.
 - **Fading a glass surface through an Opacity ancestor drops its backdrop blur for the whole fade, and 11.3's calm scrolling plus the panel, toast and minimap entrances fade glass.** Medium.
   - Engine reading, not run on a device: Impeller opens an offscreen subpass for an opacity layer that holds a backdrop filter (`engine/src/flutter/impeller/display_list/canvas.cc` `SaveLayer`, :1830-1912), and `FlipBackdrop` reads only that subpass's texture (`render_passes_.back()`), which is still empty; `ZsSheet` (Story 11.2) fades its scrim through the filter's alpha instead.
@@ -1431,6 +1432,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **A failed open keeps the current project and records the failure on the session, but nothing shows it: the DS has no design for a repository that will not load.** Medium.
   - epics.md:12311 ("shows the error"); this file's "The DS's 'Still open' list" (a repository that will not load: not a jj repo, a broken .jj, no permission) has no story or design; the sheets are ConfirmDialog and Push only (decision 16.17) and the toast is 10.23 (backlog). `ProjectSession.lastFailure` holds the outcome and the failure is logged at WARNING (code only).
   - **Follow-up:** a DS round designs the failure; 10.23's toast or 11.6 shows `lastFailure` (`app/lib/src/features/projects/project_session.dart`).
+  - **2026-11-01, Ralph (console session):** no new design — an open from the Projects window already shows its notice "Could not open X" with the reason and stays open (11.6). Decided: the two other entry points, the Project menu's recent list (`home_page.dart` `onOpen`, outcome ignored) and reopen-last at launch, show the Projects window with that same notice on a failure. Left: that wiring (console-session fix run).
 - **The status dot has no ahead, behind, diverged or syncing yet: 9.29 (distances) and 11.8 (fetch/push) add those values to `ProjectStatus`.** Low.
   - epics.md:12339-12345 (design question (a)); 9.29 and 11.8 are backlog. `ProjectStatus` holds clean, dirty, conflict, missing, stale; an unknown stored value reads as null (`JsonKey.unknownEnumValue`), so a newer file never corrupts an older app's settings.
   - **Follow-up:** 9.29 / 11.8 extend `ProjectStatus` (`packages/zanshin_settings/lib/src/model/projects_settings.dart`) and `ProjectStatusStyle` with the DS's `--proj-ahead/behind/diverged/syncing`.
@@ -1456,6 +1458,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **A Project menu opened by keyboard during a running calm phase opens faded: the hold stops a new phase but, by 11.3's rule, does not end a running one.** Low. (Surfaced in the review.)
   - `app/lib/src/features/shell/calm_controller.dart` ("a hold taken during a phase does not end it"); a capsule that kept keyboard focus still opens its menu on ↓ while PLACE is faded, and the menu inherits the island's `ZsFade` until the phase ends (650 ms after the last scroll). The same holds for 10.7's, 10.21's and 11.8's surfaces.
   - **Follow-up:** the shell ends a running calm phase when a surface hold is taken (Claude's proposal), or a slot refuses to open while calm.
+  - **2026-11-01, Ralph (console session):** decided — a surface hold taken during a phase ends it at once (the chrome returns, the menu opens at full opacity); this replaces 11.3's "a hold taken during a phase does not end it". Left: the change in `calm_controller.dart` (console-session fix run).
 
 ## Surfaced in Story 11.6 (bmad-build-auto, 2026-10-18)
 
@@ -2374,6 +2377,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The field is no true combobox with a listbox and an active descendant (item 9); VoiceOver gets the keyboard row only as the field's hint, unheard on a device.** Low.
   - Flutter's `SemanticsRole.comboBox` is unimplemented in this SDK (`flutter/lib/src/semantics/semantics.dart:198`); `graph_search_field.dart` sets `textField: true` plus the keyboard row's label as hint.
   - **Follow-up:** listen with VoiceOver; adopt the combobox/listbox roles once Flutter implements them.
+  - **2026-11-01, Ralph (console session):** wait — no rework while Flutter lacks the role; listen with VoiceOver at the next Flutter bump and adopt the roles then.
 - **The search's production pieces have no production caller until 10.12 mounts the graph: `RepoGraphSearchSource`, `ProjectSearchStore`, `GraphSearchShortcuts` and the `logDefaults` re-read on window focus.** Low.
   - No file in `app/lib` builds `GraphViewControls` or `RepoGraphSource`; the only mount is `app/widgetbook/folders/graph.dart`. `RepoGraphSearchSource.files` and `user.email` through `configGet` are untested for that reason (`app/lib/src/features/graph/graph_ports.dart`).
   - **Follow-up:** 10.12 wires them in the project window (`ProjectSearchStore(store, root)`, `userEmail` via `ZanshinWorker.configGet('user.email', workspaceRoot:)`, `GraphSearchShortcuts` around the window, `model.configChanged()` on window focus) and tests the repo source.
