@@ -1,15 +1,135 @@
 // SPDX-License-Identifier: MIT
 
 //! The line-level `Diff` payload (Story 5.5): `zanshin_jj::Repo::diff`'s files, hunks, lines,
-//! section keys and pins (Story 5.6) on the FFI wire. Story 5.8 adds this noun's `zanshin_diff_*`
-//! externs.
+//! section keys and pins (Story 5.6) on the FFI wire, and `zanshin_diff` (Story 5.8), `jj diff` as
+//! data. Its arguments cross as a `DiffRequest` request BUFFER (ADR-0001 composite-input pattern);
+//! the handle is borrowed, never consumed; the call runs the pre-verb snapshot (Story 9.26), so
+//! every envelope carries the precondition report and the call's warnings.
 
-use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, WIPOffset};
-use zanshin_jj::{FileDiff, Hunk, HunkKey, HunkLine, RevisionDiff};
+use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, VerifierOptions, WIPOffset};
+use tracing::debug;
+use zanshin_jj::{
+    ChangeId, DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, MutateError, RevisionDiff, Whitespace,
+};
 
-use crate::envelope::{finish_envelope, CallReport};
+use crate::envelope::{
+    catch, expect_request_kind, finish_envelope, invalid_request, precondition_envelope, reject_null_request,
+    session_from_handle, CallReport, FfiErrorObj, FFI_INVALID_ARGUMENT,
+};
 use crate::fbs;
+use crate::ffi_strings::{vec_into_token, ZanshinBuf};
+use crate::repo::map_mutate_err;
+use crate::select_tree::strings;
 use crate::status::change_kind_offset;
+
+/// Parse a `DiffRequest` buffer into owned [`DiffOptions`]: `from` or `to` present is the
+/// `--from` / `--to` form (an absent side `@`), else the `-r` form (absent: `@`); absent vectors
+/// are empty, an absent `context` is the effective `diff.git.context`.
+///
+/// `data`/`len` describe a caller-owned buffer Dart builds and frees itself; Rust borrows it for
+/// the call only. The byte slice lives in this function's scope and the result is OWNED, so the
+/// unbounded lifetime `std::slice::from_raw_parts` produces cannot outlive the call.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `DiffRequest` buffer, its `kind` is not
+///   `Diff`, or its `whitespace` is outside the enum.
+/// - `jj.invalid_input` — `revision` together with `from` or `to` (the CLI's `-r` vs
+///   `--from`/`--to` conflict).
+fn read_diff_request(data: *const u8, len: usize) -> Result<DiffOptions, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::DiffRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::Diff)?;
+    let id = |s: Option<&str>| s.map(|s| ChangeId(s.to_owned()));
+    let revisions = match (id(req.revision()), id(req.from()), id(req.to())) {
+        (Some(_), from, to) if from.is_some() || to.is_some() => {
+            return Err(map_mutate_err(MutateError::invalid(
+                "revision cannot be used with from or to",
+            )))
+        }
+        (revision, None, None) => DiffRevisions::Revision(revision),
+        (_, from, to) => DiffRevisions::FromTo { from, to },
+    };
+    Ok(DiffOptions {
+        revisions,
+        paths: strings(req.paths()),
+        context: req.context().map(|c| c.value() as usize),
+        whitespace: diff_whitespace(req.whitespace())?,
+        summary: req.summary(),
+    })
+}
+
+/// A wire `DiffWhitespace`.
+///
+/// # Errors
+/// - `ffi.invalid_argument` — a value outside the enum (a newer writer).
+fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErrorObj> {
+    match whitespace {
+        fbs::DiffWhitespace::Exact => Ok(Whitespace::Exact),
+        fbs::DiffWhitespace::IgnoreAllSpace => Ok(Whitespace::IgnoreAllSpace),
+        fbs::DiffWhitespace::IgnoreSpaceChange => Ok(Whitespace::IgnoreSpaceChange),
+        other => Err(FfiErrorObj {
+            report: None,
+            hints: Vec::new(),
+            code: FFI_INVALID_ARGUMENT.to_owned(),
+            context: Some(format!("unknown diff whitespace: {other:?}")),
+        }),
+    }
+}
+
+/// `jj diff` as data in the repo identified by `handle` (Story 5.8) — `zanshin_jj::Repo::diff`:
+/// per changed file its kind, flags, section keys (the `HunkKey`s `zanshin_select_tree` takes),
+/// hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at.
+///
+/// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, against
+/// its merged parents; absent: `@`) or `from` / `to` (`--from` / `--to`; either present selects
+/// that form, an absent side `@`), `paths` (repo-relative prefixes; empty: every path; one that
+/// matches nothing is a `jj.paths_unmatched` warning), `context` (absent: the effective
+/// `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no hunks). No caching. Writes
+/// NO operation beyond the pre-verb snapshot's (Story 9.26).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `Diff` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `DiffRequest` buffer, its `kind` is not
+///   `Diff`, or its `whitespace` is outside the enum.
+/// - `jj.invalid_input` — `revision` together with `from` or `to` (before the snapshot: nothing
+///   written, no `precondition`), or a `paths` entry that is not a valid repo path or leaves the
+///   repository; detail in `context`.
+/// - `jj.change_not_found` — a revision is malformed or carried by no VISIBLE commit.
+/// - `jj.revset_resolution_error` — an ambiguous change-id prefix or a divergent change (the
+///   CLI's hints in `hints`), a failing `revsets.short-prefixes`, or `@` in a workspace with no
+///   working-copy commit.
+/// - `jj.config_error` — `diff.git.context` or `ui.conflict-marker-style` is malformed.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — a side cannot be read, or another jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.DiffRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration of
+/// the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_diff(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_diff", handle);
+    let buf = catch(|| {
+        let options = read_diff_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.diff(&options);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, diff_to_envelope)
+    });
+    vec_into_token(buf)
+}
 
 /// Build a success `Envelope` with a `Diff` payload and return the finished buffer: the files
 /// exactly as `diff` returned them, in order, every vector written (empty, not absent), a `None`
@@ -359,5 +479,168 @@ mod tests {
             (Some("jj.config_deprecated"), Some("Deprecated user-level config: d"))
         );
         assert_eq!(diff_from_wire(&bytes), sample());
+    }
+
+    /// One `DiffRequest`: `kind`, `revision`, `from`, `to`, `paths`, `context`, `whitespace`,
+    /// `summary`.
+    struct Request<'a> {
+        kind: fbs::RequestKind,
+        revision: Option<&'a str>,
+        from: Option<&'a str>,
+        to: Option<&'a str>,
+        paths: Option<&'a [&'a str]>,
+        context: Option<u32>,
+        whitespace: fbs::DiffWhitespace,
+        summary: bool,
+    }
+
+    impl Default for Request<'_> {
+        fn default() -> Self {
+            Self {
+                kind: fbs::RequestKind::Diff,
+                revision: None,
+                from: None,
+                to: None,
+                paths: None,
+                context: None,
+                whitespace: fbs::DiffWhitespace::Exact,
+                summary: false,
+            }
+        }
+    }
+
+    fn read(r: &Request<'_>) -> Result<zanshin_jj::DiffOptions, crate::envelope::FfiErrorObj> {
+        let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+        let paths = r.paths.map(|paths| {
+            let paths: Vec<_> = paths.iter().map(|p| b.create_string(p)).collect();
+            b.create_vector(&paths)
+        });
+        let revision = r.revision.map(|s| b.create_string(s));
+        let from = r.from.map(|s| b.create_string(s));
+        let to = r.to.map(|s| b.create_string(s));
+        let context = r.context.map(fbs::DiffContext::new);
+        let req = fbs::DiffRequest::create(
+            &mut b,
+            &fbs::DiffRequestArgs {
+                kind: r.kind,
+                revision,
+                from,
+                to,
+                paths,
+                context: context.as_ref(),
+                whitespace: r.whitespace,
+                summary: r.summary,
+            },
+        );
+        b.finish(req, None);
+        let bytes = b.finished_data();
+        super::read_diff_request(bytes.as_ptr(), bytes.len())
+    }
+
+    fn change(id: &str) -> zanshin_jj::ChangeId {
+        zanshin_jj::ChangeId(id.to_owned())
+    }
+
+    /// An empty request is `DiffOptions::default()`; every field reaches its option.
+    #[test]
+    fn the_reader_reads_every_field() {
+        use zanshin_jj::{DiffOptions, DiffRevisions, Whitespace};
+        assert_eq!(read(&Request::default()).expect("valid"), DiffOptions::default());
+        let options = read(&Request {
+            revision: Some("rev"),
+            paths: Some(&["a", "b/c"]),
+            context: Some(0),
+            whitespace: fbs::DiffWhitespace::IgnoreAllSpace,
+            summary: true,
+            ..Request::default()
+        })
+        .expect("valid");
+        assert_eq!(
+            options,
+            DiffOptions {
+                revisions: DiffRevisions::Revision(Some(change("rev"))),
+                paths: vec!["a".into(), "b/c".into()],
+                context: Some(0),
+                whitespace: Whitespace::IgnoreAllSpace,
+                summary: true,
+            }
+        );
+        let ws = |whitespace| {
+            read(&Request {
+                whitespace,
+                ..Request::default()
+            })
+            .map(|o| o.whitespace)
+        };
+        assert_eq!(ws(fbs::DiffWhitespace::Exact).expect("valid"), Whitespace::Exact);
+        assert_eq!(
+            ws(fbs::DiffWhitespace::IgnoreSpaceChange).expect("valid"),
+            Whitespace::IgnoreSpaceChange
+        );
+    }
+
+    /// `from` or `to` selects the from/to form, the absent side `@`.
+    #[test]
+    fn from_or_to_selects_the_from_to_form() {
+        use zanshin_jj::DiffRevisions;
+        let revisions = |from, to| {
+            read(&Request {
+                from,
+                to,
+                ..Request::default()
+            })
+            .expect("valid")
+            .revisions
+        };
+        assert_eq!(
+            revisions(Some("a"), Some("c")),
+            DiffRevisions::FromTo {
+                from: Some(change("a")),
+                to: Some(change("c")),
+            }
+        );
+        assert_eq!(
+            revisions(None, Some("c")),
+            DiffRevisions::FromTo {
+                from: None,
+                to: Some(change("c")),
+            }
+        );
+        assert_eq!(
+            revisions(Some("a"), None),
+            DiffRevisions::FromTo {
+                from: Some(change("a")),
+                to: None,
+            }
+        );
+    }
+
+    /// `revision` with `from` or `to` refuses `jj.invalid_input`; another kind and an unknown
+    /// whitespace `ffi.invalid_argument`.
+    #[test]
+    fn the_reader_refuses_conflicts_another_kind_and_an_unknown_whitespace() {
+        use crate::envelope::{FFI_INVALID_ARGUMENT, JJ_INVALID_INPUT};
+        for (from, to) in [(Some("a"), None), (None, Some("c"))] {
+            let err = read(&Request {
+                revision: Some("r"),
+                from,
+                to,
+                ..Request::default()
+            })
+            .expect_err("conflict");
+            assert_eq!(err.code, JJ_INVALID_INPUT);
+        }
+        let err = read(&Request {
+            kind: fbs::RequestKind::SelectTree,
+            ..Request::default()
+        })
+        .expect_err("wrong kind");
+        assert_eq!(err.code, FFI_INVALID_ARGUMENT);
+        let err = read(&Request {
+            whitespace: fbs::DiffWhitespace(200),
+            ..Request::default()
+        })
+        .expect_err("unknown whitespace");
+        assert_eq!(err.code, FFI_INVALID_ARGUMENT);
     }
 }

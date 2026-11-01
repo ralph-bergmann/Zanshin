@@ -112,6 +112,31 @@ void main() {
       expect(entries.single.fileChanges[0].fromPath, isNull, reason: 'from_path is null-for-absence');
       expect(entries.single.fileChanges[1].kind, FileChangeKind.renamed);
       expect(entries.single.fileChanges[1].fromPath, 'old.txt');
+      expect(entries.single.parentTreeLabels, isEmpty, reason: 'absent labels decode as none');
+      expect(entries.single.treeLabels, isEmpty);
+    });
+
+    test('the tree labels decode (Story 5.8)', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.ShowView,
+        data: fbs.ShowViewObjectBuilder(
+          entries: [
+            fbs.ShowEntryObjectBuilder(
+              change: changeBuilder(),
+              fileChanges: [],
+              parentTreeIds: const ['t1', 't2', 't3'],
+              parentTreeLabels: const ['p1', 'base', 'p2'],
+              treeIds: const ['own'],
+              treeLabels: const ['own label'],
+            ),
+          ],
+        ),
+      ).toBytes();
+
+      final ShowEntry entry = decodeShowViewEnvelope(bytes).single;
+      expect(entry.parentTreeLabels, ['p1', 'base', 'p2']);
+      expect(entry.treeLabels, ['own label']);
     });
 
     test('an empty entry list decodes to an empty list, not an error', () {

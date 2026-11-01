@@ -5,8 +5,10 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import '../worker/responses.dart';
+import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'precondition.dart' show decodeEnvelopeErrorInternal;
+import 'request_bytes.dart';
 import 'select_tree.dart' show HunkKey;
 import 'status.dart' show FileChangeKind, mapChangeKind;
 import 'warning.dart';
@@ -14,9 +16,31 @@ import 'warning.dart';
 // This file owns the Dart half of Story 5.5's line-level `Diff` payload: the
 // models mirroring `zanshin_jj::RevisionDiff` / `FileDiff` / `Hunk` /
 // `HunkLine` and their decoder (Story 5.6 adds kinds, counts, fingerprints and
-// pins). The extern, worker command and `RepoHandle` method are Story 5.8's.
+// pins), plus Story 5.8's `zanshinDiff` adapter. `dart:ffi` stays inside
+// `ffi/` — only the worker isolate calls the adapter.
 
 // ── Models ───────────────────────────────────────────────────────────────────
+
+/// How a diff compares lines (mirrors `zanshin_jj::Whitespace`).
+enum DiffWhitespace {
+  /// Literally.
+  exact,
+
+  /// Ignoring every whitespace occurrence (`-w`, `--ignore-all-space`).
+  ignoreAllSpace,
+
+  /// Ignoring changes in the amount of whitespace (`-b`,
+  /// `--ignore-space-change`).
+  ignoreSpaceChange;
+
+  /// The value this crosses the wire as.
+  @visibleForTesting
+  fbs.DiffWhitespace get wire => switch (this) {
+    DiffWhitespace.exact => fbs.DiffWhitespace.Exact,
+    DiffWhitespace.ignoreAllSpace => fbs.DiffWhitespace.IgnoreAllSpace,
+    DiffWhitespace.ignoreSpaceChange => fbs.DiffWhitespace.IgnoreSpaceChange,
+  };
+}
 
 /// What a [HunkLine] is (mirrors `zanshin_jj::HunkLine`'s variants).
 enum HunkLineKind {
@@ -166,12 +190,54 @@ final class Diff {
   final List<ZanshinWarning> warnings;
 }
 
+// ── FFI adapter ──────────────────────────────────────────────────────────────
+
+/// Call `zanshin_diff` with the raw `u64` handle and a `DiffRequest` request
+/// buffer, and return the FlatBuffers `Envelope` bytes (Story 5.8) — `jj diff`
+/// as data.
+///
+/// [revision] is `-r` (`null`: `@`), diffed against its merged parents; [from]
+/// / [to] are `--from` / `--to` — either set selects that form, the other side
+/// `null` = `@`; [revision] together with either is refused
+/// (`jj.invalid_input`). [paths] are repo-relative prefixes (empty: every
+/// path), [context] the context lines (`null`: the effective
+/// `diff.git.context`), [whitespace] `-w` / `-b`, [summary] drops the hunks.
+Uint8List zanshinDiff(
+  int rawHandle, {
+  String? revision,
+  String? from,
+  String? to,
+  List<String> paths = const [],
+  int? context,
+  DiffWhitespace whitespace = DiffWhitespace.exact,
+  bool summary = false,
+}) {
+  rejectInteriorNul(revision, 'revision');
+  rejectInteriorNul(from, 'from');
+  rejectInteriorNul(to, 'to');
+  rejectInteriorNuls(paths, 'paths');
+  if (context != null && context < 0) {
+    throw ArgumentError.value(context, 'context', 'must not be negative');
+  }
+  final Uint8List request = fbs.DiffRequestObjectBuilder(
+    kind: fbs.RequestKind.Diff,
+    revision: revision,
+    from: from,
+    to: to,
+    paths: paths,
+    context: context == null ? null : fbs.DiffContextObjectBuilder(value: context),
+    whitespace: whitespace.wire,
+    summary: summary,
+  ).toBytes();
+  return callWithRequest(request, (ptr, len) => zanshin_diff(rawHandle, ptr, len));
+}
+
 // ── Decoder ──────────────────────────────────────────────────────────────────
 
 /// Decode a `Diff` `Envelope` buffer into a [Diff].
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls
-/// arrive with Story 5.8's worker command. An out-of-range `HunkLineKind` byte
+/// go through `ZanshinWorker.diff`. An out-of-range `HunkLineKind` byte
 /// surfaces as the generated accessor's `StateError` (by design: a corrupt
 /// buffer, not a refusal).
 @visibleForTesting

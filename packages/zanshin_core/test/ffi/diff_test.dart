@@ -177,4 +177,15 @@ void main() {
       throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
     );
   });
+
+  test('every DiffWhitespace crosses as its wire value', () {
+    expect(
+      {for (final DiffWhitespace ws in DiffWhitespace.values) ws: ws.wire},
+      {
+        DiffWhitespace.exact: fbs.DiffWhitespace.Exact,
+        DiffWhitespace.ignoreAllSpace: fbs.DiffWhitespace.IgnoreAllSpace,
+        DiffWhitespace.ignoreSpaceChange: fbs.DiffWhitespace.IgnoreSpaceChange,
+      },
+    );
+  });
 }

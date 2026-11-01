@@ -415,6 +415,68 @@ fn show_round_trip_nests_the_change_and_the_per_path_change_list() {
     assert_eq!(files.len(), 1);
     assert_eq!(files.get(0).path(), Some("a.txt"));
     assert_eq!(files.get(0).kind(), fbs::ChangeKind::Added);
+    let entry = entries.get(0);
+    assert!(entry.parent_tree_labels().expect("labels written").is_empty());
+    assert!(entry.tree_labels().expect("labels written").is_empty());
+
+    close_handle(handle);
+}
+
+/// Story 5.8: a merge of two sides that conflict in `c.txt` has a labeled, conflicted parent
+/// tree; `parent_tree_labels` / `tree_labels` reach the wire exactly as `Repo::show` reports them.
+#[test]
+fn show_carries_a_conflicted_merges_tree_labels() {
+    test_helpers::pin_test_env();
+    let tmp = tempfile::TempDir::new().expect("tempdir");
+    let main = tmp.path().join("main");
+    fs::create_dir(&main).expect("main dir");
+    let root = Repo::init(&zanshin_jj::InitOptions {
+        path: main,
+        backend: Some(zanshin_jj::Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init")
+    .workspace_root()
+    .to_owned();
+    let mut repo = Repo::open(&root).expect("open");
+    let a = repo.status().expect("status").working_copy_change_id.expect("@");
+    let mut side = |content: &str| {
+        repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new");
+        fs::write(root.join("c.txt"), content).expect("write");
+        repo.status().expect("status").working_copy_change_id.expect("@")
+    };
+    let (x, y) = (side("x\n"), side("y\n"));
+    repo.new_change(&[x, y], &[], &[]).expect("merge");
+    let expected = repo.show(None, None).expect("show").swap_remove(0);
+    assert!(
+        expected.parent_tree_labels.len() > 1,
+        "a labeled conflicted parent tree"
+    );
+    assert!(
+        !expected.tree_labels.is_empty(),
+        "the merge's own tree is conflicted too"
+    );
+    drop(repo);
+    let handle = open_handle(&root);
+
+    let req = show_request_bytes(None);
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let bytes = unsafe { read_and_free(zanshin_show(handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "error: {:?}", env.error().and_then(|e| e.code()));
+    let entry = env
+        .data_as_show_view()
+        .expect("ShowView payload")
+        .entries()
+        .expect("entries present")
+        .get(0);
+    let read = |v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>| -> Vec<String> {
+        v.expect("written").iter().map(ToOwned::to_owned).collect()
+    };
+    assert_eq!(read(entry.parent_tree_labels()), expected.parent_tree_labels);
+    assert_eq!(read(entry.tree_labels()), expected.tree_labels);
 
     close_handle(handle);
 }

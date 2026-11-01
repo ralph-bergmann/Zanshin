@@ -220,6 +220,8 @@ final class ShowEntry {
     required this.fileChanges,
     this.parentTreeIds = const [],
     this.treeIds = const [],
+    this.parentTreeLabels = const [],
+    this.treeLabels = const [],
   });
 
   /// Full metadata for the revision — the same [Change] `getChange` returns for
@@ -243,6 +245,14 @@ final class ShowEntry {
   /// `left` of a selection made against it as `selectTree(from:)`, for
   /// `RepoHandle.diffedit`'s `from` / `to` form.
   final List<String> treeIds;
+
+  /// The conflict labels of the tree [parentTreeIds] name (Story 5.8) — empty =
+  /// unlabeled, else one per id.
+  final List<String> parentTreeLabels;
+
+  /// The conflict labels of the revision's own tree [treeIds] (Story 5.8) —
+  /// empty = unlabeled, else one per id.
+  final List<String> treeLabels;
 }
 
 /// What `interdiff` reports (mirrors `zanshin_jj::InterdiffView`).
@@ -331,6 +341,8 @@ ShowEntry _mapShowEntry(fbs.ShowEntry e) => ShowEntry(
   fileChanges: e.fileChanges?.map(mapFileChangeTable).toList() ?? const [],
   parentTreeIds: e.parentTreeIds ?? const [],
   treeIds: e.treeIds ?? const [],
+  parentTreeLabels: e.parentTreeLabels ?? const [],
+  treeLabels: e.treeLabels ?? const [],
 );
 
 /// Decode an `EvologView` `Envelope` buffer into a `List<EvologEntry>` that also

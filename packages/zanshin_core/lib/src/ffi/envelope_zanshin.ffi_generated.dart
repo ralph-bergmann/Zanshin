@@ -122,7 +122,7 @@ class _RevsetErrorKindReader extends fb.Reader<RevsetErrorKind> {
 ///  parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 63 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 64 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -204,7 +204,8 @@ enum RequestKind {
   RevsetCounts(69),
   FindChanges(70),
   FileEdit(71),
-  FileDelete(72);
+  FileDelete(72),
+  Diff(73);
 
   final int value;
   const RequestKind(this.value);
@@ -357,6 +358,8 @@ enum RequestKind {
         return RequestKind.FileEdit;
       case 72:
         return RequestKind.FileDelete;
+      case 73:
+        return RequestKind.Diff;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -365,7 +368,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 72;
+  static const int maxValue = 73;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -424,6 +427,48 @@ class _SelectTreeVerbReader extends fb.Reader<SelectTreeVerb> {
   @override
   SelectTreeVerb read(fb.BufferContext bc, int offset) =>
       SelectTreeVerb.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  How `DiffRequest` compares lines (Story 5.8): `Exact` (0, the default) literally,
+///  `IgnoreAllSpace` = `-w`, `IgnoreSpaceChange` = `-b`. Member order IS the wire value — APPEND
+///  only; an unknown value is `ffi.invalid_argument`.
+enum DiffWhitespace {
+  Exact(0),
+  IgnoreAllSpace(1),
+  IgnoreSpaceChange(2);
+
+  final int value;
+  const DiffWhitespace(this.value);
+
+  factory DiffWhitespace.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return DiffWhitespace.Exact;
+      case 1:
+        return DiffWhitespace.IgnoreAllSpace;
+      case 2:
+        return DiffWhitespace.IgnoreSpaceChange;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static DiffWhitespace? _createOrNull(int? value) => value == null ? null : DiffWhitespace.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<DiffWhitespace> reader = _DiffWhitespaceReader();
+}
+
+class _DiffWhitespaceReader extends fb.Reader<DiffWhitespace> {
+  const _DiffWhitespaceReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  DiffWhitespace read(fb.BufferContext bc, int offset) =>
+      DiffWhitespace.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  One of the `jj arrange` TUI's key actions (Story 9.16): swap with the one parent (`J`) / the
@@ -3369,6 +3414,225 @@ class TreeSelectionObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(0, treeIdsOffset);
     fbBuilder.addOffset(1, labelsOffset);
     fbBuilder.addOffset(2, leftOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `DiffRequest.context`'s value. WHY a struct: an optional scalar is not supported by
+///  `flatc --dart` (see `MovementOffset`); an absent struct field is null.
+class DiffContext {
+  DiffContext._(this._bc, this._bcOffset);
+
+  static const fb.Reader<DiffContext> reader = _DiffContextReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get value => const fb.Uint32Reader().read(_bc, _bcOffset + 0);
+
+  @override
+  String toString() {
+    return 'DiffContext{value: ${value}}';
+  }
+}
+
+class _DiffContextReader extends fb.StructReader<DiffContext> {
+  const _DiffContextReader();
+
+  @override
+  int get size => 4;
+
+  @override
+  DiffContext createObject(fb.BufferContext bc, int offset) => DiffContext._(bc, offset);
+}
+
+class DiffContextBuilder {
+  DiffContextBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  int finish(int value) {
+    fbBuilder.putUint32(value);
+    return fbBuilder.offset;
+  }
+}
+
+class DiffContextObjectBuilder extends fb.ObjectBuilder {
+  final int _value;
+
+  DiffContextObjectBuilder({
+    required int value,
+  }) : _value = value;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.putUint32(_value);
+    return fbBuilder.offset;
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_diff` (Story 5.8) — `jj diff` as data (`zanshin_jj::Repo::diff`).
+///
+///    revision    `-r`: jj reverse-hex change id, diffed against its merged parents; absent → `@`
+///    from / to   `--from` / `--to`: jj reverse-hex change ids; either present → `from`'s tree
+///                against `to`'s, an absent side `@`. `revision` together with either is refused
+///                (`jj.invalid_input`, the CLI's `-r` vs `--from`/`--to` conflict)
+///    paths       repo-relative path PREFIXES; absent / empty = every path
+///    context     `--context`; absent → the effective `diff.git.context` (3 in jj's defaults)
+///    whitespace  `-w` / `-b`
+///    summary     leave every file's `hunks` empty (kinds, flags, sections, counts, fingerprints
+///                kept)
+class DiffRequest {
+  DiffRequest._(this._bc, this._bcOffset);
+  factory DiffRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<DiffRequest> reader = _DiffRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
+  DiffContext? get context => DiffContext.reader.vTableGetNullable(_bc, _bcOffset, 14);
+  DiffWhitespace get whitespace => DiffWhitespace.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 16, 0));
+  bool get summary => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
+
+  @override
+  String toString() {
+    return 'DiffRequest{kind: ${kind}, revision: ${revision}, from: ${from}, to: ${to}, paths: ${paths}, context: ${context}, whitespace: ${whitespace}, summary: ${summary}}';
+  }
+}
+
+class _DiffRequestReader extends fb.TableReader<DiffRequest> {
+  const _DiffRequestReader();
+
+  @override
+  DiffRequest createObject(fb.BufferContext bc, int offset) => DiffRequest._(bc, offset);
+}
+
+class DiffRequestBuilder {
+  DiffRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(8);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addContext(int offset) {
+    fbBuilder.addStruct(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWhitespace(DiffWhitespace? whitespace) {
+    fbBuilder.addUint8(6, whitespace?.value);
+    return fbBuilder.offset;
+  }
+
+  int addSummary(bool? summary) {
+    fbBuilder.addBool(7, summary);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class DiffRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _revision;
+  final String? _from;
+  final String? _to;
+  final List<String>? _paths;
+  final DiffContextObjectBuilder? _context;
+  final DiffWhitespace? _whitespace;
+  final bool? _summary;
+
+  DiffRequestObjectBuilder({
+    RequestKind? kind,
+    String? revision,
+    String? from,
+    String? to,
+    List<String>? paths,
+    DiffContextObjectBuilder? context,
+    DiffWhitespace? whitespace,
+    bool? summary,
+  }) : _kind = kind,
+       _revision = revision,
+       _from = from,
+       _to = to,
+       _paths = paths,
+       _context = context,
+       _whitespace = whitespace,
+       _summary = summary;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
+    final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(8);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addOffset(2, fromOffset);
+    fbBuilder.addOffset(3, toOffset);
+    fbBuilder.addOffset(4, pathsOffset);
+    if (_context != null) {
+      fbBuilder.addStruct(5, _context!.finish(fbBuilder));
+    }
+    fbBuilder.addUint8(6, _whitespace?.value);
+    fbBuilder.addBool(7, _summary);
     return fbBuilder.endTable();
   }
 
@@ -19589,6 +19853,10 @@ class GitExportResultObjectBuilder extends fb.ObjectBuilder {
 ///
 ///  `tree_ids` (Story 9.17) is the commit's OWN tree, hex in order — the `left` of a selection made
 ///  against it as `SelectTreeRequest.from` (`diffedit --from`).
+///
+///  `parent_tree_labels` / `tree_labels` (Story 5.8) are those trees' conflict labels, one per id
+///  in order, or EMPTY when the tree is unlabeled — always written, exactly as
+///  `zanshin_jj::ShowEntry` carries them.
 class ShowEntry {
   ShowEntry._(this._bc, this._bcOffset);
   factory ShowEntry(List<int> bytes) {
@@ -19607,10 +19875,13 @@ class ShowEntry {
   List<String>? get parentTreeIds =>
       const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   List<String>? get treeIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  List<String>? get parentTreeLabels =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
+  List<String>? get treeLabels => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 14);
 
   @override
   String toString() {
-    return 'ShowEntry{change: ${change}, fileChanges: ${fileChanges}, parentTreeIds: ${parentTreeIds}, treeIds: ${treeIds}}';
+    return 'ShowEntry{change: ${change}, fileChanges: ${fileChanges}, parentTreeIds: ${parentTreeIds}, treeIds: ${treeIds}, parentTreeLabels: ${parentTreeLabels}, treeLabels: ${treeLabels}}';
   }
 }
 
@@ -19627,7 +19898,7 @@ class ShowEntryBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(6);
   }
 
   int addChangeOffset(int? offset) {
@@ -19650,6 +19921,16 @@ class ShowEntryBuilder {
     return fbBuilder.offset;
   }
 
+  int addParentTreeLabelsOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTreeLabelsOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -19660,16 +19941,22 @@ class ShowEntryObjectBuilder extends fb.ObjectBuilder {
   final List<FileChangeObjectBuilder>? _fileChanges;
   final List<String>? _parentTreeIds;
   final List<String>? _treeIds;
+  final List<String>? _parentTreeLabels;
+  final List<String>? _treeLabels;
 
   ShowEntryObjectBuilder({
     ChangeObjectBuilder? change,
     List<FileChangeObjectBuilder>? fileChanges,
     List<String>? parentTreeIds,
     List<String>? treeIds,
+    List<String>? parentTreeLabels,
+    List<String>? treeLabels,
   }) : _change = change,
        _fileChanges = fileChanges,
        _parentTreeIds = parentTreeIds,
-       _treeIds = treeIds;
+       _treeIds = treeIds,
+       _parentTreeLabels = parentTreeLabels,
+       _treeLabels = treeLabels;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -19684,11 +19971,19 @@ class ShowEntryObjectBuilder extends fb.ObjectBuilder {
     final int? treeIdsOffset = _treeIds == null
         ? null
         : fbBuilder.writeList(_treeIds!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(4);
+    final int? parentTreeLabelsOffset = _parentTreeLabels == null
+        ? null
+        : fbBuilder.writeList(_parentTreeLabels!.map(fbBuilder.writeString).toList());
+    final int? treeLabelsOffset = _treeLabels == null
+        ? null
+        : fbBuilder.writeList(_treeLabels!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(6);
     fbBuilder.addOffset(0, changeOffset);
     fbBuilder.addOffset(1, fileChangesOffset);
     fbBuilder.addOffset(2, parentTreeIdsOffset);
     fbBuilder.addOffset(3, treeIdsOffset);
+    fbBuilder.addOffset(4, parentTreeLabelsOffset);
+    fbBuilder.addOffset(5, treeLabelsOffset);
     return fbBuilder.endTable();
   }
 
@@ -24507,7 +24802,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
 ///  A line-level diff (Story 5.5) — `zanshin_jj::Repo::diff`'s files, in its order. `files` is
 ///  always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
 ///  at; `commit_id`, the revision (`-r`) or `to` (`--from`/`--to`); `from_commit_id`, `from`,
-///  ABSENT for the revision form.
+///  ABSENT for the revision form. Returned by `zanshin_diff` (Story 5.8).
 class Diff {
   Diff._(this._bc, this._bcOffset);
   factory Diff(List<int> bytes) {

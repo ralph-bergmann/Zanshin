@@ -16,6 +16,7 @@ import '../ffi/commit.dart' as repo_ffi_commit;
 import '../ffi/commit_contents.dart' as repo_ffi_commit_contents;
 import '../ffi/commit_views.dart' as repo_ffi_commit_views;
 import '../ffi/config.dart' as repo_ffi_config;
+import '../ffi/diff.dart' as repo_ffi_diff;
 import '../ffi/diffedit.dart' as repo_ffi_diffedit;
 import '../ffi/drop_actions.dart' as repo_ffi_drop_actions;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
@@ -1789,6 +1790,54 @@ class ZanshinWorker {
       ),
     );
     return repo_ffi_select_tree.decodeSelectedTreeEnvelopeInternal(bytes);
+  }
+
+  /// `jj diff` as data in the repo identified by [handleId] (Story 5.8):
+  /// [revision] (`-r`, `null` = `@`) or [from] / [to] (`--from` / `--to`, a
+  /// `null` side `@`), [paths], [context], [whitespace] and [summary] cross
+  /// unchanged.
+  ///
+  /// Sends a [DiffCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<Diff>` bytes. Writes no operation beyond the pre-verb snapshot's.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`). Completes
+  /// with a [StateError] after [close]; the close-guard [StateError] is
+  /// delivered synchronously by [RepoHandle.diff].
+  Future<repo_ffi_diff.Diff> diff(
+    int handleId, {
+    String? revision,
+    String? from,
+    String? to,
+    List<String> paths = const [],
+    int? context,
+    repo_ffi_diff.DiffWhitespace whitespace = repo_ffi_diff.DiffWhitespace.exact,
+    bool summary = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNul(revision, 'revision');
+    rejectInteriorNul(from, 'from');
+    rejectInteriorNul(to, 'to');
+    rejectInteriorNuls(paths, 'paths');
+    if (context != null && context < 0) {
+      throw ArgumentError.value(context, 'context', 'must not be negative');
+    }
+    final Uint8List bytes = await send(
+      DiffCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revision: revision,
+        from: from,
+        to: to,
+        paths: paths,
+        context: context,
+        whitespace: whitespace,
+        summary: summary,
+      ),
+    );
+    return repo_ffi_diff.decodeDiffEnvelopeInternal(bytes);
   }
 
   /// List a revision's conflicts with what a merge editor needs, in the repo
@@ -4605,6 +4654,35 @@ void _workerEntry(_WorkerInit init) {
               files: files,
               from: from,
               verb: verb,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case DiffCommand(
+          :final int handleId,
+          :final String? revision,
+          :final String? from,
+          :final String? to,
+          :final List<String> paths,
+          :final int? context,
+          :final repo_ffi_diff.DiffWhitespace whitespace,
+          :final bool summary,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: DiffCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_diff.zanshinDiff(
+              raw,
+              revision: revision,
+              from: from,
+              to: to,
+              paths: paths,
+              context: context,
+              whitespace: whitespace,
+              summary: summary,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }

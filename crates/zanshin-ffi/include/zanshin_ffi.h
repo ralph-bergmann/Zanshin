@@ -999,6 +999,48 @@ ZanshinBuf *zanshin_config_gc_delete(const uint8_t *data, uintptr_t len);
 ZanshinBuf *zanshin_diagnostics(void);
 
 /**
+ * `jj diff` as data in the repo identified by `handle` (Story 5.8) — `zanshin_jj::Repo::diff`:
+ * per changed file its kind, flags, section keys (the `HunkKey`s `zanshin_select_tree` takes),
+ * hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at.
+ *
+ * The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, against
+ * its merged parents; absent: `@`) or `from` / `to` (`--from` / `--to`; either present selects
+ * that form, an absent side `@`), `paths` (repo-relative prefixes; empty: every path; one that
+ * matches nothing is a `jj.paths_unmatched` warning), `context` (absent: the effective
+ * `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no hunks). No caching. Writes
+ * NO operation beyond the pre-verb snapshot's (Story 9.26).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `Diff` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `DiffRequest` buffer, its `kind` is not
+ *   `Diff`, or its `whitespace` is outside the enum.
+ * - `jj.invalid_input` — `revision` together with `from` or `to` (before the snapshot: nothing
+ *   written, no `precondition`), or a `paths` entry that is not a valid repo path or leaves the
+ *   repository; detail in `context`.
+ * - `jj.change_not_found` — a revision is malformed or carried by no VISIBLE commit.
+ * - `jj.revset_resolution_error` — an ambiguous change-id prefix or a divergent change (the
+ *   CLI's hints in `hints`), a failing `revsets.short-prefixes`, or `@` in a workspace with no
+ *   working-copy commit.
+ * - `jj.config_error` — `diff.git.context` or `ui.conflict-marker-style` is malformed.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — a side cannot be read, or another jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.DiffRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration of
+ * the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_diff(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
  * Touch up a revision's content with a GUI-selected tree, in the repo identified by `handle` —
  * the CLI's `jj diffedit` (Story 9.17).
  *

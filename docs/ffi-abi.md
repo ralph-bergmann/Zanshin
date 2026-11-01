@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 114
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 115
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -324,9 +324,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Seventy-four of the 114 exported symbols take their arguments as a **FlatBuffers
+Seventy-five of the 115 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Sixty-two use the handle-scoped three-parameter shape:
+strings. Sixty-three use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -485,7 +485,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **66** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **67** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -588,7 +588,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **114** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **115** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -663,6 +663,7 @@ or no `# Errors` block.
 | `zanshin_change_actions` | `(uint64_t handle, const char *change_id)` | — | `ChangeActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 (+9.50) |
 | `zanshin_select_tree` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SelectTreeRequest` | `SelectedTree` (see § `zanshin_select_tree` — the GUI diff-editor contract) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.50 (`mode`: loop 9.9–9.12 second follow-on; `from`: 9.17) |
+| `zanshin_diff` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DiffRequest` | `Diff` (see § `Diff` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 5.8 |
 | `zanshin_resolve_list` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ResolveListRequest` | `ResolveList` (see § `zanshin_resolve_list`, `zanshin_resolve`, `zanshin_diffedit`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.no_conflicts`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
 | `zanshin_resolve` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ResolveRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.no_conflicts`, `jj.immutable`, `jj.stale_selection`, `jj.conflict_not_resolvable`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
 | `zanshin_diffedit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DiffeditRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_selection`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
@@ -2449,8 +2450,7 @@ The line-level diff between two revisions — `zanshin_jj::Repo::diff`'s `Revisi
 field for field and in its order (its files are `compute_hunks`' for the same trees, plus copy
 records). Built by `zanshin_ffi::diff::diff_to_envelope(&RevisionDiff, &CallReport)` (an
 infallible builder: the call's `CallReport` rides as `warnings` / `precondition` as on every
-envelope). **No extern yet** — Story 5.8 adds `zanshin_diff_*` to `diff.rs`, the worker command
-and the `RepoHandle` method.
+envelope). Returned by `zanshin_diff` (Story 5.8, below).
 
 ```
 Diff     { files: [FileDiff], operation_id, commit_id, from_commit_id }       // pins: Story 5.6
@@ -2491,4 +2491,31 @@ Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart
 (with `operationId` / `commitId` / `fromCommitId`), `FileDiff` (`kind` as `status.dart`'s
 `FileChangeKind`, `fromPath`, `removed`, `added`, `fingerprint`), `Hunk` (ranges as
 `({int start, int end})` records), `HunkLine`, `HunkLineKind`; keys are `select_tree.dart`'s
-`HunkKey`. Not exported from `zanshin_core.dart` until Story 5.8.
+`HunkKey`. Exported from `zanshin_core.dart` since Story 5.8 (`Diff`, `DiffWhitespace`, `FileDiff`,
+`Hunk`, `HunkLine`, `HunkLineKind`).
+
+### `zanshin_diff` (Story 5.8)
+
+`jj diff` as data: `zanshin_jj::Repo::diff` behind the handle-scoped request-buffer shape,
+answering the `Diff` payload above with the precondition report (the call runs the pre-verb
+snapshot and writes no other operation). No caching.
+
+```
+DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffContext { value: uint },
+              whitespace: DiffWhitespace (Exact | IgnoreAllSpace | IgnoreSpaceChange), summary }
+```
+
+- `revision` = `-r` (absent `@`), diffed against its merged parents; `from` / `to` = `--from` /
+  `--to` — either present selects that form, an absent side `@`. `revision` with either is
+  `jj.invalid_input` before the snapshot (no `precondition`), the CLI's clap conflict.
+- `paths`: repo-relative prefixes (no fileset DSL); each one matching nothing is a
+  `jj.paths_unmatched` warning on the envelope. `context` absent = the effective
+  `diff.git.context`; a struct because `flatc --dart` has no optional scalars. `whitespace` =
+  `-w` / `-b`, a value outside the enum `ffi.invalid_argument`. `summary` drops only the hunks.
+
+Dart: `zanshinDiff` (`lib/src/ffi/diff.dart`, interior-NUL guard as `zanshinSelectTree`),
+`DiffCommand`, `ZanshinWorker.diff`, `RepoHandle.diff({revision, from, to, paths, context,
+whitespace, summary})` → `Future<Diff>`.
+
+`ShowEntry` also carries `parent_tree_labels` / `tree_labels` since Story 5.8 (always written; empty
+= unlabeled, else one per id) — Dart `ShowEntry.parentTreeLabels` / `treeLabels`.

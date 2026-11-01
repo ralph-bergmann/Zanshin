@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import '../ffi/bookmarks.dart' show BookmarkSortKey;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
+import '../ffi/diff.dart' show DiffWhitespace;
 import '../ffi/drop_actions.dart' show DropLocation, DropSource;
 import '../ffi/fetch.dart' show FetchRefs, FetchRemotes;
 import '../ffi/movement.dart' show MovementDirection;
@@ -2311,6 +2312,51 @@ final class SelectTreeCommand extends WorkerCommand implements HandleScopedComma
   /// Story 9.17: the revision whose own tree is the diff's left side
   /// (`diffedit --from`); `null` = the revision's parent tree.
   final String? from;
+}
+
+/// `jj diff` as data in the repo identified by [handleId] (Story 5.8). Writes
+/// no operation beyond the pre-verb snapshot's.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinDiff(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<Diff>` bytes.
+final class DiffCommand extends WorkerCommand implements HandleScopedCommand {
+  const DiffCommand({
+    required super.commandId,
+    required this.handleId,
+    this.revision,
+    this.from,
+    this.to,
+    this.paths = const [],
+    this.context,
+    this.whitespace = DiffWhitespace.exact,
+    this.summary = false,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `-r`; `null` = `@` (unless [from] or [to] is set).
+  final String? revision;
+
+  /// `--from`; `null` = `@` in the from/to form.
+  final String? from;
+
+  /// `--to`; `null` = `@` in the from/to form.
+  final String? to;
+
+  /// Repo-relative path prefixes; empty = every path.
+  final List<String> paths;
+
+  /// `--context`; `null` = the effective `diff.git.context`.
+  final int? context;
+
+  /// `-w` / `-b`.
+  final DiffWhitespace whitespace;
+
+  /// Leave every file's hunks empty.
+  final bool summary;
 }
 
 /// List a revision's conflicts with what a merge editor needs, in the repo

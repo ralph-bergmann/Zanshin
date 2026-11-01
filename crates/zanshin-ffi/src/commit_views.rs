@@ -201,8 +201,8 @@ fn read_interdiff_request(data: *const u8, len: usize) -> Result<InterdiffReques
 /// Serialise `&[ShowEntry]` into a finished `Envelope<ShowView>` buffer.
 ///
 /// Children before parents (`FlatBuffers` requirement): each entry's nested `Change`, its
-/// `[FileChange]` vector, its `parent_tree_ids` (Story 9.50) and `tree_ids` (Story 9.17) are complete before the
-/// `ShowEntry` table opens, and the outer vector
+/// `[FileChange]` vector, its `parent_tree_ids` (Story 9.50) and `tree_ids` (Story 9.17) and
+/// their labels (Story 5.8) are complete before the `ShowEntry` table opens, and the outer vector
 /// and `ShowView` table come after the loop.
 fn show_view_to_envelope(entries: &[ShowEntry], report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
@@ -211,10 +211,10 @@ fn show_view_to_envelope(entries: &[ShowEntry], report: &crate::envelope::CallRe
         .map(|e| {
             let change = change_offset(&mut b, &e.change);
             let file_changes = file_changes_vector(&mut b, &e.file_changes);
-            let parent_tree_ids: Vec<_> = e.parent_tree_ids.iter().map(|id| b.create_string(id)).collect();
-            let parent_tree_ids = b.create_vector(&parent_tree_ids);
-            let tree_ids: Vec<_> = e.tree_ids.iter().map(|id| b.create_string(id)).collect();
-            let tree_ids = b.create_vector(&tree_ids);
+            let parent_tree_ids = string_vector(&mut b, &e.parent_tree_ids);
+            let tree_ids = string_vector(&mut b, &e.tree_ids);
+            let parent_tree_labels = string_vector(&mut b, &e.parent_tree_labels);
+            let tree_labels = string_vector(&mut b, &e.tree_labels);
             fbs::ShowEntry::create(
                 &mut b,
                 &fbs::ShowEntryArgs {
@@ -222,6 +222,8 @@ fn show_view_to_envelope(entries: &[ShowEntry], report: &crate::envelope::CallRe
                     file_changes: Some(file_changes),
                     parent_tree_ids: Some(parent_tree_ids),
                     tree_ids: Some(tree_ids),
+                    parent_tree_labels: Some(parent_tree_labels),
+                    tree_labels: Some(tree_labels),
                 },
             )
         })
@@ -229,6 +231,14 @@ fn show_view_to_envelope(entries: &[ShowEntry], report: &crate::envelope::CallRe
     let vec = b.create_vector(&offsets);
     let table = fbs::ShowView::create(&mut b, &fbs::ShowViewArgs { entries: Some(vec) });
     finish_envelope(b, fbs::Payload::ShowView, Some(table.as_union_value()), report)
+}
+
+fn string_vector<'b>(
+    b: &mut FlatBufferBuilder<'b>,
+    items: &[String],
+) -> flatbuffers::WIPOffset<flatbuffers::Vector<'b, flatbuffers::ForwardsUOffset<&'b str>>> {
+    let offsets: Vec<_> = items.iter().map(|item| b.create_string(item)).collect();
+    b.create_vector(&offsets)
 }
 
 /// Serialise `&[EvologEntry]` into a finished `Envelope<EvologView>` buffer.
@@ -605,7 +615,7 @@ mod tests {
                 },
             ],
             parent_tree_ids: vec!["t1".to_owned(), "t2".to_owned(), "t3".to_owned()],
-            parent_tree_labels: Vec::new(),
+            parent_tree_labels: vec!["p1".to_owned(), "base".to_owned(), "p2".to_owned()],
             tree_ids: vec!["own".to_owned()],
             tree_labels: Vec::new(),
         }];
@@ -649,6 +659,10 @@ mod tests {
             .iter()
             .collect();
         assert_eq!(tree_ids, ["own"]);
+        let entry = fbs_entries.get(0);
+        let parent_tree_labels: Vec<&str> = entry.parent_tree_labels().expect("labels present").iter().collect();
+        assert_eq!(parent_tree_labels, ["p1", "base", "p2"]);
+        assert!(entry.tree_labels().expect("written even when empty").is_empty());
     }
 
     #[test]

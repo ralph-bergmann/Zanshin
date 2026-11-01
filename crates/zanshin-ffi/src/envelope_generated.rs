@@ -194,13 +194,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 72;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 73;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 73] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 74] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -274,6 +274,7 @@ pub mod zanshin {
             RequestKind::FindChanges,
             RequestKind::FileEdit,
             RequestKind::FileDelete,
+            RequestKind::Diff,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -292,7 +293,7 @@ pub mod zanshin {
         /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 63 tables the variant name plus `Request` IS
+        /// squash, never a different verb. For the other 64 tables the variant name plus `Request` IS
         /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -379,9 +380,10 @@ pub mod zanshin {
             pub const FindChanges: Self = Self(70);
             pub const FileEdit: Self = Self(71);
             pub const FileDelete: Self = Self(72);
+            pub const Diff: Self = Self(73);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 72;
+            pub const ENUM_MAX: u8 = 73;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -456,6 +458,7 @@ pub mod zanshin {
                 Self::FindChanges,
                 Self::FileEdit,
                 Self::FileDelete,
+                Self::Diff,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -533,6 +536,7 @@ pub mod zanshin {
                     Self::FindChanges => Some("FindChanges"),
                     Self::FileEdit => Some("FileEdit"),
                     Self::FileDelete => Some("FileDelete"),
+                    Self::Diff => Some("Diff"),
                     _ => None,
                 }
             }
@@ -696,6 +700,103 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for SelectTreeVerb {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_DIFF_WHITESPACE: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_DIFF_WHITESPACE: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_DIFF_WHITESPACE: [DiffWhitespace; 3] = [
+            DiffWhitespace::Exact,
+            DiffWhitespace::IgnoreAllSpace,
+            DiffWhitespace::IgnoreSpaceChange,
+        ];
+
+        /// How `DiffRequest` compares lines (Story 5.8): `Exact` (0, the default) literally,
+        /// `IgnoreAllSpace` = `-w`, `IgnoreSpaceChange` = `-b`. Member order IS the wire value — APPEND
+        /// only; an unknown value is `ffi.invalid_argument`.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct DiffWhitespace(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl DiffWhitespace {
+            pub const Exact: Self = Self(0);
+            pub const IgnoreAllSpace: Self = Self(1);
+            pub const IgnoreSpaceChange: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Exact, Self::IgnoreAllSpace, Self::IgnoreSpaceChange];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Exact => Some("Exact"),
+                    Self::IgnoreAllSpace => Some("IgnoreAllSpace"),
+                    Self::IgnoreSpaceChange => Some("IgnoreSpaceChange"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for DiffWhitespace {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for DiffWhitespace {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for DiffWhitespace {
+            type Output = DiffWhitespace;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for DiffWhitespace {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for DiffWhitespace {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for DiffWhitespace {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -4542,6 +4643,104 @@ pub mod zanshin {
             }
         }
 
+        /// `DiffRequest.context`'s value. WHY a struct: an optional scalar is not supported by
+        /// `flatc --dart` (see `MovementOffset`); an absent struct field is null.
+        // struct DiffContext, aligned to 4
+        #[repr(transparent)]
+        #[derive(Clone, Copy, PartialEq)]
+        pub struct DiffContext(pub [u8; 4]);
+        impl Default for DiffContext {
+            fn default() -> Self {
+                Self([0; 4])
+            }
+        }
+        impl ::core::fmt::Debug for DiffContext {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                f.debug_struct("DiffContext").field("value", &self.value()).finish()
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for DiffContext {}
+        impl<'a> ::flatbuffers::Follow<'a> for DiffContext {
+            type Inner = &'a DiffContext;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                unsafe { <&'a DiffContext>::follow(buf, loc) }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for &'a DiffContext {
+            type Inner = &'a DiffContext;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                unsafe { ::flatbuffers::follow_cast_ref::<DiffContext>(buf, loc) }
+            }
+        }
+        impl<'b> ::flatbuffers::Push for DiffContext {
+            type Output = DiffContext;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                let src = unsafe {
+                    ::core::slice::from_raw_parts(
+                        self as *const DiffContext as *const u8,
+                        <Self as ::flatbuffers::Push>::size(),
+                    )
+                };
+                dst.copy_from_slice(src);
+            }
+            #[inline]
+            fn alignment() -> ::flatbuffers::PushAlignment {
+                ::flatbuffers::PushAlignment::new(4)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for DiffContext {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.in_buffer::<Self>(pos)
+            }
+        }
+
+        impl<'a> DiffContext {
+            #[allow(clippy::too_many_arguments)]
+            pub fn new(value: u32) -> Self {
+                let mut s = Self([0; 4]);
+                s.set_value(value);
+                s
+            }
+
+            pub fn value(&self) -> u32 {
+                let mut mem = ::core::mem::MaybeUninit::<<u32 as ::flatbuffers::EndianScalar>::Scalar>::uninit();
+                // Safety:
+                // Created from a valid Table for this object
+                // Which contains a valid value in this slot
+                ::flatbuffers::EndianScalar::from_little_endian(unsafe {
+                    ::core::ptr::copy_nonoverlapping(
+                        self.0[0..].as_ptr(),
+                        mem.as_mut_ptr() as *mut u8,
+                        ::core::mem::size_of::<<u32 as ::flatbuffers::EndianScalar>::Scalar>(),
+                    );
+                    mem.assume_init()
+                })
+            }
+
+            pub fn set_value(&mut self, x: u32) {
+                let x_le = ::flatbuffers::EndianScalar::to_little_endian(x);
+                // Safety:
+                // Created from a valid Table for this object
+                // Which contains a valid value in this slot
+                unsafe {
+                    ::core::ptr::copy_nonoverlapping(
+                        &x_le as *const _ as *const u8,
+                        self.0[0..].as_mut_ptr(),
+                        ::core::mem::size_of::<<u32 as ::flatbuffers::EndianScalar>::Scalar>(),
+                    );
+                }
+            }
+        }
+
         /// `MovementRequest.offset`'s value. WHY a struct: an optional scalar (`ulong = null`) is not
         /// supported by `flatc --dart`, and a struct field is ABSENT when not set — null for absence.
         // struct MovementOffset, aligned to 8
@@ -6544,6 +6743,276 @@ pub mod zanshin {
                 ds.field("tree_ids", &self.tree_ids());
                 ds.field("labels", &self.labels());
                 ds.field("left", &self.left());
+                ds.finish()
+            }
+        }
+        pub enum DiffRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_diff` (Story 5.8) — `jj diff` as data (`zanshin_jj::Repo::diff`).
+        ///
+        ///   revision    `-r`: jj reverse-hex change id, diffed against its merged parents; absent → `@`
+        ///   from / to   `--from` / `--to`: jj reverse-hex change ids; either present → `from`'s tree
+        ///               against `to`'s, an absent side `@`. `revision` together with either is refused
+        ///               (`jj.invalid_input`, the CLI's `-r` vs `--from`/`--to` conflict)
+        ///   paths       repo-relative path PREFIXES; absent / empty = every path
+        ///   context     `--context`; absent → the effective `diff.git.context` (3 in jj's defaults)
+        ///   whitespace  `-w` / `-b`
+        ///   summary     leave every file's `hunks` empty (kinds, flags, sections, counts, fingerprints
+        ///               kept)
+        pub struct DiffRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for DiffRequest<'a> {
+            type Inner = DiffRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> DiffRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 10;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_CONTEXT: ::flatbuffers::VOffsetT = 14;
+            pub const VT_WHITESPACE: ::flatbuffers::VOffsetT = 16;
+            pub const VT_SUMMARY: ::flatbuffers::VOffsetT = 18;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DiffRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DiffRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DiffRequest<'bldr>> {
+                let mut builder = DiffRequestBuilder::new(_fbb);
+                if let Some(x) = args.context {
+                    builder.add_context(x);
+                }
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.to {
+                    builder.add_to(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_summary(args.summary);
+                builder.add_whitespace(args.whitespace);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(DiffRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiffRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn from(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiffRequest::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn to(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiffRequest::VT_TO, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DiffRequest::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn context(&self) -> Option<&'a DiffContext> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<DiffContext>(DiffRequest::VT_CONTEXT, None) }
+            }
+            #[inline]
+            pub fn whitespace(&self) -> DiffWhitespace {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<DiffWhitespace>(DiffRequest::VT_WHITESPACE, Some(DiffWhitespace::Exact))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn summary(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(DiffRequest::VT_SUMMARY, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for DiffRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("to", Self::VT_TO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<DiffContext>("context", Self::VT_CONTEXT, false)?
+     .visit_field::<DiffWhitespace>("whitespace", Self::VT_WHITESPACE, false)?
+     .visit_field::<bool>("summary", Self::VT_SUMMARY, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct DiffRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub to: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub context: Option<&'a DiffContext>,
+            pub whitespace: DiffWhitespace,
+            pub summary: bool,
+        }
+        impl<'a> Default for DiffRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DiffRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revision: None,
+                    from: None,
+                    to: None,
+                    paths: None,
+                    context: None,
+                    whitespace: DiffWhitespace::Exact,
+                    summary: false,
+                }
+            }
+        }
+
+        pub struct DiffRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DiffRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(DiffRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffRequest::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffRequest::VT_TO, to);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_context(&mut self, context: &DiffContext) {
+                self.fbb_
+                    .push_slot_always::<&DiffContext>(DiffRequest::VT_CONTEXT, context);
+            }
+            #[inline]
+            pub fn add_whitespace(&mut self, whitespace: DiffWhitespace) {
+                self.fbb_
+                    .push_slot::<DiffWhitespace>(DiffRequest::VT_WHITESPACE, whitespace, DiffWhitespace::Exact);
+            }
+            #[inline]
+            pub fn add_summary(&mut self, summary: bool) {
+                self.fbb_.push_slot::<bool>(DiffRequest::VT_SUMMARY, summary, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiffRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DiffRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DiffRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for DiffRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DiffRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revision", &self.revision());
+                ds.field("from", &self.from());
+                ds.field("to", &self.to());
+                ds.field("paths", &self.paths());
+                ds.field("context", &self.context());
+                ds.field("whitespace", &self.whitespace());
+                ds.field("summary", &self.summary());
                 ds.finish()
             }
         }
@@ -33878,6 +34347,10 @@ pub mod zanshin {
         ///
         /// `tree_ids` (Story 9.17) is the commit's OWN tree, hex in order — the `left` of a selection made
         /// against it as `SelectTreeRequest.from` (`diffedit --from`).
+        ///
+        /// `parent_tree_labels` / `tree_labels` (Story 5.8) are those trees' conflict labels, one per id
+        /// in order, or EMPTY when the tree is unlabeled — always written, exactly as
+        /// `zanshin_jj::ShowEntry` carries them.
         pub struct ShowEntry<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -33897,6 +34370,8 @@ pub mod zanshin {
             pub const VT_FILE_CHANGES: ::flatbuffers::VOffsetT = 6;
             pub const VT_PARENT_TREE_IDS: ::flatbuffers::VOffsetT = 8;
             pub const VT_TREE_IDS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_PARENT_TREE_LABELS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_TREE_LABELS: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -33908,6 +34383,12 @@ pub mod zanshin {
                 args: &'args ShowEntryArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<ShowEntry<'bldr>> {
                 let mut builder = ShowEntryBuilder::new(_fbb);
+                if let Some(x) = args.tree_labels {
+                    builder.add_tree_labels(x);
+                }
+                if let Some(x) = args.parent_tree_labels {
+                    builder.add_parent_tree_labels(x);
+                }
                 if let Some(x) = args.tree_ids {
                     builder.add_tree_ids(x);
                 }
@@ -33970,6 +34451,30 @@ pub mod zanshin {
                     >>(ShowEntry::VT_TREE_IDS, None)
                 }
             }
+            #[inline]
+            pub fn parent_tree_labels(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ShowEntry::VT_PARENT_TREE_LABELS, None)
+                }
+            }
+            #[inline]
+            pub fn tree_labels(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ShowEntry::VT_TREE_LABELS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for ShowEntry<'_> {
@@ -33983,6 +34488,8 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileChange>>>>("file_changes", Self::VT_FILE_CHANGES, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("parent_tree_ids", Self::VT_PARENT_TREE_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("tree_ids", Self::VT_TREE_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("parent_tree_labels", Self::VT_PARENT_TREE_LABELS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("tree_labels", Self::VT_TREE_LABELS, false)?
      .finish();
                 Ok(())
             }
@@ -33996,6 +34503,10 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub tree_ids:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub parent_tree_labels:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub tree_labels:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
         impl<'a> Default for ShowEntryArgs<'a> {
             #[inline]
@@ -34005,6 +34516,8 @@ pub mod zanshin {
                     file_changes: None,
                     parent_tree_ids: None,
                     tree_ids: None,
+                    parent_tree_labels: None,
+                    tree_labels: None,
                 }
             }
         }
@@ -34048,6 +34561,28 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShowEntry::VT_TREE_IDS, tree_ids);
             }
             #[inline]
+            pub fn add_parent_tree_labels(
+                &mut self,
+                parent_tree_labels: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ShowEntry::VT_PARENT_TREE_LABELS,
+                    parent_tree_labels,
+                );
+            }
+            #[inline]
+            pub fn add_tree_labels(
+                &mut self,
+                tree_labels: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShowEntry::VT_TREE_LABELS, tree_labels);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ShowEntryBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 ShowEntryBuilder {
@@ -34069,6 +34604,8 @@ pub mod zanshin {
                 ds.field("file_changes", &self.file_changes());
                 ds.field("parent_tree_ids", &self.parent_tree_ids());
                 ds.field("tree_ids", &self.tree_ids());
+                ds.field("parent_tree_labels", &self.parent_tree_labels());
+                ds.field("tree_labels", &self.tree_labels());
                 ds.finish()
             }
         }
@@ -41904,7 +42441,7 @@ pub mod zanshin {
         /// A line-level diff (Story 5.5) — `zanshin_jj::Repo::diff`'s files, in its order. `files` is
         /// always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
         /// at; `commit_id`, the revision (`-r`) or `to` (`--from`/`--to`); `from_commit_id`, `from`,
-        /// ABSENT for the revision form.
+        /// ABSENT for the revision form. Returned by `zanshin_diff` (Story 5.8).
         pub struct Diff<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

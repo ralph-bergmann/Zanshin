@@ -146,7 +146,7 @@ table RevsetErrorDetail {
 /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 63 tables the variant name plus `Request` IS
+/// squash, never a different verb. For the other 64 tables the variant name plus `Request` IS
 /// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -228,7 +228,8 @@ enum RequestKind : ubyte {
   RevsetCounts,
   FindChanges,
   FileEdit,
-  FileDelete
+  FileDelete,
+  Diff
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -344,6 +345,39 @@ table TreeSelection {
   tree_ids: [string];
   labels: [string];
   left: [string];
+}
+
+/// How `DiffRequest` compares lines (Story 5.8): `Exact` (0, the default) literally,
+/// `IgnoreAllSpace` = `-w`, `IgnoreSpaceChange` = `-b`. Member order IS the wire value — APPEND
+/// only; an unknown value is `ffi.invalid_argument`.
+enum DiffWhitespace : ubyte { Exact, IgnoreAllSpace, IgnoreSpaceChange }
+
+/// `DiffRequest.context`'s value. WHY a struct: an optional scalar is not supported by
+/// `flatc --dart` (see `MovementOffset`); an absent struct field is null.
+struct DiffContext {
+  value: uint;
+}
+
+/// Arguments of `zanshin_diff` (Story 5.8) — `jj diff` as data (`zanshin_jj::Repo::diff`).
+///
+///   revision    `-r`: jj reverse-hex change id, diffed against its merged parents; absent → `@`
+///   from / to   `--from` / `--to`: jj reverse-hex change ids; either present → `from`'s tree
+///               against `to`'s, an absent side `@`. `revision` together with either is refused
+///               (`jj.invalid_input`, the CLI's `-r` vs `--from`/`--to` conflict)
+///   paths       repo-relative path PREFIXES; absent / empty = every path
+///   context     `--context`; absent → the effective `diff.git.context` (3 in jj's defaults)
+///   whitespace  `-w` / `-b`
+///   summary     leave every file's `hunks` empty (kinds, flags, sections, counts, fingerprints
+///               kept)
+table DiffRequest {
+  kind: RequestKind;
+  revision: string;
+  from: string;
+  to: string;
+  paths: [string];
+  context: DiffContext;
+  whitespace: DiffWhitespace;
+  summary: bool;
 }
 
 /// One squash source's selected tree (Story 9.50): `source` a jj reverse-hex change id.
@@ -1447,7 +1481,7 @@ table FindChangesRequest {
 //   Story 3-6  : WatcherEvent ✓, Progress ✓
 //   Story 4-2  : GraphSlice ✓ (FFI wrapper 4-6) (removed 4-12; slot 11 reused by GraphTopology)
 //   Story 4-9  : LogDefaults ✓
-//   Story 5-8  : Diff
+//   Story 5-8  : Diff ✓ (payload 5-5, extern `zanshin_diff` 5-8)
 //   Story 6-5  : mutation results ✓
 //   Story 9-3  : AbsorbResult ✓ (restore reuses MutationResult)
 //   Story 9-4  : FileList ✓, FileContents ✓, FileAnnotation ✓, FileSearch ✓
@@ -2572,11 +2606,17 @@ table GitExportResult {
 ///
 /// `tree_ids` (Story 9.17) is the commit's OWN tree, hex in order — the `left` of a selection made
 /// against it as `SelectTreeRequest.from` (`diffedit --from`).
+///
+/// `parent_tree_labels` / `tree_labels` (Story 5.8) are those trees' conflict labels, one per id
+/// in order, or EMPTY when the tree is unlabeled — always written, exactly as
+/// `zanshin_jj::ShowEntry` carries them.
 table ShowEntry {
   change: Change;
   file_changes: [FileChange];
   parent_tree_ids: [string];
   tree_ids: [string];
+  parent_tree_labels: [string];
+  tree_labels: [string];
 }
 
 /// The result of `zanshin_show`: one entry per commit the revset denotes, in RAW revset order
@@ -3134,7 +3174,7 @@ table FileDiff {
 /// A line-level diff (Story 5.5) — `zanshin_jj::Repo::diff`'s files, in its order. `files` is
 /// always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
 /// at; `commit_id`, the revision (`-r`) or `to` (`--from`/`--to`); `from_commit_id`, `from`,
-/// ABSENT for the revision form.
+/// ABSENT for the revision form. Returned by `zanshin_diff` (Story 5.8).
 table Diff {
   files: [FileDiff];
   operation_id: string;
