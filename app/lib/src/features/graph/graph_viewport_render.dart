@@ -71,10 +71,29 @@ class GraphReveal {
 /// instance across builds.
 @immutable
 class GraphTransition {
-  /// The landing of [to] after [from].
-  // WHY: a transition is consumed by identity, like a GraphReveal.
-  // ignore: prefer_const_constructors_in_immutables
-  GraphTransition({required this.from, required this.to, this.anchor, this.born, this.flash = const <String>{}});
+  /// The landing of [to] after [from]; consumed by identity, like a GraphReveal.
+  GraphTransition({required this.from, required this.to, this.anchor, this.born, this.flash = const <String>{}})
+    : _run = Object(),
+      isContinued = false;
+
+  /// [running]'s landing carried onto [to], a later layout of the same operation: a running transition keeps going
+  /// (its cards glide on to their rects in [to]) instead of ending at once.
+  GraphTransition.continued(GraphTransition running, this.to)
+    : from = running.from,
+      anchor = running.anchor,
+      born = running.born,
+      flash = running.flash,
+      _run = running._run,
+      isContinued = true;
+
+  // One operation's landing, shared by its continuations (identity only).
+  final Object _run;
+
+  /// Whether this is a [GraphTransition.continued] one.
+  final bool isContinued;
+
+  /// Whether this and [other] are the same landing ([other] itself or a continuation of each other).
+  bool continues(GraphTransition? other) => other != null && identical(_run, other._run);
 
   /// The layout it leaves.
   final GraphLayout from;
@@ -594,6 +613,8 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
     if (identical(t, _applied)) {
       return;
     }
+    final GraphTransition? running = _applied;
+    final Map<int, ({_FxKind kind, Offset delta})> carried = _effects;
     _applied = t;
     final effects = <int, ({_FxKind kind, Offset delta})>{};
     final glideOut = <int>[];
@@ -609,6 +630,21 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
         Offset(last.insets.left + last.metrics.x(from.colOf(node)), last.insets.top + last.vertical.top(node)) -
         last.scroll;
     Offset now(int node) => cardRect(node).topLeft - scroll;
+
+    if (t.continues(running) && identical(from, running!.to)) {
+      // The same landing on a later layout: each effect keeps its origin and retargets to the card's new rect.
+      for (final MapEntry(key: old, value: fx) in carried.entries) {
+        final int? node = _layout.placeOfKey(from.keyOf(old));
+        if (node == null) {
+          continue;
+        }
+        effects[node] = (kind: fx.kind, delta: fx.delta + was(old) - now(node));
+        if (fx.kind == _FxKind.glide && !laidOut.contains(node)) {
+          glideOut.add(node);
+        }
+      }
+      return;
+    }
 
     final String? born = t.born;
     final int? bornNode = born == null || from.indexOfKey(born) != null ? null : _layout.placeOfKey(born);

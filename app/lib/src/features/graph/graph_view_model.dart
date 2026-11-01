@@ -175,7 +175,9 @@ const graphGapFlashCap = 10000;
 ///   mode or lane-order switch asked for is a [transition] when a node's key, column or row changed or a change was
 ///   born — Zanshin's verbs, an external `jj`, undo, redo and op restore alike. Every new operation takes the anchor,
 ///   the born change and the flash of the last own operation's outcome not yet landed; without a transition its flash
-///   goes out as [flash]. The born change is revealed by the canvas after the glide, not with the layout.
+///   goes out as [flash]. The born change is revealed by the canvas after the glide, not with the layout. A later
+///   layout of the same operation that no switch asked for (the watcher's reload after Zanshin's own verb) is the
+///   last transition [GraphTransition.continued] onto it, so a running one keeps going.
 /// - **Story 11.9**: the Undo Timeline's runner — [undoOperation] undoes any op-log head, [restoreOperation] restores.
 @inject
 class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
@@ -1007,8 +1009,11 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     final GraphLayout? previous = _layout;
     final String? op = layout.operationId;
     final String? was = previous?.operationId;
+    final GraphTransition? last = _transition;
     _transition = null;
-    if (previous != null && op != null && was != null && op != was) {
+    if (last != null && op != null && op == was && !_recentre) {
+      _transition = GraphTransition.continued(last, layout);
+    } else if (previous != null && op != null && was != null && op != was) {
       // A new operation takes the pending hints, whether it animates or not.
       final GraphOutcome? hints = _landing;
       _landing = null;
@@ -1064,7 +1069,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     String? target = explicit != null
         ? explicit.key ?? _workingCopyKey(layout)
         : (_recentre ? _workingCopyKey(layout) : null);
-    if (target != null && target == _transition?.born) {
+    if (target != null && target == _transition?.born && !_transition!.isContinued) {
       // The canvas reveals it after the glide.
       target = null;
     }

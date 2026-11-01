@@ -150,6 +150,31 @@ void main() {
       expect(h.mounted(tester), isNot(contains('r10')));
     });
 
+    testWidgets('a card gliding out of the window stays laid out through a continuation until it lands', (
+      tester,
+    ) async {
+      final h = GraphHarness(chainLayout(12, cols: 3))..anchorKey = 'r11';
+      await pumpGraph(tester, h);
+      final Offset r10 = h.screenOf(tester, 'r10');
+      await land(tester, h, chainLayout(12, cols: 3, colOf: const <String, int>{'r10': 40}));
+      // Mid-glide the card is already beyond the window, so the hit is checked on the continuation's first frame.
+      final GraphLayout again = chainLayout(12, cols: 3, colOf: const <String, int>{'r10': 40});
+      h
+        ..transition = GraphTransition.continued(h.transition!, again)
+        ..layout = again;
+      await tester.pumpWidget(h.build());
+      expect(h.mounted(tester), contains('r10'));
+      expect(h.screenOf(tester, 'r10'), r10);
+      await tester.tapAt(r10 + const Offset(graphCardOverhang + 20, graphCardOverhang + 20));
+      expect(h.log.taps, <String>['r10']);
+      await at(tester, h, 200);
+      expect(h.mounted(tester), contains('r10'));
+      await at(tester, h, 459);
+      expect(h.mounted(tester), contains('r10'));
+      await at(tester, h, 460);
+      expect(h.mounted(tester), isNot(contains('r10')));
+    });
+
     testWidgets('a describe (same keys, same rects) moves nothing', (tester) async {
       final h = GraphHarness(chainLayout(6, cols: 3));
       await pumpGraph(tester, h);
@@ -178,6 +203,31 @@ void main() {
       expect(h.render(tester).transitionEffectOf('r12'), isNull);
       expect(h.screenOf(tester, 'r13'), r13);
       expect(h.render(tester).transitionEffectOf('r13'), isNotNull);
+    });
+
+    testWidgets('a continuation onto an equal layout mid-glide keeps the painted rects; the glide ends at 460 ms', (
+      tester,
+    ) async {
+      final h = GraphHarness(chainLayout(20))..anchorKey = 'r14';
+      await pumpGraph(tester, h);
+      h.v.jumpTo(600);
+      await tester.pump();
+      final Offset r12 = h.screenOf(tester, 'r12');
+      await land(tester, h, chainLayout(20, colOf: const <String, int>{'r12': 2}));
+      await at(tester, h, 200);
+      final Offset mid = h.screenOf(tester, 'r12');
+      expect(mid, isNot(r12 + const Offset(2 * step, 0)), reason: 'mid-glide');
+      final GraphLayout again = chainLayout(20, colOf: const <String, int>{'r12': 2});
+      h
+        ..transition = GraphTransition.continued(h.transition!, again)
+        ..layout = again;
+      await tester.pumpWidget(h.build());
+      expect(h.screenOf(tester, 'r12'), mid, reason: 'no snap');
+      await at(tester, h, 300);
+      expect(h.screenOf(tester, 'r12').dx, moreOrLessEquals(r12.dx + 2 * step * full.easeGlide.transform(300 / 460)));
+      await at(tester, h, 460);
+      expect(h.screenOf(tester, 'r12'), r12 + const Offset(2 * step, 0));
+      expect(h.render(tester).transitionEffectOf('r12'), isNull);
     });
 
     testWidgets('reduce motion: moved cards jump, the born card fades over 540 ms in place without growth', (
@@ -257,10 +307,11 @@ void main() {
 
     late GraphCardController cards;
 
-    Widget canvasOf(GraphLayout layout, {GraphTransition? transition, bool reduce = false}) => shellHost(
-      GraphCanvas(layout: layout, cards: cards, transition: transition),
-      appearance: ZsAppearance(reduceMotion: reduce),
-    );
+    Widget canvasOf(GraphLayout layout, {GraphTransition? transition, GraphReveal? reveal, bool reduce = false}) =>
+        shellHost(
+          GraphCanvas(layout: layout, cards: cards, transition: transition, reveal: reveal),
+          appearance: ZsAppearance(reduceMotion: reduce),
+        );
 
     /// The born case: n over r5 … r0 (three columns), anchored on r5, [born] n.
     Future<GraphTransition> bornOperation(
@@ -375,8 +426,68 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('a continuation mid-run keeps it going: edges still hidden, the born card revealed after the glide', (
+      tester,
+    ) async {
+      final GraphTransition t = await bornOperation(tester);
+      await tester.pump();
+      final double landed = viewport(tester).verticalOffset.pixels;
+      await tester.pump(const Duration(milliseconds: 300));
+      final GraphLayout again = chainLayout(6, cols: 3, head: 'n');
+      await tester.pumpWidget(canvasOf(again, transition: GraphTransition.continued(t, again)));
+      expect(viewport(tester).transition?.to, same(again), reason: 'still running');
+      expect(edgeStrokes(tester), hasLength(1), reason: 'the layer hidden, only the born edge');
+      expect(viewport(tester).verticalOffset.pixels, landed);
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(viewport(tester).verticalOffset.pixels, 0, reason: 'revealed once the glide landed');
+    });
+
+    testWidgets('a continuation after the end animates nothing', (tester) async {
+      final GraphTransition t = await bornOperation(tester);
+      await tester.pumpAndSettle();
+      expect(viewport(tester).transition, isNull);
+      final GraphLayout again = chainLayout(6, cols: 3, head: 'n');
+      await tester.pumpWidget(canvasOf(again, transition: GraphTransition.continued(t, again)));
+      expect(viewport(tester).transition, isNull);
+      expect(tester.hasRunningAnimations, isFalse);
+    });
+
+    testWidgets('a fresh canvas given a continuation of a landing it never ran animates nothing', (tester) async {
+      final GraphTransition t = await bornOperation(tester, flash: const <String>{'r2'});
+      await tester.pumpAndSettle();
+      // A remount: a new State that never started t.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(canvasOf(chainLayout(6, cols: 3, head: 'n')));
+      await tester.pump();
+      final GraphLayout again = chainLayout(6, cols: 3, head: 'n');
+      await tester.pumpWidget(canvasOf(again, transition: GraphTransition.continued(t, again)));
+      expect(viewport(tester).transition, isNull);
+      expect(tester.hasRunningAnimations, isFalse);
+    });
+
+    testWidgets('an early end whose layout brings a reveal of another key ends at that key, not the born card', (
+      tester,
+    ) async {
+      await bornOperation(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpWidget(canvasOf(chainLayout(6, cols: 3, head: 'n'), reveal: GraphReveal('r0')));
+      await tester.pumpAndSettle();
+      expect(viewport(tester).verticalOffset.pixels, greaterThan(0), reason: 'at r0, not scrolled up to n');
+    });
+
+    testWidgets('an early end whose reveal goes back to null still reveals the born card', (tester) async {
+      final GraphTransition t = await bornOperation(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpWidget(canvasOf(t.to, transition: t, reveal: GraphReveal('r0')));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpWidget(canvasOf(chainLayout(6, cols: 3, head: 'n')));
+      await tester.pumpAndSettle();
+      expect(viewport(tester).verticalOffset.pixels, 0, reason: 'the born card, not r0');
+    });
+
     testWidgets(
-      'a layout without a transition mid-run ends it: full edges at once, the waiting peek opens, no reveal',
+      'a layout without a transition mid-run ends it: full edges at once, the waiting peek opens, the born card revealed',
       (
         tester,
       ) async {
@@ -398,9 +509,13 @@ void main() {
         final List<double> strokes = edgeStrokes(tester);
         expect(find.byType(GraphPeek), findsOneWidget);
         await tester.pump(const Duration(seconds: 1));
-        expect(viewport(tester).verticalOffset.pixels, landed, reason: 'the born reveal is dropped');
         await mouse.moveTo(Offset.zero);
         await tester.pumpAndSettle();
+        expect(landed, greaterThan(0));
+        expect(viewport(tester).verticalOffset.pixels, 0, reason: 'the covered born card is still revealed');
+        // Back to the scroll the strokes were taken at.
+        viewport(tester).verticalOffset.jumpTo(landed);
+        await tester.pump();
         expect(strokes, hasLength(1));
         expect(strokes.single, moreOrLessEquals(edgeStrokes(tester).single), reason: 'every edge, at once');
         await tester.pump(const Duration(seconds: 1));

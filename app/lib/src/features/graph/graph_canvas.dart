@@ -81,7 +81,8 @@ Duration graphTransitionDuration(ZsMotion motion) => <Duration>[
 /// for `--dur-flip` and fades back over `--dur-slide` on `--ease-state` while the born card's edges draw in from their
 /// parent end ([graphBornEdgeDelay], [graphBornEdgeDraw]; under reduce motion they come with the layer); its flash
 /// keys run 10.19's flash; the born card is revealed (covered, animated) after `--dur-flip`; the peek waits for the
-/// end.
+/// end. A [GraphTransition.continued] one keeps the running transition going onto its layout; a layout without one
+/// ends it at once and still reveals its covered born card, unless that layout brings a [reveal].
 ///
 /// User scrolling it reports to [onUserScroll]: canvas mouse pans (|dx| + |dy| per move) and fling glides (per axis,
 /// the updates without drag details that follow ones with them, until that axis's scroll end). Wheel and trackpad
@@ -329,15 +330,30 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       _enterKeys = const <String>{};
     }
     final GraphTransition? transition = widget.transition;
-    if (!identical(oldWidget.transition, transition) && transition != null && identical(transition.to, widget.layout)) {
+    final bool landed =
+        !identical(oldWidget.transition, transition) && transition != null && identical(transition.to, widget.layout);
+    if (landed && !transition.isContinued) {
       _startTransition(transition);
+    } else if (landed && transition.continues(_moving)) {
+      // A later layout of the running landing (a same-op reload): it keeps going onto that layout.
+      _moving = transition;
+      _bornEdges = _bornEdgesOf(transition);
     } else if (!identical(oldWidget.layout, widget.layout) && _moving != null) {
-      // A layout without a transition ends the running one.
+      // A layout without a transition ends the running one; its covered born card is still revealed, unless the
+      // layout brings a reveal of its own.
+      final String? born = _bornReveal;
       _moving = null;
       _bornEdges = const <int>{};
       _bornReveal = null;
       _transition.stop();
       _openWaitingPeek();
+      if (born != null && (widget.reveal == null || identical(oldWidget.reveal, widget.reveal))) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _moving == null && widget.layout.placeOfKey(born) != null) {
+            _viewport.reveal(born, alignment: GraphRevealAlignment.covered, animate: true);
+          }
+        });
+      }
     }
     if (widget.inspectorOpen && !oldWidget.inspectorOpen) {
       // After the frame that hands the viewport the inspector's inset.
@@ -829,21 +845,8 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   /// Runs [transition] from its start; a running one ends at once (the viewport starts from its landed rects).
   void _startTransition(GraphTransition transition) {
     _moving = transition;
-    final GraphLayout layout = transition.to;
     final String? key = transition.born;
-    // The viewport's rule: a key new in `from` grown out of an anchor `from` shows.
-    final bool grows =
-        key != null &&
-        transition.from.indexOfKey(key) == null &&
-        transition.anchor != null &&
-        transition.from.placeOfKey(transition.anchor!) != null;
-    final int? born = grows ? layout.placeOfKey(key) : null;
-    _bornEdges = born == null
-        ? const <int>{}
-        : <int>{
-            for (int e = layout.parentEdges(born).start; e < layout.parentEdges(born).end; e++) e,
-            for (int s = layout.childEdges(born).start; s < layout.childEdges(born).end; s++) layout.childEdgeAt(s),
-          };
+    _bornEdges = _bornEdgesOf(transition);
     // After the glide, so the reveal scrolls from where the cards landed.
     _bornReveal = key;
     _transition.forward(from: 0);
@@ -857,10 +860,29 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     }
   }
 
-  /// Reveals the born card of [transition] once, while it still runs (or just completed).
+  /// The edges of [transition]'s born card in its `to`, when it grows (the viewport's rule: a key new in `from` grown
+  /// out of an anchor `from` shows).
+  static Set<int> _bornEdgesOf(GraphTransition transition) {
+    final GraphLayout layout = transition.to;
+    final String? key = transition.born;
+    final bool grows =
+        key != null &&
+        transition.from.indexOfKey(key) == null &&
+        transition.anchor != null &&
+        transition.from.placeOfKey(transition.anchor!) != null;
+    final int? born = grows ? layout.placeOfKey(key) : null;
+    return born == null
+        ? const <int>{}
+        : <int>{
+            for (int e = layout.parentEdges(born).start; e < layout.parentEdges(born).end; e++) e,
+            for (int s = layout.childEdges(born).start; s < layout.childEdges(born).end; s++) layout.childEdgeAt(s),
+          };
+  }
+
+  /// Reveals the born card of [transition] once, while it (or a continuation of it) still runs or just completed.
   void _revealBorn(GraphTransition transition) {
     final String? key = _bornReveal;
-    if (!mounted || key == null || !identical(_moving, transition)) {
+    if (!mounted || key == null || !transition.continues(_moving)) {
       return;
     }
     _bornReveal = null;

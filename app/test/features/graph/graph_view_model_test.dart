@@ -1405,7 +1405,46 @@ void main() {
       });
     });
 
-    test('no transition for a revset or mode switch, a stack toggle, or a reload without a new operation', () {
+    test("the watcher's reload of the same operation after an own verb continues its transition", () {
+      fakeAsync((async) {
+        final GraphViewModel model = opModel(async)..select('b');
+        actions.born = <String>['n'];
+        source.respond = (_) => opLayout(<String>['n', 'a', 'b', 'c'], 'op1', at: 'n');
+        run(async, model, const GraphNew(parents: <String>['b']));
+        final GraphTransition first = model.transition!;
+        heads(async);
+        final GraphTransition? t = model.transition;
+        expect(t, isNot(same(first)));
+        expect(t?.isContinued, isTrue);
+        expect(t?.continues(first), isTrue);
+        expect(t?.to, same(model.layout));
+        expect(t?.from, same(first.from));
+        expect(t?.anchor, 'b');
+        expect(t?.born, 'n');
+        expect(t?.flash, first.flash);
+        expect(model.reveal, isNull, reason: 'the continuation reveals nothing of its own');
+        model.dispose();
+      });
+    });
+
+    test('an explicit reveal of the born change landing with a same-op layout reaches reveal', () {
+      fakeAsync((async) {
+        final GraphViewModel model = opModel(async)..select('b');
+        actions.born = <String>['n'];
+        source.respond = (_) => opLayout(<String>['n', 'a', 'b', 'c'], 'op1', at: 'n');
+        run(async, model, const GraphNew(parents: <String>['b']));
+        expect(model.reveal, isNull);
+        source.emit(const OpHeadsChangedEvent(0, <String>[]));
+        // While the reload is in flight: it lands with that layout.
+        model.revealKey('n');
+        async.flushMicrotasks();
+        expect(model.transition?.isContinued, isTrue);
+        expect(model.reveal?.key, 'n');
+        model.dispose();
+      });
+    });
+
+    test('no transition for a revset or mode switch; a same-op reload or stack toggle continues the last one', () {
       fakeAsync((async) {
         final GraphViewModel model = opModel(async);
         var op = 0;
@@ -1424,13 +1463,22 @@ void main() {
         source.respond = (_) => opLayout(<String>['a', 'b', 'c'], 'same');
         model.reload();
         async.flushMicrotasks();
-        expect(model.transition, isNotNull, reason: 'a new operation that moves cards');
+        final GraphTransition landed = model.transition!;
+        expect(landed.isContinued, isFalse, reason: 'a new operation that moves cards');
         model.reload();
         async.flushMicrotasks();
-        expect(model.transition, isNull, reason: 'the same operation');
+        expect(model.transition?.continues(landed), isTrue, reason: 'the same operation continues it');
+        expect(model.transition?.isContinued, isTrue);
         model.setStacks(true);
         async.flushMicrotasks();
-        expect(model.transition, isNull, reason: 'a stack toggle writes no operation');
+        expect(model.transition?.continues(landed), isTrue, reason: 'a stack toggle writes no operation');
+        expect(model.transition?.to, same(model.layout));
+        model.setRevset('L');
+        async.flushMicrotasks();
+        expect(model.transition, isNull, reason: 'a revset switch at the same operation');
+        model.reload();
+        async.flushMicrotasks();
+        expect(model.transition, isNull, reason: 'nothing to continue');
         model.dispose();
       });
     });
