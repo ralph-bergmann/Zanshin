@@ -2336,6 +2336,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The runner has no actions for `commit`, `split`, `rebase` and `duplicate`, though their backend verbs exist.** Medium.
   - `app/lib/src/features/graph/graph_ports.dart` `GraphAction` covers edit, describe, new (-A/-B), abandon, revert, squash, bookmark create/delete/move/rename, undo, redo; `RepoHandle.commit`, `split`, `rebase`, `duplicate` have no subtype, and their per-verb selection/anchor rules (commit: new @ selected; split: selection stays; both anchored on the source) are not in `GraphViewModel._succeeded`.
   - **Follow-up:** 10.10 (drop rows: rebase, duplicate) and 10.25 (composer: commit, split) add their subtypes, the `RepoGraphActions` mapping and the selection/anchor rule beside the existing ones.
+  - **2026-11-01, Story 10.25:** `GraphCommit` / `GraphSplit` with their `RepoGraphActions` mapping and selection/anchor rules (commit: new @ born and selected; split: rest born, selection stays; both anchored on the source) (commit c56d3af7); left: 10.10's rebase and duplicate.
 - ~~**Revert does not select the new change while the inspector is open.**~~ — RESOLVED 2026-10-31 (spec-10-8-inspector, I5). Low.
   - The 2026-10-26 note: "the new change is selected only while the inspector is open"; `GraphViewModel._succeeded` leaves the selection on revert because no inspector state exists yet (the outcome carries the born id).
   - **Follow-up:** 10.8 selects `outcome.born.first` after a `GraphRevert` while its inspector is open.
@@ -2495,6 +2496,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **A dropped change's glide from the drag ghost's rect, and the runner hints of verbs not built yet (rebase, insert, duplicate, split, commit), are missing from the graph animations.** Low.
   - The 2026-10-14 note's drop origin needs 10.10; `GraphAction` has no such verbs, so `_plan`/`_succeeded` (`app/lib/src/features/graph/graph_view_model.dart`) give them no anchor, flash or born key.
   - **Follow-up:** 10.10 passes the ghost rect into `GraphTransition` and 10.10/10.25 add each new verb's anchor/flash/born mapping in `_plan`/`_succeeded`.
+  - **2026-11-01, Story 10.25:** commit and split have their anchor, flash and born mapping in `_plan`/`_succeeded` (commit c56d3af7); left: 10.10's ghost rect and rebase/insert/duplicate mappings.
 - **The graph animations were not checked in the running app or the Widgetbook catalogue.** Low.
   - Unattended run: the timings are witnessed by widget tests only (`app/test/features/graph/graph_transition_test.dart`); Graph / Viewport / Operation (`app/widgetbook/folders/graph.dart`) was not looked at.
   - **Follow-up:** a Marionette check of Graph / Viewport / Operation (TimeDilation ×5) and of a real `jj new` / abandon / undo in the app.
