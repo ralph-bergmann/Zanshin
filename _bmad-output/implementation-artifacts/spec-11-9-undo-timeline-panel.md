@@ -5,7 +5,7 @@ created: '2026-11-01'
 status: 'done'
 baseline_revision: '0f4f706bf4d5205183c4fa8c157e264a86544a8a'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-11-context.md'
@@ -172,6 +172,35 @@ deferred:
   - `[false]` `[reject]` (intent) bridge part (item 6) untouched — `Operation`, `OperationTag`, `RestoreWhat`, `MutationResult` were already exported (`zanshin_core.dart:66-82`).
   - `[maybe-false]` `[reject]` (intent) visual conformance unchecked — same as the deferred visual check; counted there.
 
+### 2026-11-01 — Review pass (follow-up)
+- verdicts: 25 findings — high 0, medium 5, low 14, false 6, maybe-false 0
+- findings:
+  - `[medium]` `[patch]` (blind) the root guard looks at the head, but `jj undo` on an undo head acts on its target and refuses only a root target (`undo.rs` @ v0.46.0) — patched: `headOnRoot` checks `undoTarget(head)` (root or root parent); the jj refusal reason also reads the target; model test for both undo-head cases.
+  - `[low]` `[reject]` (blind) an undo/redo target outside the loaded 50 rows is named by the raw head description — needs an undo stack jumping more than 50 operations back; a fallback name adds a branch.
+  - `[low]` `[reject]` (blind) a failed non-stale read has no Retry and waits for the next op-heads event — persistent read errors are rare; a Retry control is new surface.
+  - `[low]` `[reject]` (blind) no loading/empty state while the first read runs — the read is one FFI call; adding states adds branches for a flash.
+  - `[low]` `[reject]` carried (blind) restore toast hard-coded English — the earlier pass rejected it: the prefix is jj's text (l10n-ignore).
+  - `[low]` `[reject]` carried (blind) VoiceOver cannot tell which operation is current — the earlier pass rejected it: the newest row's Undo/Redo name the current operation.
+  - `[false]` `[reject]` carried (blind) Restore passes the 12-hex short id — the earlier pass found it intended (the id shown is the id run).
+  - `[low]` `[patch]` (blind) `GraphLoggedOperation.command` took the raw multi-line description while the row shows its first line — patched: `loggedOperation` passes the first line; model test.
+  - `[low]` `[reject]` (blind) home_page_test does not assert the old model's disposal — test-only gap; the model's dispose is covered by its own test.
+  - `[low]` `[reject]` (blind) the minute tick rebuilds the panel while hidden — one notify per minute; no named harm.
+  - `[medium]` `[defer]` carried (blind) story done with the visual Marionette check open — already deferred (frontmatter, deferred-work "Surfaced in Story 11.9").
+  - `[low]` `[reject]` (blind) stale docs: a resolved deferred-work entry keeps its Follow-up sub-bullet; the epic-11 sprint-status comment still says "11-3 is next" — the struck-through RESOLVED heading governs the entry; the comment was stale before this story.
+  - `[medium]` `[patch]` (edge) undo head whose target's parent is the root bypasses the root-parent guard — patched (same fix as the first row).
+  - `[low]` `[reject]` (edge) redo head whose undo target is older than the loaded page reads "Nothing to redo" — same reasoning as the out-of-page name row.
+  - `[low]` `[reject]` (edge) undo target beyond the loaded rows named by the head — same as the out-of-page name row.
+  - `[false]` `[reject]` (edge) Redo offered on CLI undos beyond the spec — the Always rule (jj's observable behaviour) and the earlier pass's patch put it there: `jj redo` acts after any undo.
+  - `[false]` `[reject]` (edge) toast shows the args tag instead of the description — Design Notes: `command` = args tag ?? description, by design.
+  - `[medium]` `[defer]` carried (edge) visual check AC unmet — already deferred.
+  - `[low]` `[patch]` (verification-gap) keyboard focus never tested to reveal a row's Restore/Show — patched: view test focuses the row's node (can request focus, not skipped), sees both buttons, unfocuses and sees them gone (the test host has no traversal shortcuts, so Tab is not sent).
+  - `[low]` `[patch]` (verification-gap) `redoTarget` does not follow an undo's redo-operation parent to its original (`redo.rs:160-175` @ v0.46.0) — patched: the parent's redo prefix is followed; model test.
+  - `[medium]` `[defer]` carried (intent) actions run only against fakes; no runner in the project window — already deferred (hand-off to 10.12).
+  - `[false]` `[reject]` (intent) Redo broader than the matrix row — same as the CLI-undo Redo row above.
+  - `[low]` `[reject]` (intent) "run only while H is the head" tested only at the runner — `GraphViewModel._execute(expectHead:)` owns it and its test pins it; the view only passes the id.
+  - `[false]` `[reject]` (intent) root rows add `root()` and jj's refusal text — they follow jj's op log and `jj undo`; no defect claimed.
+  - `[false]` `[reject]` (intent) shell/menu/graph-port changes outside the feature folder — the Code Map names each of them.
+
 ## Design Notes
 
 **Why the runner is `GraphViewModel` and the project window passes none yet.** 10.9's runner owns busy, stale, the expect-head check, the outcome stream the toast shows and Zanshin's undo/redo state; a second runner would race it. It lives in the graph's view model, which 10.12 mounts in the project window. Until then `HomePage` passes no runner: the timeline reads and updates live, its actions show disabled with their commands (Claude's proposal; hand-off recorded for 10.12).
@@ -201,6 +230,12 @@ deferred:
 - No Rust, FFI or schema change: no cargo test, clippy, codegen or parity oracle needed.
 - Marionette visual check in the catalogue — NOT run (unattended run without a running catalogue); deferred.
 
+**Verification notes (follow-up review, 2026-11-01, same gate rule):**
+- `flutter test test/features/undo_timeline test/features/graph test/features/shell test/features/home test/l10n test/widgetbook test/app` in `app/` — 1120 tests, all passed.
+- `dart analyze --fatal-infos --fatal-warnings` in `app/` — no issues.
+- `dart format --set-exit-if-changed lib test widgetbook` in `app/` — 0 changed.
+- No Rust, FFI, schema or l10n change: no cargo checks, codegen, parity oracle or gen-l10n needed.
+
 ## Auto Run Result
 
 Status: done
@@ -227,3 +262,18 @@ Status: done
 **Follow-up review recommended: true** — one `high` was patched (the read loop), and the `jj undo`/`jj redo` stack targeting (`undoTarget`/`redoTarget`) was added during review and is checked only by unit and widget tests against fakes, never against a real repository's undo/redo descriptions. Patched counts: high 1, medium 3, low 6 (grouped entries).
 
 **Residual risks.** No runner in the real project window until 10.12 (actions disabled there); the visual DS comparison has not been made; the full gate (`cargo make test`) runs at the end of the story loop.
+
+### Follow-up review pass (2026-11-01)
+
+**Summary.** Four layers, 25 findings (high 0, medium 5, low 14, false 6). Patched: the root guard now looks at what `jj undo` takes back (`undoTarget(head)`), also for jj's own refusal text (medium); `redoTarget` follows an undo's redo-operation parent to its original, as `jj redo` does (low); the logged operation's name is the description's first line (low); a keyboard-focus view test (low).
+
+**Files changed:**
+- `app/lib/src/features/undo_timeline/undo_timeline_model.dart` — `headOnRoot` over the undo target; `redoTarget` follows a redo parent; `loggedOperation` first line.
+- `app/lib/src/features/undo_timeline/undo_timeline_view.dart` — "Cannot undo root operation" when the undo target is the root.
+- `app/test/features/undo_timeline/undo_timeline_model_test.dart`, `undo_timeline_view_test.dart` — witnesses.
+
+**Deferred:** none new (visual check and runner hand-off carried). **Rejected:** listed with reasons in the triage log (out-of-page target names, no Retry, no loading state, disposal test, minute tick, stale docs, expect-head at the runner; carried: restore toast English, VoiceOver current, short id; false: CLI-undo Redo, args-tag toast, root extras, plumbing outside the folder).
+
+**Follow-up review recommended: false** — follow-up pass, no `high` patched. Patched counts: medium 1 (grouped), low 3.
+
+**Residual risks.** Unchanged from the first pass; the undo/redo stack naming is still checked against fakes only, now including the redo-parent case.
