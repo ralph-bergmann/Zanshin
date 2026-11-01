@@ -2396,3 +2396,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **A Project menu Recent row whose path is now a Git repository, a plain folder or inside a repository, or whose open is refused, still shows nothing.** Low.
   - `HomePage._openRecent` (`app/lib/src/features/home/home_page.dart`) hands only `ProjectOpenFailed` and `ProjectNotARepo(pathNotFound)` to `ProjectSession.failedOpen` (the decided "on a failure" plus the missing folder); the Projects window offers convert / init for the others. A registered jj entry turns into one only when its `.jj` is removed outside Zanshin (spec-fix-story-loop-leftovers-2026-11-01).
   - **Follow-up:** Ralph decides whether those outcomes also show Projects (its `_handle` would then open the convert / init offer), or stay silent.
+
+## Surfaced in the graph-search DS check (bmad-build-auto, 2026-11-01)
+
+- **The graph search's counts and lookups fire only for a layout carrying an operation id, and the production layout 10.12 adopts must carry the topology's.** Medium (unverified: no production layout exists yet).
+  - `GraphSearchController.wantCounts` / `lookup` / `countOf` return early when `model.layout?.operationId == null` (`app/lib/src/features/graph/graph_search_controller.dart:241-296`); the catalogue's `RecordedGraphLayout.fromSpec` had none, which is why no "N changes" showed (fixed in spec-fix-graph-search-ds-check-2026-11-01). `RecordedGraphLayout` is the only `GraphLayout` in `app/lib`, and `RepoGraphSource` takes its layout from outside until 10.12.
+  - **Follow-up:** when 10.12 builds the layout from the backend topology, pass the topology's `operation_id` as `operationId`, and test that a filter row in the mounted search shows its count.
