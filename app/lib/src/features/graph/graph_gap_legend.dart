@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -34,6 +35,9 @@ class GraphGapLegend extends StatefulWidget {
   @override
   State<GraphGapLegend> createState() => _GraphGapLegendState();
 }
+
+/// The legend popover's width (design/graph.css `.gtb-gaps-inner`).
+const double graphGapLegendWidth = 320;
 
 /// The gap counts per layout: computed once per layout, not per model notification.
 final _counts = Expando<({int dashed, int ends})>('gap counts');
@@ -141,6 +145,17 @@ class _GraphGapLegendState extends State<GraphGapLegend> with SingleTickerProvid
     return KeyEventResult.ignored;
   }
 
+  /// The popover's shift left of the chip's left edge that keeps it 8 inside the window's right edge, like View
+  /// options (the left and bottom edges cannot be reached: the chip is not built at or below 1040 px).
+  double _shift(BuildContext overlay) {
+    final RenderObject? chip = context.findRenderObject();
+    if (chip is! RenderBox || !chip.hasSize) {
+      return 0;
+    }
+    final double right = chip.localToGlobal(Offset.zero).dx + graphGapLegendWidth;
+    return math.min(0, MediaQuery.sizeOf(overlay).width - 8 - right);
+  }
+
   void _showAll() {
     _timer?.cancel();
     // The popover goes at once; the pointer left it with it.
@@ -174,13 +189,13 @@ class _GraphGapLegendState extends State<GraphGapLegend> with SingleTickerProvid
       final Color ink = _hover || _focused ? colors.textMuted : colors.textFaint;
       return OverlayPortal(
         controller: _portal,
-        overlayChildBuilder: (context) => Positioned(
+        overlayChildBuilder: (overlay) => Positioned(
           left: 0,
           top: 0,
           child: CompositedTransformFollower(
             link: _link,
             targetAnchor: Alignment.bottomLeft,
-            offset: const Offset(0, 6),
+            offset: Offset(_shift(overlay), 6),
             child: MouseRegion(
               onEnter: (_) => _enter(),
               onExit: (_) => _leave(),
@@ -285,7 +300,7 @@ class _LegendPopover extends StatelessWidget {
       ],
     );
     return SizedBox(
-      width: 320,
+      width: graphGapLegendWidth,
       child: ZsMenuMaterial(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Column(

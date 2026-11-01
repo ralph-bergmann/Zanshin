@@ -389,6 +389,9 @@ final class _Placer {
   final _gaps = <GraphGap>[];
   final _cuts = <int, List<GraphEdgeCut>>{};
 
+  // Router B's vertical runs per x, by top: a run lookup costs its strip's hits, not its whole plane height.
+  late final _verticals = GraphVerticalRuns(geometry);
+
   // The marks placed so far, hashed into 64 px cells.
   static const double _cell = 64;
   final _marks = <int, List<Offset>>{};
@@ -653,10 +656,8 @@ final class _Placer {
           bad.add((at - (c - 1), at + (c - 1)));
         }
       }
-      // shortcut: scans every vertical of the x strip over the whole plane height; index each x's runs by y if a
-      // long history's dashed edges make placement slow.
-      for (int q = _lowerBound(g.verticalXs, x - 3); q < g.verticalXs.length && g.verticalXs[q] <= x + 3; q++) {
-        if (g.verticalEdges[q] != edge && g.verticalTops[q] <= yb && g.verticalBottoms[q] >= ya) {
+      for (final int q in _verticals.overlapping(x - 3, x + 3, ya, yb)) {
+        if (g.verticalEdges[q] != edge) {
           final double a = u(x, g.verticalTops[q]);
           final double b = u(x, g.verticalBottoms[q]);
           bad.add((math.min(a, b) - 5, math.max(a, b) + 5));
@@ -676,9 +677,8 @@ final class _Placer {
       final y = y1;
       final double xa = math.min(x1, x2);
       final double xb = math.max(x1, x2);
-      // shortcut: as above, every vertical of the strip [xa, xb].
-      for (int q = _lowerBound(g.verticalXs, xa - 1); q < g.verticalXs.length && g.verticalXs[q] <= xb + 1; q++) {
-        if (g.verticalEdges[q] != edge && y >= g.verticalTops[q] - 1 && y <= g.verticalBottoms[q] + 1) {
+      for (final int q in _verticals.overlapping(xa - 1, xb + 1, y - 1, y + 1)) {
+        if (g.verticalEdges[q] != edge) {
           final double at = u(g.verticalXs[q], y);
           bad.add((at - (c - 1), at + (c - 1)));
         }
@@ -731,6 +731,75 @@ final class _Placer {
       }
     }
     return lo;
+  }
+}
+
+/// Router B's vertical runs ([RouteGeometry.verticalXs], sorted by x) grouped by x, each group ordered by top with
+/// the running maximum of its bottoms, so the runs of an x range that overlap a y range are found without scanning
+/// the group's other runs. The marker placement's lookup; public for its test only.
+// shortcut: one long run early in a group keeps the running maximum high and the walk scans down to it; runs of one
+// x rarely overlap (they would share a line), so an interval tree waits for a measured case.
+@visibleForTesting
+final class GraphVerticalRuns {
+  /// The index of [geometry]'s vertical runs.
+  GraphVerticalRuns(this.geometry) {
+    final Float64List xs = geometry.verticalXs;
+    final Float64List tops = geometry.verticalTops;
+    final Float64List bottoms = geometry.verticalBottoms;
+    final int n = xs.length;
+    _byTop = Int32List(n);
+    _tops = Float64List(n);
+    _maxBottoms = Float64List(n);
+    _groupEnds = Int32List(n);
+    for (var start = 0; start < n;) {
+      int end = start + 1;
+      while (end < n && xs[end] == xs[start]) {
+        end++;
+      }
+      final group = List<int>.generate(end - start, (i) => start + i)..sort((a, b) => tops[a].compareTo(tops[b]));
+      double maxBottom = double.negativeInfinity;
+      for (var i = 0; i < group.length; i++) {
+        final int q = group[i];
+        _byTop[start + i] = q;
+        _tops[start + i] = tops[q];
+        maxBottom = math.max(maxBottom, bottoms[q]);
+        _maxBottoms[start + i] = maxBottom;
+        _groupEnds[start + i] = end;
+      }
+      start = end;
+    }
+  }
+
+  /// The routed geometry.
+  final RouteGeometry geometry;
+  late final Int32List _byTop;
+  late final Float64List _tops;
+  late final Float64List _maxBottoms;
+  late final Int32List _groupEnds;
+
+  /// The runs with x in [x0, x1] and top ≤ [y1] and bottom ≥ [y0].
+  Iterable<int> overlapping(double x0, double x1, double y0, double y1) sync* {
+    final Float64List xs = geometry.verticalXs;
+    final Float64List bottoms = geometry.verticalBottoms;
+    for (int start = _Placer._lowerBound(xs, x0); start < xs.length && xs[start] <= x1; start = _groupEnds[start]) {
+      // The group's runs with top ≤ y1 end before lo; walking down, the running maximum says when no bottom reaches
+      // y0. The order of the hits is no contract (callers sort).
+      var lo = start;
+      int hi = _groupEnds[start];
+      while (lo < hi) {
+        final int mid = (lo + hi) >> 1;
+        if (_tops[mid] <= y1) {
+          lo = mid + 1;
+        } else {
+          hi = mid;
+        }
+      }
+      for (int k = lo - 1; k >= start && _maxBottoms[k] >= y0; k--) {
+        if (bottoms[_byTop[k]] >= y0) {
+          yield _byTop[k];
+        }
+      }
+    }
   }
 }
 

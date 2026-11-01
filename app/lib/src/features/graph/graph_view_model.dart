@@ -113,13 +113,14 @@ class GraphGapTarget {
   /// The gap below [child].
   const GraphGapTarget({required this.child, required this.commitId, this.targets = const <String>[]});
 
-  /// The gap's child.
+  /// The gap's child (a stack's oldest member, never a stack key).
   final String child;
 
   /// The child's commit id.
   final String commitId;
 
-  /// The keys of the visible ancestors its dashed edges reach; empty for a Missing edge.
+  /// The keys of the visible ancestors its dashed edges reach (a stack's newest member, never a stack key); empty
+  /// for a Missing edge.
   final List<String> targets;
 
   /// Whether the gap is a Missing edge's.
@@ -416,7 +417,8 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     if (!gap.gap.missing) {
       // Those of them from which a target is reached through them.
       flashed = <int>{};
-      final back = <int>[for (final String key in gap.gap.targets) ?layout.indexOfKey(key)];
+      // A target folded in all() is reached through its stack card.
+      final back = <int>[for (final String key in gap.gap.targets) ?layout.placeOfKey(key)];
       while (back.isNotEmpty) {
         final (:int start, :int end) = layout.childEdges(back.removeLast());
         for (var slot = start; slot < end; slot++) {

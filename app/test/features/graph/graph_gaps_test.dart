@@ -183,6 +183,37 @@ void main() {
       expect(p.gaps.gaps.where((g) => g.isStub), isNotEmpty);
     });
 
+    test('the vertical-run index answers like a scan of every run, on a scale layout and its x/y boundaries', () {
+      final RouteGeometry g = _place(syntheticLayout(3000)).geometry;
+      final runs = GraphVerticalRuns(g);
+      List<int> scan(double x0, double x1, double y0, double y1) => <int>[
+        for (var q = 0; q < g.verticalXs.length; q++)
+          if (g.verticalXs[q] >= x0 && g.verticalXs[q] <= x1 && g.verticalTops[q] <= y1 && g.verticalBottoms[q] >= y0)
+            q,
+      ];
+      final random = math.Random(11);
+      final double width = g.verticalXs.last + 10;
+      final double height = g.verticalBottoms.reduce(math.max) + 10;
+      var hits = 0;
+      for (var i = 0; i < 2000; i++) {
+        final double x0 = random.nextDouble() * width;
+        final double x1 = x0 + (i.isEven ? 6 : random.nextDouble() * 600);
+        final double y0 = random.nextDouble() * height;
+        final double y1 = y0 + (i.isEven ? 2 : random.nextDouble() * 400);
+        final List<int> expected = scan(x0, x1, y0, y1);
+        hits += expected.length;
+        expect(runs.overlapping(x0, x1, y0, y1).toList()..sort(), expected);
+      }
+      // Exactly on a run's x, top and bottom: the bounds are inclusive.
+      for (var q = 0; q < g.verticalXs.length; q += 7) {
+        final double x = g.verticalXs[q];
+        for (final y in <double>[g.verticalTops[q], g.verticalBottoms[q]]) {
+          expect(runs.overlapping(x, x, y, y), contains(q));
+        }
+      }
+      expect(hits, greaterThan(0));
+    });
+
     test('a scale layout: 1 000 random windows return exactly the placed gaps they meet', () {
       final RecordedGraphLayout layout = syntheticLayout(10000);
       final _Placed p = _place(layout);
@@ -213,6 +244,23 @@ void main() {
       expect(gap.fallback, isFalse);
       expect(gap.vertical, isTrue);
       expect(gap.y, bottom + p.rows.metrics.gapY / 2);
+    });
+
+    test('a long one-lane history of dashed edges: every marker in the middle of its row gap', () {
+      // Every vertical of the lane shares one x: the run lookup must find each edge's neighbours by y, not by scan.
+      const n = 3000;
+      final RecordedGraphLayout layout = handLayout(
+        <(String, int, int)>[for (var i = 0; i < n; i++) ('n$i', n - 1 - i, 0)],
+        edges: <(int, int)>[for (var i = 0; i + 1 < n; i++) (i, i + 1)],
+        indirect: <int>{for (var i = 0; i + 1 < n; i++) i},
+        parentCounts: <int>[for (var i = 0; i + 1 < n; i++) 1, 0],
+      );
+      final _Placed p = _place(layout);
+      expect(p.gaps.gaps, hasLength(n - 1));
+      for (final GraphGap gap in p.gaps.gaps) {
+        expect(gap.fallback, isFalse);
+        expect(gap.y, p.rows.top(gap.node) + p.rows.metrics.cardHeight + p.rows.metrics.gapY / 2);
+      }
     });
 
     test('a hidden merge gets one shared marker 16–22 px under the card; several real parents never group', () {
@@ -568,37 +616,44 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     });
 
-    testWidgets("a gap under a collapsed stack shows in all() by its oldest member's commit", (tester) async {
-      // The stack of m0 (oldest) and m1 at row 2 --dashed--> a (row 0).
-      final layout = RecordedGraphLayout(
-        mode: GraphMode.compact,
-        unit: 1,
-        rows: 3,
-        colCount: 1,
-        keys: <String>['m1', 'm0', 'a', graphStackKey('m0')],
-        cols: Int32List.fromList(<int>[-1, -1, 0, 0]),
-        nodeRows: Int32List.fromList(<int>[-1, -1, 0, 2]),
-        parentCounts: Int32List.fromList(<int>[1, 1, 0, 1]),
-        elided: Uint8List(4),
-        commitIds: const <String>['cm1', 'cm0', 'ca', 'cs'],
-        edgeChildren: Int32List.fromList(<int>[3]),
-        edgeParents: Int32List.fromList(<int>[2]),
-        edgeKinds: const <GraphEdgeKind>[GraphEdgeKind.indirect],
-        edgeShapes: const <GraphEdgeShape>[GraphEdgeShape.straight],
-        runMembers: <List<int>>[
-          <int>[1, 0],
-        ],
-        runStackNodes: <int?>[3],
-      );
-      final _Placed p = await pump(tester, layout: layout);
-      final TestGesture mouse = await mouseAt(tester, away);
-      await openAt(tester, mouse, p.gaps.gaps.single.point);
-      await tester.tap(find.text('Show in all()'));
-      expect(shown.single.commitId, 'cm0');
-      expect(shown.single.targets, <String>['a']);
-      await mouse.moveTo(away);
-      await tester.pump(const Duration(seconds: 1));
-    });
+    testWidgets(
+      "a gap between collapsed stacks shows in all() by member keys: the child's oldest, the target's newest",
+      (
+        tester,
+      ) async {
+        // The stack of m0 (oldest) and m1 at row 2 --dashed--> the stack of a0 (oldest) and a1 at row 0.
+        final layout = RecordedGraphLayout(
+          mode: GraphMode.compact,
+          unit: 1,
+          rows: 3,
+          colCount: 1,
+          keys: <String>['m1', 'm0', 'a1', 'a0', graphStackKey('m0'), graphStackKey('a0')],
+          cols: Int32List.fromList(<int>[-1, -1, -1, -1, 0, 0]),
+          nodeRows: Int32List.fromList(<int>[-1, -1, -1, -1, 2, 0]),
+          parentCounts: Int32List.fromList(<int>[1, 1, 1, 0, 1, 0]),
+          elided: Uint8List(6),
+          commitIds: const <String>['cm1', 'cm0', 'ca1', 'ca0', 'cs', 'csa'],
+          edgeChildren: Int32List.fromList(<int>[4]),
+          edgeParents: Int32List.fromList(<int>[5]),
+          edgeKinds: const <GraphEdgeKind>[GraphEdgeKind.indirect],
+          edgeShapes: const <GraphEdgeShape>[GraphEdgeShape.straight],
+          runMembers: <List<int>>[
+            <int>[1, 0],
+            <int>[3, 2],
+          ],
+          runStackNodes: <int?>[4, 5],
+        );
+        final _Placed p = await pump(tester, layout: layout);
+        final TestGesture mouse = await mouseAt(tester, away);
+        await openAt(tester, mouse, p.gaps.gaps.single.point);
+        await tester.tap(find.text('Show in all()'));
+        expect(shown.single.child, 'm0');
+        expect(shown.single.commitId, 'cm0');
+        expect(shown.single.targets, <String>['a1']);
+        await mouse.moveTo(away);
+        await tester.pump(const Duration(seconds: 1));
+      },
+    );
 
     testWidgets('an open callout closes on a pan, a new layout and a card menu', (tester) async {
       final _Placed p = await pump(tester);

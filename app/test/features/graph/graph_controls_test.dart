@@ -298,6 +298,48 @@ void main() {
       semantics.dispose();
     });
 
+    _testWidgets('its popover hangs 6 under the chip from its left edge and is kept 8 inside the window', (
+      tester,
+    ) async {
+      final _Rig rig = await _start(tester, window: const Size(1041, 900), respond: design);
+      Finder popover() =>
+          find.ancestor(of: find.text('This revset hides part of the history'), matching: find.byType(ZsMenuMaterial));
+      Future<void> hover(TestGesture mouse) async {
+        await mouse.moveTo(tester.getCenter(chip));
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(_m.durPop);
+      }
+
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(5, 895));
+      addTearDown(mouse.removePointer);
+      // In the floating shell at 1041 px the chip sits in the centred VIEW island: room enough, no shift.
+      await hover(mouse);
+      expect(tester.getRect(popover()).left, tester.getRect(chip).left);
+      expect(tester.getRect(popover()).top, tester.getRect(chip).bottom + 6);
+      expect(tester.getRect(popover()).right, lessThanOrEqualTo(1041 - 8));
+      await mouse.moveTo(const Offset(5, 895));
+      await tester.pump(const Duration(milliseconds: 210));
+      await tester.pump(_m.durExit + const Duration(milliseconds: 1));
+
+      // A chip at the window's right edge: shifted left, 8 inside.
+      await tester.pumpWidget(
+        shellHost(
+          Align(
+            alignment: Alignment.topRight,
+            child: GraphGapLegend(model: rig.model),
+          ),
+        ),
+      );
+      await tester.pump();
+      await hover(mouse);
+      expect(tester.getRect(popover()).right, 1041 - 8);
+      expect(tester.getRect(popover()).top, tester.getRect(chip).bottom + 6);
+      await mouse.moveTo(const Offset(5, 895));
+      await tester.pump(const Duration(milliseconds: 210));
+      await tester.pump(_m.durExit + const Duration(milliseconds: 1));
+    });
+
     _testWidgets('no gaps: no chip', (tester) async {
       await _start(tester);
       expect(find.byType(GraphGapLegend), findsOneWidget);

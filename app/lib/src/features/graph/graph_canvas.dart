@@ -720,11 +720,15 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       return;
     }
     final GraphLayout layout = widget.layout;
+    // Member keys, never a stack key: all() may fold a stack under another oldest member. An edge into a stack enters
+    // its newest member.
+    int entry(int node) => layout.isStackNode(node) ? layout.runMembersOf(layout.runOf(node)!).last : node;
+    final int child = graphGapCommitNode(layout, gap.node);
     show(
       GraphGapTarget(
-        child: layout.keyOf(gap.node),
-        commitId: layout.commitIdOf(graphGapCommitNode(layout, gap.node)),
-        targets: <String>[for (final int edge in gap.edges) layout.keyOf(layout.parentOf(edge))],
+        child: layout.keyOf(child),
+        commitId: layout.commitIdOf(child),
+        targets: <String>[for (final int edge in gap.edges) layout.keyOf(entry(layout.parentOf(edge)))],
       ),
     );
   }

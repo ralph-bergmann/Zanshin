@@ -1266,6 +1266,53 @@ void main() {
       });
     });
 
+    test(
+      'a target stack folded under another oldest member in all(): its member key still flashes the hidden path',
+      () {
+        fakeAsync((async) {
+          // Shown: c --dashed--> a1, the newest member of the stack [a0, a1] (stack:a0).
+          final RecordedGraphLayout shown = handLayout(
+            <(String, int, int)>[('c', 1, 0), ('a1', 0, 0)],
+            edges: <(int, int)>[(0, 1)],
+            indirect: <int>{0},
+            parentCounts: <int>[1, 0],
+            workingCopy: 0,
+          );
+          // All: c → h1 → [a1, a0, z] folded as stack:z — the shown stack key stack:a0 is gone.
+          final all = RecordedGraphLayout(
+            mode: GraphMode.compact,
+            unit: 1,
+            rows: 3,
+            colCount: 1,
+            keys: <String>['c', 'h1', 'a1', 'a0', 'z', graphStackKey('z')],
+            cols: Int32List.fromList(<int>[0, 0, -1, -1, -1, 0]),
+            nodeRows: Int32List.fromList(<int>[2, 1, -1, -1, -1, 0]),
+            parentCounts: Int32List.fromList(<int>[1, 1, 1, 1, 0, 0]),
+            elided: Uint8List(6),
+            commitIds: const <String>['c', 'h1', 'a1', 'a0', 'z', 's'],
+            edgeChildren: Int32List.fromList(<int>[0, 1]),
+            edgeParents: Int32List.fromList(<int>[1, 5]),
+            edgeKinds: const <GraphEdgeKind>[GraphEdgeKind.direct, GraphEdgeKind.direct],
+            edgeShapes: const <GraphEdgeShape>[GraphEdgeShape.straight, GraphEdgeShape.straight],
+            runMembers: <List<int>>[
+              <int>[4, 3, 2],
+            ],
+            runStackNodes: <int?>[5],
+            workingCopyIndex: 0,
+          );
+          source.parentsOf = <String, List<String>>{
+            'c': <String>['h1'],
+          };
+          final GraphViewModel model = gapModel(async, shown, all);
+          unawaited(model.showGap(const GraphGapTarget(child: 'c', commitId: 'c', targets: <String>['a1'])));
+          async.flushMicrotasks();
+          expect(model.reveal?.key, 'h1');
+          expect(model.flash.value?.keys, <String>{'h1'});
+          model.dispose();
+        });
+      },
+    );
+
     test('a failed show issues no request and answers false', () {
       fakeAsync((async) {
         final GraphViewModel model = start(async);
