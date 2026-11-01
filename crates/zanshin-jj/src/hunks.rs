@@ -22,7 +22,8 @@
 //!   file-like (a regular file or a file conflict) and text; a hunk lists those one of its
 //!   removed or added lines falls in.
 //! - **Revisions** (Story 5.6, [`crate::Repo::diff`]): `jj diff -r` (merged parents → revision)
-//!   or `--from` / `--to`, read through `diff_stream_with_copies` with the CLI's copy records —
+//!   or `--from` / `--to`, each side one revision (`resolve_single_rev`; the CLI's multi-revision
+//!   `-r` is not ported), read through `diff_stream_with_copies` with the CLI's copy records —
 //!   the left side at the copy source, the right at the target; a copy or rename has no
 //!   sections. Each file carries its kind, its counts (the hunks' sums) and a fingerprint of its
 //!   changed lines; summary mode drops only the hunks. [`crate::Repo::compute_hunks`] uses no
@@ -56,7 +57,7 @@ use crate::op_support::SelectedTree;
 use crate::select_tree::{is_text, sections, HunkKey, Piece, SelectedTreeId};
 use crate::source_symbol::{trim_source_symbol, SourceLanguage, SourceSymbolScanner};
 use crate::warning::Warnings;
-use crate::{ChangeId, ChangeKind, CommitId, OperationId};
+use crate::{ChangeKind, CommitId, OperationId};
 
 /// [`crate::Repo::compute_hunks`]'s arguments (Story 5.1).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -145,14 +146,18 @@ pub struct DiffOptions {
 /// The two sides of a [`crate::Repo::diff`] (Story 5.6).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiffRevisions {
-    /// `-r`: the revision (`None` = `@`) against its merged parents.
-    Revision(Option<ChangeId>),
-    /// `--from` / `--to`: `from`'s tree against `to`'s; an absent side is `@`.
+    /// `-r`: the revision (`None` = `@`) against its merged parents. A revision is revset text
+    /// that must resolve to exactly one commit — a change id, a commit id (hidden commits
+    /// included), `@-`, a bookmark, …; its parse diagnostics land on the call's warnings. The
+    /// CLI's multi-revision `-r` (a connected range diffed as one) is not ported.
+    Revision(Option<String>),
+    /// `--from` / `--to`: `from`'s tree against `to`'s; an absent side is `@`. Each side is
+    /// revset text resolving to exactly one commit (`resolve_single_rev`), as in the CLI.
     FromTo {
         /// The left side (`None` = `@`).
-        from: Option<ChangeId>,
+        from: Option<String>,
         /// The right side (`None` = `@`).
-        to: Option<ChangeId>,
+        to: Option<String>,
     },
 }
 
@@ -248,15 +253,39 @@ pub(crate) fn diff(
     let reader = DiffReader::new(store, config, options.context, options.whitespace)?;
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo: &dyn jj_lib::repo::Repo = readonly.as_ref();
-    let resolve = |id: Option<&ChangeId>| {
-        crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), prefixes, id).map_err(|e| res(e, id))
+    // Each side resolves to exactly one commit as `resolve_single_rev` (`cli/src/cli_util.rs` @
+    // v0.46.0) does, hidden commit ids included; the CLI's multi-revision `-r` is not ported.
+    // `None` keeps the `@` path with its no-working-copy refusal. The alias config is read once
+    // per call, as the CLI reads it once per command (its warnings once).
+    let texts = match &options.revisions {
+        DiffRevisions::Revision(revision) => revision.is_some(),
+        DiffRevisions::FromTo { from, to } => from.is_some() || to.is_some(),
+    };
+    let parse_config = if texts {
+        Some(crate::revset::revset_config(config, sink).map_err(cfg)?)
+    } else {
+        None
+    };
+    let resolve = |revision: Option<&String>, sink: &mut Warnings| -> Result<Commit, MutateError> {
+        let (Some(text), Some(parse_config)) = (revision, parse_config.as_ref()) else {
+            return crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), prefixes, None)
+                .map_err(|e| res(e, None));
+        };
+        let expression = crate::revset::parse_diagnosed(
+            workspace,
+            parse_config,
+            (text, crate::revset::IN_REVSET_EXPRESSION),
+            sink,
+        )
+        .map_err(crate::mutate::rev)?;
+        crate::push::single_commit(&readonly, &expression, text, prefixes)
     };
     pollster::block_on(async {
         // `cmd_diff` (`cli/src/commands/diff.rs` @ v0.46.0), for a single revision.
         let mut records = CopyRecords::default();
         let (from_tree, to_commit, from_commit_id) = match &options.revisions {
             DiffRevisions::Revision(revision) => {
-                let commit = resolve(revision.as_ref())?;
+                let commit = resolve(revision.as_ref(), sink)?;
                 let parents = commit.parents().await.map_err(be)?;
                 for parent in &parents {
                     add_copy_records(repo.store(), parent, &commit, matcher.as_ref(), &mut records).await?;
@@ -265,8 +294,8 @@ pub(crate) fn diff(
                 (from_tree, commit, None)
             }
             DiffRevisions::FromTo { from, to } => {
-                let from = resolve(from.as_ref())?;
-                let to = resolve(to.as_ref())?;
+                let from = resolve(from.as_ref(), sink)?;
+                let to = resolve(to.as_ref(), sink)?;
                 add_copy_records(repo.store(), &from, &to, matcher.as_ref(), &mut records).await?;
                 (from.tree(), to, Some(CommitId(from.id().hex())))
             }

@@ -1005,10 +1005,12 @@ ZanshinBuf *zanshin_diagnostics(void);
  *
  * The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, against
  * its merged parents; absent: `@`) or `from` / `to` (`--from` / `--to`; either present selects
- * that form, an absent side `@`), `paths` (repo-relative prefixes; empty: every path; one that
- * matches nothing is a `jj.paths_unmatched` warning), `context` (absent: the effective
- * `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no hunks). No caching. Writes
- * NO operation beyond the pre-verb snapshot's (Story 9.26).
+ * that form, an absent side `@`) — each a revset that must resolve to exactly one commit (a
+ * commit id reaches a hidden commit; the CLI's multi-revision `-r`, a range diffed as one, is
+ * not ported; parse diagnostics land on the call's warnings) — `paths` (repo-relative prefixes;
+ * empty: every path; one that matches nothing is a `jj.paths_unmatched` warning), `context`
+ * (absent: the effective `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no
+ * hunks). No caching. Writes NO operation beyond the pre-verb snapshot's (Story 9.26).
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `Diff` payload on success.
  *
@@ -1020,11 +1022,12 @@ ZanshinBuf *zanshin_diagnostics(void);
  * - `jj.invalid_input` — `revision` together with `from` or `to` (before the snapshot: nothing
  *   written, no `precondition`), or a `paths` entry that is not a valid repo path or leaves the
  *   repository; detail in `context`.
- * - `jj.change_not_found` — a revision is malformed or carried by no VISIBLE commit.
- * - `jj.revset_resolution_error` — an ambiguous change-id prefix or a divergent change (the
- *   CLI's hints in `hints`), a failing `revsets.short-prefixes`, or `@` in a workspace with no
- *   working-copy commit.
- * - `jj.config_error` — `diff.git.context` or `ui.conflict-marker-style` is malformed.
+ * - `jj.revset_parse_error` — a revision is not a valid revset expression.
+ * - `jj.revset_resolution_error` — a revision resolves to no commit or more than one (an unknown
+ *   symbol, an ambiguous prefix, a divergent change; the CLI's hints in `hints`), a failing
+ *   `revsets.short-prefixes`, or `@` in a workspace with no working-copy commit.
+ * - `jj.config_error` — `diff.git.context`, `ui.conflict-marker-style` or the revset aliases are
+ *   malformed.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
  * - `jj.jj_lib_error` — a side cannot be read, or another jj-lib failure; detail in `context`.
  *

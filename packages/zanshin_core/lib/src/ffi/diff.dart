@@ -198,7 +198,10 @@ final class Diff {
 ///
 /// [revision] is `-r` (`null`: `@`), diffed against its merged parents; [from]
 /// / [to] are `--from` / `--to` — either set selects that form, the other side
-/// `null` = `@`; [revision] together with either is refused
+/// `null` = `@`; each is a revset that must resolve to exactly one commit (a
+/// commit id reaches a hidden commit; the CLI's multi-revision `-r` is not
+/// ported; parse diagnostics land on the call's warnings); [revision] together
+/// with either is refused
 /// (`jj.invalid_input`). [paths] are repo-relative prefixes (empty: every
 /// path), [context] the context lines (`null`: the effective
 /// `diff.git.context`), [whitespace] `-w` / `-b`, [summary] drops the hunks.

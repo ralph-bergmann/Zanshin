@@ -206,7 +206,9 @@ class _Details implements GraphDetails {
   }
 
   @override
-  Future<Diff> diff(String changeId, {List<String> paths = const [], bool summary = false}) async {
+  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) async {
+    // Keyed by commit id as [show]: `c<key>`.
+    final String changeId = commitId.substring(1);
     diffs.add((changeId, paths, summary));
     if ((summary ? refuseSummary : refuseDiff) case final error?) {
       throw error;
@@ -964,7 +966,7 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('a node keyed by its commit id (hidden, divergent) reads no diff: the diff resolves change ids', (
+    testWidgets('a node keyed by its commit id (hidden, divergent) reads its own diff by that commit id', (
       tester,
     ) async {
       source.respond = (_) => _layout(
@@ -977,8 +979,9 @@ void main() {
       await pump(tester);
       await settle(tester);
       expect(inspector.entry, isNotNull);
-      expect(details.diffs, isEmpty);
-      expect(find.byKey(const ValueKey<String>('inspector-diff')), findsNothing);
+      expect(details.diffs.map((d) => d.$1).toSet(), <String>{_mutable});
+      expect(find.text('+3'), findsWidgets);
+      expect(find.byKey(const ValueKey<String>('inspector-diff')), findsOneWidget);
       await unmount(tester);
     });
 

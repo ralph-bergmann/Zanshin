@@ -158,13 +158,15 @@ void main() {
     File('${pathOf('diff')}/a.txt').writeAsStringSync('one\ntwo\n');
     File('${pathOf('diff')}/b.txt').writeAsStringSync('x\n');
     final details = RepoGraphDetails(repo);
-    final String changeId = (await repo.handle.status()).workingCopyChangeId!;
-    final Diff summary = await details.diff(changeId, summary: true);
+    // A commit id, as the inspector passes it (`show` snapshots the new files first).
+    final String commitId = (await details.show('@')).change.commitId;
+    final Diff summary = await details.diff(commitId, summary: true);
+    expect(summary.commitId, commitId);
     expect(summary.files.map((f) => f.path), <String>['a.txt', 'b.txt']);
     expect(summary.files.map((f) => (f.added, f.removed)), <(int, int)>[(2, 0), (1, 0)]);
     expect(summary.files.every((f) => f.hunks.isEmpty && f.fingerprint.isNotEmpty), isTrue);
 
-    final Diff focused = await details.diff(changeId, paths: <String>['a.txt']);
+    final Diff focused = await details.diff(commitId, paths: <String>['a.txt']);
     final FileDiff file = focused.files.single;
     expect(file.path, 'a.txt');
     expect(file.hunks.single.lines.map((l) => (l.kind, l.text)), <(HunkLineKind, String)>[

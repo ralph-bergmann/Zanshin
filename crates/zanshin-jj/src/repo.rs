@@ -4434,8 +4434,11 @@ impl Repo {
     /// selects it only whole. The root's diff and `from == to` are empty. `paths` are
     /// repo-relative prefixes (empty = all); each one that matches nothing in either tree is a
     /// `jj.paths_unmatched` warning (`print_unmatched_explicit_paths`). `summary` keeps every
-    /// field but the hunks. Revisions resolve through the call's `revsets.short-prefixes`; config
-    /// resolves for the CLI command `diff`; everything is read from one head-resolved repo.
+    /// field but the hunks. A present revision is revset text that must resolve to exactly one
+    /// commit, as `resolve_single_rev` does — a commit id reaches a hidden commit; the CLI's
+    /// multi-revision `-r` (a connected range diffed as one) is not ported. Its parse diagnostics
+    /// land on the call's warnings. Revisions resolve through the call's `revsets.short-prefixes`;
+    /// config resolves for the CLI command `diff`; everything is read from one head-resolved repo.
     ///
     /// Writes NO operation beyond the pre-verb snapshot's (Story 9.26).
     ///
@@ -4443,13 +4446,12 @@ impl Repo {
     ///
     /// - [`crate::MutateError::InvalidInput`] — a `paths` entry is not a valid repo path or leaves
     ///   the repository.
-    /// - [`crate::MutateError::Config`] — `diff.git.context` or `ui.conflict-marker-style` is
-    ///   malformed.
-    /// - [`crate::MutateError::ChangeNotFound`] — a revision is malformed or carried by no VISIBLE
-    ///   commit.
-    /// - [`crate::MutateError::RevsetResolutionError`] — an ambiguous change-id prefix, a divergent
-    ///   change, a failing `revsets.short-prefixes`, or `@` in a workspace with no working-copy
-    ///   commit.
+    /// - [`crate::MutateError::Config`] — `diff.git.context`, `ui.conflict-marker-style` or the
+    ///   revset aliases are malformed.
+    /// - [`crate::MutateError::RevsetParseError`] — a revision is not a valid revset expression.
+    /// - [`crate::MutateError::RevsetResolutionError`] — a revision resolves to no commit or more
+    ///   than one (an unknown symbol, an ambiguous prefix, a divergent change), a failing
+    ///   `revsets.short-prefixes`, or `@` in a workspace with no working-copy commit.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::Backend`] — a side cannot be read, or another jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]

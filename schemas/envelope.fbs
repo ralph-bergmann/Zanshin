@@ -360,8 +360,11 @@ struct DiffContext {
 
 /// Arguments of `zanshin_diff` (Story 5.8) — `jj diff` as data (`zanshin_jj::Repo::diff`).
 ///
-///   revision    `-r`: jj reverse-hex change id, diffed against its merged parents; absent → `@`
-///   from / to   `--from` / `--to`: jj reverse-hex change ids; either present → `from`'s tree
+///   revision    `-r`: a revset that must resolve to exactly one commit (a change id, a commit
+///               id — hidden commits included —, `@-`, …), diffed against its merged parents;
+///               absent → `@`. The CLI's multi-revision `-r` (a range diffed as one) is not
+///               ported; parse diagnostics land on the call's warnings
+///   from / to   `--from` / `--to`: revsets as `revision`; either present → `from`'s tree
 ///               against `to`'s, an absent side `@`. `revision` together with either is refused
 ///               (`jj.invalid_input`, the CLI's `-r` vs `--from`/`--to` conflict)
 ///   paths       repo-relative path PREFIXES; absent / empty = every path

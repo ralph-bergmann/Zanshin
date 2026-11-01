@@ -35,7 +35,8 @@ typedef InspectorDraft = ({String summary, String details});
 ///   change and comes back open. [save] joins the fields as the CLI's `-m` paragraphs and runs `jj describe` through
 ///   the graph's runner — nothing when the text equals the current description.
 /// - **Diff** (Story 10.24): with `show` it reads the summary diff ([summaryOf]: ± and fingerprints per file); then the
-///   focused file's diff ([focusedDiff]). The first file starts focused; a reload keeps the focused path while it is
+///   focused file's diff ([focusedDiff]) — both by the commit id, so a hidden or divergent node reads its own commit.
+///   The first file starts focused; a reload keeps the focused path while it is
 ///   listed. A file is viewed while `viewedKey(change id, path, its summary fingerprint)` is in the viewed store's set; the
 ///   layout is `general.diffLayout` in [settings], followed when another writer changes it.
 class InspectorViewModel extends ChangeNotifier {
@@ -69,6 +70,7 @@ class InspectorViewModel extends ChangeNotifier {
 
   Map<String, FileDiff>? _summary;
   String? _changeId;
+  String? _commitId;
   String? _focused;
   FileDiff? _focusedDiff;
   ZanshinFfiException? _focusError;
@@ -207,15 +209,15 @@ class InspectorViewModel extends ChangeNotifier {
   void _loadFocus() {
     final int serial = ++_focusSerial;
     final String? path = _focused;
-    final String? changeId = _changeId;
-    if (path == null || changeId == null || _summary == null) {
+    final String? commitId = _commitId;
+    if (path == null || commitId == null || _summary == null) {
       _focusedDiff = null;
       _focusError = null;
       return;
     }
     unawaited(() async {
       try {
-        final Diff diff = await details.diff(changeId, paths: <String>[path]);
+        final Diff diff = await details.diff(commitId, paths: <String>[path]);
         if (serial == _focusSerial) {
           _focusedDiff = diff.files.where((file) => file.path == path).firstOrNull;
           _focusError = null;
@@ -233,9 +235,9 @@ class InspectorViewModel extends ChangeNotifier {
   }
 
   /// The summary, or null when it is refused (rows without ±, no diff block).
-  Future<Diff?> _summaryRead(String changeId) async {
+  Future<Diff?> _summaryRead(String commitId) async {
     try {
-      return await details.diff(changeId, summary: true);
+      return await details.diff(commitId, summary: true);
     } on ZanshinFfiException catch (error) {
       _log.warning('summary diff refused: ${error.code}');
       return null;
@@ -354,6 +356,7 @@ class InspectorViewModel extends ChangeNotifier {
   void _clearDiff() {
     _summary = null;
     _changeId = null;
+    _commitId = null;
     _focused = null;
     _focusedDiff = null;
     _focusError = null;
@@ -365,12 +368,11 @@ class InspectorViewModel extends ChangeNotifier {
     _notify();
     final bool mutable = node != layout.rootIndex && !layout.isImmutable(node);
     final String changeId = layout.changeIdOf(node);
+    final String commitId = layout.commitIdOf(node);
     final Future<ChangeActions?> previews = mutable ? _previews(changeId) : Future<ChangeActions?>.value();
-    // The diff resolves a change id only: a hidden or divergent node (keyed by its commit id) would read another
-    // commit, so it gets no diff (as a refused summary).
-    final Future<Diff?> summary = layout.keyOf(node) == changeId ? _summaryRead(changeId) : Future<Diff?>.value();
+    final Future<Diff?> summary = _summaryRead(commitId);
     try {
-      final ShowEntry entry = await details.show(layout.commitIdOf(node));
+      final ShowEntry entry = await details.show(commitId);
       final ChangeActions? actions = await previews;
       final Diff? diff = await summary;
       if (serial == _serial) {
@@ -378,6 +380,7 @@ class InspectorViewModel extends ChangeNotifier {
         _actions = actions;
         _summary = diff == null ? null : <String, FileDiff>{for (final FileDiff file in diff.files) file.path: file};
         _changeId = changeId;
+        _commitId = commitId;
         final List<String> paths = _listed;
         final String? focused = paths.contains(_focused) ? _focused : paths.firstOrNull;
         if (focused != _focused) {

@@ -1827,7 +1827,7 @@ fn compute_hunks_surface_resolves() {
     // Story 5.6: the revision diff.
     let options = zanshin_jj::DiffOptions {
         revisions: zanshin_jj::DiffRevisions::FromTo {
-            from: Some(zanshin_jj::ChangeId("a".to_owned())),
+            from: Some("a".to_owned()),
             to: None,
         },
         paths: vec!["a".to_owned()],

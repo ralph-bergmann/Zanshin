@@ -663,7 +663,7 @@ or no `# Errors` block.
 | `zanshin_change_actions` | `(uint64_t handle, const char *change_id)` | — | `ChangeActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 (+9.50) |
 | `zanshin_select_tree` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SelectTreeRequest` | `SelectedTree` (see § `zanshin_select_tree` — the GUI diff-editor contract) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.50 (`mode`: loop 9.9–9.12 second follow-on; `from`: 9.17) |
-| `zanshin_diff` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DiffRequest` | `Diff` (see § `Diff` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 5.8 |
+| `zanshin_diff` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DiffRequest` | `Diff` (see § `Diff` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 5.8 |
 | `zanshin_resolve_list` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ResolveListRequest` | `ResolveList` (see § `zanshin_resolve_list`, `zanshin_resolve`, `zanshin_diffedit`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.no_conflicts`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
 | `zanshin_resolve` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ResolveRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.no_conflicts`, `jj.immutable`, `jj.stale_selection`, `jj.conflict_not_resolvable`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
 | `zanshin_diffedit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DiffeditRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_selection`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
@@ -2507,7 +2507,10 @@ DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffCon
 
 - `revision` = `-r` (absent `@`), diffed against its merged parents; `from` / `to` = `--from` /
   `--to` — either present selects that form, an absent side `@`. `revision` with either is
-  `jj.invalid_input` before the snapshot (no `precondition`), the CLI's clap conflict.
+  `jj.invalid_input` before the snapshot (no `precondition`), the CLI's clap conflict. Each is
+  revset text for any single revision (a change id, a commit id incl. a hidden one, a revset);
+  zero or several commits are `jj.revset_resolution_error`, a bad expression
+  `jj.revset_parse_error` (the CLI's multi-revision `-r` is not ported).
 - `paths`: repo-relative prefixes (no fileset DSL); each one matching nothing is a
   `jj.paths_unmatched` warning on the envelope. `context` absent = the effective
   `diff.git.context`; a struct because `flatc --dart` has no optional scalars. `whitespace` =

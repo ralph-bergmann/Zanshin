@@ -9,7 +9,7 @@
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, VerifierOptions, WIPOffset};
 use tracing::debug;
 use zanshin_jj::{
-    ChangeId, DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, MutateError, RevisionDiff, Whitespace,
+    DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, MutateError, RevisionDiff, Whitespace,
 };
 
 use crate::envelope::{
@@ -22,9 +22,10 @@ use crate::repo::map_mutate_err;
 use crate::select_tree::strings;
 use crate::status::change_kind_offset;
 
-/// Parse a `DiffRequest` buffer into owned [`DiffOptions`]: `from` or `to` present is the
-/// `--from` / `--to` form (an absent side `@`), else the `-r` form (absent: `@`); absent vectors
-/// are empty, an absent `context` is the effective `diff.git.context`.
+/// Parse a `DiffRequest` buffer into owned [`DiffOptions`], each revision as its revset text:
+/// `from` or `to` present is the `--from` / `--to` form (an absent side `@`), else the `-r` form
+/// (absent: `@`); absent vectors are empty, an absent `context` is the effective
+/// `diff.git.context`.
 ///
 /// `data`/`len` describe a caller-owned buffer Dart builds and frees itself; Rust borrows it for
 /// the call only. The byte slice lives in this function's scope and the result is OWNED, so the
@@ -43,8 +44,8 @@ fn read_diff_request(data: *const u8, len: usize) -> Result<DiffOptions, FfiErro
     let req = flatbuffers::root_with_opts::<fbs::DiffRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
     expect_request_kind(req.kind(), fbs::RequestKind::Diff)?;
-    let id = |s: Option<&str>| s.map(|s| ChangeId(s.to_owned()));
-    let revisions = match (id(req.revision()), id(req.from()), id(req.to())) {
+    let text = |s: Option<&str>| s.map(str::to_owned);
+    let revisions = match (text(req.revision()), text(req.from()), text(req.to())) {
         (Some(_), from, to) if from.is_some() || to.is_some() => {
             return Err(map_mutate_err(MutateError::invalid(
                 "revision cannot be used with from or to",
@@ -86,10 +87,12 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 ///
 /// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, against
 /// its merged parents; absent: `@`) or `from` / `to` (`--from` / `--to`; either present selects
-/// that form, an absent side `@`), `paths` (repo-relative prefixes; empty: every path; one that
-/// matches nothing is a `jj.paths_unmatched` warning), `context` (absent: the effective
-/// `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no hunks). No caching. Writes
-/// NO operation beyond the pre-verb snapshot's (Story 9.26).
+/// that form, an absent side `@`) — each a revset that must resolve to exactly one commit (a
+/// commit id reaches a hidden commit; the CLI's multi-revision `-r`, a range diffed as one, is
+/// not ported; parse diagnostics land on the call's warnings) — `paths` (repo-relative prefixes;
+/// empty: every path; one that matches nothing is a `jj.paths_unmatched` warning), `context`
+/// (absent: the effective `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no
+/// hunks). No caching. Writes NO operation beyond the pre-verb snapshot's (Story 9.26).
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Diff` payload on success.
 ///
@@ -101,11 +104,12 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// - `jj.invalid_input` — `revision` together with `from` or `to` (before the snapshot: nothing
 ///   written, no `precondition`), or a `paths` entry that is not a valid repo path or leaves the
 ///   repository; detail in `context`.
-/// - `jj.change_not_found` — a revision is malformed or carried by no VISIBLE commit.
-/// - `jj.revset_resolution_error` — an ambiguous change-id prefix or a divergent change (the
-///   CLI's hints in `hints`), a failing `revsets.short-prefixes`, or `@` in a workspace with no
-///   working-copy commit.
-/// - `jj.config_error` — `diff.git.context` or `ui.conflict-marker-style` is malformed.
+/// - `jj.revset_parse_error` — a revision is not a valid revset expression.
+/// - `jj.revset_resolution_error` — a revision resolves to no commit or more than one (an unknown
+///   symbol, an ambiguous prefix, a divergent change; the CLI's hints in `hints`), a failing
+///   `revsets.short-prefixes`, or `@` in a workspace with no working-copy commit.
+/// - `jj.config_error` — `diff.git.context`, `ui.conflict-marker-style` or the revset aliases are
+///   malformed.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — a side cannot be read, or another jj-lib failure; detail in `context`.
 ///
@@ -537,8 +541,8 @@ mod tests {
         super::read_diff_request(bytes.as_ptr(), bytes.len())
     }
 
-    fn change(id: &str) -> zanshin_jj::ChangeId {
-        zanshin_jj::ChangeId(id.to_owned())
+    fn rev(text: &str) -> String {
+        text.to_owned()
     }
 
     /// An empty request is `DiffOptions::default()`; every field reaches its option.
@@ -558,7 +562,7 @@ mod tests {
         assert_eq!(
             options,
             DiffOptions {
-                revisions: DiffRevisions::Revision(Some(change("rev"))),
+                revisions: DiffRevisions::Revision(Some(rev("rev"))),
                 paths: vec!["a".into(), "b/c".into()],
                 context: Some(0),
                 whitespace: Whitespace::IgnoreAllSpace,
@@ -595,21 +599,21 @@ mod tests {
         assert_eq!(
             revisions(Some("a"), Some("c")),
             DiffRevisions::FromTo {
-                from: Some(change("a")),
-                to: Some(change("c")),
+                from: Some(rev("a")),
+                to: Some(rev("c")),
             }
         );
         assert_eq!(
             revisions(None, Some("c")),
             DiffRevisions::FromTo {
                 from: None,
-                to: Some(change("c")),
+                to: Some(rev("c")),
             }
         );
         assert_eq!(
             revisions(Some("a"), None),
             DiffRevisions::FromTo {
-                from: Some(change("a")),
+                from: Some(rev("a")),
                 to: None,
             }
         );

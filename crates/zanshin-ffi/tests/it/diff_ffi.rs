@@ -21,12 +21,12 @@ use zanshin_ffi::diff::{diff_to_envelope, zanshin_diff};
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::{
-    fbs, CallReport, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND, JJ_INVALID_INPUT,
-    JJ_PATHS_UNMATCHED,
+    fbs, CallReport, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_INVALID_INPUT, JJ_PATHS_UNMATCHED,
+    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
 use zanshin_jj::{
-    Backend, ChangeId, ChangeKind, DiffOptions, DiffRevisions, FileDiff, HunkKey, HunkLine, HunksOptions, Repo,
-    RevisionDiff, SelectedTreeId, Whitespace,
+    Backend, ChangeKind, DiffOptions, DiffRevisions, FileDiff, HunkKey, HunkLine, HunksOptions, Repo, RevisionDiff,
+    SelectedTreeId, Whitespace,
 };
 
 /// `Repo::diff` of `@` and `compute_hunks` between `@`'s parent tree and its own tree, in a fresh
@@ -315,8 +315,8 @@ fn assert_matches_repo_diff(fx: &Fx, r: Req<'_>, options: &DiffOptions) -> Revis
     expected
 }
 
-fn id(s: &str) -> ChangeId {
-    ChangeId(s.to_owned())
+fn id(s: &str) -> String {
+    s.to_owned()
 }
 
 #[test]
@@ -481,7 +481,15 @@ fn a_conflict_bad_input_and_an_unknown_revision_are_refused() {
             ..Req::default()
         },
     );
-    assert_eq!(error_code(&bytes), Some(JJ_CHANGE_NOT_FOUND));
+    assert_eq!(error_code(&bytes), Some(JJ_REVSET_RESOLUTION_ERROR));
+    let bytes = call(
+        fx.handle,
+        Req {
+            revision: Some("bogus("),
+            ..Req::default()
+        },
+    );
+    assert_eq!(error_code(&bytes), Some(JJ_REVSET_PARSE_ERROR));
 
     assert_eq!(error_code(&call(0, Req::default())), Some(FFI_INVALID_HANDLE));
     let wrong_kind = call(

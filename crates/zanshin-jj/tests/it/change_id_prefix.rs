@@ -14,8 +14,8 @@ use std::ops::ControlFlow;
 
 use test_helpers::{add_commit_off_root, add_divergent_twin, extract_fixture, FixtureHandle};
 use zanshin_jj::{
-    resolve_revset, ActionStatus, ChangeError, ChangeId, CommitId, CommitViewError, FileError, MutateError, Repo,
-    ResolveListOptions, RevisionRef,
+    resolve_revset, ActionStatus, ChangeError, ChangeId, CommitId, CommitViewError, DiffOptions, DiffRevisions,
+    FileError, MutateError, Repo, ResolveListOptions, RevisionRef,
 };
 
 /// The medium fixture with `config` as its repo config.
@@ -262,6 +262,16 @@ fn a_divergent_change_is_refused_with_the_cli_hints() {
         .resolve_list(&ResolveListOptions {
             revision: Some(id.clone()),
             paths: Vec::new(),
+        })
+        .unwrap_err();
+    assert!(
+        matches!(&err, MutateError::RevsetResolutionError { reason, hints } if divergent(reason, hints)),
+        "{err:?}"
+    );
+    let err = repo
+        .diff(&DiffOptions {
+            revisions: DiffRevisions::Revision(Some(id.0.clone())),
+            ..DiffOptions::default()
         })
         .unwrap_err();
     assert!(

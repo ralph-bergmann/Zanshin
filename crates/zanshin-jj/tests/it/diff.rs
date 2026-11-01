@@ -97,8 +97,13 @@ fn run(fx: &mut Fx, options: &DiffOptions) -> RevisionDiff {
 }
 
 fn revision(id: &ChangeId) -> DiffOptions {
+    revset(&id.0)
+}
+
+/// `-r <text>`: any revset text.
+fn revset(text: &str) -> DiffOptions {
     DiffOptions {
-        revisions: DiffRevisions::Revision(Some(id.clone())),
+        revisions: DiffRevisions::Revision(Some(text.to_owned())),
         ..DiffOptions::default()
     }
 }
@@ -260,8 +265,8 @@ fn a_rename_is_one_file_with_its_source() {
         &mut fx,
         &DiffOptions {
             revisions: DiffRevisions::FromTo {
-                from: Some(a.0),
-                to: Some(c.0),
+                from: Some(a.0 .0),
+                to: Some(c.0 .0),
             },
             ..DiffOptions::default()
         },
@@ -318,8 +323,8 @@ fn from_to_diffs_two_revisions_and_pins_both() {
     let (mut fx, (a, a_commit), (c, c_commit)) = plain();
     let from_to = |from: Option<&ChangeId>, to: Option<&ChangeId>| DiffOptions {
         revisions: DiffRevisions::FromTo {
-            from: from.cloned(),
-            to: to.cloned(),
+            from: from.map(|id| id.0.clone()),
+            to: to.map(|id| id.0.clone()),
         },
         ..DiffOptions::default()
     };
@@ -438,8 +443,8 @@ fn a_missing_object_is_a_backend_error() {
     let mut repo = Repo::open(&fx.root).expect("reopen");
     let from_to = DiffOptions {
         revisions: DiffRevisions::FromTo {
-            from: Some(c.clone()),
-            to: Some(d.clone()),
+            from: Some(c.0.clone()),
+            to: Some(d.0.clone()),
         },
         ..DiffOptions::default()
     };
@@ -451,13 +456,67 @@ fn a_missing_object_is_a_backend_error() {
     assert!(matches!(repo.diff(&revision(&d)), Err(MutateError::Backend(_))));
 }
 
-/// An unknown revision is not found.
+/// A revision resolving to no commit or several is a resolution error (`resolve_single_rev`); a
+/// bad expression a parse error.
 #[test]
-fn an_unknown_revision_is_not_found() {
+fn an_unknown_several_or_malformed_revision_is_refused() {
     let (mut fx, _, _) = plain();
-    let missing = ChangeId("yyyyyyyyyyyyyyyy".to_owned());
+    let reason = |result| match result {
+        Err(MutateError::RevsetResolutionError { reason, .. }) => reason,
+        other => panic!("expected a resolution error, got {other:?}"),
+    };
+    assert_eq!(
+        reason(fx.repo.diff(&revset("yyyyyyyy"))),
+        "Revision `yyyyyyyy` doesn't exist"
+    );
+    assert!(reason(fx.repo.diff(&revset("all()"))).contains("resolved to more than one revision"));
+    let from_to = DiffOptions {
+        revisions: DiffRevisions::FromTo {
+            from: Some("all()".to_owned()),
+            to: None,
+        },
+        ..DiffOptions::default()
+    };
+    assert!(reason(fx.repo.diff(&from_to)).contains("more than one"));
     assert!(matches!(
-        fx.repo.diff(&revision(&missing)),
-        Err(MutateError::ChangeNotFound { .. })
+        fx.repo.diff(&revset("bogus(")),
+        Err(MutateError::RevsetParseError { .. })
     ));
+}
+
+/// A commit id reaches a hidden commit (a rewritten predecessor), as `jj diff -r` does.
+#[test]
+fn a_hidden_commit_id_diffs_that_commit() {
+    let (mut fx, _, (_, c_commit)) = plain();
+    let before = run(&mut fx, &revset(&c_commit.0));
+    assert_eq!(before.commit_id, c_commit);
+    write(&fx.root, "f.txt", "a\nB\nC\n");
+    let (_, rewritten) = commit(&mut fx, "C2\n");
+    assert_ne!(rewritten, c_commit, "C was rewritten, its old commit hidden");
+    let hidden = run(&mut fx, &revset(&c_commit.0));
+    assert_eq!(hidden.commit_id, c_commit);
+    assert_eq!(hidden.files, before.files);
+    assert_ne!(run(&mut fx, &revset(&rewritten.0)).files, before.files);
+}
+
+/// Revset texts resolve to the one commit each denotes: `-r @-`, `--from @-- --to @-`.
+#[test]
+fn revset_texts_resolve_to_their_commit() {
+    let (mut fx, (a, a_commit), _) = plain();
+    let parent = run(&mut fx, &revset("@-"));
+    assert_eq!(parent.commit_id, a_commit);
+    assert_eq!(parent, run(&mut fx, &revision(&a)));
+    let from_to = run(
+        &mut fx,
+        &DiffOptions {
+            revisions: DiffRevisions::FromTo {
+                from: Some("@--".to_owned()),
+                to: Some("@-".to_owned()),
+            },
+            ..DiffOptions::default()
+        },
+    );
+    assert_eq!(from_to.commit_id, a_commit);
+    assert_eq!(from_to.from_commit_id, Some(CommitId("0".repeat(40))));
+    assert_eq!(from_to.files, parent.files);
 }

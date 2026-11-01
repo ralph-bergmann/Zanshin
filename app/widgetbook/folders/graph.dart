@@ -883,10 +883,7 @@ class _DemoDetails implements GraphDetails {
   /// Story 10.24: a modified file gets two hunks (in Rust the first under `fn main()`), an added or removed one a
   /// single hunk of its lines, a `.png` is binary.
   @override
-  Future<Diff> diff(String changeId, {List<String> paths = const [], bool summary = false}) async {
-    final GraphLayout layout = _model.layout!;
-    final int node = List<int>.generate(layout.nodeCount, (i) => i).firstWhere((i) => layout.changeIdOf(i) == changeId);
-    final String commitId = layout.commitIdOf(node);
+  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) async {
     final ShowEntry entry = await show(commitId);
     return Diff(
       files: <FileDiff>[

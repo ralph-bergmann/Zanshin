@@ -189,7 +189,7 @@ class _Details implements GraphDetails {
   Future<ChangeActions> changeActions(String changeId) => Completer<ChangeActions>().future;
 
   @override
-  Future<Diff> diff(String changeId, {List<String> paths = const [], bool summary = false}) => Completer<Diff>().future;
+  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) => Completer<Diff>().future;
 }
 
 void main() {

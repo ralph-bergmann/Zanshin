@@ -1636,9 +1636,13 @@ final class RepoHandle {
   ///
   /// [revision] is `-r` (`null`: `@`), diffed against its merged parents;
   /// [from] / [to] are `--from` / `--to` — either set selects that form, a
-  /// `null` side is `@`. [paths] are repo-relative prefixes (empty: every
-  /// path; one matching nothing is a `jj.paths_unmatched` warning on
-  /// [Diff.warnings]), [context] the context lines (`null`: the effective
+  /// `null` side is `@`. Each is a revset that must resolve to exactly one
+  /// commit (a change id, a commit id — hidden commits included —, `@-`, …);
+  /// the CLI's multi-revision `-r` (a range diffed as one) is not ported, and
+  /// parse diagnostics land on [Diff.warnings]. [paths] are repo-relative
+  /// prefixes (empty: every path; one matching nothing is a
+  /// `jj.paths_unmatched` warning on [Diff.warnings]), [context] the context
+  /// lines (`null`: the effective
   /// `diff.git.context`), [whitespace] `-w` / `-b`, [summary] leaves every
   /// file's hunks empty. Writes no operation beyond the pre-verb snapshot's.
   ///
@@ -1646,8 +1650,9 @@ final class RepoHandle {
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input` — [revision] with [from] or [to], or an invalid path —
-  /// `jj.change_not_found`, `jj.revset_resolution_error`, `jj.config_error`,
-  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error` — no commit or more
+  /// than one —, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
   Future<Diff> diff({
     String? revision,
     String? from,
