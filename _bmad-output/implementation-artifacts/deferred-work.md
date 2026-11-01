@@ -1033,6 +1033,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **No raw revset in the floating client.** Low; deferred (decision (g), Claude's default).
   - The six rule functions cannot express `trunk()..@`, `bookmarks()`, `conflicts()` or a user's own `[revset-aliases]`. Only `revsets.log`, set outside Zanshin, reaches such a revset (as the `jj log` built-in).
   - **Follow-up:** 10.22's design question (b). If it is built, 9.25's `NoSuchFunction` candidates gain a consumer.
+  - **2026-11-02, Ralph:** yes, as a seventh rule type → new Story 10.28.
 - **Design debris around the search.** None; a record for citations.
   - FC:68-72, :301 and :303 still style the retired `.gtb-select` inside the capsule.
   - AF:5 still describes SYNC #5's variant segment.
@@ -1077,6 +1078,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **No commit affordance on an empty @.** Low.
   - The composer needs files on @ (IN:177). `jj commit -m` on an empty @ is `describe` plus `new` in one operation (`cli/src/commands/commit.rs:35-36`).
   - **Follow-up:** Ralph decides whether 10.25 shows the composer on an empty @ (Claude's proposal: no; describe and "New change" cover it, in two operations).
+  - **2026-11-02, Ralph:** no composer on an empty @ — the title and "New change" already do it (two operations instead of one is fine). Decided; 10.25 is built so.
 - ~~**9.47's ledger row `describe_gui_text` retires with 10.8's Save.**~~ — RESOLVED 2026-10-31 (spec-10-8-inspector, I1). Low.
   - The row exists because the GUI was assumed to send the text without the CLI's trailing newline (`crates/zanshin-parity/tests/oracle/ledger.rs:71-78`).
   - **Follow-up:** when 10.8 lands, its scenario sends "S\n\nD\n" and the row goes.
@@ -2424,6 +2426,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The menu bar's toggles carry no checkmark, and Minimize, Zoom and Enter Full Screen are not greyed for the dialog windows.** Low.
   - Flutter's `PlatformMenuItem` has no checked state, and the engine ignores `PlatformProvidedMenuItem.enabled` (`FlutterMenuPlugin.mm` returns the copied system item early); the DS greying table asks for both (epics.md Story 11.13 scope 3).
   - **Follow-up:** a native method channel (design question (a)'s fallback) that sets `state` and `enabled` on those `NSMenuItem`s, or an engine change; none until Ralph wants it.
+  - **2026-11-02, Ralph:** build the native method channel → new Story 11.17.
 - **The Window menu may not list the open windows.** Low (unverified in the running app).
   - The engine builds a fresh `NSMenu` for `NSApp.mainMenu` and never sets `NSApp.windowsMenu`, so AppKit has no menu to add the window list to.
   - **Follow-up:** check the running app; if the list is missing, set `NSApp.windowsMenu` to the Window submenu from the runner after each `Menu.setMenus`.
@@ -2439,6 +2442,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **Show changes (`jj op show <id>`) stays disabled ("Not available yet").** Low.
   - The row shows the button with its command (spec 11.9); no view renders `RepoHandle.opShow` yet.
   - **Follow-up:** a story that adds the operation's diff view enables it.
+  - **2026-11-02, Ralph:** a new story → Story 10.29 (operation diff view, reusing 10.24's diff view).
 - **A log of exactly a multiple of 50 operations costs one extra read at the end.** Low.
   - The bridge's `opLog` has no count or offset, so a full page cannot tell it was the last: `UndoTimelineModel.loadMore` asks for 50 more once and finds none (witnessed in `undo_timeline_view_test.dart`, 1,000 ops → limits 50 … 1050).
   - **Follow-up:** none until a cheap count exists (design question (b) waits on the same).

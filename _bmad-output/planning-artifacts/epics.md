@@ -11880,6 +11880,44 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 ---
 
+### Story 10.28: A raw revset rule in the jj log Configurations window [UI/bridge]
+*(Added 2026-11-02, Ralph — console session after the story loop; settles 10.22's design question (b): "yes, as a rule type". deferred-work.md "No raw revset in the floating client".)*
+
+**Motivation.** The six rule functions of 10.22 cannot express `trunk()..@`, `bookmarks()`, `conflicts()` or a user's own `[revset-aliases]`; today only `revsets.log`, set outside Zanshin, reaches such a revset.
+
+**Scope.**
+1. **A seventh rule type "Revset"** with a free-text value, beside the six; it joins the other rules through the same builder (`zanshin_core`'s join / not builders), so a configuration may mix it with the structured rules.
+2. **Checked like the CLI:** the joined revset is parsed and resolved by the backend as `jj log -r` does (user aliases included); a parse or resolution error shows at the rule's row with jj's text (`jj.revset_parse_error` / `jj.revset_resolution_error`), and 9.25's `NoSuchFunction` candidates become the row's "did you mean" hint.
+3. **Preview:** the command preview shows the raw text verbatim inside the joined `-r`.
+4. **Default search and the search menu** treat a configuration with a raw rule like any other.
+
+**Non-goals.** Revset syntax highlighting or completion; editing `[revset-aliases]`.
+
+**Witnesses.** A raw `trunk()..@` rule alone and joined with an author rule produce the expected `-r`; a typo shows jj's error at the row and the candidates; a user alias resolves; the configuration persists and reloads.
+
+**Depends on.** 10.22 (done), 9.25. **Related:** 10.21.
+
+---
+
+### Story 10.29: Operation diff view — Show changes in the Undo Timeline [UI]
+*(Added 2026-11-02, Ralph — console session after the story loop. deferred-work.md "Show changes (`jj op show <id>`) stays disabled".)*
+
+**Motivation.** 11.9's Undo Timeline shows "Show changes" on every operation row, disabled ("Not available yet"), because no view renders `RepoHandle.opShow`.
+
+**Scope.**
+1. **Enable Show changes:** it opens the operation's changes as `jj op show <id>` lists them: the changed commits with their before/after and, per commit, the file diff.
+2. **Reuse 10.24's diff view** (file list with ±, focused-file hunks, Unified / Side by side, the shared layout preference) for a commit's diff; no Viewed marks here (read-only history).
+3. **Placement:** Claude's proposal — a panel in the Undo Timeline's island (or its popover), returning to the list with Esc; follow the DS where it shows one.
+4. **Refusals** the backend reports (e.g. 9.21's `op_diff` of a rebasing merge operation, `jj.jj_lib_error`) show in place of the diff, with jj's text.
+
+**Non-goals.** Restoring single commits from the view; an operation-to-operation diff picker.
+
+**Witnesses.** Show changes is enabled and opens the view; one `opShow` request per open; a commit's diff matches 10.24's rendering; a refusal shows its text; Esc returns to the list.
+
+**Depends on.** 11.9 (done), 10.24 (done), 9.21. **Related:** 10.23.
+
+---
+
 ## Epic 11: Floating app shell (Flutter UI)
 
 > **Granularity:** backlog-level, like Epics 9 and 10. Full acceptance criteria are written per story (via `bmad-create-story`) when it is scheduled.
@@ -13648,5 +13686,24 @@ Nothing NEEDS DESIGN.
 **Witnesses.** The app builds and shows the same text as before (golden/widget tests unchanged apart from the lookup); the guard fails on a planted literal; `flutter gen-l10n` output is current.
 
 **Depends on.** 11.10 (done). **Related:** 10.2, 10.3, 11.7.
+
+---
+
+### Story 11.17: Menu bar state — checkmarks and greyed window items via a native channel [UI/native]
+*(Added 2026-11-02, Ralph — console session after the story loop: "native channel". deferred-work.md "The menu bar's toggles carry no checkmark, and Minimize, Zoom and Enter Full Screen are not greyed for the dialog windows".)*
+
+**Motivation.** Flutter's `PlatformMenuItem` has no checked state, and the engine ignores `PlatformProvidedMenuItem.enabled` (`FlutterMenuPlugin.mm` returns the copied system item early), so 11.13's toggles show no checkmark and the Window items stay enabled where the DS greying table (epics.md Story 11.13 scope 3) greys them.
+
+**Scope.**
+1. **A native method channel** in the macOS runner that sets `state` (on/off) and `enabled` on named `NSMenuItem`s of `NSApp.mainMenu`, found by a stable identifier the Dart menu assigns.
+2. **Checkmarks** for 11.13's toggle items, following their Dart state.
+3. **Greying** of Minimize, Zoom and Enter Full Screen for the dialog windows, per the DS table, following the key window.
+4. **Window list:** if `NSApp.windowsMenu` is unset (deferred-work "The Window menu may not list the open windows"), the channel sets it to the Window menu so AppKit lists the open windows.
+
+**Non-goals.** An engine fork; menu items beyond 11.13's.
+
+**Witnesses.** A Dart toggle flips the native item's `state`; a dialog window key greys the three items and a project window enables them; the Window menu lists the open windows (native test or the in-process probe of project memory "Verify macOS UI without screen permission").
+
+**Depends on.** 11.13 (done), 11.12.
 
 ---
