@@ -960,4 +960,89 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inspectorBookmarkRemote => 'remote';
+
+  @override
+  String toastAbandoned(String changes) {
+    return 'Abandoned $changes';
+  }
+
+  @override
+  String toastReverted(String change, String inverse) {
+    return 'Reverted $change — $inverse undoes it';
+  }
+
+  @override
+  String toastRevertedAlone(String change) {
+    return 'Reverted $change';
+  }
+
+  @override
+  String toastSquashed(String source, String destination) {
+    return 'Squashed $source into $destination';
+  }
+
+  @override
+  String toastBookmarkCreated(String names, String target) {
+    return 'Created $names on $target';
+  }
+
+  @override
+  String toastBookmarkDeleted(String names) {
+    return 'Deleted $names';
+  }
+
+  @override
+  String toastBookmarkMoved(String names, String target) {
+    return 'Moved $names to $target';
+  }
+
+  @override
+  String toastBookmarkRenamed(String oldName, String newName) {
+    return 'Renamed $oldName to $newName';
+  }
+
+  @override
+  String toastUndid(String command) {
+    return 'Undid $command';
+  }
+
+  @override
+  String toastRedid(String command) {
+    return 'Redid $command';
+  }
+
+  @override
+  String get toastUndo => 'Undo';
+
+  @override
+  String get toastRedo => 'Redo';
+
+  @override
+  String get toastRetry => 'Retry';
+
+  @override
+  String get toastNothingUndone => 'Nothing undone — another operation came after it';
+
+  @override
+  String get toastNothingRedone => 'Nothing redone — another operation came after it';
+
+  @override
+  String toastStaleUpdateFailed(String reason) {
+    return 'Updating the working copy failed — $reason';
+  }
+
+  @override
+  String toastOpened(String name) {
+    return 'Opened $name';
+  }
+
+  @override
+  String toastListAnd(String head, String last) {
+    return '$head and $last';
+  }
+
+  @override
+  String toastListComma(String head, String next) {
+    return '$head, $next';
+  }
 }

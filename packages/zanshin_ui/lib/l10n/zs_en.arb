@@ -36,6 +36,8 @@
   },
   "progressIndeterminate": "in progress",
   "@progressIndeterminate": {"description": "VoiceOver value of a progress bar without a known fraction."},
+  "toastDismiss": "Dismiss",
+  "@toastDismiss": {"description": "VoiceOver label of a toast's close (x) button."},
   "resizePoints": "{number} points",
   "@resizePoints": {
     "description": "VoiceOver value of a panel resize edge: the panel width in points.",

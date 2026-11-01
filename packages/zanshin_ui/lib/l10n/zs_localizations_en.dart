@@ -61,6 +61,9 @@ class ZsLocalizationsEn extends ZsLocalizations {
   String get progressIndeterminate => 'in progress';
 
   @override
+  String get toastDismiss => 'Dismiss';
+
+  @override
   String resizePoints(double number) {
     final intl.NumberFormat numberNumberFormat = intl.NumberFormat.decimalPattern(localeName);
     final String numberString = numberNumberFormat.format(number);

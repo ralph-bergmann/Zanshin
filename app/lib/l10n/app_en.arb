@@ -559,5 +559,86 @@
   "inspectorBookmarkLocal": "local",
   "@inspectorBookmarkLocal": {"description": "Bookmark chip state: the local bookmark is not in sync with a remote."},
   "inspectorBookmarkRemote": "remote",
-  "@inspectorBookmarkRemote": {"description": "Bookmark chip state: a remote-tracking bookmark."}
+  "@inspectorBookmarkRemote": {"description": "Bookmark chip state: a remote-tracking bookmark."},
+
+  "toastAbandoned": "Abandoned {changes}",
+  "@toastAbandoned": {
+    "description": "Operation toast after jj abandon; changes is a list of change ids.",
+    "placeholders": {"changes": {"type": "String", "example": "ovknlmro"}}
+  },
+  "toastReverted": "Reverted {change} — {inverse} undoes it",
+  "@toastReverted": {
+    "description": "Operation toast after jj revert: change was reverted, the new change inverse holds its inverse.",
+    "placeholders": {"change": {"type": "String", "example": "ovknlmro"}, "inverse": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "toastRevertedAlone": "Reverted {change}",
+  "@toastRevertedAlone": {
+    "description": "Operation toast after jj revert when jj reported no new change.",
+    "placeholders": {"change": {"type": "String", "example": "ovknlmro"}}
+  },
+  "toastSquashed": "Squashed {source} into {destination}",
+  "@toastSquashed": {
+    "description": "Operation toast after jj squash; both are change ids.",
+    "placeholders": {"source": {"type": "String", "example": "ovknlmro"}, "destination": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "toastBookmarkCreated": "Created {names} on {target}",
+  "@toastBookmarkCreated": {
+    "description": "Operation toast after jj bookmark create; names are bookmark names, target a change id.",
+    "placeholders": {"names": {"type": "String", "example": "main"}, "target": {"type": "String", "example": "ovknlmro"}}
+  },
+  "toastBookmarkDeleted": "Deleted {names}",
+  "@toastBookmarkDeleted": {
+    "description": "Operation toast after jj bookmark delete; names are bookmark names.",
+    "placeholders": {"names": {"type": "String", "example": "main"}}
+  },
+  "toastBookmarkMoved": "Moved {names} to {target}",
+  "@toastBookmarkMoved": {
+    "description": "Operation toast after jj bookmark move; names are bookmark names, target a change id.",
+    "placeholders": {"names": {"type": "String", "example": "main"}, "target": {"type": "String", "example": "ovknlmro"}}
+  },
+  "toastBookmarkRenamed": "Renamed {oldName} to {newName}",
+  "@toastBookmarkRenamed": {
+    "description": "Operation toast after jj bookmark rename.",
+    "placeholders": {"oldName": {"type": "String", "example": "main"}, "newName": {"type": "String", "example": "trunk"}}
+  },
+  "toastUndid": "Undid {command}",
+  "@toastUndid": {
+    "description": "Operation toast after jj undo; command is the jj command that was undone.",
+    "placeholders": {"command": {"type": "String", "example": "jj abandon ovknlmro"}}
+  },
+  "toastRedid": "Redid {command}",
+  "@toastRedid": {
+    "description": "Operation toast after jj redo; command is the jj command that was redone.",
+    "placeholders": {"command": {"type": "String", "example": "jj abandon ovknlmro"}}
+  },
+  "toastUndo": "Undo",
+  "@toastUndo": {"description": "Toast button that runs jj undo."},
+  "toastRedo": "Redo",
+  "@toastRedo": {"description": "Toast button that runs jj redo."},
+  "toastRetry": "Retry",
+  "@toastRetry": {"description": "Toast button that runs the failed jj command again."},
+  "toastNothingUndone": "Nothing undone — another operation came after it",
+  "@toastNothingUndone": {"description": "Toast when Undo found that another program's jj operation came after Zanshin's."},
+  "toastNothingRedone": "Nothing redone — another operation came after it",
+  "@toastNothingRedone": {"description": "Toast when Redo found that another program's jj operation came after Zanshin's undo."},
+  "toastStaleUpdateFailed": "Updating the working copy failed — {reason}",
+  "@toastStaleUpdateFailed": {
+    "description": "Toast when jj workspace update-stale failed; reason is jj's message or error code.",
+    "placeholders": {"reason": {"type": "String", "example": "jj.io_error"}}
+  },
+  "toastOpened": "Opened {name}",
+  "@toastOpened": {
+    "description": "Toast in the project window after a project was created and opened with warnings; name is the project's.",
+    "placeholders": {"name": {"type": "String", "example": "zanshin"}}
+  },
+  "toastListAnd": "{head} and {last}",
+  "@toastListAnd": {
+    "description": "Joins the last item of a list in a toast: a, b and c.",
+    "placeholders": {"head": {"type": "String", "example": "a, b"}, "last": {"type": "String", "example": "c"}}
+  },
+  "toastListComma": "{head}, {next}",
+  "@toastListComma": {
+    "description": "Joins the items before the last of a list in a toast: a, b and c.",
+    "placeholders": {"head": {"type": "String", "example": "a"}, "next": {"type": "String", "example": "b"}}
+  }
 }

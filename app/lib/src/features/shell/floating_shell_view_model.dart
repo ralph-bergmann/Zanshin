@@ -8,6 +8,7 @@ import 'package:inject_annotation/inject_annotation.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 import 'shell_controller.dart';
+import 'shell_toast.dart';
 
 /// The floating shell's settings side (Story 11.3): owns the [ShellController], seeded from the stored `layout`
 /// widths and Settings › General's "Hide controls", follows "Hide controls" live, and writes the remembered widths
@@ -38,6 +39,9 @@ class FloatingShellViewModel extends ChangeNotifier {
 
   /// The shell's controller.
   late final ShellController shell;
+
+  /// The window's toast queue (Story 10.23).
+  final toasts = ShellToasts();
 
   Timer? _write;
   double? _panel;
@@ -83,6 +87,7 @@ class FloatingShellViewModel extends ChangeNotifier {
     scheduleMicrotask(_flush);
     _settings.removeListener(_settingsChanged);
     shell.dispose();
+    toasts.dispose();
     super.dispose();
   }
 }

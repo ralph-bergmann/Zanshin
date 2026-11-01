@@ -43,8 +43,10 @@ import 'top_bar.dart';
 /// ignore the pointer; the preview closes outright; the toast, the stale notice and the minimap stay — the minimap
 /// comes forward while the inspector is aside. VIEW stays while focus is inside it.
 ///
-/// **Keys and the window.** Esc closes the preview, then the flyout (only this window's). While the window is not
-/// key no preview opens and an open one closes (until 11.12 the window counts as key).
+/// **Keys and the window.** Esc closes the preview, then the flyout (only this window's). F6 moves focus to the
+/// toast's first button while a toast shows (Story 10.23; the toast keeps its buttons out of Tab until then), and back
+/// to where it was when the toast goes. While the window is not key no preview opens and an open one closes (until
+/// 11.12 the window counts as key).
 ///
 /// **What a slot must bring** (Story 11.3 review):
 /// - Content that steps aside draws on Zs materials, which fade through [ZsFade]; anything else in a group fades
@@ -152,6 +154,7 @@ class FloatingShell extends StatefulWidget {
 class _FloatingShellState extends State<FloatingShell> {
   final _viewFocus = FocusNode(debugLabel: 'View island', canRequestFocus: false, skipTraversal: true);
   final _inspectorFocus = FocusNode(debugLabel: 'Inspector', canRequestFocus: false, skipTraversal: true);
+  final _bottomFocus = FocusNode(debugLabel: 'Bottom slot', canRequestFocus: false, skipTraversal: true);
   final _escape = FocusNode(debugLabel: 'FloatingShell', skipTraversal: true);
 
   /// The tap-region group of the rail and the flyout.
@@ -190,6 +193,7 @@ class _FloatingShellState extends State<FloatingShell> {
     widget.controller.calm.decideInspectorPinned = null;
     _viewFocus.dispose();
     _inspectorFocus.dispose();
+    _bottomFocus.dispose();
     _escape.dispose();
     super.dispose();
   }
@@ -209,10 +213,52 @@ class _FloatingShellState extends State<FloatingShell> {
   }
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.escape) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.f6) {
+      return _focusToast() ? KeyEventResult.handled : KeyEventResult.ignored;
+    }
+    if (event.logicalKey != LogicalKeyboardKey.escape) {
       return KeyEventResult.ignored;
     }
     return widget.controller.handleEscape() ? KeyEventResult.handled : KeyEventResult.ignored;
+  }
+
+  /// F6 moves to the toast region (DS components/overlays/Toast.prompt.md:15): focus lands on its first button.
+  bool _focusToast() {
+    if (widget.toast == null) {
+      return false;
+    }
+    for (final FocusNode node in _bottomFocus.descendants) {
+      if (node.canRequestFocus) {
+        if (!_bottomFocus.hasFocus) {
+          _beforeToast = FocusManager.instance.primaryFocus;
+        }
+        node.requestFocus();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Where focus was before F6, until it leaves the toast.
+  FocusNode? _beforeToast;
+
+  /// Focus leaving the toast because it went (×, its action, the hold) returns to where F6 took it from.
+  void _bottomFocusChanged(bool focused) {
+    if (focused) {
+      return;
+    }
+    final FocusNode? before = _beforeToast;
+    _beforeToast = null;
+    final FocusNode? primary = FocusManager.instance.primaryFocus;
+    if (before != null &&
+        before.context != null &&
+        before.canRequestFocus &&
+        (primary == null || primary is FocusScopeNode)) {
+      before.requestFocus();
+    }
   }
 
   static bool get _controlHeld => HardwareKeyboard.instance.isControlPressed;
@@ -419,7 +465,12 @@ class _FloatingShellState extends State<FloatingShell> {
           left: insets.left,
           right: insets.right,
           bottom: FloatingShell.bottomSlot,
-          child: Center(heightFactor: 1, child: bottom),
+          child: Focus(
+            focusNode: _bottomFocus,
+            includeSemantics: false,
+            onFocusChange: _bottomFocusChanged,
+            child: Center(heightFactor: 1, child: bottom),
+          ),
         ),
     ];
 

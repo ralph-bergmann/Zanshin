@@ -6,7 +6,6 @@
 
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' show ViewFocusDirection, ViewFocusEvent, ViewFocusState;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/src/foundation/_features.dart';
@@ -386,7 +385,7 @@ void main() {
       expect(rig.exits, isEmpty);
     });
 
-    test('an open that carries warnings keeps Projects with its notice and brings it forward', () async {
+    test('an open that carries warnings closes Projects too: the project window toasts them', () async {
       final _Rig rig = await launched();
 
       await rig.session.open('/r/zanshin');
@@ -397,23 +396,9 @@ void main() {
           ],
         ),
       );
-      await rig.until(() => rig.windows.controllerOf(mainWindowKey) != null);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      final projects = rig.windows.controllerOf(projectsWindowKey)! as DialogWindowController;
-      expect(rig.open, <String>[mainWindowKey, projectsWindowKey]);
-      expect(projects.isActivated, isFalse, reason: 'the new project window shows key on its first frame');
+      await rig.until(() => !rig.windows.isOpen(projectsWindowKey));
 
-      // The engine reports the project window becoming key as its view gaining focus.
-      WidgetsBinding.instance.handleViewFocusChanged(
-        ViewFocusEvent(
-          viewId: rig.windows.controllerOf(mainWindowKey)!.rootView.viewId,
-          state: ViewFocusState.focused,
-          direction: ViewFocusDirection.undefined,
-        ),
-      );
-      await rig.until(() => projects.isActivated);
-
-      expect(rig.open, <String>[mainWindowKey, projectsWindowKey]);
+      expect(rig.open, <String>[mainWindowKey]);
     });
 
     test('closing it quits, even with Settings open', () async {

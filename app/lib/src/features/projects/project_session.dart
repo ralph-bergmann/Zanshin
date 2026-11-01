@@ -27,6 +27,20 @@ final class ProjectOpened extends ProjectOpenOutcome {
   final List<ZanshinWarning> warnings;
 }
 
+/// A creation that opened with warnings, for the project window's toast (Story 10.23, I2): Projects closes after
+/// every open, so the project window reports them.
+@immutable
+class ProjectOpenReport {
+  /// The project [name] opened with [warnings].
+  const ProjectOpenReport({required this.name, required this.warnings});
+
+  /// The project's name.
+  final String name;
+
+  /// The creation's warnings, in the CLI's print order.
+  final List<ZanshinWarning> warnings;
+}
+
 /// The jj workspace is in the registry at [path] without being opened ([ProjectSession.add]).
 final class ProjectAdded extends ProjectOpenOutcome {
   /// The workspace is registered at [path].
@@ -144,6 +158,18 @@ class ProjectSession extends ChangeNotifier {
 
   /// The last failed open, until a project opens.
   ProjectOpenFailed? get lastFailure => _lastFailure;
+
+  final _openReport = ValueNotifier<ProjectOpenReport?>(null);
+
+  /// A creation's warnings, set when it opens with some, until [takeOpenReport] (Story 10.23).
+  ValueListenable<ProjectOpenReport?> get openReport => _openReport;
+
+  /// The pending [openReport], cleared: it is reported once.
+  ProjectOpenReport? takeOpenReport() {
+    final ProjectOpenReport? report = _openReport.value;
+    _openReport.value = null;
+    return report;
+  }
 
   /// Opens the project at [path], switching from the open one; a path the registry does not hold yet is added at
   /// [index] in [group] (see [ProjectRegistry.add]).
@@ -374,6 +400,12 @@ class ProjectSession extends ChangeNotifier {
     _lastFailure = null;
     _changes = _incoming;
     _incoming = null;
+    if (!_disposed) {
+      // A later open without warnings drops an earlier project's report.
+      _openReport.value = warnings.isEmpty
+          ? null
+          : ProjectOpenReport(name: _registry.entry(path)?.name ?? path, warnings: warnings);
+    }
     _notify();
     if (changedEarly) {
       refresh();
@@ -478,6 +510,7 @@ class ProjectSession extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _openReport.dispose();
     _registry.removeListener(notifyListeners);
     unawaited(_changes?.cancel());
     unawaited(_incoming?.cancel());

@@ -21,6 +21,7 @@ import 'package:zanshin/src/features/graph/graph_search_controller.dart';
 import 'package:zanshin/src/features/graph/graph_search_field.dart';
 import 'package:zanshin/src/features/graph/graph_search_store.dart';
 import 'package:zanshin/src/features/graph/graph_stack_store.dart';
+import 'package:zanshin/src/features/graph/graph_toasts.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
@@ -30,6 +31,7 @@ import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/stale_notice.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
+import 'package:zanshin/src/features/shell/shell_toast.dart';
 import 'package:zanshin_core/zanshin_core.dart'
     show
         ActionOutcome,
@@ -41,7 +43,8 @@ import 'package:zanshin_core/zanshin_core.dart'
         FileChangeKind,
         MutationResult,
         ShowEntry,
-        Signature;
+        Signature,
+        ZanshinWarning;
 import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -172,6 +175,10 @@ final graphFolder = WidgetbookFolder(
     WidgetbookComponent(
       name: 'Stale notice',
       useCases: <WidgetbookUseCase>[WidgetbookUseCase(name: 'Variants', builder: (context) => const _StaleNotices())],
+    ),
+    WidgetbookComponent(
+      name: 'Toast',
+      useCases: <WidgetbookUseCase>[WidgetbookUseCase(name: 'Tones', builder: (context) => const _Toasts())],
     ),
     WidgetbookComponent(
       name: 'Card',
@@ -464,6 +471,9 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
     store: MemoryGraphSearchStore(),
   );
   final _shell = ShellController();
+  // Story 10.23: the graph's toasts, until 10.12 wires them in the project window.
+  final _toasts = ShellToasts();
+  late final _graphToasts = GraphToasts(_model, _toasts);
   final _descriptions = <String, String>{};
   GraphPreferences? _preferences;
   InspectorViewModel? _inspector;
@@ -471,6 +481,7 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
   @override
   void initState() {
     super.initState();
+    _graphToasts; // Listening from the start.
     unawaited(_load());
   }
 
@@ -518,7 +529,9 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
     _inspector?.dispose();
     _preferences?.dispose();
     _search.dispose();
+    _graphToasts.dispose();
     _model.dispose();
+    _toasts.dispose();
     _shell.dispose();
     _dir.deleteSync(recursive: true);
     super.dispose();
@@ -532,7 +545,7 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
       return const ZsCanvas();
     }
     return ListenableBuilder(
-      listenable: _model,
+      listenable: Listenable.merge(<Listenable>[_model, _toasts]),
       builder: (context, _) => GraphSearchShortcuts(
         search: _search,
         child: FloatingShell(
@@ -547,6 +560,7 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
           newChange: NewChangeButton(model: _model),
           inspector: GraphView.inspector(inspector),
           atPill: GraphView.atPill(_model),
+          toast: _toasts.occupied ? ShellToastView(toasts: _toasts) : null,
         ),
       ),
     );
@@ -982,6 +996,123 @@ class _CardStatesState extends State<_CardStates> {
       ],
     );
   }
+}
+
+/// "Toast / Tones" (Story 10.23): a success with Undo, one with a warning clause, a refusal (warn) and a failure with
+/// Retry, then the live host — Replay shows the next of them through a `ShellToastView`, with its motion and hold.
+class _Toasts extends StatefulWidget {
+  const _Toasts();
+
+  @override
+  State<_Toasts> createState() => _ToastsState();
+}
+
+class _ToastsState extends State<_Toasts> {
+  final _toasts = ShellToasts();
+  var _next = 0;
+
+  @override
+  void dispose() {
+    _toasts.dispose();
+    super.dispose();
+  }
+
+  static ZsToast _sample(BuildContext context, int i, VoidCallback dismiss) {
+    final ZsColors colors = ZsColors.of(context);
+    InlineSpan id(String bold, String rest) => TextSpan(
+      children: <TextSpan>[
+        TextSpan(
+          text: bold,
+          style: ZsType.id.copyWith(fontSize: ZsType.fsMd, fontWeight: FontWeight.w600, color: colors.text),
+        ),
+        TextSpan(
+          text: rest,
+          style: ZsType.id.copyWith(fontSize: ZsType.fsMd, color: colors.textMuted),
+        ),
+      ],
+    );
+    final undo = ZsToastAction(label: 'Undo', tooltip: 'jj undo', onPressed: dismiss);
+    return switch (i % 4) {
+      0 => ZsToast(
+        message: TextSpan(
+          children: <InlineSpan>[
+            const TextSpan(text: 'Squashed '),
+            id('ov', 'knlmro'),
+            const TextSpan(text: ' into '),
+            id('vr', 'uxwmqv'),
+          ],
+        ),
+        actions: <ZsToastAction>[undo],
+        onDismiss: dismiss,
+      ),
+      1 => ZsToast(
+        message: toastWithWarnings(
+          colors,
+          TextSpan(
+            children: <InlineSpan>[
+              const TextSpan(text: 'Abandoned '),
+              id('ov', 'knlmro'),
+            ],
+          ),
+          const <ZanshinWarning>[
+            ZanshinWarning(code: 'jj.identity_missing', message: 'Name and email not configured.'),
+          ],
+        ),
+        actions: <ZsToastAction>[undo],
+        onDismiss: dismiss,
+      ),
+      2 => ZsToast(
+        tone: ZsToastTone.warn,
+        message: const TextSpan(text: 'Commit 1234abcd is immutable'),
+        onDismiss: dismiss,
+      ),
+      _ => ZsToast(
+        tone: ZsToastTone.error,
+        message: const TextSpan(text: 'Updating the working copy failed — jj.io_error'),
+        actions: <ZsToastAction>[
+          ZsToastAction(label: 'Retry', tooltip: 'jj workspace update-stale', onPressed: dismiss),
+        ],
+        onDismiss: dismiss,
+      ),
+    };
+  }
+
+  void _replay() {
+    final int i = _next++;
+    _toasts.show(
+      ShellToastEntry(
+        tone: const <ZsToastTone>[ZsToastTone.success, ZsToastTone.success, ZsToastTone.warn, ZsToastTone.error][i % 4],
+        build: (context, dismiss) => _sample(context, i, dismiss),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: <Widget>[
+      const ZsCanvas(),
+      SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 16,
+          children: <Widget>[
+            for (var i = 0; i < 4; i++) Builder(builder: (context) => _sample(context, i, () {})),
+            ZsButton(label: 'Replay', identifier: 'toast-replay', onPressed: _replay),
+            SizedBox(
+              height: 80,
+              child: ListenableBuilder(
+                listenable: _toasts,
+                builder: (context, _) =>
+                    _toasts.occupied ? Center(child: ShellToastView(toasts: _toasts)) : const SizedBox.shrink(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
 }
 
 /// "Stale notice / Variants" (Story 10.5): the notice for each cause with "Update working copy", one busy, and the

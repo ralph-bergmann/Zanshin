@@ -38,8 +38,7 @@ bool _defaultFolderExists(String path) => Directory(path).existsSync();
 /// - **The red button** on the project window asks the close guards (10.22's "Discard changes?"), then closes the
 ///   project — or, with none open, shows Projects instead of the window.
 /// - **Projects' opens** (the Projects content's `onOpened`): the project window opens or switches, then Projects
-///   closes — unless the outcome carries warnings: Projects then stays with its notice and comes forward once the
-///   project window is up, after its first focus event (Claude's proposal until 10.23's toast).
+///   closes — always: a creation's warnings show in the project window's toast (Story 10.23, I2).
 /// - **Dock reopen** (the runner's `reopen` on `zanshin/window_frames`, sent only when no window is visible): a
 ///   minimised project window comes back, else Projects opens or comes forward.
 ///
@@ -81,9 +80,6 @@ class AppWindowCoordinator implements AppWindowActions {
 
   /// The project window the coordinator created last, until its view's first focus event.
   _FirstFocus? _projectFirstFocus;
-
-  /// How long Projects waits for a new project window's first focus event before it comes forward anyway.
-  static const _firstFocusTimeout = Duration(seconds: 2);
 
   /// Completes once the first window is up and the coordinator has reconciled.
   final _ready = Completer<void>();
@@ -192,27 +188,17 @@ class AppWindowCoordinator implements AppWindowActions {
     });
   }
 
-  /// A project opened in Projects ([outcome]): the project window opens or switches, then Projects closes, or stays
-  /// with the outcome's warnings in its notice and comes forward.
-  void _openedInProjects(ProjectOpened outcome) => unawaited(_afterOpenInProjects(outcome));
+  /// A project opened in Projects: the project window opens or switches, then Projects closes (its warnings are the
+  /// project window's toast).
+  void _openedInProjects(ProjectOpened outcome) => unawaited(_afterOpenInProjects());
 
-  Future<void> _afterOpenInProjects(ProjectOpened outcome) async {
+  Future<void> _afterOpenInProjects() async {
     await _ready.future;
     try {
       await _serial(() async {
         await _ensureProjectWindow();
-        if (outcome.warnings.isEmpty) {
-          windows.close(projectsWindowKey);
-        }
+        windows.close(projectsWindowKey);
       });
-      if (outcome.warnings.isNotEmpty) {
-        // A new project window shows key on its first frame; Projects comes forward after it, or it would be hidden.
-        final _FirstFocus? first = _projectFirstFocus;
-        if (first != null && !first.isDone) {
-          await first.done.timeout(_firstFocusTimeout, onTimeout: () {});
-        }
-        windows.activate(projectsWindowKey);
-      }
     } catch (error, stackTrace) {
       _log.severe('Showing the opened project failed', error, stackTrace);
     }

@@ -1441,6 +1441,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'remote'**
   String get inspectorBookmarkRemote;
+
+  /// Operation toast after jj abandon; changes is a list of change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Abandoned {changes}'**
+  String toastAbandoned(String changes);
+
+  /// Operation toast after jj revert: change was reverted, the new change inverse holds its inverse.
+  ///
+  /// In en, this message translates to:
+  /// **'Reverted {change} — {inverse} undoes it'**
+  String toastReverted(String change, String inverse);
+
+  /// Operation toast after jj revert when jj reported no new change.
+  ///
+  /// In en, this message translates to:
+  /// **'Reverted {change}'**
+  String toastRevertedAlone(String change);
+
+  /// Operation toast after jj squash; both are change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Squashed {source} into {destination}'**
+  String toastSquashed(String source, String destination);
+
+  /// Operation toast after jj bookmark create; names are bookmark names, target a change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Created {names} on {target}'**
+  String toastBookmarkCreated(String names, String target);
+
+  /// Operation toast after jj bookmark delete; names are bookmark names.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted {names}'**
+  String toastBookmarkDeleted(String names);
+
+  /// Operation toast after jj bookmark move; names are bookmark names, target a change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Moved {names} to {target}'**
+  String toastBookmarkMoved(String names, String target);
+
+  /// Operation toast after jj bookmark rename.
+  ///
+  /// In en, this message translates to:
+  /// **'Renamed {oldName} to {newName}'**
+  String toastBookmarkRenamed(String oldName, String newName);
+
+  /// Operation toast after jj undo; command is the jj command that was undone.
+  ///
+  /// In en, this message translates to:
+  /// **'Undid {command}'**
+  String toastUndid(String command);
+
+  /// Operation toast after jj redo; command is the jj command that was redone.
+  ///
+  /// In en, this message translates to:
+  /// **'Redid {command}'**
+  String toastRedid(String command);
+
+  /// Toast button that runs jj undo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get toastUndo;
+
+  /// Toast button that runs jj redo.
+  ///
+  /// In en, this message translates to:
+  /// **'Redo'**
+  String get toastRedo;
+
+  /// Toast button that runs the failed jj command again.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get toastRetry;
+
+  /// Toast when Undo found that another program's jj operation came after Zanshin's.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing undone — another operation came after it'**
+  String get toastNothingUndone;
+
+  /// Toast when Redo found that another program's jj operation came after Zanshin's undo.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing redone — another operation came after it'**
+  String get toastNothingRedone;
+
+  /// Toast when jj workspace update-stale failed; reason is jj's message or error code.
+  ///
+  /// In en, this message translates to:
+  /// **'Updating the working copy failed — {reason}'**
+  String toastStaleUpdateFailed(String reason);
+
+  /// Toast in the project window after a project was created and opened with warnings; name is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Opened {name}'**
+  String toastOpened(String name);
+
+  /// Joins the last item of a list in a toast: a, b and c.
+  ///
+  /// In en, this message translates to:
+  /// **'{head} and {last}'**
+  String toastListAnd(String head, String last);
+
+  /// Joins the items before the last of a list in a toast: a, b and c.
+  ///
+  /// In en, this message translates to:
+  /// **'{head}, {next}'**
+  String toastListComma(String head, String next);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

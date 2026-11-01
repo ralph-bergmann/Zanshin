@@ -182,6 +182,12 @@ abstract class ZsLocalizations {
   /// **'in progress'**
   String get progressIndeterminate;
 
+  /// VoiceOver label of a toast's close (x) button.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get toastDismiss;
+
   /// VoiceOver value of a panel resize edge: the panel width in points.
   ///
   /// In en, this message translates to:

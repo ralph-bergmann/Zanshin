@@ -60,9 +60,9 @@ final _log = Logger('zanshin.projects');
 /// selection. Delete group and Remove from list ask first (`ZsConfirmDialog`, tone destructive; Ralph, 2026-10-29):
 /// neither has an undo.
 ///
-/// Every successful open reaches [onOpened] (11.12's window coordinator closes the `projects` dialog window there, or
-/// keeps it with a creation's warnings). The identity is read again whenever the window becomes key. Identifiers:
-/// `projects-window` (also the root's key), `projects-search`, `projects-add-directory`, `projects-clone`,
+/// Every successful open reaches [onOpened] (11.12's window coordinator closes the `projects` dialog window there; a
+/// creation's warnings show in the project window's toast, Story 10.23). The identity is read again whenever the window
+/// becomes key. Identifiers: `projects-window` (also the root's key), `projects-search`, `projects-add-directory`, `projects-clone`,
 /// `projects-new-group`, `projects-settings`, `projects-identity-settings`, `projects-notice`, `projects-offer`,
 /// `projects-clone-url`, `projects-clone-destination`, `projects-clone-choose`, `projects-clone-submit`,
 /// `projects-clone-cancel`, `projects-drop-hint`, and the tree's.

@@ -528,6 +528,36 @@ void main() {
       expect(registry.value.openProject, '/r/git');
     });
 
+    test('a creation with warnings sets the open report once; one without, and an open, set none', () async {
+      repos.creationWarnings['/r/git'] = const <ZanshinWarning>[identityMissing];
+      var reports = 0;
+      session.openReport.addListener(() => reports++);
+
+      await session.convert('/r/git');
+
+      final ProjectOpenReport? report = session.openReport.value;
+      expect(report?.name, registry.entry('/r/git')!.name);
+      expect(report?.warnings, <ZanshinWarning>[identityMissing]);
+      expect(session.takeOpenReport(), same(report));
+      expect(session.openReport.value, isNull);
+      expect(session.takeOpenReport(), isNull);
+
+      await session.initRepo('/r/plain');
+      await session.open('/r/a');
+      expect(session.openReport.value, isNull);
+      expect(reports, 2, reason: 'set once, cleared once');
+    });
+
+    test("a later open without warnings drops a pending report: no window shows the earlier project's", () async {
+      repos.creationWarnings['/r/git'] = const <ZanshinWarning>[identityMissing];
+      await session.convert('/r/git');
+      expect(session.openReport.value, isNotNull);
+
+      await session.open('/r/a');
+
+      expect(session.openReport.value, isNull);
+    });
+
     test('a failed conversion registers nothing, keeps the open project and carries the failure', () async {
       await session.open('/r/a');
       repos.creationFailures['/r/git'] = const ZanshinFfiException.withReport(

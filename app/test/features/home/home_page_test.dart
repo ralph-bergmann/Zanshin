@@ -24,6 +24,7 @@ import 'package:zanshin/src/features/shell/pinned_panel.dart';
 import 'package:zanshin/src/features/shell/rail.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
+import 'package:zanshin_core/zanshin_core.dart' show ZanshinWarning, ZanshinWarningCode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart' show ZanshinShellPlatform;
@@ -84,13 +85,18 @@ void main() {
     WidgetTester tester, {
     ZsAppearance appearance = const ZsAppearance(),
     Widget Function(Widget home)? wrap,
+    FakeProjectRepos? repos,
+    Future<void> Function(ProjectSession session)? before,
   }) async {
     useShellWindow(tester);
     final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('home_page_test')))!;
     addTearDown(() => dir.deleteSync(recursive: true));
     final SettingsStore store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
-    final session = ProjectSession(registry: ProjectRegistry(store), repos: FakeProjectRepos());
+    final session = ProjectSession(registry: ProjectRegistry(store), repos: repos ?? FakeProjectRepos());
     addTearDown(session.dispose);
+    if (before != null) {
+      await tester.runAsync(() => before(session));
+    }
     final Widget home = shellHost(
       HomePage(viewModelFactory: _factory(store), projects: session),
       appearance: appearance,
@@ -193,6 +199,49 @@ void main() {
     await tester.pump();
     expect(find.byType(ProjectCapsule), findsNothing);
     expect(find.byType(ShellEmptyIsland), findsNWidgets(4));
+  });
+
+  testWidgets("a creation's warnings show as the toast \"Opened ‹name›\" with a warn clause, reported once", (
+    tester,
+  ) async {
+    const warning = ZanshinWarning(code: ZanshinWarningCode.identityMissing, message: 'Name and email not configured.');
+    final repos = FakeProjectRepos()..creationWarnings['/r/fresh'] = const <ZanshinWarning>[warning];
+    final ProjectSession session = await pumpHome(tester, repos: repos);
+
+    await tester.runAsync(() => session.initRepo('/r/fresh'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final ZsToast toast = tester.widget(find.byType(ZsToast));
+    expect(toast.message.toPlainText(), 'Opened fresh · Name and email not configured.');
+    expect(toast.tooltip, 'Name and email not configured.');
+    expect(toast.actions, isEmpty);
+    expect(session.openReport.value, isNull, reason: 'taken');
+
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(ZsToast), findsNothing);
+  });
+
+  testWidgets('a report the session holds before the window mounts shows once it mounts, and is taken', (tester) async {
+    const warning = ZanshinWarning(code: ZanshinWarningCode.identityMissing, message: 'Name and email not configured.');
+    final repos = FakeProjectRepos()..creationWarnings['/r/fresh'] = const <ZanshinWarning>[warning];
+    final ProjectSession session = await pumpHome(
+      tester,
+      repos: repos,
+      before: (session) async {
+        await session.initRepo('/r/fresh');
+        expect(session.openReport.value, isNotNull);
+      },
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final ZsToast toast = tester.widget(find.byType(ZsToast));
+    expect(toast.message.toPlainText(), 'Opened fresh · Name and email not configured.');
+    expect(session.openReport.value, isNull);
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pump(const Duration(milliseconds: 300));
   });
 
   testWidgets('the window turning active again reads the open project once; turning inactive reads nothing', (
