@@ -5,12 +5,33 @@ created: '2026-11-01'
 status: 'done'
 baseline_revision: '31395530dd96bdb3874db8ac2dbd5646f30236a2'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The gap legend popover hangs 320 px right of the chip's left edge with no clamp and may be clipped at the window's right edge.
+    evidence: |-
+      CompositedTransformFollower(targetAnchor: Alignment.bottomLeft) with no flip or clamp, unlike the View options popover ("kept 8 inside the window"); the design anchors it left:0 too (design/graph.css:337). Unverified: needs the chip's real position in the floating shell's VIEW island at 1041+ px.
+    location: >-
+      app/lib/src/features/graph/graph_gap_legend.dart:180
+    severity: medium (unverified)
+  - summary: >-
+      A gap whose child or target is a collapsed stack hands stack keys to Show in all(), which may miss in the all() layout and leave the flash empty.
+    evidence: |-
+      _showGap passes layout.keyOf(gap.node) and layout.keyOf(layout.parentOf(edge)), i.e. 'stack:<oldest>' for a folded card; _gapLanding looks the targets up by key in the new layout. If all() folds that stack with another oldest member, back-tracing starts nowhere. Unverified: needs a case where a target stack changes its oldest member in all().
+    location: >-
+      app/lib/src/features/graph/graph_canvas.dart:725-727; graph_view_model.dart:419
+    severity: medium (unverified)
+  - summary: >-
+      Marker placement's vertical-strip lookup scans every vertical run of the x strip over the whole plane height, near the forbidden O(D·E) on a long one-lane history.
+    evidence: |-
+      router B's verticalXs are sorted by x with ties in polyline order, so the scan cannot binary-search by y (the code carries a shortcut comment). Unverified: needs a timing of placement on a filtered revset over a long linear history with many dashed edges in one column.
+    location: >-
+      app/lib/src/features/graph/graph_gaps.dart:656-664, 679-685
+    severity: medium (unverified)
 ---
 
 <intent-contract>
@@ -148,6 +169,54 @@ deferred: []
   - Intent Alignment
   - `low` `patch` The arrow test only checks the constructor default and no test pins the shift/clamp — a direct `graphGapCalloutPosition` test added. The ledger entry I1 is closed by the loop's ledger commit (pattern "chore(ledger): close items handed to Story 10.x").
 
+### 2026-11-01 — Review pass (follow-up)
+- verdicts: 40 findings — high 0, medium 0, low 27, false 9, maybe-false 4
+- findings:
+  - Blind Hunter
+  - `false` `reject` `_group` late x/y LateInitializationError — carried: every layout edge joins two distinct cards, so router B's polyline always has ≥ 2 distinct points; unreachable.
+  - `false` `reject` `_spot` degenerate fallback at (0, 0) — carried: unreachable for the same reason.
+  - `maybe-false` `defer` Legend popover hangs 320 px right of the chip's left edge with no clamp and may clip at the window's right — the design anchors it `left:0` too (`design/graph.css:337`); whether the VIEW island's chip sits within 320 px of the window's right edge in the floating shell needs a run in the app; medium if true.
+  - `false` `reject` Callout timings use `delayStackList` / 180 ms instead of the legend's tokens — the intent prescribes exactly those (`delayStackList` open, close 180 ms); the missing exit fade is carried as the earlier low reject.
+  - `low` `reject` Per-gap callout unreachable by keyboard / VoiceOver — the intent makes markers and stubs paint-only ("add no semantics nodes", hover callout); a keyboard path adds focus traversal over painted marks.
+  - `low` `patch` Legend focus state: `_focused` survives the chip's unmount — `_reset` now clears `_focused` and runs when only focus remains; test added (fails without the fix). Tab into the portal / Esc dismissal not added (hover/focus popover per intent; negligible).
+  - `low` `reject` `.single` StateError / uncaught async error in `showGap` — carried.
+  - `low` `reject` Flash repaint loops over every flashed key per frame — map lookups for at most 10 000 keys over 2.4 s; not met in everyday use, a rows-index query adds code.
+  - `low` `reject` `TextPainter` per visible stub per paint — a handful of stubs per window; caching per tone adds state.
+  - `low` `reject` Stub geometry: `bottomExtra` only for the lowest row; lead/glyph not checked against a card directly below — carried for the first part; the second needs a row gap under 28 px below a stubbed card, which compact/free pitches do not produce for cards in one column.
+  - `low` `reject` `_gap` consumed by whichever layout lands next — carried (`showGap` race).
+  - `low` `reject` Hidden parents matched by change id — carried.
+  - `low` `reject` Callout/legend glyphs read `ZsColors` instead of `GraphTheme` — differs only under a `GraphTheme` override (the catalogue knob); not met in the app.
+  - `low` `patch` Missing tests — the canvas `bottomExtra`, folded-stack landing and real `show` cases added (rows below); hidden-merge callout texts, the skeleton row and a failed callout `show` not added (texts per kind are table-driven from one switch, two kinds tested).
+  - `low` `reject` Small inconsistencies ("centres" in an ARB description, "Show in all()" vs "Show all()", mutable `cuts`) — both button labels are the intent's; the rest is invisible.
+  - Edge Case Hunter
+  - `false` `reject` `_group` late init — carried.
+  - `false` `reject` Shared stem's child-side segment horizontal or ports differ — a hidden merge's edges share the child's exit slot (router B, `router.dart:300-331`), whose child-side segment is the vertical exit under the card.
+  - `low` `reject` Divergent parent keyed by commit id — carried.
+  - `maybe-false` `defer` A gap whose child or target is a collapsed stack passes `stack:` keys as `child` / `targets` (`graph_canvas.dart:725-727`); if `all()` folds differently those keys miss and the flash is empty — needs a case where the target stack changes its oldest member in `all()`; medium if true.
+  - `low` `reject` `setRevset` queued before the `all()` layout lands — carried (`showGap` race).
+  - `low` `reject` `show` returning 0 / several entries — carried.
+  - `low` `patch` Legend `_reset` keeps `_focused` — same fix and test as the Blind Hunter row.
+  - `maybe-false` `reject` Chip vanishes while the layout is null during a reload — the model keeps the shown layout while reloading; null only before the first load; if true only low.
+  - `low` `reject` Stale gap positions while a card-size change re-routes — transient for one routing pass; the layout-identity guard already drops gaps of an old layout.
+  - `low` `reject` `_spot` final fallback places `c + 4` below the child port — reached only when no segment has any free span; the child-side segment is the vertical card exit, so the point is on the line.
+  - `false` `reject` Missing gaps issue two `show` reads — the intent names both: the callout's (hidden parent) and "Show in `all()`"'s.
+  - `low` `reject` Hidden-merge marker skips the clearance scan — carried.
+  - Verification Gap
+  - `low` `patch` Canvas `bottomExtra` unverified — `graph_gaps_test.dart` "the canvas plane reserves bottomExtra under a stubbed node on the lowest row" (viewport `contentSize`).
+  - `low` `reject` Canvas wiring of `gapCuts` untested — one constructor argument; the painter's cut logic is pinned by its unit test.
+  - `low` `patch` Reveal/flash with hidden commits folded into a stack — `graph_view_model_test.dart` case added (reveal `h1`, flash `{h1, stack:h3}`).
+  - `low` `patch` `RepoGraphSource.show` never meets a real backend — `graph_ports_test.dart` "show passes through" (real worker: the child's parents are the layout keys).
+  - `low` `reject` (other) Key mismatch for divergent parents — carried.
+  - `false` `reject` (other) Unused `GraphGap.top` on markers — read only for stubs; no bad outcome.
+  - Intent Alignment
+  - `low` `reject` `missingCountOf` of a stack node returns its oldest member's count, the intent says 0 — the first review pass reversed it deliberately (a collapsed stack with a Missing oldest member lost its stub and the legend under-counted); a stack never spans a gap, so the oldest member's Missing edge is the stack's own; recorded under residual risks for Ralph.
+  - `maybe-false` `defer` The vertical-strip scan visits every vertical run of the x strip over the whole plane height (`graph_gaps.dart:656-664`, `:679-685`) — per dashed edge O(runs in that column), near the intent's forbidden O(D·E) on a long one-lane history with many dashed edges; needs a timing on such a revset; medium if true.
+  - `false` `reject` Callout top 22 px above the point — from the export; the intent sets only x, so not a deviation with a bad outcome.
+  - `low` `reject` Flash cap applied to every kind — a bound the intent names for Missing; harmless elsewhere.
+  - `false` `reject` Two `show` uses — both are in the intent.
+  - `low` `reject` Stub label "free" checks cards and ports, not edges — the intent leaves "free" unspecified; a dashed edge under a label is rare.
+  - `low` `patch` Untested surfaces — the real `show` path added (above); the backend stack branch (mirrors the tested recorded one), "no semantics nodes" and the Widgetbook knob not added (negligible).
+
 ## Design Notes
 
 - Placement lives in the app (view geometry over router B's output), cached per (layout, metrics) like `GraphEdgePainter`; it reads the router's sorted run indexes with binary search per segment, so cost is O(D · k log E) for D dashed edges and k nearby runs.
@@ -174,6 +243,11 @@ deferred: []
 - New/extended: `graph_gaps_test.dart` (38, incl. the label-side case added by the parent run), `graph_controls_test.dart` (37), `graph_view_test.dart` (39), `graph_view_model_test.dart`, `graph_search_controller_test.dart`, `recorded_graph_layout_test.dart`, `backend_graph_layout_test.dart`.
 - `packages/zanshin_core` and Rust untouched: no cargo checks, no codegen, no parity oracle (no jj verb or command text changed).
 - Marionette check not done: the run forbids long-running/background processes (`flutter run` must stay alive while Marionette connects). Ralph's visual check in the catalogue (Graph › Viewport / Recording, design-default) remains.
+- Follow-up review pass (2026-11-01, gate rule: no `cargo make test`):
+  - `flutter test test/features/graph/` in `app/` (with the gate's `JJ_CONFIG=`, `GIT_CONFIG_GLOBAL=`, `JJ_USER`, `JJ_EMAIL`, `XDG_CONFIG_HOME=target/test-xdg-config`): 665 passed.
+  - The new legend focus test fails with the fix stashed and passes with it.
+  - `dart analyze --fatal-infos` in `app/`: no issues; `dart format --set-exit-if-changed` on the touched files: 0 changed.
+  - No Rust, `packages/zanshin_core` or `packages/zanshin_ui` change: no cargo checks, codegen or parity oracle.
 
 ## Auto Run Result
 
@@ -205,4 +279,24 @@ Status: done
 - The stub label box width is fixed for the English "~ elided" (`shortcut:` comment).
 - The Missing hidden parent comes from `show(child)`; on a node with both Indirect and Missing edges the stub callout lists every hidden real parent (a superset).
 - The gap callout fades in but has no exit fade; the "Show in all()" label is plain text, not mono `all()`.
+- No Marionette visual check.
+
+### Follow-up review pass (2026-11-01)
+
+**Summary.** A fresh four-layer review of the whole story diff; one code fix and four tests.
+
+**Files changed.**
+- `app/lib/src/features/graph/graph_gap_legend.dart` — `_reset` clears `_focused` (the chip's Focus unmounts without reporting the loss) and also runs when only focus remains.
+- `app/test/features/graph/graph_controls_test.dart` — a focused chip whose gaps go away no longer holds the popover open.
+- `app/test/features/graph/graph_gaps_test.dart` — the canvas plane reserves `bottomExtra` under a stubbed lowest-row node.
+- `app/test/features/graph/graph_view_model_test.dart` — Show in all() with hidden commits folded into a stack.
+- `app/test/features/graph/graph_ports_test.dart` — `RepoGraphSource.show` through the real worker: parents are layout keys.
+
+**Review.** 40 findings (low 27, false 9, maybe-false 4): 6 low entries patched in 7 rows (legend focus; 5 test gaps), 3 maybe-false entries deferred as medium (unverified) — legend popover clamp, stack keys as gap targets, placement's vertical-strip scan — mirrored into deferred-work.md; 30 rows rejected with reasons in the triage log (9 false, 20 low, 1 maybe-false).
+
+**Follow-up review recommendation:** false — a follow-up pass that patched no `high` (patched by verdict: high 0, medium 0, low 6).
+
+**Residual risks.**
+- `missingCountOf` of a collapsed stack returns its oldest member's count; the intent contract says 0 (the first pass changed it to keep the stub and the legend count). Ralph may want the contract line updated.
+- The three deferred items above are unverified.
 - No Marionette visual check.

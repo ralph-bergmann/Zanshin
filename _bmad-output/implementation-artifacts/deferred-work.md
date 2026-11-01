@@ -2475,3 +2475,15 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The card menu, the bookmark popover and the name sheet are not yet checked visually in the running catalogue against the DS Menu card.** Low.
   - Widget tests cover rows, commands, enablement and closing only; the unattended run could not keep a `flutter run` alive for Marionette.
   - **Follow-up:** run the Marionette check of a card's ••• / right-click menu and the popover, record it in spec-10-15-card-action-menu.md's verification notes.
+
+## Surfaced in the follow-up review of Story 10.19 (bmad-build-auto, 2026-11-01)
+
+- **The gap legend popover hangs 320 px right of the chip's left edge with no clamp and may be clipped at the window's right edge.** Medium (unverified).
+  - `CompositedTransformFollower(targetAnchor: Alignment.bottomLeft)` with no flip or clamp (`app/lib/src/features/graph/graph_gap_legend.dart:180`), unlike the View options popover; the design anchors it `left:0` too (`design/graph.css:337`).
+  - **Follow-up:** check the chip's position in the floating shell at 1041+ px; if it clips, right-align or clamp the popover inside the window like View options.
+- **A gap whose child or target is a collapsed stack hands `stack:` keys to "Show in all()", which may miss in the `all()` layout and leave the flash empty.** Medium (unverified).
+  - `_showGap` passes `layout.keyOf(...)` of the folded card (`app/lib/src/features/graph/graph_canvas.dart:725-727`); `_gapLanding` looks targets up by key in the new layout (`graph_view_model.dart:419`).
+  - **Follow-up:** a view-model case where a target stack changes its oldest member in `all()`; if the flash is empty, pass member keys (the edge's entry member) instead of the stack key.
+- **Marker placement's vertical-strip lookup scans every vertical run of the x strip over the whole plane height, near the forbidden O(D·E) on a long one-lane history.** Medium (unverified).
+  - Router B's `verticalXs` tie in polyline order, so the scan cannot binary-search by y (`app/lib/src/features/graph/graph_gaps.dart:656-664`, `:679-685`, `shortcut:` comment).
+  - **Follow-up:** time placement on a filtered revset over a long linear history; if slow, index each x's runs by y.
