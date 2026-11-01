@@ -2463,3 +2463,15 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The Bookmarks preview and panel are not yet checked visually in the catalogue against the DS rows.** Low.
   - Widget tests cover structure, text, opacity and colours only; the Marionette check of `bookmarks/bookmarks/{preview,panel,empty,stale}` (`app/widgetbook/folders/bookmarks.dart`) did not run in the unattended loop.
   - **Follow-up:** run it, record the result in spec-10-14-bookmark-list-panel.md's verification notes.
+
+## Surfaced in Story 10.15 (bmad-build-auto, 2026-11-01)
+
+- **The thin bookmark popover opens on a click (and VoiceOver's action), not on hover and keyboard focus as the 2026-09-28 note asks.** Low.
+  - It is a `ZsMenuAnchor` menu, which takes focus, so a hover must not open it (`app/lib/src/features/graph/graph_card_menu.dart` `GraphBookmarkMenuHost`; trigger in `graph_card_render.dart` `_onTapUp` `_Area.bookmarks`).
+  - **Follow-up:** the popover's later redesign gives it a non-focus-taking hover surface (10.6's hover-callout controller) and moves the trigger there.
+- **The locked menu's "Immutable commits…" row is disabled ("Comes with the Settings window") instead of opening Settings › Project › Immutable commits.** Low.
+  - `graphCardMenuEntries` builds it with `enabled: false` (`app/lib/src/features/graph/graph_card_menu.dart`); 11.7 (Settings window) is backlog.
+  - **Follow-up:** 11.7 passes an "open Settings on this page" action to the graph and enables the row (witness: "Immutable commits… opens Settings on the page").
+- **The card menu, the bookmark popover and the name sheet are not yet checked visually in the running catalogue against the DS Menu card.** Low.
+  - Widget tests cover rows, commands, enablement and closing only; the unattended run could not keep a `flutter run` alive for Marionette.
+  - **Follow-up:** run the Marionette check of a card's ••• / right-click menu and the popover, record it in spec-10-15-card-action-menu.md's verification notes.
