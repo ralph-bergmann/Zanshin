@@ -2525,3 +2525,12 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The inspector's diff view has not been compared against the DS DiffView / DiffHunk / FileRow cards in the running catalogue; only widget tests check it.** Low.
   - Unattended run: no Marionette / Playwright check (`app/widgetbook/folders/graph.dart` demo details carry a diff).
   - **Follow-up:** a Marionette check of the inspector's Changes and diff block against DS components/content.
+
+## Surfaced in the closing run of Story 10.24 (bmad-build-auto, 2026-11-01)
+
+- **`Repo::diff`'s `-r` takes one revision only; the CLI's multi-revision `-r` (a connected set diffed as one, gaps refused) is not ported.** Low.
+  - `cmd_diff` (`cli/src/commands/diff.rs` @ v0.46.0) reads `-r` through `parse_union_revsets`; `crates/zanshin-jj/src/hunks.rs` (`diff`) refuses a set of several commits ("resolved to more than one revision").
+  - **Follow-up:** port the range form (merged parents of the roots against the merged heads, the gaps refusal); `RevisionDiff.commit_id` then needs the heads across the FFI.
+- **A revision that resolves to several commits is refused without the CLI's "resolved to these revisions" hint.** Low.
+  - `crates/zanshin-jj/src/push.rs` (`single_commit`) returns `hints: vec![]`; the CLI's `format_multiple_revisions_error` (`cli/src/revset_util.rs` @ v0.46.0) lists up to five commit summaries. Shared by git push, bookmark advance and now diff.
+  - **Follow-up:** add the hint with the commit summaries in `single_commit`.
