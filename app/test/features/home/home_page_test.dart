@@ -24,7 +24,8 @@ import 'package:zanshin/src/features/shell/pinned_panel.dart';
 import 'package:zanshin/src/features/shell/rail.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
-import 'package:zanshin_core/zanshin_core.dart' show ZanshinWarning, ZanshinWarningCode;
+import 'package:zanshin_core/zanshin_core.dart'
+    show RepoDetectResult, RepoKind, ZanshinFfiException, ZanshinWarning, ZanshinWarningCode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart' show ZanshinShellPlatform;
@@ -287,6 +288,77 @@ void main() {
 
     expect(capsuleName('zanshin'), findsOneWidget);
     expect(capsuleName('jj'), findsNothing);
+    handle.dispose();
+  });
+
+  for (final failing in <bool>[true, false]) {
+    testWidgets(
+      failing
+          ? 'a Recent row whose open fails shows Projects with the failure; the open project stays'
+          : 'a Recent row whose folder is gone shows Projects with that; the open project stays',
+      (tester) async {
+        final SemanticsHandle handle = tester.ensureSemantics();
+        final actions = _Actions();
+        final repos = FakeProjectRepos();
+        final ProjectSession session = await pumpHome(
+          tester,
+          repos: repos,
+          wrap: (home) => AppWindowActionsScope(actions: actions, child: home),
+        );
+        await tester.runAsync(() => session.open('/r/zanshin'));
+        await tester.runAsync(() => session.open('/r/jj'));
+        await tester.pump();
+        if (failing) {
+          repos.openFailures['/r/zanshin'] = const ZanshinFfiException('jj.jj_lib_error', 'the store is broken');
+        } else {
+          repos.detections['/r/zanshin'] = const RepoDetectResult(kind: RepoKind.pathNotFound);
+        }
+
+        await tester.tap(find.bySemanticsIdentifier('project-capsule'));
+        await tester.pump();
+        await tester.pump(ZsMotion.full.durMenu);
+        await tester.tap(find.bySemanticsIdentifier('project-menu-recent-1'));
+        await tester.pump(ZsMotion.full.durBlink * 2);
+        await settle(tester, () => actions.projects == 1);
+        await tester.pump(ZsMotion.full.durExit);
+        await tester.pump();
+
+        expect(session.current?.path, '/r/jj');
+        final ProjectFailedOpen? failed = session.failedOpen.value;
+        expect(failed?.path, '/r/zanshin');
+        expect(
+          failed?.outcome,
+          failing
+              ? isA<ProjectOpenFailed>().having((f) => f.context, 'context', 'the store is broken')
+              : isA<ProjectNotARepo>().having((f) => f.kind, 'kind', RepoKind.pathNotFound),
+        );
+        handle.dispose();
+      },
+    );
+  }
+
+  testWidgets('a Recent row that opens shows no Projects', (tester) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    final actions = _Actions();
+    final ProjectSession session = await pumpHome(
+      tester,
+      wrap: (home) => AppWindowActionsScope(actions: actions, child: home),
+    );
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.runAsync(() => session.open('/r/jj'));
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsIdentifier('project-capsule'));
+    await tester.pump();
+    await tester.pump(ZsMotion.full.durMenu);
+    await tester.tap(find.bySemanticsIdentifier('project-menu-recent-1'));
+    await tester.pump(ZsMotion.full.durBlink * 2);
+    await settle(tester, () => session.current?.path == '/r/zanshin');
+    await tester.pump(ZsMotion.full.durExit);
+    await tester.pump();
+
+    expect(actions.projects, 0);
+    expect(session.failedOpen.value, isNull);
     handle.dispose();
   });
 

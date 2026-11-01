@@ -100,6 +100,21 @@ void main() {
       expect(session.current, isNull);
       expect(session.lastFailure?.code, 'jj.jj_lib_error');
       expect(registry.value.openProject, '/r/a');
+      final ProjectFailedOpen? failed = session.failedOpen.value;
+      expect(failed?.path, '/r/a');
+      expect(failed?.outcome, same(session.lastFailure), reason: "the Projects window's notice gets the failure");
+      expect(session.takeFailedOpen(), failed);
+      expect(session.failedOpen.value, isNull, reason: 'it is shown once');
+    });
+
+    test('a stored project that is gone reports no failed open', () async {
+      await register(<String>['/r/gone']);
+      await registry.setOpen('/r/gone');
+      repos.detections['/r/gone'] = const RepoDetectResult(kind: RepoKind.pathNotFound);
+
+      await session.reopenLast();
+
+      expect(session.failedOpen.value, isNull);
     });
 
     for (final (String name, RepoDetectResult detected) in <(String, RepoDetectResult)>[

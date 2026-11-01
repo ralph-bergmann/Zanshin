@@ -710,6 +710,40 @@ void main() {
     });
   });
 
+  group('failed opens made outside Projects (Ralph, 2026-11-01)', () {
+    testWidgets('one reported while the window is up shows as its notice, with the reason and warnings', (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      rig.session.reportFailedOpen(
+        '${rig.home}/code/top',
+        const ProjectOpenFailed(
+          'jj.jj_lib_error',
+          'the store is broken',
+          warnings: <ZanshinWarning>[
+            ZanshinWarning(code: 'jj.git_import_failed', message: 'Failed to import refs.'),
+          ],
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Could not open top'), findsOneWidget);
+      expect(find.text('the store is broken'), findsOneWidget);
+      expect(find.text('Failed to import refs.'), findsOneWidget);
+      expect(rig.session.failedOpen.value, isNull, reason: 'taken: shown once');
+    });
+
+    testWidgets('a pending one shows when the window mounts; a missing folder says so', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      await tester.pumpWidget(const SizedBox());
+      rig.session.reportFailedOpen('${rig.home}/code/gone', const ProjectNotARepo(RepoKind.pathNotFound));
+      await rig.showIn(const ZsAppearance());
+      expect(find.text('${rig.home}/code/gone does not exist.'), findsOneWidget);
+      expect(rig.session.failedOpen.value, isNull);
+    });
+  });
+
   group('drops', () {
     testWidgets(
       'folders dropped on a group: the jj one registered inside, the Git one offered, the listed one skipped',

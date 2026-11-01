@@ -188,8 +188,23 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     final String? open = widget.session.current?.path;
     _selected = open == null ? null : 'project:$open';
     widget.session.addListener(_sessionChanged);
+    widget.session.failedOpen.addListener(_failedOpen);
     unawaited(_readVersions());
     unawaited(_readIdentity(open));
+    // After this frame: the notice is state of this window, set once it is built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _failedOpen();
+      }
+    });
+  }
+
+  /// A failed open made outside Projects (reopen-last, the Project menu's Recent) shows the notice an open from here
+  /// shows (Ralph, 2026-11-01).
+  void _failedOpen() {
+    if (widget.session.takeFailedOpen() case (:final String path, :final ProjectOpenOutcome outcome)) {
+      unawaited(_handle(outcome, path, (group: null, index: null)));
+    }
   }
 
   /// The window became key again (its appearance turned active): the identity is read once more, so an edit made
@@ -210,13 +225,16 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.session, widget.session)) {
       oldWidget.session.removeListener(_sessionChanged);
+      oldWidget.session.failedOpen.removeListener(_failedOpen);
       widget.session.addListener(_sessionChanged);
+      widget.session.failedOpen.addListener(_failedOpen);
     }
   }
 
   @override
   void dispose() {
     widget.session.removeListener(_sessionChanged);
+    widget.session.failedOpen.removeListener(_failedOpen);
     _search.dispose();
     _searchFocus.dispose();
     _cloneUrl.dispose();

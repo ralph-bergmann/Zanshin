@@ -44,7 +44,7 @@ void main() {
     await _ms(tester, 650);
   });
 
-  testWidgets('a hold blocks counting; a hold taken during a phase does not end it', (tester) async {
+  testWidgets('a hold blocks counting; a hold taken during a phase ends it at once', (tester) async {
     final CalmController calm = _calm();
     final CalmHold hold = calm.hold();
     expect(calm.held, isTrue);
@@ -56,13 +56,28 @@ void main() {
     expect(calm.held, isFalse);
     calm.addUserScroll(31);
     expect(calm.value.calm, isTrue);
+    final phases = <CalmPhase>[];
+    calm.addListener(() => phases.add(calm.value));
     final CalmHold during = calm.hold();
-    expect(calm.value.calm, isTrue);
+    expect(calm.value, CalmPhase.rest);
+    expect(phases, <CalmPhase>[CalmPhase.rest]);
     calm.addUserScroll(50);
+    expect(calm.value.calm, isFalse, reason: 'the held event is not counted');
     await _ms(tester, 650);
-    expect(calm.value.calm, isFalse, reason: 'the ignored event did not restart the wait');
+    expect(phases, <CalmPhase>[CalmPhase.rest], reason: 'the cancelled wait does not fire');
     during.release();
     expect(during.released, isTrue);
+    calm.addUserScroll(31);
+    expect(calm.value.calm, isTrue, reason: 'counting resumes once released');
+    await _ms(tester, 650);
+  });
+
+  testWidgets('a hold outside a phase keeps the scroll counted so far', (tester) async {
+    final CalmController calm = _calm()..addUserScroll(20);
+    calm.hold().release();
+    calm.addUserScroll(15);
+    expect(calm.value.calm, isTrue);
+    await _ms(tester, 650);
   });
 
   testWidgets('Hide controls off ignores scrolling; switching it off ends a phase', (tester) async {

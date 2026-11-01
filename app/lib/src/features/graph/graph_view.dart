@@ -169,7 +169,8 @@ class _GraphViewState extends State<GraphView> {
   }
 
   /// Esc closes an open card menu, then clears the selection (the 2026-10-14 order); Enter or Space selects the focus
-  /// card. Only while the graph has focus.
+  /// card; ← collapses the focused member's expanded run, → expands a focused stack card. Only while the graph has
+  /// focus.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) {
       return KeyEventResult.ignored;
@@ -203,6 +204,29 @@ class _GraphViewState extends State<GraphView> {
       }
       if (focused != null) {
         _cards.select(focused);
+        return KeyEventResult.handled;
+      }
+    }
+    if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.arrowRight) {
+      // The macOS outline convention: ← collapses a focused member's expanded run, → expands a focused stack card.
+      if (_pointerFocus) {
+        _pointerFocus = false;
+        _focusChanged();
+      }
+      final String? focused = _cards.focused.value;
+      final GraphLayout? layout = widget.model.layout;
+      final int? node = focused == null ? null : layout?.indexOfKey(focused);
+      final int? run = node == null ? null : layout!.runOf(node);
+      if (run == null) {
+        return KeyEventResult.ignored;
+      }
+      final collapsed = layout!.stackNodeOf(run) != null;
+      if (key == LogicalKeyboardKey.arrowLeft && !collapsed) {
+        _cards.onCollapseStack?.call(focused!);
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowRight && layout.isStackNode(node!)) {
+        _cards.onExpandStack?.call(focused!);
         return KeyEventResult.handled;
       }
     }

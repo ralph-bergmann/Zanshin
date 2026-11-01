@@ -148,6 +148,29 @@ void main() {
       expect(slots.map((s) => s.kind), isNot(contains(GraphStackSlot.authors)));
     });
 
+    testWidgets('a pending folded member dims its stack card to disabledOpacity; other cards stay at 1', (
+      tester,
+    ) async {
+      useShellWindow(tester, _window);
+      final RecordedGraphLayout layout = stackRecording('design-default free default');
+      final cards = GraphCardController(now: _now);
+      addTearDown(cards.dispose);
+      final int stack = layout.stackNodeOf(0)!;
+      final String folded = layout.keyOf(layout.runMembersOf(0).last);
+      expect(layout.isFolded(layout.indexOfKey(folded)!), isTrue);
+      await tester.pumpWidget(
+        shellHost(GraphCanvas(layout: layout, cards: cards, pendingKeys: <String>{folded})),
+      );
+      await tester.pump();
+      final RenderGraphViewport viewport = tester.allRenderObjects.whereType<RenderGraphViewport>().single;
+      final double disabled = ZsMetrics.of(tester.element(find.byType(GraphCanvas))).disabledOpacity;
+      expect(viewport.opacityOf!(stack), disabled);
+      final int other = List<int>.generate(layout.nodeCount, (i) => i).firstWhere(
+        (i) => !layout.isFolded(i) && layout.runOf(i) != 0,
+      );
+      expect(viewport.opacityOf!(other), 1);
+    });
+
     testWidgets('semantics: one button, "N changes, subject, range", tap and expand expand', (tester) async {
       final SemanticsHandle semantics = tester.ensureSemantics();
       useShellWindow(tester, _window);
@@ -593,6 +616,106 @@ void main() {
         await finish(tester);
       });
     }
+
+    testWidgets('→ on a focused stack card expands it; ← on it does nothing', (tester) async {
+      await pumpView(tester);
+      final GraphLayout layout = model.layout!;
+      final String key = layout.keyOf(layout.stackNodeOf(0)!);
+      focusGraph(tester);
+      await tester.pump();
+      tester.widget<GraphCanvas>(find.byType(GraphCanvas)).cards.focused.value = key;
+      final int requests = source.requests.length;
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      expect(source.requests.length, requests);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(source.requests.length, requests + 1);
+      expect(source.requests.last.expandedKeys, contains(layout.keyOf(layout.runMembersOf(0).first)));
+      expect(model.selected, isNull);
+      await tester.pumpAndSettle();
+      await finish(tester);
+    });
+
+    testWidgets('← on a focused member of an expanded run collapses it and focuses the stack card; → does nothing', (
+      tester,
+    ) async {
+      await pumpView(tester);
+      final String oldest = model.layout!.keyOf(model.layout!.runMembersOf(0).first);
+      model.expandStack(oldest);
+      await tester.pump();
+      await tester.pump();
+      focusGraph(tester);
+      await tester.pump();
+      final GraphCardController cards = tester.widget<GraphCanvas>(find.byType(GraphCanvas)).cards;
+      final String member = model.layout!.keyOf(model.layout!.runMembersOf(0).last);
+      cards.focused.value = member;
+      final int requests = source.requests.length;
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(source.requests.length, requests);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      await tester.pump();
+      expect(source.requests.length, requests + 1);
+      expect(source.requests.last.collapsedKeys, contains(oldest));
+      expect(model.layout!.stackNodeOf(0), isNotNull);
+      expect(cards.focused.value, graphStackKey(oldest));
+      await tester.pumpAndSettle();
+      await finish(tester);
+    });
+
+    testWidgets(
+      'after a mouse press on a selected member of an expanded run, ← collapses it (macOS)',
+      (tester) async {
+        await pumpView(tester);
+        final String oldest = model.layout!.keyOf(model.layout!.runMembersOf(0).first);
+        model.expandStack(oldest);
+        await tester.pump();
+        await tester.pump();
+        final String member = model.layout!.keyOf(model.layout!.runMembersOf(0).last);
+        model.select(member);
+        await tester.pumpAndSettle();
+        final TestGesture mouse = await tester.startGesture(
+          tester.getCenter(_cardOf(member)),
+          kind: PointerDeviceKind.mouse,
+        );
+        await mouse.up();
+        await tester.pumpAndSettle();
+        final GraphCardController cards = tester.widget<GraphCanvas>(find.byType(GraphCanvas)).cards;
+        expect(cards.focused.value, isNull, reason: 'a press hides the focus card');
+        final int requests = source.requests.length;
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+        await tester.pump();
+        await tester.pump();
+        expect(source.requests.length, requests + 1);
+        expect(source.requests.last.collapsedKeys, contains(oldest));
+        await tester.pumpAndSettle();
+        await finish(tester);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    );
+
+    testWidgets('← and → on a card outside any run do nothing', (tester) async {
+      await pumpView(tester);
+      final GraphLayout layout = model.layout!;
+      final int plain = List<int>.generate(layout.nodeCount, (i) => i).firstWhere((i) => layout.runOf(i) == null);
+      focusGraph(tester);
+      await tester.pump();
+      tester.widget<GraphCanvas>(find.byType(GraphCanvas)).cards.focused.value = layout.keyOf(plain);
+      final int requests = source.requests.length;
+      for (final pressed in <LogicalKeyboardKey>[
+        LogicalKeyboardKey.arrowLeft,
+        LogicalKeyboardKey.arrowRight,
+      ]) {
+        await tester.sendKeyEvent(pressed);
+        await tester.pump();
+      }
+      expect(source.requests.length, requests);
+      expect(model.selected, isNull);
+      await tester.pumpAndSettle();
+      await finish(tester);
+    });
 
     testWidgets('a collapse moves the keyboard focus from a folded member to its stack card', (tester) async {
       await pumpView(tester);

@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:inject_flutter/inject_flutter.dart';
+import 'package:zanshin_core/zanshin_core.dart' show RepoKind;
 import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry;
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -84,9 +85,23 @@ class HomePage extends StatelessWidget {
     return ProjectCapsule(
       project: project,
       recent: projects.recent,
-      onOpen: (path) => unawaited(projects.open(path)),
+      onOpen: (path) => unawaited(_openRecent(path, windows)),
       onAllProjects: windows == null ? null : () => unawaited(windows.openProjects()),
     );
+  }
+
+  /// A Recent row: a failed open or a missing folder shows the Projects window with its notice (Ralph, 2026-11-01);
+  /// the open project stays.
+  Future<void> _openRecent(String path, AppWindowActions? windows) async {
+    final ProjectOpenOutcome outcome = await projects.open(path);
+    switch (outcome) {
+      // Without the actions scope nothing opens Projects, so nothing is reported (it would show stale later).
+      case ProjectOpenFailed() || ProjectNotARepo(kind: RepoKind.pathNotFound) when windows != null:
+        projects.reportFailedOpen(path, outcome);
+        await windows.openProjects();
+      case _:
+        break;
+    }
   }
 }
 

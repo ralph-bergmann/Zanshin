@@ -62,7 +62,8 @@ class CalmHold {
 ///   never reported.
 /// - Counting is ignored while a [hold] exists or [hideControls] is off. Each counted event adds its amount and
 ///   restarts the `--delay-calm-return` wait; once the sum passes 30 px the phase starts. When the wait runs out the
-///   phase ends and the sum starts again from 0. A hold taken during a phase does not end it.
+///   phase ends and the sum starts again from 0. A hold taken during a phase ends it at once (Ralph 2026-11-01: the
+///   chrome returns, so a menu opened mid-phase opens at full opacity).
 /// - At the start of a phase [decideInspectorPinned] fixes [CalmPhase.inspectorPinned] for the whole phase.
 ///
 /// The waits are `ZsMotion.full`'s: reduce motion leaves them unchanged (DS tokens/motion.css:70-71).
@@ -115,9 +116,12 @@ class CalmController extends ChangeNotifier implements ValueListenable<CalmPhase
     _return = Timer(ZsMotion.full.delayCalmReturn, _end);
   }
 
-  /// Blocks counting until the returned hold is released.
+  /// Ends a running phase and blocks counting until the returned hold is released.
   CalmHold hold() {
     _holds++;
+    if (_value.calm) {
+      _end();
+    }
     return CalmHold(() => _holds--);
   }
 

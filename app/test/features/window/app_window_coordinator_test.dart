@@ -221,6 +221,9 @@ void main() {
       expect(rig.session.lastFailure?.code, 'jj.repo_open_failed');
       expect(rig.open, <String>[projectsWindowKey]);
       expect(rig.exits, isEmpty);
+      // The Projects content shows it as its notice as it mounts (projects_window_test.dart).
+      expect(rig.session.failedOpen.value?.path, '/r/broken');
+      expect(rig.session.failedOpen.value?.outcome, same(rig.session.lastFailure));
     });
   });
 

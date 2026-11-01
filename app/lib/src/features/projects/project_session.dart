@@ -41,6 +41,10 @@ class ProjectOpenReport {
   final List<ZanshinWarning> warnings;
 }
 
+/// An open of `path` made outside Projects that ended in `outcome` — a [ProjectOpenFailed], or a missing path — for
+/// the Projects window's notice ([ProjectSession.failedOpen]).
+typedef ProjectFailedOpen = ({String path, ProjectOpenOutcome outcome});
+
 /// The jj workspace is in the registry at [path] without being opened ([ProjectSession.add]).
 final class ProjectAdded extends ProjectOpenOutcome {
   /// The workspace is registered at [path].
@@ -171,6 +175,26 @@ class ProjectSession extends ChangeNotifier {
     return report;
   }
 
+  final _failedOpen = ValueNotifier<ProjectFailedOpen?>(null);
+
+  /// A failed open made outside Projects — reopen-last, the Project menu's Recent — for the Projects window's notice
+  /// (Ralph, 2026-11-01), until [takeFailedOpen].
+  ValueListenable<ProjectFailedOpen?> get failedOpen => _failedOpen;
+
+  /// Hands the open of [path] that ended in [outcome] to the Projects window's notice.
+  void reportFailedOpen(String path, ProjectOpenOutcome outcome) {
+    if (!_disposed) {
+      _failedOpen.value = (path: path, outcome: outcome);
+    }
+  }
+
+  /// The pending [failedOpen], cleared: it is shown once.
+  ProjectFailedOpen? takeFailedOpen() {
+    final ProjectFailedOpen? failed = _failedOpen.value;
+    _failedOpen.value = null;
+    return failed;
+  }
+
   /// Opens the project at [path], switching from the open one; a path the registry does not hold yet is added at
   /// [index] in [group] (see [ProjectRegistry.add]).
   Future<ProjectOpenOutcome> open(String path, {String? group, int? index}) =>
@@ -206,7 +230,7 @@ class ProjectSession extends ChangeNotifier {
 
   /// Reopens the project the registry says was open (the launch, item 2); nothing stored opens nothing. A stored
   /// path that holds no jj workspace (gone, Git, a folder, inside a repository) is no longer the open project; one
-  /// whose open failed stays stored, so the next launch tries again.
+  /// whose open failed stays stored, so the next launch tries again, and goes to [failedOpen].
   Future<void> reopenLast() => _serial(() async {
     final String? stored = _registry.value.openProject;
     if (stored == null) {
@@ -215,7 +239,9 @@ class ProjectSession extends ChangeNotifier {
     switch (await _open(stored)) {
       case ProjectNotARepo() || ProjectInsideRepo():
         await _registry.setOpen(null);
-      case ProjectOpened() || ProjectOpenFailed() || ProjectAdded() || ProjectRefused():
+      case final ProjectOpenFailed failed:
+        reportFailedOpen(stored, failed);
+      case ProjectOpened() || ProjectAdded() || ProjectRefused():
         break;
     }
   });
@@ -511,6 +537,7 @@ class ProjectSession extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _openReport.dispose();
+    _failedOpen.dispose();
     _registry.removeListener(notifyListeners);
     unawaited(_changes?.cancel());
     unawaited(_incoming?.cancel());
