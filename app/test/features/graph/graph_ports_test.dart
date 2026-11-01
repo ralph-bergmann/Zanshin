@@ -153,6 +153,27 @@ void main() {
     expect(entry.change.parents, contains(layout.keyOf(layout.indexOfKey(first)!)));
   });
 
+  test("Story 10.24: RepoGraphDetails.diff reads the summary and a focused file's hunks", () async {
+    final ProjectRepo repo = await openRepo('diff');
+    File('${pathOf('diff')}/a.txt').writeAsStringSync('one\ntwo\n');
+    File('${pathOf('diff')}/b.txt').writeAsStringSync('x\n');
+    final details = RepoGraphDetails(repo);
+    final String changeId = (await repo.handle.status()).workingCopyChangeId!;
+    final Diff summary = await details.diff(changeId, summary: true);
+    expect(summary.files.map((f) => f.path), <String>['a.txt', 'b.txt']);
+    expect(summary.files.map((f) => (f.added, f.removed)), <(int, int)>[(2, 0), (1, 0)]);
+    expect(summary.files.every((f) => f.hunks.isEmpty && f.fingerprint.isNotEmpty), isTrue);
+
+    final Diff focused = await details.diff(changeId, paths: <String>['a.txt']);
+    final FileDiff file = focused.files.single;
+    expect(file.path, 'a.txt');
+    expect(file.hunks.single.lines.map((l) => (l.kind, l.text)), <(HunkLineKind, String)>[
+      (HunkLineKind.added, 'one\n'),
+      (HunkLineKind.added, 'two\n'),
+    ]);
+    expect(file.fingerprint, summary.files.first.fingerprint);
+  });
+
   // Story 10.9: RepoGraphActions over the opened handle, through GraphViewModel.run, then the reload. `RepoHandle` is a
   // final class with no fake, so the mapping is witnessed here.
   test(

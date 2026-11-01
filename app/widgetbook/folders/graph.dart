@@ -27,6 +27,7 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
+import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/layout_invariants.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/stale_notice.dart';
@@ -40,8 +41,13 @@ import 'package:zanshin_core/zanshin_core.dart'
         Change,
         ChangeActions,
         ConflictState,
+        Diff,
         FileChange,
         FileChangeKind,
+        FileDiff,
+        Hunk,
+        HunkLine,
+        HunkLineKind,
         MutationResult,
         ShowEntry,
         Signature,
@@ -694,7 +700,13 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
     _model.addListener(_selectFirst);
     setState(() {
       _preferences = preferences;
-      _inspector = InspectorViewModel(graph: _model, details: _DemoDetails(_model, _descriptions));
+      _inspector = InspectorViewModel(
+        graph: _model,
+        details: _DemoDetails(_model, _descriptions),
+        // A path outside the registry: the Viewed marks live in memory for the demo (Story 10.24).
+        viewed: ProjectViewedStore(store, '/demo'),
+        settings: store,
+      );
     });
   }
 
@@ -795,7 +807,7 @@ class _DemoDetails implements GraphDetails {
   final GraphViewModel _model;
   final Map<String, String> _descriptions;
 
-  static const _paths = <String>['lib/auth/session.dart', 'lib/ui/onboarding.dart', 'README.md', 'test/api_test.dart'];
+  static const _paths = <String>['lib/auth/session.dart', 'lib/ui/onboarding.dart', 'assets/logo.png', 'src/main.rs'];
 
   static const _kinds = <FileChangeKind>[
     FileChangeKind.modified,
@@ -844,7 +856,7 @@ class _DemoDetails implements GraphDetails {
           FileChange(
             path: _paths[i],
             kind: _kinds[i],
-            fromPath: _kinds[i] == FileChangeKind.renamed ? 'lib/ui/welcome.dart' : null,
+            fromPath: _kinds[i] == FileChangeKind.renamed ? 'assets/icon.png' : null,
           ),
       ],
     );
@@ -867,6 +879,111 @@ class _DemoDetails implements GraphDetails {
     squashIntoParent: _available,
     abandon: _available,
   );
+
+  /// Story 10.24: a modified file gets two hunks (in Rust the first under `fn main()`), an added or removed one a
+  /// single hunk of its lines, a `.png` is binary.
+  @override
+  Future<Diff> diff(String changeId, {List<String> paths = const [], bool summary = false}) async {
+    final GraphLayout layout = _model.layout!;
+    final int node = List<int>.generate(layout.nodeCount, (i) => i).firstWhere((i) => layout.changeIdOf(i) == changeId);
+    final String commitId = layout.commitIdOf(node);
+    final ShowEntry entry = await show(commitId);
+    return Diff(
+      files: <FileDiff>[
+        for (final FileChange file in entry.fileChanges)
+          if (paths.isEmpty || paths.contains(file.path)) _diffOf(file, summary: summary),
+      ],
+      operationId: 'op',
+      commitId: commitId,
+    );
+  }
+
+  static HunkLine _line(HunkLineKind kind, String text) => HunkLine(kind: kind, text: '$text\n');
+
+  static FileDiff _diffOf(FileChange file, {required bool summary}) {
+    final bool binary = file.path.endsWith('.png');
+    final bool rust = file.path.endsWith('.rs');
+    final List<Hunk> hunks = binary
+        ? const <Hunk>[]
+        : switch (file.kind) {
+            FileChangeKind.added || FileChangeKind.copied => <Hunk>[
+              Hunk(
+                before: (start: 0, end: 0),
+                after: (start: 0, end: 3),
+                symbol: null,
+                sections: const [],
+                removed: 0,
+                added: 3,
+                lines: <HunkLine>[
+                  _line(HunkLineKind.added, "import 'package:flutter/widgets.dart';"),
+                  _line(HunkLineKind.added, ''),
+                  _line(HunkLineKind.added, 'class Onboarding extends StatelessWidget {}'),
+                ],
+              ),
+            ],
+            FileChangeKind.removed => <Hunk>[
+              Hunk(
+                before: (start: 0, end: 2),
+                after: (start: 0, end: 0),
+                symbol: null,
+                sections: const [],
+                removed: 2,
+                added: 0,
+                lines: <HunkLine>[
+                  _line(HunkLineKind.removed, 'fn main() {'),
+                  _line(HunkLineKind.removed, '}'),
+                ],
+              ),
+            ],
+            _ => <Hunk>[
+              Hunk(
+                before: (start: 11, end: 16),
+                after: (start: 11, end: 15),
+                symbol: rust ? 'fn main()' : null,
+                sections: const [],
+                removed: 3,
+                added: 2,
+                lines: <HunkLine>[
+                  _line(HunkLineKind.context, '  final Duration ttl;'),
+                  _line(HunkLineKind.removed, '  Session refresh() {'),
+                  _line(HunkLineKind.removed, '    return Session(token: token, ttl: ttl);'),
+                  _line(HunkLineKind.removed, '  }'),
+                  _line(
+                    HunkLineKind.added,
+                    '  Future<Session> refresh() async => Session(token: await renew(token), ttl: ttl);',
+                  ),
+                  _line(HunkLineKind.added, '  bool get expired => DateTime.now().isAfter(issued.add(ttl));'),
+                  _line(HunkLineKind.context, '}'),
+                ],
+              ),
+              Hunk(
+                before: (start: 40, end: 42),
+                after: (start: 39, end: 42),
+                symbol: rust ? 'fn main()' : null,
+                sections: const [],
+                removed: 0,
+                added: 1,
+                lines: <HunkLine>[
+                  _line(HunkLineKind.context, '  void dispose() {'),
+                  _line(HunkLineKind.added, '    _timer?.cancel();'),
+                  _line(HunkLineKind.context, '  }'),
+                ],
+              ),
+            ],
+          };
+    return FileDiff(
+      path: file.path,
+      kind: file.kind,
+      fromPath: file.fromPath,
+      binary: binary,
+      modeChange: false,
+      sections: const [],
+      hunks: summary ? const <Hunk>[] : hunks,
+      removed: hunks.fold(0, (sum, hunk) => sum + hunk.removed),
+      added: hunks.fold(0, (sum, hunk) => sum + hunk.added),
+      fingerprint: file.path.hashCode.toRadixString(16),
+    );
+  }
 }
 
 /// "Peek / Open" (Story 10.6): the commit callout as the hover opens it, for a mutable change, an immutable one, @

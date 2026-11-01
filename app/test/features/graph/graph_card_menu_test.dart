@@ -16,8 +16,10 @@ import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_bookmark_list.dart';
@@ -185,6 +187,9 @@ class _Details implements GraphDetails {
 
   @override
   Future<ChangeActions> changeActions(String changeId) => Completer<ChangeActions>().future;
+
+  @override
+  Future<Diff> diff(String changeId, {List<String> paths = const [], bool summary = false}) => Completer<Diff>().future;
 }
 
 void main() {
@@ -422,7 +427,15 @@ void main() {
       source = ScriptedGraphSource(respond: (_) => _layout());
       actions = _Actions();
       model = GraphViewModel()..init(source, actions: actions, clock: () => DateTime.utc(2026, 10, 30, 12));
-      inspector = InspectorViewModel(graph: model, details: _Details());
+      final Directory dir = Directory.systemTemp.createTempSync('zanshin_card_menu');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final SettingsStore settings = await SettingsStore.load(File('${dir.path}/settings.json'));
+      inspector = InspectorViewModel(
+        graph: model,
+        details: _Details(),
+        viewed: ProjectViewedStore(settings, '/r'),
+        settings: settings,
+      );
       tester.view
         ..physicalSize = surface
         ..devicePixelRatio = 1;

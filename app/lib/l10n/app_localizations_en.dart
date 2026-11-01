@@ -1050,6 +1050,55 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorBookmarkRemote => 'remote';
 
   @override
+  String inspectorViewedCount(int viewed, int total) {
+    return '$viewed/$total viewed';
+  }
+
+  @override
+  String inspectorViewedCountTooltip(int viewed, int total) {
+    return '$viewed of $total files viewed';
+  }
+
+  @override
+  String get inspectorAllViewed => 'all viewed';
+
+  @override
+  String get inspectorMarkAllViewed => 'Mark all';
+
+  @override
+  String get inspectorResetViewed => 'Reset';
+
+  @override
+  String get inspectorViewed => 'Viewed';
+
+  @override
+  String get inspectorMarkViewed => 'Mark as viewed';
+
+  @override
+  String get inspectorMarkNotViewed => 'Mark as not viewed';
+
+  @override
+  String get inspectorViewedFolded => 'Viewed — diff folded away. Click to show it again.';
+
+  @override
+  String get inspectorDiffLayout => 'Diff layout';
+
+  @override
+  String get inspectorDiffUnified => 'Unified';
+
+  @override
+  String get inspectorDiffSideBySide => 'Side by side';
+
+  @override
+  String get inspectorDiffBinary => 'Binary file';
+
+  @override
+  String get inspectorDiffModeChange => 'Executable bit changed';
+
+  @override
+  String get inspectorDiffNoLines => 'No line changes';
+
+  @override
   String toastAbandoned(String changes) {
     return 'Abandoned $changes';
   }

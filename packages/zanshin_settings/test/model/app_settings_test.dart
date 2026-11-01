@@ -20,7 +20,7 @@ void main() {
     expect(settings.toJson(), {
       'appearance': {'themeMode': 'dark', 'accentSource': 'followMacOS'},
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
-      'general': {'hideControls': true},
+      'general': {'hideControls': true, 'diffLayout': 'unified'},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
         'layout': 'free',
@@ -47,7 +47,7 @@ void main() {
     expect(settings.toJson(), {
       'appearance': {'themeMode': 'system', 'accentSource': 'zanshin'},
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
-      'general': {'hideControls': true},
+      'general': {'hideControls': true, 'diffLayout': 'unified'},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
         'layout': 'free',
@@ -85,7 +85,16 @@ void main() {
       general: GeneralSettings(hideControls: false),
     );
     expect(settings.toJson()['layout'], {'inspectorWidth': 512.0, 'panelWidth': 255.5});
-    expect(settings.toJson()['general'], {'hideControls': false});
+    expect(settings.toJson()['general'], {'hideControls': false, 'diffLayout': 'unified'});
+    expect(AppSettings.fromJson(settings.toJson()), settings);
+  });
+
+  test('the diff layout defaults to unified and Side by side survives a JSON round trip', () {
+    expect(const GeneralSettings().diffLayout, DiffLayoutSetting.unified);
+    expect(GeneralSettings.fromJson({'hideControls': false}).diffLayout, DiffLayoutSetting.unified);
+    expect(GeneralSettings.fromJson({'diffLayout': 'stacked'}).diffLayout, DiffLayoutSetting.unified);
+    const settings = AppSettings(general: GeneralSettings(diffLayout: DiffLayoutSetting.sideBySide));
+    expect(settings.toJson()['general'], {'hideControls': true, 'diffLayout': 'sideBySide'});
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
 

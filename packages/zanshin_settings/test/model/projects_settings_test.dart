@@ -20,6 +20,7 @@ void main() {
         collapsedStacks: <String>['qmsvtlkr', 'nqxwrptl'],
         graphView: '{"view":"all"}',
         recentSearches: <String>['{"change":"kxwsnptm"}'],
+        viewedFiles: <String>['kxwsnptm:ab12:lib/a:b.dart'],
       ),
       const ProjectEntry(path: '/r/b', name: 'b'),
     ],
@@ -53,6 +54,7 @@ void main() {
       'collapsedStacks': <Object?>['qmsvtlkr', 'nqxwrptl'],
       'graphView': '{"view":"all"}',
       'recentSearches': <Object?>['{"change":"kxwsnptm"}'],
+      'viewedFiles': <Object?>['kxwsnptm:ab12:lib/a:b.dart'],
     });
     expect(projects['openProject'], '/r/a');
     final decoded = AppSettings.fromJson(json);
@@ -75,6 +77,7 @@ void main() {
     expect(entry.collapsedStacks, isEmpty);
     expect(entry.graphView, isNull, reason: 'nor the graph search state (Story 10.21)');
     expect(entry.recentSearches, isEmpty);
+    expect(entry.viewedFiles, isEmpty, reason: 'nor the Viewed marks (Story 10.24)');
   });
 
   test('a status this version does not know reads as null; the rest of the entry and the file load', () {

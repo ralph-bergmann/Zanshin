@@ -14,6 +14,7 @@ import '../graph/graph_stack_store.dart';
 import '../graph/graph_toasts.dart';
 import '../graph/graph_view.dart';
 import '../graph/graph_view_model.dart';
+import '../graph/inspector_viewed_store.dart';
 import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/projects_environment.dart';
@@ -130,7 +131,12 @@ class _Graph {
         stackStore: ProjectStackStore(host.settings, root),
         revset: search.revset,
       );
-    inspector = InspectorViewModel(graph: model, details: RepoGraphDetails(repo));
+    inspector = InspectorViewModel(
+      graph: model,
+      details: RepoGraphDetails(repo),
+      viewed: ProjectViewedStore(host.settings, root),
+      settings: host.settings,
+    );
     bookmarks = () => repo.handle.bookmarks(allRemotes: true);
     toasts = GraphToasts(model, host.toasts);
     binding = GraphMenuBinding(

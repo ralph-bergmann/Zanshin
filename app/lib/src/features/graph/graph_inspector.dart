@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:io' show FileSystemException;
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart' show SemanticsProperties;
@@ -8,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -16,6 +18,8 @@ import 'graph_layout.dart';
 import 'graph_ports.dart';
 import 'graph_view_model.dart';
 import 'hatch_swatch.dart';
+import 'inspector_diff.dart';
+import 'inspector_viewed_store.dart';
 
 final _log = Logger('zanshin.inspector');
 
@@ -30,10 +34,23 @@ typedef InspectorDraft = ({String summary, String details});
 /// - **Drafts** live per change key for the session; the form's open state too, so a draft survives a selection
 ///   change and comes back open. [save] joins the fields as the CLI's `-m` paragraphs and runs `jj describe` through
 ///   the graph's runner — nothing when the text equals the current description.
+/// - **Diff** (Story 10.24): with `show` it reads the summary diff ([summaryOf]: ± and fingerprints per file); then the
+///   focused file's diff ([focusedDiff]). The first file starts focused; a reload keeps the focused path while it is
+///   listed. A file is viewed while `viewedKey(change id, path, its summary fingerprint)` is in the viewed store's set; the
+///   layout is `general.diffLayout` in [settings], followed when another writer changes it.
 class InspectorViewModel extends ChangeNotifier {
-  /// The inspector of [graph]'s selection, reading through [details].
-  InspectorViewModel({required this.graph, required this.details}) {
+  /// The inspector of [graph]'s selection, reading through [details]; Viewed marks in [viewed], the diff layout in
+  /// [settings].
+  InspectorViewModel({
+    required this.graph,
+    required this.details,
+    required InspectorViewedStore viewed,
+    required this.settings,
+  }) : _viewedStore = viewed,
+       _viewed = viewed.load(),
+       _layout = settings.value.general.diffLayout {
     graph.addListener(_graphChanged);
+    settings.addListener(_settingsChanged);
     _graphChanged();
   }
 
@@ -42,6 +59,20 @@ class InspectorViewModel extends ChangeNotifier {
 
   /// What the inspector reads.
   final GraphDetails details;
+
+  /// The app settings: the diff layout.
+  final SettingsStore settings;
+
+  final InspectorViewedStore _viewedStore;
+  final Set<String> _viewed;
+  DiffLayoutSetting _layout;
+
+  Map<String, FileDiff>? _summary;
+  String? _changeId;
+  String? _focused;
+  FileDiff? _focusedDiff;
+  ZanshinFfiException? _focusError;
+  var _focusSerial = 0;
 
   String? _key;
   String? _op;
@@ -66,6 +97,150 @@ class InspectorViewModel extends ChangeNotifier {
 
   /// Whether a read runs.
   bool get loading => _loading;
+
+  /// [path]'s summary entry (± and fingerprint); null until the summary is read, after its refusal, and for a path
+  /// it does not list.
+  FileDiff? summaryOf(String path) => _summary?[path];
+
+  /// Whether the summary was read.
+  bool get hasSummary => _summary != null;
+
+  /// The summary's totals: Σ added and Σ removed; null without a summary.
+  ({int added, int removed})? get totals {
+    final Iterable<FileDiff>? files = _summary?.values;
+    if (files == null) {
+      return null;
+    }
+    return (
+      added: files.fold(0, (sum, file) => sum + file.added),
+      removed: files.fold(0, (sum, file) => sum + file.removed),
+    );
+  }
+
+  /// The path whose diff shows; null without files.
+  String? get focusedPath => _focused;
+
+  /// The focused file's diff; null while it loads, after a refusal, and when the reply lists no such file.
+  FileDiff? get focusedDiff => _focusedDiff;
+
+  /// The focused diff's refusal.
+  ZanshinFfiException? get focusError => _focusError;
+
+  /// Shows [path]'s diff (one read); on the focused path after a refusal it reads again.
+  void focus(String path) {
+    if (path == _focused && _focusError == null) {
+      return;
+    }
+    _focused = path;
+    _focusedDiff = null;
+    _focusError = null;
+    _loadFocus();
+    _notify();
+  }
+
+  String? _viewedKeyOf(String path) {
+    final String? fingerprint = _summary?[path]?.fingerprint;
+    final String? changeId = _changeId;
+    return fingerprint == null || changeId == null ? null : viewedKey(changeId, path, fingerprint);
+  }
+
+  /// Whether [path] is marked Viewed with its current fingerprint.
+  bool isViewed(String path) => _viewed.contains(_viewedKeyOf(path));
+
+  /// Marks [path] Viewed or not; a path without a summary entry stays as it is.
+  void setViewed(String path, bool viewed) => _setViewed(<String>[path], viewed);
+
+  /// Marks every listed file Viewed.
+  void markAll() => _setViewed(_listed, true);
+
+  /// Clears every listed file's Viewed mark.
+  void resetViewed() => _setViewed(_listed, false);
+
+  /// How many listed files are viewed.
+  int get viewedCount => _listed.where(isViewed).length;
+
+  List<String> get _listed => <String>[for (final FileChange file in _entry?.fileChanges ?? const []) file.path];
+
+  void _setViewed(List<String> paths, bool viewed) {
+    var changed = false;
+    for (final path in paths) {
+      final String? key = _viewedKeyOf(path);
+      if (key == null || (_viewed.contains(key) == viewed)) {
+        continue;
+      }
+      if (viewed) {
+        _viewed.add(key);
+      } else {
+        _viewed.remove(key);
+      }
+      changed = true;
+    }
+    if (changed) {
+      _viewedStore.save(_viewed);
+      _notify();
+    }
+  }
+
+  /// Unified or side by side.
+  DiffLayoutSetting get layout => _layout;
+
+  /// Writes the layout preference (a failed write is swallowed; the store keeps the value).
+  void setLayout(DiffLayoutSetting layout) {
+    if (layout == _layout) {
+      return;
+    }
+    unawaited(
+      settings
+          .update((s) => s.copyWith(general: s.general.copyWith(diffLayout: layout)))
+          .onError<FileSystemException>((_, _) {}),
+    );
+  }
+
+  void _settingsChanged() {
+    final DiffLayoutSetting layout = settings.value.general.diffLayout;
+    if (layout != _layout) {
+      _layout = layout;
+      _notify();
+    }
+  }
+
+  void _loadFocus() {
+    final int serial = ++_focusSerial;
+    final String? path = _focused;
+    final String? changeId = _changeId;
+    if (path == null || changeId == null || _summary == null) {
+      _focusedDiff = null;
+      _focusError = null;
+      return;
+    }
+    unawaited(() async {
+      try {
+        final Diff diff = await details.diff(changeId, paths: <String>[path]);
+        if (serial == _focusSerial) {
+          _focusedDiff = diff.files.where((file) => file.path == path).firstOrNull;
+          _focusError = null;
+          _notify();
+        }
+      } on ZanshinFfiException catch (error) {
+        _log.warning('diff refused: ${error.code}');
+        if (serial == _focusSerial) {
+          _focusedDiff = null;
+          _focusError = error;
+          _notify();
+        }
+      }
+    }());
+  }
+
+  /// The summary, or null when it is refused (rows without ±, no diff block).
+  Future<Diff?> _summaryRead(String changeId) async {
+    try {
+      return await details.diff(changeId, summary: true);
+    } on ZanshinFfiException catch (error) {
+      _log.warning('summary diff refused: ${error.code}');
+      return null;
+    }
+  }
 
   /// Whether [key]'s describe form is open.
   bool isOpen(String key) => _open.contains(key);
@@ -158,6 +333,7 @@ class InspectorViewModel extends ChangeNotifier {
     if (key != _key) {
       _entry = null;
       _actions = null;
+      _clearDiff();
     }
     _key = key;
     _op = op;
@@ -167,6 +343,7 @@ class InspectorViewModel extends ChangeNotifier {
     if (node == null || stale) {
       _entry = null;
       _actions = null;
+      _clearDiff();
       _loading = false;
       _notify();
       return;
@@ -174,19 +351,41 @@ class InspectorViewModel extends ChangeNotifier {
     unawaited(_fetch(serial, layout!, node));
   }
 
+  void _clearDiff() {
+    _summary = null;
+    _changeId = null;
+    _focused = null;
+    _focusedDiff = null;
+    _focusError = null;
+    _focusSerial++;
+  }
+
   Future<void> _fetch(int serial, GraphLayout layout, int node) async {
     _loading = true;
     _notify();
     final bool mutable = node != layout.rootIndex && !layout.isImmutable(node);
-    final Future<ChangeActions?> previews = mutable
-        ? _previews(layout.changeIdOf(node))
-        : Future<ChangeActions?>.value();
+    final String changeId = layout.changeIdOf(node);
+    final Future<ChangeActions?> previews = mutable ? _previews(changeId) : Future<ChangeActions?>.value();
+    // The diff resolves a change id only: a hidden or divergent node (keyed by its commit id) would read another
+    // commit, so it gets no diff (as a refused summary).
+    final Future<Diff?> summary = layout.keyOf(node) == changeId ? _summaryRead(changeId) : Future<Diff?>.value();
     try {
       final ShowEntry entry = await details.show(layout.commitIdOf(node));
       final ChangeActions? actions = await previews;
+      final Diff? diff = await summary;
       if (serial == _serial) {
         _entry = entry;
         _actions = actions;
+        _summary = diff == null ? null : <String, FileDiff>{for (final FileDiff file in diff.files) file.path: file};
+        _changeId = changeId;
+        final List<String> paths = _listed;
+        final String? focused = paths.contains(_focused) ? _focused : paths.firstOrNull;
+        if (focused != _focused) {
+          _focusedDiff = null;
+          _focusError = null;
+        }
+        _focused = focused;
+        _loadFocus();
       }
     } on ZanshinFfiException catch (error) {
       _log.warning('show refused: ${error.code}');
@@ -194,6 +393,7 @@ class InspectorViewModel extends ChangeNotifier {
         _entry = null;
         _actions = null;
         _error = error;
+        _clearDiff();
       }
     } finally {
       if (serial == _serial) {
@@ -223,6 +423,7 @@ class InspectorViewModel extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     graph.removeListener(_graphChanged);
+    settings.removeListener(_settingsChanged);
     super.dispose();
   }
 }
@@ -240,8 +441,9 @@ class InspectorViewModel extends ChangeNotifier {
 /// - **Actions** (hidden while the form is open): immutable "New change on top"; @ "New change", "Squash into parent",
 ///   "Abandon"; else "Edit", "Squash into parent", "Abandon" — each tooltip the full command; Squash stays disabled
 ///   (10.25).
-/// - **Changes:** the file count and one row per file (one Tab stop, ↑ ↓ move the highlight), or the empty, stale or
-///   refusal text.
+/// - **Changes:** the file count with the summary's totals, the viewed counter with Mark all / Reset, one row per file
+///   with its ± and ✓ (one Tab stop, ↑ ↓ move the highlight, a click or ↩ focuses), and the focused file's diff block
+///   (Story 10.24); or the empty, stale or refusal text.
 /// - **Esc:** in a field with a changed draft it leaves the field; else it closes the form, else the selection.
 class GraphInspector extends StatefulWidget {
   /// The inspector of [model].
@@ -1107,9 +1309,18 @@ class _ChangesState extends State<_Changes> {
 
   void _focusChanged() => setState(() {});
 
-  KeyEventResult _onKey(FocusNode node, KeyEvent event, int count) {
+  KeyEventResult _onKey(FocusNode node, KeyEvent event, List<FileChange> files) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
+    }
+    final int count = files.length;
+    final HardwareKeyboard keyboard = HardwareKeyboard.instance;
+    final bool modified =
+        keyboard.isMetaPressed || keyboard.isShiftPressed || keyboard.isAltPressed || keyboard.isControlPressed;
+    if (!modified &&
+        (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter)) {
+      widget.model.focus(files[_highlight.clamp(0, count - 1)].path);
+      return KeyEventResult.handled;
     }
     final int step = switch (event.logicalKey) {
       LogicalKeyboardKey.arrowDown => 1,
@@ -1156,6 +1367,10 @@ class _ChangesState extends State<_Changes> {
     } else {
       final List<FileChange> files = entry.fileChanges;
       final int highlight = _highlight.clamp(0, files.length - 1);
+      final ({int added, int removed})? totals = model.totals;
+      final int viewed = model.viewedCount;
+      final TextStyle stat = ZsType.id.copyWith(fontSize: ZsType.fsSm);
+      final String? focused = model.focusedPath;
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -1173,13 +1388,65 @@ class _ChangesState extends State<_Changes> {
                     color: colors.text,
                   ),
                 ),
-                Text(strings.inspectorFileCount(files.length), style: ZsType.secondary.copyWith(color: colors.textDim)),
+                Expanded(
+                  child: Text.rich(
+                    key: const ValueKey<String>('inspector-files-meta'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    TextSpan(
+                      style: ZsType.secondary.copyWith(color: colors.textDim),
+                      children: <InlineSpan>[
+                        TextSpan(text: strings.inspectorFileCount(files.length)),
+                        if (totals != null) ...<InlineSpan>[
+                          TextSpan(
+                            text: '  +${totals.added}', // l10n-ignore: a count
+                            style: stat.copyWith(color: colors.add),
+                          ),
+                          TextSpan(
+                            text: '  −${totals.removed}', // l10n-ignore: a count
+                            style: stat.copyWith(color: colors.rem),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                if (viewed > 0) ...<Widget>[
+                  ZsTooltip(
+                    message: strings.inspectorViewedCountTooltip(viewed, files.length),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      spacing: 6,
+                      children: <Widget>[
+                        if (viewed == files.length) ZanshinIcon(ZI.check, size: ZsIconSize.xs, color: colors.add),
+                        Text(
+                          viewed == files.length
+                              ? strings.inspectorAllViewed
+                              : strings.inspectorViewedCount(viewed, files.length),
+                          style: ZsType.secondary.copyWith(fontSize: 11.5, color: colors.textDim),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (viewed == files.length)
+                    InspectorTextButton(
+                      label: strings.inspectorResetViewed,
+                      identifier: 'inspector-viewed-reset',
+                      onPressed: model.resetViewed,
+                    )
+                  else
+                    InspectorTextButton(
+                      label: strings.inspectorMarkAllViewed,
+                      identifier: 'inspector-viewed-all',
+                      onPressed: model.markAll,
+                    ),
+                ],
               ],
             ),
           ),
           Focus(
             focusNode: _focus,
-            onKeyEvent: (node, event) => _onKey(node, event, files.length),
+            onKeyEvent: (node, event) => _onKey(node, event, files),
             child: Semantics(
               container: true,
               label: strings.inspectorChanges,
@@ -1194,13 +1461,33 @@ class _ChangesState extends State<_Changes> {
                       onTap: () {
                         _focus.requestFocus();
                         setState(() => _highlight = i);
+                        model.focus(files[i].path);
                       },
-                      child: _FileRow(file: files[i], highlighted: _focus.hasFocus && i == highlight),
+                      child: _FileRow(
+                        file: files[i],
+                        summary: model.summaryOf(files[i].path),
+                        focused: files[i].path == focused,
+                        highlighted: _focus.hasFocus && i == highlight,
+                        viewed: model.isViewed(files[i].path),
+                      ),
                     ),
                 ],
               ),
             ),
           ),
+          if (focused != null && model.hasSummary)
+            Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: InspectorDiffView(
+                path: focused,
+                diff: model.focusedDiff,
+                error: model.focusError,
+                viewed: model.isViewed(focused),
+                onViewedChanged: (viewed) => model.setViewed(focused, viewed),
+                layout: model.layout,
+                onLayoutChanged: model.setLayout,
+              ),
+            ),
         ],
       );
     }
@@ -1208,12 +1495,22 @@ class _ChangesState extends State<_Changes> {
   }
 }
 
-/// One file (DS components/content/FileRow; content.css:2-14).
+/// One file (DS components/content/FileRow; content.css:2-18): the focused row (its diff shows) on `--fl-on`, the
+/// keyboard highlight on `--fl-hover`; a viewed file's ✓ and its path at .55; the summary's ± when read.
 class _FileRow extends StatelessWidget {
-  const _FileRow({required this.file, required this.highlighted});
+  const _FileRow({
+    required this.file,
+    required this.summary,
+    required this.focused,
+    required this.highlighted,
+    required this.viewed,
+  });
 
   final FileChange file;
+  final FileDiff? summary;
+  final bool focused;
   final bool highlighted;
+  final bool viewed;
 
   @override
   Widget build(BuildContext context) {
@@ -1227,10 +1524,16 @@ class _FileRow extends StatelessWidget {
       FileChangeKind.copied => ('C', colors.add, colors.addBg), // l10n-ignore: jj's status letter
     };
     final String? from = file.fromPath;
-    return Container(
+    final FileDiff? summary = this.summary;
+    final TextStyle stat = ZsType.id.copyWith(fontSize: ZsType.fsSm);
+    final Widget row = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: highlighted ? colors.flOn : colors.flOn.withValues(alpha: 0),
+        color: focused
+            ? colors.flOn
+            : highlighted
+            ? colors.flHover
+            : colors.flOn.withValues(alpha: 0),
         borderRadius: BorderRadius.circular(metrics.radiusMd),
       ),
       child: Row(
@@ -1253,15 +1556,33 @@ class _FileRow extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Text(
-              from == null ? file.path : '$from → ${file.path}', // l10n-ignore: paths and an arrow
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ZsType.id.copyWith(color: highlighted ? colors.text : colors.textMuted),
+            child: Opacity(
+              opacity: viewed ? .55 : 1,
+              child: Text(
+                from == null ? file.path : '$from → ${file.path}', // l10n-ignore: paths and an arrow
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ZsType.id.copyWith(color: focused || highlighted ? colors.text : colors.textMuted),
+              ),
             ),
           ),
+          if (viewed)
+            Semantics(
+              label: context.l10n.inspectorViewed,
+              child: ZanshinIcon(
+                ZI.check,
+                size: ZsIconSize.xs,
+                color: colors.add,
+                key: const ValueKey<String>('inspector-file-viewed'),
+              ),
+            ),
+          if (summary != null && summary.added > 0)
+            Text('+${summary.added}', style: stat.copyWith(color: colors.add)), // l10n-ignore: a count
+          if (summary != null && summary.removed > 0)
+            Text('−${summary.removed}', style: stat.copyWith(color: colors.rem)), // l10n-ignore: a count
         ],
       ),
     );
+    return Semantics(selected: focused, child: row);
   }
 }

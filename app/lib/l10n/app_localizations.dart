@@ -1586,6 +1586,96 @@ abstract class AppLocalizations {
   /// **'remote'**
   String get inspectorBookmarkRemote;
 
+  /// Changes header: how many of the listed files are marked Viewed.
+  ///
+  /// In en, this message translates to:
+  /// **'{viewed}/{total} viewed'**
+  String inspectorViewedCount(int viewed, int total);
+
+  /// Tooltip of the Changes header's viewed counter.
+  ///
+  /// In en, this message translates to:
+  /// **'{viewed} of {total} files viewed'**
+  String inspectorViewedCountTooltip(int viewed, int total);
+
+  /// Changes header when every listed file is marked Viewed (after a check mark).
+  ///
+  /// In en, this message translates to:
+  /// **'all viewed'**
+  String get inspectorAllViewed;
+
+  /// Changes header button: mark every listed file Viewed.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark all'**
+  String get inspectorMarkAllViewed;
+
+  /// Changes header button: clear every listed file's Viewed mark.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get inspectorResetViewed;
+
+  /// The diff block's review toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewed'**
+  String get inspectorViewed;
+
+  /// Tooltip of the Viewed toggle while the file is not viewed.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as viewed'**
+  String get inspectorMarkViewed;
+
+  /// Tooltip of the Viewed toggle while the file is viewed.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as not viewed'**
+  String get inspectorMarkNotViewed;
+
+  /// The folded diff of a viewed file; a click unfolds it and clears Viewed.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewed — diff folded away. Click to show it again.'**
+  String get inspectorViewedFolded;
+
+  /// Accessible name of the diff's layout toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Diff layout'**
+  String get inspectorDiffLayout;
+
+  /// Diff layout: one column.
+  ///
+  /// In en, this message translates to:
+  /// **'Unified'**
+  String get inspectorDiffUnified;
+
+  /// Diff layout: the left side beside the right.
+  ///
+  /// In en, this message translates to:
+  /// **'Side by side'**
+  String get inspectorDiffSideBySide;
+
+  /// The diff of a binary file, which has no lines.
+  ///
+  /// In en, this message translates to:
+  /// **'Binary file'**
+  String get inspectorDiffBinary;
+
+  /// The diff of a file whose only change is its executable bit.
+  ///
+  /// In en, this message translates to:
+  /// **'Executable bit changed'**
+  String get inspectorDiffModeChange;
+
+  /// The diff of a file with no hunks otherwise (a pure rename, an empty file).
+  ///
+  /// In en, this message translates to:
+  /// **'No line changes'**
+  String get inspectorDiffNoLines;
+
   /// Operation toast after jj abandon; changes is a list of change ids.
   ///
   /// In en, this message translates to:

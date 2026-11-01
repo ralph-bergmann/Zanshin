@@ -1,18 +1,23 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart' show SelectionArea;
 import 'package:zanshin/src/features/graph/graph_inspector.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
+import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/icon_registry.dart';
@@ -30,7 +35,7 @@ const _root = 'zzzzzzzzzzzz';
 const _keys = <String>[_at, _mutable, _merge, _left, _right, _root];
 
 /// @ → m → the merge of p and q (both immutable) → the root, at operation [op].
-RecordedGraphLayout _layout(String op) {
+RecordedGraphLayout _layout(String op, {List<String>? changeIds}) {
   const int imm = RecordedGraphLayout.flagImmutable;
   return handLayout(
     <(String, int, int)>[(_at, 5, 0), (_mutable, 4, 0), (_merge, 3, 0), (_left, 2, 0), (_right, 1, 1), (_root, 0, 0)],
@@ -41,6 +46,7 @@ RecordedGraphLayout _layout(String op) {
     flags: const <int>[0, 0, 0, imm, imm, imm],
     prefixLengths: const <int>[1, 3, 2, 2, 2, 1],
     commitIds: <String>[for (final String key in _keys) 'c$key'],
+    changeIds: changeIds,
     timestamps: <int?>[for (final _ in _keys) DateTime.utc(2026, 10, 30, 11).millisecondsSinceEpoch],
     refs: const <List<GraphRef>>[
       <GraphRef>[],
@@ -71,6 +77,60 @@ class _Details implements GraphDetails {
     ],
   };
   var hold = false;
+
+  /// Every `diff` call: the commit id, the paths, whether it was the summary.
+  final diffs = <(String, List<String>, bool)>[];
+
+  /// The full file diffs per key; a summary drops their hunks.
+  final fileDiffs = <String, List<FileDiff>>{
+    _mutable: <FileDiff>[
+      fileDiff(
+        'src/a.dart',
+        added: 3,
+        removed: 1,
+        fingerprint: 'fa',
+        hunks: <Hunk>[
+          hunk(
+            before: (start: 1, end: 3),
+            after: (start: 1, end: 5),
+            lines: const <HunkLine>[
+              HunkLine(kind: HunkLineKind.context, text: 'keep\n'),
+              HunkLine(kind: HunkLineKind.removed, text: 'old a\n'),
+              HunkLine(kind: HunkLineKind.added, text: 'new a\n'),
+              HunkLine(kind: HunkLineKind.added, text: 'new b\n'),
+              HunkLine(kind: HunkLineKind.added, text: 'new c\n'),
+            ],
+          ),
+        ],
+      ),
+      fileDiff(
+        'src/new.dart',
+        kind: FileChangeKind.renamed,
+        added: 2,
+        fingerprint: 'fb',
+        hunks: <Hunk>[
+          hunk(
+            before: (start: 0, end: 0),
+            after: (start: 0, end: 2),
+            symbol: 'fn main()',
+            lines: const <HunkLine>[
+              HunkLine(kind: HunkLineKind.added, text: 'b one\n'),
+              HunkLine(kind: HunkLineKind.added, text: 'b two\n'),
+            ],
+          ),
+        ],
+      ),
+    ],
+  };
+  ZanshinFfiException? refuseSummary;
+  ZanshinFfiException? refuseDiff;
+
+  /// While set, each focused-file read (not the summary) parks in [heldDiffs].
+  var holdDiff = false;
+  final heldDiffs = <(String, List<String>, Completer<Diff>)>[];
+
+  /// The focused-file reads, in call order.
+  List<(String, List<String>, bool)> get focusReads => diffs.where((d) => !d.$3).toList();
 
   /// The keys whose entry is conflicted.
   final conflicted = <String>{};
@@ -144,7 +204,83 @@ class _Details implements GraphDetails {
       abandon: _available,
     );
   }
+
+  @override
+  Future<Diff> diff(String changeId, {List<String> paths = const [], bool summary = false}) async {
+    diffs.add((changeId, paths, summary));
+    if ((summary ? refuseSummary : refuseDiff) case final error?) {
+      throw error;
+    }
+    if (holdDiff && !summary) {
+      final completer = Completer<Diff>();
+      heldDiffs.add((changeId, paths, completer));
+      return completer.future;
+    }
+    return diffOf(changeId, paths: paths, summary: summary);
+  }
+
+  /// What [diff] answers for [changeId].
+  Diff diffOf(String changeId, {List<String> paths = const [], bool summary = false}) {
+    final List<FileDiff> files = fileDiffs[changeId] ?? const <FileDiff>[];
+    return Diff(
+      files: <FileDiff>[
+        for (final FileDiff file in files)
+          if (paths.isEmpty || paths.contains(file.path))
+            if (summary)
+              fileDiff(
+                file.path,
+                kind: file.kind,
+                added: file.added,
+                removed: file.removed,
+                fingerprint: file.fingerprint,
+              )
+            else
+              file,
+      ],
+      operationId: 'op',
+      commitId: 'c$changeId',
+    );
+  }
 }
+
+/// A file diff of [path].
+FileDiff fileDiff(
+  String path, {
+  FileChangeKind kind = FileChangeKind.modified,
+  int added = 0,
+  int removed = 0,
+  String fingerprint = 'f0',
+  List<Hunk> hunks = const <Hunk>[],
+  bool binary = false,
+  bool modeChange = false,
+}) => FileDiff(
+  path: path,
+  kind: kind,
+  fromPath: null,
+  binary: binary,
+  modeChange: modeChange,
+  sections: const [],
+  hunks: hunks,
+  removed: removed,
+  added: added,
+  fingerprint: fingerprint,
+);
+
+/// A hunk over [lines], its counts taken from them.
+Hunk hunk({
+  required ({int start, int end}) before,
+  required ({int start, int end}) after,
+  required List<HunkLine> lines,
+  String? symbol,
+}) => Hunk(
+  before: before,
+  after: after,
+  symbol: symbol,
+  sections: const [],
+  removed: lines.where((l) => l.kind == HunkLineKind.removed).length,
+  added: lines.where((l) => l.kind == HunkLineKind.added).length,
+  lines: lines,
+);
 
 /// Runs every action, writes one operation each and applies a describe to [details].
 class _Actions implements GraphActions {
@@ -199,19 +335,43 @@ void main() {
   late _Actions actions;
   late GraphViewModel graph;
   late InspectorViewModel inspector;
+  late Directory dir;
+  late SettingsStore settings;
   var ops = 0;
 
-  setUp(() {
+  setUp(() async {
     ops = 0;
     source = ScriptedGraphSource(respond: (_) => _layout('op${ops++}'));
     details = _Details();
     actions = _Actions(details);
+    dir = Directory.systemTemp.createTempSync('zanshin_inspector');
+    final file = File('${dir.path}/settings.json')
+      ..writeAsStringSync(
+        jsonEncode(
+          const AppSettings(
+            projects: ProjectsSettings(
+              projects: <ProjectEntry>[
+                ProjectEntry(path: '/r/a', name: 'a'),
+                ProjectEntry(path: '/r/b', name: 'b'),
+              ],
+            ),
+          ).toJson(),
+        ),
+      );
+    settings = await SettingsStore.load(file);
   });
 
-  Future<void> pump(WidgetTester tester, {String? select = _mutable}) async {
+  tearDown(() => dir.deleteSync(recursive: true));
+
+  Future<void> pump(WidgetTester tester, {String? select = _mutable, String repo = '/r/a'}) async {
     useShellWindow(tester);
     graph = GraphViewModel()..init(source, actions: actions, clock: () => DateTime.utc(2026, 10, 30, 12));
-    inspector = InspectorViewModel(graph: graph, details: details);
+    inspector = InspectorViewModel(
+      graph: graph,
+      details: details,
+      viewed: ProjectViewedStore(settings, repo),
+      settings: settings,
+    );
     await tester.pumpWidget(
       shellHost(
         Align(
@@ -266,7 +426,7 @@ void main() {
       'c$_mutable',
     );
     expect(find.text('about $_mutable'), findsOneWidget, reason: 'the title');
-    expect(details.shows, <String>['c$_mutable'], reason: 'one read, no diff request');
+    expect(details.shows, <String>['c$_mutable'], reason: 'one read');
     expect(details.previews, <String>[_mutable]);
     await unmount(tester);
   });
@@ -372,17 +532,24 @@ void main() {
     expect(find.text('main@origin'), findsOneWidget);
     expect(find.text('remote'), findsOneWidget);
     expect(find.text('Changes'), findsOneWidget);
-    expect(find.text('2 files'), findsOneWidget);
+    expect(find.textContaining('2 files', findRichText: true), findsOneWidget);
     expect(find.text('src/old.dart → src/new.dart'), findsOneWidget);
-    final ZsColors colors = ZsColors.of(tester.element(find.text('src/a.dart')));
-    Color? ink(String path) => tester.widget<Text>(find.text(path)).style!.color;
-    await tester.tap(find.text('src/a.dart'));
+    // The row comes before the diff bar's path.
+    final ZsColors colors = ZsColors.of(tester.element(find.text('src/a.dart').first));
+    Color? ink(String path) => tester.widget<Text>(find.text(path).first).style!.color;
+    expect(ink('src/old.dart → src/new.dart'), colors.textMuted);
+    await tester.tap(find.text('src/a.dart').first);
     await tester.pump();
-    expect(ink('src/a.dart'), colors.text, reason: 'the clicked row is highlighted');
+    expect(ink('src/a.dart'), colors.text, reason: 'the clicked row is focused');
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
-    expect(ink('src/a.dart'), colors.textMuted);
-    expect(ink('src/old.dart → src/new.dart'), colors.text);
+    expect(ink('src/old.dart → src/new.dart'), colors.text, reason: 'highlighted');
+    expect(inspector.focusedPath, 'src/a.dart', reason: '↓ only moves the highlight');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.pump();
+    expect(inspector.focusedPath, 'src/new.dart', reason: '↩ focuses the highlighted row');
+    expect(details.focusReads.last.$2, <String>['src/new.dart']);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump();
     expect(ink('src/a.dart'), colors.text);
@@ -624,6 +791,303 @@ void main() {
     final ZsColors colors = ZsColors.of(tester.element(find.text('Conflict')));
     expect(tester.widget<Text>(find.text('Conflict')).style!.color, colors.warn);
     await unmount(tester);
+  });
+
+  group('the diff (Story 10.24)', () {
+    String meta(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-files-meta'))).textSpan!.toPlainText();
+
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+    }
+
+    testWidgets('the header sums the summary, the rows show ±, the first file is focused with one read', (
+      tester,
+    ) async {
+      await pump(tester);
+      await settle(tester);
+      expect(meta(tester), '2 files  +5  −1');
+      expect(find.text('+3'), findsNWidgets(2), reason: 'the row and the hunk header');
+      expect(find.text('−1'), findsNWidgets(2));
+      expect(find.text('+2'), findsOneWidget, reason: "new.dart's row; its hunk does not show");
+      expect(inspector.focusedPath, 'src/a.dart');
+      expect(details.diffs.map((d) => '${d.$1} ${d.$2} ${d.$3}'), <String>[
+        '$_mutable [] true',
+        '$_mutable [src/a.dart] false',
+      ]);
+      expect(find.text('@@ −2,2 +2,4 @@'), findsOneWidget);
+      expect(find.text('old a'), findsOneWidget, reason: 'the text without its newline');
+      expect(find.byType(SelectionArea), findsOneWidget, reason: 'the diff text is selectable');
+      await unmount(tester);
+    });
+
+    testWidgets('a click on another file reads only that file', (tester) async {
+      await pump(tester);
+      await settle(tester);
+      await tester.tap(find.text('src/old.dart → src/new.dart'));
+      await settle(tester);
+      expect(details.focusReads.map((d) => d.$2), <List<String>>[
+        <String>['src/a.dart'],
+        <String>['src/new.dart'],
+      ]);
+      expect(find.text('fn main()'), findsOneWidget, reason: 'the hunk symbol');
+      expect(find.text('b one'), findsOneWidget);
+      expect(find.text('old a'), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('Viewed folds the block, marks the row and shows the counter; the folded row unfolds it', (
+      tester,
+    ) async {
+      await pump(tester);
+      await settle(tester);
+      expect(find.text('1/2 viewed'), findsNothing, reason: 'the counter appears with the first viewed file');
+      await tester.tap(find.byWidgetPredicate((w) => w is ZsControlCore && w.identifier == 'inspector-viewed'));
+      await tester.pump();
+      expect(find.text('Viewed — diff folded away. Click to show it again.'), findsOneWidget);
+      expect(find.text('old a'), findsNothing);
+      expect(find.byKey(const ValueKey<String>('inspector-file-viewed')), findsOneWidget);
+      expect(find.text('1/2 viewed'), findsOneWidget);
+      expect(find.text('Mark all'), findsOneWidget);
+      expect(settings.value.projects.projects.first.viewedFiles, <String>['$_mutable:fa:src/a.dart']);
+      await tester.tap(find.text('Viewed — diff folded away. Click to show it again.'));
+      await tester.pump();
+      expect(inspector.isViewed('src/a.dart'), isFalse);
+      expect(find.text('old a'), findsOneWidget);
+      expect(find.text('1/2 viewed'), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('Mark all, then "all viewed" with Reset, which clears every mark', (tester) async {
+      await pump(tester);
+      await settle(tester);
+      inspector.setViewed('src/a.dart', true);
+      await tester.pump();
+      await tester.tap(find.text('Mark all'));
+      await tester.pump();
+      expect(find.text('all viewed'), findsOneWidget);
+      expect(inspector.viewedCount, 2);
+      await tester.tap(find.text('Reset'));
+      await tester.pump();
+      expect(inspector.viewedCount, 0);
+      expect(find.text('all viewed'), findsNothing);
+      expect(settings.value.projects.projects.first.viewedFiles, isEmpty);
+      await unmount(tester);
+    });
+
+    testWidgets('a reload keeps Viewed for the same fingerprint and the focus; a changed one resets it', (
+      tester,
+    ) async {
+      await pump(tester);
+      await settle(tester);
+      await tester.tap(find.text('src/old.dart → src/new.dart'));
+      await settle(tester);
+      inspector.setViewed('src/new.dart', true);
+      await reload(tester);
+      await settle(tester);
+      expect(inspector.focusedPath, 'src/new.dart');
+      expect(inspector.isViewed('src/new.dart'), isTrue);
+      expect(details.diffs.where((d) => d.$3), hasLength(2), reason: 'one summary per operation');
+      expect(details.focusReads.last.$2, <String>['src/new.dart'], reason: 'the focused file is read again');
+
+      details.fileDiffs[_mutable] = <FileDiff>[
+        details.fileDiffs[_mutable]!.first,
+        fileDiff('src/new.dart', kind: FileChangeKind.renamed, added: 3, fingerprint: 'fc'),
+      ];
+      await reload(tester);
+      await settle(tester);
+      expect(inspector.isViewed('src/new.dart'), isFalse, reason: 'its changed lines reset the mark');
+      await unmount(tester);
+    });
+
+    testWidgets('a reload without the focused path focuses the first file', (tester) async {
+      await pump(tester);
+      await settle(tester);
+      await tester.tap(find.text('src/old.dart → src/new.dart'));
+      await settle(tester);
+      details.files[_mutable] = const <FileChange>[FileChange(path: 'src/a.dart', kind: FileChangeKind.modified)];
+      await reload(tester);
+      await settle(tester);
+      expect(inspector.focusedPath, 'src/a.dart');
+      expect(find.text('old a'), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('Viewed is per repository: the same change, path and fingerprint elsewhere is not viewed', (
+      tester,
+    ) async {
+      await pump(tester);
+      await settle(tester);
+      inspector.setViewed('src/a.dart', true);
+      await unmount(tester);
+      await pump(tester, repo: '/r/b');
+      await settle(tester);
+      expect(inspector.isViewed('src/a.dart'), isFalse);
+      await unmount(tester);
+      await pump(tester);
+      await settle(tester);
+      expect(inspector.isViewed('src/a.dart'), isTrue, reason: "A's mark stays on A's entry");
+      await unmount(tester);
+    });
+
+    testWidgets('Side by side: chosen in the bar, written to the settings, follows another writer', (tester) async {
+      await pump(tester);
+      await settle(tester);
+      expect(find.byKey(const ValueKey<String>('inspector-diff-split')), findsNothing);
+      tester.widget<ZsSegmented<DiffLayoutSetting>>(find.byType(ZsSegmented<DiffLayoutSetting>)).onChanged!(
+        DiffLayoutSetting.sideBySide,
+      );
+      await tester.pump();
+      expect(settings.value.general.diffLayout, DiffLayoutSetting.sideBySide);
+      expect(find.byKey(const ValueKey<String>('inspector-diff-split')), findsOneWidget);
+      unawaited(
+        settings
+            .update((s) => s.copyWith(general: s.general.copyWith(diffLayout: DiffLayoutSetting.unified)))
+            .onError<FileSystemException>((_, _) {}),
+      );
+      await tester.pump();
+      expect(inspector.layout, DiffLayoutSetting.unified);
+      expect(find.byKey(const ValueKey<String>('inspector-diff-split')), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('a refused summary: no ±, no totals, no diff block, no focused read', (tester) async {
+      details.refuseSummary = const ZanshinFfiException('jj.internal', 'no');
+      await pump(tester);
+      await settle(tester);
+      expect(meta(tester), '2 files');
+      expect(find.text('+3'), findsNothing);
+      expect(find.byKey(const ValueKey<String>('inspector-diff')), findsNothing);
+      expect(details.focusReads, isEmpty);
+      await unmount(tester);
+    });
+
+    testWidgets('a node keyed by its commit id (hidden, divergent) reads no diff: the diff resolves change ids', (
+      tester,
+    ) async {
+      source.respond = (_) => _layout(
+        'op${ops++}',
+        changeIds: <String>[
+          for (final String key in _keys)
+            if (key == _mutable) 'dddddddddddd' else key,
+        ],
+      );
+      await pump(tester);
+      await settle(tester);
+      expect(inspector.entry, isNotNull);
+      expect(details.diffs, isEmpty);
+      expect(find.byKey(const ValueKey<String>('inspector-diff')), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets("a late read of the previously focused file is dropped: B's diff shows, A's lines never", (
+      tester,
+    ) async {
+      details.holdDiff = true;
+      await pump(tester);
+      await settle(tester);
+      await tester.tap(find.text('src/old.dart → src/new.dart'));
+      await settle(tester);
+      expect(details.heldDiffs.map((h) => h.$2.single), <String>['src/a.dart', 'src/new.dart']);
+      details.heldDiffs[1].$3.complete(details.diffOf(_mutable, paths: <String>['src/new.dart']));
+      await settle(tester);
+      details.heldDiffs[0].$3.complete(details.diffOf(_mutable, paths: <String>['src/a.dart']));
+      await settle(tester);
+      expect(find.text('b one'), findsOneWidget);
+      expect(find.text('old a'), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets("a read held across a selection change never lands on the new change's block", (tester) async {
+      details
+        ..holdDiff = true
+        ..files[_at] = const <FileChange>[FileChange(path: 'src/at.dart', kind: FileChangeKind.modified)]
+        ..fileDiffs[_at] = <FileDiff>[
+          fileDiff(
+            'src/at.dart',
+            added: 1,
+            hunks: <Hunk>[
+              hunk(
+                before: (start: 0, end: 0),
+                after: (start: 0, end: 1),
+                lines: const <HunkLine>[HunkLine(kind: HunkLineKind.added, text: 'at line\n')],
+              ),
+            ],
+          ),
+        ];
+      await pump(tester);
+      await settle(tester);
+      graph.select(_at);
+      await settle(tester);
+      expect(details.heldDiffs.map((h) => h.$1), <String>[_mutable, _at]);
+      details.heldDiffs[0].$3.complete(details.diffOf(_mutable, paths: <String>['src/a.dart']));
+      await settle(tester);
+      expect(inspector.focusedDiff, isNull, reason: "the old change's reply is dropped");
+      expect(find.text('old a'), findsNothing);
+      details.heldDiffs[1].$3.complete(details.diffOf(_at, paths: <String>['src/at.dart']));
+      await settle(tester);
+      expect(find.text('at line'), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets("a refused focused diff shows the refusal's text in the block", (tester) async {
+      details.refuseDiff = const ZanshinFfiException('jj.internal', 'the diff failed');
+      await pump(tester);
+      await settle(tester);
+      expect(find.text('the diff failed'), findsOneWidget);
+      await unmount(tester);
+    });
+
+    for (final (String name, FileDiff file, String text) in <(String, FileDiff, String)>[
+      ('binary', fileDiff('src/a.dart', binary: true), 'Binary file'),
+      ('mode-only', fileDiff('src/a.dart', modeChange: true), 'Executable bit changed'),
+      ('hunk-less', fileDiff('src/a.dart'), 'No line changes'),
+    ]) {
+      testWidgets('a $name file shows its one-line placeholder', (tester) async {
+        details.fileDiffs[_mutable] = <FileDiff>[file];
+        await pump(tester);
+        await settle(tester);
+        expect(find.text(text), findsOneWidget);
+        await unmount(tester);
+      });
+    }
+  });
+
+  test('the layout persists in the settings file and opens from it after a restart', () async {
+    final model = GraphViewModel();
+    final first = InspectorViewModel(
+      graph: model,
+      details: _Details(),
+      viewed: ProjectViewedStore(settings, '/r/a'),
+      settings: settings,
+    )..setLayout(DiffLayoutSetting.sideBySide);
+    // Writes run in order: awaiting a later one awaits the layout's.
+    await settings.update((s) => s.copyWith(general: s.general.copyWith(hideControls: false)));
+    final SettingsStore restarted = await SettingsStore.load(File('${dir.path}/settings.json'));
+    final second = InspectorViewModel(
+      graph: model,
+      details: _Details(),
+      viewed: ProjectViewedStore(restarted, '/r/a'),
+      settings: restarted,
+    );
+    expect(second.layout, DiffLayoutSetting.sideBySide);
+    first.dispose();
+    second.dispose();
+    model.dispose();
+  });
+
+  test('ProjectViewedStore: a path outside the registry keeps its marks in memory; the newest 2000 stay', () {
+    final memory = ProjectViewedStore(settings, '/r/none');
+    final AppSettings before = settings.value;
+    memory.save(<String>{'k1'});
+    expect(memory.load(), <String>{'k1'});
+    expect(settings.value, before);
+    final stored = ProjectViewedStore(settings, '/r/a')..save(<String>{for (var i = 0; i < 2005; i++) 'k$i'});
+    expect(stored.load(), hasLength(2000));
+    expect(stored.load().first, 'k5', reason: 'the oldest go');
+    expect(viewedKey('abc', 'a:b.dart', 'ff'), 'abc:ff:a:b.dart');
   });
 
   test('draftFrom splits the first line from the rest after the blank line', () {

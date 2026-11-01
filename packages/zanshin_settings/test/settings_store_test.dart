@@ -16,7 +16,7 @@ const _light = AppSettings(appearance: AppearanceSettings(themeMode: ThemeMode.l
 const _darkJson =
     '{\n  "appearance": {\n    "themeMode": "dark",\n    "accentSource": "followMacOS"\n  },\n'
     '  "layout": {\n    "inspectorWidth": 460.0,\n    "panelWidth": 300.0\n  },\n'
-    '  "general": {\n    "hideControls": true\n  },\n'
+    '  "general": {\n    "hideControls": true,\n    "diffLayout": "unified"\n  },\n'
     '  "projects": {\n    "projects": [],\n    "groups": [],\n    "openProject": null\n  },\n'
     '  "graph": {\n    "layout": "free",\n    "detailedCards": true,\n    "groupStacks": true,\n'
     '    "cardWidth": 240.0,\n    "revsetConfigs": [],\n    "revsetDefault": "log"\n  }\n}\n';

@@ -70,6 +70,9 @@ abstract class ProjectEntry with _$ProjectEntry {
 
     /// The graph search's recent go-tos and filters, newest first, each as its JSON text (Story 10.21).
     @Default(<String>[]) List<String> recentSearches,
+
+    /// The inspector's Viewed marks, each `<change id>:<fingerprint>:<path>`, oldest first (Story 10.24).
+    @Default(<String>[]) List<String> viewedFiles,
   }) = _ProjectEntry;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

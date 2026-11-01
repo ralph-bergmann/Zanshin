@@ -765,6 +765,11 @@ abstract interface class GraphDetails {
 
   /// The previews of the verbs on [changeId] (`RepoHandle.changeActions`): what each would do, or why it would refuse.
   Future<ChangeActions> changeActions(String changeId);
+
+  /// `jj diff -r <changeId>` as data (Story 10.24): [paths] limits it to those prefixes (empty: every path), [summary]
+  /// drops the hunks but keeps the counts and fingerprints. The backend resolves only a change id (`RepoHandle.diff`'s
+  /// `revision`), never a commit id.
+  Future<Diff> diff(String changeId, {List<String> paths = const [], bool summary = false});
 }
 
 /// [GraphDetails] over an open [ProjectRepo]'s handle.
@@ -779,6 +784,10 @@ class RepoGraphDetails implements GraphDetails {
 
   @override
   Future<ChangeActions> changeActions(String changeId) => _repo.handle.changeActions(changeId);
+
+  @override
+  Future<Diff> diff(String changeId, {List<String> paths = const [], bool summary = false}) =>
+      _repo.handle.diff(revision: changeId, paths: paths, summary: summary);
 }
 
 /// [GraphSource] over an open [ProjectRepo] (`ProjectSession.repo`, Story 10.12): the worker's layout

@@ -77,6 +77,12 @@ _ProjectEntry _$ProjectEntryFromJson(Map<String, dynamic> json) =>
               (v as List<dynamic>?)?.map((e) => e as String).toList() ??
               const <String>[],
         ),
+        viewedFiles: $checkedConvert(
+          'viewedFiles',
+          (v) =>
+              (v as List<dynamic>?)?.map((e) => e as String).toList() ??
+              const <String>[],
+        ),
       );
       return val;
     });
@@ -94,6 +100,7 @@ Map<String, dynamic> _$ProjectEntryToJson(_ProjectEntry instance) =>
       'collapsedStacks': instance.collapsedStacks,
       'graphView': instance.graphView,
       'recentSearches': instance.recentSearches,
+      'viewedFiles': instance.viewedFiles,
     };
 
 const _$ProjectStatusEnumMap = {
