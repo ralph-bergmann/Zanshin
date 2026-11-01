@@ -222,6 +222,27 @@ void main() {
     });
   });
 
+  testWidgets('keyboard focus on a row shows its Restore to here and Show changes; losing it hides them', (
+    tester,
+  ) async {
+    await withTimeline(tester, FakeTimelineSource(_log(3)), actions: FakeTimelineActions(), (model) async {
+      expect(_button('undo-timeline-restore-1'), findsNothing);
+      // The test host has no WidgetsApp traversal shortcuts: focus the node Tab lands on directly.
+      final FocusNode row = Focus.of(tester.element(find.text('operation 1')));
+      expect(row.canRequestFocus, isTrue, reason: 'Tab can land on the row');
+      expect(row.skipTraversal, isFalse);
+      row.requestFocus();
+      await tester.pump(); // the focus change, then the row's rebuild
+      await tester.pump();
+      expect(_button('undo-timeline-restore-1'), findsOneWidget, reason: 'focus shows the row actions');
+      expect(_button('undo-timeline-show-1'), findsOneWidget);
+      row.unfocus();
+      await tester.pump();
+      await tester.pump();
+      expect(_button('undo-timeline-restore-1'), findsNothing);
+    });
+  });
+
   testWidgets("when the head's parent is the root operation, Undo is disabled with a reason", (tester) async {
     final source = FakeTimelineSource(<Operation>[testOperation(0, now: _now, parent: rootOpId), testRoot()]);
     final SemanticsHandle handle = tester.ensureSemantics();

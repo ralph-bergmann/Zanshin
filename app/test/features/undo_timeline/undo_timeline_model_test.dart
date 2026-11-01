@@ -150,6 +150,16 @@ void main() {
       expect(model.redoTarget(redo)?.id, opId(2), reason: 'a redo is followed to the undo it restored to');
       final Operation unknown = testOperation(0, now: now, description: 'undo: restore to operation ${opId(99)}');
       expect(model.undoTarget(unknown), same(unknown), reason: 'a target not shown falls back to the head');
+
+      // redo.rs: an undo whose parent is a redo-operation restores the redo's original operation.
+      final Operation undoOfRedo = testOperation(0, now: now, description: 'undo: restore to operation ${opId(2)}');
+      final Operation redoBelow = testOperation(1, now: now, description: 'redo: restore to operation ${opId(3)}');
+      source
+        ..operations = <Operation>[undoOfRedo, redoBelow, ...log(5).skip(2)]
+        ..emit(const OpHeadsChangedEvent(0, <String>[]));
+      async.flushMicrotasks();
+      expect(model.redoTarget(undoOfRedo)?.id, opId(3), reason: "the redo parent's original operation");
+      expect(loggedOperation(testOperation(0, now: now, description: 'line one\nline two')).command, 'line one');
       model.dispose();
     });
   });
@@ -174,6 +184,27 @@ void main() {
         ..emit(const OpHeadsChangedEvent(0, <String>[]));
       async.flushMicrotasks();
       expect(model.headOnRoot, isFalse);
+
+      // An undo head: jj undo takes back its target, so the guard looks at the target (undo.rs).
+      source
+        ..operations = <Operation>[
+          testOperation(0, now: now, description: 'undo: restore to operation ${opId(2)}'),
+          testOperation(1, now: now),
+          testOperation(2, now: now, parent: rootOpId),
+          testRoot(),
+        ]
+        ..emit(const OpHeadsChangedEvent(0, <String>[]));
+      async.flushMicrotasks();
+      expect(model.headOnRoot, isTrue, reason: "the undo's target sits on the root");
+      source
+        ..operations = <Operation>[
+          testOperation(0, now: now, description: 'undo: restore to operation $rootOpId'),
+          testOperation(1, now: now, parent: rootOpId),
+          testRoot(),
+        ]
+        ..emit(const OpHeadsChangedEvent(0, <String>[]));
+      async.flushMicrotasks();
+      expect(model.headOnRoot, isTrue, reason: "the undo's target is the root");
       model.dispose();
     });
   });

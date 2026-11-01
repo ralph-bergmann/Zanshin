@@ -330,12 +330,13 @@ class _OperationRowState extends State<_OperationRow> {
         ? null
         : strings.undoTimelineBusy;
     if (_newest) {
-      final GraphLoggedOperation undone = loggedOperation(model.undoTarget(operation));
+      final Operation undoTarget = model.undoTarget(operation);
+      final GraphLoggedOperation undone = loggedOperation(undoTarget);
       // Zanshin's own undo, else any undo-operation `jj redo` would take back (a CLI undo too).
       final Operation? redoTarget = actions?.redoable == null ? model.redoTarget(operation) : null;
       final String? undo =
           runner ??
-          (operation.rootOp
+          (undoTarget.rootOp
               ? 'Cannot undo root operation' // l10n-ignore: jj's own words (`jj undo`)
               : model.headOnRoot
               ? strings.undoTimelineRootParent

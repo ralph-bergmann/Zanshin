@@ -72,7 +72,7 @@ String? operationArgs(Operation operation) {
 
 /// [operation] as a [GraphUndo] names what it undid.
 GraphLoggedOperation loggedOperation(Operation operation) =>
-    GraphLoggedOperation(operation.id, operation.description, args: operationArgs(operation));
+    GraphLoggedOperation(operation.id, operation.description.split('\n').first, args: operationArgs(operation));
 
 // `UNDO_OP_DESC_PREFIX` / `REDO_OP_DESC_PREFIX`, `../jj` v0.46.0 cli/src/commands/{undo,redo}.rs.
 const _undoPrefix = 'undo: restore to operation '; // l10n-ignore: jj's description
@@ -133,13 +133,15 @@ class UndoTimelineModel extends ChangeNotifier {
   /// "Now", for the relative times.
   DateTime get now => _now;
 
-  /// Whether the newest operation cannot be undone: it is the root operation, or its parent is (9.21 item 2).
+  /// Whether the newest operation cannot be undone: what `jj undo` would take back ([undoTarget]) is the root
+  /// operation, or its parent is (9.21 item 2).
   bool get headOnRoot {
     final Operation? head = _operations.firstOrNull;
-    if (head == null || head.rootOp) {
+    if (head == null) {
       return true;
     }
-    return _operations.any((op) => op.rootOp && head.parentIds.contains(op.id));
+    final Operation target = undoTarget(head);
+    return target.rootOp || _operations.any((op) => op.rootOp && target.parentIds.contains(op.id));
   }
 
   /// The operation `jj undo` takes back while [head] is current (`cli/src/commands/undo.rs:106-118` @ v0.46.0): an
@@ -148,13 +150,15 @@ class UndoTimelineModel extends ChangeNotifier {
 
   /// The operation `jj redo` brings back while [head] is current (`cli/src/commands/redo.rs:108-129` @ v0.46.0), or
   /// null when jj has nothing to redo: a redo-operation is followed to its target, which must be an undo-operation;
-  /// its parent is restored. A target or parent not among [operations] falls back to [head].
+  /// its parent is restored — or, when that parent is a redo-operation, the operation it restored. A target or parent
+  /// not among [operations] falls back to [head].
   Operation? redoTarget(Operation head) {
     final Operation target = head.description.startsWith(_redoPrefix) ? _restoredBy(head, _redoPrefix) ?? head : head;
     if (!target.description.startsWith(_undoPrefix)) {
       return null;
     }
-    return _byId(target.parentIds.firstOrNull) ?? head;
+    final Operation? parent = _byId(target.parentIds.firstOrNull);
+    return parent == null ? head : _restoredBy(parent, _redoPrefix) ?? parent;
   }
 
   /// The operation [operation]'s description after [prefix] names.
