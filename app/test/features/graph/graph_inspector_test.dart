@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -442,24 +443,140 @@ void main() {
     graph.dispose();
   }
 
-  testWidgets('the header: the full change id as one Text.rich, the prefix bold, the commit id its tooltip', (
-    tester,
-  ) async {
+  testWidgets('Story 10.30: the header reads the short change id ʲʲ and the short commit id ᵍⁱᵗ, '
+      '"Click to copy" over each full id', (tester) async {
     await pump(tester);
-    final Text id = tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-id')));
-    final List<InlineSpan> spans = (id.textSpan! as TextSpan).children!;
-    expect(spans, hasLength(2));
-    expect((spans[0] as TextSpan).text, 'mmm');
-    expect((spans[0] as TextSpan).style!.fontWeight, FontWeight.w600);
-    expect((spans[1] as TextSpan).text, 'mmmmmmmmm');
-    expect(
-      tester.widget<ZsTooltip>(find.ancestor(of: find.byWidget(id), matching: find.byType(ZsTooltip)).first).message,
-      'c$_mutable',
-    );
+    List<InlineSpan> spansOf(String key) =>
+        (tester
+                    .widget<Text>(
+                      find.descendant(of: find.byKey(ValueKey<String>(key)), matching: find.byType(Text)).first,
+                    )
+                    .textSpan!
+                as TextSpan)
+            .children!;
+    final List<InlineSpan> change = spansOf('inspector-id');
+    expect((change[0] as TextSpan).text, 'mmm');
+    expect((change[0] as TextSpan).style!.fontWeight, FontWeight.w600);
+    expect((change[1] as TextSpan).text, 'mmmmm', reason: 'max(prefix, 8)');
+    expect(find.text('jj'), findsOneWidget);
+    final List<InlineSpan> commit = spansOf('inspector-commit-id');
+    expect((commit[0] as TextSpan).text, 'cmmmmmmm', reason: 'max(commit prefix, 8); no prefix in this layout');
+    expect(find.text('git'), findsOneWidget);
+    final ZsColors colors = ZsColors.of(tester.element(find.text('git')));
+    expect(tester.widget<Text>(find.text('git')).style!.color, colors.textFaint);
+    final List<ZsTooltip> tips = tester
+        .widgetList<ZsTooltip>(
+          find.descendant(
+            of: find.byKey(const ValueKey<String>('inspector-commit-id')),
+            matching: find.byType(ZsTooltip),
+          ),
+        )
+        .toList();
+    expect((tips.single.message, tips.single.cmd), ('Click to copy', 'c$_mutable'));
     expect(find.text('about $_mutable'), findsOneWidget, reason: 'the title');
     expect(details.shows, <String>['c$_mutable'], reason: 'one read');
     expect(details.previews, <String>[_mutable]);
     await unmount(tester);
+  });
+
+  group('Story 10.30: copying an id', () {
+    final Finder copyBubble = find.byWidgetPredicate((w) => w is ZsTooltipBubble && w.message == 'Click to copy');
+    final Finder copied = find.byWidgetPredicate((w) => w is ZsTooltipBubble && w.message == 'Copied');
+
+    /// Answers the clipboard write with [onCopy] (which may throw); null restores the platform channel.
+    void clipboard(WidgetTester tester, void Function(String text)? onCopy) =>
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          onCopy == null
+              ? null
+              : (call) async {
+                  if (call.method == 'Clipboard.setData') {
+                    onCopy((call.arguments as Map<Object?, Object?>)['text']! as String);
+                  }
+                  return null;
+                },
+        );
+
+    testWidgets('a click copies the full commit id and "Copied" shows briefly; a parent copies its full id', (
+      tester,
+    ) async {
+      final copiedTexts = <String>[];
+      clipboard(tester, copiedTexts.add);
+      addTearDown(() => clipboard(tester, null));
+      await pump(tester);
+      await tester.tap(find.byKey(const ValueKey<String>('inspector-commit-id')));
+      await tester.pump();
+      expect(copiedTexts, <String>['c$_mutable']);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(copied, findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      expect(copied, findsNothing, reason: 'briefly');
+
+      await tester.tap(find.byKey(const ValueKey<String>('inspector-id')));
+      await tester.pump();
+      expect(copiedTexts.last, _mutable);
+      final Finder parent = find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.identifier == 'inspector-parent-0',
+      );
+      await tester.tap(parent);
+      await tester.pump();
+      expect(copiedTexts.last, _merge, reason: "the parent's full key");
+      await tester.pump(const Duration(seconds: 2));
+      await unmount(tester);
+    });
+
+    testWidgets('a failing write opens a popover with the full id as selectable text until Esc or a tap outside', (
+      tester,
+    ) async {
+      clipboard(tester, (_) => throw PlatformException(code: 'clipboard'));
+      addTearDown(() => clipboard(tester, null));
+      await pump(tester);
+      final Finder popover = find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.identifier == 'inspector-commit-id-popover',
+      );
+      // Another node holds focus before the click (as the graph does): Esc must still reach the popover.
+      final FocusNode other = Focus.of(tester.element(find.text('about $_mutable')))..requestFocus();
+      await tester.pump();
+      expect(other.hasFocus, isTrue);
+      await tester.tap(find.byKey(const ValueKey<String>('inspector-commit-id')));
+      await tester.pump();
+      await tester.pump();
+      expect(popover, findsOneWidget);
+      expect(find.descendant(of: popover, matching: find.byType(SelectionArea)), findsOneWidget);
+      expect(find.descendant(of: popover, matching: find.text('c$_mutable')), findsOneWidget);
+      expect(copied, findsNothing);
+      await tester.pump(const Duration(seconds: 3));
+      expect(popover, findsOneWidget, reason: 'stays until dismissed');
+      await esc(tester);
+      expect(popover, findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey<String>('inspector-commit-id')));
+      await tester.pump();
+      await tester.pump();
+      expect(popover, findsOneWidget);
+      await tester.tapAt(tester.getTopLeft(find.byType(GraphInspector)) + const Offset(6, 6));
+      await tester.pump();
+      expect(popover, findsNothing, reason: 'a tap outside');
+      await unmount(tester);
+    });
+
+    testWidgets('the id tooltip goes when the pointer leaves the id for Squash into parent', (tester) async {
+      await pump(tester);
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(find.byKey(const ValueKey<String>('inspector-commit-id'))));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(copyBubble, findsOneWidget);
+      await mouse.moveTo(tester.getCenter(_button('inspector-squash')));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(copyBubble, findsNothing);
+      await unmount(tester);
+    });
   });
 
   testWidgets('a mutable change: Edit, Squash into parent, Abandon; tooltips are the commands', (tester) async {
@@ -544,7 +661,10 @@ void main() {
         .widget<Text>(find.byKey(const ValueKey<String>('inspector-meta')))
         .textSpan!
         .toPlainText();
-    expect(meta, contains('parents pppppppp + qqqqqqqq'));
+    expect(meta, contains('parents \u{FFFC} + \u{FFFC}'), reason: 'each parent is a copyable id (Story 10.30)');
+    final Finder metaFinder = find.byKey(const ValueKey<String>('inspector-meta'));
+    expect(find.descendant(of: metaFinder, matching: find.text('pppppppp')), findsOneWidget);
+    expect(find.descendant(of: metaFinder, matching: find.text('qqqqqqqq')), findsOneWidget);
     expect(meta, contains('Ada Lovelace'));
     expect(meta, contains('1h'), reason: "the card's relative date");
     expect(find.text('A merge — no changes of its own.'), findsOneWidget);

@@ -953,6 +953,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorClose => 'Close (Esc)';
 
   @override
+  String get inspectorCopyId => 'Click to copy';
+
+  @override
+  String get inspectorIdCopied => 'Copied';
+
+  @override
   String get inspectorFlagWorkingCopy => '@ Working copy';
 
   @override

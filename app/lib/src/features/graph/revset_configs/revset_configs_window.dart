@@ -410,6 +410,30 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
       marked = symbol == null ? null : raw.where((i) => rules[i].value.contains(symbol)).firstOrNull;
       marked ??= raw.length == 1 ? raw.single : null;
     }
+    // A raw rule's field marks the span itself, in its own text: the term is the value, maybe grouped or negated.
+    TextRange? fieldSpan;
+    if (preview.built case (:final String text, :final List<({int start, int end})?> ranges)
+        when marked != null && span != null && rules != null && rules[marked].fn == RevsetRuleFunction.revset) {
+      final ({int start, int end})? r = ranges[marked];
+      final String value = rules[marked].value;
+      final int index = r == null ? -1 : text.substring(r.start, r.end).indexOf(value);
+      final int at = r == null ? 0 : r.start + index;
+      final (:int start, :int end) = revsetSpanUtf16(text, span);
+      // Only a span on the value's own text (a position may sit at its end) marks the field.
+      final bool inside = start == end
+          ? start >= at && start <= at + value.length
+          : start < at + value.length && end > at;
+      if (value.isNotEmpty && index >= 0 && inside) {
+        int from = (start - at).clamp(0, value.length);
+        int to = (end - at).clamp(from, value.length);
+        if (to == from) {
+          // A position (an end-of-input error) marks the char at it, or the last one.
+          from = math.min(from, value.length - 1);
+          to = from + 1;
+        }
+        fieldSpan = TextRange(start: from, end: to);
+      }
+    }
     final _Discard? asking = _asking;
     return Semantics(
       identifier: 'revset-configs-window',
@@ -436,7 +460,7 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
                             ),
                             child: SizedBox(width: RevsetConfigsWindow.listWidth, child: _list(context, s, colors)),
                           ),
-                          Expanded(child: _editor(context, s, colors, preview, count, marked)),
+                          Expanded(child: _editor(context, s, colors, preview, count, marked, fieldSpan)),
                         ],
                       ),
                     ),
@@ -613,6 +637,7 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
     ({String command, String? expression, ({String text, List<({int start, int end})?> ranges})? built}) preview,
     RevsetCount? count,
     int? marked,
+    TextRange? fieldSpan,
   ) {
     final String? selected = draft.selected;
     final RevsetConfiguration? current = draft.current;
@@ -663,7 +688,7 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
               ],
             ),
             _homeRow(s, colors),
-            if (current != null) _filters(s, colors, current, marked, count?.error),
+            if (current != null) _filters(s, colors, current, marked, fieldSpan, count?.error),
             _previewBlock(s, colors, preview.command, count, label),
           ],
         ),
@@ -742,6 +767,7 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
     ZsColors colors,
     RevsetConfiguration current,
     int? marked,
+    TextRange? fieldSpan,
     ZanshinFfiException? error,
   ) {
     final List<RevsetRule> rules = current.rules;
@@ -789,7 +815,15 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
             spacing: 6,
             children: <Widget>[
               for (var i = 0; i < rules.length; i++)
-                _rule(s, colors, i, rules[i], marked: marked == i, error: marked == i ? error : null),
+                _rule(
+                  s,
+                  colors,
+                  i,
+                  rules[i],
+                  marked: marked == i,
+                  error: marked == i ? error : null,
+                  errorSpan: marked == i ? fieldSpan : null,
+                ),
             ],
           ),
         Wrap(
@@ -829,6 +863,7 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
     RevsetRule rule, {
     required bool marked,
     ZanshinFfiException? error,
+    TextRange? errorSpan,
   }) {
     final files = rule.fn == RevsetRuleFunction.files;
     final raw = rule.fn == RevsetRuleFunction.revset;
@@ -838,14 +873,14 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
         : files
         ? (rule.mode == RevsetRuleMode.glob ? 'lib/**/*.dart' : 'app/lib/main.dart') // l10n-ignore: example paths
         : s.revsetConfigsHint(rule.fn.name);
-    // A raw rule shows jj's own text and its similar names; a structured rule is only marked (Story 10.22).
+    // A raw rule shows jj's one-line message and its similar names; a structured rule is only marked (Story 10.22).
     final List<String> candidates = error?.revsetError?.candidates ?? const <String>[];
     final String? errorText = !marked
         ? null
         : !raw || error == null
         ? ''
         : <String>[
-            error.context ?? error.code,
+            error.revsetError?.message ?? error.context ?? error.code,
             if (candidates.isNotEmpty)
               s.revsetConfigsDidYouMean(candidates.map((c) => '`$c`').join(', ')), // l10n-ignore: jj's quoting
           ].join('\n');
@@ -904,6 +939,7 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
                 size: ZsTextFieldSize.md,
                 placeholder: placeholder,
                 error: errorText,
+                errorRange: errorSpan,
                 onChanged: (v) => draft.setRule(i, rule.copyWith(value: v)),
                 identifier: 'revset-configs-rule-$i-value',
               ),
@@ -988,7 +1024,7 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
     final int? total = _model?.total;
     final Widget status = switch (count) {
       _ when error != null => Text(
-        error.context ?? error.code,
+        error.revsetError?.message ?? error.context ?? error.code,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(color: colors.rem),

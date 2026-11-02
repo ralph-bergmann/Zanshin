@@ -116,7 +116,13 @@ final class RevsetSpan {
 /// failing part of an expression without parsing the message. The CLI's hints
 /// are the exception's `hints`.
 final class RevsetErrorDetail {
-  const RevsetErrorDetail({required this.kind, required this.span, required this.symbol, required this.candidates});
+  const RevsetErrorDetail({
+    required this.kind,
+    required this.span,
+    required this.symbol,
+    required this.candidates,
+    this.message,
+  });
 
   /// The top-level error's kind (inside an alias: the alias expansion).
   final RevsetErrorKind kind;
@@ -133,6 +139,12 @@ final class RevsetErrorDetail {
 
   /// jj-lib's similar names (or the suggested operator); empty when none.
   final List<String> candidates;
+
+  /// One sentence for a proportional-font UI, built by the backend: a parse
+  /// error reads `Syntax error at 5: expected …` (or `Error at 1: …`; the
+  /// 1-based char column is dropped without a span), a resolution error is
+  /// jj-lib's one-line text; `null` when absent.
+  final String? message;
 }
 
 /// One expression's entry in [RevsetCounts].
@@ -208,6 +220,7 @@ RevsetErrorDetail? decodeRevsetErrorDetailInternal(fbs.RevsetErrorDetail? detail
     span: span == null ? null : RevsetSpan(offset: span.offset, length: span.length?.value),
     symbol: detail.symbol,
     candidates: candidates == null || candidates.isEmpty ? const [] : List.unmodifiable(candidates),
+    message: detail.message,
   );
 }
 

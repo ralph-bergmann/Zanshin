@@ -955,6 +955,7 @@ mod tests {
             symbol: Some("x".to_owned()),
             candidates: Vec::new(),
             hints: vec!["hint".to_owned()],
+            message: String::new(),
         };
         for (error, code, kind) in [
             (

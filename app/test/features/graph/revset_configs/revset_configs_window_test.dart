@@ -327,6 +327,67 @@ void main() {
     expect(rig.control<ZsTextField>(tester, 'revset-configs-rule-1-value').error, isNull);
   });
 
+  _testWindow("Story 10.30: a raw rule's syntax error shows the backend's one-liner at the row and in the preview, "
+      'and the field marks the span in its own text', (tester, rig) async {
+    const pest = ' --> 1:6\n  |\n1 | (a ::: b) & author(substring:"lena")\n  |      ^---\n  |\n  = expected …';
+    rig.searchSource.count = (e) => const RevsetCount(
+      n: 0,
+      capped: false,
+      error: ZanshinFfiException.withReport(
+        'jj.revset_parse_error',
+        pest,
+        precondition: null,
+        warnings: <ZanshinWarning>[],
+        revsetError: RevsetErrorDetail(
+          kind: RevsetErrorKind.syntaxError,
+          // `(a ::: b)`: offset 5 is the third colon, a position.
+          span: RevsetSpan(offset: 5, length: 0),
+          symbol: null,
+          candidates: <String>[],
+          message: 'Syntax error at 6: expected <EOI>, `|`, `&`, or `~`',
+        ),
+      ),
+    );
+    await rig.setUp(tester, view: const GraphConfigView('c2'));
+    rig.state.draft.setRule(0, const RevsetRule(fn: RevsetRuleFunction.revset, value: 'a ::: b'));
+    await rig.settle(tester);
+
+    final ZsTextField field = rig.control<ZsTextField>(tester, 'revset-configs-rule-0-value');
+    expect(field.error, 'Syntax error at 6: expected <EOI>, `|`, `&`, or `~`');
+    expect(field.errorRange, const TextRange(start: 4, end: 5), reason: 'the field-local char after the position');
+    expect(find.text('Syntax error at 6: expected <EOI>, `|`, `&`, or `~`'), findsNWidgets(2), reason: 'row + preview');
+    expect(find.textContaining('-->'), findsNothing);
+    expect(find.textContaining('^---'), findsNothing);
+  });
+
+  _testWindow("Story 10.30: a ranged span marks exactly its chars in the raw rule's own text", (tester, rig) async {
+    // `(all() & trunkk())`: `trunkk` is chars 9..15 of the term, 8..14 of the value.
+    rig.searchSource.count = (e) => const RevsetCount(
+      n: 0,
+      capped: false,
+      error: ZanshinFfiException.withReport(
+        'jj.revset_parse_error',
+        'Function `trunkk` doesn\'t exist',
+        precondition: null,
+        warnings: <ZanshinWarning>[],
+        revsetError: RevsetErrorDetail(
+          kind: RevsetErrorKind.noSuchFunction,
+          span: RevsetSpan(offset: 9, length: 6),
+          symbol: 'trunkk',
+          candidates: <String>['trunk'],
+          message: 'Error at 10: Function `trunkk` doesn\'t exist',
+        ),
+      ),
+    );
+    await rig.setUp(tester, view: const GraphConfigView('c2'));
+    rig.state.draft.setRule(0, const RevsetRule(fn: RevsetRuleFunction.revset, value: 'all() & trunkk()'));
+    await rig.settle(tester);
+
+    final ZsTextField field = rig.control<ZsTextField>(tester, 'revset-configs-rule-0-value');
+    expect(field.errorRange, const TextRange(start: 8, end: 14));
+    expect(field.error, "Error at 10: Function `trunkk` doesn't exist\nDid you mean `trunk`?");
+  });
+
   _testWindow("a mine() row reads the project's user.email", (tester, rig) async {
     await rig.setUp(tester, view: const GraphConfigView('c1'));
     expect(find.textContaining('lena@example.org'), findsOneWidget);

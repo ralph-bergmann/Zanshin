@@ -9,6 +9,7 @@ import 'package:flutter/rendering.dart' show SemanticsProperties;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart' show SelectionArea;
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -924,13 +925,17 @@ class _Flag extends StatelessWidget {
         spacing: 4,
         children: <Widget>[
           ?icon,
-          Text(
-            label,
-            style: ZsType.control.copyWith(
-              fontSize: ZsType.fsSm,
-              fontWeight: weight,
-              fontVariations: <FontVariation>[FontVariation.weight(weight.value.toDouble())],
-              color: ink,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ZsType.control.copyWith(
+                fontSize: ZsType.fsSm,
+                fontWeight: weight,
+                fontVariations: <FontVariation>[FontVariation.weight(weight.value.toDouble())],
+                color: ink,
+              ),
             ),
           ),
         ],
@@ -938,6 +943,204 @@ class _Flag extends StatelessWidget {
     );
     final String? tooltip = this.tooltip;
     return tooltip == null ? pill : ZsTooltip(message: tooltip, child: pill);
+  }
+}
+
+/// An id that copies itself (Story 10.30): [full] cut to [shown] chars, the first [prefix] bold in `--text`, an
+/// optional [subscript] (`jj` / `git`) lowered in `--text-faint`. "Click to copy" over the full id is its tooltip; a
+/// click writes [full] to the clipboard and shows "Copied" briefly; a failed write opens a popover with [full] as
+/// selectable text until a tap outside or Esc.
+class _CopyId extends StatefulWidget {
+  const _CopyId({
+    required this.full,
+    required this.shown,
+    required this.style,
+    this.prefix = 0,
+    this.bold,
+    this.subscript,
+    this.identifier,
+    super.key,
+  });
+
+  final String full;
+  final int shown;
+  final int prefix;
+  final TextStyle style;
+
+  /// The prefix's colour; [style]'s when null.
+  final Color? bold;
+  final String? subscript;
+  final String? identifier;
+
+  /// How long "Copied" shows.
+  static const _copiedFor = Duration(milliseconds: 1300);
+
+  @override
+  State<_CopyId> createState() => _CopyIdState();
+}
+
+class _CopyIdState extends State<_CopyId> with SingleTickerProviderStateMixin {
+  final _link = LayerLink();
+  final _copied = OverlayPortalController();
+  final _failed = OverlayPortalController();
+  late final _fade = AnimationController(vsync: this);
+  final _popoverFocus = FocusNode(debugLabel: 'copy id popover');
+  Timer? _timer;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ZsMotion motion = ZsMotion.of(context);
+    _fade
+      ..duration = motion.durHover
+      ..reverseDuration = motion.durExit;
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _fade.dispose();
+    _popoverFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _copy() async {
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.full));
+    } on Exception {
+      if (mounted) {
+        _copied.hide();
+        _failed.show();
+        // Take focus even from a focused graph, so Esc reaches the popover first.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _failed.isShowing) {
+            _popoverFocus.requestFocus();
+          }
+        });
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    _timer?.cancel();
+    _copied.show();
+    _fade.forward(from: 0);
+    _timer = Timer(_CopyId._copiedFor, () async {
+      await _fade.reverse();
+      if (mounted) {
+        _copied.hide();
+      }
+    });
+  }
+
+  Widget _below(Widget child) => Positioned(
+    left: 0,
+    top: 0,
+    child: CompositedTransformFollower(
+      link: _link,
+      targetAnchor: Alignment.bottomLeft,
+      offset: const Offset(0, 8),
+      child: child,
+    ),
+  );
+
+  Widget _popover(BuildContext context) {
+    final ZsColors colors = ZsColors.of(context);
+    return _below(
+      TapRegion(
+        onTapOutside: (_) => _failed.hide(),
+        child: Focus(
+          focusNode: _popoverFocus,
+          onKeyEvent: (node, event) {
+            if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+              _failed.hide();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: ZsMenuMaterial(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+            child: Semantics(
+              identifier: '${widget.identifier}-popover',
+              child: SelectionArea(
+                child: Text(widget.full, style: ZsType.id.copyWith(color: colors.text)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ZsColors colors = ZsColors.of(context);
+    final String full = widget.full;
+    final int shown = widget.shown.clamp(0, full.length);
+    final int prefix = widget.prefix.clamp(0, shown);
+    final String? subscript = widget.subscript;
+    final Widget text = Text.rich(
+      TextSpan(
+        style: widget.style,
+        children: <InlineSpan>[
+          if (prefix > 0)
+            TextSpan(
+              text: full.substring(0, prefix),
+              style: widget.style.copyWith(
+                fontWeight: FontWeight.w600,
+                fontVariations: const <FontVariation>[FontVariation.weight(600)],
+                color: widget.bold,
+              ),
+            ),
+          TextSpan(text: full.substring(prefix, shown)),
+          if (subscript != null)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: Transform.translate(
+                offset: const Offset(1, 3),
+                child: Text(
+                  subscript,
+                  style: ZsType.id.copyWith(fontSize: ZsType.fs2xs, color: colors.textFaint),
+                ),
+              ),
+            ),
+        ],
+      ),
+      maxLines: 1,
+      softWrap: false,
+    );
+    return OverlayPortal(
+      controller: _failed,
+      overlayChildBuilder: _popover,
+      child: OverlayPortal(
+        controller: _copied,
+        overlayChildBuilder: (context) => _below(
+          IgnorePointer(
+            child: ZsTooltipBubble(animation: _fade, message: context.l10n.inspectorIdCopied),
+          ),
+        ),
+        child: CompositedTransformTarget(
+          link: _link,
+          child: ZsTooltip(
+            message: context.l10n.inspectorCopyId,
+            cmd: full,
+            child: Semantics(
+              button: true,
+              identifier: widget.identifier,
+              label: full,
+              onTap: _copy,
+              excludeSemantics: true,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(onTap: _copy, child: text),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -962,7 +1165,7 @@ class _Header extends StatelessWidget {
     final AppLocalizations strings = context.l10n;
     final ZsColors colors = ZsColors.of(context);
     final String id = data.changeId;
-    final int prefix = data.prefixLength.clamp(0, id.length);
+    final String commit = layout.commitIdOf(node);
     final TextStyle idStyle = ZsType.id.copyWith(fontSize: ZsType.fsMd, color: colors.textFaint);
     final GraphCommitContent? content = data.content;
     final bool conflict = (content?.conflict ?? false) || entry?.change.conflict == ConflictState.conflicted;
@@ -974,26 +1177,32 @@ class _Header extends StatelessWidget {
         child: Row(
           spacing: 10,
           children: <Widget>[
-            ZsTooltip(
-              message: layout.commitIdOf(node),
-              child: Text.rich(
-                TextSpan(
+            // Story 10.30: the short change and commit ids as the card's (max(prefix, 8)), each copying its full id.
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 8,
+              children: <Widget>[
+                _CopyId(
+                  key: const ValueKey<String>('inspector-id'),
+                  full: id,
+                  prefix: data.prefixLength,
+                  shown: math.max(data.prefixLength, 8),
                   style: idStyle,
-                  children: <InlineSpan>[
-                    TextSpan(
-                      text: id.substring(0, prefix),
-                      style: idStyle.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontVariations: const <FontVariation>[FontVariation.weight(600)],
-                        color: colors.text,
-                      ),
-                    ),
-                    TextSpan(text: id.substring(prefix)),
-                  ],
+                  bold: colors.text,
+                  subscript: 'jj', // l10n-ignore: the tool's name
+                  identifier: 'inspector-change-id',
                 ),
-                maxLines: 1,
-                key: const ValueKey<String>('inspector-id'),
-              ),
+                _CopyId(
+                  key: const ValueKey<String>('inspector-commit-id'),
+                  full: commit,
+                  prefix: data.commitPrefixLength,
+                  shown: math.max(data.commitPrefixLength, 8),
+                  style: idStyle,
+                  bold: colors.text,
+                  subscript: 'git', // l10n-ignore: the tool's name
+                  identifier: 'inspector-commit-id',
+                ),
+              ],
             ),
             Expanded(
               child: Wrap(
@@ -1327,22 +1536,24 @@ class _Meta extends StatelessWidget {
   final ShowEntry? entry;
   final int nowMs;
 
-  /// The parents' short ids: `show`'s parents, else the layout's direct parents (the stale state).
-  List<String> _parents() {
+  /// The parents' short ids with the full id each copies: `show`'s parents, else the layout's direct parents (the
+  /// stale state). A layout node's full id is its key, the id its short one is cut from.
+  List<({String short, String full})> _parents() {
     final List<String>? shown = entry?.change.parents;
     if (shown != null) {
-      return <String>[
+      return <({String short, String full})>[
         for (final String id in shown)
           switch (layout.indexOfKey(id)) {
-            final int parent => graphShortId(layout, parent),
-            null => id.substring(0, math.min(8, id.length)),
+            final int parent => (short: graphShortId(layout, parent), full: layout.keyOf(parent)),
+            null => (short: id.substring(0, math.min(8, id.length)), full: id),
           },
       ];
     }
     final ({int start, int end}) edges = layout.parentEdges(node);
-    return <String>[
+    return <({String short, String full})>[
       for (var e = edges.start; e < edges.end; e++)
-        if (layout.kindOf(e) == GraphEdgeKind.direct) graphShortId(layout, layout.parentOf(e)),
+        if (layout.kindOf(e) == GraphEdgeKind.direct)
+          (short: graphShortId(layout, layout.parentOf(e)), full: layout.keyOf(layout.parentOf(e))),
     ];
   }
 
@@ -1362,7 +1573,9 @@ class _Meta extends StatelessWidget {
             : data.content!.authorEmail.trim(),
     };
     final int? ts = data.timestampMs;
-    final List<String> parents = data.isRoot ? const <String>[] : _parents();
+    final List<({String short, String full})> parents = data.isRoot
+        ? const <({String short, String full})>[]
+        : _parents();
     final parts = <InlineSpan>[
       if (name.isNotEmpty) TextSpan(text: name),
       if (ts != null)
@@ -1375,9 +1588,15 @@ class _Meta extends StatelessWidget {
             TextSpan(text: '${strings.inspectorParents(parents.length)} '),
             for (var i = 0; i < parents.length; i++) ...<InlineSpan>[
               if (i > 0) const TextSpan(text: ' + '), // l10n-ignore: a symbol joining the parents
-              TextSpan(
-                text: parents[i],
-                style: ZsType.id.copyWith(color: colors.textMuted),
+              WidgetSpan(
+                alignment: PlaceholderAlignment.baseline,
+                baseline: TextBaseline.alphabetic,
+                child: _CopyId(
+                  full: parents[i].full,
+                  shown: parents[i].short.length,
+                  style: ZsType.id.copyWith(color: colors.textMuted),
+                  identifier: 'inspector-parent-$i',
+                ),
               ),
             ],
           ],

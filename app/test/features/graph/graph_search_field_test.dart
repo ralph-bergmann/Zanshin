@@ -189,6 +189,18 @@ void main() {
       expect(find.text('all()'), findsOneWidget);
     });
 
+    _testWidgets('Story 10.30: the pill has no tint at a non-default view — the default\'s fill and text', (
+      tester,
+    ) async {
+      await _start(tester, view: const GraphAllView());
+      final ZsColors colors = ZsColors.of(tester.element(find.text(r'$')));
+      final DecoratedBox box = tester.widget<DecoratedBox>(
+        find.descendant(of: _pill(), matching: find.byType(DecoratedBox)).first,
+      );
+      expect((box.decoration as BoxDecoration).color, const Color(0x00000000));
+      expect(tester.widget<Text>(find.text(r'$')).style!.color, colors.textDim, reason: "the default's any-scope text");
+    });
+
     _testWidgets('stale: the field is disabled with the reason', (tester) async {
       final rig = _Rig()..source.respond = (_) => throw staleError('stale');
       _rigs.add(rig);

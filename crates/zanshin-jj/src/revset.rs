@@ -98,6 +98,14 @@ impl RevsetError {
     pub(crate) fn without_span(mut self) -> Self {
         if let Self::ParseError { detail, .. } = &mut self {
             detail.span = None;
+            // `<kind> at N: <msg>` → `<kind>: <msg>`; the column points into another text.
+            let spanless = detail
+                .message
+                .split_once(": ")
+                .and_then(|(head, msg)| head.rsplit_once(" at ").map(|(kind, _)| format!("{kind}: {msg}")));
+            if let Some(message) = spanless {
+                detail.message = message;
+            }
         }
         self
     }
@@ -164,6 +172,7 @@ impl RevsetErrorDetail {
             symbol: None,
             candidates: Vec::new(),
             hints: Vec::new(),
+            message: String::new(),
         }
     }
 }
@@ -194,6 +203,10 @@ pub struct RevsetErrorDetail {
     pub candidates: Vec<String>,
     /// The CLI's hint lines for the error, verbatim and in the CLI's order.
     pub hints: Vec<String>,
+    /// One sentence for a proportional-font UI (Story 10.30), never pest's multi-line render:
+    /// a parse error reads `<Syntax error|Error> at <1-based char column>: <jj's message>` (`at L:C` past line 1)
+    /// (without ` at N` when the span was dropped), a resolution error is jj-lib's one-line text.
+    pub message: String,
 }
 
 /// Resolve a jj revset expression to a deduplicated, fully materialized list of change ids.
@@ -672,13 +685,33 @@ fn parse_detail(expr: &str, e: &RevsetParseError) -> RevsetErrorDetail {
         P::InParameterExpansion(name) => (K::InParameterExpansion, Some(name), Vec::new()),
         P::RecursiveAlias(name) => (K::RecursiveAlias, Some(name), Vec::new()),
     };
+    let render = e.to_string();
     RevsetErrorDetail {
         kind,
-        span: render_span(expr, &e.to_string()),
+        span: render_span(expr, &render),
         symbol: symbol.cloned(),
         candidates,
         hints: parse_hint(e).into_iter().collect(),
+        message: render_message(kind == K::SyntaxError, &render).unwrap_or_else(|| e.kind().to_string()),
     }
+}
+
+/// The one-line message of pest's render: `<Syntax error|Error> at <column>: <the ` = ` line>`,
+/// the column taken from the ` --> L:C` header. `None` when the render has no message line.
+fn render_message(syntax: bool, render: &str) -> Option<String> {
+    let kind = if syntax { "Syntax error" } else { "Error" };
+    let msg = render.lines().rev().find_map(|l| l.trim_start().strip_prefix("= "))?;
+    let column = render
+        .lines()
+        .next()
+        .and_then(|l| l.trim_start().strip_prefix("--> "))
+        .and_then(|h| h.split_once(':'));
+    // pest's column is line-local: a later line names it as `L:C`.
+    Some(match column {
+        Some(("1", column)) => format!("{kind} at {column}: {msg}"),
+        Some((line, column)) => format!("{kind} at {line}:{column}: {msg}"),
+        None => format!("{kind}: {msg}"),
+    })
 }
 
 /// The [`RevsetErrorDetail`] of a resolution error, with the CLI's hint lines.
@@ -706,6 +739,7 @@ fn resolution_detail(e: &RevsetResolutionError) -> RevsetErrorDetail {
         symbol,
         candidates,
         hints: resolution_hints(e),
+        message: e.to_string(),
     }
 }
 
@@ -1345,6 +1379,49 @@ mod tests {
         assert_eq!(span("author(a,\nb)"), Some((7, None)), "the arguments, across lines");
     }
 
+    /// Story 10.30: one sentence per parse error, no pest render; a dropped span drops the column.
+    #[test]
+    fn parse_errors_carry_a_one_line_message() {
+        let (_tmp, repo, parse_config) = repo_with("");
+        let message = |expr| parse_detail(&parse_config, &repo, expr).message;
+        assert_eq!(
+            message("a ::: b"),
+            "Syntax error at 3: expected <EOI>, `|`, `&`, or `~`"
+        );
+        assert_eq!(message("foo()"), "Error at 1: Function `foo` doesn't exist");
+        assert_eq!(
+            message("all() &\nfooo()"),
+            "Error at 2:1: Function `fooo` doesn't exist",
+            "a later line names its line"
+        );
+        let second_line = super::RevsetError::ParseError {
+            reason: String::new(),
+            detail: Box::new(parse_detail(&parse_config, &repo, "all() &\nfooo()")),
+        }
+        .without_span();
+        assert!(matches!(
+            second_line,
+            super::RevsetError::ParseError { detail, .. }
+                if detail.message == "Error: Function `fooo` doesn't exist"
+        ));
+        let spanless = super::RevsetError::ParseError {
+            reason: String::new(),
+            detail: Box::new(parse_detail(&parse_config, &repo, "foo()")),
+        }
+        .without_span();
+        assert!(matches!(
+            spanless,
+            super::RevsetError::ParseError { detail, .. }
+                if detail.message == "Error: Function `foo` doesn't exist"
+        ));
+        assert_eq!(super::render_message(true, "no message line"), None, "no ` = ` line");
+        assert_eq!(
+            super::render_message(false, "  = x"),
+            Some("Error: x".to_owned()),
+            "no header, no column"
+        );
+    }
+
     #[test]
     fn parse_hints_follow_the_clis_per_kind_rules() {
         let (_tmp, repo, parse_config) = repo_with("");
@@ -1530,6 +1607,11 @@ mod tests {
         );
         let empty = super::resolution_detail(&R::EmptyString);
         assert_eq!((empty.kind, empty.symbol), (K::EmptyString, None));
+        let missing = super::resolution_detail(&R::NoSuchRevision {
+            name: "nosuch".to_owned(),
+            candidates: Vec::new(),
+        });
+        assert_eq!(missing.message, "Revision `nosuch` doesn't exist");
         let conflicted = super::resolution_detail(&R::ConflictedRef {
             kind: "tag",
             symbol: "v1".to_owned(),

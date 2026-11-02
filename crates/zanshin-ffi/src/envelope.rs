@@ -1458,6 +1458,7 @@ fn build_revset_detail<'a>(
     });
     let symbol = detail.symbol.as_deref().map(|s| b.create_string(s));
     let candidates = build_strings(b, &detail.candidates);
+    let message = (!detail.message.is_empty()).then(|| b.create_string(&detail.message));
     fbs::RevsetErrorDetail::create(
         b,
         &fbs::RevsetErrorDetailArgs {
@@ -1465,6 +1466,7 @@ fn build_revset_detail<'a>(
             span,
             symbol,
             candidates,
+            message,
         },
     )
 }
@@ -2592,6 +2594,7 @@ mod tests {
             symbol: None,
             candidates: Vec::new(),
             hints: Vec::new(),
+            message: String::new(),
         };
         let kinds = [
             (K::SyntaxError, fbs::RevsetErrorKind::SyntaxError),

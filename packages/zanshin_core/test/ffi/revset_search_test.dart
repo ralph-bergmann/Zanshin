@@ -44,6 +44,7 @@ void main() {
                 span: fbs.RevsetSpanObjectBuilder(offset: 3, length: fbs.RevsetSpanLengthObjectBuilder(value: 4)),
                 symbol: 'fooo',
                 candidates: const ['foo'],
+                message: 'Error at 4: Function `fooo` doesn\'t exist',
               ),
             ),
           ),
@@ -62,8 +63,12 @@ void main() {
       expect(error?.revsetError?.span?.length, 4);
       expect(error?.revsetError?.symbol, 'fooo');
       expect(error?.revsetError?.candidates, ['foo']);
+      expect(error?.revsetError?.message, 'Error at 4: Function `fooo` doesn\'t exist');
       expect(counts[2].error?.revsetError, isNull, reason: 'an absent detail is null');
-      expect(error.toString(), contains('revset: noSuchFunction at 3+4 `fooo`'));
+      expect(
+        error.toString(),
+        contains('revset: noSuchFunction at 3+4 `fooo` "Error at 4: Function `fooo` doesn\'t exist"'),
+      );
       expect(counts.warnings, isEmpty);
     });
 
@@ -86,6 +91,7 @@ void main() {
       expect(detail?.span?.length, isNull);
       expect(detail?.symbol, isNull);
       expect(detail?.candidates, isEmpty);
+      expect(detail?.message, isNull);
     });
 
     test('a missing counts vector or error code throws ffi.unknown', () {

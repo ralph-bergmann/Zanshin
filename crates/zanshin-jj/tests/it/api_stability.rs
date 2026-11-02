@@ -2812,6 +2812,7 @@ fn graph_search_surface_resolves() {
         symbol: Some(String::new()),
         candidates: Vec::<String>::new(),
         hints: Vec::<String>::new(),
+        message: String::new(),
     };
     let parse = zanshin_jj::RevsetError::ParseError {
         reason: String::new(),

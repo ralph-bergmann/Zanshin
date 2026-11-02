@@ -5206,6 +5206,9 @@ pub mod zanshin {
         ///               error in any other text of the call (`prioritize`, `short_prefixes`, an anchor)
         ///   symbol      the function, revision, alias, operator or prefix the error names; ABSENT = none
         ///   candidates  jj-lib's similar names (or the suggested operator); ABSENT = none
+        ///   message     one sentence for a proportional-font UI (Story 10.30): `<Syntax error|Error> at
+        ///               <1-based char column>: <jj's message>` for a parse error (no ` at N` without a
+        ///               span), jj-lib's one-line text for a resolution error; ABSENT = none
         pub struct RevsetErrorDetail<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -5225,6 +5228,7 @@ pub mod zanshin {
             pub const VT_SPAN: ::flatbuffers::VOffsetT = 6;
             pub const VT_SYMBOL: ::flatbuffers::VOffsetT = 8;
             pub const VT_CANDIDATES: ::flatbuffers::VOffsetT = 10;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -5236,6 +5240,9 @@ pub mod zanshin {
                 args: &'args RevsetErrorDetailArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<RevsetErrorDetail<'bldr>> {
                 let mut builder = RevsetErrorDetailBuilder::new(_fbb);
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
                 if let Some(x) = args.candidates {
                     builder.add_candidates(x);
                 }
@@ -5291,6 +5298,16 @@ pub mod zanshin {
                     >>(RevsetErrorDetail::VT_CANDIDATES, None)
                 }
             }
+            #[inline]
+            pub fn message(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RevsetErrorDetail::VT_MESSAGE, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for RevsetErrorDetail<'_> {
@@ -5304,6 +5321,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<RevsetSpan>>("span", Self::VT_SPAN, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("symbol", Self::VT_SYMBOL, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("candidates", Self::VT_CANDIDATES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
      .finish();
                 Ok(())
             }
@@ -5314,6 +5332,7 @@ pub mod zanshin {
             pub symbol: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub candidates:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for RevsetErrorDetailArgs<'a> {
             #[inline]
@@ -5323,6 +5342,7 @@ pub mod zanshin {
                     span: None,
                     symbol: None,
                     candidates: None,
+                    message: None,
                 }
             }
         }
@@ -5358,6 +5378,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(RevsetErrorDetail::VT_CANDIDATES, candidates);
             }
             #[inline]
+            pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RevsetErrorDetail::VT_MESSAGE, message);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RevsetErrorDetailBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 RevsetErrorDetailBuilder {
@@ -5379,6 +5404,7 @@ pub mod zanshin {
                 ds.field("span", &self.span());
                 ds.field("symbol", &self.symbol());
                 ds.field("candidates", &self.candidates());
+                ds.field("message", &self.message());
                 ds.finish()
             }
         }

@@ -1591,19 +1591,25 @@ formulas and evaluation order as GL. x(i) = pad + col(i)·colW, y(i) = pad + (ma
 pitch, cx = x + W / 2. Gutter x: n.cx − s·colW·(j + 0.5) (k ≥ 1) or n.cx + colW / 2 (k = 0), plus
 its step.
 
-**Entries** (GL:206-221). The first parent's slot sits at the child's centre. The other slots, per
+**Ports** (Story 10.30, top and bottom alike): one line sits at the centre; of several, the `straight`
+line does and the rest fan to their side; with none straight the centre stays free. At an entry the
+lines are the slot owners. The exception: a `merge-up` exit never takes the centre and sits 4 px
+(`_mergeUpShift`) outside its fan slot — it climbs its parent's own column past the entries of the cards
+above, which use the centre and the fan slots.
+
+**Entries** (GL:206-221). The centre slot as above. The other slots, per
 side of the centre by their approach (the gutter x for a `gutter`, else the parent's cx; an approach
 equal to cx counts as the right side), ordered by |approach − cx| then the parent's row, sit at
 cx ± fan(m, 24, 16, 8, W/2 − 18), where fan(m, first, step, min, max) = first + k·st with
 st = min(step, max(0, max − first)/(m − 1)) while st ≥ min, else first + min(k, ⌊span/min⌋)·min
 (the overflow shares the outermost port). A node's ports are its distinct entry x's, in edge order.
 
-**Exits** (GL:222-250; variant B only). A `straight` line leaves at the centre. Per side, the other
-lines — `merge-up` first (child row descending, then |entry − cx|), then the rest by |turn − cx|
-(turn = the gutter x, else the entry) — sit at cx ± exitFan(m): one line at
-max(18, min(0.28·W, W/2 − 18)); m lines st = min(12, (W/2 − 36)/(m − 1)) apart, centred on 0.28·W
-inside [18, W/2 − 18] while st ≥ 7, else fan(m, 18, 12, 7, W/2 − 18). Nine lines: 12 px apart at
-W 400, 10.5 at 240, 7 at 160 with the outer three on one exit.
+**Exits** (GL:222-250; variant B only; Story 10.30). A lone line other than a `merge-up`, and a
+`straight` line, leave at the centre. Per side, the other lines — `merge-up` first (child row
+descending, then |entry − cx|), then the rest by |turn − cx| (turn = the gutter x, else the entry) —
+sit at cx ± fan(m, 24, 16, 8, W/2 − 18), the entries' fan, a `merge-up` 4 px further out. Nine
+lines: 16 px apart at W 400, 9.75 at 240, 8 at 160 with the outer five on one exit. (Before Story
+10.30: an exit fan of its own, 12 px apart centred on 0.28·W.)
 
 **Runs and tracks** (GL:251-290). Bands: above the parent [y(p) − gapY, y(p)], below the child
 [y(i) + H, y(i) + H + gapY]. Runs: `merge-up` one below the child (exit → entry); `gutter` one above

@@ -430,23 +430,62 @@ void main() {
   });
 
   group('geometry stage', () {
-    test('nine_exits_on_one_side_sit_12_10_5_and_7_px_apart_at_w_400_240_160', () {
-      // Parent 9 (col 0, row 0) forks to children 0 … 8 (cols 1 … 9, row 1).
+    test('nine_exits_on_one_side_fan_as_the_entries_16_9_75_and_8_px_apart_at_w_400_240_160', () {
+      // Parent 9 (col 0, row 0) forks to children 0 … 8 (cols 1 … 9, row 1). Story 10.30: the entry fan
+      // (24 out, 16 apart, squeezed to 8, the overflow on the outermost; at most W/2 − 18).
       final RouteClasses c = _grid(
         [for (var k = 0; k < 9; k++) 1, 0],
         [for (var k = 0; k < 9; k++) k + 1, 0],
         [for (var k = 0; k < 9; k++) (9, k)],
       );
       for (final (double width, List<double> steps) in [
-        (400.0, List.filled(8, 12)),
-        (240.0, List.filled(8, 10.5)),
-        (160.0, <double>[7, 7, 7, 7, 7, 7, 0, 0]),
+        (400.0, List.filled(8, 16)),
+        (240.0, List.filled(8, 9.75)),
+        (160.0, <double>[8, 8, 8, 8, 0, 0, 0, 0]),
       ]) {
         final RouteGeometry g = _geometry(c, width: width);
         final List<double> exits = [for (var k = 0; k < 9; k++) _points(g, k)[0].$1 - _cx(0, width: width)]..sort();
         expect([for (var k = 1; k < 9; k++) exits[k] - exits[k - 1]], steps, reason: 'W $width');
-        expect(exits.first, width == 240 ? 18 : (width == 160 ? 18 : 64), reason: 'W $width');
+        expect(exits.first, 24, reason: 'W $width');
       }
+    });
+
+    test('story_10_30_ports_a_lone_line_at_the_centre_a_straight_one_at_the_centre_else_the_centre_free', () {
+      double exit(RouteGeometry g, int k, int col) => _points(g, k).first.$1 - _cx(col);
+      double entry(RouteGeometry g, int k, int col) => _points(g, k).last.$1 - _cx(col);
+
+      // A lone bending exit: fork 1 (col 0, row 0) → 0 (col 1, row 1).
+      final RouteGeometry lone = _geometry(_grid([1, 0], [1, 0], [(1, 0)]));
+      expect((exit(lone, 0, 0), entry(lone, 0, 1)), (0, 0));
+
+      // A lone merge-up never takes its parent's centre, which the entries of the cards above it use: parent 2
+      // (col 1, row 0) is child 0's (col 0, row 2) second parent; 1 (col 0, row 1) is the first.
+      final RouteClasses up = _grid([2, 1, 0], [0, 0, 1], [(1, 0), (2, 0)]);
+      expect(up.kinds[1], RouteClasses.kindMergeUp);
+      expect(exit(_geometry(up), 1, 1), -28);
+
+      // Straight + bending: parent 2 (col 0, row 0) → 0 (col 0, row 1) and → 1 (col 1, row 1).
+      final RouteClasses both = _grid([1, 1, 0], [0, 1, 0], [(2, 0), (2, 1)]);
+      expect(both.kinds[0], RouteClasses.kindStraight);
+      final RouteGeometry g = _geometry(both);
+      expect((exit(g, 0, 0), exit(g, 1, 0)), (0, 24));
+
+      // Left + right, none straight: parent 2 (col 1, row 0) → 0 (col 0, row 1) and → 1 (col 2, row 1).
+      final RouteGeometry sides = _geometry(_grid([1, 1, 0], [0, 2, 1], [(2, 0), (2, 1)]));
+      expect((exit(sides, 0, 1), exit(sides, 1, 1)), (-24, 24), reason: 'the centre stays free');
+
+      // Entries alike: child 0 (col 1, row 1) with parents 1 (col 0, row 0) and 2 (col 2, row 0), none straight.
+      final RouteGeometry merge = _geometry(_grid([1, 0, 0], [1, 0, 2], [(1, 0), (2, 0)]));
+      expect((entry(merge, 0, 1), entry(merge, 1, 1)), (-24, 24), reason: 'top and bottom alike');
+    });
+
+    test('story_10_30_a_merge_whose_first_parent_bends_leaves_the_entry_centre_free', () {
+      // Child 0 (col 0, row 2): first parent 1 (col 1, row 0), second parent 2 (col 0, row 1). Only a
+      // first parent is ever straight, so the same-column second one is a gutter line: no line is straight.
+      final RouteClasses c = _grid([2, 0, 1], [0, 1, 0], [(1, 0), (2, 0)]);
+      expect([c.kinds[0], c.kinds[1]], everyElement(isNot(RouteClasses.kindStraight)));
+      final RouteGeometry g = _geometry(c);
+      expect([_points(g, 0).last.$1, _points(g, 1).last.$1], everyElement(isNot(_cx(0))));
     });
 
     test('entries_sit_24_plus_16_k_px_out_and_squeeze_to_8', () {
@@ -485,10 +524,10 @@ void main() {
       );
       final RouteGeometry g = _geometry(c);
       double exit(int k) => _points(g, k)[0].$1 - _cx(0);
-      // exitFan(3) at W 240: 12 px apart, centred on 0.28·W = 67.2.
-      expect(exit(3), closeTo(55.2, 1e-9)); // merge-up into row 3
-      expect(exit(1), closeTo(67.2, 1e-9)); // merge-up into row 2
-      expect(exit(4), closeTo(79.2, 1e-9)); // the fork
+      // The entry fan (Story 10.30): 24, 40, 56 inner → outer; a merge-up 4 px outside its slot.
+      expect(exit(3), 28); // merge-up into row 3
+      expect(exit(1), 44); // merge-up into row 2
+      expect(exit(4), 56); // the fork
     });
 
     test('a_shared_entrys_deep_run_sits_at_its_free_parts_far_end', () {

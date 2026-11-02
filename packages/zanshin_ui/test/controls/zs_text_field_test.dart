@@ -104,6 +104,56 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('Story 10.30: a message appearing and going keeps focus, caret and typing', (tester) async {
+      final controller = ZsTextEditingController();
+      addTearDown(controller.dispose);
+      Widget field(String? error) => _field(ZsTextField(controller: controller, error: error));
+      await tester.pumpWidget(field(null));
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'a :');
+      final EditableTextState editable = tester.state<EditableTextState>(find.byType(EditableText));
+
+      await tester.pumpWidget(field('Syntax error at 3: expected <EOI>'));
+      expect(tester.state<EditableTextState>(find.byType(EditableText)), same(editable), reason: 'state kept');
+      expect(editable.widget.focusNode.hasFocus, isTrue);
+      await tester.pumpWidget(field(null));
+      expect(tester.state<EditableTextState>(find.byType(EditableText)), same(editable));
+      expect(editable.widget.focusNode.hasFocus, isTrue);
+      expect(controller.selection, const TextSelection.collapsed(offset: 3), reason: 'caret kept');
+      tester.testTextInput.enterText('a :: b');
+      await tester.pump();
+      expect(controller.text, 'a :: b', reason: 'typing still lands in the field');
+    });
+
+    testWidgets("Story 10.30: an errorRange draws its glyphs in --rem, a selection's in --selection-text", (
+      tester,
+    ) async {
+      final controller = ZsTextEditingController(text: 'a ::: b');
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        _field(
+          ZsTextField(controller: controller, error: 'x', errorRange: const TextRange(start: 4, end: 5)),
+        ),
+      );
+      TextSpan span() => controller.buildTextSpan(context: tester.element(find.byType(TextField)), withComposing: true);
+      final List<InlineSpan> parts = span().children!;
+      expect(<String?>[for (final p in parts) (p as TextSpan).text], <String>['a ::', ':', ' b']);
+      expect((parts[1] as TextSpan).style?.color, c.rem);
+      expect((parts[0] as TextSpan).style, isNull);
+      final TextSpan unfocused = controller.buildTextSpan(
+        context: tester.element(find.byType(TextField)),
+        withComposing: false,
+      );
+      expect((unfocused.children![1] as TextSpan).style?.color, c.rem, reason: 'an unfocused field marks too');
+
+      controller.selection = const TextSelection(baseOffset: 3, extentOffset: 5);
+      final List<InlineSpan> selected = span().children!;
+      expect(<String?>[for (final p in selected) (p as TextSpan).text], <String>['a :', ':', ':', ' b']);
+      expect((selected[1] as TextSpan).style?.color, c.selectionText);
+      expect((selected[2] as TextSpan).style?.color, c.selectionText, reason: 'the selection wins');
+    });
+
     testWidgets('without a row label the placeholder names the field', (tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       await tester.pumpWidget(_field(const ZsTextField(placeholder: 'Summary', identifier: 'summary')));

@@ -25,19 +25,17 @@ const double _cardMargin = 10;
 /// A card counts for a run within this distance of the run's x-range (GL:166).
 const double _cardReach = 4;
 
-/// Exit fan-out (GL:12): offsets from the parent's centre.
-const double _exitInset = 18;
-const double _exitStep = 12;
-const double _exitMin = 7;
-
-/// Entry fan-out (GL:13): offsets of the non-first parents from the child's centre.
+/// The port fan-out at both card edges (GL:13; since Story 10.30 the exits' too): offsets from the centre of the
+/// lines that do not take it.
 const double _entryFirst = 24;
 const double _entryStep = 16;
 const double _entryMin = 8;
 const double _entryInset = 18;
 
-/// A single exit sits this fraction of W from the centre (GL:226).
-const _exitShare = 0.28;
+/// A merge-up climbs its parent's own column past the cards above, whose entries sit at the centre and on the fan's
+/// slots (24 + 8k at the finest); its exit never takes the centre and sits this far outside its slot, so the two
+/// never run on one line (Story 10.30).
+const double _mergeUpShift = 4;
 
 /// Lines on one gutter step this many pixels apart (GL:196).
 const _gutterStep = 6;
@@ -848,22 +846,12 @@ final class _GeometryBuilder {
     return first + (k < own ? k : own) * min;
   }
 
-  /// Exit [k] of [count] on one side of a parent's top edge (GL:224-231).
-  double _exitFan(int count, int k) {
-    const double lo = _exitInset;
-    final double hi = w / 2 - _exitInset;
-    if (count <= 1) {
-      return _max(lo, _min(w * _exitShare, hi));
-    }
-    final double st = _min(_exitStep, (hi - lo) / (count - 1));
-    if (st < _exitMin) {
-      return _fan(count, lo, _exitStep, _exitMin, hi, k);
-    }
-    final double a0 = _max(lo, _min(w * _exitShare - (count - 1) * st / 2, hi - (count - 1) * st));
-    return a0 + k * st;
-  }
+  /// Port [k] of [count] on one side of a card edge, top or bottom (Story 10.30: the entry fan at both ends).
+  double _portFan(int count, int k) => _fan(count, _entryFirst, _entryStep, _entryMin, w / 2 - _entryInset, k);
 
-  /// Entries on each child's bottom edge (GL:206-221), and the ports.
+  /// Entries on each child's bottom edge (GL:206-221; Story 10.30's port rules), and the ports. The lines are the
+  /// slot owners: one sits at the centre; of several, the straight one does and the rest fan to their side, and
+  /// with none straight the centre stays free.
   (Int32List, Float64List) _entries() {
     final Int32List inStarts = c._inStarts;
     final Int32List inEdges = c._inEdges;
@@ -881,13 +869,31 @@ final class _GeometryBuilder {
         continue;
       }
       final double ncx = cx[node];
-      final int firstEdge = inEdges[from];
-      xi[firstEdge] = ncx;
+      // The line at the centre: the only owner, else the straight one, else none (-1).
+      var centre = -1;
+      var owner = -1;
+      var owners = 0;
+      for (var q = from; q < to; q++) {
+        final int k = inEdges[q];
+        if (slots[k] == k) {
+          owners++;
+          owner = k;
+          if (centre < 0 && kinds[k] == RouteClasses.kindStraight) {
+            centre = k;
+          }
+        }
+      }
+      if (owners == 1) {
+        centre = owner;
+      }
+      if (centre >= 0) {
+        xi[centre] = ncx;
+      }
       for (var s = -1; s <= 1; s += 2) {
         var count = 0;
-        for (int q = from + 1; q < to; q++) {
+        for (var q = from; q < to; q++) {
           final int k = inEdges[q];
-          if (slots[k] != k) {
+          if (slots[k] != k || k == centre) {
             continue;
           }
           final double approach = kinds[k] == RouteClasses.kindGutter ? xg[k] : cx[froms[k]];
@@ -903,9 +909,8 @@ final class _GeometryBuilder {
         }
         final list = Int32List.sublistView(scratch, from, from + count);
         sortIndicesStableByDouble(list, key1, second: key2);
-        final double max = w / 2 - _entryInset;
         for (var q = 0; q < count; q++) {
-          xi[list[q]] = ncx + s * _fan(count, _entryFirst, _entryStep, _entryMin, max, q);
+          xi[list[q]] = ncx + s * _portFan(count, q);
         }
       }
       for (var q = from; q < to; q++) {
@@ -928,7 +933,9 @@ final class _GeometryBuilder {
     return (portStarts, Float64List.fromList(Float64List.sublistView(ports, 0, portCount)));
   }
 
-  /// Exits on each parent's top edge (GL:222-250; variant B).
+  /// Exits on each parent's top edge (GL:222-250; variant B; Story 10.30's port rules, as the entries'): one line
+  /// leaves at the centre; of several, the straight one does and the rest fan to their side. A merge-up is the
+  /// exception ([_mergeUpShift]): never at the centre, [_mergeUpShift] outside its fan slot.
   void _exits() {
     final Int32List outStarts = c._outStarts;
     final Int32List outEdges = c._outEdges;
@@ -941,6 +948,10 @@ final class _GeometryBuilder {
         continue;
       }
       final double pcx = cx[node];
+      if (to - from == 1 && kinds[outEdges[from]] != RouteClasses.kindMergeUp) {
+        xo[outEdges[from]] = pcx;
+        continue;
+      }
       for (var q = from; q < to; q++) {
         final int k = outEdges[q];
         if (kinds[k] == RouteClasses.kindStraight) {
@@ -973,7 +984,7 @@ final class _GeometryBuilder {
         sortIndicesStableByDouble(Int32List.sublistView(scratch, from, from + up), key1, second: key2);
         sortIndicesStableByDouble(Int32List.sublistView(scratch, from + up, from + count), key1);
         for (var q = 0; q < count; q++) {
-          xo[scratch[from + q]] = pcx + s * _exitFan(count, q);
+          xo[scratch[from + q]] = pcx + s * (_portFan(count, q) + (q < up ? _mergeUpShift : 0));
         }
       }
     }

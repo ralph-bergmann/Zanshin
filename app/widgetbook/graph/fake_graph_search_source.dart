@@ -27,7 +27,26 @@ class FakeGraphSearchSource implements GraphSearchSource {
     await Future<void>.delayed(latency);
     return WarnedList<RevsetCount>(<RevsetCount>[
       for (final String e in expressions)
-        if (e.startsWith('files(') && e.contains('cwd:'))
+        // A `:::` is jj's syntax error at its third colon (Story 10.30), as the backend reports it.
+        if (e.indexOf(':::') case final int at when at >= 0)
+          RevsetCount(
+            n: 0,
+            capped: false,
+            error: ZanshinFfiException.withReport(
+              'jj.revset_parse_error',
+              'Syntax error', // l10n-ignore: jj's message
+              precondition: null,
+              warnings: const <ZanshinWarning>[],
+              revsetError: RevsetErrorDetail(
+                kind: RevsetErrorKind.syntaxError,
+                span: RevsetSpan(offset: at + 2, length: 0),
+                symbol: null,
+                candidates: const <String>[],
+                message: 'Syntax error at ${at + 3}: expected <EOI>, `|`, `&`, or `~`', // l10n-ignore: jj's message
+              ),
+            ),
+          )
+        else if (e.startsWith('files(') && e.contains('cwd:'))
           RevsetCount(n: cap, capped: true, error: null)
         else
           RevsetCount(n: e.hashCode % 5 == 0 ? 0 : e.hashCode % 240 + 1, capped: false, error: null),
@@ -65,6 +84,7 @@ class FakeGraphSearchSource implements GraphSearchSource {
           span: null,
           symbol: expression,
           candidates: const <String>[],
+          message: 'Change ID prefix `$expression` is ambiguous', // l10n-ignore: jj's message
         ),
       );
     }

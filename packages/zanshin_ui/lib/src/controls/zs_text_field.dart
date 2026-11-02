@@ -37,23 +37,40 @@ class ZsTextEditingController extends TextEditingController {
   /// A controller starting with [text].
   ZsTextEditingController({super.text});
 
+  /// The UTF-16 range [ZsTextField.errorRange] marks in `--rem`; the field sets it before each build.
+  TextRange? _errorRange;
+
   @override
   TextSpan buildTextSpan({required BuildContext context, required bool withComposing, TextStyle? style}) {
     final TextSelection selection = value.selection;
     final bool composing = value.isComposingRangeValid && !value.composing.isCollapsed;
-    if (!withComposing || composing || !selection.isValid || selection.isCollapsed || selection.end > text.length) {
+    final bool selecting = withComposing && selection.isValid && !selection.isCollapsed && selection.end <= text.length;
+    final TextRange? error = _errorRange;
+    final bool marking = error != null && error.isValid && !error.isCollapsed && error.end <= text.length;
+    // The error mark shows unfocused too (withComposing is false then); an input method's composing range wins.
+    if ((withComposing && composing) || (!selecting && !marking)) {
       return super.buildTextSpan(context: context, style: style, withComposing: withComposing);
     }
-    final Color selected = ZsColors.of(context).selectionText;
+    final ZsColors colors = ZsColors.of(context);
+    // Cut the text at every range edge; a selected glyph reads as selected, an error glyph elsewhere in `--rem`.
+    final List<int> cuts = <int>{
+      0,
+      text.length,
+      if (selecting) ...<int>[selection.start, selection.end],
+      if (marking) ...<int>[error.start, error.end],
+    }.toList()..sort();
     return TextSpan(
       style: style,
       children: <InlineSpan>[
-        TextSpan(text: selection.textBefore(text)),
-        TextSpan(
-          text: selection.textInside(text),
-          style: TextStyle(color: selected),
-        ),
-        TextSpan(text: selection.textAfter(text)),
+        for (var i = 0; i + 1 < cuts.length; i++)
+          TextSpan(
+            text: text.substring(cuts[i], cuts[i + 1]),
+            style: selecting && cuts[i] >= selection.start && cuts[i] < selection.end
+                ? TextStyle(color: colors.selectionText)
+                : marking && cuts[i] >= error.start && cuts[i] < error.end
+                ? TextStyle(color: colors.rem)
+                : null,
+          ),
       ],
     );
   }
@@ -286,6 +303,7 @@ class ZsTextField extends StatefulWidget implements ZsControl {
     this.multiline = false,
     this.mono = false,
     this.error,
+    this.errorRange,
     this.readOnly = false,
     this.placeholder,
     this.label,
@@ -302,6 +320,9 @@ class ZsTextField extends StatefulWidget implements ZsControl {
 
   /// The text; the field keeps its own when null.
   final ZsTextEditingController? controller;
+
+  /// The UTF-16 range of the text the [error] is about, drawn in `--rem` (a revset's parse span); none when null.
+  final TextRange? errorRange;
 
   /// The field's focus node; the field keeps its own when null.
   final FocusNode? focusNode;
@@ -457,6 +478,8 @@ class _ZsTextFieldState extends State<ZsTextField> {
     final bool inactive = ZsAppearance.of(context).inactive;
     final TextStyle style = _style(colors);
     final String? placeholder = widget.placeholder;
+    // Read by buildTextSpan in this frame's EditableText build, which follows this one.
+    _controller._errorRange = widget.errorRange;
     final Widget input = Stack(
       alignment: widget.multiline ? AlignmentDirectional.topStart : AlignmentDirectional.centerStart,
       children: <Widget>[
@@ -523,13 +546,14 @@ class _ZsTextFieldState extends State<ZsTextField> {
       ),
     );
     final String? error = widget.error;
-    if (error != null && error.isNotEmpty) {
-      field = Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: ZsTextField._messageGap,
-        children: <Widget>[
-          field,
+    // One structure with and without a message, so the EditableText keeps its state and focus when it toggles.
+    field = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: ZsTextField._messageGap,
+      children: <Widget>[
+        field,
+        if (error != null && error.isNotEmpty)
           ExcludeSemantics(
             child: Padding(
               padding: const EdgeInsets.only(left: 1),
@@ -551,9 +575,8 @@ class _ZsTextFieldState extends State<ZsTextField> {
               ),
             ),
           ),
-        ],
-      );
-    }
+      ],
+    );
     final String? reason = widget.disabledReason;
     // The text field's own node carries the text-field, enabled and read-only flags; this adds the name, the
     // identifier and the description without overlapping them.

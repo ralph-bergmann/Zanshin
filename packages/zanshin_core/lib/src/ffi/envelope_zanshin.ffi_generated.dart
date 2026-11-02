@@ -2497,6 +2497,9 @@ class RevsetSpanObjectBuilder extends fb.ObjectBuilder {
 ///                error in any other text of the call (`prioritize`, `short_prefixes`, an anchor)
 ///    symbol      the function, revision, alias, operator or prefix the error names; ABSENT = none
 ///    candidates  jj-lib's similar names (or the suggested operator); ABSENT = none
+///    message     one sentence for a proportional-font UI (Story 10.30): `<Syntax error|Error> at
+///                <1-based char column>: <jj's message>` for a parse error (no ` at N` without a
+///                span), jj-lib's one-line text for a resolution error; ABSENT = none
 class RevsetErrorDetail {
   RevsetErrorDetail._(this._bc, this._bcOffset);
   factory RevsetErrorDetail(List<int> bytes) {
@@ -2513,10 +2516,11 @@ class RevsetErrorDetail {
   RevsetSpan? get span => RevsetSpan.reader.vTableGetNullable(_bc, _bcOffset, 6);
   String? get symbol => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
   List<String>? get candidates => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
 
   @override
   String toString() {
-    return 'RevsetErrorDetail{kind: ${kind}, span: ${span}, symbol: ${symbol}, candidates: ${candidates}}';
+    return 'RevsetErrorDetail{kind: ${kind}, span: ${span}, symbol: ${symbol}, candidates: ${candidates}, message: ${message}}';
   }
 }
 
@@ -2533,7 +2537,7 @@ class RevsetErrorDetailBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(5);
   }
 
   int addKind(RevsetErrorKind? kind) {
@@ -2556,6 +2560,11 @@ class RevsetErrorDetailBuilder {
     return fbBuilder.offset;
   }
 
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -2566,16 +2575,19 @@ class RevsetErrorDetailObjectBuilder extends fb.ObjectBuilder {
   final RevsetSpanObjectBuilder? _span;
   final String? _symbol;
   final List<String>? _candidates;
+  final String? _message;
 
   RevsetErrorDetailObjectBuilder({
     RevsetErrorKind? kind,
     RevsetSpanObjectBuilder? span,
     String? symbol,
     List<String>? candidates,
+    String? message,
   }) : _kind = kind,
        _span = span,
        _symbol = symbol,
-       _candidates = candidates;
+       _candidates = candidates,
+       _message = message;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -2585,11 +2597,13 @@ class RevsetErrorDetailObjectBuilder extends fb.ObjectBuilder {
     final int? candidatesOffset = _candidates == null
         ? null
         : fbBuilder.writeList(_candidates!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(4);
+    final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
+    fbBuilder.startTable(5);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, spanOffset);
     fbBuilder.addOffset(2, symbolOffset);
     fbBuilder.addOffset(3, candidatesOffset);
+    fbBuilder.addOffset(4, messageOffset);
     return fbBuilder.endTable();
   }
 

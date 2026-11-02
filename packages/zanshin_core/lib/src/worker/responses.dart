@@ -199,6 +199,9 @@ final class ZanshinFfiException implements Exception {
       if (revset.symbol != null) {
         buf.write(' `${revset.symbol}`');
       }
+      if (revset.message != null) {
+        buf.write(' "${revset.message}"');
+      }
     }
     buf.write(')');
     return buf.toString();

@@ -723,10 +723,11 @@ void main() {
 
     double total(List<PathMetric> metrics) => metrics.fold<double>(0, (sum, m) => sum + m.length);
     expect(layout.edgeCount, 3);
-    expect(total(await painted(only: <int>{1})), moreOrLessEquals(length(1)));
-    expect(total(await painted(except: <int>{1})), moreOrLessEquals(length(0) + length(2)));
+    // Path metrics measure in float32: the sums agree to rounding, not to 1e-10.
+    expect(total(await painted(only: <int>{1})), moreOrLessEquals(length(1), epsilon: 1e-3));
+    expect(total(await painted(except: <int>{1})), moreOrLessEquals(length(0) + length(2), epsilon: 1e-3));
     final List<PathMetric> half = await painted(only: <int>{1}, drawn: .5);
-    expect(total(half), moreOrLessEquals(length(1) / 2));
+    expect(total(half), moreOrLessEquals(length(1) / 2, epsilon: 1e-3));
     expect(half.first.getTangentForOffset(0)!.position, near(polyline(painter.geometry, 1).first));
     expect(await painted(only: <int>{1}, drawn: 0), isEmpty);
   });

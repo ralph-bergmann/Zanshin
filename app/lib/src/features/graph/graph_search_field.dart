@@ -642,7 +642,6 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     final String? variant = _currentVariant;
     final bool showView = !_focus.hasFocus && variant != null && !atDefault;
     final GraphStale? stale = _model.stale;
-    final bool tinted = !atDefault;
     final bool builtIn = variant == revsetDefaultLog || variant == revsetDefaultAll;
     final bool mono = (showView && builtIn) || _scope == GraphSearchScope.change || _scope == GraphSearchScope.file;
     final String placeholder = showView
@@ -653,7 +652,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     final TextStyle inputStyle =
         (mono ? ZsType.id.copyWith(fontSize: ZsType.fsControl) : ZsType.body.copyWith(fontSize: ZsType.fsBase))
             .copyWith(height: ZsType.lhSnug, color: colors.text);
-    final TextStyle valueStyle = tinted && !_focus.hasFocus ? _weight(inputStyle, 500) : inputStyle;
+    final TextStyle valueStyle = !atDefault && !_focus.hasFocus ? _weight(inputStyle, 500) : inputStyle;
     final bool query = _text.text.isNotEmpty;
 
     final Widget pill = _pill(
@@ -661,7 +660,6 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
       s,
       colors,
       metrics,
-      tinted: tinted && !inactive,
       showView: showView,
       compact: compact,
     );
@@ -795,20 +793,16 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     AppLocalizations s,
     ZsColors colors,
     ZsMetrics metrics, {
-    required bool tinted,
     required bool showView,
     required bool compact,
   }) {
     final open = _popup == _Popup.menu;
     final bool any = showView || _scope == GraphSearchScope.any;
-    // An inactive window paints no hover (decision 16.42 (i)).
+    // An inactive window paints no hover (decision 16.42 (i)). No tint at any view (Story 10.30).
     final bool lit = (_pillHovered && !ZsAppearance.of(context).inactive) || open;
-    final Color fill = tinted
-        ? (_pillPressed ? colors.accentRing : (lit ? colors.accentSoftHi : colors.accentSoft))
-        : (_pillPressed ? colors.flPress : (lit ? colors.flOn : const Color(0x00000000)));
-    final Color text = tinted || lit || _pillPressed ? colors.text : (any ? colors.textDim : colors.textMuted);
-    final Color icon = tinted && !lit && !_pillPressed ? colors.accentText : text;
-    final Color chevron = tinted ? text : colors.textFaint;
+    final Color fill = _pillPressed ? colors.flPress : (lit ? colors.flOn : const Color(0x00000000));
+    final Color text = lit || _pillPressed ? colors.text : (any ? colors.textDim : colors.textMuted);
+    final Color chevron = colors.textFaint;
     final String? variant = _currentVariant;
     final String tooltip = _focus.hasFocus || variant == null
         ? s.graphSearchSearchIn(s.graphSearchScope(_scope.name))
@@ -847,9 +841,9 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
                     spacing: any || compact ? 3 : 6,
                     children: <Widget>[
                       if (showView)
-                        _Dollar(color: icon)
+                        _Dollar(color: text)
                       else
-                        ZanshinIcon(_scopeIcon(_scope), size: ZsIconSize.md, color: icon),
+                        ZanshinIcon(_scopeIcon(_scope), size: ZsIconSize.md, color: text),
                       if (!showView && !any && !compact) Text(s.graphSearchScope(_scope.name), style: label),
                       ZanshinIcon(ZI.chevronDown, size: ZsIconSize.sm, color: chevron),
                     ],

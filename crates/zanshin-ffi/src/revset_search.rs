@@ -335,6 +335,7 @@ mod tests {
             symbol: Some("fooo".to_owned()),
             candidates: vec!["foo".to_owned()],
             hints: vec!["Did you mean `foo`?".to_owned()],
+            message: "Error at 4: Function `fooo` doesn't exist".to_owned(),
         }
     }
 
@@ -361,6 +362,7 @@ mod tests {
                         symbol: None,
                         candidates: Vec::new(),
                         hints: Vec::new(),
+                        message: String::new(),
                         ..detail(RevsetErrorKind::NoSuchRevision)
                     }),
                 }),
@@ -384,6 +386,7 @@ mod tests {
         assert_eq!(revset.kind(), fbs::RevsetErrorKind::NoSuchFunction);
         assert_eq!(revset.symbol(), Some("fooo"));
         assert_eq!(revset.candidates().map(|c| c.get(0)), Some("foo"));
+        assert_eq!(revset.message(), Some("Error at 4: Function `fooo` doesn't exist"));
         let span = revset.span().expect("span");
         assert_eq!(span.offset(), 3);
         assert!(span.length().is_none(), "a span across lines has no length");
@@ -394,6 +397,7 @@ mod tests {
         let revset = resolution.revset().expect("revset detail");
         assert_eq!(revset.kind(), fbs::RevsetErrorKind::NoSuchRevision);
         assert!(revset.span().is_none() && revset.symbol().is_none() && revset.candidates().is_none());
+        assert!(revset.message().is_none(), "an empty message writes no field");
     }
 
     #[test]

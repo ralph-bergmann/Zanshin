@@ -1424,6 +1424,18 @@ abstract class AppLocalizations {
   /// **'Close (Esc)'**
   String get inspectorClose;
 
+  /// Tooltip over an inspector id (change, commit or parent); the full id shows below it.
+  ///
+  /// In en, this message translates to:
+  /// **'Click to copy'**
+  String get inspectorCopyId;
+
+  /// Shown briefly after a click copied an inspector id to the clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get inspectorIdCopied;
+
   /// Inspector header flag: the change is the working copy (@ is jj's symbol).
   ///
   /// In en, this message translates to:

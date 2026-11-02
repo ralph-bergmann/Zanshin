@@ -86,11 +86,13 @@ void main() {
       expect(counts[2].error?.code, 'jj.revset_resolution_error');
       expect(counts[2].error?.revsetError?.kind, RevsetErrorKind.noSuchRevision);
       expect(counts[2].error?.revsetError?.symbol, 'nonexistent_bookmark');
+      expect(counts[2].error?.revsetError?.message, 'Revision `nonexistent_bookmark` doesn\'t exist');
       final ZanshinFfiException? parse = counts[3].error;
       expect(parse?.code, 'jj.revset_parse_error');
       expect(parse?.revsetError?.kind, RevsetErrorKind.noSuchFunction);
       expect(parse?.revsetError?.span?.offset, 0);
       expect(parse?.revsetError?.span?.length, 4);
+      expect(parse?.revsetError?.message, startsWith('Error at 1: Function `'));
       final RevsetErrorDetail? unclosed = counts[4].error?.revsetError;
       expect(unclosed?.kind, RevsetErrorKind.syntaxError);
       expect((unclosed?.span?.offset, unclosed?.span?.length), (14, 0), reason: 'a position');
