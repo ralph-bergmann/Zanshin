@@ -19,6 +19,8 @@ deferred:
     evidence: 'Engine reading, not run on a device: Impeller opens an offscreen subpass for an opacity layer that holds a backdrop filter (engine/src/flutter/impeller/display_list/canvas.cc SaveLayer, :1830-1912), and FlipBackdrop reads only that subpass''s texture (render_passes_.back()), which is still empty. ZsSheet avoids it by fading its scrim through the filter''s alpha (this spec, Design Notes).'
     location: 'app/lib/src/shared/materials/zs_glass.dart'
     severity: medium
+    resolved: >-
+      2026-11-02 — fixed (spec-10-16-graph-minimap, commit 953bd69): ZsFade (11.3) is the one way to fade glass; the toast (10.23) and the minimap (10.16) use it, witnessed by tests.
   - summary: 'The DS drop menu enters on its own keyframe (--dur-pop, scale .94), while the epics'' design update lists it among the command menus (--dur-menu, scale .97); 11.2 follows the epics.'
     evidence: 'DS components/menus/menus.css:40-42 (zs-drop-in) against epics.md Story 11.2 design update, item 3 Entrances ("context, project, drop and text menu ... --dur-menu 110 ... .97"); a decision recorded in the epic wins over the DS (Epic 10 house rule Design-system sync).'
     location: 'app/lib/src/shared/materials/zs_surface_transition.dart'

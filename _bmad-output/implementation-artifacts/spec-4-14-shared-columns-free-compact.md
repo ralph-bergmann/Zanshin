@@ -25,6 +25,9 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/graph_layout/layout_engine.dart (nodeDays)
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-10-16-graph-minimap, commit 953bd69): Compact labels read the raw
+      commit timestamp's day; the clamped nodeDays stays Free's bucket source.
 ---
 
 <intent-contract>

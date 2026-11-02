@@ -985,7 +985,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 
 ### Cards, motion and the minimap
 
-- **Compact's minimap labels need a day per node.** Medium.
+- ~~**Compact's minimap labels need a day per node.**~~ — RESOLVED 2026-11-02 (spec-10-16-graph-minimap, commit 953bd69): the minimap labels Compact rows with their newest commit's day, shown only when older than the label above. Medium.
   - The design labels a Compact row with the local calendar day of its newest commit, shown only when that day is older than the row above's (GV:438-449).
   - 4.11 emits day buckets only for Free (4.11 open question 9), and the view never computes days.
   - **Follow-up:** 4.11 (or 4.14) emits a local day key per node in both modes; 10.16 labels Compact rows from it.
@@ -1281,7 +1281,7 @@ _Ralph re-downloaded the design-system project twice (rounds 2 and 3; the DS rea
   - **2026-11-01, Ralph:** handed to Story 10.12 — it mounts all six islands in the project window, so its run measures (10.1 is done). Covered by Story 10.12.
   - **2026-11-02, console session (Ralph asked):** measured with five islands (no minimap yet) over a scrolling synthetic 10k graph, profile mode, M4 Pro at 60 Hz (commit 4d41b41e; `docs/perf/glass-profile-2026-11-02.md`, harness `app/integration_test/glass_profile.dart`): glass raster avg 5.8 / p99 6.6 ms vs solid 2.5 / 3.4 ms, build ≤ 4.3 ms; 16.7 ms budget holds (1–3 frames of ~17 ms per 600, one 86 ms frame after the cold build). No decision needed; left: re-measure with the minimap (10.16) and at 120 Hz on the built-in display.
   - **2026-10-29, Ralph:** 10.1 and 11.3 are done, but the measurement waits until the inspector (10.8) and the minimap (10.16) exist, so all six islands are open. Covered by Stories 10.8 and 10.16.
-- **Fading a glass surface through an Opacity ancestor drops its backdrop blur for the whole fade, and 11.3's calm scrolling plus the panel, toast and minimap entrances fade glass.** Medium.
+- ~~**Fading a glass surface through an Opacity ancestor drops its backdrop blur for the whole fade, and 11.3's calm scrolling plus the panel, toast and minimap entrances fade glass.**~~ — RESOLVED 2026-11-02 (spec-10-16-graph-minimap, commit 953bd69): the minimap, the last surface left, fades its glass only through `ZsFade`; a test checks no `Opacity` or `FadeTransition` sits above it. Medium.
   - Engine reading, not run on a device: Impeller opens an offscreen subpass for an opacity layer that holds a backdrop filter (`engine/src/flutter/impeller/display_list/canvas.cc` `SaveLayer`, :1830-1912), and `FlipBackdrop` reads only that subpass's texture (`render_passes_.back()`), which is still empty; `ZsSheet` (Story 11.2) fades its scrim through the filter's alpha instead.
   - **Follow-up:** 11.3 (calm scrolling, panel-in), 10.16 and 10.23 fade glass the same way (alpha in the filter's colour matrix plus an opacity on the content inside the `BackdropFilter`), e.g. through an opacity input on `ZsGlass`; confirm the behaviour on a Mac first.
   - **2026-10-18, Story 11.3:** `ZsFade` is the one way to fade glass — each `ZsSurface` under it puts its box under an `Opacity` inside the filter, gives the filter the alpha a(1 − Lα)/(1 − a·Lα) and fades its drops by colour; calm scrolling, the panel's entrance and exit, the flyout, the minimap slot's motion and the stale notice use it; confirmed on a Mac in the running catalogue (through `ZsFade` the backdrop stays blurred, under an `Opacity` ancestor it turned sharp) (commit 7ca412b); left: 10.16 (minimap) and 10.23 (toast) fade their own glass through `ZsFade`.
@@ -2201,7 +2201,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in Story 4.14 (bmad-build-auto, 2026-10-27)
 
-- **The node day key is the day of the clamped T, not of the commit's own timestamp, which the design's Compact label reads.** Low.
+- ~~**The node day key is the day of the clamped T, not of the commit's own timestamp, which the design's Compact label reads.**~~ — RESOLVED 2026-11-02 (spec-10-16-graph-minimap, commit 953bd69): Compact labels read the raw commit timestamp's day (`graphLocalDay(timestampOf)`), nothing without a ts, as the design does; the clamped `nodeDays` stays Free's bucket source, no engine change. Low.
   - `GraphGridView.nodeDays` = dk(T(i)) with T(i) = max(own ts, parents' T) (docs/graph-layout.md §4.2 free, `layout_engine.dart` `nodeDays()`), matching Free's day buckets; a non-root node without a ts gets tmin's day. The design's Compact label uses the raw `Date.parse(c.ts)` and shows nothing without a ts (graph-view.jsx@e74ced3:440-446), so the two differ for a commit older than an ancestor and for a node without a ts.
   - **Follow-up:** Story 10.16 decides when it labels Compact rows: keep the clamped day (one day per commit in both layouts), or have the engine emit the raw-ts day (`dayKey(ts)`, `noDay` without a ts) beside it.
 
