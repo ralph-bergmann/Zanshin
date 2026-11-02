@@ -24,7 +24,7 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Story 10.13: Time-layout lab, experiment (done, outcome decided)
 - Story 10.14: Bookmarks in the floating rail (done)
 - Story 10.15: Card action menu and bookmark popover (done)
-- Story 10.16: Minimap (backlog)
+- Story 10.16: Minimap (done)
 - Story 10.17: Commit stacks (done)
 - Story 10.18: AI stack titles (declined)
 - Story 10.19: Hidden history (done)
