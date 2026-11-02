@@ -558,6 +558,7 @@ final class RouteGeometry {
     required this.overfullClusters,
     required this.overfullEdges,
     required this.unavoidableCrossings,
+    required this.unsettledPorts,
   });
 
   /// Lays [classes] out for [metrics].
@@ -618,6 +619,10 @@ final class RouteGeometry {
 
   /// Reported: pairs of runs in one cluster that each must lie above the other; they cross.
   final int unavoidableCrossings;
+
+  /// Reported: pairs of vertical lines still sharing an x after the last of the port passes (0 when the
+  /// passes settled); the longer-straight tie-break would move one of each pair.
+  final int unsettledPorts;
 
   /// The bridges whose crossing point lies in [x0, x1) × [y0, y1) (docs/graph-layout.md §14.4), by
   /// horizontal run index, then vertical run index. Only edges that share no node bridge.
@@ -812,10 +817,11 @@ final class _GeometryBuilder {
     do {
       _entries();
       _exits();
-    } while (++passes < _settlePasses && _banCollisions());
+    } while (++passes < _settlePasses && _banCollisions() > 0);
+    final int unsettled = passes == _settlePasses ? _banCollisions(apply: false) : 0;
     final (Int32List portStarts, Float64List portXs) = _ports();
     final runs = _Runs(this)..place();
-    return _finish(runs, portStarts, portXs);
+    return _finish(runs, portStarts, portXs, unsettled);
   }
 
   void _positions() {
@@ -996,9 +1002,9 @@ final class _GeometryBuilder {
   /// different card edges overlap on one x (a line climbing its column past another card's port), the one that
   /// stays straight longer keeps its port (tie: the lower edge index); the other leaves the centre, or sits one fan
   /// slot further out; two lines that both turn at their edges (reach < gapY) are left to the tracks. Bans and extra
-  /// slots only accumulate across passes, never reset, so the passes terminate. Returns whether a line moved, so the
-  /// ports are placed again.
-  bool _banCollisions() {
+  /// slots only accumulate across passes, never reset, so the passes terminate. Returns how many lines moved (the
+  /// ports are then placed again); with [apply] false it only counts the collisions and moves nothing.
+  int _banCollisions({bool apply = true}) {
     final Int32List froms = c.edgeFroms;
     final Int32List tos = c.edgeTos;
     final Uint8List kinds = c.kinds;
@@ -1038,7 +1044,7 @@ final class _GeometryBuilder {
     sortIndicesStableByDouble(order, at, second: lo);
     final movedIn = Uint8List(e);
     final movedOut = Uint8List(e);
-    var moved = false;
+    var moved = 0;
     for (var i = 0; i < count; i++) {
       final int a = order[i];
       for (int j = i + 1; j < count && at[order[j]] == at[a] && lo[order[j]] < hi[a]; j++) {
@@ -1057,13 +1063,15 @@ final class _GeometryBuilder {
         final loser = len[a] < len[b] || len[a] == len[b] && ka > kb ? a : b;
         final int k = claimEdge[loser];
         final entry = claimIn[loser] == 1;
-        if (at[loser] == cx[entry ? tos[k] : froms[k]]) {
-          (entry ? noCentreIn : noCentreOut)[k] = 1;
-        } else {
-          (entry ? extraIn : extraOut)[k]++;
+        if (apply) {
+          if (at[loser] == cx[entry ? tos[k] : froms[k]]) {
+            (entry ? noCentreIn : noCentreOut)[k] = 1;
+          } else {
+            (entry ? extraIn : extraOut)[k]++;
+          }
         }
         (entry ? movedIn : movedOut)[k] = 1;
-        moved = true;
+        moved++;
       }
     }
     return moved;
@@ -1096,7 +1104,7 @@ final class _GeometryBuilder {
     return (portStarts, Float64List.fromList(Float64List.sublistView(ports, 0, portCount)));
   }
 
-  RouteGeometry _finish(_Runs runs, Int32List portStarts, Float64List portXs) {
+  RouteGeometry _finish(_Runs runs, Int32List portStarts, Float64List portXs, int unsettledPorts) {
     final Uint8List kinds = c.kinds;
     final pointStarts = Int32List(e + 1);
     for (var k = 0; k < e; k++) {
@@ -1140,7 +1148,7 @@ final class _GeometryBuilder {
         put(xi[k], bot);
       }
     }
-    return _runIndexes(pointStarts, points, portStarts, portXs, runs);
+    return _runIndexes(pointStarts, points, portStarts, portXs, runs, unsettledPorts);
   }
 
   RouteGeometry _runIndexes(
@@ -1149,6 +1157,7 @@ final class _GeometryBuilder {
     Int32List portStarts,
     Float64List portXs,
     _Runs runs,
+    int unsettledPorts,
   ) {
     var verticals = 0;
     var horizontals = 0;
@@ -1244,6 +1253,7 @@ final class _GeometryBuilder {
       overfullClusters: runs.overfullClusters,
       overfullEdges: runs.overfullEdges,
       unavoidableCrossings: runs.unavoidableCrossings,
+      unsettledPorts: unsettledPorts,
     );
   }
 }

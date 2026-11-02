@@ -146,6 +146,7 @@ void _oracle(List<String> args) {
       'overfull_gutters': classes.overfullGutters,
       'overfull_clusters': g.overfullClusters,
       'unavoidable_crossings': g.unavoidableCrossings,
+      'unsettled_ports': g.unsettledPorts,
     });
   }
   try {
@@ -246,6 +247,7 @@ void _check(List<String> args) {
       'overfull_gutters': classes.overfullGutters,
       'overfull_clusters': g.overfullClusters,
       'unavoidable_crossings': g.unavoidableCrossings,
+      'unsettled_ports': g.unsettledPorts,
       'blocked_merges': blockedMerges,
       'blocked_merges_on_gutters': blockedMergeGutters,
       'card_hits': {

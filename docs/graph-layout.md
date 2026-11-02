@@ -1609,7 +1609,8 @@ the straight stretches (card edge through its first turn band) of lines of diffe
 on one x — a `merge-up` climbing its parent's column past a card whose fork entry runs down the same
 centre — the line that stays straight longer keeps its port (tie: the lower edge index), the other leaves
 the centre or sits one fan slot further out; two lines that both turn at their edges are left to the
-tracks. The ports are placed again until stable (at most 8 passes, `_settlePasses`). On the 10k
+tracks. The ports are placed again until stable (at most 8 passes, `_settlePasses`); the pairs still
+sharing an x after the last pass are counted, `unsettledPorts` (0 on every recorded layout). On the 10k
 synthetic free layout the per-edge rule alone gives 342 collinear overlaps, a centre-only tie-break 19,
 the tie-break over all slots 0; a tie-break loser is the one case where a card edge's only line is not
 centred (20 of 8710 lone exits).
@@ -1646,7 +1647,7 @@ edge and ends on the child's bottom edge.
 **Output** (typed arrays only): the polylines as a CSR (`pointStarts`, `points` as x, y pairs; the
 points are the bends); per node its entry ports as a CSR (`portStarts`, `portXs`); the vertical
 runs sorted by x and the horizontal runs sorted by y (zero-length segments dropped, ties in
-polyline order); the reports (`overfullClusters` with a per-edge flag, `unavoidableCrossings`).
+polyline order); the reports (`overfullClusters` with a per-edge flag, `unavoidableCrossings`, `unsettledPorts`).
 
 ### 14.4 Bridges (a per-window query)
 

@@ -546,6 +546,21 @@ void main() {
       expect([_points(g, 1).first.$1 - _cx(0), _points(g, 2).last.$1 - _cx(0)], [0, 24]);
     });
 
+    test('ports_by_local_direction_a_fan_port_losing_the_tie_break_sits_one_slot_further_out', () {
+      // Column 0: B (node 3, row 2) runs straight into A (node 0, row 5) at the centre and merges up into Q (node 1,
+      // col 1, row 5), climbing column 0 at +24 to the band below row 5. M (node 2, col 1, row 4) is A's second
+      // parent: its merge-adjacent line turns right in that band, also at +24. The merge-up stays straight longer
+      // and keeps +24; the entry moves one fan slot out, to +40.
+      final RouteClasses c = _grid([5, 5, 4, 2], [0, 1, 1, 0], [(3, 0), (2, 0), (2, 1), (3, 1)]);
+      expect(
+        [c.kinds[0], c.kinds[1], c.kinds[3]],
+        [RouteClasses.kindStraight, RouteClasses.kindMergeAdjacent, RouteClasses.kindMergeUp],
+      );
+      final RouteGeometry g = _geometry(c);
+      expect([_points(g, 3).first.$1 - _cx(0), _points(g, 1).last.$1 - _cx(0)], [24, 40]);
+      expect(g.unsettledPorts, 0);
+    });
+
     test('entries_sit_24_plus_16_k_px_out_and_squeeze_to_8', () {
       // Child 0 (col 0, row 1), first parent 1 (col 0, row 0), m more parents in cols 1 … m, row 0.
       for (final (int m, List<double> expected) in [
@@ -795,6 +810,7 @@ void main() {
               if (overfull[hit.edge] == 0) hit,
           ];
           expect(hits, isEmpty, reason: '${rec.name} W $width H $height');
+          expect(g.unsettledPorts, 0, reason: '${rec.name} W $width H $height: the port passes settle');
         }
       }
     });
@@ -813,6 +829,7 @@ void main() {
               if (c.fallbackEdges[hit.edge] == 0 && g.overfullEdges[hit.edge] == 0 && overfull[hit.edge] == 0) hit,
           ];
           expect(hits, isEmpty, reason: '${rec.name} W $width H $height');
+          expect(g.unsettledPorts, 0, reason: '${rec.name} W $width H $height: the port passes settle');
         }
       }
     });
