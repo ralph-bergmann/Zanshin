@@ -11918,6 +11918,36 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 ---
 
+### Story 10.30: Review findings 2026-11-02 — revset errors, the `$` pill, ID copy, uniform graph ports [UI]
+*(Added 2026-11-02, Ralph — console session: findings from Ralph's look at the running app after the story loop 10.28 / 10.29 / 11.17; every decision below is Ralph's.)*
+
+**Motivation.** Ralph's walk through the running app found two defects and four places where the design should change. Where the change departs from the DS or the design prototype, the DS / prototype source changes with it, so no deviation has to be tracked.
+
+**Scope.**
+1. **Raw revset rule errors (10.28) read like jj's terminal output.** The row and the command preview show jj's pest rendering (`--> 1:93`, `|`, `^---`), which falls apart in a proportional font. Show one short sentence instead — the error kind, its position (column) and what jj expected, e.g. "Syntax error at 93: expected `::`, `..`, `~` or an expression" — plus the existing "Did you mean …" candidates, and mark the error's span in the field as the structured rules do. Prefer a structured short message from the backend (a field next to `RevsetErrorDetail`'s kind/span/symbol/candidates) over parsing jj's text in Dart. The command preview shows the same short sentence.
+2. **A text field loses focus when its error appears or disappears.** `ZsTextField` (`packages/zanshin_ui/lib/src/controls/zs_text_field.dart`, ~line 526) wraps itself in a `Column` only while it has a message, so the tree changes and the `EditableText` is rebuilt — the caret is gone while the user fixes the error. Keep one structure in both states (the message slot toggles inside it). Reproduce it with Marionette in the Configurations window before the fix and confirm after; a widget test pins it.
+3. **The search field's `$` pill tint goes.** The pill is accent-tinted whenever the shown view is not the default search (`graph_search_field.dart`, `tinted = !atDefault`), which reads as an error or a focus state and changes with the window's active state. Ralph: drop the tint entirely; the view's name in the field is enough. Remove the tinted state from the DS SearchDollar component too.
+4. **A commit-ID tooltip hangs over "Squash to parent".** Hovering the inspector header's change ID and moving down leaves the commit-ID tooltip showing while the pointer is on "Squash to parent" (screenshot in the session). Find whether the tooltip outlives its exit or its hover area reaches into the button row; fix it; a widget test with pointer moves pins it (Marionette cannot hover).
+5. **Inspector header IDs: short change ID ₍jj₎ and short commit ID ₍git₎, click to copy.** The header shows the short change ID and the short commit ID next to each other, each followed by a lowered subscript label `jj` / `git` in `--text-faint` (Ralph's sketch: `asdfsdf`<sub>jj</sub> `fadargsd`<sub>git</sub>), both in the same short form and prefix emphasis as everywhere else in the app. A click copies the **full** ID to the clipboard; the tooltip reads "Click to copy" with the full ID under it and shows "Copied" briefly after a click. If writing the clipboard fails, a small popover stays open with the full ID as selectable text. The tooltip that showed the other ID goes. Scope: the inspector only (header and the parent link) — graph cards keep click = select (Ralph). Add the variant to the DS (ChangeId / inspector header) so it is no deviation.
+6. **Uniform graph ports — lines leave a card's top the way they enter its bottom.** Today the router (`packages/zanshin_core/lib/src/graph_layout/router.dart`, `_exits` / `_entries`, ported from `design/graph-layout.jsx`) uses two rule sets: exits put only a straight line in the centre and every bending line at a fan around 0.28·W (a lone bending exit never sits in the centre), entries put the first parent in the centre and fan the rest from 24 px in 16 px steps. New rules, the same for top and bottom:
+   1. A single line starts / ends in the centre.
+   2. With several lines, the straight one (same column) takes the centre; the others fan to their side.
+   3. With several lines and none straight (lines leave left and right, none up / down), the centre stays free.
+   4. The fan is the same top and bottom: today's entry fan (first line 24 px from the centre, 16 px steps, squeezed to 8 px when space runs out, then the outermost share), so a line's offset from the centre is equal at both ends where the counts match.
+   5. Every other existing rule stays: inner/outer ordering (no new crossings), shared entry slots of indirect edges, the gutter routing, the card-clearance and invariant checks.
+
+   Decided (Claude, at Ralph's request): at a merge's bottom edge the straight line takes the centre even if it is not the first parent (rule 2) — one rule for both ends; a non-straight first parent fans like the others. Update `design/graph-layout.jsx` the same way; regenerate / adjust the graph goldens and router tests and keep the layout invariants green.
+
+**Design / DS.** The story edits the repo sources in place (`_bmad-output/implementation-artifacts/design_system/` for items 3 and 5, `_bmad-output/implementation-artifacts/design/graph-layout.jsx` for item 6, with a dated line in `DESIGN-SYSTEM-SYNC.md`); republishing the Design System artifact is Claude's after the story (skill `design-artifacts`).
+
+**Non-goals.** Click-to-copy on graph cards or the peek card; a tint for the `$` pill in any other form; revset highlighting or completion.
+
+**Witnesses.** A raw-revset syntax error shows the short sentence at the row and in the preview, its span marked, no `-->` / `^---`; the field keeps focus (caret, typing continues) when the error appears and disappears; the `$` pill paints the same at default and non-default views; the commit-ID tooltip is gone once the pointer leaves the ID; the header shows both short IDs with `jj` / `git`, a click writes the full ID, a failing clipboard opens the selectable popover; router tests: a lone bending exit leaves from the centre, a straight + bending pair puts the straight one in the centre, a left + right pair leaves the centre free, top and bottom offsets match for equal counts; layout invariants and goldens green.
+
+**Depends on.** 10.28 (done), 10.12 (done), 10.24 (done), 11.17 (done).
+
+---
+
 ## Epic 11: Floating app shell (Flutter UI)
 
 > **Granularity:** backlog-level, like Epics 9 and 10. Full acceptance criteria are written per story (via `bmad-create-story`) when it is scheduled.
