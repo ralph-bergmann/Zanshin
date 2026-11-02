@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import 'package:flutter/foundation.dart';
 import 'package:zanshin/src/features/projects/projects_environment.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
@@ -57,4 +58,79 @@ class FakeProjectsEnvironment implements ProjectsEnvironment {
 
   @override
   Future<void> revealInFinder(String path) async => revealed.add(path);
+
+  // ---- config (Settings, Story 11.7) ----
+
+  /// What [configList] answers, by name; a missing name answers no entry.
+  final configEntries = <String, List<ConfigEntry>>{};
+
+  /// What [configPath] answers, by scope.
+  final configPaths = <ConfigScope, String>{
+    ConfigScope.user: '/Users/me/.config/jj/config.toml',
+    ConfigScope.repo: '/Users/me/.config/jj/repos/abc/config.toml',
+  };
+
+  /// What [configSet] answers as `@`'s author.
+  WorkingCopyAuthor? workingCopyAuthor;
+
+  /// When set, [configSet] and [configUnset] throw it.
+  ZanshinFfiException? configFailure;
+
+  /// Every write as `set <scope> <name> <value>` or `unset <scope> <name>`.
+  final configCalls = <String>[];
+
+  final _writes = ConfigWrites();
+
+  @override
+  Listenable get configWrites => _writes;
+
+  @override
+  Future<List<ConfigEntry>> configList({required String name, String? workspaceRoot}) async => <ConfigEntry>[
+    for (final ConfigEntry entry in configEntries[name] ?? const <ConfigEntry>[])
+      if (workspaceRoot != null ||
+          (entry.source != ConfigValueSource.repo && entry.source != ConfigValueSource.workspace))
+        entry,
+  ];
+
+  @override
+  Future<ConfigSetResult> configSet(ConfigScope scope, String name, String value, {String? workspaceRoot}) async {
+    configCalls.add('set ${scope.name} $name $value');
+    if (configFailure case final ZanshinFfiException failure) {
+      throw failure;
+    }
+    final ConfigValueSource source = _source(scope);
+    configEntries[name] = <ConfigEntry>[
+      ...?configEntries[name]?.where((entry) => entry.source != source),
+      ConfigEntry(
+        name: name,
+        // The fake stores strings quoted, as `jj config list` reads them back.
+        value: value.startsWith('[') ? value : '"${value.replaceAll('"', r'\"')}"',
+        source: source,
+        path: configPaths[scope],
+        overridden: false,
+      ),
+    ]..sort((a, b) => a.source.index.compareTo(b.source.index));
+    _writes.fire();
+    return ConfigSetResult(path: configPaths[scope] ?? '', workingCopyAuthor: workingCopyAuthor, precondition: null);
+  }
+
+  @override
+  Future<void> configUnset(ConfigScope scope, String name, {String? workspaceRoot}) async {
+    configCalls.add('unset ${scope.name} $name');
+    if (configFailure case final ZanshinFfiException failure) {
+      throw failure;
+    }
+    final ConfigValueSource source = _source(scope);
+    configEntries[name] = <ConfigEntry>[...?configEntries[name]?.where((entry) => entry.source != source)];
+    _writes.fire();
+  }
+
+  static ConfigValueSource _source(ConfigScope scope) => switch (scope) {
+    ConfigScope.user => ConfigValueSource.user,
+    ConfigScope.repo => ConfigValueSource.repo,
+    ConfigScope.workspace => ConfigValueSource.workspace,
+  };
+
+  @override
+  Future<String> configPath(ConfigScope scope, {String? workspaceRoot}) async => configPaths[scope] ?? '';
 }

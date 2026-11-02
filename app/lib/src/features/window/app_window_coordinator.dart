@@ -17,6 +17,7 @@ import '../../l10n/strings.dart';
 import '../bootstrap/boot_window_host.dart' show mainWindowTitle;
 import '../bootstrap/zanshin_bootstrap.dart';
 import '../projects/project_session.dart';
+import '../settings/settings_window_state.dart';
 import 'app_window_actions.dart';
 import 'app_windows.dart';
 import 'remembered_window_controller.dart' show windowFramesChannel;
@@ -58,6 +59,7 @@ class AppWindowCoordinator implements AppWindowActions {
     required this.buildProject,
     required this.buildProjects,
     required this.buildRevsetConfigs,
+    required this.buildSettings,
     this._folderExists = _defaultFolderExists,
     this._channel = windowFramesChannel,
   });
@@ -76,6 +78,12 @@ class AppWindowCoordinator implements AppWindowActions {
 
   /// The jj log Configurations window's content (Story 10.22): its root over the window.
   final Widget Function() buildRevsetConfigs;
+
+  /// The Settings window's content (Story 11.7): its root over the window, showing [settingsState].
+  final Widget Function(SettingsWindowState state) buildSettings;
+
+  /// The Settings window's tab and page, kept while the window is closed (in memory only).
+  final settingsState = SettingsWindowState();
 
   final bool Function(String path) _folderExists;
   final MethodChannel _channel;
@@ -130,6 +138,28 @@ class AppWindowCoordinator implements AppWindowActions {
     );
   }
 
+  @override
+  Future<void> openSettings({SettingsTarget? target}) async {
+    await _ready.future;
+    await _serial(() {
+      settingsState.projectOpen = _projectOpen;
+      if (target != null) {
+        settingsState.show(target);
+      }
+      final AppLocalizations s = platformStrings();
+      return _show(
+        settingsWindowKey,
+        switch ((settingsState.tab, settingsState.page)) {
+          (SettingsTab.general, _) => s.settingsTabGeneral,
+          (SettingsTab.project, SettingsPage.immutableCommits) => s.settingsImmutableTitle,
+          (SettingsTab.project, null) => session.current?.name ?? s.settingsTabGeneral,
+        },
+        () => AppWindowActionsScope(actions: this, child: buildSettings(settingsState)),
+        dialog: settingsWindowSpec,
+      );
+    });
+  }
+
   /// The Dock's reopen with no window visible: the minimised project window comes back, else Projects. Before the
   /// first window is up it does nothing — the boot is about to show one.
   Future<void> reopen() async {
@@ -179,6 +209,7 @@ class AppWindowCoordinator implements AppWindowActions {
 
   void _sessionChanged() {
     final bool open = _projectOpen;
+    settingsState.projectOpen = open;
     if (open == _wasOpen) {
       return;
     }

@@ -22,6 +22,43 @@ class _ConfigWorker implements ZanshinWorker {
     return ConfigGetResult(value: values[name] ?? '');
   }
 
+  /// When set, `configSet` and `configUnset` throw it.
+  ZanshinFfiException? failure;
+
+  @override
+  Future<WarnedList<ConfigEntry>> configList({
+    String? workspaceRoot,
+    String? name,
+    ConfigScope? scope,
+    bool includeDefaults = false,
+    bool includeOverridden = false,
+  }) async {
+    calls.add('list $name $workspaceRoot overridden=$includeOverridden');
+    return WarnedList<ConfigEntry>(const <ConfigEntry>[], const <ZanshinWarning>[]);
+  }
+
+  @override
+  Future<WarnedList<String>> configPath(ConfigScope scope, {String? workspaceRoot}) async =>
+      WarnedList<String>(<String>['/first/${scope.name}.toml', '/second.toml'], const <ZanshinWarning>[]);
+
+  @override
+  Future<ConfigSetResult> configSet(ConfigTarget target, String name, String value, {String? workspaceRoot}) async {
+    calls.add('set ${(target as ConfigScopeTarget).scope.name} $name $value');
+    if (failure case final ZanshinFfiException error) {
+      throw error;
+    }
+    return const ConfigSetResult(path: '/p', workingCopyAuthor: null, precondition: null);
+  }
+
+  @override
+  Future<ConfigUnsetResult> configUnset(ConfigTarget target, String name, {String? workspaceRoot}) async {
+    calls.add('unset ${(target as ConfigScopeTarget).scope.name} $name');
+    if (failure case final ZanshinFfiException error) {
+      throw error;
+    }
+    return const ConfigUnsetResult(path: '/p');
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -46,6 +83,30 @@ void main() {
     await environment.identity();
     expect(worker.calls.sublist(2), <String>['user.name null', 'user.email null']);
   });
+
+  test(
+    'Story 11.7: config writes fire configWrites once on success, never on failure; list and path pass through',
+    () async {
+      final worker = _ConfigWorker(const <String, String>{});
+      final environment = DesktopProjectsEnvironment(Future<ZanshinWorker>.value(worker), diagnostics: _diagnostics);
+      var fired = 0;
+      environment.configWrites.addListener(() => fired++);
+
+      await environment.configSet(ConfigScope.user, 'user.name', 'Ralph');
+      expect(fired, 1);
+      await environment.configUnset(ConfigScope.repo, 'user.email', workspaceRoot: '/r/a');
+      expect(fired, 2);
+
+      worker.failure = const ZanshinFfiException('jj.config_error', 'nope');
+      await expectLater(environment.configSet(ConfigScope.user, 'user.name', 'x'), throwsA(isA<ZanshinFfiException>()));
+      await expectLater(environment.configUnset(ConfigScope.user, 'user.name'), throwsA(isA<ZanshinFfiException>()));
+      expect(fired, 2);
+
+      await environment.configList(name: 'git.fetch', workspaceRoot: '/r/a');
+      expect(worker.calls, contains('list git.fetch /r/a overridden=true'));
+      expect(await environment.configPath(ConfigScope.repo, workspaceRoot: '/r/a'), '/first/repo.toml');
+    },
+  );
 
   test("the version line is the splash's: ‹version› · Build ‹build›", () async {
     PackageInfo.setMockInitialValues(

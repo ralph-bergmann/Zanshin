@@ -20,6 +20,16 @@ _AppearanceSettings _$AppearanceSettingsFromJson(Map<String, dynamic> json) =>
               $enumDecodeNullable(_$AccentSourceEnumMap, v) ??
               AccentSource.followMacOS,
         ),
+        density: $checkedConvert(
+          'density',
+          (v) =>
+              $enumDecodeNullable(
+                _$DensitySettingEnumMap,
+                v,
+                unknownValue: DensitySetting.compact,
+              ) ??
+              DensitySetting.compact,
+        ),
       );
       return val;
     });
@@ -28,6 +38,7 @@ Map<String, dynamic> _$AppearanceSettingsToJson(_AppearanceSettings instance) =>
     <String, dynamic>{
       'themeMode': _$ThemeModeEnumMap[instance.themeMode]!,
       'accentSource': _$AccentSourceEnumMap[instance.accentSource]!,
+      'density': _$DensitySettingEnumMap[instance.density]!,
     };
 
 const _$ThemeModeEnumMap = {
@@ -39,4 +50,10 @@ const _$ThemeModeEnumMap = {
 const _$AccentSourceEnumMap = {
   AccentSource.followMacOS: 'followMacOS',
   AccentSource.zanshin: 'zanshin',
+};
+
+const _$DensitySettingEnumMap = {
+  DensitySetting.compact: 'compact',
+  DensitySetting.balanced: 'balanced',
+  DensitySetting.comfy: 'comfy',
 };

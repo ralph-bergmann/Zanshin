@@ -73,6 +73,12 @@ abstract class ProjectEntry with _$ProjectEntry {
 
     /// The inspector's Viewed marks, each `<change id>:<fingerprint>:<path>`, oldest first (Story 10.24).
     @Default(<String>[]) List<String> viewedFiles,
+
+    /// Settings › Project's "Check for remote changes" (Story 11.7; 11.8's poll reads it); every 15 minutes by
+    /// default, and for a value this version does not know.
+    @JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes)
+    @Default(RemotePollSetting.fifteenMinutes)
+    RemotePollSetting remotePoll,
   }) = _ProjectEntry;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.
@@ -99,6 +105,18 @@ abstract class ProjectGroup with _$ProjectGroup {
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.
   factory ProjectGroup.fromJson(Map<String, Object?> json) => _$ProjectGroupFromJson(json);
+}
+
+/// How often the open project checks its remotes for changes (Story 11.7).
+enum RemotePollSetting {
+  /// Never.
+  off,
+
+  /// Every 5 minutes.
+  fiveMinutes,
+
+  /// Every 15 minutes (the default).
+  fifteenMinutes,
 }
 
 /// A project's state as its status dot shows it (DS components/content/ProjectRow.jsx:5-15; decision 16.28).

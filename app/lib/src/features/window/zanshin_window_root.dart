@@ -3,6 +3,7 @@
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:zanshin_settings/zanshin_settings.dart' show DensitySetting;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -24,6 +25,11 @@ part 'zanshin_window_root.factory.dart';
 ///
 /// Every window gets its own view model from the factory, over the same settings store and shell reports, so a
 /// theme switch from any window restyles every window. [child] stays window-agnostic.
+///
+/// A window sized to its content (Settings, Story 11.7) passes [sizeToContent]: a navigator's overlay takes the largest
+/// size its constraints allow, so the child then sits in an `Overlay.wrap(alwaysSizeToContent: true)` under the
+/// builder, with no `home` and no navigator, as the catalogue's `catalogueAppBuilder` does. The Settings density
+/// (`appearance.density`) scales the window's text linearly: 1, 13 ⁄ 12.5, 13.5 ⁄ 12.5 (Claude's proposal).
 class ZanshinWindowRoot extends StatelessWidget {
   /// The root of the window [windowKey] showing [child].
   @assistedInject
@@ -32,6 +38,7 @@ class ZanshinWindowRoot extends StatelessWidget {
     required this._tracker,
     @assisted required this.windowKey,
     @assisted required this.child,
+    @assisted this.sizeToContent,
     @assisted super.key,
   });
 
@@ -44,6 +51,16 @@ class ZanshinWindowRoot extends StatelessWidget {
   /// The window's content.
   final Widget child;
 
+  /// Whether the window takes its content's size (null: no).
+  final bool? sizeToContent;
+
+  /// The text scale of [density].
+  static double textScaleOf(DensitySetting density) => switch (density) {
+    DensitySetting.compact => 1,
+    DensitySetting.balanced => 13 / 12.5,
+    DensitySetting.comfy => 13.5 / 12.5,
+  };
+
   @override
   Widget build(BuildContext context) => _viewModelFactory(
     init: (vm) => vm.init(),
@@ -52,6 +69,8 @@ class ZanshinWindowRoot extends StatelessWidget {
       // frame before the shell answered follows the system's brightness too, and takes full screen and the
       // traffic-light block from the window's chrome report and the key status from the tracker.
       final ZsAppearance appearance = vm.appearance;
+      final bool contentSized = sizeToContent ?? false;
+      final double textScale = textScaleOf(vm.density);
       return _WindowMaterialApp(
         themeMode: vm.effectiveMode,
         lightTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.paper)),
@@ -59,19 +78,25 @@ class ZanshinWindowRoot extends StatelessWidget {
         builder: (context, navigator) => WindowChromeBuilder(
           builder: (context, chrome) => ListenableBuilder(
             listenable: _tracker,
-            builder: (context, _) => ZsRoot(
-              appearance: appearance.copyWith(
-                theme: ZsTheme.of(Theme.of(context).brightness),
-                fullScreen: chrome?.fullScreen,
-                trafficLights: chrome?.trafficLights,
-                inactive: !_tracker.isActive(View.of(context).viewId),
+            builder: (context, _) => MediaQuery(
+              // On top of the platform's own scale, not instead of it.
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(MediaQuery.textScalerOf(context).scale(1) * textScale),
               ),
-              shellTheme: vm.shellTheme,
-              child: _keyed(navigator),
+              child: ZsRoot(
+                appearance: appearance.copyWith(
+                  theme: ZsTheme.of(Theme.of(context).brightness),
+                  fullScreen: chrome?.fullScreen,
+                  trafficLights: chrome?.trafficLights,
+                  inactive: !_tracker.isActive(View.of(context).viewId),
+                ),
+                shellTheme: vm.shellTheme,
+                child: _keyed(contentSized ? Overlay.wrap(alwaysSizeToContent: true, child: child) : navigator),
+              ),
             ),
           ),
         ),
-        home: child,
+        home: contentSized ? null : child,
       );
     },
   );
@@ -80,7 +105,7 @@ class ZanshinWindowRoot extends StatelessWidget {
       KeyedSubtree(key: ValueKey<String>('window:$windowKey'), child: navigator ?? const SizedBox.shrink());
 }
 
-/// A window's `MaterialApp` over [home].
+/// A window's `MaterialApp` over [home], or without a navigator when [home] is null.
 class _WindowMaterialApp extends StatelessWidget {
   const _WindowMaterialApp({
     required this.lightTheme,
@@ -93,7 +118,7 @@ class _WindowMaterialApp extends StatelessWidget {
   final ThemeData lightTheme;
   final ThemeData darkTheme;
   final ThemeMode themeMode;
-  final Widget home;
+  final Widget? home;
 
   /// Wraps the navigator; the window's root scope.
   final TransitionBuilder builder;

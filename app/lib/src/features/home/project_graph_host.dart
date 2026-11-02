@@ -14,10 +14,12 @@ import '../graph/graph_stack_store.dart';
 import '../graph/graph_toasts.dart';
 import '../graph/graph_view.dart';
 import '../graph/graph_view_model.dart';
+import '../graph/immutable_reasons.dart';
 import '../graph/inspector_viewed_store.dart';
 import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/projects_environment.dart';
+import '../settings/immutable_heads.dart';
 import '../shell/app_menu.dart';
 import '../shell/shell_toast.dart';
 
@@ -142,6 +144,14 @@ class _Graph {
       settings: host.settings,
     );
     bookmarks = () => repo.handle.bookmarks(allRemotes: true);
+    reasons = ImmutableReasons(
+      readAlias: () async => tomlStringValue(
+        effectiveConfigEntry(await host.environment.configList(name: immutableHeadsKey, workspaceRoot: root))?.value,
+      ),
+      counts: (operationId, expressions, {required cap}) =>
+          repo.handle.revsetCounts(operationId, expressions, cap: cap),
+    );
+    configWrites = host.environment.configWrites..addListener(reasons.invalidate);
     toasts = GraphToasts(model, host.toasts);
     binding = GraphMenuBinding(
       model: model,
@@ -159,10 +169,17 @@ class _Graph {
 
   /// The bookmark popover's `jj bookmark list --all-remotes`.
   late final Future<List<Bookmark>> Function() bookmarks;
+
+  /// Why a change is immutable, for the peek and the inspector (Story 11.7).
+  late final ImmutableReasons reasons;
+
+  /// A config write (Settings) changes the alias without an operation: the reasons are read again.
+  late final Listenable configWrites;
   late final GraphToasts toasts;
   late final GraphMenuBinding binding;
 
   void dispose() {
+    configWrites.removeListener(reasons.invalidate);
     toasts.dispose();
     inspector.dispose();
     search.dispose();
@@ -243,39 +260,44 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
     if (graph == null) {
       return ListenableBuilder(
         listenable: Listenable.merge(const <Listenable>[]),
-        builder: (context, _) =>
-            widget.builder(context, const ProjectGraphSlots._(reload: GraphReloadIsland(onPressed: null))),
+        builder: (context, _) => ImmutableReasonScope(
+          reasons: null,
+          child: widget.builder(context, const ProjectGraphSlots._(reload: GraphReloadIsland(onPressed: null))),
+        ),
       );
     }
     final GraphViewModel model = graph.model;
     return ListenableBuilder(
       listenable: Listenable.merge(<Listenable>[model, graph.preferences]),
-      builder: (context, _) => widget.builder(
-        context,
-        ProjectGraphSlots._(
-          model: model,
-          search: graph.search,
-          // Keyed by the graph set, so a project switch mounts fresh states (no old search text, selection or scroll).
-          graph: GraphView(
-            key: ObjectKey(graph),
+      builder: (context, _) => ImmutableReasonScope(
+        reasons: graph.reasons,
+        child: widget.builder(
+          context,
+          ProjectGraphSlots._(
             model: model,
-            options: graph.preferences.options,
-            inspectorModel: graph.inspector,
-            bookmarks: graph.bookmarks,
             search: graph.search,
+            // Keyed by the graph set, so a project switch mounts fresh states (no old search text, selection or scroll).
+            graph: GraphView(
+              key: ObjectKey(graph),
+              model: model,
+              options: graph.preferences.options,
+              inspectorModel: graph.inspector,
+              bookmarks: graph.bookmarks,
+              search: graph.search,
+            ),
+            view: GraphViewControls(
+              key: ObjectKey(graph),
+              model: model,
+              preferences: graph.preferences,
+              search: graph.search,
+            ),
+            reload: GraphReloadIsland(onPressed: _reload),
+            newChange: NewChangeButton(model: model),
+            inspector: GraphView.inspector(graph.inspector),
+            minimap: graph.preferences.showMinimap ? GraphView.minimap(model, key: ObjectKey(graph)) : null,
+            atPill: GraphView.atPill(model),
+            staleNotice: GraphView.staleNotice(model),
           ),
-          view: GraphViewControls(
-            key: ObjectKey(graph),
-            model: model,
-            preferences: graph.preferences,
-            search: graph.search,
-          ),
-          reload: GraphReloadIsland(onPressed: _reload),
-          newChange: NewChangeButton(model: model),
-          inspector: GraphView.inspector(graph.inspector),
-          minimap: graph.preferences.showMinimap ? GraphView.minimap(model, key: ObjectKey(graph)) : null,
-          atPill: GraphView.atPill(model),
-          staleNotice: GraphView.staleNotice(model),
         ),
       ),
     );

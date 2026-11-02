@@ -21,10 +21,12 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
+import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../helpers/fake_window_actions.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
 import '../../helpers/shell_host.dart';
@@ -84,16 +86,18 @@ class _Rig {
   /// The Esc presses that reached the window root.
   var escapes = 0;
 
-  Widget host({bool onSettings = false}) => shellHost(
-    Focus(
-      onKeyEvent: (node, event) {
-        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
-          escapes++;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: _shell(onSettings: onSettings),
-    ),
+  Widget host({bool onSettings = false, AppWindowActions? actions}) => shellHost(
+    actions == null ? _focus(onSettings) : AppWindowActionsScope(actions: actions, child: _focus(onSettings)),
+  );
+
+  Widget _focus(bool onSettings) => Focus(
+    onKeyEvent: (node, event) {
+      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+        escapes++;
+      }
+      return KeyEventResult.ignored;
+    },
+    child: _shell(onSettings: onSettings),
   );
 
   Widget _shell({required bool onSettings}) => FloatingShell(
@@ -149,10 +153,11 @@ Future<_Rig> _start(
   bool withActions = true,
   GraphLayout Function(GraphRequest)? respond,
   bool onSettings = false,
+  AppWindowActions? actions,
 }) async {
   useShellWindow(tester, window);
   final rig = _Rig(await _store(stored), withActions: withActions, respond: respond);
-  await tester.pumpWidget(rig.host(onSettings: onSettings));
+  await tester.pumpWidget(rig.host(onSettings: onSettings, actions: actions));
   await tester.pump();
   return rig;
 }
@@ -675,6 +680,17 @@ void main() {
       await _settleClose(tester);
       expect(rig.settings, 1);
       expect(_popover(), findsNothing);
+    });
+
+    _testWidgets('Story 11.7: without onSettings, under the window actions it opens Settings on General', (
+      tester,
+    ) async {
+      final actions = FakeWindowActions();
+      await _start(tester, actions: actions);
+      await _openPopover(tester);
+      await tester.tap(find.text('Appearance, diffs and more'));
+      await _settleClose(tester);
+      expect(actions.settings, <SettingsTarget?>[SettingsTarget.general]);
     });
   });
 

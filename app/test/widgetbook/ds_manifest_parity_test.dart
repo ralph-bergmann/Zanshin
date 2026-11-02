@@ -64,6 +64,10 @@ const _covered = <String, String>{
   'OptionLink': 'controls/popover/state-matrix',
   'ResizeEdge': 'controls/resize-edge/state-matrix',
   'Window': 'windows/floating-shell/floating-shell',
+  'ImmutablePage': 'windows/settings-window/settings-window',
+  'SettingsGroup': 'windows/settings-window/settings-window',
+  'SettingsPage': 'windows/settings-window/settings-window',
+  'SettingsRow': 'windows/settings-window/settings-window',
 };
 
 /// DS components an open story builds, by its story id.
@@ -89,10 +93,6 @@ const _openStories = <String, String>{
   'SearchTag': '10.21',
   'SearchAvatar': '10.21',
   'RevsetDialog': '10.22',
-  'ImmutablePage': '11.7',
-  'SettingsGroup': '11.7',
-  'SettingsPage': '11.7',
-  'SettingsRow': '11.7',
   'CalloutText': '10.14',
 };
 

@@ -9,6 +9,7 @@ import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../window/app_window_actions.dart';
 import 'graph_card.dart';
 import 'graph_content.dart';
 import 'graph_inspector.dart';
@@ -97,8 +98,9 @@ bool _childImmutable(GraphLayout layout, int node) {
 /// The card menu's rows for [node] (Story 10.15), a pure function of the layout: on a mutable change New change on
 /// top, Insert after, Insert before · Edit, Describe…, Squash into parent, Copy › · Revert, Abandon; on an immutable
 /// one New change on top, Insert after (not when a child is immutable), Revert · the "Immutable" note, Immutable
-/// commits…; on the root New change on top. Each row's command is its action's with the short id; [run] gets the
-/// action with the node key. While [blocked] names a reason every row is disabled with it as its tooltip.
+/// commits… (Settings' page, [onImmutableCommits]; disabled without it); on the root New change on top. Each row's
+/// command is its action's with the short id; [run] gets the action with the node key. While [blocked] names a reason
+/// every jj row is disabled with it as its tooltip.
 List<ZsMenuEntry> graphCardMenuEntries(
   AppLocalizations strings,
   GraphLayout layout,
@@ -108,6 +110,7 @@ List<ZsMenuEntry> graphCardMenuEntries(
   GraphContent? content,
   ValueChanged<String>? onDescribe,
   ValueChanged<String>? onSquash,
+  VoidCallback? onImmutableCommits,
 }) {
   final data = GraphCardData.of(layout, node, content: content);
   final String key = data.key;
@@ -174,9 +177,9 @@ List<ZsMenuEntry> graphCardMenuEntries(
       ZsMenuItem(
         label: strings.cardMenuImmutableCommits,
         icon: ZI.settings,
-        enabled: false,
-        tooltip: blocked ?? strings.cardMenuSettingsLater,
+        enabled: onImmutableCommits != null,
         identifier: 'card-menu-immutable-commits',
+        onSelected: onImmutableCommits,
       ),
     ];
   }
@@ -631,6 +634,7 @@ class GraphCardMenuHost extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppLocalizations strings = context.l10n;
+    final AppWindowActions? windows = AppWindowActionsScope.maybeOf(context);
     return _MenuHost(
       open: cards.menuOpen,
       anchor: () => cards.menuAnchor,
@@ -657,6 +661,9 @@ class GraphCardMenuHost extends StatelessWidget {
         content: model.content,
         onDescribe: inspector?.describe,
         onSquash: inspector?.squash,
+        onImmutableCommits: windows == null
+            ? null
+            : () => unawaited(windows.openSettings(target: SettingsTarget.immutableCommits)),
       ),
     );
   }

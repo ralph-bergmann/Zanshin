@@ -18,16 +18,32 @@ enum AccentSource {
   zanshin,
 }
 
+/// How large the app's text is: Settings › General's "Density: Compact · Balanced · Comfy" (Story 11.7).
+enum DensitySetting {
+  /// The DS sizes as they are (the default).
+  compact,
+
+  /// One step larger.
+  balanced,
+
+  /// Two steps larger.
+  comfy,
+}
+
 /// Look-and-feel settings.
 @freezed
 abstract class AppearanceSettings with _$AppearanceSettings {
-  /// Creates appearance settings; an omitted [themeMode] follows the OS, an omitted [accentSource] the macOS accent.
+  /// Creates appearance settings; an omitted [themeMode] follows the OS, an omitted [accentSource] the macOS accent,
+  /// an omitted [density] is compact.
   const factory AppearanceSettings({
     /// The user's day/night choice; `system` follows the OS.
     @Default(ThemeMode.system) ThemeMode themeMode,
 
     /// Where the accent colour comes from; [AccentSource.followMacOS] by default.
     @Default(AccentSource.followMacOS) AccentSource accentSource,
+
+    /// The text density; [DensitySetting.compact] by default, and for a value this version does not know.
+    @JsonKey(unknownEnumValue: DensitySetting.compact) @Default(DensitySetting.compact) DensitySetting density,
   }) = _AppearanceSettings;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

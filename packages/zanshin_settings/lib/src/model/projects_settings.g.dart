@@ -83,6 +83,16 @@ _ProjectEntry _$ProjectEntryFromJson(Map<String, dynamic> json) =>
               (v as List<dynamic>?)?.map((e) => e as String).toList() ??
               const <String>[],
         ),
+        remotePoll: $checkedConvert(
+          'remotePoll',
+          (v) =>
+              $enumDecodeNullable(
+                _$RemotePollSettingEnumMap,
+                v,
+                unknownValue: RemotePollSetting.fifteenMinutes,
+              ) ??
+              RemotePollSetting.fifteenMinutes,
+        ),
       );
       return val;
     });
@@ -101,6 +111,7 @@ Map<String, dynamic> _$ProjectEntryToJson(_ProjectEntry instance) =>
       'graphView': instance.graphView,
       'recentSearches': instance.recentSearches,
       'viewedFiles': instance.viewedFiles,
+      'remotePoll': _$RemotePollSettingEnumMap[instance.remotePoll]!,
     };
 
 const _$ProjectStatusEnumMap = {
@@ -112,6 +123,12 @@ const _$ProjectStatusEnumMap = {
   ProjectStatus.ahead: 'ahead',
   ProjectStatus.behind: 'behind',
   ProjectStatus.diverged: 'diverged',
+};
+
+const _$RemotePollSettingEnumMap = {
+  RemotePollSetting.off: 'off',
+  RemotePollSetting.fiveMinutes: 'fiveMinutes',
+  RemotePollSetting.fifteenMinutes: 'fifteenMinutes',
 };
 
 _ProjectGroup _$ProjectGroupFromJson(Map<String, dynamic> json) =>

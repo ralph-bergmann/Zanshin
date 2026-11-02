@@ -19,11 +19,13 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
+import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_bookmark_list.dart';
+import '../../helpers/fake_window_actions.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
 import '../../helpers/shell_host.dart';
@@ -97,6 +99,7 @@ List<ZsMenuEntry> _menu(
   ValueChanged<GraphAction>? run,
   ValueChanged<String>? onDescribe,
   ValueChanged<String>? onSquash,
+  VoidCallback? onImmutableCommits,
 }) => graphCardMenuEntries(
   _en,
   _l,
@@ -105,6 +108,7 @@ List<ZsMenuEntry> _menu(
   run: run ?? (_) {},
   onDescribe: onDescribe ?? (_) {},
   onSquash: onSquash,
+  onImmutableCommits: onImmutableCommits,
 );
 
 List<ZsMenuItem> _items(List<ZsMenuEntry> entries) => entries.whereType<ZsMenuItem>().toList();
@@ -294,9 +298,13 @@ void main() {
       ]);
       expect(_row(entries, 'Revert').enabled, isTrue, reason: 'an immutable ancestor of @');
       expect((entries[4] as ZsMenuNote).leading, isNotNull);
-      expect(_row(entries, 'Immutable commits…').enabled, isFalse);
-      expect(_row(entries, 'Immutable commits…').tooltip, 'Comes with the Settings window');
+      expect(_row(entries, 'Immutable commits…').enabled, isFalse, reason: 'no window actions');
       expect(_row(entries, 'Immutable commits…').icon, ZI.settings);
+      var opened = 0;
+      final ZsMenuItem open = _row(_menu(_imm, onImmutableCommits: () => opened++), 'Immutable commits…');
+      expect(open.enabled, isTrue);
+      open.onSelected!();
+      expect(opened, 1, reason: "Story 11.7: Settings' Immutable commits page");
       expect(_shape(_menu(_immParent)), <String>[
         'New change on top',
         'Revert',
@@ -318,6 +326,10 @@ void main() {
           if (item.label == 'Copy') {
             expect(item.enabled, isTrue, reason: 'read-only');
             expect(item.submenu!.every((e) => (e as ZsMenuItem).enabled), isTrue);
+            continue;
+          }
+          if (item.label == 'Immutable commits…') {
+            // Opens Settings, no jj action; enabled whenever the window actions are there.
             continue;
           }
           expect(item.enabled, isFalse, reason: '$key ${item.label}');
@@ -445,7 +457,11 @@ void main() {
     late Widget view;
     const ZsMotion m = ZsMotion.full;
 
-    Future<void> pump(WidgetTester tester, {Future<List<Bookmark>> Function()? bookmarks}) async {
+    Future<void> pump(
+      WidgetTester tester, {
+      Future<List<Bookmark>> Function()? bookmarks,
+      AppWindowActions? windowActions,
+    }) async {
       source = ScriptedGraphSource(respond: (_) => _layout());
       actions = _Actions();
       model = GraphViewModel()..init(source, actions: actions, clock: () => DateTime.utc(2026, 10, 30, 12));
@@ -463,7 +479,9 @@ void main() {
         ..devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       view = GraphView(model: model, inspectorModel: inspector, bookmarks: bookmarks);
-      await tester.pumpWidget(shellHost(view));
+      await tester.pumpWidget(
+        shellHost(windowActions == null ? view : AppWindowActionsScope(actions: windowActions, child: view)),
+      );
       await tester.pump();
       await tester.pump();
     }
@@ -529,6 +547,19 @@ void main() {
       await settle(tester);
       expect(find.text('Insert before'), findsNothing);
       await tester.pump(graphDoubleClickWindow);
+      await finish(tester);
+    });
+
+    testWidgets("Story 11.7: an immutable card's Immutable commits… opens Settings on that page", (tester) async {
+      final windows = FakeWindowActions();
+      await pump(tester, windowActions: windows);
+      cards(tester).openMenu(_imm, Rect.fromCenter(center: tester.getCenter(card(_imm)), width: 18, height: 18));
+      await settle(tester);
+      await tester.tap(find.text('Immutable commits…'));
+      await tester.pump(m.durBlink);
+      await tester.pump(m.durBlink);
+      await settle(tester);
+      expect(windows.settings, <SettingsTarget?>[SettingsTarget.immutableCommits]);
       await finish(tester);
     });
 

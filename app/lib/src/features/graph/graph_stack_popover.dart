@@ -206,6 +206,7 @@ class _GraphStackPopoverState extends State<GraphStackPopover> with SingleTicker
                       key: ValueKey<String>('graph-stack-callout-${layout.keyOf(memberAt(callout))}'),
                       data: GraphCardData.of(layout, memberAt(callout), content: widget.content),
                       nowMs: cards.now.value,
+                      operationId: layout.operationId,
                     ),
                   ),
                 ),

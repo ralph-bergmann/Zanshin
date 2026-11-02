@@ -9,37 +9,37 @@
 // ignore_for_file: type=lint, type=warning
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 
-import 'dart:async' as _i14;
+import 'dart:async' as _i15;
 import 'dart:ui' as _i25;
 
 import 'package:flutter/src/foundation/basic_types.dart' as _i24;
-import 'package:flutter/src/foundation/key.dart' as _i20;
+import 'package:flutter/src/foundation/key.dart' as _i21;
 import 'package:flutter/src/widgets/framework.dart' as _i28;
-import 'package:inject_annotation/inject_annotation.dart' as _i16;
+import 'package:inject_annotation/inject_annotation.dart' as _i17;
 import 'package:inject_annotation/src/api/provision_listener.dart' as _i26;
 import 'package:inject_flutter/src/view_model_factory.dart' as _i27;
 import 'package:zanshin_core/src/ffi/diagnostics.dart' as _i2;
-import 'package:zanshin_core/src/worker/isolate.dart' as _i15;
+import 'package:zanshin_core/src/worker/isolate.dart' as _i16;
 import 'package:zanshin_core/src/worker/worker_module.dart' as _i3;
 import 'package:zanshin_settings/src/settings_module.dart' as _i5;
 import 'package:zanshin_settings/src/settings_store.dart' as _i8;
-import 'package:zanshin_ui/src/icons/icon_registry.dart' as _i21;
+import 'package:zanshin_ui/src/icons/icon_registry.dart' as _i22;
 
 import 'main.dart' as _i1;
 import 'src/app/worker_lifecycle_module.dart' as _i4;
-import 'src/features/app/zanshin_app.dart' as _i13;
+import 'src/features/app/zanshin_app.dart' as _i14;
 import 'src/features/app/zanshin_app_view_model.dart' as _i29;
 import 'src/features/bootstrap/icon_module.dart' as _i6;
-import 'src/features/home/home_page.dart' as _i19;
-import 'src/features/projects/project_registry.dart' as _i22;
+import 'src/features/home/home_page.dart' as _i20;
+import 'src/features/projects/project_registry.dart' as _i23;
 import 'src/features/projects/project_session.dart' as _i9;
-import 'src/features/projects/projects_environment.dart' as _i23;
+import 'src/features/projects/projects_environment.dart' as _i11;
 import 'src/features/projects/projects_module.dart' as _i7;
-import 'src/features/projects/projects_window.dart' as _i11;
+import 'src/features/projects/projects_window.dart' as _i12;
 import 'src/features/shell/app_menu.dart' as _i10;
-import 'src/features/shell/floating_shell_view_model.dart' as _i18;
-import 'src/features/window/active_window_tracker.dart' as _i17;
-import 'src/features/window/zanshin_window_root.dart' as _i12;
+import 'src/features/shell/floating_shell_view_model.dart' as _i19;
+import 'src/features/window/active_window_tracker.dart' as _i18;
+import 'src/features/window/zanshin_window_root.dart' as _i13;
 
 class MainComponent$Component implements _i1.MainComponent {
   factory MainComponent$Component.create({
@@ -90,21 +90,21 @@ class MainComponent$Component implements _i1.MainComponent {
         _ViewModelFactoryOfFloatingShellViewModel$Provider(
           floatingShellViewModel$Provider,
         );
-    final projectsEnvironment$Provider = _ProjectsEnvironment$Provider(
+    _projectsEnvironment$Provider = _ProjectsEnvironment$Provider(
       getDiagnostics$Provider,
       projectsModule,
     );
     final homePageFactory$Provider = _HomePageFactory$Provider(
       viewModelFactoryOfFloatingShellViewModel$Provider,
       _projectSession$Provider,
-      projectsEnvironment$Provider,
+      _projectsEnvironment$Provider,
       _appMenuModel$Provider,
     );
     final iconRegistry$Provider = _IconRegistry$Provider(iconModule);
     _projectsWindowFactory$Provider = _ProjectsWindowFactory$Provider(
       _projectSession$Provider,
       projectRegistry$Provider,
-      projectsEnvironment$Provider,
+      _projectsEnvironment$Provider,
     );
     final provisionListenerOfZanshinWorker$Provider =
         _ProvisionListenerOfZanshinWorker$Provider(workerLifecycleModule);
@@ -135,6 +135,8 @@ class MainComponent$Component implements _i1.MainComponent {
 
   late final _AppMenuModel$Provider _appMenuModel$Provider;
 
+  late final _ProjectsEnvironment$Provider _projectsEnvironment$Provider;
+
   late final _ProjectsWindowFactory$Provider _projectsWindowFactory$Provider;
 
   late final _ZanshinWindowRootFactory$Provider
@@ -154,34 +156,38 @@ class MainComponent$Component implements _i1.MainComponent {
   _i10.AppMenuModel get appMenu => _appMenuModel$Provider.get();
 
   @override
-  _i11.ProjectsWindowFactory get projectsWindowFactory =>
+  _i11.ProjectsEnvironment get projectsEnvironment =>
+      _projectsEnvironment$Provider.get();
+
+  @override
+  _i12.ProjectsWindowFactory get projectsWindowFactory =>
       _projectsWindowFactory$Provider.get();
 
   @override
-  _i12.ZanshinWindowRootFactory get zanshinWindowRootFactory =>
+  _i13.ZanshinWindowRootFactory get zanshinWindowRootFactory =>
       _zanshinWindowRootFactory$Provider.get();
 
   @override
-  _i13.ZanshinAppFactory get zanshinAppFactory =>
+  _i14.ZanshinAppFactory get zanshinAppFactory =>
       _zanshinAppFactory$Provider.get();
 
   @override
-  _i14.Future<_i15.ZanshinWorker> get worker => _zanshinWorker$Provider.get();
+  _i15.Future<_i16.ZanshinWorker> get worker => _zanshinWorker$Provider.get();
 }
 
 class _ActiveWindowTracker$Provider
-    implements _i16.Provider<_i17.ActiveWindowTracker> {
+    implements _i17.Provider<_i18.ActiveWindowTracker> {
   _ActiveWindowTracker$Provider();
 
-  late final _i17.ActiveWindowTracker _singleton = _create();
+  late final _i18.ActiveWindowTracker _singleton = _create();
 
-  _i17.ActiveWindowTracker _create() => _i17.ActiveWindowTracker();
+  _i18.ActiveWindowTracker _create() => _i18.ActiveWindowTracker();
 
   @override
-  _i17.ActiveWindowTracker get() => _singleton;
+  _i18.ActiveWindowTracker get() => _singleton;
 }
 
-class _AppMenuModel$Provider implements _i16.Provider<_i10.AppMenuModel> {
+class _AppMenuModel$Provider implements _i17.Provider<_i10.AppMenuModel> {
   _AppMenuModel$Provider(
     this._activeWindowTracker$Provider,
     this._projectSession$Provider,
@@ -203,17 +209,17 @@ class _AppMenuModel$Provider implements _i16.Provider<_i10.AppMenuModel> {
 }
 
 class _FloatingShellViewModel$Provider
-    implements _i16.Provider<_i18.FloatingShellViewModel> {
+    implements _i17.Provider<_i19.FloatingShellViewModel> {
   const _FloatingShellViewModel$Provider(this._settingsStore$Provider);
 
   final _SettingsStore$Provider _settingsStore$Provider;
 
   @override
-  _i18.FloatingShellViewModel get() =>
-      _i18.FloatingShellViewModel(_settingsStore$Provider.get());
+  _i19.FloatingShellViewModel get() =>
+      _i19.FloatingShellViewModel(_settingsStore$Provider.get());
 }
 
-class _GetDiagnostics$Provider implements _i16.Provider<_i2.GetDiagnostics> {
+class _GetDiagnostics$Provider implements _i17.Provider<_i2.GetDiagnostics> {
   _GetDiagnostics$Provider(this._module);
 
   final _i2.ZanshinDiagnosticsModule _module;
@@ -226,7 +232,7 @@ class _GetDiagnostics$Provider implements _i16.Provider<_i2.GetDiagnostics> {
   _i2.GetDiagnostics get() => _singleton;
 }
 
-class _HomePageFactory$Factory implements _i19.HomePageFactory {
+class _HomePageFactory$Factory implements _i20.HomePageFactory {
   const _HomePageFactory$Factory(
     this._viewModelFactoryOfFloatingShellViewModel$Provider,
     this._projectSession$Provider,
@@ -244,7 +250,7 @@ class _HomePageFactory$Factory implements _i19.HomePageFactory {
   final _AppMenuModel$Provider _appMenuModel$Provider;
 
   @override
-  _i19.HomePage create({_i20.Key? key}) => _i19.HomePage(
+  _i20.HomePage create({_i21.Key? key}) => _i20.HomePage(
     viewModelFactory: _viewModelFactoryOfFloatingShellViewModel$Provider.get(),
     projects: _projectSession$Provider.get(),
     environment: _projectsEnvironment$Provider.get(),
@@ -253,7 +259,7 @@ class _HomePageFactory$Factory implements _i19.HomePageFactory {
   );
 }
 
-class _HomePageFactory$Provider implements _i16.Provider<_i19.HomePageFactory> {
+class _HomePageFactory$Provider implements _i17.Provider<_i20.HomePageFactory> {
   _HomePageFactory$Provider(
     this._viewModelFactoryOfFloatingShellViewModel$Provider,
     this._projectSession$Provider,
@@ -270,7 +276,7 @@ class _HomePageFactory$Provider implements _i16.Provider<_i19.HomePageFactory> {
 
   final _AppMenuModel$Provider _appMenuModel$Provider;
 
-  late final _i19.HomePageFactory _factory = _HomePageFactory$Factory(
+  late final _i20.HomePageFactory _factory = _HomePageFactory$Factory(
     _viewModelFactoryOfFloatingShellViewModel$Provider,
     _projectSession$Provider,
     _projectsEnvironment$Provider,
@@ -278,39 +284,39 @@ class _HomePageFactory$Provider implements _i16.Provider<_i19.HomePageFactory> {
   );
 
   @override
-  _i19.HomePageFactory get() => _factory;
+  _i20.HomePageFactory get() => _factory;
 }
 
-class _IconRegistry$Provider implements _i16.Provider<_i21.IconRegistry> {
+class _IconRegistry$Provider implements _i17.Provider<_i22.IconRegistry> {
   _IconRegistry$Provider(this._module);
 
   final _i6.IconModule _module;
 
-  late final _i21.IconRegistry _singleton = _create();
+  late final _i22.IconRegistry _singleton = _create();
 
-  _i21.IconRegistry _create() => _module.iconRegistry();
+  _i22.IconRegistry _create() => _module.iconRegistry();
 
   @override
-  _i21.IconRegistry get() => _singleton;
+  _i22.IconRegistry get() => _singleton;
 }
 
-class _ProjectRegistry$Provider implements _i16.Provider<_i22.ProjectRegistry> {
+class _ProjectRegistry$Provider implements _i17.Provider<_i23.ProjectRegistry> {
   _ProjectRegistry$Provider(this._settingsStore$Provider, this._module);
 
   final _SettingsStore$Provider _settingsStore$Provider;
 
   final _i7.ProjectsModule _module;
 
-  late final _i22.ProjectRegistry _singleton = _create();
+  late final _i23.ProjectRegistry _singleton = _create();
 
-  _i22.ProjectRegistry _create() =>
+  _i23.ProjectRegistry _create() =>
       _module.projectRegistry(_settingsStore$Provider.get());
 
   @override
-  _i22.ProjectRegistry get() => _singleton;
+  _i23.ProjectRegistry get() => _singleton;
 }
 
-class _ProjectSession$Provider implements _i16.Provider<_i9.ProjectSession> {
+class _ProjectSession$Provider implements _i17.Provider<_i9.ProjectSession> {
   _ProjectSession$Provider(this._projectRegistry$Provider, this._module);
 
   final _ProjectRegistry$Provider _projectRegistry$Provider;
@@ -327,23 +333,23 @@ class _ProjectSession$Provider implements _i16.Provider<_i9.ProjectSession> {
 }
 
 class _ProjectsEnvironment$Provider
-    implements _i16.Provider<_i23.ProjectsEnvironment> {
+    implements _i17.Provider<_i11.ProjectsEnvironment> {
   _ProjectsEnvironment$Provider(this._getDiagnostics$Provider, this._module);
 
   final _GetDiagnostics$Provider _getDiagnostics$Provider;
 
   final _i7.ProjectsModule _module;
 
-  late final _i23.ProjectsEnvironment _singleton = _create();
+  late final _i11.ProjectsEnvironment _singleton = _create();
 
-  _i23.ProjectsEnvironment _create() =>
+  _i11.ProjectsEnvironment _create() =>
       _module.projectsEnvironment(_getDiagnostics$Provider.get());
 
   @override
-  _i23.ProjectsEnvironment get() => _singleton;
+  _i11.ProjectsEnvironment get() => _singleton;
 }
 
-class _ProjectsWindowFactory$Factory implements _i11.ProjectsWindowFactory {
+class _ProjectsWindowFactory$Factory implements _i12.ProjectsWindowFactory {
   const _ProjectsWindowFactory$Factory(
     this._projectSession$Provider,
     this._projectRegistry$Provider,
@@ -357,12 +363,12 @@ class _ProjectsWindowFactory$Factory implements _i11.ProjectsWindowFactory {
   final _ProjectsEnvironment$Provider _projectsEnvironment$Provider;
 
   @override
-  _i11.ProjectsWindow create({
+  _i12.ProjectsWindow create({
     _i24.ValueChanged<_i9.ProjectOpened>? onOpened,
     _i25.VoidCallback? onSettings,
     _i25.VoidCallback? onIdentitySettings,
-    _i20.Key? key,
-  }) => _i11.ProjectsWindow(
+    _i21.Key? key,
+  }) => _i12.ProjectsWindow(
     session: _projectSession$Provider.get(),
     registry: _projectRegistry$Provider.get(),
     environment: _projectsEnvironment$Provider.get(),
@@ -374,7 +380,7 @@ class _ProjectsWindowFactory$Factory implements _i11.ProjectsWindowFactory {
 }
 
 class _ProjectsWindowFactory$Provider
-    implements _i16.Provider<_i11.ProjectsWindowFactory> {
+    implements _i17.Provider<_i12.ProjectsWindowFactory> {
   _ProjectsWindowFactory$Provider(
     this._projectSession$Provider,
     this._projectRegistry$Provider,
@@ -387,7 +393,7 @@ class _ProjectsWindowFactory$Provider
 
   final _ProjectsEnvironment$Provider _projectsEnvironment$Provider;
 
-  late final _i11.ProjectsWindowFactory _factory =
+  late final _i12.ProjectsWindowFactory _factory =
       _ProjectsWindowFactory$Factory(
         _projectSession$Provider,
         _projectRegistry$Provider,
@@ -395,25 +401,25 @@ class _ProjectsWindowFactory$Provider
       );
 
   @override
-  _i11.ProjectsWindowFactory get() => _factory;
+  _i12.ProjectsWindowFactory get() => _factory;
 }
 
 class _ProvisionListenerOfZanshinWorker$Provider
-    implements _i16.Provider<_i26.ProvisionListener<_i15.ZanshinWorker>> {
+    implements _i17.Provider<_i26.ProvisionListener<_i16.ZanshinWorker>> {
   _ProvisionListenerOfZanshinWorker$Provider(this._module);
 
   final _i4.WorkerLifecycleModule _module;
 
-  late final _i26.ProvisionListener<_i15.ZanshinWorker> _singleton = _create();
+  late final _i26.ProvisionListener<_i16.ZanshinWorker> _singleton = _create();
 
-  _i26.ProvisionListener<_i15.ZanshinWorker> _create() =>
+  _i26.ProvisionListener<_i16.ZanshinWorker> _create() =>
       _module.workerLifecycle();
 
   @override
-  _i26.ProvisionListener<_i15.ZanshinWorker> get() => _singleton;
+  _i26.ProvisionListener<_i16.ZanshinWorker> get() => _singleton;
 }
 
-class _SettingsStore$Provider implements _i16.Provider<_i8.SettingsStore> {
+class _SettingsStore$Provider implements _i17.Provider<_i8.SettingsStore> {
   _SettingsStore$Provider(this._module);
 
   final _i5.SettingsModule _module;
@@ -428,7 +434,7 @@ class _SettingsStore$Provider implements _i16.Provider<_i8.SettingsStore> {
 
 class _ViewModelFactoryOfFloatingShellViewModel$Provider
     implements
-        _i16.Provider<_i27.ViewModelFactory<_i18.FloatingShellViewModel>> {
+        _i17.Provider<_i27.ViewModelFactory<_i19.FloatingShellViewModel>> {
   const _ViewModelFactoryOfFloatingShellViewModel$Provider(
     this._floatingShellViewModel$Provider,
   );
@@ -436,16 +442,16 @@ class _ViewModelFactoryOfFloatingShellViewModel$Provider
   final _FloatingShellViewModel$Provider _floatingShellViewModel$Provider;
 
   @override
-  _i27.ViewModelFactory<_i18.FloatingShellViewModel> get() =>
+  _i27.ViewModelFactory<_i19.FloatingShellViewModel> get() =>
       ({
-        required _i27.ViewModelWidgetBuilder<_i18.FloatingShellViewModel>
+        required _i27.ViewModelWidgetBuilder<_i19.FloatingShellViewModel>
         builder,
         _i28.Widget? child,
         _i27.ViewModelErrorBuilder? error,
-        _i27.ViewModelInitializer<_i18.FloatingShellViewModel>? init,
-        _i20.Key? key,
+        _i27.ViewModelInitializer<_i19.FloatingShellViewModel>? init,
+        _i21.Key? key,
         _i28.Widget? loading,
-      }) => _i27.ViewModelBuilder<_i18.FloatingShellViewModel>(
+      }) => _i27.ViewModelBuilder<_i19.FloatingShellViewModel>(
         key: key,
         viewModelProvider: _floatingShellViewModel$Provider,
         init: init,
@@ -457,7 +463,7 @@ class _ViewModelFactoryOfFloatingShellViewModel$Provider
 }
 
 class _ViewModelFactoryOfZanshinAppViewModel$Provider
-    implements _i16.Provider<_i27.ViewModelFactory<_i29.ZanshinAppViewModel>> {
+    implements _i17.Provider<_i27.ViewModelFactory<_i29.ZanshinAppViewModel>> {
   const _ViewModelFactoryOfZanshinAppViewModel$Provider(
     this._zanshinAppViewModel$Provider,
   );
@@ -471,7 +477,7 @@ class _ViewModelFactoryOfZanshinAppViewModel$Provider
         _i28.Widget? child,
         _i27.ViewModelErrorBuilder? error,
         _i27.ViewModelInitializer<_i29.ZanshinAppViewModel>? init,
-        _i20.Key? key,
+        _i21.Key? key,
         _i28.Widget? loading,
       }) => _i27.ViewModelBuilder<_i29.ZanshinAppViewModel>(
         key: key,
@@ -484,7 +490,7 @@ class _ViewModelFactoryOfZanshinAppViewModel$Provider
       );
 }
 
-class _ZanshinAppFactory$Factory implements _i13.ZanshinAppFactory {
+class _ZanshinAppFactory$Factory implements _i14.ZanshinAppFactory {
   const _ZanshinAppFactory$Factory(
     this._homePageFactory$Provider,
     this._zanshinWindowRootFactory$Provider,
@@ -495,7 +501,7 @@ class _ZanshinAppFactory$Factory implements _i13.ZanshinAppFactory {
   final _ZanshinWindowRootFactory$Provider _zanshinWindowRootFactory$Provider;
 
   @override
-  _i13.ZanshinApp create({_i20.Key? key}) => _i13.ZanshinApp(
+  _i14.ZanshinApp create({_i21.Key? key}) => _i14.ZanshinApp(
     homePageFactory: _homePageFactory$Provider.get(),
     rootFactory: _zanshinWindowRootFactory$Provider.get(),
     key: key,
@@ -503,7 +509,7 @@ class _ZanshinAppFactory$Factory implements _i13.ZanshinAppFactory {
 }
 
 class _ZanshinAppFactory$Provider
-    implements _i16.Provider<_i13.ZanshinAppFactory> {
+    implements _i17.Provider<_i14.ZanshinAppFactory> {
   _ZanshinAppFactory$Provider(
     this._homePageFactory$Provider,
     this._zanshinWindowRootFactory$Provider,
@@ -513,17 +519,17 @@ class _ZanshinAppFactory$Provider
 
   final _ZanshinWindowRootFactory$Provider _zanshinWindowRootFactory$Provider;
 
-  late final _i13.ZanshinAppFactory _factory = _ZanshinAppFactory$Factory(
+  late final _i14.ZanshinAppFactory _factory = _ZanshinAppFactory$Factory(
     _homePageFactory$Provider,
     _zanshinWindowRootFactory$Provider,
   );
 
   @override
-  _i13.ZanshinAppFactory get() => _factory;
+  _i14.ZanshinAppFactory get() => _factory;
 }
 
 class _ZanshinAppViewModel$Provider
-    implements _i16.Provider<_i29.ZanshinAppViewModel> {
+    implements _i17.Provider<_i29.ZanshinAppViewModel> {
   const _ZanshinAppViewModel$Provider(this._settingsStore$Provider);
 
   final _SettingsStore$Provider _settingsStore$Provider;
@@ -534,7 +540,7 @@ class _ZanshinAppViewModel$Provider
 }
 
 class _ZanshinWindowRootFactory$Factory
-    implements _i12.ZanshinWindowRootFactory {
+    implements _i13.ZanshinWindowRootFactory {
   const _ZanshinWindowRootFactory$Factory(
     this._viewModelFactoryOfZanshinAppViewModel$Provider,
     this._activeWindowTracker$Provider,
@@ -546,21 +552,23 @@ class _ZanshinWindowRootFactory$Factory
   final _ActiveWindowTracker$Provider _activeWindowTracker$Provider;
 
   @override
-  _i12.ZanshinWindowRoot create({
+  _i13.ZanshinWindowRoot create({
     required String windowKey,
     required _i28.Widget child,
-    _i20.Key? key,
-  }) => _i12.ZanshinWindowRoot(
+    bool? sizeToContent,
+    _i21.Key? key,
+  }) => _i13.ZanshinWindowRoot(
     viewModelFactory: _viewModelFactoryOfZanshinAppViewModel$Provider.get(),
     tracker: _activeWindowTracker$Provider.get(),
     windowKey: windowKey,
     child: child,
+    sizeToContent: sizeToContent,
     key: key,
   );
 }
 
 class _ZanshinWindowRootFactory$Provider
-    implements _i16.Provider<_i12.ZanshinWindowRootFactory> {
+    implements _i17.Provider<_i13.ZanshinWindowRootFactory> {
   _ZanshinWindowRootFactory$Provider(
     this._viewModelFactoryOfZanshinAppViewModel$Provider,
     this._activeWindowTracker$Provider,
@@ -571,18 +579,18 @@ class _ZanshinWindowRootFactory$Provider
 
   final _ActiveWindowTracker$Provider _activeWindowTracker$Provider;
 
-  late final _i12.ZanshinWindowRootFactory _factory =
+  late final _i13.ZanshinWindowRootFactory _factory =
       _ZanshinWindowRootFactory$Factory(
         _viewModelFactoryOfZanshinAppViewModel$Provider,
         _activeWindowTracker$Provider,
       );
 
   @override
-  _i12.ZanshinWindowRootFactory get() => _factory;
+  _i13.ZanshinWindowRootFactory get() => _factory;
 }
 
 class _ZanshinWorker$Provider
-    implements _i16.Provider<_i14.Future<_i15.ZanshinWorker>> {
+    implements _i17.Provider<_i15.Future<_i16.ZanshinWorker>> {
   _ZanshinWorker$Provider(
     this._provisionListenerOfZanshinWorker$Provider,
     this._module,
@@ -593,14 +601,14 @@ class _ZanshinWorker$Provider
 
   final _i3.WorkerModule _module;
 
-  _i14.Future<_i15.ZanshinWorker>? _singletonFuture;
+  _i15.Future<_i16.ZanshinWorker>? _singletonFuture;
 
-  _i14.Future<_i15.ZanshinWorker> _create() async {
+  _i15.Future<_i16.ZanshinWorker> _create() async {
     final instance = await _module.worker();
     _provisionListenerOfZanshinWorker$Provider.get().onProvision(instance);
     return instance;
   }
 
   @override
-  _i14.Future<_i15.ZanshinWorker> get() => _singletonFuture ??= _create();
+  _i15.Future<_i16.ZanshinWorker> get() => _singletonFuture ??= _create();
 }

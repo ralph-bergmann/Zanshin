@@ -18,7 +18,7 @@ void main() {
   test('toJson nests the sub-model as a map and encodes the enum by name', () {
     const settings = AppSettings(appearance: AppearanceSettings(themeMode: ThemeMode.dark));
     expect(settings.toJson(), {
-      'appearance': {'themeMode': 'dark', 'accentSource': 'followMacOS'},
+      'appearance': {'themeMode': 'dark', 'accentSource': 'followMacOS', 'density': 'compact'},
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
       'general': {'hideControls': true, 'diffLayout': 'unified'},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
@@ -43,10 +43,17 @@ void main() {
     expect(AppSettings.fromJson({'appearance': <String, Object?>{}}).appearance.accentSource, AccentSource.followMacOS);
   });
 
+  test('the density defaults to compact, survives a JSON round trip and reads an unknown value as compact', () {
+    expect(AppearanceSettings.fromJson(<String, Object?>{}).density, DensitySetting.compact);
+    const comfy = AppearanceSettings(density: DensitySetting.comfy);
+    expect(AppearanceSettings.fromJson(comfy.toJson()), comfy);
+    expect(AppearanceSettings.fromJson(<String, Object?>{'density': 'roomy'}).density, DensitySetting.compact);
+  });
+
   test('the Zanshin accent source survives a JSON round trip', () {
     const settings = AppSettings(appearance: AppearanceSettings(accentSource: AccentSource.zanshin));
     expect(settings.toJson(), {
-      'appearance': {'themeMode': 'system', 'accentSource': 'zanshin'},
+      'appearance': {'themeMode': 'system', 'accentSource': 'zanshin', 'density': 'compact'},
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
       'general': {'hideControls': true, 'diffLayout': 'unified'},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},

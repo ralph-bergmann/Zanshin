@@ -18,7 +18,8 @@ mixin _$AppearanceSettings {
 
 /// The user's day/night choice; `system` follows the OS.
  ThemeMode get themeMode;/// Where the accent colour comes from; [AccentSource.followMacOS] by default.
- AccentSource get accentSource;
+ AccentSource get accentSource;/// The text density; [DensitySetting.compact] by default, and for a value this version does not know.
+@JsonKey(unknownEnumValue: DensitySetting.compact) DensitySetting get density;
 /// Create a copy of AppearanceSettings
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -32,20 +33,20 @@ $AppearanceSettingsCopyWith<AppearanceSettings> get copyWith => _$AppearanceSett
 @override
 bool operator ==(Object other) {
   final _this = this as AppearanceSettings;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceSettings&&(identical(other.themeMode, _this.themeMode) || other.themeMode == _this.themeMode)&&(identical(other.accentSource, _this.accentSource) || other.accentSource == _this.accentSource));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceSettings&&(identical(other.themeMode, _this.themeMode) || other.themeMode == _this.themeMode)&&(identical(other.accentSource, _this.accentSource) || other.accentSource == _this.accentSource)&&(identical(other.density, _this.density) || other.density == _this.density));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as AppearanceSettings;
-  return Object.hash(runtimeType,_this.themeMode,_this.accentSource);
+  return Object.hash(runtimeType,_this.themeMode,_this.accentSource,_this.density);
 }
 
 @override
 String toString() {
   final _this = this as AppearanceSettings;
-  return 'AppearanceSettings(themeMode: ${_this.themeMode}, accentSource: ${_this.accentSource})';
+  return 'AppearanceSettings(themeMode: ${_this.themeMode}, accentSource: ${_this.accentSource}, density: ${_this.density})';
 }
 
 
@@ -56,7 +57,7 @@ abstract mixin class $AppearanceSettingsCopyWith<$Res>  {
   factory $AppearanceSettingsCopyWith(AppearanceSettings value, $Res Function(AppearanceSettings) _then) = _$AppearanceSettingsCopyWithImpl;
 @useResult
 $Res call({
- ThemeMode themeMode, AccentSource accentSource
+ ThemeMode themeMode, AccentSource accentSource,@JsonKey(unknownEnumValue: DensitySetting.compact) DensitySetting density
 });
 
 
@@ -73,11 +74,12 @@ class _$AppearanceSettingsCopyWithImpl<$Res>
 
 /// Create a copy of AppearanceSettings
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? themeMode = null,Object? accentSource = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? themeMode = null,Object? accentSource = null,Object? density = null,}) {
   return _then(AppearanceSettings(
 themeMode: null == themeMode ? _self.themeMode : themeMode // ignore: cast_nullable_to_non_nullable
 as ThemeMode,accentSource: null == accentSource ? _self.accentSource : accentSource // ignore: cast_nullable_to_non_nullable
-as AccentSource,
+as AccentSource,density: null == density ? _self.density : density // ignore: cast_nullable_to_non_nullable
+as DensitySetting,
   ));
 }
 
@@ -162,10 +164,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( ThemeMode themeMode,  AccentSource accentSource)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( ThemeMode themeMode,  AccentSource accentSource, @JsonKey(unknownEnumValue: DensitySetting.compact)  DensitySetting density)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _AppearanceSettings() when $default != null:
-return $default(_that.themeMode,_that.accentSource);case _:
+return $default(_that.themeMode,_that.accentSource,_that.density);case _:
   return orElse();
 
 }
@@ -183,10 +185,10 @@ return $default(_that.themeMode,_that.accentSource);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( ThemeMode themeMode,  AccentSource accentSource)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( ThemeMode themeMode,  AccentSource accentSource, @JsonKey(unknownEnumValue: DensitySetting.compact)  DensitySetting density)  $default,) {final _that = this;
 switch (_that) {
 case _AppearanceSettings():
-return $default(_that.themeMode,_that.accentSource);case _:
+return $default(_that.themeMode,_that.accentSource,_that.density);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -203,10 +205,10 @@ return $default(_that.themeMode,_that.accentSource);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( ThemeMode themeMode,  AccentSource accentSource)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( ThemeMode themeMode,  AccentSource accentSource, @JsonKey(unknownEnumValue: DensitySetting.compact)  DensitySetting density)?  $default,) {final _that = this;
 switch (_that) {
 case _AppearanceSettings() when $default != null:
-return $default(_that.themeMode,_that.accentSource);case _:
+return $default(_that.themeMode,_that.accentSource,_that.density);case _:
   return null;
 
 }
@@ -218,13 +220,15 @@ return $default(_that.themeMode,_that.accentSource);case _:
 @JsonSerializable()
 
 class _AppearanceSettings implements AppearanceSettings {
-  const _AppearanceSettings({this.themeMode = ThemeMode.system, this.accentSource = AccentSource.followMacOS});
+  const _AppearanceSettings({this.themeMode = ThemeMode.system, this.accentSource = AccentSource.followMacOS, @JsonKey(unknownEnumValue: DensitySetting.compact) this.density = DensitySetting.compact});
   factory _AppearanceSettings.fromJson(Map<String, dynamic> json) => _$AppearanceSettingsFromJson(json);
 
 /// The user's day/night choice; `system` follows the OS.
 @override@JsonKey() final  ThemeMode themeMode;
 /// Where the accent colour comes from; [AccentSource.followMacOS] by default.
 @override@JsonKey() final  AccentSource accentSource;
+/// The text density; [DensitySetting.compact] by default, and for a value this version does not know.
+@override@JsonKey(unknownEnumValue: DensitySetting.compact) final  DensitySetting density;
 
 /// Create a copy of AppearanceSettings
 /// with the given fields replaced by the non-null parameter values.
@@ -239,18 +243,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppearanceSettings&&(identical(other.themeMode, themeMode) || other.themeMode == themeMode)&&(identical(other.accentSource, accentSource) || other.accentSource == accentSource));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppearanceSettings&&(identical(other.themeMode, themeMode) || other.themeMode == themeMode)&&(identical(other.accentSource, accentSource) || other.accentSource == accentSource)&&(identical(other.density, density) || other.density == density));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,themeMode,accentSource);
+    return Object.hash(runtimeType,themeMode,accentSource,density);
 }
 
 @override
 String toString() {
-    return 'AppearanceSettings(themeMode: $themeMode, accentSource: $accentSource)';
+    return 'AppearanceSettings(themeMode: $themeMode, accentSource: $accentSource, density: $density)';
 }
 
 
@@ -261,7 +265,7 @@ abstract mixin class _$AppearanceSettingsCopyWith<$Res> implements $AppearanceSe
   factory _$AppearanceSettingsCopyWith(_AppearanceSettings value, $Res Function(_AppearanceSettings) _then) = __$AppearanceSettingsCopyWithImpl;
 @override @useResult
 $Res call({
- ThemeMode themeMode, AccentSource accentSource
+ ThemeMode themeMode, AccentSource accentSource,@JsonKey(unknownEnumValue: DensitySetting.compact) DensitySetting density
 });
 
 
@@ -278,11 +282,12 @@ class __$AppearanceSettingsCopyWithImpl<$Res>
 
 /// Create a copy of AppearanceSettings
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? themeMode = null,Object? accentSource = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? themeMode = null,Object? accentSource = null,Object? density = null,}) {
   return _then(_AppearanceSettings(
 themeMode: null == themeMode ? _self.themeMode : themeMode // ignore: cast_nullable_to_non_nullable
 as ThemeMode,accentSource: null == accentSource ? _self.accentSource : accentSource // ignore: cast_nullable_to_non_nullable
-as AccentSource,
+as AccentSource,density: null == density ? _self.density : density // ignore: cast_nullable_to_non_nullable
+as DensitySetting,
   ));
 }
 

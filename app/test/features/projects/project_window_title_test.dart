@@ -53,6 +53,24 @@ void main() {
     expect(titles, <String>['zanshin', 'jj'], reason: 'an unchanged title is not set again');
   });
 
+  testWidgets('a dialog window (Settings, Story 11.7) is titled the same way', (tester) async {
+    final controller = DialogWindowController(
+      size: const Size(620, 400),
+      title: 'General',
+      delegate: DialogWindowControllerDelegate(),
+    );
+    addTearDown(controller.destroy);
+
+    await tester.pumpWidget(
+      WindowScope(
+        controller: controller,
+        child: const ProjectWindowTitle(title: 'Immutable commits', child: SizedBox.shrink()),
+      ),
+    );
+
+    expect(controller.title, 'Immutable commits');
+  });
+
   testWidgets('without a window it does nothing', (tester) async {
     await tester.pumpWidget(const ProjectWindowTitle(title: 'zanshin', child: SizedBox.shrink()));
     expect(tester.takeException(), isNull);

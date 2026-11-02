@@ -21,6 +21,7 @@ import 'graph_layout.dart';
 import 'graph_ports.dart';
 import 'graph_view_model.dart';
 import 'hatch_swatch.dart';
+import 'immutable_reasons.dart';
 import 'inspector_diff.dart';
 import 'inspector_viewed_store.dart';
 
@@ -1223,11 +1224,17 @@ class _Header extends StatelessWidget {
                 children: <Widget>[
                   if (data.isWorkingCopy) _Flag(label: strings.inspectorFlagWorkingCopy, kind: _FlagKind.workingCopy),
                   if (data.immutable && !data.isRoot)
-                    // The reason ("Immutable · <reason>") comes with 11.7's producer.
-                    _Flag(
-                      label: strings.inspectorFlagImmutable,
-                      icon: const HatchSwatch(),
-                      tooltip: strings.inspectorFlagImmutable,
+                    // The tooltip names the reason once the scope answers it (Story 11.7).
+                    ImmutableReasonBuilder(
+                      operationId: layout.operationId,
+                      commitId: data.commitId,
+                      builder: (context, reason) => _Flag(
+                        label: strings.inspectorFlagImmutable,
+                        icon: const HatchSwatch(),
+                        tooltip: reason == null
+                            ? strings.inspectorFlagImmutable
+                            : strings.inspectorFlagImmutableReason(reason),
+                      ),
                     ),
                   if (empty) _Flag(label: strings.inspectorFlagEmpty),
                   if (data.merge) _Flag(label: strings.inspectorFlagMerge),

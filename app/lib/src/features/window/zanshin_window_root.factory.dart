@@ -13,6 +13,7 @@ abstract class ZanshinWindowRootFactory {
   ZanshinWindowRoot create({
     required String windowKey,
     required Widget child,
+    bool? sizeToContent,
     Key? key,
   });
 }

@@ -488,6 +488,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get peekImmutable => 'Immutable';
 
   @override
+  String peekImmutableReason(String label, String reason) {
+    return '$label · $reason';
+  }
+
+  @override
   String get peekHintMutable => 'Click: details · Double-click: jj edit';
 
   @override
@@ -972,6 +977,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inspectorFlagImmutable => 'Immutable';
+
+  @override
+  String inspectorFlagImmutableReason(String reason) {
+    return 'Immutable · $reason';
+  }
 
   @override
   String get inspectorFlagEmpty => 'Empty';
@@ -1674,9 +1684,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cardMenuImmutableCommits => 'Immutable commits…';
 
   @override
-  String get cardMenuSettingsLater => 'Comes with the Settings window';
-
-  @override
   String get cardMenuNoDescription => '(no description set)';
 
   @override
@@ -1911,4 +1918,282 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get revsetConfigsDiscard => 'Discard changes';
+
+  @override
+  String get settingsTabGeneral => 'General';
+
+  @override
+  String get settingsTabProject => 'Project';
+
+  @override
+  String get settingsTabsLabel => 'Settings';
+
+  @override
+  String get settingsOpenProjectFirst => 'Open a project first';
+
+  @override
+  String get settingsScopeGeneral => 'For Zanshin on this Mac · jj settings go to';
+
+  @override
+  String settingsScopeProject(String name) {
+    return 'For $name only ·';
+  }
+
+  @override
+  String settingsFooter(String viewOptions) {
+    return 'How the graph looks lives with the graph: $viewOptions in the toolbar.';
+  }
+
+  @override
+  String get settingsFooterViewOptions => 'View options';
+
+  @override
+  String settingsBackTo(String name) {
+    return 'Back to $name';
+  }
+
+  @override
+  String settingsFromScope(String scope) {
+    return 'From $scope config';
+  }
+
+  @override
+  String settingsAuthorFact(String name, String email, String command) {
+    return '@ keeps the author $name <$email>. $command changes it.';
+  }
+
+  @override
+  String get settingsAppearance => 'Appearance';
+
+  @override
+  String get settingsTheme => 'Theme';
+
+  @override
+  String get settingsThemePaper => 'Paper';
+
+  @override
+  String get settingsThemeNight => 'Night';
+
+  @override
+  String get settingsThemeAuto => 'Auto';
+
+  @override
+  String get settingsDensity => 'Density';
+
+  @override
+  String get settingsDensityCompact => 'Compact';
+
+  @override
+  String get settingsDensityBalanced => 'Balanced';
+
+  @override
+  String get settingsDensityComfy => 'Comfy';
+
+  @override
+  String get settingsAccent => 'Accent colour';
+
+  @override
+  String get settingsAccentHint =>
+      'Selection, focus and controls take the colour from System Settings › Appearance. Gold stays with @ and the primary action.';
+
+  @override
+  String get settingsAccentMacOS => 'Follow macOS';
+
+  @override
+  String get settingsAccentZanshin => 'Zanshin';
+
+  @override
+  String get settingsWhileScrolling => 'While you scroll';
+
+  @override
+  String get settingsHideControls => 'Hide controls';
+
+  @override
+  String get settingsHideControlsHint =>
+      'Toolbars and panels step aside while you scroll the graph. The minimap stays.';
+
+  @override
+  String get settingsHideControlsSwitch => 'Hide controls while scrolling';
+
+  @override
+  String get settingsDiffs => 'Diffs';
+
+  @override
+  String get settingsDiffLayout => 'Layout';
+
+  @override
+  String get settingsDiffLayoutLabel => 'Diff layout';
+
+  @override
+  String get settingsDiffUnified => 'Unified';
+
+  @override
+  String get settingsDiffSideBySide => 'Side by side';
+
+  @override
+  String get settingsIdentity => 'Identity';
+
+  @override
+  String get settingsName => 'Name';
+
+  @override
+  String get settingsEmail => 'Email';
+
+  @override
+  String get settingsProjectEmail => 'Project email';
+
+  @override
+  String get settingsRemotes => 'Remotes';
+
+  @override
+  String get settingsFetchFrom => 'Fetch from';
+
+  @override
+  String get settingsPushTo => 'Push to';
+
+  @override
+  String get settingsNoRemotes => 'No remotes';
+
+  @override
+  String get settingsRemotePoll => 'Check for remote changes';
+
+  @override
+  String get settingsRemotePollOff => 'Off';
+
+  @override
+  String get settingsRemotePoll5 => '5 min';
+
+  @override
+  String get settingsRemotePoll15 => '15 min';
+
+  @override
+  String get settingsHistory => 'History';
+
+  @override
+  String get settingsTrunk => 'Trunk';
+
+  @override
+  String get settingsTrunkDefault => 'jj’s default';
+
+  @override
+  String get settingsTrunkCustom => 'Custom trunk';
+
+  @override
+  String get settingsTrunkCustomEllipsis => 'Custom…';
+
+  @override
+  String get settingsOwnEmail => 'Use a different email here';
+
+  @override
+  String get settingsOwnEmailHint => 'For work repositories with their own address.';
+
+  @override
+  String get settingsOwnEmailSwitch => 'Use a different email';
+
+  @override
+  String get settingsImmutableTitle => 'Immutable commits';
+
+  @override
+  String get settingsImmutableSummaryDefault => 'jj’s default (trunk, tags, remote bookmarks you don’t track)';
+
+  @override
+  String get settingsImmutableSummaryTrunk => 'trunk';
+
+  @override
+  String get settingsImmutableSummaryTags => 'tags';
+
+  @override
+  String get settingsImmutableSummaryRemoteBookmarks => 'untracked remote bookmarks';
+
+  @override
+  String get settingsImmutableSummaryRemoteTags => 'untracked remote tags';
+
+  @override
+  String get settingsImmutableSummaryOthers => 'other people’s changes';
+
+  @override
+  String get settingsImmutableSummaryCustom => 'a custom revset';
+
+  @override
+  String get settingsImmutableSummaryNone => 'Only root()';
+
+  @override
+  String get settingsImmutableIntro =>
+      'jj won’t rewrite these changes or anything below them: no edit, describe, squash, rebase or abandon. New change on top and Revert still work. In the graph they’re hatched.';
+
+  @override
+  String get settingsImmutableBuiltIn => 'Built in';
+
+  @override
+  String get settingsImmutableTrunk => 'Trunk';
+
+  @override
+  String settingsImmutableTrunkHint(String trunk) {
+    return 'Your main line. trunk() is $trunk, set under History.';
+  }
+
+  @override
+  String get settingsImmutableTags => 'Tags';
+
+  @override
+  String get settingsImmutableTagsHint => 'Released versions.';
+
+  @override
+  String get settingsImmutableRemoteBookmarks => 'Remote bookmarks you don’t track';
+
+  @override
+  String get settingsImmutableRemoteBookmarksHint => 'Fetched, but not yours to rewrite.';
+
+  @override
+  String get settingsImmutableRemoteTags => 'Remote tags you don’t track';
+
+  @override
+  String get settingsImmutableRemoteTagsHint => 'Fetched, but not yours to move.';
+
+  @override
+  String get settingsImmutableAlso => 'Also immutable';
+
+  @override
+  String get settingsImmutableOthers => 'Other people’s changes';
+
+  @override
+  String get settingsImmutableOthersHint =>
+      'Everything after trunk() that isn’t yours. What’s below them is locked too, your own changes included.';
+
+  @override
+  String get settingsImmutableBookmarks => 'Bookmarks';
+
+  @override
+  String get settingsImmutableBookmarksHint => 'A release or shared bookmark you never rewrite.';
+
+  @override
+  String get settingsImmutableAddBookmark => 'Bookmark…';
+
+  @override
+  String get settingsImmutableCustom => 'Custom revset';
+
+  @override
+  String get settingsImmutableCustomHint => 'Joined with |. Written once jj resolves it.';
+
+  @override
+  String get settingsImmutableResult => 'Result';
+
+  @override
+  String settingsImmutableCountSuffix(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'changes are immutable',
+      one: 'change is immutable',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String settingsImmutableRootNote(String root, String flag) {
+    return '$root is always immutable. To rewrite one anyway, jj needs $flag.';
+  }
+
+  @override
+  String get settingsImmutableReset => 'Reset to jj’s default';
 }

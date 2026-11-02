@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/bootstrap/zanshin_bootstrap.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
+import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin/src/features/window/app_window_coordinator.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
@@ -65,6 +66,7 @@ class _Rig {
   final projectsContents = <_ProjectsContent>[];
   var projectContents = 0;
   var revsetConfigsContents = 0;
+  var settingsContents = 0;
 
   Future<void> setUp({String? openProject}) async {
     dir = await Directory.systemTemp.createTemp('app_window_coordinator_test');
@@ -103,6 +105,10 @@ class _Rig {
       },
       buildRevsetConfigs: () {
         revsetConfigsContents++;
+        return const _ProjectContent();
+      },
+      buildSettings: (state) {
+        settingsContents++;
         return const _ProjectContent();
       },
       folderExists: folders.contains,
@@ -229,6 +235,75 @@ void main() {
       // The Projects content shows it as its notice as it mounts (projects_window_test.dart).
       expect(rig.session.failedOpen.value?.path, '/r/broken');
       expect(rig.session.failedOpen.value?.outcome, same(rig.session.lastFailure));
+    });
+  });
+
+  group('Settings (Story 11.7)', () {
+    Future<_Rig> launched({bool project = true}) async {
+      final rig = _Rig();
+      await rig.setUp(openProject: project ? '/r/zanshin' : null);
+      rig.folders.add('/r/zanshin');
+      await rig.launch();
+      return rig;
+    }
+
+    List<AppWindowRequest> settingsRequests(_Rig rig) => <AppWindowRequest>[
+      ...rig.factory.requests.where((request) => request.key == settingsWindowKey),
+    ];
+
+    test(
+      'openSettings twice: one content-sized window, built once, activated the second time, tab and page kept',
+      () async {
+        final _Rig rig = await launched();
+        await rig.coordinator.openSettings(target: SettingsTarget.immutableCommits);
+
+        await rig.coordinator.openSettings();
+
+        final List<AppWindowRequest> requests = settingsRequests(rig);
+        expect(requests, hasLength(1));
+        expect(requests.single.title, 'Immutable commits');
+        expect(requests.single.dialog, same(settingsWindowSpec));
+        expect(settingsWindowSpec.constraints, const BoxConstraints(maxWidth: 620, maxHeight: 740));
+        expect(settingsWindowSpec.constraints.smallest, Size.zero, reason: 'no minimum');
+        expect(settingsWindowSpec.size, isNull);
+        expect(settingsWindowSpec.resizable, isFalse);
+        expect(settingsWindowSpec.frame, WindowFrameMode.position);
+        expect(settingsWindowSpec.keepsAppAlive, isFalse);
+        expect(rig.settingsContents, 1);
+        expect((rig.windows.controllerOf(settingsWindowKey)! as DialogWindowController).isActivated, isTrue);
+        expect(rig.coordinator.settingsState.tab, SettingsTab.project);
+        expect(rig.coordinator.settingsState.page, SettingsPage.immutableCommits);
+      },
+    );
+
+    test('no project open: ⌘, on the Project tab shown last opens General, Project disabled', () async {
+      final _Rig rig = await launched(project: false);
+      rig.coordinator.settingsState
+        ..projectOpen = true
+        ..selectTab(SettingsTab.project);
+
+      await rig.coordinator.openSettings();
+
+      expect(rig.coordinator.settingsState.tab, SettingsTab.general);
+      expect(rig.coordinator.settingsState.projectOpen, isFalse);
+      expect(settingsRequests(rig).single.title, 'General');
+    });
+
+    test('a target switches: Project titles the window with the project; General, then the project closes', () async {
+      final _Rig rig = await launched();
+
+      await rig.coordinator.openSettings(target: SettingsTarget.project);
+      expect(settingsRequests(rig).single.title, 'zanshin');
+      expect(rig.coordinator.settingsState.tab, SettingsTab.project);
+      await rig.coordinator.openSettings(target: SettingsTarget.general);
+      expect(rig.coordinator.settingsState.tab, SettingsTab.general);
+      await rig.coordinator.openSettings(target: SettingsTarget.project);
+
+      await rig.session.closeProject();
+      await rig.until(() => !rig.windows.isOpen(mainWindowKey));
+
+      expect(rig.coordinator.settingsState.tab, SettingsTab.general);
+      expect(rig.coordinator.settingsState.projectOpen, isFalse);
     });
   });
 

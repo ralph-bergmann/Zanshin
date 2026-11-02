@@ -1997,6 +1997,21 @@ void main() {
       expect(rig.env.identityReads, <String?>[null, '${rig.home}/code/top']);
     });
 
+    testWidgets('the identity is read again after a config write in Settings (Story 11.7, I4)', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump(openUnderHome: 'code/top');
+      final top = '${rig.home}/code/top';
+      expect(rig.env.identityReads, <String?>[top]);
+
+      rig.env.identityAnswer = JjIdentity(name: 'Ralph', email: 'ralph@work.example');
+      await tester.runAsync(() => rig.env.configSet(ConfigScope.user, 'user.email', 'ralph@work.example'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(rig.env.identityReads, <String?>[top, top]);
+      expect(find.text('ralph@work.example'), findsOneWidget);
+    });
+
     testWidgets('the identity is read again when the window becomes key, and only then', (tester) async {
       final rig = _Rig(tester);
       await rig.pump(openUnderHome: 'code/top', appearance: const ZsAppearance(inactive: true));

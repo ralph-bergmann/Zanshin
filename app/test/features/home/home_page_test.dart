@@ -57,6 +57,11 @@ class _Actions implements AppWindowActions {
 
   @override
   Future<void> openRevsetConfigs() async => configurations++;
+
+  final settings = <SettingsTarget?>[];
+
+  @override
+  Future<void> openSettings({SettingsTarget? target}) async => settings.add(target);
 }
 
 class _ViewModels implements Provider<FloatingShellViewModel> {
@@ -557,6 +562,30 @@ void main() {
       },
     );
   }
+
+  testWidgets("under the actions scope the capsule's Project Settings… and Settings… open Settings (Story 11.7)", (
+    tester,
+  ) async {
+    final actions = _Actions();
+    final ProjectSession session = await pumpHome(
+      tester,
+      wrap: (home) => AppWindowActionsScope(actions: actions, child: home),
+    );
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+
+    for (final identifier in <String>['project-menu-project-settings', 'project-menu-settings']) {
+      await tester.tap(find.bySemanticsIdentifier('project-capsule'));
+      await tester.pump();
+      await tester.pump(ZsMotion.full.durMenu);
+      await tester.tap(find.bySemanticsIdentifier(identifier), warnIfMissed: false);
+      await tester.pump(ZsMotion.full.durBlink * 2);
+      await tester.pump(ZsMotion.full.durExit);
+      await tester.pump();
+    }
+
+    expect(actions.settings, <SettingsTarget?>[SettingsTarget.project, null]);
+  });
 
   testWidgets("the window takes the open project's name and returns to Zanshin when it closes", (tester) async {
     final bool windowingWasEnabled = isWindowingEnabled;

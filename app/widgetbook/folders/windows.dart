@@ -13,11 +13,17 @@ import 'package:zanshin/src/features/graph/graph_search_store.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/revset_configs/revset_configs_window.dart';
+import 'package:zanshin/src/features/projects/project_registry.dart';
+import 'package:zanshin/src/features/projects/project_session.dart';
+import 'package:zanshin/src/features/settings/settings_view_model.dart' show SettingsRepoReads;
+import 'package:zanshin/src/features/settings/settings_window.dart';
+import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/shell/app_menu.dart' show GraphMenuBinding;
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin/src/features/window/window_chrome_builder.dart';
 import 'package:zanshin/src/l10n/strings.dart';
+import 'package:zanshin_core/zanshin_core.dart' show RevsetCount, RevsetCounts, ZanshinWarning;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart' show ShellTheme;
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -165,6 +171,15 @@ final windowsFolder = WidgetbookFolder(
         WidgetbookUseCase(
           name: 'Projects window',
           builder: (context) => const Center(child: _OpenProjectsWindow()),
+        ),
+      ],
+    ),
+    WidgetbookComponent(
+      name: 'Settings window',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(
+          name: 'Settings window',
+          builder: (context) => const Center(child: _OpenSettingsWindow()),
         ),
       ],
     ),
@@ -480,6 +495,133 @@ class _OpenProjectsWindow extends StatelessWidget {
       content: const DemoProjectsWindow(),
     ),
   );
+}
+
+/// Opens Story 11.7's Settings window over the demo project (a temp-folder settings store, an in-memory jj config,
+/// two remotes, a few bookmarks) in a real dialog window with the app's spec ([settingsWindowSpec]: 620 wide, the
+/// height following the tab up to 740) on the content-sized root.
+class _OpenSettingsWindow extends StatelessWidget {
+  const _OpenSettingsWindow();
+
+  static const _key = 'widgetbook-settings';
+
+  @override
+  Widget build(BuildContext context) => ZsButton(
+    label: 'Open the Settings window',
+    variant: ZsButtonVariant.primary,
+    identifier: 'open-settings-window',
+    onPressed: () {
+      final AppWindows windows = CatalogueWindows.of(context);
+      _open(
+        context,
+        key: _key,
+        title: platformStrings().settingsTabGeneral,
+        dialog: settingsWindowSpec,
+        content: _DemoSettingsWindow(windows: windows, windowKey: _key),
+      );
+    },
+  );
+}
+
+/// The Settings window's repository reads over fixed demo answers.
+class _DemoSettingsReads implements SettingsRepoReads {
+  @override
+  Future<List<String>> remoteNames() async => const <String>['origin', 'upstream'];
+
+  @override
+  Future<List<String>> defaultFetchRemotes() async => const <String>['origin'];
+
+  @override
+  Future<List<String>> defaultPushRemotes() async => const <String>['origin'];
+
+  @override
+  Future<List<String>> remoteBookmarks(String remote) async => const <String>['main', 'release/1.5.x'];
+
+  @override
+  Future<List<String>> localBookmarks() async => const <String>['develop', 'main', 'release/1.1.0-rc1'];
+
+  @override
+  Future<RevsetCounts> revsetCounts(List<String> expressions, {required int cap}) async => RevsetCounts(
+    <RevsetCount>[for (final _ in expressions) const RevsetCount(n: 14, capped: false, error: null)],
+    const <ZanshinWarning>[],
+  );
+}
+
+/// The Settings window over the demo project.
+class _DemoSettingsWindow extends StatefulWidget {
+  const _DemoSettingsWindow({required this.windows, required this.windowKey});
+
+  final AppWindows windows;
+  final String windowKey;
+
+  @override
+  State<_DemoSettingsWindow> createState() => _DemoSettingsWindowState();
+}
+
+class _DemoSettingsWindowState extends State<_DemoSettingsWindow> {
+  late final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_settings');
+  late final String _home = _dir.resolveSymbolicLinksSync();
+  final _state = SettingsWindowState();
+  final _graph = ValueNotifier<GraphMenuBinding?>(null);
+  SettingsStore? _store;
+  ProjectSession? _session;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final SettingsStore store = await SettingsStore.load(File('${_dir.path}/settings.json'));
+    unawaited(
+      store
+          .update((settings) => settings.copyWith(projects: demoProjectsSettings(_home)))
+          .onError<FileSystemException>((_, _) {}),
+    );
+    if (!mounted) {
+      return;
+    }
+    final session = ProjectSession(registry: ProjectRegistry(store), repos: DemoProjectRepos(_home));
+    setState(() {
+      _store = store;
+      _session = session;
+    });
+    await session.open(demoOpenProject(_home));
+  }
+
+  @override
+  void dispose() {
+    _session?.dispose();
+    _graph.dispose();
+    _state.dispose();
+    try {
+      _dir.deleteSync(recursive: true);
+    } on FileSystemException {
+      // A write still under way; the temp folder goes with the system's clean-up.
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final SettingsStore? store = _store;
+    final ProjectSession? session = _session;
+    if (store == null || session == null) {
+      return const SizedBox(width: 620, height: 120);
+    }
+    return SettingsWindow(
+      state: _state,
+      windows: widget.windows,
+      windowKey: widget.windowKey,
+      store: store,
+      environment: DemoProjectsEnvironment(_home),
+      session: session,
+      graph: _graph,
+      setThemeMode: (mode) => store.update((settings) => settings.copyWith.appearance(themeMode: mode)),
+      readsOf: (_) => _DemoSettingsReads(),
+    );
+  }
 }
 
 /// Opens Story 10.22's jj log Configurations window over two demo configurations (a temp-folder settings store, no

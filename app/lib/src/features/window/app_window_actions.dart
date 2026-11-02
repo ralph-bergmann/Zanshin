@@ -2,8 +2,20 @@
 
 import 'package:flutter/widgets.dart';
 
+/// What [AppWindowActions.openSettings] shows (Story 11.7).
+enum SettingsTarget {
+  /// The General tab.
+  general,
+
+  /// The Project tab (General while no project is open).
+  project,
+
+  /// The Project tab's Immutable commits page (General while no project is open).
+  immutableCommits,
+}
+
 /// What a window's content may ask of the app's windows (Story 11.12): opening the other windows, so the content
-/// itself stays window-agnostic. 11.7 adds Settings, 11.13 binds the shortcuts.
+/// itself stays window-agnostic. 11.13 binds the shortcuts.
 abstract interface class AppWindowActions {
   /// Opens the Projects window, or brings it to the front (All Projects…, ⇧⌘O).
   Future<void> openProjects();
@@ -11,6 +23,10 @@ abstract interface class AppWindowActions {
   /// Opens the jj log Configurations window, or brings it forward with its edits kept (Edit Configurations…, ⌥⌘L;
   /// Story 10.22).
   Future<void> openRevsetConfigs();
+
+  /// Opens the Settings window, or brings it forward (Story 11.7): without a [target] (⌘, and every "Settings…") on
+  /// the tab shown last, its page unchanged; with one, switched to it.
+  Future<void> openSettings({SettingsTarget? target});
 }
 
 /// Provides the [AppWindowActions] to a window's content; the window coordinator places one in each root it builds.

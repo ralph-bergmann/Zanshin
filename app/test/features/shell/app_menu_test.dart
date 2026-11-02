@@ -17,6 +17,7 @@ import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_preferences.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
+import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/shell/app_menu.dart';
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
@@ -42,6 +43,12 @@ class _Session extends ProjectSession {
   var refreshes = 0;
   final opens = <String>[];
 
+  /// The open repository the menu sees, when set.
+  ProjectRepo? openRepo;
+
+  @override
+  ProjectRepo? get repo => openRepo ?? super.repo;
+
   @override
   void refresh() => refreshes++;
 
@@ -61,6 +68,11 @@ class _WindowActions implements AppWindowActions {
 
   @override
   Future<void> openRevsetConfigs() async => configurations++;
+
+  final settings = <SettingsTarget?>[];
+
+  @override
+  Future<void> openSettings({SettingsTarget? target}) async => settings.add(target);
 }
 
 /// Each run writes operation `op<n>`, the head following.
@@ -357,11 +369,34 @@ void main() {
     expect(<String>{...shortcuts, ...provided}, hasLength(shortcuts.length + provided.length));
   });
 
+  testWidgets(
+    'Settings… ⌘, opens Settings on the tab shown last; Project Settings… on Project once a project is open',
+    (
+      tester,
+    ) async {
+      final rig = _Rig();
+      await rig.setUp(tester);
+      final PlatformMenuItem settings = rig.item('Settings…');
+      expect(settings.shortcut, const SingleActivator(LogicalKeyboardKey.comma, meta: true));
+
+      rig.select('Settings…');
+      await tester.pump();
+      expect(rig.actions.settings, <SettingsTarget?>[null]);
+      expect(rig.enabled('Project Settings…'), isFalse);
+
+      rig.session.openRepo = await tester.runAsync(() => FakeProjectRepos().open('/r/zanshin'));
+      expect(rig.enabled('Project Settings…'), isTrue);
+      rig.select('Project Settings…');
+      await tester.pump();
+      expect(rig.actions.settings, <SettingsTarget?>[null, SettingsTarget.project]);
+    },
+  );
+
   testWidgets('items without a handler story are grey; graph items are grey while no graph is bound', (tester) async {
     final rig = _Rig();
     await rig.setUp(tester);
     for (final label in <String>[
-      'Settings…',
+      // No project open:
       'Project Settings…',
       'Describe…',
       'Fetch',

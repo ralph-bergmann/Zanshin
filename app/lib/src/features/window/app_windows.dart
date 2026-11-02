@@ -94,6 +94,15 @@ const projectsWindowSpec = DialogWindowSpec(
   keepsAppAlive: true,
 );
 
+/// The Settings window (Story 11.7; DS readme.md:189): 620 wide, its height following the shown tab up to 740, not
+/// resizable, only its position remembered, and it does not keep the app alive. No minimum: a window sized to its
+/// content takes none (see [DialogWindowSpec.size]).
+const settingsWindowSpec = DialogWindowSpec(
+  constraints: BoxConstraints(maxWidth: 620, maxHeight: 740),
+  resizable: false,
+  frame: WindowFrameMode.position,
+);
+
 /// The jj log Configurations window (Story 10.22; DS RevsetDialog.prompt.md, the story's 820 px minimum): 880 × 580,
 /// resizable down to 820 × 460, the full frame remembered, floating above the project window while Zanshin is active,
 /// and it does not keep the app alive.

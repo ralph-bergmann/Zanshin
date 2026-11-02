@@ -189,6 +189,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     _selected = open == null ? null : 'project:$open';
     widget.session.addListener(_sessionChanged);
     widget.session.failedOpen.addListener(_failedOpen);
+    widget.environment.configWrites.addListener(_configWritten);
     unawaited(_readVersions());
     unawaited(_readIdentity(open));
     // After this frame: the notice is state of this window, set once it is built.
@@ -206,6 +207,9 @@ class ProjectsWindowState extends State<ProjectsWindow> {
       unawaited(_handle(outcome, path, (group: null, index: null)));
     }
   }
+
+  /// A config write in Settings (Story 11.7): the identity footer reads again.
+  void _configWritten() => unawaited(_readIdentity(widget.session.current?.path));
 
   /// The window became key again (its appearance turned active): the identity is read once more, so an edit made
   /// meanwhile — in another window or by the CLI — shows (Story 11.12; there is no config-change event).
@@ -235,6 +239,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   void dispose() {
     widget.session.removeListener(_sessionChanged);
     widget.session.failedOpen.removeListener(_failedOpen);
+    widget.environment.configWrites.removeListener(_configWritten);
     _search.dispose();
     _searchFocus.dispose();
     _cloneUrl.dispose();

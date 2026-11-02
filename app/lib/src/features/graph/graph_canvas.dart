@@ -1415,6 +1415,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
               child: GraphPeek(
                 data: GraphCardData.of(widget.layout, node, content: widget.content),
                 nowMs: cards.now.value,
+                operationId: widget.layout.operationId,
               ),
             ),
           ),

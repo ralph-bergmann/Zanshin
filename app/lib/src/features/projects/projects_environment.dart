@@ -27,6 +27,25 @@ abstract interface class ProjectsEnvironment {
   /// user-level ones without it. Throws [ZanshinFfiException] when the read fails.
   Future<JjIdentity> identity({String? workspaceRoot});
 
+  /// `jj config list NAME --include-overridden` (9.28) for the workspace at [workspaceRoot], or without it the
+  /// user-level stack: every layer's value of [name], lowest first. Throws [ZanshinFfiException] when the read fails.
+  Future<List<ConfigEntry>> configList({required String name, String? workspaceRoot});
+
+  /// `jj config set --<scope> NAME VALUE` (9.28); [value] is TOML text, a bare string when it does not look like
+  /// TOML. Notifies [configWrites] once it succeeded. Throws [ZanshinFfiException] when it fails.
+  Future<ConfigSetResult> configSet(ConfigScope scope, String name, String value, {String? workspaceRoot});
+
+  /// `jj config unset --<scope> NAME` (9.28). Notifies [configWrites] once it succeeded. Throws [ZanshinFfiException]
+  /// when it fails.
+  Future<void> configUnset(ConfigScope scope, String name, {String? workspaceRoot});
+
+  /// `jj config path --<scope>` (9.28): the scope's first file. Throws [ZanshinFfiException] when it fails.
+  Future<String> configPath(ConfigScope scope, {String? workspaceRoot});
+
+  /// Fires after every config write through this environment (Settings, Story 11.7), so a reader of the identity
+  /// reads it again.
+  Listenable get configWrites;
+
   /// Asks for one folder as a sheet on the window of the Flutter view [viewId], starting in [initialDirectory], its
   /// default button named [prompt]; answers its path, or null when the panel was cancelled.
   Future<String?> chooseDirectory({required int viewId, String? initialDirectory, String? prompt});
@@ -36,6 +55,12 @@ abstract interface class ProjectsEnvironment {
 
   /// The user's home folder, which paths abbreviate to `~` and a clone's destination defaults to.
   String get home;
+}
+
+/// [ProjectsEnvironment.configWrites]: a notifier its environment fires after each write.
+class ConfigWrites extends ChangeNotifier {
+  /// Tells the listeners that a config write landed.
+  void fire() => notifyListeners();
 }
 
 /// The jj identity as `jj config get user.name` / `user.email` read it; an empty value — jj's built-in default for an
@@ -111,6 +136,37 @@ class DesktopProjectsEnvironment implements ProjectsEnvironment {
     final ConfigGetResult email = await worker.configGet('user.email', workspaceRoot: workspaceRoot);
     return JjIdentity(name: name.value, email: email.value);
   }
+
+  final _configWrites = ConfigWrites();
+
+  @override
+  Listenable get configWrites => _configWrites;
+
+  @override
+  Future<List<ConfigEntry>> configList({required String name, String? workspaceRoot}) async =>
+      (await _worker).configList(name: name, workspaceRoot: workspaceRoot, includeOverridden: true);
+
+  @override
+  Future<ConfigSetResult> configSet(ConfigScope scope, String name, String value, {String? workspaceRoot}) async {
+    final ConfigSetResult result = await (await _worker).configSet(
+      ConfigScopeTarget(scope),
+      name,
+      value,
+      workspaceRoot: workspaceRoot,
+    );
+    _configWrites.fire();
+    return result;
+  }
+
+  @override
+  Future<void> configUnset(ConfigScope scope, String name, {String? workspaceRoot}) async {
+    await (await _worker).configUnset(ConfigScopeTarget(scope), name, workspaceRoot: workspaceRoot);
+    _configWrites.fire();
+  }
+
+  @override
+  Future<String> configPath(ConfigScope scope, {String? workspaceRoot}) async =>
+      (await (await _worker).configPath(scope, workspaceRoot: workspaceRoot)).first;
 
   @override
   Future<String?> chooseDirectory({required int viewId, String? initialDirectory, String? prompt}) =>

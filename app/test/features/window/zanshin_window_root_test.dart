@@ -275,6 +275,42 @@ void main() {
       expect(shell.calls, contains('setWindowAppearance:light'), reason: 'the shell applies it to every app window');
     },
   );
+
+  testWidgets('a content-sized root has no navigator and takes its content size; the density scales its text', (
+    tester,
+  ) async {
+    final SettingsStore store = (await tester.runAsync(() async {
+      final file = File('${dir.path}/settings.json');
+      await file.writeAsString('{"appearance": {"density": "comfy"}}');
+      return SettingsStore.load(file);
+    }))!;
+    final tracker = ActiveWindowTracker();
+    addTearDown(tracker.dispose);
+    await tester.pumpWidget(
+      IconRegistryScope(
+        registry: testIconRegistry,
+        child: Center(
+          child: ZanshinWindowRoot(
+            viewModelFactory: _viewModels(() => ZanshinAppViewModel(store)),
+            tracker: tracker,
+            windowKey: 'settings',
+            sizeToContent: true,
+            child: const SizedBox(key: ValueKey<String>('content'), width: 300, height: 200),
+          ),
+        ),
+      ),
+    );
+    shell.theme.complete(const ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF4757A1)));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Navigator), findsNothing);
+    expect(find.byKey(const ValueKey<String>('window:settings')), findsOneWidget);
+    expect(tester.getSize(find.byKey(const ValueKey<String>('window:settings'))), const Size(300, 200));
+    final BuildContext content = tester.element(find.byKey(const ValueKey<String>('content')));
+    expect(MediaQuery.textScalerOf(content).scale(12.5), moreOrLessEquals(13.5));
+    expect(ZanshinWindowRoot.textScaleOf(DensitySetting.compact), 1);
+    expect(ZanshinWindowRoot.textScaleOf(DensitySetting.balanced) * 12.5, moreOrLessEquals(13));
+  });
 }
 
 /// What `pumpTwoWindows` set up: the view models the roots made, the content's statuses, the two text fields and the

@@ -15,6 +15,7 @@ import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
+import 'package:zanshin/src/features/graph/immutable_reasons.dart';
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
@@ -397,6 +398,7 @@ void main() {
     String? select = _mutable,
     String repo = '/r/a',
     ZsAppearance appearance = const ZsAppearance(),
+    ImmutableReasons? reasons,
   }) async {
     useShellWindow(tester);
     graph = GraphViewModel()..init(source, actions: actions, clock: () => DateTime.utc(2026, 10, 30, 12));
@@ -408,9 +410,12 @@ void main() {
     );
     await tester.pumpWidget(
       shellHost(
-        Align(
-          alignment: Alignment.topRight,
-          child: SizedBox(width: 460, height: 840, child: GraphInspector(model: inspector)),
+        ImmutableReasonScope(
+          reasons: reasons,
+          child: Align(
+            alignment: Alignment.topRight,
+            child: SizedBox(width: 460, height: 840, child: GraphInspector(model: inspector)),
+          ),
         ),
         appearance: appearance,
       ),
@@ -735,6 +740,24 @@ void main() {
     expect(_button('inspector-edit'), findsNothing);
     expect(_button('inspector-abandon'), findsNothing);
     expect(details.previews, isEmpty, reason: 'no verb previews for an immutable change');
+    await unmount(tester);
+  });
+
+  testWidgets('Story 11.7: the Immutable flag names the reason the scope answers', (tester) async {
+    await pump(
+      tester,
+      select: _left,
+      reasons: ImmutableReasons(
+        readAlias: () async => 'trunk() | tags()',
+        counts: (operation, expressions, {required cap}) async => RevsetCounts(<RevsetCount>[
+          for (final String expression in expressions)
+            RevsetCount(n: expression.endsWith('::(trunk())') ? 1 : 0, capped: false, error: null),
+        ], const <ZanshinWarning>[]),
+      ),
+    );
+    await tester.pump();
+    final Finder flag = find.ancestor(of: find.text('Immutable'), matching: find.byType(ZsTooltip));
+    expect(tester.widget<ZsTooltip>(flag.first).message, 'Immutable · trunk()');
     await unmount(tester);
   });
 

@@ -260,6 +260,10 @@ class ProjectRegistry implements ValueListenable<ProjectsSettings> {
   Future<void> recordState(String path, ProjectStatus? status, String? bookmark) =>
       _updateEntry(path, (project) => project.copyWith(status: status, bookmark: bookmark));
 
+  /// Sets how often the project at [path] checks its remotes (Settings › Project, Story 11.7).
+  Future<void> setRemotePoll(String path, RemotePollSetting poll) =>
+      _updateEntry(path, (project) => project.copyWith(remotePoll: poll));
+
   /// Records the project the project window shows, or none.
   Future<void> setOpen(String? path) => _update((registry) => registry.copyWith(openProject: path));
 

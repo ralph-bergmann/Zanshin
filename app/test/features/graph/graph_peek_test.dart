@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_peek.dart';
+import 'package:zanshin/src/features/graph/immutable_reasons.dart';
+import 'package:zanshin_core/zanshin_core.dart' show RevsetCount, RevsetCounts, ZanshinWarning;
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/shell_host.dart';
@@ -45,6 +47,54 @@ void main() {
       final Text commit = tester.widget<Text>(find.byKey(const ValueKey<String>('peek-commit')));
       expect(commit.data, '01234567', reason: 'max(prefix, 8) hex');
       expect(find.byKey(const ValueKey<String>('peek-skeleton')), findsNothing);
+    });
+
+    testWidgets('Story 11.7: an immutable change\'s eyebrow names the first term that holds it', (tester) async {
+      final asked = <List<String>>[];
+      final reasons = ImmutableReasons(
+        readAlias: () async => null,
+        counts: (operation, expressions, {required cap}) async {
+          asked.add(expressions);
+          return RevsetCounts(<RevsetCount>[
+            for (final String expression in expressions)
+              RevsetCount(n: expression.contains('::(trunk())') ? 1 : 0, capped: false, error: null),
+          ], const <ZanshinWarning>[]);
+        },
+      );
+      const d = GraphCardData(
+        key: 'kmnvxoqprstu',
+        changeId: 'kmnvxoqprstu',
+        prefixLength: 2,
+        commitId: 'c0ffee',
+        commitPrefixLength: 3,
+        immutable: true,
+        content: content,
+      );
+      Widget peek(ImmutableReasons? scope) => shellHost(
+        ImmutableReasonScope(
+          reasons: scope,
+          child: const Center(
+            child: GraphPeek(data: d, nowMs: 0, operationId: 'op1'),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(peek(null));
+      expect(find.text('IMMUTABLE'), findsOneWidget, reason: 'no scope: the plain eyebrow');
+
+      await tester.pumpWidget(peek(reasons));
+      await tester.pump();
+      expect(find.text('IMMUTABLE · trunk()'), findsOneWidget);
+      expect(asked.single, <String>[
+        'c0ffee & ::(trunk())',
+        'c0ffee & ::(tags())',
+        'c0ffee & ::(untracked_remote_bookmarks())',
+        'c0ffee & ::(untracked_remote_tags())',
+      ], reason: 'builtin_immutable_heads() expanded as the CLI defines it');
+
+      await tester.pumpWidget(peek(reasons));
+      await tester.pump();
+      expect(asked, hasLength(1), reason: 'cached per operation and commit');
     });
 
     testWidgets('a one-line description shows no body', (tester) async {

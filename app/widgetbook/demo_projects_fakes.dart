@@ -186,6 +186,50 @@ class DemoProjectsEnvironment implements ProjectsEnvironment {
 
   @override
   Future<void> revealInFinder(String path) => ZanshinShell.revealInFinder(path);
+
+  /// The demo's jj config, in memory: the user scope's and the repo scope's values as TOML text, by name.
+  final config = <ConfigScope, Map<String, String>>{
+    ConfigScope.user: <String, String>{'user.name': '"Ralph Stein"', 'user.email': '"ralph@example.com"'},
+    ConfigScope.repo: <String, String>{'revset-aliases."trunk()"': '"main@origin"'},
+  };
+
+  final _writes = ConfigWrites();
+
+  @override
+  Listenable get configWrites => _writes;
+
+  @override
+  Future<List<ConfigEntry>> configList({required String name, String? workspaceRoot}) async => <ConfigEntry>[
+    for (final ConfigScope scope in <ConfigScope>[ConfigScope.user, if (workspaceRoot != null) ConfigScope.repo])
+      if (config[scope]?[name] case final String value)
+        ConfigEntry(
+          name: name,
+          value: value,
+          source: scope == ConfigScope.user ? ConfigValueSource.user : ConfigValueSource.repo,
+          path: await configPath(scope),
+          overridden: false,
+        ),
+  ];
+
+  @override
+  Future<ConfigSetResult> configSet(ConfigScope scope, String name, String value, {String? workspaceRoot}) async {
+    // The demo stores strings quoted, as `jj config list` reads them back.
+    (config[scope] ??= <String, String>{})[name] = value.startsWith('"') || value.startsWith('[') ? value : '"$value"';
+    _writes.fire();
+    return ConfigSetResult(path: await configPath(scope), workingCopyAuthor: null, precondition: null);
+  }
+
+  @override
+  Future<void> configUnset(ConfigScope scope, String name, {String? workspaceRoot}) async {
+    config[scope]?.remove(name);
+    _writes.fire();
+  }
+
+  @override
+  Future<String> configPath(ConfigScope scope, {String? workspaceRoot}) async => switch (scope) {
+    ConfigScope.user => '$home/.config/jj/config.toml',
+    ConfigScope.repo || ConfigScope.workspace => '$home/.config/jj/repos/1f3a/config.toml',
+  };
 }
 
 /// The Projects window's content over the demo: a temp-folder settings store holding [demoProjectsSettings] (or none

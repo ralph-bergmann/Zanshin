@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 // WHY: the windowing API is experimental and only reachable through implementation imports
-// (https://github.com/flutter/flutter/issues/30701).
-// ignore: implementation_imports, invalid_use_of_internal_member
+// (https://github.com/flutter/flutter/issues/30701): the feature flag, `WindowScope`, the window controllers and their
+// `title` / `setTitle` are all its internal members.
+// ignore_for_file: implementation_imports, invalid_use_of_internal_member
+
 import 'package:flutter/src/foundation/_features.dart' show isWindowingEnabled;
-// WHY: as above — `WindowScope` and the window controllers live in the experimental windowing library.
-// ignore: implementation_imports, invalid_use_of_internal_member
-import 'package:flutter/src/widgets/_window.dart' show BaseWindowController, WindowController, WindowScope;
+import 'package:flutter/src/widgets/_window.dart'
+    show BaseWindowController, DialogWindowController, WindowController, WindowScope;
 import 'package:flutter/widgets.dart';
 
 /// Gives the window around [child] the title [title] (epics.md Story 11.5 item 8, Claude's proposal): the project's
-/// name, for the Window menu and Mission Control; the bar itself shows no title. It sets the enclosing window's title
-/// when it differs, after the frame (setting a title notifies the window); without a window it does nothing.
+/// name, for the Window menu and Mission Control; the bar itself shows no title. A dialog window (Settings, Story 11.7)
+/// is titled the same way. It sets the enclosing window's title when it differs, after the frame (setting a title
+/// notifies the window); without a window it does nothing.
 class ProjectWindowTitle extends StatefulWidget {
   /// Titles the window around [child] [title].
   const ProjectWindowTitle({required this.title, required this.child, super.key});
@@ -40,27 +42,23 @@ class _ProjectWindowTitleState extends State<ProjectWindowTitle> {
   }
 
   void _sync() {
-    // WHY: the windowing feature flag is internal API; without it `WindowScope.maybeOf` throws instead of answering.
-    // ignore: invalid_use_of_internal_member
+    // Without the windowing feature flag `WindowScope.maybeOf` throws instead of answering.
     if (!isWindowingEnabled) {
       return;
     }
-    // WHY: `WindowScope.maybeOf` is the windowing API's internal lookup of the window around a context.
-    // ignore: invalid_use_of_internal_member
     final BaseWindowController? window = WindowScope.maybeOf(context);
-    // WHY: the regular window's controller, which has a title, is internal API too.
-    // ignore: invalid_use_of_internal_member
-    if (window is! WindowController) {
+    if (window is! WindowController && window is! DialogWindowController) {
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final String title = widget.title;
-      // WHY: `WindowController.title` and `setTitle` are the windowing API's internal members.
-      // ignore: invalid_use_of_internal_member
-      if (mounted && window.title != title) {
-        // WHY: as above.
-        // ignore: invalid_use_of_internal_member
-        window.setTitle(title);
+      if (!mounted) {
+        return;
+      }
+      if (window case final WindowController regular when regular.title != title) {
+        regular.setTitle(title);
+      } else if (window case final DialogWindowController dialog when dialog.title != title) {
+        dialog.setTitle(title);
       }
     });
   }

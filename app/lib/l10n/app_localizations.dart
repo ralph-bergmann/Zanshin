@@ -842,6 +842,12 @@ abstract class AppLocalizations {
   /// **'Immutable'**
   String get peekImmutable;
 
+  /// The hover card's eyebrow once the reason is known: the caps label, then jj's revset term verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'{label} · {reason}'**
+  String peekImmutableReason(String label, String reason);
+
   /// The hover card's hint line on a mutable change; 'jj edit' is jj's command.
   ///
   /// In en, this message translates to:
@@ -1465,6 +1471,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Immutable'**
   String get inspectorFlagImmutable;
+
+  /// The Immutable flag's tooltip once the reason is known; the reason is jj's revset term, verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'Immutable · {reason}'**
+  String inspectorFlagImmutableReason(String reason);
 
   /// Inspector header flag: the change changes no files.
   ///
@@ -2618,12 +2630,6 @@ abstract class AppLocalizations {
   /// **'Immutable commits…'**
   String get cardMenuImmutableCommits;
 
-  /// Why the card menu's Immutable commits… is disabled until the Settings window exists.
-  ///
-  /// In en, this message translates to:
-  /// **'Comes with the Settings window'**
-  String get cardMenuSettingsLater;
-
   /// Card menu header subject of a change without a description, as jj prints it.
   ///
   /// In en, this message translates to:
@@ -3007,6 +3013,510 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Discard changes'**
   String get revsetConfigsDiscard;
+
+  /// The Settings window's General tab, and the window's title while it shows.
+  ///
+  /// In en, this message translates to:
+  /// **'General'**
+  String get settingsTabGeneral;
+
+  /// The Settings window's Project tab while no project is open.
+  ///
+  /// In en, this message translates to:
+  /// **'Project'**
+  String get settingsTabProject;
+
+  /// VoiceOver name of the Settings window's tabs.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTabsLabel;
+
+  /// Why the Settings window's Project tab is disabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a project first'**
+  String get settingsOpenProjectFirst;
+
+  /// The General tab's scope line, followed by the user config file's path.
+  ///
+  /// In en, this message translates to:
+  /// **'For Zanshin on this Mac · jj settings go to'**
+  String get settingsScopeGeneral;
+
+  /// The Project tab's scope line, followed by the repo config file's path.
+  ///
+  /// In en, this message translates to:
+  /// **'For {name} only ·'**
+  String settingsScopeProject(String name);
+
+  /// The Settings window's footer; viewOptions is settingsFooterViewOptions, shown bold.
+  ///
+  /// In en, this message translates to:
+  /// **'How the graph looks lives with the graph: {viewOptions} in the toolbar.'**
+  String settingsFooter(String viewOptions);
+
+  /// The toolbar button the Settings footer names (bold).
+  ///
+  /// In en, this message translates to:
+  /// **'View options'**
+  String get settingsFooterViewOptions;
+
+  /// VoiceOver name of a Settings page's back button.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to {name}'**
+  String settingsBackTo(String name);
+
+  /// A jj row's hint when its value comes from another config layer; scope is jj's layer name (user, repo, …).
+  ///
+  /// In en, this message translates to:
+  /// **'From {scope} config'**
+  String settingsFromScope(String scope);
+
+  /// After an identity write: the working copy's author still differs; command is jj's command, verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'@ keeps the author {name} <{email}>. {command} changes it.'**
+  String settingsAuthorFact(String name, String email, String command);
+
+  /// Settings › General group heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsAppearance;
+
+  /// Settings › General › Appearance row.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get settingsTheme;
+
+  /// The light theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Paper'**
+  String get settingsThemePaper;
+
+  /// The dark theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Night'**
+  String get settingsThemeNight;
+
+  /// The theme follows macOS.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get settingsThemeAuto;
+
+  /// Settings › General › Appearance row: the text size.
+  ///
+  /// In en, this message translates to:
+  /// **'Density'**
+  String get settingsDensity;
+
+  /// Density choice: the default size.
+  ///
+  /// In en, this message translates to:
+  /// **'Compact'**
+  String get settingsDensityCompact;
+
+  /// Density choice: one step larger.
+  ///
+  /// In en, this message translates to:
+  /// **'Balanced'**
+  String get settingsDensityBalanced;
+
+  /// Density choice: two steps larger.
+  ///
+  /// In en, this message translates to:
+  /// **'Comfy'**
+  String get settingsDensityComfy;
+
+  /// Settings › General › Appearance row.
+  ///
+  /// In en, this message translates to:
+  /// **'Accent colour'**
+  String get settingsAccent;
+
+  /// The Accent colour row's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Selection, focus and controls take the colour from System Settings › Appearance. Gold stays with @ and the primary action.'**
+  String get settingsAccentHint;
+
+  /// Accent colour choice: the macOS accent.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow macOS'**
+  String get settingsAccentMacOS;
+
+  /// Accent colour choice: Zanshin's own colour.
+  ///
+  /// In en, this message translates to:
+  /// **'Zanshin'**
+  String get settingsAccentZanshin;
+
+  /// Settings › General group heading.
+  ///
+  /// In en, this message translates to:
+  /// **'While you scroll'**
+  String get settingsWhileScrolling;
+
+  /// Settings › General › While you scroll row.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide controls'**
+  String get settingsHideControls;
+
+  /// The Hide controls row's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Toolbars and panels step aside while you scroll the graph. The minimap stays.'**
+  String get settingsHideControlsHint;
+
+  /// VoiceOver name of the Hide controls switch.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide controls while scrolling'**
+  String get settingsHideControlsSwitch;
+
+  /// Settings › General group heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Diffs'**
+  String get settingsDiffs;
+
+  /// Settings › General › Diffs row.
+  ///
+  /// In en, this message translates to:
+  /// **'Layout'**
+  String get settingsDiffLayout;
+
+  /// VoiceOver name of the diff layout choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Diff layout'**
+  String get settingsDiffLayoutLabel;
+
+  /// Diff layout choice: one column.
+  ///
+  /// In en, this message translates to:
+  /// **'Unified'**
+  String get settingsDiffUnified;
+
+  /// Diff layout choice: two columns.
+  ///
+  /// In en, this message translates to:
+  /// **'Side by side'**
+  String get settingsDiffSideBySide;
+
+  /// Settings group heading (General and Project).
+  ///
+  /// In en, this message translates to:
+  /// **'Identity'**
+  String get settingsIdentity;
+
+  /// Settings › General › Identity row (user.name).
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get settingsName;
+
+  /// Settings › Identity row (user.email).
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get settingsEmail;
+
+  /// VoiceOver name of the Project tab's email field.
+  ///
+  /// In en, this message translates to:
+  /// **'Project email'**
+  String get settingsProjectEmail;
+
+  /// Settings › Project group heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Remotes'**
+  String get settingsRemotes;
+
+  /// Settings › Project › Remotes row (git.fetch).
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch from'**
+  String get settingsFetchFrom;
+
+  /// Settings › Project › Remotes row (git.push).
+  ///
+  /// In en, this message translates to:
+  /// **'Push to'**
+  String get settingsPushTo;
+
+  /// Fetch from / Push to when the repository has no remote.
+  ///
+  /// In en, this message translates to:
+  /// **'No remotes'**
+  String get settingsNoRemotes;
+
+  /// Settings › Project › Remotes row: how often the project checks its remotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Check for remote changes'**
+  String get settingsRemotePoll;
+
+  /// Check for remote changes: never.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get settingsRemotePollOff;
+
+  /// Check for remote changes: every 5 minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'5 min'**
+  String get settingsRemotePoll5;
+
+  /// Check for remote changes: every 15 minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'15 min'**
+  String get settingsRemotePoll15;
+
+  /// Settings › Project group heading.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get settingsHistory;
+
+  /// Settings › Project › History row (the trunk() alias).
+  ///
+  /// In en, this message translates to:
+  /// **'Trunk'**
+  String get settingsTrunk;
+
+  /// The Trunk choice while the alias is unset: jj's builtin trunk().
+  ///
+  /// In en, this message translates to:
+  /// **'jj’s default'**
+  String get settingsTrunkDefault;
+
+  /// The row and field for a trunk() revset of one's own.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom trunk'**
+  String get settingsTrunkCustom;
+
+  /// The Trunk select's last choice: opens a field for one's own revset.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom…'**
+  String get settingsTrunkCustomEllipsis;
+
+  /// Settings › Project › Identity row: a user.email of the repository's own.
+  ///
+  /// In en, this message translates to:
+  /// **'Use a different email here'**
+  String get settingsOwnEmail;
+
+  /// The Use a different email here row's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'For work repositories with their own address.'**
+  String get settingsOwnEmailHint;
+
+  /// VoiceOver name of the Use a different email here switch.
+  ///
+  /// In en, this message translates to:
+  /// **'Use a different email'**
+  String get settingsOwnEmailSwitch;
+
+  /// Settings › Project › History row, the page it opens, and the window title on it.
+  ///
+  /// In en, this message translates to:
+  /// **'Immutable commits'**
+  String get settingsImmutableTitle;
+
+  /// The Immutable commits row's summary while all four built-ins are on.
+  ///
+  /// In en, this message translates to:
+  /// **'jj’s default (trunk, tags, remote bookmarks you don’t track)'**
+  String get settingsImmutableSummaryDefault;
+
+  /// Immutable commits summary item.
+  ///
+  /// In en, this message translates to:
+  /// **'trunk'**
+  String get settingsImmutableSummaryTrunk;
+
+  /// Immutable commits summary item.
+  ///
+  /// In en, this message translates to:
+  /// **'tags'**
+  String get settingsImmutableSummaryTags;
+
+  /// Immutable commits summary item.
+  ///
+  /// In en, this message translates to:
+  /// **'untracked remote bookmarks'**
+  String get settingsImmutableSummaryRemoteBookmarks;
+
+  /// Immutable commits summary item.
+  ///
+  /// In en, this message translates to:
+  /// **'untracked remote tags'**
+  String get settingsImmutableSummaryRemoteTags;
+
+  /// Immutable commits summary item.
+  ///
+  /// In en, this message translates to:
+  /// **'other people’s changes'**
+  String get settingsImmutableSummaryOthers;
+
+  /// Immutable commits summary item.
+  ///
+  /// In en, this message translates to:
+  /// **'a custom revset'**
+  String get settingsImmutableSummaryCustom;
+
+  /// Immutable commits summary when nothing is on; root() is jj's revset.
+  ///
+  /// In en, this message translates to:
+  /// **'Only root()'**
+  String get settingsImmutableSummaryNone;
+
+  /// The Immutable commits page's sentence under its title.
+  ///
+  /// In en, this message translates to:
+  /// **'jj won’t rewrite these changes or anything below them: no edit, describe, squash, rebase or abandon. New change on top and Revert still work. In the graph they’re hatched.'**
+  String get settingsImmutableIntro;
+
+  /// Immutable commits group heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Built in'**
+  String get settingsImmutableBuiltIn;
+
+  /// Immutable commits switch row: trunk().
+  ///
+  /// In en, this message translates to:
+  /// **'Trunk'**
+  String get settingsImmutableTrunk;
+
+  /// The Trunk switch's hint; trunk() is jj's revset, trunk its current value.
+  ///
+  /// In en, this message translates to:
+  /// **'Your main line. trunk() is {trunk}, set under History.'**
+  String settingsImmutableTrunkHint(String trunk);
+
+  /// Immutable commits switch row: tags().
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get settingsImmutableTags;
+
+  /// The Tags switch's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Released versions.'**
+  String get settingsImmutableTagsHint;
+
+  /// Immutable commits switch row: untracked_remote_bookmarks().
+  ///
+  /// In en, this message translates to:
+  /// **'Remote bookmarks you don’t track'**
+  String get settingsImmutableRemoteBookmarks;
+
+  /// The remote bookmarks switch's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetched, but not yours to rewrite.'**
+  String get settingsImmutableRemoteBookmarksHint;
+
+  /// Immutable commits switch row: untracked_remote_tags().
+  ///
+  /// In en, this message translates to:
+  /// **'Remote tags you don’t track'**
+  String get settingsImmutableRemoteTags;
+
+  /// The remote tags switch's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetched, but not yours to move.'**
+  String get settingsImmutableRemoteTagsHint;
+
+  /// Immutable commits group heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Also immutable'**
+  String get settingsImmutableAlso;
+
+  /// Immutable commits switch row: everything after trunk() that is not yours.
+  ///
+  /// In en, this message translates to:
+  /// **'Other people’s changes'**
+  String get settingsImmutableOthers;
+
+  /// The Other people's changes switch's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything after trunk() that isn’t yours. What’s below them is locked too, your own changes included.'**
+  String get settingsImmutableOthersHint;
+
+  /// Immutable commits row: bookmark chips.
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmarks'**
+  String get settingsImmutableBookmarks;
+
+  /// The Bookmarks row's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'A release or shared bookmark you never rewrite.'**
+  String get settingsImmutableBookmarksHint;
+
+  /// The add chip that opens a menu of the other bookmarks.
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmark…'**
+  String get settingsImmutableAddBookmark;
+
+  /// Immutable commits row: a revset of one's own.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom revset'**
+  String get settingsImmutableCustom;
+
+  /// The Custom revset row's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Joined with |. Written once jj resolves it.'**
+  String get settingsImmutableCustomHint;
+
+  /// Immutable commits group heading over the TOML as written.
+  ///
+  /// In en, this message translates to:
+  /// **'Result'**
+  String get settingsImmutableResult;
+
+  /// After the bold count of immutable changes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{change is immutable} other{changes are immutable}}'**
+  String settingsImmutableCountSuffix(int count);
+
+  /// The note under the result; root is jj's root() revset, flag jj's --ignore-immutable.
+  ///
+  /// In en, this message translates to:
+  /// **'{root} is always immutable. To rewrite one anyway, jj needs {flag}.'**
+  String settingsImmutableRootNote(String root, String flag);
+
+  /// Unsets the repository's immutable_heads() alias.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset to jj’s default'**
+  String get settingsImmutableReset;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

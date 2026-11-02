@@ -20,14 +20,18 @@ import 'main.inject.dart' as g;
 import 'src/app/worker_lifecycle_module.dart';
 import 'src/app/zanshin_marionette.dart';
 import 'src/features/app/zanshin_app.dart';
+import 'src/features/app/zanshin_app_view_model.dart';
 import 'src/features/bootstrap/boot_window_host.dart';
 import 'src/features/bootstrap/icon_module.dart';
 import 'src/features/bootstrap/zanshin_bootstrap.dart';
 import 'src/features/graph/revset_configs/revset_configs_window.dart';
 import 'src/features/projects/project_session.dart';
+import 'src/features/projects/projects_environment.dart';
 import 'src/features/projects/projects_module.dart';
 import 'src/features/projects/projects_window.dart';
+import 'src/features/settings/settings_window.dart';
 import 'src/features/shell/app_menu.dart';
+import 'src/features/window/app_window_actions.dart';
 import 'src/features/window/app_window_coordinator.dart';
 import 'src/features/window/app_windows.dart';
 import 'src/features/window/zanshin_window_root.dart';
@@ -149,25 +153,52 @@ Future<BootFirstWindow> _startApp(
 /// shows `ZanshinApp` (its `window:main` root over `HomePage`), Projects the Projects content under the
 /// `window:projects` root, its `onOpened` handed through, and jj log Configurations its window under the
 /// `window:revset-configs` root over the settings and the graph the menu bar holds.
+///
+/// Settings (Story 11.7) shows its window under the content-sized `window:settings` root over the settings, the jj
+/// config through the Projects environment, the session and the graph the menu bar holds; the Projects window's
+/// Settings… and Set identity… open it.
 @visibleForTesting
-AppWindowCoordinator appWindowCoordinator(MainComponent component, AppWindows windows) => AppWindowCoordinator(
-  windows: windows,
-  session: component.projectSession,
-  buildProject: component.zanshinAppFactory.create,
-  buildProjects: (onOpened) => component.zanshinWindowRootFactory.create(
-    windowKey: projectsWindowKey,
-    child: component.projectsWindowFactory.create(onOpened: onOpened, key: component.appMenu.projectsKey),
-  ),
-  buildRevsetConfigs: () => component.zanshinWindowRootFactory.create(
-    windowKey: revsetConfigsWindowKey,
-    child: RevsetConfigsWindow(
-      settings: component.settings,
-      graph: component.appMenu.graph,
-      windows: windows,
-      openUrl: (url) => component.appMenu.openUrl(url),
+AppWindowCoordinator appWindowCoordinator(MainComponent component, AppWindows windows) {
+  late final AppWindowCoordinator coordinator;
+  // One for the app's life: its theme switch mirrors the choice onto every window's native chrome.
+  final theme = ZanshinAppViewModel(component.settings);
+  return coordinator = AppWindowCoordinator(
+    windows: windows,
+    session: component.projectSession,
+    buildProject: component.zanshinAppFactory.create,
+    buildProjects: (onOpened) => component.zanshinWindowRootFactory.create(
+      windowKey: projectsWindowKey,
+      child: component.projectsWindowFactory.create(
+        onOpened: onOpened,
+        onSettings: () => unawaited(coordinator.openSettings()),
+        onIdentitySettings: () => unawaited(coordinator.openSettings(target: SettingsTarget.general)),
+        key: component.appMenu.projectsKey,
+      ),
     ),
-  ),
-);
+    buildRevsetConfigs: () => component.zanshinWindowRootFactory.create(
+      windowKey: revsetConfigsWindowKey,
+      child: RevsetConfigsWindow(
+        settings: component.settings,
+        graph: component.appMenu.graph,
+        windows: windows,
+        openUrl: (url) => component.appMenu.openUrl(url),
+      ),
+    ),
+    buildSettings: (state) => component.zanshinWindowRootFactory.create(
+      windowKey: settingsWindowKey,
+      sizeToContent: true,
+      child: SettingsWindow(
+        state: state,
+        windows: windows,
+        store: component.settings,
+        environment: component.projectsEnvironment,
+        session: component.projectSession,
+        graph: component.appMenu.graph,
+        setThemeMode: theme.setThemeMode,
+      ),
+    ),
+  );
+}
 
 @Component([
   ZanshinDiagnosticsModule,
@@ -210,4 +241,8 @@ abstract class MainComponent {
   /// The settings, which the jj log Configurations window (Story 10.22) edits.
   @inject
   SettingsStore get settings;
+
+  /// The jj config reads and writes the Settings window (Story 11.7) goes through.
+  @inject
+  ProjectsEnvironment get projectsEnvironment;
 }

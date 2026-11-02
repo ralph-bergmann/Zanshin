@@ -31,6 +31,9 @@ class ZanshinAppViewModel extends ChangeNotifier {
   /// The user's persisted choice (may be `system`).
   ThemeMode get selectedMode => _settings.value.appearance.themeMode;
 
+  /// The Settings density, which the window roots turn into a text scale.
+  DensitySetting get density => _settings.value.appearance.density;
+
   /// The mode `MaterialApp` should use.
   ///
   /// A forced mode wins outright; in system mode the shell channel is

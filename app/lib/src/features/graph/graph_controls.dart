@@ -102,7 +102,8 @@ class GraphCount extends StatelessWidget {
 /// **View options** (DS chrome.jsx:87-98; kit.css:62): a [ZsPopover] 340 wide, 14 below the button, its right edge 5
 /// right of the button's, kept 8 inside the window: "Graph view" over Layout (Free | Compact), Detailed cards, Group
 /// stacks and Card width (160–400 in 10s), all bound to [preferences], then "Appearance, diffs and more" ·
-/// Settings…, which runs [onSettings] (disabled while null; 11.7 passes Settings on General). The button opens and
+/// Settings…, which runs [onSettings], else the window actions' Settings on General (disabled without either; Story
+/// 11.7). The button opens and
 /// closes it; a press outside and Esc close it. Focus moves into it on open and back to the button on Esc; the Esc is
 /// consumed and never reaches the graph. While open — its exit included — it holds the shell's calm scrolling.
 class GraphViewControls extends StatelessWidget {
@@ -124,7 +125,7 @@ class GraphViewControls extends StatelessWidget {
   /// The View options.
   final GraphPreferences preferences;
 
-  /// "Appearance, diffs and more"; null disables the row.
+  /// "Appearance, diffs and more"; null opens Settings on General through the window actions.
   final VoidCallback? onSettings;
 
   @override
@@ -147,7 +148,12 @@ class GraphViewControls extends StatelessWidget {
           GraphCount(model: model),
           const ZsIslandSeparator(),
         ],
-        GraphViewOptionsButton(preferences: preferences, onSettings: onSettings),
+        GraphViewOptionsButton(
+          preferences: preferences,
+          onSettings:
+              onSettings ??
+              (windows == null ? null : () => unawaited(windows.openSettings(target: SettingsTarget.general))),
+        ),
       ],
     );
   }

@@ -55,6 +55,7 @@ void main() {
       'graphView': '{"view":"all"}',
       'recentSearches': <Object?>['{"change":"kxwsnptm"}'],
       'viewedFiles': <Object?>['kxwsnptm:ab12:lib/a:b.dart'],
+      'remotePoll': 'fifteenMinutes',
     });
     expect(projects['openProject'], '/r/a');
     final decoded = AppSettings.fromJson(json);
@@ -78,6 +79,20 @@ void main() {
     expect(entry.graphView, isNull, reason: 'nor the graph search state (Story 10.21)');
     expect(entry.recentSearches, isEmpty);
     expect(entry.viewedFiles, isEmpty, reason: 'nor the Viewed marks (Story 10.24)');
+    expect(
+      entry.remotePoll,
+      RemotePollSetting.fifteenMinutes,
+      reason: 'the remote check every 15 minutes (Story 11.7)',
+    );
+  });
+
+  test('the remote check survives a JSON round trip and reads an unknown value as every 15 minutes', () {
+    const off = ProjectEntry(path: '/r/a', name: 'a', remotePoll: RemotePollSetting.off);
+    expect(ProjectEntry.fromJson(off.toJson()), off);
+    expect(
+      ProjectEntry.fromJson(<String, Object?>{'path': '/r/a', 'name': 'a', 'remotePoll': 'hourly'}).remotePoll,
+      RemotePollSetting.fifteenMinutes,
+    );
   });
 
   test('a status this version does not know reads as null; the rest of the entry and the file load', () {

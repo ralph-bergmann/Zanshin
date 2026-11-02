@@ -335,7 +335,7 @@ class AppMenuModel extends ChangeNotifier {
     final bool canReload = (_session.repo != null || graph.value != null) && !projectSheet;
 
     return <PlatformMenuItem>[
-      _appMenu(s, onSettings: null),
+      _appMenu(s, onSettings: actions == null ? null : _run(actions.openSettings)),
       PlatformMenu(
         label: s.menuFile,
         menus: <PlatformMenuItem>[
@@ -347,7 +347,12 @@ class AppMenuModel extends ChangeNotifier {
                 onSelected: actions == null ? null : _run(actions.openProjects),
               ),
               _openRecent(s, actions == null || projectSheet ? null : actions),
-              PlatformMenuItem(label: s.capsuleProjectSettings),
+              PlatformMenuItem(
+                label: s.capsuleProjectSettings,
+                onSelected: actions == null || _session.repo == null
+                    ? null
+                    : _run(() => actions.openSettings(target: SettingsTarget.project)),
+              ),
             ],
           ),
           PlatformMenuItemGroup(

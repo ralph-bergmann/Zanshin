@@ -128,7 +128,7 @@ class HomePage extends StatelessWidget {
 
   /// PLACE: the capsule of the open project, else the empty island. All Projects… opens or brings forward the Projects
   /// window through the window's [AppWindowActionsScope] (Story 11.12) and stays disabled without one (a catalogue
-  /// preview); Project Settings… and Settings… stay disabled until 11.7 passes their actions.
+  /// preview), and so do Project Settings… (the Project tab) and Settings… (the tab shown last; Story 11.7).
   Widget _place(BuildContext context) {
     final ProjectEntry? project = projects.current;
     if (project == null) {
@@ -140,6 +140,8 @@ class HomePage extends StatelessWidget {
       recent: projects.recent,
       onOpen: (path) => unawaited(openRecentProject(projects, windows, path)),
       onAllProjects: windows == null ? null : () => unawaited(windows.openProjects()),
+      onProjectSettings: windows == null ? null : () => unawaited(windows.openSettings(target: SettingsTarget.project)),
+      onSettings: windows == null ? null : () => unawaited(windows.openSettings()),
     );
   }
 }

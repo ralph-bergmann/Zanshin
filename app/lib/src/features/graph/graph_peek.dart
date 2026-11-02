@@ -10,6 +10,7 @@ import '../../l10n/strings.dart';
 import 'graph_card.dart';
 import 'graph_layout.dart';
 import 'hatch_swatch.dart';
+import 'immutable_reasons.dart';
 
 /// The peek's width (DS components/overlays/overlays.css:25).
 const double graphPeekWidth = 340;
@@ -51,7 +52,7 @@ const double _gap = 8;
 /// The commit callout (Story 10.6 item 7; DS components/overlays/PeekCard.*, overlays.css:24-39) on the one menu
 /// material, 340 wide, padding 12 14 10, gap 8:
 /// - an immutable non-root change first shows the eyebrow: `HatchSwatch` and IMMUTABLE in `--type-caps` /
-///   `--text-muted` (its reason is 11.7's);
+///   `--text-muted`, followed by " · ‹reason›" once an [ImmutableReasonScope] answers it (Story 11.7);
 /// - the full subject, wrapped ("no description" when empty, `root()` on the root); while a non-root change's content
 ///   loads, one static skeleton bar in its place (Story 10.12);
 /// - the description's body below it (`.zs-peek-desc`: `--fs-md`, line height 1.45, `--text-dim`, its line breaks
@@ -63,10 +64,13 @@ const double _gap = 8;
 ///   · Click for details", the root none.
 class GraphPeek extends StatelessWidget {
   /// The peek of [data] at "now" [nowMs].
-  const GraphPeek({required this.data, required this.nowMs, super.key});
+  const GraphPeek({required this.data, required this.nowMs, this.operationId, super.key});
 
   /// The change's facts.
   final GraphCardData data;
+
+  /// The operation the change is shown at, for the immutable reason (Story 11.7); none without it.
+  final String? operationId;
 
   /// "Now" for the relative date, epoch ms.
   final int nowMs;
@@ -149,15 +153,25 @@ class GraphPeek extends StatelessWidget {
           spacing: 8,
           children: <Widget>[
             if (d.immutable && !d.isRoot)
-              Row(
-                spacing: 6,
-                children: <Widget>[
-                  const HatchSwatch(),
-                  Text(
-                    ZsType.caps(strings.peekImmutable),
-                    style: ZsType.capsLabel.copyWith(color: colors.textMuted),
-                  ),
-                ],
+              ImmutableReasonBuilder(
+                operationId: operationId,
+                commitId: commitId,
+                builder: (context, reason) => Row(
+                  spacing: 6,
+                  children: <Widget>[
+                    const HatchSwatch(),
+                    Flexible(
+                      child: Text(
+                        reason == null
+                            ? ZsType.caps(strings.peekImmutable)
+                            : strings.peekImmutableReason(ZsType.caps(strings.peekImmutable), reason),
+                        style: ZsType.capsLabel.copyWith(color: colors.textMuted),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             subject,
             if (body.isNotEmpty)

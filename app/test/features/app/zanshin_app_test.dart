@@ -18,6 +18,8 @@ import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/projects/projects_module.dart';
 import 'package:zanshin/src/features/projects/projects_window.dart';
+import 'package:zanshin/src/features/settings/settings_window.dart';
+import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/shell/app_menu.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
@@ -65,13 +67,15 @@ class _RootFactory implements ZanshinWindowRootFactory {
   final ActiveWindowTracker _tracker;
 
   @override
-  ZanshinWindowRoot create({required String windowKey, required Widget child, Key? key}) => ZanshinWindowRoot(
-    key: key,
-    viewModelFactory: _viewModels(() => ZanshinAppViewModel(_store)),
-    tracker: _tracker,
-    windowKey: windowKey,
-    child: child,
-  );
+  ZanshinWindowRoot create({required String windowKey, required Widget child, bool? sizeToContent, Key? key}) =>
+      ZanshinWindowRoot(
+        key: key,
+        viewModelFactory: _viewModels(() => ZanshinAppViewModel(_store)),
+        tracker: _tracker,
+        windowKey: windowKey,
+        sizeToContent: sizeToContent,
+        child: child,
+      );
 }
 
 class _Provider<T> implements Provider<T> {
@@ -214,6 +218,8 @@ void main() {
     expect((content as ProjectsWindow).onOpened, same(onOpened));
     expect(content.session, same(component.projectSession));
     expect(content.key, same(component.appMenu.projectsKey), reason: "the menu bar's Find reaches Projects' search");
+    expect(content.onSettings, isNotNull, reason: 'Story 11.7: the sidebar Settings…');
+    expect(content.onIdentitySettings, isNotNull, reason: 'Story 11.7: the footer Set identity…');
   });
 
   testWidgets("main.dart's coordinator builds jj log Configurations under its root over the settings and the graph", (
@@ -228,6 +234,28 @@ void main() {
     final Widget content = (root as ZanshinWindowRoot).child;
     expect(content, isA<RevsetConfigsWindow>());
     expect((content as RevsetConfigsWindow).settings, same(component.settings));
+    expect(content.graph, same(component.appMenu.graph));
+    expect(content.windows, same(windows));
+  });
+
+  testWidgets("main.dart's coordinator builds Settings under its content-sized root over the session and the graph", (
+    tester,
+  ) async {
+    final MainComponent component = await mainComponent(tester);
+    final windows = AppWindows(exitProcess: () async {});
+    final state = SettingsWindowState();
+    addTearDown(state.dispose);
+
+    final Widget root = appWindowCoordinator(component, windows).buildSettings(state);
+
+    expect(root, isA<ZanshinWindowRoot>().having((root) => root.windowKey, 'windowKey', settingsWindowKey));
+    expect((root as ZanshinWindowRoot).sizeToContent, isTrue);
+    final Widget content = root.child;
+    expect(content, isA<SettingsWindow>());
+    expect((content as SettingsWindow).state, same(state));
+    expect(content.store, same(component.settings));
+    expect(content.session, same(component.projectSession));
+    expect(content.environment, same(component.projectsEnvironment));
     expect(content.graph, same(component.appMenu.graph));
     expect(content.windows, same(windows));
   });
