@@ -121,7 +121,7 @@ fn a_revision_diffs_against_its_parent_and_is_pinned() {
     let result = run(&mut fx, &revision(&c));
     assert_eq!(head_op(&fx.root), head, "no operation");
     assert_eq!(result.operation_id, OperationId(head));
-    assert_eq!(result.commit_id, c_commit);
+    assert_eq!(result.commit_ids, [c_commit]);
     assert_eq!(result.from_commit_id, None);
     assert_eq!(paths(&result.files), ["f.txt", "g.txt"]);
     assert!(result.files.iter().all(|file| file.kind == ChangeKind::Modified));
@@ -175,8 +175,8 @@ fn summary_mode_drops_only_the_hunks() {
         .collect();
     assert_eq!(summary.files, stripped);
     assert_eq!(
-        (summary.operation_id, summary.commit_id),
-        (full.operation_id, full.commit_id)
+        (summary.operation_id, summary.commit_ids),
+        (full.operation_id, full.commit_ids)
     );
 }
 
@@ -329,12 +329,12 @@ fn from_to_diffs_two_revisions_and_pins_both() {
         ..DiffOptions::default()
     };
     let result = run(&mut fx, &from_to(Some(&a), Some(&c)));
-    assert_eq!(result.commit_id, c_commit);
+    assert_eq!(result.commit_ids, std::slice::from_ref(&c_commit));
     assert_eq!(result.from_commit_id, Some(a_commit.clone()));
     assert_eq!(result.files, run(&mut fx, &revision(&c)).files);
     assert_eq!(run(&mut fx, &from_to(Some(&a), None)), result);
     let reverse = run(&mut fx, &from_to(None, Some(&a)));
-    assert_eq!(reverse.commit_id, a_commit);
+    assert_eq!(reverse.commit_ids, [a_commit]);
     assert_eq!(reverse.from_commit_id, Some(c_commit));
     assert_eq!(paths(&reverse.files), ["f.txt", "g.txt"]);
     assert!(run(&mut fx, &from_to(Some(&c), Some(&c))).files.is_empty());
@@ -456,20 +456,21 @@ fn a_missing_object_is_a_backend_error() {
     assert!(matches!(repo.diff(&revision(&d)), Err(MutateError::Backend(_))));
 }
 
-/// A revision resolving to no commit or several is a resolution error (`resolve_single_rev`); a
-/// bad expression a parse error.
+/// An unknown symbol is a resolution error, a `--from` resolving to several commits too
+/// (`resolve_single_rev`, with the CLI's summary hint); a bad expression a parse error.
 #[test]
 fn an_unknown_several_or_malformed_revision_is_refused() {
     let (mut fx, _, _) = plain();
-    let reason = |result| match result {
-        Err(MutateError::RevsetResolutionError { reason, .. }) => reason,
-        other => panic!("expected a resolution error, got {other:?}"),
+    let resolution = |result| {
+        let Err(MutateError::RevsetResolutionError { reason, hints }) = result else {
+            unreachable!("expected a resolution error, got {result:?}")
+        };
+        (reason, hints)
     };
     assert_eq!(
-        reason(fx.repo.diff(&revset("yyyyyyyy"))),
+        resolution(fx.repo.diff(&revset("yyyyyyyy"))).0,
         "Revision `yyyyyyyy` doesn't exist"
     );
-    assert!(reason(fx.repo.diff(&revset("all()"))).contains("resolved to more than one revision"));
     let from_to = DiffOptions {
         revisions: DiffRevisions::FromTo {
             from: Some("all()".to_owned()),
@@ -477,11 +478,127 @@ fn an_unknown_several_or_malformed_revision_is_refused() {
         },
         ..DiffOptions::default()
     };
-    assert!(reason(fx.repo.diff(&from_to)).contains("more than one"));
+    let (reason, hints) = resolution(fx.repo.diff(&from_to));
+    assert_eq!(reason, "Revset `all()` resolved to more than one revision");
+    let [hint] = hints.as_slice() else {
+        unreachable!("one hint: {hints:?}")
+    };
+    let lines: Vec<&str> = hint.lines().collect();
+    assert_eq!(lines[0], "The revset `all()` resolved to these revisions:");
+    assert_eq!(lines.len(), 4, "C, A and the root: {hint}");
+    assert!(lines[1..].iter().all(|line| line.starts_with("  ") && line.len() > 2));
+    assert!(lines[3].starts_with("  zzzzzzzz 00000000"), "the root last: {hint}");
     assert!(matches!(
         fx.repo.diff(&revset("bogus(")),
         Err(MutateError::RevsetParseError { .. })
     ));
+}
+
+/// Past five commits the multiple-revisions hint lists five, then `  ...`.
+#[test]
+fn the_multiple_revisions_hint_lists_five_then_elides() {
+    let (mut fx, _, (c, _)) = plain();
+    let mut tip = c;
+    for n in 0..4 {
+        fx.repo.new_change(std::slice::from_ref(&tip), &[], &[]).expect("new");
+        tip = commit(&mut fx, &format!("N{n}\n")).0;
+    }
+    let from_to = DiffOptions {
+        revisions: DiffRevisions::FromTo {
+            from: Some("all()".to_owned()),
+            to: None,
+        },
+        ..DiffOptions::default()
+    };
+    let Err(MutateError::RevsetResolutionError { hints, .. }) = fx.repo.diff(&from_to) else {
+        unreachable!("several commits are refused")
+    };
+    let lines: Vec<&str> = hints[0].lines().collect();
+    assert_eq!(lines.len(), 7, "heading, five summaries, the ellipsis: {lines:?}");
+    assert_eq!(lines[6], "  ...");
+    assert!(lines[1..6]
+        .iter()
+        .all(|line| line.starts_with("  ") && *line != "  ..."));
+}
+
+/// `A` adds `a.txt`, `B` (on `A`) `b.txt`, `C` (`@`, on `B`) `c.txt`.
+fn linear() -> (Fx, [(ChangeId, CommitId); 3]) {
+    let mut fx = init();
+    write(&fx.root, "a.txt", "a\n");
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    write(&fx.root, "b.txt", "b\n");
+    let b = commit(&mut fx, "B\n");
+    fx.repo.new_change(std::slice::from_ref(&b.0), &[], &[]).expect("new");
+    write(&fx.root, "c.txt", "c\n");
+    let c = commit(&mut fx, "C\n");
+    let _ = fx.repo.take_warnings();
+    (fx, [a, b, c])
+}
+
+/// `-r 'B::C'` diffs B's parent against C, as `--from A --to C` does; the heads pin it.
+#[test]
+fn a_range_diffs_its_roots_parents_against_its_heads() {
+    let (mut fx, [(a, _), (b, _), (c, c_commit)]) = linear();
+    let range = run(&mut fx, &revset(&format!("{}::{}", b.0, c.0)));
+    assert_eq!(range.commit_ids, [c_commit]);
+    assert_eq!(range.from_commit_id, None);
+    assert_eq!(paths(&range.files), ["b.txt", "c.txt"]);
+    let from_to = run(
+        &mut fx,
+        &DiffOptions {
+            revisions: DiffRevisions::FromTo {
+                from: Some(a.0),
+                to: Some(c.0),
+            },
+            ..DiffOptions::default()
+        },
+    );
+    assert_eq!(range.files, from_to.files);
+}
+
+/// A set with a gap is refused with the CLI's message and the first missing commit.
+#[test]
+fn a_set_with_a_gap_is_refused() {
+    let (mut fx, [(a, _), (_, b_commit), (c, _)]) = linear();
+    let result = fx.repo.diff(&revset(&format!("{} | {}", a.0, c.0)));
+    let Err(MutateError::InvalidInput { reason, hints }) = result else {
+        unreachable!("a gap is refused: {result:?}")
+    };
+    assert_eq!(reason, "Cannot diff revsets with gaps in.");
+    assert_eq!(
+        hints,
+        [format!("Revision {} would need to be in the set.", &b_commit.0[..12])]
+    );
+}
+
+/// Two sibling heads diff their common parent against their merge; an empty set and the whole
+/// repo diff from the empty tree.
+#[test]
+fn siblings_merge_and_empty_or_whole_sets_diff_from_nothing() {
+    let mut fx = init();
+    write(&fx.root, "a.txt", "a\n");
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    write(&fx.root, "b.txt", "b\n");
+    let b = commit(&mut fx, "B\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    write(&fx.root, "c.txt", "c\n");
+    let c = commit(&mut fx, "C\n");
+    let siblings = run(&mut fx, &revset(&format!("{} | {}", b.0 .0, c.0 .0)));
+    // Heads in revset (index) order: the newer C first.
+    assert_eq!(siblings.commit_ids, [c.1.clone(), b.1.clone()]);
+    assert_eq!(paths(&siblings.files), ["b.txt", "c.txt"]);
+    assert!(siblings.files.iter().all(|file| file.kind == ChangeKind::Added));
+
+    let empty = run(&mut fx, &revset("none()"));
+    assert!(empty.commit_ids.is_empty());
+    assert!(empty.files.is_empty());
+
+    // `root()`, A and B: the root's (absent) parents against the one head B.
+    let whole = run(&mut fx, &revset(&format!("all() ~ {}", c.0 .0)));
+    assert_eq!(paths(&whole.files), ["a.txt", "b.txt"]);
+    assert_eq!(whole.commit_ids, [b.1]);
 }
 
 /// A commit id reaches a hidden commit (a rewritten predecessor), as `jj diff -r` does.
@@ -489,12 +606,12 @@ fn an_unknown_several_or_malformed_revision_is_refused() {
 fn a_hidden_commit_id_diffs_that_commit() {
     let (mut fx, _, (_, c_commit)) = plain();
     let before = run(&mut fx, &revset(&c_commit.0));
-    assert_eq!(before.commit_id, c_commit);
+    assert_eq!(before.commit_ids, std::slice::from_ref(&c_commit));
     write(&fx.root, "f.txt", "a\nB\nC\n");
     let (_, rewritten) = commit(&mut fx, "C2\n");
     assert_ne!(rewritten, c_commit, "C was rewritten, its old commit hidden");
     let hidden = run(&mut fx, &revset(&c_commit.0));
-    assert_eq!(hidden.commit_id, c_commit);
+    assert_eq!(hidden.commit_ids, [c_commit]);
     assert_eq!(hidden.files, before.files);
     assert_ne!(run(&mut fx, &revset(&rewritten.0)).files, before.files);
 }
@@ -504,7 +621,7 @@ fn a_hidden_commit_id_diffs_that_commit() {
 fn revset_texts_resolve_to_their_commit() {
     let (mut fx, (a, a_commit), _) = plain();
     let parent = run(&mut fx, &revset("@-"));
-    assert_eq!(parent.commit_id, a_commit);
+    assert_eq!(parent.commit_ids, std::slice::from_ref(&a_commit));
     assert_eq!(parent, run(&mut fx, &revision(&a)));
     let from_to = run(
         &mut fx,
@@ -516,7 +633,7 @@ fn revset_texts_resolve_to_their_commit() {
             ..DiffOptions::default()
         },
     );
-    assert_eq!(from_to.commit_id, a_commit);
+    assert_eq!(from_to.commit_ids, [a_commit]);
     assert_eq!(from_to.from_commit_id, Some(CommitId("0".repeat(40))));
     assert_eq!(from_to.files, parent.files);
 }

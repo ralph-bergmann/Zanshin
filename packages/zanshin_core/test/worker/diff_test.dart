@@ -23,6 +23,7 @@ import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/commit_views.dart' show ShowEntry;
 import 'package:zanshin_core/src/ffi/diff.dart';
 import 'package:zanshin_core/src/ffi/select_tree.dart';
+import 'package:zanshin_core/src/ffi/status.dart' show FileChangeKind;
 import 'package:zanshin_core/src/ffi/warning.dart' show ZanshinWarningCode;
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
@@ -68,7 +69,7 @@ void main() {
     test('a_revision_diff_carries_files_hunks_keys_and_pins_and_its_keys_select', () async {
       final Diff diff = await repo.diff(revision: at);
       expect(diff.operationId, isNotEmpty);
-      expect(diff.commitId, isNotEmpty);
+      expect(diff.commitIds.single, isNotEmpty);
       expect(diff.fromCommitId, isNull);
       final FileDiff f = fileOf(diff, 'f.txt');
       expect(f.sections, hasLength(3));
@@ -85,24 +86,36 @@ void main() {
       expect(tree.treeIds, hasLength(1), reason: 'the reported key is accepted');
 
       final Diff defaulted = await repo.diff();
-      expect(defaulted.commitId, diff.commitId, reason: 'no revision = @');
+      expect(defaulted.commitIds, diff.commitIds, reason: 'no revision = @');
+    });
+
+    test('a_range_diffs_as_one_and_pins_its_heads', () async {
+      final Diff range = await repo.diff(revision: '$a::$at');
+      expect(range.commitIds, (await repo.diff(revision: at)).commitIds, reason: 'one head: @');
+      expect(range.files.map((f) => f.path), ['f.txt', 'w.txt'], reason: 'from the empty tree');
+      expect(range.files.map((f) => f.kind), everyElement(FileChangeKind.added));
+      expect((await repo.diff(revision: 'none()')).commitIds, isEmpty);
+      await expectLater(
+        repo.diff(revision: 'root() | $at'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
     });
 
     test('from_and_to_select_the_from_to_form', () async {
       final Diff revision = await repo.diff(revision: at);
       final Diff fromTo = await repo.diff(from: a, to: at);
       expect(fromTo.fromCommitId, isNotNull);
-      expect(fromTo.commitId, revision.commitId);
+      expect(fromTo.commitIds, revision.commitIds);
       expect(fileOf(fromTo, 'f.txt').sections, fileOf(revision, 'f.txt').sections);
       final Diff fromOnly = await repo.diff(from: a);
-      expect(fromOnly.commitId, revision.commitId, reason: 'an absent to is @');
-      expect(fromTo.fromCommitId, (await repo.diff(revision: a)).commitId);
+      expect(fromOnly.commitIds, revision.commitIds, reason: 'an absent to is @');
+      expect(fromTo.fromCommitId, (await repo.diff(revision: a)).commitIds.single);
 
       // Move `@` off `at`, so `to: at` differs from an absent `to`.
       await repo.newChange([at]);
       final Diff moved = await repo.diff(from: a, to: at);
-      expect(moved.commitId, (await repo.diff(revision: at)).commitId);
-      expect(moved.commitId, isNot((await repo.diff()).commitId));
+      expect(moved.commitIds, (await repo.diff(revision: at)).commitIds);
+      expect(moved.commitIds, isNot((await repo.diff()).commitIds));
     });
 
     test('paths_context_whitespace_and_summary_cross_the_buffer', () async {

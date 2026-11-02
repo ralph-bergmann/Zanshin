@@ -743,8 +743,9 @@ impl Planner<'_> {
     }
 }
 
-/// Every commit id of `expression` against `repo`, its symbols resolved through `prefixes`.
-fn collect_ids(
+/// Every commit id of `expression` against `repo`, its symbols resolved through `prefixes`, in the
+/// revset's (index) order.
+pub(crate) fn collect_ids(
     repo: &dyn jj_lib::repo::Repo,
     expression: &Arc<UserRevsetExpression>,
     prefixes: &IdPrefixContext,
@@ -991,26 +992,34 @@ fn ensure_new_bookmark_name(repo: &dyn jj_lib::repo::Repo, name: &RefName) -> Re
 /// (`cli_util.rs:1830-1841`, refusals `revset_util.rs:277-331` @ v0.46.0).
 fn resolve_single(planner: &mut Planner<'_>, base: &ReadonlyRepo, revision: &str) -> Result<Commit, MutateError> {
     let expression = planner.parse(revision)?;
-    single_commit(base, &expression, revision, &planner.prefixes)
+    let templates = Templates::new(
+        planner.config,
+        planner.immutable,
+        planner.template_startup,
+        planner.repo.workspace(),
+    );
+    single_commit(base, &expression, revision, &templates)
 }
 
 /// The single commit the parsed `expression` (the text `revision`) denotes against `base`, its
-/// symbols resolved through `prefixes`, with `resolve_single_rev`'s refusals
+/// symbols resolved through the call's prefixes, with `resolve_single_rev`'s refusals
 /// (`revset_util.rs:277-331` @ v0.46.0) — shared with `bookmark advance`'s default target (Story
-/// 9.19).
+/// 9.19) and `diff --from` / `--to`.
 ///
 /// # Errors
 ///
 /// - [`MutateError::RevsetResolutionError`] — a symbol does not resolve, or the set holds no
-///   commit or more than one.
+///   commit or more than one (then with the CLI's hint listing the first five commits'
+///   `templates.commit_summary`, `  ...` past five).
+/// - [`MutateError::Config`] — `templates.commit_summary` does not parse.
 /// - [`MutateError::Backend`] — an evaluation or store read failed.
 pub(crate) fn single_commit(
     base: &ReadonlyRepo,
     expression: &Arc<UserRevsetExpression>,
     revision: &str,
-    prefixes: &IdPrefixContext,
+    templates: &Templates<'_>,
 ) -> Result<Commit, MutateError> {
-    let ids = collect_ids(base, expression, prefixes)?;
+    let ids = collect_ids(base, expression, templates.prefixes())?;
     match ids.as_slice() {
         [id] => base.store().get_commit(id).map_err(be),
         [] => Err(MutateError::RevsetResolutionError {
@@ -1019,9 +1028,31 @@ pub(crate) fn single_commit(
         }),
         _ => Err(MutateError::RevsetResolutionError {
             reason: format!("Revset `{revision}` resolved to more than one revision"),
-            hints: vec![],
+            hints: vec![multiple_revisions_hint(base, revision, &ids, templates)?],
         }),
     }
+}
+
+/// The CLI's `format_multiple_revisions_error` hint (`revset_util.rs:303-331` @ v0.46.0) as one
+/// string: the heading, then one `  <summary>` line per commit of the first five, `  ...` when
+/// more follow; no trailing newline.
+fn multiple_revisions_hint(
+    base: &ReadonlyRepo,
+    revision: &str,
+    ids: &[JjCommitId],
+    templates: &Templates<'_>,
+) -> Result<String, MutateError> {
+    const MAX_COMMITS: usize = 5;
+    let mut hint = format!("The revset `{revision}` resolved to these revisions:");
+    for id in ids.iter().take(MAX_COMMITS) {
+        let commit = base.store().get_commit(id).map_err(be)?;
+        hint.push_str("\n  ");
+        hint.push_str(&templates.commit_summary(base, &commit)?);
+    }
+    if ids.len() > MAX_COMMITS {
+        hint.push_str("\n  ...");
+    }
+    Ok(hint)
 }
 
 /// The CLI's `create_change_bookmarks` (`push.rs:1303-1356`) — each name rendered from

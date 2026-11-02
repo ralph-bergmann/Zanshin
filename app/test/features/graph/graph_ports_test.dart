@@ -161,7 +161,7 @@ void main() {
     // A commit id, as the inspector passes it (`show` snapshots the new files first).
     final String commitId = (await details.show('@')).change.commitId;
     final Diff summary = await details.diff(commitId, summary: true);
-    expect(summary.commitId, commitId);
+    expect(summary.commitIds, <String>[commitId]);
     expect(summary.files.map((f) => f.path), <String>['a.txt', 'b.txt']);
     expect(summary.files.map((f) => (f.added, f.removed)), <(int, int)>[(2, 0), (1, 0)]);
     expect(summary.files.every((f) => f.hunks.isEmpty && f.fingerprint.isNotEmpty), isTrue);
@@ -537,13 +537,8 @@ void main() {
         'jj commit -m Fix \'root:"a[1].txt"\'',
       );
       expect(
-        const GraphSplit(
-          'kmnvxoqpzz',
-          message: <String>['Part'],
-          paths: <String>['a.txt', 'b c'],
-          shown: 'kmnvxoqp',
-        ).command,
-        'jj split -r kmnvxoqp -m Part root:a.txt \'root:"b c"\'',
+        const GraphSplit('kmnvxoqpzz', message: <String>['Part'], paths: <String>['a.txt', 'b c']).command,
+        'jj split -r kmnvxoqpzz -m Part root:a.txt \'root:"b c"\'',
       );
       expect(
         const GraphSplit('k', message: <String>[''], paths: <String>['a.txt']).command,

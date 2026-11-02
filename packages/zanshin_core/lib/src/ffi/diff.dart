@@ -169,7 +169,7 @@ final class Diff {
   const Diff({
     required this.files,
     required this.operationId,
-    required this.commitId,
+    required this.commitIds,
     this.fromCommitId,
     this.warnings = const [],
   });
@@ -180,8 +180,9 @@ final class Diff {
   /// The operation the diff was read at, full hex.
   final String operationId;
 
-  /// The revision (`-r`) or `to` (`--from`/`--to`), full hex.
-  final String commitId;
+  /// The right side's commits, full hex: the `-r` set's heads in revset order
+  /// (empty for an empty set) or `[to]` (`--from`/`--to`).
+  final List<String> commitIds;
 
   /// `from` for `--from`/`--to`; null for the revision form.
   final String? fromCommitId;
@@ -196,12 +197,13 @@ final class Diff {
 /// buffer, and return the FlatBuffers `Envelope` bytes (Story 5.8) — `jj diff`
 /// as data.
 ///
-/// [revision] is `-r` (`null`: `@`), diffed against its merged parents; [from]
-/// / [to] are `--from` / `--to` — either set selects that form, the other side
-/// `null` = `@`; each is a revset that must resolve to exactly one commit (a
-/// commit id reaches a hidden commit; the CLI's multi-revision `-r` is not
-/// ported; parse diagnostics land on the call's warnings); [revision] together
-/// with either is refused
+/// [revision] is `-r` (`null`: `@`), a revset diffed as one set — the merged
+/// parents of its roots against its merged heads (a set with gaps is refused,
+/// `jj.invalid_input`); [from] / [to] are `--from` / `--to` — either set
+/// selects that form, the other side `null` = `@`; each is a revset that must
+/// resolve to exactly one commit (a commit id reaches a hidden commit; parse
+/// diagnostics land on the call's warnings); [revision] together with either
+/// is refused
 /// (`jj.invalid_input`). [paths] are repo-relative prefixes (empty: every
 /// path), [context] the context lines (`null`: the effective
 /// `diff.git.context`), [whitespace] `-w` / `-b`, [summary] drops the hunks.
@@ -262,7 +264,7 @@ Diff decodeDiffEnvelopeInternal(Uint8List bytes) {
   return Diff(
     files: [for (final fbs.FileDiff file in payload.files ?? const []) _file(file)],
     operationId: payload.operationId ?? '',
-    commitId: payload.commitId ?? '',
+    commitIds: [...?payload.commitIds],
     fromCommitId: payload.fromCommitId,
     warnings: decodeEnvelopeWarningsInternal(env),
   );

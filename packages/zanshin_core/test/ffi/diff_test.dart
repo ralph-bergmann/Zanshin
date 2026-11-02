@@ -26,7 +26,7 @@ void main() {
         dataType: fbs.PayloadTypeId.Diff,
         data: fbs.DiffObjectBuilder(
           operationId: 'op1',
-          commitId: 'c1',
+          commitIds: ['c1', 'c2'],
           files: [
             fbs.FileDiffObjectBuilder(
               path: 'src/a.rs',
@@ -76,7 +76,8 @@ void main() {
     );
 
     expect(diff.files.map((f) => f.path), ['src/a.rs', 'bin.dat', 'run.sh', 'new.txt', 'copy.txt']);
-    expect((diff.operationId, diff.commitId, diff.fromCommitId), ('op1', 'c1', null));
+    expect((diff.operationId, diff.fromCommitId), ('op1', null));
+    expect(diff.commitIds, ['c1', 'c2']);
     expect(diff.files.map((f) => (f.kind, f.fromPath)), [
       (FileChangeKind.modified, null),
       (FileChangeKind.added, null),
@@ -135,6 +136,7 @@ void main() {
       ).toBytes(),
     );
     expect(diff.files, isEmpty);
+    expect(diff.commitIds, isEmpty);
     expect(diff.warnings, isEmpty);
   });
 
@@ -143,10 +145,11 @@ void main() {
       fbs.EnvelopeObjectBuilder(
         ok: true,
         dataType: fbs.PayloadTypeId.Diff,
-        data: fbs.DiffObjectBuilder(operationId: 'op', commitId: 'to', fromCommitId: 'from', files: []),
+        data: fbs.DiffObjectBuilder(operationId: 'op', commitIds: ['to'], fromCommitId: 'from', files: []),
       ).toBytes(),
     );
-    expect((diff.operationId, diff.commitId, diff.fromCommitId), ('op', 'to', 'from'));
+    expect((diff.operationId, diff.fromCommitId), ('op', 'from'));
+    expect(diff.commitIds, ['to']);
   });
 
   test('an error envelope throws ZanshinFfiException with its code and context', () {

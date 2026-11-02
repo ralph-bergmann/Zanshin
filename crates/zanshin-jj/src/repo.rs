@@ -4422,10 +4422,12 @@ impl Repo {
     /// two REVISIONS, with copy records, a path filter, per-file kinds, counts and fingerprints,
     /// pinned to the operation and commit(s) it was read at.
     ///
-    /// Ports `cmd_diff` (`cli/src/commands/diff.rs` @ v0.46.0) for one revision:
-    /// [`crate::DiffRevisions::Revision`] (`-r`, default `@`) diffs the merged parents' tree
-    /// (`merge_commit_trees`) against the revision's, with the copy records of every (parent,
-    /// revision) pair; [`crate::DiffRevisions::FromTo`] (`--from` / `--to`, an absent side `@`)
+    /// Ports `cmd_diff` (`cli/src/commands/diff.rs` @ v0.46.0):
+    /// [`crate::DiffRevisions::Revision`] (`-r`, default `@`) diffs a set as one — the merged
+    /// (`merge_commit_trees`) parents of its roots, in order and deduplicated, against its merged
+    /// heads, with the copy records of every (parent, head) pair; a set with gaps
+    /// (`roots(T)::heads(T) ~ T`) is refused, an empty set diffs empty trees;
+    /// [`crate::DiffRevisions::FromTo`] (`--from` / `--to`, an absent side `@`)
     /// diffs `from`'s tree against `to`'s with the records from `from` to `to`. Records count only
     /// when `paths` matches their target (`get_copy_records`). Each entry is read as
     /// `show_git_diff` reads it: the left side at the copy SOURCE, the right at the TARGET
@@ -4434,10 +4436,9 @@ impl Repo {
     /// selects it only whole. The root's diff and `from == to` are empty. `paths` are
     /// repo-relative prefixes (empty = all); each one that matches nothing in either tree is a
     /// `jj.paths_unmatched` warning (`print_unmatched_explicit_paths`). `summary` keeps every
-    /// field but the hunks. A present revision is revset text that must resolve to exactly one
-    /// commit, as `resolve_single_rev` does — a commit id reaches a hidden commit; the CLI's
-    /// multi-revision `-r` (a connected range diffed as one) is not ported. Its parse diagnostics
-    /// land on the call's warnings. Revisions resolve through the call's `revsets.short-prefixes`;
+    /// field but the hunks. A present `--from` / `--to` is revset text that must resolve to
+    /// exactly one commit, as `resolve_single_rev` does — a commit id reaches a hidden commit.
+    /// Parse diagnostics land on the call's warnings. Revisions resolve through the call's `revsets.short-prefixes`;
     /// config resolves for the CLI command `diff`; everything is read from one head-resolved repo.
     ///
     /// Writes NO operation beyond the pre-verb snapshot's (Story 9.26).
@@ -4445,20 +4446,24 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::MutateError::InvalidInput`] — a `paths` entry is not a valid repo path or leaves
-    ///   the repository.
-    /// - [`crate::MutateError::Config`] — `diff.git.context`, `ui.conflict-marker-style` or the
-    ///   revset aliases are malformed.
+    ///   the repository, or the `-r` set has gaps ("Cannot diff revsets with gaps in.", hint
+    ///   "Revision <12-hex> would need to be in the set.").
+    /// - [`crate::MutateError::Config`] — `diff.git.context`, `ui.conflict-marker-style`,
+    ///   `templates.commit_summary` or the revset aliases are malformed.
     /// - [`crate::MutateError::RevsetParseError`] — a revision is not a valid revset expression.
-    /// - [`crate::MutateError::RevsetResolutionError`] — a revision resolves to no commit or more
-    ///   than one (an unknown symbol, an ambiguous prefix, a divergent change), a failing
+    /// - [`crate::MutateError::RevsetResolutionError`] — a symbol does not resolve (an unknown
+    ///   symbol, an ambiguous prefix), a `--from` / `--to` side resolves to no commit or more than
+    ///   one (a divergent change; several get the CLI's summary hint), a failing
     ///   `revsets.short-prefixes`, or `@` in a workspace with no working-copy commit.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::Backend`] — a side cannot be read, or another jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn diff(&mut self, options: &crate::DiffOptions) -> Result<crate::RevisionDiff, crate::MutateError> {
         self.with_verb(cli_command::DIFF, |repo, ctx| {
-            let prefixes = ctx.template_startup.id_prefix_context();
-            crate::hunks::diff(repo.workspace(), &ctx.config, &mut ctx.warnings, &prefixes, options)
+            // Built from the fields, not `ctx.templates`, so `ctx.warnings` stays borrowable meanwhile.
+            let templates =
+                crate::template::Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, repo.workspace());
+            crate::hunks::diff(repo.workspace(), &ctx.config, &mut ctx.warnings, &templates, options)
         })
     }
 

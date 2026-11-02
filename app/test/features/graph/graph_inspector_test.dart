@@ -254,7 +254,7 @@ class _Details implements GraphDetails {
               file,
       ],
       operationId: 'op',
-      commitId: 'c$changeId',
+      commitIds: <String>['c$changeId'],
     );
   }
 }
@@ -308,6 +308,9 @@ class _Actions implements GraphActions {
   /// While set, every run refuses with it.
   ZanshinFfiException? refuse;
 
+  /// While set, every run waits for it before it answers.
+  Completer<void>? hold;
+
   /// The changes each run reports as new.
   var born = const <String>[];
 
@@ -317,6 +320,9 @@ class _Actions implements GraphActions {
   @override
   Future<MutationResult> run(GraphAction action) async {
     ran.add(action);
+    if (hold case final hold?) {
+      await hold.future;
+    }
     if (refuse case final error?) {
       throw error;
     }
@@ -955,6 +961,45 @@ void main() {
       await unmount(tester);
     });
 
+    testWidgets('Viewed follows another writer of the repository\'s viewedFiles; other settings notify nothing', (
+      tester,
+    ) async {
+      await pump(tester);
+      await settle(tester);
+      var notified = 0;
+      void count() => notified++;
+      inspector.addListener(count);
+      void writeViewed(String repo, List<String> keys) => unawaited(
+        settings
+            .update(
+              (s) => s.copyWith(
+                projects: s.projects.copyWith(
+                  projects: <ProjectEntry>[
+                    for (final ProjectEntry p in s.projects.projects)
+                      if (p.path == repo) p.copyWith(viewedFiles: keys) else p,
+                  ],
+                ),
+              ),
+            )
+            .onError<FileSystemException>((_, _) {}),
+      );
+      writeViewed('/r/a', <String>['$_mutable:fa:src/a.dart']);
+      await tester.pump();
+      expect(inspector.isViewed('src/a.dart'), isTrue);
+      expect(notified, 1);
+      expect(find.text('1/2 viewed'), findsOneWidget);
+      // The settings changed, this repository's marks did not: no notification.
+      writeViewed('/r/b', <String>['x:ff:y']);
+      await tester.pump();
+      expect(notified, 1);
+      writeViewed('/r/a', const <String>[]);
+      await tester.pump();
+      expect(inspector.isViewed('src/a.dart'), isFalse);
+      expect(notified, 2);
+      inspector.removeListener(count);
+      await unmount(tester);
+    });
+
     testWidgets('Side by side: chosen in the bar, written to the settings, follows another writer', (tester) async {
       await pump(tester);
       await settle(tester);
@@ -1207,7 +1252,7 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('another change: none checked, no composer; one checked shows Split; it runs the shown command', (
+    testWidgets('another change: none checked, no composer; one checked shows Split; it runs it by the full id', (
       tester,
     ) async {
       await pump(tester);
@@ -1234,7 +1279,8 @@ void main() {
       expect(split.id, _mutable);
       expect(split.paths, <String>['src/a.dart']);
       expect(split.message, <String>['Part']);
-      expect(split.command, command);
+      // The preview names the short id, the run (its Undo/Redo toast) the full one.
+      expect(split.command, 'jj split -r $_mutable -m Part root:src/a.dart');
       expect(graph.selected, _mutable, reason: 'the selection stays');
       expect(checked(tester, 'src/a.dart'), isFalse, reason: 'done clears the checks');
       expect(composer, findsNothing);
@@ -1286,6 +1332,25 @@ void main() {
         findsNothing,
         reason: 'a change clears it',
       );
+      await unmount(tester);
+    });
+
+    testWidgets('a refusal that lands after the selection moved on shows in no composer', (tester) async {
+      await pump(tester);
+      await tap(tester, box('src/a.dart'));
+      final hold = Completer<void>();
+      actions
+        ..hold = hold
+        ..refuse = const ZanshinFfiException('jj.immutable', 'Commit mmmmmmmm is immutable');
+      final Future<GraphActionResult?> running = inspector.runComposer();
+      graph.select(_at);
+      await tester.pump();
+      hold.complete();
+      final GraphActionResult? result = await tester.runAsync<GraphActionResult?>(() => running);
+      await tester.pump();
+      expect(result, isA<GraphActionRefused>());
+      expect(inspector.composerError, isNull, reason: "the refusal is the toast's, not @'s composer's");
+      expect(find.byKey(const ValueKey<String>('inspector-composer-error')), findsNothing);
       await unmount(tester);
     });
 

@@ -3490,11 +3490,12 @@ class DiffContextObjectBuilder extends fb.ObjectBuilder {
 
 ///  Arguments of `zanshin_diff` (Story 5.8) — `jj diff` as data (`zanshin_jj::Repo::diff`).
 ///
-///    revision    `-r`: a revset that must resolve to exactly one commit (a change id, a commit
-///                id — hidden commits included —, `@-`, …), diffed against its merged parents;
-///                absent → `@`. The CLI's multi-revision `-r` (a range diffed as one) is not
-///                ported; parse diagnostics land on the call's warnings
-///    from / to   `--from` / `--to`: revsets as `revision`; either present → `from`'s tree
+///    revision    `-r`: a revset (a change id, a commit id — hidden commits included —, `@-`,
+///                `a::b`, …) diffed as one set: its roots' merged parents against its merged
+///                heads, a set with gaps refused (`jj.invalid_input`); absent → `@`. Parse
+///                diagnostics land on the call's warnings
+///    from / to   `--from` / `--to`: revsets that must resolve to exactly one commit each;
+///                either present → `from`'s tree
 ///                against `to`'s, an absent side `@`. `revision` together with either is refused
 ///                (`jj.invalid_input`, the CLI's `-r` vs `--from`/`--to` conflict)
 ///    paths       repo-relative path PREFIXES; absent / empty = every path
@@ -24804,8 +24805,9 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
 
 ///  A line-level diff (Story 5.5) — `zanshin_jj::Repo::diff`'s files, in its order. `files` is
 ///  always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
-///  at; `commit_id`, the revision (`-r`) or `to` (`--from`/`--to`); `from_commit_id`, `from`,
-///  ABSENT for the revision form. Returned by `zanshin_diff` (Story 5.8).
+///  at; `commit_ids`, the right side's commits — the `-r` set's heads in revset order (empty for an
+///  empty set) or `[to]` (`--from`/`--to`), always present; `from_commit_id`, `from`, ABSENT for
+///  the revision form. Returned by `zanshin_diff` (Story 5.8).
 class Diff {
   Diff._(this._bc, this._bcOffset);
   factory Diff(List<int> bytes) {
@@ -24820,12 +24822,12 @@ class Diff {
 
   List<FileDiff>? get files => const fb.ListReader<FileDiff>(FileDiff.reader).vTableGetNullable(_bc, _bcOffset, 4);
   String? get operationId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get commitIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   String? get fromCommitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'Diff{files: ${files}, operationId: ${operationId}, commitId: ${commitId}, fromCommitId: ${fromCommitId}}';
+    return 'Diff{files: ${files}, operationId: ${operationId}, commitIds: ${commitIds}, fromCommitId: ${fromCommitId}}';
   }
 }
 
@@ -24855,7 +24857,7 @@ class DiffBuilder {
     return fbBuilder.offset;
   }
 
-  int addCommitIdOffset(int? offset) {
+  int addCommitIdsOffset(int? offset) {
     fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
   }
@@ -24873,17 +24875,17 @@ class DiffBuilder {
 class DiffObjectBuilder extends fb.ObjectBuilder {
   final List<FileDiffObjectBuilder>? _files;
   final String? _operationId;
-  final String? _commitId;
+  final List<String>? _commitIds;
   final String? _fromCommitId;
 
   DiffObjectBuilder({
     List<FileDiffObjectBuilder>? files,
     String? operationId,
-    String? commitId,
+    List<String>? commitIds,
     String? fromCommitId,
   }) : _files = files,
        _operationId = operationId,
-       _commitId = commitId,
+       _commitIds = commitIds,
        _fromCommitId = fromCommitId;
 
   /// Finish building, and store into the [fbBuilder].
@@ -24893,12 +24895,14 @@ class DiffObjectBuilder extends fb.ObjectBuilder {
         ? null
         : fbBuilder.writeList(_files!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
     final int? operationIdOffset = _operationId == null ? null : fbBuilder.writeString(_operationId!);
-    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? commitIdsOffset = _commitIds == null
+        ? null
+        : fbBuilder.writeList(_commitIds!.map(fbBuilder.writeString).toList());
     final int? fromCommitIdOffset = _fromCommitId == null ? null : fbBuilder.writeString(_fromCommitId!);
     fbBuilder.startTable(4);
     fbBuilder.addOffset(0, filesOffset);
     fbBuilder.addOffset(1, operationIdOffset);
-    fbBuilder.addOffset(2, commitIdOffset);
+    fbBuilder.addOffset(2, commitIdsOffset);
     fbBuilder.addOffset(3, fromCommitIdOffset);
     return fbBuilder.endTable();
   }

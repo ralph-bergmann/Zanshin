@@ -1634,12 +1634,13 @@ final class RepoHandle {
   /// section keys [selectTree] takes, hunks, counts and fingerprint, pinned to
   /// the operation and commit(s) it was read at.
   ///
-  /// [revision] is `-r` (`null`: `@`), diffed against its merged parents;
-  /// [from] / [to] are `--from` / `--to` — either set selects that form, a
-  /// `null` side is `@`. Each is a revset that must resolve to exactly one
-  /// commit (a change id, a commit id — hidden commits included —, `@-`, …);
-  /// the CLI's multi-revision `-r` (a range diffed as one) is not ported, and
-  /// parse diagnostics land on [Diff.warnings]. [paths] are repo-relative
+  /// [revision] is `-r` (`null`: `@`), a revset diffed as one set — the merged
+  /// parents of its roots against its merged heads ([Diff.commitIds]); a set
+  /// with gaps is refused (`jj.invalid_input`). [from] / [to] are `--from` /
+  /// `--to` — either set selects that form, a `null` side is `@`; each must
+  /// resolve to exactly one commit. A revset can be a change id, a commit id
+  /// (hidden commits included), `@-`, …; parse diagnostics land on
+  /// [Diff.warnings]. [paths] are repo-relative
   /// prefixes (empty: every path; one matching nothing is a
   /// `jj.paths_unmatched` warning on [Diff.warnings]), [context] the context
   /// lines (`null`: the effective

@@ -1134,11 +1134,11 @@ external ffi.Pointer<ZanshinBuf> zanshin_diagnostics();
 /// per changed file its kind, flags, section keys (the `HunkKey`s `zanshin_select_tree` takes),
 /// hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at.
 ///
-/// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, against
-/// its merged parents; absent: `@`) or `from` / `to` (`--from` / `--to`; either present selects
-/// that form, an absent side `@`) — each a revset that must resolve to exactly one commit (a
-/// commit id reaches a hidden commit; the CLI's multi-revision `-r`, a range diffed as one, is
-/// not ported; parse diagnostics land on the call's warnings) — `paths` (repo-relative prefixes;
+/// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, a set
+/// diffed as one — its roots' merged parents against its merged heads, a set with gaps refused;
+/// absent: `@`) or `from` / `to` (`--from` / `--to`; either present selects that form, an absent
+/// side `@`; each a revset that must resolve to exactly one commit) — a commit id reaches a hidden
+/// commit, parse diagnostics land on the call's warnings — `paths` (repo-relative prefixes;
 /// empty: every path; one that matches nothing is a `jj.paths_unmatched` warning), `context`
 /// (absent: the effective `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no
 /// hunks). No caching. Writes NO operation beyond the pre-verb snapshot's (Story 9.26).

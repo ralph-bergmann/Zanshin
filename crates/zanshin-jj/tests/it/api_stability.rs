@@ -1842,7 +1842,7 @@ fn compute_hunks_surface_resolves() {
     );
     let result = zanshin_jj::RevisionDiff {
         operation_id: zanshin_jj::OperationId("0".to_owned()),
-        commit_id: zanshin_jj::CommitId("1".to_owned()),
+        commit_ids: vec![zanshin_jj::CommitId("1".to_owned())],
         from_commit_id: None,
         files: vec![file],
     };

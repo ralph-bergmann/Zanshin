@@ -85,11 +85,11 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// per changed file its kind, flags, section keys (the `HunkKey`s `zanshin_select_tree` takes),
 /// hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at.
 ///
-/// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, against
-/// its merged parents; absent: `@`) or `from` / `to` (`--from` / `--to`; either present selects
-/// that form, an absent side `@`) — each a revset that must resolve to exactly one commit (a
-/// commit id reaches a hidden commit; the CLI's multi-revision `-r`, a range diffed as one, is
-/// not ported; parse diagnostics land on the call's warnings) — `paths` (repo-relative prefixes;
+/// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, a set
+/// diffed as one — its roots' merged parents against its merged heads, a set with gaps refused;
+/// absent: `@`) or `from` / `to` (`--from` / `--to`; either present selects that form, an absent
+/// side `@`; each a revset that must resolve to exactly one commit) — a commit id reaches a hidden
+/// commit, parse diagnostics land on the call's warnings — `paths` (repo-relative prefixes;
 /// empty: every path; one that matches nothing is a `jj.paths_unmatched` warning), `context`
 /// (absent: the effective `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no
 /// hunks). No caching. Writes NO operation beyond the pre-verb snapshot's (Story 9.26).
@@ -144,14 +144,15 @@ pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
     let files: Vec<_> = diff.files.iter().map(|f| file_offset(&mut b, f)).collect();
     let files = b.create_vector(&files);
     let operation_id = b.create_string(&diff.operation_id.0);
-    let commit_id = b.create_string(&diff.commit_id.0);
+    let commit_ids: Vec<_> = diff.commit_ids.iter().map(|id| b.create_string(&id.0)).collect();
+    let commit_ids = b.create_vector(&commit_ids);
     let from_commit_id = diff.from_commit_id.as_ref().map(|id| b.create_string(&id.0));
     let diff = fbs::Diff::create(
         &mut b,
         &fbs::DiffArgs {
             files: Some(files),
             operation_id: Some(operation_id),
-            commit_id: Some(commit_id),
+            commit_ids: Some(commit_ids),
             from_commit_id,
         },
     );
@@ -336,7 +337,12 @@ mod tests {
             .collect();
         RevisionDiff {
             operation_id: OperationId(diff.operation_id().expect("operation_id present").to_owned()),
-            commit_id: CommitId(diff.commit_id().expect("commit_id present").to_owned()),
+            commit_ids: diff
+                .commit_ids()
+                .expect("commit_ids present")
+                .iter()
+                .map(|id| CommitId(id.to_owned()))
+                .collect(),
             from_commit_id: diff.from_commit_id().map(|id| CommitId(id.to_owned())),
             files,
         }
@@ -345,7 +351,7 @@ mod tests {
     fn pinned(files: Vec<FileDiff>) -> RevisionDiff {
         RevisionDiff {
             operation_id: OperationId("aa".repeat(64)),
-            commit_id: CommitId("cc".repeat(20)),
+            commit_ids: vec![CommitId("cc".repeat(20)), CommitId("ee".repeat(20))],
             from_commit_id: None,
             files,
         }
@@ -455,16 +461,17 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_diff_writes_an_empty_files_vector() {
-        let bytes = diff_to_envelope(&pinned(vec![]), &CallReport::default());
+    fn an_empty_diff_writes_empty_files_and_commit_ids_vectors() {
+        let empty = RevisionDiff {
+            commit_ids: vec![],
+            ..pinned(vec![])
+        };
+        let bytes = diff_to_envelope(&empty, &CallReport::default());
         let env = verified_envelope(&bytes);
         assert!(env.ok());
-        let files = env
-            .data_as_diff()
-            .expect("Diff payload")
-            .files()
-            .expect("files present");
-        assert!(files.is_empty());
+        let diff = env.data_as_diff().expect("Diff payload");
+        assert!(diff.files().expect("files present").is_empty());
+        assert!(diff.commit_ids().expect("commit_ids present").is_empty());
     }
 
     #[test]

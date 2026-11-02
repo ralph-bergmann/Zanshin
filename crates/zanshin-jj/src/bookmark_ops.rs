@@ -697,7 +697,9 @@ fn advance_target(
     )
     .map_err(mutate::rev)
     .map_err(with_advance_hint)?;
-    crate::push::single_commit(readonly, &expression, &text, &prefixes).map_err(with_advance_hint)
+    // Built from the fields, not `ctx.templates`, so `ctx.warnings` stays borrowable meanwhile.
+    let templates = crate::template::Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
+    crate::push::single_commit(readonly, &expression, &text, &templates).map_err(with_advance_hint)
 }
 
 /// Advances the closest bookmarks to a revision (Story 9.19) — the CLI's `jj bookmark advance`

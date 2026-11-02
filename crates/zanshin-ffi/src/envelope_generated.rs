@@ -6751,11 +6751,12 @@ pub mod zanshin {
 
         /// Arguments of `zanshin_diff` (Story 5.8) — `jj diff` as data (`zanshin_jj::Repo::diff`).
         ///
-        ///   revision    `-r`: a revset that must resolve to exactly one commit (a change id, a commit
-        ///               id — hidden commits included —, `@-`, …), diffed against its merged parents;
-        ///               absent → `@`. The CLI's multi-revision `-r` (a range diffed as one) is not
-        ///               ported; parse diagnostics land on the call's warnings
-        ///   from / to   `--from` / `--to`: revsets as `revision`; either present → `from`'s tree
+        ///   revision    `-r`: a revset (a change id, a commit id — hidden commits included —, `@-`,
+        ///               `a::b`, …) diffed as one set: its roots' merged parents against its merged
+        ///               heads, a set with gaps refused (`jj.invalid_input`); absent → `@`. Parse
+        ///               diagnostics land on the call's warnings
+        ///   from / to   `--from` / `--to`: revsets that must resolve to exactly one commit each;
+        ///               either present → `from`'s tree
         ///               against `to`'s, an absent side `@`. `revision` together with either is refused
         ///               (`jj.invalid_input`, the CLI's `-r` vs `--from`/`--to` conflict)
         ///   paths       repo-relative path PREFIXES; absent / empty = every path
@@ -42443,8 +42444,9 @@ pub mod zanshin {
 
         /// A line-level diff (Story 5.5) — `zanshin_jj::Repo::diff`'s files, in its order. `files` is
         /// always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
-        /// at; `commit_id`, the revision (`-r`) or `to` (`--from`/`--to`); `from_commit_id`, `from`,
-        /// ABSENT for the revision form. Returned by `zanshin_diff` (Story 5.8).
+        /// at; `commit_ids`, the right side's commits — the `-r` set's heads in revset order (empty for an
+        /// empty set) or `[to]` (`--from`/`--to`), always present; `from_commit_id`, `from`, ABSENT for
+        /// the revision form. Returned by `zanshin_diff` (Story 5.8).
         pub struct Diff<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -42462,7 +42464,7 @@ pub mod zanshin {
         impl<'a> Diff<'a> {
             pub const VT_FILES: ::flatbuffers::VOffsetT = 4;
             pub const VT_OPERATION_ID: ::flatbuffers::VOffsetT = 6;
-            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 8;
+            pub const VT_COMMIT_IDS: ::flatbuffers::VOffsetT = 8;
             pub const VT_FROM_COMMIT_ID: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
@@ -42478,8 +42480,8 @@ pub mod zanshin {
                 if let Some(x) = args.from_commit_id {
                     builder.add_from_commit_id(x);
                 }
-                if let Some(x) = args.commit_id {
-                    builder.add_commit_id(x);
+                if let Some(x) = args.commit_ids {
+                    builder.add_commit_ids(x);
                 }
                 if let Some(x) = args.operation_id {
                     builder.add_operation_id(x);
@@ -42512,13 +42514,14 @@ pub mod zanshin {
                 }
             }
             #[inline]
-            pub fn commit_id(&self) -> Option<&'a str> {
+            pub fn commit_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Diff::VT_COMMIT_ID, None)
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(Diff::VT_COMMIT_IDS, None)
                 }
             }
             #[inline]
@@ -42542,7 +42545,7 @@ pub mod zanshin {
                 v.visit_table(pos)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileDiff>>>>("files", Self::VT_FILES, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation_id", Self::VT_OPERATION_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("commit_ids", Self::VT_COMMIT_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from_commit_id", Self::VT_FROM_COMMIT_ID, false)?
      .finish();
                 Ok(())
@@ -42553,7 +42556,8 @@ pub mod zanshin {
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileDiff<'a>>>>,
             >,
             pub operation_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub commit_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub from_commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for DiffArgs<'a> {
@@ -42562,7 +42566,7 @@ pub mod zanshin {
                 DiffArgs {
                     files: None,
                     operation_id: None,
-                    commit_id: None,
+                    commit_ids: None,
                     from_commit_id: None,
                 }
             }
@@ -42589,9 +42593,14 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diff::VT_OPERATION_ID, operation_id);
             }
             #[inline]
-            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+            pub fn add_commit_ids(
+                &mut self,
+                commit_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
                 self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diff::VT_COMMIT_ID, commit_id);
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diff::VT_COMMIT_IDS, commit_ids);
             }
             #[inline]
             pub fn add_from_commit_id(&mut self, from_commit_id: ::flatbuffers::WIPOffset<&'b str>) {
@@ -42618,7 +42627,7 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("Diff");
                 ds.field("files", &self.files());
                 ds.field("operation_id", &self.operation_id());
-                ds.field("commit_id", &self.commit_id());
+                ds.field("commit_ids", &self.commit_ids());
                 ds.field("from_commit_id", &self.from_commit_id());
                 ds.finish()
             }

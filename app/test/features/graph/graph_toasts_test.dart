@@ -305,16 +305,34 @@ void main() {
     await run(tester, const GraphSplit(_b, message: <String>['Part'], paths: <String>['a.txt']));
     expect(text(tester), 'Split vruxwmqvz — the rest is now kxqpsytn');
     expect(buttons(tester), <String>['Undo']);
+    // Its Undo names the change by its full id, as every other verb's.
+    await tester.tap(find.text('Undo'));
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(text(tester), 'Undid jj split -r $_b -m Part root:a.txt');
   });
 
-  toastTest('a refused commit or split shows no toast: the composer shows it', (tester) async {
+  toastTest('a refused commit or split of the selection shows no toast: the composer shows it', (tester) async {
     actions.refuse = const ZanshinFfiException('jj.immutable', 'Commit 1234 is immutable');
+    model.select(_a);
     await tester.runAsync(() => model.run(const GraphCommit(_a, message: <String>['Fix'])));
     await tester.pump();
     expect(toasts.current, isNull);
+    model.select(_b);
     await tester.runAsync(() => model.run(const GraphSplit(_b, message: <String>['P'], paths: <String>['a'])));
     await tester.pump();
     expect(toasts.current, isNull);
+  });
+
+  toastTest('a split refused after the selection moved on warns with jj’s message', (tester) async {
+    actions.refuse = const ZanshinFfiException('jj.immutable', 'Commit 1234 is immutable');
+    model.select(_c);
+    await tester.runAsync(() => model.run(const GraphSplit(_b, message: <String>['P'], paths: <String>['a'])));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(shown(tester)!.tone, ZsToastTone.warn);
+    expect(text(tester), 'Commit 1234 is immutable');
   });
 
   toastTest('a refusal: the warn tone with jj’s message, no Undo, gone after 6.5 s; a stale one shows none', (

@@ -560,9 +560,13 @@ fn advance_bad_default_target_carries_the_config_hint() {
     set_repo_config(&fx.root, "revsets.bookmark-advance-to", "\"all()\"");
     fx.reopen();
     let err = fx.repo.bookmark_advance(&[], None).expect_err("several");
+    // The multiple-revisions summary hint first, then the command's, as the CLI prints them.
     assert!(
         matches!(&err, MutateError::RevsetResolutionError { reason, hints }
-            if reason == "Revset `all()` resolved to more than one revision" && hints == &[HINT]),
+            if reason == "Revset `all()` resolved to more than one revision"
+                && hints.len() == 2
+                && hints[0].starts_with("The revset `all()` resolved to these revisions:\n  ")
+                && hints[1] == HINT),
         "{err:?}"
     );
     assert_refused(&fx, &before);

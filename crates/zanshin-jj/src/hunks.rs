@@ -21,9 +21,9 @@
 //!   command, so a `--when.commands` scope can differ). A file has them when both sides are
 //!   file-like (a regular file or a file conflict) and text; a hunk lists those one of its
 //!   removed or added lines falls in.
-//! - **Revisions** (Story 5.6, [`crate::Repo::diff`]): `jj diff -r` (merged parents → revision)
-//!   or `--from` / `--to`, each side one revision (`resolve_single_rev`; the CLI's multi-revision
-//!   `-r` is not ported), read through `diff_stream_with_copies` with the CLI's copy records —
+//! - **Revisions** (Story 5.6, [`crate::Repo::diff`]): `jj diff -r` (a connected set diffed as
+//!   one: its roots' merged parents → its merged heads) or `--from` / `--to`, each side one
+//!   revision (`resolve_single_rev`), read through `diff_stream_with_copies` with the CLI's copy records —
 //!   the left side at the copy source, the right at the target; a copy or rename has no
 //!   sections. Each file carries its kind, its counts (the hunks' sums) and a fingerprint of its
 //!   changed lines; summary mode drops only the hunks. [`crate::Repo::compute_hunks`] uses no
@@ -48,6 +48,8 @@ use jj_lib::matchers::{EverythingMatcher, Matcher};
 use jj_lib::merge::Diff;
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::repo::{ReadonlyRepo, Repo as _};
+use jj_lib::revset::UserRevsetExpression;
 use jj_lib::rewrite::merge_commit_trees;
 use jj_lib::store::Store;
 use jj_lib::workspace::Workspace;
@@ -56,6 +58,7 @@ use crate::mutate::{be, cfg, res, MutateError};
 use crate::op_support::SelectedTree;
 use crate::select_tree::{is_text, sections, HunkKey, Piece, SelectedTreeId};
 use crate::source_symbol::{trim_source_symbol, SourceLanguage, SourceSymbolScanner};
+use crate::template::Templates;
 use crate::warning::Warnings;
 use crate::{ChangeKind, CommitId, OperationId};
 
@@ -146,10 +149,11 @@ pub struct DiffOptions {
 /// The two sides of a [`crate::Repo::diff`] (Story 5.6).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiffRevisions {
-    /// `-r`: the revision (`None` = `@`) against its merged parents. A revision is revset text
-    /// that must resolve to exactly one commit — a change id, a commit id (hidden commits
-    /// included), `@-`, a bookmark, …; its parse diagnostics land on the call's warnings. The
-    /// CLI's multi-revision `-r` (a connected range diffed as one) is not ported.
+    /// `-r`: revset text (`None` = `@`) whose set is diffed as one, as the CLI does — the merged
+    /// parents of its roots against its merged heads; a set with gaps is refused, an empty one
+    /// diffs empty trees. A change id, a commit id (hidden commits included), `@-`, a bookmark,
+    /// `a::b`, `a | b`, …; its parse diagnostics land on the call's warnings. Several CLI `-r`
+    /// arguments are one text, each argument parenthesized and joined with `|`: `(a) | (b)`.
     Revision(Option<String>),
     /// `--from` / `--to`: `from`'s tree against `to`'s; an absent side is `@`. Each side is
     /// revset text resolving to exactly one commit (`resolve_single_rev`), as in the CLI.
@@ -173,8 +177,10 @@ impl Default for DiffRevisions {
 pub struct RevisionDiff {
     /// The operation the diff was read at (after the pre-verb snapshot), full hex.
     pub operation_id: OperationId,
-    /// The revision ([`DiffRevisions::Revision`]) or `to` ([`DiffRevisions::FromTo`]), full hex.
-    pub commit_id: CommitId,
+    /// The right side's commits, full hex: the set's heads in revset order
+    /// ([`DiffRevisions::Revision`]; `[@]` without text, empty for an empty set) or `[to]`
+    /// ([`DiffRevisions::FromTo`]).
+    pub commit_ids: Vec<CommitId>,
     /// `from` for [`DiffRevisions::FromTo`]; `None` for [`DiffRevisions::Revision`].
     pub from_commit_id: Option<CommitId>,
     /// The changed paths in jj-lib's order.
@@ -245,7 +251,7 @@ pub(crate) fn diff(
     workspace: &Workspace,
     config: &StackedConfig,
     sink: &mut Warnings,
-    prefixes: &IdPrefixContext,
+    templates: &Templates<'_>,
     options: &DiffOptions,
 ) -> Result<RevisionDiff, MutateError> {
     let matcher = crate::mutate::build_matcher(&options.paths)?;
@@ -253,10 +259,12 @@ pub(crate) fn diff(
     let reader = DiffReader::new(store, config, options.context, options.whitespace)?;
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo: &dyn jj_lib::repo::Repo = readonly.as_ref();
-    // Each side resolves to exactly one commit as `resolve_single_rev` (`cli/src/cli_util.rs` @
-    // v0.46.0) does, hidden commit ids included; the CLI's multi-revision `-r` is not ported.
-    // `None` keeps the `@` path with its no-working-copy refusal. The alias config is read once
-    // per call, as the CLI reads it once per command (its warnings once).
+    let prefixes = templates.prefixes();
+    // `-r` text is a set diffed as one (the range form below); each `--from` / `--to` side
+    // resolves to exactly one commit as `resolve_single_rev` (`cli/src/cli_util.rs` @ v0.46.0)
+    // does, hidden commit ids included. `None` keeps the `@` path with its no-working-copy
+    // refusal. The alias config is read once per call, as the CLI reads it once per command (its
+    // warnings once).
     let texts = match &options.revisions {
         DiffRevisions::Revision(revision) => revision.is_some(),
         DiffRevisions::FromTo { from, to } => from.is_some() || to.is_some(),
@@ -266,41 +274,54 @@ pub(crate) fn diff(
     } else {
         None
     };
-    let resolve = |revision: Option<&String>, sink: &mut Warnings| -> Result<Commit, MutateError> {
-        let (Some(text), Some(parse_config)) = (revision, parse_config.as_ref()) else {
-            return crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), prefixes, None)
-                .map_err(|e| res(e, None));
-        };
-        let expression = crate::revset::parse_diagnosed(
+    let parse = |text: &str, parse_config: &crate::revset::RevsetConfig, sink: &mut Warnings| {
+        crate::revset::parse_diagnosed(
             workspace,
             parse_config,
             (text, crate::revset::IN_REVSET_EXPRESSION),
             sink,
         )
-        .map_err(crate::mutate::rev)?;
-        crate::push::single_commit(&readonly, &expression, text, prefixes)
+        .map_err(crate::mutate::rev)
+    };
+    let resolve = |revision: Option<&String>, sink: &mut Warnings| -> Result<Commit, MutateError> {
+        let (Some(text), Some(parse_config)) = (revision, parse_config.as_ref()) else {
+            return crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), prefixes, None)
+                .map_err(|e| res(e, None));
+        };
+        crate::push::single_commit(&readonly, &parse(text, parse_config, sink)?, text, templates)
     };
     pollster::block_on(async {
-        // `cmd_diff` (`cli/src/commands/diff.rs` @ v0.46.0), for a single revision.
+        // `cmd_diff` (`cli/src/commands/diff.rs:121-191` @ v0.46.0).
         let mut records = CopyRecords::default();
-        let (from_tree, to_commit, from_commit_id) = match &options.revisions {
-            DiffRevisions::Revision(revision) => {
-                let commit = resolve(revision.as_ref(), sink)?;
+        let (from_tree, to_tree, commit_ids, from_commit_id) = match (&options.revisions, parse_config.as_ref()) {
+            (DiffRevisions::Revision(Some(text)), Some(parse_config)) => {
+                let expression = parse(text, parse_config, sink)?;
+                let (parents, heads) = range_commits(&readonly, &expression, prefixes).await?;
+                for parent in &parents {
+                    for head in &heads {
+                        add_copy_records(repo.store(), parent, head, matcher.as_ref(), &mut records).await?;
+                    }
+                }
+                let from_tree = merge_commit_trees(repo, &parents).await.map_err(be)?;
+                let to_tree = merge_commit_trees(repo, &heads).await.map_err(be)?;
+                (from_tree, to_tree, heads.iter().map(commit_id).collect(), None)
+            }
+            (DiffRevisions::Revision(_), _) => {
+                let commit = resolve(None, sink)?;
                 let parents = commit.parents().await.map_err(be)?;
                 for parent in &parents {
                     add_copy_records(repo.store(), parent, &commit, matcher.as_ref(), &mut records).await?;
                 }
                 let from_tree = merge_commit_trees(repo, &parents).await.map_err(be)?;
-                (from_tree, commit, None)
+                (from_tree, commit.tree(), vec![commit_id(&commit)], None)
             }
-            DiffRevisions::FromTo { from, to } => {
+            (DiffRevisions::FromTo { from, to }, _) => {
                 let from = resolve(from.as_ref(), sink)?;
                 let to = resolve(to.as_ref(), sink)?;
                 add_copy_records(repo.store(), &from, &to, matcher.as_ref(), &mut records).await?;
-                (from.tree(), to, Some(CommitId(from.id().hex())))
+                (from.tree(), to.tree(), vec![commit_id(&to)], Some(commit_id(&from)))
             }
         };
-        let to_tree = to_commit.tree();
         let mut files = reader
             .files(Diff::new(&from_tree, &to_tree), matcher.as_ref(), &records)
             .await?;
@@ -312,11 +333,49 @@ pub(crate) fn diff(
         }
         Ok(RevisionDiff {
             operation_id: OperationId(readonly.op_id().hex()),
-            commit_id: CommitId(to_commit.id().hex()),
+            commit_ids,
             from_commit_id,
             files,
         })
     })
+}
+
+fn commit_id(commit: &Commit) -> CommitId {
+    CommitId(commit.id().hex())
+}
+
+/// `cmd_diff`'s range form (`cli/src/commands/diff.rs:149-180` @ v0.46.0) over `expression`: a
+/// set with gaps (`roots(T)::heads(T) ~ T`) is refused; otherwise the parents of its roots (in
+/// order, duplicates dropped) and its heads, in revset order.
+async fn range_commits(
+    repo: &ReadonlyRepo,
+    expression: &Arc<UserRevsetExpression>,
+    prefixes: &IdPrefixContext,
+) -> Result<(Vec<Commit>, Vec<Commit>), MutateError> {
+    let ids = |expression: &Arc<UserRevsetExpression>| crate::push::collect_ids(repo, expression, prefixes);
+    let gaps = ids(&expression.roots().range(&expression.heads()).minus(expression))?;
+    if let Some(gap) = gaps.first() {
+        return Err(MutateError::invalid_hinted(
+            "Cannot diff revsets with gaps in.",
+            format!("Revision {} would need to be in the set.", &gap.hex()[..12]),
+        ));
+    }
+    let commits = |expression: &Arc<UserRevsetExpression>| -> Result<Vec<Commit>, MutateError> {
+        ids(expression)?
+            .iter()
+            .map(|id| repo.store().get_commit(id).map_err(be))
+            .collect()
+    };
+    let heads = commits(&expression.heads())?;
+    let mut parents: Vec<Commit> = Vec::new();
+    for root in commits(&expression.roots())? {
+        for parent in root.parents().await.map_err(be)? {
+            if !parents.iter().any(|known| known.id() == parent.id()) {
+                parents.push(parent);
+            }
+        }
+    }
+    Ok((parents, heads))
 }
 
 /// The CLI's `get_copy_records` (`cli/src/diff_util.rs:676-689` @ v0.46.0): the records from

@@ -502,6 +502,31 @@ fn deleted_bookmarks_need_the_deleted_flag() {
     assert!(!w.remote_refs().contains_key("refs/heads/side"));
 }
 
+/// A `--named` revision resolving to several commits: `resolve_single_rev`'s refusal with its
+/// summary hint (`revset_util.rs:303-331` @ v0.46.0), one line per commit.
+#[test]
+fn named_with_several_commits_lists_them_in_the_hint() {
+    let mut w = world();
+    let err = w
+        .push(&GitPushArgs {
+            named: vec!["many=@- | @".to_owned()],
+            ..Default::default()
+        })
+        .expect_err("a --named set of several refuses");
+    assert!(
+        matches!(&err, MutateError::RevsetResolutionError { reason, .. }
+            if reason == "Revset `@- | @` resolved to more than one revision"),
+        "{err:?}"
+    );
+    let hints = err.hints();
+    let [hint] = hints.as_slice() else {
+        unreachable!("one hint: {err:?}")
+    };
+    let lines: Vec<&str> = hint.lines().collect();
+    assert_eq!(lines[0], "The revset `@- | @` resolved to these revisions:");
+    assert_eq!(lines.len(), 3, "{hint}");
+}
+
 /// `-c @-` creates `push-<12 change hex>`, pushes and tracks it; `--named` names it.
 #[test]
 fn change_and_named_create_their_bookmarks() {

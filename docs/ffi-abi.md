@@ -2453,7 +2453,7 @@ infallible builder: the call's `CallReport` rides as `warnings` / `precondition`
 envelope). Returned by `zanshin_diff` (Story 5.8, below).
 
 ```
-Diff     { files: [FileDiff], operation_id, commit_id, from_commit_id }       // pins: Story 5.6
+Diff     { files: [FileDiff], operation_id, commit_ids: [string], from_commit_id } // pins: Story 5.6
 FileDiff { path, binary, mode_change, sections: [HunkKey], hunks: [Hunk],
            kind: ChangeKind, from_path, removed, added, fingerprint }        // 5.6 appended
 Hunk     { before_start, before_end, after_start, after_end, symbol,
@@ -2505,12 +2505,14 @@ DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffCon
               whitespace: DiffWhitespace (Exact | IgnoreAllSpace | IgnoreSpaceChange), summary }
 ```
 
-- `revision` = `-r` (absent `@`), diffed against its merged parents; `from` / `to` = `--from` /
-  `--to` — either present selects that form, an absent side `@`. `revision` with either is
-  `jj.invalid_input` before the snapshot (no `precondition`), the CLI's clap conflict. Each is
-  revset text for any single revision (a change id, a commit id incl. a hidden one, a revset);
-  zero or several commits are `jj.revset_resolution_error`, a bad expression
-  `jj.revset_parse_error` (the CLI's multi-revision `-r` is not ported).
+- `revision` = `-r` (absent `@`), a set diffed as one: its roots' merged parents against its
+  merged heads (`Diff.commit_ids`); a set with gaps is `jj.invalid_input` ("Cannot diff revsets
+  with gaps in."), an empty one diffs empty trees. `from` / `to` = `--from` / `--to` — either
+  present selects that form, an absent side `@`; each must be a single revision (zero or several
+  commits are `jj.revset_resolution_error`, several with the CLI's summary hint). `revision` with
+  either is `jj.invalid_input` before the snapshot (no `precondition`), the CLI's clap conflict.
+  Revset text can be a change id, a commit id incl. a hidden one, any revset; a bad expression is
+  `jj.revset_parse_error`.
 - `paths`: repo-relative prefixes (no fileset DSL); each one matching nothing is a
   `jj.paths_unmatched` warning on the envelope. `context` absent = the effective
   `diff.git.context`; a struct because `flatc --dart` has no optional scalars. `whitespace` =

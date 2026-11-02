@@ -128,13 +128,18 @@ class GraphToasts {
 /// The toast for [outcome], or null when it shows none (Story 10.23 item 2; the I/O matrix): a success says what it did
 /// in the past tense, with Undo while it is [GraphViewModel.undoable] (Redo while [GraphViewModel.redoable]) and its
 /// warnings as warn clauses; `new`, `edit` and `describe` toast only their warnings; a refusal shows jj's message in
-/// the warn tone, a stale working copy's none (the stale notice is that surface). The ids are jj's shortest unique
+/// the warn tone, a stale working copy's none (the stale notice is that surface), a composer run's (commit / split)
+/// none while its change is still selected (the composer shows it). The ids are jj's shortest unique
 /// prefix bold, max(prefix, 8) characters, the prefix from [GraphViewModel.layout] (2 when it lacks the id).
 ShellToastEntry? graphOutcomeEntry(GraphOutcome outcome, {required GraphViewModel model, required ShellToasts toasts}) {
   final ZanshinFfiException? error = outcome.error;
   if (error != null) {
-    // The composer shows its own refusals (Story 10.25).
-    if (error.code == 'jj.stale_working_copy' || outcome.action is GraphCommit || outcome.action is GraphSplit) {
+    // The composer shows its own refusals (Story 10.25) — only while its change is still selected.
+    final String? composed = switch (outcome.action) {
+      GraphCommit(:final String id) || GraphSplit(:final String id) => id,
+      _ => null,
+    };
+    if (error.code == 'jj.stale_working_copy' || (composed != null && composed == model.selected)) {
       return null;
     }
     return ShellToastEntry(

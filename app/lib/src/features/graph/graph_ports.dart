@@ -366,8 +366,8 @@ final class GraphCommit extends GraphAction {
 /// `jj split -r <id> -m <paragraph>… root:<path>…` (Story 10.25): [paths] go into the selected change, which keeps
 /// the change id; the rest becomes its child.
 final class GraphSplit extends GraphAction {
-  /// Splits [paths] out of [id]; the command names it [shown] (the inspector's short id) when given.
-  const GraphSplit(this.id, {required this.message, required this.paths, this.shown});
+  /// Splits [paths] out of [id].
+  const GraphSplit(this.id, {required this.message, required this.paths});
 
   /// The change to split.
   final String id;
@@ -378,12 +378,9 @@ final class GraphSplit extends GraphAction {
   /// Repo-relative path prefixes (`root:` filesets) of the selected part.
   final List<String> paths;
 
-  /// The id [command] shows; null shows [id].
-  final String? shown;
-
   @override
   String get command => _jj(<String>[
-    'split', '-r', shown ?? id, // l10n-ignore: jj command
+    'split', '-r', id, // l10n-ignore: jj command
     for (final paragraph in message) ..._message(paragraph),
     for (final path in paths) 'root:${_filesetString(path)}', // l10n-ignore: jj command
   ]);

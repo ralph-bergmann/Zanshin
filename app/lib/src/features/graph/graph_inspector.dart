@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:io' show FileSystemException;
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/rendering.dart' show SemanticsProperties;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -212,9 +213,21 @@ class InspectorViewModel extends ChangeNotifier {
   }
 
   void _settingsChanged() {
+    var changed = false;
     final DiffLayoutSetting layout = settings.value.general.diffLayout;
     if (layout != _layout) {
       _layout = layout;
+      changed = true;
+    }
+    // Another writer (a second window of the repo) may have changed the Viewed marks.
+    final Set<String> viewed = _viewedStore.load();
+    if (!setEquals(viewed, _viewed)) {
+      _viewed
+        ..clear()
+        ..addAll(viewed);
+      changed = true;
+    }
+    if (changed) {
       _notify();
     }
   }
@@ -428,7 +441,13 @@ class InspectorViewModel extends ChangeNotifier {
 
   /// What the composer runs for the selection — `jj commit` on @ (no paths when every file is checked), else
   /// `jj split -r` with the checked paths; null when it shows no composer or nothing is checked.
-  GraphAction? get composerAction {
+  GraphAction? get composerAction => _composer(short: false);
+
+  /// [composerAction]'s command as the composer previews it — the change named by its short id, as the inspector's
+  /// other buttons show theirs; null without an action.
+  String? get composerCommand => _composer(short: true)?.command;
+
+  GraphAction? _composer({required bool short}) {
     final ({GraphLayout layout, int node})? at = _mutableNode;
     final String? key = _key;
     if (at == null || key == null || !composing || _picked.isEmpty) {
@@ -442,7 +461,7 @@ class InspectorViewModel extends ChangeNotifier {
     if (at.layout.workingCopyIndex == at.node) {
       return GraphCommit(key, message: paragraphs, paths: allPicked ? const <String>[] : paths);
     }
-    return GraphSplit(key, message: paragraphs, paths: paths, shown: graphShortId(at.layout, at.node));
+    return GraphSplit(short ? graphShortId(at.layout, at.node) : key, message: paragraphs, paths: paths);
   }
 
   /// Runs [composerAction] through the runner: done clears the key's draft and checks; a refusal stays in
@@ -2046,7 +2065,7 @@ class _ComposerState extends State<_Composer> {
     final List<String> rest = paths.where((p) => !model.isPicked(p)).toList();
     final String summary = _summary.text.split('\n').first;
     // Nothing checked: no command (a bare `jj commit` would take everything).
-    final String command = model.composerAction?.command ?? '';
+    final String command = model.composerCommand ?? '';
     final String? blocked = widget.blocked;
     final ZanshinFfiException? error = model.composerError;
     final TextStyle node = ZsType.secondary.copyWith(fontSize: 12, color: colors.textDim);

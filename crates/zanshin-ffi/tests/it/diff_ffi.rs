@@ -118,7 +118,9 @@ fn the_wire_carries_the_diff_keys_flags_lines_and_pins() {
 fn assert_wire_is(payload: fbs::Diff<'_>, diff: &RevisionDiff) {
     let files = &diff.files;
     assert_eq!(payload.operation_id(), Some(diff.operation_id.0.as_str()));
-    assert_eq!(payload.commit_id(), Some(diff.commit_id.0.as_str()));
+    let commit_ids: Vec<&str> = payload.commit_ids().expect("commit_ids present").iter().collect();
+    let expected: Vec<&str> = diff.commit_ids.iter().map(|id| id.0.as_str()).collect();
+    assert_eq!(commit_ids, expected);
     assert_eq!(
         payload.from_commit_id(),
         diff.from_commit_id.as_ref().map(|id| id.0.as_str())
@@ -360,7 +362,7 @@ fn a_revision_and_from_to_reach_the_diff() {
         },
     );
     assert!(from_to.from_commit_id.is_some());
-    assert_eq!(from_to.commit_id, revision.commit_id, "to = C");
+    assert_eq!(from_to.commit_ids, revision.commit_ids, "to = C");
 
     let to_only = assert_matches_repo_diff(
         &fx,
