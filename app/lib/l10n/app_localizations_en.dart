@@ -1473,7 +1473,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get undoTimelineShowChanges => 'Show changes';
 
   @override
-  String get undoTimelineShowLater => 'Not available yet';
+  String get operationChangesBack => 'Back';
+
+  @override
+  String get operationChangesMerge => 'This operation merges several operations; jj shows no changes for it.';
+
+  @override
+  String get operationChangesNone => 'jj shows no changes for this operation.';
+
+  @override
+  String get operationChangesNoFiles => 'No file changes';
 
   @override
   String get undoTimelineNoRunner => 'Available once the commit graph is shown';

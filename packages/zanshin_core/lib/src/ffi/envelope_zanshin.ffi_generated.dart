@@ -3503,6 +3503,10 @@ class DiffContextObjectBuilder extends fb.ObjectBuilder {
 ///    whitespace  `-w` / `-b`
 ///    summary     leave every file's `hunks` empty (kinds, flags, sections, counts, fingerprints
 ///                kept)
+///    interdiff   `jj interdiff --from` / `--to` (Story 10.29): `from` rebased onto `to`'s parents
+///                in memory against `to`, no copy records; with `revision` `jj.invalid_input`
+///                before the snapshot, with neither `from` nor `to` refused ("at least one of
+///                `from` or `to` is required")
 class DiffRequest {
   DiffRequest._(this._bc, this._bcOffset);
   factory DiffRequest(List<int> bytes) {
@@ -3523,10 +3527,11 @@ class DiffRequest {
   DiffContext? get context => DiffContext.reader.vTableGetNullable(_bc, _bcOffset, 14);
   DiffWhitespace get whitespace => DiffWhitespace.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 16, 0));
   bool get summary => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
+  bool get interdiff => const fb.BoolReader().vTableGet(_bc, _bcOffset, 20, false);
 
   @override
   String toString() {
-    return 'DiffRequest{kind: ${kind}, revision: ${revision}, from: ${from}, to: ${to}, paths: ${paths}, context: ${context}, whitespace: ${whitespace}, summary: ${summary}}';
+    return 'DiffRequest{kind: ${kind}, revision: ${revision}, from: ${from}, to: ${to}, paths: ${paths}, context: ${context}, whitespace: ${whitespace}, summary: ${summary}, interdiff: ${interdiff}}';
   }
 }
 
@@ -3543,7 +3548,7 @@ class DiffRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(8);
+    fbBuilder.startTable(9);
   }
 
   int addKind(RequestKind? kind) {
@@ -3586,6 +3591,11 @@ class DiffRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addInterdiff(bool? interdiff) {
+    fbBuilder.addBool(8, interdiff);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -3600,6 +3610,7 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
   final DiffContextObjectBuilder? _context;
   final DiffWhitespace? _whitespace;
   final bool? _summary;
+  final bool? _interdiff;
 
   DiffRequestObjectBuilder({
     RequestKind? kind,
@@ -3610,6 +3621,7 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
     DiffContextObjectBuilder? context,
     DiffWhitespace? whitespace,
     bool? summary,
+    bool? interdiff,
   }) : _kind = kind,
        _revision = revision,
        _from = from,
@@ -3617,7 +3629,8 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
        _paths = paths,
        _context = context,
        _whitespace = whitespace,
-       _summary = summary;
+       _summary = summary,
+       _interdiff = interdiff;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -3626,7 +3639,7 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
     final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
     final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(8);
+    fbBuilder.startTable(9);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionOffset);
     fbBuilder.addOffset(2, fromOffset);
@@ -3637,6 +3650,7 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
     }
     fbBuilder.addUint8(6, _whitespace?.value);
     fbBuilder.addBool(7, _summary);
+    fbBuilder.addBool(8, _interdiff);
     return fbBuilder.endTable();
   }
 

@@ -163,6 +163,16 @@ pub enum DiffRevisions {
         /// The right side (`None` = `@`).
         to: Option<String>,
     },
+    /// `jj interdiff --from` / `--to` (Story 10.29): `from` rebased onto `to`'s parents in memory
+    /// (`rebase_to_dest_parent`, nothing written) against `to`'s tree, without copy records — the
+    /// per-commit diff `jj op show --patch` prints for a rewritten commit. Sides resolve as in
+    /// [`DiffRevisions::FromTo`]; at least one must be present.
+    Interdiff {
+        /// The left side (`None` = `@`).
+        from: Option<String>,
+        /// The right side (`None` = `@`).
+        to: Option<String>,
+    },
 }
 
 impl Default for DiffRevisions {
@@ -179,9 +189,10 @@ pub struct RevisionDiff {
     pub operation_id: OperationId,
     /// The right side's commits, full hex: the set's heads in revset order
     /// ([`DiffRevisions::Revision`]; `[@]` without text, empty for an empty set) or `[to]`
-    /// ([`DiffRevisions::FromTo`]).
+    /// ([`DiffRevisions::FromTo`], [`DiffRevisions::Interdiff`]).
     pub commit_ids: Vec<CommitId>,
-    /// `from` for [`DiffRevisions::FromTo`]; `None` for [`DiffRevisions::Revision`].
+    /// `from` for [`DiffRevisions::FromTo`] and [`DiffRevisions::Interdiff`]; `None` for
+    /// [`DiffRevisions::Revision`].
     pub from_commit_id: Option<CommitId>,
     /// The changed paths in jj-lib's order.
     pub files: Vec<FileDiff>,
@@ -267,7 +278,7 @@ pub(crate) fn diff(
     // warnings once).
     let texts = match &options.revisions {
         DiffRevisions::Revision(revision) => revision.is_some(),
-        DiffRevisions::FromTo { from, to } => from.is_some() || to.is_some(),
+        DiffRevisions::FromTo { from, to } | DiffRevisions::Interdiff { from, to } => from.is_some() || to.is_some(),
     };
     let parse_config = if texts {
         Some(crate::revset::revset_config(config, sink).map_err(cfg)?)
@@ -293,6 +304,8 @@ pub(crate) fn diff(
     pollster::block_on(async {
         // `cmd_diff` (`cli/src/commands/diff.rs:121-191` @ v0.46.0).
         let mut records = CopyRecords::default();
+        // `cmd_interdiff` also checks both parent trees for unmatched paths (`interdiff.rs:99-111`).
+        let mut unmatched_trees = Vec::new();
         let (from_tree, to_tree, commit_ids, from_commit_id) = match (&options.revisions, parse_config.as_ref()) {
             (DiffRevisions::Revision(Some(text)), Some(parse_config)) => {
                 let expression = parse(text, parse_config, sink)?;
@@ -321,11 +334,27 @@ pub(crate) fn diff(
                 add_copy_records(repo.store(), &from, &to, matcher.as_ref(), &mut records).await?;
                 (from.tree(), to.tree(), vec![commit_id(&to)], Some(commit_id(&from)))
             }
+            (DiffRevisions::Interdiff { from, to }, _) => {
+                // `cmd_interdiff` → `show_inter_diff` (`cli/src/diff_util.rs` @ v0.46.0): no copy records.
+                let from = resolve(from.as_ref(), sink)?;
+                let to = resolve(to.as_ref(), sink)?;
+                if !options.paths.is_empty() {
+                    unmatched_trees.push(from.parent_tree(repo).await.map_err(be)?);
+                    unmatched_trees.push(from.tree());
+                    unmatched_trees.push(to.parent_tree(repo).await.map_err(be)?);
+                }
+                let from_tree = jj_lib::rewrite::rebase_to_dest_parent(repo, std::slice::from_ref(&from), &to)
+                    .await
+                    .map_err(be)?;
+                (from_tree, to.tree(), vec![commit_id(&to)], Some(commit_id(&from)))
+            }
         };
         let mut files = reader
             .files(Diff::new(&from_tree, &to_tree), matcher.as_ref(), &records)
             .await?;
-        crate::mutate::warn_unmatched(workspace, sink, &options.paths, &[&from_tree, &to_tree])?;
+        let mut trees: Vec<&MergedTree> = unmatched_trees.iter().collect();
+        trees.extend([&from_tree, &to_tree]);
+        crate::mutate::warn_unmatched(workspace, sink, &options.paths, &trees)?;
         if options.summary {
             for file in &mut files {
                 file.hunks.clear();

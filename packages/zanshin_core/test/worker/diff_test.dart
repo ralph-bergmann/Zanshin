@@ -142,6 +142,31 @@ void main() {
       expect(diff.warnings.map((w) => w.code), [ZanshinWarningCode.pathsUnmatched]);
     });
 
+    test('interdiff_crosses_the_buffer_and_shows_only_the_rebased_change', () async {
+      final String before = (await repo.diff(revision: at)).commitIds.single;
+      // Rewrite `a` under `@`: `at` is rebased, its own change untouched.
+      await repo.edit(a);
+      File('${tempDir.path}/g.txt').writeAsStringSync('g\n');
+      final Diff fromTo = await repo.diff(from: before, to: at);
+      expect(fromTo.files.map((f) => f.path), ['g.txt']);
+      final Diff inter = await repo.diff(from: before, to: at, interdiff: true);
+      expect(inter.files, isEmpty, reason: 'only the rebase changed it');
+      expect(inter.fromCommitId, before);
+      expect(inter.commitIds, fromTo.commitIds);
+      await expectLater(
+        repo.diff(interdiff: true),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', contains('at least one of `from` or `to` is required')),
+        ),
+      );
+      await expectLater(
+        repo.diff(revision: at, interdiff: true),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+    });
+
     test('a_revision_with_from_is_refused', () async {
       await expectLater(
         repo.diff(revision: at, from: a),

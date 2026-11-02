@@ -65,17 +65,18 @@ Widget _noNewline(ZsColors colors, EdgeInsets padding) => Padding(
 
 /// The focused file's diff block (Story 10.24; DS components/content/DiffView, content.css:22-46): the code well with
 /// a bar (the path, the layout toggle, Viewed) over its hunks, the refusal text or a one-line placeholder; a viewed
-/// file folds into one green row whose click unfolds it and clears Viewed.
+/// file folds into one green row whose click unfolds it and clears Viewed. Without [onViewedChanged] there is no Viewed
+/// toggle and nothing folds (Story 10.29's operation view).
 class InspectorDiffView extends StatelessWidget {
   /// The block of [path].
   const InspectorDiffView({
     required this.path,
     required this.diff,
     required this.error,
-    required this.viewed,
-    required this.onViewedChanged,
     required this.layout,
     required this.onLayoutChanged,
+    this.viewed = false,
+    this.onViewedChanged,
     super.key,
   });
 
@@ -88,11 +89,11 @@ class InspectorDiffView extends StatelessWidget {
   /// The read's refusal.
   final ZanshinFfiException? error;
 
-  /// Whether the file is marked Viewed.
+  /// Whether the file is marked Viewed (ignored without [onViewedChanged]).
   final bool viewed;
 
-  /// Toggles Viewed.
-  final ValueChanged<bool> onViewedChanged;
+  /// Toggles Viewed; null hides the toggle.
+  final ValueChanged<bool>? onViewedChanged;
 
   /// Unified or side by side.
   final DiffLayoutSetting layout;
@@ -105,8 +106,10 @@ class InspectorDiffView extends StatelessWidget {
     final AppLocalizations strings = context.l10n;
     final ZsColors colors = ZsColors.of(context);
     final metrics = ZsMetrics.of(context);
+    final ValueChanged<bool>? onViewedChanged = this.onViewedChanged;
+    final bool viewed = this.viewed && onViewedChanged != null;
     final Widget body;
-    if (viewed) {
+    if (onViewedChanged != null && viewed) {
       body = _FlatButton(
         identifier: 'inspector-diff-folded',
         label: strings.inspectorViewedFolded,
@@ -200,10 +203,11 @@ class InspectorDiffView extends StatelessWidget {
                     ),
                   ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: _ViewedToggle(viewed: viewed, onChanged: onViewedChanged),
-                ),
+                if (onViewedChanged != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: _ViewedToggle(viewed: viewed, onChanged: onViewedChanged),
+                  ),
               ],
             ),
           ),

@@ -1010,7 +1010,9 @@ ZanshinBuf *zanshin_diagnostics(void);
  * commit, parse diagnostics land on the call's warnings — `paths` (repo-relative prefixes;
  * empty: every path; one that matches nothing is a `jj.paths_unmatched` warning), `context`
  * (absent: the effective `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no
- * hunks). No caching. Writes NO operation beyond the pre-verb snapshot's (Story 9.26).
+ * hunks). `interdiff` (Story 10.29) reads `from` / `to` as `jj interdiff` does: `from` rebased
+ * onto `to`'s parents in memory against `to`, no copy records. No caching. Writes NO operation
+ * beyond the pre-verb snapshot's (Story 9.26).
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `Diff` payload on success.
  *
@@ -1019,8 +1021,9 @@ ZanshinBuf *zanshin_diagnostics(void);
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `DiffRequest` buffer, its `kind` is not
  *   `Diff`, or its `whitespace` is outside the enum.
- * - `jj.invalid_input` — `revision` together with `from` or `to` (before the snapshot: nothing
- *   written, no `precondition`), or a `paths` entry that is not a valid repo path or leaves the
+ * - `jj.invalid_input` — `revision` together with `from`, `to` or `interdiff`, or `interdiff`
+ *   with neither `from` nor `to` (both before the snapshot: nothing written, no
+ *   `precondition`), or a `paths` entry that is not a valid repo path or leaves the
  *   repository; detail in `context`.
  * - `jj.revset_parse_error` — a revision is not a valid revset expression.
  * - `jj.revset_resolution_error` — a revision resolves to no commit or more than one (an unknown

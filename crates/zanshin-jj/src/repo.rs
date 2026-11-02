@@ -4428,7 +4428,10 @@ impl Repo {
     /// heads, with the copy records of every (parent, head) pair; a set with gaps
     /// (`roots(T)::heads(T) ~ T`) is refused, an empty set diffs empty trees;
     /// [`crate::DiffRevisions::FromTo`] (`--from` / `--to`, an absent side `@`)
-    /// diffs `from`'s tree against `to`'s with the records from `from` to `to`. Records count only
+    /// diffs `from`'s tree against `to`'s with the records from `from` to `to`;
+    /// [`crate::DiffRevisions::Interdiff`] (`jj interdiff --from` / `--to`, Story 10.29) diffs
+    /// `from` rebased onto `to`'s parents in memory against `to`'s tree, without copy records, an
+    /// absent side `@` — both absent is refused before the snapshot. Records count only
     /// when `paths` matches their target (`get_copy_records`). Each entry is read as
     /// `show_git_diff` reads it: the left side at the copy SOURCE, the right at the TARGET
     /// ([`crate::FileDiff::path`]), the source symbol's language from the target. A copied or
@@ -4446,8 +4449,9 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::MutateError::InvalidInput`] — a `paths` entry is not a valid repo path or leaves
-    ///   the repository, or the `-r` set has gaps ("Cannot diff revsets with gaps in.", hint
-    ///   "Revision <12-hex> would need to be in the set.").
+    ///   the repository, the `-r` set has gaps ("Cannot diff revsets with gaps in.", hint
+    ///   "Revision <12-hex> would need to be in the set."), or an interdiff has neither side ("at
+    ///   least one of `from` or `to` is required", before the snapshot).
     /// - [`crate::MutateError::Config`] — `diff.git.context`, `ui.conflict-marker-style`,
     ///   `templates.commit_summary` or the revset aliases are malformed.
     /// - [`crate::MutateError::RevsetParseError`] — a revision is not a valid revset expression.
@@ -4459,6 +4463,12 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — a side cannot be read, or another jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn diff(&mut self, options: &crate::DiffOptions) -> Result<crate::RevisionDiff, crate::MutateError> {
+        // `jj interdiff`'s required `--from` / `--to` group, refused before any repo read.
+        if options.revisions == (crate::DiffRevisions::Interdiff { from: None, to: None }) {
+            return Err(crate::MutateError::invalid(
+                "at least one of `from` or `to` is required",
+            ));
+        }
         self.with_verb(cli_command::DIFF, |repo, ctx| {
             // Built from the fields, not `ctx.templates`, so `ctx.warnings` stays borrowable meanwhile.
             let templates =

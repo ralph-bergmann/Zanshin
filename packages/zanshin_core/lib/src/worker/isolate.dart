@@ -1794,8 +1794,8 @@ class ZanshinWorker {
 
   /// `jj diff` as data in the repo identified by [handleId] (Story 5.8):
   /// [revision] (`-r`, `null` = `@`) or [from] / [to] (`--from` / `--to`, a
-  /// `null` side `@`), [paths], [context], [whitespace] and [summary] cross
-  /// unchanged.
+  /// `null` side `@`), [paths], [context], [whitespace], [summary] and
+  /// [interdiff] cross unchanged.
   ///
   /// Sends a [DiffCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<Diff>` bytes. Writes no operation beyond the pre-verb snapshot's.
@@ -1815,6 +1815,7 @@ class ZanshinWorker {
     int? context,
     repo_ffi_diff.DiffWhitespace whitespace = repo_ffi_diff.DiffWhitespace.exact,
     bool summary = false,
+    bool interdiff = false,
   }) async {
     // See [bookmarkCreate] for why this guard is on the calling side.
     rejectInteriorNul(revision, 'revision');
@@ -1838,6 +1839,7 @@ class ZanshinWorker {
         context: context,
         whitespace: whitespace,
         summary: summary,
+        interdiff: interdiff,
       ),
     );
     return repo_ffi_diff.decodeDiffEnvelopeInternal(bytes);
@@ -4670,6 +4672,7 @@ void _workerEntry(_WorkerInit init) {
           :final int? context,
           :final repo_ffi_diff.DiffWhitespace whitespace,
           :final bool summary,
+          :final bool interdiff,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -4686,6 +4689,7 @@ void _workerEntry(_WorkerInit init) {
               context: context,
               whitespace: whitespace,
               summary: summary,
+              interdiff: interdiff,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }

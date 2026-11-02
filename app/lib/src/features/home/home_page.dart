@@ -6,7 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:zanshin_core/zanshin_core.dart' show RepoKind;
-import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry;
+import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry, SettingsStore;
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -27,6 +27,7 @@ import '../shell/floating_shell_view_model.dart';
 import '../shell/shell_controller.dart' show ShellRailItem;
 import '../shell/shell_toast.dart';
 import '../shell/top_bar.dart';
+import '../undo_timeline/operation_changes.dart';
 import '../undo_timeline/undo_timeline_model.dart';
 import '../undo_timeline/undo_timeline_view.dart';
 import '../window/app_window_actions.dart';
@@ -94,6 +95,7 @@ class HomePage extends StatelessWidget {
                 search: graph.search,
                 builder: (context, bookmarks) => _UndoTimelineHost(
                   session: projects,
+                  settings: vm.settings,
                   actions: graph.model,
                   builder: (context, railItems) {
                     final shell = FloatingShell(
@@ -215,11 +217,13 @@ class _OpenReportToastState extends State<_OpenReportToast> {
 
 /// The rail's Undo Timeline (Story 11.9) while [session] has a repository open: one [UndoTimelineModel] per
 /// [ProjectRepo], recreated when the repository changes and disposed on unmount. Its Undo, Redo and Restore run through
-/// [actions], the graph's view model (Story 10.12); without one they show disabled.
+/// [actions], the graph's view model (Story 10.12); without one they show disabled. Show changes reads the same
+/// repository, its diff layout in [settings] (Story 10.29).
 class _UndoTimelineHost extends StatefulWidget {
-  const _UndoTimelineHost({required this.session, required this.builder, this.actions});
+  const _UndoTimelineHost({required this.session, required this.settings, required this.builder, this.actions});
 
   final ProjectSession session;
+  final SettingsStore settings;
   final UndoTimelineActions? actions;
   final Widget Function(BuildContext context, List<ShellRailItem> railItems) builder;
 
@@ -230,6 +234,7 @@ class _UndoTimelineHost extends StatefulWidget {
 class _UndoTimelineHostState extends State<_UndoTimelineHost> {
   ProjectRepo? _repo;
   UndoTimelineModel? _model;
+  OperationChangesSource? _changes;
 
   @override
   void initState() {
@@ -263,6 +268,7 @@ class _UndoTimelineHostState extends State<_UndoTimelineHost> {
     _model?.dispose();
     _repo = repo;
     _model = repo == null ? null : UndoTimelineModel(RepoUndoTimelineSource(repo));
+    _changes = repo == null ? null : RepoOperationChangesSource(repo);
     if (mounted) {
       setState(() {});
     }
@@ -271,8 +277,16 @@ class _UndoTimelineHostState extends State<_UndoTimelineHost> {
   @override
   Widget build(BuildContext context) {
     final UndoTimelineModel? model = _model;
+    final OperationChangesSource? changes = _changes;
     return widget.builder(context, <ShellRailItem>[
-      if (model != null) undoTimelineRailItem(context.l10n, model, actions: widget.actions),
+      if (model != null && changes != null)
+        undoTimelineRailItem(
+          context.l10n,
+          model,
+          changes: changes,
+          settings: widget.settings,
+          actions: widget.actions,
+        ),
     ]);
   }
 }

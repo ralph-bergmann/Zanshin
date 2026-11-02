@@ -2264,11 +2264,29 @@ abstract class AppLocalizations {
   /// **'Show changes'**
   String get undoTimelineShowChanges;
 
-  /// Why Show changes is disabled: a later feature brings it.
+  /// Undo Timeline's operation view (jj op show): returns to the operation list.
   ///
   /// In en, this message translates to:
-  /// **'Not available yet'**
-  String get undoTimelineShowLater;
+  /// **'Back'**
+  String get operationChangesBack;
+
+  /// Undo Timeline's operation view: the operation has several parents, so jj op show prints no changes.
+  ///
+  /// In en, this message translates to:
+  /// **'This operation merges several operations; jj shows no changes for it.'**
+  String get operationChangesMerge;
+
+  /// Undo Timeline's operation view: jj op show lists no changed commits, working copies, bookmarks or tags.
+  ///
+  /// In en, this message translates to:
+  /// **'jj shows no changes for this operation.'**
+  String get operationChangesNone;
+
+  /// Undo Timeline's operation view: the selected commit's diff (as jj op show --patch shows it) changes no file.
+  ///
+  /// In en, this message translates to:
+  /// **'No file changes'**
+  String get operationChangesNoFiles;
 
   /// Why the Undo Timeline's actions are disabled: the project window shows no commit graph yet.
   ///

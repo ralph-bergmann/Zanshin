@@ -1779,7 +1779,7 @@ class _ChangesState extends State<_Changes> {
                         setState(() => _highlight = i);
                         model.focus(files[i].path);
                       },
-                      child: _FileRow(
+                      child: InspectorFileRow(
                         file: files[i],
                         summary: model.summaryOf(files[i].path),
                         focused: files[i].path == focused,
@@ -1814,27 +1814,41 @@ class _ChangesState extends State<_Changes> {
 }
 
 /// One file (DS components/content/FileRow; content.css:2-18): the focused row (its diff shows) on `--fl-on`, the
-/// keyboard highlight on `--fl-hover`; a viewed file's ✓ and its path at .55; the summary's ± when read.
-class _FileRow extends StatelessWidget {
-  const _FileRow({
+/// keyboard highlight on `--fl-hover`; a viewed file's ✓ and its path at .55; the summary's ± when read. Story 10.29's
+/// operation view reuses it without Viewed and checkboxes.
+class InspectorFileRow extends StatelessWidget {
+  /// The row of [file].
+  const InspectorFileRow({
     required this.file,
     required this.summary,
     required this.focused,
     required this.highlighted,
-    required this.viewed,
-    required this.picked,
-    required this.onPick,
+    this.viewed = false,
+    this.picked,
+    this.onPick,
+    super.key,
   });
 
+  /// The file.
   final FileChange file;
+
+  /// Its summary entry (±), when read.
   final FileDiff? summary;
+
+  /// Whether its diff shows.
   final bool focused;
+
+  /// Whether the keyboard highlight is on it.
   final bool highlighted;
+
+  /// Whether it is marked Viewed.
   final bool viewed;
 
   /// Whether the composer takes the file; null: no checkbox (an immutable change).
   final bool? picked;
-  final VoidCallback onPick;
+
+  /// Toggles [picked].
+  final VoidCallback? onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -1866,7 +1880,7 @@ class _FileRow extends StatelessWidget {
           if (picked case final bool picked)
             ZsCheckbox(
               value: picked,
-              onChanged: (_) => onPick(),
+              onChanged: (_) => onPick?.call(),
               label: file.path,
               size: ZsCheckboxSize.sm,
               identifier: 'inspector-file-check',

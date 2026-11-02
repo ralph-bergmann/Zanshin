@@ -2331,6 +2331,7 @@ final class DiffCommand extends WorkerCommand implements HandleScopedCommand {
     this.context,
     this.whitespace = DiffWhitespace.exact,
     this.summary = false,
+    this.interdiff = false,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -2357,6 +2358,9 @@ final class DiffCommand extends WorkerCommand implements HandleScopedCommand {
 
   /// Leave every file's hunks empty.
   final bool summary;
+
+  /// Read [from] / [to] as `jj interdiff` does (Story 10.29).
+  final bool interdiff;
 }
 
 /// List a revision's conflicts with what a merge editor needs, in the repo

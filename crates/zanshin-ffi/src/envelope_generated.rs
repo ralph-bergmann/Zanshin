@@ -6764,6 +6764,10 @@ pub mod zanshin {
         ///   whitespace  `-w` / `-b`
         ///   summary     leave every file's `hunks` empty (kinds, flags, sections, counts, fingerprints
         ///               kept)
+        ///   interdiff   `jj interdiff --from` / `--to` (Story 10.29): `from` rebased onto `to`'s parents
+        ///               in memory against `to`, no copy records; with `revision` `jj.invalid_input`
+        ///               before the snapshot, with neither `from` nor `to` refused ("at least one of
+        ///               `from` or `to` is required")
         pub struct DiffRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -6787,6 +6791,7 @@ pub mod zanshin {
             pub const VT_CONTEXT: ::flatbuffers::VOffsetT = 14;
             pub const VT_WHITESPACE: ::flatbuffers::VOffsetT = 16;
             pub const VT_SUMMARY: ::flatbuffers::VOffsetT = 18;
+            pub const VT_INTERDIFF: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -6813,6 +6818,7 @@ pub mod zanshin {
                 if let Some(x) = args.revision {
                     builder.add_revision(x);
                 }
+                builder.add_interdiff(args.interdiff);
                 builder.add_summary(args.summary);
                 builder.add_whitespace(args.whitespace);
                 builder.add_kind(args.kind);
@@ -6896,6 +6902,13 @@ pub mod zanshin {
                 // which contains a valid value in this slot
                 unsafe { self._tab.get::<bool>(DiffRequest::VT_SUMMARY, Some(false)).unwrap() }
             }
+            #[inline]
+            pub fn interdiff(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(DiffRequest::VT_INTERDIFF, Some(false)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for DiffRequest<'_> {
@@ -6913,6 +6926,7 @@ pub mod zanshin {
      .visit_field::<DiffContext>("context", Self::VT_CONTEXT, false)?
      .visit_field::<DiffWhitespace>("whitespace", Self::VT_WHITESPACE, false)?
      .visit_field::<bool>("summary", Self::VT_SUMMARY, false)?
+     .visit_field::<bool>("interdiff", Self::VT_INTERDIFF, false)?
      .finish();
                 Ok(())
             }
@@ -6927,6 +6941,7 @@ pub mod zanshin {
             pub context: Option<&'a DiffContext>,
             pub whitespace: DiffWhitespace,
             pub summary: bool,
+            pub interdiff: bool,
         }
         impl<'a> Default for DiffRequestArgs<'a> {
             #[inline]
@@ -6940,6 +6955,7 @@ pub mod zanshin {
                     context: None,
                     whitespace: DiffWhitespace::Exact,
                     summary: false,
+                    interdiff: false,
                 }
             }
         }
@@ -6992,6 +7008,10 @@ pub mod zanshin {
                 self.fbb_.push_slot::<bool>(DiffRequest::VT_SUMMARY, summary, false);
             }
             #[inline]
+            pub fn add_interdiff(&mut self, interdiff: bool) {
+                self.fbb_.push_slot::<bool>(DiffRequest::VT_INTERDIFF, interdiff, false);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiffRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 DiffRequestBuilder {
@@ -7017,6 +7037,7 @@ pub mod zanshin {
                 ds.field("context", &self.context());
                 ds.field("whitespace", &self.whitespace());
                 ds.field("summary", &self.summary());
+                ds.field("interdiff", &self.interdiff());
                 ds.finish()
             }
         }

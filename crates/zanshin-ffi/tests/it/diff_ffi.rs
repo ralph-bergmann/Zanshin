@@ -257,6 +257,7 @@ struct Req<'a> {
     context: Option<u32>,
     whitespace: fbs::DiffWhitespace,
     summary: bool,
+    interdiff: bool,
 }
 
 impl Default for Req<'_> {
@@ -270,6 +271,7 @@ impl Default for Req<'_> {
             context: None,
             whitespace: fbs::DiffWhitespace::Exact,
             summary: false,
+            interdiff: false,
         }
     }
 }
@@ -293,6 +295,7 @@ fn request(r: Req<'_>) -> Vec<u8> {
             context: context.as_ref(),
             whitespace: r.whitespace,
             summary: r.summary,
+            interdiff: r.interdiff,
         },
     );
     b.finish(req, None);
@@ -379,6 +382,41 @@ fn a_revision_and_from_to_reach_the_diff() {
         },
     );
     assert_ne!(to_only.from_commit_id, from_to.from_commit_id, "from = @, not A");
+
+    let interdiff = assert_matches_repo_diff(
+        &fx,
+        Req {
+            from: Some(&fx.a),
+            to: Some(&fx.c),
+            interdiff: true,
+            ..Req::default()
+        },
+        &DiffOptions {
+            revisions: DiffRevisions::Interdiff {
+                from: Some(id(&fx.a)),
+                to: Some(id(&fx.c)),
+            },
+            ..DiffOptions::default()
+        },
+    );
+    assert_eq!(interdiff.from_commit_id, from_to.from_commit_id);
+}
+
+/// An interdiff with neither side is refused before the snapshot (no precondition report).
+#[test]
+fn an_interdiff_without_sides_is_refused_before_the_snapshot() {
+    let fx = fixture();
+    let bytes = call(
+        fx.handle,
+        Req {
+            interdiff: true,
+            ..Req::default()
+        },
+    );
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    assert_eq!(error_code(&bytes), Some(JJ_INVALID_INPUT));
+    assert!(env.precondition().is_none(), "no snapshot");
 }
 
 #[test]

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:io';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
@@ -9,10 +11,12 @@ import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/pinned_panel.dart';
 import 'package:zanshin/src/features/shell/rail_preview.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
+import 'package:zanshin/src/features/undo_timeline/operation_changes.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_view.dart';
 import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_undo_timeline.dart';
@@ -35,6 +39,15 @@ final Finder _rows = find.byWidgetPredicate((w) => w is Text && (w.data?.startsW
 void main() {
   setUpIconRegistry();
   final AppLocalizations strings = platformStrings();
+  late Directory dir;
+  late SettingsStore settings;
+
+  setUp(() async {
+    dir = Directory.systemTemp.createTempSync('zanshin_undo_timeline');
+    settings = await SettingsStore.load(File('${dir.path}/settings.json'));
+  });
+
+  tearDown(() => dir.deleteSync(recursive: true));
 
   /// Pumps [model]'s pinned panel (or its preview), runs [body], then tears the tree and the model down before the
   /// binding checks its timers.
@@ -43,11 +56,18 @@ void main() {
     FakeTimelineSource source,
     Future<void> Function(UndoTimelineModel model) body, {
     UndoTimelineActions? actions,
+    OperationChangesSource? changes,
     bool preview = false,
   }) async {
     useShellWindow(tester);
     final model = UndoTimelineModel(source, clock: () => _now);
-    final ShellRailItem item = undoTimelineRailItem(strings, model, actions: actions);
+    final ShellRailItem item = undoTimelineRailItem(
+      strings,
+      model,
+      changes: changes ?? FakeOperationChangesSource(testOpShow(testOperation(0, now: _now), const [])),
+      settings: settings,
+      actions: actions,
+    );
     await tester.pumpWidget(
       shellHost(
         Center(
@@ -296,13 +316,14 @@ void main() {
         ('undo-timeline-undo', 'jj undo'),
         ('undo-timeline-redo', 'jj redo'),
         ('undo-timeline-restore-1', 'jj op restore $id'),
-        ('undo-timeline-show-1', 'jj op show $id'),
       ]) {
         expect(_buttonOf(tester, identifier).onPressed, isNull, reason: identifier);
         expect(_buttonOf(tester, identifier).disabledReason, isNotNull, reason: identifier);
         expect(_tooltipOf(tester, identifier).cmd, command, reason: identifier);
       }
       expect(_buttonOf(tester, 'undo-timeline-undo').disabledReason, strings.undoTimelineNoRunner);
+      expect(_buttonOf(tester, 'undo-timeline-show-1').onPressed, isNotNull, reason: 'Show changes needs no runner');
+      expect(_tooltipOf(tester, 'undo-timeline-show-1').message, 'jj op show $id');
     });
   });
 
@@ -344,7 +365,15 @@ void main() {
       shellHost(
         FloatingShell(
           controller: controller,
-          railItems: <ShellRailItem>[demoRailItems.first, undoTimelineRailItem(strings, model)],
+          railItems: <ShellRailItem>[
+            demoRailItems.first,
+            undoTimelineRailItem(
+              strings,
+              model,
+              changes: FakeOperationChangesSource(testOpShow(testOperation(0, now: _now), const [])),
+              settings: settings,
+            ),
+          ],
         ),
       ),
     );

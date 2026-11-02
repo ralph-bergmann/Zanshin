@@ -2502,7 +2502,8 @@ snapshot and writes no other operation). No caching.
 
 ```
 DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffContext { value: uint },
-              whitespace: DiffWhitespace (Exact | IgnoreAllSpace | IgnoreSpaceChange), summary }
+              whitespace: DiffWhitespace (Exact | IgnoreAllSpace | IgnoreSpaceChange), summary,
+              interdiff }
 ```
 
 - `revision` = `-r` (absent `@`), a set diffed as one: its roots' merged parents against its
@@ -2517,6 +2518,10 @@ DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffCon
   `jj.paths_unmatched` warning on the envelope. `context` absent = the effective
   `diff.git.context`; a struct because `flatc --dart` has no optional scalars. `whitespace` =
   `-w` / `-b`, a value outside the enum `ffi.invalid_argument`. `summary` drops only the hunks.
+- `interdiff` (Story 10.29) reads `from` / `to` as `jj interdiff` does: `from` rebased onto `to`'s
+  parents in memory against `to`'s tree, no copy records (`jj op show --patch`'s per-commit diff
+  of a rewritten commit). With `revision` it is `jj.invalid_input`; with neither side it is
+  `jj.invalid_input` "at least one of `from` or `to` is required" — both before the snapshot.
 
 Dart: `zanshinDiff` (`lib/src/ffi/diff.dart`, interior-NUL guard as `zanshinSelectTree`),
 `DiffCommand`, `ZanshinWorker.diff`, `RepoHandle.diff({revision, from, to, paths, context,

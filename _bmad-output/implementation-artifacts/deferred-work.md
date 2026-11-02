@@ -2440,7 +2440,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - ~~**The Undo Timeline in the project window has no runner yet: Undo, Redo and Restore to here show disabled ("Available once the commit graph is shown").**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the mounted GraphViewModel is passed as actions: to undoTimelineRailItem. Medium (hand-off).
   - `HomePage`'s `_UndoTimelineHost` (`app/lib/src/features/home/home_page.dart`) builds `undoTimelineRailItem(strings, model)` without `actions:`; the runner is the graph's `GraphViewModel` (it implements `UndoTimelineActions`), which is not in `HomePage` until 10.12.
   - **Follow-up:** 10.12 passes its mounted `GraphViewModel` as `actions:` to `undoTimelineRailItem`.
-- **Show changes (`jj op show <id>`) stays disabled ("Not available yet").** Low.
+- ~~**Show changes (`jj op show <id>`) stays disabled ("Not available yet").**~~ — RESOLVED 2026-11-02 (spec-10-29-operation-diff-view): enabled on every row; opens the operation view in the pinned panel. Low.
   - The row shows the button with its command (spec 11.9); no view renders `RepoHandle.opShow` yet.
   - **Follow-up:** a story that adds the operation's diff view enables it.
   - **2026-11-02, Ralph:** a new story → Story 10.29 (operation diff view, reusing 10.24's diff view).
@@ -2559,3 +2559,18 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The raw revset rule row and its two-line jj error have not been compared against the DS RevsetDialog cards in the running catalogue.** Low.
   - Unattended run: no Marionette / Playwright check; only widget tests (`app/lib/src/features/graph/revset_configs/revset_configs_window.dart` `_rule`). The catalogue's "My stack, no conflicts" configuration shows raw rows, but no raw-row error state.
   - **Follow-up:** a Marionette check of a raw row (no mode, no `Aa`, placeholder) and its error + "Did you mean" lines against DS `components/search/RevsetDialog`.
+
+## Surfaced in Story 10.29 (bmad-build-auto, 2026-11-02)
+
+- **A created commit's diff in the operation view carries copy records, where `jj op show --patch` shows none.** Low.
+  - `show_change_diff` sends a created commit through `show_inter_diff` with no predecessors and `CopyRecords::default()` (`cli/src/diff_util.rs:628` @ v0.46.0); `app/lib/src/features/undo_timeline/operation_changes.dart` `_diffOf` reads `diff(revision:)`, so a rename shows as a rename, not delete + add.
+  - **Follow-up:** a backend inter-diff with no predecessors (the commit's parent tree against its tree, no copy records), read for created commits.
+- **Description changes beyond the first line are not shown in the operation view.** Low.
+  - jj prints a `JJ-COMMIT-DESCRIPTION` diff block per changed commit (`show_inter_diff`); the view's `+` / `−` summaries show the first line only (`operation_changes.dart` `summaryOf`).
+  - **Follow-up:** show the description diff (or both full descriptions when they differ) above the files.
+- **A large operation may render slowly in the operation view.** Medium (unverified).
+  - Non-lazy `ListView` rebuilt on every notify; the summaries' one `show` read also computes `fileChanges` for every referenced commit (`operation_changes.dart` `_readSummaries`, `OperationChangesView.build`).
+  - **Follow-up:** time Show changes on a large rebase; if slow, a lazy list and a summary read without file changes.
+- **The operation view has not been compared in the running catalogue (no DS card exists for it).** Low.
+  - Unattended run: widget tests only; Widgetbook use case "Show changes" (`app/widgetbook/folders/undo_timeline.dart`) is ready for it.
+  - **Follow-up:** a Marionette check of the Show changes use case (header, sections, files, Unified / Side by side).

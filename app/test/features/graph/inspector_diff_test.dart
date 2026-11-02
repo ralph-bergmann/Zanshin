@@ -84,7 +84,6 @@ void main() {
         path: 'src/main.rs',
         diff: diff,
         error: null,
-        viewed: false,
         onViewedChanged: (_) {},
         layout: layout,
         onLayoutChanged: (_) {},
@@ -203,4 +202,34 @@ void main() {
       expect(find.text(text), findsOneWidget);
     });
   }
+
+  testWidgets('without onViewedChanged there is no Viewed toggle and a viewed file does not fold (Story 10.29)', (
+    tester,
+  ) async {
+    Finder node(String identifier) => find.bySemanticsIdentifier(identifier);
+    await tester.pumpWidget(view(_file()));
+    expect(node('inspector-viewed'), findsOneWidget);
+    await tester.pumpWidget(
+      shellHost(
+        SizedBox(
+          width: 420,
+          child: InspectorDiffView(
+            path: 'src/main.rs',
+            diff: _file(
+              hunks: <Hunk>[
+                _hunk(<HunkLine>[_add('x')]),
+              ],
+            ),
+            error: null,
+            viewed: true,
+            layout: DiffLayoutSetting.unified,
+            onLayoutChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    expect(node('inspector-viewed'), findsNothing);
+    expect(node('inspector-diff-folded'), findsNothing);
+    expect(find.text('x'), findsOneWidget);
+  });
 }

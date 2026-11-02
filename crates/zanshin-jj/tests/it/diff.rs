@@ -616,6 +616,108 @@ fn a_hidden_commit_id_diffs_that_commit() {
     assert_ne!(run(&mut fx, &revset(&rewritten.0)).files, before.files);
 }
 
+/// Story 10.29: B is rebased (A rewritten) and then changed itself. The interdiff of its old
+/// commit against the new one shows only B's own change, as `Repo::interdiff` lists it, while
+/// `--from` / `--to` also shows A's; an absent `to` is `@`.
+#[test]
+fn an_interdiff_shows_only_the_rebased_commits_own_change() {
+    let (mut fx, [(a, _), (b, b_old), _]) = linear();
+    fx.repo.edit(a).expect("edit A");
+    write(&fx.root, "a.txt", "A\n");
+    commit(&mut fx, "A\n");
+    fx.repo.edit(b.clone()).expect("edit B");
+    write(&fx.root, "b.txt", "b2\n");
+    let (_, b_new) = commit(&mut fx, "B\n");
+    let sides = |interdiff: bool, to: Option<String>| {
+        let (from, to) = (Some(b_old.0.clone()), to);
+        DiffOptions {
+            revisions: if interdiff {
+                DiffRevisions::Interdiff { from, to }
+            } else {
+                DiffRevisions::FromTo { from, to }
+            },
+            ..DiffOptions::default()
+        }
+    };
+    let inter = run(&mut fx, &sides(true, Some(b_new.0.clone())));
+    assert_eq!(inter.commit_ids, std::slice::from_ref(&b_new));
+    assert_eq!(inter.from_commit_id, Some(b_old.clone()));
+    assert_eq!(paths(&inter.files), ["b.txt"]);
+    assert_eq!(
+        inter.files[0].hunks[0].lines,
+        [HunkLine::Removed("b\n".into()), HunkLine::Added("b2\n".into())]
+    );
+    let view = fx
+        .repo
+        .interdiff(
+            Some(zanshin_jj::RevisionRef::CommitId(b_old.clone())),
+            Some(zanshin_jj::RevisionRef::CommitId(b_new.clone())),
+            &[],
+        )
+        .expect("interdiff");
+    let listed: Vec<_> = view
+        .file_changes
+        .iter()
+        .map(|c| c.path.to_str().expect("utf-8"))
+        .collect();
+    assert_eq!(listed, paths(&inter.files));
+    assert_eq!(
+        paths(&run(&mut fx, &sides(false, Some(b_new.0.clone()))).files),
+        ["a.txt", "b.txt"]
+    );
+    assert_eq!(run(&mut fx, &sides(true, None)), inter);
+}
+
+/// An interdiff's unmatched-paths check covers the parent trees, as `cmd_interdiff` does: P adds
+/// `x.txt`, F (on P) deletes it, T is off the root — `x.txt` is only in F's parent tree (not in F,
+/// T or F rebased onto T's parent), so it does not warn; a path in no tree does.
+#[test]
+fn an_interdiff_checks_the_parent_trees_for_unmatched_paths() {
+    let mut fx = init();
+    write(&fx.root, "x.txt", "x\n");
+    let (p, _) = commit(&mut fx, "P\n");
+    fx.repo.new_change(std::slice::from_ref(&p), &[], &[]).expect("new");
+    fs::remove_file(fx.root.join("x.txt")).expect("remove");
+    let (_, f) = commit(&mut fx, "F\n");
+    fx.repo
+        .new_change(&[ChangeId("z".repeat(32))], &[], &[])
+        .expect("new on root");
+    write(&fx.root, "t.txt", "t\n");
+    let (_, t) = commit(&mut fx, "T\n");
+    let _ = fx.repo.take_warnings();
+    let with = |path: &str| DiffOptions {
+        revisions: DiffRevisions::Interdiff {
+            from: Some(f.0.clone()),
+            to: Some(t.0.clone()),
+        },
+        paths: vec![path.to_owned()],
+        ..DiffOptions::default()
+    };
+    run(&mut fx, &with("x.txt"));
+    assert!(fx.repo.take_warnings().is_empty(), "x.txt is in F's parent tree");
+    run(&mut fx, &with("nowhere.txt"));
+    let warnings = fx.repo.take_warnings();
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].kind, WarningKind::PathsUnmatched);
+}
+
+/// An interdiff with neither side is refused with `Repo::interdiff`'s wording before the snapshot.
+#[test]
+fn an_interdiff_without_sides_is_refused_before_the_snapshot() {
+    let (mut fx, _, _) = plain();
+    let head = head_op(&fx.root);
+    write(&fx.root, "f.txt", "dirty\n");
+    let result = fx.repo.diff(&DiffOptions {
+        revisions: DiffRevisions::Interdiff { from: None, to: None },
+        ..DiffOptions::default()
+    });
+    let Err(MutateError::InvalidInput { reason, .. }) = result else {
+        unreachable!("both sides absent is refused: {result:?}")
+    };
+    assert_eq!(reason, "at least one of `from` or `to` is required");
+    assert_eq!(head_op(&fx.root), head, "no snapshot");
+}
+
 /// Revset texts resolve to the one commit each denotes: `-r @-`, `--from @-- --to @-`.
 #[test]
 fn revset_texts_resolve_to_their_commit() {

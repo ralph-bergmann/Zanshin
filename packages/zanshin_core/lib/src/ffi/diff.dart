@@ -207,6 +207,7 @@ final class Diff {
 /// (`jj.invalid_input`). [paths] are repo-relative prefixes (empty: every
 /// path), [context] the context lines (`null`: the effective
 /// `diff.git.context`), [whitespace] `-w` / `-b`, [summary] drops the hunks.
+/// [interdiff] reads [from] / [to] as `jj interdiff` does (Story 10.29).
 Uint8List zanshinDiff(
   int rawHandle, {
   String? revision,
@@ -216,6 +217,7 @@ Uint8List zanshinDiff(
   int? context,
   DiffWhitespace whitespace = DiffWhitespace.exact,
   bool summary = false,
+  bool interdiff = false,
 }) {
   rejectInteriorNul(revision, 'revision');
   rejectInteriorNul(from, 'from');
@@ -236,6 +238,7 @@ Uint8List zanshinDiff(
     context: context == null ? null : fbs.DiffContextObjectBuilder(value: context),
     whitespace: whitespace.wire,
     summary: summary,
+    interdiff: interdiff,
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_diff(rawHandle, ptr, len));
 }

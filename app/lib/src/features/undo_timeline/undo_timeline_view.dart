@@ -5,26 +5,34 @@ import 'dart:async';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_core/zanshin_core.dart' show Operation;
+import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import '../graph/graph_ports.dart';
 import '../projects/relative_time.dart';
 import '../shell/shell_controller.dart';
+import 'operation_changes.dart';
 import 'undo_timeline_model.dart';
 
 /// The rail's "Undo Timeline" item (Story 11.9): [model]'s hover preview and pinned panel; [actions] is the runner
 /// (the project window passes the graph's view model, Story 10.12; null shows every action disabled with its
-/// command). No count (design question (b)).
-ShellRailItem undoTimelineRailItem(AppLocalizations strings, UndoTimelineModel model, {UndoTimelineActions? actions}) =>
-    ShellRailItem(
-      id: 'undo',
-      label: strings.undoTimelineTitle,
-      icon: ZI.undo,
-      scrolls: true,
-      preview: UndoTimelinePreview(model: model),
-      panel: UndoTimelinePanel(model: model, actions: actions),
-    );
+/// command). Show changes reads through [changes], its diff layout in [settings] (Story 10.29). No count (design
+/// question (b)).
+ShellRailItem undoTimelineRailItem(
+  AppLocalizations strings,
+  UndoTimelineModel model, {
+  required OperationChangesSource changes,
+  required SettingsStore settings,
+  UndoTimelineActions? actions,
+}) => ShellRailItem(
+  id: 'undo',
+  label: strings.undoTimelineTitle,
+  icon: ZI.undo,
+  scrolls: true,
+  preview: UndoTimelinePreview(model: model),
+  panel: UndoTimelinePanel(model: model, changes: changes, settings: settings, actions: actions),
+);
 
 /// The Undo Timeline's hover preview (DS ui_kits/desktop/kit.css:68-72, `.zk-ops`/`.zk-op`; chrome.jsx:133): the 3
 /// newest operations, "description · when" on one line — the description mono 11.5 in `--text-muted`, ellipsized, the
@@ -87,14 +95,27 @@ class UndoTimelinePreview extends StatelessWidget {
 /// first, a page more read as the end comes near. Rows: a dot (the current operation `--accent-line`, decision 16.43;
 /// the others `--text-faint`), the description's first line, the `args` tag in mono when the operation has one
 /// (Claude's proposal, prototype defect 76), the relative time and the workspace; snapshots at .55. The newest row
-/// carries Undo and Redo; the others show Restore to here and Show changes on hover or keyboard focus. A disabled
+/// carries Undo and Redo; the others show Restore to here on hover or keyboard focus, and every row Show changes
+/// (Story 10.29), which swaps the list for the operation's [OperationChangesView] until Esc or Back. A disabled
 /// button names its reason, its tooltip the full jj command (decisions 16.39, 16.44).
-class UndoTimelinePanel extends StatelessWidget {
-  /// The panel of [model], acting through [actions].
-  const UndoTimelinePanel({required this.model, this.actions, super.key});
+class UndoTimelinePanel extends StatefulWidget {
+  /// The panel of [model], acting through [actions]; Show changes reads through [changes].
+  const UndoTimelinePanel({
+    required this.model,
+    required this.changes,
+    required this.settings,
+    this.actions,
+    super.key,
+  });
 
   /// The timeline's state.
   final UndoTimelineModel model;
+
+  /// What Show changes reads.
+  final OperationChangesSource changes;
+
+  /// The app settings: the operation view's diff layout.
+  final SettingsStore settings;
 
   /// The runner, or null.
   final UndoTimelineActions? actions;
@@ -106,37 +127,94 @@ class UndoTimelinePanel extends StatelessWidget {
   static const _ahead = 10;
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge(<Listenable?>[model, actions]),
-    builder: (context, _) {
-      final AppLocalizations strings = context.l10n;
-      if (_note(strings, model) case final String note) {
-        return ListView(primary: true, padding: _padding, children: <Widget>[_Note(note)]);
+  State<UndoTimelinePanel> createState() => _UndoTimelinePanelState();
+}
+
+class _UndoTimelinePanelState extends State<UndoTimelinePanel> {
+  final _list = FocusNode(debugLabel: 'undo timeline list', skipTraversal: true);
+  ({Operation operation, OperationChangesModel model})? _open;
+
+  @override
+  void didUpdateWidget(UndoTimelinePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Another repository or settings store: the open view read the old one.
+    if (!identical(oldWidget.changes, widget.changes) ||
+        !identical(oldWidget.model, widget.model) ||
+        !identical(oldWidget.settings, widget.settings)) {
+      _open?.model.dispose();
+      _open = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _open?.model.dispose();
+    _list.dispose();
+    super.dispose();
+  }
+
+  void _show(Operation operation) {
+    _open?.model.dispose();
+    setState(
+      () => _open = (
+        operation: operation,
+        model: OperationChangesModel(widget.changes, operation: operation.id, settings: widget.settings),
+      ),
+    );
+  }
+
+  void _back() {
+    _open?.model.dispose();
+    setState(() => _open = null);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _list.requestFocus();
       }
-      final List<Operation> operations = model.operations;
-      final String? failed = model.error == null ? null : _failed(strings, model);
-      return ListView.builder(
-        primary: true,
-        padding: _padding,
-        itemCount: operations.length + (failed == null ? 0 : 1),
-        itemBuilder: (context, index) {
-          if (index >= operations.length) {
-            return _Note(failed!);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_open case (:final Operation operation, :final OperationChangesModel model)) {
+      return OperationChangesView(model: model, operation: operation, onBack: _back);
+    }
+    final UndoTimelineModel model = widget.model;
+    return Focus(
+      focusNode: _list,
+      child: ListenableBuilder(
+        listenable: Listenable.merge(<Listenable?>[model, widget.actions]),
+        builder: (context, _) {
+          final AppLocalizations strings = context.l10n;
+          if (_note(strings, model) case final String note) {
+            return ListView(primary: true, padding: UndoTimelinePanel._padding, children: <Widget>[_Note(note)]);
           }
-          if (index >= operations.length - _ahead) {
-            WidgetsBinding.instance.addPostFrameCallback((_) => model.loadMore());
-          }
-          return _OperationRow(
-            key: ValueKey<String>(operations[index].id),
-            operation: operations[index],
-            index: index,
-            model: model,
-            actions: actions,
+          final List<Operation> operations = model.operations;
+          final String? failed = model.error == null ? null : _failed(strings, model);
+          return ListView.builder(
+            primary: true,
+            padding: UndoTimelinePanel._padding,
+            itemCount: operations.length + (failed == null ? 0 : 1),
+            itemBuilder: (context, index) {
+              if (index >= operations.length) {
+                return _Note(failed!);
+              }
+              if (index >= operations.length - UndoTimelinePanel._ahead) {
+                WidgetsBinding.instance.addPostFrameCallback((_) => model.loadMore());
+              }
+              return _OperationRow(
+                key: ValueKey<String>(operations[index].id),
+                operation: operations[index],
+                index: index,
+                model: model,
+                actions: widget.actions,
+                onShowChanges: () => _show(operations[index]),
+              );
+            },
           );
         },
-      );
-    },
-  );
+      ),
+    );
+  }
 }
 
 /// What shows instead of the rows: "Working copy is stale" (no Retry, decision 16.28), or a failed read with no rows.
@@ -179,6 +257,7 @@ class _OperationRow extends StatefulWidget {
     required this.index,
     required this.model,
     required this.actions,
+    required this.onShowChanges,
     super.key,
   });
 
@@ -186,6 +265,7 @@ class _OperationRow extends StatefulWidget {
   final int index;
   final UndoTimelineModel model;
   final UndoTimelineActions? actions;
+  final VoidCallback onShowChanges;
 
   @override
   State<_OperationRow> createState() => _OperationRowState();
@@ -325,6 +405,15 @@ class _OperationRowState extends State<_OperationRow> {
     final UndoTimelineActions? actions = widget.actions;
     final UndoTimelineModel model = widget.model;
     final Operation operation = widget.operation;
+    final String short = shortOperationId(operation.id);
+    final int n = widget.index;
+    final Widget show = _action(
+      strings.undoTimelineShowChanges,
+      jjOpShowCommand(short),
+      'undo-timeline-show-$n',
+      null,
+      widget.onShowChanges,
+    );
     final String? runner = actions == null
         ? strings.undoTimelineNoRunner
         : actions.actionsEnabled
@@ -363,10 +452,9 @@ class _OperationRowState extends State<_OperationRow> {
                 : actions!.redoOperation(operation.id, loggedOperation(redoTarget)),
           ),
         ),
+        show,
       ];
     }
-    final String short = shortOperationId(operation.id);
-    final int n = widget.index;
     return <Widget>[
       if (!operation.rootOp)
         _action(
@@ -376,13 +464,7 @@ class _OperationRowState extends State<_OperationRow> {
           runner,
           _restore,
         ),
-      _action(
-        strings.undoTimelineShowChanges,
-        jjOpShowCommand(short),
-        'undo-timeline-show-$n',
-        strings.undoTimelineShowLater,
-        () {},
-      ),
+      show,
     ];
   }
 

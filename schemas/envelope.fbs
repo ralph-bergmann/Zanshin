@@ -373,6 +373,10 @@ struct DiffContext {
 ///   whitespace  `-w` / `-b`
 ///   summary     leave every file's `hunks` empty (kinds, flags, sections, counts, fingerprints
 ///               kept)
+///   interdiff   `jj interdiff --from` / `--to` (Story 10.29): `from` rebased onto `to`'s parents
+///               in memory against `to`, no copy records; with `revision` `jj.invalid_input`
+///               before the snapshot, with neither `from` nor `to` refused ("at least one of
+///               `from` or `to` is required")
 table DiffRequest {
   kind: RequestKind;
   revision: string;
@@ -382,6 +386,7 @@ table DiffRequest {
   context: DiffContext;
   whitespace: DiffWhitespace;
   summary: bool;
+  interdiff: bool;
 }
 
 /// One squash source's selected tree (Story 9.50): `source` a jj reverse-hex change id.

@@ -402,7 +402,8 @@ class _BarState extends State<_Bar> {
     if (!controller.hasClients) {
       return null;
     }
-    final ScrollPosition position = controller.position;
+    // The newest client: while a primary scroll view is swapped for another, both are attached for one frame.
+    final ScrollPosition position = controller.positions.last;
     return position.hasContentDimensions && position.hasViewportDimension ? position : null;
   }
 
