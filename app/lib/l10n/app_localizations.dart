@@ -2858,11 +2858,17 @@ abstract class AppLocalizations {
   /// **'{mode, select, substring{contains} exact{is exactly} glob{matches glob} regex{matches regex} prefix{path or folder} file{exact file} fileGlob{glob} other{glob}}'**
   String revsetConfigsMode(String mode);
 
-  /// What a rule function matches: the function picker's and add chips' tooltip and the value's placeholder; other is files.
+  /// What a rule function matches: the function picker's and add chips' tooltip and the value's placeholder for the text functions (files and revset show an example instead); other is files; revset is a raw revset rule.
   ///
   /// In en, this message translates to:
-  /// **'{fn, select, author{Author name or email} committer{Committer name or email} mine{Changes authored by your user.email} subject{First line of the description} description{Full description text} other{Changes touching these paths}}'**
+  /// **'{fn, select, author{Author name or email} committer{Committer name or email} mine{Changes authored by your user.email} subject{First line of the description} description{Full description text} revset{Any revset, as jj log -r takes it} other{Changes touching these paths}}'**
   String revsetConfigsHint(String fn);
+
+  /// Second line under a raw revset rule's jj error, as jj words its similarity hint; names are jj's candidates, each in backticks, comma-separated.
+  ///
+  /// In en, this message translates to:
+  /// **'Did you mean {names}?'**
+  String revsetConfigsDidYouMean(String names);
 
   /// Tooltip of a text rule's Aa toggle (jj's -i).
   ///

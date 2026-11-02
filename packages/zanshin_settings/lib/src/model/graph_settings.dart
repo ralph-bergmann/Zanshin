@@ -88,6 +88,9 @@ enum RevsetRuleFunction {
 
   /// `files(…)`.
   files,
+
+  /// Free revset text, verbatim (Story 10.28); its rule's mode and case flag are ignored.
+  revset,
 }
 
 /// A rule's match mode (Story 10.22): the text kinds for the text functions, the path kinds for `files`.

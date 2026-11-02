@@ -12,8 +12,9 @@ import 'package:zanshin_settings/zanshin_settings.dart';
   final terms = <String>[];
   final ranges = <({int start, int end})?>[];
   var offset = 0;
+  final alone = configuration.rules.where(_kept).length == 1;
   for (final RevsetRule rule in configuration.rules) {
-    final String? term = revsetRuleTerm(rule);
+    final String? term = revsetRuleTerm(rule, alone: alone);
     if (term == null) {
       ranges.add(null);
       continue;
@@ -31,12 +32,16 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 /// [configuration]'s revset ([revsetConfigExpression]'s text).
 String revsetConfigText(RevsetConfiguration configuration) => revsetConfigExpression(configuration).text;
 
-/// [rule]'s term, `~`-prefixed when negated; null when its value is blank (`mine()` has none).
-String? revsetRuleTerm(RevsetRule rule) {
-  if (rule.fn != RevsetRuleFunction.mine && rule.value.trim().isEmpty) {
+bool _kept(RevsetRule rule) => rule.fn == RevsetRuleFunction.mine || rule.value.trim().isNotEmpty;
+
+/// [rule]'s term, `~`-prefixed when negated; null when its value is blank (`mine()` has none). A `revset` rule's
+/// text is grouped unless it is the configuration's only kept term ([alone]) and not negated (Story 10.28).
+String? revsetRuleTerm(RevsetRule rule, {bool alone = false}) {
+  if (!_kept(rule)) {
     return null;
   }
   final String term = switch (rule.fn) {
+    RevsetRuleFunction.revset => alone && !rule.not ? rule.value : revsetGroup(rule.value),
     RevsetRuleFunction.mine => mineRevset(),
     RevsetRuleFunction.files => filesRevset(rule.value, pattern: _pathPattern(rule.mode)),
     RevsetRuleFunction.author => authorRevset(rule.value, pattern: _textPattern(rule.mode), caseInsensitive: rule.ci),

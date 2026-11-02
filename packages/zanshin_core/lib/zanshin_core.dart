@@ -133,6 +133,7 @@ export 'src/revset_text.dart'
         descriptionRevset,
         filesRevset,
         mineRevset,
+        revsetGroup,
         revsetJoin,
         revsetNot,
         revsetSpanUtf16,

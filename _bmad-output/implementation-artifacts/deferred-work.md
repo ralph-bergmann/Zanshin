@@ -2553,3 +2553,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - ~~**The Widgetbook catalogue no longer analyzes: its fake `GraphDetails.diff` still builds `Diff(commitId: …)`, which became `commitIds` (commit cbdf2576).**~~ — RESOLVED 2026-11-02 (spec-loop-11-13-10-25-visual-check-fixup, commit acdf36ed781d380b95c2732b194bed33d78a6afc): the fake diff passes `commitIds: <String>[commitId]`; `dart analyze` in `app/` is clean. Medium.
   - `dart analyze` in `app/` reports 2 errors at `app/widgetbook/folders/graph.dart:889` / `:895`; the run was told not to touch `app/widgetbook/` (a parallel Marionette session), so the end-of-loop gate's `dart analyze app` goes red until it is fixed.
   - **Follow-up:** in `app/widgetbook/folders/graph.dart:895` replace `commitId: commitId,` with `commitIds: <String>[commitId],` (the loop's fix-up run, or Ralph once the catalogue session is done).
+
+## Surfaced in Story 10.28 (bmad-build-auto, 2026-11-02)
+
+- **The raw revset rule row and its two-line jj error have not been compared against the DS RevsetDialog cards in the running catalogue.** Low.
+  - Unattended run: no Marionette / Playwright check; only widget tests (`app/lib/src/features/graph/revset_configs/revset_configs_window.dart` `_rule`). The catalogue's "My stack, no conflicts" configuration shows raw rows, but no raw-row error state.
+  - **Follow-up:** a Marionette check of a raw row (no mode, no `Aa`, placeholder) and its error + "Did you mean" lines against DS `components/search/RevsetDialog`.

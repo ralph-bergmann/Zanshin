@@ -132,6 +132,7 @@ const _$RevsetRuleFunctionEnumMap = {
   RevsetRuleFunction.subject: 'subject',
   RevsetRuleFunction.description: 'description',
   RevsetRuleFunction.files: 'files',
+  RevsetRuleFunction.revset: 'revset',
 };
 
 const _$RevsetRuleModeEnumMap = {

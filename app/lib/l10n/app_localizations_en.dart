@@ -1826,10 +1826,16 @@ class AppLocalizationsEn extends AppLocalizations {
         'mine': 'Changes authored by your user.email',
         'subject': 'First line of the description',
         'description': 'Full description text',
+        'revset': 'Any revset, as jj log -r takes it',
         'other': 'Changes touching these paths',
       },
     );
     return '$_temp0';
+  }
+
+  @override
+  String revsetConfigsDidYouMean(String names) {
+    return 'Did you mean $names?';
   }
 
   @override

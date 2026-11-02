@@ -547,6 +547,14 @@ class _DemoRevsetConfigsWindowState extends State<_DemoRevsetConfigsWindow> {
           RevsetRule(fn: RevsetRuleFunction.subject, mode: RevsetRuleMode.regex, value: '^fix'),
         ],
       ),
+      RevsetConfiguration(
+        id: 'c-stack',
+        name: 'My stack, no conflicts',
+        rules: <RevsetRule>[
+          RevsetRule(fn: RevsetRuleFunction.revset, value: 'trunk()..@'),
+          RevsetRule(fn: RevsetRuleFunction.revset, value: 'conflicts()', not: true),
+        ],
+      ),
     ],
     revsetDefault: 'c-mine',
   );

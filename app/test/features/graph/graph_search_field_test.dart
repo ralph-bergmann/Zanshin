@@ -274,6 +274,11 @@ void main() {
                   rules: <RevsetRule>[RevsetRule(fn: RevsetRuleFunction.mine)],
                 ),
                 RevsetConfiguration(id: 'c2', name: 'Locks'),
+                RevsetConfiguration(
+                  id: 'c3',
+                  name: 'Stack',
+                  rules: <RevsetRule>[RevsetRule(fn: RevsetRuleFunction.revset, value: 'trunk()..@')],
+                ),
               ],
               revsetDefault: 'c2',
             ),
@@ -289,6 +294,7 @@ void main() {
         'graph-search-menu-log',
         'graph-search-menu-all',
         'graph-search-menu-config-c1',
+        'graph-search-menu-config-c3',
         'graph-search-menu-change',
         'graph-search-menu-bookmark',
         'graph-search-menu-author',
@@ -303,6 +309,7 @@ void main() {
       );
       expect(_rows(tester).first.shown, isTrue);
       expect(find.text('mine()'), findsOneWidget, reason: "a configuration's row shows its expression");
+      expect(find.text('trunk()..@'), findsOneWidget, reason: 'a raw rule shows verbatim (Story 10.28)');
 
       await tester.tap(find.bySemanticsIdentifier('graph-search-menu-config-c1'));
       await tester.pump();

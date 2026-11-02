@@ -88,4 +88,55 @@ void main() {
     expect(built.text.substring(first.start, first.end), 'author(substring:"König")');
     expect(built.text.substring(last.start, last.end), '~mine()');
   });
+
+  group('a raw revset rule', () {
+    const raw = RevsetRule(fn: RevsetRuleFunction.revset, value: 'trunk()..@', mode: RevsetRuleMode.exact, ci: true);
+    const lena = RevsetRule(fn: RevsetRuleFunction.author, value: 'lena');
+
+    test('alone stays verbatim; mode and -i are ignored', () {
+      expect(revsetConfigText(_config(const <RevsetRule>[raw])), 'trunk()..@');
+    });
+
+    test('joined it is grouped, and its range covers the group', () {
+      final ({String text, List<({int start, int end})?> ranges}) built = revsetConfigExpression(
+        _config(const <RevsetRule>[raw, lena]),
+      );
+      expect(built.text, '(trunk()..@) & author(substring:"lena")');
+      final ({int start, int end}) range = built.ranges[0]!;
+      expect(built.text.substring(range.start, range.end), '(trunk()..@)');
+      expect(
+        revsetConfigText(
+          _config(const <RevsetRule>[
+            RevsetRule(fn: RevsetRuleFunction.revset, value: 'a | b'),
+            lena,
+          ]),
+        ),
+        '(a | b) & author(substring:"lena")',
+      );
+    });
+
+    test('negated alone is ~(…)', () {
+      expect(
+        revsetConfigText(
+          _config(const <RevsetRule>[RevsetRule(fn: RevsetRuleFunction.revset, value: 'conflicts()', not: true)]),
+        ),
+        '~(conflicts())',
+      );
+    });
+
+    test('a blank value drops it, and the remaining rule is alone', () {
+      expect(
+        revsetConfigText(
+          _config(const <RevsetRule>[RevsetRule(fn: RevsetRuleFunction.revset, value: '  '), lena]),
+        ),
+        'author(substring:"lena")',
+      );
+      expect(
+        revsetConfigText(
+          _config(const <RevsetRule>[raw, RevsetRule(fn: RevsetRuleFunction.subject, value: ' ')]),
+        ),
+        'trunk()..@',
+      );
+    });
+  });
 }

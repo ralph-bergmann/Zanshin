@@ -147,6 +147,7 @@ void main() {
               RevsetRule(fn: RevsetRuleFunction.mine),
               RevsetRule(fn: RevsetRuleFunction.files, mode: RevsetRuleMode.glob, value: '*.lock', not: true),
               RevsetRule(fn: RevsetRuleFunction.author, value: 'lena', ci: true),
+              RevsetRule(fn: RevsetRuleFunction.revset, value: 'trunk()..@', not: true),
             ],
           ),
         ],
@@ -163,6 +164,7 @@ void main() {
           {'fn': 'mine', 'mode': 'substring', 'value': '', 'ci': false, 'not': false},
           {'fn': 'files', 'mode': 'glob', 'value': '*.lock', 'ci': false, 'not': true},
           {'fn': 'author', 'mode': 'substring', 'value': 'lena', 'ci': true, 'not': false},
+          {'fn': 'revset', 'mode': 'substring', 'value': 'trunk()..@', 'ci': false, 'not': true},
         ],
       },
     ]);

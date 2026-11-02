@@ -89,6 +89,11 @@ String subjectRevset(
 /// returns.
 String revsetNot(String term) => '~$term';
 
+/// `(<expression>)`: free revset text as a primary, so its operators cannot bind across a [revsetJoin] or a
+/// [revsetNot] (jj binds `..`/`::` tighter than `&` but `|` looser). A value with unbalanced parentheses still
+/// escapes the group: there is no client-side validation, jj parses what it gets.
+String revsetGroup(String expression) => '($expression)';
+
 /// [terms] joined with ` | ` when [any], else ` & `; `all()` when there are none.
 String revsetJoin(Iterable<String> terms, {required bool any}) {
   final String joined = terms.join(any ? ' | ' : ' & ');

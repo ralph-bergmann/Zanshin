@@ -59,6 +59,12 @@ void main() {
     expect(revsetJoin(const [], any: false), 'all()');
   });
 
+  test('a group keeps free revset text one primary under join and not', () {
+    expect(revsetGroup('a | b'), '(a | b)');
+    expect(revsetNot(revsetGroup('conflicts()')), '~(conflicts())');
+    expect(revsetJoin([revsetGroup('trunk()..@'), 'mine()'], any: false), '(trunk()..@) & mine()');
+  });
+
   test('a span in UTF-8 bytes converts to UTF-16 offsets', () {
     // "ö" is 2 bytes and 1 unit, "😀" 4 bytes and 2 units.
     const text = 'author("ö😀") & x(';

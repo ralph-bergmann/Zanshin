@@ -276,6 +276,33 @@ void main() {
       expect(counts.last.error, isNull);
     });
 
+    test('a_grouped_raw_term_resolves_a_user_alias_and_a_typo_names_its_candidates', () async {
+      final RepoHandle handle = await medium();
+      final GraphTopologyView view = await handle.graphTopology(
+        revset: 'all()',
+        anchors: const [],
+        withTimestamps: false,
+      );
+      final Change change = (await handle.show(revset: 'latest(~empty() & ~merges() & ~root())')).single.change;
+      File('${tempDir.path}/.jj/repo/config.toml').writeAsStringSync(
+        "[revset-aliases]\n'mine_lena()' = '${authorRevset(change.author.name)}'\n",
+      );
+
+      final RevsetCounts counts = await handle.revsetCounts(view.operationId, [
+        revsetJoin([revsetGroup('mine_lena() | none()'), change.commitId], any: false),
+        revsetGroup('trunkk()'),
+      ], cap: 10000);
+
+      expect(counts[0].error, isNull);
+      expect(counts[0].n, 1);
+      final ZanshinFfiException? typo = counts[1].error;
+      expect(typo?.code, 'jj.revset_parse_error');
+      expect(typo?.revsetError?.kind, RevsetErrorKind.noSuchFunction);
+      expect(typo?.revsetError?.candidates, contains('trunk'));
+      expect(typo?.revsetError?.span?.offset, 1, reason: 'inside the group');
+      await handle.close();
+    });
+
     test('the_calling_side_guards_fire_before_the_worker', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
 

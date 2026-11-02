@@ -180,6 +180,19 @@ class _Rig {
     final ZsSwitch s => s.onChanged != null,
     final Widget w => throw StateError('no enablement for $w'),
   };
+
+  /// [file] reloaded once the store's write chain (real file IO) has landed the in-memory graph settings — polled,
+  /// since a fixed wait loses under a loaded test run.
+  Future<SettingsStore> reloadSaved(WidgetTester tester) async {
+    for (var i = 0; ; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pump();
+      final SettingsStore reloaded = (await tester.runAsync(() => SettingsStore.load(file)))!;
+      if (reloaded.value.graph == store.value.graph || i >= 500) {
+        return reloaded;
+      }
+    }
+  }
 }
 
 /// A widget test over a fresh [_Rig], which it tears down after [body].
@@ -250,6 +263,68 @@ void main() {
       ],
       <bool>[false, true],
     );
+    expect(rig.control<ZsTextField>(tester, 'revset-configs-rule-1-value').error, '', reason: 'mark only');
+  });
+
+  _testWindow(
+    'Story 10.28: the revset chip adds a raw rule with no mode and no Aa; alone its text is the -r verbatim',
+    (
+      tester,
+      rig,
+    ) async {
+      await rig.setUp(tester, view: const GraphConfigView('c1'));
+      await rig.tap(tester, 'revset-configs-rule-0-remove');
+      await rig.tap(tester, 'revset-configs-add-revset');
+      expect(rig.state.draft.current!.rules.single.fn, RevsetRuleFunction.revset);
+      expect(rig.control<ZsTextField>(tester, 'revset-configs-rule-0-value').placeholder, 'trunk()..@');
+      await rig.type(tester, 'revset-configs-rule-0-value', 'trunk()..@');
+
+      expect(find.textContaining("❯ jj log -r 'trunk()..@'"), findsOneWidget);
+      expect(find.bySemanticsIdentifier('revset-configs-rule-0-mode'), findsNothing);
+      expect(find.bySemanticsIdentifier('revset-configs-rule-0-ci'), findsNothing);
+    },
+  );
+
+  _testWindow('Story 10.28: a raw rule joined with an author rule is grouped inside the shell-quoted -r', (
+    tester,
+    rig,
+  ) async {
+    await rig.setUp(tester, view: const GraphConfigView('c2'));
+    rig.state.draft.setRule(0, const RevsetRule(fn: RevsetRuleFunction.revset, value: 'trunk()..@'));
+    await rig.settle(tester);
+    expect(find.textContaining("jj log -r '(trunk()..@) & author(substring:\"lena\")'"), findsOneWidget);
+  });
+
+  _testWindow("Story 10.28: a count error inside a raw rule's term shows jj's text and its candidates at that row", (
+    tester,
+    rig,
+  ) async {
+    rig.searchSource.count = (e) => const RevsetCount(
+      n: 0,
+      capped: false,
+      error: ZanshinFfiException.withReport(
+        'jj.revset_parse_error',
+        'Function `trunkk` doesn\'t exist',
+        precondition: null,
+        warnings: <ZanshinWarning>[],
+        revsetError: RevsetErrorDetail(
+          kind: RevsetErrorKind.noSuchFunction,
+          // Inside `(trunkk())`, the joined raw term.
+          span: RevsetSpan(offset: 1, length: 6),
+          symbol: 'trunkk',
+          candidates: <String>['trunk'],
+        ),
+      ),
+    );
+    await rig.setUp(tester, view: const GraphConfigView('c2'));
+    rig.state.draft.setRule(0, const RevsetRule(fn: RevsetRuleFunction.revset, value: 'trunkk()'));
+    await rig.settle(tester);
+
+    expect(
+      rig.control<ZsTextField>(tester, 'revset-configs-rule-0-value').error,
+      "Function `trunkk` doesn't exist\nDid you mean `trunk`?",
+    );
+    expect(rig.control<ZsTextField>(tester, 'revset-configs-rule-1-value').error, isNull);
   });
 
   _testWindow("a mine() row reads the project's user.email", (tester, rig) async {
@@ -420,12 +495,7 @@ void main() {
     await rig.tap(tester, 'revset-configs-item-c1');
     await rig.tap(tester, 'revset-configs-default');
     await rig.tap(tester, 'revset-configs-ok');
-    // The write chains real file IO: let it run, and its continuations in the test zone.
-    for (var i = 0; i < 10; i++) {
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
-      await tester.pump();
-    }
-    final SettingsStore reloaded = (await tester.runAsync(() => SettingsStore.load(rig.file)))!;
+    final SettingsStore reloaded = await rig.reloadSaved(tester);
     expect(reloaded.value.graph.revsetConfigs, rig.store.value.graph.revsetConfigs);
     expect(reloaded.value.graph.revsetDefault, 'c1');
 
@@ -442,6 +512,92 @@ void main() {
     });
     expect(other.defaultSearch, 'c1');
     expect(other.revset, 'mine()');
+  });
+
+  RevsetCount countError(String code, String context, RevsetErrorKind kind, RevsetSpan? span, String? symbol) =>
+      RevsetCount(
+        n: 0,
+        capped: false,
+        error: ZanshinFfiException.withReport(
+          code,
+          context,
+          precondition: null,
+          warnings: const <ZanshinWarning>[],
+          revsetError: RevsetErrorDetail(kind: kind, span: span, symbol: symbol, candidates: const <String>[]),
+        ),
+      );
+
+  _testWindow("Story 10.28: a spanless resolution error reaches the raw rule naming its symbol, jj's text only", (
+    tester,
+    rig,
+  ) async {
+    rig.searchSource.count = (_) => countError(
+      'jj.revset_resolution_error',
+      'Revision `nosuch` doesn\'t exist',
+      RevsetErrorKind.noSuchRevision,
+      null,
+      'nosuch',
+    );
+    await rig.setUp(tester, view: const GraphConfigView('c2'));
+    rig.state.draft.setRule(0, const RevsetRule(fn: RevsetRuleFunction.revset, value: 'trunk()..nosuch'));
+    await rig.settle(tester);
+
+    expect(rig.control<ZsTextField>(tester, 'revset-configs-rule-0-value').error, "Revision `nosuch` doesn't exist");
+    expect(rig.control<ZsTextField>(tester, 'revset-configs-rule-1-value').error, isNull);
+  });
+
+  _testWindow('Story 10.28: an end-of-input parse error marks an alone raw rule', (tester, rig) async {
+    rig.searchSource.count = (_) => countError(
+      'jj.revset_parse_error',
+      'Syntax error',
+      RevsetErrorKind.syntaxError,
+      const RevsetSpan(offset: 4, length: 0),
+      null,
+    );
+    await rig.setUp(tester, view: const GraphConfigView('c1'));
+    rig.state.draft.setRule(0, const RevsetRule(fn: RevsetRuleFunction.revset, value: 'foo('));
+    await rig.settle(tester);
+
+    expect(rig.control<ZsTextField>(tester, 'revset-configs-rule-0-value').error, 'Syntax error');
+  });
+
+  _testWindow('Story 10.28: the function select labels revset without parentheses', (tester, rig) async {
+    await rig.setUp(tester, view: const GraphConfigView('c2'));
+    final labels = <RevsetRuleFunction, String>{
+      for (final ZsSelectEntry<RevsetRuleFunction> e
+          in rig.control<ZsSelect<RevsetRuleFunction>>(tester, 'revset-configs-rule-0-fn').options)
+        if (e case final ZsSelectOption<RevsetRuleFunction> o) o.value: o.label,
+    };
+    expect(labels[RevsetRuleFunction.revset], 'revset');
+    expect(labels[RevsetRuleFunction.author], 'author()');
+  });
+
+  _testWindow('Story 10.28: a saved raw rule reads back after a reload and searches with its raw expression', (
+    tester,
+    rig,
+  ) async {
+    await rig.setUp(tester, view: const GraphConfigView('c1'));
+    rig.state.draft.setRule(0, const RevsetRule(fn: RevsetRuleFunction.revset, value: 'conflicts()', not: true));
+    await rig.settle(tester);
+    await rig.tap(tester, 'revset-configs-default');
+    await rig.tap(tester, 'revset-configs-ok');
+    final SettingsStore reloaded = await rig.reloadSaved(tester);
+    expect(
+      reloaded.value.graph.revsetConfigs.first.rules.single,
+      const RevsetRule(fn: RevsetRuleFunction.revset, value: 'conflicts()', not: true),
+    );
+    final second = GraphViewModel();
+    final other = GraphSearchController(
+      model: second,
+      source: FakeGraphSearchSource(),
+      store: ProjectSearchStore(reloaded, '/r/other'),
+      settings: reloaded,
+    );
+    addTearDown(() {
+      other.dispose();
+      second.dispose();
+    });
+    expect(other.revset, '~(conflicts())');
   });
 
   String valueOf(WidgetTester tester, String identifier) => tester

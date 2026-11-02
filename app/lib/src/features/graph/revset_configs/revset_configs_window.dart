@@ -391,11 +391,24 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
       final int stop = math.max(end, start + 1);
       for (var i = 0; i < ranges.length; i++) {
         final ({int start, int end})? r = ranges[i];
-        if (r != null && r.start < stop && start < r.end) {
+        // A position at the very end of the text (an end-of-input parse error) belongs to the term ending there.
+        if (r != null && r.start < stop && (start < r.end || (start == text.length && r.end == text.length))) {
           marked = i;
           break;
         }
       }
+    }
+    // A spanless error (every resolution error) goes to the raw rule naming its symbol, else to the only raw rule.
+    final List<RevsetRule>? rules = draft.current?.rules;
+    if (preview.built case (:final List<({int start, int end})?> ranges, text: _)
+        when marked == null && error != null && span == null && rules != null) {
+      final raw = <int>[
+        for (var i = 0; i < rules.length && i < ranges.length; i++)
+          if (ranges[i] != null && rules[i].fn == RevsetRuleFunction.revset) i,
+      ];
+      final String? symbol = error.revsetError?.symbol;
+      marked = symbol == null ? null : raw.where((i) => rules[i].value.contains(symbol)).firstOrNull;
+      marked ??= raw.length == 1 ? raw.single : null;
     }
     final _Discard? asking = _asking;
     return Semantics(
@@ -650,7 +663,7 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
               ],
             ),
             _homeRow(s, colors),
-            if (current != null) _filters(s, colors, current, marked),
+            if (current != null) _filters(s, colors, current, marked, count?.error),
             _previewBlock(s, colors, preview.command, count, label),
           ],
         ),
@@ -724,7 +737,13 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
     );
   }
 
-  Widget _filters(AppLocalizations s, ZsColors colors, RevsetConfiguration current, int? marked) {
+  Widget _filters(
+    AppLocalizations s,
+    ZsColors colors,
+    RevsetConfiguration current,
+    int? marked,
+    ZanshinFfiException? error,
+  ) {
     final List<RevsetRule> rules = current.rules;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -769,7 +788,8 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             spacing: 6,
             children: <Widget>[
-              for (var i = 0; i < rules.length; i++) _rule(s, colors, i, rules[i], marked: marked == i),
+              for (var i = 0; i < rules.length; i++)
+                _rule(s, colors, i, rules[i], marked: marked == i, error: marked == i ? error : null),
             ],
           ),
         Wrap(
@@ -802,12 +822,33 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
 
   static const _pathModes = <RevsetRuleMode>[RevsetRuleMode.prefix, RevsetRuleMode.file, RevsetRuleMode.glob];
 
-  Widget _rule(AppLocalizations s, ZsColors colors, int i, RevsetRule rule, {required bool marked}) {
+  Widget _rule(
+    AppLocalizations s,
+    ZsColors colors,
+    int i,
+    RevsetRule rule, {
+    required bool marked,
+    ZanshinFfiException? error,
+  }) {
     final files = rule.fn == RevsetRuleFunction.files;
+    final raw = rule.fn == RevsetRuleFunction.revset;
     final ZsTextEditingController? value = i < _values.length ? _values[i] : null;
-    final String placeholder = files
+    final String placeholder = raw
+        ? 'trunk()..@' // l10n-ignore: an example revset
+        : files
         ? (rule.mode == RevsetRuleMode.glob ? 'lib/**/*.dart' : 'app/lib/main.dart') // l10n-ignore: example paths
         : s.revsetConfigsHint(rule.fn.name);
+    // A raw rule shows jj's own text and its similar names; a structured rule is only marked (Story 10.22).
+    final List<String> candidates = error?.revsetError?.candidates ?? const <String>[];
+    final String? errorText = !marked
+        ? null
+        : !raw || error == null
+        ? ''
+        : <String>[
+            error.context ?? error.code,
+            if (candidates.isNotEmpty)
+              s.revsetConfigsDidYouMean(candidates.map((c) => '`$c`').join(', ')), // l10n-ignore: jj's quoting
+          ].join('\n');
     final String? email = _search?.userEmail;
     final Widget body;
     if (rule.fn == RevsetRuleFunction.mine) {
@@ -839,34 +880,35 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
         child: Row(
           spacing: 6,
           children: <Widget>[
-            SizedBox(
-              width: 128,
-              child: ZsSelect<RevsetRuleMode>(
-                label: s.revsetConfigsMatch,
-                value: rule.mode,
-                options: <ZsSelectEntry<RevsetRuleMode>>[
-                  for (final RevsetRuleMode m in files ? _pathModes : _textModes)
-                    ZsSelectOption<RevsetRuleMode>(
-                      value: m,
-                      label: s.revsetConfigsMode(files && m == RevsetRuleMode.glob ? 'fileGlob' : m.name),
-                    ),
-                ],
-                onChanged: (m) => draft.setRule(i, rule.copyWith(mode: m)),
-                identifier: 'revset-configs-rule-$i-mode',
+            if (!raw)
+              SizedBox(
+                width: 128,
+                child: ZsSelect<RevsetRuleMode>(
+                  label: s.revsetConfigsMatch,
+                  value: rule.mode,
+                  options: <ZsSelectEntry<RevsetRuleMode>>[
+                    for (final RevsetRuleMode m in files ? _pathModes : _textModes)
+                      ZsSelectOption<RevsetRuleMode>(
+                        value: m,
+                        label: s.revsetConfigsMode(files && m == RevsetRuleMode.glob ? 'fileGlob' : m.name),
+                      ),
+                  ],
+                  onChanged: (m) => draft.setRule(i, rule.copyWith(mode: m)),
+                  identifier: 'revset-configs-rule-$i-mode',
+                ),
               ),
-            ),
             Expanded(
               child: ZsTextField(
                 controller: value,
                 mono: true,
                 size: ZsTextFieldSize.md,
                 placeholder: placeholder,
-                error: marked ? '' : null,
+                error: errorText,
                 onChanged: (v) => draft.setRule(i, rule.copyWith(value: v)),
                 identifier: 'revset-configs-rule-$i-value',
               ),
             ),
-            if (!files)
+            if (!files && !raw)
               ZsTooltip(
                 message: s.revsetConfigsCaseInsensitive,
                 child: ZsChip(
@@ -915,7 +957,9 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
                   for (final RevsetRuleFunction fn in RevsetRuleFunction.values)
                     ZsSelectOption<RevsetRuleFunction>(
                       value: fn,
-                      label: '${fn.name}()', // l10n-ignore: jj revset function
+                      label: fn == RevsetRuleFunction.revset
+                          ? fn.name
+                          : '${fn.name}()', // l10n-ignore: jj revset function
                       text: fn.name,
                       mono: true,
                     ),
