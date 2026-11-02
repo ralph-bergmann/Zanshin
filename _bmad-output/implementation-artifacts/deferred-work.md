@@ -2641,3 +2641,18 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - ~~**No running check compares the JS port routers (`layout.js`, `graph-layout.jsx`) with `router.dart`.**~~ — REJECTED 2026-11-02: rejected by Ralph (console session): the design is a template; a JS↔Dart oracle costs more than a prototype-only deviation, which shows on sight. Low.
   - Only a scratch harness ran `graph-layout.jsx` on six router-test layouts; `spikes/graph-layout-ab/tools/router-oracle.mjs` targets the `e74ced3` export and the gate never runs it.
   - **Follow-up:** a shared-case JS↔Dart port oracle, or none.
+
+## Surfaced in Story 11.7 (bmad-build-auto, 2026-11-02)
+
+- **A list- or pattern-valued `git.fetch` / `git.push` shows read-only, without design question (b)'s "Edit…".** Low.
+  - `app/lib/src/features/settings/project_tab.dart` (`_remoteRow`) shows the TOML text when the value is not one remote name; the witness asks only for read-only text.
+  - **Follow-up:** an "Edit…" that writes a new value through 9.28's `configSet`, or none.
+- **The Immutable commits page shows no heads list under the count, and the built-in switches' hints do not name this repository's tags or untracked remote bookmarks.** Low.
+  - No read lists the heads or the matching tags/bookmarks per built-in (`design/immutable.jsx:76-92`, DS `ImmutablePage.prompt.md`); `app/lib/src/features/settings/immutable_page.dart` uses fixed hints.
+  - **Follow-up:** one `findChanges`/`revsetCounts` read per built-in term and for the heads, shown in the hints and the well.
+- **The Settings window's Project segment shows a folder icon instead of the Nami mark beside the project name.** Low.
+  - `ZsSegment.icon` takes an icon name only (`packages/zanshin_ui/lib/src/controls/zs_segmented.dart:25`); the Nami mark is a widget (`ZsNamiMark`).
+  - **Follow-up:** a widget icon slot on `ZsSegment`, then the Nami mark in `app/lib/src/features/settings/settings_window.dart`.
+- **The Settings window's running-app checks were not made: the Marionette comparison with the DS settings cards and the on-screen window behaviour (top edge kept, normal level, Esc does nothing, ⌘W and the red button).** Low.
+  - The unattended run allowed only synchronous commands, so the catalogue was not launched; every witness runs over fake windows in `flutter test`.
+  - **Follow-up:** open Windows › Settings window in the catalogue via Marionette and compare with `design_system/components/settings/settings.card.html` and `immutable-page.card.html`.
