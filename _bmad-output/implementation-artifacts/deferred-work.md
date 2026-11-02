@@ -2599,25 +2599,25 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The "straight line at a merge's bottom takes the centre even if not the first parent" decision never applies: the router only classifies a first parent as `kindStraight`.** Low.
   - A same-column second parent is routed as a gutter line, so it fans like the others and the centre stays free (pinned by `story_10_30_a_merge_whose_first_parent_bends_leaves_the_entry_centre_free` in `packages/zanshin_core/test/graph_layout/router_test.dart`).
   - **Follow-up:** Ralph decides whether a same-column non-first parent should take the centre geometrically; otherwise none.
-- **An alias / parameter-expansion revset error's one-line message names only the expansion, not the failure inside it.** Low.
+- ~~**An alias / parameter-expansion revset error's one-line message names only the expansion, not the failure inside it.**~~ — RESOLVED 2026-11-02 (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): the one-line message appends each source() cause, as the CLI's 'Caused by:'. Low.
   - `parse_detail` builds `message` from the top-level pest render (`crates/zanshin-jj/src/revset.rs` `render_message`), e.g. "Error at N: In alias `x`"; the CLI prints the cause chain as "Caused by:" lines.
   - **Follow-up:** append the bottom error's message to the sentence for `InAliasExpansion` / `InParameterExpansion`.
-- **The inspector's copyable ids work only with a pointer.** Medium.
+- ~~**The inspector's copyable ids work only with a pointer.**~~ — RESOLVED 2026-11-02 (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): Tab stop with focus ring, Enter/Space copies, in the app and the DS kit. Medium.
   - `_CopyId` (`app/lib/src/features/graph/graph_inspector.dart`) is a `GestureDetector` + `Semantics(onTap)`, not focusable, no Enter/Space; the DS `ZKCopyId` (`design_system/ui_kits/desktop/inspector.jsx`) has `tabIndex` but no key handler.
   - **Follow-up:** make the ids focusable with Enter/Space activation (app and DS kit).
 - **The DS UI kit's graph layout reads the new port API from a bundle that is not regenerated yet, and counts entry lines by edges, not slot owners.** Low.
   - `design_system/ui_kits/desktop/layout.js` reads `GP.MERGE_UP_SHIFT` / `GP.exits`, absent from `_ds_bundle.js` until the next republish (merge-up exits compute NaN meanwhile); it centres on `ins.length === 1` and drops lines whose approach equals `cx`, where the router counts distinct slot owners.
   - **Follow-up:** regenerate the bundle at the republish (`design-artifacts`) and align `layout.js` with `router.dart`'s owner count.
-- **Copying a parent id is tested only for a parent inside the layout.** Low.
+- ~~**Copying a parent id is tested only for a parent inside the layout.**~~ — RESOLVED 2026-11-02 (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): tests for a parent outside the layout and a stale working copy. Low.
   - `_Meta._parents()` has a not-in-layout and a stale branch for `full`; `graph_inspector_test.dart` taps only `inspector-parent-0` of an in-layout parent.
   - **Follow-up:** one test per branch asserting the clipboard gets the full id.
 
 ## Surfaced in the follow-up review of Story 10.30 (bmad-build-auto, 2026-11-02)
 
-- **The raw rule's field-mark guard (span on the term's wrapper, or the value not found in its term) has no test.** Low.
+- ~~**The raw rule's field-mark guard (span on the term's wrapper, or the value not found in its term) has no test.**~~ — RESOLVED 2026-11-02 (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): test for a span on the term's opening paren; the value-not-found half is unreachable. Low.
   - `app/lib/src/features/graph/revset_configs/revset_configs_window.dart:423-435` (`fieldSpan`); both window tests (`revset_configs_window_test.dart:357`, `:387`) take the `inside == true` path, so dropping the guard fails neither.
   - **Follow-up:** one window test with a span on the term's opening `(` (or a `~` prefix) asserting `errorRange` is null while the row still shows the message.
-- **The inspector's copyable ids tell assistive tech nothing about copying.** Low.
+- ~~**The inspector's copyable ids tell assistive tech nothing about copying.**~~ — RESOLVED 2026-11-02 (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): accessibility hint plus announced 'Copied' and failure text. Low.
   - `_CopyId` (`app/lib/src/features/graph/graph_inspector.dart`) has only `Semantics(label: full, button: true)`: no hint that activating copies; "Copied" and the failure popover are not announced (no `SemanticsService.announce` / live region).
   - **Follow-up:** a semantics hint and an announcement of "Copied" / the failure, together with the keyboard-activation item above.
 - **`epic-10-context.md` still lists Story 10.30 as backlog, and its "show jj's own error text in place" rule contradicts the new one-sentence rule beside it.** Low.

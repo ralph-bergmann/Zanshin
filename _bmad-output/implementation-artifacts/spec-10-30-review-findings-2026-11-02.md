@@ -32,6 +32,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/revset.rs render_message
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): the one-line message appends each source() cause, as the CLI's 'Caused by:'
   - summary: >-
       The inspector's copyable ids work only with a pointer (no focus, no Enter/Space), app and DS kit.
     evidence: |-
@@ -39,6 +41,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_inspector.dart _CopyId
     severity: medium
+    resolved: >-
+      2026-11-02 — fixed (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): Tab stop with focus ring, Enter/Space copies, in the app and the DS kit
   - summary: >-
       The DS UI kit reads the new port API from a not yet regenerated bundle and counts entry lines by edges, not slot owners.
     evidence: |-
@@ -53,6 +57,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_inspector.dart _Meta._parents
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): tests for a parent outside the layout and a stale working copy
   - summary: >-
       The raw rule's field-mark guard (span on the term's wrapper, or the value not found in its term) has no test.
     evidence: |-
@@ -60,6 +66,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/revset_configs/revset_configs_window.dart:423-435 fieldSpan
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): test for a span on the term's opening paren; the value-not-found half is unreachable
   - summary: >-
       The inspector's copyable ids tell assistive tech nothing about copying: no hint, "Copied" and the failure popover are not announced.
     evidence: |-
@@ -67,6 +75,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_inspector.dart _CopyId
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): accessibility hint plus announced 'Copied' and failure text
   - summary: >-
       epic-10-context.md still lists Story 10.30 as backlog, and its "show jj's own error text in place" rule now contradicts the new one-sentence rule beside it.
     evidence: |-
