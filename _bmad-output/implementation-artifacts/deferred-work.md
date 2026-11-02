@@ -2647,10 +2647,10 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **A list- or pattern-valued `git.fetch` / `git.push` shows read-only, without design question (b)'s "Edit…".** Low.
   - `app/lib/src/features/settings/project_tab.dart` (`_remoteRow`) shows the TOML text when the value is not one remote name; the witness asks only for read-only text.
   - **Follow-up:** an "Edit…" that writes a new value through 9.28's `configSet`, or none.
-- **The Immutable commits page shows no heads list under the count, and the built-in switches' hints do not name this repository's tags or untracked remote bookmarks.** Low.
+- ~~**The Immutable commits page shows no heads list under the count, and the built-in switches' hints do not name this repository's tags or untracked remote bookmarks.**~~ — RESOLVED 2026-11-03 (spec-11-7-closing-immutable-names-and-nami-segment, commit c527fb1): the built-in hints name this repository's tags and remote refs (≤5, then "n more") via SettingsRepoReads.revsetMembers, and a mono line under the count lists immutable_heads(). Low.
   - No read lists the heads or the matching tags/bookmarks per built-in (`design/immutable.jsx:76-92`, DS `ImmutablePage.prompt.md`); `app/lib/src/features/settings/immutable_page.dart` uses fixed hints.
   - **Follow-up:** one `findChanges`/`revsetCounts` read per built-in term and for the heads, shown in the hints and the well.
-- **The Settings window's Project segment shows a folder icon instead of the Nami mark beside the project name.** Low.
+- ~~**The Settings window's Project segment shows a folder icon instead of the Nami mark beside the project name.**~~ — RESOLVED 2026-11-03 (spec-11-7-closing-immutable-names-and-nami-segment, commit c527fb1): ZsSegment gained a leading widget slot; the Project segment shows ZsNamiMark(size: 14). Low.
   - `ZsSegment.icon` takes an icon name only (`packages/zanshin_ui/lib/src/controls/zs_segmented.dart:25`); the Nami mark is a widget (`ZsNamiMark`).
   - **Follow-up:** a widget icon slot on `ZsSegment`, then the Nami mark in `app/lib/src/features/settings/settings_window.dart`.
 - **The Settings window's running-app checks were not made: the Marionette comparison with the DS settings cards and the on-screen window behaviour (top edge kept, normal level, Esc does nothing, ⌘W and the red button).** Low.

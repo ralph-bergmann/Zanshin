@@ -25,6 +25,8 @@ deferred:
     location: >-
       app/lib/src/features/settings/immutable_page.dart
     severity: low
+    resolved: >-
+      2026-11-03 — fixed (spec-11-7-closing-immutable-names-and-nami-segment, commit c527fb1): the built-in hints name this repository's tags and remote refs (≤5, then "n more") via SettingsRepoReads.revsetMembers, and a mono line under the count lists immutable_heads().
   - summary: >-
       The Project tab segment shows a folder icon instead of the Nami mark beside the project name.
     evidence: |-
@@ -32,6 +34,8 @@ deferred:
     location: >-
       app/lib/src/features/settings/settings_window.dart
     severity: low
+    resolved: >-
+      2026-11-03 — fixed (spec-11-7-closing-immutable-names-and-nami-segment, commit c527fb1): ZsSegment gained a leading widget slot; the Project segment shows ZsNamiMark(size: 14).
   - summary: >-
       The running-app checks were not made: the Marionette comparison with the DS settings cards and the window behaviour (top edge kept, normal level, Esc does nothing, ⌘W and the red button) on screen.
     evidence: |-
