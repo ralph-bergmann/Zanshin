@@ -2549,6 +2549,6 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in the story-loop leftovers run (bmad-build-auto, 2026-11-02)
 
-- **The Widgetbook catalogue no longer analyzes: its fake `GraphDetails.diff` still builds `Diff(commitId: …)`, which became `commitIds` (commit cbdf2576).** Medium.
+- ~~**The Widgetbook catalogue no longer analyzes: its fake `GraphDetails.diff` still builds `Diff(commitId: …)`, which became `commitIds` (commit cbdf2576).**~~ — RESOLVED 2026-11-02 (spec-loop-11-13-10-25-visual-check-fixup, commit acdf36ed781d380b95c2732b194bed33d78a6afc): the fake diff passes `commitIds: <String>[commitId]`; `dart analyze` in `app/` is clean. Medium.
   - `dart analyze` in `app/` reports 2 errors at `app/widgetbook/folders/graph.dart:889` / `:895`; the run was told not to touch `app/widgetbook/` (a parallel Marionette session), so the end-of-loop gate's `dart analyze app` goes red until it is fixed.
   - **Follow-up:** in `app/widgetbook/folders/graph.dart:895` replace `commitId: commitId,` with `commitIds: <String>[commitId],` (the loop's fix-up run, or Ralph once the catalogue session is done).

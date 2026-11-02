@@ -21,6 +21,8 @@ deferred:
     location: >-
       app/widgetbook/folders/graph.dart:895
     severity: medium
+    resolved: >-
+      2026-11-02 — fixed (spec-loop-11-13-10-25-visual-check-fixup, commit acdf36ed781d380b95c2732b194bed33d78a6afc): the fake diff passes commitIds; dart analyze app is clean.
 ---
 
 <intent-contract>
