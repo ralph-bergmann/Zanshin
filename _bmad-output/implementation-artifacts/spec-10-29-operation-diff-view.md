@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/undo_timeline/operation_changes.dart _diffOf
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-10-29-closing-op-show-created-commits-and-descriptions, commit cc725683): created commits read as DiffRevisions::Created, no copy records, like the CLI.
   - summary: >-
       Description changes beyond the first line are not shown in the operation view.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       app/lib/src/features/undo_timeline/operation_changes.dart summaryOf
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-10-29-closing-op-show-created-commits-and-descriptions, commit cc725683): the JJ-COMMIT-DESCRIPTION block is shown above the files.
   - summary: >-
       A large operation may render slowly in the operation view.
     evidence: |-
