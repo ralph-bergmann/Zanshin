@@ -2656,3 +2656,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The Settings window's running-app checks were not made: the Marionette comparison with the DS settings cards and the on-screen window behaviour (top edge kept, normal level, Esc does nothing, ⌘W and the red button).** Low.
   - The unattended run allowed only synchronous commands, so the catalogue was not launched; every witness runs over fake windows in `flutter test`.
   - **Follow-up:** open Windows › Settings window in the catalogue via Marionette and compare with `design_system/components/settings/settings.card.html` and `immutable-page.card.html`.
+
+## Surfaced in the closing run of Story 11.7 (bmad-build-auto, 2026-11-03)
+
+- **The Immutable commits page's untracked-remote hints can name a tracked remote ref that disagrees with its local target.** Low.
+  - `app/lib/src/features/settings/immutable_heads.dart` (`_untrackedRemote`) infers "untracked" from `TopologyRef.synced` ("tracked and agrees"); the bridge has no tracking-state read for remote tags.
+  - **Follow-up:** a bridge read of each remote ref's tracking state (or `untracked` on `TopologyRef`), then filter on it.
