@@ -109,13 +109,14 @@ class RecordedGraphLayout extends GraphLayout {
   /// (format 4, `--stacks`, Story 10.17) carries n + S nodes and `runs`: a folded member gets row and column −1, and
   /// each stack node the key [graphStackKey] of its oldest member, its newest member's timestamp, one parent, and the
   /// immutable flag when every member has it. [operationId] pins the layout to an operation, as a worker layout is
-  /// (the search's counts and lookups need one).
+  /// (the search's counts and lookups need one); [totalCount] is `|all()|` as a worker layout carries it.
   factory RecordedGraphLayout.fromSpec(
     String inputJson,
     String outputJson, {
     GraphCommitContent? Function(int node, String key)? content,
     List<GraphRef> Function(int node, String key)? refs,
     String? operationId,
+    int? totalCount,
   }) {
     final input = jsonDecode(inputJson) as Map<String, Object?>;
     final output = jsonDecode(outputJson) as Map<String, Object?>;
@@ -239,6 +240,7 @@ class RecordedGraphLayout extends GraphLayout {
       rootIndex: root,
       workingCopyIndex: workingCopy,
       operationId: operationId,
+      totalCount: totalCount,
       flags: flags,
       // A stack node has no content and no refs of its own: the card reads its members'.
       contents: content == null

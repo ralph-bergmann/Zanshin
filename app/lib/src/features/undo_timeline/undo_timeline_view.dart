@@ -232,7 +232,8 @@ class _OperationRowState extends State<_OperationRow> {
         onFocusChange: (focused) => setState(() => _focused = focused),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: _hovered && !inactive ? colors.flHover : null,
+            // The current row's fill is the prototype's `.side-row.active` (design/float.css:175).
+            color: _newest ? colors.accentSoft : (_hovered && !inactive ? colors.flHover : null),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Padding(

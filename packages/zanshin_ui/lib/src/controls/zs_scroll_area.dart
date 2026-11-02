@@ -183,20 +183,24 @@ class _ZsScrollAreaState extends State<ZsScrollArea> {
 
   bool get _jumpToSpot => widget.jumpToClickedSpot ?? _shellJumps;
 
-  void _jump(ScrollController? controller, double delta) {
+  /// Whether [controller] had a scrollable to move; without one the key is left to the areas around.
+  bool _jump(ScrollController? controller, double delta) {
     if (controller == null || !controller.hasClients) {
-      return;
+      return false;
     }
     final ScrollPosition position = controller.position;
     controller.jumpTo((position.pixels + delta).clamp(position.minScrollExtent, position.maxScrollExtent));
+    return true;
   }
 
-  void _jumpTo(ScrollController? controller, {required bool end}) {
+  /// Whether [controller] had a scrollable to move, as [_jump].
+  bool _jumpTo(ScrollController? controller, {required bool end}) {
     if (controller == null || !controller.hasClients) {
-      return;
+      return false;
     }
     final ScrollPosition position = controller.position;
     controller.jumpTo(end ? position.maxScrollExtent : position.minScrollExtent);
+    return true;
   }
 
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
@@ -209,28 +213,19 @@ class _ZsScrollAreaState extends State<ZsScrollArea> {
         ? math.max(0, vertical.position.viewportDimension - ZsScrollArea._keyStep)
         : 0;
     final LogicalKeyboardKey key = event.logicalKey;
-    if (key == LogicalKeyboardKey.arrowDown) {
-      _jump(vertical, ZsScrollArea._keyStep);
-    } else if (key == LogicalKeyboardKey.arrowUp) {
-      _jump(vertical, -ZsScrollArea._keyStep);
-    } else if (key == LogicalKeyboardKey.arrowRight && horizontal != null) {
-      _jump(horizontal, ZsScrollArea._keyStep);
-    } else if (key == LogicalKeyboardKey.arrowLeft && horizontal != null) {
-      _jump(horizontal, -ZsScrollArea._keyStep);
-    } else if (key == LogicalKeyboardKey.pageDown) {
-      _jump(vertical, page);
-    } else if (key == LogicalKeyboardKey.pageUp) {
-      _jump(vertical, -page);
-    } else if (key == LogicalKeyboardKey.space) {
-      _jump(vertical, HardwareKeyboard.instance.isShiftPressed ? -page : page);
-    } else if (key == LogicalKeyboardKey.home) {
-      _jumpTo(vertical, end: false);
-    } else if (key == LogicalKeyboardKey.end) {
-      _jumpTo(vertical, end: true);
-    } else {
-      return KeyEventResult.ignored;
-    }
-    return KeyEventResult.handled;
+    final bool moved = switch (key) {
+      LogicalKeyboardKey.arrowDown => _jump(vertical, ZsScrollArea._keyStep),
+      LogicalKeyboardKey.arrowUp => _jump(vertical, -ZsScrollArea._keyStep),
+      LogicalKeyboardKey.arrowRight => _jump(horizontal, ZsScrollArea._keyStep),
+      LogicalKeyboardKey.arrowLeft => _jump(horizontal, -ZsScrollArea._keyStep),
+      LogicalKeyboardKey.pageDown => _jump(vertical, page),
+      LogicalKeyboardKey.pageUp => _jump(vertical, -page),
+      LogicalKeyboardKey.space => _jump(vertical, HardwareKeyboard.instance.isShiftPressed ? -page : page),
+      LogicalKeyboardKey.home => _jumpTo(vertical, end: false),
+      LogicalKeyboardKey.end => _jumpTo(vertical, end: true),
+      _ => false,
+    };
+    return moved ? KeyEventResult.handled : KeyEventResult.ignored;
   }
 
   void _pointerHover(Offset local, Size size, double gutter) {

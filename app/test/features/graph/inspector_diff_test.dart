@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/inspector_diff.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting;
+import 'package:zanshin_ui/zanshin_ui.dart' show ZsScrollArea;
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/shell_host.dart';
@@ -108,6 +109,34 @@ void main() {
     expect(find.text('+1'), findsOneWidget);
     expect(find.text('−1'), findsOneWidget);
     expect(find.text('old'), findsOneWidget, reason: 'no trailing newline');
+  });
+
+  testWidgets('a unified line wider than the hunk scrolls in a ZsScrollArea; short lines leave nothing to scroll', (
+    tester,
+  ) async {
+    double extent() =>
+        tester.widget<ZsScrollArea>(find.byType(ZsScrollArea)).horizontalController!.position.maxScrollExtent;
+    await tester.pumpWidget(
+      view(
+        _file(
+          hunks: <Hunk>[
+            _hunk(<HunkLine>[_add('let message = "a line long enough to leave the inspector on its right edge";')]),
+          ],
+        ),
+      ),
+    );
+    expect(extent(), greaterThan(0));
+
+    await tester.pumpWidget(
+      view(
+        _file(
+          hunks: <Hunk>[
+            _hunk(<HunkLine>[_add('short')]),
+          ],
+        ),
+      ),
+    );
+    expect(extent(), 0);
   });
 
   testWidgets('side by side draws one row per pair', (tester) async {

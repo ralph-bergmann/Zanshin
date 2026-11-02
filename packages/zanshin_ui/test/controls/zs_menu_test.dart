@@ -48,6 +48,8 @@ Widget _host({
   Alignment alignment = Alignment.center,
   Widget? extra,
   String? semanticLabel,
+  double maxWidth = ZsMenuPanel.defaultMaxWidth,
+  double? cmdMaxWidth,
 }) => zsHost(
   // An opaque window background, as the app's window fill is: an outside click needs something to hit.
   ColoredBox(
@@ -62,6 +64,8 @@ Widget _host({
               entries: entries ?? _entries(),
               subject: _subject,
               semanticLabel: semanticLabel,
+              maxWidth: maxWidth,
+              cmdMaxWidth: cmdMaxWidth,
               identifier: 'menu',
               builder: (context, controller) =>
                   ZsButton(label: 'Actions', focusNode: button, onPressed: controller.open),
@@ -524,6 +528,22 @@ void main() {
     await tester.pumpWidget(_projectHost(button: button));
     await _openByKey(tester, button);
     expect(tester.getSize(find.byType(ZsMenuMaterial)).width, 300);
+  });
+
+  testWidgets('a row wider than 320 stops at 320 by default and grows up to a given maxWidth', (tester) async {
+    const wide = <ZsMenuEntry>[
+      ZsMenuItem(label: 'Revert', cmd: 'jj revert -r kxwsnptm -B @ --and-a-long-tail-of-flags'),
+    ];
+    await tester.pumpWidget(_host(button: button, entries: wide, cmdMaxWidth: 250));
+    await _openByKey(tester, button);
+    expect(tester.getSize(find.byType(ZsMenuMaterial)).width, ZsMenuPanel.defaultMaxWidth);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump(_m.durExit + const Duration(milliseconds: 1));
+    await tester.pump();
+
+    await tester.pumpWidget(_host(button: button, entries: wide, cmdMaxWidth: 250, maxWidth: 360));
+    await _openByKey(tester, button);
+    expect(tester.getSize(find.byType(ZsMenuMaterial)).width, 360);
   });
 
   testWidgets('a command longer than cmdMaxWidth ends in an ellipsis at 130; a short one is whole', (tester) async {

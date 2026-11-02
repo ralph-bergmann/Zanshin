@@ -175,7 +175,8 @@ Widget catalogueAppBuilder(
     debugShowCheckedModeBanner: false,
     theme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.paper)),
     darkTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.night)),
-    themeMode: switch (shell?.brightness) {
+    // A catalogue window's override (the opening use case's theme) wins over macOS's appearance.
+    themeMode: switch (ZsAppearanceOverride.maybeOf(context)?.theme?.brightness ?? shell?.brightness) {
       null => ThemeMode.system,
       Brightness.dark => ThemeMode.dark,
       Brightness.light => ThemeMode.light,

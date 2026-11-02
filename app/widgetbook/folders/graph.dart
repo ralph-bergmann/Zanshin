@@ -892,7 +892,7 @@ class _DemoDetails implements GraphDetails {
           if (paths.isEmpty || paths.contains(file.path)) _diffOf(file, summary: summary),
       ],
       operationId: 'op',
-      commitId: commitId,
+      commitIds: <String>[commitId],
     );
   }
 

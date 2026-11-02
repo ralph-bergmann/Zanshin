@@ -23,8 +23,13 @@ final _log = Logger('zanshin.graph.menu');
 /// remote to track.
 const _gitRemote = 'git'; // l10n-ignore: jj's remote name
 
-/// The widest a menu row's command gets (Claude's proposal; the Project menu's limit is 130).
-const double _cmdMaxWidth = 170;
+/// The widest a menu row's command gets (Claude's proposal; the Project menu's limit is 130): Revert's
+/// `jj revert -r <8-char id> -B @` fits whole, a long bookmark name still ends in an ellipsis.
+const double _cmdMaxWidth = 200;
+
+/// The widest the card and bookmark menus grow: the DS 320 fits commands without ids (`menus.css:6`), these show
+/// the short id (Story 10.15).
+const double _menuMaxWidth = 360;
 
 /// What the name sheet asks for (Story 10.15): its [title], the field's [label], the [confirm] verb, and the [action]
 /// the typed text makes on a change id (the short id for the shown command, the node key to run).
@@ -594,6 +599,7 @@ class _MenuHostState extends State<_MenuHost> {
                     identifier: widget.identifier,
                     // A long id or bookmark name ends in an ellipsis rather than pushing the label out.
                     cmdMaxWidth: _cmdMaxWidth,
+                    maxWidth: _menuMaxWidth,
                     onClose: _closed,
                     builder: (context, controller) => const SizedBox.expand(),
                   ),

@@ -164,7 +164,11 @@ void main() {
 
     final Element probe = tester.element(find.byType(FloatingShell));
     expect(ZsShellScope.maybeOf(probe), theme);
-    expect(ZsAppearance.of(probe).theme, ZsTheme.paper);
+    expect(
+      ZsAppearance.of(probe).theme,
+      ZsTheme.night,
+      reason: "the use case's theme (the addon's night), not macOS's",
+    );
   });
 
   testWidgets("Windows › Window fill's window is a CatalogueWindowRoot over a ZsWindowFill that watches its view", (
@@ -207,6 +211,32 @@ void main() {
     );
 
     expect(windows.dialogs['widgetbook-revset-configs'], same(revsetConfigsWindowSpec));
+  });
+
+  testWidgets('a paper use case opens a paper Configurations window under a dark macOS; its preview counts', (
+    tester,
+  ) async {
+    // A shell made inside the test body answers on the fake clock's microtasks; setUp's answers would never arrive.
+    final outside = shell;
+    addTearDown(outside.close);
+    ZanshinShellPlatform.instance = shell = RecordingShell();
+    shell.theme.complete(const ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF4757A1)));
+    await openWindow(
+      tester,
+      'windows/configurations-window/configurations-window&appearance={theme:paper}',
+      'open-revset-configs-window',
+    );
+    // The settings file is real I/O; the fakes answer on timers.
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    final Element probe = tester.element(find.byKey(const ValueKey<String>('window:widgetbook-revset-configs')));
+    expect(ZsAppearance.of(probe).theme, ZsTheme.paper);
+    expect(find.textContaining('changes match', findRichText: true), findsWidgets);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
   });
 
   for (final (String useCase, String key, bool sized, bool resizable, WindowFrameMode frame, WindowLevel level)

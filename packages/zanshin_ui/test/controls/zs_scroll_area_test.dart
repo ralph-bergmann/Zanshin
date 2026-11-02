@@ -163,6 +163,57 @@ void main() {
     expect(controller.offset, 0);
   });
 
+  testWidgets('with an unattached vertical controller ↓ goes to the focus around it; → scrolls sideways', (
+    tester,
+  ) async {
+    final ScrollController vertical = _controller();
+    final ScrollController horizontal = _controller();
+    final FocusNode before = _node();
+    final outer = <LogicalKeyboardKey>[];
+    await tester.pumpWidget(
+      zsHost(
+        Focus(
+          onKeyEvent: (node, event) {
+            if (event is KeyDownEvent) {
+              outer.add(event.logicalKey);
+            }
+            return KeyEventResult.ignored;
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Focus(focusNode: before, child: const SizedBox(width: 10, height: 10)),
+              SizedBox(
+                width: 300,
+                height: 100,
+                child: ZsScrollArea(
+                  controller: vertical,
+                  horizontalController: horizontal,
+                  child: SingleChildScrollView(
+                    controller: horizontal,
+                    scrollDirection: Axis.horizontal,
+                    child: const SizedBox(width: 1000, height: 100),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    before.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    expect(Focus.of(tester.element(find.byType(SingleChildScrollView))).hasPrimaryFocus, isTrue);
+    outer.clear();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    expect(outer, <LogicalKeyboardKey>[LogicalKeyboardKey.arrowDown]);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    expect(horizontal.offset, 40);
+    expect(outer, <LogicalKeyboardKey>[LogicalKeyboardKey.arrowDown]);
+  });
+
   group('the bar', () {
     testWidgets('hidden at rest; in --scroll-thumb while scrolling; gone again --delay-scroll-hide later', (
       tester,

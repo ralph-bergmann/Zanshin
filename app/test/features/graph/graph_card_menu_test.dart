@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -570,6 +571,25 @@ void main() {
       expect(model.selected, _side);
       expect((inspector!.details as _Details).plans, <String>[_side]);
       expect(actions.ran.single, isA<GraphSquash>().having((a) => a.revision, 'revision', _side));
+      await finish(tester);
+    });
+
+    testWidgets("in the real fonts Revert's command reads in full and the menu stays within 360", (tester) async {
+      // The test font draws every glyph as wide as its size; the limits are for Inter and JetBrains Mono.
+      await tester.runAsync(() async {
+        for (final (String family, String asset) in <(String, String)>[
+          (ZsType.sansFamily, 'packages/zanshin_ui/assets/fonts/Inter/Inter-VariableFont_opsz,wght.ttf'),
+          (ZsType.monoFamily, 'packages/zanshin_ui/assets/fonts/JetBrains_Mono/JetBrainsMono-VariableFont_wght.ttf'),
+        ]) {
+          await (FontLoader(family)..addFont(rootBundle.load(asset))).load();
+        }
+      });
+      await pump(tester);
+      cards(tester).openMenu(_b, Rect.fromCenter(center: tester.getCenter(card(_b)), width: 18, height: 18));
+      await settle(tester);
+      const revert = 'jj revert -r kmnvxoqp -B @';
+      expect(tester.renderObject<RenderParagraph>(find.text(revert)).didExceedMaxLines, isFalse);
+      expect(tester.getSize(find.byType(ZsMenuMaterial)).width, lessThanOrEqualTo(360));
       await finish(tester);
     });
 

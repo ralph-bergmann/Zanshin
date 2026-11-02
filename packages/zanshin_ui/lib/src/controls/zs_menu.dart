@@ -198,6 +198,7 @@ class ZsMenuAnchor extends StatefulWidget implements ZsControl {
     this.headLeading,
     this.blink = true,
     this.width,
+    this.maxWidth = ZsMenuPanel.defaultMaxWidth,
     this.cmdMaxWidth,
     this.onOpen,
     this.onClose,
@@ -208,8 +209,12 @@ class ZsMenuAnchor extends StatefulWidget implements ZsControl {
   /// The rows.
   final List<ZsMenuEntry> entries;
 
-  /// The menu's fixed width (border box), or null for 250–320 by its content (DS components/menus/menus.css:6).
+  /// The menu's fixed width (border box), or null for 250 up to [maxWidth] by its content (DS components/menus/menus.css:6).
   final double? width;
+
+  /// The widest the menu grows by its content when [width] is null (DS 320; Epic 10's card menu takes more for its
+  /// commands with ids).
+  final double maxWidth;
 
   /// The widest a row's command may be before it ends in an ellipsis, or null for no limit.
   final double? cmdMaxWidth;
@@ -349,7 +354,7 @@ class _ZsMenuAnchorState extends State<ZsMenuAnchor> {
               headLeading: widget.headLeading,
               blink: widget.blink,
               minWidth: widget.width ?? ZsMenuPanel.defaultMinWidth,
-              maxWidth: widget.width ?? ZsMenuPanel.defaultMaxWidth,
+              maxWidth: widget.width ?? widget.maxWidth,
               cmdMaxWidth: widget.cmdMaxWidth,
               closing: _closing,
               onClosed: () {

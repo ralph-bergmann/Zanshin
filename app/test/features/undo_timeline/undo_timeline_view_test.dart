@@ -134,6 +134,19 @@ void main() {
     });
   });
 
+  testWidgets('the newest row is filled --accent-soft, the others not', (tester) async {
+    await withTimeline(tester, FakeTimelineSource(_log(2)), (model) async {
+      Color? fillOf(String text) => tester
+          .widgetList<DecoratedBox>(find.ancestor(of: find.text(text), matching: find.byType(DecoratedBox)))
+          .map((box) => box.decoration)
+          .whereType<BoxDecoration>()
+          .firstWhere((d) => d.borderRadius == BorderRadius.circular(6))
+          .color;
+      expect(fillOf('operation 0'), ZsColors.night.accentSoft);
+      expect(fillOf('operation 1'), isNull);
+    });
+  });
+
   testWidgets('the args tag shows in mono under the description, the workspace beside the time', (tester) async {
     final source = FakeTimelineSource(<Operation>[testOperation(0, now: _now, args: 'jj new main')]);
     await withTimeline(tester, source, (model) async {

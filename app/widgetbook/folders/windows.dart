@@ -5,6 +5,13 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
+import 'package:zanshin/src/features/graph/graph_layout.dart';
+import 'package:zanshin/src/features/graph/graph_ports.dart';
+import 'package:zanshin/src/features/graph/graph_preferences.dart';
+import 'package:zanshin/src/features/graph/graph_search_controller.dart';
+import 'package:zanshin/src/features/graph/graph_search_store.dart';
+import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/revset_configs/revset_configs_window.dart';
 import 'package:zanshin/src/features/shell/app_menu.dart' show GraphMenuBinding;
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
@@ -17,6 +24,10 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../catalogue.dart' show catalogueAppBuilder;
 import '../demo_projects_fakes.dart';
+import '../graph/fake_graph_search_source.dart';
+import '../graph/fake_graph_source.dart';
+import '../graph/graph_recordings.g.dart';
+import 'graph.dart' show catalogueOperationId, recordedLayout, requestedLayout;
 import 'shell.dart' show FloatingShellDemo, ShellDemoState;
 
 /// Hands the catalogue's [AppWindows] and its [ActiveWindowTracker] to the use cases that open real windows.
@@ -61,12 +72,16 @@ class CatalogueWindowRoot extends StatelessWidget {
     required this.tracker,
     required this.shellTheme,
     required this.child,
+    this.theme,
     this.sizeToContent = false,
     super.key,
   });
 
   /// The window's key.
   final String windowKey;
+
+  /// The theme of the use case that opened the window (the Appearance addon's), or null to follow macOS.
+  final ZsTheme? theme;
 
   /// Which window is key.
   final ActiveWindowTracker tracker;
@@ -81,17 +96,20 @@ class CatalogueWindowRoot extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => ZsShellScope(
-    shellTheme: shellTheme,
-    child: WindowChromeBuilder(
-      builder: (context, chrome) => ListenableBuilder(
-        listenable: tracker,
-        builder: (context, _) => catalogueAppBuilder(
-          context,
-          KeyedSubtree(key: ValueKey<String>('window:$windowKey'), child: child),
-          chrome: chrome,
-          inactive: !tracker.isActive(View.of(context).viewId),
-          sizeToContent: sizeToContent,
+  Widget build(BuildContext context) => ZsAppearanceOverride(
+    theme: theme,
+    child: ZsShellScope(
+      shellTheme: shellTheme,
+      child: WindowChromeBuilder(
+        builder: (context, chrome) => ListenableBuilder(
+          listenable: tracker,
+          builder: (context, _) => catalogueAppBuilder(
+            context,
+            KeyedSubtree(key: ValueKey<String>('window:$windowKey'), child: child),
+            chrome: chrome,
+            inactive: !tracker.isActive(View.of(context).viewId),
+            sizeToContent: sizeToContent,
+          ),
         ),
       ),
     ),
@@ -179,6 +197,8 @@ void _open(
     windowKey: key,
     tracker: tracker,
     shellTheme: shell?.shellTheme,
+    // The use case's theme (the Appearance addon's), not macOS's: a paper use case opens a paper window.
+    theme: ZsAppearance.maybeOf(context)?.theme,
     sizeToContent: dialog != null && dialog.size == null,
     child: content,
   );
@@ -488,7 +508,8 @@ class _OpenRevsetConfigsWindow extends StatelessWidget {
   );
 }
 
-/// The Configurations window over a temp-folder settings store holding two demo configurations.
+/// The Configurations window over a temp-folder settings store holding two demo configurations, bound to a graph on
+/// the catalogue's fake sources so its preview counts ("N of M changes match").
 class _DemoRevsetConfigsWindow extends StatefulWidget {
   const _DemoRevsetConfigsWindow({required this.windows, required this.windowKey});
 
@@ -503,6 +524,9 @@ class _DemoRevsetConfigsWindowState extends State<_DemoRevsetConfigsWindow> {
   late final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_configurations');
   final _graph = ValueNotifier<GraphMenuBinding?>(null);
   SettingsStore? _store;
+  GraphViewModel? _model;
+  GraphSearchController? _search;
+  GraphPreferences? _preferences;
 
   static const _settings = GraphSettings(
     revsetConfigs: <RevsetConfiguration>[
@@ -537,13 +561,53 @@ class _DemoRevsetConfigsWindowState extends State<_DemoRevsetConfigsWindow> {
     final SettingsStore store = await SettingsStore.load(File('${_dir.path}/settings.json'));
     // The demo's writes go to the temp folder; a failed one changes nothing the demo shows.
     unawaited(store.update((s) => s.copyWith(graph: _settings)).onError<FileSystemException>((_, _) {}));
-    if (mounted) {
-      setState(() => _store = store);
+    if (!mounted) {
+      return;
     }
+    // The graph demo's wiring (graph.dart, "Floating shell / Controls"), without its verbs and inspector.
+    final model = GraphViewModel();
+    final search = GraphSearchController(
+      model: model,
+      source: FakeGraphSearchSource(
+        () => requestedLayout(
+          'design-all',
+          GraphRequest(
+            revset: 'all()',
+            prioritize: FakeGraphSource.defaults.logGraphPrioritize,
+            shortPrefixes: FakeGraphSource.defaults.shortPrefixes,
+            anchors: const <String>[],
+            utcOffsetMin: 0,
+          ),
+        ),
+      ),
+      store: MemoryGraphSearchStore(),
+    );
+    // The window shows no graph; the preview's "of M" is the layout's `|all()|`, which the recordings do not carry.
+    const options = GraphViewOptions();
+    final (String input, String output) =
+        graphRecordings['design-default ${options.layout.name} ${options.laneOrder.name}']!;
+    final layout = RecordedGraphLayout.fromSpec(
+      input,
+      output,
+      operationId: catalogueOperationId,
+      totalCount: recordedLayout('design-all', options, inlineContent: false).nodeCount,
+    );
+    final preferences = GraphPreferences(store)..init(model, FakeGraphSource((_) => layout), revset: search.revset);
+    setState(() {
+      _store = store;
+      _model = model;
+      _search = search;
+      _preferences = preferences;
+      _graph.value = GraphMenuBinding(model: model, preferences: preferences, search: search);
+    });
   }
 
   @override
   void dispose() {
+    _graph.value = null;
+    _preferences?.dispose();
+    _search?.dispose();
+    _model?.dispose();
     _graph.dispose();
     try {
       _dir.deleteSync(recursive: true);

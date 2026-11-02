@@ -352,8 +352,9 @@ class InspectorTextButton extends StatelessWidget {
 
 /// One hunk (DS components/content/DiffHunk, content.css:48-55): the header band (`--hunk-bg`: the range in
 /// `--hunk`, the symbol, +added / −removed) over its lines, unified (a sigil column, scrolling horizontally on its own)
-/// or side by side (two clipped cells per row).
-class InspectorDiffHunk extends StatelessWidget {
+/// or side by side (two clipped cells per row). The unified lines sit in a [ZsScrollArea]: its bar along the bottom
+/// shows a cut line while scrolling or hovered, ←/→ scroll it when focused.
+class InspectorDiffHunk extends StatefulWidget {
   /// [hunk] in [layout].
   const InspectorDiffHunk({required this.hunk, required this.layout, super.key});
 
@@ -362,6 +363,26 @@ class InspectorDiffHunk extends StatelessWidget {
 
   /// Unified or side by side.
   final DiffLayoutSetting layout;
+
+  @override
+  State<InspectorDiffHunk> createState() => _InspectorDiffHunkState();
+}
+
+class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
+  // The area's vertical controller stays unattached: the hunk scrolls only sideways, the inspector scrolls it down.
+  final _vertical = ScrollController();
+  final _horizontal = ScrollController();
+
+  Hunk get hunk => widget.hunk;
+
+  DiffLayoutSetting get layout => widget.layout;
+
+  @override
+  void dispose() {
+    _vertical.dispose();
+    _horizontal.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -411,49 +432,54 @@ class InspectorDiffHunk extends StatelessWidget {
   };
 
   Widget _unified(ZsColors colors) => LayoutBuilder(
-    builder: (context, constraints) => SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minWidth: constraints.maxWidth),
-        child: IntrinsicWidth(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              for (final HunkLine line in hunk.lines) ...<Widget>[
-                Builder(
-                  builder: (context) {
-                    final (Color fill, Color ink) = _look(colors, line.kind);
-                    final String sigil = switch (line.kind) {
-                      HunkLineKind.context => ' ',
-                      HunkLineKind.added => '+',
-                      HunkLineKind.removed => '−',
-                    };
-                    return Container(
-                      color: fill,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          SizedBox(
-                            width: 14,
-                            child: SelectionContainer.disabled(
-                              child: Text(
-                                sigil,
-                                style: ZsType.code.copyWith(
-                                  color: line.kind == HunkLineKind.context ? colors.textFaint : ink,
+    builder: (context, constraints) => ZsScrollArea(
+      controller: _vertical,
+      horizontalController: _horizontal,
+      child: SingleChildScrollView(
+        controller: _horizontal,
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: constraints.maxWidth),
+          child: IntrinsicWidth(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                for (final HunkLine line in hunk.lines) ...<Widget>[
+                  Builder(
+                    builder: (context) {
+                      final (Color fill, Color ink) = _look(colors, line.kind);
+                      final String sigil = switch (line.kind) {
+                        HunkLineKind.context => ' ',
+                        HunkLineKind.added => '+',
+                        HunkLineKind.removed => '−',
+                      };
+                      return Container(
+                        color: fill,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            SizedBox(
+                              width: 14,
+                              child: SelectionContainer.disabled(
+                                child: Text(
+                                  sigil,
+                                  style: ZsType.code.copyWith(
+                                    color: line.kind == HunkLineKind.context ? colors.textFaint : ink,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          Text(_text(line), softWrap: false, style: ZsType.code.copyWith(color: ink)),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-                if (!line.text.endsWith('\n')) _noNewline(colors, const EdgeInsets.only(left: 24, right: 10)),
+                            Text(_text(line), softWrap: false, style: ZsType.code.copyWith(color: ink)),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  if (!line.text.endsWith('\n')) _noNewline(colors, const EdgeInsets.only(left: 24, right: 10)),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
