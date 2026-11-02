@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/window/zanshin_window_root.dart; app/widgetbook/catalogue.dart (catalogueAppBuilder sizeToContent)
     severity: medium
+    resolved: >-
+      2026-11-02 — fixed (spec-11-7-settings-window, commit 9522ef8): ZanshinWindowRoot(sizeToContent:) uses Overlay.wrap with no navigator for Settings.
   - summary: >-
       A window sized to its content takes no minimum constraints: the engine refuses the first metrics of the still empty view and the window never shows.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       app/lib/src/features/window/app_windows.dart (DialogWindowSpec, create)
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-11-7-settings-window, commit 9522ef8): settingsWindowSpec = maxWidth 620 / maxHeight 740, not resizable, position frame, no minimum.
   - summary: >-
       The coordinator's native paths (project window red button, Dock reopen, launch with a stored project and a failed reopen, closing Projects to quit, a theme switch restyling every native window) are witnessed only by Dart tests.
     evidence: |-

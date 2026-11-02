@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/project_capsule.dart; app/lib/src/features/home/home_page.dart
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-11-7-settings-window, commit 9522ef8): Settings… (⌘,) and Project Settings… work from the capsule, the app menu and the Projects sidebar.
   - summary: >-
       Without the Projects window, a launch with no project to reopen (none stored, or it is missing) and the close-project action leave the project window open with an empty PLACE island instead of showing Projects as the only window.
     evidence: |-

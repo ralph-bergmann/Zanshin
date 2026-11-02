@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_inspector.dart (_Header)
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-11-7-settings-window, commit 9522ef8): the inspector's flag reads "Immutable · <term>" from the cached ImmutableReasons.
 ---
 
 <intent-contract>

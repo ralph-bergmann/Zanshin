@@ -27,6 +27,8 @@ deferred:
     evidence: 'zanshin_app.dart:161-183 (the SegmentedButton is the only UI caller of ZanshinAppViewModel.setThemeMode); epics.md Story 11.3 item 1 replaces the page; 11.7 owns General › Theme.'
     location: 'app/lib/src/features/app/zanshin_app.dart'
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-11-7-settings-window, commit 9522ef8): General › Theme calls setThemeMode.
   - summary: 'The pinned panel''s title takes the token --type-panel-title (15/600) while the desktop kit draws 13/600; a design question for the next DS round.'
     evidence: 'DS tokens/typography.css:29 against DS ui_kits/desktop/kit.css:84-86 and the export''s 13 px h3 (app.css:1174-1179); both are DS tokens or CSS, the same tier of precedence.'
     location: 'app/lib/src/features/shell/pinned_panel.dart'

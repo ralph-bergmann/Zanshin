@@ -34,6 +34,8 @@ deferred:
     location: >-
       packages/zanshin_settings/lib/src/model/general_settings.dart
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-11-7-settings-window, commit 9522ef8): the Diff layout row writes general.diffLayout.
   - summary: >-
       The diff view was not checked in the running catalogue against the DS DiffView / DiffHunk / FileRow cards.
     evidence: |-

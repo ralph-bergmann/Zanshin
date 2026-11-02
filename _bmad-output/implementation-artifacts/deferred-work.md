@@ -1211,7 +1211,7 @@ _Ralph re-downloaded the design-system project twice (rounds 2 and 3; the DS rea
 - **Configurations floats over Settings and Projects too.** Low; watch (decision 16.42 (b), Claude's proposal; 11.12 item 6).
   - The `revset-configs` window takes `.floating` while Zanshin is active, so it also sits above Settings and Projects.
   - **Follow-up:** if that annoys in use, float it only above the project window, for example by lowering it while Settings or Projects is key (Claude's proposal).
-- **Blur-triggered settings writes fire on every window switch.** Low (11.7, 11.12 item 9; r3out windows.md C7).
+- ~~**Blur-triggered settings writes fire on every window switch.**~~ — RESOLVED 2026-11-02 (spec-11-7-settings-window, commit 9522ef8): a Settings field writes on ↩ or blur only when its value changed. Low (11.7, 11.12 item 9; r3out windows.md C7).
   - Every window switch blurs the focused text field, so 11.7's write-on-blur rows write each time the user moves to another Zanshin window.
   - **Follow-up:** check it in 11.7; write only when the value changed (Claude's proposal).
 - ~~**Settings' top-anchored resize needs native work.**~~ — RESOLVED 2026-10-19 (spec-11-12-window-foundation-dialog-windows, commit 0dbd2fb): the runner's position-only frame keeps the top edge (`WindowFrameStore.swift`), seen on the catalogue's Content-sized scaffold (170 → 362 → 170 pt, top held); the app root's content-sized switch for Settings is 11.7's (Surfaced in Story 11.12). Medium (11.12 item 3; r4out windows W-6).
@@ -1379,7 +1379,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
   - **Follow-up:** 10.5 reads the insets with `ShellScope.insetsOf(context)` and reports pans, flings and minimap scrolling with `ShellScope.of(context).reportUserScroll`; its text is reconciled to this shape when it is specced.- ~~**The project window keeps two stand-ins for Story 11.4 until it lands: a WindowDragArea over the bar row and a canvasBase fill under the graph.**~~ — RESOLVED 2026-10-18 (spec-11-4-window-chrome-floating-layout, commit fdd9817): `HomePage` passes `ZsCanvas` as the canvas, and its `WindowDragArea` bar row is the window's drag region of design question (a) (decision (g)), no longer a stand-in. Low.
   - epics.md Story 11.3 item 1 and Story 11.4 own the drag region and the canvas; without the stand-ins the new home could not be moved (the Yaru page's `WindowDragArea` AppBar went with it) and the vibrancy view would show through (`MainWindowChrome.swift:90-110`).
   - **Follow-up:** 11.4 replaces `HomePage`'s `barRow` and passes the canvas slot (`app/lib/src/features/home/home_page.dart`).
-- **The in-app theme switch disappears with the Yaru test page until Story 11.7 adds Theme to Settings; the app then follows the stored mode, System by default.** Low.
+- ~~**The in-app theme switch disappears with the Yaru test page until Story 11.7 adds Theme to Settings; the app then follows the stored mode, System by default.**~~ — RESOLVED 2026-11-02 (spec-11-7-settings-window, commit 9522ef8): General › Theme calls setThemeMode. Low.
   - The Yaru page's `SegmentedButton` was the only UI caller of `ZanshinAppViewModel.setThemeMode` (`app/lib/src/features/app/zanshin_app.dart`); epics.md Story 11.3 item 1 replaces the page; 11.7 owns General › Theme.
   - **Follow-up:** 11.7 builds the Theme row on `setThemeMode`.
 - **The pinned panel's title takes the token `--type-panel-title` (15/600) while the desktop kit draws 13/600; a design question for the next DS round.** Low.
@@ -1426,7 +1426,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 11.5 (bmad-build-auto, 2026-10-18)
 
-- **The Project menu's All Projects…, Project Settings… and Settings… rows stay disabled until 11.6 and 11.7 pass their actions; their shortcuts (⇧⌘O, ⌘,) are 11.13's.** Low.
+- ~~**The Project menu's All Projects…, Project Settings… and Settings… rows stay disabled until 11.6 and 11.7 pass their actions; their shortcuts (⇧⌘O, ⌘,) are 11.13's.**~~ — RESOLVED 2026-11-02 (spec-11-7-settings-window, commit 9522ef8): Settings… (⌘,) and Project Settings… work from the capsule, the app menu and the Projects sidebar. Low.
   - 11.5 ran ahead of the epics' Sequencing (epics.md:11673-11674: 11.12 and 11.13 come before 11.5); neither the Projects window (11.6 on 11.12) nor the Settings window (11.7) exists. `ProjectCapsule` takes `onAllProjects` / `onProjectSettings` / `onSettings` as nullable callbacks; null disables the row (epic-11-context "until its verb lands, a UI element stays disabled or absent").
   - **Follow-up:** 11.6 and 11.7 pass the callbacks from `HomePage` (`app/lib/src/features/home/home_page.dart`); 11.13 binds the shortcuts.
   - **2026-10-19, Story 11.12:** All Projects… is enabled under the coordinator's `AppWindowActionsScope` and opens or brings forward Projects (commit 0dbd2fb); left: 11.7 passes Project Settings… and Settings…, 11.13 binds the shortcuts.
@@ -1487,7 +1487,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **Reordering rows has no keyboard path; the keyboard regroups only through ••• › Move to group.** Low.
   - epics.md:12428 (drag into groups and order); epic-11-context "a keyboard path" on every surface; no reorder key is designed (DS `ProjectRow.prompt.md:11` lists ↑ ↓ Home End → ← ↩ only).
   - **Follow-up:** a DS round names the keys (for example ⌥⌘↑ / ⌥⌘↓) and the tree maps them onto `ProjectRegistry.move` / `moveGroup` (`app/lib/src/features/projects/projects_tree.dart`).
-- **The identity footer reads `user.name` / `user.email` when the content opens and when the open project changes, not after a config edit made elsewhere.** Low.
+- ~~**The identity footer reads `user.name` / `user.email` when the content opens and when the open project changes, not after a config edit made elsewhere.**~~ — RESOLVED 2026-11-02 (spec-11-7-settings-window, commit 9522ef8): Settings' identity writes (configWrites) make the Projects footer read the identity again. Low.
   - No config-change event exists (9.28's verbs are request/response only); 11.7 will write identity rows; an external `jj config set` is invisible until the next read.
   - **Follow-up:** 11.7 re-reads after its identity writes (or the content re-reads on window activation, 11.12) (`app/lib/src/features/projects/projects_window.dart`, the footer).
   - **2026-10-19, Story 11.12:** the Projects content reads the identity again when its window becomes key (its appearance turns from inactive to active) (commit 0dbd2fb); left: 11.7 re-reads after its own identity writes.
@@ -1512,10 +1512,10 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 11.12 (bmad-build-auto, 2026-10-18)
 
-- **A window sized to its content cannot hold a Navigator: its Overlay takes the largest size the window's constraints allow, so the window never shrinks to its content.** Medium.
+- ~~**A window sized to its content cannot hold a Navigator: its Overlay takes the largest size the window's constraints allow, so the window never shrinks to its content.**~~ — RESOLVED 2026-11-02 (spec-11-7-settings-window, commit 9522ef8): ZanshinWindowRoot(sizeToContent:) uses Overlay.wrap with no navigator for Settings. Medium.
   - `_RenderTheater.performLayout` sizes to `constraints.biggest` whenever that is finite and `alwaysSizeToContent` is off (`flutter/lib/src/widgets/overlay.dart`); a content-sized dialog has finite maximum constraints (r3out windows.md C3), and `MaterialApp(home:)` builds a Navigator over such an Overlay. `ZanshinWindowRoot` (`app/lib/src/features/window/zanshin_window_root.dart`) still puts the content under `home:` (every app window is sized today); the catalogue's Content-sized scaffold uses `MaterialApp(builder:)` with `Overlay.wrap(alwaysSizeToContent: true)` and no navigator (`catalogueAppBuilder(sizeToContent:)`, `app/widgetbook/catalogue.dart`), and grew 170 → 362 → 170 pt on screen.
   - **Follow-up:** 11.7 gives `ZanshinWindowRoot` the same switch for the Settings window (Claude's proposal).
-- **A window sized to its content takes no minimum constraints: the engine's first metrics carry the still empty view, and metrics below a minimum are refused, so the window never gets its first frame.** Low.
+- ~~**A window sized to its content takes no minimum constraints: the engine's first metrics carry the still empty view, and metrics below a minimum are refused, so the window never gets its first frame.**~~ — RESOLVED 2026-11-02 (spec-11-7-settings-window, commit 9522ef8): settingsWindowSpec = maxWidth 620 / maxHeight 740, not resizable, position frame, no minimum. Low.
   - Seen on the catalogue's Content-sized scaffold with `minWidth: 620`: `FlutterEngineSendWindowMetricsEvent` returned `kInvalidArguments` ("Width and height must be within the specified constraints") and the window never showed (`FlutterEngine.mm` `updateWindowMetricsForViewController:` sends the view's bounds with the sizing delegate's min/max). `AppWindows.create` now refuses such a spec with an `ArgumentError` (`app/lib/src/features/window/app_windows.dart`); the width comes from the content (a stretched column takes `maxWidth`).
   - **Follow-up:** 11.7 passes Settings as `DialogWindowSpec(constraints: BoxConstraints(maxWidth: 620, maxHeight: 740), resizable: false, frame: WindowFrameMode.position)`; DS readme.md:189's "620 wide" holds through the content.
 - **The window coordinator's native paths are witnessed only by Dart tests: the project window's red button, the Dock reopen, a launch that reopens a stored project (and one whose reopen fails), closing Projects to quit, and a theme switch restyling every native window.** Medium.
@@ -2318,7 +2318,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - ~~**The peek, the affordance tooltips, the focus path and the @ pill were not checked visually (Marionette) in the running catalogue.**~~ — RESOLVED 2026-10-31 (console session, Marionette, partly): the peek (night, paper) matches overlays.card.html's PeekCard in size, type and spacing (description, commit id and the stats row are known gaps: 10.12, and the row was dropped by Ralph); the @ pill's four directions match actions.card.html's locator; in `graph/viewport/view-model` the pill points to an off-screen @ and 4.16's day bands hold no card, and 10.11's content arrives with no stuck skeleton. Not checked: the hover-only tooltips and the focus-path dim (Marionette cannot hover). Low.
   - The unattended run cannot hold a `flutter run -d macos -t widgetbook/main.dart` session; widget tests and the smoke test cover `graph/peek/open` and `graph/@-pill/directions` (`app/widgetbook/folders/graph.dart`).
   - **Follow-up:** in a console session, open both use cases and the View model use case through `zanshinCatalogue.open`, hover a card in night and paper, and compare with `design_system/components/overlays/PeekCard.jsx` and `components/actions/AtPill.jsx`.
-- **The peek's IMMUTABLE eyebrow shows no reason yet.** Low.
+- ~~**The peek's IMMUTABLE eyebrow shows no reason yet.**~~ — RESOLVED 2026-11-02 (spec-11-7-settings-window, commit 9522ef8): the peek shows "IMMUTABLE · <term>" from a cached ImmutableReasons, invalidated on config writes. Low.
   - `app/lib/src/features/graph/graph_peek.dart` draws `HatchSwatch` + IMMUTABLE only; the 2026-10-26 note's reason needs one `revsetCounts` call per `immutable_heads()` term in 11.7's term order, and `GraphSource` has no such port.
   - **Follow-up:** 11.7 (its Immutable commits page defines the term order) or 10.12 (the real source) adds the port and the cached reason; the peek shows it beside IMMUTABLE.
 
@@ -2330,7 +2330,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 10.8 (bmad-build-auto, 2026-10-31)
 
-- **The inspector's Immutable flag shows no reason yet.** Low.
+- ~~**The inspector's Immutable flag shows no reason yet.**~~ — RESOLVED 2026-11-02 (spec-11-7-settings-window, commit 9522ef8): the inspector's flag reads "Immutable · <term>" from the cached ImmutableReasons. Low.
   - The 2026-10-26 note wants "Immutable · <reason>"; 10.6 handed the `revsetCounts` reason producer to 11.7 (epics.md, Story 10.6), so the flag's tooltip reads "Immutable" (`app/lib/src/features/graph/graph_inspector.dart`, `_Header`).
   - **Follow-up:** 11.7's cached producer lands; 10.8's flag and 10.15's menu read it.
 
@@ -2487,7 +2487,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The thin bookmark popover opens on a click (and VoiceOver's action), not on hover and keyboard focus as the 2026-09-28 note asks.** Low.
   - It is a `ZsMenuAnchor` menu, which takes focus, so a hover must not open it (`app/lib/src/features/graph/graph_card_menu.dart` `GraphBookmarkMenuHost`; trigger in `graph_card_render.dart` `_onTapUp` `_Area.bookmarks`).
   - **Follow-up:** the popover's later redesign gives it a non-focus-taking hover surface (10.6's hover-callout controller) and moves the trigger there.
-- **The locked menu's "Immutable commits…" row is disabled ("Comes with the Settings window") instead of opening Settings › Project › Immutable commits.** Low.
+- ~~**The locked menu's "Immutable commits…" row is disabled ("Comes with the Settings window") instead of opening Settings › Project › Immutable commits.**~~ — RESOLVED 2026-11-02 (spec-11-7-settings-window, commit 9522ef8): the card menu's Immutable commits… opens Settings on that page. Low.
   - `graphCardMenuEntries` builds it with `enabled: false` (`app/lib/src/features/graph/graph_card_menu.dart`); 11.7 (Settings window) is backlog.
   - **Follow-up:** 11.7 passes an "open Settings on this page" action to the graph and enables the row (witness: "Immutable commits… opens Settings on the page").
 - **The card menu, the bookmark popover and the name sheet are not yet checked visually in the running catalogue against the DS Menu card.** Low.
@@ -2536,7 +2536,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The inspector's diff block lays out every line of the focused file eagerly; a multi-thousand-line file may jank.** Medium (unverified).
   - `app/lib/src/features/graph/inspector_diff.dart` builds a non-lazy `Column` under `IntrinsicWidth` (Unified) and an `IntrinsicHeight` per row (Side by side).
   - **Follow-up:** profile a large generated file in the running app; if it janks, build the hunks lazily or cap them with a "show more".
-- **The witness "the Settings row changes the diff layout" waits for the Settings window.** Low.
+- ~~**The witness "the Settings row changes the diff layout" waits for the Settings window.**~~ — RESOLVED 2026-11-02 (spec-11-7-settings-window, commit 9522ef8): the Diff layout row writes general.diffLayout. Low.
   - `GeneralSettings.diffLayout` exists and the inspector follows another writer's change (tested in `app/test/features/graph/graph_inspector_test.dart`); the Diffs › Layout row is Story 11.7 item 3.
   - **Follow-up:** 11.7 binds the row to `general.diffLayout`.
 - **The inspector's diff view has not been compared against the DS DiffView / DiffHunk / FileRow cards in the running catalogue; only widget tests check it.** Low.

@@ -25,6 +25,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_card_menu.dart graphCardMenuEntries
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-11-7-settings-window, commit 9522ef8): the card menu's Immutable commits… opens Settings on that page.
   - summary: >-
       The card menu, the bookmark popover and the name sheet are not yet checked visually in the running catalogue against the DS Menu card.
     evidence: |-

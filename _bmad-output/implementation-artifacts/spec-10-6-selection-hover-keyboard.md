@@ -25,6 +25,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_peek.dart
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-11-7-settings-window, commit 9522ef8): the peek shows "IMMUTABLE · <term>" from a cached ImmutableReasons, invalidated on config writes.
   - summary: >-
       A double-click edit has no in-flight guard, so a second double-click while `jj edit` runs starts another run and reload.
     evidence: |-

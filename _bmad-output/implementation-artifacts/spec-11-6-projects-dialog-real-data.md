@@ -50,6 +50,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/projects_window.dart (footer)
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-11-7-settings-window, commit 9522ef8): Settings' identity writes (configWrites) make the Projects footer read the identity again.
   - summary: >-
       Clone shows no progress and cannot be cancelled, and the CLI's destination rules (create the folder, refuse a non-empty one, remove a folder it created after a failure) run app-side until 9.20 brings them into the verb.
     evidence: |-
