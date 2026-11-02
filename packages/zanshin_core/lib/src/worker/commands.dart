@@ -2359,7 +2359,8 @@ final class DiffCommand extends WorkerCommand implements HandleScopedCommand {
   /// Leave every file's hunks empty.
   final bool summary;
 
-  /// Read [from] / [to] as `jj interdiff` does (Story 10.29).
+  /// Read [from] / [to] as `jj interdiff` does (Story 10.29); with [revision]
+  /// alone, a created commit's inter-diff (Story 10.29 closing run).
   final bool interdiff;
 }
 

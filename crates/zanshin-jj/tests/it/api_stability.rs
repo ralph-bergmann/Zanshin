@@ -1844,9 +1844,15 @@ fn compute_hunks_surface_resolves() {
         operation_id: zanshin_jj::OperationId("0".to_owned()),
         commit_ids: vec![zanshin_jj::CommitId("1".to_owned())],
         from_commit_id: None,
-        files: vec![file],
+        files: vec![file.clone()],
+        // Story 10.29 closing run: the inter-diff description block.
+        description: Some(file),
     };
     assert_eq!(result.clone(), result);
+    assert_ne!(
+        zanshin_jj::DiffRevisions::Created("a".to_owned()),
+        zanshin_jj::DiffRevisions::Revision(Some("a".to_owned()))
+    );
     _ = zanshin_jj::Repo::diff
         as fn(
             &mut zanshin_jj::Repo,

@@ -173,6 +173,11 @@ pub enum DiffRevisions {
         /// The right side (`None` = `@`).
         to: Option<String>,
     },
+    /// `show_inter_diff` with no predecessors (Story 10.29 closing run): the revision's parent
+    /// tree against its tree, without copy records — the per-commit diff `jj op show --patch`
+    /// prints for a created commit. The text resolves to exactly one commit
+    /// (`resolve_single_rev`, hidden commit ids included).
+    Created(String),
 }
 
 impl Default for DiffRevisions {
@@ -189,14 +194,26 @@ pub struct RevisionDiff {
     pub operation_id: OperationId,
     /// The right side's commits, full hex: the set's heads in revset order
     /// ([`DiffRevisions::Revision`]; `[@]` without text, empty for an empty set) or `[to]`
-    /// ([`DiffRevisions::FromTo`], [`DiffRevisions::Interdiff`]).
+    /// ([`DiffRevisions::FromTo`], [`DiffRevisions::Interdiff`], [`DiffRevisions::Created`]).
     pub commit_ids: Vec<CommitId>,
     /// `from` for [`DiffRevisions::FromTo`] and [`DiffRevisions::Interdiff`]; `None` for
-    /// [`DiffRevisions::Revision`].
+    /// [`DiffRevisions::Revision`] and [`DiffRevisions::Created`].
     pub from_commit_id: Option<CommitId>,
     /// The changed paths in jj-lib's order.
     pub files: Vec<FileDiff>,
+    /// `show_inter_diff`'s description block (Story 10.29 closing run), for
+    /// [`DiffRevisions::Interdiff`] (`from`'s description) and [`DiffRevisions::Created`] (`""`)
+    /// against the commit's: a pseudo-file at `JJ-COMMIT-DESCRIPTION`, [`ChangeKind::Modified`],
+    /// hunks under the call's `context` / `whitespace`, no sections, no source symbols. `paths`
+    /// never filters it and [`DiffOptions::summary`] keeps its hunks (it is not a file). `None`
+    /// when the descriptions are equal (`show_diff_bytes` skips unchanged contents), and always
+    /// for [`DiffRevisions::Revision`] / [`DiffRevisions::FromTo`] (`jj diff` has no such block).
+    pub description: Option<FileDiff>,
 }
+
+/// The CLI's `DUMMY_DESCRIPTION_PATH` (`show_inter_diff`, `cli/src/diff_util.rs` @ v0.46.0): the
+/// path of [`RevisionDiff::description`].
+const DESCRIPTION_PATH: &str = "JJ-COMMIT-DESCRIPTION";
 
 /// One hunk of a [`FileDiff`] — what `jj diff --git` prints under one `@@` header (Story 5.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -279,6 +296,7 @@ pub(crate) fn diff(
     let texts = match &options.revisions {
         DiffRevisions::Revision(revision) => revision.is_some(),
         DiffRevisions::FromTo { from, to } | DiffRevisions::Interdiff { from, to } => from.is_some() || to.is_some(),
+        DiffRevisions::Created(_) => true,
     };
     let parse_config = if texts {
         Some(crate::revset::revset_config(config, sink).map_err(cfg)?)
@@ -306,18 +324,14 @@ pub(crate) fn diff(
         let mut records = CopyRecords::default();
         // `cmd_interdiff` also checks both parent trees for unmatched paths (`interdiff.rs:99-111`).
         let mut unmatched_trees = Vec::new();
+        // `show_inter_diff`'s (from, to) descriptions; `None` for `jj diff`'s forms.
+        let mut descriptions: Option<(String, String)> = None;
         let (from_tree, to_tree, commit_ids, from_commit_id) = match (&options.revisions, parse_config.as_ref()) {
             (DiffRevisions::Revision(Some(text)), Some(parse_config)) => {
                 let expression = parse(text, parse_config, sink)?;
-                let (parents, heads) = range_commits(&readonly, &expression, prefixes).await?;
-                for parent in &parents {
-                    for head in &heads {
-                        add_copy_records(repo.store(), parent, head, matcher.as_ref(), &mut records).await?;
-                    }
-                }
-                let from_tree = merge_commit_trees(repo, &parents).await.map_err(be)?;
-                let to_tree = merge_commit_trees(repo, &heads).await.map_err(be)?;
-                (from_tree, to_tree, heads.iter().map(commit_id).collect(), None)
+                let (from_tree, to_tree, heads) =
+                    range_trees(&readonly, &expression, prefixes, matcher.as_ref(), &mut records).await?;
+                (from_tree, to_tree, heads, None)
             }
             (DiffRevisions::Revision(_), _) => {
                 let commit = resolve(None, sink)?;
@@ -346,12 +360,21 @@ pub(crate) fn diff(
                 let from_tree = jj_lib::rewrite::rebase_to_dest_parent(repo, std::slice::from_ref(&from), &to)
                     .await
                     .map_err(be)?;
+                descriptions = Some((from.description().to_owned(), to.description().to_owned()));
                 (from_tree, to.tree(), vec![commit_id(&to)], Some(commit_id(&from)))
+            }
+            (DiffRevisions::Created(text), _) => {
+                // `show_change_diff` → `show_inter_diff(&[], commit)`: no predecessors, no copy records.
+                let commit = resolve(Some(text), sink)?;
+                descriptions = Some((String::new(), commit.description().to_owned()));
+                let from_tree = commit.parent_tree(repo).await.map_err(be)?;
+                (from_tree, commit.tree(), vec![commit_id(&commit)], None)
             }
         };
         let mut files = reader
             .files(Diff::new(&from_tree, &to_tree), matcher.as_ref(), &records)
             .await?;
+        let description = reader.description(descriptions);
         let mut trees: Vec<&MergedTree> = unmatched_trees.iter().collect();
         trees.extend([&from_tree, &to_tree]);
         crate::mutate::warn_unmatched(workspace, sink, &options.paths, &trees)?;
@@ -365,12 +388,34 @@ pub(crate) fn diff(
             commit_ids,
             from_commit_id,
             files,
+            description,
         })
     })
 }
 
 fn commit_id(commit: &Commit) -> CommitId {
     CommitId(commit.id().hex())
+}
+
+/// `-r`'s range form over `expression` ([`range_commits`]): its parents' merged tree, its heads'
+/// merged tree and the heads' ids, with the copy records of every (parent, head) pair added to
+/// `records`.
+async fn range_trees(
+    repo: &ReadonlyRepo,
+    expression: &Arc<UserRevsetExpression>,
+    prefixes: &IdPrefixContext,
+    matcher: &dyn Matcher,
+    records: &mut CopyRecords,
+) -> Result<(MergedTree, MergedTree, Vec<CommitId>), MutateError> {
+    let (parents, heads) = range_commits(repo, expression, prefixes).await?;
+    for parent in &parents {
+        for head in &heads {
+            add_copy_records(repo.store(), parent, head, matcher, records).await?;
+        }
+    }
+    let from_tree = merge_commit_trees(repo, &parents).await.map_err(be)?;
+    let to_tree = merge_commit_trees(repo, &heads).await.map_err(be)?;
+    Ok((from_tree, to_tree, heads.iter().map(commit_id).collect()))
 }
 
 /// `cmd_diff`'s range form (`cli/src/commands/diff.rs:149-180` @ v0.46.0) over `expression`: a
@@ -486,6 +531,31 @@ impl<'a> DiffReader<'a> {
             files.push(self.file(&entry.path, kind, sides).await?);
         }
         Ok(files)
+    }
+
+    /// [`RevisionDiff::description`] over the (from, to) descriptions: `show_diff_bytes`' git
+    /// form, no language, no sections; `None` without descriptions or when they are equal.
+    fn description(&self, descriptions: Option<(String, String)>) -> Option<FileDiff> {
+        let (from, to) = descriptions.filter(|(from, to)| from != to)?;
+        let hunks = hunks_of(
+            Diff::new(from.as_bytes(), to.as_bytes()),
+            None,
+            self.context,
+            self.mode,
+            &[],
+        );
+        let (removed, added) = totals(&hunks);
+        Some(FileDiff {
+            path: DESCRIPTION_PATH.to_owned(),
+            kind: ChangeKind::Modified,
+            binary: false,
+            mode_change: false,
+            sections: Vec::new(),
+            fingerprint: fingerprint(&hunks, None, false),
+            hunks,
+            removed,
+            added,
+        })
     }
 
     async fn file(

@@ -125,6 +125,18 @@ fn assert_wire_is(payload: fbs::Diff<'_>, diff: &RevisionDiff) {
         payload.from_commit_id(),
         diff.from_commit_id.as_ref().map(|id| id.0.as_str())
     );
+    // Story 10.29 closing run: the inter-diff description block.
+    match (payload.description(), &diff.description) {
+        (None, None) => {}
+        (Some(w), Some(d)) => {
+            assert_eq!(w.path(), Some(d.path.as_str()));
+            assert_eq!((w.kind(), w.from_path()), (fbs::ChangeKind::Modified, None));
+            assert_eq!((w.removed(), w.added()), (d.removed, d.added));
+            assert_eq!(w.fingerprint(), Some(d.fingerprint.as_str()));
+            assert_eq!(w.hunks().expect("hunks present").len(), d.hunks.len());
+        }
+        (wire, expected) => unreachable!("description {wire:?} vs {expected:?}"),
+    }
     let wire = payload.files().expect("files present");
     assert_eq!(wire.len(), files.len());
     for (w, f) in wire.iter().zip(files) {
@@ -400,6 +412,29 @@ fn a_revision_and_from_to_reach_the_diff() {
         },
     );
     assert_eq!(interdiff.from_commit_id, from_to.from_commit_id);
+    assert!(interdiff.description.is_some(), "A\\n → C\\n");
+    assert!(revision.description.is_none() && from_to.description.is_none());
+
+    // `revision` + `interdiff` (Story 10.29 closing run): the created-commit form.
+    let created = assert_matches_repo_diff(
+        &fx,
+        Req {
+            revision: Some(&fx.c),
+            interdiff: true,
+            ..Req::default()
+        },
+        &DiffOptions {
+            revisions: DiffRevisions::Created(id(&fx.c)),
+            ..DiffOptions::default()
+        },
+    );
+    assert_eq!(created.commit_ids, revision.commit_ids);
+    assert!(created.from_commit_id.is_none());
+    assert_eq!(created.files, revision.files, "no renames here: -r's files");
+    assert_eq!(
+        created.description.map(|d| d.path),
+        Some("JJ-COMMIT-DESCRIPTION".to_owned())
+    );
 }
 
 /// An interdiff with neither side is refused before the snapshot (no precondition report).

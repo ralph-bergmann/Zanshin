@@ -4431,7 +4431,12 @@ impl Repo {
     /// diffs `from`'s tree against `to`'s with the records from `from` to `to`;
     /// [`crate::DiffRevisions::Interdiff`] (`jj interdiff --from` / `--to`, Story 10.29) diffs
     /// `from` rebased onto `to`'s parents in memory against `to`'s tree, without copy records, an
-    /// absent side `@` — both absent is refused before the snapshot. Records count only
+    /// absent side `@` — both absent is refused before the snapshot;
+    /// [`crate::DiffRevisions::Created`] (`show_inter_diff` with no predecessors, `jj op show
+    /// --patch`'s created commit, Story 10.29 closing run) diffs one revision's parent tree
+    /// against its tree, without copy records. Both inter-diff forms fill
+    /// [`crate::RevisionDiff::description`] — the CLI's `JJ-COMMIT-DESCRIPTION` block, `from`'s
+    /// (or `""`'s) description against the commit's, `None` when equal. Records count only
     /// when `paths` matches their target (`get_copy_records`). Each entry is read as
     /// `show_git_diff` reads it: the left side at the copy SOURCE, the right at the TARGET
     /// ([`crate::FileDiff::path`]), the source symbol's language from the target. A copied or

@@ -1648,14 +1648,17 @@ final class RepoHandle {
   /// file's hunks empty. [interdiff] (Story 10.29) reads [from] / [to] as
   /// `jj interdiff` does — [from] rebased onto [to]'s parents in memory
   /// against [to], no copy records: the per-commit diff `jj op show --patch`
-  /// prints for a rewritten commit. Writes no operation beyond the pre-verb
+  /// prints for a rewritten commit; with [revision] alone (Story 10.29 closing
+  /// run) [revision]'s parent tree against its tree, no copy records — what it
+  /// prints for a created commit. Both fill [Diff.description], the CLI's
+  /// `JJ-COMMIT-DESCRIPTION` block. Writes no operation beyond the pre-verb
   /// snapshot's.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input` — [revision] with [from], [to] or [interdiff],
-  /// [interdiff] with neither [from] nor [to], or an invalid path —
+  /// `jj.invalid_input` — [revision] with [from] or [to], [interdiff] with
+  /// none of [revision], [from] and [to], or an invalid path —
   /// `jj.revset_parse_error`, `jj.revset_resolution_error` — no commit or more
   /// than one —, `jj.config_error`, `jj.stale_working_copy`,
   /// `jj.jj_lib_error`).

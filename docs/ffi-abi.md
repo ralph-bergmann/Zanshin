@@ -2520,12 +2520,21 @@ DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffCon
   `-w` / `-b`, a value outside the enum `ffi.invalid_argument`. `summary` drops only the hunks.
 - `interdiff` (Story 10.29) reads `from` / `to` as `jj interdiff` does: `from` rebased onto `to`'s
   parents in memory against `to`'s tree, no copy records (`jj op show --patch`'s per-commit diff
-  of a rewritten commit). With `revision` it is `jj.invalid_input`; with neither side it is
-  `jj.invalid_input` "at least one of `from` or `to` is required" — both before the snapshot.
+  of a rewritten commit). With `revision` alone (Story 10.29 closing run) it is `show_inter_diff`
+  with no predecessors, `jj op show --patch`'s created commit: `revision` (exactly one commit)
+  against its parent tree, no copy records (a rename is a removal plus an addition),
+  `from_commit_id` absent. With `revision` and `from` / `to` it is `jj.invalid_input` "revision
+  cannot be used with from or to"; with none of the three `jj.invalid_input` "at least one of
+  `from` or `to` is required" — both before the snapshot.
+- `Diff.description` (appended, Story 10.29 closing run): both inter-diff forms' description block,
+  the CLI's `JJ-COMMIT-DESCRIPTION` pseudo-file — `from`'s description (`""` for a created commit)
+  against the commit's, as a `FileDiff` with that path, kind `Modified`, no sections and no
+  symbols, hunks under the call's `context` / `whitespace`. `paths` never filters it, `summary`
+  keeps its hunks. Absent when the descriptions are equal and for `jj diff`'s forms.
 
 Dart: `zanshinDiff` (`lib/src/ffi/diff.dart`, interior-NUL guard as `zanshinSelectTree`),
 `DiffCommand`, `ZanshinWorker.diff`, `RepoHandle.diff({revision, from, to, paths, context,
-whitespace, summary})` → `Future<Diff>`.
+whitespace, summary, interdiff})` → `Future<Diff>` (`Diff.description`).
 
 `ShowEntry` also carries `parent_tree_labels` / `tree_labels` since Story 5.8 (always written; empty
 = unlabeled, else one per id) — Dart `ShowEntry.parentTreeLabels` / `treeLabels`.

@@ -3504,9 +3504,12 @@ class DiffContextObjectBuilder extends fb.ObjectBuilder {
 ///    summary     leave every file's `hunks` empty (kinds, flags, sections, counts, fingerprints
 ///                kept)
 ///    interdiff   `jj interdiff --from` / `--to` (Story 10.29): `from` rebased onto `to`'s parents
-///                in memory against `to`, no copy records; with `revision` `jj.invalid_input`
-///                before the snapshot, with neither `from` nor `to` refused ("at least one of
-///                `from` or `to` is required")
+///                in memory against `to`, no copy records; with `revision` alone (Story 10.29
+///                closing run) `show_inter_diff` with no predecessors — `jj op show --patch`'s
+///                created commit: `revision` (exactly one commit) against its parent tree, no copy
+///                records, `from_commit_id` absent; with `revision` AND `from`/`to` refused as
+///                above; with none of the three refused ("at least one of `from` or `to` is
+///                required"). Both inter-diff forms fill `Diff.description`
 class DiffRequest {
   DiffRequest._(this._bc, this._bcOffset);
   factory DiffRequest(List<int> bytes) {
@@ -24821,7 +24824,11 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
 ///  always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
 ///  at; `commit_ids`, the right side's commits — the `-r` set's heads in revset order (empty for an
 ///  empty set) or `[to]` (`--from`/`--to`), always present; `from_commit_id`, `from`, ABSENT for
-///  the revision form. Returned by `zanshin_diff` (Story 5.8).
+///  the revision form. Returned by `zanshin_diff` (Story 5.8). The Story 10.29 closing run appends
+///  `description`: the inter-diff forms' (`interdiff`) `JJ-COMMIT-DESCRIPTION` block — the from
+///  description (`""` for a created commit) against the commit's, as a `FileDiff` with that path,
+///  kind Modified, no sections; never path-filtered, hunks kept in summary mode; ABSENT when the
+///  descriptions are equal and for `jj diff`'s forms.
 class Diff {
   Diff._(this._bc, this._bcOffset);
   factory Diff(List<int> bytes) {
@@ -24838,10 +24845,11 @@ class Diff {
   String? get operationId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
   List<String>? get commitIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   String? get fromCommitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  FileDiff? get description => FileDiff.reader.vTableGetNullable(_bc, _bcOffset, 12);
 
   @override
   String toString() {
-    return 'Diff{files: ${files}, operationId: ${operationId}, commitIds: ${commitIds}, fromCommitId: ${fromCommitId}}';
+    return 'Diff{files: ${files}, operationId: ${operationId}, commitIds: ${commitIds}, fromCommitId: ${fromCommitId}, description: ${description}}';
   }
 }
 
@@ -24858,7 +24866,7 @@ class DiffBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(5);
   }
 
   int addFilesOffset(int? offset) {
@@ -24881,6 +24889,11 @@ class DiffBuilder {
     return fbBuilder.offset;
   }
 
+  int addDescriptionOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -24891,16 +24904,19 @@ class DiffObjectBuilder extends fb.ObjectBuilder {
   final String? _operationId;
   final List<String>? _commitIds;
   final String? _fromCommitId;
+  final FileDiffObjectBuilder? _description;
 
   DiffObjectBuilder({
     List<FileDiffObjectBuilder>? files,
     String? operationId,
     List<String>? commitIds,
     String? fromCommitId,
+    FileDiffObjectBuilder? description,
   }) : _files = files,
        _operationId = operationId,
        _commitIds = commitIds,
-       _fromCommitId = fromCommitId;
+       _fromCommitId = fromCommitId,
+       _description = description;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -24913,11 +24929,13 @@ class DiffObjectBuilder extends fb.ObjectBuilder {
         ? null
         : fbBuilder.writeList(_commitIds!.map(fbBuilder.writeString).toList());
     final int? fromCommitIdOffset = _fromCommitId == null ? null : fbBuilder.writeString(_fromCommitId!);
-    fbBuilder.startTable(4);
+    final int? descriptionOffset = _description?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(5);
     fbBuilder.addOffset(0, filesOffset);
     fbBuilder.addOffset(1, operationIdOffset);
     fbBuilder.addOffset(2, commitIdsOffset);
     fbBuilder.addOffset(3, fromCommitIdOffset);
+    fbBuilder.addOffset(4, descriptionOffset);
     return fbBuilder.endTable();
   }
 

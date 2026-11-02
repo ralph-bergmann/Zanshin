@@ -153,6 +153,7 @@ void main() {
       expect(inter.files, isEmpty, reason: 'only the rebase changed it');
       expect(inter.fromCommitId, before);
       expect(inter.commitIds, fromTo.commitIds);
+      expect(inter.description, isNull, reason: 'the rebase kept the description');
       await expectLater(
         repo.diff(interdiff: true),
         throwsA(
@@ -162,9 +163,23 @@ void main() {
         ),
       );
       await expectLater(
-        repo.diff(revision: at, interdiff: true),
+        repo.diff(revision: at, from: a, interdiff: true),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
       );
+    });
+
+    test('a_created_commit_crosses_the_buffer_with_its_description', () async {
+      final Diff created = await repo.diff(revision: a, interdiff: true);
+      final Diff revision = await repo.diff(revision: a);
+      expect(created.commitIds, revision.commitIds);
+      expect(created.fromCommitId, isNull);
+      expect(created.files.map((f) => f.path), revision.files.map((f) => f.path));
+      final FileDiff description = created.description!;
+      expect(description.path, 'JJ-COMMIT-DESCRIPTION');
+      expect(description.kind, FileChangeKind.modified);
+      expect(description.hunks.single.lines.map((l) => (l.kind, l.text)), [(HunkLineKind.added, 'A\n')]);
+      expect(revision.description, isNull, reason: 'jj diff has no description block');
+      expect((await repo.diff(revision: at, interdiff: true)).description, isNull, reason: 'no description');
     });
 
     test('a_revision_with_from_is_refused', () async {

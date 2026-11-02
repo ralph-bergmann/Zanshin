@@ -168,7 +168,13 @@ void main() {
     await withView(tester, changes, () async {
       expect(find.textContaining('− $_abandoned', findRichText: true), findsOneWidget, reason: 'show gave no summary');
       expect(changes.diffs.first.revision, _abandoned);
-      expect(changes.diffs.first.interdiff, isFalse);
+      expect(changes.diffs, isNotEmpty);
+      expect(
+        changes.diffs.every(
+          (call) => call.revision == _abandoned && !call.interdiff && call.from == null && call.to == null,
+        ),
+        isTrue,
+      );
       expect(find.text('gone.txt'), findsNWidgets(2), reason: 'its row and its diff');
     });
   });
@@ -269,18 +275,54 @@ void main() {
     });
   });
 
-  testWidgets('a created commit: one + line; its files are diff(revision: X), no interdiff', (tester) async {
+  testWidgets('a created commit: one + line; its files are diff(revision: X, interdiff: true), no from/to', (
+    tester,
+  ) async {
     final changes = FakeOperationChangesSource(
       testOpShow(testOperation(1, now: _now), <OpChangedCommit>[
         OpChangedCommit(commitId: _x, abandoned: false, addedCommitIds: <String>[_x], removedCommitIds: const []),
       ]),
-      diff: (call) => testDiff(const <String>['new.txt']),
+      diff: (call) => testDiff(const <String>['new.txt'], description: true),
     );
     await withView(tester, changes, () async {
       expect(changes.diffs, isNotEmpty);
-      expect(changes.diffs.every((call) => call.revision == _x && !call.interdiff && call.from == null), isTrue);
+      expect(
+        changes.diffs.every((call) => call.revision == _x && call.interdiff && call.from == null && call.to == null),
+        isTrue,
+      );
       expect(find.textContaining('+ $_x', findRichText: true), findsOneWidget);
       expect(find.textContaining('− ', findRichText: true), findsNothing);
+      final Finder block = find.byKey(const ValueKey<String>('operation-changes-description'));
+      expect(block, findsOneWidget);
+      expect(
+        tester.getTopLeft(block).dy,
+        lessThan(tester.getTopLeft(_id('operation-changes-file-0')).dy),
+        reason: 'above the files',
+      );
+      final InspectorDiffView view = tester.widget(
+        find.descendant(of: block, matching: find.byType(InspectorDiffView)),
+      );
+      expect(view.path, 'JJ-COMMIT-DESCRIPTION');
+    });
+  });
+
+  testWidgets('a body-only describe: the description block above the no-file-changes note', (tester) async {
+    final changes = FakeOperationChangesSource(
+      testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_rewritten()]),
+      diff: (call) => testDiff(const <String>[], description: true),
+    );
+    await withView(tester, changes, () async {
+      final Finder block = find.byKey(const ValueKey<String>('operation-changes-description'));
+      expect(block, findsOneWidget);
+      final Finder note = find.text(strings.operationChangesNoFiles);
+      expect(note, findsOneWidget);
+      expect(tester.getTopLeft(block).dy, lessThan(tester.getTopLeft(note).dy));
+    });
+  });
+
+  testWidgets('equal descriptions render no description block', (tester) async {
+    await withView(tester, rewriteSource(), () async {
+      expect(find.byKey(const ValueKey<String>('operation-changes-description')), findsNothing);
     });
   });
 

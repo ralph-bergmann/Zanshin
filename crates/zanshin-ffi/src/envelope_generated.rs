@@ -6765,9 +6765,12 @@ pub mod zanshin {
         ///   summary     leave every file's `hunks` empty (kinds, flags, sections, counts, fingerprints
         ///               kept)
         ///   interdiff   `jj interdiff --from` / `--to` (Story 10.29): `from` rebased onto `to`'s parents
-        ///               in memory against `to`, no copy records; with `revision` `jj.invalid_input`
-        ///               before the snapshot, with neither `from` nor `to` refused ("at least one of
-        ///               `from` or `to` is required")
+        ///               in memory against `to`, no copy records; with `revision` alone (Story 10.29
+        ///               closing run) `show_inter_diff` with no predecessors — `jj op show --patch`'s
+        ///               created commit: `revision` (exactly one commit) against its parent tree, no copy
+        ///               records, `from_commit_id` absent; with `revision` AND `from`/`to` refused as
+        ///               above; with none of the three refused ("at least one of `from` or `to` is
+        ///               required"). Both inter-diff forms fill `Diff.description`
         pub struct DiffRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -42467,7 +42470,11 @@ pub mod zanshin {
         /// always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
         /// at; `commit_ids`, the right side's commits — the `-r` set's heads in revset order (empty for an
         /// empty set) or `[to]` (`--from`/`--to`), always present; `from_commit_id`, `from`, ABSENT for
-        /// the revision form. Returned by `zanshin_diff` (Story 5.8).
+        /// the revision form. Returned by `zanshin_diff` (Story 5.8). The Story 10.29 closing run appends
+        /// `description`: the inter-diff forms' (`interdiff`) `JJ-COMMIT-DESCRIPTION` block — the from
+        /// description (`""` for a created commit) against the commit's, as a `FileDiff` with that path,
+        /// kind Modified, no sections; never path-filtered, hunks kept in summary mode; ABSENT when the
+        /// descriptions are equal and for `jj diff`'s forms.
         pub struct Diff<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -42487,6 +42494,7 @@ pub mod zanshin {
             pub const VT_OPERATION_ID: ::flatbuffers::VOffsetT = 6;
             pub const VT_COMMIT_IDS: ::flatbuffers::VOffsetT = 8;
             pub const VT_FROM_COMMIT_ID: ::flatbuffers::VOffsetT = 10;
+            pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -42498,6 +42506,9 @@ pub mod zanshin {
                 args: &'args DiffArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<Diff<'bldr>> {
                 let mut builder = DiffBuilder::new(_fbb);
+                if let Some(x) = args.description {
+                    builder.add_description(x);
+                }
                 if let Some(x) = args.from_commit_id {
                     builder.add_from_commit_id(x);
                 }
@@ -42555,6 +42566,16 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(Diff::VT_FROM_COMMIT_ID, None)
                 }
             }
+            #[inline]
+            pub fn description(&self) -> Option<FileDiff<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<FileDiff>>(Diff::VT_DESCRIPTION, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Diff<'_> {
@@ -42568,6 +42589,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation_id", Self::VT_OPERATION_ID, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("commit_ids", Self::VT_COMMIT_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from_commit_id", Self::VT_FROM_COMMIT_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<FileDiff>>("description", Self::VT_DESCRIPTION, false)?
      .finish();
                 Ok(())
             }
@@ -42580,6 +42602,7 @@ pub mod zanshin {
             pub commit_ids:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub from_commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub description: Option<::flatbuffers::WIPOffset<FileDiff<'a>>>,
         }
         impl<'a> Default for DiffArgs<'a> {
             #[inline]
@@ -42589,6 +42612,7 @@ pub mod zanshin {
                     operation_id: None,
                     commit_ids: None,
                     from_commit_id: None,
+                    description: None,
                 }
             }
         }
@@ -42629,6 +42653,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diff::VT_FROM_COMMIT_ID, from_commit_id);
             }
             #[inline]
+            pub fn add_description(&mut self, description: ::flatbuffers::WIPOffset<FileDiff<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<FileDiff>>(Diff::VT_DESCRIPTION, description);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiffBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 DiffBuilder {
@@ -42650,6 +42679,7 @@ pub mod zanshin {
                 ds.field("operation_id", &self.operation_id());
                 ds.field("commit_ids", &self.commit_ids());
                 ds.field("from_commit_id", &self.from_commit_id());
+                ds.field("description", &self.description());
                 ds.finish()
             }
         }

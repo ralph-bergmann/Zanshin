@@ -35,8 +35,9 @@ use crate::status::change_kind_offset;
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `DiffRequest` buffer, its `kind` is not
 ///   `Diff`, or its `whitespace` is outside the enum.
-/// - `jj.invalid_input` — `revision` together with `from`, `to` (the CLI's `-r` vs
-///   `--from`/`--to` conflict) or `interdiff` (`jj interdiff` has no `-r`).
+/// - `jj.invalid_input` — `revision` together with `from` or `to` (the CLI's `-r` vs
+///   `--from`/`--to` conflict), with or without `interdiff`. `revision` with `interdiff` alone is
+///   [`DiffRevisions::Created`] (Story 10.29 closing run).
 fn read_diff_request(data: *const u8, len: usize) -> Result<DiffOptions, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see above).
@@ -46,16 +47,12 @@ fn read_diff_request(data: *const u8, len: usize) -> Result<DiffOptions, FfiErro
     expect_request_kind(req.kind(), fbs::RequestKind::Diff)?;
     let text = |s: Option<&str>| s.map(str::to_owned);
     let revisions = match (text(req.revision()), text(req.from()), text(req.to()), req.interdiff()) {
-        (Some(_), from, to, false) if from.is_some() || to.is_some() => {
+        (Some(_), from, to, _) if from.is_some() || to.is_some() => {
             return Err(map_mutate_err(MutateError::invalid(
                 "revision cannot be used with from or to",
             )))
         }
-        (Some(_), _, _, true) => {
-            return Err(map_mutate_err(MutateError::invalid(
-                "revision cannot be used with interdiff",
-            )))
-        }
+        (Some(revision), None, None, true) => DiffRevisions::Created(revision),
         (_, from, to, true) => DiffRevisions::Interdiff { from, to },
         (revision, None, None, false) => DiffRevisions::Revision(revision),
         (_, from, to, false) => DiffRevisions::FromTo { from, to },
@@ -99,7 +96,10 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// empty: every path; one that matches nothing is a `jj.paths_unmatched` warning), `context`
 /// (absent: the effective `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no
 /// hunks). `interdiff` (Story 10.29) reads `from` / `to` as `jj interdiff` does: `from` rebased
-/// onto `to`'s parents in memory against `to`, no copy records. No caching. Writes NO operation
+/// onto `to`'s parents in memory against `to`, no copy records; `interdiff` with `revision` alone
+/// (Story 10.29 closing run) is `show_inter_diff` with no predecessors — the revision's parent
+/// tree against its tree, no copy records. Both fill `Diff.description`, the CLI's
+/// `JJ-COMMIT-DESCRIPTION` block (absent when the descriptions are equal). No caching. Writes NO operation
 /// beyond the pre-verb snapshot's (Story 9.26).
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Diff` payload on success.
@@ -109,8 +109,8 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `DiffRequest` buffer, its `kind` is not
 ///   `Diff`, or its `whitespace` is outside the enum.
-/// - `jj.invalid_input` — `revision` together with `from`, `to` or `interdiff`, or `interdiff`
-///   with neither `from` nor `to` (both before the snapshot: nothing written, no
+/// - `jj.invalid_input` — `revision` together with `from` or `to`, or `interdiff` with none of
+///   `revision`, `from` and `to` (both before the snapshot: nothing written, no
 ///   `precondition`), or a `paths` entry that is not a valid repo path or leaves the
 ///   repository; detail in `context`.
 /// - `jj.revset_parse_error` — a revision is not a valid revset expression.
@@ -156,6 +156,7 @@ pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
     let commit_ids: Vec<_> = diff.commit_ids.iter().map(|id| b.create_string(&id.0)).collect();
     let commit_ids = b.create_vector(&commit_ids);
     let from_commit_id = diff.from_commit_id.as_ref().map(|id| b.create_string(&id.0));
+    let description = diff.description.as_ref().map(|f| file_offset(&mut b, f));
     let diff = fbs::Diff::create(
         &mut b,
         &fbs::DiffArgs {
@@ -163,6 +164,7 @@ pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
             operation_id: Some(operation_id),
             commit_ids: Some(commit_ids),
             from_commit_id,
+            description,
         },
     );
     finish_envelope(b, fbs::Payload::Diff, Some(diff.as_union_value()), report)
@@ -317,32 +319,33 @@ mod tests {
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::Diff);
         let diff = env.data_as_diff().expect("Diff payload");
+        let file_from_wire = |f: fbs::FileDiff<'_>| {
+            let kind = kind_from_wire(f.kind(), f.from_path());
+            if matches!(kind, ChangeKind::Added | ChangeKind::Modified | ChangeKind::Removed) {
+                assert_eq!(f.from_path(), None, "from_path only for a copy");
+            }
+            FileDiff {
+                path: f.path().expect("path present").to_owned(),
+                kind,
+                binary: f.binary(),
+                mode_change: f.mode_change(),
+                sections: keys_from_wire(f.sections()),
+                hunks: f
+                    .hunks()
+                    .expect("hunks always present")
+                    .iter()
+                    .map(hunk_from_wire)
+                    .collect(),
+                removed: f.removed(),
+                added: f.added(),
+                fingerprint: f.fingerprint().expect("fingerprint present").to_owned(),
+            }
+        };
         let files = diff
             .files()
             .expect("files always present")
             .iter()
-            .map(|f| {
-                let kind = kind_from_wire(f.kind(), f.from_path());
-                if matches!(kind, ChangeKind::Added | ChangeKind::Modified | ChangeKind::Removed) {
-                    assert_eq!(f.from_path(), None, "from_path only for a copy");
-                }
-                FileDiff {
-                    path: f.path().expect("path present").to_owned(),
-                    kind,
-                    binary: f.binary(),
-                    mode_change: f.mode_change(),
-                    sections: keys_from_wire(f.sections()),
-                    hunks: f
-                        .hunks()
-                        .expect("hunks always present")
-                        .iter()
-                        .map(hunk_from_wire)
-                        .collect(),
-                    removed: f.removed(),
-                    added: f.added(),
-                    fingerprint: f.fingerprint().expect("fingerprint present").to_owned(),
-                }
-            })
+            .map(file_from_wire)
             .collect();
         RevisionDiff {
             operation_id: OperationId(diff.operation_id().expect("operation_id present").to_owned()),
@@ -354,6 +357,7 @@ mod tests {
                 .collect(),
             from_commit_id: diff.from_commit_id().map(|id| CommitId(id.to_owned())),
             files,
+            description: diff.description().map(file_from_wire),
         }
     }
 
@@ -363,6 +367,7 @@ mod tests {
             commit_ids: vec![CommitId("cc".repeat(20)), CommitId("ee".repeat(20))],
             from_commit_id: None,
             files,
+            description: None,
         }
     }
 
@@ -466,6 +471,16 @@ mod tests {
         assert_eq!(
             diff_from_wire(&diff_to_envelope(&from_to, &CallReport::default())),
             from_to
+        );
+        assert!(env.data_as_diff().expect("Diff payload").description().is_none());
+        // Story 10.29 closing run: the inter-diff description block.
+        let described = RevisionDiff {
+            description: Some(sample().files.remove(0)),
+            ..sample()
+        };
+        assert_eq!(
+            diff_from_wire(&diff_to_envelope(&described, &CallReport::default())),
+            described
         );
     }
 
@@ -661,17 +676,26 @@ mod tests {
             }
         );
         assert_eq!(revisions(None, None), DiffRevisions::Interdiff { from: None, to: None });
+        // `revision` alone (Story 10.29 closing run): the created-commit form.
+        let created = read(&Request {
+            revision: Some("r"),
+            interdiff: true,
+            ..Request::default()
+        })
+        .expect("valid")
+        .revisions;
+        assert_eq!(created, DiffRevisions::Created(rev("r")));
     }
 
-    /// `revision` with `from`, `to` or `interdiff` refuses `jj.invalid_input`; another kind and an
-    /// unknown whitespace `ffi.invalid_argument`.
+    /// `revision` with `from` or `to` (with or without `interdiff`) refuses `jj.invalid_input`;
+    /// another kind and an unknown whitespace `ffi.invalid_argument`.
     #[test]
     fn the_reader_refuses_conflicts_another_kind_and_an_unknown_whitespace() {
         use crate::envelope::{FFI_INVALID_ARGUMENT, JJ_INVALID_INPUT};
         for (from, to, interdiff) in [
             (Some("a"), None, false),
             (None, Some("c"), false),
-            (None, None, true),
+            (None, Some("c"), true),
             (Some("a"), Some("c"), true),
         ] {
             let err = read(&Request {

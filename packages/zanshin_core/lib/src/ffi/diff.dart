@@ -171,6 +171,7 @@ final class Diff {
     required this.operationId,
     required this.commitIds,
     this.fromCommitId,
+    this.description,
     this.warnings = const [],
   });
 
@@ -186,6 +187,13 @@ final class Diff {
 
   /// `from` for `--from`/`--to`; null for the revision form.
   final String? fromCommitId;
+
+  /// The inter-diff forms' description block (Story 10.29 closing run): the
+  /// CLI's `JJ-COMMIT-DESCRIPTION` pseudo-file — the from description (`''`
+  /// for a created commit) against the commit's, kind modified, no sections.
+  /// Never path-filtered; keeps its hunks in summary mode. Null when the
+  /// descriptions are equal and for `jj diff`'s forms.
+  final FileDiff? description;
 
   /// The call's warnings; empty when there were none.
   final List<ZanshinWarning> warnings;
@@ -207,7 +215,10 @@ final class Diff {
 /// (`jj.invalid_input`). [paths] are repo-relative prefixes (empty: every
 /// path), [context] the context lines (`null`: the effective
 /// `diff.git.context`), [whitespace] `-w` / `-b`, [summary] drops the hunks.
-/// [interdiff] reads [from] / [to] as `jj interdiff` does (Story 10.29).
+/// [interdiff] reads [from] / [to] as `jj interdiff` does (Story 10.29); with
+/// [revision] alone it is `show_inter_diff` with no predecessors — `jj op show
+/// --patch`'s created commit: [revision] (exactly one commit) against its
+/// parent tree, no copy records. Both fill [Diff.description].
 Uint8List zanshinDiff(
   int rawHandle, {
   String? revision,
@@ -269,6 +280,10 @@ Diff decodeDiffEnvelopeInternal(Uint8List bytes) {
     operationId: payload.operationId ?? '',
     commitIds: [...?payload.commitIds],
     fromCommitId: payload.fromCommitId,
+    description: switch (payload.description) {
+      final fbs.FileDiff description => _file(description),
+      null => null,
+    },
     warnings: decodeEnvelopeWarningsInternal(env),
   );
 }

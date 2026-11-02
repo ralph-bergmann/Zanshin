@@ -374,9 +374,12 @@ struct DiffContext {
 ///   summary     leave every file's `hunks` empty (kinds, flags, sections, counts, fingerprints
 ///               kept)
 ///   interdiff   `jj interdiff --from` / `--to` (Story 10.29): `from` rebased onto `to`'s parents
-///               in memory against `to`, no copy records; with `revision` `jj.invalid_input`
-///               before the snapshot, with neither `from` nor `to` refused ("at least one of
-///               `from` or `to` is required")
+///               in memory against `to`, no copy records; with `revision` alone (Story 10.29
+///               closing run) `show_inter_diff` with no predecessors — `jj op show --patch`'s
+///               created commit: `revision` (exactly one commit) against its parent tree, no copy
+///               records, `from_commit_id` absent; with `revision` AND `from`/`to` refused as
+///               above; with none of the three refused ("at least one of `from` or `to` is
+///               required"). Both inter-diff forms fill `Diff.description`
 table DiffRequest {
   kind: RequestKind;
   revision: string;
@@ -3184,12 +3187,17 @@ table FileDiff {
 /// always present. Story 5.6 appends the pins, full hex: `operation_id`, the operation it was read
 /// at; `commit_ids`, the right side's commits — the `-r` set's heads in revset order (empty for an
 /// empty set) or `[to]` (`--from`/`--to`), always present; `from_commit_id`, `from`, ABSENT for
-/// the revision form. Returned by `zanshin_diff` (Story 5.8).
+/// the revision form. Returned by `zanshin_diff` (Story 5.8). The Story 10.29 closing run appends
+/// `description`: the inter-diff forms' (`interdiff`) `JJ-COMMIT-DESCRIPTION` block — the from
+/// description (`""` for a created commit) against the commit's, as a `FileDiff` with that path,
+/// kind Modified, no sections; never path-filtered, hunks kept in summary mode; ABSENT when the
+/// descriptions are equal and for `jj diff`'s forms.
 table Diff {
   files: [FileDiff];
   operation_id: string;
   commit_ids: [string];
   from_commit_id: string;
+  description: FileDiff;
 }
 
 union Payload {

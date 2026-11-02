@@ -28,7 +28,8 @@ abstract interface class OperationChangesSource {
   /// `jj show <revset>`'s entries.
   Future<List<ShowEntry>> show(String revset);
 
-  /// `jj diff -r <revision>`, or `--from` / `--to` read as `jj interdiff` when [interdiff].
+  /// `jj diff -r <revision>`, or `--from` / `--to` read as `jj interdiff` when [interdiff]; [revision] with
+  /// [interdiff] is a created commit's inter-diff (no predecessors).
   Future<Diff> diff({
     String? revision,
     String? from,
@@ -76,8 +77,9 @@ typedef OperationChangeLine = ({bool added, String text});
 /// The operation view's state (Story 10.29): one `opShow` of [operation] at creation, then one `show` of every commit
 /// it references for the summaries ("change id commit id first line", the commit id alone after a refusal). The first
 /// changed commit starts selected; a selection reads its files (a summary diff) and the first file's diff, both as
-/// `jj op show --patch` diffs it (`show_change_diff`): a created or abandoned commit against its parents, a rewritten
-/// one as an interdiff from its first predecessor. Refusals are kept per read. The layout is `general.diffLayout` in
+/// `jj op show --patch` diffs it (`show_change_diff`): an abandoned commit against its parents, a created one as an
+/// interdiff from no predecessor, a rewritten one from its first predecessor — the inter-diffs with their description
+/// block ([Diff.description] of [files]). Refusals are kept per read. The layout is `general.diffLayout` in
 /// [settings], written and followed.
 class OperationChangesModel extends ChangeNotifier {
   /// The view of [operation] (an id), reading through [_source].
@@ -252,18 +254,17 @@ class OperationChangesModel extends ChangeNotifier {
     }
   }
 
-  /// `jj op show --patch`'s diff of [change] (`show_change_diff`, cli/src/commands/operation/diff.rs:845 @ v0.46.0).
+  /// `jj op show --patch`'s diff of [change] (`show_change_diff`, cli/src/commands/operation/diff.rs:845 @ v0.46.0):
+  /// an abandoned commit as `show_patch` (with copy records), a rewritten or created one as `show_inter_diff` from
+  /// its first predecessor or from none (no copy records, with the description block).
   Future<Diff> _diffOf(OpChangedCommit change, {bool summary = false, List<String> paths = const <String>[]}) {
-    final bool rewritten = !change.abandoned && change.removedCommitIds.isNotEmpty;
-    return rewritten
-        ? _source.diff(
-            from: change.removedCommitIds.first,
-            to: change.commitId,
-            interdiff: true,
-            summary: summary,
-            paths: paths,
-          )
-        : _source.diff(revision: change.commitId, summary: summary, paths: paths);
+    if (change.abandoned) {
+      return _source.diff(revision: change.commitId, summary: summary, paths: paths);
+    }
+    final String? predecessor = change.removedCommitIds.firstOrNull;
+    return predecessor == null
+        ? _source.diff(revision: change.commitId, interdiff: true, summary: summary, paths: paths)
+        : _source.diff(from: predecessor, to: change.commitId, interdiff: true, summary: summary, paths: paths);
   }
 
   /// Selects [changes]' entry [index]: reads its files and focuses the first.
@@ -656,12 +657,31 @@ class _Files extends StatelessWidget {
       child = _Text(error.context ?? error.code, key: const ValueKey<String>('operation-changes-files-error'));
     } else if (model.files case final Diff diff?) {
       final String? focused = model.focusedPath;
+      // `show_inter_diff`'s description block, above the files as the CLI prints it.
+      final Widget? description = switch (diff.description) {
+        final FileDiff description => Padding(
+          key: const ValueKey<String>('operation-changes-description'),
+          padding: const EdgeInsets.only(bottom: 8),
+          child: InspectorDiffView(
+            path: description.path,
+            diff: description,
+            error: null,
+            layout: model.layout,
+            onLayoutChanged: model.setLayout,
+          ),
+        ),
+        null => null,
+      };
       child = diff.files.isEmpty
-          ? _Text(context.l10n.operationChangesNoFiles)
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[?description, _Text(context.l10n.operationChangesNoFiles)],
+            )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               spacing: 1,
               children: <Widget>[
+                ?description,
                 for (var i = 0; i < diff.files.length; i++)
                   _FileRow(model: model, file: diff.files[i], index: i, focused: diff.files[i].path == focused),
                 if (focused != null)

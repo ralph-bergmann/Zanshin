@@ -718,6 +718,139 @@ fn an_interdiff_without_sides_is_refused_before_the_snapshot() {
     assert_eq!(head_op(&fx.root), head, "no snapshot");
 }
 
+fn created(text: &str) -> DiffOptions {
+    DiffOptions {
+        revisions: DiffRevisions::Created(text.to_owned()),
+        ..DiffOptions::default()
+    }
+}
+
+/// Story 10.29 closing run: a created commit is `show_inter_diff` with no predecessors — its
+/// parent tree against its tree WITHOUT copy records (a rename is a removal plus an addition),
+/// with a description block `""` → its description that ignores `paths` and keeps its hunks in
+/// summary mode. `jj diff`'s forms have no block.
+#[test]
+fn a_created_commit_diffs_without_copy_records_and_with_its_description() {
+    let mut fx = init();
+    write(&fx.root, "old.txt", "x\n");
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    fs::remove_file(fx.root.join("old.txt")).expect("rm");
+    write(&fx.root, "new.txt", "x\n");
+    let (c, c_commit) = commit(&mut fx, "C\n\nbody\n");
+    let result = run(&mut fx, &created(&c_commit.0));
+    assert_eq!(result.commit_ids, std::slice::from_ref(&c_commit));
+    assert_eq!(result.from_commit_id, None);
+    assert_eq!(paths(&result.files), ["new.txt", "old.txt"]);
+    assert_eq!(result.files[0].kind, ChangeKind::Added);
+    assert_eq!(result.files[1].kind, ChangeKind::Removed);
+    let description = result.description.clone().expect("a description block");
+    assert_eq!(description.path, "JJ-COMMIT-DESCRIPTION");
+    assert_eq!(description.kind, ChangeKind::Modified);
+    assert!(description.sections.is_empty());
+    assert_eq!((description.removed, description.added), (0, 3));
+    assert_eq!(
+        description.hunks[0].lines,
+        [
+            HunkLine::Added("C\n".into()),
+            HunkLine::Added("\n".into()),
+            HunkLine::Added("body\n".into())
+        ]
+    );
+    assert_eq!(description.hunks[0].symbol, None);
+
+    let filtered = run(
+        &mut fx,
+        &DiffOptions {
+            paths: vec!["old.txt".to_owned()],
+            summary: true,
+            ..created(&c.0)
+        },
+    );
+    assert_eq!(paths(&filtered.files), ["old.txt"]);
+    assert!(filtered.files[0].hunks.is_empty());
+    assert_eq!(filtered.description, Some(description), "not filtered, hunks kept");
+
+    // `jj diff -r` keeps the rename and has no block.
+    let plain = run(&mut fx, &revision(&c));
+    assert!(matches!(
+        plain.files[..],
+        [FileDiff {
+            kind: ChangeKind::Renamed { .. },
+            ..
+        }]
+    ));
+    assert_eq!(plain.description, None);
+}
+
+/// A created commit with no description has no block; a revision that resolves to no commit is
+/// refused as `resolve_single_rev` refuses it.
+#[test]
+fn a_created_commit_without_description_has_no_block() {
+    let (mut fx, _, (c, _)) = plain();
+    fx.repo
+        .new_change(std::slice::from_ref(&c), &[], &[])
+        .expect("new on C");
+    let _ = fx.repo.take_warnings();
+    let result = run(&mut fx, &created("@"));
+    assert!(result.files.is_empty());
+    assert_eq!(result.description, None);
+    let refused = fx.repo.diff(&created("none()"));
+    assert!(
+        matches!(refused, Err(MutateError::RevsetResolutionError { .. })),
+        "{refused:?}"
+    );
+}
+
+/// A body-only describe: no file changes, the description block shows the changed lines; a
+/// rewrite that keeps the description has none.
+#[test]
+fn an_interdiff_shows_a_changed_description() {
+    let (mut fx, _, (c, c_old)) = plain();
+    fx.repo.describe(c.clone(), "C\n\nbody\n").expect("describe");
+    let (_, c_new) = wc(&fx.root);
+    let inter = |from: &CommitId, to: &CommitId| DiffOptions {
+        revisions: DiffRevisions::Interdiff {
+            from: Some(from.0.clone()),
+            to: Some(to.0.clone()),
+        },
+        ..DiffOptions::default()
+    };
+    let described = run(&mut fx, &inter(&c_old, &c_new));
+    assert!(described.files.is_empty());
+    let block = described.description.expect("a description block");
+    assert_eq!((block.removed, block.added), (0, 2));
+    assert_eq!(
+        block.hunks[0].lines,
+        [
+            HunkLine::Context("C\n".into()),
+            HunkLine::Added("\n".into()),
+            HunkLine::Added("body\n".into())
+        ]
+    );
+    let narrow = run(
+        &mut fx,
+        &DiffOptions {
+            context: Some(0),
+            ..inter(&c_old, &c_new)
+        },
+    );
+    assert_eq!(
+        narrow.description.expect("a description block").hunks[0].lines,
+        [HunkLine::Added("\n".into()), HunkLine::Added("body\n".into())],
+        "the call's context reaches the block"
+    );
+    assert_eq!(run(&mut fx, &inter(&c_new, &c_new)).description, None);
+    let from_to = DiffOptions {
+        revisions: DiffRevisions::FromTo {
+            from: Some(c_old.0.clone()),
+            to: Some(c_new.0.clone()),
+        },
+        ..DiffOptions::default()
+    };
+    assert_eq!(run(&mut fx, &from_to).description, None);
+}
+
 /// Revset texts resolve to the one commit each denotes: `-r @-`, `--from @-- --to @-`.
 #[test]
 fn revset_texts_resolve_to_their_commit() {

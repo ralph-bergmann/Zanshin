@@ -201,11 +201,12 @@ FileDiff testFileDiff(String path, {FileChangeKind kind = FileChangeKind.modifie
   fingerprint: 'f-$path',
 );
 
-/// A diff of [paths].
-Diff testDiff(List<String> paths) => Diff(
+/// A diff of [paths]; with [description], an inter-diff's `JJ-COMMIT-DESCRIPTION` block.
+Diff testDiff(List<String> paths, {bool description = false}) => Diff(
   files: <FileDiff>[for (final path in paths) testFileDiff(path)],
   operationId: 'op',
   commitIds: const <String>[],
+  description: description ? testFileDiff('JJ-COMMIT-DESCRIPTION') : null,
 );
 
 /// A `jj op show` reply for [operation] with [changes] (no ref changes).

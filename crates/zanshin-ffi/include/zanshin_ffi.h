@@ -1011,7 +1011,10 @@ ZanshinBuf *zanshin_diagnostics(void);
  * empty: every path; one that matches nothing is a `jj.paths_unmatched` warning), `context`
  * (absent: the effective `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no
  * hunks). `interdiff` (Story 10.29) reads `from` / `to` as `jj interdiff` does: `from` rebased
- * onto `to`'s parents in memory against `to`, no copy records. No caching. Writes NO operation
+ * onto `to`'s parents in memory against `to`, no copy records; `interdiff` with `revision` alone
+ * (Story 10.29 closing run) is `show_inter_diff` with no predecessors — the revision's parent
+ * tree against its tree, no copy records. Both fill `Diff.description`, the CLI's
+ * `JJ-COMMIT-DESCRIPTION` block (absent when the descriptions are equal). No caching. Writes NO operation
  * beyond the pre-verb snapshot's (Story 9.26).
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `Diff` payload on success.
@@ -1021,8 +1024,8 @@ ZanshinBuf *zanshin_diagnostics(void);
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `DiffRequest` buffer, its `kind` is not
  *   `Diff`, or its `whitespace` is outside the enum.
- * - `jj.invalid_input` — `revision` together with `from`, `to` or `interdiff`, or `interdiff`
- *   with neither `from` nor `to` (both before the snapshot: nothing written, no
+ * - `jj.invalid_input` — `revision` together with `from` or `to`, or `interdiff` with none of
+ *   `revision`, `from` and `to` (both before the snapshot: nothing written, no
  *   `precondition`), or a `paths` entry that is not a valid repo path or leaves the
  *   repository; detail in `context`.
  * - `jj.revset_parse_error` — a revision is not a valid revset expression.
@@ -1044,7 +1047,9 @@ ZanshinBuf *zanshin_diagnostics(void);
  * the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_diff(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_diff(uint64_t handle,
+                         const uint8_t *data,
+                         uintptr_t len);
 
 /**
  * Touch up a revision's content with a GUI-selected tree, in the repo identified by `handle` —
