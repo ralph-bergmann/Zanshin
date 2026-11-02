@@ -13,6 +13,7 @@ final class WindowingBootstrap {
     private let engine = FlutterEngine(name: "zanshin", project: nil)
     private var splashWindowHost: SplashWindowHost?
     private var windowFrameStore: WindowFrameStore?
+    private var menuStateChannel: MenuStateChannel?
 
     /// Hot-restart workaround for an engine bug: `closeAllWindows` disposes
     /// each window's view controller and then closes the window without
@@ -35,6 +36,7 @@ final class WindowingBootstrap {
         RegisterGeneratedPlugins(registry: engine)
         splashWindowHost = SplashWindowHost(messenger: engine.binaryMessenger)
         windowFrameStore = WindowFrameStore(messenger: engine.binaryMessenger)
+        menuStateChannel = MenuStateChannel(messenger: engine.binaryMessenger)
         engine.run(withEntrypoint: nil)
     }
 
@@ -61,6 +63,90 @@ final class WindowingBootstrap {
                 NSApp.activate(ignoringOtherApps: true)
             }
         }
+    }
+}
+
+/// Native half of the `zanshin/menu_state` channel (Story 11.17): what the
+/// engine's menu bar cannot express, applied to the `NSApp.mainMenu` it has
+/// just built.
+///
+/// The engine gives its items no stable id (`tag` is a per-build serial), so
+/// a toggle is found by its top menu's and its own title (the Dart labels), a
+/// system item by its selector. Its submenus have `autoenablesItems = NO`, so
+/// an `isEnabled` set here stays until the next build replaces the menu.
+final class MenuStateChannel {
+    private let channel: FlutterMethodChannel
+
+    init(messenger: FlutterBinaryMessenger) {
+        channel = FlutterMethodChannel(name: "zanshin/menu_state", binaryMessenger: messenger)
+        channel.setMethodCallHandler { [weak self] call, result in
+            self?.handle(call, result: result)
+        }
+    }
+
+    private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard call.method == "apply" else {
+            result(FlutterMethodNotImplemented)
+            return
+        }
+        guard let payload = MenuStateChannel.Payload(call.arguments) else {
+            result(
+                FlutterError(
+                    code: "bad-args",
+                    message: "expected checked: [{menu, item, checked}] and enabled: {selector: bool}",
+                    details: nil))
+            return
+        }
+        if let mainMenu = NSApp.mainMenu, let windows = MenuStateChannel.apply(payload, to: mainMenu),
+            NSApp.windowsMenu !== windows
+        {
+            NSApp.windowsMenu = windows
+        }
+        result(nil)
+    }
+
+    /// `apply`'s arguments, parsed strictly before anything changes: a
+    /// malformed payload changes nothing.
+    struct Payload {
+        let checked: [(menu: String, item: String, on: Bool)]
+        let enabled: [String: Bool]
+
+        init?(_ arguments: Any?) {
+            guard let args = arguments as? [String: Any],
+                let checkedArgs = args["checked"] as? [[String: Any]],
+                let enabled = args["enabled"] as? [String: Bool]
+            else { return nil }
+            var checked: [(menu: String, item: String, on: Bool)] = []
+            for entry in checkedArgs {
+                guard let menu = entry["menu"] as? String, let item = entry["item"] as? String,
+                    let on = entry["checked"] as? Bool
+                else { return nil }
+                checked.append((menu, item, on))
+            }
+            self.checked = checked
+            self.enabled = enabled
+        }
+    }
+
+    /// Sets the toggles' `state` and the selector items' `isEnabled` in
+    /// `mainMenu` (an item not found is skipped) and returns the submenu
+    /// holding `arrangeInFront:`, the menu `NSApp.windowsMenu` should be.
+    static func apply(_ payload: Payload, to mainMenu: NSMenu) -> NSMenu? {
+        for toggle in payload.checked {
+            mainMenu.item(withTitle: toggle.menu)?.submenu?.item(withTitle: toggle.item)?.state =
+                toggle.on ? .on : .off
+        }
+        let submenus = mainMenu.items.compactMap(\.submenu)
+        for (selector, isEnabled) in payload.enabled {
+            let action = NSSelectorFromString(selector)
+            for menu in submenus {
+                for item in menu.items where item.action == action {
+                    item.isEnabled = isEnabled
+                }
+            }
+        }
+        let arrange = #selector(NSApplication.arrangeInFront(_:))
+        return submenus.first(where: { $0.items.contains { $0.action == arrange } })
     }
 }
 

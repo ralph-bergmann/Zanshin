@@ -118,10 +118,18 @@ Widget _content(ValueNotifier<bool> sheet, {FocusNode? field, TextEditingControl
 
 /// Records what [PlatformMenuBar] hands the platform, instead of the channel.
 class _MenuDelegate extends PlatformMenuDelegate {
+  _MenuDelegate(this.events);
+
   final sets = <List<PlatformMenuItem>>[];
 
+  /// The rig's shared log of what reaches the platform, in order.
+  final List<String> events;
+
   @override
-  void setMenus(List<PlatformMenuItem> topLevelMenus) => sets.add(topLevelMenus);
+  void setMenus(List<PlatformMenuItem> topLevelMenus) {
+    sets.add(topLevelMenus);
+    events.add('setMenus');
+  }
 
   @override
   void clearMenus() {}
@@ -178,6 +186,9 @@ class _Rig {
   /// The menu bar's delegate, when [setUp] mounts the [AppMenuBar].
   _MenuDelegate? delegate;
 
+  /// `setMenus` and `apply` in the order they reach the platform.
+  final events = <String>[];
+
   Future<void> setUp(
     WidgetTester tester, {
     List<ProjectEntry> projects = const <ProjectEntry>[],
@@ -214,7 +225,7 @@ class _Rig {
     Widget root = WindowManager(initialWindows: <WindowEntry>[main]);
     if (menuBar) {
       final PlatformMenuDelegate original = WidgetsBinding.instance.platformMenuDelegate;
-      WidgetsBinding.instance.platformMenuDelegate = delegate = _MenuDelegate();
+      WidgetsBinding.instance.platformMenuDelegate = delegate = _MenuDelegate(events);
       addTearDown(() => WidgetsBinding.instance.platformMenuDelegate = original);
       root = AppMenuBar(model: menu, child: root);
     }
@@ -689,5 +700,83 @@ void main() {
     await tester.pump();
     expect(rig.delegate!.sets.length, greaterThan(sets));
     expect(close().onSelected, isNotNull);
+  });
+
+  test('windowItemsEnabled follows the key window (Story 11.17)', () {
+    Map<String, bool> e({required bool minimize, required bool zoom, required bool fullScreen}) => <String, bool>{
+      'performMiniaturize:': minimize,
+      'performZoom:': zoom,
+      'toggleFullScreen:': fullScreen,
+    };
+    expect(AppMenuModel.windowItemsEnabled(null), e(minimize: false, zoom: false, fullScreen: false));
+    expect(AppMenuModel.windowItemsEnabled(mainWindowKey), e(minimize: true, zoom: true, fullScreen: true));
+    expect(AppMenuModel.windowItemsEnabled(projectsWindowKey), e(minimize: false, zoom: true, fullScreen: false));
+    expect(AppMenuModel.windowItemsEnabled(settingsWindowKey), e(minimize: false, zoom: false, fullScreen: false));
+    expect(
+      AppMenuModel.windowItemsEnabled(revsetConfigsWindowKey),
+      e(minimize: false, zoom: true, fullScreen: false),
+    );
+  });
+
+  testWidgets("nativeState checks the View toggles after the bound graph's preferences", (tester) async {
+    final rig = _Rig();
+    await rig.setUp(tester);
+    await rig.bindGraph(tester);
+    rig.preferences!
+      ..setDetailedCards(true)
+      ..setGroupStacks(false);
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    Map<String, bool> checked() => <String, bool>{
+      for (final entry in rig.menu.nativeState(platformStrings())['checked']! as List<Map<String, Object>>)
+        if (entry['menu'] == 'View') entry['item']! as String: entry['checked']! as bool,
+    };
+    expect(checked(), <String, bool>{'Detailed Cards': true, 'Group Stacks': false});
+
+    rig.unbindGraph();
+    expect(checked(), <String, bool>{'Detailed Cards': false, 'Group Stacks': false});
+  });
+
+  testWidgets('AppMenuBar applies the native state after each build, following the key window', (tester) async {
+    final rig = _Rig();
+    final applied = <Map<Object?, Object?>>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(menuStateChannel, (call) async {
+      if (call.method == 'apply') {
+        applied.add(call.arguments as Map<Object?, Object?>);
+        rig.events.add('apply');
+      }
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(menuStateChannel, null));
+    await rig.setUp(tester, menuBar: true);
+    await tester.pump();
+    Map<Object?, Object?> enabled() => applied.last['enabled']! as Map<Object?, Object?>;
+    bool? detailedCards() =>
+        <Object?, Object?>{
+              for (final entry in (applied.last['checked']! as List<Object?>).cast<Map<Object?, Object?>>())
+                entry['item']: entry['checked'],
+            }['Detailed Cards']
+            as bool?;
+    expect(enabled().values, everyElement(isFalse), reason: 'no key window yet');
+
+    rig.focus(mainWindowKey);
+    await tester.pump();
+    await tester.pump();
+    expect(enabled(), <String, bool>{'performMiniaturize:': true, 'performZoom:': true, 'toggleFullScreen:': true});
+
+    rig.focus(projectsWindowKey);
+    await tester.pump();
+    await tester.pump();
+    expect(enabled(), <String, bool>{'performMiniaturize:': false, 'performZoom:': true, 'toggleFullScreen:': false});
+    expect(rig.events.lastIndexOf('apply'), greaterThan(rig.events.lastIndexOf('setMenus')), reason: 'after setMenus');
+
+    await rig.bindGraph(tester);
+    for (final on in <bool>[true, false]) {
+      rig.preferences!.setDetailedCards(on);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+      await tester.pump();
+      expect(detailedCards(), on);
+    }
+    rig.unbindGraph();
   });
 }

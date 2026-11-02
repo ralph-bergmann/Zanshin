@@ -27,6 +27,15 @@ import '../window/app_windows.dart';
 
 final _log = Logger('zanshin.menu');
 
+/// The channel the menu bar sends what the engine cannot express over (Story 11.17): checkmarks and the system items'
+/// enabled state; the runner applies it to `NSApp.mainMenu`.
+const menuStateChannel = MethodChannel('zanshin/menu_state');
+
+/// The AppKit selectors of Window › Minimize, Window › Zoom and View › Enter Full Screen.
+const _minimize = 'performMiniaturize:'; // l10n-ignore: an AppKit selector
+const _zoom = 'performZoom:'; // l10n-ignore: an AppKit selector
+const _fullScreen = 'toggleFullScreen:'; // l10n-ignore: an AppKit selector
+
 /// jj's documentation at the pinned jj-lib version.
 final Uri jjDocumentationUrl = Uri.parse('https://docs.jj-vcs.dev/v0.46.0/'); // l10n-ignore: a URL
 
@@ -578,6 +587,32 @@ class AppMenuModel extends ChangeNotifier {
     ];
   }
 
+  /// Whether Minimize, Zoom and Enter Full Screen act on the window [key] (epics.md 11.13 scope 3), by selector: all
+  /// grey with no key window and for Settings, Zoom only for Projects and Configurations, all for the project window.
+  static Map<String, bool> windowItemsEnabled(String? key) {
+    final bool all = key != null && key != settingsWindowKey;
+    final bool resizableDialog = key == projectsWindowKey || key == revsetConfigsWindowKey;
+    return <String, bool>{_minimize: all && !resizableDialog, _zoom: all, _fullScreen: all && !resizableDialog};
+  }
+
+  /// What `zanshin/menu_state`'s `apply` gets: the toggles' checked state, by top-menu and item title in [s]'s strings,
+  /// and [windowItemsEnabled] of the key window.
+  Map<String, Object> nativeState(AppLocalizations s) {
+    final GraphPreferences? preferences = graph.value?.preferences;
+    Map<String, Object> toggle(String item, bool checked) => <String, Object>{
+      'menu': s.menuView,
+      'item': item,
+      'checked': checked,
+    };
+    return <String, Object>{
+      'checked': <Map<String, Object>>[
+        toggle(s.menuDetailedCards, preferences?.options.detailedCards ?? false),
+        toggle(s.menuGroupStacks, preferences?.groupStacks ?? false),
+      ],
+      'enabled': windowItemsEnabled(_keyWindow),
+    };
+  }
+
   /// File › Open Recent: the session's Recent, each opening as the capsule's row does; grey without [actions] or
   /// without a recent project.
   PlatformMenuItem _openRecent(AppLocalizations s, AppWindowActions? actions) {
@@ -628,6 +663,11 @@ class AppMenuBar extends StatelessWidget {
     listenable: Listenable.merge(<Listenable?>[model]),
     builder: (context, child) {
       final AppLocalizations strings = platformStrings();
+      if (model case final AppMenuModel model) {
+        final Map<String, Object> state = model.nativeState(strings);
+        // After the frame: behind the engine's `Menu.setMenus` of this build on the same messenger.
+        WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_apply(state)));
+      }
       return PlatformMenuBar(
         menus: model?.menus(strings) ?? AppMenuModel.bootMenus(strings),
         child: child,
@@ -635,4 +675,14 @@ class AppMenuBar extends StatelessWidget {
     },
     child: child,
   );
+
+  static Future<void> _apply(Map<String, Object> state) async {
+    try {
+      await menuStateChannel.invokeMethod<void>('apply', state);
+    } on MissingPluginException {
+      // No runner handler: tests and other platforms.
+    } on PlatformException catch (error) {
+      _log.warning('The menu state was not applied', error);
+    }
+  }
 }
