@@ -36,8 +36,9 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Story 10.25: Commit/split composer, file level (done)
 - Story 10.26: Hunk selection through a GUI tree (backlog)
 - Story 10.27: Drag files and hunks onto a change (backlog)
-- Story 10.28: Raw revset rule in the jj log Configurations window (backlog)
-- Story 10.29: Operation diff view, Show changes in the Undo Timeline (backlog)
+- Story 10.28: Raw revset rule in the jj log Configurations window (done)
+- Story 10.29: Operation diff view, Show changes in the Undo Timeline (done)
+- Story 10.30: Review findings 2026-11-02: revset errors, the `$` pill, ID copy, uniform graph ports (backlog)
 
 ## Requirements & Constraints
 
@@ -48,6 +49,8 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Immutable changes: 135° hatch (`--hatch`), no glyph or colour; menus offer only rows that leave the change untouched (exactly the verbs jj refuses are left out).
 - Every jj command shown in UI text exists in jj v0.46.0 exactly as written, in full with the change id, shell-quoted. The UI never composes a sequence of commands.
 - Behave like the CLI: parse, resolve and refuse as jj does; show jj's own error text (e.g. `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`) in place. Where the design does not fit jj, resolve it along jj's behaviour in the owning story (Claude's proposal, no question to Ralph).
+- jj errors in a proportional-font UI are one short sentence (kind, column, what jj expected), never jj's pest rendering (`-->`, `^---`); prefer a structured short message from the backend over parsing jj's text in Dart. A text field keeps its focus when its error message appears or disappears.
+- Inspector header IDs: short change ID with a `jj` subscript and short commit ID with a `git` subscript (`--text-faint`); a click copies the full ID ("Click to copy" / "Copied"; a failed clipboard write opens a popover with the full ID as selectable text). Graph cards keep click = select. The search field's `$` pill has no tint.
 - Hunk selection offers everything the CLI's builtin diff editor offers: mode changes get their own row, conflicted files get per-section checkboxes.
 - Refresh: window focus plus an explicit reload button (and View › Reload ⌘R), both coalesced; no timer, no file watcher.
 - Workstreams dropped; Reviews hidden. The app is English but l10n-ready.
@@ -64,7 +67,8 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Backend boundary: the UI never composes jj operations; it pre-fills every API parameter from the effective config and passes it explicitly. Missing CLI parameters are backend gaps. Interactive verbs take a GUI-supplied `TreeId` (`select_tree`). Diff read: `RepoHandle.diff` (`Diff` → `FileDiff` → `Hunk` → `HunkLine`, per-file `fingerprint`); operation contents: `RepoHandle.opShow`. Revset text comes from `zanshin_core`'s builders (join / not), passed verbatim.
 - Code in `app/lib/src/features/graph/`, tests mirrored in `app/test/features/graph/`. The app imports only `package:zanshin_core/zanshin_core.dart`; a `[UI/bridge]` story adds the types it consumes to that library's `show` list. The old POC is removed (read it at `8bd1c34b` if needed).
 - Controls come from the Zs library (`packages/zanshin_ui`), never Material/Yaru; remaining Material types only from `package:material_ui`. Text entry is an undecorated `TextField`.
-- Theme: tokens from the design system (`_bmad-output/implementation-artifacts/design_system/`; tokens and CSS win over its prose). `GraphTheme` (`ThemeExtension`, night/paper) derives from the token layer and falls back to night. Selection, focus, drop targets, pulse and flash use the accent role (`--accent*`, `--focus-ring`); gold = @ and the one primary action; moon as data (`--hunk`, `--status-m`, `--remote`) stays fixed. Each story records "DS synced through #N"; stories never edit `design/` or `design_system/`.
+- Theme: tokens from the design system (`_bmad-output/implementation-artifacts/design_system/`; tokens and CSS win over its prose). `GraphTheme` (`ThemeExtension`, night/paper) derives from the token layer and falls back to night. Selection, focus, drop targets, pulse and flash use the accent role (`--accent*`, `--focus-ring`); gold = @ and the one primary action; moon as data (`--hunk`, `--status-m`, `--remote`) stays fixed. Each story records "DS synced through #N". `design/` and `design_system/` are now repo sources edited in place: where a story's change departs from the DS or the prototype (e.g. `design/graph-layout.jsx`), it edits that source too, with a dated line in `DESIGN-SYSTEM-SYNC.md`, so no deviation is tracked; republishing the DS artifact is Claude's after the story (skill `design-artifacts`).
+- Graph router ports (from 10.30): top and bottom follow one rule set — a single line in the centre; with several, the straight (same-column) line takes the centre and the rest fan to their side; with none straight the centre stays free; the fan is the entry fan (24 px, 16 px steps, squeezed to 8 px) at both ends. Inner/outer ordering, shared indirect entry slots, gutter routing and the invariant checks stay.
 - Strings go through the ARB (`app/lib/l10n/app_en.arb`, `packages/zanshin_ui/lib/l10n/zs_en.arb`; run `flutter gen-l10n` after an edit and commit the generated files); jj's own words, the product name and symbols are literals marked `// l10n-ignore: <reason>`.
 - Tests: scroll physics under `TargetPlatformVariant.only(TargetPlatform.macOS)`; no golden tests; real-cdylib widget tests wrap worker/watcher I/O in `tester.runAsync`; app tests never call a jj config verb for real; icon-painting tests load the `IconRegistry` in a shared `setUpAll`.
 
@@ -81,5 +85,5 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 
 ## Cross-Story Dependencies
 
-- Open stories: 10.10 after 10.9/10.15, real rows from 9.31, 9.16, 9.9, 9.19, 9.48. 10.16 after 10.1/10.4–10.6 and 11.13; its raster path needs no backend story. 10.26 after 10.24/10.25, 9.50 and 11.11. 10.27 after 10.10/10.26 (a `diff` source in 9.31). 10.28 after 10.22 and 9.25 (its `NoSuchFunction` candidates); related to 10.21. 10.29 after 11.9, 10.24 and 9.21 (`op_diff`); related to 10.23.
+- Open stories: 10.10 after 10.9/10.15, real rows from 9.31, 9.16, 9.9, 9.19, 9.48. 10.16 after 10.1/10.4–10.6 and 11.13; its raster path needs no backend story. 10.26 after 10.24/10.25, 9.50 and 11.11. 10.27 after 10.10/10.26 (a `diff` source in 9.31). 10.30 builds on 10.28 (raw-revset errors), 10.12 (router), 10.24 (inspector) and 11.17 — all done; it touches `ZsTextField` in `packages/zanshin_ui` and the router in `packages/zanshin_core`, so router tests, goldens and layout invariants must stay green.
 - Epic 11: 11.11 (Zs controls, Widgetbook) precedes every control user; 11.13 (menu bar) binds this epic's shortcuts and View › Reload; 11.9 owns the Undo Timeline that 10.29 extends.

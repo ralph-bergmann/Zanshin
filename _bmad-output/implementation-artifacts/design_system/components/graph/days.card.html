@@ -53,7 +53,8 @@
           {C.filter((c) => c.p).map((c) => {
             const p = by.get(c.p), wc = anc.has(c.id) && anc.has(p.id);
             if (p.lane === c.lane) return <GraphEdge key={c.id} from={[p.cx, p.y]} to={[c.cx, c.y + H]} kind={wc ? "wc" : "normal"}/>;
-            const [e] = GraphPorts.exits(1, W);
+            // a lone line leaves at the centre (Story 10.30); a parent with more children fans them (GraphPorts.exits)
+            const e = C.filter((o) => o.p === c.p).length > 1 ? GraphPorts.exits(1, W)[0] : 0;
             return <GraphEdge key={c.id} from={[p.cx + e, p.y]} to={[c.cx, c.y + H]} bend={p.y - GAP_Y / 2}/>;
           })}
         </svg>

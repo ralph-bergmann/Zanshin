@@ -8,7 +8,7 @@ export declare const SearchScopes: Record<SearchScope, { label: string; icon: st
 /** The `$` row glyph: mono 600 13px, --text-dim, moon when selected. */
 export declare function SearchDollar(): JSX.Element;
 
-/** The top bar's graph search field: [menu ▾ | query | ✕] — a 36px well inside the 44px View capsule. States: rest · hover · focus (accent edge + halo) · has a query or a variant (the pill tinted: hover soft-hi, pressed ring) · menu open · suggestions open · width steps · inactive window (at rest). */
+/** The top bar's graph search field: [menu ▾ | query | ✕] — a 36px well inside the 44px View capsule. States: rest · hover · focus (accent edge + halo) · has a query or a variant (the pill untinted, as at the default; the variant name 500 in the field) · menu open · suggestions open · width steps · inactive window (at rest). */
 export interface GraphSearchProps {
   /** scope of the typed text; Go to = change, bookmark; Filter by = author, file, description */
   scope?: SearchScope;

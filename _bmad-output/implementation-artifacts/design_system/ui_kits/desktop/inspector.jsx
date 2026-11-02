@@ -78,6 +78,30 @@ function ZKComposer({ c, isWC, files, sel, onRun, onClear }) {
   );
 }
 
+// An inspector id (Story 10.30): max(prefix, 8) chars, the prefix bold, a faint lowered subscript (jj / git). A click copies the FULL id
+// ("Click to copy" over it; "Copied" briefly); a failed clipboard write shows the full id as selectable text until a click outside or Esc.
+function ZKCopyId({ id = "", prefix = 0, sub }) {
+  const [state, setState] = React.useState(null); // null · "copied" · "failed"
+  React.useEffect(() => {
+    if (state !== "failed") return;
+    const k = (e) => { if (e.key === "Escape") { e.stopImmediatePropagation(); setState(null); } };
+    const out = (e) => { if (!e.target.closest(".zk-copyid")) setState(null); };
+    window.addEventListener("keydown", k, true); window.addEventListener("mousedown", out, true);
+    return () => { window.removeEventListener("keydown", k, true); window.removeEventListener("mousedown", out, true); };
+  }, [state]);
+  const copy = () => navigator.clipboard.writeText(id).then(
+    () => { setState("copied"); setTimeout(() => setState((s) => (s === "copied" ? null : s)), 1300); },
+    () => setState("failed"));
+  const n = Math.max(prefix, 8);
+  return (
+    <span className="zk-copyid" title={"Click to copy\n" + id} role="button" tabIndex={0} onClick={copy}>
+      <b>{id.slice(0, prefix)}</b>{id.slice(prefix, n)}{sub && <sub>{sub}</sub>}
+      {state === "copied" && <span className="zk-copyid-tip">Copied</span>}
+      {state === "failed" && <span className="zk-copyid-pop" onClick={(e) => e.stopPropagation()}>{id}</span>}
+    </span>
+  );
+}
+
 function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEditing, lift, onClose, onEdit, onNew, onDescribe, onSquash, onAbandon, onCommit, onSplit, beginDrag }) {
   const mutable = !c.immutable;
   const undescribed = !c.subject;
@@ -126,7 +150,10 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
   return (
     <Island shape="panel" className={"zk-ins" + (composing ? " is-composing" : "")} role="complementary" aria-label="Change details" data-screen-label={"Detail " + c.id}>
       <header className="zk-ins-hd">
-        <span className="zk-ins-id" title={"commit " + c.commit}><b>{c.id.slice(0, 2)}</b>{c.id.slice(2)}</span>
+        <span className="zk-ins-ids">
+          <ZKCopyId id={c.id} prefix={2} sub="jj"/>
+          <ZKCopyId id={c.commit} prefix={0} sub="git"/>
+        </span>
         <span className="zk-ins-flags">
           {isWC && <Flag kind="wc">@ Working copy</Flag>}
           {c.immutable && <Flag icon={<Swatch/>} title={c.immWhy ? "Immutable · " + c.immWhy : "Part of trunk history"}>Immutable</Flag>}

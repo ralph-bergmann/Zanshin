@@ -21,7 +21,7 @@ export function SearchDollar() {
 
 // GraphSearch — the View capsule's field: [menu ▾ | query | ✕]. It holds one thing:
 //   view "default" — the default search: empty field, calm pill, ⌘F hint, no ✕, so you can type straight away
-//   view "search"  — a typed search: scope icon + label, the value, ✕ (the pill turns moon)
+//   view "search"  — a typed search: scope icon + label, the value, ✕ (the pill keeps its default look)
 //   view "variant" — another jj log variant: the pill shows $, the field shows the variant's name as a value; clicking in empties it
 // ✕ always returns to the default search. Typed prefixes c: b: a: f: d: switch the scope; Backspace in an empty field returns to Any;
 // ⌘F or / focuses the field. Popovers (SearchMenu, SearchPopover) go in as children and anchor under the field.

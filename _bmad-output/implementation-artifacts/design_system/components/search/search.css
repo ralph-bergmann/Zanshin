@@ -11,14 +11,8 @@
 .zs-gs-chev{color:var(--text-faint)}
 .zs-gs-scope:hover,.zs-gs-scope.is-open{background:var(--fl-on);color:var(--text)}
 .zs-gs-scope:active{background:var(--fl-press);color:var(--text)}
-/* the pill while anything but the default search shows: a tinted on-state that sits on another fill (the capsule's --fl-hover over bar glass) —
-   accent text would fall under 4.5 there (night 3.7–4.6, paper 3.9–4.4), so the label is --text at rest too; the scope icon keeps the
-   accent (non-text, ≥ 3:1 everywhere); hover and press step the tint */
-.zs-gs.has-q .zs-gs-scope{background:var(--accent-soft);color:var(--text)}
-.zs-gs.has-q .zs-gs-scope:not(:hover,.is-open,:active)>.zs-icon:not(.zs-gs-chev){color:var(--accent-text)}
-.zs-gs.has-q .zs-gs-scope:is(:hover,.is-open){background:var(--accent-soft-hi);color:var(--text)}
-.zs-gs.has-q .zs-gs-scope:active{background:var(--accent-ring);color:var(--text)}
-.zs-gs.has-q .zs-gs-chev{color:currentColor}
+/* the pill has no tinted state (Story 10.30, Ralph 2026-11-02): the accent read as an error or focus — at every view it looks as at the
+   default search; the view name's 500 weight in the field marks a non-default view */
 .zs-gs-dollar{display:inline-grid;place-items:center;width:14px;height:14px;font:600 var(--fs-base)/1 var(--font-mono);color:var(--text-dim)}
 .zs-gs-scope .zs-gs-dollar{color:inherit}
 .zs-gs-in{flex:1 1 320px;width:320px;min-width:0;height:100%;padding:0 6px 0 7px;border:0;outline:none;background:none;font:var(--fs-base) var(--font-sans);color:var(--text)}

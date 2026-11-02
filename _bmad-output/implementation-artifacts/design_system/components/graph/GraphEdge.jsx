@@ -3,8 +3,10 @@ import React from "react";
 // Graph line geometry — the floating client's router (graph-layout.jsx). One line per parent → child pair: every line has its own
 // exit on the parent's top edge and its own entry on the child's bottom edge; forks turn just above the parent, merges just below the
 // child; horizontal runs stack in tracks 3.5–6px apart and nest instead of crossing.
-const ZS_EXIT = { inset: 18, step: 12, min: 7 };             // exits on a parent's top edge, offsets from its centre
-const ZS_ENTRY = { first: 24, step: 16, min: 8, inset: 18 }; // extra entries on a child's bottom edge (the first parent enters at the centre)
+// Ports, top and bottom alike: one line → the centre; several → the straight one takes the centre and the rest fan to their side;
+// none straight → the centre stays free. A merge-up exit never takes the centre and sits MERGE_UP_SHIFT outside its slot.
+const ZS_ENTRY = { first: 24, step: 16, min: 8, inset: 18 }; // the fan on either edge, offsets from the centre
+const ZS_MERGE_UP_SHIFT = 4;
 const ZS_CUT_CLEAR = 12;                                      // a break keeps this much visible line to the next bend or card
 
 // m ports, inner → outer: `step` apart while they fit, squeezed down to `min`; past that the overflow shares the outermost port
@@ -17,20 +19,12 @@ function zsFan(m, first, step, min, max) {
 }
 
 export const GraphPorts = {
-  EXIT: ZS_EXIT, ENTRY: ZS_ENTRY, CUT_CLEAR: ZS_CUT_CLEAR, TRACK: { min: 3.5, max: 6 }, BAND_INSET: 12, RADIUS: 10,
-  // m lines leaving one side of a parent's top edge → offsets from the card centre, innermost first (a straight line uses the centre).
-  // 12px apart while they fit between 18px from the centre and 18px from the card edge, squeezed down to 7px, then the outermost
-  // lines share one exit and split above the card.
-  exits(m, cardW) {
-    const lo = ZS_EXIT.inset, hi = cardW / 2 - ZS_EXIT.inset;
-    if (m <= 0) return [];
-    if (m === 1) return [Math.max(lo, Math.min(cardW * 0.28, hi))];
-    const st = Math.min(ZS_EXIT.step, (hi - lo) / (m - 1));
-    if (st < ZS_EXIT.min) return zsFan(m, lo, ZS_EXIT.step, ZS_EXIT.min, hi);
-    const a0 = Math.max(lo, Math.min(cardW * 0.28 - ((m - 1) * st) / 2, hi - (m - 1) * st));
-    return [...Array(m).keys()].map((k) => a0 + k * st);
-  },
-  // the other parents entering one side of a child's bottom edge → offsets from the centre, nearest parent first (16px apart, down to 8)
+  ENTRY: ZS_ENTRY, MERGE_UP_SHIFT: ZS_MERGE_UP_SHIFT, CUT_CLEAR: ZS_CUT_CLEAR, TRACK: { min: 3.5, max: 6 }, BAND_INSET: 12, RADIUS: 10,
+  // m lines leaving one side of a parent's top edge, when more than one line leaves it → offsets from the card centre, innermost
+  // first: the entries' fan (a lone line or the straight one uses the centre; add MERGE_UP_SHIFT for a merge-up).
+  exits(m, cardW) { return zsFan(m, ZS_ENTRY.first, ZS_ENTRY.step, ZS_ENTRY.min, cardW / 2 - ZS_ENTRY.inset); },
+  // the lines entering one side of a child's bottom edge beside the centre one (a lone line or the straight one), nearest parent
+  // first (24px out, 16px apart, down to 8)
   entries(m, cardW) { return zsFan(m, ZS_ENTRY.first, ZS_ENTRY.step, ZS_ENTRY.min, cardW / 2 - ZS_ENTRY.inset); },
   // spacing of n stacked runs in one band — the band between two cards keeps 12px off each, leaving 24px of room
   trackSpacing(n, room = 24) { return n > 1 ? Math.max(3.5, Math.min(6, room / (n - 1))) : 0; },

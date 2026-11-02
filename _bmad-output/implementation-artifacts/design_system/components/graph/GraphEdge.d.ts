@@ -5,9 +5,9 @@ type Rect = { x: number; y: number; w: number; h: number };
 
 /** One parent → child line, rendered inside an <svg>. States: rest · hover · @ path · gap (dashed + cuts) · dim · hidden while the layout moves. */
 export interface GraphEdgeProps {
-  /** the line's exit on the parent's top edge — centre for a straight line, else GraphPorts.exits */
+  /** the line's exit on the parent's top edge — centre for a lone (not merge-up) or straight line, else GraphPorts.exits */
   from?: Pt;
-  /** the line's entry on the child's bottom edge — centre for the first parent, else GraphPorts.entries */
+  /** the line's entry on the child's bottom edge — centre for a lone or straight line, else GraphPorts.entries */
   to?: Pt;
   /** explicit orthogonal polyline (parent → child) instead of from/to — e.g. a gutter detour */
   points?: Pt[];
@@ -32,8 +32,10 @@ export declare function GraphEnd(props: GraphEndProps): JSX.Element;
 
 /** The router's port and line rules (graph-layout.jsx), as numbers and helpers. */
 export declare const GraphPorts: {
-  EXIT: { inset: 18; step: 12; min: 7 };
+  /** the port fan at both card edges (Story 10.30) */
   ENTRY: { first: 24; step: 16; min: 8; inset: 18 };
+  /** px a merge-up exit sits outside its fan slot (it never takes the centre) */
+  MERGE_UP_SHIFT: 4;
   /** px of visible line a break keeps to the next bend or card */
   CUT_CLEAR: 12;
   TRACK: { min: 3.5; max: 6 };

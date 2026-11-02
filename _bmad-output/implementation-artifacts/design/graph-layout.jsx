@@ -9,8 +9,11 @@ const G = { gapX: 56, gapY: 48, pad: 56, hCompact: 40, hDetailed: 62, elide: 44,
 const U = 16;
 const CUT_CLEAR = 12;
 const colMemo = new WeakMap();                          // graph list → chosen lanes + columns                                       // a bridge keeps this much visible line to the next bend or card
-const EXIT = { inset: 18, step: 12, min: 7 };               // exits on a parent's top edge, offsets from its centre
-const ENTRY = { first: 24, step: 16, min: 8, inset: 18 };   // extra entries on a child's bottom edge (first parent = centre)
+// Ports, top and bottom alike (Story 10.30): one line → centre; several → the straight one takes the centre, the rest fan
+// to their side; none straight → the centre stays free. A merge-up exit never takes the centre and sits MERGE_UP_SHIFT
+// outside its slot (it climbs its parent's column past the entries of the cards above).
+const ENTRY = { first: 24, step: 16, min: 8, inset: 18 };   // the fan on either edge, offsets from the centre
+const MERGE_UP_SHIFT = 4;
 
 function roundedPath(raw, r) {
   const pts = raw.filter((p, i) => i === 0 || p[0] !== raw[i - 1][0] || p[1] !== raw[i - 1][1]);
@@ -203,14 +206,16 @@ function routeLines(nodes, N, W, H, { bus = false, free = false } = {}) {
     const own = Math.floor(span / min);
     return [...Array(m).keys()].map(k => first + Math.min(k, own) * min);
   };
-  // entries on the child's bottom edge: first parent in the centre, every other parent beside it — the farther the parent, the farther out.
-  // Dashed edges through the same hidden parent are one parent: they share its port (and its gap marker).
+  // entries on the child's bottom edge: a lone line or the straight one in the centre, every other parent beside it — the farther
+  // the parent, the farther out. Dashed edges through the same hidden parent are one parent: they share its port (and its gap marker).
   const approach = e => e.kind === "gutter" ? e.xg : e.p.cx;
   const ports = new Map();
   nodes.forEach(n => {
     const ins = E.filter(e => e.n === n), slots = new Map();
-    ins.forEach(e => { if (e.i === 0) e.xi = n.cx; const k = e.dashed ? "~" + e.via : e.from; if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); });
-    slots.forEach(es => { const c = es.find(e => e.xi != null); if (c) es.forEach(e => { e.xi = c.xi; }); });
+    ins.forEach(e => { const k = e.dashed ? "~" + e.via : e.from; if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); });
+    const owners = [...slots.values()];
+    const centre = owners.length === 1 ? owners[0] : owners.find(es => es[0].kind === "straight");
+    if (centre) centre.forEach(e => { e.xi = n.cx; });
     [-1, 1].forEach(s => {
       const list = [...slots.values()].filter(es => es[0].xi == null && Math.sign(approach(es[0]) - n.cx) === s)
         .sort((a, b) => Math.abs(approach(a[0]) - n.cx) - Math.abs(approach(b[0]) - n.cx) || a[0].p.u - b[0].p.u);
@@ -219,18 +224,12 @@ function routeLines(nodes, N, W, H, { bus = false, free = false } = {}) {
     });
     ports.set(n.id, [...new Set(ins.map(e => e.xi))]);
   });
-  // exits on the parent's top edge, per side: lines climbing the parent's own lane innermost, then by how far they turn.
-  // The width decides the spacing: 12px while they fit, squeezed to 7px, then the outermost lines share one exit and split above the card.
-  const exitFan = m => {
-    const lo = EXIT.inset, hi = W / 2 - EXIT.inset;
-    if (m <= 1) return [Math.max(lo, Math.min(W * 0.28, hi))];
-    const st = Math.min(EXIT.step, (hi - lo) / (m - 1));
-    if (st < EXIT.min) return fan(m, lo, EXIT.step, EXIT.min, hi);
-    const a0 = Math.max(lo, Math.min(W * 0.28 - (m - 1) * st / 2, hi - (m - 1) * st));
-    return [...Array(m).keys()].map(k => a0 + k * st);
-  };
+  // exits on the parent's top edge, per side: lines climbing the parent's own lane innermost, then by how far they turn —
+  // the entries' fan (24px out, 16px apart, squeezed to 8px, then the outermost lines share one exit and split above the card).
+  const exitFan = m => fan(m, ENTRY.first, ENTRY.step, ENTRY.min, W / 2 - ENTRY.inset);
   nodes.forEach(p => {
     const outs = E.filter(e => e.p === p);
+    if (outs.length === 1 && outs[0].kind !== "mergeUp") { outs[0].xo = p.cx; return; }
     outs.forEach(e => { if (e.kind === "straight") e.xo = p.cx; });
     [-1, 1].forEach(s => {
       const side = outs.filter(e => e.kind !== "straight" && e.side === s);
@@ -240,11 +239,11 @@ function routeLines(nodes, N, W, H, { bus = false, free = false } = {}) {
       const rest = side.filter(e => e.kind !== "mergeUp").sort((a, b) => Math.abs(turn(a) - p.cx) - Math.abs(turn(b) - p.cx));
       if (bus && rest.length) {
         const xs = exitFan(up.length + 1);
-        up.forEach((e, k) => { e.xo = p.cx + s * xs[k]; });
+        up.forEach((e, k) => { e.xo = p.cx + s * (xs[k] + MERGE_UP_SHIFT); });
         rest.forEach(e => { e.xo = p.cx + s * xs[up.length]; e.bus = p.id + "|" + s; });
       } else {
         const list = [...up, ...rest], xs = exitFan(list.length);
-        list.forEach((e, k) => { e.xo = p.cx + s * xs[k]; });
+        list.forEach((e, k) => { e.xo = p.cx + s * (xs[k] + (k < up.length ? MERGE_UP_SHIFT : 0)); });
       }
     });
   });

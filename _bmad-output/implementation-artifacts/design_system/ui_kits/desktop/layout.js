@@ -157,11 +157,13 @@ function route(nodes, by, W, H, free) {
   });
   const gut = new Map();
   E.filter((e) => e.kind === "gutter").forEach((e) => { const k = gut.get(e.gx) || 0; gut.set(e.gx, k + 1); e.xg = e.gx + (k ? (k % 2 ? 6 : -6) * Math.ceil(k / 2) : 0); });
-  // entries: first parent in the centre, every other parent beside it — the farther the parent, the farther out
+  // entries: a lone or the straight line in the centre (none straight: the centre stays free), every other parent beside it — the
+  // farther the parent, the farther out
   const approach = (e) => (e.kind === "gutter" ? e.xg : e.p.cx), used = new Map();
   nodes.forEach((n) => {
     const ins = E.filter((e) => e.n === n);
-    ins.forEach((e) => { if (e.i === 0) e.xi = n.cx; });
+    const centre = ins.length === 1 ? ins[0] : ins.find((e) => e.kind === "straight");
+    if (centre) centre.xi = n.cx;
     [-1, 1].forEach((s) => {
       const list = ins.filter((e) => e.xi == null && Math.sign(approach(e) - n.cx) === s).sort((a, b) => Math.abs(approach(a) - n.cx) - Math.abs(approach(b) - n.cx) || a.p.u - b.p.u);
       const xs = GP.entries(list.length, W);
@@ -170,9 +172,11 @@ function route(nodes, by, W, H, free) {
     ins.forEach((e) => { if (e.xi == null) e.xi = n.cx; });
     used.set(n.id, ins.map((e) => e.xi));
   });
-  // exits per side: lines climbing the parent's own lane innermost, then by how far they turn; the width decides the spacing
+  // exits, as the entries: a lone line (not a merge-up) or the straight one in the centre, the rest per side — lines climbing the
+  // parent's own lane innermost (MERGE_UP_SHIFT outside their slot), then by how far they turn; the width decides the spacing
   nodes.forEach((p) => {
     const outs = E.filter((e) => e.p === p);
+    if (outs.length === 1 && outs[0].kind !== "mergeUp") { outs[0].xo = p.cx; return; }
     outs.forEach((e) => { if (e.kind === "straight") e.xo = p.cx; });
     [-1, 1].forEach((s) => {
       const side = outs.filter((e) => e.kind !== "straight" && e.side === s);
@@ -181,7 +185,7 @@ function route(nodes, by, W, H, free) {
       const upL = side.filter((e) => e.kind === "mergeUp").sort((a, b) => b.n.u - a.n.u || Math.abs(a.xi - p.cx) - Math.abs(b.xi - p.cx));
       const rest = side.filter((e) => e.kind !== "mergeUp").sort((a, b) => Math.abs(turn(a) - p.cx) - Math.abs(turn(b) - p.cx));
       const list = [...upL, ...rest], xs = GP.exits(list.length, W);
-      list.forEach((e, k) => { e.xo = p.cx + s * xs[k]; });
+      list.forEach((e, k) => { e.xo = p.cx + s * (xs[k] + (k < upL.length ? GP.MERGE_UP_SHIFT : 0)); });
     });
   });
   E.forEach((e) => {

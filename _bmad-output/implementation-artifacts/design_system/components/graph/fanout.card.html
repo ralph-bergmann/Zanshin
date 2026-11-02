@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x470" name="Graph lines — exit fan-out" subtitle="The same nine lines at 400 / 240 / 160px card width: 12px apart · squeezed · the outermost share one exit" -->
+<!-- @dsCard group="Components" viewport="700x470" name="Graph lines — exit fan-out" subtitle="The same nine lines at 400 / 240 / 160px card width: 16px apart · squeezed · the outermost share one exit" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -38,8 +38,8 @@
     <div>
       <Stage w={400} title="400 px"/>
       <Stage w={240} title="240 px"/>
-      <Stage w={160} title="160 px" note="7 px apart · the outer three share one exit"/>
-      <div className="foot">Exits sit <b>12px</b> apart while they fit between 18px from the centre and 18px from the card edge (a single fork leaves 0.28 × width from the centre); with less width they squeeze down to <b>7px</b>; beyond that the outermost lines share one exit and split above the card. Extra entries on a child: 16px apart, down to 8. <code>GraphPorts.exits(m, width)</code></div>
+      <Stage w={160} title="160 px" note="8 px apart · the outer five share one exit"/>
+      <div className="foot">Top and bottom follow one rule set: a lone line sits at the centre; of several, the straight one does and the rest fan to their side; with none straight the centre stays free. The fan starts <b>24px</b> out, <b>16px</b> apart while it fits within 18px of the card edge, squeezes down to <b>8px</b>, and beyond that the outermost lines share one port and split above the card. A merge-up exit sits 4px outside its slot. <code>GraphPorts.exits(m, width)</code></div>
     </div>
   );
   ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);

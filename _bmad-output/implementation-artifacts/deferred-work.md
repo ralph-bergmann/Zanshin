@@ -2590,3 +2590,24 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **`RepoHandle.interdiff` (the paths view behind evolog `-p` / `jj interdiff`) carries no `JJ-COMMIT-DESCRIPTION` block.** Low.
   - The CLI prints it through `show_inter_diff` for both (`cli/src/diff_util.rs` @ v0.46.0); `InterdiffView` (Story 9.6, `packages/zanshin_core/lib/src/worker/handle.dart` `RepoHandle.interdiff`) returns paths only. `RepoHandle.diff(interdiff: true)` has it since this run.
   - **Follow-up:** a description field on the interdiff view (or callers moving to `diff(interdiff: true)`).
+
+## Surfaced in Story 10.30 (bmad-build-auto, 2026-11-02)
+
+- **Merge-up exits deviate from the uniform port rules: they never take the centre and sit 4 px outside their fan slot.** Medium.
+  - Applied literally, the rules gave 199 collinear overlaps on the 10k synthetic free layout (a lone merge-up exit runs up its parent's column on the centre / fan slots the entries above use); `_mergeUpShift` in `packages/zanshin_core/lib/src/graph_layout/router.dart` brings it to 0 and keeps the invariants (rule 5) green. A lone merge-up exit is therefore not centred and its offset differs from the entry fan.
+  - **Follow-up:** Ralph confirms the exception or picks another way to avoid the overlap (e.g. a different column for the climb).
+- **The "straight line at a merge's bottom takes the centre even if not the first parent" decision never applies: the router only classifies a first parent as `kindStraight`.** Low.
+  - A same-column second parent is routed as a gutter line, so it fans like the others and the centre stays free (pinned by `story_10_30_a_merge_whose_first_parent_bends_leaves_the_entry_centre_free` in `packages/zanshin_core/test/graph_layout/router_test.dart`).
+  - **Follow-up:** Ralph decides whether a same-column non-first parent should take the centre geometrically; otherwise none.
+- **An alias / parameter-expansion revset error's one-line message names only the expansion, not the failure inside it.** Low.
+  - `parse_detail` builds `message` from the top-level pest render (`crates/zanshin-jj/src/revset.rs` `render_message`), e.g. "Error at N: In alias `x`"; the CLI prints the cause chain as "Caused by:" lines.
+  - **Follow-up:** append the bottom error's message to the sentence for `InAliasExpansion` / `InParameterExpansion`.
+- **The inspector's copyable ids work only with a pointer.** Medium.
+  - `_CopyId` (`app/lib/src/features/graph/graph_inspector.dart`) is a `GestureDetector` + `Semantics(onTap)`, not focusable, no Enter/Space; the DS `ZKCopyId` (`design_system/ui_kits/desktop/inspector.jsx`) has `tabIndex` but no key handler.
+  - **Follow-up:** make the ids focusable with Enter/Space activation (app and DS kit).
+- **The DS UI kit's graph layout reads the new port API from a bundle that is not regenerated yet, and counts entry lines by edges, not slot owners.** Low.
+  - `design_system/ui_kits/desktop/layout.js` reads `GP.MERGE_UP_SHIFT` / `GP.exits`, absent from `_ds_bundle.js` until the next republish (merge-up exits compute NaN meanwhile); it centres on `ins.length === 1` and drops lines whose approach equals `cx`, where the router counts distinct slot owners.
+  - **Follow-up:** regenerate the bundle at the republish (`design-artifacts`) and align `layout.js` with `router.dart`'s owner count.
+- **Copying a parent id is tested only for a parent inside the layout.** Low.
+  - `_Meta._parents()` has a not-in-layout and a stale branch for `full`; `graph_inspector_test.dart` taps only `inspector-parent-0` of an in-layout parent.
+  - **Follow-up:** one test per branch asserting the clipboard gets the full id.
