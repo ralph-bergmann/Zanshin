@@ -22,6 +22,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/hunks.rs (diff, DiffRevisions::Revision)
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-loop-11-13-10-25-leftovers, commit cbdf25762b460b3cfa647e508c04d7697c2b4269): -r diffs its set as cmd_diff does, gaps refused; RevisionDiff.commit_ids carries the heads across the FFI.
   - summary: >-
       A revision that resolves to several commits is refused without the CLI's "resolved to these
       revisions" hint.
@@ -32,6 +34,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/push.rs (single_commit)
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-loop-11-13-10-25-leftovers, commit cbdf25762b460b3cfa647e508c04d7697c2b4269): single_commit adds the CLI's summary hint (five commits, "  ..." past five).
 ---
 
 <intent-contract>

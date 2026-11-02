@@ -2534,10 +2534,10 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in the closing run of Story 10.24 (bmad-build-auto, 2026-11-01)
 
-- **`Repo::diff`'s `-r` takes one revision only; the CLI's multi-revision `-r` (a connected set diffed as one, gaps refused) is not ported.** Low.
+- ~~**`Repo::diff`'s `-r` takes one revision only; the CLI's multi-revision `-r` (a connected set diffed as one, gaps refused) is not ported.**~~ — RESOLVED 2026-11-02 (spec-loop-11-13-10-25-leftovers, commit cbdf25762b460b3cfa647e508c04d7697c2b4269): `-r` text diffs its set as `cmd_diff` does (the roots' merged parents against the merged heads, copy records per parent × head, gaps refused with the CLI's message and hint, an empty set empty); `RevisionDiff.commit_ids` / `Diff.commit_ids` / Dart `Diff.commitIds` carry the heads; oracle `diff_revisions.rs` witnesses the gap refusal and a range's `--summary`. Low.
   - `cmd_diff` (`cli/src/commands/diff.rs` @ v0.46.0) reads `-r` through `parse_union_revsets`; `crates/zanshin-jj/src/hunks.rs` (`diff`) refuses a set of several commits ("resolved to more than one revision").
   - **Follow-up:** port the range form (merged parents of the roots against the merged heads, the gaps refusal); `RevisionDiff.commit_id` then needs the heads across the FFI.
-- **A revision that resolves to several commits is refused without the CLI's "resolved to these revisions" hint.** Low.
+- ~~**A revision that resolves to several commits is refused without the CLI's "resolved to these revisions" hint.**~~ — RESOLVED 2026-11-02 (spec-loop-11-13-10-25-leftovers, commit cbdf25762b460b3cfa647e508c04d7697c2b4269): `single_commit` takes the call's `Templates` and adds the CLI's one hint (heading, up to five `templates.commit_summary` lines, `  ...` past five), before `bookmark advance`'s own hint; oracle `diff_revisions.rs` compares it verbatim with `jj diff --from 'all()'`. Low.
   - `crates/zanshin-jj/src/push.rs` (`single_commit`) returns `hints: vec![]`; the CLI's `format_multiple_revisions_error` (`cli/src/revset_util.rs` @ v0.46.0) lists up to five commit summaries. Shared by git push, bookmark advance and now diff.
   - **Follow-up:** add the hint with the commit summaries in `single_commit`.
 
@@ -2546,3 +2546,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The commit/split composer, its checkboxes and the squash form have not been compared against the DS inspector in the running catalogue; the Widgetbook has no composer use case of its own.** Low.
   - Unattended run: no Marionette / Playwright check; only widget tests check the look (`app/lib/src/features/graph/graph_inspector.dart` `_Composer`; `app/widgetbook/folders/graph.dart` shows it only through the inspector demo).
   - **Follow-up:** a Marionette check of the composer (@ commit, split, the all-selected hint, the warn line) and the squash form against DS `ui_kits/desktop/inspector.jsx` / `kit.css:128-144`.
+
+## Surfaced in the story-loop leftovers run (bmad-build-auto, 2026-11-02)
+
+- **The Widgetbook catalogue no longer analyzes: its fake `GraphDetails.diff` still builds `Diff(commitId: …)`, which became `commitIds` (commit cbdf2576).** Medium.
+  - `dart analyze` in `app/` reports 2 errors at `app/widgetbook/folders/graph.dart:889` / `:895`; the run was told not to touch `app/widgetbook/` (a parallel Marionette session), so the end-of-loop gate's `dart analyze app` goes red until it is fixed.
+  - **Follow-up:** in `app/widgetbook/folders/graph.dart:895` replace `commitId: commitId,` with `commitIds: <String>[commitId],` (the loop's fix-up run, or Ralph once the catalogue session is done).
