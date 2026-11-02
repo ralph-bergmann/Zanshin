@@ -2593,10 +2593,10 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 10.30 (bmad-build-auto, 2026-11-02)
 
-- **Merge-up exits deviate from the uniform port rules: they never take the centre and sit 4 px outside their fan slot.** Medium.
+- ~~**Merge-up exits deviate from the uniform port rules: they never take the centre and sit 4 px outside their fan slot.**~~ — RESOLVED 2026-11-02 (spec-10-30-graph-ports-local-direction, commit cbcd7492): the exception is gone; ports go by local direction and a column tie-break (longer vertical keeps its port) keeps 0 collinear overlaps. Medium.
   - Applied literally, the rules gave 199 collinear overlaps on the 10k synthetic free layout (a lone merge-up exit runs up its parent's column on the centre / fan slots the entries above use); `_mergeUpShift` in `packages/zanshin_core/lib/src/graph_layout/router.dart` brings it to 0 and keeps the invariants (rule 5) green. A lone merge-up exit is therefore not centred and its offset differs from the entry fan.
   - **Follow-up:** Ralph confirms the exception or picks another way to avoid the overlap (e.g. a different column for the climb).
-- **The "straight line at a merge's bottom takes the centre even if not the first parent" decision never applies: the router only classifies a first parent as `kindStraight`.** Low.
+- ~~**The "straight line at a merge's bottom takes the centre even if not the first parent" decision never applies: the router only classifies a first parent as `kindStraight`.**~~ — RESOLVED 2026-11-02 (spec-10-30-graph-ports-local-direction, commit cbcd7492): Ralph decided "straight" = vertical at the port, whatever the kind; a same-column second parent turns below its child and fans. Low.
   - A same-column second parent is routed as a gutter line, so it fans like the others and the centre stays free (pinned by `story_10_30_a_merge_whose_first_parent_bends_leaves_the_entry_centre_free` in `packages/zanshin_core/test/graph_layout/router_test.dart`).
   - **Follow-up:** Ralph decides whether a same-column non-first parent should take the centre geometrically; otherwise none.
 - ~~**An alias / parameter-expansion revset error's one-line message names only the expansion, not the failure inside it.**~~ — RESOLVED 2026-11-02 (spec-10-30-closing-cause-chain-copy-id-keyboard, commit 8dcbdfad): the one-line message appends each source() cause, as the CLI's 'Caused by:'. Low.
@@ -2623,3 +2623,21 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **`epic-10-context.md` still lists Story 10.30 as backlog, and its "show jj's own error text in place" rule contradicts the new one-sentence rule beside it.** Low.
   - `_bmad-output/implementation-artifacts/epic-10-context.md:41` "(backlog)"; `:51` vs `:52` not reconciled.
   - **Follow-up:** reconcile at the next epic-context recompile (the one-sentence rule wins).
+
+## Surfaced in the graph-port follow-up of Story 10.30 (bmad-build-auto, 2026-11-02)
+
+- **A card edge's only line leaves the centre when it loses the column tie-break (20 of 8710 lone exits on the 10k free layout).** Medium.
+  - The literal per-edge rule gave 342 collinear overlaps (339 fork entry vs merge-up exit in one column); the longest-vertical tie-break carried to the column brings it to 0 (`packages/zanshin_core/lib/src/graph_layout/router.dart` `_banCollisions`), at the cost of these lone lines.
+  - **Follow-up:** Ralph confirms this reading of "fix it in the tie-breaking", or picks another resolution; otherwise none.
+- **The rtvlvrzr wrong-side mechanism is not reproduced by a test: the old exits' side (`c.sides`) already equals the turn target's side in every shape the classifier produces.** Medium.
+  - `router_test.dart` `ports_by_local_direction_merge_ups_leave_on_the_side_they_turn_to` fails on the old code only for the centre / +4 shift.
+  - **Follow-up:** check rtvlvrzr in the running app; if still wrong, capture its rows, columns and kinds as a witness.
+- **The router's settle loop stops at 8 passes without reporting leftover collisions.** Low.
+  - `router.dart` `build()` ends on `_settlePasses` silently; only the app's 10k collinear check would notice (0 today).
+  - **Follow-up:** report an unsettled layout like the other budgets, or none.
+- **No router unit test drives the tie-break's extra-fan-slot branch or a free-layout reach between 0 and gapY.** Low.
+  - The witnesses reach only the centre-ban branch; the 10k free layout exercises both.
+  - **Follow-up:** two small `router_test.dart` cases.
+- **No running check compares the JS port routers (`layout.js`, `graph-layout.jsx`) with `router.dart`.** Low.
+  - Only a scratch harness ran `graph-layout.jsx` on six router-test layouts; `spikes/graph-layout-ab/tools/router-oracle.mjs` targets the `e74ced3` export and the gate never runs it.
+  - **Follow-up:** a shared-case JS↔Dart port oracle, or none.

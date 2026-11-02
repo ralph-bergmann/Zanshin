@@ -18,6 +18,8 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/graph_layout/router.dart _mergeUpShift
     severity: medium
+    resolved: >-
+      2026-11-02 — fixed (spec-10-30-graph-ports-local-direction, commit cbcd7492): the exception is gone; ports by local direction plus a column tie-break keep 0 collinear overlaps
   - summary: >-
       The non-first straight parent decision never applies: only a first parent is kindStraight; a same-column second parent is a gutter line.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/graph_layout/router.dart _entries
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-10-30-graph-ports-local-direction, commit cbcd7492): Ralph decided "straight" = vertical at the port, whatever the kind
   - summary: >-
       Alias / parameter-expansion revset errors' one-line message names the expansion, not the failure inside it.
     evidence: |-
