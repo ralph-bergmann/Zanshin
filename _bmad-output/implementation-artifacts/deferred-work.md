@@ -1030,7 +1030,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - Decision (g) keeps configurations and the default search global, as designed (RC:23, :40). A `files()` or author rule names one repository; in another it matches nothing.
   - A configuration chosen as the default search then opens other repositories on an empty graph, and ✕ leads back to it.
   - **Follow-up:** revisit after use. The options: per-repository configurations, or a default search per repository.
-- **No raw revset in the floating client.** Low; deferred (decision (g), Claude's default).
+- ~~**No raw revset in the floating client.**~~ — RESOLVED 2026-11-02 (Story 10.28, commit 97d460eacae953f5801fbc660eff2c5cb2e9775e): a seventh rule function `revset` (free text, grouped when joined or negated) in the Configurations window; jj's error text and 9.25's candidates ("Did you mean …") show at its row. Low; deferred (decision (g), Claude's default).
   - The six rule functions cannot express `trunk()..@`, `bookmarks()`, `conflicts()` or a user's own `[revset-aliases]`. Only `revsets.log`, set outside Zanshin, reaches such a revset (as the `jj log` built-in).
   - **Follow-up:** 10.22's design question (b). If it is built, 9.25's `NoSuchFunction` candidates gain a consumer.
   - **2026-11-02, Ralph:** yes, as a seventh rule type → new Story 10.28.

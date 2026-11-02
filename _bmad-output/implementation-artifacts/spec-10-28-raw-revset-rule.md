@@ -148,7 +148,7 @@ deferred:
 
 ## Auto Run Result
 
-Status: done (commit: see the closing commit below this run's code commit; hashes listed in Deferred work items).
+Status: done (commit 97d460eacae953f5801fbc660eff2c5cb2e9775e; review patches included in it).
 
 **Summary.** The jj log Configurations window has a seventh rule function, `revset`: free revset text, joined with the structured rules through `zanshin_core`'s builders (new `revsetGroup`; verbatim when it is the only kept term and not negated, else `(…)` / `~(…)`). Its row has the not chip, the function select (`revset`, no `()`), one mono value field (placeholder `trunk()..@`) and remove — no mode, no `Aa`. The backend already checks every count like `jj log -r` with the effective `[revset-aliases]` (9.25); a parse error whose span lies in a raw rule, an end-of-input error after an alone raw term, and a spanless resolution error (the raw rule naming jj's symbol, else the only raw rule) show jj's text at that row, plus "Did you mean `a`, `b`?" from jj's candidates. The preview, list detail, search menu and default search show/send the raw text inside the joined `-r` unchanged.
 
@@ -162,7 +162,7 @@ Status: done (commit: see the closing commit below this run's code commit; hashe
 - Tests: `revset_config_expression_test.dart`, `revset_configs_window_test.dart` (incl. `_Rig.reloadSaved`), `graph_search_field_test.dart`, `app_settings_test.dart`.
 
 **Deferred work items given to this story.**
-- **I1 — fixed** (code commit in the list below). A raw `revset` rule expresses `trunk()..@`, `bookmarks()`, `conflicts()` and the user's `[revset-aliases]`; 9.25's `NoSuchFunction` candidates are its row's "did you mean" hint.
+- **I1 — fixed (97d460eacae953f5801fbc660eff2c5cb2e9775e).** A raw `revset` rule expresses `trunk()..@`, `bookmarks()`, `conflicts()` and the user's `[revset-aliases]`; 9.25's `NoSuchFunction` candidates are its row's "did you mean" hint.
 
 **Review.** One pass, 26 findings: 0 high, 3 medium, 18 low, 5 false, 0 maybe-false. Patched entries by verdict: 1 medium (spanless errors never reached the raw row — 3 rows of one root cause), 5 low (end-of-input marking with an alone-term witness, the `revsetGroup` doc's unbalanced-parentheses limit, the ARB description, a no-candidates witness, the `revset` label witness). Deferred: 1 low (the visual check). Rejected rows and their reasons are in the triage log (downgrade decoding, function switch keeps the value, `|`-join test, jj's candidate format, hand-built alias witness, paren balancing as client-side validation, fake-port window tests, repo-layer alias, controller-level default-search check; false: alias span, grouping vs verbatim, parity oracle, persistence, Auto Run Result).
 
