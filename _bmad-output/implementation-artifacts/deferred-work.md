@@ -2419,18 +2419,28 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
   - `GraphSearchController.wantCounts` / `lookup` / `countOf` return early when `model.layout?.operationId == null` (`app/lib/src/features/graph/graph_search_controller.dart:241-296`); the catalogue's `RecordedGraphLayout.fromSpec` had none, which is why no "N changes" showed (fixed in spec-fix-graph-search-ds-check-2026-11-01). `RecordedGraphLayout` is the only `GraphLayout` in `app/lib`, and `RepoGraphSource` takes its layout from outside until 10.12.
   - **Follow-up:** when 10.12 builds the layout from the backend topology, pass the topology's `operation_id` as `operationId`, and test that a filter row in the mounted search shows its count.
 
+## Surfaced in Story 11.17 (bmad-build-auto, 2026-11-02)
+
+- **While the project window is in full screen, Minimize and Zoom stay enabled and the item keeps the title "Enter Full Screen".** Low.
+  - The engine's submenus have `autoenablesItems = NO` (`FlutterMenuPlugin.mm:372`), so `NSWindow`'s menu validation never greys or retitles them; `AppMenuModel.windowItemsEnabled` (`app/lib/src/features/shell/app_menu.dart`) sees only the key window. Pre-existing since 11.13.
+  - **Follow-up:** send the key window's full-screen state too and grey Minimize/Zoom and retitle the item ("Exit Full Screen", an ARB string) over `zanshin/menu_state`; none until Ralph wants it.
+- **The runner's XCTests (`MenuStateChannel`) run in no gate step.** Low.
+  - No `Makefile.toml` task or `crates/xtask/src/tasks/gate_plan.rs` rule runs `xcodebuild test`; Story 11.17 ran `app/macos/RunnerTests/RunnerTests.swift` by hand (2 passed).
+  - **Follow-up:** a gate step `xcodebuild test -workspace app/macos/Runner.xcworkspace -scheme Runner -only-testing:RunnerTests` for changes under `app/macos/` (a gate change for Ralph), or none.
+
 ## Surfaced in Story 11.13 (bmad-build-auto, 2026-11-01)
 
 - ~~**No project window publishes its graph to the menu bar yet, so Change, Go, View (Free/Compact/Detailed Cards/Group Stacks), Undo/Redo and Find stay grey in the running app.**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the mounted graph is published as appMenu.graph and cleared on unmount; GraphSearchShortcuts' own Cmd-F is retired. Medium.
   - `AppMenuModel.graph` (`app/lib/src/features/shell/app_menu.dart`) is written only by `app_menu_test.dart`; `GraphView` is not in `HomePage` until 10.12. Reload ⌘R refreshes the session only, until then.
   - **Follow-up:** 10.12 sets `appMenu.graph.value = GraphMenuBinding(model:, preferences:, focusSearch:)` when it mounts the graph and clears it when the graph unmounts; it also retires `GraphSearchShortcuts`' own ⌘F so the menu's ⌘F is the only one.
-- **The menu bar's toggles carry no checkmark, and Minimize, Zoom and Enter Full Screen are not greyed for the dialog windows.** Low.
+- ~~**The menu bar's toggles carry no checkmark, and Minimize, Zoom and Enter Full Screen are not greyed for the dialog windows.**~~ — RESOLVED 2026-11-02 (spec-11-17-menu-bar-state-native-channel, commit b131abd3): `zanshin/menu_state` sets the toggles' `state` and the three items' `isEnabled` per key window; the running-app look is still unchecked. Low.
   - Flutter's `PlatformMenuItem` has no checked state, and the engine ignores `PlatformProvidedMenuItem.enabled` (`FlutterMenuPlugin.mm` returns the copied system item early); the DS greying table asks for both (epics.md Story 11.13 scope 3).
   - **Follow-up:** a native method channel (design question (a)'s fallback) that sets `state` and `enabled` on those `NSMenuItem`s, or an engine change; none until Ralph wants it.
   - **2026-11-02, Ralph:** build the native method channel → new Story 11.17.
 - **The Window menu may not list the open windows.** Low (unverified in the running app).
   - The engine builds a fresh `NSMenu` for `NSApp.mainMenu` and never sets `NSApp.windowsMenu`, so AppKit has no menu to add the window list to.
   - **Follow-up:** check the running app; if the list is missing, set `NSApp.windowsMenu` to the Window submenu from the runner after each `Menu.setMenus`.
+  - **2026-11-02, Story 11.17 (commit b131abd3):** partly done — the runner sets `NSApp.windowsMenu` to the Window submenu after each menu build; the check in the running app is still open.
 - **Help › jj Documentation's URL carries the jj version separately from the jj-lib pin.** Low.
   - `jjDocumentationUrl` = `https://docs.jj-vcs.dev/v0.46.0/` (`app/lib/src/features/shell/app_menu.dart`); the pin-bump checklist in project-context.md does not name it.
   - **Follow-up:** add the URL to the pin-bump checklist (an agent-context edit).
