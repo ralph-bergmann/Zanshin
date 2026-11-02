@@ -1462,6 +1462,11 @@ mod tests {
                 "{error:?}"
             );
         }
+        let other = super::RevsetError::JjLibError("x".to_owned()).without_span();
+        assert!(
+            matches!(&other, super::RevsetError::JjLibError(m) if m == "x"),
+            "{other:?}"
+        );
     }
 
     /// An expansion's message carries the cause chain the CLI prints as "Caused by:" lines,
