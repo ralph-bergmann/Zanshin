@@ -32,6 +32,9 @@ abstract class GraphSettings with _$GraphSettings {
     /// The card width, 240 by default (160–400; the app clamps it where it uses it).
     @Default(240) double cardWidth,
 
+    /// Whether the minimap shows beside the graph (Story 10.16); on by default.
+    @Default(true) bool showMinimap,
+
     /// The jj log configurations (Story 10.22), in search-menu order (the default search leads the menu, the rest keep this order); global, not per repository.
     @Default(<RevsetConfiguration>[]) List<RevsetConfiguration> revsetConfigs,
 

@@ -18,6 +18,7 @@ import 'graph_card.dart';
 import 'graph_card_menu.dart';
 import 'graph_inspector.dart';
 import 'graph_layout.dart';
+import 'graph_minimap.dart';
 import 'graph_search_controller.dart';
 import 'graph_view_model.dart';
 import 'stale_notice.dart';
@@ -89,6 +90,10 @@ class GraphView extends StatefulWidget {
   /// The shell's `atPill` slot for [model] (Story 10.6 item 6): the @ pill while @ lies outside the unobscured area,
   /// fading out when it shows again.
   static Widget atPill(GraphViewModel model) => GraphAtPill(model: model);
+
+  /// The shell's `minimap` slot for [model] (Story 10.16): the whole graph in dots, read from the canvas through
+  /// [GraphViewModel.minimapSource].
+  static Widget minimap(GraphViewModel model, {Key? key}) => GraphMinimap(model: model, key: key);
 
   /// The shell's `inspector` slot for [inspector] (Story 10.8): the inspector while its graph has a selection, else
   /// null (the shell plays its exit). The host rebuilds it when the graph's model notifies.
@@ -343,6 +348,7 @@ class _GraphViewState extends State<GraphView> {
                 content: model.content,
                 onUserScroll: _reportUserScroll,
                 onWorkingCopyDirection: model.setWorkingCopyDirection,
+                minimapSource: model.minimapSource,
                 inspectorOpen: (shell?.inspectorWidth ?? 0) > 0,
                 entering: model.entering,
                 onExpandStack: model.expandStack,

@@ -268,6 +268,8 @@
   "@graphRetry": {"description": "Button that loads the graph again."},
   "graphEmpty": "No changes match this revset.",
   "@graphEmpty": {"description": "Caption when the graph's revset matches nothing; revset is jj's term."},
+  "graphMinimap": "Minimap",
+  "@graphMinimap": {"description": "VoiceOver label of the minimap: the whole graph in miniature beside the graph, with the visible part marked."},
   "staleTitle": "Working copy is stale",
   "@staleTitle": {"description": "The stale-working-copy notice's sentence; stale is jj's term."},
   "staleUpdate": "Update working copy",

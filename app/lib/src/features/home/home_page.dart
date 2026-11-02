@@ -110,6 +110,7 @@ class HomePage extends StatelessWidget {
                       syncGroup: graph.reload,
                       newChange: graph.newChange,
                       inspector: graph.inspector,
+                      minimap: graph.minimap,
                       atPill: graph.atPill,
                       staleNotice: graph.staleNotice,
                       toast: vm.toasts.occupied ? ShellToastView(toasts: vm.toasts) : null,

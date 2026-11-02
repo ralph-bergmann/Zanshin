@@ -20,7 +20,8 @@ mixin _$GraphSettings {
  GraphLayoutSetting get layout;/// Detailed (62 px) or compact (40 px) cards; detailed by default.
  bool get detailedCards;/// Whether linear runs of changes collapse into stack cards; on by default.
  bool get groupStacks;/// The card width, 240 by default (160–400; the app clamps it where it uses it).
- double get cardWidth;/// The jj log configurations (Story 10.22), in search-menu order (the default search leads the menu, the rest keep this order); global, not per repository.
+ double get cardWidth;/// Whether the minimap shows beside the graph (Story 10.16); on by default.
+ bool get showMinimap;/// The jj log configurations (Story 10.22), in search-menu order (the default search leads the menu, the rest keep this order); global, not per repository.
  List<RevsetConfiguration> get revsetConfigs;/// The default search: `log` (the built-in `jj log`), `all` (`all()`) or a [RevsetConfiguration.id]. An id no
 /// configuration has reads as `log` ([effectiveRevsetDefault]).
  String get revsetDefault;
@@ -37,20 +38,20 @@ $GraphSettingsCopyWith<GraphSettings> get copyWith => _$GraphSettingsCopyWithImp
 @override
 bool operator ==(Object other) {
   final _this = this as GraphSettings;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is GraphSettings&&(identical(other.layout, _this.layout) || other.layout == _this.layout)&&(identical(other.detailedCards, _this.detailedCards) || other.detailedCards == _this.detailedCards)&&(identical(other.groupStacks, _this.groupStacks) || other.groupStacks == _this.groupStacks)&&(identical(other.cardWidth, _this.cardWidth) || other.cardWidth == _this.cardWidth)&&const DeepCollectionEquality().equals(other.revsetConfigs, _this.revsetConfigs)&&(identical(other.revsetDefault, _this.revsetDefault) || other.revsetDefault == _this.revsetDefault));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is GraphSettings&&(identical(other.layout, _this.layout) || other.layout == _this.layout)&&(identical(other.detailedCards, _this.detailedCards) || other.detailedCards == _this.detailedCards)&&(identical(other.groupStacks, _this.groupStacks) || other.groupStacks == _this.groupStacks)&&(identical(other.cardWidth, _this.cardWidth) || other.cardWidth == _this.cardWidth)&&(identical(other.showMinimap, _this.showMinimap) || other.showMinimap == _this.showMinimap)&&const DeepCollectionEquality().equals(other.revsetConfigs, _this.revsetConfigs)&&(identical(other.revsetDefault, _this.revsetDefault) || other.revsetDefault == _this.revsetDefault));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as GraphSettings;
-  return Object.hash(runtimeType,_this.layout,_this.detailedCards,_this.groupStacks,_this.cardWidth,const DeepCollectionEquality().hash(_this.revsetConfigs),_this.revsetDefault);
+  return Object.hash(runtimeType,_this.layout,_this.detailedCards,_this.groupStacks,_this.cardWidth,_this.showMinimap,const DeepCollectionEquality().hash(_this.revsetConfigs),_this.revsetDefault);
 }
 
 @override
 String toString() {
   final _this = this as GraphSettings;
-  return 'GraphSettings(layout: ${_this.layout}, detailedCards: ${_this.detailedCards}, groupStacks: ${_this.groupStacks}, cardWidth: ${_this.cardWidth}, revsetConfigs: ${_this.revsetConfigs}, revsetDefault: ${_this.revsetDefault})';
+  return 'GraphSettings(layout: ${_this.layout}, detailedCards: ${_this.detailedCards}, groupStacks: ${_this.groupStacks}, cardWidth: ${_this.cardWidth}, showMinimap: ${_this.showMinimap}, revsetConfigs: ${_this.revsetConfigs}, revsetDefault: ${_this.revsetDefault})';
 }
 
 
@@ -61,7 +62,7 @@ abstract mixin class $GraphSettingsCopyWith<$Res>  {
   factory $GraphSettingsCopyWith(GraphSettings value, $Res Function(GraphSettings) _then) = _$GraphSettingsCopyWithImpl;
 @useResult
 $Res call({
- GraphLayoutSetting layout, bool detailedCards, bool groupStacks, double cardWidth, List<RevsetConfiguration> revsetConfigs, String revsetDefault
+ GraphLayoutSetting layout, bool detailedCards, bool groupStacks, double cardWidth, bool showMinimap, List<RevsetConfiguration> revsetConfigs, String revsetDefault
 });
 
 
@@ -78,13 +79,14 @@ class _$GraphSettingsCopyWithImpl<$Res>
 
 /// Create a copy of GraphSettings
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? layout = null,Object? detailedCards = null,Object? groupStacks = null,Object? cardWidth = null,Object? revsetConfigs = null,Object? revsetDefault = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? layout = null,Object? detailedCards = null,Object? groupStacks = null,Object? cardWidth = null,Object? showMinimap = null,Object? revsetConfigs = null,Object? revsetDefault = null,}) {
   return _then(GraphSettings(
 layout: null == layout ? _self.layout : layout // ignore: cast_nullable_to_non_nullable
 as GraphLayoutSetting,detailedCards: null == detailedCards ? _self.detailedCards : detailedCards // ignore: cast_nullable_to_non_nullable
 as bool,groupStacks: null == groupStacks ? _self.groupStacks : groupStacks // ignore: cast_nullable_to_non_nullable
 as bool,cardWidth: null == cardWidth ? _self.cardWidth : cardWidth // ignore: cast_nullable_to_non_nullable
-as double,revsetConfigs: null == revsetConfigs ? _self.revsetConfigs : revsetConfigs // ignore: cast_nullable_to_non_nullable
+as double,showMinimap: null == showMinimap ? _self.showMinimap : showMinimap // ignore: cast_nullable_to_non_nullable
+as bool,revsetConfigs: null == revsetConfigs ? _self.revsetConfigs : revsetConfigs // ignore: cast_nullable_to_non_nullable
 as List<RevsetConfiguration>,revsetDefault: null == revsetDefault ? _self.revsetDefault : revsetDefault // ignore: cast_nullable_to_non_nullable
 as String,
   ));
@@ -171,10 +173,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( GraphLayoutSetting layout,  bool detailedCards,  bool groupStacks,  double cardWidth,  List<RevsetConfiguration> revsetConfigs,  String revsetDefault)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( GraphLayoutSetting layout,  bool detailedCards,  bool groupStacks,  double cardWidth,  bool showMinimap,  List<RevsetConfiguration> revsetConfigs,  String revsetDefault)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _GraphSettings() when $default != null:
-return $default(_that.layout,_that.detailedCards,_that.groupStacks,_that.cardWidth,_that.revsetConfigs,_that.revsetDefault);case _:
+return $default(_that.layout,_that.detailedCards,_that.groupStacks,_that.cardWidth,_that.showMinimap,_that.revsetConfigs,_that.revsetDefault);case _:
   return orElse();
 
 }
@@ -192,10 +194,10 @@ return $default(_that.layout,_that.detailedCards,_that.groupStacks,_that.cardWid
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( GraphLayoutSetting layout,  bool detailedCards,  bool groupStacks,  double cardWidth,  List<RevsetConfiguration> revsetConfigs,  String revsetDefault)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( GraphLayoutSetting layout,  bool detailedCards,  bool groupStacks,  double cardWidth,  bool showMinimap,  List<RevsetConfiguration> revsetConfigs,  String revsetDefault)  $default,) {final _that = this;
 switch (_that) {
 case _GraphSettings():
-return $default(_that.layout,_that.detailedCards,_that.groupStacks,_that.cardWidth,_that.revsetConfigs,_that.revsetDefault);case _:
+return $default(_that.layout,_that.detailedCards,_that.groupStacks,_that.cardWidth,_that.showMinimap,_that.revsetConfigs,_that.revsetDefault);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -212,10 +214,10 @@ return $default(_that.layout,_that.detailedCards,_that.groupStacks,_that.cardWid
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( GraphLayoutSetting layout,  bool detailedCards,  bool groupStacks,  double cardWidth,  List<RevsetConfiguration> revsetConfigs,  String revsetDefault)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( GraphLayoutSetting layout,  bool detailedCards,  bool groupStacks,  double cardWidth,  bool showMinimap,  List<RevsetConfiguration> revsetConfigs,  String revsetDefault)?  $default,) {final _that = this;
 switch (_that) {
 case _GraphSettings() when $default != null:
-return $default(_that.layout,_that.detailedCards,_that.groupStacks,_that.cardWidth,_that.revsetConfigs,_that.revsetDefault);case _:
+return $default(_that.layout,_that.detailedCards,_that.groupStacks,_that.cardWidth,_that.showMinimap,_that.revsetConfigs,_that.revsetDefault);case _:
   return null;
 
 }
@@ -227,7 +229,7 @@ return $default(_that.layout,_that.detailedCards,_that.groupStacks,_that.cardWid
 @JsonSerializable()
 
 class _GraphSettings extends GraphSettings {
-  const _GraphSettings({this.layout = GraphLayoutSetting.free, this.detailedCards = true, this.groupStacks = true, this.cardWidth = 240,  List<RevsetConfiguration> revsetConfigs = const <RevsetConfiguration>[], this.revsetDefault = revsetDefaultLog}): _revsetConfigs = revsetConfigs,super._();
+  const _GraphSettings({this.layout = GraphLayoutSetting.free, this.detailedCards = true, this.groupStacks = true, this.cardWidth = 240, this.showMinimap = true,  List<RevsetConfiguration> revsetConfigs = const <RevsetConfiguration>[], this.revsetDefault = revsetDefaultLog}): _revsetConfigs = revsetConfigs,super._();
   factory _GraphSettings.fromJson(Map<String, dynamic> json) => _$GraphSettingsFromJson(json);
 
 /// The layout mode; [GraphLayoutSetting.free] by default.
@@ -238,6 +240,8 @@ class _GraphSettings extends GraphSettings {
 @override@JsonKey() final  bool groupStacks;
 /// The card width, 240 by default (160–400; the app clamps it where it uses it).
 @override@JsonKey() final  double cardWidth;
+/// Whether the minimap shows beside the graph (Story 10.16); on by default.
+@override@JsonKey() final  bool showMinimap;
 /// The jj log configurations (Story 10.22), in search-menu order (the default search leads the menu, the rest keep this order); global, not per repository.
  final  List<RevsetConfiguration> _revsetConfigs;
 /// The jj log configurations (Story 10.22), in search-menu order (the default search leads the menu, the rest keep this order); global, not per repository.
@@ -264,18 +268,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _GraphSettings&&(identical(other.layout, layout) || other.layout == layout)&&(identical(other.detailedCards, detailedCards) || other.detailedCards == detailedCards)&&(identical(other.groupStacks, groupStacks) || other.groupStacks == groupStacks)&&(identical(other.cardWidth, cardWidth) || other.cardWidth == cardWidth)&&const DeepCollectionEquality().equals(other.revsetConfigs, _revsetConfigs)&&(identical(other.revsetDefault, revsetDefault) || other.revsetDefault == revsetDefault));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _GraphSettings&&(identical(other.layout, layout) || other.layout == layout)&&(identical(other.detailedCards, detailedCards) || other.detailedCards == detailedCards)&&(identical(other.groupStacks, groupStacks) || other.groupStacks == groupStacks)&&(identical(other.cardWidth, cardWidth) || other.cardWidth == cardWidth)&&(identical(other.showMinimap, showMinimap) || other.showMinimap == showMinimap)&&const DeepCollectionEquality().equals(other.revsetConfigs, _revsetConfigs)&&(identical(other.revsetDefault, revsetDefault) || other.revsetDefault == revsetDefault));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,layout,detailedCards,groupStacks,cardWidth,const DeepCollectionEquality().hash(_revsetConfigs),revsetDefault);
+    return Object.hash(runtimeType,layout,detailedCards,groupStacks,cardWidth,showMinimap,const DeepCollectionEquality().hash(_revsetConfigs),revsetDefault);
 }
 
 @override
 String toString() {
-    return 'GraphSettings(layout: $layout, detailedCards: $detailedCards, groupStacks: $groupStacks, cardWidth: $cardWidth, revsetConfigs: $revsetConfigs, revsetDefault: $revsetDefault)';
+    return 'GraphSettings(layout: $layout, detailedCards: $detailedCards, groupStacks: $groupStacks, cardWidth: $cardWidth, showMinimap: $showMinimap, revsetConfigs: $revsetConfigs, revsetDefault: $revsetDefault)';
 }
 
 
@@ -286,7 +290,7 @@ abstract mixin class _$GraphSettingsCopyWith<$Res> implements $GraphSettingsCopy
   factory _$GraphSettingsCopyWith(_GraphSettings value, $Res Function(_GraphSettings) _then) = __$GraphSettingsCopyWithImpl;
 @override @useResult
 $Res call({
- GraphLayoutSetting layout, bool detailedCards, bool groupStacks, double cardWidth, List<RevsetConfiguration> revsetConfigs, String revsetDefault
+ GraphLayoutSetting layout, bool detailedCards, bool groupStacks, double cardWidth, bool showMinimap, List<RevsetConfiguration> revsetConfigs, String revsetDefault
 });
 
 
@@ -303,13 +307,14 @@ class __$GraphSettingsCopyWithImpl<$Res>
 
 /// Create a copy of GraphSettings
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? layout = null,Object? detailedCards = null,Object? groupStacks = null,Object? cardWidth = null,Object? revsetConfigs = null,Object? revsetDefault = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? layout = null,Object? detailedCards = null,Object? groupStacks = null,Object? cardWidth = null,Object? showMinimap = null,Object? revsetConfigs = null,Object? revsetDefault = null,}) {
   return _then(_GraphSettings(
 layout: null == layout ? _self.layout : layout // ignore: cast_nullable_to_non_nullable
 as GraphLayoutSetting,detailedCards: null == detailedCards ? _self.detailedCards : detailedCards // ignore: cast_nullable_to_non_nullable
 as bool,groupStacks: null == groupStacks ? _self.groupStacks : groupStacks // ignore: cast_nullable_to_non_nullable
 as bool,cardWidth: null == cardWidth ? _self.cardWidth : cardWidth // ignore: cast_nullable_to_non_nullable
-as double,revsetConfigs: null == revsetConfigs ? _self._revsetConfigs : revsetConfigs // ignore: cast_nullable_to_non_nullable
+as double,showMinimap: null == showMinimap ? _self.showMinimap : showMinimap // ignore: cast_nullable_to_non_nullable
+as bool,revsetConfigs: null == revsetConfigs ? _self._revsetConfigs : revsetConfigs // ignore: cast_nullable_to_non_nullable
 as List<RevsetConfiguration>,revsetDefault: null == revsetDefault ? _self.revsetDefault : revsetDefault // ignore: cast_nullable_to_non_nullable
 as String,
   ));

@@ -366,6 +366,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get graphEmpty => 'No changes match this revset.';
 
   @override
+  String get graphMinimap => 'Minimap';
+
+  @override
   String get staleTitle => 'Working copy is stale';
 
   @override

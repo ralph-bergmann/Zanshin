@@ -340,6 +340,37 @@ void main() {
     await _ms(tester, 1100);
   });
 
+  for (final reduce in <bool>[false, true]) {
+    testWidgets(
+      'the minimap returns during calm with a fade${reduce ? ' only under reduce motion' : ' and a slide'}; '
+      'hidden, it is out of the semantics tree (Story 10.16)',
+      (tester) async {
+        await _pump(tester, _Rig(), appearance: ZsAppearance(reduceMotion: reduce));
+        await tester.pumpAndSettle();
+        bool excluded() => tester
+            .widgetList<ExcludeSemantics>(
+              find.ancestor(
+                of: find.byKey(_minimap, skipOffstage: false),
+                matching: find.byType(ExcludeSemantics, skipOffstage: false),
+              ),
+            )
+            .any((widget) => widget.excluding);
+        expect(excluded(), isTrue, reason: 'hidden behind the inspector');
+
+        await _wheel(tester, 40);
+        await _ms(tester, 60);
+        expect(_fade(tester, _minimap), allOf(greaterThan(0), lessThan(1)));
+        expect(excluded(), isFalse);
+        final double moving = tester.getTopLeft(find.byKey(_minimap)).dx;
+        await _ms(tester, 400);
+        expect(_fade(tester, _minimap), 1);
+        final double rest = tester.getTopLeft(find.byKey(_minimap)).dx;
+        expect(moving, reduce ? rest : greaterThan(rest));
+        await _ms(tester, 1100);
+      },
+    );
+  }
+
   testWidgets('a text field focused in the inspector at the phase start keeps it for the whole phase', (tester) async {
     final field = TextEditingController();
     final focus = FocusNode();

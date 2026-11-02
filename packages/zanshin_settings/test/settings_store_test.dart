@@ -19,7 +19,7 @@ const _darkJson =
     '  "general": {\n    "hideControls": true,\n    "diffLayout": "unified"\n  },\n'
     '  "projects": {\n    "projects": [],\n    "groups": [],\n    "openProject": null\n  },\n'
     '  "graph": {\n    "layout": "free",\n    "detailedCards": true,\n    "groupStacks": true,\n'
-    '    "cardWidth": 240.0,\n    "revsetConfigs": [],\n    "revsetDefault": "log"\n  }\n}\n';
+    '    "cardWidth": 240.0,\n    "showMinimap": true,\n    "revsetConfigs": [],\n    "revsetDefault": "log"\n  }\n}\n';
 
 /// Answers `getApplicationSupportPath` with a fixed directory.
 final class FakePathProvider extends PathProviderPlatform with MockPlatformInterfaceMixin {

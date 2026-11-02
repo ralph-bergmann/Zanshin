@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/graph/graph_minimap.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart' show GraphLoad;
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/home/project_graph_host.dart';
@@ -40,6 +41,7 @@ void main() {
     final toasts = ShellToasts();
     addTearDown(toasts.dispose);
     final source = ScriptedGraphSource();
+    ProjectGraphSlots? lastSlots;
     await tester.runAsync(() => session.open('/r/zanshin'));
 
     await tester.pumpWidget(
@@ -51,13 +53,16 @@ void main() {
           appMenu: appMenu,
           toasts: toasts,
           sourceOf: (_) => source,
-          builder: (context, slots) => Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              ?slots.graph,
-              Align(alignment: Alignment.topRight, child: slots.reload),
-            ],
-          ),
+          builder: (context, slots) {
+            lastSlots = slots;
+            return Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                ?slots.graph,
+                Align(alignment: Alignment.topRight, child: slots.reload),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -67,6 +72,16 @@ void main() {
     final GraphView view = tester.widget<GraphView>(find.byType(GraphView));
     expect(view.inspectorModel, isNotNull, reason: "the card menu's Describe… opens the inspector");
     expect(view.bookmarks, isNotNull, reason: "the bookmark popover's Track / Untrack read");
+
+    // Story 10.16: the minimap slot follows View › Show Minimap (default on).
+    expect(lastSlots?.minimap, isA<GraphMinimap>());
+    appMenu.graph.value!.preferences.setShowMinimap(false);
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+    expect(lastSlots?.minimap, isNull);
+    appMenu.graph.value!.preferences.setShowMinimap(true);
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
 
     source.hold = true;
     final int reads = repos.repoAt('/r/zanshin').reads;

@@ -674,6 +674,12 @@ abstract class AppLocalizations {
   /// **'No changes match this revset.'**
   String get graphEmpty;
 
+  /// VoiceOver label of the minimap: the whole graph in miniature beside the graph, with the visible part marked.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimap'**
+  String get graphMinimap;
+
   /// The stale-working-copy notice's sentence; stale is jj's term.
   ///
   /// In en, this message translates to:

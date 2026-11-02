@@ -75,7 +75,8 @@ import 'projects.dart' show demoCapsule;
 /// "Card / States" shows one commit card per state (Story 10.3); "Peek / Open" the commit callout and "@ pill /
 /// Directions" the pill (Story 10.6); "Stale notice / Variants" the notice with its action, busy, and with Copy (Story
 /// 10.5). "Floating shell / Controls" hosts the graph's top-bar controls in the floating shell (Story 10.7) and the
-/// inspector of the selection, a mutable change selected when it opens (Story 10.8).
+/// inspector of the selection, a mutable change selected when it opens (Story 10.8). "Minimap / Recording" shows the
+/// minimap in the floating shell over the view-model demo's graph (Story 10.16).
 final graphFolder = WidgetbookFolder(
   name: 'Graph',
   children: <WidgetbookNode>[
@@ -177,6 +178,25 @@ final graphFolder = WidgetbookFolder(
               options: options,
               insets: _insets(context),
               nowMs: nowMs,
+            );
+          },
+        ),
+      ],
+    ),
+    WidgetbookComponent(
+      name: 'Minimap',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(
+          name: 'Recording',
+          builder: (context) {
+            final String revset = context.knobs.object.dropdown(
+              label: 'revset',
+              options: const <String>['jj log', 'all()'],
+            );
+            return _MinimapDemo(
+              key: _minimapDemoKeys[WidgetbookState.of(context)] ??= GlobalKey<_MinimapDemoState>(),
+              revset: revset,
+              options: _options(context),
             );
           },
         ),
@@ -626,6 +646,68 @@ class _ViewModelDemoState extends State<_ViewModelDemo> {
         child: Center(heightFactor: 1, child: GraphView.atPill(_model)),
       ),
     ],
+  );
+}
+
+/// One key per Widgetbook instance, as [_viewModelDemoKeys].
+final _minimapDemoKeys = Expando<GlobalKey<_MinimapDemoState>>('minimap demo key');
+
+/// "Minimap / Recording" (Story 10.16): the floating shell over a [GraphView] on the view-model demo's fake source,
+/// with the minimap in its slot (no inspector, so it shows) and the @ pill.
+class _MinimapDemo extends StatefulWidget {
+  const _MinimapDemo({required this.revset, required this.options, super.key});
+
+  final String revset;
+  final GraphViewOptions options;
+
+  @override
+  State<_MinimapDemo> createState() => _MinimapDemoState();
+}
+
+class _MinimapDemoState extends State<_MinimapDemo> {
+  final _source = FakeGraphSource(
+    (request) => requestedLayout(request.revset == 'all()' ? 'design-all' : 'design-default', request),
+  )..parentsLayout = _allParents;
+  final _model = GraphViewModel();
+  final _shell = ShellController();
+
+  @override
+  void initState() {
+    super.initState();
+    final int now = recordedNowMs('design-default');
+    _model.init(_source, clock: () => DateTime.fromMillisecondsSinceEpoch(now), mode: widget.options.layout);
+    _apply(null);
+  }
+
+  @override
+  void didUpdateWidget(_MinimapDemo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _apply(oldWidget);
+  }
+
+  void _apply(_MinimapDemo? old) {
+    _model
+      ..setMode(widget.options.layout)
+      ..setLaneOrder(widget.options.laneOrder);
+    if (old == null ? widget.revset == 'all()' : old.revset != widget.revset) {
+      _model.setRevset(widget.revset == 'all()' ? 'all()' : FakeGraphSource.defaults.log);
+    }
+  }
+
+  @override
+  void dispose() {
+    _model.dispose();
+    _shell.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FloatingShell(
+    controller: _shell,
+    canvas: const ZsCanvas(),
+    graph: GraphView(model: _model, options: widget.options),
+    minimap: GraphView.minimap(_model),
+    atPill: GraphView.atPill(_model),
   );
 }
 

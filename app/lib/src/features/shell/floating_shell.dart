@@ -633,23 +633,26 @@ class _MinimapMotionState extends State<_MinimapMotion> {
       offstage: _gone,
       child: IgnorePointer(
         ignoring: !visible,
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(end: visible ? 1 : 0),
-          duration: visible ? motion.durPanel : motion.durExitLg,
-          curve: visible ? motion.easeState : motion.easeExit,
-          builder: (context, shown, child) => ZsFade(opacity: shown.clamp(0, 1), child: child!),
+        child: ExcludeSemantics(
+          excluding: !visible,
           child: TweenAnimationBuilder<double>(
-            tween: Tween<double>(end: visible ? 0 : 1),
-            duration: motion.durSlide,
-            curve: motion.easeGlide,
-            onEnd: () {
-              if (!widget.visible) {
-                setState(() => _gone = true);
-              }
-            },
-            builder: (context, slid, child) =>
-                Transform.translate(offset: Offset(_MinimapMotion._slide * motion.motion * slid, 0), child: child),
-            child: widget.child,
+            tween: Tween<double>(end: visible ? 1 : 0),
+            duration: visible ? motion.durPanel : motion.durExitLg,
+            curve: visible ? motion.easeState : motion.easeExit,
+            builder: (context, shown, child) => ZsFade(opacity: shown.clamp(0, 1), child: child!),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: visible ? 0 : 1),
+              duration: motion.durSlide,
+              curve: motion.easeGlide,
+              onEnd: () {
+                if (!widget.visible) {
+                  setState(() => _gone = true);
+                }
+              },
+              builder: (context, slid, child) =>
+                  Transform.translate(offset: Offset(_MinimapMotion._slide * motion.motion * slid, 0), child: child),
+              child: widget.child,
+            ),
           ),
         ),
       ),

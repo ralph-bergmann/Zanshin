@@ -25,6 +25,7 @@ _GraphSettings _$GraphSettingsFromJson(Map<String, dynamic> json) =>
           'cardWidth',
           (v) => (v as num?)?.toDouble() ?? 240,
         ),
+        showMinimap: $checkedConvert('showMinimap', (v) => v as bool? ?? true),
         revsetConfigs: $checkedConvert(
           'revsetConfigs',
           (v) =>
@@ -50,6 +51,7 @@ Map<String, dynamic> _$GraphSettingsToJson(_GraphSettings instance) =>
       'detailedCards': instance.detailedCards,
       'groupStacks': instance.groupStacks,
       'cardWidth': instance.cardWidth,
+      'showMinimap': instance.showMinimap,
       'revsetConfigs': instance.revsetConfigs.map((e) => e.toJson()).toList(),
       'revsetDefault': instance.revsetDefault,
     };

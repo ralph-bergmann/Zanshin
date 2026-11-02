@@ -10,6 +10,7 @@ import 'package:zanshin_core/zanshin_core.dart';
 import '../undo_timeline/undo_timeline_model.dart' show UndoTimelineActions;
 import 'graph_content.dart';
 import 'graph_layout.dart';
+import 'graph_minimap.dart' show GraphMinimapSource;
 import 'graph_ports.dart';
 import 'graph_viewport.dart' show GraphReveal, GraphRevealAlignment, GraphTransition;
 
@@ -356,6 +357,9 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   /// Where @ lies outside the unobscured area, as the view last measured it; null while any part of it shows (or
   /// there is no @).
   ValueListenable<GraphDirection?> get workingCopyDirection => _workingCopyDirection;
+
+  /// The canvas's geometry and scroll controllers for the minimap in the shell's sibling slot (Story 10.16).
+  final minimapSource = GraphMinimapSource();
 
   /// The view's measurement of [workingCopyDirection].
   void setWorkingCopyDirection(GraphDirection? direction) {
@@ -1148,6 +1152,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     _tick?.cancel();
     _now.dispose();
     _workingCopyDirection.dispose();
+    minimapSource.dispose();
     _pulse.dispose();
     _flash.dispose();
     _outcome.dispose();

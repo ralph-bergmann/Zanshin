@@ -19,6 +19,7 @@ import 'graph_gap_callout.dart';
 import 'graph_gaps.dart';
 import 'graph_layout.dart';
 import 'graph_metrics.dart';
+import 'graph_minimap.dart' show GraphMinimapFrame, GraphMinimapSource;
 import 'graph_peek.dart';
 import 'graph_stack_card.dart';
 import 'graph_stack_popover.dart';
@@ -101,6 +102,7 @@ class GraphCanvas extends StatefulWidget {
     this.content,
     this.onUserScroll,
     this.onWorkingCopyDirection,
+    this.minimapSource,
     this.inspectorOpen = false,
     this.entering,
     this.onExpandStack,
@@ -170,6 +172,9 @@ class GraphCanvas extends StatefulWidget {
 
   /// Receives where @ lies off screen, on each change.
   final ValueChanged<GraphDirection?>? onWorkingCopyDirection;
+
+  /// Receives this canvas's geometry and scroll controllers after each build that changed them (Story 10.16).
+  final GraphMinimapSource? minimapSource;
 
   @override
   State<GraphCanvas> createState() => _GraphCanvasState();
@@ -408,6 +413,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   @override
   void dispose() {
     _unlisten(widget.cards);
+    widget.minimapSource?.retract(_vertical);
     widget.pulse?.removeListener(_pulseChanged);
     widget.flash?.removeListener(_flashChanged);
     _peekTimer?.cancel();
@@ -1198,6 +1204,24 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     final List<(int, Rect)> brackets = _brackets(rows, metrics);
     // After layout: the layout, the insets or the size may have moved @ in or out of view.
     SchedulerBinding.instance.addPostFrameCallback((_) => _measureDirection());
+    final GraphMinimapSource? minimap = widget.minimapSource;
+    if (minimap != null) {
+      final frame = GraphMinimapFrame(
+        layout: widget.layout,
+        rows: rows,
+        metrics: metrics,
+        geometry: _routes.geometryFor(widget.layout, metrics),
+        insets: widget.insets,
+        vertical: _vertical,
+        horizontal: _horizontal,
+      );
+      // After this frame: the minimap is a sibling slot, which must not rebuild while this one builds.
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted && identical(widget.minimapSource, minimap)) {
+          minimap.publish(frame);
+        }
+      });
+    }
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[

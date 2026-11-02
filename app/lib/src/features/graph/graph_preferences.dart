@@ -39,6 +39,9 @@ class GraphPreferences extends ChangeNotifier {
   /// Whether linear runs group into stacks.
   bool get groupStacks => _graph.groupStacks;
 
+  /// Whether the minimap shows (Story 10.16).
+  bool get showMinimap => _graph.showMinimap;
+
   /// The view's options; the stored width clamped to 160–400 and snapped to [cardWidthStep].
   GraphViewOptions get options =>
       GraphViewOptions(layout: layout, detailedCards: _graph.detailedCards, cardWidth: snapCardWidth(_graph.cardWidth));
@@ -87,6 +90,9 @@ class GraphPreferences extends ChangeNotifier {
 
   /// Sets Group stacks.
   void setGroupStacks(bool stacks) => _write((g) => g.copyWith(groupStacks: stacks));
+
+  /// Shows or hides the minimap.
+  void setShowMinimap(bool show) => _write((g) => g.copyWith(showMinimap: show));
 
   /// Sets the card width, clamped and snapped.
   void setCardWidth(double width) => _write((g) => g.copyWith(cardWidth: snapCardWidth(width)));

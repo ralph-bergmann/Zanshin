@@ -81,7 +81,7 @@ class GraphMenuBinding {
 ///   "@", else max(prefix, 8) characters of the change id. Edit and Revert are grey while the target is @.
 /// - **Text first:** Undo and Redo act on a focused text field before the graph; Cut, Copy, Paste and Select All send
 ///   their text intents to the focused text field and are grey without one.
-/// - Items whose handler story has not landed stay grey: Settings…, Project Settings…, Show Minimap, Describe…,
+/// - Items whose handler story has not landed stay grey: Settings…, Project Settings…, Describe…,
 ///   Fetch, Push… and the app's Help. Edit Configurations… opens the jj log Configurations window (Story 10.22).
 ///
 /// Its listeners hear a change after the current frame's work (a microtask): sheets come and go while the tree builds.
@@ -463,7 +463,10 @@ class AppMenuModel extends ChangeNotifier {
                 shortcut: const SingleActivator(LogicalKeyboardKey.keyL, meta: true, alt: true),
                 onSelected: actions == null ? null : _run(actions.openRevsetConfigs),
               ),
-              PlatformMenuItem(label: s.menuShowMinimap),
+              PlatformMenuItem(
+                label: s.menuShowMinimap,
+                onSelected: preferences == null ? null : () => preferences.setShowMinimap(!preferences.showMinimap),
+              ),
               PlatformMenuItem(
                 label: s.menuReload,
                 shortcut: const SingleActivator(LogicalKeyboardKey.keyR, meta: true),
@@ -608,6 +611,7 @@ class AppMenuModel extends ChangeNotifier {
       'checked': <Map<String, Object>>[
         toggle(s.menuDetailedCards, preferences?.options.detailedCards ?? false),
         toggle(s.menuGroupStacks, preferences?.groupStacks ?? false),
+        toggle(s.menuShowMinimap, preferences?.showMinimap ?? false),
       ],
       'enabled': windowItemsEnabled(_keyWindow),
     };

@@ -363,13 +363,12 @@ void main() {
     for (final label in <String>[
       'Settings…',
       'Project Settings…',
-      'Show Minimap',
       'Describe…',
       'Fetch',
       'Push…',
       'Zanshin Help',
       // No graph bound:
-      'Undo', 'Redo', 'Find', 'Free', 'Compact', 'Detailed Cards', 'Group Stacks', 'Reload',
+      'Undo', 'Redo', 'Find', 'Free', 'Compact', 'Detailed Cards', 'Group Stacks', 'Show Minimap', 'Reload',
       'New Change', 'Edit', 'Squash into Parent', 'Revert', 'Abandon',
       'Selection', 'Working Copy (@)', 'Parent', 'Child',
       // No key window yet; no recent project.
@@ -730,10 +729,16 @@ void main() {
       for (final entry in rig.menu.nativeState(platformStrings())['checked']! as List<Map<String, Object>>)
         if (entry['menu'] == 'View') entry['item']! as String: entry['checked']! as bool,
     };
-    expect(checked(), <String, bool>{'Detailed Cards': true, 'Group Stacks': false});
+    expect(checked(), <String, bool>{'Detailed Cards': true, 'Group Stacks': false, 'Show Minimap': true});
+
+    // Story 10.16: View › Show Minimap flips the stored preference, and its check follows.
+    rig.select('Show Minimap');
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    expect(rig.store.value.graph.showMinimap, isFalse);
+    expect(checked(), <String, bool>{'Detailed Cards': true, 'Group Stacks': false, 'Show Minimap': false});
 
     rig.unbindGraph();
-    expect(checked(), <String, bool>{'Detailed Cards': false, 'Group Stacks': false});
+    expect(checked(), <String, bool>{'Detailed Cards': false, 'Group Stacks': false, 'Show Minimap': false});
   });
 
   testWidgets('AppMenuBar applies the native state after each build, following the key window', (tester) async {

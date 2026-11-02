@@ -33,6 +33,7 @@ class ProjectGraphSlots {
     this.view,
     this.newChange,
     this.inspector,
+    this.minimap,
     this.atPill,
     this.staleNotice,
   });
@@ -57,6 +58,9 @@ class ProjectGraphSlots {
 
   /// The inspector, while a change is selected.
   final Widget? inspector;
+
+  /// The minimap, while the View › Show Minimap preference is on (Story 10.16).
+  final Widget? minimap;
 
   /// The @ pill.
   final Widget? atPill;
@@ -269,6 +273,7 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
           reload: GraphReloadIsland(onPressed: _reload),
           newChange: NewChangeButton(model: model),
           inspector: GraphView.inspector(graph.inspector),
+          minimap: graph.preferences.showMinimap ? GraphView.minimap(model, key: ObjectKey(graph)) : null,
           atPill: GraphView.atPill(model),
           staleNotice: GraphView.staleNotice(model),
         ),

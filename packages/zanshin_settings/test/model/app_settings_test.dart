@@ -27,6 +27,7 @@ void main() {
         'detailedCards': true,
         'groupStacks': true,
         'cardWidth': 240.0,
+        'showMinimap': true,
         'revsetConfigs': <Object?>[],
         'revsetDefault': 'log',
       },
@@ -54,6 +55,7 @@ void main() {
         'detailedCards': true,
         'groupStacks': true,
         'cardWidth': 240.0,
+        'showMinimap': true,
         'revsetConfigs': <Object?>[],
         'revsetDefault': 'log',
       },
@@ -107,12 +109,14 @@ void main() {
     expect(() => GeneralSettings.fromJson({'hideControls': 'yes'}), throwsA(isA<CheckedFromJsonException>()));
   });
 
-  test('the graph options default to Free, detailed cards, grouped stacks and 240 px', () {
+  test('the graph options default to Free, detailed cards, grouped stacks, 240 px and the minimap shown', () {
     const graph = GraphSettings();
     expect(graph.layout, GraphLayoutSetting.free);
     expect(graph.detailedCards, isTrue);
     expect(graph.groupStacks, isTrue);
     expect(graph.cardWidth, 240);
+    expect(graph.showMinimap, isTrue);
+    expect(GraphSettings.fromJson(const <String, Object?>{}).showMinimap, isTrue, reason: 'an older file');
   });
 
   test('changed graph options survive a JSON round trip', () {
@@ -122,6 +126,7 @@ void main() {
         detailedCards: false,
         groupStacks: false,
         cardWidth: 300,
+        showMinimap: false,
       ),
     );
     expect(settings.toJson()['graph'], {
@@ -129,6 +134,7 @@ void main() {
       'detailedCards': false,
       'groupStacks': false,
       'cardWidth': 300.0,
+      'showMinimap': false,
       'revsetConfigs': <Object?>[],
       'revsetDefault': 'log',
     });
