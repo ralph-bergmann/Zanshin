@@ -2562,10 +2562,10 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 10.29 (bmad-build-auto, 2026-11-02)
 
-- **A created commit's diff in the operation view carries copy records, where `jj op show --patch` shows none.** Low.
+- ~~**A created commit's diff in the operation view carries copy records, where `jj op show --patch` shows none.**~~ — RESOLVED 2026-11-02 (closing run of Story 10.29, commit cc7256839d2348faedbbf916ce3c3df151818203): `DiffRevisions::Created` (wire: `revision` + `interdiff`), read for created commits. Low.
   - `show_change_diff` sends a created commit through `show_inter_diff` with no predecessors and `CopyRecords::default()` (`cli/src/diff_util.rs:628` @ v0.46.0); `app/lib/src/features/undo_timeline/operation_changes.dart` `_diffOf` reads `diff(revision:)`, so a rename shows as a rename, not delete + add.
   - **Follow-up:** a backend inter-diff with no predecessors (the commit's parent tree against its tree, no copy records), read for created commits.
-- **Description changes beyond the first line are not shown in the operation view.** Low.
+- ~~**Description changes beyond the first line are not shown in the operation view.**~~ — RESOLVED 2026-11-02 (closing run of Story 10.29, commit cc7256839d2348faedbbf916ce3c3df151818203): inter-diffs return the `JJ-COMMIT-DESCRIPTION` block (`Diff.description`), rendered above the files. Low.
   - jj prints a `JJ-COMMIT-DESCRIPTION` diff block per changed commit (`show_inter_diff`); the view's `+` / `−` summaries show the first line only (`operation_changes.dart` `summaryOf`).
   - **Follow-up:** show the description diff (or both full descriptions when they differ) above the files.
 - **A large operation may render slowly in the operation view.** Medium (unverified).
@@ -2574,3 +2574,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The operation view has not been compared in the running catalogue (no DS card exists for it).** Low.
   - Unattended run: widget tests only; Widgetbook use case "Show changes" (`app/widgetbook/folders/undo_timeline.dart`) is ready for it.
   - **Follow-up:** a Marionette check of the Show changes use case (header, sections, files, Unified / Side by side).
+
+## Surfaced in the closing run of Story 10.29 (bmad-build-auto, 2026-11-02)
+
+- **`RepoHandle.interdiff` (the paths view behind evolog `-p` / `jj interdiff`) carries no `JJ-COMMIT-DESCRIPTION` block.** Low.
+  - The CLI prints it through `show_inter_diff` for both (`cli/src/diff_util.rs` @ v0.46.0); `InterdiffView` (Story 9.6, `packages/zanshin_core/lib/src/worker/handle.dart` `RepoHandle.interdiff`) returns paths only. `RepoHandle.diff(interdiff: true)` has it since this run.
+  - **Follow-up:** a description field on the interdiff view (or callers moving to `diff(interdiff: true)`).
