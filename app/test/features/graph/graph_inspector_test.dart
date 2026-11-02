@@ -156,13 +156,16 @@ class _Details implements GraphDetails {
     _root: <String>[],
   };
 
+  /// Per-key overrides of the parents `show` answers.
+  final parents = <String, List<String>>{};
+
   ShowEntry entryOf(String key) {
     const author = Signature(name: 'Ada Lovelace', email: 'ada@example.com', timestampMillis: 0, tzOffsetMinutes: 0);
     return ShowEntry(
       change: Change(
         id: key,
         commitId: 'c$key',
-        parents: _parents[key]!,
+        parents: parents[key] ?? _parents[key]!,
         description: descriptions[key]!,
         author: author,
         committer: author,
@@ -559,6 +562,96 @@ void main() {
       await tester.tapAt(tester.getTopLeft(find.byType(GraphInspector)) + const Offset(6, 6));
       await tester.pump();
       expect(popover, findsNothing, reason: 'a tap outside');
+      await unmount(tester);
+    });
+
+    /// Records every announcement's message; [tester]'s teardown restores the channel.
+    List<String> announcements(WidgetTester tester) {
+      final messages = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<Object?>(SystemChannels.accessibility, (
+        message,
+      ) async {
+        final event = message! as Map<Object?, Object?>;
+        if (event['type'] == 'announce') {
+          messages.add((event['data']! as Map<Object?, Object?>)['message']! as String);
+        }
+        return null;
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<Object?>(
+          SystemChannels.accessibility,
+          null,
+        ),
+      );
+      return messages;
+    }
+
+    testWidgets('an id is a Tab stop: ↩ and Space copy it; the hint says it copies and the result is announced', (
+      tester,
+    ) async {
+      final copiedTexts = <String>[];
+      clipboard(tester, copiedTexts.add);
+      addTearDown(() => clipboard(tester, null));
+      final List<String> announced = announcements(tester);
+      await pump(tester);
+      expect(
+        tester.getSemantics(_id('inspector-commit-id')),
+        isSemantics(label: 'c$_mutable', hint: 'Copies the full id', isButton: true, isFocusable: true),
+      );
+      // The control core's own node (↩ / Space act only on its primary focus).
+      final FocusNode id = Focus.of(
+        tester.element(find.descendant(of: _id('inspector-commit-id'), matching: find.byType(Text)).first),
+      )..requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(copiedTexts, <String>['c$_mutable']);
+      expect(announced, <String>['Copied']);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(copiedTexts, <String>['c$_mutable', 'c$_mutable']);
+      expect(announced, <String>['Copied', 'Copied']);
+      await tester.pump(const Duration(seconds: 2));
+
+      clipboard(tester, (_) => throw PlatformException(code: 'clipboard'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      await tester.pump();
+      expect(announced, <String>['Copied', 'Copied', "Couldn't copy. Select the id to copy it."]);
+      expect(id.hasFocus, isFalse, reason: 'the popover holds focus');
+      await esc(tester);
+      expect(id.hasPrimaryFocus, isTrue, reason: 'Esc gives focus back to the id');
+      await unmount(tester);
+    });
+
+    testWidgets('a parent outside the layout copies the full id show names', (tester) async {
+      const outside = 'zzzzzzzzzzzzzzzz';
+      details.parents[_mutable] = <String>[outside];
+      final copiedTexts = <String>[];
+      clipboard(tester, copiedTexts.add);
+      addTearDown(() => clipboard(tester, null));
+      await pump(tester);
+      expect(find.text('zzzzzzzz', findRichText: true), findsOneWidget, reason: 'cut to 8');
+      await tester.tap(_id('inspector-parent-0'));
+      await tester.pump();
+      expect(copiedTexts, <String>[outside]);
+      await tester.pump(const Duration(seconds: 2));
+      await unmount(tester);
+    });
+
+    testWidgets("while stale a parent copies the layout parent's full key", (tester) async {
+      final copiedTexts = <String>[];
+      clipboard(tester, copiedTexts.add);
+      addTearDown(() => clipboard(tester, null));
+      await pump(tester);
+      details.parents[_mutable] = <String>['not-what-the-layout-says'];
+      source.respond = (_) => throw staleError('stale');
+      await reload(tester);
+      expect(graph.stale, isNotNull);
+      await tester.tap(_id('inspector-parent-0'));
+      await tester.pump();
+      expect(copiedTexts, <String>[_merge]);
+      await tester.pump(const Duration(seconds: 2));
       await unmount(tester);
     });
 

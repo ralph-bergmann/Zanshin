@@ -94,6 +94,7 @@ html,body{height:100%;margin:0;overflow:hidden}
 /* inspector ids (Story 10.30): short change id ʲʲ + short commit id ᵍⁱᵗ, a click copies the full id */
 .zk-ins-ids{display:inline-flex;gap:8px;white-space:nowrap}
 .zk-copyid{position:relative;cursor:pointer;font:12px var(--font-mono);color:var(--text-faint);letter-spacing:.01em}
+.zk-copyid:focus-visible{outline:none;border-radius:3px;box-shadow:0 0 0 2px var(--accent-ring)}
 .zk-copyid b{color:var(--text);font-weight:600}
 .zk-copyid sub{font-size:var(--fs-2xs);color:var(--text-faint);vertical-align:-3px;margin-left:1px}
 .zk-copyid-tip,.zk-copyid-pop{position:absolute;left:0;top:calc(100% + 8px);z-index:5;padding:5px 8px 6px;border-radius:var(--radius-chip);white-space:nowrap}

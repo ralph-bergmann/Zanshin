@@ -5208,7 +5208,8 @@ pub mod zanshin {
         ///   candidates  jj-lib's similar names (or the suggested operator); ABSENT = none
         ///   message     one sentence for a proportional-font UI (Story 10.30): `<Syntax error|Error> at
         ///               <1-based char column>: <jj's message>` for a parse error (no ` at N` without a
-        ///               span), jj-lib's one-line text for a resolution error; ABSENT = none
+        ///               span; then `: <cause>` per level of its source chain, the CLI's "Caused by:"
+        ///               lines), jj-lib's one-line text for a resolution error; ABSENT = none
         pub struct RevsetErrorDetail<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

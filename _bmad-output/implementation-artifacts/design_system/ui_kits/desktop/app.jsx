@@ -165,7 +165,7 @@ function ZKApp() {
     const ids = new Set(repo.changes.filter(keep).map((c) => c.id));
     const by = new Map(repo.changes.map((c) => [c.id, c]));
     const near = (id, seen = new Set()) => { const out = []; const c = by.get(id); if (!c) return out; P(c).forEach((p) => { if (seen.has(p)) return; seen.add(p); if (ids.has(p)) out.push(p); else out.push(...near(p, seen)); }); return out; };
-    return repo.changes.filter((c) => ids.has(c.id)).map((c) => { const direct = c.parents.filter((p) => ids.has(p)); const hidden = [...new Set(near(c.id))].filter((p) => !direct.includes(p)); return { ...c, parents: direct, gapParents: hidden, endBelow: c.endBelow || (!direct.length && !hidden.length && P(c).length > 0) }; });
+    return repo.changes.filter((c) => ids.has(c.id)).map((c) => { const direct = c.parents.filter((p) => ids.has(p)); const hidden = [...new Set(near(c.id))].filter((p) => !direct.includes(p)); return { ...c, parents: direct, gapParents: hidden, realParents: P(c).length, endBelow: c.endBelow || (!direct.length && !hidden.length && P(c).length > 0) }; });
   }, [repo.changes, revset, configs]);
   const nodes = React.useMemo(() => window.zkFold(visibleChanges, repo.wc, opts.stacks, expanded), [visibleChanges, repo.wc, opts.stacks, expanded]);
   const L = React.useMemo(() => window.zkLayout(nodes, W, H, opts.layout), [nodes, W, H, opts.layout]);

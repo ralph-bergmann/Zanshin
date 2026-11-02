@@ -157,20 +157,23 @@ function route(nodes, by, W, H, free) {
   });
   const gut = new Map();
   E.filter((e) => e.kind === "gutter").forEach((e) => { const k = gut.get(e.gx) || 0; gut.set(e.gx, k + 1); e.xg = e.gx + (k ? (k % 2 ? 6 : -6) * Math.ceil(k / 2) : 0); });
-  // entries: a lone or the straight line in the centre (none straight: the centre stays free), every other parent beside it — the
-  // farther the parent, the farther out
+  // entry slots (router.dart): ≥ 2 dashed lines into a single-parent change (not a stack) share the first one's port
+  const single = (n) => !n.stack && (n.realParents ?? n.parents.length + n.gapParents.length) === 1;
+  nodes.forEach((n) => { const d = E.filter((e) => e.n === n && e.dashed); if (single(n) && d.length > 1) d.forEach((e) => { e.slot = d[0]; }); });
+  // entries, per slot owner: a lone or the straight one in the centre (none straight: the centre stays free), every other beside
+  // it — the farther the parent, the farther out; an approach right above the centre counts as the right side
   const approach = (e) => (e.kind === "gutter" ? e.xg : e.p.cx), used = new Map();
   nodes.forEach((n) => {
-    const ins = E.filter((e) => e.n === n);
-    const centre = ins.length === 1 ? ins[0] : ins.find((e) => e.kind === "straight");
+    const ins = E.filter((e) => e.n === n), owners = ins.filter((e) => !e.slot || e.slot === e);
+    const centre = owners.length === 1 ? owners[0] : owners.find((e) => e.kind === "straight");
     if (centre) centre.xi = n.cx;
     [-1, 1].forEach((s) => {
-      const list = ins.filter((e) => e.xi == null && Math.sign(approach(e) - n.cx) === s).sort((a, b) => Math.abs(approach(a) - n.cx) - Math.abs(approach(b) - n.cx) || a.p.u - b.p.u);
+      const list = owners.filter((e) => e !== centre && (approach(e) < n.cx ? -1 : 1) === s).sort((a, b) => Math.abs(approach(a) - n.cx) - Math.abs(approach(b) - n.cx) || a.p.u - b.p.u);
       const xs = GP.entries(list.length, W);
       list.forEach((e, k) => { e.xi = n.cx + s * xs[k]; });
     });
-    ins.forEach((e) => { if (e.xi == null) e.xi = n.cx; });
-    used.set(n.id, ins.map((e) => e.xi));
+    ins.forEach((e) => { if (e.slot) e.xi = e.slot.xi; });
+    used.set(n.id, [...new Set(ins.map((e) => e.xi))]);
   });
   // exits, as the entries: a lone line (not a merge-up) or the straight one in the centre, the rest per side — lines climbing the
   // parent's own lane innermost (MERGE_UP_SHIFT outside their slot), then by how far they turn; the width decides the spacing

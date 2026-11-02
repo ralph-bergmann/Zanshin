@@ -144,6 +144,11 @@ A `jj.revset_parse_error` / `jj.revset_resolution_error` from `zanshin_graph_top
 - `symbol` — the function, revision, alias, operator or prefix the error names (`fooo` for
   `fooo()`, `k` for an ambiguous `change_id(k)`); ABSENT = none.
 - `candidates` — jj-lib's similar names (or the suggested operator); ABSENT = none.
+- `message` — one sentence for a proportional-font UI (Story 10.30): a parse error reads
+  `<Syntax error|Error> at <column>: <jj's message>` (no ` at N` without a span), followed by
+  `: <cause>` per level of its source chain — the CLI's "Caused by:" lines: an alias or parameter
+  expansion's inner error, a fileset's or a pattern's — without their columns; a resolution error
+  is jj-lib's one-line text.
 
 The table is **absent** on every other error, and on these codes from every other symbol (their
 verbs keep only `context` + `hints`), so every other error and `PANIC_FALLBACK_ENVELOPE` keep their

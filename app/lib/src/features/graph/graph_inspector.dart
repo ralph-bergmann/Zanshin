@@ -6,6 +6,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/rendering.dart' show SemanticsProperties;
+import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
@@ -949,7 +950,7 @@ class _Flag extends StatelessWidget {
 /// An id that copies itself (Story 10.30): [full] cut to [shown] chars, the first [prefix] bold in `--text`, an
 /// optional [subscript] (`jj` / `git`) lowered in `--text-faint`. "Click to copy" over the full id is its tooltip; a
 /// click writes [full] to the clipboard and shows "Copied" briefly; a failed write opens a popover with [full] as
-/// selectable text until a tap outside or Esc.
+/// selectable text until a tap outside or Esc. A Tab stop: ↩ / Space copy too, and the result is announced.
 class _CopyId extends StatefulWidget {
   const _CopyId({
     required this.full,
@@ -985,6 +986,7 @@ class _CopyIdState extends State<_CopyId> with SingleTickerProviderStateMixin {
   final _failed = OverlayPortalController();
   late final _fade = AnimationController(vsync: this);
   final _popoverFocus = FocusNode(debugLabel: 'copy id popover');
+  final _idFocus = FocusNode(debugLabel: 'copy id');
   Timer? _timer;
 
   @override
@@ -1001,6 +1003,7 @@ class _CopyIdState extends State<_CopyId> with SingleTickerProviderStateMixin {
     _timer?.cancel();
     _fade.dispose();
     _popoverFocus.dispose();
+    _idFocus.dispose();
     super.dispose();
   }
 
@@ -1011,6 +1014,7 @@ class _CopyIdState extends State<_CopyId> with SingleTickerProviderStateMixin {
       if (mounted) {
         _copied.hide();
         _failed.show();
+        _announce(context.l10n.inspectorIdCopyFailed);
         // Take focus even from a focused graph, so Esc reaches the popover first.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _failed.isShowing) {
@@ -1026,6 +1030,7 @@ class _CopyIdState extends State<_CopyId> with SingleTickerProviderStateMixin {
     _timer?.cancel();
     _failed.hide();
     _copied.show();
+    _announce(context.l10n.inspectorIdCopied);
     _fade.forward(from: 0);
     _timer = Timer(_CopyId._copiedFor, () async {
       await _fade.reverse();
@@ -1034,6 +1039,10 @@ class _CopyIdState extends State<_CopyId> with SingleTickerProviderStateMixin {
       }
     });
   }
+
+  /// The bubble and the popover are overlays outside the id's node: VoiceOver hears them only announced.
+  void _announce(String message) =>
+      unawaited(SemanticsService.sendAnnouncement(View.of(context), message, Directionality.of(context)));
 
   Widget _below(Widget child) => Positioned(
     left: 0,
@@ -1056,6 +1065,8 @@ class _CopyIdState extends State<_CopyId> with SingleTickerProviderStateMixin {
           onKeyEvent: (node, event) {
             if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
               _failed.hide();
+              // Focus goes back to the id, not into the void the popover leaves.
+              _idFocus.requestFocus();
               return KeyEventResult.handled;
             }
             return KeyEventResult.ignored;
@@ -1127,16 +1138,15 @@ class _CopyIdState extends State<_CopyId> with SingleTickerProviderStateMixin {
           child: ZsTooltip(
             message: context.l10n.inspectorCopyId,
             cmd: full,
-            child: Semantics(
-              button: true,
+            child: ZsControlCore(
               identifier: widget.identifier,
-              label: full,
-              onTap: _copy,
-              excludeSemantics: true,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(onTap: _copy, child: text),
-              ),
+              focusNode: _idFocus,
+              onActivate: _copy,
+              cursor: SystemMouseCursors.click,
+              ring: ZsRingPlacement.outside,
+              ringRadius: 3,
+              semantics: SemanticsProperties(button: true, label: full, hint: context.l10n.inspectorCopyIdHint),
+              builder: (context, status) => text,
             ),
           ),
         ),

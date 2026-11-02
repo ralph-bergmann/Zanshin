@@ -959,6 +959,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorIdCopied => 'Copied';
 
   @override
+  String get inspectorCopyIdHint => 'Copies the full id';
+
+  @override
+  String get inspectorIdCopyFailed => 'Couldn\'t copy. Select the id to copy it.';
+
+  @override
   String get inspectorFlagWorkingCopy => '@ Working copy';
 
   @override

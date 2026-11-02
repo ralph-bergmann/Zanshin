@@ -388,6 +388,37 @@ void main() {
     expect(field.error, "Error at 10: Function `trunkk` doesn't exist\nDid you mean `trunk`?");
   });
 
+  _testWindow("a span on the raw term's wrapper marks nothing in the field; the row still shows the message", (
+    tester,
+    rig,
+  ) async {
+    // `(a ::: b)`: offset 0 is the term's opening `(`, outside the value.
+    rig.searchSource.count = (e) => const RevsetCount(
+      n: 0,
+      capped: false,
+      error: ZanshinFfiException.withReport(
+        'jj.revset_parse_error',
+        'x',
+        precondition: null,
+        warnings: <ZanshinWarning>[],
+        revsetError: RevsetErrorDetail(
+          kind: RevsetErrorKind.syntaxError,
+          span: RevsetSpan(offset: 0, length: 1),
+          symbol: null,
+          candidates: <String>[],
+          message: 'Syntax error at 1: wrapped',
+        ),
+      ),
+    );
+    await rig.setUp(tester, view: const GraphConfigView('c2'));
+    rig.state.draft.setRule(0, const RevsetRule(fn: RevsetRuleFunction.revset, value: 'a ::: b'));
+    await rig.settle(tester);
+
+    final ZsTextField field = rig.control<ZsTextField>(tester, 'revset-configs-rule-0-value');
+    expect(field.errorRange, isNull);
+    expect(field.error, 'Syntax error at 1: wrapped');
+  });
+
   _testWindow("a mine() row reads the project's user.email", (tester, rig) async {
     await rig.setUp(tester, view: const GraphConfigView('c1'));
     expect(find.textContaining('lena@example.org'), findsOneWidget);

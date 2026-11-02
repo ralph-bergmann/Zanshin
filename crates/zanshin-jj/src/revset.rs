@@ -205,7 +205,8 @@ pub struct RevsetErrorDetail {
     pub hints: Vec<String>,
     /// One sentence for a proportional-font UI (Story 10.30), never pest's multi-line render:
     /// a parse error reads `<Syntax error|Error> at <1-based char column>: <jj's message>` (`at L:C` past line 1)
-    /// (without ` at N` when the span was dropped), a resolution error is jj-lib's one-line text.
+    /// (without ` at N` when the span was dropped), followed by `: <cause>` per level of its source
+    /// chain (the CLI's "Caused by:" lines, no column); a resolution error is jj-lib's one-line text.
     pub message: String,
 }
 
@@ -686,13 +687,27 @@ fn parse_detail(expr: &str, e: &RevsetParseError) -> RevsetErrorDetail {
         P::RecursiveAlias(name) => (K::RecursiveAlias, Some(name), Vec::new()),
     };
     let render = e.to_string();
+    let mut message = render_message(kind == K::SyntaxError, &render).unwrap_or_else(|| e.kind().to_string());
+    // The CLI prints the source chain as "Caused by:" lines (`print_error_sources`): an expansion's
+    // inner error, a fileset's or a pattern's. Each level joins the sentence without its column,
+    // which counts in another text (the alias body, the fileset).
+    let mut source = std::error::Error::source(e);
+    while let Some(cause) = source {
+        let render = cause.to_string();
+        let line = message_line(&render).unwrap_or_else(|| render.lines().next().unwrap_or_default());
+        let syntax = cause
+            .downcast_ref::<RevsetParseError>()
+            .is_some_and(|c| matches!(c.kind(), P::SyntaxError));
+        message = format!("{message}: {}{line}", if syntax { "Syntax error: " } else { "" });
+        source = cause.source();
+    }
     RevsetErrorDetail {
         kind,
         span: render_span(expr, &render),
         symbol: symbol.cloned(),
         candidates,
         hints: parse_hint(e).into_iter().collect(),
-        message: render_message(kind == K::SyntaxError, &render).unwrap_or_else(|| e.kind().to_string()),
+        message,
     }
 }
 
@@ -700,7 +715,7 @@ fn parse_detail(expr: &str, e: &RevsetParseError) -> RevsetErrorDetail {
 /// the column taken from the ` --> L:C` header. `None` when the render has no message line.
 fn render_message(syntax: bool, render: &str) -> Option<String> {
     let kind = if syntax { "Syntax error" } else { "Error" };
-    let msg = render.lines().rev().find_map(|l| l.trim_start().strip_prefix("= "))?;
+    let msg = message_line(render)?;
     let column = render
         .lines()
         .next()
@@ -712,6 +727,11 @@ fn render_message(syntax: bool, render: &str) -> Option<String> {
         Some((line, column)) => format!("{kind} at {line}:{column}: {msg}"),
         None => format!("{kind}: {msg}"),
     })
+}
+
+/// The message of pest's render: its last ` = ` line.
+fn message_line(render: &str) -> Option<&str> {
+    render.lines().rev().find_map(|l| l.trim_start().strip_prefix("= "))
 }
 
 /// The [`RevsetErrorDetail`] of a resolution error, with the CLI's hint lines.
@@ -1420,6 +1440,40 @@ mod tests {
             Some("Error: x".to_owned()),
             "no header, no column"
         );
+    }
+
+    /// An expansion's message carries the cause chain the CLI prints as "Caused by:" lines,
+    /// without the causes' columns (they count in the alias body).
+    #[test]
+    fn an_expansion_error_message_names_its_cause() {
+        let (_tmp, repo, parse_config) =
+            repo_with("[revset-aliases]\n'x' = 'y'\n'y' = 'a ::: b'\n'f(p)' = 'p'\n'z' = 'fooo()'\n");
+        let message = |expr| parse_detail(&parse_config, &repo, expr).message;
+        assert_eq!(
+            message("x"),
+            "Error at 1: In alias `x`: In alias `y`: Syntax error: expected <EOI>, `|`, `&`, or `~`"
+        );
+        assert_eq!(
+            message("f(fooo())"),
+            "Error at 1: In alias `f(p)`: In function parameter `p`: Function `fooo` doesn't exist"
+        );
+        assert_eq!(message("z"), "Error at 1: In alias `z`: Function `fooo` doesn't exist");
+        assert_eq!(
+            message(r#"files(glob:"[")"#),
+            "Error at 7: In fileset expression: Invalid file pattern: \
+             error parsing glob '[': unclosed character class; missing ']'",
+            "a fileset's and a pattern's causes too"
+        );
+        let spanless = super::RevsetError::ParseError {
+            reason: String::new(),
+            detail: Box::new(parse_detail(&parse_config, &repo, "x")),
+        }
+        .without_span();
+        assert!(matches!(
+            spanless,
+            super::RevsetError::ParseError { detail, .. }
+                if detail.message == "Error: In alias `x`: In alias `y`: Syntax error: expected <EOI>, `|`, `&`, or `~`"
+        ));
     }
 
     #[test]

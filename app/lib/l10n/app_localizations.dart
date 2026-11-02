@@ -1436,6 +1436,18 @@ abstract class AppLocalizations {
   /// **'Copied'**
   String get inspectorIdCopied;
 
+  /// Accessibility hint of an inspector id: activating it copies the full id.
+  ///
+  /// In en, this message translates to:
+  /// **'Copies the full id'**
+  String get inspectorCopyIdHint;
+
+  /// Announced to assistive tech when the clipboard write failed and a popover shows the id as selectable text.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t copy. Select the id to copy it.'**
+  String get inspectorIdCopyFailed;
+
   /// Inspector header flag: the change is the working copy (@ is jj's symbol).
   ///
   /// In en, this message translates to:

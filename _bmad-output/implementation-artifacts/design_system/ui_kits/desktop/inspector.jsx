@@ -79,7 +79,7 @@ function ZKComposer({ c, isWC, files, sel, onRun, onClear }) {
 }
 
 // An inspector id (Story 10.30): max(prefix, 8) chars, the prefix bold, a faint lowered subscript (jj / git). A click copies the FULL id
-// ("Click to copy" over it; "Copied" briefly); a failed clipboard write shows the full id as selectable text until a click outside or Esc.
+// ("Click to copy" over it; "Copied" briefly; a Tab stop, Enter / Space copy too); a failed clipboard write shows the full id as selectable text until a click outside or Esc.
 function ZKCopyId({ id = "", prefix = 0, sub }) {
   const [state, setState] = React.useState(null); // null · "copied" · "failed"
   React.useEffect(() => {
@@ -94,7 +94,8 @@ function ZKCopyId({ id = "", prefix = 0, sub }) {
     () => setState("failed"));
   const n = Math.max(prefix, 8);
   return (
-    <span className="zk-copyid" title={"Click to copy\n" + id} role="button" tabIndex={0} onClick={copy}>
+    <span className="zk-copyid" title={"Click to copy\n" + id} role="button" tabIndex={0} onClick={copy}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); copy(); } }}>
       <b>{id.slice(0, prefix)}</b>{id.slice(prefix, n)}{sub && <sub>{sub}</sub>}
       {state === "copied" && <span className="zk-copyid-tip">Copied</span>}
       {state === "failed" && <span className="zk-copyid-pop" onClick={(e) => e.stopPropagation()}>{id}</span>}
