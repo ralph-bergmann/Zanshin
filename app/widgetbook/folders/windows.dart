@@ -15,6 +15,7 @@ import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/revset_configs/revset_configs_window.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
+import 'package:zanshin/src/features/settings/immutable_heads.dart' show RevsetMember;
 import 'package:zanshin/src/features/settings/settings_view_model.dart' show SettingsRepoReads;
 import 'package:zanshin/src/features/settings/settings_window.dart';
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
@@ -23,7 +24,8 @@ import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin/src/features/window/window_chrome_builder.dart';
 import 'package:zanshin/src/l10n/strings.dart';
-import 'package:zanshin_core/zanshin_core.dart' show RevsetCount, RevsetCounts, ZanshinWarning;
+import 'package:zanshin_core/zanshin_core.dart'
+    show RevsetCount, RevsetCounts, TopologyRef, TopologyRefKind, ZanshinWarning;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart' show ShellTheme;
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -545,6 +547,49 @@ class _DemoSettingsReads implements SettingsRepoReads {
     <RevsetCount>[for (final _ in expressions) const RevsetCount(n: 14, capped: false, error: null)],
     const <ZanshinWarning>[],
   );
+
+  static RevsetMember _tag(String name) => RevsetMember(
+    refs: <TopologyRef>[
+      TopologyRef(node: 0, kind: TopologyRefKind.tag, name: name, remote: null, synced: true, conflicted: false),
+    ],
+  );
+
+  // The DS card's matches: tags v1.0.0 and v1.4.2, release/1.5.x@origin untracked, heads main · v1.0.0 · v1.4.2.
+  @override
+  Future<List<RevsetMember>> revsetMembers(String revset) async => switch (revset) {
+    'tags()' => <RevsetMember>[_tag('v1.0.0'), _tag('v1.4.2')],
+    'untracked_remote_bookmarks()' => const <RevsetMember>[
+      RevsetMember(
+        refs: <TopologyRef>[
+          TopologyRef(
+            node: 0,
+            kind: TopologyRefKind.bookmark,
+            name: 'release/1.5.x',
+            remote: 'origin',
+            synced: false,
+            conflicted: false,
+          ),
+        ],
+      ),
+    ],
+    'immutable_heads()' => <RevsetMember>[
+      const RevsetMember(
+        refs: <TopologyRef>[
+          TopologyRef(
+            node: 0,
+            kind: TopologyRefKind.bookmark,
+            name: 'main',
+            remote: null,
+            synced: true,
+            conflicted: false,
+          ),
+        ],
+      ),
+      _tag('v1.0.0'),
+      _tag('v1.4.2'),
+    ],
+    _ => const <RevsetMember>[],
+  };
 }
 
 /// The Settings window over the demo project.

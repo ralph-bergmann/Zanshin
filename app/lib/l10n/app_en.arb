@@ -1433,6 +1433,30 @@
   "@settingsImmutableRemoteTags": {"description": "Immutable commits switch row: untracked_remote_tags()."},
   "settingsImmutableRemoteTagsHint": "Fetched, but not yours to move.",
   "@settingsImmutableRemoteTagsHint": {"description": "The remote tags switch's hint."},
+  "settingsImmutableTagsNamed": "Released versions: {names}.",
+  "@settingsImmutableTagsNamed": {
+    "description": "The Tags switch's hint naming this repository's tags (or settingsImmutableNoneHere).",
+    "placeholders": {"names": {"type": "String", "example": "v1.0.0, v1.4.2"}}
+  },
+  "settingsImmutableRemoteBookmarksNamed": "Fetched, but not yours to rewrite: {names}.",
+  "@settingsImmutableRemoteBookmarksNamed": {
+    "description": "The remote bookmarks switch's hint naming this repository's untracked remote bookmarks (or settingsImmutableNoneHere).",
+    "placeholders": {"names": {"type": "String", "example": "release/1.5.x@origin"}}
+  },
+  "settingsImmutableRemoteTagsNamed": "Fetched, but not yours to move: {names}.",
+  "@settingsImmutableRemoteTagsNamed": {
+    "description": "The remote tags switch's hint naming this repository's untracked remote tags.",
+    "placeholders": {"names": {"type": "String", "example": "v2.0.0-rc1@upstream"}}
+  },
+  "settingsImmutableRemoteTagsNone": "None in this repository.",
+  "@settingsImmutableRemoteTagsNone": {"description": "The remote tags switch's hint when this repository has no untracked remote tags."},
+  "settingsImmutableNoneHere": "none here",
+  "@settingsImmutableNoneHere": {"description": "Stands in a hint's name list when this repository has no match."},
+  "settingsImmutableMore": "{count} more",
+  "@settingsImmutableMore": {
+    "description": "The last item of a shortened name list: how many names it leaves out.",
+    "placeholders": {"count": {"type": "int", "example": "2"}}
+  },
   "settingsImmutableAlso": "Also immutable",
   "@settingsImmutableAlso": {"description": "Immutable commits group heading."},
   "settingsImmutableOthers": "Other people’s changes",

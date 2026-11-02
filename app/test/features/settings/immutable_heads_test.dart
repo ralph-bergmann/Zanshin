@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/settings/immutable_heads.dart';
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
+import 'package:zanshin_core/zanshin_core.dart' show TopologyRef, TopologyRefKind;
 
 void main() {
   group('splitRevsetUnion', () {
@@ -122,6 +123,77 @@ void main() {
       expect(state.tab, SettingsTab.general);
       state.show(SettingsTarget.project);
       expect(state.tab, SettingsTab.general, reason: 'no project: General');
+    });
+  });
+
+  group('revset members', () {
+    TopologyRef ref(
+      String name, {
+      TopologyRefKind kind = TopologyRefKind.bookmark,
+      String? remote,
+      bool synced = false,
+    }) => TopologyRef(node: 0, kind: kind, name: name, remote: remote, synced: synced, conflicted: false);
+
+    test('tags() names the local tags, deduplicated, in order', () {
+      final members = <RevsetMember>[
+        RevsetMember(
+          refs: <TopologyRef>[
+            ref('main'),
+            ref('v1.0.0', kind: TopologyRefKind.tag),
+          ],
+        ),
+        RevsetMember(
+          refs: <TopologyRef>[
+            ref('v1.4.2', kind: TopologyRefKind.tag),
+            ref('v1.4.2', kind: TopologyRefKind.tag, remote: 'origin'),
+            ref('v1.0.0', kind: TopologyRefKind.tag),
+          ],
+        ),
+      ];
+      expect(matchNames(members, 'tags()'), <String>['v1.0.0', 'v1.4.2']);
+    });
+
+    test('the untracked terms name remote refs of their kind, neither synced nor on git', () {
+      final members = <RevsetMember>[
+        RevsetMember(
+          refs: <TopologyRef>[
+            ref('main', remote: 'origin', synced: true),
+            ref('release', remote: 'origin'),
+            ref('x', remote: 'git'),
+            ref('t1', kind: TopologyRefKind.tag, remote: 'upstream'),
+          ],
+        ),
+      ];
+      expect(matchNames(members, 'untracked_remote_bookmarks()'), <String>['release@origin']);
+      expect(matchNames(members, 'untracked_remote_tags()'), <String>['t1@upstream']);
+    });
+
+    test('heads: local names, else remote, else root(), else the change id prefix', () {
+      final members = <RevsetMember>[
+        RevsetMember(
+          refs: <TopologyRef>[
+            ref('main'),
+            ref('main', remote: 'origin', synced: true),
+          ],
+        ),
+        RevsetMember(refs: <TopologyRef>[ref('v1.0.0', kind: TopologyRefKind.tag)]),
+        RevsetMember(
+          refs: <TopologyRef>[
+            ref('x', remote: 'git'),
+            ref('feat', remote: 'origin'),
+          ],
+        ),
+        const RevsetMember(changeIdPrefix: 'zzzz', isRoot: true),
+        const RevsetMember(changeIdPrefix: 'kxyz'),
+        RevsetMember(refs: <TopologyRef>[ref('main')]),
+      ];
+      expect(headLabels(members), <String>['main', 'v1.0.0', 'feat@origin', 'root()', 'kxyz']);
+    });
+
+    test('nameList caps and counts the rest', () {
+      final names = <String>['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+      expect(nameList(names, 5, (n) => '$n more'), <String>['a', 'b', 'c', 'd', 'e', '2 more']);
+      expect(nameList(names.take(5).toList(), 5, (n) => '$n more'), <String>['a', 'b', 'c', 'd', 'e']);
     });
   });
 }

@@ -3446,6 +3446,42 @@ abstract class AppLocalizations {
   /// **'Fetched, but not yours to move.'**
   String get settingsImmutableRemoteTagsHint;
 
+  /// The Tags switch's hint naming this repository's tags (or settingsImmutableNoneHere).
+  ///
+  /// In en, this message translates to:
+  /// **'Released versions: {names}.'**
+  String settingsImmutableTagsNamed(String names);
+
+  /// The remote bookmarks switch's hint naming this repository's untracked remote bookmarks (or settingsImmutableNoneHere).
+  ///
+  /// In en, this message translates to:
+  /// **'Fetched, but not yours to rewrite: {names}.'**
+  String settingsImmutableRemoteBookmarksNamed(String names);
+
+  /// The remote tags switch's hint naming this repository's untracked remote tags.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetched, but not yours to move: {names}.'**
+  String settingsImmutableRemoteTagsNamed(String names);
+
+  /// The remote tags switch's hint when this repository has no untracked remote tags.
+  ///
+  /// In en, this message translates to:
+  /// **'None in this repository.'**
+  String get settingsImmutableRemoteTagsNone;
+
+  /// Stands in a hint's name list when this repository has no match.
+  ///
+  /// In en, this message translates to:
+  /// **'none here'**
+  String get settingsImmutableNoneHere;
+
+  /// The last item of a shortened name list: how many names it leaves out.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} more'**
+  String settingsImmutableMore(int count);
+
   /// Immutable commits group heading.
   ///
   /// In en, this message translates to:

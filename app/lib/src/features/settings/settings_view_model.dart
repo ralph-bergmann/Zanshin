@@ -62,6 +62,9 @@ abstract interface class SettingsRepoReads {
 
   /// How many commits each of [expressions] denotes at the head operation, at most [cap] each.
   Future<RevsetCounts> revsetCounts(List<String> expressions, {required int cap});
+
+  /// The commits [revset] denotes, each with its refs, shortest change id prefix and root flag.
+  Future<List<RevsetMember>> revsetMembers(String revset);
 }
 
 /// [SettingsRepoReads] over an open repository's handle.
@@ -98,6 +101,23 @@ class RepoSettingsReads implements SettingsRepoReads {
   Future<RevsetCounts> revsetCounts(List<String> expressions, {required int cap}) async {
     final String operation = (await _repo.handle.opLog(limit: 1)).first.id;
     return _repo.handle.revsetCounts(operation, expressions, cap: cap);
+  }
+
+  @override
+  Future<List<RevsetMember>> revsetMembers(String revset) async {
+    final GraphTopologyView view = await _repo.handle.graphTopology(
+      revset: revset,
+      anchors: const <String>[],
+      withTimestamps: false,
+    );
+    return <RevsetMember>[
+      for (var i = 0; i < view.nodeCount; i++)
+        RevsetMember(
+          refs: view.refsOf(i),
+          changeIdPrefix: view.changeId(i).substring(0, view.changeIdPrefixLength(i)),
+          isRoot: view.isRoot(i),
+        ),
+    ];
   }
 }
 
@@ -172,6 +192,12 @@ class SettingsViewModel extends ChangeNotifier {
 
   /// `::immutable_heads() ~ root()` counted, or null before or without an answer.
   RevsetCount? immutableCount;
+
+  /// The names each built-in after `trunk()` matches here ([matchNames]), by term; an absent term is unread.
+  var builtinMatches = <String, List<String>>{};
+
+  /// `immutable_heads()` as [headLabels], or null before or without an answer; re-read with every recount.
+  List<String>? immutableHeadLabels;
 
   /// `@`'s author after the last identity write that differs from it, else null.
   WorkingCopyAuthor? workingCopyAuthor;
@@ -251,6 +277,8 @@ class SettingsViewModel extends ChangeNotifier {
     trunkChoices = const <String>[];
     bookmarks = const <String>[];
     immutableCount = null;
+    builtinMatches = <String, List<String>>{};
+    immutableHeadLabels = null;
     errors.clear();
     workingCopyAuthor = null;
     _notify();
@@ -302,8 +330,22 @@ class SettingsViewModel extends ChangeNotifier {
     await Future.wait(<Future<void>>[
       _readRemotes(reads, generation),
       _readBookmarks(reads, generation),
+      for (final String term in immutableBuiltins.skip(1)) _readBuiltinMatches(reads, generation, term),
       recountImmutable(),
     ]);
+  }
+
+  Future<void> _readBuiltinMatches(SettingsRepoReads reads, int generation, String term) async {
+    try {
+      final List<String> names = matchNames(await reads.revsetMembers(term), term);
+      if (generation != _generation) {
+        return;
+      }
+      builtinMatches = <String, List<String>>{...builtinMatches, term: names};
+    } on ZanshinFfiException catch (error) {
+      _log.fine('reading $term failed: ${error.code}');
+    }
+    _notify();
   }
 
   Future<void> _readRemotes(SettingsRepoReads reads, int generation) async {
@@ -361,6 +403,21 @@ class SettingsViewModel extends ChangeNotifier {
       _log.fine('counting the immutable changes failed: ${error.code}');
       if (identical(reads, _reads)) {
         immutableCount = null;
+      }
+    }
+    // The count shows without waiting for the heads.
+    _notify();
+    try {
+      const heads = 'immutable_heads()'; // l10n-ignore: jj's revset
+      final List<String> labels = headLabels(await reads.revsetMembers(heads));
+      if (!identical(reads, _reads)) {
+        return;
+      }
+      immutableHeadLabels = labels;
+    } on ZanshinFfiException catch (error) {
+      _log.fine('reading the immutable heads failed: ${error.code}');
+      if (identical(reads, _reads)) {
+        immutableHeadLabels = null;
       }
     }
     _notify();

@@ -22,8 +22,8 @@ import 'zs_lerp_builder.dart';
 @immutable
 class ZsSegment<T> {
   /// A segment for [value].
-  const ZsSegment({required this.value, this.label, this.icon, this.tooltip, this.disabledReason})
-    : assert(label != null || icon != null, 'A segment shows a label, an icon or both.');
+  const ZsSegment({required this.value, this.label, this.icon, this.leading, this.tooltip, this.disabledReason})
+    : assert(label != null || icon != null || leading != null, 'A segment shows a label, an icon or a leading widget.');
 
   /// The value it chooses.
   final T value;
@@ -33,6 +33,9 @@ class ZsSegment<T> {
 
   /// A `ZI` glyph before the label.
   final String? icon;
+
+  /// A widget before the label in place of [icon] (e.g. a brand mark); it keeps its own colours.
+  final Widget? leading;
 
   /// The name of an icon-only segment.
   final String? tooltip;
@@ -293,6 +296,7 @@ class _ZsSegmentedState<T> extends State<ZsSegmented<T>> with SingleTickerProvid
         // `padding:0 9px` · tabs `0 14px` · inset `0 10px` · sm `0 7px` (DS components/forms/forms.css:9, :19, :21-22).
         final double padX = small ? 7 : (tabs ? 14 : (widget.variant == ZsSegmentedVariant.inset ? 10 : 9));
         final String? icon = segment.icon;
+        final Widget? leading = segment.leading;
         final String? label = segment.label;
         return ZsLerpBuilder<(Color, Color)>(
           value: (fill, lit ? colors.text : colors.textMuted),
@@ -309,7 +313,10 @@ class _ZsSegmentedState<T> extends State<ZsSegmented<T>> with SingleTickerProvid
                   mainAxisSize: MainAxisSize.min,
                   spacing: tabs ? 7 : 5,
                   children: <Widget>[
-                    if (icon != null) ZanshinIcon(icon, size: tabs ? ZsIconSize.md : ZsIconSize.sm, color: look.$2),
+                    if (leading != null)
+                      leading
+                    else if (icon != null)
+                      ZanshinIcon(icon, size: tabs ? ZsIconSize.md : ZsIconSize.sm, color: look.$2),
                     if (label != null) Text(label, style: zsSans(fontSize).copyWith(color: look.$2), softWrap: false),
                   ],
                 ),

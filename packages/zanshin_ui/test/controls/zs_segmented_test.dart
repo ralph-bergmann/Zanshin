@@ -8,6 +8,7 @@ import 'package:zanshin_ui/src/controls/zs_segmented.dart';
 import 'package:zanshin_ui/src/design/zs_appearance.dart';
 import 'package:zanshin_ui/src/design/zs_colors.dart';
 import 'package:zanshin_ui/src/design/zs_motion.dart';
+import 'package:zanshin_ui/src/icons/zanshin_icon.dart';
 
 import '../helpers/controls.dart';
 import '../helpers/zs_host.dart';
@@ -101,6 +102,27 @@ void main() {
     await tester.pumpWidget(_segmented('compact', (_) {}, appearance: reduced));
     await tester.pump();
     expect(_thumb(tester), tester.getRect(find.byType(ZsControlCore).last).shift(-origin.topLeft));
+  });
+
+  testWidgets('a leading widget stands before the label in place of the icon', (tester) async {
+    const mark = ValueKey<String>('mark');
+    await tester.pumpWidget(
+      _segmented(
+        'free',
+        (_) {},
+        segments: const <ZsSegment<String>>[
+          ZsSegment(value: 'free', label: 'Free'),
+          ZsSegment(
+            value: 'project',
+            label: 'Zanshin',
+            icon: 'folder',
+            leading: SizedBox(key: mark, width: 14),
+          ),
+        ],
+      ),
+    );
+    expect(find.byType(ZanshinIcon), findsNothing);
+    expect(tester.getRect(find.byKey(mark)).right, lessThanOrEqualTo(tester.getRect(find.text('Zanshin')).left));
   });
 
   testWidgets('hover brightens only the label', (tester) async {

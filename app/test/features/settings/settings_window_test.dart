@@ -20,6 +20,7 @@ import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
+import 'package:zanshin_ui/zanshin_ui.dart' show ZsNamiMark;
 
 import '../../helpers/fake_projects.dart';
 import '../../helpers/fake_projects_environment.dart';
@@ -63,7 +64,17 @@ class _Reads implements SettingsRepoReads {
     ],
     const <ZanshinWarning>[],
   );
+
+  /// Each revset's members; an unscripted revset fails like an unread repository.
+  final members = <String, List<RevsetMember>>{};
+
+  @override
+  Future<List<RevsetMember>> revsetMembers(String revset) async =>
+      members[revset] ?? (throw const ZanshinFfiException('jj.revset_resolution_error', 'unscripted'));
 }
+
+TopologyRef _ref(String name, {TopologyRefKind kind = TopologyRefKind.bookmark, String? remote, bool synced = false}) =>
+    TopologyRef(node: 0, kind: kind, name: name, remote: remote, synced: synced, conflicted: false);
 
 class _Model extends GraphViewModel {
   var configChanges = 0;
@@ -419,16 +430,106 @@ void main() {
       expect(find.byKey(const ValueKey<String>('settings-immutable-toml')), findsOneWidget);
       expect(rig.id('settings-immutable-reset'), findsNothing);
     });
+
+    testWidgets("the hints name this repository's matches; the heads stand under the count and follow a write", (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      rig.reads.members
+        ..['tags()'] = <RevsetMember>[
+          RevsetMember(refs: <TopologyRef>[_ref('v1.0.0', kind: TopologyRefKind.tag)]),
+          RevsetMember(refs: <TopologyRef>[_ref('v1.4.2', kind: TopologyRefKind.tag)]),
+        ]
+        ..['untracked_remote_bookmarks()'] = <RevsetMember>[]
+        ..['untracked_remote_tags()'] = <RevsetMember>[]
+        ..['immutable_heads()'] = <RevsetMember>[
+          RevsetMember(
+            refs: <TopologyRef>[
+              _ref('main'),
+              _ref('main', remote: 'origin', synced: true),
+            ],
+          ),
+          RevsetMember(refs: <TopologyRef>[_ref('v1.0.0', kind: TopologyRefKind.tag)]),
+          const RevsetMember(changeIdPrefix: 'kxyz'),
+        ];
+      await rig.pump(target: SettingsTarget.immutableCommits);
+
+      expect(find.text('Released versions: v1.0.0, v1.4.2.'), findsOneWidget);
+      expect(find.text('Fetched, but not yours to rewrite: none here.'), findsOneWidget);
+      expect(find.text('None in this repository.'), findsOneWidget);
+      expect(find.text('main · v1.0.0 · kxyz'), findsOneWidget);
+
+      rig.reads.members['immutable_heads()'] = <RevsetMember>[
+        RevsetMember(refs: <TopologyRef>[_ref('main')]),
+      ];
+      await rig.tap('settings-immutable-tags');
+      final Finder heads = find.byKey(const ValueKey<String>('settings-immutable-heads'));
+      expect(tester.widget<Text>(heads).data, 'main', reason: 'the heads line is read again with the count');
+
+      rig.reads.members.remove('immutable_heads()');
+      await rig.tap('settings-immutable-tags');
+      expect(heads, findsNothing, reason: 'a failed re-read drops the heads line');
+    });
+
+    testWidgets('the remote hints name the untracked remote refs', (tester) async {
+      final rig = _Rig(tester);
+      rig.reads.members
+        ..['untracked_remote_bookmarks()'] = <RevsetMember>[
+          RevsetMember(refs: <TopologyRef>[_ref('release', remote: 'origin')]),
+        ]
+        ..['untracked_remote_tags()'] = <RevsetMember>[
+          RevsetMember(
+            refs: <TopologyRef>[_ref('t1', kind: TopologyRefKind.tag, remote: 'upstream')],
+          ),
+        ];
+      await rig.pump(target: SettingsTarget.immutableCommits);
+
+      expect(find.text('Fetched, but not yours to rewrite: release@origin.'), findsOneWidget);
+      expect(find.text('Fetched, but not yours to move: t1@upstream.'), findsOneWidget);
+    });
+
+    testWidgets('an unread repository keeps the fixed hints and shows no heads line', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump(target: SettingsTarget.immutableCommits);
+
+      expect(find.text('Released versions.'), findsOneWidget);
+      expect(find.text('Fetched, but not yours to rewrite.'), findsOneWidget);
+      expect(find.text('Fetched, but not yours to move.'), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('settings-immutable-result-count')), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('settings-immutable-heads')), findsNothing);
+    });
+  });
+
+  testWidgets('the Project segment draws the Nami mark, no folder glyph', (tester) async {
+    final rig = _Rig(tester);
+    await rig.pump(target: SettingsTarget.project);
+
+    final Finder tabs = rig.id('settings-tabs');
+    expect(find.descendant(of: tabs, matching: find.byType(ZsNamiMark)), findsOneWidget);
+    expect(tester.getSize(find.byType(ZsNamiMark)), const Size(14, 14));
+    expect(
+      tester.getRect(find.byType(ZsNamiMark)).right,
+      lessThanOrEqualTo(tester.getRect(find.descendant(of: tabs, matching: find.text('zanshin'))).left),
+    );
   });
 
   testWidgets('a switch to no project drops everything the project read', (tester) async {
     final rig = _Rig(tester);
     rig.env.configEntries['git.fetch'] = <ConfigEntry>[_entry('git.fetch', '"origin"', ConfigValueSource.repo)];
+    rig.reads.members
+      ..['tags()'] = <RevsetMember>[
+        RevsetMember(refs: <TopologyRef>[_ref('v1.0.0', kind: TopologyRefKind.tag)]),
+      ]
+      ..['immutable_heads()'] = <RevsetMember>[
+        RevsetMember(refs: <TopologyRef>[_ref('main')]),
+      ];
     await rig.pump(target: SettingsTarget.project);
     final SettingsViewModel vm = rig.content.viewModel;
     expect(vm.projectConfig, isNotEmpty);
     expect(vm.remotes, isNotEmpty);
     expect(vm.immutableCount, isNotNull);
+    expect(vm.builtinMatches, isNotEmpty);
+    expect(vm.immutableHeadLabels, isNotNull);
 
     await tester.runAsync(rig.session.closeProject);
     await rig.settle();
@@ -441,6 +542,8 @@ void main() {
     expect(vm.trunkChoices, isEmpty);
     expect(vm.bookmarks, isEmpty);
     expect(vm.immutableCount, isNull);
+    expect(vm.builtinMatches, isEmpty);
+    expect(vm.immutableHeadLabels, isNull);
     expect(rig.state.tab, SettingsTab.general);
   });
 }

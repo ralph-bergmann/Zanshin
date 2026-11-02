@@ -51,6 +51,16 @@ class SettingsImmutablePage extends StatelessWidget {
       );
     }
 
+    // A built-in's matches as its hint names them, or null while unread.
+    String? names(int index) => switch (vm.builtinMatches[immutableBuiltins[index]]) {
+      null => null,
+      [] => s.settingsImmutableNoneHere,
+      final List<String> found => nameList(found, 5, s.settingsImmutableMore).join(', '),
+    };
+    final String? headsLine = switch (vm.immutableHeadLabels) {
+      null || [] => null,
+      final List<String> labels => nameList(labels, 8, s.settingsImmutableMore).join(' · '),
+    };
     final String trunk = vm.stringValue(trunkKey, project: true) ?? s.settingsTrunkDefault;
     final choices = <String>[
       for (final String name in vm.bookmarks)
@@ -70,17 +80,28 @@ class SettingsImmutablePage extends StatelessWidget {
           meta: builtinImmutableHeads,
           children: <Widget>[
             builtin(0, s.settingsImmutableTrunk, s.settingsImmutableTrunkHint(trunk), 'settings-immutable-trunk'),
-            builtin(1, s.settingsImmutableTags, s.settingsImmutableTagsHint, 'settings-immutable-tags'),
+            builtin(
+              1,
+              s.settingsImmutableTags,
+              names(1) == null ? s.settingsImmutableTagsHint : s.settingsImmutableTagsNamed(names(1)!),
+              'settings-immutable-tags',
+            ),
             builtin(
               2,
               s.settingsImmutableRemoteBookmarks,
-              s.settingsImmutableRemoteBookmarksHint,
+              names(2) == null
+                  ? s.settingsImmutableRemoteBookmarksHint
+                  : s.settingsImmutableRemoteBookmarksNamed(names(2)!),
               'settings-immutable-remote-bookmarks',
             ),
             builtin(
               3,
               s.settingsImmutableRemoteTags,
-              s.settingsImmutableRemoteTagsHint,
+              switch (vm.builtinMatches[immutableBuiltins[3]]) {
+                null => s.settingsImmutableRemoteTagsHint,
+                [] => s.settingsImmutableRemoteTagsNone,
+                _ => s.settingsImmutableRemoteTagsNamed(names(3)!),
+              },
               'settings-immutable-remote-tags',
             ),
           ],
@@ -209,6 +230,12 @@ class SettingsImmutablePage extends StatelessWidget {
                             ),
                           ),
                         ],
+                      ),
+                    if (count != null && headsLine != null)
+                      Text(
+                        headsLine,
+                        key: const ValueKey<String>('settings-immutable-heads'),
+                        style: ZsType.id.copyWith(color: colors.textMuted),
                       ),
                   ],
                 ),

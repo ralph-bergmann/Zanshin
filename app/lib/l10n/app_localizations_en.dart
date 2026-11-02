@@ -2151,6 +2151,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsImmutableRemoteTagsHint => 'Fetched, but not yours to move.';
 
   @override
+  String settingsImmutableTagsNamed(String names) {
+    return 'Released versions: $names.';
+  }
+
+  @override
+  String settingsImmutableRemoteBookmarksNamed(String names) {
+    return 'Fetched, but not yours to rewrite: $names.';
+  }
+
+  @override
+  String settingsImmutableRemoteTagsNamed(String names) {
+    return 'Fetched, but not yours to move: $names.';
+  }
+
+  @override
+  String get settingsImmutableRemoteTagsNone => 'None in this repository.';
+
+  @override
+  String get settingsImmutableNoneHere => 'none here';
+
+  @override
+  String settingsImmutableMore(int count) {
+    return '$count more';
+  }
+
+  @override
   String get settingsImmutableAlso => 'Also immutable';
 
   @override

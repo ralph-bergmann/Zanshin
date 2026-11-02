@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter/foundation.dart';
-import 'package:zanshin_core/zanshin_core.dart' show ConfigEntry;
+import 'package:zanshin_core/zanshin_core.dart' show ConfigEntry, TopologyRef, TopologyRefKind;
 
 /// The effective value among [entries] (`jj config list NAME --include-overridden`, lowest layer first): the last
 /// entry no higher layer overrides, or null when there is none.
@@ -34,6 +34,76 @@ const immutableBuiltins = <String>[
   'untracked_remote_bookmarks()', // l10n-ignore: jj's revset
   'untracked_remote_tags()', // l10n-ignore: jj's revset
 ];
+
+/// One commit a revset denotes, as the Immutable commits page names it.
+@immutable
+class RevsetMember {
+  /// A member with its [refs], the shortest unique [changeIdPrefix] and whether it [isRoot].
+  const RevsetMember({this.refs = const <TopologyRef>[], this.changeIdPrefix = '', this.isRoot = false});
+
+  /// Its bookmarks then tags, local and remote.
+  final List<TopologyRef> refs;
+
+  /// The shortest unique prefix of its change id.
+  final String changeIdPrefix;
+
+  /// Whether it is the root commit.
+  final bool isRoot;
+}
+
+/// jj's ignored remote, the colocated Git repository's refs (`parse_remote_refs_arguments`, jj-lib 0.46 `revset.rs`).
+const _gitRemote = 'git'; // l10n-ignore: jj's remote name
+
+/// A remote ref's display name, `name@remote`.
+String _remoteName(TopologyRef ref) => '${ref.name}@${ref.remote}';
+
+/// Whether [ref] is a remote ref of [kind] that jj counts as untracked.
+// shortcut: `synced` is "tracked and agrees", so a tracked remote ref that disagrees with its local target and sits on a
+// commit an untracked ref also targets is named too; an exact answer needs a bridge read of the remote ref tracking state.
+bool _untrackedRemote(TopologyRef ref, TopologyRefKind kind) =>
+    ref.kind == kind && ref.remote != null && ref.remote != _gitRemote && !ref.synced;
+
+/// The names [term] (one of [immutableBuiltins] after `trunk()`) matches among its [members]: `tags()` the local tags,
+/// the untracked terms the untracked remote refs of their kind as `name@remote`; deduplicated, in [members]' order.
+List<String> matchNames(List<RevsetMember> members, String term) => <String>{
+  for (final RevsetMember member in members)
+    for (final TopologyRef ref in member.refs)
+      if (switch (term) {
+        'tags()' => ref.kind == TopologyRefKind.tag && ref.remote == null, // l10n-ignore: jj's revset
+        'untracked_remote_bookmarks()' => _untrackedRemote(ref, TopologyRefKind.bookmark), // l10n-ignore: jj's revset
+        'untracked_remote_tags()' => _untrackedRemote(ref, TopologyRefKind.tag), // l10n-ignore: jj's revset
+        _ => false,
+      })
+        if (ref.remote == null) ref.name else _remoteName(ref),
+}.toList();
+
+/// The heads line's labels: each member as its local refs' names, else its remote refs (`name@remote`, not `git`), else
+/// `root()` for the root, else its shortest unique change id prefix; deduplicated.
+List<String> headLabels(List<RevsetMember> members) {
+  final labels = <String>{};
+  for (final member in members) {
+    final local = <String>[
+      for (final TopologyRef ref in member.refs)
+        if (ref.remote == null) ref.name,
+    ];
+    final remote = <String>[
+      for (final TopologyRef ref in member.refs)
+        if (ref.remote != null && ref.remote != _gitRemote) _remoteName(ref),
+    ];
+    labels.addAll(
+      local.isNotEmpty
+          ? local
+          : remote.isNotEmpty
+          ? remote
+          : <String>[if (member.isRoot) 'root()' else member.changeIdPrefix], // l10n-ignore: jj's revset
+    );
+  }
+  return labels.toList();
+}
+
+/// [names] cut to [cap], then [more] of the rest's count as the last item.
+List<String> nameList(List<String> names, int cap, String Function(int count) more) =>
+    names.length <= cap ? names : <String>[...names.take(cap), more(names.length - cap)];
 
 /// "Other people's changes", jj's own example term.
 const othersImmutableTerm = '(trunk().. & ~mine())'; // l10n-ignore: jj's revset

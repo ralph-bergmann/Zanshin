@@ -159,7 +159,7 @@ class SettingsWindowContentState extends State<SettingsWindow> {
                     ZsSegment<SettingsTab>(
                       value: SettingsTab.project,
                       label: project ?? s.settingsTabProject,
-                      icon: ZI.folder,
+                      leading: const ZsNamiMark(size: 14),
                       disabledReason: state.projectOpen ? null : s.settingsOpenProjectFirst,
                     ),
                   ],
