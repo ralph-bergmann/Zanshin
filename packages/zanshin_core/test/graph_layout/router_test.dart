@@ -458,11 +458,11 @@ void main() {
       final RouteGeometry lone = _geometry(_grid([1, 0], [1, 0], [(1, 0)]));
       expect((exit(lone, 0, 0), entry(lone, 0, 1)), (0, 0));
 
-      // A lone merge-up never takes its parent's centre, which the entries of the cards above it use: parent 2
-      // (col 1, row 0) is child 0's (col 0, row 2) second parent; 1 (col 0, row 1) is the first.
-      final RouteClasses up = _grid([2, 1, 0], [0, 0, 1], [(1, 0), (2, 0)]);
+      // A lone merge-up to a child up-right leaves at the centre (Ralph's nuwmzrpz card, 2026-11-02; it was at
+      // +28): parent 2 (col 0, row 0) is child 0's (col 1, row 2) second parent; 1 (col 1, row 1) is the first.
+      final RouteClasses up = _grid([2, 1, 0], [1, 1, 0], [(1, 0), (2, 0)]);
       expect(up.kinds[1], RouteClasses.kindMergeUp);
-      expect(exit(_geometry(up), 1, 1), -28);
+      expect(exit(_geometry(up), 1, 0), 0);
 
       // Straight + bending: parent 2 (col 0, row 0) → 0 (col 0, row 1) and → 1 (col 1, row 1).
       final RouteClasses both = _grid([1, 1, 0], [0, 1, 0], [(2, 0), (2, 1)]);
@@ -479,13 +479,71 @@ void main() {
       expect((entry(merge, 0, 1), entry(merge, 1, 1)), (-24, 24), reason: 'top and bottom alike');
     });
 
-    test('story_10_30_a_merge_whose_first_parent_bends_leaves_the_entry_centre_free', () {
-      // Child 0 (col 0, row 2): first parent 1 (col 1, row 0), second parent 2 (col 0, row 1). Only a
-      // first parent is ever straight, so the same-column second one is a gutter line: no line is straight.
-      final RouteClasses c = _grid([2, 0, 1], [0, 1, 0], [(1, 0), (2, 0)]);
-      expect([c.kinds[0], c.kinds[1]], everyElement(isNot(RouteClasses.kindStraight)));
+    test('ports_by_local_direction_a_vertical_entry_takes_the_centre_whatever_its_kind', () {
+      // Child 0 (col 1, row 2): first parent 1 (col 0, row 0), a fork climbing child 0's column from the band
+      // above row 0; second parent 2 (col 2, row 1), a merge-adjacent line turning right below the child. The fork
+      // is vertical at the child's bottom, so it takes the centre; the merge line fans to its side, right.
+      final RouteClasses c = _grid([2, 0, 1], [1, 0, 2], [(1, 0), (2, 0)]);
+      expect([c.kinds[0], c.kinds[1]], [RouteClasses.kindFork, RouteClasses.kindMergeAdjacent]);
       final RouteGeometry g = _geometry(c);
-      expect([_points(g, 0).last.$1, _points(g, 1).last.$1], everyElement(isNot(_cx(0))));
+      expect([_points(g, 0).last.$1 - _cx(1), _points(g, 1).last.$1 - _cx(1)], [0, 24]);
+
+      // A same-column second parent turns right below its child (a gutter line), and it blocks the first parent's
+      // fork into a gutter line too: no line is vertical, the centre stays free. Child 0 (col 0, row 2), parents
+      // 1 (col 1, row 0) and 2 (col 0, row 1).
+      final RouteClasses same = _grid([2, 0, 1], [0, 1, 0], [(1, 0), (2, 0)]);
+      expect([same.kinds[0], same.kinds[1]], everyElement(RouteClasses.kindGutter));
+      final RouteGeometry gs = _geometry(same);
+      expect([_points(gs, 0).last.$1, _points(gs, 1).last.$1], everyElement(isNot(_cx(0))));
+
+      // A single fork entering a child's bottom: at the centre. Fork 1 (col 0, row 0) → 0 (col 1, row 2).
+      final RouteGeometry lone = _geometry(_grid([2, 0], [1, 0], [(1, 0)]));
+      expect(_points(lone, 0).last.$1, _cx(1));
+
+      // An adjacent fork turns right below its child too, so with a merge-adjacent line beside it the centre stays
+      // free: child 0 (col 1, row 1), parents 1 (col 0, row 0) and 2 (col 2, row 0).
+      final RouteGeometry adjacent = _geometry(_grid([1, 0, 0], [1, 0, 2], [(1, 0), (2, 0)]));
+      expect([_points(adjacent, 0).last.$1 - _cx(1), _points(adjacent, 1).last.$1 - _cx(1)], [-24, 24]);
+    });
+
+    test('ports_by_local_direction_a_straight_line_and_a_merge_up_both_vertical_never_share_an_x', () {
+      // Parent 3 (col 0, row 0): straight into 0 (col 0, row 3) and a merge-up into 1 (col 1, row 2), whose first
+      // parent is 2 (col 1, row 1). The straight line stays vertical longest and takes the centre; the merge-up
+      // fans to the side it later turns to.
+      final RouteClasses c = _grid([3, 2, 1, 0], [0, 1, 1, 0], [(3, 0), (2, 1), (3, 1)]);
+      expect([c.kinds[0], c.kinds[2]], [RouteClasses.kindStraight, RouteClasses.kindMergeUp]);
+      final RouteGeometry g = _geometry(c);
+      expect([_points(g, 0).first.$1 - _cx(0), _points(g, 2).first.$1 - _cx(0)], [0, 24]);
+    });
+
+    test('ports_by_local_direction_merge_ups_leave_on_the_side_they_turn_to', () {
+      // Ralph's rtvlvrzr card (2026-11-02: two merge lines left of centre that then ran right). Parent 5 (col 1,
+      // row 0): merge-ups into 0 (col 2, row 2) and 1 (col 3, row 3), a fork left into 2 (col 0, row 1); 3 and 4
+      // are the merge children's first parents. The longer merge-up takes the centre, the other fans right, the
+      // fork left.
+      final RouteClasses c = _grid(
+        [2, 3, 1, 1, 2, 0],
+        [2, 3, 0, 2, 3, 1],
+        [(3, 0), (5, 0), (4, 1), (5, 1), (5, 2)],
+      );
+      expect(
+        [c.kinds[1], c.kinds[3], c.kinds[4]],
+        [RouteClasses.kindMergeUp, RouteClasses.kindMergeUp, RouteClasses.kindFork],
+      );
+      final RouteGeometry g = _geometry(c);
+      double exit(int k) => _points(g, k)[0].$1 - _cx(1);
+      expect([exit(3), exit(1), exit(4)], [0, 24, -24]);
+    });
+
+    test('ports_by_local_direction_a_line_climbing_past_a_port_on_its_x_keeps_it_only_if_longer', () {
+      // Column 0: parent 4 (row 0) merges up into 1 (col 1, row 3; first parent 2, col 1, row 2) and climbs to
+      // row 3; above it child 0 (row 4) takes its lone fork from 3 (col 2, row 2), which climbs column 0 down to
+      // row 2. Both are vertical on column 0's centre over rows 2 … 3: the merge-up stays straight longer (two
+      // pitches less a gap against one), keeps the centre, and the fork enters toward its parent.
+      final RouteClasses c = _grid([4, 3, 2, 2, 0], [0, 1, 1, 2, 0], [(2, 1), (4, 1), (3, 0)]);
+      expect([c.kinds[1], c.kinds[2]], [RouteClasses.kindMergeUp, RouteClasses.kindFork]);
+      final RouteGeometry g = _geometry(c);
+      expect([_points(g, 1).first.$1 - _cx(0), _points(g, 2).last.$1 - _cx(0)], [0, 24]);
     });
 
     test('entries_sit_24_plus_16_k_px_out_and_squeeze_to_8', () {
@@ -506,7 +564,7 @@ void main() {
       }
     });
 
-    test('a_mixed_side_exits_merge_ups_innermost_by_child_row_then_the_fork', () {
+    test('a_mixed_side_exits_the_longest_merge_up_at_the_centre_the_other_innermost_then_the_fork', () {
       // Parent 5 (col 0, row 0): merge-ups into 0 (col 1, row 2) and 1 (col 2, row 3), a fork into 2
       // (col 3, row 1); 3 and 4 are the merge children's first parents.
       final RouteClasses c = _grid(
@@ -524,10 +582,11 @@ void main() {
       );
       final RouteGeometry g = _geometry(c);
       double exit(int k) => _points(g, k)[0].$1 - _cx(0);
-      // The entry fan (Story 10.30): 24, 40, 56 inner → outer; a merge-up 4 px outside its slot.
-      expect(exit(3), 28); // merge-up into row 3
-      expect(exit(1), 44); // merge-up into row 2
-      expect(exit(4), 56); // the fork
+      // Both merge-ups are vertical at the parent's top: the one into row 3 stays straight longest and takes the
+      // centre, the other is the fan's innermost (24), the fork turning at the top the next (40).
+      expect(exit(3), 0); // merge-up into row 3
+      expect(exit(1), 24); // merge-up into row 2
+      expect(exit(4), 40); // the fork
     });
 
     test('a_shared_entrys_deep_run_sits_at_its_free_parts_far_end', () {

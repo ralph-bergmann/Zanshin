@@ -160,37 +160,65 @@ function route(nodes, by, W, H, free) {
   // entry slots (router.dart): ≥ 2 dashed lines into a single-parent change (not a stack) share the first one's port
   const single = (n) => !n.stack && (n.realParents ?? n.parents.length + n.gapParents.length) === 1;
   nodes.forEach((n) => { const d = E.filter((e) => e.n === n && e.dashed); if (single(n) && d.length > 1) d.forEach((e) => { e.slot = d[0]; }); });
-  // entries, per slot owner: a lone or the straight one in the centre (none straight: the centre stays free), every other beside
-  // it — the farther the parent, the farther out; an approach right above the centre counts as the right side
-  const approach = (e) => (e.kind === "gutter" ? e.xg : e.p.cx), used = new Map();
-  nodes.forEach((n) => {
-    const ins = E.filter((e) => e.n === n), owners = ins.filter((e) => !e.slot || e.slot === e);
-    const centre = owners.length === 1 ? owners[0] : owners.find((e) => e.kind === "straight");
-    if (centre) centre.xi = n.cx;
+  // ports by local direction (router.dart): a line's reach at a card edge = how far it runs straight from the edge to the near
+  // side of the band it first turns in (straight: Infinity); vertical there when reach ≥ gapY. At the parent's top a mergeUp
+  // turns below its child, the rest above the parent; at the child's bottom a fork turns above its parent, the rest below the child.
+  const stretch = (e) => e.p.y - GY - (e.n.y + H);
+  E.forEach((e) => {
+    e.rIn = e.kind === "straight" ? Infinity : e.kind === "fork" ? stretch(e) : 0;
+    e.rOut = e.kind === "straight" ? Infinity : e.kind === "mergeUp" ? stretch(e) : 0;
+    e.noIn = e.noOut = false; e.extIn = e.extOut = 0;
+  });
+  // one card edge: one line, else the vertical one that stays straight longest, at the centre (none vertical: the centre stays
+  // free); the rest per side of the x they turn toward (right above the centre counts as right) — vertical innermost (longest
+  // first), then turning lines nearest first; `no` bans the centre, `ext` adds fan slots (the column tie-break below)
+  const place = (lines, mid, fanOf, reach, toward, tie, no, ext, set) => {
+    let centre = null;
+    lines.forEach((l) => { if (!no(l) && (lines.length === 1 || (reach(l) >= GY && (!centre || reach(l) > reach(centre))))) centre = l; });
+    if (centre) set(centre, mid);
     [-1, 1].forEach((s) => {
-      const list = owners.filter((e) => e !== centre && (approach(e) < n.cx ? -1 : 1) === s).sort((a, b) => Math.abs(approach(a) - n.cx) - Math.abs(approach(b) - n.cx) || a.p.u - b.p.u);
-      const xs = GP.entries(list.length, W);
-      list.forEach((e, k) => { e.xi = n.cx + s * xs[k]; });
+      const key = (l) => (reach(l) >= GY ? -reach(l) : Math.abs(toward(l) - mid));
+      const list = lines.filter((l) => l !== centre && (toward(l) < mid ? -1 : 1) === s).sort((a, b) => key(a) - key(b) || tie(a) - tie(b));
+      const xs = fanOf(list.reduce((m, l) => m + 1 + ext(l), 0), W);
+      let slot = 0;
+      list.forEach((l) => { slot += ext(l); set(l, mid + s * xs[slot++]); });
     });
+  };
+  const approach = (e) => (e.kind === "gutter" ? e.xg : e.p.cx), turn = (e) => (e.kind === "gutter" ? e.xg : e.xi);
+  const owner = (e) => !e.slot || e.slot === e;
+  const entries = () => nodes.forEach((n) => {
+    const ins = E.filter((e) => e.n === n);
+    place(ins.filter(owner), n.cx, GP.entries, (e) => e.rIn, approach, (e) => e.p.u, (e) => e.noIn, (e) => e.extIn, (e, x) => { e.xi = x; });
     ins.forEach((e) => { if (e.slot) e.xi = e.slot.xi; });
-    used.set(n.id, [...new Set(ins.map((e) => e.xi))]);
   });
-  // exits, as the entries: a lone line (not a merge-up) or the straight one in the centre, the rest per side — lines climbing the
-  // parent's own lane innermost (MERGE_UP_SHIFT outside their slot), then by how far they turn; the width decides the spacing
-  nodes.forEach((p) => {
-    const outs = E.filter((e) => e.p === p);
-    if (outs.length === 1 && outs[0].kind !== "mergeUp") { outs[0].xo = p.cx; return; }
-    outs.forEach((e) => { if (e.kind === "straight") e.xo = p.cx; });
-    [-1, 1].forEach((s) => {
-      const side = outs.filter((e) => e.kind !== "straight" && e.side === s);
-      if (!side.length) return;
-      const turn = (e) => (e.kind === "gutter" ? e.xg : e.xi);
-      const upL = side.filter((e) => e.kind === "mergeUp").sort((a, b) => b.n.u - a.n.u || Math.abs(a.xi - p.cx) - Math.abs(b.xi - p.cx));
-      const rest = side.filter((e) => e.kind !== "mergeUp").sort((a, b) => Math.abs(turn(a) - p.cx) - Math.abs(turn(b) - p.cx));
-      const list = [...upL, ...rest], xs = GP.exits(list.length, W);
-      list.forEach((e, k) => { e.xo = p.cx + s * (xs[k] + (k < upL.length ? GP.MERGE_UP_SHIFT : 0)); });
+  const exits = () => nodes.forEach((p) => place(E.filter((e) => e.p === p), p.cx, GP.exits, (e) => e.rOut, turn, () => 0, (e) => e.noOut, (e) => e.extOut, (e, x) => { e.xo = x; }));
+  // two vertical lines never share an x, also across the card edges of one column: where the straight stretches (card edge
+  // through the first turn band) of lines of different card edges overlap on one x, the one that stays straight longer keeps its
+  // port (tie: the lower edge index), the other leaves the centre or sits one fan slot further out; two turning lines are left to the tracks
+  const ban = () => {
+    const claims = [];
+    E.forEach((e, k) => {
+      const top = e.p.y, bottom = e.n.y + H;
+      claims.push({ e, k, entry: false, at: e.xo, lo: e.kind === "straight" ? bottom : top - e.rOut - GY, hi: top, len: e.rOut });
+      if (e.kind !== "straight" && owner(e)) claims.push({ e, k, entry: true, at: e.xi, lo: bottom, hi: bottom + e.rIn + GY, len: e.rIn });
     });
-  });
+    claims.sort((a, b) => a.at - b.at || a.lo - b.lo);
+    const moved = new Set();
+    claims.forEach((a, i) => {
+      for (let j = i + 1; j < claims.length && claims[j].at === a.at && claims[j].lo < a.hi; j++) {
+        const b = claims[j], sameEdge = a.entry === b.entry && (a.entry ? a.e.n === b.e.n : a.e.p === b.e.p);
+        if (a.e === b.e || (a.len < GY && b.len < GY) || sameEdge || moved.has(a) || moved.has(b)) continue;
+        const l = a.len < b.len || (a.len === b.len && a.k > b.k) ? a : b;
+        if (l.at === (l.entry ? l.e.n.cx : l.e.p.cx)) l.e[l.entry ? "noIn" : "noOut"] = true;
+        else l.e[l.entry ? "extIn" : "extOut"]++;
+        moved.add(l);
+      }
+    });
+    return moved.size > 0;
+  };
+  let passes = 0;
+  do { entries(); exits(); } while (++passes < 8 && ban());
+  const used = new Map(nodes.map((n) => [n.id, [...new Set(E.filter((e) => e.n === n).map((e) => e.xi))]]));
   E.forEach((e) => {
     const { p, n } = e;
     e.hs = e.kind === "straight" ? [] : e.kind === "mergeUp" ? [{ band: nBand(n), d: e.xo, u: e.xi }]

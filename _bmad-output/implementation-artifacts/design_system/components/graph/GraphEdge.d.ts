@@ -34,8 +34,6 @@ export declare function GraphEnd(props: GraphEndProps): JSX.Element;
 export declare const GraphPorts: {
   /** the port fan at both card edges (Story 10.30) */
   ENTRY: { first: 24; step: 16; min: 8; inset: 18 };
-  /** px a merge-up exit sits outside its fan slot (it never takes the centre) */
-  MERGE_UP_SHIFT: 4;
   /** px of visible line a break keeps to the next bend or card */
   CUT_CLEAR: 12;
   TRACK: { min: 3.5; max: 6 };

@@ -32,13 +32,11 @@ const double _entryStep = 16;
 const double _entryMin = 8;
 const double _entryInset = 18;
 
-/// A merge-up climbs its parent's own column past the cards above, whose entries sit at the centre and on the fan's
-/// slots (24 + 8k at the finest); its exit never takes the centre and sits this far outside its slot, so the two
-/// never run on one line (Story 10.30).
-const double _mergeUpShift = 4;
-
 /// Lines on one gutter step this many pixels apart (GL:196).
 const _gutterStep = 6;
+
+/// The most placements of the ports while vertical lines on one x are separated ([_GeometryBuilder._banCollisions]).
+const _settlePasses = 8;
 
 /// A gutter with more lines than this is reported (its outer lines reach into the cards).
 const _gutterBudget = 9;
@@ -783,16 +781,39 @@ final class _GeometryBuilder {
   late final xi = Float64List(e);
   late final xg = Float64List(e);
 
-  /// Scratch keys for the per-node sorts.
+  /// Scratch key and lists for the per-node sorts.
   late final key1 = Float64List(e);
-  late final key2 = Float64List(e);
   late final scratch = Int32List(e);
+  late final sideScratch = Int32List(e);
+
+  /// Per edge at its child's bottom ([reachIn], [towardIn]) and its parent's top ([reachOut], [towardOut]): how far
+  /// it runs straight from that card edge to the near side of the band it first turns in (infinite for a straight
+  /// line), and the x it turns toward (its side); [tieIn] (the parent's row) orders equal entries, the exits keep
+  /// their edge order ([tieOut] stays 0).
+  late final reachIn = Float64List(e);
+  late final towardIn = Float64List(e);
+  late final tieIn = Float64List(e);
+  late final reachOut = Float64List(e);
+  late final towardOut = Float64List(e);
+  late final tieOut = Float64List(e);
+
+  /// Per edge at its child's bottom (…In) and its parent's top (…Out), set by [_banCollisions]: 1 where it lost the
+  /// centre, and how many fan slots further out it sits, to a vertical line that stays straight longer on its x.
+  late final noCentreIn = Uint8List(e);
+  late final noCentreOut = Uint8List(e);
+  late final extraIn = Uint8List(e);
+  late final extraOut = Uint8List(e);
 
   RouteGeometry build() {
     _positions();
     _gutterXs();
-    final (Int32List portStarts, Float64List portXs) = _entries();
-    _exits();
+    _reaches();
+    var passes = 0;
+    do {
+      _entries();
+      _exits();
+    } while (++passes < _settlePasses && _banCollisions());
+    final (Int32List portStarts, Float64List portXs) = _ports();
     final runs = _Runs(this)..place();
     return _finish(runs, portStarts, portXs);
   }
@@ -849,74 +870,216 @@ final class _GeometryBuilder {
   /// Port [k] of [count] on one side of a card edge, top or bottom (Story 10.30: the entry fan at both ends).
   double _portFan(int count, int k) => _fan(count, _entryFirst, _entryStep, _entryMin, w / 2 - _entryInset, k);
 
-  /// Entries on each child's bottom edge (GL:206-221; Story 10.30's port rules), and the ports. The lines are the
-  /// slot owners: one sits at the centre; of several, the straight one does and the rest fan to their side, and
-  /// with none straight the centre stays free.
-  (Int32List, Float64List) _entries() {
+  /// Each line's reach at both card edges: at the child's bottom a fork climbs the child's column from the band
+  /// above its parent, the other bending kinds turn in the band right below the child; at the parent's top a
+  /// merge-up climbs the parent's column to the band right below its child, the other bending kinds turn in the
+  /// band right above the parent.
+  void _reaches() {
+    final Int32List froms = c.edgeFroms;
+    final Int32List tos = c.edgeTos;
+    final Uint8List kinds = c.kinds;
+    for (var k = 0; k < e; k++) {
+      final int kind = kinds[k];
+      final double top = y[froms[k]];
+      final double bottom = y[tos[k]] + h;
+      reachIn[k] = kind == RouteClasses.kindStraight
+          ? double.infinity
+          : kind == RouteClasses.kindFork
+          ? top - gy - bottom
+          : 0;
+      reachOut[k] = kind == RouteClasses.kindStraight
+          ? double.infinity
+          : kind == RouteClasses.kindMergeUp
+          ? top - gy - bottom
+          : 0;
+      towardIn[k] = kind == RouteClasses.kindGutter ? xg[k] : cx[froms[k]];
+      tieIn[k] = c.nodeRows[froms[k]].toDouble();
+    }
+  }
+
+  /// The port rules at one card edge with centre [mid] (Story 10.30, by local direction since the follow-up of
+  /// 2026-11-02): the lines are `scratch[from ..< from + count]` with their [reach] and [toward]; [tie] breaks
+  /// ties; a line [banned] from the centre never takes it, a line with [extra] slots sits that many fan slots
+  /// further out ([_banCollisions]). A line is vertical at the edge when it runs straight through the band next to
+  /// it (reach ≥ gapY), else it turns there. One line takes the centre; of several, the vertical one that stays
+  /// straight longest does, with none vertical the centre stays free. The rest fan to the side they turn to:
+  /// vertical lines innermost (longest first), then the lines that turn at the edge, nearest turn first.
+  void _place(
+    int from,
+    int count,
+    double mid,
+    Float64List out,
+    Float64List reach,
+    Float64List toward,
+    Float64List tie,
+    Uint8List banned,
+    Uint8List extra,
+  ) {
+    var centre = -1;
+    for (var q = from; q < from + count; q++) {
+      final int k = scratch[q];
+      if (banned[k] == 0 && (count == 1 || reach[k] >= gy && (centre < 0 || reach[k] > reach[centre]))) {
+        centre = k;
+      }
+    }
+    if (centre >= 0) {
+      out[centre] = mid;
+    }
+    for (var s = -1; s <= 1; s += 2) {
+      var sideCount = 0;
+      var slotCount = 0;
+      for (var q = from; q < from + count; q++) {
+        final int k = scratch[q];
+        if (k == centre || (toward[k] < mid ? -1 : 1) != s) {
+          continue;
+        }
+        key1[k] = reach[k] >= gy ? -reach[k] : (toward[k] - mid).abs();
+        sideScratch[from + sideCount++] = k;
+        slotCount += 1 + extra[k];
+      }
+      if (sideCount == 0) {
+        continue;
+      }
+      final list = Int32List.sublistView(sideScratch, from, from + sideCount);
+      sortIndicesStableByDouble(list, key1, second: tie);
+      var slot = 0;
+      for (var q = 0; q < sideCount; q++) {
+        slot += extra[list[q]];
+        out[list[q]] = mid + s * _portFan(slotCount, slot++);
+      }
+    }
+  }
+
+  /// Entries on each child's bottom edge (GL:206-221; [_place]'s rules). The lines are the slot owners; the other
+  /// lines of a shared slot take its owner's x.
+  void _entries() {
     final Int32List inStarts = c._inStarts;
     final Int32List inEdges = c._inEdges;
-    final Int32List froms = c.edgeFroms;
-    final Uint8List kinds = c.kinds;
     final Int32List slots = c.slots;
+    for (var node = 0; node < n; node++) {
+      final int from = inStarts[node];
+      final int to = inStarts[node + 1];
+      var count = 0;
+      for (var q = from; q < to; q++) {
+        final int k = inEdges[q];
+        if (slots[k] == k) {
+          scratch[from + count++] = k;
+        }
+      }
+      _place(from, count, cx[node], xi, reachIn, towardIn, tieIn, noCentreIn, extraIn);
+      for (var q = from; q < to; q++) {
+        final int k = inEdges[q];
+        xi[k] = xi[slots[k]];
+      }
+    }
+  }
+
+  /// Exits on each parent's top edge (GL:222-250; variant B; [_place]'s rules, as the entries').
+  void _exits() {
+    final Int32List outStarts = c._outStarts;
+    final Int32List outEdges = c._outEdges;
+    final Uint8List kinds = c.kinds;
+    for (var node = 0; node < n; node++) {
+      final int from = outStarts[node];
+      final int to = outStarts[node + 1];
+      for (var q = from; q < to; q++) {
+        final int k = outEdges[q];
+        towardOut[k] = kinds[k] == RouteClasses.kindGutter ? xg[k] : xi[k];
+        scratch[q] = k;
+      }
+      _place(from, to - from, cx[node], xo, reachOut, towardOut, tieOut, noCentreOut, extraOut);
+    }
+  }
+
+  /// Two vertical lines never share an x — the port rule's tie-break, carried from one card edge to the column:
+  /// where the straight stretches (from the card edge through the band the line first turns in) of two lines of
+  /// different card edges overlap on one x (a line climbing its column past another card's port), the one that
+  /// stays straight longer keeps its port (tie: the lower edge index); the other leaves the centre, or sits one fan
+  /// slot further out; two lines that both turn at their edges (reach < gapY) are left to the tracks. Bans and extra
+  /// slots only accumulate across passes, never reset, so the passes terminate. Returns whether a line moved, so the
+  /// ports are placed again.
+  bool _banCollisions() {
+    final Int32List froms = c.edgeFroms;
+    final Int32List tos = c.edgeTos;
+    final Uint8List kinds = c.kinds;
+    final claimEdge = Int32List(2 * e);
+    final claimIn = Uint8List(2 * e);
+    final at = Float64List(2 * e);
+    final lo = Float64List(2 * e);
+    final hi = Float64List(2 * e);
+    final len = Float64List(2 * e);
+    var count = 0;
+    for (var k = 0; k < e; k++) {
+      final int p = froms[k];
+      final int ch = tos[k];
+      final double top = y[p];
+      final double bottom = y[ch] + h;
+      // Every line's stretch at both card edges; one that turns at the edge has its band (reach 0).
+      {
+        claimEdge[count] = k;
+        at[count] = xo[k];
+        lo[count] = kinds[k] == RouteClasses.kindStraight ? bottom : top - reachOut[k] - gy;
+        hi[count] = top;
+        len[count++] = reachOut[k];
+      }
+      if (kinds[k] != RouteClasses.kindStraight && c.slots[k] == k) {
+        claimEdge[count] = k;
+        claimIn[count] = 1;
+        at[count] = xi[k];
+        lo[count] = bottom;
+        hi[count] = bottom + reachIn[k] + gy;
+        len[count++] = reachIn[k];
+      }
+    }
+    final order = Int32List(count);
+    for (var q = 0; q < count; q++) {
+      order[q] = q;
+    }
+    sortIndicesStableByDouble(order, at, second: lo);
+    final movedIn = Uint8List(e);
+    final movedOut = Uint8List(e);
+    var moved = false;
+    for (var i = 0; i < count; i++) {
+      final int a = order[i];
+      for (int j = i + 1; j < count && at[order[j]] == at[a] && lo[order[j]] < hi[a]; j++) {
+        final int b = order[j];
+        final int ka = claimEdge[a];
+        final int kb = claimEdge[b];
+        final bool sameEdge =
+            claimIn[a] == claimIn[b] && (claimIn[a] == 1 ? tos : froms)[ka] == (claimIn[a] == 1 ? tos : froms)[kb];
+        if (ka == kb ||
+            len[a] < gy && len[b] < gy || // two lines turning at their edges: the tracks keep them apart
+            sameEdge || // one card edge's own lines (a shared outermost port)
+            (claimIn[a] == 1 ? movedIn : movedOut)[ka] != 0 ||
+            (claimIn[b] == 1 ? movedIn : movedOut)[kb] != 0) {
+          continue; // a line that moves this pass is checked again on the next
+        }
+        final loser = len[a] < len[b] || len[a] == len[b] && ka > kb ? a : b;
+        final int k = claimEdge[loser];
+        final entry = claimIn[loser] == 1;
+        if (at[loser] == cx[entry ? tos[k] : froms[k]]) {
+          (entry ? noCentreIn : noCentreOut)[k] = 1;
+        } else {
+          (entry ? extraIn : extraOut)[k]++;
+        }
+        (entry ? movedIn : movedOut)[k] = 1;
+        moved = true;
+      }
+    }
+    return moved;
+  }
+
+  /// The distinct entry ports per child, in entry order.
+  (Int32List, Float64List) _ports() {
+    final Int32List inStarts = c._inStarts;
+    final Int32List inEdges = c._inEdges;
     final portStarts = Int32List(n + 1);
     final ports = Float64List(e);
     var portCount = 0;
     for (var node = 0; node < n; node++) {
       portStarts[node] = portCount;
-      final int from = inStarts[node];
-      final int to = inStarts[node + 1];
-      if (from == to) {
-        continue;
-      }
-      final double ncx = cx[node];
-      // The line at the centre: the only owner, else the straight one, else none (-1).
-      var centre = -1;
-      var owner = -1;
-      var owners = 0;
-      for (var q = from; q < to; q++) {
-        final int k = inEdges[q];
-        if (slots[k] == k) {
-          owners++;
-          owner = k;
-          if (centre < 0 && kinds[k] == RouteClasses.kindStraight) {
-            centre = k;
-          }
-        }
-      }
-      if (owners == 1) {
-        centre = owner;
-      }
-      if (centre >= 0) {
-        xi[centre] = ncx;
-      }
-      for (var s = -1; s <= 1; s += 2) {
-        var count = 0;
-        for (var q = from; q < to; q++) {
-          final int k = inEdges[q];
-          if (slots[k] != k || k == centre) {
-            continue;
-          }
-          final double approach = kinds[k] == RouteClasses.kindGutter ? xg[k] : cx[froms[k]];
-          if ((approach < ncx ? -1 : 1) != s) {
-            continue;
-          }
-          key1[k] = (approach - ncx).abs();
-          key2[k] = c.nodeRows[froms[k]].toDouble();
-          scratch[from + count++] = k;
-        }
-        if (count == 0) {
-          continue;
-        }
-        final list = Int32List.sublistView(scratch, from, from + count);
-        sortIndicesStableByDouble(list, key1, second: key2);
-        for (var q = 0; q < count; q++) {
-          xi[list[q]] = ncx + s * _portFan(count, q);
-        }
-      }
-      for (var q = from; q < to; q++) {
-        final int k = inEdges[q];
-        xi[k] = xi[slots[k]];
-        final double port = xi[k];
+      for (int q = inStarts[node]; q < inStarts[node + 1]; q++) {
+        final double port = xi[inEdges[q]];
         var seen = false;
         for (int p = portStarts[node]; p < portCount; p++) {
           if (ports[p] == port) {
@@ -931,63 +1094,6 @@ final class _GeometryBuilder {
     }
     portStarts[n] = portCount;
     return (portStarts, Float64List.fromList(Float64List.sublistView(ports, 0, portCount)));
-  }
-
-  /// Exits on each parent's top edge (GL:222-250; variant B; Story 10.30's port rules, as the entries'): one line
-  /// leaves at the centre; of several, the straight one does and the rest fan to their side. A merge-up is the
-  /// exception ([_mergeUpShift]): never at the centre, [_mergeUpShift] outside its fan slot.
-  void _exits() {
-    final Int32List outStarts = c._outStarts;
-    final Int32List outEdges = c._outEdges;
-    final Uint8List kinds = c.kinds;
-    final Int8List sides = c.sides;
-    for (var node = 0; node < n; node++) {
-      final int from = outStarts[node];
-      final int to = outStarts[node + 1];
-      if (from == to) {
-        continue;
-      }
-      final double pcx = cx[node];
-      if (to - from == 1 && kinds[outEdges[from]] != RouteClasses.kindMergeUp) {
-        xo[outEdges[from]] = pcx;
-        continue;
-      }
-      for (var q = from; q < to; q++) {
-        final int k = outEdges[q];
-        if (kinds[k] == RouteClasses.kindStraight) {
-          xo[k] = pcx;
-        }
-      }
-      for (var s = -1; s <= 1; s += 2) {
-        var up = 0;
-        for (var q = from; q < to; q++) {
-          final int k = outEdges[q];
-          if (kinds[k] == RouteClasses.kindMergeUp && sides[k] == s) {
-            key1[k] = -c.nodeRows[c.edgeTos[k]].toDouble();
-            key2[k] = (xi[k] - pcx).abs();
-            scratch[from + up++] = k;
-          }
-        }
-        var rest = 0;
-        for (var q = from; q < to; q++) {
-          final int k = outEdges[q];
-          final int kind = kinds[k];
-          if (kind != RouteClasses.kindStraight && kind != RouteClasses.kindMergeUp && sides[k] == s) {
-            key1[k] = ((kind == RouteClasses.kindGutter ? xg[k] : xi[k]) - pcx).abs();
-            scratch[from + up + rest++] = k;
-          }
-        }
-        final int count = up + rest;
-        if (count == 0) {
-          continue;
-        }
-        sortIndicesStableByDouble(Int32List.sublistView(scratch, from, from + up), key1, second: key2);
-        sortIndicesStableByDouble(Int32List.sublistView(scratch, from + up, from + count), key1);
-        for (var q = 0; q < count; q++) {
-          xo[scratch[from + q]] = pcx + s * (_portFan(count, q) + (q < up ? _mergeUpShift : 0));
-        }
-      }
-    }
   }
 
   RouteGeometry _finish(_Runs runs, Int32List portStarts, Float64List portXs) {

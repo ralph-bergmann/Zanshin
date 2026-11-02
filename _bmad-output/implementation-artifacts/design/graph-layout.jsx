@@ -9,11 +9,12 @@ const G = { gapX: 56, gapY: 48, pad: 56, hCompact: 40, hDetailed: 62, elide: 44,
 const U = 16;
 const CUT_CLEAR = 12;
 const colMemo = new WeakMap();                          // graph list → chosen lanes + columns                                       // a bridge keeps this much visible line to the next bend or card
-// Ports, top and bottom alike (Story 10.30): one line → centre; several → the straight one takes the centre, the rest fan
-// to their side; none straight → the centre stays free. A merge-up exit never takes the centre and sits MERGE_UP_SHIFT
-// outside its slot (it climbs its parent's column past the entries of the cards above).
+// Ports, top and bottom alike (Story 10.30; by local direction since 2026-11-02): only the stretch right at a card edge
+// decides, whatever the line's kind — a line is vertical there when it runs straight through the band next to the edge,
+// else it turns there toward its side. One line → centre; several → the vertical line that stays straight longest takes
+// the centre, the rest fan to the side they turn to (vertical innermost); none vertical → the centre stays free. Two
+// vertical lines never share an x, also across the card edges of one column (the column tie-break in routeLines).
 const ENTRY = { first: 24, step: 16, min: 8, inset: 18 };   // the fan on either edge, offsets from the centre
-const MERGE_UP_SHIFT = 4;
 
 function roundedPath(raw, r) {
   const pts = raw.filter((p, i) => i === 0 || p[0] !== raw[i - 1][0] || p[1] !== raw[i - 1][1]);
@@ -206,47 +207,85 @@ function routeLines(nodes, N, W, H, { bus = false, free = false } = {}) {
     const own = Math.floor(span / min);
     return [...Array(m).keys()].map(k => first + Math.min(k, own) * min);
   };
-  // entries on the child's bottom edge: a lone line or the straight one in the centre, every other parent beside it — the farther
-  // the parent, the farther out. Dashed edges through the same hidden parent are one parent: they share its port (and its gap marker).
-  const approach = e => e.kind === "gutter" ? e.xg : e.p.cx;
-  const ports = new Map();
-  nodes.forEach(n => {
-    const ins = E.filter(e => e.n === n), slots = new Map();
-    ins.forEach(e => { const k = e.dashed ? "~" + e.via : e.from; if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); });
-    const owners = [...slots.values()];
-    const centre = owners.length === 1 ? owners[0] : owners.find(es => es[0].kind === "straight");
-    if (centre) centre.forEach(e => { e.xi = n.cx; });
-    [-1, 1].forEach(s => {
-      const list = [...slots.values()].filter(es => es[0].xi == null && Math.sign(approach(es[0]) - n.cx) === s)
-        .sort((a, b) => Math.abs(approach(a[0]) - n.cx) - Math.abs(approach(b[0]) - n.cx) || a[0].p.u - b[0].p.u);
-      const xs = fan(list.length, ENTRY.first, ENTRY.step, ENTRY.min, W / 2 - ENTRY.inset);
-      list.forEach((es, k) => es.forEach(e => { e.xi = n.cx + s * xs[k]; }));
-    });
-    ports.set(n.id, [...new Set(ins.map(e => e.xi))]);
+  // Ports by local direction (see the header). A line's reach at a card edge: how far it runs straight from the edge to the
+  // near side of the band it first turns in (straight: Infinity) — vertical there when reach ≥ gapY. At the parent's top a
+  // mergeUp turns in the band below its child, the rest in the band above the parent; at the child's bottom a fork turns in
+  // the band above its parent, the rest in the band below the child.
+  const stretch = e => e.p.y - GY - (e.n.y + H);
+  E.forEach(e => {
+    e.rIn = e.kind === "straight" ? Infinity : e.kind === "fork" ? stretch(e) : 0;
+    e.rOut = e.kind === "straight" ? Infinity : e.kind === "mergeUp" ? stretch(e) : 0;
+    e.noIn = e.noOut = false; e.extIn = e.extOut = 0;
   });
-  // exits on the parent's top edge, per side: lines climbing the parent's own lane innermost, then by how far they turn —
-  // the entries' fan (24px out, 16px apart, squeezed to 8px, then the outermost lines share one exit and split above the card).
-  const exitFan = m => fan(m, ENTRY.first, ENTRY.step, ENTRY.min, W / 2 - ENTRY.inset);
-  nodes.forEach(p => {
-    const outs = E.filter(e => e.p === p);
-    if (outs.length === 1 && outs[0].kind !== "mergeUp") { outs[0].xo = p.cx; return; }
-    outs.forEach(e => { if (e.kind === "straight") e.xo = p.cx; });
+  // one card edge's lines → x: one line, else the vertical one that stays straight longest, at the centre (none vertical:
+  // the centre stays free); the rest per side of the x they turn toward — vertical innermost (longest first), then turning
+  // lines nearest first. `no` bans a line from the centre, `ext` puts it that many fan slots further out (the column tie-break).
+  const place = (lines, mid, reach, toward, tie, no, ext, set) => {
+    let centre = null;
+    lines.forEach(l => { if (!no(l) && (lines.length === 1 || reach(l) >= GY && (!centre || reach(l) > reach(centre)))) centre = l; });
+    if (centre) set(centre, mid);
     [-1, 1].forEach(s => {
-      const side = outs.filter(e => e.kind !== "straight" && e.side === s);
-      if (!side.length) return;
-      const turn = e => e.kind === "gutter" ? e.xg : e.xi;
-      const up = side.filter(e => e.kind === "mergeUp").sort((a, b) => b.n.u - a.n.u || Math.abs(a.xi - p.cx) - Math.abs(b.xi - p.cx));
-      const rest = side.filter(e => e.kind !== "mergeUp").sort((a, b) => Math.abs(turn(a) - p.cx) - Math.abs(turn(b) - p.cx));
-      if (bus && rest.length) {
-        const xs = exitFan(up.length + 1);
-        up.forEach((e, k) => { e.xo = p.cx + s * (xs[k] + MERGE_UP_SHIFT); });
-        rest.forEach(e => { e.xo = p.cx + s * xs[up.length]; e.bus = p.id + "|" + s; });
-      } else {
-        const list = [...up, ...rest], xs = exitFan(list.length);
-        list.forEach((e, k) => { e.xo = p.cx + s * (xs[k] + (k < up.length ? MERGE_UP_SHIFT : 0)); });
+      const key = l => reach(l) >= GY ? -reach(l) : Math.abs(toward(l) - mid);
+      const list = lines.filter(l => l !== centre && (toward(l) < mid ? -1 : 1) === s).sort((a, b) => key(a) - key(b) || tie(a) - tie(b));
+      const xs = fan(list.reduce((m, l) => m + 1 + ext(l), 0), ENTRY.first, ENTRY.step, ENTRY.min, W / 2 - ENTRY.inset);
+      let slot = 0;
+      list.forEach(l => { slot += ext(l); set(l, mid + s * xs[slot++]); });
+    });
+  };
+  // entries on the child's bottom edge, per slot: dashed edges through the same hidden parent are one parent — they share its
+  // port (and its gap marker); the slot's first line owns it.
+  const approach = e => e.kind === "gutter" ? e.xg : e.p.cx;
+  const inSlots = new Map();
+  nodes.forEach(n => {
+    const slots = new Map();
+    E.filter(e => e.n === n).forEach(e => { const k = e.dashed ? "~" + e.via : e.from; if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); });
+    inSlots.set(n, [...slots.values()]);
+  });
+  const entries = () => nodes.forEach(n => place(inSlots.get(n), n.cx, es => es[0].rIn, es => approach(es[0]), es => es[0].p.u,
+    es => es[0].noIn, es => es[0].extIn, (es, x) => es.forEach(e => { e.xi = x; })));
+  // exits on the parent's top edge, the same rule (in bus mode a side's lines that turn at the top share its innermost such exit)
+  const turn = e => e.kind === "gutter" ? e.xg : e.xi;
+  const exits = () => nodes.forEach(p => {
+    const outs = E.filter(e => e.p === p);
+    place(outs, p.cx, e => e.rOut, turn, () => 0, e => e.noOut, e => e.extOut, (e, x) => { e.xo = x; });
+    if (bus) [-1, 1].forEach(s => {
+      const rest = outs.filter(e => e.rOut < GY && e.xo !== p.cx && Math.sign(e.xo - p.cx) === s)
+        .sort((a, b) => Math.abs(a.xo - p.cx) - Math.abs(b.xo - p.cx));
+      rest.forEach(e => { e.xo = rest[0].xo; e.bus = p.id + "|" + s; });
+    });
+  });
+  // the column tie-break: two vertical lines never share an x — where the straight stretches (card edge through the first turn
+  // band) of lines of different card edges overlap on one x, the one that stays straight longer keeps its port (tie: the lower
+  // edge index), the other leaves the centre or sits one fan slot further out; two lines that both turn at their edges are left to the
+  // tracks. Returns whether a line moved.
+  const ban = () => {
+    const claims = [];
+    E.forEach((e, k) => {
+      const top = e.p.y, bottom = e.n.y + H;
+      claims.push({ e, k, entry: false, at: e.xo, lo: e.kind === "straight" ? bottom : top - e.rOut - GY, hi: top, len: e.rOut });
+      if (e.kind !== "straight" && inSlots.get(e.n).some(es => es[0] === e)) {
+        claims.push({ e, k, entry: true, at: e.xi, lo: bottom, hi: bottom + e.rIn + GY, len: e.rIn });
       }
     });
-  });
+    claims.sort((a, b) => a.at - b.at || a.lo - b.lo);
+    const moved = new Set();
+    let any = false;
+    claims.forEach((a, i) => {
+      for (let j = i + 1; j < claims.length && claims[j].at === a.at && claims[j].lo < a.hi; j++) {
+        const b = claims[j];
+        const sameEdge = a.entry === b.entry && (a.entry ? a.e.n === b.e.n : a.e.p === b.e.p);
+        if (a.e === b.e || (a.len < GY && b.len < GY) || sameEdge || moved.has(a) || moved.has(b)) continue;
+        const l = a.len < b.len || (a.len === b.len && a.k > b.k) ? a : b;
+        if (l.at === (l.entry ? l.e.n.cx : l.e.p.cx)) l.e[l.entry ? "noIn" : "noOut"] = true;
+        else l.e[l.entry ? "extIn" : "extOut"]++;
+        moved.add(l); any = true;
+      }
+    });
+    return any;
+  };
+  let passes = 0;
+  do { entries(); exits(); } while (++passes < 8 && ban());
+  const ports = new Map(nodes.map(n => [n.id, [...new Set(E.filter(e => e.n === n).map(e => e.xi))]]));
   // horizontal stretches: in the band above the parent and/or the band below the child
   const grouped = new Set();
   nodes.forEach(n => {

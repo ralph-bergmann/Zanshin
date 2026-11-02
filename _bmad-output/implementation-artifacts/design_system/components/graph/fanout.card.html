@@ -39,7 +39,7 @@
       <Stage w={400} title="400 px"/>
       <Stage w={240} title="240 px"/>
       <Stage w={160} title="160 px" note="8 px apart · the outer five share one exit"/>
-      <div className="foot">Top and bottom follow one rule set: a lone line sits at the centre; of several, the straight one does and the rest fan to their side; with none straight the centre stays free. The fan starts <b>24px</b> out, <b>16px</b> apart while it fits within 18px of the card edge, squeezes down to <b>8px</b>, and beyond that the outermost lines share one port and split above the card. A merge-up exit sits 4px outside its slot. <code>GraphPorts.exits(m, width)</code></div>
+      <div className="foot">Top and bottom follow one rule set: only the stretch right at the card edge decides — a lone line sits at the centre; of several, the one running vertical next to the edge longest does and the rest fan to the side they turn to, vertical lines innermost; with none vertical the centre stays free. The fan starts <b>24px</b> out, <b>16px</b> apart while it fits within 18px of the card edge, squeezes down to <b>8px</b>, and beyond that the outermost lines share one port and split above the card. <code>GraphPorts.exits(m, width)</code></div>
     </div>
   );
   ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);

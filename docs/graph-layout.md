@@ -1591,25 +1591,38 @@ formulas and evaluation order as GL. x(i) = pad + col(i)·colW, y(i) = pad + (ma
 pitch, cx = x + W / 2. Gutter x: n.cx − s·colW·(j + 0.5) (k ≥ 1) or n.cx + colW / 2 (k = 0), plus
 its step.
 
-**Ports** (Story 10.30, top and bottom alike): one line sits at the centre; of several, the `straight`
-line does and the rest fan to their side; with none straight the centre stays free. At an entry the
-lines are the slot owners. The exception: a `merge-up` exit never takes the centre and sits 4 px
-(`_mergeUpShift`) outside its fan slot — it climbs its parent's own column past the entries of the cards
-above, which use the centre and the fan slots.
+**Ports** (Story 10.30, top and bottom alike, by local direction since its follow-up of 2026-11-02):
+only the stretch right at a card edge decides, whatever the line's kind. A line's *reach* at an edge is
+the distance from the edge to the near side of the band it first turns in (`straight`: infinite); it is
+*vertical* there when reach ≥ gapY, else it *turns* there. Turn bands: at a parent's top a `merge-up`
+turns in the band right below its child, `fork` / `merge-adjacent` / `gutter` in the band right above
+the parent; at a child's bottom a `fork` turns in the band right above its parent, `merge-adjacent` /
+`merge-up` / `gutter` in the band right below the child. A line's *side* is the x it turns toward (the
+gutter x for a `gutter`, else the entry at the top and the parent's cx at the bottom; equal to cx counts
+as the right side). One line sits at the centre; of several, the vertical line that stays straight
+longest does; with none vertical the centre stays free. The rest fan to their side: vertical lines
+innermost (longest first), then the turning lines by |side − cx| (entries: then the parent's row). At
+an entry the lines are the slot owners.
 
-**Entries** (GL:206-221). The centre slot as above. The other slots, per
-side of the centre by their approach (the gutter x for a `gutter`, else the parent's cx; an approach
-equal to cx counts as the right side), ordered by |approach − cx| then the parent's row, sit at
-cx ± fan(m, 24, 16, 8, W/2 − 18), where fan(m, first, step, min, max) = first + k·st with
-st = min(step, max(0, max − first)/(m − 1)) while st ≥ min, else first + min(k, ⌊span/min⌋)·min
-(the overflow shares the outermost port). A node's ports are its distinct entry x's, in edge order.
+*Column tie-break.* Two vertical lines never share an x, also across the card edges of one column: where
+the straight stretches (card edge through its first turn band) of lines of different card edges overlap
+on one x — a `merge-up` climbing its parent's column past a card whose fork entry runs down the same
+centre — the line that stays straight longer keeps its port (tie: the lower edge index), the other leaves
+the centre or sits one fan slot further out; two lines that both turn at their edges are left to the
+tracks. The ports are placed again until stable (at most 8 passes, `_settlePasses`). On the 10k
+synthetic free layout the per-edge rule alone gives 342 collinear overlaps, a centre-only tie-break 19,
+the tie-break over all slots 0; a tie-break loser is the one case where a card edge's only line is not
+centred (20 of 8710 lone exits).
 
-**Exits** (GL:222-250; variant B only; Story 10.30). A lone line other than a `merge-up`, and a
-`straight` line, leave at the centre. Per side, the other lines — `merge-up` first (child row
-descending, then |entry − cx|), then the rest by |turn − cx| (turn = the gutter x, else the entry) —
-sit at cx ± fan(m, 24, 16, 8, W/2 − 18), the entries' fan, a `merge-up` 4 px further out. Nine
-lines: 16 px apart at W 400, 9.75 at 240, 8 at 160 with the outer five on one exit. (Before Story
-10.30: an exit fan of its own, 12 px apart centred on 0.28·W.)
+**Entries** (GL:206-221). Slots as under Ports, at cx ± fan(m, 24, 16, 8, W/2 − 18), where
+fan(m, first, step, min, max) = first + k·st with st = min(step, max(0, max − first)/(m − 1)) while
+st ≥ min, else first + min(k, ⌊span/min⌋)·min (the overflow shares the outermost port). A node's ports
+are its distinct entry x's, in edge order.
+
+**Exits** (GL:222-250; variant B only; Story 10.30). Slots as under Ports, at
+cx ± fan(m, 24, 16, 8, W/2 − 18), the entries' fan. Nine lines: 16 px apart at W 400, 9.75 at 240, 8
+at 160 with the outer five on one exit. (Before Story 10.30: an exit fan of its own, 12 px apart
+centred on 0.28·W; before its follow-up: centre by `straight` kind, a `merge-up` never centred.)
 
 **Runs and tracks** (GL:251-290). Bands: above the parent [y(p) − gapY, y(p)], below the child
 [y(i) + H, y(i) + H + gapY]. Runs: `merge-up` one below the child (exit → entry); `gutter` one above

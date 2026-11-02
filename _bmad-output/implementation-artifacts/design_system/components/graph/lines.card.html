@@ -18,7 +18,7 @@
   // compact cards 160 × 40 · columns 56px apart (centres 120 / 336 / 552) · rows 48px apart (tops 40 / 128 / 216 / 304)
   const W = 160, H = 40, col = (c) => 40 + c * 216, row = (r) => 40 + r * 88, cx = (c) => col(c) + W / 2;
   const [e1, e2] = GraphPorts.exits(2, W);          // P: beside its straight line, two forks on the right → 24 / 40 from the centre
-  const [one] = GraphPorts.exits(1, W);             // F: one line on each side, none straight → 24 (the centre stays free)
+  const [one] = GraphPorts.exits(1, W);             // F: one line on each side, both turning at the top → 24 (the centre stays free)
   const [in1] = GraphPorts.entries(1, W);           // M's second parent enters 24px right of the centre
   const sp = GraphPorts.trackSpacing(2);            // 6
   const bandP = row(3) - 24, bandF = row(2) - 24, bandX = row(1) - 24;
@@ -41,8 +41,8 @@
   const ports = [[cx(0) + e1, row(3)], [cx(0) + e2, row(3)], [cx(1) - one, row(2)], [cx(1) + one, row(2)], [cx(0) + in1, row(1) + H], [cx(2), row(1)]];
   const badges = [[1, 212, 296], [2, 172, 180], [3, 236, 266], [4, 458, 150], [5, 420, 120], [6, 142, 104]];
   const legend = [
-    [1, "Own exits", "every line leaves the parent's top edge at its own port: a lone line from the centre (X), of several the straight one (P), and with none straight the centre stays free (F). The rest fan as the entries: P sends two forks right (24 / 40px from the centre)."],
-    [2, "Own entries", "the same rules at the child's bottom edge: a lone or straight line enters at the centre, every other parent beside it — the farther the parent, the farther out (24px, then 16px apart)."],
+    [1, "Own exits", "every line leaves the parent's top edge at its own port. Only the stretch right at the edge decides: a lone line from the centre (X); of several, the one running vertical through the band above the card longest (P's straight line); with none vertical the centre stays free (F). The rest fan to the side they turn to, vertical lines innermost: P sends two forks right (24 / 40px from the centre)."],
+    [2, "Own entries", "the same rules at the child's bottom edge: a lone line or the longest vertical one enters at the centre, every other parent beside it — the farther the parent, the farther out (24px, then 16px apart)."],
     [3, "Tracks", "forks turn just above the parent, merges just below the child; runs in one band stack 3.5–6px apart and nest instead of crossing."],
     [4, "Gutter", "the lane is taken (in Free also: a card would hide the run) — the line climbs the gutter between columns and turns below the child."],
     [5, "Bridge", "where two lines cross, the horizontal one breaks (12 × 10) and keeps ≥ 12px of line to the next bend or card; without that room the vertical one breaks."],

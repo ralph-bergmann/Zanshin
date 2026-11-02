@@ -1442,6 +1442,28 @@ mod tests {
         );
     }
 
+    /// A message without a `<kind> at N: ` head keeps its text when the span is dropped.
+    #[test]
+    fn without_span_keeps_a_message_without_a_column_head() {
+        for text in ["Syntax error: expected x", "no colon here"] {
+            let mut detail = super::RevsetErrorDetail::bare(super::RevsetErrorKind::SyntaxError);
+            detail.message = text.to_owned();
+            let error = super::RevsetError::ParseError {
+                reason: String::new(),
+                detail: Box::new(detail),
+            }
+            .without_span();
+            assert!(
+                matches!(
+                    &error,
+                    super::RevsetError::ParseError { detail, .. }
+                        if detail.message == text && detail.span.is_none()
+                ),
+                "{error:?}"
+            );
+        }
+    }
+
     /// An expansion's message carries the cause chain the CLI prints as "Caused by:" lines,
     /// without the causes' columns (they count in the alias body).
     #[test]
