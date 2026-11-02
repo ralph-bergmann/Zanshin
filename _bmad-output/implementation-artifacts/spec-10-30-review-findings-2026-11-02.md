@@ -5,7 +5,7 @@ created: '2026-11-02'
 status: 'done'
 baseline_revision: 'af7e0412d60bb643f20cced3f50544efa2df8e26'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
@@ -52,6 +52,27 @@ deferred:
       _Meta._parents() not-in-layout and stale branches untested for the copied full id.
     location: >-
       app/lib/src/features/graph/graph_inspector.dart _Meta._parents
+    severity: low
+  - summary: >-
+      The raw rule's field-mark guard (span on the term's wrapper, or the value not found in its term) has no test.
+    evidence: |-
+      Both window tests (revset_configs_window_test.dart:357, :387) take the inside == true path; dropping the guard would fail neither.
+    location: >-
+      app/lib/src/features/graph/revset_configs/revset_configs_window.dart:423-435 fieldSpan
+    severity: low
+  - summary: >-
+      The inspector's copyable ids tell assistive tech nothing about copying: no hint, "Copied" and the failure popover are not announced.
+    evidence: |-
+      _CopyId wraps the id in Semantics(label: full, button: true) only; no hint, no SemanticsService.announce / liveRegion.
+    location: >-
+      app/lib/src/features/graph/graph_inspector.dart _CopyId
+    severity: low
+  - summary: >-
+      epic-10-context.md still lists Story 10.30 as backlog, and its "show jj's own error text in place" rule now contradicts the new one-sentence rule beside it.
+    evidence: |-
+      epic-10-context.md:41 "(backlog)"; :51 vs :52 not reconciled. A compiled planning cache, so it is left to its next recompile.
+    location: >-
+      _bmad-output/implementation-artifacts/epic-10-context.md:41,51
     severity: low
 ---
 
@@ -184,6 +205,41 @@ deferred:
   - `[false]` `[reject]` top/bottom parity with merge-up — the AC is about equal counts of ordinary lines; the merge-up exception is deferred #1.
   - `[maybe-false]` `[reject]` merge-up may coincide in dense fans — the 10k invariant check finds none; would settle: a hand-built dense fan case; if true only low.
 
+### 2026-11-02 — Review pass (follow-up)
+- verdicts: 27 findings — high 0, medium 4, low 14, false 6, maybe-false 3
+- findings:
+  - Intent auditor:
+  - `[false]` `[reject]` message column counts in the composed revset, the field mark in the rule — carried: the intent's own example ("at 93") is the composed column.
+  - `[low]` `[reject]` `at L:C` past line 1 is not in the contract's format — pest's column is line-local, so a bare column would be wrong there; the previous pass added it deliberately and pinned it.
+  - `[low]` `[defer]` "straight" read as `kindStraight`, matrix row "straight not first parent" never occurs — carried, deferred #2.
+  - `[medium]` `[defer]` merge-up exit exception breaks "one line → centre" / top-bottom parity — carried, deferred #1.
+  - `[low]` `[defer]` DS `layout.js` counts entry edges, NaN until the bundle is regenerated — carried, deferred #5.
+  - `[low]` `[reject]` DS copy variant lives in the UI kit, native `title` tooltip, commit prefix 0 — static design illustration; the app is the implementation the intent's details bind.
+  - `[low]` `[reject]` no backend-to-UI test of the column, no rendered-port test — each half is pinned at its level (Rust strings, window via the fake, router geometry + 10k invariants); rendering draws the router's points.
+  - Verification gap:
+  - `[medium]` `[patch]` graph search footer and broken-variant menu rows still show `context` (pest's multi-line render) — `graph_search_field.dart` footer and the three `graphSearchBroken` sites now read `revsetError?.message ?? context ?? code`; the footer test now feeds a pest `context` plus a `message` and asserts the sentence shows and no `-->`.
+  - `[low]` `[defer]` the fieldSpan guard for a wrapper span / missing value is untested — deferred #7 (cosmetic, one window test closes it).
+  - `[false]` `[reject]` (other finding) the popover-focus test would fail against the old `autofocus` code — not a defect; it supports the existing test's validity.
+  - Blind hunter:
+  - `[medium]` `[patch]` search footer / menu rows still raw — member of the footer patch above.
+  - `[false]` `[reject]` error mark is colour only (WCAG 1.4.1) — the field's message line (alert icon + sentence with the column) and red edge carry the error; the red span is the intent's specified extra mark.
+  - `[false]` `[reject]` the column points into text the user never sees — carried (composed column, intent example).
+  - `[low]` `[reject]` `parse_detail` fallback `e.kind().to_string()` lacks the prefix — pest renders always carry a `= ` line, so the fallback is not reached in practice; it still yields one line.
+  - `[low]` `[defer]` copy feedback invisible to assistive tech — deferred #8.
+  - `[false]` `[reject]` meta-line parent ids copy an id of unclear type — the copied id is the full form of the id shown on that line.
+  - `[medium]` `[defer]` merge-up / straight decisions handed back to Ralph while docs present them as settled — carried, same root cause as deferred #1.
+  - `[low]` `[defer]` `epic-10-context.md` stale (10.30 backlog; rule 51 vs 52) — deferred #9 (compiled planning cache, agent context).
+  - `[false]` `[reject]` end-of-input mark can land on another rule — a rule is marked only when the position lies inside its term range (`start < r.end`); a position at the value's end inside the term is the term's own closing `)`, where the user's text is incomplete, so its last char is the right mark.
+  - `[maybe-false]` `[reject]` the previous pass's open verifications (old-code popover test, unfocused mark in the window) — the window test pins `errorRange`, the field test pins the unfocused paint, the verification layer reasons the popover test fails on old code; if true only low.
+  - `[low]` `[reject]` DS `ZKCopyId` gaps (setTimeout not cleared, prefix 2, `title` not mono) — static kit illustration, no user meets it.
+  - Edge case hunter:
+  - `[low]` `[reject]` focus not restored after the failure popover closes — reachable only after a clipboard failure (rare on macOS); the fix adds focus-restore state.
+  - `[low]` `[patch]` a successful copy while the failure popover is open shows both — `_copy` success path now hides `_failed` first (mirrors the failure path hiding `_copied`).
+  - `[low]` `[reject]` end-of-input mark splits a surrogate pair — needs a non-BMP last char in a revset value; cosmetic.
+  - `[maybe-false]` `[reject]` overflowing merge-ups share the outermost slot + shift — carried (dense-fan row of the first pass); 10k invariants green.
+  - `[maybe-false]` `[reject]` the prototype draws the same overflow — member of the row above.
+  - `[low]` `[patch]` `search.css` header comment still lists the pill tint as an accent use — comment corrected.
+
 ## Design Notes
 
 Item 4 is expected to resolve with item 5 (the id's commit-id tooltip goes); if the widget test shows the new copy tooltip also hangs, fix the cause in `ZsTooltip` (shared code) rather than locally. The "Copied" confirmation is a self-placed `ZsTooltipBubble` (RawTooltip dismisses on pointer down, so the tooltip itself cannot show it).
@@ -207,9 +263,17 @@ Item 4 is expected to resolve with item 5 (the id's commit-id tooltip goes); if 
 - Parity oracle not run: no jj verb changed.
 - Marionette (Widgetbook Configurations window, implementer): row and preview read "Syntax error at 6: expected <EOI>, …", red edge, no `-->`; focus kept while the error went away and came back; inspector showed the `jj` / `git` subscripts. A "before" repro was not recorded separately (the widget test pins the old failure: the `EditableTextState` identity across the toggle).
 
+**Verification notes (follow-up review pass 2026-11-02; same gate rule):**
+- `app`: `flutter test test/features/graph/graph_search_field_test.dart test/features/graph/graph_inspector_test.dart` pass; `cargo make --allow-private test-flutter` 1824 pass; `dart analyze --fatal-infos` clean; `dart format --set-exit-if-changed .` clean (after formatting `graph_search_field.dart`).
+- No Rust, FFI or `packages/*` change in this pass: no cargo, codegen or parity run needed.
+
 ## Auto Run Result
 
 Status: done
+
+**Follow-up review pass (2026-11-02).** 27 findings. Patches: graph search footer and broken-variant menu rows show `revsetError.message` (medium; test extended), `_CopyId` success hides the failure popover (low), stale `search.css` comment (low). Deferred (mirrored in deferred-work.md): fieldSpan guard test, copy feedback for assistive tech, stale `epic-10-context.md`. Rejected rows carry their reasons in the triage log. Files: `app/lib/src/features/graph/{graph_search_field.dart,graph_inspector.dart}`, `app/test/features/graph/graph_search_field_test.dart`, `design_system/components/search/search.css`. Patched by verdict: medium 1, low 2, high 0 → follow-up review recommendation false (converged). Residual risks unchanged from the first pass (merge-up deviation awaits Ralph; DS bundle until republish).
+
+**First pass:**
 
 **Summary.** All six items of Story 10.30: (1) `RevsetErrorDetail.message` built in `zanshin-jj` (`Syntax error|Error at C|L:C: <jj's message>`, spanless without position, resolution = jj-lib's one-liner), appended to the FFI schema, shown at the raw rule and in the preview, the span marked in the field via `ZsTextField.errorRange` (also unfocused); (2) `ZsTextField` keeps one structure with and without a message; (3) the `$` pill has no tint (app + DS); (4) the hanging commit-id tooltip is gone with (5) the inspector's `_CopyId` (short change id ₍jj₎, short commit id ₍git₎, parents too; Click to copy / Copied / selectable popover on clipboard failure); (6) uniform ports in `router.dart`, `design/graph-layout.jsx`, DS `GraphPorts` / UI kit — except merge-up exits (never centre, +4 px) to keep the invariants green, pending Ralph's OK.
 

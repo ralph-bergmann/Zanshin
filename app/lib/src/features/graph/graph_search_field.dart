@@ -925,7 +925,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
           colors,
           _jjLog,
           error != null
-              ? s.graphSearchBroken(error.context ?? error.code)
+              ? s.graphSearchBroken(error.revsetError?.message ?? error.context ?? error.code)
               : (defaults == null || defaults.log == _builtinLog ? s.graphSearchLogDetail : defaults.log),
           mono: !(defaults == null || defaults.log == _builtinLog) && error == null,
           tag: tag,
@@ -934,14 +934,18 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         revsetDefaultAll => _variantRow(
           colors,
           GraphAllView.expression,
-          error != null ? s.graphSearchBroken(error.context ?? error.code) : s.graphSearchAllDetail,
+          error != null
+              ? s.graphSearchBroken(error.revsetError?.message ?? error.context ?? error.code)
+              : s.graphSearchAllDetail,
           tag: tag,
           danger: error != null,
         ),
         _ => _variantRow(
           colors,
           _variantName(s, v),
-          error != null ? s.graphSearchBroken(error.context ?? error.code) : _configText(v),
+          error != null
+              ? s.graphSearchBroken(error.revsetError?.message ?? error.context ?? error.code)
+              : _configText(v),
           nameMono: false,
           mono: error == null,
           tag: tag,
@@ -1417,7 +1421,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
           spacing: 4,
           children: <Widget>[
             Text(
-              error.context ?? error.code,
+              error.revsetError?.message ?? error.context ?? error.code,
               style: ZsType.body.copyWith(fontSize: ZsType.fsMd, height: 1.3, color: colors.rem),
             ),
             if (expression.isNotEmpty)

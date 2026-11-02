@@ -2,7 +2,7 @@
    GRAPH SEARCH — the top-centre capsule as one field: [menu ▾ | query | ✕]   (client: search.css, graph-search.jsx)
    · one menu: the default search, the other jj log variants ($), Go to / Filter by, Edit Configurations…
    · the field holds one thing: nothing (= the default search), a typed search, or the name of the variant the graph shows
-   · moon (--accent) = focus, anything but the default search, the highlighted suggestion, the match underline; gold stays with @
+   · moon (--accent) = focus, the highlighted suggestion, the match underline; gold stays with @
    ============================================================ */
 .zs-gs{position:relative;display:flex;align-items:center;gap:2px;height:var(--control-lg);padding:0 3px;border-radius:var(--radius-card);background:var(--fl-hover);border:1px solid transparent;min-width:0;transition:border-color var(--dur-hover) var(--ease-state),box-shadow var(--dur-hover) var(--ease-state)}
 .zs-gs.is-focus{border-color:var(--accent-line);box-shadow:0 0 0 3px var(--accent-ring)}

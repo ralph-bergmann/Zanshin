@@ -1024,6 +1024,7 @@ class _CopyIdState extends State<_CopyId> with SingleTickerProviderStateMixin {
       return;
     }
     _timer?.cancel();
+    _failed.hide();
     _copied.show();
     _fade.forward(from: 0);
     _timer = Timer(_CopyId._copiedFor, () async {

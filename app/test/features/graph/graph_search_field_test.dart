@@ -844,7 +844,7 @@ void main() {
     rig.source.respond = (request) => request.revset.startsWith('author')
         ? throw const ZanshinFfiException.withReport(
             'jj.revset_parse_error',
-            'Failed to parse revset',
+            ' --> 1:20\n  |\n1 | author("Lena König")\n  |                    ^---',
             precondition: null,
             warnings: <ZanshinWarning>[],
             // `König"` from byte 19 ("ö" is two bytes), 7 bytes long.
@@ -853,6 +853,7 @@ void main() {
               span: RevsetSpan(offset: 19, length: 7),
               symbol: null,
               candidates: <String>[],
+              message: 'Syntax error at 20: expected <EOI>',
             ),
           )
         : _layout();
@@ -862,7 +863,9 @@ void main() {
     expect(rig.model.layout, isNotNull, reason: 'the graph keeps its last layout');
     await tester.tap(_field());
     await tester.pump();
-    expect(find.text('Failed to parse revset'), findsOneWidget);
+    // Story 10.30 follow-up: the one-line message, never jj's pest render in `context`.
+    expect(find.text('Syntax error at 20: expected <EOI>'), findsOneWidget);
+    expect(find.textContaining('-->'), findsNothing);
     final RichText span = tester.widget<RichText>(
       find.descendant(
         of: find.byKey(const ValueKey<String>('graph-search-error-span')),

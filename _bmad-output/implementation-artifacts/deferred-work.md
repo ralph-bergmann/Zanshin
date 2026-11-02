@@ -2611,3 +2611,15 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **Copying a parent id is tested only for a parent inside the layout.** Low.
   - `_Meta._parents()` has a not-in-layout and a stale branch for `full`; `graph_inspector_test.dart` taps only `inspector-parent-0` of an in-layout parent.
   - **Follow-up:** one test per branch asserting the clipboard gets the full id.
+
+## Surfaced in the follow-up review of Story 10.30 (bmad-build-auto, 2026-11-02)
+
+- **The raw rule's field-mark guard (span on the term's wrapper, or the value not found in its term) has no test.** Low.
+  - `app/lib/src/features/graph/revset_configs/revset_configs_window.dart:423-435` (`fieldSpan`); both window tests (`revset_configs_window_test.dart:357`, `:387`) take the `inside == true` path, so dropping the guard fails neither.
+  - **Follow-up:** one window test with a span on the term's opening `(` (or a `~` prefix) asserting `errorRange` is null while the row still shows the message.
+- **The inspector's copyable ids tell assistive tech nothing about copying.** Low.
+  - `_CopyId` (`app/lib/src/features/graph/graph_inspector.dart`) has only `Semantics(label: full, button: true)`: no hint that activating copies; "Copied" and the failure popover are not announced (no `SemanticsService.announce` / live region).
+  - **Follow-up:** a semantics hint and an announcement of "Copied" / the failure, together with the keyboard-activation item above.
+- **`epic-10-context.md` still lists Story 10.30 as backlog, and its "show jj's own error text in place" rule contradicts the new one-sentence rule beside it.** Low.
+  - `_bmad-output/implementation-artifacts/epic-10-context.md:41` "(backlog)"; `:51` vs `:52` not reconciled.
+  - **Follow-up:** reconcile at the next epic-context recompile (the one-sentence rule wins).
