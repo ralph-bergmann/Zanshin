@@ -54,6 +54,8 @@ deferred:
     location: >-
       _bmad-output/implementation-artifacts/design_system/ui_kits/desktop/layout.js
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (spec-10-30-graph-ports-local-direction, commit cbcd7492): layout.js counts slot owners, no MERGE_UP_SHIFT; DS republished (Version 14), canvas synced (Version 24)
   - summary: >-
       Copying a parent id is tested only for a parent inside the layout.
     evidence: |-
