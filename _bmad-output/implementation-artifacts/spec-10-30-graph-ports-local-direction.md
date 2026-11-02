@@ -18,6 +18,8 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/graph_layout/router.dart _banCollisions
     severity: medium (unverified)
+    resolved: >-
+      2026-11-02 — accepted by Ralph (console session): the 20 off-centre lone lines are the tie-break losers; no change
   - summary: >-
       The rtvlvrzr wrong-side mechanism is not reproduced: the old exits' side (c.sides) already equals the side of the turn target in every shape the classifier produces.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       packages/zanshin_core/test/graph_layout/router_test.dart ports_by_local_direction_merge_ups_leave_on_the_side_they_turn_to
     severity: medium (unverified)
+    resolved: >-
+      2026-11-02 — checked by Ralph in the running app on the same repo: the ports look right; no witness needed
   - summary: >-
       The settle loop stops at 8 passes without reporting leftover collisions.
     evidence: |-
@@ -32,6 +36,8 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/graph_layout/router.dart build
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (console session, commit 32db322d): RouteGeometry.unsettledPorts counts pairs left after the last pass; the route-gate recordings assert 0
   - summary: >-
       No router unit test drives the extra-fan-slot branch of the tie-break or a free-layout reach between 0 and gapY.
     evidence: |-
@@ -39,6 +45,8 @@ deferred:
     location: >-
       packages/zanshin_core/test/graph_layout/router_test.dart
     severity: low
+    resolved: >-
+      2026-11-02 — fixed (console session, commit 32db322d): witness test, a merge-adjacent entry losing +24 to a longer merge-up sits at +40; reaches between 0 and gapY stay covered by the free recordings (no hits, 0 unsettled)
   - summary: >-
       No running check compares the JS port routers (layout.js, graph-layout.jsx) with router.dart.
     evidence: |-
@@ -46,6 +54,8 @@ deferred:
     location: >-
       _bmad-output/implementation-artifacts/design_system/ui_kits/desktop/layout.js route
     severity: low
+    resolved: >-
+      2026-11-02 — rejected by Ralph (console session): the design is a template; a JS↔Dart oracle costs more than a prototype-only deviation, which shows on sight
 ---
 
 <intent-contract>

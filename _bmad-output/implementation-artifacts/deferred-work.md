@@ -2626,18 +2626,18 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in the graph-port follow-up of Story 10.30 (bmad-build-auto, 2026-11-02)
 
-- **A card edge's only line leaves the centre when it loses the column tie-break (20 of 8710 lone exits on the 10k free layout).** Medium.
+- ~~**A card edge's only line leaves the centre when it loses the column tie-break (20 of 8710 lone exits on the 10k free layout).**~~ — ACCEPTED 2026-11-02: accepted by Ralph (console session): the 20 off-centre lone lines are the tie-break losers; no change. Medium.
   - The literal per-edge rule gave 342 collinear overlaps (339 fork entry vs merge-up exit in one column); the longest-vertical tie-break carried to the column brings it to 0 (`packages/zanshin_core/lib/src/graph_layout/router.dart` `_banCollisions`), at the cost of these lone lines.
   - **Follow-up:** Ralph confirms this reading of "fix it in the tie-breaking", or picks another resolution; otherwise none.
-- **The rtvlvrzr wrong-side mechanism is not reproduced by a test: the old exits' side (`c.sides`) already equals the turn target's side in every shape the classifier produces.** Medium.
+- ~~**The rtvlvrzr wrong-side mechanism is not reproduced by a test: the old exits' side (`c.sides`) already equals the turn target's side in every shape the classifier produces.**~~ — RESOLVED 2026-11-02: checked by Ralph in the running app on the same repo: the ports look right; no witness needed. Medium.
   - `router_test.dart` `ports_by_local_direction_merge_ups_leave_on_the_side_they_turn_to` fails on the old code only for the centre / +4 shift.
   - **Follow-up:** check rtvlvrzr in the running app; if still wrong, capture its rows, columns and kinds as a witness.
-- **The router's settle loop stops at 8 passes without reporting leftover collisions.** Low.
+- ~~**The router's settle loop stops at 8 passes without reporting leftover collisions.**~~ — RESOLVED 2026-11-02: fixed (console session, commit 32db322d): RouteGeometry.unsettledPorts counts pairs left after the last pass; the route-gate recordings assert 0. Low.
   - `router.dart` `build()` ends on `_settlePasses` silently; only the app's 10k collinear check would notice (0 today).
   - **Follow-up:** report an unsettled layout like the other budgets, or none.
-- **No router unit test drives the tie-break's extra-fan-slot branch or a free-layout reach between 0 and gapY.** Low.
+- ~~**No router unit test drives the tie-break's extra-fan-slot branch or a free-layout reach between 0 and gapY.**~~ — RESOLVED 2026-11-02: fixed (console session, commit 32db322d): witness test, a merge-adjacent entry losing +24 to a longer merge-up sits at +40; reaches between 0 and gapY stay covered by the free recordings (no hits, 0 unsettled). Low.
   - The witnesses reach only the centre-ban branch; the 10k free layout exercises both.
   - **Follow-up:** two small `router_test.dart` cases.
-- **No running check compares the JS port routers (`layout.js`, `graph-layout.jsx`) with `router.dart`.** Low.
+- ~~**No running check compares the JS port routers (`layout.js`, `graph-layout.jsx`) with `router.dart`.**~~ — REJECTED 2026-11-02: rejected by Ralph (console session): the design is a template; a JS↔Dart oracle costs more than a prototype-only deviation, which shows on sight. Low.
   - Only a scratch harness ran `graph-layout.jsx` on six router-test layouts; `spikes/graph-layout-ab/tools/router-oracle.mjs` targets the `e74ced3` export and the gate never runs it.
   - **Follow-up:** a shared-case JS↔Dart port oracle, or none.
