@@ -195,6 +195,6 @@ Status: done
 **Review.** 30 findings: 12 patched (2 medium: created-commit test, reads after dispose; 10 low), 4 deferred (copy records of created commits, description body diff, large-operation speed unverified, Marionette check — all mirrored into deferred-work.md "Surfaced in Story 10.29"), 14 rejected with reasons in the triage log. Follow-up review: false (no high patched; one medium patch is a test, the other is covered by a test).
 
 **Items.**
-- I1 (Show changes stays disabled) — fixed (commit recorded below).
+- I1 (Show changes stays disabled) — fixed (commit b3fc3c4c670ab3ca89dbdcda96690636c8fe2ae9).
 
 **Residual risks.** `show` of hidden commit ids is relied on for the summaries (jj resolves commit ids visibility-blind; the fallback is the bare id); the full app suite has one pre-existing timing flake; no running-app check.

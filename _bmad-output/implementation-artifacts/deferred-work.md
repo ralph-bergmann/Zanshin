@@ -2440,7 +2440,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - ~~**The Undo Timeline in the project window has no runner yet: Undo, Redo and Restore to here show disabled ("Available once the commit graph is shown").**~~ — RESOLVED 2026-11-01 (spec-10-12-adopt-backend-layout, commit 6b9feacb): the mounted GraphViewModel is passed as actions: to undoTimelineRailItem. Medium (hand-off).
   - `HomePage`'s `_UndoTimelineHost` (`app/lib/src/features/home/home_page.dart`) builds `undoTimelineRailItem(strings, model)` without `actions:`; the runner is the graph's `GraphViewModel` (it implements `UndoTimelineActions`), which is not in `HomePage` until 10.12.
   - **Follow-up:** 10.12 passes its mounted `GraphViewModel` as `actions:` to `undoTimelineRailItem`.
-- ~~**Show changes (`jj op show <id>`) stays disabled ("Not available yet").**~~ — RESOLVED 2026-11-02 (spec-10-29-operation-diff-view): enabled on every row; opens the operation view in the pinned panel. Low.
+- ~~**Show changes (`jj op show <id>`) stays disabled ("Not available yet").**~~ — RESOLVED 2026-11-02 (spec-10-29-operation-diff-view, commit b3fc3c4c): enabled on every row; opens the operation view in the pinned panel. Low.
   - The row shows the button with its command (spec 11.9); no view renders `RepoHandle.opShow` yet.
   - **Follow-up:** a story that adds the operation's diff view enables it.
   - **2026-11-02, Ralph:** a new story → Story 10.29 (operation diff view, reusing 10.24's diff view).
