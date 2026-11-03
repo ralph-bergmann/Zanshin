@@ -390,20 +390,29 @@ class GraphCardData {
     );
   }
 
-  /// The author as the card shows it (Claude's proposal (d)): the first word of the name, else the email's local
-  /// part, else null.
+  /// The author as the card shows it (Claude's proposal (d)): the first word of the name — of the part after the comma
+  /// for a "Last, First" name (directory-style git identities) — else the email's local part, else null.
   String? get author {
     final GraphCommitContent? content = this.content;
     if (content == null) {
       return null;
     }
-    final String first = content.authorName.trim().split(RegExp(r'\s+')).first;
-    if (first.isNotEmpty) {
-      return first;
-    }
-    final String local = content.authorEmail.split('@').first.trim();
-    return local.isEmpty ? null : local;
+    return graphAuthorShort(content.authorName, content.authorEmail);
   }
+}
+
+/// An author's short form (cards, search suggestions): the first word of [name] — of the part after the comma for a
+/// "Last, First" name (directory-style git identities) — else [email]'s local part, else null.
+String? graphAuthorShort(String name, [String email = '']) {
+  final String full = name.trim();
+  final int comma = full.indexOf(',');
+  final String given = comma < 0 ? full : full.substring(comma + 1).trim();
+  final String first = (given.isEmpty ? full.replaceAll(',', '') : given).trim().split(RegExp(r'\s+')).first;
+  if (first.isNotEmpty) {
+    return first;
+  }
+  final String local = email.split('@').first.trim();
+  return local.isEmpty ? null : local;
 }
 
 const _minuteMs = 60000;

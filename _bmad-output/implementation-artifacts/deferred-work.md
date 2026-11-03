@@ -2731,3 +2731,9 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 - ~~**The drop menu still fades its glass through an `Opacity` ancestor, so its backdrop blur turns sharp for the entrance, unlike the command menus that fade through `ZsFade`.**~~ — RESOLVED 2026-11-03 (console session, commit 6cf017db): the entrance fades through `ZsFade`. Medium.
   - Pre-existing: `Opacity(opacity: t, …)` around `ZsMenuMaterial` in `app/lib/src/features/graph/graph_drop_menu.dart:204` (already there at f5a6645e); the 11.3 ledger rule says `ZsFade` is the one way to fade glass.
   - **Follow-up:** fade the drop menu through `ZsFade` (keeping its top/bottom-centre scale origin) and add the no-`Opacity`-above-glass test the minimap and toast have.
+
+## Surfaced 2026-11-03 in Ralph's VoiceOver try of the drag warning (console session)
+
+- **VoiceOver read the backwards-bookmark announcement with an American voice over what sounded like German text.** Low.
+  - Ralph, 2026-11-03: "eine Amerikanerin, die deutschen Text vorgelesen hat". The app ships English strings only (`app/lib/l10n/app_en.arb`); `SemanticsService.sendAnnouncement` in `app/lib/src/features/graph/graph_canvas.dart` (`_announceBackwards`) passes no language, so macOS may pick the voice from one locale and the text's language from another (app locale vs. system language German).
+  - **Follow-up:** look at it together on the Mac — which text was spoken, the app's locale and `CFBundleDevelopmentRegion`/`CFBundleLocalizations` in `app/macos/Runner/Info.plist`, and whether the announcement needs an explicit locale. Not urgent (Ralph).

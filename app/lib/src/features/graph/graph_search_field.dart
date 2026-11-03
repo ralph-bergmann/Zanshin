@@ -15,7 +15,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import '../shell/calm_controller.dart';
 import '../shell/shell_scope.dart';
-import 'graph_card.dart' show graphRelativeDate;
+import 'graph_card.dart' show graphAuthorShort, graphRelativeDate;
 import 'graph_ports.dart' show jjLogCommand;
 import 'graph_search_controller.dart';
 import 'graph_search_index.dart';
@@ -1226,7 +1226,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         // DS search-suggestions.card.html: "Lena · 2d".
         final int? ts = change.timestampMs;
         final String byline = <String>[
-          if (change.authorName.isNotEmpty) change.authorName.split(' ').first,
+          ?graphAuthorShort(change.authorName),
           if (ts != null)
             graphRelativeDate(
               s,

@@ -375,6 +375,8 @@ void main() {
       GraphCardData data(GraphCommitContent? content) =>
           GraphCardData(key: 'k', changeId: 'k', prefixLength: 1, content: content);
       expect(data(const GraphCommitContent(subject: '', authorName: 'Lena König')).author, 'Lena');
+      expect(data(const GraphCommitContent(subject: '', authorName: 'König, Lena Marie')).author, 'Lena');
+      expect(data(const GraphCommitContent(subject: '', authorName: 'König,')).author, 'König');
       expect(data(const GraphCommitContent(subject: '', authorEmail: 'ci-bot@example.com')).author, 'ci-bot');
       expect(data(const GraphCommitContent(subject: '')).author, isNull);
       expect(data(null).author, isNull);
