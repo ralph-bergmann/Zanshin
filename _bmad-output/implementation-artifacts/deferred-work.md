@@ -2697,16 +2697,16 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 
 ## Surfaced in Story 10.10 (bmad-build-auto, 2026-11-03)
 
-- **Nothing tells a jj-lib pin bump to re-diff the ported move planner in `rebase.rs` against jj-lib's `rewrite.rs`.** Medium.
+- ~~**Nothing tells a jj-lib pin bump to re-diff the ported move planner in `rebase.rs` against jj-lib's `rewrite.rs`.**~~ — RESOLVED 2026-11-03 (console session, commit d5042a83): project-context.md § zanshin-jj pin-bump step (7) re-diffs the planner (Ralph approved). Medium.
   - `crates/zanshin-jj/src/rebase.rs` `planned_parents` / `TargetGraph` / `new_children` / `children_parents` copy jj-lib 0.46.0 `rewrite.rs:667-957` (+ private helpers `:1259`, `:1285`) so `rebase_is_no_op` writes nothing; the inline dry-run comparison catches drift only on the shapes it builds, and project-context.md § zanshin-jj's pin-bump steps do not name it.
   - **Follow-up:** add "re-diff `rebase.rs::planned_parents` against `rewrite.rs::compute_move_commits`" to the pin-bump steps (an agent-context edit, so not done in the story run).
-- **The drag-and-drop UI was not checked in the running app (ghost, drop target, menu above/below, toast).** Medium.
+- ~~**The drag-and-drop UI was not checked in the running app (ghost, drop target, menu above/below, toast).**~~ — RESOLVED 2026-11-03 (console session, commit 6cf017db): Ralph dragged changes and bookmarks in the running app (two recordings; the pill-flash and release-rule fixes followed), and the menu above/below and the ghosts were compared with the DS in the catalogue (new use cases Graph › Drop menu › Open, Materials › Drag ghost › Kinds), which moved the menu's command footer to the card's side as DropMenu.jsx has it. Medium.
   - Unattended run with targeted checks only: widget tests cover the canvas drags, the menu rows and the ghost words; no Marionette/Playwright look at `app/lib/src/features/graph/graph_canvas.dart` / `graph_drop_menu.dart` / `packages/zanshin_ui/lib/src/controls/zs_drag_ghost.dart` against the DS cards (DropMenu, DragGhost).
   - **Follow-up:** a Marionette check in the running app (card and bookmark drags, menu above and below, ⌥, a backwards bookmark), recorded in spec-10-10-graph-drag-and-drop.md.
 
 ## Surfaced in Story 10.26 (bmad-build-auto, 2026-11-03)
 
-- **The hunk checkboxes, the mixed states and the selected-hunk look were not checked in the running catalogue against the DS DiffHunk card.** Low.
+- ~~**The hunk checkboxes, the mixed states and the selected-hunk look were not checked in the running catalogue against the DS DiffHunk card.**~~ — RESOLVED 2026-11-03 (console session, commit 6cf017db): Graph › Inspector diff › Hunk selection (mode row picked, hunks 1 and 3 picked, 2 not) shows the checkboxes, the lighter picked header and the 2 px moon bar only on picked hunks (decision (f)). Low.
   - Unattended run with targeted checks only: widget tests pin the colours (`accentSoftHi`, `accentLine`, `hunkBg`) and the checkbox states in `app/lib/src/features/graph/inspector_diff.dart` / `graph_inspector.dart`; no Marionette/Playwright look.
   - **Follow-up:** a Marionette check of a partly selected file in the catalogue against DS components/content/DiffHunk, recorded in spec-10-26-hunk-selection-gui-tree.md.
 
@@ -2715,6 +2715,7 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 - **The new drop behaviour (bookmark release runs at once, change release only with the menu open) and the backwards-warning ghost were not checked in the running app; the ~80-character warning (shortened in commit 12a379b8) may wrap to several lines in the 340 px words box.** Medium.
   - Unattended run, widget/controller tests only (`app/test/features/graph/graph_drag_test.dart`); ghost words in `app/lib/src/features/graph/graph_view.dart` (`_GraphDragGhostLayer`), warning line in `packages/zanshin_ui/lib/src/controls/zs_drag_ghost.dart`.
   - **Follow-up:** a Marionette check of a forward and a backwards bookmark drag and a change drag (release before/after the menu); shorten the arb text `dragBackwardsWarning` if it wraps badly.
+  - **2026-11-03, console session:** the ghost was checked in the catalogue (Materials › Drag ghost › Kinds, commit 6cf017db): the warning takes two lines under the command in `--warn`, fine; left: trying the new release rules live (Marionette cannot hold a drag), for Ralph in the running app.
 - ~~**The backwards-move warning is visual only: VoiceOver never hears it and the toast does not repeat it.**~~ — RESOLVED 2026-11-03 (spec-drag-leftovers-alt-announce-entrance-tracked, commit ebc3f36995e60b08fdce5760dc3a0b12eafd4e8c): the canvas announces `dragBackwardsWarning` once per backwards target (`GraphDrag.onBackwards`, `SemanticsService.sendAnnouncement`); a widget test checks the announcements; no VoiceOver pass on a device. Medium.
   - `ZsDragGhost` wraps the ghost in `ExcludeSemantics` (pre-existing, `packages/zanshin_ui/lib/src/controls/zs_drag_ghost.dart:177`); unverified with VoiceOver.
   - **Follow-up:** a VoiceOver pass on a backwards bookmark drop; if silent, name the effect in the result toast or a live-region announcement.
@@ -2727,6 +2728,6 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 
 ## Surfaced in the follow-up review of the drag leftovers run (bmad-build-auto, 2026-11-03)
 
-- **The drop menu still fades its glass through an `Opacity` ancestor, so its backdrop blur turns sharp for the entrance, unlike the command menus that fade through `ZsFade`.** Medium.
+- ~~**The drop menu still fades its glass through an `Opacity` ancestor, so its backdrop blur turns sharp for the entrance, unlike the command menus that fade through `ZsFade`.**~~ — RESOLVED 2026-11-03 (console session, commit 6cf017db): the entrance fades through `ZsFade`. Medium.
   - Pre-existing: `Opacity(opacity: t, …)` around `ZsMenuMaterial` in `app/lib/src/features/graph/graph_drop_menu.dart:204` (already there at f5a6645e); the 11.3 ledger rule says `ZsFade` is the one way to fade glass.
   - **Follow-up:** fade the drop menu through `ZsFade` (keeping its top/bottom-centre scale origin) and add the no-`Opacity`-above-glass test the minimap and toast have.

@@ -23,6 +23,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_drop_menu.dart:204
     severity: medium
+    resolved: >-
+      2026-11-03 — fixed (console session, commit 6cf017db): the entrance fades through ZsFade.
 ---
 
 <intent-contract>

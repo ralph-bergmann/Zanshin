@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/inspector_diff.dart; app/lib/src/features/graph/graph_inspector.dart
     severity: low
+    resolved: >-
+      2026-11-03 — fixed (console session, commit 6cf017db): checked in the catalogue (Graph › Inspector diff › Hunk selection); matches decision (f).
 ---
 
 <intent-contract>

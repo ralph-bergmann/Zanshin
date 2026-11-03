@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/rebase.rs (planned_parents)
     severity: medium
+    resolved: >-
+      2026-11-03 — fixed (console session, commit d5042a83): project-context.md § zanshin-jj pin-bump step (7).
   - summary: >-
       The running app was not checked visually (ghost, target, menu above/below, toast) with Marionette/Playwright.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_canvas.dart, graph_drop_menu.dart, packages/zanshin_ui/lib/src/controls/zs_drag_ghost.dart
     severity: medium
+    resolved: >-
+      2026-11-03 — fixed (console session, commit 6cf017db): Ralph's live drags plus the catalogue comparison with the DS; the menu's footer moved to the card's side.
 ---
 
 <intent-contract>
