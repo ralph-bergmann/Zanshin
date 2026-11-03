@@ -244,14 +244,14 @@ void main() {
       actions: _changeRows(_available),
     ).rows;
 
-    test('below: top-down, hairlines between groups, the footer last; above: bottom-up, the footer first', () {
+    test('below: the footer first, then top-down with hairlines between groups; above: bottom-up, the footer last', () {
       final ({Size size, List<Rect> rows, Rect footer}) below = graphDropMenuGeometry(rows, above: false);
       expect(below.rows[0].top, lessThan(below.rows[1].top));
       expect(below.rows[2].top - below.rows[1].bottom, greaterThan(below.rows[1].top - below.rows[0].bottom));
-      expect(below.footer.top, greaterThanOrEqualTo(below.rows.last.bottom));
+      expect(below.footer.bottom, lessThanOrEqualTo(below.rows.first.top), reason: 'the footer on the card side');
       final ({Size size, List<Rect> rows, Rect footer}) above = graphDropMenuGeometry(rows, above: true);
       expect(above.rows[0].top, greaterThan(above.rows[1].top), reason: 'the default row nearest the card below');
-      expect(above.footer.bottom, lessThanOrEqualTo(above.rows.last.top));
+      expect(above.footer.top, greaterThanOrEqualTo(above.rows.first.bottom), reason: 'the footer on the card side');
       expect(above.size, below.size);
     });
 

@@ -22,7 +22,8 @@ const double _sepH = 9;
 const double _footerH = 30;
 
 /// The drop menu's geometry for [rows] (Story 10.10): its size, each row's rect and the footer's, top-down; [above]
-/// runs the list bottom-up (the default row nearest the card below it) with the footer on top.
+/// runs the list bottom-up (the default row nearest the card below it); the footer sits on the card's side, under the
+/// list above the card and over it below the card (DS components/menus/DropMenu.jsx).
 ({Size size, List<Rect> rows, Rect footer}) graphDropMenuGeometry(List<GraphDropRow> rows, {required bool above}) {
   const double inner = graphDropMenuWidth - 2 * _pad;
   // Top-down in list order: each row's height and whether a hairline comes before it.
@@ -30,7 +31,7 @@ const double _footerH = 30;
   final rects = List<Rect>.filled(rows.length, Rect.zero);
   double y = _pad;
   Rect footer = Rect.zero;
-  if (above) {
+  if (!above) {
     footer = Rect.fromLTWH(_pad, y, inner, _footerH);
     y += _footerH;
   }
@@ -44,7 +45,7 @@ const double _footerH = 30;
     rects[i] = Rect.fromLTWH(_pad, y, inner, _rowH);
     y += _rowH;
   }
-  if (!above) {
+  if (above) {
     footer = Rect.fromLTWH(_pad, y, inner, _footerH);
     y += _footerH;
   }
@@ -174,8 +175,8 @@ class _GraphDropMenuState extends State<GraphDropMenu> with SingleTickerProvider
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: widget.above
-                ? Border(bottom: BorderSide(color: colors.border))
-                : Border(top: BorderSide(color: colors.border)),
+                ? Border(top: BorderSide(color: colors.border))
+                : Border(bottom: BorderSide(color: colors.border)),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -201,8 +202,9 @@ class _GraphDropMenuState extends State<GraphDropMenu> with SingleTickerProvider
         animation: _fade,
         builder: (context, child) {
           final double t = motion.easeGlide.transform(_fade.value);
-          return Opacity(
-            opacity: t,
+          // Through ZsFade, not an Opacity: the glass keeps its blur while it fades (Story 11.3).
+          return ZsFade(
+            opacity: t.clamp(0, 1),
             child: Transform.scale(
               scale: 1 - .03 * motion.motion * (1 - t),
               alignment: widget.above ? Alignment.bottomCenter : Alignment.topCenter,

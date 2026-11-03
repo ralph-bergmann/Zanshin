@@ -100,6 +100,19 @@ class _Ghosts extends StatelessWidget {
             dot: ProjectStatus.conflict.colorIn(colors),
             hint: 'Drop between rows or on a group',
           ),
+          // Story 10.10: a bookmark over a forward target, then over a backwards one.
+          const ZsDragGhost(
+            kind: ZsDragGhostKind.bookmark,
+            label: 'feature/WMMA-607_Add_new_ids_for_test_automation',
+            command: 'jj bookmark move feature/WMMA-607_Add_new_ids_for_test_automation --to yrooyzzy',
+          ),
+          const ZsDragGhost(
+            kind: ZsDragGhostKind.bookmark,
+            label: 'feature/WMMA-607_Add_new_ids_for_test_automation',
+            command:
+                'jj bookmark move feature/WMMA-607_Add_new_ids_for_test_automation --to nmomqylo --allow-backwards',
+            warning: 'Moves the bookmark back. A push drops the later commits from the shared branch.',
+          ),
         ],
       ),
     );

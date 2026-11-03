@@ -12,6 +12,8 @@ import 'package:zanshin/src/features/graph/at_pill.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_controls.dart';
+import 'package:zanshin/src/features/graph/graph_drag.dart';
+import 'package:zanshin/src/features/graph/graph_drop_menu.dart';
 import 'package:zanshin/src/features/graph/graph_inspector.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_metrics.dart';
@@ -27,6 +29,7 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
+import 'package:zanshin/src/features/graph/inspector_diff.dart';
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/layout_invariants.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
@@ -47,6 +50,7 @@ import 'package:zanshin_core/zanshin_core.dart'
         FileChangeKind,
         FileDiff,
         Hunk,
+        HunkKey,
         HunkLine,
         HunkLineKind,
         MutationResult,
@@ -54,7 +58,7 @@ import 'package:zanshin_core/zanshin_core.dart'
         Signature,
         SquashPlan,
         ZanshinWarning;
-import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../graph/fake_content.dart';
@@ -77,7 +81,8 @@ import 'projects.dart' show demoCapsule;
 /// Directions" the pill (Story 10.6); "Stale notice / Variants" the notice with its action, busy, and with Copy (Story
 /// 10.5). "Floating shell / Controls" hosts the graph's top-bar controls in the floating shell (Story 10.7) and the
 /// inspector of the selection, a mutable change selected when it opens (Story 10.8). "Minimap / Recording" shows the
-/// minimap in the floating shell over the view-model demo's graph (Story 10.16).
+/// minimap in the floating shell over the view-model demo's graph (Story 10.16). "Drop menu / Open" and "Inspector diff /
+/// Hunk selection" hold the drag's menu and a partly picked file still for a look (Stories 10.10, 10.26).
 final graphFolder = WidgetbookFolder(
   name: 'Graph',
   children: <WidgetbookNode>[
@@ -241,6 +246,16 @@ final graphFolder = WidgetbookFolder(
     WidgetbookComponent(
       name: '@ pill',
       useCases: <WidgetbookUseCase>[WidgetbookUseCase(name: 'Directions', builder: (context) => const _AtPills())],
+    ),
+    WidgetbookComponent(
+      name: 'Drop menu',
+      useCases: <WidgetbookUseCase>[WidgetbookUseCase(name: 'Open', builder: (context) => const _DropMenus())],
+    ),
+    WidgetbookComponent(
+      name: 'Inspector diff',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(name: 'Hunk selection', builder: (context) => const _HunkSelection()),
+      ],
     ),
     WidgetbookComponent(
       name: 'Stale notice',
@@ -1521,6 +1536,116 @@ class _ToastsState extends State<_Toasts> {
 
 /// "Stale notice / Variants" (Story 10.5): the notice for each cause with "Update working copy", one busy, and the
 /// notice without the action, offering Copy.
+/// The drop menu as it opens (Story 10.10; Marionette cannot hold a drag): below and above a card, "Move here"
+/// highlighted.
+class _DropMenus extends StatelessWidget {
+  const _DropMenus();
+
+  static GraphDropRow _row(GraphDropKind kind, String command) => GraphDropRow(
+    kind: kind,
+    command: command,
+    action: const GraphRebase(source: <String>['a'], onto: <String>['b']),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    // Priority order, as the preview delivers them; the menu itself runs them bottom-up above a card.
+    final rows = <GraphDropRow>[
+      _row(GraphDropKind.moveHere, 'jj rebase -s wkumzvop -o nmomqylo'),
+      _row(GraphDropKind.moveOnly, 'jj rebase -r wkumzvop -o nmomqylo'),
+      _row(GraphDropKind.insertAfter, 'jj rebase -s wkumzvop -A nmomqylo'),
+      _row(GraphDropKind.insertBefore, 'jj rebase -s wkumzvop -B nmomqylo'),
+      _row(GraphDropKind.squash, 'jj squash --from wkumzvop --into nmomqylo'),
+    ];
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ZsCanvas(),
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 48,
+            children: <Widget>[
+              GraphDropMenu(rows: rows, highlight: 0, above: false),
+              GraphDropMenu(rows: rows, highlight: 0, above: true),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A partly picked file in the inspector (Story 10.26): the mode row picked, hunk 1 and 3 picked, hunk 2 not.
+class _HunkSelection extends StatelessWidget {
+  const _HunkSelection();
+
+  static Hunk _hunk(int start, List<HunkLine> lines, String symbol) => Hunk(
+    before: (start: start, end: start + 3),
+    after: (start: start, end: start + 3),
+    symbol: symbol,
+    sections: <HunkKey>[HunkKey(oldStart: start + 1, oldCount: 1, newStart: start + 1, newCount: 1)],
+    removed: lines.where((l) => l.kind == HunkLineKind.removed).length,
+    added: lines.where((l) => l.kind == HunkLineKind.added).length,
+    lines: lines,
+  );
+
+  static List<HunkLine> _lines(String old, String now) => <HunkLine>[
+    const HunkLine(kind: HunkLineKind.context, text: 'fn main() {\n'),
+    HunkLine(kind: HunkLineKind.removed, text: '$old\n'),
+    HunkLine(kind: HunkLineKind.added, text: '$now\n'),
+    const HunkLine(kind: HunkLineKind.context, text: '}\n'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final hunks = <Hunk>[
+      _hunk(3, _lines('    let a = 1;', '    let a = 2;'), 'main'),
+      _hunk(20, _lines('    log("x");', '    log("y");'), 'run'),
+      _hunk(40, _lines('    exit(0)', '    exit(1)'), 'stop'),
+    ];
+    final picked = <Hunk>{hunks[0], hunks[2]};
+    final diff = FileDiff(
+      path: 'src/main.rs',
+      kind: FileChangeKind.modified,
+      fromPath: null,
+      binary: false,
+      modeChange: true,
+      sections: const [],
+      hunks: hunks,
+      removed: 3,
+      added: 3,
+      fingerprint: 'f',
+    );
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ZsCanvas(),
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: InspectorDiffView(
+                path: diff.path,
+                diff: diff,
+                error: null,
+                layout: DiffLayoutSetting.unified,
+                onLayoutChanged: (_) {},
+                hunkPicked: picked.contains,
+                onHunkToggled: (_) {},
+                modePicked: true,
+                onModeToggled: () {},
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _StaleNotices extends StatelessWidget {
   const _StaleNotices();
 
