@@ -2662,3 +2662,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The Immutable commits page's untracked-remote hints can name a tracked remote ref that disagrees with its local target.** Low.
   - `app/lib/src/features/settings/immutable_heads.dart` (`_untrackedRemote`) infers "untracked" from `TopologyRef.synced` ("tracked and agrees"); the bridge has no tracking-state read for remote tags.
   - **Follow-up:** a bridge read of each remote ref's tracking state (or `untracked` on `TopologyRef`), then filter on it.
+
+## Surfaced in Story 11.8 (bmad-build-auto, 2026-11-03)
+
+- **The poll's real `remoteChanges('origin')` has not been run in the running app, and the Sync island and Push sheet have not been compared with the DS cards there.** Medium.
+  - Ralph's 2026-10-21 note asks for one live run because `dart test` reaps the poll's git child; every sync test uses `FakeRemoteSync` (`app/test/helpers/fake_remote_sync.dart`); the unattended run launched no app.
+  - **Follow-up:** in the running app (Marionette), move a bookmark on a project's `origin`, wait for or trigger the poll and check the badge reads it as `moved`; open the catalogue's Sync folder and compare with `design_system/components/push/push.card.html` and the chrome card's ACTION island.
