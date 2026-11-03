@@ -2645,7 +2645,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 11.7 (bmad-build-auto, 2026-11-02)
 
-- **A list- or pattern-valued `git.fetch` / `git.push` shows read-only, without design question (b)'s "Edit…".** Low.
+- ~~**A list- or pattern-valued `git.fetch` / `git.push` shows read-only, without design question (b)'s "Edit…".**~~ — RECORD 2026-11-03 (Ralph): stays read-only; a list or pattern is edited by hand in the config. Low.
   - `app/lib/src/features/settings/project_tab.dart` (`_remoteRow`) shows the TOML text when the value is not one remote name; the witness asks only for read-only text.
   - **Follow-up:** an "Edit…" that writes a new value through 9.28's `configSet`, or none.
 - ~~**The Immutable commits page shows no heads list under the count, and the built-in switches' hints do not name this repository's tags or untracked remote bookmarks.**~~ — RESOLVED 2026-11-03 (spec-11-7-closing-immutable-names-and-nami-segment, commit c527fb1): the built-in hints name this repository's tags and remote refs (≤5, then "n more") via SettingsRepoReads.revsetMembers, and a mono line under the count lists immutable_heads(). Low.
