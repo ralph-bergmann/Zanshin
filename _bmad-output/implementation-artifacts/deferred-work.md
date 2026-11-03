@@ -2377,7 +2377,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 5.6 (bmad-build-auto, 2026-10-31)
 
-- **A renamed or copied file from `Repo::diff` cannot be selected through `select_tree` as one entry: the diff shows it as its target path (no sections), while `select_tree` sees a removed source path plus an added target path.** Medium.
+- ~~**A renamed or copied file from `Repo::diff` cannot be selected through `select_tree` as one entry: the diff shows it as its target path (no sections), while `select_tree` sees a removed source path plus an added target path.**~~ — RESOLVED 2026-11-03 (spec-10-26-hunk-selection-gui-tree, commit 5937e4f4): renamed/copied files are whole-only; a whole pick also selects the source path on both routes. Medium.
   - `Repo::diff` uses copy records like `jj diff`, folding the source's removal into the target entry; `select_tree` mirrors the builtin diff editor, which uses no copy records (`builtin.rs:567` @ v0.46.0). Choosing the target "whole" leaves the source path unselected (`crates/zanshin-jj/src/hunks.rs` `DiffReader::file` empties a copy's sections).
   - **Follow-up:** Story 10.26 (hunk selection) also selects the source path's removal when a renamed file is chosen whole, or offers renamed files whole-only with that pairing.
   - **Resolved in Story 10.26 (2026-11-03, commit 5937e4f):** a renamed (or copied) file is whole-only; picked whole, the paths arm adds its `fromPath` (`jj commit root:new root:old`) and the tree arm lists `FileSelection.whole` for both (`InspectorViewModel._composer`, `app/lib/src/features/graph/graph_inspector.dart`). A copy's source is untouched, so nothing is added for it.

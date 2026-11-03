@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/hunks.rs DiffReader::file
     severity: medium
+    resolved: >-
+      2026-11-03 — fixed (spec-10-26-hunk-selection-gui-tree, commit 5937e4f4): renamed/copied files are whole-only and a whole pick also selects the source path, on both the paths and the tree route.
 ---
 
 <intent-contract>
