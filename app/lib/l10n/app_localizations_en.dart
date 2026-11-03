@@ -1176,6 +1176,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorDiffModeChange => 'Executable bit changed';
 
   @override
+  String inspectorHunkCheck(String range) {
+    return 'Select hunk $range';
+  }
+
+  @override
+  String get inspectorModeCheck => 'Select the executable bit change';
+
+  @override
   String get inspectorDiffNoLines => 'No line changes';
 
   @override

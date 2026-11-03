@@ -66,7 +66,8 @@ Widget _noNewline(ZsColors colors, EdgeInsets padding) => Padding(
 /// The focused file's diff block (Story 10.24; DS components/content/DiffView, content.css:22-46): the code well with
 /// a bar (the path, the layout toggle, Viewed) over its hunks, the refusal text or a one-line placeholder; a viewed
 /// file folds into one green row whose click unfolds it and clears Viewed. Without [onViewedChanged] there is no Viewed
-/// toggle and nothing folds (Story 10.29's operation view).
+/// toggle and nothing folds (Story 10.29's operation view). With [hunkPicked] each hunk with sections gets a checkbox,
+/// with [modePicked] the mode-change note does (Story 10.26); without them there is none.
 class InspectorDiffView extends StatelessWidget {
   /// The block of [path].
   const InspectorDiffView({
@@ -77,8 +78,24 @@ class InspectorDiffView extends StatelessWidget {
     required this.onLayoutChanged,
     this.viewed = false,
     this.onViewedChanged,
+    this.hunkPicked,
+    this.onHunkToggled,
+    this.modePicked,
+    this.onModeToggled,
     super.key,
   });
+
+  /// A hunk's pick state (all, none, null for mixed); null: no hunk checkboxes.
+  final bool? Function(Hunk hunk)? hunkPicked;
+
+  /// Toggles a hunk's pick.
+  final ValueChanged<Hunk>? onHunkToggled;
+
+  /// Whether the mode change is picked; null: no mode checkbox.
+  final bool? modePicked;
+
+  /// Toggles the mode change's pick.
+  final VoidCallback? onModeToggled;
 
   /// The focused path.
   final String path;
@@ -135,21 +152,51 @@ class InspectorDiffView extends StatelessWidget {
     } else if (error case final ZanshinFfiException error?) {
       body = _note(context, error.context ?? error.code);
     } else if (diff case final FileDiff diff?) {
+      final bool? Function(Hunk hunk)? hunkPicked = this.hunkPicked;
+      final Widget mode = modePicked == null
+          ? _note(context, strings.inspectorDiffModeChange)
+          : Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: Row(
+                children: <Widget>[
+                  ZsCheckbox(
+                    value: modePicked,
+                    onChanged: (_) => onModeToggled?.call(),
+                    label: strings.inspectorModeCheck,
+                    size: ZsCheckboxSize.sm,
+                    identifier: 'inspector-mode-check',
+                  ),
+                  Expanded(child: _note(context, strings.inspectorDiffModeChange)),
+                ],
+              ),
+            );
       body = diff.binary
-          ? _note(context, strings.inspectorDiffBinary)
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                if (diff.modeChange) mode,
+                _note(context, strings.inspectorDiffBinary),
+              ],
+            )
           : diff.hunks.isEmpty
-          ? _note(context, diff.modeChange ? strings.inspectorDiffModeChange : strings.inspectorDiffNoLines)
+          ? (diff.modeChange ? mode : _note(context, strings.inspectorDiffNoLines))
           : SelectionArea(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  if (diff.modeChange) _note(context, strings.inspectorDiffModeChange),
+                  if (diff.modeChange) mode,
                   for (var i = 0; i < diff.hunks.length; i++)
                     DecoratedBox(
                       decoration: BoxDecoration(
                         border: i == 0 ? null : Border(top: BorderSide(color: colors.flBorder)),
                       ),
-                      child: InspectorDiffHunk(hunk: diff.hunks[i], layout: layout),
+                      child: InspectorDiffHunk(
+                        hunk: diff.hunks[i],
+                        layout: layout,
+                        selectable: hunkPicked != null && diff.hunks[i].sections.isNotEmpty,
+                        picked: hunkPicked == null ? false : hunkPicked(diff.hunks[i]),
+                        onToggle: () => onHunkToggled?.call(diff.hunks[i]),
+                      ),
                     ),
                 ],
               ),
@@ -357,16 +404,35 @@ class InspectorTextButton extends StatelessWidget {
 /// One hunk (DS components/content/DiffHunk, content.css:48-55): the header band (`--hunk-bg`: the range in
 /// `--hunk`, the symbol, +added / −removed) over its lines, unified (a sigil column, scrolling horizontally on its own)
 /// or side by side (two clipped cells per row). The unified lines sit in a [ZsScrollArea]: its bar along the bottom
-/// shows a cut line while scrolling or hovered, ←/→ scroll it when focused.
+/// shows a cut line while scrolling or hovered, ←/→ scroll it when focused. Story 10.26 (DS DiffHunk.prompt.md:8-11,
+/// content.css:58-59): a [selectable] hunk leads its header with a tristate checkbox (its Tab stop, Space toggles);
+/// a picked one (all or mixed) has its header on `--accent-soft-hi` with `--text` and a 2 px `--accent-line` edge
+/// along its lines.
 class InspectorDiffHunk extends StatefulWidget {
   /// [hunk] in [layout].
-  const InspectorDiffHunk({required this.hunk, required this.layout, super.key});
+  const InspectorDiffHunk({
+    required this.hunk,
+    required this.layout,
+    this.selectable = false,
+    this.picked = false,
+    this.onToggle,
+    super.key,
+  });
 
   /// The hunk.
   final Hunk hunk;
 
   /// Unified or side by side.
   final DiffLayoutSetting layout;
+
+  /// Whether the header has a checkbox.
+  final bool selectable;
+
+  /// Its pick: all, none, or null for some of its sections.
+  final bool? picked;
+
+  /// Toggles [picked].
+  final VoidCallback? onToggle;
 
   @override
   State<InspectorDiffHunk> createState() => _InspectorDiffHunkState();
@@ -393,17 +459,29 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
     final ZsColors colors = ZsColors.of(context);
     final TextStyle head = ZsType.id.copyWith(fontSize: ZsType.fsSm);
     final String? symbol = hunk.symbol;
+    final bool chosen = widget.picked ?? true;
+    final Widget lines = layout == DiffLayoutSetting.unified ? _unified(colors) : _sideBySide(colors);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Container(
+          key: const ValueKey<String>('inspector-hunk-header'),
           constraints: const BoxConstraints(minHeight: 30),
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          color: colors.hunkBg,
+          color: chosen ? colors.accentSoftHi : colors.hunkBg,
           child: Row(
             spacing: 8,
             children: <Widget>[
-              Text(hunkHeader(hunk), style: head.copyWith(color: colors.hunk)),
+              if (widget.selectable)
+                ZsCheckbox(
+                  value: widget.picked,
+                  tristate: true,
+                  onChanged: (_) => widget.onToggle?.call(),
+                  label: context.l10n.inspectorHunkCheck(hunkHeader(hunk)),
+                  size: ZsCheckboxSize.sm,
+                  identifier: 'inspector-hunk-check',
+                ),
+              Text(hunkHeader(hunk), style: head.copyWith(color: chosen ? colors.text : colors.hunk)),
               Expanded(
                 child: symbol == null
                     ? const SizedBox.shrink()
@@ -423,7 +501,15 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: layout == DiffLayoutSetting.unified ? _unified(colors) : _sideBySide(colors),
+          // Always there (no edge: none drawn), so a toggle keeps the lines' scroll position.
+          child: DecoratedBox(
+            key: const ValueKey<String>('inspector-hunk-edge'),
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              border: chosen ? Border(left: BorderSide(color: colors.accentLine, width: 2)) : null,
+            ),
+            child: lines,
+          ),
         ),
       ],
     );

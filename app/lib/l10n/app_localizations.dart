@@ -1814,6 +1814,18 @@ abstract class AppLocalizations {
   /// **'Executable bit changed'**
   String get inspectorDiffModeChange;
 
+  /// VoiceOver name and tooltip of a hunk's checkbox: whether Commit / Split takes the hunk.
+  ///
+  /// In en, this message translates to:
+  /// **'Select hunk {range}'**
+  String inspectorHunkCheck(String range);
+
+  /// VoiceOver name and tooltip of the mode-change row's checkbox: whether Commit / Split takes the file's new executable bit.
+  ///
+  /// In en, this message translates to:
+  /// **'Select the executable bit change'**
+  String get inspectorModeCheck;
+
   /// The diff of a file with no hunks otherwise (a pure rename, an empty file).
   ///
   /// In en, this message translates to:

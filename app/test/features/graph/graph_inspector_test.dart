@@ -178,6 +178,7 @@ class _Details implements GraphDetails {
         divergent: false,
       ),
       fileChanges: files[key] ?? const <FileChange>[],
+      parentTreeIds: <String>['t$key-'],
     );
   }
 
@@ -255,6 +256,8 @@ class _Details implements GraphDetails {
                 added: file.added,
                 removed: file.removed,
                 fingerprint: file.fingerprint,
+                modeChange: file.modeChange,
+                sections: file.sections,
               )
             else
               file,
@@ -275,13 +278,14 @@ FileDiff fileDiff(
   List<Hunk> hunks = const <Hunk>[],
   bool binary = false,
   bool modeChange = false,
+  List<HunkKey> sections = const <HunkKey>[],
 }) => FileDiff(
   path: path,
   kind: kind,
   fromPath: null,
   binary: binary,
   modeChange: modeChange,
-  sections: const [],
+  sections: sections,
   hunks: hunks,
   removed: removed,
   added: added,
@@ -294,11 +298,12 @@ Hunk hunk({
   required ({int start, int end}) after,
   required List<HunkLine> lines,
   String? symbol,
+  List<HunkKey> sections = const <HunkKey>[],
 }) => Hunk(
   before: before,
   after: after,
   symbol: symbol,
-  sections: const [],
+  sections: sections,
   removed: lines.where((l) => l.kind == HunkLineKind.removed).length,
   added: lines.where((l) => l.kind == HunkLineKind.added).length,
   lines: lines,
@@ -1500,7 +1505,7 @@ void main() {
       await pump(tester, select: _at);
       await tap(tester, box('b.txt'));
       expect(checked(tester, 'b.txt'), isFalse);
-      expect(checked(tester, 'Select all'), isFalse);
+      expect(checked(tester, 'Select all'), isNull, reason: 'some files checked: mixed (Story 10.26)');
       await type(tester, 'inspector-composer-summary', 'Fix');
       expect(shown(tester), 'jj commit -m Fix root:a.txt');
       expect(
@@ -1600,7 +1605,11 @@ void main() {
         findsOneWidget,
       );
       await runIt(tester);
-      expect((actions.ran.single as GraphSplit).paths, <String>['src/a.dart', 'src/new.dart']);
+      expect(
+        (actions.ran.single as GraphSplit).paths,
+        <String>['src/a.dart', 'src/new.dart', 'src/old.dart'],
+        reason: "a rename picked whole takes its source's removal (deferred I1)",
+      );
       await unmount(tester);
     });
 
@@ -1732,6 +1741,439 @@ void main() {
       expect(rise(tester), 0, reason: 'no movement');
       expect(opacity(tester), lessThan(1), reason: 'the fade keeps its token');
       await tester.pump(const Duration(milliseconds: 300));
+      await unmount(tester);
+    });
+  });
+
+  group('hunk selection (Story 10.26)', () {
+    const k1 = HunkKey(oldStart: 0, oldCount: 1, newStart: 0, newCount: 1);
+    const k2 = HunkKey(oldStart: 5, oldCount: 0, newStart: 5, newCount: 2);
+    const k3 = HunkKey(oldStart: 10, oldCount: 1, newStart: 12, newCount: 0);
+    const k4 = HunkKey(oldStart: 2, oldCount: 1, newStart: 2, newCount: 1);
+
+    /// a.txt: three hunks, one section each (k1 ±1/1, k2 +2, k3 −1).
+    FileDiff threeHunks(String path, {List<HunkKey> sections = const <HunkKey>[k1, k2, k3]}) => fileDiff(
+      path,
+      added: 3,
+      removed: 2,
+      fingerprint: 'f$path',
+      sections: sections,
+      hunks: <Hunk>[
+        hunk(
+          before: (start: 0, end: 1),
+          after: (start: 0, end: 1),
+          sections: const <HunkKey>[k1],
+          lines: const <HunkLine>[
+            HunkLine(kind: HunkLineKind.removed, text: 'a0\n'),
+            HunkLine(kind: HunkLineKind.added, text: 'A0\n'),
+          ],
+        ),
+        hunk(
+          before: (start: 5, end: 5),
+          after: (start: 5, end: 7),
+          sections: const <HunkKey>[k2],
+          lines: const <HunkLine>[
+            HunkLine(kind: HunkLineKind.added, text: 'n1\n'),
+            HunkLine(kind: HunkLineKind.added, text: 'n2\n'),
+          ],
+        ),
+        hunk(
+          before: (start: 10, end: 11),
+          after: (start: 12, end: 12),
+          sections: const <HunkKey>[k3],
+          lines: const <HunkLine>[HunkLine(kind: HunkLineKind.removed, text: 'gone\n')],
+        ),
+      ],
+    );
+
+    setUp(() {
+      details.files[_at] = const <FileChange>[
+        FileChange(path: 'a.txt', kind: FileChangeKind.modified),
+        FileChange(path: 'b.sh', kind: FileChangeKind.modified),
+        FileChange(path: 'd.txt', kind: FileChangeKind.added),
+        FileChange(path: 'new.txt', kind: FileChangeKind.renamed, fromPath: 'old.txt'),
+      ];
+      details.fileDiffs[_at] = <FileDiff>[
+        threeHunks('a.txt'),
+        fileDiff(
+          'b.sh',
+          added: 1,
+          removed: 1,
+          fingerprint: 'fbsh',
+          modeChange: true,
+          sections: const <HunkKey>[k4],
+          hunks: <Hunk>[
+            hunk(
+              before: (start: 2, end: 3),
+              after: (start: 2, end: 3),
+              sections: const <HunkKey>[k4],
+              lines: const <HunkLine>[
+                HunkLine(kind: HunkLineKind.removed, text: 'echo a\n'),
+                HunkLine(kind: HunkLineKind.added, text: 'echo b\n'),
+              ],
+            ),
+          ],
+        ),
+        fileDiff(
+          'd.txt',
+          kind: FileChangeKind.added,
+          added: 2,
+          fingerprint: 'fd',
+          hunks: <Hunk>[
+            hunk(
+              before: (start: 0, end: 0),
+              after: (start: 0, end: 2),
+              lines: const <HunkLine>[
+                HunkLine(kind: HunkLineKind.added, text: 'd1\n'),
+                HunkLine(kind: HunkLineKind.added, text: 'd2\n'),
+              ],
+            ),
+          ],
+        ),
+        fileDiff('new.txt', kind: FileChangeKind.renamed, fingerprint: 'fn'),
+      ];
+      details.descriptions[_at] = '';
+      details.files[_mutable] = const <FileChange>[FileChange(path: 'm.txt', kind: FileChangeKind.modified)];
+      details.fileDiffs[_mutable] = <FileDiff>[threeHunks('m.txt')];
+    });
+
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    Finder checkbox(String identifier) => find.byWidgetPredicate((w) => w is ZsCheckbox && w.identifier == identifier);
+    Finder hunkBox(int i) => checkbox('inspector-hunk-check').at(i);
+    Finder fileBox(String label) => find.byWidgetPredicate((w) => w is ZsCheckbox && w.label == label);
+    bool? state(WidgetTester tester, Finder box) => tester.widget<ZsCheckbox>(box).value;
+    bool? selectAll(WidgetTester tester) => state(tester, checkbox('inspector-select-all'));
+    String shown(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-composer-command'))).data!;
+    final Finder composer = find.byKey(const ValueKey<String>('inspector-composer'));
+
+    Future<void> tap(WidgetTester tester, Finder finder) async {
+      await tester.ensureVisible(finder);
+      await tester.pump();
+      await tester.tap(finder);
+      await settle(tester);
+    }
+
+    Future<void> focusFile(WidgetTester tester, String path) async {
+      // The row's text (the diff bar names the focused path too).
+      await tester.tap(find.text(path).first);
+      await settle(tester);
+    }
+
+    Future<void> runIt(WidgetTester tester) async {
+      await tester.ensureVisible(_button('inspector-composer-run'));
+      await tester.tap(_button('inspector-composer-run'));
+      await settle(tester);
+    }
+
+    Color headerColor(WidgetTester tester, int i) =>
+        tester.widget<Container>(find.byKey(const ValueKey<String>('inspector-hunk-header')).at(i)).color!;
+    Border? edgeOf(WidgetTester tester, int i) =>
+        (tester.widget<DecoratedBox>(find.byKey(const ValueKey<String>('inspector-hunk-edge')).at(i)).decoration
+                    as BoxDecoration)
+                .border
+            as Border?;
+
+    String filesOf(HunkChoice? hunks) => <String>[
+      for (final FileSelection f in hunks!.files)
+        '${f.path}:${f.whole ? 'whole' : '${f.mode ? 'mode+' : ''}${f.hunks.map((k) => k.oldStart).join(',')}'}',
+    ].join(' ');
+
+    testWidgets('@ opens with every file and hunk checked; the selected look is on every hunk', (tester) async {
+      await pump(tester, select: _at);
+      await settle(tester);
+      expect(inspector.focusedPath, 'a.txt');
+      expect(state(tester, fileBox('a.txt')), isTrue);
+      expect(selectAll(tester), isTrue);
+      expect(hunkBox(0), findsOneWidget);
+      expect(checkbox('inspector-hunk-check'), findsNWidgets(3));
+      for (var i = 0; i < 3; i++) {
+        expect(state(tester, hunkBox(i)), isTrue);
+        expect(tester.widget<ZsCheckbox>(hunkBox(i)).tristate, isTrue);
+      }
+      final ZsColors colors = ZsColors.of(tester.element(composer));
+      expect(headerColor(tester, 0), colors.accentSoftHi);
+      expect(edgeOf(tester, 0)!.left, BorderSide(color: colors.accentLine, width: 2));
+      await unmount(tester);
+    });
+
+    testWidgets('uncheck hunk 2: file and select-all mixed, `-i` in the preview, one tree-arm commit; recheck: '
+        'paths arm again', (tester) async {
+      await pump(tester, select: _at);
+      await settle(tester);
+      await tap(tester, hunkBox(1));
+      expect(state(tester, hunkBox(1)), isFalse);
+      expect(state(tester, hunkBox(0)), isTrue);
+      expect(state(tester, fileBox('a.txt')), isNull, reason: 'mixed');
+      expect(selectAll(tester), isNull, reason: 'mixed');
+      final ZsColors colors = ZsColors.of(tester.element(composer));
+      expect(headerColor(tester, 1), colors.hunkBg, reason: 'an unselected header stays the hunk band');
+      expect(edgeOf(tester, 1), isNull);
+      expect(headerColor(tester, 0), colors.accentSoftHi);
+      expect(shown(tester), "jj commit -i -m ''");
+      // Selected: every file has a pick (a.txt k1+k3: +1 −2, b.sh ±1, d.txt +2); Rest: a.txt's k2 (+2).
+      expect(find.descendant(of: composer, matching: find.text('4 files')), findsOneWidget);
+      expect(find.descendant(of: composer, matching: find.text('+4')), findsOneWidget);
+      expect(find.descendant(of: composer, matching: find.text('−3')), findsOneWidget);
+      expect(find.descendant(of: composer, matching: find.text('1 file')), findsOneWidget);
+      expect(find.descendant(of: composer, matching: find.text('+2')), findsOneWidget);
+
+      final commit = inspector.composerAction! as GraphCommit;
+      expect(commit.paths, isEmpty);
+      expect(commit.hunks!.left, <String>['t$_at-'], reason: "the entry's parentTreeIds");
+      expect(
+        filesOf(commit.hunks),
+        'a.txt:0,10 b.sh:whole d.txt:whole new.txt:whole old.txt:whole',
+        reason: "keys in section order; a rename whole takes its source's removal",
+      );
+      expect(commit.command, "jj commit -i -m ''");
+
+      await tap(tester, hunkBox(1));
+      expect(state(tester, fileBox('a.txt')), isTrue, reason: 'full again: whole');
+      expect(selectAll(tester), isTrue);
+      expect(shown(tester), "jj commit -m ''", reason: 'no -i for an all-whole selection');
+      expect((inspector.composerAction! as GraphCommit).hunks, isNull);
+      await runIt(tester);
+      final ran = actions.ran.single as GraphCommit;
+      expect(ran.hunks, isNull);
+      expect(ran.paths, isEmpty);
+      await unmount(tester);
+    });
+
+    testWidgets('mode only: unchecking the content hunk keeps the mode → modeAndHunks(b.sh, [])', (tester) async {
+      await pump(tester, select: _at);
+      await settle(tester);
+      await focusFile(tester, 'b.sh');
+      expect(inspector.focusedPath, 'b.sh');
+      expect(state(tester, checkbox('inspector-mode-check')), isTrue);
+      await tap(tester, hunkBox(0));
+      expect(state(tester, fileBox('b.sh')), isNull);
+      expect(state(tester, checkbox('inspector-mode-check')), isTrue);
+      expect(filesOf((inspector.composerAction! as GraphCommit).hunks), contains('b.sh:mode+'));
+      final FileSelection bsh = (inspector.composerAction! as GraphCommit).hunks!.files.firstWhere(
+        (f) => f.path == 'b.sh',
+      );
+      expect((bsh.mode, bsh.whole), (true, false));
+      expect(bsh.hunks, isEmpty);
+      // The mode off too: nothing of the file is left, its pick goes.
+      await tap(tester, checkbox('inspector-mode-check'));
+      expect(state(tester, fileBox('b.sh')), isFalse);
+      expect(inspector.hasPick('b.sh'), isFalse);
+      await unmount(tester);
+    });
+
+    testWidgets('a whole-only file and an immutable change take no hunk checkboxes', (tester) async {
+      await pump(tester, select: _at);
+      await settle(tester);
+      await focusFile(tester, 'd.txt');
+      expect(find.text('d1'), findsOneWidget, reason: 'its hunk shows');
+      expect(checkbox('inspector-hunk-check'), findsNothing);
+      expect(checkbox('inspector-mode-check'), findsNothing);
+      await unmount(tester);
+
+      details.files[_left] = const <FileChange>[FileChange(path: 'm.txt', kind: FileChangeKind.modified)];
+      details.fileDiffs[_left] = <FileDiff>[threeHunks('m.txt')];
+      await pump(tester, select: _left);
+      await settle(tester);
+      expect(find.text('gone'), findsOneWidget, reason: 'the diff shows');
+      expect(checkbox('inspector-hunk-check'), findsNothing);
+      expect(checkbox('inspector-file-check'), findsNothing, reason: 'no file box either');
+      expect(checkbox('inspector-select-all'), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets("the dimmed previous file's diff takes no hunk or mode checkboxes", (tester) async {
+      await pump(tester, select: _at);
+      await settle(tester);
+      expect(checkbox('inspector-hunk-check'), findsNWidgets(3));
+      details.holdDiff = true;
+      await focusFile(tester, 'b.sh');
+      expect(inspector.previousDiff, isNotNull);
+      expect(checkbox('inspector-hunk-check'), findsNothing);
+      expect(checkbox('inspector-mode-check'), findsNothing);
+      details.heldDiffs.single.$3.complete(details.diffOf(_at, paths: <String>['b.sh']));
+      await settle(tester);
+      expect(inspector.previousDiff, isNull);
+      expect(checkbox('inspector-mode-check'), findsOneWidget);
+      expect(checkbox('inspector-hunk-check'), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('a renamed file with a mode change stays whole-only; a binary one shows its mode row', (tester) async {
+      details.files[_at] = <FileChange>[
+        ...details.files[_at]!,
+        const FileChange(path: 'bin.dat', kind: FileChangeKind.modified),
+      ];
+      details.fileDiffs[_at] = <FileDiff>[
+        for (final FileDiff file in details.fileDiffs[_at]!)
+          if (file.path == 'new.txt')
+            fileDiff('new.txt', kind: FileChangeKind.renamed, fingerprint: 'fn', modeChange: true)
+          else
+            file,
+        fileDiff('bin.dat', binary: true, modeChange: true, fingerprint: 'fbin'),
+      ];
+      await pump(tester, select: _at);
+      await settle(tester);
+      await focusFile(tester, 'old.txt → new.txt');
+      expect(inspector.focusedPath, 'new.txt');
+      expect(inspector.hunkable('new.txt'), isFalse);
+      expect(checkbox('inspector-mode-check'), findsNothing);
+      await focusFile(tester, 'bin.dat');
+      expect(find.text('Binary file'), findsOneWidget);
+      expect(state(tester, checkbox('inspector-mode-check')), isTrue);
+      await tap(tester, checkbox('inspector-mode-check'));
+      expect(state(tester, fileBox('bin.dat')), isFalse, reason: 'nothing of it is left picked');
+      await unmount(tester);
+    });
+
+    testWidgets('a toggle on a diff shown from before a reload adds only keys of the current sections', (
+      tester,
+    ) async {
+      await pump(tester);
+      await settle(tester);
+      await tap(tester, hunkBox(0));
+      // A reload drops k2's section while the shown diff (held) still has it.
+      const k5 = HunkKey(oldStart: 20, oldCount: 1, newStart: 20, newCount: 1);
+      details
+        ..fileDiffs[_mutable] = <FileDiff>[
+          threeHunks('m.txt', sections: const <HunkKey>[k1, k3, k5]),
+        ]
+        ..holdDiff = true;
+      await reload(tester);
+      await settle(tester);
+      await tap(tester, hunkBox(1));
+      expect(state(tester, hunkBox(1)), isFalse, reason: 'the stale k2 is not added, so it does not show checked');
+      expect(filesOf((inspector.composerAction! as GraphSplit).hunks), 'm.txt:0');
+      await unmount(tester);
+    });
+
+    testWidgets('another change: one hunk checked shows Split with `-i`; it runs with the tree', (tester) async {
+      await pump(tester);
+      await settle(tester);
+      expect(composer, findsNothing);
+      expect(state(tester, hunkBox(0)), isFalse);
+      await tap(tester, hunkBox(0));
+      expect(state(tester, fileBox('m.txt')), isNull);
+      expect(composer, findsOneWidget);
+      expect(shown(tester), "jj split -r mmmmmmmm -i -m 'about mmmmmmmmmmmm'");
+      expect(find.byKey(const ValueKey<String>('inspector-composer-hint')), findsNothing);
+      await runIt(tester);
+      final split = actions.ran.single as GraphSplit;
+      expect(split.id, _mutable);
+      expect(split.paths, isEmpty);
+      expect(filesOf(split.hunks), 'm.txt:0');
+      expect(split.hunks!.left, <String>['t$_mutable-']);
+      expect(split.command, "jj split -r $_mutable -i -m 'about mmmmmmmmmmmm'");
+      expect(inspector.pickedCount, 0, reason: 'done clears the picks');
+      await unmount(tester);
+    });
+
+    testWidgets('a rename picked whole in the paths arm: both paths, in the command too', (tester) async {
+      await pump(tester, select: _at);
+      await settle(tester);
+      await tap(tester, fileBox('d.txt'));
+      final commit = inspector.composerAction! as GraphCommit;
+      expect(commit.hunks, isNull);
+      expect(commit.paths, <String>['a.txt', 'b.sh', 'new.txt', 'old.txt']);
+      expect(shown(tester), "jj commit -m '' root:a.txt root:b.sh root:new.txt root:old.txt");
+      await unmount(tester);
+    });
+
+    testWidgets('the three states: a file toggle from mixed takes it whole, select-all from mixed takes every file '
+        'whole, from all clears', (tester) async {
+      await pump(tester, select: _at);
+      await settle(tester);
+      await tap(tester, hunkBox(2));
+      expect(state(tester, fileBox('a.txt')), isNull);
+      await tap(tester, fileBox('a.txt'));
+      expect(state(tester, fileBox('a.txt')), isTrue);
+      expect(state(tester, hunkBox(2)), isTrue);
+      await tap(tester, fileBox('a.txt'));
+      expect(state(tester, fileBox('a.txt')), isFalse);
+      expect(state(tester, hunkBox(0)), isFalse);
+      expect(selectAll(tester), isNull, reason: 'some files whole, one not');
+      await tap(tester, hunkBox(0));
+      await tap(tester, checkbox('inspector-select-all'));
+      expect(selectAll(tester), isTrue);
+      expect(state(tester, fileBox('a.txt')), isTrue);
+      await tap(tester, checkbox('inspector-select-all'));
+      expect(selectAll(tester), isFalse);
+      expect(inspector.pickedCount, 0);
+      await unmount(tester);
+    });
+
+    testWidgets('Space on a focused hunk checkbox toggles it', (tester) async {
+      await pump(tester, select: _at);
+      await settle(tester);
+      await tester.ensureVisible(hunkBox(1));
+      // The box's own focus node: the nearest one above its innermost widget.
+      final FocusNode node = Focus.of(
+        tester.element(find.descendant(of: hunkBox(1), matching: find.byWidgetPredicate((_) => true)).last),
+      );
+      expect(node.skipTraversal, isFalse, reason: 'the hunk checkbox is a Tab stop');
+      node.requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await settle(tester);
+      expect(state(tester, hunkBox(1)), isFalse);
+      await unmount(tester);
+    });
+
+    testWidgets('a reload re-maps a partial pick by key: a kept key stays picked, a dropped one goes', (tester) async {
+      await pump(tester);
+      await settle(tester);
+      await tap(tester, hunkBox(0));
+      await tap(tester, hunkBox(1));
+      expect(filesOf((inspector.composerAction! as GraphSplit).hunks), 'm.txt:0,5');
+      // m.txt was edited elsewhere: k2's section is gone, a new one came.
+      const k5 = HunkKey(oldStart: 20, oldCount: 1, newStart: 20, newCount: 1);
+      details.fileDiffs[_mutable] = <FileDiff>[
+        threeHunks('m.txt', sections: const <HunkKey>[k1, k3, k5]),
+      ];
+      await reload(tester);
+      await settle(tester);
+      expect(filesOf((inspector.composerAction! as GraphSplit).hunks), 'm.txt:0', reason: 'k1 stays, k2 went');
+      expect(state(tester, fileBox('m.txt')), isNull);
+      await unmount(tester);
+    });
+
+    testWidgets("a stale refusal shows jj's text; draft and picks stay", (tester) async {
+      await pump(tester);
+      await settle(tester);
+      await tap(tester, hunkBox(0));
+      actions.refuse = const ZanshinFfiException('jj.stale_selection', 'The selection was made against another tree');
+      await runIt(tester);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-composer-error'))).data,
+        'The selection was made against another tree',
+      );
+      expect(state(tester, fileBox('m.txt')), isNull, reason: 'the picks stay');
+      expect(state(tester, hunkBox(0)), isTrue);
+      await tap(tester, hunkBox(1));
+      expect(find.byKey(const ValueKey<String>('inspector-composer-error')), findsNothing, reason: 'an edit clears it');
+      await unmount(tester);
+    });
+
+    testWidgets('Esc on another change with picks clears them and keeps the panel; the next Esc closes it', (
+      tester,
+    ) async {
+      await pump(tester);
+      await settle(tester);
+      await tap(tester, hunkBox(0));
+      expect(inspector.pickedCount, 1);
+      // The keyboard in the inspector: the file list.
+      await focusFile(tester, 'm.txt');
+      await esc(tester);
+      expect(inspector.pickedCount, 0);
+      expect(graph.selected, _mutable);
+      await esc(tester);
+      expect(graph.selected, isNull);
       await unmount(tester);
     });
   });

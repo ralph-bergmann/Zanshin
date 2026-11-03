@@ -78,11 +78,12 @@ void main() {
 
   String pathOf(String name) => '${temp.resolveSymbolicLinksSync()}/$name';
 
-  /// A new native-backend repository [name], open through the project adapter.
-  Future<ProjectRepo> openRepo(String name) async {
+  /// A new native-backend (or, with [git], non-colocated Git-backend) repository [name], open through the project
+  /// adapter.
+  Future<ProjectRepo> openRepo(String name, {bool git = false}) async {
     final String path = pathOf(name);
     await Directory(path).create();
-    await (await worker.initRepo(path, backend: 0)).close();
+    await (await worker.initRepo(path, backend: git ? 1 : 0, noColocate: git)).close();
     final ProjectRepo repo = await repos.open(path);
     addTearDown(repo.close);
     return repo;
@@ -343,6 +344,159 @@ void main() {
       );
     });
 
+    /// A repo whose @ changes lines 2, 15 and 28 of the 30-line `x.txt` of its parent: three sections.
+    Future<(ProjectRepo, GraphViewModel, String, List<HunkKey>, List<String>)> threeHunkRepo(String name) async {
+      final (ProjectRepo repo, GraphViewModel model, _, String second) = await setUpRepo(name);
+      final file = File('${pathOf(name)}/x.txt');
+      final lines = <String>[for (var i = 1; i <= 30; i++) 'line $i\n'];
+      file.writeAsStringSync(lines.join());
+      await repo.handle.show(revset: second);
+      final String at = (await repo.handle.newChange(<String>[second])).newChangeIds.single;
+      lines
+        ..[1] = 'one\n'
+        ..[14] = 'two\n'
+        ..[27] = 'three\n';
+      file.writeAsStringSync(lines.join());
+      final ShowEntry entry = (await repo.handle.show(revset: at)).single;
+      final List<HunkKey> sections = (await repo.handle.diff(revision: at)).files.single.sections;
+      expect(sections, hasLength(3));
+      return (repo, model, at, sections, entry.parentTreeIds);
+    }
+
+    Future<List<String>> addedLines(ProjectRepo repo, String id) async => <String>[
+      for (final FileDiff file in (await repo.handle.diff(revision: id)).files)
+        for (final Hunk hunk in file.hunks)
+          for (final HunkLine line in hunk.lines)
+            if (line.kind == HunkLineKind.added) line.text,
+    ];
+
+    test('Story 10.26: commit -i of hunks 1 and 3 of three leaves hunk 2 in the new @', () async {
+      final (ProjectRepo repo, GraphViewModel model, String at, List<HunkKey> sections, List<String> left) =
+          await threeHunkRepo('commit-hunks');
+      final GraphActionResult result = await model.run(
+        GraphCommit(
+          at,
+          message: const <String>['Part'],
+          hunks: HunkChoice(
+            left: left,
+            files: <FileSelection>[
+              FileSelection.hunks('x.txt', <HunkKey>[sections[0], sections[2]]),
+            ],
+          ),
+        ),
+      );
+      expect(result, isA<GraphActionDone>(), reason: result is GraphActionRefused ? '${result.error}' : null);
+      final String born = (result as GraphActionDone).outcome.born.single;
+      expect((await repo.handle.status()).workingCopyChangeId, born);
+      expect((await repo.handle.show(revset: at)).single.change.description, 'Part\n');
+      expect(await addedLines(repo, at), <String>['one\n', 'three\n']);
+      expect(await addedLines(repo, born), <String>['two\n'], reason: 'hunk 2 stays in the new @');
+    });
+
+    test('Story 10.26: split -i through the runner keeps the hunk on the change, the rest on its child', () async {
+      final (ProjectRepo repo, GraphViewModel model, String at, List<HunkKey> sections, List<String> left) =
+          await threeHunkRepo('split-hunks');
+      final GraphActionResult result = await model.run(
+        GraphSplit(
+          at,
+          message: const <String>['Middle'],
+          hunks: HunkChoice(
+            left: left,
+            files: <FileSelection>[
+              FileSelection.hunks('x.txt', <HunkKey>[sections[1]]),
+            ],
+          ),
+        ),
+      );
+      expect(result, isA<GraphActionDone>(), reason: result is GraphActionRefused ? '${result.error}' : null);
+      final String rest = (result as GraphActionDone).outcome.born.single;
+      expect(await addedLines(repo, at), <String>['two\n']);
+      expect(await addedLines(repo, rest), <String>['one\n', 'three\n']);
+    });
+
+    test('Story 10.26: a stale left tree is refused as jj.stale_selection', () async {
+      final (_, GraphViewModel model, String at, List<HunkKey> sections, _) = await threeHunkRepo('stale');
+      final GraphActionResult result = await model.run(
+        GraphCommit(
+          at,
+          message: const <String>['Part'],
+          hunks: HunkChoice(
+            left: const <String>['0000000000000000000000000000000000000000'],
+            files: <FileSelection>[
+              FileSelection.hunks('x.txt', <HunkKey>[sections[0]]),
+            ],
+          ),
+        ),
+      );
+      expect((result as GraphActionRefused).error.code, 'jj.stale_selection');
+    });
+
+    test('Story 10.26 (I1): committing a rename with its source path leaves no removal in the new @', () async {
+      final ProjectRepo repo = await openRepo('rename', git: true);
+      File('${pathOf('rename')}/old.txt').writeAsStringSync('content to rename\n');
+      final String first = (await repo.handle.status()).workingCopyChangeId!;
+      await repo.handle.newChange(<String>[first]);
+      File('${pathOf('rename')}/old.txt').renameSync('${pathOf('rename')}/new.txt');
+      File('${pathOf('rename')}/other.txt').writeAsStringSync('other\n');
+      final WorkingCopyStatus status = await repo.handle.status();
+      final String at = status.workingCopyChangeId!;
+      expect(
+        status.files.map((f) => (f.path, f.kind, f.fromPath)),
+        contains(('new.txt', FileChangeKind.renamed, 'old.txt')),
+      );
+      final model = GraphViewModel()..init(RepoGraphSource(repo), actions: RepoGraphActions(repo));
+      addTearDown(model.dispose);
+      final GraphActionResult result = await model.run(
+        GraphCommit(at, message: const <String>['Move'], paths: const <String>['new.txt', 'old.txt']),
+      );
+      final String born = (result as GraphActionDone).outcome.born.single;
+      expect(filesOf((await repo.handle.show(revset: born)).single), <String>['other.txt']);
+    });
+
+    test('Story 10.26 (I1): commit -i of a rename whole (with its source) and one hunk of another file', () async {
+      final ProjectRepo repo = await openRepo('rename-tree', git: true);
+      final String root = pathOf('rename-tree');
+      final lines = <String>[for (var i = 1; i <= 30; i++) 'line $i\n'];
+      File('$root/old.txt').writeAsStringSync('content to rename\n');
+      File('$root/x.txt').writeAsStringSync(lines.join());
+      final String first = (await repo.handle.status()).workingCopyChangeId!;
+      await repo.handle.newChange(<String>[first]);
+      File('$root/old.txt').renameSync('$root/new.txt');
+      lines
+        ..[1] = 'one\n'
+        ..[27] = 'three\n';
+      File('$root/x.txt').writeAsStringSync(lines.join());
+      final String at = (await repo.handle.status()).workingCopyChangeId!;
+      final ShowEntry entry = (await repo.handle.show(revset: at)).single;
+      expect(entry.fileChanges.map((f) => (f.path, f.kind)), contains(('new.txt', FileChangeKind.renamed)));
+      final List<HunkKey> sections = (await repo.handle.diff(
+        revision: at,
+        paths: const <String>['x.txt'],
+      )).files.single.sections;
+      expect(sections, hasLength(2));
+      final model = GraphViewModel()..init(RepoGraphSource(repo), actions: RepoGraphActions(repo));
+      addTearDown(model.dispose);
+      final GraphActionResult result = await model.run(
+        GraphCommit(
+          at,
+          message: const <String>['Move'],
+          hunks: HunkChoice(
+            left: entry.parentTreeIds,
+            files: <FileSelection>[
+              const FileSelection.whole('new.txt'),
+              const FileSelection.whole('old.txt'),
+              FileSelection.hunks('x.txt', <HunkKey>[sections[0]]),
+            ],
+          ),
+        ),
+      );
+      expect(result, isA<GraphActionDone>(), reason: result is GraphActionRefused ? '${result.error}' : null);
+      final String born = (result as GraphActionDone).outcome.born.single;
+      expect(filesOf((await repo.handle.show(revset: born)).single), <String>['x.txt'], reason: 'no old.txt removal');
+      expect(await addedLines(repo, born), <String>['three\n'], reason: 'the unpicked hunk stays');
+      expect(await addedLines(repo, at), <String>['one\n']);
+    });
+
     test('Story 10.25: squashPlan combines two descriptions; an undescribed child asks nothing', () async {
       final (ProjectRepo repo, _, String first, String second) = await setUpRepo('squash-plan');
       File('${pathOf('squash-plan')}/b.txt').writeAsStringSync('b\n');
@@ -577,6 +731,13 @@ void main() {
         const GraphSplit('k', message: <String>[''], paths: <String>['a.txt']).command,
         "jj split -r k -m '' root:a.txt",
       );
+      // Story 10.26: a hunk selection is `-i` right after the verb (after `-r` for split), with no paths.
+      const hunks = HunkChoice(left: <String>['t'], files: <FileSelection>[FileSelection.hunks('a.txt', <HunkKey>[])]);
+      expect(
+        const GraphCommit('w', message: <String>['Fix'], paths: <String>['a.txt'], hunks: hunks).command,
+        'jj commit -i -m Fix',
+      );
+      expect(const GraphSplit('k', message: <String>['Part'], hunks: hunks).command, 'jj split -r k -i -m Part');
       expect(const GraphCommit('w', message: <String>['']).pendingKeys, <String>{'w'});
       expect(const GraphSplit('k', message: <String>[''], paths: <String>['a']).pendingKeys, <String>{'k'});
     });

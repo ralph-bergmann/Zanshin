@@ -400,11 +400,25 @@ final class GraphSquash extends GraphAction {
   Set<String> get pendingKeys => <String>{?revision, ...from, ?into};
 }
 
-/// `jj commit -m <paragraph>… [root:<path>…]` (Story 10.25): commits @ — the CLI takes no revision — with [paths]
-/// (empty: everything), its description the `-m` [message] paragraphs.
+/// A hunk selection for a verb's tree arm (Story 10.26): what `RepoHandle.selectTree` takes — the revision's parent
+/// tree as the selection saw it ([left], `ShowEntry.parentTreeIds`) and the selected [files].
+final class HunkChoice {
+  /// [files] selected against [left].
+  const HunkChoice({required this.left, required this.files});
+
+  /// The revision's parent tree ids.
+  final List<String> left;
+
+  /// The selected files; a changed file not listed keeps its parent side.
+  final List<FileSelection> files;
+}
+
+/// `jj commit [-i] -m <paragraph>… [root:<path>…]` (Story 10.25): commits @ — the CLI takes no revision — with [paths]
+/// (empty: everything), its description the `-m` [message] paragraphs. With [hunks] (Story 10.26) it commits that
+/// selection instead — `-i`, the builtin diff editor's choice, no paths.
 final class GraphCommit extends GraphAction {
-  /// Commits [paths] of @, whose key is [id].
-  const GraphCommit(this.id, {required this.message, this.paths = const <String>[]});
+  /// Commits [paths] (or [hunks]) of @, whose key is [id].
+  const GraphCommit(this.id, {required this.message, this.paths = const <String>[], this.hunks});
 
   /// @'s key: the anchor and the pending card, not part of [command].
   final String id;
@@ -412,25 +426,31 @@ final class GraphCommit extends GraphAction {
   /// `-m`, one entry per paragraph.
   final List<String> message;
 
-  /// Repo-relative path prefixes (`root:` filesets); empty = everything.
+  /// Repo-relative path prefixes (`root:` filesets); empty = everything. Ignored with [hunks].
   final List<String> paths;
+
+  /// The hunk selection; null: the paths arm.
+  final HunkChoice? hunks;
 
   @override
   String get command => _jj(<String>[
     'commit', // l10n-ignore: jj command
+    if (hunks != null) '-i',
     for (final paragraph in message) ..._message(paragraph),
-    for (final path in paths) 'root:${_filesetString(path)}', // l10n-ignore: jj command
+    if (hunks == null)
+      for (final path in paths) 'root:${_filesetString(path)}', // l10n-ignore: jj command
   ]);
 
   @override
   Set<String> get pendingKeys => <String>{id};
 }
 
-/// `jj split -r <id> -m <paragraph>… root:<path>…` (Story 10.25): [paths] go into the selected change, which keeps
-/// the change id; the rest becomes its child.
+/// `jj split -r <id> [-i] -m <paragraph>… root:<path>…` (Story 10.25): [paths] go into the selected change, which
+/// keeps the change id; the rest becomes its child. With [hunks] (Story 10.26) that selection goes instead — `-i`, no
+/// paths.
 final class GraphSplit extends GraphAction {
-  /// Splits [paths] out of [id].
-  const GraphSplit(this.id, {required this.message, required this.paths});
+  /// Splits [paths] (or [hunks]) out of [id].
+  const GraphSplit(this.id, {required this.message, this.paths = const <String>[], this.hunks});
 
   /// The change to split.
   final String id;
@@ -438,14 +458,19 @@ final class GraphSplit extends GraphAction {
   /// `-m`, one entry per paragraph.
   final List<String> message;
 
-  /// Repo-relative path prefixes (`root:` filesets) of the selected part.
+  /// Repo-relative path prefixes (`root:` filesets) of the selected part. Ignored with [hunks].
   final List<String> paths;
+
+  /// The hunk selection; null: the paths arm.
+  final HunkChoice? hunks;
 
   @override
   String get command => _jj(<String>[
     'split', '-r', id, // l10n-ignore: jj command
+    if (hunks != null) '-i',
     for (final paragraph in message) ..._message(paragraph),
-    for (final path in paths) 'root:${_filesetString(path)}', // l10n-ignore: jj command
+    if (hunks == null)
+      for (final path in paths) 'root:${_filesetString(path)}', // l10n-ignore: jj command
   ]);
 
   @override
@@ -850,8 +875,9 @@ class RepoGraphActions implements GraphActions {
         keepEmptied: action.keepEmptied,
         editedDescription: action.editedDescription,
       ),
-      GraphCommit(:final message, :final paths) => handle.commit(message: message, paths: paths),
-      GraphSplit(:final id, :final message, :final paths) => _split(handle, id, message, paths),
+      GraphCommit(:final message, :final paths, hunks: null) => handle.commit(message: message, paths: paths),
+      GraphCommit(:final message, :final HunkChoice hunks) => _commitTree(handle, message, hunks),
+      GraphSplit(:final id, :final message, :final paths, :final hunks) => _split(handle, id, message, paths, hunks),
       GraphBookmarkCreate(:final names, :final revision) => handle.bookmarkCreate(names, revision: revision),
       GraphBookmarkDelete() => handle.bookmarkDelete(action.patterns),
       GraphBookmarkMove(:final names, :final from, :final to, :final allowBackwards) => handle.bookmarkMove(
@@ -880,9 +906,37 @@ class RepoGraphActions implements GraphActions {
     return handle.revert(revisions: <String>[id], insertBefore: <String>[?at]);
   }
 
-  /// `jj split`: the split's mutation, carrying the call's warnings (the nested result has none).
-  static Future<MutationResult> _split(RepoHandle handle, String id, List<String> message, List<String> paths) async {
-    final SplitResult split = await handle.split(revision: id, paths: paths, message: message);
+  /// The tree [hunks] select in [revision] (`null`: @), for [verb]'s tree arm (Story 9.50's contract).
+  static Future<TreeSelection> _tree(RepoHandle handle, String? revision, HunkChoice hunks, SelectTreeVerb verb) async {
+    final SelectedTree tree = await handle.selectTree(
+      revision: revision,
+      left: hunks.left,
+      files: hunks.files,
+      verb: verb,
+    );
+    return TreeSelection.of(tree, left: hunks.left);
+  }
+
+  /// `jj commit -i`: the selected tree, then the commit's tree arm.
+  static Future<MutationResult> _commitTree(RepoHandle handle, List<String> message, HunkChoice hunks) async =>
+      handle.commit(message: message, tree: await _tree(handle, null, hunks, SelectTreeVerb.commit));
+
+  /// `jj split`: the split's mutation, carrying the call's warnings (the nested result has none); with [hunks] the
+  /// selected tree goes as its tree arm.
+  static Future<MutationResult> _split(
+    RepoHandle handle,
+    String id,
+    List<String> message,
+    List<String> paths,
+    HunkChoice? hunks,
+  ) async {
+    final SplitResult split = hunks == null
+        ? await handle.split(revision: id, paths: paths, message: message)
+        : await handle.split(
+            revision: id,
+            message: message,
+            tree: await _tree(handle, id, hunks, SelectTreeVerb.split),
+          );
     final MutationResult m = split.mutation;
     return MutationResult(
       newOpId: m.newOpId,

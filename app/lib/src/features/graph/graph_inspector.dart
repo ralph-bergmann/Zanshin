@@ -99,7 +99,9 @@ class InspectorViewModel extends ChangeNotifier {
   var _disposed = false;
 
   // The composer (Story 10.25): the checked paths of [_key] (set up once per key by the first read), the drafts per key.
+  // Story 10.26: [_partial] holds the files picked by sections and mode — never empty, never full, never in [_picked].
   final _picked = <String>{};
+  final _partial = <String, ({Set<HunkKey> keys, bool mode})>{};
   String? _pickedFor;
   final _composerDrafts = <String, InspectorDraft>{};
   ZanshinFfiException? _composerError;
@@ -375,48 +377,174 @@ class InspectorViewModel extends ChangeNotifier {
   /// Whether the selection's files take checkboxes: a read, mutable, non-root change with files.
   bool get selectable => _mutableNode != null && _listed.isNotEmpty;
 
-  /// Whether [path] is checked for the composer.
+  /// Whether [path] is checked whole for the composer.
   bool isPicked(String path) => _picked.contains(path);
 
-  /// How many files are checked.
-  int get pickedCount => _picked.length;
+  /// Whether [path] has a pick, whole or partial.
+  bool hasPick(String path) => _picked.contains(path) || _partial.containsKey(path);
 
-  /// Whether every listed file is checked.
+  /// How many files have a pick.
+  int get pickedCount => _picked.length + _partial.length;
+
+  /// Whether every listed file is checked whole.
   bool get allPicked => _listed.isNotEmpty && _listed.every(_picked.contains);
 
-  /// Checks or unchecks [path].
+  /// [path]'s checkbox: true when picked whole, null (mixed) when picked by sections or mode, else false.
+  bool? fileState(String path) => _picked.contains(path) ? true : (_partial.containsKey(path) ? null : false);
+
+  /// Select all's checkbox: every listed file whole → true, no pick → false, else mixed.
+  bool? get allState => allPicked ? true : (_picked.isEmpty && _partial.isEmpty ? false : null);
+
+  /// Whether [path] takes hunk and mode checkboxes: its summary has sections or a mode change (Story 10.26). A rename
+  /// or copy stays whole-only: a partial pick would leave its source behind.
+  bool hunkable(String path) {
+    final FileDiff? shape = _summary?[path];
+    return selectable &&
+        shape != null &&
+        shape.kind != FileChangeKind.renamed &&
+        shape.kind != FileChangeKind.copied &&
+        (shape.sections.isNotEmpty || shape.modeChange);
+  }
+
+  /// [hunk]'s checkbox in [path]: all of its sections picked (or the file whole) → true, some → mixed, none → false.
+  bool? hunkState(String path, Hunk hunk) {
+    if (_picked.contains(path)) {
+      return true;
+    }
+    final Set<HunkKey> keys = _partial[path]?.keys ?? const <HunkKey>{};
+    final int n = hunk.sections.where(keys.contains).length;
+    return n == 0 ? false : (n == hunk.sections.length ? true : null);
+  }
+
+  /// Whether [path]'s mode change is picked: the file whole, or its partial's mode.
+  bool modePicked(String path) => _picked.contains(path) || (_partial[path]?.mode ?? false);
+
+  /// Checks or unchecks [path] whole: all → none, else → all.
   void togglePick(String path) {
     if (!selectable) {
       return;
     }
+    _partial.remove(path);
     if (!_picked.remove(path)) {
       _picked.add(path);
     }
+    _picksChanged();
+  }
+
+  /// Toggles [hunk]'s sections in [path]: all picked → removed, else added.
+  void toggleHunk(String path, Hunk hunk) {
+    if (!hunkable(path) || hunk.sections.isEmpty) {
+      return;
+    }
+    final ({Set<HunkKey> keys, bool mode}) pick = _partialOf(path);
+    if (hunkState(path, hunk) ?? false) {
+      pick.keys.removeAll(hunk.sections);
+    } else {
+      // The shown diff may predate a reload: only keys of the file's current sections.
+      pick.keys.addAll(hunk.sections.where(_summary![path]!.sections.contains));
+    }
+    _setPartial(path, pick);
+  }
+
+  /// Toggles [path]'s mode change.
+  void toggleMode(String path) {
+    if (!hunkable(path) || !(_summary?[path]?.modeChange ?? false)) {
+      return;
+    }
+    final ({Set<HunkKey> keys, bool mode}) pick = _partialOf(path);
+    _setPartial(path, (keys: pick.keys, mode: !pick.mode));
+  }
+
+  /// [path]'s pick as a (fresh) partial: whole → every section and the mode, none → nothing.
+  ({Set<HunkKey> keys, bool mode}) _partialOf(String path) {
+    if (_picked.contains(path)) {
+      final FileDiff shape = _summary![path]!;
+      return (keys: shape.sections.toSet(), mode: shape.modeChange);
+    }
+    final ({Set<HunkKey> keys, bool mode})? pick = _partial[path];
+    return (keys: <HunkKey>{...?pick?.keys}, mode: pick?.mode ?? false);
+  }
+
+  void _setPartial(String path, ({Set<HunkKey> keys, bool mode}) pick) {
+    _picked.remove(path);
+    _partial[path] = pick;
+    _normalize(path);
+    _picksChanged();
+  }
+
+  /// After a reload: a partial keeps the keys still in its file's sections and its mode while the file still has a
+  /// mode change; a file no longer listed or now whole-only drops it.
+  void _remapPartials() {
+    final Set<String> listed = _listed.toSet();
+    for (final String path in _partial.keys.toList()) {
+      if (!listed.contains(path) || !hunkable(path)) {
+        _partial.remove(path);
+        continue;
+      }
+      final FileDiff shape = _summary![path]!;
+      final ({Set<HunkKey> keys, bool mode}) pick = _partial[path]!;
+      _partial[path] = (
+        keys: pick.keys.where(shape.sections.contains).toSet(),
+        mode: pick.mode && shape.modeChange,
+      );
+      _normalize(path);
+    }
+  }
+
+  /// An empty partial goes, a full one becomes a whole pick.
+  void _normalize(String path) {
+    final ({Set<HunkKey> keys, bool mode})? pick = _partial[path];
+    final FileDiff? shape = _summary?[path];
+    if (pick == null || shape == null) {
+      return;
+    }
+    if (pick.keys.isEmpty && !pick.mode) {
+      _partial.remove(path);
+    } else if (pick.keys.containsAll(shape.sections) && (pick.mode || !shape.modeChange)) {
+      _partial.remove(path);
+      _picked.add(path);
+    }
+  }
+
+  void _picksChanged() {
     _composerError = null;
     _notify();
   }
 
-  /// Select all: checks every listed file, or unchecks them all when all are checked.
+  /// Select all: checks every listed file whole, or clears every pick when all are checked whole.
   void pickAll() {
     if (!selectable) {
       return;
     }
     final bool all = allPicked;
     _picked.clear();
+    _partial.clear();
     if (!all) {
       _picked.addAll(_listed);
     }
-    _composerError = null;
-    _notify();
+    _picksChanged();
   }
 
-  /// The composer's Cancel: unchecks every file (the draft stays).
+  /// The composer's Cancel (and Esc on a change with picks): clears every pick (the draft stays).
   void clearPicks() {
-    if (_picked.isNotEmpty || _composerError != null) {
+    if (_picked.isNotEmpty || _partial.isNotEmpty || _composerError != null) {
       _picked.clear();
-      _composerError = null;
-      _notify();
+      _partial.clear();
+      _picksChanged();
     }
+  }
+
+  /// The ± of [path]'s picked part: its summary's when whole, the picked sections' when partial, else none.
+  ({int added, int removed}) pickedStat(String path) {
+    final FileDiff? shape = _summary?[path];
+    if (_picked.contains(path)) {
+      return (added: shape?.added ?? 0, removed: shape?.removed ?? 0);
+    }
+    final Set<HunkKey> keys = _partial[path]?.keys ?? const <HunkKey>{};
+    return (
+      added: keys.fold(0, (sum, key) => sum + key.newCount),
+      removed: keys.fold(0, (sum, key) => sum + key.oldCount),
+    );
   }
 
   /// [key]'s composer draft, when it was edited.
@@ -448,11 +576,12 @@ class InspectorViewModel extends ChangeNotifier {
     if (at == null || _entry == null) {
       return false;
     }
-    return at.layout.workingCopyIndex == at.node ? _listed.isNotEmpty : _picked.isNotEmpty;
+    return at.layout.workingCopyIndex == at.node ? _listed.isNotEmpty : pickedCount > 0;
   }
 
   /// What the composer runs for the selection — `jj commit` on @ (no paths when every file is checked), else
-  /// `jj split -r` with the checked paths; null when it shows no composer or nothing is checked.
+  /// `jj split -r` with the checked paths (a renamed file with its source); with a partial pick both take the hunk
+  /// selection instead (Story 10.26); null when it shows no composer or nothing is checked.
   GraphAction? get composerAction => _composer(short: false);
 
   /// [composerAction]'s command as the composer previews it — the change named by its short id, as the inspector's
@@ -462,18 +591,47 @@ class InspectorViewModel extends ChangeNotifier {
   GraphAction? _composer({required bool short}) {
     final ({GraphLayout layout, int node})? at = _mutableNode;
     final String? key = _key;
-    if (at == null || key == null || !composing || _picked.isEmpty) {
+    if (at == null || key == null || !composing || pickedCount == 0) {
       return null;
     }
     final List<String> paragraphs = paragraphsOf(composerFields);
-    final paths = <String>[
-      for (final String path in _listed)
-        if (_picked.contains(path)) path,
-    ];
-    if (at.layout.workingCopyIndex == at.node) {
-      return GraphCommit(key, message: paragraphs, paths: allPicked ? const <String>[] : paths);
+    final isAt = at.layout.workingCopyIndex == at.node;
+    final String id = isAt || !short ? key : graphShortId(at.layout, at.node);
+    final List<FileChange> files = _entry?.fileChanges ?? const <FileChange>[];
+    // A rename picked whole selects its source's removal too (deferred I1): `jj commit root:new root:old`.
+    String? source(FileChange file) => file.kind == FileChangeKind.renamed ? file.fromPath : null;
+    if (_partial.isEmpty) {
+      final paths = <String>[
+        for (final FileChange file in files)
+          if (_picked.contains(file.path)) ...<String>[file.path, ?source(file)],
+      ];
+      return isAt
+          ? GraphCommit(key, message: paragraphs, paths: allPicked ? const <String>[] : paths)
+          : GraphSplit(id, message: paragraphs, paths: paths);
     }
-    return GraphSplit(short ? graphShortId(at.layout, at.node) : key, message: paragraphs, paths: paths);
+    final hunks = HunkChoice(
+      left: _entry?.parentTreeIds ?? const <String>[],
+      files: <FileSelection>[
+        for (final FileChange file in files)
+          if (_picked.contains(file.path)) ...<FileSelection>[
+            FileSelection.whole(file.path),
+            if (source(file) case final String from) FileSelection.whole(from),
+          ] else if (_partial[file.path] case final pick?)
+            _selection(file.path, pick),
+      ],
+    );
+    return isAt
+        ? GraphCommit(key, message: paragraphs, hunks: hunks)
+        : GraphSplit(id, message: paragraphs, hunks: hunks);
+  }
+
+  /// [path]'s partial [pick] as a selection, its keys in section order.
+  FileSelection _selection(String path, ({Set<HunkKey> keys, bool mode}) pick) {
+    final keys = <HunkKey>[
+      for (final HunkKey key in _summary?[path]?.sections ?? const <HunkKey>[])
+        if (pick.keys.contains(key)) key,
+    ];
+    return pick.mode ? FileSelection.modeAndHunks(path, keys) : FileSelection.hunks(path, keys);
   }
 
   /// Runs [composerAction] through the runner: done clears the key's draft and checks; a refusal stays in
@@ -492,6 +650,7 @@ class InspectorViewModel extends ChangeNotifier {
         _composerDrafts.remove(key);
         if (_key == key) {
           _picked.clear();
+          _partial.clear();
         }
       case GraphActionRefused(:final error):
         if (_key == key) {
@@ -564,6 +723,7 @@ class InspectorViewModel extends ChangeNotifier {
       _actions = null;
       _clearDiff();
       _picked.clear();
+      _partial.clear();
       _pickedFor = null;
       _composerError = null;
     }
@@ -623,8 +783,10 @@ class InspectorViewModel extends ChangeNotifier {
           _picked
             ..clear()
             ..addAll(mutable && node == layout.workingCopyIndex ? paths : const <String>[]);
+          _partial.clear();
         } else {
           _picked.retainAll(paths);
+          _remapPartials();
         }
         final String? focused = paths.contains(_focused) ? _focused : paths.firstOrNull;
         if (focused != _focused) {
@@ -694,7 +856,8 @@ class InspectorViewModel extends ChangeNotifier {
 ///   (Story 10.24); or the empty, stale or refusal text. On a mutable change each row and the header have a checkbox.
 /// - **Composer** (Story 10.25; DS inspector.jsx:40-79, kit.css:129-144): at the island's bottom while composing.
 /// - **Esc:** the squash form closes; in a composer field with a draft it leaves the field; in a field with a changed
-///   describe draft it leaves the field; else it closes the form, else the selection.
+///   describe draft it leaves the field; else it closes the form, else on another change than @ it clears the picks
+///   (Story 10.26), else the selection.
 class GraphInspector extends StatefulWidget {
   /// The inspector of [model].
   const GraphInspector({required this.model, super.key});
@@ -759,6 +922,11 @@ class _GraphInspectorState extends State<GraphInspector> {
         _model.closeForm(key);
       }
       _root.requestFocus();
+      return KeyEventResult.handled;
+    }
+    // Story 10.26: on another change the picks go first, the panel stays; the next Esc closes it.
+    if (node != null && node != layout!.workingCopyIndex && _model.pickedCount > 0) {
+      _model.clearPicks();
       return KeyEventResult.handled;
     }
     _model.graph.select(null);
@@ -1935,6 +2103,7 @@ class _ChangesState extends State<_Changes> {
       final int viewed = model.viewedCount;
       final TextStyle stat = ZsType.id.copyWith(fontSize: ZsType.fsSm);
       final String? focused = model.focusedPath;
+      final bool pickHunks = focused != null && model.previousDiff == null && model.hunkable(focused);
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -1945,7 +2114,8 @@ class _ChangesState extends State<_Changes> {
               children: <Widget>[
                 if (model.selectable)
                   ZsCheckbox(
-                    value: model.allPicked,
+                    value: model.allState,
+                    tristate: true,
                     onChanged: (_) => model.pickAll(),
                     label: model.allPicked ? strings.inspectorDeselectAll : strings.inspectorSelectAll,
                     size: ZsCheckboxSize.sm,
@@ -2041,7 +2211,8 @@ class _ChangesState extends State<_Changes> {
                         focused: files[i].path == focused,
                         highlighted: _focus.hasFocus && i == highlight,
                         viewed: model.isViewed(files[i].path),
-                        picked: model.selectable ? model.isPicked(files[i].path) : null,
+                        pickable: model.selectable,
+                        picked: model.fileState(files[i].path),
                         onPick: () => model.togglePick(files[i].path),
                       ),
                     ),
@@ -2064,6 +2235,11 @@ class _ChangesState extends State<_Changes> {
                   onViewedChanged: (viewed) => model.setViewed(focused, viewed),
                   layout: model.layout,
                   onLayoutChanged: model.setLayout,
+                  // The dimmed previous file's diff takes no picks: they would land on the focused path.
+                  hunkPicked: pickHunks ? (hunk) => model.hunkState(focused, hunk) : null,
+                  onHunkToggled: (hunk) => model.toggleHunk(focused, hunk),
+                  modePicked: pickHunks ? model.modePicked(focused) : null,
+                  onModeToggled: () => model.toggleMode(focused),
                 ),
               ),
             ),
@@ -2085,7 +2261,8 @@ class InspectorFileRow extends StatelessWidget {
     required this.focused,
     required this.highlighted,
     this.viewed = false,
-    this.picked,
+    this.pickable = false,
+    this.picked = false,
     this.onPick,
     super.key,
   });
@@ -2105,7 +2282,10 @@ class InspectorFileRow extends StatelessWidget {
   /// Whether it is marked Viewed.
   final bool viewed;
 
-  /// Whether the composer takes the file; null: no checkbox (an immutable change).
+  /// Whether the row has a checkbox (not on an immutable change).
+  final bool pickable;
+
+  /// Whether the composer takes the file: whole, none, or null for part of it (Story 10.26).
   final bool? picked;
 
   /// Toggles [picked].
@@ -2138,9 +2318,10 @@ class InspectorFileRow extends StatelessWidget {
       child: Row(
         spacing: 8,
         children: <Widget>[
-          if (picked case final bool picked)
+          if (pickable)
             ZsCheckbox(
               value: picked,
+              tristate: true,
               onChanged: (_) => onPick?.call(),
               label: file.path,
               size: ZsCheckboxSize.sm,
@@ -2336,7 +2517,7 @@ class _ComposerState extends State<_Composer> {
     final InspectorViewModel model = widget.model;
     final bool isAt = widget.data.isWorkingCopy;
     final paths = <String>[for (final FileChange file in model.entry?.fileChanges ?? const []) file.path];
-    final List<String> selected = paths.where(model.isPicked).toList();
+    final List<String> selected = paths.where(model.hasPick).toList();
     final List<String> rest = paths.where((p) => !model.isPicked(p)).toList();
     final String summary = _summary.text.split('\n').first;
     // Nothing checked: no command (a bare `jj commit` would take everything).
@@ -2347,10 +2528,17 @@ class _ComposerState extends State<_Composer> {
     final TextStyle note = ZsType.secondary.copyWith(fontSize: 11.5, height: 1.45, color: colors.textDim);
     final TextStyle stat = ZsType.id.copyWith(fontSize: ZsType.fsSm);
 
-    Widget count(List<String> files) {
+    // A file's ± in the selected part: its picked sections' (all of it when whole); in the rest: the remainder.
+    Widget count(List<String> files, {required bool chosen}) {
       final bool sums = model.hasSummary;
-      final int added = files.fold(0, (sum, p) => sum + (model.summaryOf(p)?.added ?? 0));
-      final int removed = files.fold(0, (sum, p) => sum + (model.summaryOf(p)?.removed ?? 0));
+      int part(String p, int Function(({int added, int removed}) stat) of) {
+        final FileDiff? file = model.summaryOf(p);
+        final int picked = of(model.pickedStat(p));
+        return chosen ? picked : of((added: file?.added ?? 0, removed: file?.removed ?? 0)) - picked;
+      }
+
+      final int added = files.fold(0, (sum, p) => sum + part(p, (s) => s.added));
+      final int removed = files.fold(0, (sum, p) => sum + part(p, (s) => s.removed));
       return Row(
         mainAxisSize: MainAxisSize.min,
         spacing: 6,
@@ -2425,13 +2613,15 @@ class _ComposerState extends State<_Composer> {
                         Text(strings.inspectorComposerNewWorkingCopy, style: labelStyle),
                       ]
                     : <Widget>[Text(strings.inspectorComposerRest, style: labelStyle)],
-                meta: rest.isEmpty ? Text(strings.inspectorComposerEmpty, style: node) : count(rest),
+                meta: rest.isEmpty ? Text(strings.inspectorComposerEmpty, style: node) : count(rest, chosen: false),
                 note: noteText(isAt ? strings.inspectorComposerStays : strings.inspectorComposerKeeps(subject)),
               ),
               row(
                 dot: dot(chosen: true),
                 label: <Widget>[Text(strings.inspectorComposerSelected, style: labelStyle)],
-                meta: selected.isEmpty ? Text(strings.inspectorComposerNothingYet, style: node) : count(selected),
+                meta: selected.isEmpty
+                    ? Text(strings.inspectorComposerNothingYet, style: node)
+                    : count(selected, chosen: true),
                 note: summary.isEmpty
                     ? noteText(strings.inspectorComposerNoDescription)
                     : noteText(strings.inspectorComposerMessage(summary), color: colors.text),

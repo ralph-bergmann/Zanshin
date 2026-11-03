@@ -702,6 +702,13 @@
   "@inspectorDiffBinary": {"description": "The diff of a binary file, which has no lines."},
   "inspectorDiffModeChange": "Executable bit changed",
   "@inspectorDiffModeChange": {"description": "The diff of a file whose only change is its executable bit."},
+  "inspectorHunkCheck": "Select hunk {range}",
+  "@inspectorHunkCheck": {
+    "description": "VoiceOver name and tooltip of a hunk's checkbox: whether Commit / Split takes the hunk.",
+    "placeholders": {"range": {"type": "String", "description": "The hunk's header as jj prints it, e.g. @@ −2,2 +2,4 @@."}}
+  },
+  "inspectorModeCheck": "Select the executable bit change",
+  "@inspectorModeCheck": {"description": "VoiceOver name and tooltip of the mode-change row's checkbox: whether Commit / Split takes the file's new executable bit."},
   "inspectorDiffNoLines": "No line changes",
   "@inspectorDiffNoLines": {"description": "The diff of a file with no hunks otherwise (a pure rename, an empty file)."},
 
