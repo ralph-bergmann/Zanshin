@@ -1102,12 +1102,8 @@ mod tests {
                         assert!(!tx.repo().has_changes(), "the check writes nothing");
                         drop(tx);
                         let mut dry = crate::op_support::start_repo_transaction(&readonly, &name);
-                        let expected = if super::target_ids(&loc).is_empty() {
-                            Ok(true)
-                        } else {
-                            apply_move(&mut dry, &loc, &jj_rebase_options(&RebaseOptions::default()), false)
-                                .map(|_| !dry.repo().has_changes())
-                        };
+                        let expected = apply_move(&mut dry, &loc, &jj_rebase_options(&RebaseOptions::default()), false)
+                            .map(|_| !dry.repo().has_changes());
                         moved += usize::from(matches!(expected, Ok(false)));
                         root_merges += usize::from(
                             matches!(&expected, Err(MutateError::InvalidInput { reason, .. }) if reason == GIT_ROOT_MERGE),
