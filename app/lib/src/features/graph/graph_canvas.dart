@@ -1499,8 +1499,9 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                   reveal: widget.reveal,
                   onUserPan: _userPanned,
                   paintBackground: axis.paintGuides,
-                  // The gap marks after the edges, the brackets after them, never dimmed (Stories 10.17, 10.19).
-                  paintEdges: edges == null && brackets.isEmpty
+                  // The gap marks after the edges, the brackets after them, never dimmed (Stories 10.17, 10.19); the flash
+                  // last — under the cards, like the DS's box-shadow, so it never crosses a card's legend pill.
+                  paintEdges: edges == null && brackets.isEmpty && _flashKeys.isEmpty
                       ? null
                       : (context, origin, visible) {
                           if (layer >= 1) {
@@ -1515,13 +1516,13 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                           if (born != null && drawn > 0) {
                             edges?.paint(context, origin, visible, highlight: highlight, only: born, drawn: drawn);
                           }
+                          _paintFlash(context.canvas, origin, visible, rows, metrics, colors);
                         },
                   transition: elapsed == null ? null : _moving,
                   transitionElapsed: elapsed ?? Duration.zero,
                   paintOverlay: (context, origin, visible) {
                     axis.paintLabels(context, origin, visible, leftInset: leftInset);
                     _paintPulse(context.canvas, origin, rows, metrics, accent);
-                    _paintFlash(context.canvas, origin, visible, rows, metrics, colors);
                   },
                 );
               },
