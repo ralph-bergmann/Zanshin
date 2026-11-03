@@ -9,7 +9,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/l10n/app_localizations_en.dart';
-import 'package:zanshin/src/features/graph/graph_canvas.dart' show GraphCanvas, graphAutoScrollStep;
+import 'package:zanshin/src/features/graph/graph_canvas.dart'
+    show GraphCanvas, graphAutoScrollStep, graphAutoScrollZone;
+import 'package:zanshin/src/features/graph/graph_card.dart' show GraphCardController;
 import 'package:zanshin/src/features/graph/graph_card_render.dart';
 import 'package:zanshin/src/features/graph/graph_drag.dart';
 import 'package:zanshin/src/features/graph/graph_drop_menu.dart';
@@ -635,9 +637,20 @@ void main() {
       await tester.pump();
       expect(find.text('jj rebase -s a -o c'), findsOneWidget);
       expect(_dropTarget(tester), 'c', reason: 'the target shows its drop look');
+      final RenderGraphViewport viewport = tester.allRenderObjects.whereType<RenderGraphViewport>().single;
+      final GraphLayout dragged = model.layout!;
+      expect(viewport.opacityOf!(dragged.indexOfKey('a')!), graphDragSourceOpacity, reason: 'the source dims');
+      expect(viewport.opacityOf!(dragged.indexOfKey('c')!), 1);
+      expect(_cards(tester).hoverEnabled, isFalse, reason: 'no hover under a drag');
       await mouse.up();
       await tester.pumpAndSettle();
       expect(_dropTarget(tester), isNull);
+      expect(
+        viewport.opacityOf?.call(model.layout!.indexOfKey('a')!) ?? 1,
+        1,
+        reason: 'the source no longer dims after the drop',
+      );
+      expect(_cards(tester).hoverEnabled, isTrue);
       expect(actions.ran.single.command, 'jj rebase -s a -o c');
       expect(model.selected, isNull, reason: 'the drag swallowed the click');
       expect(find.byType(ZsDragGhost), findsNothing);
@@ -665,6 +678,11 @@ void main() {
       await tester.pump(graphDropMenuDelay);
       await tester.pump(const Duration(milliseconds: 300));
       expect(model.drag.menuOpen, isTrue);
+      expect(
+        find.descendant(of: find.byType(ZsDragGhost), matching: find.text('jj rebase -s a -o h')),
+        findsNothing,
+        reason: 'the ghost hides its words while the menu is open',
+      );
       final Finder row = find.byWidgetPredicate(
         (w) => w is Semantics && w.properties.identifier == 'graph-drop-insertBefore',
       );
@@ -785,6 +803,82 @@ void main() {
       await mouse.up();
       await tester.pumpAndSettle();
       expect(actions.ran, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
+
+    testWidgets('a target whose rows are all refused is not highlighted; the ghost says why', (tester) async {
+      useShellWindow(tester);
+      final source = ScriptedGraphSource(respond: (_) => keysLayout(<String>['a', 'b', 'c'], at: 'a'));
+      final drops = _Drops()..answer = (_, _) => _changeRows(_refused('jj.immutable', 'c is immutable'));
+      final actions = _Actions();
+      final model = GraphViewModel()..init(source, actions: actions, drops: drops);
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      await tester.pumpAndSettle();
+      final Offset from = _centre(tester, 'a');
+      final Offset to = _centre(tester, 'c');
+      final TestGesture mouse = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+      await mouse.moveTo(Offset.lerp(from, to, .5)!);
+      await tester.pump();
+      await mouse.moveTo(to);
+      await tester.pump(graphDropDebounce);
+      await tester.pump();
+      expect(find.descendant(of: find.byType(ZsDragGhost), matching: find.text('c is immutable')), findsOneWidget);
+      expect(_dropTarget(tester), isNull);
+      await mouse.up();
+      await tester.pumpAndSettle();
+      expect(actions.ran, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
+
+    testWidgets('a pointer resting on the open menu inside the auto-scroll zone does not scroll', (tester) async {
+      useShellWindow(tester);
+      final keys = <String>[for (var i = 0; i < 80; i++) 'k$i'];
+      final source = ScriptedGraphSource(respond: (_) => keysLayout(keys, at: 'k0'));
+      final model = GraphViewModel()..init(source, actions: _Actions(), drops: _Drops());
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      await tester.pumpAndSettle();
+      final RenderGraphViewport render = tester.allRenderObjects.whereType<RenderGraphViewport>().single;
+      final Rect area = render.insets.deflateRect(Offset.zero & render.size);
+      final Offset middle = render.localToGlobal(area.center);
+      final String target = keys.firstWhere((k) => k != 'k0' && _centre(tester, k).dy > middle.dy);
+      final Offset from = _centre(tester, 'k0');
+      final TestGesture mouse = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+      await mouse.moveTo(middle);
+      await tester.pump(const Duration(milliseconds: 16));
+      await mouse.moveTo(_centre(tester, target));
+      await tester.pump(graphDropDebounce);
+      await tester.pump(graphDropMenuDelay);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.drag.menuOpen, isTrue);
+      final Finder rows = find.byWidgetPredicate(
+        (w) => w is Semantics && (w.properties.identifier?.startsWith('graph-drop-') ?? false),
+      );
+      Offset topRow() => rows
+          .evaluate()
+          .map((e) => tester.getCenter(find.byWidget(e.widget)))
+          .reduce(
+            (a, b) => a.dy < b.dy ? a : b,
+          );
+      // Scroll until the menu (still above its card) touches the top: its top row is then in the top zone.
+      final double top = render.localToGlobal(area.topLeft).dy;
+      final double menuTop = tester.getRect(find.byType(GraphDropMenu)).top;
+      render.verticalOffset.jumpTo(render.verticalOffset.pixels + menuTop - (top + 1));
+      await tester.pump();
+      expect(topRow().dy - top, lessThan(graphAutoScrollZone));
+      await mouse.moveTo(topRow());
+      await tester.pump();
+      expect(model.drag.overMenu, isTrue);
+      final double y = render.verticalOffset.pixels;
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(render.verticalOffset.pixels, y, reason: 'the menu does not slide away under the pointer');
+      expect(model.drag.menuOpen, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await mouse.up();
+      await tester.pumpAndSettle();
       await tester.pumpWidget(const SizedBox());
       model.dispose();
     });
@@ -920,7 +1014,9 @@ void main() {
   });
 }
 
-String? _dropTarget(WidgetTester tester) => tester.widget<GraphCanvas>(find.byType(GraphCanvas)).cards.dropTarget.value;
+String? _dropTarget(WidgetTester tester) => _cards(tester).dropTarget.value;
+
+GraphCardController _cards(WidgetTester tester) => tester.widget<GraphCanvas>(find.byType(GraphCanvas)).cards;
 
 /// [keys] one per row, newest first, at operation [op]; @ is `a`.
 RecordedGraphLayout _opLayout(List<String> keys, String op) => handLayout(

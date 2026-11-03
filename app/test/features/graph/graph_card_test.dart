@@ -839,6 +839,28 @@ void main() {
       expect(card.hitTest(result, position: rectOf(card, GraphCardSlot.more).center), isFalse);
     });
 
+    testWidgets('a drop target paints the drop border, ring and hover fill; clearing it repaints the normal look', (
+      tester,
+    ) async {
+      final controller = GraphCardController(now: _now);
+      final RenderGraphCard card = await pumpCard(tester, one(), controller);
+      final rrect = RRect.fromRectAndRadius(card.cardRect, const Radius.circular(10));
+      final int line = GraphTheme.night.dropTargetLine.toARGB32();
+      final int ring = ZsElevation.night.ringDrop.boxShadows.first.color.toARGB32();
+      final int fill = GraphTheme.night.cardFillHover.toARGB32();
+      List<int> colors() => <int>[for (final (RRect _, int c) in rrects(paintCalls(card))) c];
+
+      expect(colors(), isNot(contains(line)));
+      controller.dropTarget.value = 'kxwsnptmqrvl';
+      await tester.pump();
+      expect(colors(), containsAll(<int>[line, ring]));
+      expect(rrects(paintCalls(card)), contains((rrect, fill)));
+      controller.dropTarget.value = null;
+      await tester.pump();
+      expect(colors(), isNot(contains(line)));
+      expect(colors(), isNot(contains(ring)));
+    });
+
     for (final reduce in <bool>[false, true]) {
       testWidgets('reduce motion $reduce: ••• ${reduce ? 'only fades, at scale 1' : 'fades and scales in'}', (
         tester,

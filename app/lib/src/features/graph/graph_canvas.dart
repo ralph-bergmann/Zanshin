@@ -562,6 +562,10 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       _autoScrollArmed = area.deflate(graphAutoScrollZone).contains(p);
       return;
     }
+    if (drag!.overMenu) {
+      // A pointer resting on the open menu chooses a row; scrolling would slide the menu away under it.
+      return;
+    }
     final step = Offset(
       graphAutoScrollStep(area.left, area.right, p.dx),
       graphAutoScrollStep(area.top, area.bottom, p.dy),

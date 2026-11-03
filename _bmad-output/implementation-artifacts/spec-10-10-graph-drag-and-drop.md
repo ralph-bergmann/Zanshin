@@ -5,7 +5,7 @@ created: '2026-11-03'
 status: 'done'
 baseline_revision: '8d6c2ceb88ce3154111e0b9ffd281440f9e2ed36'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-10-context.md'
@@ -205,6 +205,46 @@ deferred:
   - `[low]` `[defer]` Intent: no running-app check (shell resize edges, islands) — carried: first pass's deferred running-app check.
   - `[medium]` `[patch]` Intent: auto-scroll arming, ticker and live insets unexercised — grouped with VG #4.
 
+### 2026-11-03 — Review pass (second follow-up)
+- verdicts: 36 findings — high 0, medium 1, low 28, false 7, maybe-false 0 (the intent audit's divergences logged as 8 findings)
+- findings:
+  - `[low]` `[patch]` VG: the card's drop-target paint (border, `ringDrop`, hover fill) is never asserted, only the notifier — `graph_card_test` "a drop target paints the drop border, ring and hover fill; clearing it repaints the normal look".
+  - `[low]` `[patch]` VG: the source's .35 dim is never asserted — the first in-graph drag test asserts `opacityOf` = `graphDragSourceOpacity` for the source, 1 for the target, and 1 after the drop.
+  - `[low]` `[patch]` VG: the ghost's refusal words and their hiding while the menu is open are not rendered in a test — new in-graph test (all rows refused → ghost shows the context, no highlight, nothing runs); the menu test asserts the command words are gone once the menu opens.
+  - `[low]` `[patch]` VG: hover off during a drag untested — the first in-graph test asserts `cards.hoverEnabled` false mid-drag, true after.
+  - `[low]` `[reject]` VG other: `menu.inflate(gap)` keeps the target 12 px beyond the menu's far sides too — only a release in that 12 px band beside the menu (over a neighbour card) runs the old target's row; unlikely in use, and a one-sided gap needs placement-aware geometry.
+  - `[low]` `[reject]` Blind: a refusal without context shows its code — the intent says "the first refusal's `context ?? code`".
+  - `[low]` `[reject]` Blind: an all-NoOp target shows "Drop on a change" — the intent's matrix row "Only NoOp rows" asks for exactly that.
+  - `[low]` `[reject]` Blind: a menu that fits neither above nor below is clamped over its card, so a release there runs a menu row — the menu covers the card visibly; a release on the menu is a menu choice (first pass's rule); a tall menu in a short graph only.
+  - `[medium]` `[patch]` Blind: auto-scroll keeps running while the pointer rests on the open menu inside the 56 px zone, so the menu slides away under it — `_autoScrollTick` returns while `drag.overMenu`; new widget test (menu scrolled to the top edge, pointer on its top row, no scroll; fails without the fix — checked).
+  - `[low]` `[reject]` Blind: auto-scroll never arms in a viewport under 112 px — carried: first pass's reject.
+  - `[low]` `[reject]` Blind: local names with `@` never drag — the intent: "a name containing `@`, never drags".
+  - `[low]` `[reject]` Blind: the pill drags only its first ref — the intent: "the card's legend pill (its FIRST ref)".
+  - `[low]` `[reject]` Blind: a New merge drop has no drop origin — carried: follow-up pass's reject.
+  - `[low]` `[reject]` Blind: toasts/undo assume every multi-parent `GraphNew` is a drop in `[T, S]` order — the drop is the only multi-parent `GraphNew` today (`rg GraphNew(` in `lib/`); a type to guard a future caller adds surface for no current harm.
+  - `[false]` `[reject]` Blind: `_fetch` catches `Object` and masks programming errors — the first pass made it deliberate (the matrix: "dropActions throws → swallowed"); it is logged.
+  - `[low]` `[reject]` Blind: "writes nothing" asserted only at transaction level — carried: follow-up pass's reject (bench +0 refs/objects).
+  - `[low]` `[reject]` Blind: the drop-menu oracle checks acceptance, not effect — carried: follow-up pass's reject.
+  - `[low]` `[reject]` Blind: the new verbs are mouse-only — carried: the intent's Never list.
+  - `[low]` `[reject]` Blind: the after-drop menu holds reloads without bound — carried: follow-up pass's reject.
+  - `[false]` `[reject]` Blind: ↑/↓ move an invisible highlight before the menu opens — carried: the ghost words show the highlighted row's command.
+  - `[low]` `[reject]` Edge: a release on the open menu's footer/padding with a backwards row highlighted runs it — carried: first pass's reject (a release over the open menu is a menu choice).
+  - `[low]` `[reject]` Edge: auto-scroll never arms under 2×56 px — carried.
+  - `[low]` `[reject]` Edge: a layout load in flight at drag start lands mid-drag — carried.
+  - `[false]` `[reject]` Edge: a quick drop before the preview cancels — carried: the intent's rule.
+  - `[false]` `[reject]` Edge: unawaited `drop()`/`choose()` errors — carried: only programming errors throw.
+  - `[low]` `[reject]` Edge: a hidden/divergent card's key is a commit id the rebase rewrites, so no flash/glide — cosmetic, divergent/hidden drags only; mapping the rewritten commit adds result plumbing.
+  - `[low]` `[reject]` Edge: the ghost shows the change id while the command shows the commit id for a hidden/divergent card — the ghost mirrors the card's own id line; divergent drags only.
+  - `[low]` `[reject]` Edge: New merge has no drop origin — carried.
+  - `[low]` `[reject]` Intent: no-writes asserted at transaction level — carried.
+  - `[low]` `[reject]` Intent: the cost is not asserted — recorded in Design Notes from the bench (26–71 ms); a timing assertion would be flaky.
+  - `[low]` `[reject]` Intent: equivalence only on a small fixture — carried (divergent branch unreachable, follow-up pass).
+  - `[low]` `[defer]` Intent: no running-app check — carried: first pass's deferred running-app check.
+  - `[false]` `[reject]` Intent: the glob literal `'exact:feat*'` vs `'exact:"feat*"'` — carried.
+  - `[false]` `[reject]` Intent: the backwards row runs on a release over its own row — carried: the matrix's "Menu row" case.
+  - `[low]` `[patch]` Intent: hover-off and the ghost words have no direct test — grouped with VG #3 and #4.
+  - `[false]` `[reject]` Intent: trackpad drags may not arrive as mouse — a macOS trackpad click-drag is a mouse pointer in Flutter; `PointerDeviceKind.trackpad` carries only pan/zoom gestures.
+
 ## Design Notes
 
 **Measurement before the fix (planning, 2026-11-03, release build, `tiny-3-commits` + 200-change stack, 10 queries each):** drop_actions at 1/10/50/100/199 descendants: med 1.55 / 1.62 / 2.18 / 3.01 / 4.65 s; keep refs +2266 / +2465 / +3356 / +4457 / +6644 per 10 queries; `Repo::status` floor 2.9 ms. Even one descendant costs 1.5 s because `-A T` / `-B T` move every descendant of T. Ralph's 2026-10-21 note offers "query once per drop target" (built in: one cached query per target and operation) or "compute the no-op from the parents without writing" (this story) — both are taken.
@@ -245,6 +285,13 @@ deferred:
 - `app/`: `dart analyze --fatal-infos` -- clean; `dart format --set-exit-if-changed lib test` -- clean after formatting the new test
 - Not run: Rust checks (no Rust change), the running-app visual check (still deferred).
 
+**Verification notes (2026-11-03, second follow-up review pass — same gate rule; only Dart in `app/` changed):**
+- `app/`: `flutter test test/features/graph/graph_drag_test.dart` -- 33 pass; the menu auto-scroll test fails with the guard disabled (checked: 205 → 215 px)
+- `app/`: `flutter test test/features/graph/graph_card_test.dart --plain-name "a drop target paints"` -- pass
+- `app/`: `flutter test test/features/graph test/features/bookmarks test/features/shell test/features/home` -- 1068 pass
+- `app/`: `dart analyze --fatal-infos` -- clean; `dart format --set-exit-if-changed lib test` -- clean
+- Not run: Rust checks (no Rust change), the running-app visual check (still deferred).
+
 ## Auto Run Result
 
 Status: done
@@ -279,3 +326,15 @@ Commits: c5d42306 (story), plus the bookkeeping commit after it.
 **Follow-up review recommended: true** — this pass patched a high. The unverified risk: the gap fix is checked by a widget test that moves the pointer in discrete jumps; whether a real mouse sweep from the card onto the menu (above and below placements, near the clamped edges) keeps the menu open has not been seen in the running app.
 
 **Residual risks.** Same as above; the running-app check would also settle the gap fix.
+
+### Second follow-up review pass (2026-11-03)
+
+**Summary.** Fresh four-layer review. One medium: auto-scroll kept running while the pointer rested on the open drop menu inside the 56 px edge zone, sliding the menu (and its rows) away under a still pointer; `_autoScrollTick` now pauses while the pointer is over the menu. The rest were test gaps on the canvas surface, now closed.
+
+**Files.** `app/lib/src/features/graph/graph_canvas.dart` (`_autoScrollTick`: no scroll while `drag.overMenu`), `app/test/features/graph/graph_drag_test.dart` (menu auto-scroll pause, refused target's ghost words, words hidden while the menu is open, source dim, hover off during a drag), `app/test/features/graph/graph_card_test.dart` (drop-target paint).
+
+**Review.** 36 findings: 2 entries patched (medium 1: auto-scroll over the menu; low 1: the canvas-surface test gaps, 6 rows), no new deferrals (1 carried deferred row: running-app check), 29 rejected — 7 false (preview errors swallowed by design, invisible arrows, quick drop, unawaited errors, glob literal, backwards row on its row, trackpad kind), 22 low (intent's own rules: refusal code fallback, NoOp hint, `@` names, first-ref pill; carried rejects from earlier passes; rare paths: divergent/hidden cards' flash and ghost id, the menu gap band's far sides, a clamped menu over its card, a future multi-parent `GraphNew`; the bench-recorded cost).
+
+**Follow-up review recommended: false** — a follow-up pass that patched no high; the work has converged. Patched by entry verdict: medium 1, low 1.
+
+**Residual risks.** No running-app visual check yet (deferred); the ported planner must be re-diffed on a jj-lib bump (deferred).
