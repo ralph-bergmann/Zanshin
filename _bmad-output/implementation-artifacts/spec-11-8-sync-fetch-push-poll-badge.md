@@ -5,7 +5,7 @@ created: '2026-11-03'
 status: 'done'
 baseline_revision: '42dfdbe3bbb8a1eafa5ea6d5fbffe7abb436a22c'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-11-context.md'
@@ -18,6 +18,13 @@ deferred:
       Ralph's 2026-10-21 note asks for one live run because `dart test` reaps the poll's git child; every sync test uses FakeRemoteSync. The unattended run had no project with a moved remote bookmark at hand.
     location: >-
       app/lib/src/features/sync/sync_model.dart (poll), app/lib/src/features/sync/push_sheet.dart
+    severity: medium
+  - summary: >-
+      The real-worker clone-with-ticket test passes whether or not `WorkerProjectRepos.clone` attaches the ticket, so clone Cancel and progress are unproven against the real worker.
+    evidence: |-
+      The test accepts a finished clone or `jj.cancelled`, and its only unconditional check (`ticket.cancelled`) is set by `CloneTicket.cancel` itself; every other clone Cancel/progress test runs on `FakeProjectRepos`, which attaches the ticket itself. A real clone cannot be cancelled deterministically under `dart test` (the VM reaps jj-lib's git child).
+    location: >-
+      app/lib/src/features/projects/worker_project_repos.dart (ticket?.attach), app/test/features/projects/worker_project_repos_test.dart
     severity: medium
 ---
 
@@ -158,6 +165,47 @@ deferred:
   - `[low]` `[reject]` (intent) Push tooltip "Choose what to push to origin" + `jj git push` — follows DS chrome.jsx:104 ("choose what jj git push sends"), which the story's DS round superseded the base wording with.
   - `[false]` `[reject]` (intent) the island keeps Reload beside Fetch and Push — 10.12 put Reload in this island and said "Fetch and Push join this island" (graph_controls.dart doc); the story removes nothing.
 
+### 2026-11-03 — Review pass (follow-up)
+- verdicts: 37 findings — high 0, medium 3, low 19, false 9, maybe-false 6
+- findings:
+  - `[medium]` `[patch]` (gap) SyncIsland's rendered badge, per-remote tooltip lines, "Fetching… N%" and "No remote" reason are asserted nowhere — widget test added in `push_sheet_test.dart` (poll badge 2, tooltip lines, busy + 40 %, both buttons "No remote").
+  - `[low]` `[patch]` (gap) a push's syncing dot is never observed — `sync_model_test` push group: a gated real push runs inside `syncing` (1 while running, 0 after; dry runs 0).
+  - `[medium]` `[defer]` (gap) the real clone-with-ticket test passes whether or not `WorkerProjectRepos.clone` attaches the ticket — a real clone cannot be cancelled deterministically under `dart test` (the VM reaps jj-lib's git child); recorded in deferred.
+  - `[low]` `[reject]` (blind) the leave question now comes before the non-empty-destination refusal — nothing switches before `_switchTo`, so a confirmed leave followed by jj's refusal loses nothing; a pre-check would re-add the app-side destination rule I3 removed.
+  - `[low]` `[reject]` (blind) transient `syncing` is persisted — carried: only the open project syncs and reopening it reads it again (prior row, crash mid-sync).
+  - `[maybe-false]` `[reject]` (blind) push()/load()/_replan catch only ZanshinFfiException — carried for load/_replan; push() has the same only non-FFI thrower, a closed handle, which disposes the graph set and the sheet with it; would be low.
+  - `[false]` `[reject]` (blind) CloneTicket leaks its progress subscription — carried: `NetworkOperation.progress` closes when the result completes.
+  - `[low]` `[patch]` (blind) the done view shows sent refs with an unticked checkbox — DS PushDialog.jsx:158 keeps `checked={on}` in done; `_resultRow` now renders `value: true` (rows listed are the sent ones); asserted in the recorded-partial-push test.
+  - `[maybe-false]` `[reject]` (blind) the generated name is written to the controller during build — carried.
+  - `[low]` `[patch]` (blind) typing the generated name back turns into `--named` after a re-plan — `setName` stores null when the text equals `generatedName`; model test extended.
+  - `[low]` `[reject]` (blind) Fetch/Push disabled with no reason while the sheet is open or a fetch runs — carried.
+  - `[false]` `[reject]` (blind) the reviewed diff leaves out `projects_settings.g.dart` — the review staging excluded generated files; the file is in 3516be53.
+  - `[low]` `[reject]` (blind) "Nothing changed." hard-coded in three places — carried (jj's own text, cli_util.rs:2852).
+  - `[low]` `[reject]` (blind) `dart format` moved two `// l10n-ignore` comments to the closing `),` line — `hard_coded_strings_test` passes (flags are not UI literals); formatter would move a re-placed comment back.
+  - `[low]` `[reject]` (blind) the --tracked/--all/--deleted tooltips repeat their labels — the tooltip's cmd line shows the flag; extra descriptions are new copy for a hover detail.
+  - `[low]` `[reject]` (blind) a hung remote stalls the poll without a time limit — the badge stops updating until it returns; a timeout adds a timer path for a rare state; Fetch still works.
+  - `[low]` `[reject]` (blind) the poll re-reads empty fetch remotes without storing them — a remote added outside shows after the next reloadRemotes; storing adds a notify branch for a rare setup step.
+  - `[low]` `[reject]` (blind) missing tests (cancel before attach, host didUpdateWidget, syncing when run throws, overlapping syncs, menu listener swap) — simple branches; overlapping syncs cannot happen (prior row); not worth the test weight.
+  - `[low]` `[reject]` (edge) the dot stays syncing when the post-sync reading fails — the next successful reading (any operation, app activation) writes the real state; a fallback write adds a branch for a rare read failure.
+  - `[false]` `[reject]` (edge) overlapping syncing() calls persist syncing — carried: Fetch and Push exclude each other.
+  - `[low]` `[reject]` (edge) a crash persists syncing — carried.
+  - `[maybe-false]` `[reject]` (edge) push throws non-FFI and the sheet stays pushing — same as the blind row; would be low.
+  - `[maybe-false]` `[reject]` (edge) _replan throws StateError and the sheet stays loading — carried.
+  - `[maybe-false]` `[reject]` (edge) _read StateError during a project switch is uncaught — a closed handle comes with the graph set's disposal; would be low.
+  - `[maybe-false]` `[reject]` (edge) progress stream error unhandled / never cancelled — carried.
+  - `[false]` `[reject]` (edge) ticket.cancel() after the clone finished throws — `NetworkOperation.cancel` is a no-op after the result completed or the worker closed (network_operation.dart:32-35).
+  - `[low]` `[reject]` (edge) a poll that began before a push can badge just-pushed bookmarks — self-healing at the next tick, as the carried poll/push row; a generation bump on push adds state.
+  - `[false]` `[reject]` (edge) a typed name differing only by whitespace sends `--named` — it is a different name; jj judges it and shows its own refusal.
+  - `[low]` `[reject]` (edge) leave question before the destination refusal — same as the blind row.
+  - `[false]` `[reject]` (intent) `exact:` only on glob-like names — a name without glob characters already matches only itself; the footer stays the shortest real command.
+  - `[false]` `[reject]` (intent) the composed-command check carries allow flags — "dry-runs without allow flags" keeps reasons visible in the plans, which stay flag-free; the check verifies the command the footer shows.
+  - `[false]` `[reject]` (intent) allowed bulk skips change the bare command — the intent says a flag is written when a sent ref needs it, "also on the bare command".
+  - `[low]` `[reject]` (intent) a fetch with only abandoned/rewritten commits says "Fetched from origin", not "Nothing changed." — jj says "Nothing changed." only when nothing changed; the toast is accurate.
+  - `[false]` `[reject]` (intent) real-worker adapter tests break "tests use fake ports" — the rule is for model/widget tests; an adapter has no port to fake, as in the existing `worker_project_repos_test`.
+  - `[low]` `[reject]` (intent) Fetch/Push mutually exclusive with the sheet and a running fetch — carried.
+  - `[low]` `[reject]` (intent) `syncing` is a persisted enum value — carried.
+  - `[medium]` `[defer]` (intent) the running-app (Marionette) witness is not in the diff — carried: already in deferred.
+
 ## Design Notes
 
 - **Syncing dot** is transient: `ProjectSession.syncing(run)` records `syncing` for the open project and, while the run lasts, `_record` keeps it; the finishing `refresh()` writes the real reading back.
@@ -182,6 +230,11 @@ deferred:
 - `flutter test` in `packages/zanshin_ui`: 445 passed; `packages/zanshin_settings`: 43 passed.
 - `flutter test` in `app` with `XDG_CONFIG_HOME=target/test-xdg-config` (needed by the real-worker suites): 1963 passed, 1 failed — `repo_graph_source_test.dart` "content maps every field…" expects a non-empty author, which the pinned XDG dir lacks outside cargo make; it passes unpinned (8/8) and the story touches no code it reads. `worker_project_repos_test.dart` (34) and the new `remote_sync_test.dart` pass pinned.
 - Not run: the Marionette checks (deferred), the Rust suites and the parity oracle (no Rust or verb changed), `cargo make codegen` (no FFI or schema change).
+
+**Verification notes (2026-11-03, follow-up review pass, story-loop gate rule: no `cargo make test`):**
+- `flutter test test/features/sync test/features/home test/features/shell/app_menu_test.dart` in `app` with `XDG_CONFIG_HOME=target/test-xdg-config`: 87 passed (unpinned, `remote_sync_test` "pushConfig reads git.sign-on-push" fails by design: "XDG_CONFIG_HOME is not pinned").
+- `dart analyze --fatal-infos --fatal-warnings` in `app`: no issues. `dart format --set-exit-if-changed .` in `app`: 0 changed.
+- Not run: other packages (untouched), Rust suites, parity oracle, codegen (no Rust, FFI or verb change), Marionette (deferred).
 
 ## Auto Run Result
 
@@ -211,3 +264,13 @@ Status: done (commit `3516be53cfbaf698d92a4437eac3407c0fd0ad73`, code; this spec
 **Follow-up review recommended: true.** Patched: 7 medium entries, 13 low. Unverified risk: the sheet's real `jj git push` (non-dry-run) path through `RepoRemoteSync` and the live poll are exercised only with fakes and dry runs; the Marionette check is deferred.
 
 **Residual risks.** The Push sheet's look is not compared with the DS card; the change row's name field re-runs a local dry run per keystroke; a crash during a sync leaves that project's stored dot on syncing until it is next read.
+
+### Follow-up review pass (2026-11-03)
+
+**Changes.** `push_sheet.dart` — done-state rows render ticked (DS PushDialog.jsx:158); `push_sheet_model.dart` — `setName` keeps the generated name generated (no `--named` after a re-plan). Tests: `push_sheet_test.dart` (island badge/tooltip/progress/"No remote"; ticked done row), `sync_model_test.dart` (push inside the syncing dot), `push_sheet_model_test.dart` (generated name typed back).
+
+**Findings.** 37 (high 0, medium 3, low 19, false 9, maybe-false 6). Patched 4 entries: medium 1 (island render test), low 3 (done-row tick, generated-name flip, push syncing test). Deferred 1 new (real clone ticket attach unproven, medium); the Marionette deferral carried. Rejected 32 with reasons in the triage log (carried rows, false refutations, low rows not worth new branches).
+
+**Follow-up review recommended: false.** Follow-up pass patched no `high`; the work has converged.
+
+**Residual risks.** As above, plus the clone ticket's real-worker attach is witnessed only through fakes.

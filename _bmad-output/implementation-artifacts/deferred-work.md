@@ -2669,3 +2669,9 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The poll's real `remoteChanges('origin')` has not been run in the running app, and the Sync island and Push sheet have not been compared with the DS cards there.** Medium.
   - Ralph's 2026-10-21 note asks for one live run because `dart test` reaps the poll's git child; every sync test uses `FakeRemoteSync` (`app/test/helpers/fake_remote_sync.dart`); the unattended run launched no app.
   - **Follow-up:** in the running app (Marionette), move a bookmark on a project's `origin`, wait for or trigger the poll and check the badge reads it as `moved`; open the catalogue's Sync folder and compare with `design_system/components/push/push.card.html` and the chrome card's ACTION island.
+
+## Surfaced in the follow-up review of Story 11.8 (bmad-build-auto, 2026-11-03)
+
+- **The real-worker clone-with-ticket test passes whether or not `WorkerProjectRepos.clone` attaches the ticket, so clone Cancel and progress are unproven against the real worker.** Medium.
+  - `app/test/features/projects/worker_project_repos_test.dart` accepts a finished clone or `jj.cancelled`; its only unconditional check (`ticket.cancelled`) is set by `CloneTicket.cancel` itself; other clone Cancel/progress tests use `FakeProjectRepos`, which attaches the ticket itself.
+  - **Follow-up:** check it in the running app (clone a large remote, press Cancel, see the progress bar move and the clone end silently), or a deterministic real-worker witness if one becomes possible (`dart test` reaps jj-lib's git child).
