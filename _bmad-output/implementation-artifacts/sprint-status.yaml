@@ -27,24 +27,25 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-# Nächster Schritt: die offenen Stories der Epics 4, 5, 9, 10 und 11 in Reihenfolge (Stand 2026-10-31)
+# Nächster Schritt: die offenen Stories der Epics 4, 5, 9, 10 und 11 in Reihenfolge (Stand 2026-11-03)
 #
 #   So ist die Liste zu lesen: Eine Story kann starten, sobald die Stories fertig sind, die hinter
 #   "Braucht" stehen. Diese stehen immer in einer früheren Stufe. Innerhalb einer Stufe ist die
 #   Reihenfolge frei. Gestrichen ist keine Story: Keine offene Story der fünf Epics ist überholt.
-#   Fertige Stories stehen nicht mehr in der Liste (zuletzt 2026-10-30/31: 10.2, 10.3, 10.4, 10.5,
-#   11.10 und 5.5); "Braucht" nennt sie trotzdem weiter.
+#   Fertige Stories stehen nicht mehr in der Liste (zuletzt 2026-11-02/03: 10.16, 11.7 und 11.8);
+#   "Braucht" nennt sie trotzdem weiter.
 #
 #   Stufe 4:
-#     10.16  Minimap. Braucht 10.4, 10.5, 10.6 und 11.13.
-#     11.7   Settings-Fenster. Braucht 11.13.
-#     11.8   Fetch, Push und Abfrage entfernter Änderungen, dazu das Clone-Formular. Braucht 11.13 und 10.23 (9.20 ist
-#            fertig). Die Abfrage erst mit 9.24, Fetch ohne Auswahl des Remotes erst mit 9.30, Live-Fortschritt und
-#            Abbrechen beim Clone erst mit 9.52.
-#            11.7 und 11.8 verweisen aufeinander (das Intervall in den Einstellungen steuert die Abfrage); welche
-#            von beiden zuerst kommt, ist egal.
 #     10.10  Drag-and-Drop. Braucht 10.9 und 10.15. Die echten Aktionen erst mit 9.31, 9.16, 9.9, 9.19 und 9.48.
 #     10.26  Hunks auswählen. Braucht 10.24, 10.25 und 9.50.
+#     11.21  Immutable-Seite: ungetrackte Remote-Refs nach ihrem Tracking-Status statt nach `synced`. Braucht 11.7.
+#
+#   Stufe 4, jeweils zuerst eine Design-Runde mit Ralph (neu 2026-11-03 aus seinem Test der App):
+#     10.31  Lange Historien: Lücken mit Abrisskante kürzen, Minimap so breit wie ihr Inhalt, Jahres-Labels
+#            (sticky), Minimap scrollbar ab einer Mindestdichte. Braucht 10.16 und 10.3.
+#     11.18  Remotes verwalten in Settings › Project (add, rename, remove, set URL). Braucht 9.5, 11.7 und 11.8.
+#     11.19  Config-Datei bearbeiten, die GUI-Variante von `jj config edit`. Braucht 9.28 und 11.7.
+#     11.20  Density mit Wirkung: Abstands-Tokens je Dichte, nicht nur die Schriftgröße. Braucht 11.7 und 11.14.
 #
 #   Stufe 5:
 #     10.27  Dateien und Hunks ziehen. Braucht 10.10, 10.26, 9.15, 9.31 und 9.50.
