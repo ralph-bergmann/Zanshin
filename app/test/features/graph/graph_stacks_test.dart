@@ -857,6 +857,24 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets('a view that opens on an expanded run builds its bracket layer before the first layout', (
+      tester,
+    ) async {
+      source = ScriptedGraphSource(respond: _respond);
+      model = GraphViewModel()..init(source, clock: () => DateTime.fromMillisecondsSinceEpoch(_now), stacks: true);
+      await tester.pump();
+      model.expandStack(model.layout!.keyOf(model.layout!.runMembersOf(0).first));
+      await tester.pump();
+      await tester.pump();
+      expect(model.layout!.stackNodeOf(0), isNull, reason: 'precondition: the run is expanded');
+      useShellWindow(tester, const Size(1600, 1200));
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      expect(tester.takeException(), isNull);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await finish(tester);
+    });
+
     testWidgets('a run taller than the view shows its collapse button on the visible part of the bracket', (
       tester,
     ) async {

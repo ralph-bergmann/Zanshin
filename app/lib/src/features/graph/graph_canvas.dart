@@ -273,10 +273,13 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   static bool _scrolling(ScrollController controller) =>
       controller.hasClients && controller.position.isScrollingNotifier.value;
 
+  static bool _laidOut(ScrollController controller) =>
+      controller.hasClients && controller.position.hasViewportDimension && controller.position.hasPixels;
+
   void _loadContent() {
     _settle = null;
     final GraphContent? content = widget.content;
-    if (!mounted || content == null || !_vertical.hasClients) {
+    if (!mounted || content == null || !_laidOut(_vertical)) {
       return;
     }
     // A held pan or a drag without movement changes no offset: look again after another rest.
@@ -647,7 +650,8 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   Widget _bracketLayer(List<(int, Rect)> brackets) => ListenableBuilder(
     listenable: Listenable.merge(<Listenable>[_vertical, _horizontal, widget.cards.hovered, _bracketRun]),
     builder: (context, _) {
-      if (!_vertical.hasClients || !_horizontal.hasClients) {
+      // A position has clients before its viewport's first layout; it has no dimension or pixels until then.
+      if (!_laidOut(_vertical) || !_laidOut(_horizontal)) {
         return const SizedBox.shrink();
       }
       final Offset shift = widget.insets.topLeft - Offset(_horizontal.offset, _vertical.offset);
