@@ -52,6 +52,8 @@ deferred:
     location: >-
       packages/zanshin_settings/lib/src/model/projects_settings.dart
     severity: low
+    resolved: >-
+      2026-11-03 — fixed (spec-11-8-sync-fetch-push-poll-badge, commit 3516be5): ProjectStatus.syncing with --proj-syncing; the dot reads syncing during a fetch or push.
   - summary: >-
       The open project's dot refreshes only on jj operations, not on plain file edits, because the watcher reports op heads and the checkout only.
     evidence: |-

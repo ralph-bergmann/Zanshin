@@ -47,6 +47,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/push.rs push_remotes; Story 11.8 push sheet
     severity: low
+    resolved: >-
+      2026-11-03 — fixed (spec-11-8-sync-fetch-push-poll-badge, commit 3516be5): the Push sheet warns, naming each chosen remote that gets nothing from the composed dry run, and keeps Push enabled; the verb keeps the CLI's behaviour.
 ---
 
 <intent-contract>

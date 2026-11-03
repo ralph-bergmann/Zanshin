@@ -59,6 +59,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/project_session.dart (clone)
     severity: low
+    resolved: >-
+      2026-11-03 — fixed (spec-11-8-sync-fetch-push-poll-badge, commit 3516be5): ProjectSession.clone's destination port is gone and the clone form shows live progress and Cancel; Ralph's confirmation of how Cancel identifies git stays under "Surfaced in Story 9.52".
   - summary: >-
       A successful clone is witnessed only on a fake port in the app: under dart/flutter test the VM reaps git's child, so jj-lib's fetch fails; whether the running app's clone works is unverified.
     evidence: |-

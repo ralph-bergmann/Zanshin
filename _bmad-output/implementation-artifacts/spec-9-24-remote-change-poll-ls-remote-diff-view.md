@@ -40,6 +40,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remote_changes.rs (ls_remote environment)
     severity: medium (unverified)
+    resolved: >-
+      2026-11-03 — fixed (spec-11-8-sync-fetch-push-poll-badge, commit 3516be5): the poll uses no special auth environment; a failed tick is silent, the next tick retries, ticks never overlap (sync_model_test).
   - summary: >-
       `cargo make codegen` re-wraps hand-written `packages/zanshin_core/lib/src/ffi/*.dart` at 80 columns, because its `dart format` step runs from the repo root and misses the package's 120-column setting.
     evidence: |-
