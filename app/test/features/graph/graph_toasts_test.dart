@@ -201,6 +201,19 @@ void main() {
     expect(text(tester), 'Squashed ovknlmro into vruxwmqvz');
   });
 
+  toastTest('Story 10.10: the drop verbs — moved onto, inserted after / before, merged, duplicated', (tester) async {
+    await run(tester, const GraphRebase(source: <String>[_a], onto: <String>[_c]));
+    expect(text(tester), 'Moved ovknlmro onto kxqpsytn');
+    await run(tester, const GraphRebase(revisions: <String>[_a], insertAfter: <String>[_c]));
+    expect(text(tester), 'Inserted ovknlmro after kxqpsytn');
+    await run(tester, const GraphRebase(revisions: <String>[_a], insertBefore: <String>[_c]));
+    expect(text(tester), 'Inserted ovknlmro before kxqpsytn');
+    await run(tester, const GraphNew(parents: <String>[_c, _a]));
+    expect(text(tester), 'Merged ovknlmro and kxqpsytn in a new change');
+    await run(tester, const GraphDuplicate(revisions: <String>[_a], onto: <String>[_c]));
+    expect(text(tester), 'Duplicated ovknlmro onto kxqpsytn');
+  });
+
   toastTest('bookmarks: created on the revision or @, deleted, moved, renamed', (tester) async {
     await run(tester, const GraphBookmarkCreate(<String>['main'], revision: _b));
     expect(text(tester), 'Created main on vruxwmqvz');

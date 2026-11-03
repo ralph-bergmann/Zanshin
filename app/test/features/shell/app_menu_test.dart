@@ -579,6 +579,23 @@ void main() {
     );
   });
 
+  test('Undo and Redo name the drop verbs (Story 10.10)', () {
+    final model = GraphViewModel();
+    addTearDown(model.dispose);
+    final AppLocalizations s = platformStrings();
+    String name(GraphAction action) => AppMenuModel.actionName(s, model, action);
+    const s1 = <String>['kmnvxoqpzzzz'];
+    const t1 = <String>['vruxwmqvzzzz'];
+    expect(name(const GraphRebase(source: s1, onto: t1)), 'Move kmnvxoqp onto vruxwmqv');
+    expect(name(const GraphRebase(revisions: s1, insertAfter: t1)), 'Insert kmnvxoqp after vruxwmqv');
+    expect(name(const GraphUndo(GraphRebase(revisions: s1, insertBefore: t1))), 'Insert kmnvxoqp before vruxwmqv');
+    expect(name(const GraphDuplicate(revisions: s1, onto: t1)), 'Duplicate kmnvxoqp onto vruxwmqv');
+    expect(
+      name(const GraphNew(parents: <String>['vruxwmqvzzzz', 'kmnvxoqpzzzz'])),
+      'New Merge Change of kmnvxoqp and vruxwmqv',
+    );
+  });
+
   test('Undo and Redo name Commit / Split by the change (Story 10.25)', () {
     final model = GraphViewModel();
     addTearDown(model.dispose);

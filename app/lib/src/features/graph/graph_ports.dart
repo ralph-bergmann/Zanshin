@@ -253,6 +253,69 @@ final class GraphNew extends GraphAction {
   Set<String> get pendingKeys => <String>{...parents, ...insertAfter, ...insertBefore};
 }
 
+/// `jj rebase -s <source>` or `-r <revisions>`, with `-o <onto>` or `-A <insertAfter>` / `-B <insertBefore>` (Story
+/// 10.10); the CLI's defaults for the rest.
+final class GraphRebase extends GraphAction {
+  /// A rebase of [source] (with descendants) or [revisions] (alone) to [onto], or after / before.
+  const GraphRebase({
+    this.source = const <String>[],
+    this.revisions = const <String>[],
+    this.onto = const <String>[],
+    this.insertAfter = const <String>[],
+    this.insertBefore = const <String>[],
+  });
+
+  /// `-s`.
+  final List<String> source;
+
+  /// `-r`.
+  final List<String> revisions;
+
+  /// `-o`.
+  final List<String> onto;
+
+  /// `-A`.
+  final List<String> insertAfter;
+
+  /// `-B`.
+  final List<String> insertBefore;
+
+  @override
+  String get command => _jj(<String>[
+    'rebase', // l10n-ignore: jj command
+    for (final id in source) ...<String>['-s', id],
+    for (final id in revisions) ...<String>['-r', id],
+    for (final id in onto) ...<String>['-o', id],
+    for (final id in insertAfter) ...<String>['-A', id],
+    for (final id in insertBefore) ...<String>['-B', id],
+  ]);
+
+  @override
+  Set<String> get pendingKeys => <String>{...source, ...revisions, ...onto, ...insertAfter, ...insertBefore};
+}
+
+/// `jj duplicate <revisions> -o <onto>` (Story 10.10).
+final class GraphDuplicate extends GraphAction {
+  /// Duplicates [revisions] onto [onto].
+  const GraphDuplicate({required this.revisions, required this.onto});
+
+  /// The changes to duplicate.
+  final List<String> revisions;
+
+  /// `-o`.
+  final List<String> onto;
+
+  @override
+  String get command => _jj(<String>[
+    'duplicate', // l10n-ignore: jj command
+    ...revisions,
+    for (final id in onto) ...<String>['-o', id],
+  ]);
+
+  @override
+  Set<String> get pendingKeys => <String>{...revisions, ...onto};
+}
+
 /// `jj abandon <ids>` (no confirmation, as the CLI).
 final class GraphAbandon extends GraphAction {
   /// Abandons [ids].
@@ -766,6 +829,15 @@ class RepoGraphActions implements GraphActions {
         parents.isEmpty && insertAfter.isEmpty && insertBefore.isEmpty
             ? _newOnAt(handle)
             : handle.newChange(parents, insertAfter: insertAfter, insertBefore: insertBefore),
+      GraphRebase(:final source, :final revisions, :final onto, :final insertAfter, :final insertBefore) =>
+        handle.rebase(
+          source: source,
+          revisions: revisions,
+          onto: onto,
+          insertAfter: insertAfter,
+          insertBefore: insertBefore,
+        ),
+      GraphDuplicate(:final revisions, :final onto) => handle.duplicate(revisions: revisions, onto: onto),
       GraphAbandon(:final ids) => handle.abandon(ids),
       GraphRevert(:final id) => _revertBeforeAt(handle, id),
       GraphSquash() => handle.squash(
@@ -830,6 +902,24 @@ class RepoGraphActions implements GraphActions {
 
   @override
   Future<String> headOpId() async => (await _repo.handle.opLog(limit: 1)).first.id;
+}
+
+/// What a drag previews (Story 10.10). A failed call throws [ZanshinFfiException].
+abstract interface class GraphDrops {
+  /// `RepoHandle.dropActions`: which verbs [source] can run at each of [locations]; writes no operation.
+  Future<DropActions> dropActions(DropSource source, List<DropLocation> locations);
+}
+
+/// [GraphDrops] over an open [ProjectRepo]'s handle.
+class RepoGraphDrops implements GraphDrops {
+  /// The drop previews of [_repo].
+  RepoGraphDrops(this._repo);
+
+  final ProjectRepo _repo;
+
+  @override
+  Future<DropActions> dropActions(DropSource source, List<DropLocation> locations) =>
+      _repo.handle.dropActions(source, locations);
 }
 
 /// What the inspector reads (Story 10.8). A failed call throws [ZanshinFfiException].

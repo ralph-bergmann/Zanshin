@@ -61,6 +61,7 @@ class GraphPreferences extends ChangeNotifier {
     GraphViewModel model,
     GraphSource source, {
     GraphActions? actions,
+    GraphDrops? drops,
     DateTime Function()? clock,
     GraphStackStore? stackStore,
     String? revset,
@@ -68,6 +69,7 @@ class GraphPreferences extends ChangeNotifier {
     model.init(
       source,
       actions: actions,
+      drops: drops,
       clock: clock,
       mode: layout,
       stacks: groupStacks,

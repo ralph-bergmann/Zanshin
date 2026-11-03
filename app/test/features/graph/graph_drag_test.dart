@@ -1,0 +1,800 @@
+// SPDX-License-Identifier: MIT
+
+import 'dart:async';
+import 'dart:io';
+
+import 'package:fake_async/fake_async.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/l10n/app_localizations_en.dart';
+import 'package:zanshin/src/features/graph/graph_canvas.dart' show graphAutoScrollStep;
+import 'package:zanshin/src/features/graph/graph_card_render.dart';
+import 'package:zanshin/src/features/graph/graph_drag.dart';
+import 'package:zanshin/src/features/graph/graph_drop_menu.dart';
+import 'package:zanshin/src/features/graph/graph_layout.dart';
+import 'package:zanshin/src/features/graph/graph_ports.dart';
+import 'package:zanshin/src/features/graph/graph_stack_card.dart';
+import 'package:zanshin/src/features/graph/graph_view.dart';
+import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
+import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
+
+import '../../helpers/icon_registry.dart';
+import '../../helpers/scripted_graph_source.dart';
+import '../../helpers/shell_host.dart';
+import 'graph_harness.dart';
+
+final _en = AppLocalizationsEn();
+
+const _available = ActionOutcome(
+  status: ActionStatus.available,
+  refusal: null,
+  combinedDescriptionNeeded: false,
+  allowBackwardsNeeded: false,
+);
+const _noOp = ActionOutcome(
+  status: ActionStatus.noOp,
+  refusal: null,
+  combinedDescriptionNeeded: false,
+  allowBackwardsNeeded: false,
+);
+const _backwards = ActionOutcome(
+  status: ActionStatus.available,
+  refusal: null,
+  combinedDescriptionNeeded: false,
+  allowBackwardsNeeded: true,
+);
+ActionOutcome _refused(String code, [String? context]) => ActionOutcome(
+  status: ActionStatus.refused,
+  refusal: ActionRefusal(code, context),
+  combinedDescriptionNeeded: false,
+  allowBackwardsNeeded: false,
+);
+
+/// Every verb Rust answers for a change at `-o` / `-A` / `-B`, in Rust's order, all [outcome].
+DropActions _changeRows(ActionOutcome outcome, {Map<(DropVerb, int), ActionOutcome> except = const {}}) {
+  ActionOutcome of(DropVerb verb, int location) => except[(verb, location)] ?? outcome;
+  return DropActions(
+    actions: <DropAction>[
+      for (final DropVerb verb in <DropVerb>[
+        DropVerb.rebaseSource,
+        DropVerb.rebaseRevisions,
+        DropVerb.squash,
+        DropVerb.newMerge,
+        DropVerb.duplicate,
+        DropVerb.rebaseBranch,
+        DropVerb.revert,
+        DropVerb.restore,
+        DropVerb.absorb,
+        DropVerb.interdiff,
+      ])
+        DropAction(verb: verb, location: 0, outcome: of(verb, 0)),
+      for (final int location in <int>[1, 2]) ...<DropAction>[
+        DropAction(verb: DropVerb.rebaseRevisions, location: location, outcome: of(DropVerb.rebaseRevisions, location)),
+        DropAction(verb: DropVerb.revert, location: location, outcome: of(DropVerb.revert, location)),
+      ],
+    ],
+  );
+}
+
+DropActions _bookmarkRows(ActionOutcome outcome) => DropActions(
+  actions: <DropAction>[DropAction(verb: DropVerb.bookmarkMove, location: 0, outcome: outcome)],
+);
+
+const _source = GraphChangeDrag(key: 'kmnvxoqpzz', changeId: 'kmnvxoqpzz', prefix: 2, short: 'kmnvxoqp');
+
+/// A drop port whose answers a test scripts; each call waits on its own completer while [hold] is set.
+class _Drops implements GraphDrops {
+  final calls = <(DropSource, List<DropLocation>)>[];
+  var hold = false;
+  final held = <Completer<DropActions>>[];
+  DropActions Function(DropSource source, String target) answer = (_, _) => _changeRows(_available);
+
+  @override
+  Future<DropActions> dropActions(DropSource source, List<DropLocation> locations) {
+    calls.add((source, locations));
+    if (hold) {
+      final completer = Completer<DropActions>();
+      held.add(completer);
+      return completer.future;
+    }
+    return Future<DropActions>.value(answer(source, locations.first.onto.single));
+  }
+}
+
+class _Ran {
+  final ran = <(GraphAction, GraphDropOrigin?)>[];
+  Completer<GraphActionResult>? gate;
+
+  Future<GraphActionResult> call(GraphAction action, GraphDropOrigin? origin) {
+    ran.add((action, origin));
+    return gate?.future ?? Future<GraphActionResult>.value(const GraphActionDisabled(GraphDisabledReason.busy));
+  }
+}
+
+void main() {
+  group('graphDropRows', () {
+    test('only the eight rows, only Available, in the fixed order; commands with short ids, actions with keys', () {
+      final GraphDropPreview p = graphDropRows(
+        _source,
+        targetKey: 'vruxwmqvzz',
+        targetShort: 'vruxwmqv',
+        actions: _changeRows(_available),
+      );
+      expect(p.rows.map((r) => r.kind), GraphDropKind.values.where((k) => k != GraphDropKind.bookmark));
+      expect(p.rows.map((r) => r.group).toSet(), <GraphDropGroup>{
+        GraphDropGroup.move,
+        GraphDropGroup.place,
+        GraphDropGroup.combine,
+        GraphDropGroup.copy,
+      });
+      expect(p.rows.first.command, 'jj rebase -s kmnvxoqp -o vruxwmqv');
+      final first = p.rows.first.action as GraphRebase;
+      expect(first.source, <String>['kmnvxoqpzz']);
+      expect(first.onto, <String>['vruxwmqvzz']);
+      expect((p.rows[5].action as GraphNew).parents, <String>['vruxwmqvzz', 'kmnvxoqpzz']);
+      expect(p.refusal, isNull);
+    });
+
+    test('NoOp and Refused rows drop out; with none Available the first refusal is the words', () {
+      final GraphDropPreview some = graphDropRows(
+        _source,
+        targetKey: 't',
+        targetShort: 't',
+        actions: _changeRows(
+          _noOp,
+          except: <(DropVerb, int), ActionOutcome>{(DropVerb.duplicate, 0): _available},
+        ),
+      );
+      expect(some.rows.map((r) => r.kind), <GraphDropKind>[GraphDropKind.duplicate]);
+      final GraphDropPreview none = graphDropRows(
+        _source,
+        targetKey: 't',
+        targetShort: 't',
+        actions: _changeRows(
+          _refused('jj.immutable', 'Commit abc is immutable'),
+          except: <(DropVerb, int), ActionOutcome>{(DropVerb.rebaseSource, 0): _noOp},
+        ),
+      );
+      expect(none.rows, isEmpty);
+      expect(none.refusal, 'Commit abc is immutable');
+      final GraphDropPreview coded = graphDropRows(
+        _source,
+        targetKey: 't',
+        targetShort: 't',
+        actions: _changeRows(_refused('jj.immutable')),
+      );
+      expect(coded.refusal, 'jj.immutable');
+    });
+
+    test('⌥ makes Move only this change the default when it is there', () {
+      final List<GraphDropRow> rows = graphDropRows(
+        _source,
+        targetKey: 't',
+        targetShort: 't',
+        actions: _changeRows(_available),
+      ).rows;
+      expect(graphDropDefault(rows, alt: false), 0);
+      expect(rows[graphDropDefault(rows, alt: true)].command, 'jj rebase -r kmnvxoqp -o t');
+      final List<GraphDropRow> without = rows.where((r) => r.kind != GraphDropKind.moveOnly).toList();
+      expect(graphDropDefault(without, alt: true), 0);
+    });
+
+    test('a backwards bookmark row carries --allow-backwards and its note; a glob name is exact:', () {
+      final GraphDropRow back = graphDropRows(
+        const GraphBookmarkDrag('b-mark'),
+        targetKey: 'tt',
+        targetShort: 't',
+        actions: _bookmarkRows(_backwards),
+      ).rows.single;
+      expect(back.backwards, isTrue);
+      expect(back.command, 'jj bookmark move b-mark --to t --allow-backwards');
+      expect(back.label(_en), 'Move b-mark here');
+      expect((back.action as GraphBookmarkMove).to, 'tt');
+      final GraphDropRow glob = graphDropRows(
+        const GraphBookmarkDrag('feat*'),
+        targetKey: 't',
+        targetShort: 't',
+        actions: _bookmarkRows(_available),
+      ).rows.single;
+      expect(glob.command, '''jj bookmark move 'exact:"feat*"' --to t''');
+    });
+
+    test('test-fixtures/commands/drop-menu.txt holds every command the drop menu shows', () {
+      const target = 'vruxwmqv';
+      final List<GraphDropRow> change = graphDropRows(
+        _source,
+        targetKey: target,
+        targetShort: target,
+        actions: _changeRows(_available),
+      ).rows;
+      GraphDropRow bookmark(String name, String to, ActionOutcome outcome) => graphDropRows(
+        GraphBookmarkDrag(name),
+        targetKey: to,
+        targetShort: to,
+        actions: _bookmarkRows(outcome),
+      ).rows.single;
+      final commands = <String>[
+        for (final GraphDropRow row in change) row.command,
+        bookmark('b-mark', 'kmnvxoqp', _available).command,
+        bookmark('b-mark', target, _backwards).command,
+        bookmark('feat{x}', 'kmnvxoqp', _available).command,
+      ];
+      expect(commands, File('../test-fixtures/commands/drop-menu.txt').readAsLinesSync());
+    });
+
+    test('bookmarks with @ or a remote never drag', () {
+      expect(graphBookmarkDraggable('main'), isTrue);
+      expect(graphBookmarkDraggable('main', remote: 'origin'), isFalse);
+      expect(graphBookmarkDraggable('a@b'), isFalse);
+    });
+  });
+
+  group('the drop menu geometry', () {
+    final List<GraphDropRow> rows = graphDropRows(
+      _source,
+      targetKey: 't',
+      targetShort: 't',
+      actions: _changeRows(_available),
+    ).rows;
+
+    test('below: top-down, hairlines between groups, the footer last; above: bottom-up, the footer first', () {
+      final ({Size size, List<Rect> rows, Rect footer}) below = graphDropMenuGeometry(rows, above: false);
+      expect(below.rows[0].top, lessThan(below.rows[1].top));
+      expect(below.rows[2].top - below.rows[1].bottom, greaterThan(below.rows[1].top - below.rows[0].bottom));
+      expect(below.footer.top, greaterThanOrEqualTo(below.rows.last.bottom));
+      final ({Size size, List<Rect> rows, Rect footer}) above = graphDropMenuGeometry(rows, above: true);
+      expect(above.rows[0].top, greaterThan(above.rows[1].top), reason: 'the default row nearest the card below');
+      expect(above.footer.bottom, lessThanOrEqualTo(above.rows.last.top));
+      expect(above.size, below.size);
+    });
+
+    test('12 px above the card when it fits under the area top, else below; centred and clamped', () {
+      const area = Rect.fromLTWH(0, 60, 800, 600);
+      const size = Size(graphDropMenuWidth, 200);
+      final ({Offset topLeft, bool above}) up = graphDropMenuPlacement(
+        const Rect.fromLTWH(300, 400, 240, 62),
+        size,
+        area,
+      );
+      expect(up.above, isTrue);
+      expect(up.topLeft.dy, 400 - graphDropMenuGap - 200);
+      expect(up.topLeft.dx, 420 - graphDropMenuWidth / 2);
+      final ({Offset topLeft, bool above}) down = graphDropMenuPlacement(
+        const Rect.fromLTWH(0, 100, 240, 62),
+        size,
+        area,
+      );
+      expect(down.above, isFalse);
+      expect(down.topLeft.dy, 162 + graphDropMenuGap);
+      expect(down.topLeft.dx, 0, reason: 'clamped into the area');
+      // A tall menu below a card near the bottom stays inside the area, never above its top.
+      final ({Offset topLeft, bool above}) low = graphDropMenuPlacement(
+        const Rect.fromLTWH(0, 100, 240, 62),
+        const Size(graphDropMenuWidth, 560),
+        area,
+      );
+      expect(low.above, isFalse);
+      expect(low.topLeft.dy, area.bottom - 560);
+      final ({Offset topLeft, bool above}) huge = graphDropMenuPlacement(
+        const Rect.fromLTWH(0, 100, 240, 62),
+        const Size(graphDropMenuWidth, 700),
+        area,
+      );
+      expect(huge.topLeft.dy, area.top);
+    });
+  });
+
+  test('auto-scroll: ceil((56 − d) / 4) px per frame inside the zone, up to 24 px outside, else 0', () {
+    expect(graphAutoScrollStep(0, 1000, 500), 0);
+    expect(graphAutoScrollStep(0, 1000, 0), -14);
+    expect(graphAutoScrollStep(0, 1000, 50), -2);
+    expect(graphAutoScrollStep(0, 1000, -24), -20);
+    expect(graphAutoScrollStep(0, 1000, -25), 0);
+    expect(graphAutoScrollStep(0, 1000, 990), 12);
+  });
+
+  group('GraphDrag', () {
+    late _Drops drops;
+    late _Ran ran;
+    late GraphDrag drag;
+    var op = 'op1';
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      drops = _Drops();
+      ran = _Ran();
+      op = 'op1';
+      drag = GraphDrag()
+        ..drops = drops
+        ..operationId = (() => op)
+        ..run = ran.call;
+    });
+    tearDown(() => drag.dispose());
+
+    test('debounced 60 ms after the target changes, one query in flight, cached per target and operation', () {
+      fakeAsync((async) {
+        drops.hold = true;
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t1');
+        async.elapse(const Duration(milliseconds: 59));
+        expect(drops.calls, isEmpty);
+        async.elapse(const Duration(milliseconds: 1));
+        expect(drops.calls, hasLength(1));
+        expect(drops.calls.single.$2.map((l) => '${l.onto} ${l.insertAfter} ${l.insertBefore}'), <String>[
+          '[t1] [] []',
+          '[] [t1] []',
+          '[] [] [t1]',
+        ]);
+        drag.hover('t2');
+        async.elapse(const Duration(milliseconds: 100));
+        expect(drops.calls, hasLength(1), reason: 'one in flight');
+        drops.held.single.complete(_changeRows(_available));
+        async.flushMicrotasks();
+        expect(drops.calls, hasLength(2), reason: 't2 goes next');
+        drops.held.last.complete(_changeRows(_available));
+        async.flushMicrotasks();
+        expect(drag.highlightedTarget, 't2');
+        drag.hover('t1');
+        expect(drag.highlightedTarget, 't1', reason: 'cached');
+        async.elapse(const Duration(seconds: 1));
+        expect(drops.calls, hasLength(2));
+        op = 'op2';
+        drag.hover('t2');
+        expect(drag.rows, isNull, reason: 'a new operation clears the cache');
+      });
+    });
+
+    test('the menu opens after 260 ms on a target with rows; a plain release runs the highlighted row', () {
+      fakeAsync((async) {
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t');
+        async.elapse(graphDropDebounce);
+        expect(drag.highlightedRow?.kind, GraphDropKind.moveHere);
+        async.elapse(const Duration(milliseconds: 259));
+        expect(drag.menuOpen, isFalse);
+        async.elapse(const Duration(milliseconds: 1));
+        expect(drag.menuOpen, isTrue);
+        drag.hover('t', menuRow: 3);
+        expect(drag.highlight, 3);
+        expect(drag.target, 't', reason: 'the pointer over the menu keeps the target');
+        unawaited(drag.drop());
+        async.flushMicrotasks();
+        expect(ran.ran.single.$1.command, 'jj rebase -r kmnvxoqpzz -B t', reason: 'the action runs on the keys');
+        expect(drag.holding, isFalse);
+      });
+    });
+
+    test('a release without rows, on nothing or before they arrived cancels; nothing runs', () {
+      fakeAsync((async) {
+        drops.answer = (_, _) => _changeRows(_noOp);
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t');
+        async.elapse(graphDropDebounce);
+        expect(drag.highlightedTarget, isNull);
+        unawaited(drag.drop());
+        async.flushMicrotasks();
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t2');
+        unawaited(drag.drop());
+        async.flushMicrotasks();
+        expect(ran.ran, isEmpty);
+        expect(drag.payload, isNull);
+      });
+    });
+
+    test('a backwards bookmark row never runs on a plain drop: the menu stays open, a click runs it', () {
+      fakeAsync((async) {
+        drops.answer = (_, _) => _bookmarkRows(_backwards);
+        drag
+          ..start(const GraphBookmarkDrag('b-mark'), Offset.zero)
+          ..hover('t');
+        async.elapse(graphDropDebounce);
+        unawaited(drag.drop());
+        async.flushMicrotasks();
+        expect(ran.ran, isEmpty);
+        expect(drag.afterDrop && drag.menuOpen, isTrue);
+        expect(drag.holding, isTrue, reason: 'reloads still wait');
+        unawaited(drag.choose(0));
+        async.flushMicrotasks();
+        expect(ran.ran.single.$1.command, 'jj bookmark move b-mark --to t --allow-backwards');
+      });
+    });
+
+    test('holding lasts until the verb finished; the ghost stays at the drop point meanwhile', () {
+      fakeAsync((async) {
+        ran.gate = Completer<GraphActionResult>();
+        drag
+          ..start(_source, const Offset(10, 10))
+          ..hover('t');
+        async.elapse(graphDropDebounce);
+        unawaited(drag.drop());
+        async.flushMicrotasks();
+        expect(drag.holding && drag.running, isTrue);
+        expect(drag.ghost, _source);
+        expect(drag.dropPoint, const Offset(10, 10));
+        ran.gate!.complete(const GraphActionDisabled(GraphDisabledReason.busy));
+        async.flushMicrotasks();
+        expect(drag.holding, isFalse);
+        expect(drag.ghost, isNull);
+      });
+    });
+
+    test('a new drag whose first query found the old drag\'s in flight is queried when that one returns', () {
+      fakeAsync((async) {
+        drops.hold = true;
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t1');
+        async.elapse(graphDropDebounce);
+        drag
+          ..cancel()
+          ..start(const GraphBookmarkDrag('b-mark'), Offset.zero)
+          ..hover('t2');
+        async.elapse(graphDropDebounce);
+        expect(drops.calls, hasLength(1));
+        drops.held.single.complete(_changeRows(_available));
+        async.flushMicrotasks();
+        expect(drops.calls, hasLength(2));
+        expect(drops.calls.last.$1, isA<BookmarkDropSource>());
+        drops.held.last.complete(_bookmarkRows(_available));
+        async.flushMicrotasks();
+        expect(drag.highlightedTarget, 't2');
+      });
+    });
+
+    test('any error of the preview is a failed preview', () {
+      fakeAsync((async) {
+        drops.answer = (_, _) => throw StateError('boom');
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t');
+        async.elapse(graphDropDebounce);
+        expect(drag.rows, isEmpty);
+        expect(drag.highlightedTarget, isNull);
+      });
+    });
+
+    test('a failed preview leaves the target un-highlighted', () {
+      fakeAsync((async) {
+        drops.answer = (_, _) => throw const ZanshinFfiException('jj.io_error');
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t');
+        async.elapse(graphDropDebounce);
+        expect(drag.highlightedTarget, isNull);
+        expect(drag.refusal, isNull);
+      });
+    });
+
+    testWidgets('⌥ switches the default live; ↑/↓ move the highlight; Esc cancels', (tester) async {
+      drag
+        ..start(_source, Offset.zero)
+        ..hover('t');
+      await tester.pump(graphDropDebounce);
+      await tester.pump();
+      expect(drag.highlightedRow?.kind, GraphDropKind.moveHere);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      expect(drag.highlightedRow?.kind, GraphDropKind.moveOnly);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      expect(drag.highlightedRow?.kind, GraphDropKind.moveHere);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      expect(drag.highlightedRow?.kind, GraphDropKind.insertAfter);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      expect(drag.payload, isNull);
+      expect(ran.ran, isEmpty);
+    });
+  });
+
+  test('the view model holds reloads while a drag runs and applies one after it', () {
+    fakeAsync((async) {
+      final source = ScriptedGraphSource();
+      final model = GraphViewModel()..init(source, drops: _Drops());
+      async.flushMicrotasks();
+      expect(source.requests, hasLength(1));
+      model.drag.start(_source, Offset.zero);
+      for (var i = 0; i < 3; i++) {
+        source.emit(const OpHeadsChangedEvent(0, <String>[]));
+        async.flushMicrotasks();
+      }
+      expect(source.requests, hasLength(1));
+      model.drag.cancel();
+      async.flushMicrotasks();
+      expect(source.requests, hasLength(2), reason: 'one held reload');
+      model.dispose();
+    });
+  });
+
+  test('an op-heads event during a drag makes the next hover query again, though the reload is held', () {
+    fakeAsync((async) {
+      final source = ScriptedGraphSource();
+      final drops = _Drops();
+      final model = GraphViewModel()..init(source, drops: drops);
+      async.flushMicrotasks();
+      model.drag
+        ..start(_source, Offset.zero)
+        ..hover('b');
+      async.elapse(graphDropDebounce);
+      model.drag.hover('c');
+      async.elapse(graphDropDebounce);
+      model.drag.hover('b');
+      async.elapse(graphDropDebounce);
+      expect(drops.calls, hasLength(2), reason: 'b came from the cache');
+      source.emit(const OpHeadsChangedEvent(0, <String>[]));
+      async.flushMicrotasks();
+      model.drag.hover('c');
+      async.elapse(graphDropDebounce);
+      expect(drops.calls, hasLength(3), reason: 'a new operation: c is queried again');
+      expect(source.requests, hasLength(1), reason: 'the reload is held');
+      model.dispose();
+    });
+  });
+
+  test('after a drop the held reload runs once, when the verb finished', () {
+    fakeAsync((async) {
+      final source = ScriptedGraphSource();
+      final model = GraphViewModel()..init(source, actions: _Actions(), drops: _Drops());
+      async.flushMicrotasks();
+      model.drag
+        ..start(_source, Offset.zero)
+        ..hover('c');
+      async.elapse(graphDropDebounce);
+      source.emit(const OpHeadsChangedEvent(0, <String>[]));
+      async.flushMicrotasks();
+      unawaited(model.drag.drop());
+      async
+        ..flushMicrotasks()
+        ..elapse(const Duration(seconds: 1));
+      expect(source.requests, hasLength(2), reason: 'exactly one reload after the verb');
+      model.dispose();
+    });
+  });
+
+  test('a rebase anchors on T and flashes S, a duplicate reveals its born change; the selection stays', () {
+    fakeAsync((async) {
+      final source = ScriptedGraphSource();
+      final actions = _Actions();
+      final model = GraphViewModel()..init(source, actions: actions, drops: _Drops());
+      async.flushMicrotasks();
+      model.select('b');
+      unawaited(model.run(const GraphRebase(source: <String>['a'], onto: <String>['c'])));
+      async.flushMicrotasks();
+      expect(model.outcome.value?.anchor, 'c');
+      expect(model.outcome.value?.flash, <String>['a']);
+      expect(model.selected, 'b');
+      actions.born = const <String>['d'];
+      source.respond = (_) => keysLayout(<String>['d', 'a', 'b', 'c'], at: 'a');
+      unawaited(model.run(const GraphDuplicate(revisions: <String>['a'], onto: <String>['c'])));
+      async.flushMicrotasks();
+      expect(model.outcome.value?.anchor, 'c');
+      expect(model.selected, 'b');
+      expect(model.reveal?.key, 'd');
+      model.dispose();
+    });
+  });
+
+  group('in the graph', () {
+    setUpIconRegistry();
+
+    testWidgets('a card dragged onto another runs the default row; the ghost showed its command; no click', (
+      tester,
+    ) async {
+      useShellWindow(tester);
+      final source = ScriptedGraphSource(respond: (_) => _opLayout(<String>['a', 'b', 'c'], 'op1'));
+      final drops = _Drops();
+      final actions = _Actions();
+      final model = GraphViewModel()..init(source, actions: actions, drops: drops);
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      await tester.pumpAndSettle();
+      // The verb's operation moves a below c.
+      source.respond = (_) => _opLayout(<String>['b', 'c', 'a'], 'op2');
+
+      Offset centre(String key) => _centre(tester, key);
+
+      final Offset from = centre('a');
+      final Offset to = centre('c');
+      final TestGesture mouse = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+      await mouse.moveBy(const Offset(3, 3));
+      await tester.pump();
+      expect(model.drag.active, isFalse, reason: 'within the 5 px threshold');
+      await mouse.moveTo(Offset.lerp(from, to, .5)!);
+      await tester.pump();
+      expect(model.drag.active, isTrue);
+      expect(find.text(_en.dragHintChange), findsOneWidget);
+      await mouse.moveTo(to);
+      await tester.pump(graphDropDebounce);
+      await tester.pump();
+      expect(find.text('jj rebase -s a -o c'), findsOneWidget);
+      await mouse.up();
+      await tester.pumpAndSettle();
+      expect(actions.ran.single.command, 'jj rebase -s a -o c');
+      expect(model.selected, isNull, reason: 'the drag swallowed the click');
+      expect(find.byType(ZsDragGhost), findsNothing);
+      expect(model.transition?.dropped?.key, 'a', reason: 'the landing glides a from the ghost');
+      expect(model.transition?.dropped?.rect.isEmpty, isFalse);
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
+
+    testWidgets('a rest opens the menu above a low card; a release on a row runs that row', (tester) async {
+      useShellWindow(tester);
+      final keys = <String>['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+      final source = ScriptedGraphSource(respond: (_) => keysLayout(keys, at: 'a'));
+      final actions = _Actions();
+      final model = GraphViewModel()..init(source, actions: actions, drops: _Drops());
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      await tester.pumpAndSettle();
+      final Offset from = _centre(tester, 'a');
+      final Offset to = _centre(tester, 'h');
+      final TestGesture mouse = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+      await mouse.moveTo(Offset.lerp(from, to, .5)!);
+      await tester.pump();
+      await mouse.moveTo(to);
+      await tester.pump(graphDropDebounce);
+      await tester.pump(graphDropMenuDelay);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.drag.menuOpen, isTrue);
+      final Finder row = find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.identifier == 'graph-drop-insertBefore',
+      );
+      expect(tester.getCenter(row).dy, lessThan(to.dy), reason: 'above the card');
+      await mouse.moveTo(tester.getCenter(row));
+      await tester.pump();
+      expect(model.drag.highlightedRow?.kind, GraphDropKind.insertBefore);
+      await mouse.up();
+      await tester.pumpAndSettle();
+      expect(actions.ran.single.command, 'jj rebase -r a -B h');
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
+
+    testWidgets('the pill drags its local bookmark; a remote ref and the root do not drag', (tester) async {
+      useShellWindow(tester);
+      final RecordedGraphLayout layout = handLayout(
+        <(String, int, int)>[('a', 3, 0), ('b', 2, 0), ('c', 1, 0), ('r', 0, 0)],
+        edges: <(int, int)>[(0, 1), (1, 2), (2, 3)],
+        workingCopy: 0,
+        root: 3,
+        refs: <List<GraphRef>>[
+          <GraphRef>[const GraphRef('main')],
+          <GraphRef>[const GraphRef('feat', remote: 'origin')],
+          const <GraphRef>[],
+          const <GraphRef>[],
+        ],
+      );
+      final drops = _Drops()..answer = (_, _) => _bookmarkRows(_available);
+      final source = ScriptedGraphSource(respond: (_) => layout);
+      final actions = _Actions();
+      final model = GraphViewModel()..init(source, actions: actions, drops: drops);
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      await tester.pumpAndSettle();
+      Offset pill(String key) {
+        final RenderGraphCard card = _card(tester, key);
+        final Rect legend = card.debugSlots.firstWhere((s) => s.kind == GraphCardSlot.legend).rect;
+        return card.localToGlobal(legend.center);
+      }
+
+      Future<void> dragFrom(Offset from, Offset to) async {
+        final TestGesture mouse = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+        await mouse.moveTo(Offset.lerp(from, to, .5)!);
+        await tester.pump();
+        await mouse.moveTo(to);
+        await tester.pump(graphDropDebounce);
+        await tester.pump();
+        await mouse.up();
+        await tester.pumpAndSettle();
+      }
+
+      await dragFrom(pill('b'), _centre(tester, 'c'));
+      expect(drops.calls, isEmpty, reason: 'a remote ref does not drag');
+      await dragFrom(_centre(tester, 'r'), _centre(tester, 'c'));
+      expect(drops.calls, isEmpty, reason: 'the root does not drag');
+      await dragFrom(pill('a'), _centre(tester, 'c'));
+      expect(drops.calls.single.$1, isA<BookmarkDropSource>());
+      expect(actions.ran.single.command, 'jj bookmark move main --to c');
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
+
+    testWidgets('a stack card neither drags nor becomes a target (no preview query)', (tester) async {
+      useShellWindow(tester);
+      final RecordedGraphLayout layout = hugeStackLayout(3);
+      final drops = _Drops();
+      final source = ScriptedGraphSource(respond: (_) => layout);
+      final model = GraphViewModel()..init(source, actions: _Actions(), drops: drops);
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      await tester.pumpAndSettle();
+      final Offset stack = tester.getCenter(find.byType(GraphStackCard));
+      final TestGesture fromStack = await tester.startGesture(stack, kind: PointerDeviceKind.mouse);
+      await fromStack.moveBy(const Offset(40, 40));
+      await tester.pump();
+      expect(model.drag.active, isFalse, reason: 'a stack does not drag');
+      await fromStack.up();
+      await tester.pumpAndSettle();
+      final Offset head = _centre(tester, 'head');
+      final TestGesture mouse = await tester.startGesture(head, kind: PointerDeviceKind.mouse);
+      await mouse.moveTo(Offset.lerp(head, stack, .5)!);
+      await tester.pump();
+      await mouse.moveTo(stack);
+      await tester.pump(graphDropDebounce);
+      await tester.pump();
+      expect(model.drag.target, isNull);
+      expect(drops.calls, isEmpty);
+      await mouse.up();
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
+
+    testWidgets('Esc cancels a card drag and nothing runs', (tester) async {
+      useShellWindow(tester);
+      final source = ScriptedGraphSource(respond: (_) => keysLayout(<String>['a', 'b'], at: 'a'));
+      final actions = _Actions();
+      final model = GraphViewModel()..init(source, actions: actions, drops: _Drops());
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      await tester.pumpAndSettle();
+      final RenderGraphCard a = tester.allRenderObjects.whereType<RenderGraphCard>().firstWhere(
+        (c) => c.data.key == 'a',
+      );
+      final TestGesture mouse = await tester.startGesture(
+        a.localToGlobal(a.cardRect.center),
+        kind: PointerDeviceKind.mouse,
+      );
+      await mouse.moveBy(const Offset(40, 40));
+      await tester.pump();
+      expect(model.drag.active, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(model.drag.payload, isNull);
+      await mouse.up();
+      await tester.pumpAndSettle();
+      expect(actions.ran, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
+  });
+}
+
+/// [keys] one per row, newest first, at operation [op]; @ is `a`.
+RecordedGraphLayout _opLayout(List<String> keys, String op) => handLayout(
+  <(String, int, int)>[for (var i = 0; i < keys.length; i++) (keys[i], keys.length - 1 - i, 0)],
+  edges: <(int, int)>[for (var i = 0; i + 1 < keys.length; i++) (i, i + 1)],
+  workingCopy: keys.indexOf('a'),
+  operationId: op,
+);
+
+RenderGraphCard _card(WidgetTester tester, String key) =>
+    tester.allRenderObjects.whereType<RenderGraphCard>().firstWhere((c) => c.data.key == key);
+
+Offset _centre(WidgetTester tester, String key) {
+  final RenderGraphCard card = _card(tester, key);
+  return card.localToGlobal(card.cardRect.center);
+}
+
+class _Actions implements GraphActions {
+  final ran = <GraphAction>[];
+  var born = const <String>[];
+
+  @override
+  Future<String> headOpId() async => 'op${ran.length}';
+
+  @override
+  Future<MutationResult> run(GraphAction action) async {
+    ran.add(action);
+    return MutationResult(
+      newOpId: 'op${ran.length}',
+      newChangeIds: born,
+      abandonedChangeIds: <String>[],
+      workingCopyChangeId: null,
+      finish: null,
+    );
+  }
+}

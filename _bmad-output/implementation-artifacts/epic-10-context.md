@@ -38,7 +38,8 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Story 10.27: Drag files and hunks onto a change (backlog)
 - Story 10.28: Raw revset rule in the jj log Configurations window (done)
 - Story 10.29: Operation diff view, Show changes in the Undo Timeline (done)
-- Story 10.30: Review findings 2026-11-02: revset errors, the `$` pill, ID copy, uniform graph ports (backlog)
+- Story 10.30: Review findings 2026-11-02: revset errors, the `$` pill, ID copy, uniform graph ports (done)
+- Story 10.31: Time axis and minimap for long histories: shortened gaps, content-sized minimap, year labels, scrolling minimap (backlog, needs design)
 
 ## Requirements & Constraints
 
@@ -52,6 +53,7 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - jj errors in a proportional-font UI are one short sentence (kind, column, what jj expected), never jj's pest rendering (`-->`, `^---`); prefer a structured short message from the backend over parsing jj's text in Dart. A text field keeps its focus when its error message appears or disappears.
 - Inspector header IDs: short change ID with a `jj` subscript and short commit ID with a `git` subscript (`--text-faint`); a click copies the full ID ("Click to copy" / "Copied"; a failed clipboard write opens a popover with the full ID as selectable text). Graph cards keep click = select. The search field's `$` pill has no tint.
 - Hunk selection offers everything the CLI's builtin diff editor offers: mode changes get their own row, conflicted files get per-section checkboxes.
+- Long histories (10.31, Free only; Compact keeps its row mapping): a commit-free stretch above a threshold (proposal: one viewport height) shrinks to a fixed height (proposal ~48 px) with a torn-paper edge and its length ("14 months"), lines running through dashed at the edge. Canvas, day axis, gap markers, go-to/scroll math and minimap all read one shortened y mapping and must agree on every node's y. Minimap width grows with the column count up to a design-set maximum (no fixed strip); day labels stay short and never clip, a separate year label sits at each year boundary (sticky while the minimap scrolls); the minimap keeps a minimum density (proposal ≥ 2 px per row/day) and scrolls, dragged along by the viewport band. The design round with Ralph (DS / prototype in place, numbered sync entry) comes before code; a day pill reaching out of the minimap only if simple and free of frame cost.
 - Refresh: window focus plus an explicit reload button (and View › Reload ⌘R), both coalesced; no timer, no file watcher.
 - Workstreams dropped; Reviews hidden. The app is English but l10n-ready.
 - The design export is inspiration, not a 1:1 template: small gaps get a Claude proposal Ralph can overrule; NEEDS DESIGN questions are only for architecture or scope. A decision recorded in the epic wins over the export, except where Ralph ruled the floating client's explicit change wins. Prototype defects listed in the epic are never copied.
@@ -85,5 +87,6 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 
 ## Cross-Story Dependencies
 
-- Open stories: 10.10 after 10.9/10.15, real rows from 9.31, 9.16, 9.9, 9.19, 9.48. 10.16 after 10.1/10.4–10.6 and 11.13; its raster path needs no backend story. 10.26 after 10.24/10.25, 9.50 and 11.11. 10.27 after 10.10/10.26 (a `diff` source in 9.31). 10.30 builds on 10.28 (raw-revset errors), 10.12 (router), 10.24 (inspector) and 11.17 — all done; it touches `ZsTextField` in `packages/zanshin_ui` and the router in `packages/zanshin_core`, so router tests, goldens and layout invariants must stay green.
+- Open stories: 10.10 after 10.9/10.15, real rows from 9.31, 9.16, 9.9, 9.19, 9.48. 10.26 after 10.24/10.25, 9.50 and 11.11. 10.27 after 10.10/10.26 (a `diff` source in 9.31). 10.31 builds on 10.16 (minimap) and 10.3 (cards), both done, and needs its design round first; its witnesses include Marionette screenshots on `dart-intellij-third-party` (4674 changes, 2013–2025).
+- Router changes (10.30 and later) must keep router tests, goldens and layout invariants in `packages/zanshin_core` green.
 - Epic 11: 11.11 (Zs controls, Widgetbook) precedes every control user; 11.13 (menu bar) binds this epic's shortcuts and View › Reload; 11.9 owns the Undo Timeline that 10.29 extends.

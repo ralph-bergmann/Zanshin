@@ -8,8 +8,9 @@
 //!
 //! The plan fns are pure: they resolve, check and return the `MoveCommitsLocation` jj-lib's
 //! `compute_move_commits` takes, and write nothing. `drop_actions`' three rebase rows and the
-//! verb ([`rebase`]) call the same fns, and the preview and the verb apply the move through the
-//! one [`apply_move`], so a row and the verb cannot disagree. Every refusal is the CLI's
+//! verb ([`rebase`]) call the same fns; the verb applies the move through [`apply_move`], the
+//! preview answers from jj-lib's own planned parents without applying it (Story 10.10), so a row
+//! and the verb cannot disagree. Every refusal is the CLI's
 //! `user_error` text as [`MutateError::InvalidInput`]; the commit ids in it are the CLI's
 //! `short_commit_hash`, 12 hex digits.
 //!
@@ -18,15 +19,17 @@
 //! `Abandoned N divergent commits…`) are terminal UX and not ported — the abandonments are the
 //! result's `abandoned_change_ids`.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use futures::future::try_join_all;
 use futures::TryStreamExt as _;
-use jj_lib::backend::{BackendError, CommitId};
+use jj_lib::backend::{BackendError, BackendResult, CommitId};
 use jj_lib::commit::Commit;
 use jj_lib::config::{ConfigLayer, ConfigSource};
 use jj_lib::object_id::ObjectId as _;
-use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader};
-use jj_lib::revset::RevsetExpression;
+use jj_lib::repo::{MutableRepo, ReadonlyRepo, Repo as _, RepoLoader};
+use jj_lib::revset::{RevsetEvaluationError, RevsetExpression, RevsetStreamExt as _};
 use jj_lib::rewrite::{
     compute_move_commits, find_duplicate_divergent_commits, EmptyBehavior, MoveCommitsLocation, MoveCommitsTarget,
     RebaseOptions as JjRebaseOptions, RebasedCommit, RewriteRefsOptions,
@@ -36,7 +39,8 @@ use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{
-    be, finish_verb, guard_rewritable, mutation_result, no_op_result, resolve_or_wc, MutateError, MutationResult,
+    be, finish_verb, guard_rewritable, mutation_result, no_op_result, refuse_git_root_merge, resolve_or_wc,
+    MutateError, MutationResult,
 };
 use crate::op_support::{
     resolve_commit_location, resolve_immutable, resolve_ordered, start_repo_transaction, LocationArgs, NO_LOCATION,
@@ -246,23 +250,345 @@ fn onto_itself(id: &CommitId) -> MutateError {
 
 /// Whether the rebase `loc` plans would write no operation: an empty target is the CLI's "No
 /// revisions to rebase." (`cmd_rebase`, `rebase.rs:395-399` @ v0.46.0), answered before anything
-/// is computed; otherwise the CLI's "Nothing changed." guard (`cli_util.rs:2851`) after
+/// is computed; otherwise the CLI's "Nothing changed." guard (`cli_util.rs:2851`) for
 /// [`apply_move`] with the CLI's default options (no `--skip-emptied`, no `--keep-divergent`, no
-/// `--simplify-parents`). Exact by construction: it is the move the verb runs.
+/// `--simplify-parents`) — answered WITHOUT applying the move (Story 10.10, I1/I2).
 ///
-/// The move is applied to `tx`, which the caller drops afterwards. `tx` must start from a head
-/// loaded by [`load_dry_run_head`] (`signing.behavior = "drop"`): a preview must never invoke the
-/// user's signer for commits it throws away.
+/// Exact: `apply_move_commits` (`rewrite.rs:967-1019` @ jj-lib 0.46.0) rewrites a visited commit
+/// only when its new parents differ from its own (`parents_changed`) or it is in `to_abandon`.
+/// So the move writes nothing ⇔ every visited commit's planned parents ([`planned_parents`],
+/// jj-lib's own computation ported) equal its parents AND `find_duplicate_divergent_commits`
+/// finds nothing to abandon. A changed commit the Git backend would refuse to write (a merge with
+/// the root commit) is refused with the backend's text, as the move would be. Nothing is written:
+/// no commit, no git object, no `refs/jj/keep/*`.
 ///
 /// # Errors
 ///
 /// As [`apply_move`].
-pub(crate) fn rebase_is_no_op(tx: &mut Transaction, loc: &MoveCommitsLocation) -> Result<bool, MutateError> {
+pub(crate) fn rebase_is_no_op(tx: &Transaction, loc: &MoveCommitsLocation) -> Result<bool, MutateError> {
     if target_ids(loc).is_empty() {
         return Ok(true);
     }
-    apply_move(tx, loc, &jj_rebase_options(&RebaseOptions::default()), false)?;
-    Ok(!tx.repo().has_changes())
+    let repo = tx.repo();
+    let planned = pollster::block_on(planned_parents(repo, loc)).map_err(unsupported)?;
+    let mut moved = false;
+    for (commit, parents) in &planned {
+        // `transform_commits` hands the rewriter `new_parents(planned)`, which drops repeats.
+        let parents = unique(parents.iter().cloned());
+        if parents != commit.parent_ids() {
+            moved = true;
+            refuse_git_root_merge(repo.store(), &parents)?;
+        }
+    }
+    if moved {
+        return Ok(false);
+    }
+    let duplicates = pollster::block_on(find_duplicate_divergent_commits(repo, &loc.new_parent_ids, &loc.target))
+        .map_err(unsupported)?;
+    Ok(duplicates.is_empty())
+}
+
+/// The commits `compute_move_commits` visits, each with its planned new parents — jj-lib 0.46.0's
+/// `commit_new_parents_map` computation (`rewrite.rs:667-957`), ported read-only: the computed
+/// value is private to jj-lib, and applying it is what writes. `IndexSet`s are ordered,
+/// deduplicated `Vec`s here ([`push_unique`]).
+async fn planned_parents(repo: &MutableRepo, loc: &MoveCommitsLocation) -> BackendResult<Vec<(Commit, Vec<CommitId>)>> {
+    let graph = TargetGraph::load(repo, &loc.target).await?;
+    // `rewrite.rs:731-746`: a target's parents outside the target set.
+    let mut external: HashMap<CommitId, Vec<CommitId>> = HashMap::new();
+    for id in graph.ids.iter().rev() {
+        let commit = repo.store().get_commit_async(id).await?;
+        let mut parents = Vec::new();
+        for old in commit.parent_ids() {
+            match external.get(old) {
+                Some(outside) => extend_unique(&mut parents, outside),
+                None => push_unique(&mut parents, old.clone()),
+            }
+        }
+        external.insert(id.clone(), parents);
+    }
+    // `rewrite.rs:748-761`.
+    let new_parent_ids: Vec<CommitId> = loc
+        .new_parent_ids
+        .iter()
+        .flat_map(|id| external.get(id).cloned().unwrap_or_else(|| vec![id.clone()]))
+        .collect();
+    let new_children = new_children(repo, loc, &graph).await?;
+    let child_parents = children_parents(&graph, &new_children, &external, &new_parent_ids);
+
+    // `rewrite.rs:886-893`.
+    let mut roots: Vec<CommitId> = graph.roots.iter().cloned().collect();
+    roots.extend(new_children.iter().map(|c| c.id().clone()));
+    let descendants = repo
+        .find_descendants_for_rebase(roots, &RevsetExpression::none())
+        .await?;
+    let mut planned = Vec::with_capacity(descendants.len());
+    for commit in descendants {
+        let parents = if let Some(parents) = child_parents.get(commit.id()) {
+            parents.clone()
+        } else if graph.set.contains(commit.id()) {
+            if graph.roots.contains(commit.id()) {
+                new_parent_ids.clone()
+            } else {
+                inner_target_parents(repo, &graph, &new_children, &commit).await?
+            }
+        } else if commit.parent_ids().iter().any(|id| external.contains_key(id)) {
+            let mut parents = Vec::new();
+            for parent in commit.parent_ids() {
+                match external.get(parent) {
+                    Some(outside) => parents.extend(outside.iter().cloned()),
+                    None => parents.push(parent.clone()),
+                }
+            }
+            parents
+        } else {
+            commit.parent_ids().to_vec()
+        };
+        planned.push((commit, parents));
+    }
+    Ok(planned)
+}
+
+/// The target set as `compute_move_commits` resolves it (`rewrite.rs:671-729`).
+struct TargetGraph {
+    /// `target_commit_ids`, in their order.
+    ids: Vec<CommitId>,
+    set: HashSet<CommitId>,
+    /// `connected_target_commits`, reverse topological.
+    connected: Vec<Commit>,
+    /// `connected_target_commits_internal_parents` (empty for `Roots`).
+    internal: HashMap<CommitId, Vec<CommitId>>,
+    roots: HashSet<CommitId>,
+}
+
+impl TargetGraph {
+    async fn load(repo: &MutableRepo, target: &MoveCommitsTarget) -> BackendResult<Self> {
+        let store = repo.store();
+        let graph = match target {
+            MoveCommitsTarget::Commits(commit_ids) => {
+                let ids = unique(commit_ids.iter().cloned());
+                let set: HashSet<CommitId> = ids.iter().cloned().collect();
+                let connected: Vec<Commit> = RevsetExpression::commits(commit_ids.clone())
+                    .connected()
+                    .evaluate(repo)
+                    .map_err(RevsetEvaluationError::into_backend_error)?
+                    .stream()
+                    .commits(store)
+                    .try_collect()
+                    .await
+                    .map_err(RevsetEvaluationError::into_backend_error)?;
+                let internal = internal_parents_within(&set, &connected);
+                let roots = internal
+                    .iter()
+                    .filter(|&(id, parents)| set.contains(id) && parents.is_empty())
+                    .map(|(id, _)| id.clone())
+                    .collect();
+                Self {
+                    ids,
+                    set,
+                    connected,
+                    internal,
+                    roots,
+                }
+            }
+            MoveCommitsTarget::Roots(root_ids) => {
+                let ids: Vec<CommitId> = RevsetExpression::commits(root_ids.clone())
+                    .descendants()
+                    .evaluate(repo)
+                    .map_err(RevsetEvaluationError::into_backend_error)?
+                    .stream()
+                    .try_collect()
+                    .await
+                    .map_err(RevsetEvaluationError::into_backend_error)?;
+                let connected = try_join_all(ids.iter().map(|id| store.get_commit_async(id))).await?;
+                Self {
+                    set: ids.iter().cloned().collect(),
+                    ids,
+                    connected,
+                    internal: HashMap::new(),
+                    roots: root_ids.iter().cloned().collect(),
+                }
+            }
+        };
+        Ok(graph)
+    }
+}
+
+/// `new_children` (`rewrite.rs:763-837`): a new child inside the target set is replaced by the
+/// target's descendants outside the set, one generation deep.
+async fn new_children(
+    repo: &MutableRepo,
+    loc: &MoveCommitsLocation,
+    graph: &TargetGraph,
+) -> BackendResult<Vec<Commit>> {
+    let store = repo.store();
+    if !loc.new_child_ids.iter().any(|id| graph.set.contains(id)) {
+        return try_join_all(loc.new_child_ids.iter().map(|id| store.get_commit_async(id))).await;
+    }
+    let targets = RevsetExpression::commits(graph.ids.clone());
+    let descendants: Vec<Commit> = targets
+        .union(&targets.children())
+        .evaluate(repo)
+        .map_err(RevsetEvaluationError::into_backend_error)?
+        .stream()
+        .commits(store)
+        .try_collect()
+        .await
+        .map_err(RevsetEvaluationError::into_backend_error)?;
+    let mut external: HashMap<CommitId, Vec<Commit>> = HashMap::new();
+    for commit in &descendants {
+        let own = external
+            .entry(commit.id().clone())
+            .or_insert_with(|| {
+                if graph.set.contains(commit.id()) {
+                    Vec::new()
+                } else {
+                    vec![commit.clone()]
+                }
+            })
+            .clone();
+        for parent_id in commit.parent_ids() {
+            if graph.set.contains(parent_id) {
+                let children = external.entry(parent_id.clone()).or_default();
+                for child in &own {
+                    if !children.iter().any(|c| c.id() == child.id()) {
+                        children.push(child.clone());
+                    }
+                }
+            }
+        }
+    }
+    let mut children = Vec::new();
+    for id in &loc.new_child_ids {
+        match external.get(id) {
+            Some(outside) => children.extend(outside.iter().cloned()),
+            None => children.push(store.get_commit_async(id).await?),
+        }
+    }
+    Ok(children)
+}
+
+/// The new children's parents (`rewrite.rs:839-884`): a parent that is a new parent of the
+/// targets gives way to the target heads, which every new child gets.
+fn children_parents(
+    graph: &TargetGraph,
+    new_children: &[Commit],
+    external: &HashMap<CommitId, Vec<CommitId>>,
+    new_parent_ids: &[CommitId],
+) -> HashMap<CommitId, Vec<CommitId>> {
+    if new_children.is_empty() {
+        return HashMap::new();
+    }
+    let heads = commits_heads(&graph.set, &graph.connected);
+    new_children
+        .iter()
+        .map(|child| {
+            let mut parents = Vec::new();
+            for old in child.parent_ids() {
+                let olds = external.get(old).map_or_else(|| vec![old.clone()], Clone::clone);
+                for id in olds {
+                    if new_parent_ids.contains(&id) {
+                        extend_unique(&mut parents, &heads);
+                    } else {
+                        push_unique(&mut parents, id);
+                    }
+                }
+            }
+            extend_unique(&mut parents, &heads);
+            (child.id().clone(), parents)
+        })
+        .collect()
+}
+
+/// A non-root target's planned parents (`rewrite.rs:907-933`).
+async fn inner_target_parents(
+    repo: &MutableRepo,
+    graph: &TargetGraph,
+    new_children: &[Commit],
+    commit: &Commit,
+) -> BackendResult<Vec<CommitId>> {
+    let mut parents = Vec::new();
+    for parent_id in commit.parent_ids() {
+        if graph.set.contains(parent_id) {
+            parents.push(parent_id.clone());
+        } else if let Some(inside) = graph.internal.get(parent_id) {
+            parents.extend(inside.iter().cloned());
+        } else {
+            let mut below_a_new_child = false;
+            for child in new_children {
+                if repo
+                    .index()
+                    .is_ancestor(child.id(), parent_id)
+                    .await
+                    .map_err(|err| BackendError::Other(err.into()))?
+                {
+                    below_a_new_child = true;
+                    break;
+                }
+            }
+            if !below_a_new_child {
+                parents.push(parent_id.clone());
+            }
+        }
+    }
+    Ok(parents)
+}
+
+/// `compute_internal_parents_within` (`rewrite.rs:1259-1278`); `graph` reverse topological.
+fn internal_parents_within(targets: &HashSet<CommitId>, graph: &[Commit]) -> HashMap<CommitId, Vec<CommitId>> {
+    let mut internal: HashMap<CommitId, Vec<CommitId>> = HashMap::new();
+    for commit in graph.iter().rev() {
+        let mut parents = Vec::new();
+        for old in commit.parent_ids() {
+            if targets.contains(old) {
+                push_unique(&mut parents, old.clone());
+            } else if let Some(inside) = internal.get(old) {
+                extend_unique(&mut parents, inside);
+            }
+        }
+        internal.insert(commit.id().clone(), parents);
+    }
+    internal
+}
+
+/// `compute_commits_heads` (`rewrite.rs:1285-1304`); `connected` reverse topological.
+fn commits_heads(targets: &HashSet<CommitId>, connected: &[Commit]) -> Vec<CommitId> {
+    let mut heads: HashSet<&CommitId> = HashSet::new();
+    for commit in connected.iter().rev() {
+        heads.insert(commit.id());
+        for parent in commit.parent_ids() {
+            heads.remove(parent);
+        }
+    }
+    connected
+        .iter()
+        .rev()
+        .filter(|c| heads.contains(c.id()) && targets.contains(c.id()))
+        .map(|c| c.id().clone())
+        .collect()
+}
+
+/// `ids` without repeats, first occurrence kept — an `IndexSet` collected.
+fn unique(ids: impl IntoIterator<Item = CommitId>) -> Vec<CommitId> {
+    let mut out = Vec::new();
+    for id in ids {
+        push_unique(&mut out, id);
+    }
+    out
+}
+
+/// `IndexSet::insert` on a `Vec`.
+fn push_unique(ids: &mut Vec<CommitId>, id: CommitId) {
+    if !ids.contains(&id) {
+        ids.push(id);
+    }
+}
+
+/// `IndexSet::extend` on a `Vec`.
+fn extend_unique(ids: &mut Vec<CommitId>, more: &[CommitId]) {
+    for id in more {
+        push_unique(ids, id.clone());
+    }
 }
 
 /// The commits `loc` moves — the CLI's `target_ids` (`rebase.rs:390-393`).
@@ -677,5 +1003,128 @@ mod tests {
         assert!(matches!(refused, MutateError::InvalidInput { reason, .. } if reason == "no"));
         let other = super::unsupported(BackendError::Other("x".into()));
         assert!(matches!(other, MutateError::Backend(_)));
+    }
+
+    /// Every visible change of `readonly`, newest first, with its description.
+    fn changes_of(readonly: &jj_lib::repo::ReadonlyRepo) -> Vec<(crate::ChangeId, String)> {
+        use jj_lib::backend::CommitId;
+        use jj_lib::repo::Repo as _;
+
+        let store = readonly.store();
+        let mut pending: Vec<CommitId> = readonly.view().heads().iter().cloned().collect();
+        let mut changes: Vec<(crate::ChangeId, String)> = Vec::new();
+        while let Some(id) = pending.pop() {
+            if id == *store.root_commit_id() {
+                continue;
+            }
+            let commit = store.get_commit(&id).expect("commit");
+            let change = crate::ChangeId(commit.change_id().reverse_hex());
+            if !changes.iter().any(|(c, _)| *c == change) {
+                changes.push((change, commit.description().trim_end().to_owned()));
+            }
+            pending.extend(commit.parent_ids().iter().cloned());
+        }
+        changes
+    }
+
+    /// The write-free no-op check answers what the dry run (the move applied on a dropped
+    /// transaction) answers, for every `-r`/`-s` × `-o`/`-A`/`-B` plan over the fixture's commits,
+    /// singly and in pairs: unconnected targets (internal parents), a location inside the target
+    /// set (`-r A -A A`, the new children replaced), refusals included. Then: the check writes
+    /// nothing, while the dry run does.
+    #[test]
+    fn rebase_is_no_op_answers_what_the_dry_run_answers() {
+        use std::sync::Arc;
+
+        use jj_lib::revset::{RevsetExpression, UserRevsetExpression};
+
+        use super::{apply_move, jj_rebase_options, plan_rebase_revisions, plan_rebase_source, RebaseOptions};
+        use crate::mutate::{MutateError, GIT_ROOT_MERGE};
+        use crate::op_support::LocationArgs;
+        use crate::template::Templates;
+        use crate::ChangeId;
+
+        test_helpers::pin_test_env();
+        let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture");
+        let mut repo = crate::Repo::open(&fixture.path).expect("open");
+        // The fixture is `root → Commit 1 → Commit 2 → Commit 3` plus an empty @ off the root; add a merge M of
+        // Commit 2 and @, and a child D on M: merges inside and below the targets, a child with several parents, and
+        // moves that would leave M with the root as a parent (the Git backend's refusal).
+        let before = changes_of(&super::load_dry_run_head(repo.workspace()).expect("head"));
+        let commit2 = before
+            .iter()
+            .find(|(_, d)| d == "Commit 2")
+            .expect("Commit 2")
+            .0
+            .clone();
+        let at = repo.status().expect("status").working_copy_change_id.expect("@");
+        let merge = repo.new_change(&[commit2, at], &[], &[]).expect("merge");
+        let merge_id = merge.new_change_ids.first().expect("M").clone();
+        repo.new_change(&[merge_id], &[], &[]).expect("child of the merge");
+        let name = repo.workspace().workspace_name().to_owned();
+        let readonly = super::load_dry_run_head(repo.workspace()).expect("head");
+        let changes: Vec<ChangeId> = changes_of(&readonly).into_iter().map(|(c, _)| c).collect();
+        assert!(changes.len() >= 6, "{changes:?}");
+        let config = crate::config::load(&repo).expect("config");
+        let env =
+            crate::snapshot::CommandEnv::load(repo.workspace(), &config, &mut crate::warning::Warnings::default())
+                .expect("start-up");
+        let root: Arc<UserRevsetExpression> = RevsetExpression::root();
+        let templates = Templates::new(&config, &root, &env.template_startup, repo.workspace());
+
+        let mut sources: Vec<Vec<ChangeId>> = changes.iter().map(|c| vec![c.clone()]).collect();
+        for (i, a) in changes.iter().enumerate() {
+            for b in &changes[i + 1..] {
+                sources.push(vec![a.clone(), b.clone()]);
+            }
+        }
+        let mut compared = 0;
+        let mut moved = 0;
+        let mut root_merges = 0;
+        for source in &sources {
+            for target in &changes {
+                let one = [target.clone()];
+                for at in 0..3 {
+                    let location = LocationArgs {
+                        onto: if at == 0 { &one } else { &[] },
+                        insert_after: if at == 1 { &one } else { &[] },
+                        insert_before: if at == 2 { &one } else { &[] },
+                    };
+                    for revisions in [true, false] {
+                        let tx = crate::op_support::start_repo_transaction(&readonly, &name);
+                        let planned = if revisions {
+                            plan_rebase_revisions(&tx, &templates, source, &location)
+                        } else {
+                            plan_rebase_source(&tx, &templates, source, &location)
+                        };
+                        let Ok(loc) = planned else { continue };
+                        let check = super::rebase_is_no_op(&tx, &loc);
+                        assert!(!tx.repo().has_changes(), "the check writes nothing");
+                        drop(tx);
+                        let mut dry = crate::op_support::start_repo_transaction(&readonly, &name);
+                        let expected = if super::target_ids(&loc).is_empty() {
+                            Ok(true)
+                        } else {
+                            apply_move(&mut dry, &loc, &jj_rebase_options(&RebaseOptions::default()), false)
+                                .map(|_| !dry.repo().has_changes())
+                        };
+                        moved += usize::from(matches!(expected, Ok(false)));
+                        root_merges += usize::from(
+                            matches!(&expected, Err(MutateError::InvalidInput { reason, .. }) if reason == GIT_ROOT_MERGE),
+                        );
+                        assert_eq!(
+                            check.map_err(|e| e.to_string()),
+                            expected.map_err(|e| e.to_string()),
+                            "{source:?} r={revisions} loc={at} {target:?}"
+                        );
+                        compared += 1;
+                    }
+                }
+            }
+        }
+        assert!(
+            compared > 20 && moved > 0 && moved < compared && root_merges > 0,
+            "{compared} plans, {moved} moves, {root_merges} root merges"
+        );
     }
 }

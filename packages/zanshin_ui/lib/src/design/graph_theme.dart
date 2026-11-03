@@ -38,6 +38,7 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     required this.hatch,
     required this.hatchMark,
     required this.focusRing,
+    required this.dropTargetLine,
     required this.edge,
     required this.edgeHover,
     required this.lineage,
@@ -74,6 +75,7 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     hatch: colors.hatch,
     hatchMark: colors.hatchMark,
     focusRing: colors.focusRing,
+    dropTargetLine: colors.accentLiveLine,
     edge: colors.edge,
     edgeHover: colors.edgeHov,
     lineage: colors.co,
@@ -165,6 +167,9 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
   /// The keyboard focus outline, `--focus-ring` (DS tokens/states.css).
   final Color focusRing;
 
+  /// A drop target card's border, `--accent-live-line` (Story 10.10; graph.css:8 `.zs-card.is-drop`).
+  final Color dropTargetLine;
+
   /// An edge's 1.5 px stroke, `--edge` (DS components/graph/graph.css:65 `.zs-edge`).
   final Color edge;
 
@@ -218,6 +223,7 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     Color? hatch,
     Color? hatchMark,
     Color? focusRing,
+    Color? dropTargetLine,
     Color? edge,
     Color? edgeHover,
     Color? lineage,
@@ -251,6 +257,7 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     hatch: hatch ?? this.hatch,
     hatchMark: hatchMark ?? this.hatchMark,
     focusRing: focusRing ?? this.focusRing,
+    dropTargetLine: dropTargetLine ?? this.dropTargetLine,
     edge: edge ?? this.edge,
     edgeHover: edgeHover ?? this.edgeHover,
     lineage: lineage ?? this.lineage,
@@ -292,6 +299,7 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
       hatch: mix(hatch, other.hatch),
       hatchMark: mix(hatchMark, other.hatchMark),
       focusRing: mix(focusRing, other.focusRing),
+      dropTargetLine: mix(dropTargetLine, other.dropTargetLine),
       edge: mix(edge, other.edge),
       edgeHover: mix(edgeHover, other.edgeHover),
       lineage: mix(lineage, other.lineage),
@@ -331,6 +339,7 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
           other.hatch == hatch &&
           other.hatchMark == hatchMark &&
           other.focusRing == focusRing &&
+          other.dropTargetLine == dropTargetLine &&
           other.edge == edge &&
           other.edgeHover == edgeHover &&
           other.lineage == lineage &&
@@ -366,6 +375,7 @@ class GraphTheme extends ThemeExtension<GraphTheme> {
     hatch,
     hatchMark,
     focusRing,
+    dropTargetLine,
     edge,
     edgeHover,
     lineage,

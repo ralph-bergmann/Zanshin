@@ -13,6 +13,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import 'day_axis.dart';
 import 'graph_card.dart';
+import 'graph_drag.dart';
 import 'graph_layout.dart';
 import 'graph_viewport_render.dart' show graphCardOverhang;
 import 'hatch_swatch.dart';
@@ -150,6 +151,17 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
         )
         ..onTapUp = _onTapUp
         ..onSecondaryTapUp = _onSecondaryTapUp;
+
+  // Story 10.10: a press on the body or the legend pill that travels past the drag threshold starts the graph's drag,
+  // which follows the mouse itself from then on.
+  late final _drag = GraphDragRecognizer(debugOwner: this)
+    ..onBegin = (at) {
+      final GraphDragPayload? payload = _pressPayload;
+      if (payload != null) {
+        _controller.drag?.start(payload, at);
+      }
+    };
+  GraphDragPayload? _pressPayload;
 
   /// The facts shown.
   GraphCardData get data => _data;
@@ -304,6 +316,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
   var _selected = false;
   var _focused = false;
   var _menuOpen = false;
+  var _dropTarget = false;
   var _pointerOnMore = false;
   var _pointerOnAdd = false;
   // Whether the add circle was revealed before the fade-out started (an open menu alone never reveals it).
@@ -324,6 +337,15 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     _selected = _controller.selected.value == key;
     _focused = _controller.focused.value == key;
     _menuOpen = _controller.menuOpen.value == key;
+    _dropTarget = _controller.dropTarget.value == key;
+  }
+
+  void _onDropTarget() {
+    final value = _controller.dropTarget.value == _data.key;
+    if (value != _dropTarget) {
+      _dropTarget = value;
+      markNeedsPaint();
+    }
   }
 
   void _onHovered() {
@@ -406,6 +428,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     _controller.selected.addListener(_onSelected);
     _controller.focused.addListener(_onFocused);
     _controller.menuOpen.addListener(_onMenuOpen);
+    _controller.dropTarget.addListener(_onDropTarget);
     _controller.now.addListener(_onNow);
     _controller.actionsEnabled.addListener(markNeedsPaint);
   }
@@ -415,6 +438,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     _controller.selected.removeListener(_onSelected);
     _controller.focused.removeListener(_onFocused);
     _controller.menuOpen.removeListener(_onMenuOpen);
+    _controller.dropTarget.removeListener(_onDropTarget);
     _controller.now.removeListener(_onNow);
     _controller.actionsEnabled.removeListener(markNeedsPaint);
   }
@@ -454,6 +478,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
   @override
   void dispose() {
     _tap.dispose();
+    _drag.dispose();
     _disposeTexts();
     super.dispose();
   }
@@ -821,7 +846,11 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
       ..translate(offset.dx, offset.dy);
 
     // Rings: ZsShadowStack is front-first, so paint it reversed.
-    final ZsShadowStack? ring = wc
+    // Story 10.10: a drop target wins (graph.css:8 `.zs-card.is-drop`).
+    final bool drop = _dropTarget;
+    final ZsShadowStack? ring = drop
+        ? _elevation.ringDrop
+        : wc
         ? (_selected ? _elevation.ringWcSelect : _elevation.ringWc)
         : _selected
         ? _elevation.ringSelect
@@ -833,8 +862,8 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     }
 
     // Fill and the @ tint (graph.css:2-6, :85): the menu's hover look wins, the @ fill wins over hover.
-    canvas.drawRRect(rrect, Paint()..color = _menuOpen || (hover && !wc) ? t.cardFillHover : t.cardFill);
-    if (wc && !_menuOpen) {
+    canvas.drawRRect(rrect, Paint()..color = drop || _menuOpen || (hover && !wc) ? t.cardFillHover : t.cardFill);
+    if (wc && !_menuOpen && !drop) {
       canvas.drawRRect(
         rrect,
         Paint()
@@ -850,7 +879,9 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     if (_data.immutable) {
       paintGraphHatch(canvas, rrect, period: _hatchPeriod, color: t.hatch);
     }
-    final Color border = _menuOpen
+    final Color border = drop
+        ? t.dropTargetLine
+        : _menuOpen
         ? t.cardBorderHover
         : wc
         ? t.workingCopyLine
@@ -1080,6 +1111,10 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     if (event is PointerDownEvent) {
       _downArea = _areaAt(entry.localPosition);
       _tap.addPointer(event);
+      _pressPayload = _dragPayloadAt(entry.localPosition);
+      if (_pressPayload != null && _controller.drag != null && _controller.actionsEnabled.value) {
+        _drag.addPointer(event);
+      }
     } else if (event is PointerHoverEvent) {
       final bool onMore = _moreRevealed && _inCircle(_more, entry.localPosition);
       final Rect? add = _add;
@@ -1122,6 +1157,26 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
   }
 
   Rect _global(Rect rect) => MatrixUtils.transformRect(getTransformTo(null), rect);
+
+  /// What a drag from [p] (local) carries (Story 10.10): the change from the body of a non-root card, the first ref
+  /// from the legend pill when it is a local bookmark without `@`; null elsewhere (•••, the add circle).
+  GraphDragPayload? _dragPayloadAt(Offset p) {
+    final GraphCardData d = _data;
+    switch (_areaAt(p)) {
+      case _Area.body:
+        return d.isRoot ? null : graphChangeDragOf(d);
+      case _Area.bookmarks:
+        final Rect? legend = _legend;
+        final GraphRef? first = d.refs.firstOrNull;
+        final bool onPill =
+            legend != null && RRect.fromRectAndRadius(legend, const Radius.circular(_pillH / 2)).contains(p);
+        return onPill && first != null && graphBookmarkDraggable(first.name, remote: first.remote)
+            ? GraphBookmarkDrag(first.name)
+            : null;
+      case _Area.more || null:
+        return null;
+    }
+  }
 
   void _onTapUp(TapUpDetails details) {
     final bool enabled = _controller.actionsEnabled.value;

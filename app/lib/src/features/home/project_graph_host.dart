@@ -146,6 +146,7 @@ class _Graph {
         model,
         source,
         actions: RepoGraphActions(repo),
+        drops: RepoGraphDrops(repo),
         stackStore: ProjectStackStore(host.settings, root),
         revset: search.revset,
       );

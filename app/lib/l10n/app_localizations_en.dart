@@ -1234,6 +1234,69 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String toastRebasedOnto(String source, String target) {
+    return 'Moved $source onto $target';
+  }
+
+  @override
+  String toastRebasedAfter(String source, String target) {
+    return 'Inserted $source after $target';
+  }
+
+  @override
+  String toastRebasedBefore(String source, String target) {
+    return 'Inserted $source before $target';
+  }
+
+  @override
+  String toastMerged(String first, String second) {
+    return 'Merged $first and $second in a new change';
+  }
+
+  @override
+  String toastDuplicated(String source, String target) {
+    return 'Duplicated $source onto $target';
+  }
+
+  @override
+  String get dropMoveHere => 'Move here';
+
+  @override
+  String get dropMoveOnly => 'Move only this change';
+
+  @override
+  String get dropInsertAfter => 'Insert after';
+
+  @override
+  String get dropInsertBefore => 'Insert before';
+
+  @override
+  String get dropSquash => 'Squash into this change';
+
+  @override
+  String get dropNewMerge => 'New merge change';
+
+  @override
+  String get dropDuplicate => 'Duplicate here';
+
+  @override
+  String dropMoveBookmark(String name) {
+    return 'Move $name here';
+  }
+
+  @override
+  String get dropBackwards => 'backwards';
+
+  @override
+  String get dropMenuLabel => 'Drop actions';
+
+  @override
+  String get dragHintChange => 'Drop on a change';
+
+  @override
+  String get dragHintBookmark => 'Drop on the change it should point to';
+
+  @override
   String toastBookmarkRenamed(String oldName, String newName) {
     return 'Renamed $oldName to $newName';
   }
@@ -1397,6 +1460,31 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String menuSquashTarget(String target) {
     return 'Squash $target into Parent';
+  }
+
+  @override
+  String menuRebaseOnto(String source, String target) {
+    return 'Move $source onto $target';
+  }
+
+  @override
+  String menuRebaseAfter(String source, String target) {
+    return 'Insert $source after $target';
+  }
+
+  @override
+  String menuRebaseBefore(String source, String target) {
+    return 'Insert $source before $target';
+  }
+
+  @override
+  String menuDuplicateOnto(String source, String target) {
+    return 'Duplicate $source onto $target';
+  }
+
+  @override
+  String menuNewMerge(String first, String second) {
+    return 'New Merge Change of $first and $second';
   }
 
   @override

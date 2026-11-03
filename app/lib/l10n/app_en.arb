@@ -760,6 +760,58 @@
     "description": "Operation toast after jj bookmark move; names are bookmark names, target a change id.",
     "placeholders": {"names": {"type": "String", "example": "main"}, "target": {"type": "String", "example": "ovknlmro"}}
   },
+  "toastRebasedOnto": "Moved {source} onto {target}",
+  "@toastRebasedOnto": {
+    "description": "Operation toast after a drop ran jj rebase -s/-r … -o; both are change ids.",
+    "placeholders": {"source": {"type": "String", "example": "ovknlmro"}, "target": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "toastRebasedAfter": "Inserted {source} after {target}",
+  "@toastRebasedAfter": {
+    "description": "Operation toast after a drop ran jj rebase -r … -A; both are change ids.",
+    "placeholders": {"source": {"type": "String", "example": "ovknlmro"}, "target": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "toastRebasedBefore": "Inserted {source} before {target}",
+  "@toastRebasedBefore": {
+    "description": "Operation toast after a drop ran jj rebase -r … -B; both are change ids.",
+    "placeholders": {"source": {"type": "String", "example": "ovknlmro"}, "target": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "toastMerged": "Merged {first} and {second} in a new change",
+  "@toastMerged": {
+    "description": "Operation toast after jj new with two or more parents (a drop's New merge change); both are change ids.",
+    "placeholders": {"first": {"type": "String", "example": "ovknlmro"}, "second": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "toastDuplicated": "Duplicated {source} onto {target}",
+  "@toastDuplicated": {
+    "description": "Operation toast after a drop ran jj duplicate … -o; both are change ids.",
+    "placeholders": {"source": {"type": "String", "example": "ovknlmro"}, "target": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "dropMoveHere": "Move here",
+  "@dropMoveHere": {"description": "Drop menu row: jj rebase -s (the dragged change and its descendants onto the target)."},
+  "dropMoveOnly": "Move only this change",
+  "@dropMoveOnly": {"description": "Drop menu row: jj rebase -r (only the dragged change onto the target)."},
+  "dropInsertAfter": "Insert after",
+  "@dropInsertAfter": {"description": "Drop menu row: jj rebase -r … -A (insert the dragged change after the target)."},
+  "dropInsertBefore": "Insert before",
+  "@dropInsertBefore": {"description": "Drop menu row: jj rebase -r … -B (insert the dragged change before the target)."},
+  "dropSquash": "Squash into this change",
+  "@dropSquash": {"description": "Drop menu row: jj squash --from … --into the target."},
+  "dropNewMerge": "New merge change",
+  "@dropNewMerge": {"description": "Drop menu row: jj new with the target and the dragged change as parents."},
+  "dropDuplicate": "Duplicate here",
+  "@dropDuplicate": {"description": "Drop menu row: jj duplicate … -o the target."},
+  "dropMoveBookmark": "Move {name} here",
+  "@dropMoveBookmark": {
+    "description": "Drop menu row: jj bookmark move of the dragged bookmark to the target.",
+    "placeholders": {"name": {"type": "String", "example": "main"}}
+  },
+  "dropBackwards": "backwards",
+  "@dropBackwards": {"description": "Drop menu warn note: the bookmark move is not a fast-forward (jj's --allow-backwards)."},
+  "dropMenuLabel": "Drop actions",
+  "@dropMenuLabel": {"description": "VoiceOver label of the drop menu that opens over a change while something is dragged onto it."},
+  "dragHintChange": "Drop on a change",
+  "@dragHintChange": {"description": "Under the drag ghost of a change while no change that takes it is under the pointer."},
+  "dragHintBookmark": "Drop on the change it should point to",
+  "@dragHintBookmark": {"description": "Under the drag ghost of a bookmark while no change that takes it is under the pointer."},
   "toastBookmarkRenamed": "Renamed {oldName} to {newName}",
   "@toastBookmarkRenamed": {
     "description": "Operation toast after jj bookmark rename.",
@@ -893,6 +945,31 @@
   "@menuSquashTarget": {
     "description": "Change menu: jj squash -r on the target; target is @ or the change id.",
     "placeholders": {"target": {"type": "String", "example": "@"}}
+  },
+  "menuRebaseOnto": "Move {source} onto {target}",
+  "@menuRebaseOnto": {
+    "description": "Undo/Redo menu name of a jj rebase … -o; both are change ids.",
+    "placeholders": {"source": {"type": "String", "example": "kmnvxoqp"}, "target": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "menuRebaseAfter": "Insert {source} after {target}",
+  "@menuRebaseAfter": {
+    "description": "Undo/Redo menu name of a jj rebase -r … -A; both are change ids.",
+    "placeholders": {"source": {"type": "String", "example": "kmnvxoqp"}, "target": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "menuRebaseBefore": "Insert {source} before {target}",
+  "@menuRebaseBefore": {
+    "description": "Undo/Redo menu name of a jj rebase -r … -B; both are change ids.",
+    "placeholders": {"source": {"type": "String", "example": "kmnvxoqp"}, "target": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "menuDuplicateOnto": "Duplicate {source} onto {target}",
+  "@menuDuplicateOnto": {
+    "description": "Undo/Redo menu name of a jj duplicate … -o; both are change ids.",
+    "placeholders": {"source": {"type": "String", "example": "kmnvxoqp"}, "target": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "menuNewMerge": "New Merge Change of {first} and {second}",
+  "@menuNewMerge": {
+    "description": "Undo/Redo menu name of a jj new with two or more parents (a drop's New merge change); first is the dropped change, second the target.",
+    "placeholders": {"first": {"type": "String", "example": "kmnvxoqp"}, "second": {"type": "String", "example": "vruxwmqv"}}
   },
   "menuCommitTarget": "Commit {target}",
   "@menuCommitTarget": {

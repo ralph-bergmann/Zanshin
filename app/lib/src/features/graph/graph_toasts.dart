@@ -154,7 +154,9 @@ ShellToastEntry? graphOutcomeEntry(GraphOutcome outcome, {required GraphViewMode
   }
   final List<ZanshinWarning> warnings = outcome.warnings;
   final GraphAction action = outcome.action;
-  final bool silent = action is GraphNew || action is GraphEdit || action is GraphDescribe;
+  // A new change on two or more parents is a drop's New merge change (Story 10.10): it says so.
+  final bool silent =
+      (action is GraphNew && action.parents.length < 2) || action is GraphEdit || action is GraphDescribe;
   if (silent) {
     if (warnings.isEmpty) {
       return null;
@@ -267,6 +269,29 @@ InlineSpan _text(AppLocalizations strings, ZsColors colors, GraphOutcome outcome
           target(result?.abandonedChangeIds.firstOrNull),
         target(outcome.flash.firstOrNull),
       ];
+    case GraphRebase(
+      :final List<String> source,
+      :final List<String> revisions,
+      :final List<String> onto,
+      :final List<String> insertAfter,
+      :final List<String> insertBefore,
+    ):
+      message = insertAfter.isNotEmpty
+          ? strings.toastRebasedAfter(s0, s1)
+          : insertBefore.isNotEmpty
+          ? strings.toastRebasedBefore(s0, s1)
+          : strings.toastRebasedOnto(s0, s1);
+      parts = <InlineSpan>[
+        ids(<String>[...source, ...revisions]),
+        ids(<String>[...onto, ...insertAfter, ...insertBefore]),
+      ];
+    case GraphDuplicate(:final List<String> revisions, :final List<String> onto):
+      message = strings.toastDuplicated(s0, s1);
+      parts = <InlineSpan>[ids(revisions), ids(onto)];
+    case GraphNew(:final List<String> parents) when parents.length > 1:
+      // `jj new T S`: the drop names the source second.
+      message = strings.toastMerged(s0, s1);
+      parts = <InlineSpan>[id(parents.last), ids(parents.sublist(0, parents.length - 1))];
     case GraphCommit(id: final String committed, message: final List<String> paragraphs):
       final String subject = (paragraphs.firstOrNull ?? '').split('\n').first;
       message = subject.isEmpty ? strings.toastCommittedAlone(s0) : strings.toastCommitted(s0, s1);

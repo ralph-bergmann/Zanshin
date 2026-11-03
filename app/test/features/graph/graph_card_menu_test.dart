@@ -12,6 +12,7 @@ import 'package:zanshin/l10n/app_localizations_en.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_card_menu.dart';
+import 'package:zanshin/src/features/graph/graph_drag.dart';
 import 'package:zanshin/src/features/graph/graph_inspector.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
@@ -670,6 +671,29 @@ void main() {
       await settle(tester);
       expect(c.menuOpen.value, isNull);
       expect(find.byType(ZsMenuMaterial), findsNothing);
+      await finish(tester);
+    });
+
+    testWidgets('Story 10.10: a local bookmark row of the popover drags; the popover closes, the drag goes on', (
+      tester,
+    ) async {
+      await pump(tester, bookmarks: () async => _rows(tracked: false));
+      final GraphCardController c = cards(tester)
+        ..openBookmarks(_b, Rect.fromCenter(center: tester.getCenter(card(_b)), width: 40, height: 16));
+      await settle(tester);
+      final Offset row = tester.getCenter(find.text('b-mark'));
+      final TestGesture mouse = await tester.startGesture(row, kind: PointerDeviceKind.mouse);
+      await mouse.moveBy(const Offset(30, 30));
+      await settle(tester);
+      expect(model.drag.payload, isA<GraphBookmarkDrag>().having((p) => p.name, 'name', 'b-mark'));
+      expect(c.bookmarksOpen.value, isNull, reason: 'the drag start closes the popover');
+      await mouse.moveBy(const Offset(30, 30));
+      await tester.pump();
+      expect(model.drag.active, isTrue, reason: 'the drag follows the mouse without its row');
+      await mouse.up();
+      await settle(tester);
+      expect(model.drag.payload, isNull);
+      expect(actions.ran, isEmpty);
       await finish(tester);
     });
 

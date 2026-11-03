@@ -13,6 +13,8 @@ import '../../l10n/strings.dart';
 import 'day_axis.dart';
 import 'graph_card.dart';
 import 'graph_content.dart';
+import 'graph_drag.dart';
+import 'graph_drop_menu.dart';
 import 'graph_edges.dart';
 import 'graph_focus.dart';
 import 'graph_gap_callout.dart';
@@ -44,6 +46,26 @@ const graphBornEdgeDelay = Duration(milliseconds: 140);
 
 /// How long the born card's edges take to draw in.
 const graphBornEdgeDraw = Duration(milliseconds: 520);
+
+/// The drag's auto-scroll zone inside the unobscured area (Story 10.10).
+const double graphAutoScrollZone = 56;
+
+/// How far outside the unobscured area the auto-scroll still runs (Story 10.10).
+const double graphAutoScrollOutside = 24;
+
+/// One axis of the drag's auto-scroll per frame (Story 10.10): toward [lo] or [hi] when [v] lies within
+/// [graphAutoScrollZone] inside that edge, or up to [graphAutoScrollOutside] outside it, `ceil((56 − d) / 4)` px; else 0.
+double graphAutoScrollStep(double lo, double hi, double v) {
+  final double toLo = v - lo;
+  final double toHi = hi - v;
+  if (toLo < graphAutoScrollZone && toLo >= -graphAutoScrollOutside) {
+    return -((graphAutoScrollZone - toLo) / 4).ceilToDouble();
+  }
+  if (toHi < graphAutoScrollZone && toHi >= -graphAutoScrollOutside) {
+    return ((graphAutoScrollZone - toHi) / 4).ceilToDouble();
+  }
+  return 0;
+}
 
 /// A transition's length under [motion]: its longest part (Story 10.20; 720 ms, 540 ms under reduce motion).
 Duration graphTransitionDuration(ZsMotion motion) => <Duration>[
@@ -111,8 +133,13 @@ class GraphCanvas extends StatefulWidget {
     this.onShowGap,
     this.showChange,
     this.transition,
+    this.drag,
     super.key,
   });
+
+  /// The graph's drag-and-drop (Story 10.10): the canvas resolves its target, pins and dims its source, highlights
+  /// its target, shows its menu and auto-scrolls; null drags nothing.
+  final GraphDrag? drag;
 
   /// The operation's landing of [layout] (Story 10.20); each new instance runs once.
   final GraphTransition? transition;
@@ -250,10 +277,19 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   var _bornEdges = const <int>{};
   String? _bornReveal;
 
+  // Story 10.10: the drag seen last, the auto-scroll's ticker and arming, the open menu's rect and placement.
+  var _dragActive = false;
+  Offset? _dragPointer;
+  late final Ticker _autoScroll = createTicker(_autoScrollTick);
+  var _autoScrollArmed = false;
+  Rect? _menuRect;
+  var _menuAbove = false;
+
   @override
   void initState() {
     super.initState();
     _listen(widget.cards);
+    _attachDrag(widget.drag);
     widget.pulse?.addListener(_pulseChanged);
     widget.flash?.addListener(_flashChanged);
     _vertical
@@ -312,6 +348,10 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     if (!identical(oldWidget.cards, widget.cards)) {
       _unlisten(oldWidget.cards);
       _listen(widget.cards);
+    }
+    if (!identical(oldWidget.drag, widget.drag)) {
+      _detachDrag(oldWidget.drag);
+      _attachDrag(widget.drag);
     }
     if (!identical(oldWidget.pulse, widget.pulse)) {
       oldWidget.pulse?.removeListener(_pulseChanged);
@@ -413,8 +453,134 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     }
   }
 
+  // ---- drag-and-drop (Story 10.10) ----
+
+  void _attachDrag(GraphDrag? drag) {
+    drag
+      ?..addListener(_dragChanged)
+      ..toViewport = _toViewport;
+  }
+
+  void _detachDrag(GraphDrag? drag) {
+    drag?.removeListener(_dragChanged);
+    if (drag != null && drag.toViewport == _toViewport) {
+      drag.toViewport = null;
+    }
+  }
+
+  Rect? _toViewport(Rect global) {
+    final Offset? at = _viewport.toLocal(global.topLeft);
+    return at == null ? null : at & global.size;
+  }
+
+  void _dragChanged() {
+    final GraphDrag drag = widget.drag!;
+    final bool active = drag.active;
+    if (active && !_dragActive) {
+      // Drag start: no peek, no tooltip, no gap callout; the auto-scroll arms once the pointer is well inside.
+      _closeGap();
+      _peekTimer?.cancel();
+      _tipTimer?.cancel();
+      _peekTimer = _tipTimer = null;
+      _peekTimerKey = null;
+      _tipPending = null;
+      _peekKey = null;
+      _tip = null;
+      _autoScrollArmed = false;
+      if (!_autoScroll.isActive) {
+        _autoScroll.start();
+      }
+    } else if (!active && _dragActive) {
+      _autoScroll.stop();
+      _dragPointer = null;
+    }
+    _dragActive = active;
+    if (active && drag.pointer != _dragPointer) {
+      _dragPointer = drag.pointer;
+      _resolveDropTarget();
+    }
+    widget.cards.dropTarget.value = drag.menuOpen || active ? drag.highlightedTarget : null;
+    if (!drag.menuOpen) {
+      // A menu is hit-tested only once its layer was built for the current target.
+      _menuRect = null;
+    }
+    // Only what the build reads rebuilds the canvas; a pointer move alone does not.
+    final Object seen = (
+      active,
+      drag.afterDrop,
+      drag.payload,
+      drag.target,
+      drag.menuOpen,
+      drag.highlight,
+      drag.rows,
+    );
+    if (mounted && seen != _dragSeen) {
+      _dragSeen = seen;
+      setState(() {});
+    }
+  }
+
+  Object? _dragSeen;
+
+  /// The drag's target from its pointer: the open menu's row, else the top-most card in the unobscured area that is
+  /// neither the source nor a stack.
+  void _resolveDropTarget() {
+    final GraphDrag drag = widget.drag!;
+    final Offset? local = _viewport.toLocal(drag.pointer);
+    final Rect? area = _viewport.unobscured;
+    final Rect? menu = drag.menuOpen ? _menuRect : null;
+    if (local != null && menu != null && menu.contains(local)) {
+      final List<GraphDropRow> rows = drag.rows ?? const <GraphDropRow>[];
+      final List<Rect> rects = graphDropMenuGeometry(rows, above: _menuAbove).rows;
+      final Offset inMenu = local - menu.topLeft;
+      drag.hover(drag.target, menuRow: rects.indexWhere((r) => r.contains(inMenu)));
+      return;
+    }
+    String? key = local != null && area != null && area.contains(local) ? _viewport.keyAt(drag.pointer) : null;
+    final int? node = key == null ? null : widget.layout.indexOfKey(key);
+    if (key == drag.payload?.key || (node != null && widget.layout.isStackNode(node))) {
+      key = null;
+    }
+    drag.hover(key);
+  }
+
+  /// One frame of the auto-scroll: a 56 px zone inside the unobscured area, still active up to 24 px outside it,
+  /// `ceil((56 − d) / 4)` px per frame per axis; armed once the pointer was more than 56 px inside on all sides.
+  void _autoScrollTick(Duration _) {
+    final GraphDrag? drag = widget.drag;
+    final Offset? p = drag == null || !drag.active ? null : _viewport.toLocal(drag.pointer);
+    final Rect? area = _viewport.unobscured;
+    if (p == null || area == null || !_laidOut(_vertical) || !_laidOut(_horizontal)) {
+      return;
+    }
+    if (!_autoScrollArmed) {
+      _autoScrollArmed = area.deflate(graphAutoScrollZone).contains(p);
+      return;
+    }
+    final step = Offset(
+      graphAutoScrollStep(area.left, area.right, p.dx),
+      graphAutoScrollStep(area.top, area.bottom, p.dy),
+    );
+    if (step == Offset.zero) {
+      return;
+    }
+    for (final (ScrollController c, double d) in <(ScrollController, double)>[
+      (_horizontal, step.dx),
+      (_vertical, step.dy),
+    ]) {
+      if (d != 0) {
+        final ScrollPosition position = c.position;
+        c.jumpTo(clampDouble(position.pixels + d, position.minScrollExtent, position.maxScrollExtent));
+      }
+    }
+    // The cards moved under a resting pointer.
+    _resolveDropTarget();
+  }
+
   @override
   void dispose() {
+    _detachDrag(widget.drag);
+    _autoScroll.dispose();
     _unlisten(widget.cards);
     widget.minimapSource?.retract(_vertical);
     widget.pulse?.removeListener(_pulseChanged);
@@ -1206,6 +1372,11 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       for (final String key in widget.pendingKeys) ?widget.layout.placeOfKey(key),
     };
     final List<(int, Rect)> brackets = _brackets(rows, metrics);
+    // Story 10.10: the dragged card paints at .35; it and the target stay laid out (pinned).
+    final GraphDrag? drag = widget.drag;
+    final String? dragSource = drag == null || !(drag.active || drag.afterDrop) ? null : drag.payload?.key;
+    final int? sourceNode = dragSource == null ? null : widget.layout.placeOfKey(dragSource);
+    final String? dragTarget = drag == null || !(drag.active || drag.afterDrop) ? null : drag.target;
     // After layout: the layout, the insets or the size may have moved @ in or out of view.
     SchedulerBinding.instance.addPostFrameCallback((_) => _measureDirection());
     final GraphMinimapSource? minimap = widget.minimapSource;
@@ -1308,10 +1479,11 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                   insets: widget.insets,
                   selectedKey: cards.selected.value,
                   hoveredKey: hoveredKey,
-                  pinnedKeys: <String>{?menu, ?_peekKey, ?_pulseKey},
-                  opacityOf: (focus == null || dim == 0) && pending.isEmpty
+                  pinnedKeys: <String>{?menu, ?_peekKey, ?_pulseKey, ?dragSource, ?dragTarget},
+                  opacityOf: (focus == null || dim == 0) && pending.isEmpty && sourceNode == null
                       ? null
                       : (node) =>
+                            (node == sourceNode ? graphDragSourceOpacity : 1) *
                             (pending.contains(node) ? disabledOpacity : 1) *
                             (focus == null || focus[node] != 0 ? 1 : 1 - .6 * dim),
                   anchorKey: widget.anchorHint ?? cards.selected.value,
@@ -1380,7 +1552,41 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
             listenable: Listenable.merge(<Listenable?>[_vertical, _horizontal, widget.content]),
             builder: (context, _) => _gapLayer(),
           ),
+        if (drag != null && drag.menuOpen)
+          ListenableBuilder(
+            listenable: Listenable.merge(<Listenable>[_vertical, _horizontal, drag]),
+            builder: (context, _) => _dropMenuLayer(drag),
+          ),
       ],
+    );
+  }
+
+  /// The drop menu over its target, re-placed on every scroll frame (it scrolls with its card).
+  Widget _dropMenuLayer(GraphDrag drag) {
+    final String? target = drag.target;
+    final List<GraphDropRow>? rows = drag.rows;
+    final Rect? card = target == null ? null : _viewport.cardRectOf(target);
+    final Rect? area = _viewport.unobscured;
+    if (!drag.menuOpen || rows == null || rows.isEmpty || card == null || area == null) {
+      _menuRect = null;
+      return const SizedBox.shrink();
+    }
+    final Size size = graphDropMenuGeometry(rows, above: false).size;
+    final ({Offset topLeft, bool above}) place = graphDropMenuPlacement(card, size, area);
+    _menuRect = place.topLeft & size;
+    _menuAbove = place.above;
+    final Widget menu = GraphDropMenu(
+      key: ValueKey<String>('graph-drop-menu-$target'),
+      rows: rows,
+      highlight: drag.highlight,
+      above: place.above,
+      onChoose: drag.afterDrop ? (index) => unawaited(drag.choose(index)) : null,
+      onPoint: drag.afterDrop ? drag.point : null,
+    );
+    return Positioned(
+      left: place.topLeft.dx,
+      top: place.topLeft.dy,
+      child: drag.afterDrop ? TapRegion(onTapOutside: (_) => drag.cancel(), child: menu) : IgnorePointer(child: menu),
     );
   }
 

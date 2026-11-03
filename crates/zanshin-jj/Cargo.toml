@@ -81,5 +81,12 @@ harness = false
 name = "get_change"
 harness = false
 
+# WHY: harness = false — same reason as above. `drop_actions_depth` measures Story 10.10's hover
+# path (a drop preview under a deep stack: time and the `refs/jj/keep/*` it leaves); it asserts
+# nothing about wall-clock. Run with `cargo bench -p zanshin-jj --bench drop_actions_depth`.
+[[bench]]
+name = "drop_actions_depth"
+harness = false
+
 [lints]
 workspace = true

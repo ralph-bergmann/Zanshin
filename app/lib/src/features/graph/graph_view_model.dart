@@ -9,6 +9,8 @@ import 'package:zanshin_core/zanshin_core.dart';
 
 import '../undo_timeline/undo_timeline_model.dart' show UndoTimelineActions;
 import 'graph_content.dart';
+import 'graph_drag.dart';
+import 'graph_inspector.dart' show graphShortId;
 import 'graph_layout.dart';
 import 'graph_minimap.dart' show GraphMinimapSource;
 import 'graph_ports.dart';
@@ -180,10 +182,23 @@ const graphGapFlashCap = 10000;
 ///   layout of the same operation that no switch asked for (the watcher's reload after Zanshin's own verb) is the
 ///   last transition [GraphTransition.continued] onto it, so a running one keeps going.
 /// - **Story 11.9**: the Undo Timeline's runner — [undoOperation] undoes any op-log head, [restoreOperation] restores.
+/// - **Story 10.10**: [drag] previews through `init`'s [GraphDrops] and runs its drop through [run] with the ghost's
+///   rect; while a drag or its verb runs ([GraphDrag.holding]) every reload waits (at most one) and runs after it.
 @inject
 class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   /// A view model; [init] connects it.
   GraphViewModel();
+
+  /// The graph's drag-and-drop (Story 10.10).
+  final drag = GraphDrag();
+
+  // A reload asked for while the drag held them.
+  var _heldReload = false;
+  // Counts op-heads events: the drop previews' cache key with the layout's operation (Story 10.10).
+  var _opHeadsEvents = 0;
+  // The drop origin of the running action, until its outcome lands.
+  GraphDropOrigin? _dropping;
+  GraphDropOrigin? _landingDrop;
 
   late GraphSource _source;
   GraphContent? _content;
@@ -255,12 +270,21 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   void init(
     GraphSource source, {
     GraphActions? actions,
+    GraphDrops? drops,
     DateTime Function()? clock,
     GraphMode mode = GraphMode.free,
     bool stacks = false,
     GraphStackStore? stackStore,
     String? revset,
   }) {
+    drag
+      ..drops = drops
+      // An op-heads event changes the key even while the drag holds the reload.
+      ..operationId = (() => '${_layout?.operationId}#$_opHeadsEvents')
+      ..shortOf = _shortOf
+      ..enabled = (() => actionsEnabled)
+      ..run = ((action, origin) => run(action, dropped: origin))
+      ..addListener(_dragChanged);
     _revset = revset;
     _mode = mode;
     _stacks = stacks;
@@ -663,8 +687,26 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     _requestLayout();
   }
 
-  /// Runs [action] (Story 10.9) and reloads after it ran; a refusal reloads only for a stale working copy.
-  Future<GraphActionResult> run(GraphAction action) => _execute(action);
+  /// Runs [action] (Story 10.9) and reloads after it ran; a refusal reloads only for a stale working copy. A drop passes
+  /// its ghost's rect as [dropped] (Story 10.10): the landing glides the dropped card, or grows the born one, from it.
+  Future<GraphActionResult> run(GraphAction action, {GraphDropOrigin? dropped}) {
+    _dropping = dropped;
+    return _execute(action);
+  }
+
+  /// A target key's id as a command shows it.
+  String _shortOf(String key) {
+    final GraphLayout? layout = _layout;
+    final int? node = layout?.indexOfKey(key);
+    return node == null ? key : graphShortId(layout!, node);
+  }
+
+  void _dragChanged() {
+    if (!drag.holding && _heldReload) {
+      _heldReload = false;
+      _requestLayout();
+    }
+  }
 
   /// Undoes [undoable]'s action, when the op-log head is still its operation.
   Future<GraphActionResult> undoLast() async {
@@ -713,6 +755,8 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     if (actions == null) {
       throw StateError('GraphViewModel.init was given no GraphActions');
     }
+    final GraphDropOrigin? dropped = _dropping;
+    _dropping = null;
     if (_disabled case final reason?) {
       return GraphActionDisabled(reason);
     }
@@ -733,6 +777,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       if (outcome.undoable) {
         // Its hints ride with the first layout of a new operation.
         _landing = outcome;
+        _landingDrop = dropped;
       }
       _publish(outcome);
       _requestLayout();
@@ -771,6 +816,10 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     switch (action) {
       case GraphNew(:final parents, :final insertAfter, :final insertBefore):
         return (anchor: <String>[...parents, ...insertAfter, ...insertBefore].firstOrNull, destination: null);
+      case GraphRebase(:final onto, :final insertAfter, :final insertBefore):
+        return (anchor: <String>[...onto, ...insertAfter, ...insertBefore].firstOrNull, destination: null);
+      case GraphDuplicate(:final onto):
+        return (anchor: onto.firstOrNull, destination: null);
       case GraphAbandon(:final ids):
         return (anchor: _firstParent(ids.firstOrNull), destination: null);
       case GraphRevert(:final id) || GraphCommit(:final id) || GraphSplit(:final id):
@@ -830,7 +879,8 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       default:
         break;
     }
-    if (born != null && (action is GraphNew || action is GraphRevert || action is GraphCommit)) {
+    if (born != null &&
+        (action is GraphNew || action is GraphRevert || action is GraphCommit || action is GraphDuplicate)) {
       _explicit = (key: born, alignment: GraphRevealAlignment.covered);
     }
     final outcome = GraphOutcome(
@@ -841,6 +891,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       flash: <String>[
         if (action is GraphSquash) ?plan.destination,
         if (action is GraphBookmarkMove) ?action.to,
+        if (action is GraphRebase) ...<String>[...action.source, ...action.revisions],
         if (action is GraphCommit) action.id,
         if (action is GraphSplit) action.id,
       ],
@@ -903,6 +954,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   void _onEvent(RepoEvent event) {
     switch (event) {
       case OpHeadsChangedEvent():
+        _opHeadsEvents++;
         _requestLayout();
         unawaited(_checkHead());
       case WorkingCopyHeartbeatEvent():
@@ -950,6 +1002,11 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
 
   void _requestLayout() {
     if (_disposed) {
+      return;
+    }
+    if (drag.holding) {
+      // Story 10.10: the cards stay where the drag sees them; the reload runs once the drag and its verb are done.
+      _heldReload = true;
       return;
     }
     if (_inFlight) {
@@ -1027,7 +1084,9 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     } else if (previous != null && op != null && was != null && op != was) {
       // A new operation takes the pending hints, whether it animates or not.
       final GraphOutcome? hints = _landing;
+      final GraphDropOrigin? dropped = _landingDrop;
       _landing = null;
+      _landingDrop = null;
       final String? born = hints?.born.firstOrNull;
       final List<String> flash = hints?.flash ?? const <String>[];
       // It animates when the user did not switch away and something moves or is born (Story 10.20).
@@ -1038,6 +1097,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
           anchor: hints?.anchor,
           born: born,
           flash: <String>{...flash},
+          dropped: dropped,
         );
       } else if (flash.isNotEmpty) {
         _flash.value = GraphFlash(<String>{...flash}, ++_flashSerial);
@@ -1148,6 +1208,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   @override
   void dispose() {
     _disposed = true;
+    drag.dispose();
     unawaited(_events?.cancel());
     _tick?.cancel();
     _now.dispose();

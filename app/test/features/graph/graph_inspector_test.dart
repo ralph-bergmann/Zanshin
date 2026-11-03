@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show SelectionArea;
+import 'package:zanshin/src/features/graph/graph_drag.dart';
 import 'package:zanshin/src/features/graph/graph_inspector.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
@@ -784,6 +785,36 @@ void main() {
     expect(meta, contains('Ada Lovelace'));
     expect(meta, contains('1h'), reason: "the card's relative date");
     expect(find.text('A merge — no changes of its own.'), findsOneWidget);
+    await unmount(tester);
+  });
+
+  testWidgets('Story 10.10: a local chip drags its bookmark; a remote chip does not', (tester) async {
+    await pump(tester);
+    Future<void> drag(String text) async {
+      final TestGesture mouse = await tester.startGesture(
+        tester.getCenter(find.text(text)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await mouse.moveBy(const Offset(30, 0));
+      await tester.pump();
+      await mouse.moveBy(const Offset(30, 0));
+      await tester.pump();
+      await mouse.up();
+      await tester.pump();
+    }
+
+    await drag('main@origin');
+    expect(graph.drag.payload, isNull);
+    final TestGesture mouse = await tester.startGesture(
+      tester.getCenter(find.text('main')),
+      kind: PointerDeviceKind.mouse,
+    );
+    await mouse.moveBy(const Offset(30, 0));
+    await tester.pump();
+    expect(graph.drag.payload, isA<GraphBookmarkDrag>().having((p) => p.name, 'name', 'main'));
+    await mouse.up();
+    await tester.pump();
+    expect(graph.drag.payload, isNull, reason: 'a release on nothing cancels');
     await unmount(tester);
   });
 

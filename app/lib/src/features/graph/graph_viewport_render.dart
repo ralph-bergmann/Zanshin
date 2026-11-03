@@ -72,9 +72,15 @@ class GraphReveal {
 @immutable
 class GraphTransition {
   /// The landing of [to] after [from]; consumed by identity, like a GraphReveal.
-  GraphTransition({required this.from, required this.to, this.anchor, this.born, this.flash = const <String>{}})
-    : _run = Object(),
-      isContinued = false;
+  GraphTransition({
+    required this.from,
+    required this.to,
+    this.anchor,
+    this.born,
+    this.flash = const <String>{},
+    this.dropped,
+  }) : _run = Object(),
+       isContinued = false;
 
   /// [running]'s landing carried onto [to], a later layout of the same operation: a running transition keeps going
   /// (its cards glide on to their rects in [to]) instead of ending at once.
@@ -83,6 +89,7 @@ class GraphTransition {
       anchor = running.anchor,
       born = running.born,
       flash = running.flash,
+      dropped = running.dropped,
       _run = running._run,
       isContinued = true;
 
@@ -109,6 +116,10 @@ class GraphTransition {
 
   /// The cards to flash.
   final Set<String> flash;
+
+  /// A drop's origin (Story 10.10), viewport-local: card `key` glides from `rect` instead of its old rect, and [born]
+  /// grows from `rect`'s centre instead of [anchor]'s.
+  final ({String? key, Rect rect})? dropped;
 }
 
 /// A card new in a transition (not the born one) waits this long, then fades in over [graphArrivalFade].
@@ -188,6 +199,22 @@ class GraphViewportController {
 
   /// Whether a canvas pan is held.
   bool get isPanning => _viewport?.isPanning ?? false;
+
+  /// The key of the top-most card painted under [global] (a card in a transition where it paints), or null (Story
+  /// 10.10's drop target).
+  String? keyAt(Offset global) {
+    final RenderGraphViewport? viewport = _viewport;
+    if (viewport == null || !viewport.attached || !viewport.hasSize) {
+      return null;
+    }
+    return viewport._keyAt(viewport.globalToLocal(global));
+  }
+
+  /// [global] in viewport coordinates; null while detached.
+  Offset? toLocal(Offset global) {
+    final RenderGraphViewport? viewport = _viewport;
+    return viewport == null || !viewport.attached ? null : viewport.globalToLocal(global);
+  }
 
   /// Jumps both axes to [offset] (horizontal, vertical).
   void jumpTo(Offset offset) {
@@ -649,11 +676,21 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
     final String? born = t.born;
     final int? bornNode = born == null || from.indexOfKey(born) != null ? null : _layout.placeOfKey(born);
     final int? anchorWas = t.anchor == null ? null : from.placeOfKey(t.anchor!);
+    final ({String? key, Rect rect})? dropped = t.dropped;
+    final int? droppedNode = dropped?.key == null ? null : _layout.placeOfKey(dropped!.key!);
     for (final node in laidOut) {
-      if (node == bornNode && anchorWas != null) {
-        // Centred on the anchor's old rect.
-        final Offset centre = was(anchorWas) + card.center(Offset.zero);
+      if (node == bornNode && (dropped != null || anchorWas != null)) {
+        // Centred on the drop's ghost, else on the anchor's old rect.
+        final Offset centre = dropped?.rect.center ?? was(anchorWas!) + card.center(Offset.zero);
         effects[node] = (kind: _FxKind.birth, delta: centre - (now(node) + cardRect(node).size.center(Offset.zero)));
+        continue;
+      }
+      if (node == droppedNode) {
+        // The dropped card glides from where the ghost let go of it.
+        final Offset delta = dropped!.rect.topLeft - now(node);
+        if (delta != Offset.zero) {
+          effects[node] = (kind: _FxKind.glide, delta: delta);
+        }
         continue;
       }
       final int? old = from.placeOfKey(_layout.keyOf(node));
@@ -991,6 +1028,18 @@ class RenderGraphViewport extends RenderTwoDimensionalViewport implements MouseT
 
   @override
   Rect? describeApproximatePaintClip(RenderObject child) => clipBehavior == Clip.none ? null : Offset.zero & size;
+
+  String? _keyAt(Offset local) {
+    final card = Rect.fromLTWH(graphCardOverhang, graphCardOverhang, _metrics.cardWidth, _metrics.cardHeight);
+    for (final RenderBox child in paintOrder.reversed) {
+      final TwoDimensionalViewportParentData data = parentDataOf(child);
+      final Matrix4? inverse = Matrix4.tryInvert(_childTransform(child, _fxOf(data.vicinity.yIndex)));
+      if (inverse != null && card.contains(MatrixUtils.transformPoint(inverse, local))) {
+        return _layout.keyOf(data.vicinity.yIndex);
+      }
+    }
+    return null;
+  }
 
   /// Whether [position] (local) lies on a card.
   bool isOnCard(Offset position) {

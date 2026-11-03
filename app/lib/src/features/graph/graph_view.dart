@@ -16,6 +16,7 @@ import 'at_pill.dart';
 import 'graph_canvas.dart';
 import 'graph_card.dart';
 import 'graph_card_menu.dart';
+import 'graph_drag.dart';
 import 'graph_inspector.dart';
 import 'graph_layout.dart';
 import 'graph_minimap.dart';
@@ -182,8 +183,35 @@ class _GraphViewState extends State<GraphView> {
     super.dispose();
   }
 
-  /// No hover while calm scrolling runs or the window is not key; turning it off clears the hover.
-  void _hoverGate() => _cards.hoverEnabled = !(_inactive ?? false) && !(_calm?.value.calm ?? false);
+  /// No hover while calm scrolling runs, the window is not key or a drag runs; turning it off clears the hover.
+  void _hoverGate() =>
+      _cards.hoverEnabled = !(_inactive ?? false) && !(_calm?.value.calm ?? false) && widget.model.drag.payload == null;
+
+  // Story 10.10: the shell's item-drag hold while a drag (or its after-drop menu) lasts, and the ghost's overlay entry.
+  CalmHold? _dragHold;
+  OverlayEntry? _ghost;
+
+  void _dragChanged() {
+    final GraphDrag drag = widget.model.drag;
+    if (drag.active && _dragHold == null) {
+      // Drag start: menus and popovers close, a pending click-select is dropped, hover goes off.
+      _cards
+        ..closeMenus()
+        ..cancelClick();
+      _dragHold = ShellScope.maybeOf(context)?.startItemDrag() ?? CalmHold(() {});
+    } else if (drag.payload == null && _dragHold != null) {
+      _dragHold!.release();
+      _dragHold = null;
+    }
+    _hoverGate();
+    if (drag.ghost != null && _ghost == null) {
+      _ghost = OverlayEntry(builder: (context) => _GraphDragGhostLayer(drag: drag));
+      Overlay.of(context, rootOverlay: true).insert(_ghost!);
+    } else if (drag.ghost == null && _ghost != null) {
+      _ghost!.remove();
+      _ghost = null;
+    }
+  }
 
   void _edit(String key) => unawaited(widget.model.edit(key));
 
@@ -280,8 +308,10 @@ class _GraphViewState extends State<GraphView> {
   void _attach(GraphViewModel model) {
     model
       ..addListener(_modelChanged)
-      ..now.addListener(_nowChanged);
+      ..now.addListener(_nowChanged)
+      ..drag.addListener(_dragChanged);
     _cards
+      ..drag = model.drag
       ..selected.value = model.selected
       ..now.value = model.now.value
       ..actionsEnabled.value = model.actionsEnabled;
@@ -290,7 +320,13 @@ class _GraphViewState extends State<GraphView> {
   void _detach(GraphViewModel model) {
     model
       ..removeListener(_modelChanged)
-      ..now.removeListener(_nowChanged);
+      ..now.removeListener(_nowChanged)
+      ..drag.removeListener(_dragChanged)
+      ..drag.cancel();
+    _dragHold?.release();
+    _dragHold = null;
+    _ghost?.remove();
+    _ghost = null;
   }
 
   void _modelChanged() {
@@ -357,6 +393,7 @@ class _GraphViewState extends State<GraphView> {
                 onShowGap: _showGap,
                 showChange: model.showChange,
                 transition: model.transition,
+                drag: model.drag,
               ),
             if (layout != null) ...<Widget>[
               GraphCardMenuHost(cards: _cards, model: model, inspector: widget.inspectorModel),
@@ -398,4 +435,71 @@ class _GraphViewState extends State<GraphView> {
     }
     return null;
   }
+}
+
+/// The drag's ghost on the root overlay, above the islands (Story 10.10): at the pointer + [graphGhostOffset], at the
+/// drop point while the drop's verb runs. Its words: the highlighted row's command on a target; on a card with no
+/// Available row the first refusal; else the hint. They hide while the menu is open, and the ghost fades over it.
+class _GraphDragGhostLayer extends StatelessWidget {
+  const _GraphDragGhostLayer({required this.drag});
+
+  final GraphDrag drag;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: drag,
+    builder: (context, _) {
+      final GraphDragPayload? payload = drag.ghost;
+      if (payload == null) {
+        return const SizedBox.shrink();
+      }
+      final AppLocalizations strings = context.l10n;
+      final Offset at = (drag.dropPoint ?? drag.pointer) + graphGhostOffset;
+      final String? command = drag.highlightedTarget == null ? null : drag.highlightedRow?.command;
+      final String? hint = command != null
+          ? null
+          : drag.target != null && drag.refusal != null
+          ? drag.refusal
+          : payload is GraphBookmarkDrag
+          ? strings.dragHintBookmark
+          : strings.dragHintChange;
+      return Stack(
+        children: <Widget>[
+          Positioned(
+            left: at.dx,
+            top: at.dy,
+            child: switch (payload) {
+              GraphChangeDrag(
+                :final String changeId,
+                :final int prefix,
+                :final String subject,
+                :final bool workingCopy,
+              ) =>
+                ZsDragGhost(
+                  chipKey: drag.ghostKey,
+                  kind: ZsDragGhostKind.change,
+                  label: subject,
+                  changeId: changeId,
+                  prefix: prefix,
+                  workingCopy: workingCopy,
+                  command: command,
+                  hint: hint,
+                  hideWords: drag.menuOpen || drag.running,
+                  muted: drag.overMenu,
+                ),
+              GraphBookmarkDrag(:final String name) => ZsDragGhost(
+                chipKey: drag.ghostKey,
+                kind: ZsDragGhostKind.bookmark,
+                label: name,
+                command: command,
+                hint: hint,
+                hideWords: drag.menuOpen || drag.running,
+                muted: drag.overMenu,
+              ),
+            },
+          ),
+        ],
+      );
+    },
+  );
 }

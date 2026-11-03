@@ -1886,6 +1886,108 @@ abstract class AppLocalizations {
   /// **'Moved {names} to {target}'**
   String toastBookmarkMoved(String names, String target);
 
+  /// Operation toast after a drop ran jj rebase -s/-r … -o; both are change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Moved {source} onto {target}'**
+  String toastRebasedOnto(String source, String target);
+
+  /// Operation toast after a drop ran jj rebase -r … -A; both are change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Inserted {source} after {target}'**
+  String toastRebasedAfter(String source, String target);
+
+  /// Operation toast after a drop ran jj rebase -r … -B; both are change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Inserted {source} before {target}'**
+  String toastRebasedBefore(String source, String target);
+
+  /// Operation toast after jj new with two or more parents (a drop's New merge change); both are change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Merged {first} and {second} in a new change'**
+  String toastMerged(String first, String second);
+
+  /// Operation toast after a drop ran jj duplicate … -o; both are change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Duplicated {source} onto {target}'**
+  String toastDuplicated(String source, String target);
+
+  /// Drop menu row: jj rebase -s (the dragged change and its descendants onto the target).
+  ///
+  /// In en, this message translates to:
+  /// **'Move here'**
+  String get dropMoveHere;
+
+  /// Drop menu row: jj rebase -r (only the dragged change onto the target).
+  ///
+  /// In en, this message translates to:
+  /// **'Move only this change'**
+  String get dropMoveOnly;
+
+  /// Drop menu row: jj rebase -r … -A (insert the dragged change after the target).
+  ///
+  /// In en, this message translates to:
+  /// **'Insert after'**
+  String get dropInsertAfter;
+
+  /// Drop menu row: jj rebase -r … -B (insert the dragged change before the target).
+  ///
+  /// In en, this message translates to:
+  /// **'Insert before'**
+  String get dropInsertBefore;
+
+  /// Drop menu row: jj squash --from … --into the target.
+  ///
+  /// In en, this message translates to:
+  /// **'Squash into this change'**
+  String get dropSquash;
+
+  /// Drop menu row: jj new with the target and the dragged change as parents.
+  ///
+  /// In en, this message translates to:
+  /// **'New merge change'**
+  String get dropNewMerge;
+
+  /// Drop menu row: jj duplicate … -o the target.
+  ///
+  /// In en, this message translates to:
+  /// **'Duplicate here'**
+  String get dropDuplicate;
+
+  /// Drop menu row: jj bookmark move of the dragged bookmark to the target.
+  ///
+  /// In en, this message translates to:
+  /// **'Move {name} here'**
+  String dropMoveBookmark(String name);
+
+  /// Drop menu warn note: the bookmark move is not a fast-forward (jj's --allow-backwards).
+  ///
+  /// In en, this message translates to:
+  /// **'backwards'**
+  String get dropBackwards;
+
+  /// VoiceOver label of the drop menu that opens over a change while something is dragged onto it.
+  ///
+  /// In en, this message translates to:
+  /// **'Drop actions'**
+  String get dropMenuLabel;
+
+  /// Under the drag ghost of a change while no change that takes it is under the pointer.
+  ///
+  /// In en, this message translates to:
+  /// **'Drop on a change'**
+  String get dragHintChange;
+
+  /// Under the drag ghost of a bookmark while no change that takes it is under the pointer.
+  ///
+  /// In en, this message translates to:
+  /// **'Drop on the change it should point to'**
+  String get dragHintBookmark;
+
   /// Operation toast after jj bookmark rename.
   ///
   /// In en, this message translates to:
@@ -2161,6 +2263,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Squash {target} into Parent'**
   String menuSquashTarget(String target);
+
+  /// Undo/Redo menu name of a jj rebase … -o; both are change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Move {source} onto {target}'**
+  String menuRebaseOnto(String source, String target);
+
+  /// Undo/Redo menu name of a jj rebase -r … -A; both are change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Insert {source} after {target}'**
+  String menuRebaseAfter(String source, String target);
+
+  /// Undo/Redo menu name of a jj rebase -r … -B; both are change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Insert {source} before {target}'**
+  String menuRebaseBefore(String source, String target);
+
+  /// Undo/Redo menu name of a jj duplicate … -o; both are change ids.
+  ///
+  /// In en, this message translates to:
+  /// **'Duplicate {source} onto {target}'**
+  String menuDuplicateOnto(String source, String target);
+
+  /// Undo/Redo menu name of a jj new with two or more parents (a drop's New merge change); first is the dropped change, second the target.
+  ///
+  /// In en, this message translates to:
+  /// **'New Merge Change of {first} and {second}'**
+  String menuNewMerge(String first, String second);
 
   /// Undo/Redo menu name of a jj commit; target is the committed change id.
   ///

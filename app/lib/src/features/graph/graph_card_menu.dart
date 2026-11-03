@@ -12,6 +12,7 @@ import '../../l10n/strings.dart';
 import '../window/app_window_actions.dart';
 import 'graph_card.dart';
 import 'graph_content.dart';
+import 'graph_drag.dart';
 import 'graph_inspector.dart';
 import 'graph_layout.dart';
 import 'graph_ports.dart';
@@ -269,6 +270,7 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
   required List<Bookmark>? bookmarks,
   required ValueChanged<GraphNameRequest> ask,
   bool readFailed = false,
+  GraphDrag? drag,
 }) {
   final List<GraphRef> refs = layout.refsOf(node);
 
@@ -281,6 +283,7 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
     bool mono = false,
     bool danger = false,
     List<ZsMenuEntry>? submenu,
+    Widget Function(Widget row)? wrap,
   }) {
     final String? why = blocked ?? reason;
     return ZsMenuItem(
@@ -293,6 +296,7 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
       identifier: identifier,
       submenu: submenu,
       onSelected: onSelected ?? (action == null ? null : () => run(action)),
+      wrap: wrap,
     );
   }
 
@@ -316,6 +320,13 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
           name,
           mono: true,
           identifier: 'bookmark-menu-$name',
+          // Story 10.10: the row drags the bookmark onto another change.
+          wrap: (row) => GraphDragSource(
+            drag: drag,
+            payload: GraphBookmarkDrag(name),
+            enabled: blocked == null && graphBookmarkDraggable(name),
+            child: row,
+          ),
           submenu: <ZsMenuEntry>[
             item(
               strings.bookmarkMenuRename,
@@ -779,6 +790,7 @@ class _GraphBookmarkMenuHostState extends State<GraphBookmarkMenuHost> {
           run: (action) => unawaited(model.run(action)),
           bookmarks: _read,
           readFailed: _readFailed,
+          drag: model.drag,
           ask: (request) => _askFor(layout.keyOf(node), graphShortId(layout, node), request),
         ),
       ),

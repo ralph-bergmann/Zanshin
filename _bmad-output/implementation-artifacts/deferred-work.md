@@ -2687,3 +2687,12 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 - **Long histories: commit-free months leave screens of empty canvas, the minimap's day labels are clipped, and the fitted minimap squeezes years together.** Medium.
   - Free maps time to y with no limit; `graph_minimap.dart` has a fixed 118 px strip with a 58 px label column ("Dec 16, 2015" does not fit) and fits the whole history to its height.
   - **Follow-up:** Story 10.31 (design round first): shortened gaps with a torn-paper edge, a minimap sized to its content, year labels (sticky while it scrolls), a scrolling minimap, optionally the day pill reaching out of the card. Covered by Story 10.31.
+
+## Surfaced in Story 10.10 (bmad-build-auto, 2026-11-03)
+
+- **Nothing tells a jj-lib pin bump to re-diff the ported move planner in `rebase.rs` against jj-lib's `rewrite.rs`.** Medium.
+  - `crates/zanshin-jj/src/rebase.rs` `planned_parents` / `TargetGraph` / `new_children` / `children_parents` copy jj-lib 0.46.0 `rewrite.rs:667-957` (+ private helpers `:1259`, `:1285`) so `rebase_is_no_op` writes nothing; the inline dry-run comparison catches drift only on the shapes it builds, and project-context.md § zanshin-jj's pin-bump steps do not name it.
+  - **Follow-up:** add "re-diff `rebase.rs::planned_parents` against `rewrite.rs::compute_move_commits`" to the pin-bump steps (an agent-context edit, so not done in the story run).
+- **The drag-and-drop UI was not checked in the running app (ghost, drop target, menu above/below, toast).** Medium.
+  - Unattended run with targeted checks only: widget tests cover the canvas drags, the menu rows and the ghost words; no Marionette/Playwright look at `app/lib/src/features/graph/graph_canvas.dart` / `graph_drop_menu.dart` / `packages/zanshin_ui/lib/src/controls/zs_drag_ghost.dart` against the DS cards (DropMenu, DragGhost).
+  - **Follow-up:** a Marionette check in the running app (card and bookmark drags, menu above and below, ⌥, a backwards bookmark), recorded in spec-10-10-graph-drag-and-drop.md.

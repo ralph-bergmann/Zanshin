@@ -161,6 +161,31 @@ void main() {
   setUp(() => button = FocusNode(debugLabel: 'opener'));
   tearDown(() => button.dispose());
 
+  testWidgets('wrap wraps the built row (Story 10.10); the row still activates', (tester) async {
+    var ran = 0;
+    await tester.pumpWidget(
+      _host(
+        button: button,
+        entries: <ZsMenuEntry>[
+          ZsMenuItem(
+            label: 'main',
+            onSelected: () => ran++,
+            wrap: (row) => KeyedSubtree(key: const ValueKey<String>('wrapped'), child: row),
+          ),
+        ],
+      ),
+    );
+    await _openByKey(tester, button);
+    expect(find.descendant(of: find.byKey(const ValueKey<String>('wrapped')), matching: find.text('main')), findsOne);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    expect(ran, 1);
+  });
+
   testWidgets('↑ ↓ move and wrap, skipping disabled rows; Home End', (tester) async {
     handle = tester.ensureSemantics();
     await tester.pumpWidget(_host(button: button));

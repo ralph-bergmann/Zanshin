@@ -5,9 +5,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:zanshin_core/zanshin_core.dart' show LocalBookmark;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../graph/graph_drag.dart';
 import '../graph/graph_ports.dart';
 import '../shell/shell_controller.dart';
 import '../shell/shell_scope.dart';
@@ -272,45 +274,63 @@ class _BookmarkRowTileState extends State<BookmarkRowTile> {
         ),
       ),
     );
-    return MouseRegion(
-      cursor: pickable ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: Focus(
-        focusNode: _focus,
-        canRequestFocus: !widget.preview,
-        skipTraversal: widget.preview,
-        includeSemantics: false,
-        onKeyEvent: _key,
-        onFocusChange: (focused) => setState(() => _focused = focused),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: pickable ? _pick : null,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: _hovered && !inactive ? colors.flHover : null,
-              borderRadius: BorderRadius.circular(6),
-              border: ring ? Border.all(color: colors.focusRing, width: 2) : null,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  body,
-                  if (track != null && (_hovered || _focused))
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6, left: 22),
-                      child: Align(alignment: Alignment.centerLeft, child: _trackButton(strings, track)),
-                    ),
-                ],
-              ),
+    final String name = row.bookmark.name;
+    // Story 10.10: a local bookmark drags onto the change it should point to (not while the actions are disabled; the
+    // stale tooltip stays).
+    return GraphDragSource(
+      drag: widget.model.graph.drag,
+      payload: GraphBookmarkDrag(name),
+      enabled: row.bookmark.kind is LocalBookmark && graphBookmarkDraggable(name) && widget.model.graph.actionsEnabled,
+      child: _tile(colors, inactive, pickable, ring, track, strings, body),
+    );
+  }
+
+  Widget _tile(
+    ZsColors colors,
+    bool inactive,
+    bool pickable,
+    bool ring,
+    GraphAction? track,
+    AppLocalizations strings,
+    Widget body,
+  ) => MouseRegion(
+    cursor: pickable ? SystemMouseCursors.click : MouseCursor.defer,
+    onEnter: (_) => setState(() => _hovered = true),
+    onExit: (_) => setState(() => _hovered = false),
+    child: Focus(
+      focusNode: _focus,
+      canRequestFocus: !widget.preview,
+      skipTraversal: widget.preview,
+      includeSemantics: false,
+      onKeyEvent: _key,
+      onFocusChange: (focused) => setState(() => _focused = focused),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: pickable ? _pick : null,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: _hovered && !inactive ? colors.flHover : null,
+            borderRadius: BorderRadius.circular(6),
+            border: ring ? Border.all(color: colors.focusRing, width: 2) : null,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                body,
+                if (track != null && (_hovered || _focused))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, left: 22),
+                    child: Align(alignment: Alignment.centerLeft, child: _trackButton(strings, track)),
+                  ),
+              ],
             ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 
   /// `grid-template-columns:14px minmax(0,1fr) auto; gap:8px` (DS kit.css:74).
   Widget _content(ZsColors colors, AppLocalizations strings, BookmarkRow row) {

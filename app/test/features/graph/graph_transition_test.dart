@@ -64,6 +64,37 @@ void main() {
       expect(h.screenOf(tester, 'r13'), r13);
     });
 
+    testWidgets('Story 10.10: a dropped card glides from the ghost rect; a born one grows from its centre', (
+      tester,
+    ) async {
+      final h = GraphHarness(chainLayout(20))..anchorKey = 'r14';
+      await pumpGraph(tester, h);
+      h.v.jumpTo(600);
+      await tester.pump();
+      const ghost = Rect.fromLTWH(40, 50, 200, 34);
+      final GraphLayout moved = chainLayout(20, colOf: const <String, int>{'r12': 2});
+      h
+        ..transition = GraphTransition(from: h.layout, to: moved, dropped: (key: 'r12', rect: ghost))
+        ..layout = moved
+        ..transitionElapsed = Duration.zero;
+      await tester.pumpWidget(h.build());
+      final Rect now = h.controller.cardRectOf('r12')!;
+      expect(h.render(tester).transitionEffectOf('r12')?.shift, ghost.topLeft - now.topLeft);
+      expect(h.controller.keyAt(h.render(tester).localToGlobal(ghost.topLeft + const Offset(20, 20))), 'r12');
+
+      final h2 = GraphHarness(chainLayout(5));
+      await pumpGraph(tester, h2);
+      final GraphLayout from = h2.layout;
+      final GraphLayout born = chainLayout(5, head: 'n');
+      h2
+        ..transition = GraphTransition(from: from, to: born, born: 'n', dropped: (key: null, rect: ghost))
+        ..layout = born
+        ..transitionElapsed = Duration.zero;
+      await tester.pumpWidget(h2.build());
+      final Rect bornRect = h2.controller.cardRectOf('n')!;
+      expect(h2.render(tester).transitionEffectOf('n')?.shift, ghost.center - bornRect.center);
+    });
+
     testWidgets('hit testing follows the glide: a tap on the old rect hits the gliding card', (tester) async {
       final h = GraphHarness(chainLayout(20))..anchorKey = 'r14';
       await pumpGraph(tester, h);

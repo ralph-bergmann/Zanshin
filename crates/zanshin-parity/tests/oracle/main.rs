@@ -15,6 +15,7 @@ mod card_menu_commands;
 mod compare;
 mod diff_revisions;
 mod driver;
+mod drop_menu_commands;
 mod git_scenarios;
 mod harness;
 mod hints;

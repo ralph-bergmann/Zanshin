@@ -1,0 +1,10 @@
+jj rebase -s kmnvxoqp -o vruxwmqv
+jj rebase -r kmnvxoqp -o vruxwmqv
+jj rebase -r kmnvxoqp -A vruxwmqv
+jj rebase -r kmnvxoqp -B vruxwmqv
+jj squash --from kmnvxoqp --into vruxwmqv
+jj new vruxwmqv kmnvxoqp
+jj duplicate kmnvxoqp -o vruxwmqv
+jj bookmark move b-mark --to kmnvxoqp
+jj bookmark move b-mark --to vruxwmqv --allow-backwards
+jj bookmark move 'exact:"feat{x}"' --to kmnvxoqp

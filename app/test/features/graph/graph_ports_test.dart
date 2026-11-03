@@ -238,6 +238,39 @@ void main() {
       for (final Bookmark bookmark in await repo.handle.bookmarks()) bookmark.name: bookmark.target,
     };
 
+    Future<List<String>> parentsOf(ProjectRepo repo, String id) async =>
+        (await repo.handle.show(revset: id)).single.change.parents;
+
+    test('Story 10.10: rebase -s … -o and -r … -A land the parents the commands name', () async {
+      final (ProjectRepo repo, GraphViewModel model, String first, String second) = await setUpRepo('rebase');
+      // A sibling `third` on `first`; @ moves to it (second holds a file, so it is not abandoned as an empty @).
+      File('${pathOf('rebase')}/b.txt').writeAsStringSync('b\n');
+      await repo.handle.show(revset: second);
+      final String third = (await repo.handle.newChange(<String>[first])).newChangeIds.single;
+      final GraphActionResult moved = await model.run(GraphRebase(source: <String>[second], onto: <String>[third]));
+      expect(moved, isA<GraphActionDone>(), reason: moved is GraphActionRefused ? '${moved.error}' : null);
+      expect(await parentsOf(repo, second), <String>[third]);
+      expect(
+        await model.run(GraphRebase(revisions: <String>[second], insertAfter: <String>[first])),
+        isA<GraphActionDone>(),
+      );
+      expect(await parentsOf(repo, second), <String>[first]);
+      expect(await parentsOf(repo, third), <String>[second], reason: '-A inserts it between first and third');
+    });
+
+    test('Story 10.10: duplicate … -o puts the copy on the target', () async {
+      final (ProjectRepo repo, GraphViewModel model, String first, String second) = await setUpRepo('duplicate');
+      File('${pathOf('duplicate')}/b.txt').writeAsStringSync('b\n');
+      await repo.handle.show(revset: second);
+      final String third = (await repo.handle.newChange(<String>[first])).newChangeIds.single;
+      final GraphActionResult result = await model.run(
+        GraphDuplicate(revisions: <String>[second], onto: <String>[third]),
+      );
+      final String copy = (result as GraphActionDone).outcome.born.single;
+      expect(await parentsOf(repo, copy), <String>[third]);
+      expect(await parentsOf(repo, second), <String>[first], reason: 'the original stays');
+    });
+
     test('describe sets the description of its change', () async {
       final (ProjectRepo repo, GraphViewModel model, String first, _) = await setUpRepo('describe-action');
       expect(await model.run(GraphDescribe(first, 'from the runner')), isA<GraphActionDone>());

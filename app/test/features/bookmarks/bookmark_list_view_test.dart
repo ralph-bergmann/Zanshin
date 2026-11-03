@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/bookmarks/bookmark_list_view.dart';
+import 'package:zanshin/src/features/graph/graph_drag.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_search_model.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
@@ -149,6 +150,30 @@ void main() {
       // The row's long state is its tooltip and VoiceOver label.
       expect(tester.getSemantics(_row(4)).label, 'release/1.5.x@origin — remote only, not tracked');
       expect(tester.getSemantics(_row(0)).label, 'feat — ahead of origin by 1');
+    });
+  });
+
+  testWidgets('Story 10.10: a local row drags its bookmark (no pick); a remote row does not drag', (tester) async {
+    await withPanel(tester, _rows(), (rig) async {
+      Future<void> drag(String text) async {
+        final TestGesture mouse = await tester.startGesture(
+          tester.getCenter(find.text(text)),
+          kind: PointerDeviceKind.mouse,
+        );
+        await mouse.moveBy(const Offset(30, 0));
+        await tester.pump();
+        await mouse.moveBy(const Offset(30, 0));
+        await tester.pump();
+      }
+
+      await drag('main');
+      expect(rig.graph.drag.payload, isA<GraphBookmarkDrag>().having((p) => p.name, 'name', 'main'));
+      rig.graph.drag.cancel();
+      await tester.pump();
+      expect(rig.graph.selected, isNull, reason: 'the drag swallowed the pick');
+      await drag('release/1.5.x@origin');
+      expect(rig.graph.drag.payload, isNull);
+      await tester.pump();
     });
   });
 

@@ -218,7 +218,18 @@ class AppMenuModel extends ChangeNotifier {
       GraphAbandon(:final ids) => s.menuAbandonTarget(names(ids)),
       GraphEdit(:final id) => s.menuChangeEditTarget(name(id)),
       GraphDescribe(:final id) => s.menuDescribeTarget(name(id)),
+      GraphNew(:final parents) when parents.length > 1 => s.menuNewMerge(
+        name(parents.last),
+        names(parents.sublist(0, parents.length - 1)),
+      ),
       GraphNew() => s.menuNewChange,
+      GraphRebase(:final source, :final revisions, :final onto, :final insertAfter, :final insertBefore) =>
+        insertAfter.isNotEmpty
+            ? s.menuRebaseAfter(names(<String>[...source, ...revisions]), names(insertAfter))
+            : insertBefore.isNotEmpty
+            ? s.menuRebaseBefore(names(<String>[...source, ...revisions]), names(insertBefore))
+            : s.menuRebaseOnto(names(<String>[...source, ...revisions]), names(onto)),
+      GraphDuplicate(:final revisions, :final onto) => s.menuDuplicateOnto(names(revisions), names(onto)),
       GraphRevert(:final id) => s.menuRevertTarget(name(id)),
       GraphSquash(:final revision, :final from) => s.menuSquashTarget(
         revision != null

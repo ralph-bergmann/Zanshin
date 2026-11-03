@@ -46,7 +46,11 @@ final class ZsMenuItem extends ZsMenuEntry {
     this.onSelected,
     this.identifier,
     this.tooltip,
+    this.wrap,
   });
+
+  /// Wraps the built row (Story 10.10: a bookmark row that is also a drag source); null shows the row as it is.
+  final Widget Function(Widget row)? wrap;
 
   /// The action's name.
   final String label;
@@ -898,7 +902,7 @@ class ZsMenuPanelState extends State<ZsMenuPanel> {
 
   Widget _row(BuildContext context, int index, ZsMenuItem item, Key? key) {
     final List<ZsMenuEntry>? submenu = item.submenu;
-    final Widget row = _Row(
+    final Widget built = _Row(
       key: key,
       item: item,
       cmdMaxWidth: widget.cmdMaxWidth,
@@ -911,6 +915,7 @@ class ZsMenuPanelState extends State<ZsMenuPanel> {
         activateEntry(index);
       },
     );
+    final Widget row = item.wrap?.call(built) ?? built;
     if (submenu == null) {
       return row;
     }

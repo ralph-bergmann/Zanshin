@@ -18,7 +18,7 @@ const CARD: &str = "kmnvxoqp";
 
 /// Runs `line` through `sh -c` in `root` with the pinned `jj` first on `PATH`, the CLI's hermetic
 /// environment and `JJ_EDITOR=true` (describe and squash open the editor; `true` keeps the text).
-fn run_line(root: &Path, line: &str) -> std::process::Output {
+pub(crate) fn run_line(root: &Path, line: &str) -> std::process::Output {
     let jj = Path::new(env!("CARGO_BIN_EXE_jj"))
         .parent()
         .expect("the jj binary's directory");

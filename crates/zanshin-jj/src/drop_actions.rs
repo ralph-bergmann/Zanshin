@@ -613,7 +613,8 @@ fn squash_into(change: &ChangeId, target: &ChangeId, paths: &[String]) -> Squash
 }
 
 /// Runs `query` with the call's head loaded once — with signing dropped
-/// ([`load_dry_run_head`]), since the rebase rows' dry run writes commits it throws away — then
+/// ([`load_dry_run_head`]), since a row's plan may write commits it throws away (the rebase rows'
+/// check writes nothing since Story 10.10) — then
 /// puts the precondition's warnings back as the call's only ones: whatever the rows recorded is
 /// dropped, on every path.
 fn with_rows<T>(

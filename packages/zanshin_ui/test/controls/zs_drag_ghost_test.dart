@@ -100,6 +100,61 @@ void main() {
     expect(tilt(), Matrix4.identity());
   });
 
+  testWidgets('a change (Story 10.10): @ badge, the id bold to its prefix and max(prefix, 8) long, the subject', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _ghost(
+        const ZsDragGhost(
+          kind: ZsDragGhostKind.change,
+          label: 'Fix the parser',
+          changeId: 'ovknlmrowxyzqpst',
+          prefix: 3,
+          workingCopy: true,
+          command: 'jj rebase -s ovknlmro -o vruxwmqv',
+        ),
+      ),
+    );
+    expect(find.text('@'), findsOneWidget);
+    expect(find.text('Fix the parser'), findsOneWidget);
+    final RichText id = tester.widget<RichText>(
+      find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText() == 'ovknlmro'),
+    );
+    TextSpan? bold;
+    id.text.visitChildren((span) {
+      if (span is TextSpan && span.text == 'ovk') {
+        bold = span;
+      }
+      return bold == null;
+    });
+    expect(bold?.style?.fontWeight, FontWeight.w600);
+    // The command words: mono, --accent-line border, --text.
+    final Finder words = find.text('jj rebase -s ovknlmro -o vruxwmqv');
+    expect(_surfaceAround(tester, 'jj rebase -s ovknlmro -o vruxwmqv').border, night.accentLine);
+    expect(tester.widget<Text>(words).style?.fontFamily, contains('JetBrainsMono'));
+    expect(tester.widget<Text>(words).style?.color, night.text);
+  });
+
+  testWidgets('a bookmark: the 28 px pill with the glyph and the mono name; a hint as words', (tester) async {
+    await tester.pumpWidget(
+      _ghost(const ZsDragGhost(kind: ZsDragGhostKind.bookmark, label: 'main', hint: 'Drop on the change it should')),
+    );
+    expect(tester.widget<ZanshinIcon>(find.byType(ZanshinIcon)).name, ZI.bookmark);
+    expect(tester.getSize(find.byWidget(_surfaceAround(tester, 'main'))).height, ZsDragGhost.bookmarkHeight);
+    expect(tester.widget<Text>(find.text('main')).style?.fontWeight, FontWeight.w600);
+    expect(_surfaceAround(tester, 'Drop on the change it should').border, night.tooltipBorder);
+  });
+
+  testWidgets('hideWords drops the words; muted fades the ghost to .3', (tester) async {
+    await tester.pumpWidget(
+      _ghost(const ZsDragGhost(kind: ZsDragGhostKind.bookmark, label: 'main', command: 'jj x', hideWords: true)),
+    );
+    expect(find.text('jj x'), findsNothing);
+    expect(tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity, 1);
+    await tester.pumpWidget(_ghost(const ZsDragGhost(kind: ZsDragGhostKind.bookmark, label: 'main', muted: true)));
+    expect(tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity, ZsDragGhost.mutedOpacity);
+  });
+
   testWidgets('hidden from VoiceOver and takes no pointer', (tester) async {
     final SemanticsHandle handle = tester.ensureSemantics();
     await tester.pumpWidget(_ghost(const ZsDragGhost(kind: ZsDragGhostKind.group, label: 'Work', hint: 'h')));

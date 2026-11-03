@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
@@ -10,6 +11,7 @@ import '../../l10n/strings.dart';
 import 'day_axis.dart';
 import 'graph_card_render.dart';
 import 'graph_content.dart';
+import 'graph_drag.dart';
 import 'graph_layout.dart';
 
 /// The double-click window (Story 10.6 item 2; the prototype's 220 ms, GV:550-558): a click selects only after it.
@@ -206,6 +208,13 @@ class GraphCardController {
     bookmarksOpen.value = null;
   }
 
+  /// The graph's drag (Story 10.10): a card body or its legend pill starts it past the drag threshold; null drags
+  /// nothing.
+  GraphDrag? drag;
+
+  /// The highlighted drop target's key (Story 10.10): that card paints the drop look.
+  final dropTarget = ValueNotifier<String?>(null);
+
   /// Releases the notifiers.
   void dispose() {
     _disposed = true;
@@ -218,6 +227,7 @@ class GraphCardController {
     focused.dispose();
     menuOpen.dispose();
     bookmarksOpen.dispose();
+    dropTarget.dispose();
     now.dispose();
     actionsEnabled.dispose();
   }
@@ -227,6 +237,26 @@ class GraphCardController {
   /// Whether [dispose] ran; a card's deferred hover reset checks it.
   bool get isDisposed => _disposed;
 }
+
+/// A node's id as a command shows it (`graphShortId`): max(jj's unique [prefix], 8) of the [changeId]; a hidden or
+/// divergent node's [key] is its commit id.
+String graphShortIdOf({required String key, required String changeId, required int prefix}) {
+  if (key != changeId) {
+    // shortcut: 12 hex digits as jj's `commit_id.short()`, not the commit's unique prefix (the layout has none).
+    return key.substring(0, math.min(12, key.length));
+  }
+  return changeId.substring(0, math.min(changeId.length, math.max(prefix, 8)));
+}
+
+/// The drag of the change [d] shows (Story 10.10): its key, id, subject and @, and its id as a command shows it.
+GraphChangeDrag graphChangeDragOf(GraphCardData d) => GraphChangeDrag(
+  key: d.key,
+  changeId: d.changeId,
+  prefix: d.prefixLength,
+  short: graphShortIdOf(key: d.key, changeId: d.changeId, prefix: d.prefixLength),
+  subject: d.content?.subject ?? '',
+  workingCopy: d.isWorkingCopy,
+);
 
 /// The facts one card shows (Story 10.3), read from its layout once per build.
 @immutable

@@ -17,6 +17,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import 'graph_card.dart';
+import 'graph_drag.dart';
 import 'graph_layout.dart';
 import 'graph_ports.dart';
 import 'graph_view_model.dart';
@@ -849,7 +850,8 @@ class _GraphInspectorState extends State<GraphInspector> {
                         else
                           _Title(model: _model, data: data, entry: entry),
                         _Meta(data: data, layout: layout, node: node, entry: entry, nowMs: graph.now.value),
-                        if (data.refs.isNotEmpty) _Chips(refs: data.refs),
+                        if (data.refs.isNotEmpty)
+                          _Chips(refs: data.refs, drag: graph.actionsEnabled ? graph.drag : null),
                         if (editing == null && squashing == null)
                           _Actions(model: _model, data: data, layout: layout, node: node),
                         _Changes(model: _model, data: data),
@@ -895,15 +897,11 @@ String? graphBlockedReason(AppLocalizations strings, GraphViewModel graph) => gr
 
 /// [node]'s id as a command shows it: max(jj's unique prefix, 8) of the change id; a hidden or divergent node's key is
 /// its commit id.
-String graphShortId(GraphLayout layout, int node) {
-  final String key = layout.keyOf(node);
-  final String changeId = layout.changeIdOf(node);
-  if (key != changeId) {
-    // shortcut: 12 hex digits as jj's `commit_id.short()`, not the commit's unique prefix (the layout has none).
-    return key.substring(0, math.min(12, key.length));
-  }
-  return changeId.substring(0, math.min(changeId.length, math.max(layout.changeIdPrefixLengthOf(node), 8)));
-}
+String graphShortId(GraphLayout layout, int node) => graphShortIdOf(
+  key: layout.keyOf(node),
+  changeId: layout.changeIdOf(node),
+  prefix: layout.changeIdPrefixLengthOf(node),
+);
 
 /// A flag's look (DS components/graph/Flag.jsx; graph.css:60-62).
 enum _FlagKind { neutral, workingCopy, warn }
@@ -1659,9 +1657,12 @@ class _Meta extends StatelessWidget {
 /// 4 9, `--radius-chip`, `--fl-hover`, the filled bookmark, the name mono `--fs-id` and the state ✓ / local / remote
 /// mono `--fs-xs`.
 class _Chips extends StatelessWidget {
-  const _Chips({required this.refs});
+  const _Chips({required this.refs, this.drag});
 
   final List<GraphRef> refs;
+
+  /// The graph's drag (Story 10.10): a local chip drags its bookmark; null drags none.
+  final GraphDrag? drag;
 
   @override
   Widget build(BuildContext context) {
@@ -1675,34 +1676,42 @@ class _Chips extends StatelessWidget {
         runSpacing: 6,
         children: <Widget>[
           for (final GraphRef ref in refs)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(color: colors.flHover, borderRadius: BorderRadius.circular(metrics.radiusChip)),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                spacing: 6,
-                children: <Widget>[
-                  ZanshinIcon(ZI.bookmarkFilled, size: ZsIconSize.sm, color: colors.textDim),
-                  Flexible(
-                    child: Text(
-                      ref.remote == null ? ref.name : '${ref.name}@${ref.remote}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ZsType.id.copyWith(color: colors.text),
+            GraphDragSource(
+              drag: drag,
+              payload: GraphBookmarkDrag(ref.name),
+              enabled: graphBookmarkDraggable(ref.name, remote: ref.remote),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.flHover,
+                  borderRadius: BorderRadius.circular(metrics.radiusChip),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: 6,
+                  children: <Widget>[
+                    ZanshinIcon(ZI.bookmarkFilled, size: ZsIconSize.sm, color: colors.textDim),
+                    Flexible(
+                      child: Text(
+                        ref.remote == null ? ref.name : '${ref.name}@${ref.remote}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ZsType.id.copyWith(color: colors.text),
+                      ),
                     ),
-                  ),
-                  Text(
-                    ref.remote != null
-                        ? strings.inspectorBookmarkRemote
-                        : ref.synced
-                        ? '✓' // l10n-ignore: a symbol for "in sync"
-                        : strings.inspectorBookmarkLocal,
-                    style: ZsType.id.copyWith(
-                      fontSize: ZsType.fsXs,
-                      color: ref.remote != null ? colors.remote : colors.textDim,
+                    Text(
+                      ref.remote != null
+                          ? strings.inspectorBookmarkRemote
+                          : ref.synced
+                          ? '✓' // l10n-ignore: a symbol for "in sync"
+                          : strings.inspectorBookmarkLocal,
+                      style: ZsType.id.copyWith(
+                        fontSize: ZsType.fsXs,
+                        color: ref.remote != null ? colors.remote : colors.textDim,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
         ],
