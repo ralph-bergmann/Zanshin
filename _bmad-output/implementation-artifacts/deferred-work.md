@@ -2712,7 +2712,7 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 
 ## Surfaced in the bookmark-drop fix run (bmad-build-auto, 2026-11-03)
 
-- **The new drop behaviour (bookmark release runs at once, change release only with the menu open) and the backwards-warning ghost were not checked in the running app; the ~110-character warning may wrap to several lines in the 340 px words box.** Medium.
+- **The new drop behaviour (bookmark release runs at once, change release only with the menu open) and the backwards-warning ghost were not checked in the running app; the ~80-character warning (shortened in commit 12a379b8) may wrap to several lines in the 340 px words box.** Medium.
   - Unattended run, widget/controller tests only (`app/test/features/graph/graph_drag_test.dart`); ghost words in `app/lib/src/features/graph/graph_view.dart` (`_GraphDragGhostLayer`), warning line in `packages/zanshin_ui/lib/src/controls/zs_drag_ghost.dart`.
   - **Follow-up:** a Marionette check of a forward and a backwards bookmark drag and a change drag (release before/after the menu); shorten the arb text `dragBackwardsWarning` if it wraps badly.
 - ~~**The backwards-move warning is visual only: VoiceOver never hears it and the toast does not repeat it.**~~ — RESOLVED 2026-11-03 (spec-drag-leftovers-alt-announce-entrance-tracked, commit ebc3f36995e60b08fdce5760dc3a0b12eafd4e8c): the canvas announces `dragBackwardsWarning` once per backwards target (`GraphDrag.onBackwards`, `SemanticsService.sendAnnouncement`); a widget test checks the announcements; no VoiceOver pass on a device. Medium.
@@ -2724,3 +2724,9 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 - **The backwards-bookmark announcement is checked only at the Flutter accessibility channel; nobody has heard it with VoiceOver on a Mac, nor judged whether the ~80-character sentence on every backwards target is too chatty.** Medium.
   - `app/lib/src/features/graph/graph_canvas.dart` `_announceBackwards` (`SemanticsService.sendAnnouncement`); witness `app/test/features/graph/graph_drag_test.dart` (mocked `SystemChannels.accessibility`).
   - **Follow-up:** a VoiceOver pass dragging a bookmark backwards over two targets and back; shorten or drop the announcement if it is chatty.
+
+## Surfaced in the follow-up review of the drag leftovers run (bmad-build-auto, 2026-11-03)
+
+- **The drop menu still fades its glass through an `Opacity` ancestor, so its backdrop blur turns sharp for the entrance, unlike the command menus that fade through `ZsFade`.** Medium.
+  - Pre-existing: `Opacity(opacity: t, …)` around `ZsMenuMaterial` in `app/lib/src/features/graph/graph_drop_menu.dart:204` (already there at f5a6645e); the 11.3 ledger rule says `ZsFade` is the one way to fade glass.
+  - **Follow-up:** fade the drop menu through `ZsFade` (keeping its top/bottom-centre scale origin) and add the no-`Opacity`-above-glass test the minimap and toast have.

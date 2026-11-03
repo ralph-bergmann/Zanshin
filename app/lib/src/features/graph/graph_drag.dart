@@ -365,8 +365,8 @@ class GraphDrag extends ChangeNotifier {
   /// Runs a row's action with the drop origin.
   Future<GraphActionResult> Function(GraphAction action, GraphDropOrigin? origin)? run;
 
-  /// Called once per target whose bookmark row is backwards: the ghost's warning is excluded from semantics, so the
-  /// canvas announces it; set by the canvas.
+  /// Called each time the pointer settles on a target whose bookmark row is backwards: the ghost's warning is
+  /// excluded from semantics, so the canvas announces it; set by the canvas.
   void Function()? onBackwards;
 
   /// Maps a global rect into the graph viewport's coordinates; set by the canvas, null outside one.
@@ -545,7 +545,7 @@ class GraphDrag extends ChangeNotifier {
     }
   }
 
-  // A target's preview becomes known once per target (cached above or fetched), so this fires once per target.
+  // A target's preview becomes known once per target (cached above or fetched), so this fires once per arrival on a target.
   void _warnBackwards() {
     if (_payload is GraphBookmarkDrag && (highlightedRow?.backwards ?? false)) {
       onBackwards?.call();

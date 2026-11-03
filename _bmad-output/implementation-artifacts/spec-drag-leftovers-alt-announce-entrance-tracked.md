@@ -5,7 +5,7 @@ created: '2026-11-03'
 status: 'done'
 baseline_revision: 'f5a6645ea7a4f40b0cfd5d5d204f6bc053d9752b'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: []
 deferred:
@@ -15,6 +15,13 @@ deferred:
       Unattended run; the witness mocks SystemChannels.accessibility (graph_drag_test.dart). Mirrored in deferred-work.md "Surfaced in the drag leftovers run (bmad-build-auto, 2026-11-03)".
     location: >-
       app/lib/src/features/graph/graph_canvas.dart _announceBackwards
+    severity: medium
+  - summary: >-
+      The drop menu fades its glass through an Opacity ancestor, so the backdrop blur turns sharp during the entrance, unlike the command menus that fade through ZsFade.
+    evidence: |-
+      Pre-existing (Opacity around ZsMenuMaterial already at baseline f5a6645e); the 11.3 ledger rule makes ZsFade the one way to fade glass. Mirrored in deferred-work.md "Surfaced in the follow-up review of the drag leftovers run (bmad-build-auto, 2026-11-03)".
+    location: >-
+      app/lib/src/features/graph/graph_drop_menu.dart:204
     severity: medium
 ---
 
@@ -103,6 +110,28 @@ deferred:
   - `[false]` `[reject]` Intent: `CommitRef.tracked` untested over the cdylib — `CommitRef` is the Rust struct; Dart reads it only as `TopologyRef`, which the test reads.
   - `[false]` `[reject]` Intent: ledger strikes lack `commit <hash>` — added at commit time (the strike names the fix commit, committed with the spec).
 
+### 2026-11-03 — Review pass (follow-up)
+- verdicts: 18 findings — high 0, medium 1, low 4, false 3, maybe-false 0 (10 carried)
+- findings:
+  - `[low]` `[reject]` Blind: drop menu hand-rolls the entrance instead of `ZsSurfaceTransition` — carried: private pose, top-left origin; the equal literal is what item 3 allows.
+  - `[medium]` `[defer]` Blind: entrance fades glass through an `Opacity` ancestor (`graph_drop_menu.dart:204`) — pre-existing (present at baseline f5a6645e), not caused by this change; deferred (frontmatter + deferred-work follow-up-review section).
+  - `[low]` `[reject]` Blind: entrance test checks scale only (no opacity, reduced motion, pinned `ZsMotion.full`) — item 3 changed curve and scale, both pinned; extra assertions guard code this run did not touch.
+  - `[low]` `[patch]` Blind: `onBackwards` / `_warnBackwards` docs say "once per target" while a revisit re-announces — docs now say "each time the pointer settles on a target" / "once per arrival on a target".
+  - `[low]` `[reject]` Blind: struck ledger entries keep their old Follow-up sub-bullets — carried: ledger keeps history under a struck title.
+  - `[low]` `[patch]` Blind: open ledger entry still says "~110-character warning" — the arb text is 80 characters since 12a379b8; figure corrected in deferred-work.md.
+  - `[false]` `[reject]` Blind: `_announceBackwards` uses `context` without a `mounted` guard after a fetch — `dispose` calls `_detachDrag`, which nulls `onBackwards` before the element is gone, so a late fetch finds no callback.
+  - `[low]` `[reject]` Blind: a failing ⌥ test leaves ⌥ held — carried: affects only an already failing test's messages.
+  - `[false]` `[reject]` Blind: `_alt` still flips while the menu is open, so UI reading `alt` can disagree with the row — nothing in `app/lib` reads `drag.alt`; `defaultIndex` is read only when the menu opens or the target changes.
+  - `[false]` `[reject]` Blind: tracked test uses the host git config — carried: test-core pins `GIT_CONFIG_GLOBAL=""`.
+  - `[low]` `[reject]` Blind: tracked test does not assert `x@origin` exists before tracking; `setUpIconRegistry` at group level uncommented — the `containsPair` on `x@origin` fails loudly if it is missing; the registry setup is harmless for controller tests.
+  - `[low]` `[patch]` Blind: `_announceBackwards` doc reads badly — reworded to "reaches VoiceOver only as an announcement".
+  - `[false]` `[reject]` EdgeCase: no per-target flag; a second preview write would re-announce — carried: speculative, the preview is set once per arrival.
+  - `[low]` `[reject]` VerifGap: clearing `onBackwards` on detach is untested — carried: mirrors the untested `toViewport` detach; not reachable in everyday use.
+  - `[low]` `[reject]` Intent: item 1 tested on the controller, not the rendered menu — carried.
+  - `[low]` `[reject]` Intent: item 2 verified at the accessibility channel, not VoiceOver — carried; device pass deferred.
+  - `[low]` `[reject]` Intent: "never for a change drag" untested — carried: one type check.
+  - `[false]` `[reject]` Intent: item 3 duplicates values instead of the component — carried.
+
 ## Verification
 
 **Commands:**
@@ -132,3 +161,11 @@ Status: done. Fix commit `ebc3f36995e60b08fdce5760dc3a0b12eafd4e8c`; spec + ledg
 **Review:** 22 findings — 3 patch entries (5 medium rows: cached-target assertion, entrance test, tracked precondition), 1 deferred (no VoiceOver device pass, medium), the rest rejected with reasons in the triage log. Patched entries by verdict: high 0, medium 3. Follow-up review recommended: true (≥2 medium patched) — the named unverified risk: the three patches were test additions written after review, and the announcement path is witnessed only through a mocked accessibility channel, never in the running app.
 
 **Residual risks:** not checked in the running app or with VoiceOver; the announcement repeats when the pointer returns to a target after leaving it.
+
+### Follow-up review pass (2026-11-03)
+
+- **Change:** doc-comment wording only — `GraphDrag.onBackwards` and `_warnBackwards` now say the callback fires per arrival on a target (`app/lib/src/features/graph/graph_drag.dart`); `_announceBackwards` doc reworded (`app/lib/src/features/graph/graph_canvas.dart`); the open bookmark-drop ledger entry's stale "~110-character" figure corrected to ~80 (`deferred-work.md`).
+- **Findings:** 18 (10 carried) — 3 low patched (docs, ledger figure), 1 medium deferred (pre-existing `Opacity` over the drop menu's glass; mirrored in deferred-work.md), the rest rejected with reasons in the triage log.
+- **Follow-up review recommended:** false — follow-up pass, no high patched (patched: high 0, medium 0, low 3).
+- **Verification (no full gate per the run's gate rule):** `dart format --set-exit-if-changed` on the two touched files — 0 changed; `dart analyze lib/src/features/graph` (app/) — no issues; `flutter test test/features/graph/graph_drag_test.dart` — 39 passed. No Rust, schema or zanshin_core code touched.
+- **Residual risks:** unchanged from above; the drop menu's glass still sharpens during its entrance until the deferred `ZsFade` fix lands.

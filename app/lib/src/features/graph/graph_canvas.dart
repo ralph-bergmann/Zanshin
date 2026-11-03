@@ -473,7 +473,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     }
   }
 
-  /// The ghost is excluded from semantics: VoiceOver hears its backwards warning only announced.
+  /// The ghost is excluded from semantics, so its backwards warning reaches VoiceOver only as an announcement.
   void _announceBackwards() => unawaited(
     SemanticsService.sendAnnouncement(View.of(context), context.l10n.dragBackwardsWarning, Directionality.of(context)),
   );
