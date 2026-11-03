@@ -213,10 +213,12 @@ Status: done
 **Follow-up review recommended: true** — two or more medium entries were patched; the unverified risk is the canvas's new rebuild gating and menu-rect clearing, checked only by widget tests, never in the running app (a missed rebuild would leave a stale target highlight or menu).
 
 **Deferred items I1–I5:**
-- I1 — fixed: measured (1.5–4.6 s per hover query on a 200-deep stack — it bites) and settled with both of Ralph's remedies: one cached query per target, and a write-free no-op (26–71 ms after). Commit: see the story commit below.
-- I2 — fixed: the rebase rows write nothing (+0 keep refs, +0 loose objects per query at every depth, all rows of the query included). Commit: see below.
-- I3 — fixed: `GraphRebase` / `GraphDuplicate`, `RepoGraphActions` mapping (real-repo tests), `_plan`/`_succeeded` rules.
-- I4 — fixed: the panel/rail row drags (local, no `@`; inert while stale/busy, keeps its stale tooltip).
-- I5 — fixed: the ghost's chip rect reaches `GraphTransition.dropped` (glide / born growth), rebase/insert/duplicate anchor/flash/born mappings.
+- I1 — fixed: measured (1.5–4.6 s per hover query on a 200-deep stack — it bites) and settled with both of Ralph's remedies: one cached query per target, and a write-free no-op (26–71 ms after). Fixed (commit c5d42306).
+- I2 — fixed: the rebase rows write nothing (+0 keep refs, +0 loose objects per query at every depth, all rows of the query included). Fixed (commit c5d42306).
+- I3 — fixed: `GraphRebase` / `GraphDuplicate`, `RepoGraphActions` mapping (real-repo tests), `_plan`/`_succeeded` rules. Fixed (commit c5d42306).
+- I4 — fixed: the panel/rail row drags (local, no `@`; inert while stale/busy, keeps its stale tooltip). Fixed (commit c5d42306).
+- I5 — fixed: the ghost's chip rect reaches `GraphTransition.dropped` (glide / born growth), rebase/insert/duplicate anchor/flash/born mappings. Fixed (commit c5d42306).
+
+Commits: c5d42306 (story), plus the bookkeeping commit after it.
 
 **Residual risks.** No visual check in the running app; divergent duplicates are not in the dry-run equivalence test; the ported planner must be re-diffed on a jj-lib bump (deferred).
