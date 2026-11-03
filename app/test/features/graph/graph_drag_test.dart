@@ -1013,7 +1013,7 @@ void main() {
         expect(model.drag.menuOpen, isFalse, reason: 'a bookmark drag never opens the menu');
         expect(find.byType(GraphDropMenu), findsNothing);
         expect(find.text(command), findsOneWidget, reason: 'the ghost names the command');
-        final Finder warning = find.text(_en.dragBackwardsWarning('main'));
+        final Finder warning = find.text(_en.dragBackwardsWarning);
         if (backwards) {
           expect(warning, findsOneWidget);
           expect(tester.widget<Text>(warning).style?.color, ZsColors.of(tester.element(warning)).warn);

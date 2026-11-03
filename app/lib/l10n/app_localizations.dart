@@ -1979,8 +1979,8 @@ abstract class AppLocalizations {
   /// Warning under the drag ghost's command while a bookmark is over a target that is not a fast-forward (jj's --allow-backwards).
   ///
   /// In en, this message translates to:
-  /// **'Moves {name} back · the later commits leave the bookmark; after a push, colleagues no longer see them on the branch'**
-  String dragBackwardsWarning(String name);
+  /// **'Moves the bookmark back. A push drops the later commits from the shared branch.'**
+  String get dragBackwardsWarning;
 
   /// VoiceOver label of the drop menu that opens over a change while something is dragged onto it.
   ///

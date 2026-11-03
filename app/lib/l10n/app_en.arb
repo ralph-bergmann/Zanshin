@@ -811,11 +811,8 @@
     "description": "Drop menu row: jj bookmark move of the dragged bookmark to the target.",
     "placeholders": {"name": {"type": "String", "example": "main"}}
   },
-  "dragBackwardsWarning": "Moves {name} back · the later commits leave the bookmark; after a push, colleagues no longer see them on the branch",
-  "@dragBackwardsWarning": {
-    "description": "Warning under the drag ghost's command while a bookmark is over a target that is not a fast-forward (jj's --allow-backwards).",
-    "placeholders": {"name": {"type": "String", "example": "main"}}
-  },
+  "dragBackwardsWarning": "Moves the bookmark back. A push drops the later commits from the shared branch.",
+  "@dragBackwardsWarning": {"description": "Warning under the drag ghost's command while a bookmark is over a target that is not a fast-forward (jj's --allow-backwards)."},
   "dropMenuLabel": "Drop actions",
   "@dropMenuLabel": {"description": "VoiceOver label of the drop menu that opens over a change while something is dragged onto it."},
   "dragHintChange": "Drop on a change",

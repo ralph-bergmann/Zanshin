@@ -497,7 +497,7 @@ class _GraphDragGhostLayer extends StatelessWidget {
                 label: name,
                 command: command,
                 warning: command != null && (drag.highlightedRow?.backwards ?? false)
-                    ? strings.dragBackwardsWarning(name)
+                    ? strings.dragBackwardsWarning
                     : null,
                 hint: hint,
                 hideWords: drag.menuOpen || drag.running,
