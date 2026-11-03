@@ -41,9 +41,8 @@
 
 /* DropMenu — opens over the target card after --delay-drop-menu (520ms) of rest while dragging. The likeliest action sits nearest the card
    (above the card the list runs bottom-up) and is what a plain drop does. The footer shows the exact jj command. */
-.zs-drop{display:flex;flex-direction:column;width:288px;border-radius:var(--radius-popover);background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-menu);color:var(--text);user-select:none;animation:zs-drop-in var(--dur-pop) var(--ease-glide) both}
+.zs-drop{display:flex;flex-direction:column;width:288px;border-radius:var(--radius-popover);background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-menu);color:var(--text);user-select:none;animation:zs-menu-in var(--dur-menu) var(--ease-glide) both}
 .zs-drop.is-single{width:max-content;min-width:240px;max-width:400px}
-@keyframes zs-drop-in{from{opacity:0;transform:scale(calc(1 - .06 * var(--motion)))}}
 .zs-drop-list{display:flex;flex-direction:column;gap:1px;padding:5px}
 .zs-drop-item{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:10px;height:30px;padding:0 10px 0 9px;border:0;border-radius:var(--radius-md);background:none;font:inherit;font-size:var(--fs-control);color:var(--text);text-align:left;white-space:nowrap;cursor:default}
 .zs-drop-item>.zs-icon{color:var(--text-muted)}
