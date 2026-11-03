@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/settings/immutable_heads.dart (_untrackedRemote, shortcut comment)
     severity: low
+    resolved: >-
+      2026-11-03 — fixed (spec-11-21-immutable-untracked-remote-refs, commit 50685c03): the bridge carries jj's `tracked` state on CommitRef/TopologyRef; the page filters on `!tracked`.
 ---
 
 <intent-contract>

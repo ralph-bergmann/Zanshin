@@ -2669,7 +2669,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in the closing run of Story 11.7 (bmad-build-auto, 2026-11-03)
 
-- **The Immutable commits page's untracked-remote hints can name a tracked remote ref that disagrees with its local target.** Low.
+- ~~**The Immutable commits page's untracked-remote hints can name a tracked remote ref that disagrees with its local target.**~~ — RESOLVED 2026-11-03 (spec-11-21-immutable-untracked-remote-refs, commit 50685c03): `tracked` on CommitRef/TopologyRef from jj's RemoteRefState; the page filters on it. Low.
   - `app/lib/src/features/settings/immutable_heads.dart` (`_untrackedRemote`) infers "untracked" from `TopologyRef.synced` ("tracked and agrees"); the bridge has no tracking-state read for remote tags.
   - **Follow-up:** a bridge read of each remote ref's tracking state (or `untracked` on `TopologyRef`), then filter on it.
   - **2026-11-03, Ralph:** do it → **Story 11.21**. Covered by Story 11.21.
