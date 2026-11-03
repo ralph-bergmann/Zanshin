@@ -44,6 +44,8 @@ deferred:
     location: >-
       app/lib/src/features/shell/shell_scope.dart
     severity: medium
+    resolved: >-
+      2026-11-03 — fixed (spec-10-21-graph-search, commit 5258103; last slot Story 11.8, commit 3516be5): every slot surface now holds calm — capsule menu (11.5), View options (10.7), search menu (10.21, graph_search_field.dart:348), Push sheet (11.8); no slot needed ZsSelect callbacks.
   - summary: >-
       A resize edge removed during its own drag never reports the drag's end, so the shell would keep its calm hold and its edge-drag flag until the window closes.
     evidence: |-
