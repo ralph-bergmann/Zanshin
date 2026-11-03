@@ -275,6 +275,18 @@ void main() {
       await tester.tap(find.text('main'));
       await tester.pump();
       expect(rig.graph.selected, 'k1', reason: 'a visible pick still works');
+      final TestGesture mouse = await tester.startGesture(
+        tester.getCenter(find.text('main')),
+        kind: PointerDeviceKind.mouse,
+      );
+      await mouse.moveBy(const Offset(30, 0));
+      await tester.pump();
+      await mouse.moveBy(const Offset(30, 0));
+      await tester.pump();
+      expect(rig.graph.drag.payload, isNull, reason: 'nothing drags while stale');
+      await mouse.up();
+      await mouse.removePointer();
+      await tester.pump();
 
       await hover(tester, find.text('release/1.5.x@origin'));
       final ZsButton track = tester.widget<ZsButton>(_button('bookmark-track-4'));

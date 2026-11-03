@@ -598,6 +598,11 @@ class GraphDrag extends ChangeNotifier {
       return;
     }
     if (identical(payload, _payload) && _target == key) {
+      if (op != operationId()) {
+        // Answered for an older operation: ask again for the current one.
+        _debounce = Timer(graphDropDebounce, _fetch);
+        return;
+      }
       _preview = preview;
       _highlight = defaultIndex;
       _armMenu();

@@ -536,6 +536,11 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       drag.hover(drag.target, menuRow: rects.indexWhere((r) => r.contains(inMenu)));
       return;
     }
+    if (local != null && menu != null && menu.inflate(graphDropMenuGap).contains(local)) {
+      // The gap between the card and its menu keeps the target, so the pointer can cross it.
+      drag.hover(drag.target);
+      return;
+    }
     String? key = local != null && area != null && area.contains(local) ? _viewport.keyAt(drag.pointer) : null;
     final int? node = key == null ? null : widget.layout.indexOfKey(key);
     if (key == drag.payload?.key || (node != null && widget.layout.isStackNode(node))) {

@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/l10n/app_localizations_en.dart';
-import 'package:zanshin/src/features/graph/graph_canvas.dart' show graphAutoScrollStep;
+import 'package:zanshin/src/features/graph/graph_canvas.dart' show GraphCanvas, graphAutoScrollStep;
 import 'package:zanshin/src/features/graph/graph_card_render.dart';
 import 'package:zanshin/src/features/graph/graph_drag.dart';
 import 'package:zanshin/src/features/graph/graph_drop_menu.dart';
@@ -18,6 +18,7 @@ import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_stack_card.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin/src/features/graph/graph_viewport_render.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -450,6 +451,26 @@ void main() {
       });
     });
 
+    test('a preview answered for an older operation is not shown; the target is queried again', () {
+      fakeAsync((async) {
+        drops.hold = true;
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t');
+        async.elapse(graphDropDebounce);
+        op = 'op2';
+        drops.held.single.complete(_changeRows(_available));
+        async.flushMicrotasks();
+        expect(drag.rows, isNull);
+        expect(drag.highlightedTarget, isNull);
+        async.elapse(graphDropDebounce);
+        expect(drops.calls, hasLength(2));
+        drops.held.last.complete(_changeRows(_available));
+        async.flushMicrotasks();
+        expect(drag.highlightedTarget, 't');
+      });
+    });
+
     test('any error of the preview is a failed preview', () {
       fakeAsync((async) {
         drops.answer = (_, _) => throw StateError('boom');
@@ -613,8 +634,10 @@ void main() {
       await tester.pump(graphDropDebounce);
       await tester.pump();
       expect(find.text('jj rebase -s a -o c'), findsOneWidget);
+      expect(_dropTarget(tester), 'c', reason: 'the target shows its drop look');
       await mouse.up();
       await tester.pumpAndSettle();
+      expect(_dropTarget(tester), isNull);
       expect(actions.ran.single.command, 'jj rebase -s a -o c');
       expect(model.selected, isNull, reason: 'the drag swallowed the click');
       expect(find.byType(ZsDragGhost), findsNothing);
@@ -646,6 +669,10 @@ void main() {
         (w) => w is Semantics && w.properties.identifier == 'graph-drop-insertBefore',
       );
       expect(tester.getCenter(row).dy, lessThan(to.dy), reason: 'above the card');
+      final RenderGraphCard h = _card(tester, 'h');
+      await mouse.moveTo(h.localToGlobal(h.cardRect.topCenter) - const Offset(0, graphDropMenuGap / 2));
+      await tester.pump();
+      expect(model.drag.menuOpen, isTrue, reason: 'the gap between card and menu keeps the target');
       await mouse.moveTo(tester.getCenter(row));
       await tester.pump();
       expect(model.drag.highlightedRow?.kind, GraphDropKind.insertBefore);
@@ -727,6 +754,7 @@ void main() {
       await tester.pump(graphDropDebounce);
       await tester.pump();
       expect(model.drag.target, isNull);
+      expect(_dropTarget(tester), isNull);
       expect(drops.calls, isEmpty);
       await mouse.up();
       await tester.pumpAndSettle();
@@ -760,8 +788,139 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       model.dispose();
     });
+
+    testWidgets('no drag starts while the actions are disabled (a verb runs)', (tester) async {
+      useShellWindow(tester);
+      final source = ScriptedGraphSource(respond: (_) => keysLayout(<String>['a', 'b', 'c'], at: 'a'));
+      final drops = _Drops();
+      final actions = _Actions()..gate = Completer<void>();
+      final model = GraphViewModel()..init(source, actions: actions, drops: drops);
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      await tester.pumpAndSettle();
+      unawaited(model.run(const GraphRebase(source: <String>['b'], onto: <String>['c'])));
+      await tester.pump();
+      expect(model.actionsEnabled, isFalse);
+      final Offset from = _centre(tester, 'a');
+      final Offset to = _centre(tester, 'c');
+      final TestGesture mouse = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+      await mouse.moveTo(Offset.lerp(from, to, .5)!);
+      await tester.pump();
+      await mouse.moveTo(to);
+      await tester.pump(graphDropDebounce);
+      expect(model.drag.payload, isNull);
+      expect(drops.calls, isEmpty);
+      await mouse.up();
+      actions.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(actions.ran, hasLength(1), reason: 'only the gated verb ran');
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
+
+    testWidgets('auto-scroll arms once well inside, then scrolls the vertical axis in the bottom zone', (tester) async {
+      useShellWindow(tester);
+      final keys = <String>[for (var i = 0; i < 60; i++) 'k$i'];
+      final source = ScriptedGraphSource(respond: (_) => keysLayout(keys, at: 'k0'));
+      final model = GraphViewModel()..init(source, actions: _Actions(), drops: _Drops());
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      await tester.pumpAndSettle();
+      final RenderGraphViewport render = tester.allRenderObjects.whereType<RenderGraphViewport>().single;
+      final Rect area = render.insets.deflateRect(Offset.zero & render.size);
+      final Offset bottom = render.localToGlobal(area.bottomCenter - const Offset(0, 8));
+      final Offset middle = render.localToGlobal(area.center);
+      final double x = render.horizontalOffset.pixels;
+      final double y = render.verticalOffset.pixels;
+      final Offset from = _centre(tester, 'k0');
+      final TestGesture mouse = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+      await mouse.moveBy(const Offset(0, 10));
+      expect(model.drag.active, isTrue);
+      await mouse.moveTo(bottom);
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(render.verticalOffset.pixels, y, reason: 'not armed: the pointer was never well inside');
+      await mouse.moveTo(middle);
+      await tester.pump(const Duration(milliseconds: 16));
+      await mouse.moveTo(bottom);
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(render.verticalOffset.pixels, greaterThan(y));
+      expect(render.horizontalOffset.pixels, x);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await mouse.up();
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
+
+    testWidgets('a backwards bookmark drop keeps the menu open: Enter or a click runs the row, outside cancels', (
+      tester,
+    ) async {
+      useShellWindow(tester);
+      final RecordedGraphLayout layout = handLayout(
+        <(String, int, int)>[('a', 2, 0), ('b', 1, 0), ('c', 0, 0)],
+        edges: <(int, int)>[(0, 1), (1, 2)],
+        workingCopy: 0,
+        refs: <List<GraphRef>>[
+          <GraphRef>[const GraphRef('main')],
+          const <GraphRef>[],
+          const <GraphRef>[],
+        ],
+      );
+      final drops = _Drops()..answer = (_, _) => _bookmarkRows(_backwards);
+      final source = ScriptedGraphSource(respond: (_) => layout);
+      final actions = _Actions();
+      final model = GraphViewModel()..init(source, actions: actions, drops: drops);
+      await tester.pumpWidget(shellHost(GraphView(model: model)));
+      await tester.pumpAndSettle();
+      final Finder row = find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.identifier == 'graph-drop-bookmark',
+      );
+      const command = 'jj bookmark move main --to c --allow-backwards';
+
+      Future<void> dropOnC() async {
+        final RenderGraphCard a = _card(tester, 'a');
+        final Rect legend = a.debugSlots.firstWhere((s) => s.kind == GraphCardSlot.legend).rect;
+        final Offset from = a.localToGlobal(legend.center);
+        final Offset to = _centre(tester, 'c');
+        final TestGesture mouse = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+        await mouse.moveTo(Offset.lerp(from, to, .5)!);
+        await tester.pump();
+        await mouse.moveTo(to);
+        await tester.pump(graphDropDebounce);
+        await tester.pump();
+        await mouse.up();
+        await tester.pumpAndSettle();
+        expect(model.drag.afterDrop && model.drag.menuOpen, isTrue);
+        expect(row, findsOneWidget);
+      }
+
+      await dropOnC();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(actions.ran.map((a) => a.command), <String>[command], reason: 'Enter runs the highlighted row');
+
+      await dropOnC();
+      final RenderGraphViewport render = tester.allRenderObjects.whereType<RenderGraphViewport>().single;
+      final Rect area = render.insets.deflateRect(Offset.zero & render.size);
+      await tester.tapAt(render.localToGlobal(area.bottomRight - const Offset(8, 8)), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(model.drag.payload, isNull, reason: 'a click outside closes it');
+      expect(actions.ran, hasLength(1));
+
+      await dropOnC();
+      await tester.tap(row, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(actions.ran.map((a) => a.command), <String>[command, command], reason: 'a click on the row runs it');
+      expect(model.drag.payload, isNull);
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
   });
 }
+
+String? _dropTarget(WidgetTester tester) => tester.widget<GraphCanvas>(find.byType(GraphCanvas)).cards.dropTarget.value;
 
 /// [keys] one per row, newest first, at operation [op]; @ is `a`.
 RecordedGraphLayout _opLayout(List<String> keys, String op) => handLayout(
@@ -782,6 +941,7 @@ Offset _centre(WidgetTester tester, String key) {
 class _Actions implements GraphActions {
   final ran = <GraphAction>[];
   var born = const <String>[];
+  Completer<void>? gate;
 
   @override
   Future<String> headOpId() async => 'op${ran.length}';
@@ -789,6 +949,7 @@ class _Actions implements GraphActions {
   @override
   Future<MutationResult> run(GraphAction action) async {
     ran.add(action);
+    await gate?.future;
     return MutationResult(
       newOpId: 'op${ran.length}',
       newChangeIds: born,
