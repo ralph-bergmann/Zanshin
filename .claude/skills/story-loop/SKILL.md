@@ -122,7 +122,8 @@ with the reason if it is false or no longer applies; defer it only when it needs
 story after Story <id> — do not mirror such an item into deferred-work.md again, it is already there.
 Matching the jj CLI's observable behavior is never a decision for Ralph (Ralph, 2026-10-23): do it. Under
 `## Auto Run Result`, list every item by its number with its outcome: fixed (commit hash), rejected (reason),
-partly done (what is left) or not done (why).
+partly done (what is left) or not done (why). Do not edit these items' bullets in deferred-work.md: the loop
+strikes or annotates them from your Auto Run Result.
 
 Extra rule for this run: mirror every item you add to the spec's `deferred:` list into
 _bmad-output/implementation-artifacts/deferred-work.md, in the same commit as the spec, in this shape:

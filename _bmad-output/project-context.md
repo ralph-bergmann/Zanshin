@@ -219,6 +219,10 @@ the `zanshin-graph` lane crate was removed)*
   rendered text (jj-lib keeps the pest error private) — switch to an accessor if jj-lib now
   exposes one; `crates/zanshin-jj/src/cli_command.rs` against the new clap tree — its audit
   test catches a renamed or removed command, not a new verb or a changed verb → command mapping.
+  (7) Re-diff the ported move planner (Ralph, 2026-11-03): `crates/zanshin-jj/src/rebase.rs`
+  `planned_parents` / `TargetGraph` / `new_children` / `children_parents` copy jj-lib's
+  `rewrite.rs::compute_move_commits` (+ its private helpers) so `rebase_is_no_op` writes nothing;
+  port any change — the inline dry-run comparison catches drift only on the shapes it builds.
 - When jj-lib's API changes (it will — pre-1.0), absorb the diff inside `zanshin-jj`'s
   module body. The crate's public surface stays stable. Mutations are visible in
   `jj op log` indistinguishably from CLI-initiated ones (NFR-R-2).
