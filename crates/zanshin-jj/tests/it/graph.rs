@@ -11,7 +11,7 @@ use std::ops::ControlFlow;
 
 use test_helpers::{
     abandon_commit, add_commit_off_root, add_conflicted_merge_off_root, add_divergent_twin, add_unpublished_op,
-    add_workspace, describe_commit, extract_fixture, set_local_bookmark, set_remote_bookmark, set_tag,
+    add_workspace, describe_commit, extract_fixture, set_local_bookmark, set_remote_bookmark, set_remote_tag, set_tag,
 };
 use zanshin_jj::{
     resolve_revset, CommitMeta, CommitRef, GraphEdgeKind, GraphNode, Repo, RevsetError, DEFAULT_GRAPH_PRIORITIZE,
@@ -1236,6 +1236,9 @@ fn walk_graph_ref_visibility_follows_the_cli_collect_distinct_refs_rule() {
     // conflicted local bookmark (two added targets).
     set_local_bookmark(&fx.path, "conflicted", &[&c2, &c3]);
     set_tag(&fx.path, "v1", &[&c1]);
+    // Remote tags with no local counterpart: both show, one tracked, one not.
+    set_remote_tag(&fx.path, "rt-tracked", "origin", &c2, true);
+    set_remote_tag(&fx.path, "rt-untracked", "origin", &c3, false);
 
     let nodes = collect_nodes(&mut repo, "all()", "none()");
     let named = |id: &str, name: &str| -> Vec<CommitRef> {
@@ -1252,17 +1255,22 @@ fn walk_graph_ref_visibility_follows_the_cli_collect_distinct_refs_rule() {
     assert_eq!(synced.len(), 1, "the tracked-and-synced remote entry is suppressed");
     assert_eq!(synced[0].remote, None);
     assert!(synced[0].synced, "the local entry is in sync with its remote");
+    assert!(!synced[0].tracked, "a local entry is never `tracked` (CLI keyword)");
 
     let unsynced_local = named(&c2, "unsynced");
     assert_eq!(unsynced_local.len(), 1);
     assert!(!unsynced_local[0].synced, "the local entry renders the `*` sigil");
+    assert!(!unsynced_local[0].tracked, "a local entry is never `tracked`");
     let unsynced_remote = named(&c3, "unsynced");
     assert_eq!(unsynced_remote.len(), 1, "a tracked-but-unsynced remote entry shows");
     assert_eq!(unsynced_remote[0].remote.as_deref(), Some("origin"));
+    assert!(unsynced_remote[0].tracked, "the moved remote is still tracked");
+    assert!(!unsynced_remote[0].synced, "… but not synced");
 
     let untracked = named(&c3, "untracked");
     assert_eq!(untracked.len(), 1, "an untracked remote entry shows");
     assert_eq!(untracked[0].remote.as_deref(), Some("origin"));
+    assert!(!untracked[0].tracked, "an untracked remote entry is not `tracked`");
 
     // A conflicted local bookmark lands on every added target and is flagged.
     for id in [&c2, &c3] {
@@ -1275,10 +1283,29 @@ fn walk_graph_ref_visibility_follows_the_cli_collect_distinct_refs_rule() {
     assert_eq!(tags.len(), 1);
     assert_eq!(tags[0].name, "v1");
     assert_eq!(tags[0].remote, None);
-    assert!(
-        node_of(&nodes, &c2).meta.tags.is_empty(),
-        "tags only land on their target"
-    );
+    assert!(!tags[0].tracked, "a local tag is never `tracked`");
+    let tag_names =
+        |id: &str| -> Vec<String> { node_of(&nodes, id).meta.tags.iter().map(|t| t.name.clone()).collect() };
+    assert_eq!(tag_names(&c2), ["rt-tracked"], "tags only land on their target");
+    assert_eq!(tag_names(&c3), ["rt-untracked"], "tags only land on their target");
+
+    let remote_tag = |id: &str, name: &str| -> CommitRef {
+        let tags: Vec<_> = node_of(&nodes, id)
+            .meta
+            .tags
+            .iter()
+            .filter(|t| t.name == name)
+            .cloned()
+            .collect();
+        assert_eq!(tags.len(), 1, "{name} lands on its target");
+        tags[0].clone()
+    };
+    let rt_tracked = remote_tag(&c2, "rt-tracked");
+    assert_eq!(rt_tracked.remote.as_deref(), Some("origin"));
+    assert!(rt_tracked.tracked, "a tracked remote tag is `tracked`");
+    let rt_untracked = remote_tag(&c3, "rt-untracked");
+    assert_eq!(rt_untracked.remote.as_deref(), Some("origin"));
+    assert!(!rt_untracked.tracked, "an untracked remote tag is not `tracked`");
 }
 
 #[test]

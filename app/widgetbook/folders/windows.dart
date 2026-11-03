@@ -550,7 +550,15 @@ class _DemoSettingsReads implements SettingsRepoReads {
 
   static RevsetMember _tag(String name) => RevsetMember(
     refs: <TopologyRef>[
-      TopologyRef(node: 0, kind: TopologyRefKind.tag, name: name, remote: null, synced: true, conflicted: false),
+      TopologyRef(
+        node: 0,
+        kind: TopologyRefKind.tag,
+        name: name,
+        remote: null,
+        synced: true,
+        conflicted: false,
+        tracked: false,
+      ),
     ],
   );
 
@@ -568,6 +576,7 @@ class _DemoSettingsReads implements SettingsRepoReads {
             remote: 'origin',
             synced: false,
             conflicted: false,
+            tracked: false,
           ),
         ],
       ),
@@ -582,6 +591,7 @@ class _DemoSettingsReads implements SettingsRepoReads {
             remote: null,
             synced: true,
             conflicted: false,
+            tracked: false,
           ),
         ],
       ),

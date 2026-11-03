@@ -14,8 +14,15 @@ import 'package:zanshin/src/features/projects/worker_project_repos.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
-TopologyRef _ref(String name, {String? remote, TopologyRefKind kind = TopologyRefKind.bookmark}) =>
-    TopologyRef(node: 0, kind: kind, name: name, remote: remote, synced: true, conflicted: false);
+TopologyRef _ref(String name, {String? remote, TopologyRefKind kind = TopologyRefKind.bookmark}) => TopologyRef(
+  node: 0,
+  kind: kind,
+  name: name,
+  remote: remote,
+  synced: true,
+  conflicted: false,
+  tracked: remote != null, // a synced remote entry is tracked
+);
 
 Bookmark _local(String name) =>
     Bookmark(name: name, target: 'k', kind: const LocalBookmark(), conflicted: false, synced: true);

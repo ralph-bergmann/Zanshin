@@ -44,6 +44,9 @@ pub struct CommitRef {
     pub synced: bool,
     /// This entry's ref target is a conflict (more than one added commit).
     pub conflicted: bool,
+    /// The CLI's `tracked` keyword: a remote entry whose remote ref is tracked; always
+    /// `false` for the local entry.
+    pub tracked: bool,
 }
 
 /// `jj log`-parity display metadata for one commit (Story 4.8).
@@ -338,6 +341,7 @@ fn build_refs_index<'v>(refs: impl Iterator<Item = (&'v RefName, LocalRemoteRefT
                     .iter()
                     .all(|&(_, remote_ref)| !remote_ref.is_tracked() || remote_ref.target == *local_target),
                 conflicted: !local_target.is_resolved(),
+                tracked: false,
             };
             insert_at(&mut index, local_target.present_adds(), &entry);
         }
@@ -351,6 +355,7 @@ fn build_refs_index<'v>(refs: impl Iterator<Item = (&'v RefName, LocalRemoteRefT
                 remote: Some(remote_name.as_str().to_owned()),
                 synced,
                 conflicted: !remote_ref.target.is_resolved(),
+                tracked: remote_ref.is_tracked(),
             };
             insert_at(&mut index, remote_ref.target.present_adds(), &entry);
         }
@@ -382,6 +387,7 @@ mod tests {
             remote: remote.map(ToOwned::to_owned),
             synced: false,
             conflicted: false,
+            tracked: false,
         }
     }
 

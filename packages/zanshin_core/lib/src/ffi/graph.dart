@@ -142,6 +142,7 @@ final class TopologyRef {
     required this.remote,
     required this.synced,
     required this.conflicted,
+    required this.tracked,
   });
 
   /// The node index this entry belongs to.
@@ -162,6 +163,10 @@ final class TopologyRef {
 
   /// This entry's ref target is a conflict (more than one added commit).
   final bool conflicted;
+
+  /// The CLI's `tracked` keyword: a remote entry whose remote ref is tracked;
+  /// always `false` for the local entry.
+  final bool tracked;
 }
 
 /// One workspace whose working-copy commit is a graph topology node.
@@ -604,6 +609,7 @@ TopologyRef _mapRef(fbs.TopologyRef r) => TopologyRef(
   remote: r.remote, // absent for the local entry
   synced: r.synced,
   conflicted: r.conflicted,
+  tracked: r.tracked,
 );
 
 TopologyWorkingCopy _mapWorkingCopy(fbs.TopologyWorkingCopy w) =>

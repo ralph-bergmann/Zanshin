@@ -27109,6 +27109,7 @@ pub mod zanshin {
             pub const VT_REMOTE: ::flatbuffers::VOffsetT = 10;
             pub const VT_SYNCED: ::flatbuffers::VOffsetT = 12;
             pub const VT_CONFLICTED: ::flatbuffers::VOffsetT = 14;
+            pub const VT_TRACKED: ::flatbuffers::VOffsetT = 16;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -27127,6 +27128,7 @@ pub mod zanshin {
                     builder.add_name(x);
                 }
                 builder.add_node(args.node);
+                builder.add_tracked(args.tracked);
                 builder.add_conflicted(args.conflicted);
                 builder.add_synced(args.synced);
                 builder.add_kind(args.kind);
@@ -27185,6 +27187,13 @@ pub mod zanshin {
                 // which contains a valid value in this slot
                 unsafe { self._tab.get::<bool>(TopologyRef::VT_CONFLICTED, Some(false)).unwrap() }
             }
+            #[inline]
+            pub fn tracked(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(TopologyRef::VT_TRACKED, Some(false)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for TopologyRef<'_> {
@@ -27200,6 +27209,7 @@ pub mod zanshin {
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("remote", Self::VT_REMOTE, false)?
                     .visit_field::<bool>("synced", Self::VT_SYNCED, false)?
                     .visit_field::<bool>("conflicted", Self::VT_CONFLICTED, false)?
+                    .visit_field::<bool>("tracked", Self::VT_TRACKED, false)?
                     .finish();
                 Ok(())
             }
@@ -27211,6 +27221,7 @@ pub mod zanshin {
             pub remote: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub synced: bool,
             pub conflicted: bool,
+            pub tracked: bool,
         }
         impl<'a> Default for TopologyRefArgs<'a> {
             #[inline]
@@ -27222,6 +27233,7 @@ pub mod zanshin {
                     remote: None,
                     synced: false,
                     conflicted: false,
+                    tracked: false,
                 }
             }
         }
@@ -27260,6 +27272,10 @@ pub mod zanshin {
                     .push_slot::<bool>(TopologyRef::VT_CONFLICTED, conflicted, false);
             }
             #[inline]
+            pub fn add_tracked(&mut self, tracked: bool) {
+                self.fbb_.push_slot::<bool>(TopologyRef::VT_TRACKED, tracked, false);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> TopologyRefBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 TopologyRefBuilder {
@@ -27283,6 +27299,7 @@ pub mod zanshin {
                 ds.field("remote", &self.remote());
                 ds.field("synced", &self.synced());
                 ds.field("conflicted", &self.conflicted());
+                ds.field("tracked", &self.tracked());
                 ds.finish()
             }
         }

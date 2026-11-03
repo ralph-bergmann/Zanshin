@@ -58,10 +58,8 @@ const _gitRemote = 'git'; // l10n-ignore: jj's remote name
 String _remoteName(TopologyRef ref) => '${ref.name}@${ref.remote}';
 
 /// Whether [ref] is a remote ref of [kind] that jj counts as untracked.
-// shortcut: `synced` is "tracked and agrees", so a tracked remote ref that disagrees with its local target and sits on a
-// commit an untracked ref also targets is named too; an exact answer needs a bridge read of the remote ref tracking state.
 bool _untrackedRemote(TopologyRef ref, TopologyRefKind kind) =>
-    ref.kind == kind && ref.remote != null && ref.remote != _gitRemote && !ref.synced;
+    ref.kind == kind && ref.remote != null && ref.remote != _gitRemote && !ref.tracked;
 
 /// The names [term] (one of [immutableBuiltins] after `trunk()`) matches among its [members]: `tags()` the local tags,
 /// the untracked terms the untracked remote refs of their kind as `name@remote`; deduplicated, in [members]' order.

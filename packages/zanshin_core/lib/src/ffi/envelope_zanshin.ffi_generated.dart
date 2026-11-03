@@ -15588,10 +15588,11 @@ class TopologyRef {
   String? get remote => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
   bool get synced => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
   bool get conflicted => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  bool get tracked => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
 
   @override
   String toString() {
-    return 'TopologyRef{node: ${node}, kind: ${kind}, name: ${name}, remote: ${remote}, synced: ${synced}, conflicted: ${conflicted}}';
+    return 'TopologyRef{node: ${node}, kind: ${kind}, name: ${name}, remote: ${remote}, synced: ${synced}, conflicted: ${conflicted}, tracked: ${tracked}}';
   }
 }
 
@@ -15608,7 +15609,7 @@ class TopologyRefBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(6);
+    fbBuilder.startTable(7);
   }
 
   int addNode(int? node) {
@@ -15641,6 +15642,11 @@ class TopologyRefBuilder {
     return fbBuilder.offset;
   }
 
+  int addTracked(bool? tracked) {
+    fbBuilder.addBool(6, tracked);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -15653,6 +15659,7 @@ class TopologyRefObjectBuilder extends fb.ObjectBuilder {
   final String? _remote;
   final bool? _synced;
   final bool? _conflicted;
+  final bool? _tracked;
 
   TopologyRefObjectBuilder({
     int? node,
@@ -15661,25 +15668,28 @@ class TopologyRefObjectBuilder extends fb.ObjectBuilder {
     String? remote,
     bool? synced,
     bool? conflicted,
+    bool? tracked,
   }) : _node = node,
        _kind = kind,
        _name = name,
        _remote = remote,
        _synced = synced,
-       _conflicted = conflicted;
+       _conflicted = conflicted,
+       _tracked = tracked;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
     final int? remoteOffset = _remote == null ? null : fbBuilder.writeString(_remote!);
-    fbBuilder.startTable(6);
+    fbBuilder.startTable(7);
     fbBuilder.addUint32(0, _node);
     fbBuilder.addUint8(1, _kind?.value);
     fbBuilder.addOffset(2, nameOffset);
     fbBuilder.addOffset(3, remoteOffset);
     fbBuilder.addBool(4, _synced);
     fbBuilder.addBool(5, _conflicted);
+    fbBuilder.addBool(6, _tracked);
     return fbBuilder.endTable();
   }
 

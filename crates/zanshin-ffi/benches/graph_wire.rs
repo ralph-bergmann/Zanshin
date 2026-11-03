@@ -451,6 +451,7 @@ fn synthetic_topology(n: usize) -> GraphTopology {
                     remote: None,
                     synced: true,
                     conflicted: false,
+                    tracked: false,
                 }]
             } else {
                 Vec::new()

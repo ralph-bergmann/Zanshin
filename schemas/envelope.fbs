@@ -2026,6 +2026,7 @@ table TopologyRef {
   remote: string;          // absent for the local entry
   synced: bool;
   conflicted: bool;
+  tracked: bool;           // the CLI's `tracked` keyword: remote entry whose remote ref is tracked; false for local (Story 11.21)
 }
 
 /// One workspace whose working-copy commit is a GraphTopology node (Story 4.12).

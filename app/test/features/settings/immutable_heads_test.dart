@@ -132,7 +132,16 @@ void main() {
       TopologyRefKind kind = TopologyRefKind.bookmark,
       String? remote,
       bool synced = false,
-    }) => TopologyRef(node: 0, kind: kind, name: name, remote: remote, synced: synced, conflicted: false);
+      bool tracked = false,
+    }) => TopologyRef(
+      node: 0,
+      kind: kind,
+      name: name,
+      remote: remote,
+      synced: synced,
+      conflicted: false,
+      tracked: tracked,
+    );
 
     test('tags() names the local tags, deduplicated, in order', () {
       final members = <RevsetMember>[
@@ -153,11 +162,14 @@ void main() {
       expect(matchNames(members, 'tags()'), <String>['v1.0.0', 'v1.4.2']);
     });
 
-    test('the untracked terms name remote refs of their kind, neither synced nor on git', () {
+    test('the untracked terms name remote refs of their kind, neither tracked nor on git', () {
       final members = <RevsetMember>[
         RevsetMember(
           refs: <TopologyRef>[
-            ref('main', remote: 'origin', synced: true),
+            ref('main', remote: 'origin', synced: true, tracked: true),
+            // Tracked but moved away from its local target: still not untracked.
+            ref('unsynced', remote: 'origin', tracked: true),
+            ref('t0', kind: TopologyRefKind.tag, remote: 'origin', tracked: true),
             ref('release', remote: 'origin'),
             ref('x', remote: 'git'),
             ref('t1', kind: TopologyRefKind.tag, remote: 'upstream'),

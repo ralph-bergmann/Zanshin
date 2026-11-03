@@ -88,6 +88,7 @@ Uint8List _envelope({
           name: 'feature',
           remote: 'origin',
           conflicted: true,
+          tracked: true,
         ),
         fbs.TopologyRefObjectBuilder(node: 0, kind: fbs.TopologyRefKind.Tag, name: 'v1', synced: true),
         fbs.TopologyRefObjectBuilder(node: 1, kind: fbs.TopologyRefKind.Tag, name: 'v0', synced: true),
@@ -159,8 +160,8 @@ void _expectMatchesAccessors(GraphTopologyView view, Uint8List bytes) {
   expect(view.hasTimestamps, payload.timestamps != null);
   expect(view.timestamps, payload.timestamps);
   final List<fbs.TopologyRef> refs = payload.refs!;
-  expect(view.refs.map((r) => (r.node, r.kind.index, r.name, r.remote, r.synced, r.conflicted)), [
-    for (final r in refs) (r.node, r.kind.value, r.name, r.remote, r.synced, r.conflicted),
+  expect(view.refs.map((r) => (r.node, r.kind.index, r.name, r.remote, r.synced, r.conflicted, r.tracked)), [
+    for (final r in refs) (r.node, r.kind.value, r.name, r.remote, r.synced, r.conflicted, r.tracked),
   ]);
   expect(view.workingCopies.map((w) => (w.node, w.workspace)), [
     for (final w in payload.workingCopies!) (w.node, w.workspace),

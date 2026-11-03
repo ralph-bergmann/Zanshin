@@ -196,6 +196,7 @@ fn refs_of(refs: &[(usize, fbs::TopologyRef<'_>)], node: usize) -> (Vec<CommitRe
         remote: r.remote().map(ToOwned::to_owned),
         synced: r.synced(),
         conflicted: r.conflicted(),
+        tracked: r.tracked(),
     };
     (
         mine[..first_tag].iter().map(to_ref).collect(),

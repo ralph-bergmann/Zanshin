@@ -307,6 +307,7 @@ fn ref_tables<'a>(
                     remote,
                     synced: r.synced,
                     conflicted: r.conflicted,
+                    tracked: r.tracked,
                 },
             ));
         }
@@ -559,6 +560,7 @@ mod tests {
             remote: None,
             synced: true,
             conflicted: false,
+            tracked: false,
         }
     }
 
@@ -596,6 +598,7 @@ mod tests {
                                 remote: Some("origin".to_owned()),
                                 synced: false,
                                 conflicted: true,
+                                tracked: true,
                             },
                         ],
                         tags: vec![local_ref("v1")],
@@ -742,6 +745,7 @@ mod tests {
                     r.remote().map(ToOwned::to_owned),
                     r.synced(),
                     r.conflicted(),
+                    r.tracked(),
                 )
             })
             .collect();
@@ -754,6 +758,7 @@ mod tests {
                     "feature".to_owned(),
                     None,
                     true,
+                    false,
                     false
                 ),
                 (
@@ -762,10 +767,11 @@ mod tests {
                     "feature".to_owned(),
                     Some("origin".to_owned()),
                     false,
+                    true,
                     true
                 ),
-                (0, fbs::TopologyRefKind::Tag, "v1".to_owned(), None, true, false),
-                (1, fbs::TopologyRefKind::Tag, "v0".to_owned(), None, true, false),
+                (0, fbs::TopologyRefKind::Tag, "v1".to_owned(), None, true, false, false),
+                (1, fbs::TopologyRefKind::Tag, "v0".to_owned(), None, true, false, false),
             ]
         );
         let wcs: Vec<_> = t

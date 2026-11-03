@@ -74,7 +74,16 @@ class _Reads implements SettingsRepoReads {
 }
 
 TopologyRef _ref(String name, {TopologyRefKind kind = TopologyRefKind.bookmark, String? remote, bool synced = false}) =>
-    TopologyRef(node: 0, kind: kind, name: name, remote: remote, synced: synced, conflicted: false);
+    // A synced remote entry is tracked (synced = tracked AND agrees).
+    TopologyRef(
+      node: 0,
+      kind: kind,
+      name: name,
+      remote: remote,
+      synced: synced,
+      conflicted: false,
+      tracked: remote != null && synced,
+    );
 
 class _Model extends GraphViewModel {
   var configChanges = 0;

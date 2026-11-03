@@ -1267,6 +1267,7 @@ TopologyRef {
   remote:     string           // ABSENT (Dart null) for the local entry
   synced:     bool
   conflicted: bool
+  tracked:    bool             // CLI `tracked` keyword: remote entry's ref is tracked; false for local (Story 11.21)
 }
 
 TopologyWorkingCopy {

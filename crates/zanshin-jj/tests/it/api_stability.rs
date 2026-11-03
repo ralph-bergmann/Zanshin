@@ -162,6 +162,7 @@ fn sample_commit_meta() -> zanshin_jj::CommitMeta {
             remote: None,
             synced: false,
             conflicted: false,
+            tracked: false,
         }],
         tags: vec![],
         working_copies: vec![],
