@@ -43,7 +43,8 @@ enum ZsDragGhostKind {
 /// **The words** (`.zs-ghost-cmd`, overlays.css:57-59): 8 below the chip, at most 340 wide, padding 7 10, radius
 /// `--radius-chip`, `--tooltip-bg` with `--shadow-tooltip`. A [command] (the jj command a drop would run) is
 /// `--fs-id` mono `--text` with an `--accent-line` border; else the [target] ("Into Backend") the same in `--fs-sm`
-/// sans; else the [hint] with a `--tooltip-border` border and `--text-dim`. None (or [hideWords]): no words.
+/// sans; else the [hint] with a `--tooltip-border` border and `--text-dim`. None (or [hideWords]): no words. A
+/// [warning] adds a `--warn` line under them.
 ///
 /// [muted] fades the ghost to .3 on `--dur-hover` (`.zs-ghost.is-muted`, overlays.css:43): the pointer is over the drop
 /// menu. It is hidden from VoiceOver and takes no pointer (`.zs-ghost{pointer-events:none}`, overlays.css:42).
@@ -56,6 +57,7 @@ class ZsDragGhost extends StatelessWidget {
     this.target,
     this.hint,
     this.command,
+    this.warning,
     this.changeId,
     this.prefix = 0,
     this.workingCopy = false,
@@ -85,6 +87,10 @@ class ZsDragGhost extends StatelessWidget {
 
   /// The jj command a drop would run; it wins over [target] and [hint].
   final String? command;
+
+  /// A line under the words in `--warn` sans `--fs-sm`: what the drop does that the command does not say (a
+  /// backwards bookmark move). Hidden with the words.
+  final String? warning;
 
   /// A change's full id ([ZsDragGhostKind.change]).
   final String? changeId;
@@ -195,10 +201,19 @@ class ZsDragGhost extends StatelessWidget {
                     shadow: elevation.shadowTooltip,
                     radius: metrics.radiusChip,
                     padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 10),
-                    child: Text(
-                      words,
-                      style: (command != null ? zsMono(ZsType.fsId, height: 1.3) : zsSans(ZsType.fsSm, height: 1.2))
-                          .copyWith(color: on ? colors.text : colors.textDim),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 4,
+                      children: <Widget>[
+                        Text(
+                          words,
+                          style: (command != null ? zsMono(ZsType.fsId, height: 1.3) : zsSans(ZsType.fsSm, height: 1.2))
+                              .copyWith(color: on ? colors.text : colors.textDim),
+                        ),
+                        if (warning case final String warning)
+                          Text(warning, style: zsSans(ZsType.fsSm, height: 1.3).copyWith(color: colors.warn)),
+                      ],
                     ),
                   ),
                 ),

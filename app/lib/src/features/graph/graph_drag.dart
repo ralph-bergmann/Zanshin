@@ -176,8 +176,7 @@ class GraphDropRow {
   /// A bookmark row's bookmark.
   final String? name;
 
-  /// A bookmark row whose move is not a fast-forward (`--allow-backwards`): its warn note, and a plain drop never runs
-  /// it.
+  /// A bookmark row whose move is not a fast-forward (`--allow-backwards`): the ghost's warning names its effect.
   final bool backwards;
 
   /// Its group.
@@ -341,10 +340,11 @@ typedef GraphDropOrigin = ({String? key, Rect rect});
 /// menu, ⌥ and ↑/↓, Esc, and the drop's verb.
 ///
 /// The preview is one `dropActions` query per target ([graphDropLocations]), debounced [graphDropDebounce] after the
-/// target changes, at most one in flight, cached per (source, target) for the layout's operation. The menu opens after
-/// [graphDropMenuDelay] on a target with rows. A plain release runs the highlighted row (the default unless ↑/↓ or the
-/// menu's pointer moved it) — except a backwards bookmark row, which leaves the menu open after the drag; a release
-/// without rows cancels. [holding] stays true while the drag runs and until its verb finished: the view model holds
+/// target changes, at most one in flight, cached per (source, target) for the layout's operation. For a change drag the
+/// menu opens after [graphDropMenuDelay] on a target with rows; a bookmark drag never opens it (its one row runs, a
+/// backwards one too). A bookmark release on a target runs its row; a change release runs the highlighted row (the
+/// default — ⌥ picks it — unless ↑/↓ or the menu's pointer moved it) only once the menu is open; any other release
+/// cancels. [holding] stays true while the drag runs and until its verb finished: the view model holds
 /// reloads meanwhile.
 class GraphDrag extends ChangeNotifier {
   /// A drag controller; the view model wires it in `init`.
@@ -376,7 +376,6 @@ class GraphDrag extends ChangeNotifier {
   String? _target;
   GraphDropPreview? _preview;
   var _menu = false;
-  var _afterDrop = false;
   var _highlight = 0;
   var _arrowed = false;
   var _alt = false;
@@ -390,13 +389,13 @@ class GraphDrag extends ChangeNotifier {
   final _cache = <(GraphDragPayload, String), GraphDropPreview>{};
   String? _cacheOperation;
 
-  /// What is dragged; null without a drag (also while the after-drop menu or the verb shows its ghost).
+  /// What is dragged; null without a drag (also while the verb shows its ghost).
   GraphDragPayload? get payload => _payload;
 
   /// Whether a pointer drag is in progress.
-  bool get active => _payload != null && !_afterDrop && !_running;
+  bool get active => _payload != null && !_running;
 
-  /// Whether the drag, its after-drop menu or its verb runs: reloads wait.
+  /// Whether the drag or its verb runs: reloads wait.
   bool get holding => _payload != null || _running;
 
   /// Whether the drop's verb runs.
@@ -409,7 +408,7 @@ class GraphDrag extends ChangeNotifier {
   Offset? get dropPoint => _dropPoint;
 
   /// What the ghost shows: the payload during the drag and while the drop's verb runs (at [dropPoint]); null hides it.
-  GraphDragPayload? get ghost => _afterDrop ? null : _payload ?? _dropped;
+  GraphDragPayload? get ghost => _payload ?? _dropped;
   GraphDragPayload? _dropped;
 
   /// The card under the pointer that takes the drag (stays while the pointer is over the open menu).
@@ -426,9 +425,6 @@ class GraphDrag extends ChangeNotifier {
 
   /// Whether the drop menu shows.
   bool get menuOpen => _menu;
-
-  /// Whether the menu stays open after the drag (a backwards bookmark row): rows run on a click.
-  bool get afterDrop => _afterDrop;
 
   /// The highlighted row's index.
   int get highlight => _highlight;
@@ -554,7 +550,8 @@ class GraphDrag extends ChangeNotifier {
   }
 
   void _armMenu() {
-    if (_preview?.rows.isNotEmpty ?? false) {
+    // A bookmark target has one row: the release runs it, no menu.
+    if (_payload is GraphChangeDrag && (_preview?.rows.isNotEmpty ?? false)) {
       _menuTimer = Timer(graphDropMenuDelay, () {
         _menuTimer = null;
         if (active && _target != null) {
@@ -614,53 +611,22 @@ class GraphDrag extends ChangeNotifier {
     }
   }
 
-  /// The pointer was released at its last position: runs the highlighted row on a target or over the open menu, keeps
-  /// the menu open for a backwards bookmark row (unless released on its row), else cancels.
+  /// The pointer was released at its last position: a bookmark drag runs its row on a target; a change drag runs the
+  /// highlighted row once the menu is open (before it, nothing runs); else cancels.
   Future<void> drop() async {
     if (!active) {
       return;
     }
     final List<GraphDropRow>? rows = _preview?.rows;
-    if (_target == null || rows == null || rows.isEmpty) {
+    if (_target == null || rows == null || rows.isEmpty || (_payload is GraphChangeDrag && !_menu)) {
       cancel();
       return;
     }
-    final int index = _highlight.clamp(0, rows.length - 1);
-    final GraphDropRow row = rows[index];
-    if (row.backwards && !_overMenu) {
-      // Never on a plain drop: the menu stays open; a click runs a row, Esc or a click outside closes it.
-      _unroute();
-      _afterDrop = true;
-      _menu = true;
-      _highlight = index;
-      _overMenu = false;
-      _menuTimer?.cancel();
-      notifyListeners();
-      return;
-    }
-    await _runRow(row, ghost: true);
+    await _runRow(rows[_highlight.clamp(0, rows.length - 1)]);
   }
 
-  /// The pointer is over row [index] of the after-drop menu: it takes the highlight (the footer names its command).
-  void point(int index) {
-    final int count = _preview?.rows.length ?? 0;
-    if (_afterDrop && index >= 0 && index < count && index != _highlight) {
-      _highlight = index;
-      notifyListeners();
-    }
-  }
-
-  /// Runs [index] of the after-drop menu (a click on its row).
-  Future<void> choose(int index) async {
-    final List<GraphDropRow>? rows = _preview?.rows;
-    if (!_afterDrop || rows == null || index < 0 || index >= rows.length) {
-      return;
-    }
-    await _runRow(rows[index], ghost: false);
-  }
-
-  Future<void> _runRow(GraphDropRow row, {required bool ghost}) async {
-    final Rect? rect = ghost ? _ghostRect() : null;
+  Future<void> _runRow(GraphDropRow row) async {
+    final Rect? rect = _ghostRect();
     final Rect? local = rect == null ? null : toViewport?.call(rect);
     final GraphDropOrigin? origin = local == null
         ? null
@@ -672,8 +638,8 @@ class GraphDrag extends ChangeNotifier {
             GraphDuplicate() => (key: null, rect: local),
             _ => null,
           };
-    _dropPoint = ghost ? _pointer : null;
-    _dropped = ghost ? _payload : null;
+    _dropPoint = _pointer;
+    _dropped = _payload;
     _running = true;
     _end(notify: true);
     try {
@@ -696,7 +662,7 @@ class GraphDrag extends ChangeNotifier {
     return null;
   }
 
-  /// Esc, a release on nothing, a click outside the after-drop menu: nothing runs.
+  /// Esc or a release on nothing: nothing runs.
   void cancel() {
     if (_payload == null) {
       return;
@@ -715,7 +681,7 @@ class GraphDrag extends ChangeNotifier {
     _payload = null;
     _target = null;
     _preview = null;
-    _menu = _afterDrop = _overMenu = _arrowed = false;
+    _menu = _overMenu = _arrowed = false;
     _highlight = 0;
     if (notify && !_disposed) {
       notifyListeners();
@@ -729,7 +695,7 @@ class GraphDrag extends ChangeNotifier {
     final LogicalKeyboardKey key = event.logicalKey;
     if (key == LogicalKeyboardKey.altLeft || key == LogicalKeyboardKey.altRight) {
       final bool alt = HardwareKeyboard.instance.isAltPressed;
-      if (alt != _alt && !_afterDrop) {
+      if (alt != _alt) {
         _alt = alt;
         if (!_arrowed) {
           _highlight = defaultIndex;
@@ -750,10 +716,6 @@ class GraphDrag extends ChangeNotifier {
       _highlight = (_highlight + (key == LogicalKeyboardKey.arrowDown ? 1 : -1)) % count;
       _arrowed = true;
       notifyListeners();
-      return true;
-    }
-    if (_afterDrop && (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter)) {
-      unawaited(choose(_highlight));
       return true;
     }
     return false;

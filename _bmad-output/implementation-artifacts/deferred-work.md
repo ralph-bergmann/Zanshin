@@ -2709,3 +2709,12 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 - **The hunk checkboxes, the mixed states and the selected-hunk look were not checked in the running catalogue against the DS DiffHunk card.** Low.
   - Unattended run with targeted checks only: widget tests pin the colours (`accentSoftHi`, `accentLine`, `hunkBg`) and the checkbox states in `app/lib/src/features/graph/inspector_diff.dart` / `graph_inspector.dart`; no Marionette/Playwright look.
   - **Follow-up:** a Marionette check of a partly selected file in the catalogue against DS components/content/DiffHunk, recorded in spec-10-26-hunk-selection-gui-tree.md.
+
+## Surfaced in the bookmark-drop fix run (bmad-build-auto, 2026-11-03)
+
+- **The new drop behaviour (bookmark release runs at once, change release only with the menu open) and the backwards-warning ghost were not checked in the running app; the ~110-character warning may wrap to several lines in the 340 px words box.** Medium.
+  - Unattended run, widget/controller tests only (`app/test/features/graph/graph_drag_test.dart`); ghost words in `app/lib/src/features/graph/graph_view.dart` (`_GraphDragGhostLayer`), warning line in `packages/zanshin_ui/lib/src/controls/zs_drag_ghost.dart`.
+  - **Follow-up:** a Marionette check of a forward and a backwards bookmark drag and a change drag (release before/after the menu); shorten the arb text `dragBackwardsWarning` if it wraps badly.
+- **The backwards-move warning is visual only: VoiceOver never hears it and the toast does not repeat it.** Medium.
+  - `ZsDragGhost` wraps the ghost in `ExcludeSemantics` (pre-existing, `packages/zanshin_ui/lib/src/controls/zs_drag_ghost.dart:177`); unverified with VoiceOver.
+  - **Follow-up:** a VoiceOver pass on a backwards bookmark drop; if silent, name the effect in the result toast or a live-region announcement.

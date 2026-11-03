@@ -1293,7 +1293,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get dropBackwards => 'backwards';
+  String dragBackwardsWarning(String name) {
+    return 'Moves $name back · the later commits leave the bookmark; after a push, colleagues no longer see them on the branch';
+  }
 
   @override
   String get dropMenuLabel => 'Drop actions';

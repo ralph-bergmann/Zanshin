@@ -507,7 +507,6 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     // Only what the build reads rebuilds the canvas; a pointer move alone does not.
     final Object seen = (
       active,
-      drag.afterDrop,
       drag.payload,
       drag.target,
       drag.menuOpen,
@@ -1383,9 +1382,9 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     final List<(int, Rect)> brackets = _brackets(rows, metrics);
     // Story 10.10: the dragged card paints at .35; it and the target stay laid out (pinned).
     final GraphDrag? drag = widget.drag;
-    final String? dragSource = drag == null || !(drag.active || drag.afterDrop) ? null : drag.payload?.key;
+    final String? dragSource = drag == null || !drag.active ? null : drag.payload?.key;
     final int? sourceNode = dragSource == null ? null : widget.layout.placeOfKey(dragSource);
-    final String? dragTarget = drag == null || !(drag.active || drag.afterDrop) ? null : drag.target;
+    final String? dragTarget = drag == null || !drag.active ? null : drag.target;
     // After layout: the layout, the insets or the size may have moved @ in or out of view.
     SchedulerBinding.instance.addPostFrameCallback((_) => _measureDirection());
     final GraphMinimapSource? minimap = widget.minimapSource;
@@ -1590,13 +1589,11 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       rows: rows,
       highlight: drag.highlight,
       above: place.above,
-      onChoose: drag.afterDrop ? (index) => unawaited(drag.choose(index)) : null,
-      onPoint: drag.afterDrop ? drag.point : null,
     );
     return Positioned(
       left: place.topLeft.dx,
       top: place.topLeft.dy,
-      child: drag.afterDrop ? TapRegion(onTapOutside: (_) => drag.cancel(), child: menu) : IgnorePointer(child: menu),
+      child: IgnorePointer(child: menu),
     );
   }
 

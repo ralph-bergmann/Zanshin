@@ -352,7 +352,29 @@ void main() {
       });
     });
 
-    test('the menu opens after 260 ms on a target with rows; a plain release runs the highlighted row', () {
+    test('a change released before the menu opens runs nothing; with the menu open the default row runs', () {
+      fakeAsync((async) {
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t');
+        async.elapse(graphDropDebounce);
+        expect(drag.highlightedTarget, 't');
+        unawaited(drag.drop());
+        async.flushMicrotasks();
+        expect(ran.ran, isEmpty, reason: 'before the menu: cancelled');
+        expect(drag.payload, isNull);
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t');
+        async.elapse(graphDropMenuDelay);
+        expect(drag.menuOpen, isTrue);
+        unawaited(drag.drop());
+        async.flushMicrotasks();
+        expect(ran.ran.single.$1.command, 'jj rebase -s kmnvxoqpzz -o t', reason: 'released on the card');
+      });
+    });
+
+    test('the menu opens after 260 ms on a target with rows; a release on a row runs that row', () {
       fakeAsync((async) {
         drag
           ..start(_source, Offset.zero)
@@ -393,23 +415,26 @@ void main() {
       });
     });
 
-    test('a backwards bookmark row never runs on a plain drop: the menu stays open, a click runs it', () {
-      fakeAsync((async) {
-        drops.answer = (_, _) => _bookmarkRows(_backwards);
-        drag
-          ..start(const GraphBookmarkDrag('b-mark'), Offset.zero)
-          ..hover('t');
-        async.elapse(graphDropDebounce);
-        unawaited(drag.drop());
-        async.flushMicrotasks();
-        expect(ran.ran, isEmpty);
-        expect(drag.afterDrop && drag.menuOpen, isTrue);
-        expect(drag.holding, isTrue, reason: 'reloads still wait');
-        unawaited(drag.choose(0));
-        async.flushMicrotasks();
-        expect(ran.ran.single.$1.command, 'jj bookmark move b-mark --to t --allow-backwards');
+    for (final (String name, ActionOutcome outcome, String command) in <(String, ActionOutcome, String)>[
+      ('forward', _available, 'jj bookmark move b-mark --to t'),
+      ('backwards', _backwards, 'jj bookmark move b-mark --to t --allow-backwards'),
+    ]) {
+      test('a bookmark drag never opens the menu; a $name release runs its row', () {
+        fakeAsync((async) {
+          drops.answer = (_, _) => _bookmarkRows(outcome);
+          drag
+            ..start(const GraphBookmarkDrag('b-mark'), Offset.zero)
+            ..hover('t');
+          async.elapse(graphDropDebounce + const Duration(seconds: 1));
+          expect(drag.highlightedTarget, 't');
+          expect(drag.menuOpen, isFalse);
+          unawaited(drag.drop());
+          async.flushMicrotasks();
+          expect(ran.ran.single.$1.command, command);
+          expect(drag.menuOpen, isFalse);
+        });
       });
-    });
+    }
 
     test('holding lasts until the verb finished; the ghost stays at the drop point meanwhile', () {
       fakeAsync((async) {
@@ -417,7 +442,7 @@ void main() {
         drag
           ..start(_source, const Offset(10, 10))
           ..hover('t');
-        async.elapse(graphDropDebounce);
+        async.elapse(graphDropDebounce + graphDropMenuDelay);
         unawaited(drag.drop());
         async.flushMicrotasks();
         expect(drag.holding && drag.running, isTrue);
@@ -607,7 +632,7 @@ void main() {
   group('in the graph', () {
     setUpIconRegistry();
 
-    testWidgets('a card dragged onto another runs the default row; the ghost showed its command; no click', (
+    testWidgets('a card released on another with the menu open runs the default row; no command before it; no click', (
       tester,
     ) async {
       useShellWindow(tester);
@@ -635,8 +660,12 @@ void main() {
       await mouse.moveTo(to);
       await tester.pump(graphDropDebounce);
       await tester.pump();
-      expect(find.text('jj rebase -s a -o c'), findsOneWidget);
       expect(_dropTarget(tester), 'c', reason: 'the target shows its drop look');
+      expect(find.text('jj rebase -s a -o c'), findsNothing, reason: 'no command before the menu');
+      expect(find.text(_en.dragHintChange), findsOneWidget);
+      await tester.pump(graphDropMenuDelay);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.drag.menuOpen, isTrue);
       final RenderGraphViewport viewport = tester.allRenderObjects.whereType<RenderGraphViewport>().single;
       final GraphLayout dragged = model.layout!;
       expect(viewport.opacityOf!(dragged.indexOfKey('a')!), graphDragSourceOpacity, reason: 'the source dims');
@@ -948,32 +977,29 @@ void main() {
       model.dispose();
     });
 
-    testWidgets('a backwards bookmark drop keeps the menu open: Enter or a click runs the row, outside cancels', (
-      tester,
-    ) async {
-      useShellWindow(tester);
-      final RecordedGraphLayout layout = handLayout(
-        <(String, int, int)>[('a', 2, 0), ('b', 1, 0), ('c', 0, 0)],
-        edges: <(int, int)>[(0, 1), (1, 2)],
-        workingCopy: 0,
-        refs: <List<GraphRef>>[
-          <GraphRef>[const GraphRef('main')],
-          const <GraphRef>[],
-          const <GraphRef>[],
-        ],
-      );
-      final drops = _Drops()..answer = (_, _) => _bookmarkRows(_backwards);
-      final source = ScriptedGraphSource(respond: (_) => layout);
-      final actions = _Actions();
-      final model = GraphViewModel()..init(source, actions: actions, drops: drops);
-      await tester.pumpWidget(shellHost(GraphView(model: model)));
-      await tester.pumpAndSettle();
-      final Finder row = find.byWidgetPredicate(
-        (w) => w is Semantics && w.properties.identifier == 'graph-drop-bookmark',
-      );
-      const command = 'jj bookmark move main --to c --allow-backwards';
-
-      Future<void> dropOnC() async {
+    for (final backwards in <bool>[true, false]) {
+      testWidgets('a ${backwards ? 'backwards' : 'forward'} bookmark drag ${backwards ? 'warns' : 'does not warn'} in '
+          'the ghost, never opens the menu and runs on release', (
+        tester,
+      ) async {
+        useShellWindow(tester);
+        final RecordedGraphLayout layout = handLayout(
+          <(String, int, int)>[('a', 2, 0), ('b', 1, 0), ('c', 0, 0)],
+          edges: <(int, int)>[(0, 1), (1, 2)],
+          workingCopy: 0,
+          refs: <List<GraphRef>>[
+            <GraphRef>[const GraphRef('main')],
+            const <GraphRef>[],
+            const <GraphRef>[],
+          ],
+        );
+        final drops = _Drops()..answer = (_, _) => _bookmarkRows(backwards ? _backwards : _available);
+        final source = ScriptedGraphSource(respond: (_) => layout);
+        final actions = _Actions();
+        final model = GraphViewModel()..init(source, actions: actions, drops: drops);
+        await tester.pumpWidget(shellHost(GraphView(model: model)));
+        await tester.pumpAndSettle();
+        final command = 'jj bookmark move main --to c${backwards ? ' --allow-backwards' : ''}';
         final RenderGraphCard a = _card(tester, 'a');
         final Rect legend = a.debugSlots.firstWhere((s) => s.kind == GraphCardSlot.legend).rect;
         final Offset from = a.localToGlobal(legend.center);
@@ -983,34 +1009,25 @@ void main() {
         await tester.pump();
         await mouse.moveTo(to);
         await tester.pump(graphDropDebounce);
-        await tester.pump();
+        await tester.pump(graphDropMenuDelay + const Duration(milliseconds: 100));
+        expect(model.drag.menuOpen, isFalse, reason: 'a bookmark drag never opens the menu');
+        expect(find.byType(GraphDropMenu), findsNothing);
+        expect(find.text(command), findsOneWidget, reason: 'the ghost names the command');
+        final Finder warning = find.text(_en.dragBackwardsWarning('main'));
+        if (backwards) {
+          expect(warning, findsOneWidget);
+          expect(tester.widget<Text>(warning).style?.color, ZsColors.of(tester.element(warning)).warn);
+        } else {
+          expect(warning, findsNothing, reason: 'a fast-forward needs no warning');
+        }
         await mouse.up();
         await tester.pumpAndSettle();
-        expect(model.drag.afterDrop && model.drag.menuOpen, isTrue);
-        expect(row, findsOneWidget);
-      }
-
-      await dropOnC();
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pumpAndSettle();
-      expect(actions.ran.map((a) => a.command), <String>[command], reason: 'Enter runs the highlighted row');
-
-      await dropOnC();
-      final RenderGraphViewport render = tester.allRenderObjects.whereType<RenderGraphViewport>().single;
-      final Rect area = render.insets.deflateRect(Offset.zero & render.size);
-      await tester.tapAt(render.localToGlobal(area.bottomRight - const Offset(8, 8)), kind: PointerDeviceKind.mouse);
-      await tester.pumpAndSettle();
-      expect(model.drag.payload, isNull, reason: 'a click outside closes it');
-      expect(actions.ran, hasLength(1));
-
-      await dropOnC();
-      await tester.tap(row, kind: PointerDeviceKind.mouse);
-      await tester.pumpAndSettle();
-      expect(actions.ran.map((a) => a.command), <String>[command, command], reason: 'a click on the row runs it');
-      expect(model.drag.payload, isNull);
-      await tester.pumpWidget(const SizedBox());
-      model.dispose();
-    });
+        expect(actions.ran.map((a) => a.command), <String>[command], reason: 'the release runs the row');
+        expect(model.drag.payload, isNull);
+        await tester.pumpWidget(const SizedBox());
+        model.dispose();
+      });
+    }
   });
 }
 

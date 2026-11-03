@@ -66,23 +66,17 @@ const double _footerH = 30;
 }
 
 /// The drop menu (Story 10.10; DS components/menus/DropMenu.prompt.md): on the menu material, each row its glyph, its
-/// label and its short verb in mono (or the warn note), hairlines between groups, the highlighted row's full command
-/// in the footer. The highlight is solid `--accent` with `--accent-ink`. [onChoose] runs a row on a click (the
-/// after-drop menu); during the drag the pointer is the drag's, so the canvas highlights by geometry. It fades in (its
-/// scale × `--motion`).
+/// label and its short verb in mono, hairlines between groups, the highlighted row's full command in the footer. The
+/// highlight is solid `--accent` with `--accent-ink`. The pointer is the drag's, so the canvas highlights by geometry.
+/// It fades in (its scale × `--motion`).
 class GraphDropMenu extends StatefulWidget {
   /// A menu of [rows].
   const GraphDropMenu({
     required this.rows,
     required this.highlight,
     required this.above,
-    this.onChoose,
-    this.onPoint,
     super.key,
   });
-
-  /// The pointer is over a row (the after-drop menu): it takes the highlight.
-  final ValueChanged<int>? onPoint;
 
   /// The Available rows.
   final List<GraphDropRow> rows;
@@ -92,9 +86,6 @@ class GraphDropMenu extends StatefulWidget {
 
   /// Whether it opens above the card (the list runs bottom-up).
   final bool above;
-
-  /// Runs a row on a click; null while the drag holds the pointer.
-  final ValueChanged<int>? onChoose;
 
   @override
   State<GraphDropMenu> createState() => _GraphDropMenuState();
@@ -133,8 +124,8 @@ class _GraphDropMenuState extends State<GraphDropMenu> with SingleTickerProvider
       final GraphDropRow row = rows[i];
       final on = i == hi;
       final Color ink = on ? colors.accentInk : colors.text;
-      final Color side = on ? colors.accentInk : (row.backwards ? colors.warn : colors.textDim);
-      Widget cell = DecoratedBox(
+      final Color side = on ? colors.accentInk : colors.textDim;
+      final Widget cell = DecoratedBox(
         decoration: BoxDecoration(
           color: on ? colors.accent : const Color(0x00000000),
           borderRadius: BorderRadius.circular(metrics.radiusMd),
@@ -154,24 +145,13 @@ class _GraphDropMenuState extends State<GraphDropMenu> with SingleTickerProvider
                 ),
               ),
               Text(
-                row.backwards ? strings.dropBackwards : row.short,
-                style: row.backwards
-                    ? ZsType.control.copyWith(fontSize: ZsType.fsSm, color: side)
-                    : ZsType.id.copyWith(fontSize: ZsType.fsSm, color: side),
+                row.short,
+                style: ZsType.id.copyWith(fontSize: ZsType.fsSm, color: side),
               ),
             ],
           ),
         ),
       );
-      final ValueChanged<int>? choose = widget.onChoose;
-      if (choose != null) {
-        final ValueChanged<int>? point = widget.onPoint;
-        cell = MouseRegion(
-          onEnter: point == null ? null : (_) => point(i),
-          onHover: point == null ? null : (_) => point(i),
-          child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => choose(i), child: cell),
-        );
-      }
       children.add(
         Positioned.fromRect(
           rect: geometry.rows[i],

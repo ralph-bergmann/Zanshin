@@ -438,8 +438,9 @@ class _GraphViewState extends State<GraphView> {
 }
 
 /// The drag's ghost on the root overlay, above the islands (Story 10.10): at the pointer + [graphGhostOffset], at the
-/// drop point while the drop's verb runs. Its words: the highlighted row's command on a target; on a card with no
-/// Available row the first refusal; else the hint. They hide while the menu is open, and the ghost fades over it.
+/// drop point while the drop's verb runs. Its words: a bookmark's row command on a target; on a card with no
+/// Available row the first refusal; else the hint; a backwards bookmark row adds the warning. They hide while the menu
+/// is open, and the ghost fades over it.
 class _GraphDragGhostLayer extends StatelessWidget {
   const _GraphDragGhostLayer({required this.drag});
 
@@ -455,7 +456,10 @@ class _GraphDragGhostLayer extends StatelessWidget {
       }
       final AppLocalizations strings = context.l10n;
       final Offset at = (drag.dropPoint ?? drag.pointer) + graphGhostOffset;
-      final String? command = drag.highlightedTarget == null ? null : drag.highlightedRow?.command;
+      // A change drag runs only a menu row: no command before the menu (its footer names it).
+      final String? command = drag.highlightedTarget == null || payload is GraphChangeDrag
+          ? null
+          : drag.highlightedRow?.command;
       final String? hint = command != null
           ? null
           : drag.target != null && drag.refusal != null
@@ -492,6 +496,9 @@ class _GraphDragGhostLayer extends StatelessWidget {
                 kind: ZsDragGhostKind.bookmark,
                 label: name,
                 command: command,
+                warning: command != null && (drag.highlightedRow?.backwards ?? false)
+                    ? strings.dragBackwardsWarning(name)
+                    : null,
                 hint: hint,
                 hideWords: drag.menuOpen || drag.running,
                 muted: drag.overMenu,

@@ -145,6 +145,35 @@ void main() {
     expect(_surfaceAround(tester, 'Drop on the change it should').border, night.tooltipBorder);
   });
 
+  testWidgets('a warning: a --warn sans line under the command, in the same words box; hidden with the words', (
+    tester,
+  ) async {
+    const ghost = ZsDragGhost(
+      kind: ZsDragGhostKind.bookmark,
+      label: 'main',
+      command: 'jj x',
+      warning: 'Moves main back',
+    );
+    await tester.pumpWidget(_ghost(ghost));
+    final Finder warning = find.text('Moves main back');
+    expect(tester.widget<Text>(warning).style?.color, night.warn);
+    expect(tester.widget<Text>(warning).style?.fontFamily, isNot(contains('JetBrainsMono')));
+    expect(_surfaceAround(tester, 'Moves main back'), same(_surfaceAround(tester, 'jj x')));
+    expect(tester.getTopLeft(warning).dy, greaterThanOrEqualTo(tester.getBottomLeft(find.text('jj x')).dy));
+    await tester.pumpWidget(
+      _ghost(
+        const ZsDragGhost(
+          kind: ZsDragGhostKind.bookmark,
+          label: 'main',
+          command: 'jj x',
+          warning: 'Moves main back',
+          hideWords: true,
+        ),
+      ),
+    );
+    expect(warning, findsNothing);
+  });
+
   testWidgets('hideWords drops the words; muted fades the ghost to .3', (tester) async {
     await tester.pumpWidget(
       _ghost(const ZsDragGhost(kind: ZsDragGhostKind.bookmark, label: 'main', command: 'jj x', hideWords: true)),
