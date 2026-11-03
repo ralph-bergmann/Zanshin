@@ -447,6 +447,31 @@ void main() {
       },
     );
 
+    test(
+      'clone attaches its ticket: a cancel right after the call ends in jj.cancelled, or the clone finished first',
+      () async {
+        final String root = temp.resolveSymbolicLinksSync();
+        final source = '$root/source';
+        await Directory(source).create();
+        await gitWithCommit(source);
+        final ticket = CloneTicket();
+
+        final Future<ProjectCreation> clone = repos.clone(
+          url: 'file://$source',
+          destination: '$root/clone',
+          ticket: ticket,
+        );
+        await ticket.cancel();
+        try {
+          final ProjectCreation creation = await clone;
+          addTearDown(creation.repo.close);
+        } on ZanshinFfiException catch (error) {
+          expect(error.code, 'jj.cancelled');
+        }
+        expect(ticket.cancelled, isTrue);
+      },
+    );
+
     // Story 9.29. A TRACKED non-`git` remote needs a fetch, a clone or `remotes.<name>.auto-track-bookmarks`: the first
     // two cannot run under a Dart test (the VM reaps jj-lib's git child, zanshin_core's mutate_test.dart `gitFetch`
     // note), so the tracking tests below set the third. Here the read runs over remote rows that must NOT count — the

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin_core/zanshin_core.dart';
@@ -34,6 +35,9 @@ class FakeProjectRepos implements ProjectRepos {
 
   /// While set, a clone waits for it before it answers (a test sees the busy form).
   Completer<void>? cloneGate;
+
+  /// While set, a clone's cancel waits for it before the clone ends (a test sees the cancelled form).
+  Completer<void>? cancelGate;
 
   /// While set, an open waits for it before it answers (a test acts while a reopen is pending).
   Completer<void>? openGate;
@@ -85,11 +89,42 @@ class FakeProjectRepos implements ProjectRepos {
     return _created(path);
   }
 
+  /// A running clone's progress, which the test drives ([CloneTicket.attach] listens to it).
+  StreamController<ProgressEvent>? cloneProgress;
+
   @override
-  Future<ProjectCreation> clone({required String url, required String destination}) async {
+  Future<ProjectCreation> clone({required String url, required String destination, CloneTicket? ticket}) async {
     log.add('clone $url $destination');
-    await cloneGate?.future;
-    return _created(destination);
+    cloneProgress = StreamController<ProgressEvent>();
+    var cancelled = false;
+    ticket?.attach(
+      progress: cloneProgress!.stream,
+      cancel: () async {
+        log.add('cancel clone');
+        cancelled = true;
+        await cancelGate?.future;
+        final Completer<void>? gate = cloneGate;
+        if (gate != null && !gate.isCompleted) {
+          gate.complete();
+        }
+      },
+    );
+    try {
+      await cloneGate?.future;
+    } finally {
+      unawaited(cloneProgress!.close());
+    }
+    if (cancelled) {
+      throw const ZanshinFfiException('jj.cancelled');
+    }
+    final ProjectCreation created = _created(destination);
+    // As the verb does: a missing destination exists after a clone.
+    try {
+      Directory(destination).createSync(recursive: true);
+    } on FileSystemException {
+      // A made-up path (`/r/…`): there is no folder to create.
+    }
+    return created;
   }
 
   ProjectCreation _created(String path) {

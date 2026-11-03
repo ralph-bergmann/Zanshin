@@ -146,4 +146,7 @@ enum ProjectStatus {
 
   /// Both at once: the bookmark and its tracked remote each have commits the other lacks.
   diverged,
+
+  /// A fetch or push runs for the open project (Story 11.8); transient, the next reading replaces it.
+  syncing,
 }

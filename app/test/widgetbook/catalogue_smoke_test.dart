@@ -38,7 +38,8 @@ void main() {
   ];
 
   test(
-    'the folders are Controls, Materials, Shell, Projects, Bookmarks, Undo Timeline, Windows, Icons and Graph, and '
+    'the folders are Controls, Materials, Shell, Projects, Bookmarks, Sync, Undo Timeline, Windows, Icons and Graph, '
+    'and '
     'every use case has its own path',
     () {
       expect(catalogueDirectories.map((node) => node.name), <String>[
@@ -47,6 +48,7 @@ void main() {
         'Shell',
         'Projects',
         'Bookmarks',
+        'Sync',
         'Undo Timeline',
         'Windows',
         'Icons',

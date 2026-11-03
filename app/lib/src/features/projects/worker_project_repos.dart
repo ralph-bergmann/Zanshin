@@ -53,8 +53,16 @@ class WorkerProjectRepos implements ProjectRepos {
       _create('init', (worker) => worker.initRepo(path, backend: _gitBackend, noColocate: true));
 
   @override
-  Future<ProjectCreation> clone({required String url, required String destination}) =>
-      _create('clone', (worker) => worker.cloneRepo(source: url, destination: destination, noColocate: true).result);
+  Future<ProjectCreation> clone({required String url, required String destination, CloneTicket? ticket}) =>
+      _create('clone', (worker) {
+        final NetworkOperation<CreatedRepoHandle> clone = worker.cloneRepo(
+          source: url,
+          destination: destination,
+          noColocate: true,
+        );
+        ticket?.attach(progress: clone.progress, cancel: clone.cancel);
+        return clone.result;
+      });
 
   /// Runs one creation [call]: its handle becomes a [ProjectRepo] like an opened one; a failure is rethrown with its
   /// warnings, which are logged by code either way.

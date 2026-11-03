@@ -123,6 +123,7 @@ const _$ProjectStatusEnumMap = {
   ProjectStatus.ahead: 'ahead',
   ProjectStatus.behind: 'behind',
   ProjectStatus.diverged: 'diverged',
+  ProjectStatus.syncing: 'syncing',
 };
 
 const _$RemotePollSettingEnumMap = {

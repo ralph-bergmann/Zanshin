@@ -17,6 +17,7 @@ void main() {
       expect(ProjectStatus.ahead.colorIn(colors), colors.projAhead);
       expect(ProjectStatus.behind.colorIn(colors), colors.projBehind);
       expect(ProjectStatus.diverged.colorIn(colors), colors.projDiverged);
+      expect(ProjectStatus.syncing.colorIn(colors), colors.projSyncing);
     }
     expect(
       <String>[for (final ProjectStatus status in ProjectStatus.values) status.labelIn(AppLocalizationsEn())],
@@ -29,6 +30,7 @@ void main() {
         'ahead of remote',
         'behind remote',
         'diverged',
+        'syncing',
       ],
     );
   });

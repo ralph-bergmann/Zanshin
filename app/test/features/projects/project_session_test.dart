@@ -607,10 +607,10 @@ void main() {
       expect(session.current?.path, '/r/plain');
     });
 
-    test('clone creates a missing destination, clones into its canonical path and opens it', () async {
+    test('clone hands a missing destination to the verb as spelled and registers the clone canonical', () async {
       final String root = dir.resolveSymbolicLinksSync();
       final destination = '${dir.path}/code/repo';
-      repos.creationWarnings['$root/code/repo'] = const <ZanshinWarning>[identityMissing];
+      repos.creationWarnings[destination] = const <ZanshinWarning>[identityMissing];
 
       final ProjectOpenOutcome outcome = await session.clone(
         url: 'https://example.com/repo.git',
@@ -618,15 +618,15 @@ void main() {
       );
 
       expect(outcome, isA<ProjectOpened>().having((o) => o.warnings, 'warnings', <ZanshinWarning>[identityMissing]));
-      expect(Directory(destination).existsSync(), isTrue);
-      expect(repos.log.first, 'clone https://example.com/repo.git $root/code/repo');
+      expect(repos.log.first, 'clone https://example.com/repo.git $destination');
       expect(session.current?.path, '$root/code/repo');
     });
 
-    test('clone refuses a destination that exists and is not empty, with the CLI text, before any jj call', () async {
+    test("the verb's jj.destination_not_empty reads jj's text; the session touches no folder", () async {
       final Directory full = await Directory('${dir.path}/full').create();
       File('${full.path}/README.md').writeAsStringSync('hello');
-      File('${dir.path}/file').writeAsStringSync('');
+      final String target = full.resolveSymbolicLinksSync();
+      repos.creationFailures[target] = const ZanshinFfiException('jj.destination_not_empty', 'full');
 
       expect(
         await session.clone(url: 'https://example.com/repo.git', destination: full.path),
@@ -636,17 +636,13 @@ void main() {
           'Destination path exists and is not an empty directory',
         ),
       );
-      expect(
-        await session.clone(url: 'https://example.com/repo.git', destination: '${dir.path}/file'),
-        isA<ProjectRefused>(),
-      );
-      expect(repos.log, isEmpty);
+      expect(repos.log, <String>['clone https://example.com/repo.git $target']);
       expect(full.listSync(), hasLength(1));
+      expect(session.lastFailure, isNull);
     });
 
-    test('a failed clone removes the folder it created and carries the warnings', () async {
-      final String root = dir.resolveSymbolicLinksSync();
-      repos.creationFailures['$root/repo'] = const ZanshinFfiException.withReport(
+    test('a failed clone reports its code and creates or removes no folder', () async {
+      repos.creationFailures['${dir.path}/repo'] = const ZanshinFfiException.withReport(
         'jj.jj_lib_error',
         'fetch failed',
         precondition: null,
@@ -661,43 +657,28 @@ void main() {
       expect(warnings.single.message, 'cloning a project failed: jj.jj_lib_error');
     });
 
-    test('a clone into an empty folder that existed clones there; after a failure the folder stays', () async {
-      final String empty = (await Directory('${dir.path}/empty').create()).resolveSymbolicLinksSync();
-      repos.creationFailures[empty] = const ZanshinFfiException('jj.jj_lib_error');
+    test('a clone reports its progress through the ticket; Cancel ends it silently', () async {
+      final ticket = CloneTicket();
+      repos.cloneGate = Completer<void>();
 
-      expect(await session.clone(url: 'file:///nowhere', destination: empty), isA<ProjectOpenFailed>());
-      expect(Directory(empty).existsSync(), isTrue);
+      final Future<ProjectOpenOutcome> outcome = session.clone(
+        url: 'https://example.com/repo.git',
+        destination: '${dir.path}/repo',
+        ticket: ticket,
+      );
+      await pumpEventQueue();
+      repos.cloneProgress!.add(const ProgressEvent(1, 'clone', 0.4, ''));
+      await pumpEventQueue();
+      expect(ticket.progress, 0.4);
 
-      repos.creationFailures.clear();
-      expect(await session.clone(url: 'file:///somewhere', destination: empty), isA<ProjectOpened>());
-      expect(session.current?.path, empty);
+      await ticket.cancel();
+      expect(await outcome, isA<ProjectSwitchCancelled>());
+      expect(repos.log, <String>['clone https://example.com/repo.git ${dir.path}/repo', 'cancel clone']);
+      expect(Directory('${dir.path}/repo').existsSync(), isFalse);
+      expect(session.lastFailure, isNull);
+      expect(warnings, isEmpty);
+      expect(registry.value.projects, isEmpty);
     });
-
-    test(
-      'a destination that cannot be created is refused with the CLI text and its cause, before any jj call',
-      () async {
-        File('${dir.path}/file').writeAsStringSync('');
-
-        final ProjectOpenOutcome outcome = await session.clone(
-          url: 'https://example.com/repo.git',
-          destination: '${dir.path}/file/sub',
-        );
-
-        expect(
-          outcome,
-          isA<ProjectRefused>().having(
-            (o) => o.message,
-            'message',
-            startsWith('Failed to create ${dir.path}/file/sub: '),
-          ),
-        );
-        expect(
-          (outcome as ProjectRefused).message.length,
-          greaterThan('Failed to create ${dir.path}/file/sub: '.length),
-        );
-        expect(repos.log, isEmpty);
-      },
-    );
 
     test('a clone into a folder listed under another spelling keeps that one entry', () async {
       final String real = (await Directory('${dir.path}/real').create()).resolveSymbolicLinksSync();
@@ -707,8 +688,47 @@ void main() {
       expect(await session.clone(url: 'https://example.com/repo.git', destination: '$real/repo'), isA<ProjectOpened>());
 
       expect(registry.value.projects, hasLength(1));
-      expect(repos.log.first, 'clone https://example.com/repo.git ${dir.path}/alias/repo');
+      expect(repos.log.first, 'clone https://example.com/repo.git $real/repo');
       expect(session.current?.path, '${dir.path}/alias/repo');
+    });
+
+    test('syncing keeps the dot on syncing while the run lasts; the reading after it writes the real state', () async {
+      await register(<String>['/r/a']);
+      await session.open('/r/a');
+      repos.readings['/r/a'] = const ProjectReading(status: ProjectStatus.dirty, bookmark: 'main');
+      final gate = Completer<void>();
+
+      final Future<int> run = session.syncing(() async {
+        await gate.future;
+        return 7;
+      });
+      await pumpEventQueue();
+      expect(session.current?.status, ProjectStatus.syncing);
+      session.refresh();
+      await pumpEventQueue();
+      expect(session.current?.status, ProjectStatus.syncing);
+
+      gate.complete();
+      expect(await run, 7);
+      await drain();
+      expect(session.current?.status, ProjectStatus.dirty);
+      expect(session.current?.bookmark, 'main');
+    });
+
+    test('a project switched away from mid-sync gets its earlier status back', () async {
+      await register(<String>['/r/a', '/r/b']);
+      repos.readings['/r/a'] = const ProjectReading(status: ProjectStatus.ahead, bookmark: 'main');
+      await session.open('/r/a');
+      final gate = Completer<void>();
+
+      final Future<void> run = session.syncing(() => gate.future);
+      await pumpEventQueue();
+      expect(registry.entry('/r/a')?.status, ProjectStatus.syncing);
+      await session.open('/r/b');
+      gate.complete();
+      await run;
+      expect(registry.entry('/r/a')?.status, ProjectStatus.ahead);
+      expect(session.current?.status, ProjectStatus.clean);
     });
 
     test('creations run in the serial queue with opens', () async {

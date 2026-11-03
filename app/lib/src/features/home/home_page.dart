@@ -44,7 +44,8 @@ part 'home_page.factory.dart';
 /// Story 10.12: while a project is open the shell holds its commit graph ([ProjectGraphHost]): the graph, VIEW's
 /// controls and search, New change, the inspector, the @ pill and the stale notice; the graph is published to
 /// [appMenu], and the rail's Undo Timeline runs through its model. ACTION's sync island is Reload (⌘R's tooltip):
-/// one [ProjectSession.refresh] and one graph reload per press, each coalesced; disabled without a project. Without
+/// one [ProjectSession.refresh] and one graph reload per press, each coalesced; disabled without a project — then
+/// Fetch and Push… (Story 11.8). Without
 /// one VIEW and New change stay empty islands. The bar's row is the window's drag region (design question (a),
 /// decision (g); Story 11.4): from the window's top edge down to the content top, the part the islands leave empty
 /// moves the window on a drag and runs the system's titlebar action on a double-click.
@@ -107,7 +108,7 @@ class HomePage extends StatelessWidget {
                       barRow: const WindowDragArea(child: ColoredBox(color: Color(0x00000000))),
                       projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place(context)),
                       view: graph.view,
-                      syncGroup: graph.reload,
+                      syncGroup: graph.sync,
                       newChange: graph.newChange,
                       inspector: graph.inspector,
                       minimap: graph.minimap,

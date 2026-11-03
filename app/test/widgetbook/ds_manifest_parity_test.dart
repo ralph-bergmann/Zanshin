@@ -68,6 +68,7 @@ const _covered = <String, String>{
   'SettingsGroup': 'windows/settings-window/settings-window',
   'SettingsPage': 'windows/settings-window/settings-window',
   'SettingsRow': 'windows/settings-window/settings-window',
+  'PushDialog': 'sync/push-sheet/preselection',
 };
 
 /// DS components an open story builds, by its story id.
@@ -81,7 +82,6 @@ const _openStories = <String, String>{
   'StackCard': '10.17',
   'DropMenu': '10.10',
   'Toast': '10.23',
-  'PushDialog': '11.8',
   'SearchScopes': '10.21',
   'SearchDollar': '10.21',
   'GraphSearch': '10.21',

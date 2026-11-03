@@ -21,6 +21,7 @@ import '../graph/graph_view_model.dart';
 import '../home/home_page.dart' show openRecentProject;
 import '../projects/project_session.dart';
 import '../projects/projects_window.dart';
+import '../sync/sync_model.dart';
 import '../window/active_window_tracker.dart';
 import '../window/app_window_actions.dart';
 import '../window/app_windows.dart';
@@ -49,7 +50,14 @@ Future<void> _openInBrowser(Uri url) async {
 @immutable
 class GraphMenuBinding {
   /// The binding of [model] and [preferences].
-  const GraphMenuBinding({required this.model, required this.preferences, this.search, this.focusSearch, this.squash});
+  const GraphMenuBinding({
+    required this.model,
+    required this.preferences,
+    this.search,
+    this.focusSearch,
+    this.squash,
+    this.sync,
+  });
 
   /// The graph's view model: the Change, Go and Undo items act on it.
   final GraphViewModel model;
@@ -66,6 +74,9 @@ class GraphMenuBinding {
   /// Change › Squash into Parent through the inspector (`InspectorViewModel.squash`, Story 10.25), which asks for the
   /// combined description; null runs `jj squash -r` directly.
   final ValueChanged<String>? squash;
+
+  /// Change › Fetch and Push… (Story 11.8); null leaves them grey.
+  final SyncModel? sync;
 }
 
 /// The menu bar's state (Story 11.13; DS readme.md:196–209): the menus follow the key window, the open project, the
@@ -81,8 +92,9 @@ class GraphMenuBinding {
 ///   "@", else max(prefix, 8) characters of the change id. Edit and Revert are grey while the target is @.
 /// - **Text first:** Undo and Redo act on a focused text field before the graph; Cut, Copy, Paste and Select All send
 ///   their text intents to the focused text field and are grey without one.
-/// - Items whose handler story has not landed stay grey: Settings…, Project Settings…, Describe…,
-///   Fetch, Push… and the app's Help. Edit Configurations… opens the jj log Configurations window (Story 10.22).
+/// - Items whose handler story has not landed stay grey: Describe… and the app's Help. Edit Configurations… opens the
+///   jj log Configurations window (Story 10.22). Change › Fetch and Push… run the bound graph's sync (Story 11.8) while
+///   it allows them.
 ///
 /// Its listeners hear a change after the current frame's work (a microtask): sheets come and go while the tree builds.
 @inject
@@ -126,9 +138,11 @@ class AppMenuModel extends ChangeNotifier {
   void _graphChanged() {
     _bound?.model.removeListener(_changed);
     _bound?.preferences.removeListener(_changed);
+    _bound?.sync?.removeListener(_changed);
     _bound = graph.value;
     _bound?.model.addListener(_changed);
     _bound?.preferences.addListener(_changed);
+    _bound?.sync?.addListener(_changed);
     _changed();
   }
 
@@ -524,10 +538,20 @@ class AppMenuModel extends ChangeNotifier {
           ),
           PlatformMenuItemGroup(
             members: <PlatformMenuItem>[
-              PlatformMenuItem(label: s.menuFetch),
+              PlatformMenuItem(
+                label: s.menuFetch,
+                onSelected: switch (ready?.sync) {
+                  final SyncModel sync when sync.canFetch => _run(sync.fetch),
+                  _ => null,
+                },
+              ),
               PlatformMenuItem(
                 label: s.menuPush,
                 shortcut: const SingleActivator(LogicalKeyboardKey.keyP, meta: true, shift: true),
+                onSelected: switch (ready?.sync) {
+                  final SyncModel sync when sync.canPush => sync.openPush,
+                  _ => null,
+                },
               ),
             ],
           ),
@@ -650,6 +674,7 @@ class AppMenuModel extends ChangeNotifier {
     FocusManager.instance.removeListener(_changed);
     _bound?.model.removeListener(_changed);
     _bound?.preferences.removeListener(_changed);
+    _bound?.sync?.removeListener(_changed);
     graph.dispose();
     super.dispose();
   }

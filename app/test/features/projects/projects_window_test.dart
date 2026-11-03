@@ -208,6 +208,9 @@ class _Rig {
 
   Finder id(String identifier) => find.bySemanticsIdentifier(identifier);
 
+  /// The clone form's progress bar.
+  Finder progress() => find.byType(ZsProgressBar);
+
   /// The visible row named [name].
   Finder row(String name) => find.ancestor(of: find.text(name), matching: find.byType(ZsControlCore)).first;
 
@@ -1838,18 +1841,51 @@ void main() {
       await tester.pump();
       expect(tester.widget<ZsButton>(find.widgetWithText(ZsButton, 'Clone')).busy, isTrue);
       expect(tester.widget<ZsTextField>(find.ancestor(of: url, matching: find.byType(ZsTextField))).enabled, isFalse);
+      expect(tester.widget<ZsProgressBar>(rig.progress()).value, isNull);
+      rig.repos.cloneProgress!.add(const ProgressEvent(1, 'clone', 0.25, ''));
+      await tester.pump();
+      expect(tester.widget<ZsProgressBar>(rig.progress()).value, 0.25);
       rig.repos.cloneGate!.complete();
       await rig.settle(() => rig.session.current != null);
       expect(rig.session.current?.path, '${rig.home}/repo');
-      expect(Directory('${rig.home}/repo').existsSync(), isTrue);
       expect(rig.id('projects-clone-url'), findsNothing, reason: 'the form closes');
     });
 
-    testWidgets('a destination that is not empty is refused with the CLI text, before any jj call', (tester) async {
+    testWidgets('Cancel stops a running clone; it ends with no notice and the form stays', (tester) async {
       final rig = _Rig(tester);
       await rig.pump();
-      Directory('${rig.home}/repo').createSync();
-      File('${rig.home}/repo/file').writeAsStringSync('');
+      await tester.tap(rig.id('projects-clone'));
+      await tester.pump();
+      await tester.enterText(
+        find.descendant(of: rig.id('projects-clone-url'), matching: find.byType(EditableText)),
+        'https://example.com/repo.git',
+      );
+      await tester.pump();
+      rig.repos.cloneGate = Completer<void>();
+      await tester.tap(rig.id('projects-clone-submit'));
+      await tester.pump();
+
+      rig.repos.cancelGate = Completer<void>();
+      await tester.tap(rig.id('projects-clone-cancel'));
+      await tester.pump();
+      expect(
+        tester.widget<ZsButton>(find.widgetWithText(ZsButton, 'Cancel')).onPressed,
+        isNull,
+        reason: 'Cancel greys once pressed',
+      );
+      rig.repos.cancelGate!.complete();
+      await rig.settle(() => !tester.widget<ZsButton>(find.widgetWithText(ZsButton, 'Clone')).busy);
+      expect(rig.repos.log, contains('cancel clone'));
+      expect(find.text('Clone failed'), findsNothing);
+      expect(rig.progress(), findsNothing);
+      expect(rig.id('projects-clone-url'), findsOneWidget, reason: 'the form stays');
+      expect(rig.session.current, isNull);
+    });
+
+    testWidgets("a destination that is not empty is refused by the verb with jj's text", (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      rig.repos.creationFailures['${rig.home}/repo'] = const ZanshinFfiException('jj.destination_not_empty');
       await tester.tap(rig.id('projects-clone'));
       await tester.pump();
 
@@ -1864,7 +1900,7 @@ void main() {
 
       expect(find.text('Clone failed'), findsOneWidget);
       expect(find.text('Destination path exists and is not an empty directory'), findsOneWidget);
-      expect(rig.repos.log, isEmpty);
+      expect(rig.repos.log, <String>['clone https://example.com/repo ${rig.home}/repo']);
       expect(rig.id('projects-clone-url'), findsOneWidget, reason: 'the form stays');
     });
 

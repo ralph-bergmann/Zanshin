@@ -20,6 +20,8 @@ import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/shell/app_menu.dart';
+import 'package:zanshin/src/features/shell/shell_toast.dart';
+import 'package:zanshin/src/features/sync/sync_model.dart';
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
@@ -29,6 +31,7 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_projects.dart';
+import '../../helpers/fake_remote_sync.dart';
 import '../../helpers/fake_windows.dart';
 import '../../helpers/scripted_graph_source.dart';
 
@@ -262,7 +265,11 @@ class _Rig {
   );
 
   /// Binds a graph of `_wc` (@) over `_mid` over `_base`.
-  Future<void> bindGraph(WidgetTester tester, {ValueChanged<String>? squash}) async {
+  Future<void> bindGraph(
+    WidgetTester tester, {
+    ValueChanged<String>? squash,
+    SyncModel Function(GraphViewModel)? sync,
+  }) async {
     final ScriptedGraphSource source = this.source = ScriptedGraphSource(
       respond: (_) => keysLayout(<String>[_wc, _mid, _base], at: _wc),
     );
@@ -274,6 +281,7 @@ class _Rig {
       preferences: preferences,
       focusSearch: () => searches++,
       squash: squash,
+      sync: sync?.call(model),
     );
     await tester.pump();
   }
@@ -391,6 +399,44 @@ void main() {
       expect(rig.actions.settings, <SettingsTarget?>[null, SettingsTarget.project]);
     },
   );
+
+  testWidgets("Change › Fetch runs the bound sync's fetch and Push… (⇧⌘P) opens its sheet; nothing pushes", (
+    tester,
+  ) async {
+    final rig = _Rig();
+    await rig.setUp(tester);
+    final remotes = FakeRemoteSync();
+    final toasts = ShellToasts();
+    late final SyncModel sync;
+    await rig.bindGraph(
+      tester,
+      sync: (model) => sync = SyncModel(
+        sync: remotes,
+        graph: model,
+        toasts: toasts,
+        pollSetting: () => RemotePollSetting.off,
+      ),
+    );
+    await tester.runAsync(sync.reloadRemotes);
+    await tester.pump();
+    expect(rig.enabled('Fetch'), isTrue);
+    expect(rig.item('Fetch').shortcut, isNull);
+    expect(rig.enabled('Push…'), isTrue);
+
+    rig.select('Push…');
+    await tester.pump();
+    expect(sync.pushSheet, isNotNull);
+    expect(rig.enabled('Fetch'), isFalse, reason: 'not while the sheet is open');
+    sync.pushSheetClosed();
+    rig.select('Fetch');
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    expect(remotes.log, contains('fetch'));
+    expect(remotes.pushes, isEmpty);
+
+    rig.unbindGraph();
+    sync.dispose();
+    toasts.dispose();
+  });
 
   testWidgets('items without a handler story are grey; graph items are grey while no graph is bound', (tester) async {
     final rig = _Rig();

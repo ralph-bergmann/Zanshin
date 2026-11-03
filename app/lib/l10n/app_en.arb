@@ -104,7 +104,9 @@
   "cloneChoosePrompt": "Choose",
   "@cloneChoosePrompt": {"description": "Confirm button of the folder picker for the clone destination."},
   "cloneCancel": "Cancel",
-  "@cloneCancel": {"description": "Clone form button that closes the form."},
+  "@cloneCancel": {"description": "Clone form button that closes the form, or stops the running clone."},
+  "cloneProgress": "Cloning",
+  "@cloneProgress": {"description": "VoiceOver name of the clone form's progress bar while a clone runs."},
   "cloneSubmit": "Clone",
   "@cloneSubmit": {"description": "Clone form button that runs the clone, and its tooltip title."},
   "convertTitle": "Convert {name} to a jj repository?",
@@ -221,6 +223,8 @@
   "@statusBehind": {"description": "Project status: remote commits not fetched."},
   "statusDiverged": "diverged",
   "@statusDiverged": {"description": "Project status: local and remote have both moved."},
+  "statusSyncing": "syncing",
+  "@statusSyncing": {"description": "Project status: a fetch or push runs."},
 
   "lastOpenedNow": "now",
   "@lastOpenedNow": {"description": "When a project was last opened: under a minute ago."},
@@ -1486,5 +1490,157 @@
     "placeholders": {"root": {"type": "String", "example": "root()"}, "flag": {"type": "String", "example": "--ignore-immutable"}}
   },
   "settingsImmutableReset": "Reset to jj’s default",
-  "@settingsImmutableReset": {"description": "Unsets the repository's immutable_heads() alias."}
+  "@settingsImmutableReset": {"description": "Unsets the repository's immutable_heads() alias."},
+
+  "syncFetchTooltip": "Fetch from {remotes}",
+  "@syncFetchTooltip": {
+    "description": "Fetch button tooltip above the jj command; remotes are the default fetch remotes, comma-separated.",
+    "placeholders": {"remotes": {"type": "String", "example": "origin, upstream"}}
+  },
+  "syncFetchChanged": "{names} changed on {remote}",
+  "@syncFetchChanged": {
+    "description": "Fetch button tooltip line per remote while the poll found changed bookmarks.",
+    "placeholders": {"names": {"type": "String", "example": "main, feature-x"}, "remote": {"type": "String", "example": "origin"}}
+  },
+  "syncFetching": "Fetching…",
+  "@syncFetching": {"description": "Fetch button tooltip while a fetch runs without progress yet."},
+  "syncFetchingPercent": "Fetching… {percent}%",
+  "@syncFetchingPercent": {
+    "description": "Fetch button tooltip while a fetch runs.",
+    "placeholders": {"percent": {"type": "int", "example": "40"}}
+  },
+  "syncPushTooltip": "Choose what to push to {remotes}",
+  "@syncPushTooltip": {
+    "description": "Push button tooltip above the jj command; remotes are the default push remotes.",
+    "placeholders": {"remotes": {"type": "String", "example": "origin"}}
+  },
+  "syncNoRemote": "No remote",
+  "@syncNoRemote": {"description": "Why Fetch or Push is disabled: the repository has no Git remote to use."},
+  "toastFetched": "{count, plural, =0{Fetched from {remotes}} =1{Fetched from {remotes} · 1 bookmark changed} other{Fetched from {remotes} · {count} bookmarks changed}}",
+  "@toastFetched": {
+    "description": "Toast after a fetch; count is the number of remote bookmarks it changed.",
+    "placeholders": {"count": {"type": "int"}, "remotes": {"type": "String", "example": "origin"}}
+  },
+  "toastPushed": "Pushed {names} to {remotes}",
+  "@toastPushed": {
+    "description": "Toast after a push; names are the pushed bookmarks and tags, remotes where they went.",
+    "placeholders": {"names": {"type": "String", "example": "main"}, "remotes": {"type": "String", "example": "origin"}}
+  },
+  "pushSheetTitle": "Push",
+  "@pushSheetTitle": {"description": "The Push sheet's title and VoiceOver name."},
+  "pushSheetTo": "to",
+  "@pushSheetTo": {"description": "Before the Push sheet's remote chips: push to these remotes."},
+  "pushSheetRemoteDefault": "A default remote, no flag",
+  "@pushSheetRemoteDefault": {"description": "Tooltip of a remote chip jj git push uses without --remote."},
+  "pushSheetRemoteFlag": "Pushed with --remote",
+  "@pushSheetRemoteFlag": {"description": "Tooltip of a remote chip that is not a default remote."},
+  "pushSheetBookmarks": "Bookmarks",
+  "@pushSheetBookmarks": {"description": "The Push sheet's list heading without tags."},
+  "pushSheetBookmarksAndTags": "Bookmarks and tags",
+  "@pushSheetBookmarksAndTags": {"description": "The Push sheet's list heading when it lists tags."},
+  "pushSheetBare": "As jj git push",
+  "@pushSheetBare": {"description": "Bulk choice: what jj git push alone sends."},
+  "pushSheetBareTooltip": "Tracked bookmarks and tags in {revset}, to {remotes}",
+  "@pushSheetBareTooltip": {
+    "description": "Tooltip of the As-jj-git-push choice; revset is the evaluated revsets.git-push.",
+    "placeholders": {"revset": {"type": "String", "example": "remote_bookmarks(remote=origin)..@"}, "remotes": {"type": "String", "example": "origin"}}
+  },
+  "pushSheetBareTooltipNoRevset": "Tracked bookmarks and tags in revsets.git-push, to {remotes}",
+  "@pushSheetBareTooltipNoRevset": {
+    "description": "Tooltip of the As-jj-git-push choice while the revset is unknown.",
+    "placeholders": {"remotes": {"type": "String", "example": "origin"}}
+  },
+  "pushSheetTracked": "Tracked",
+  "@pushSheetTracked": {"description": "Bulk choice: --tracked."},
+  "pushSheetAll": "All",
+  "@pushSheetAll": {"description": "Bulk choice: --all."},
+  "pushSheetDeleted": "Deleted",
+  "@pushSheetDeleted": {"description": "Bulk choice: --deleted."},
+  "pushSheetTag": "TAG",
+  "@pushSheetTag": {"description": "Marks a tag row in the Push sheet."},
+  "pushSheetNotSent": "not sent",
+  "@pushSheetNotSent": {"description": "A ref's line for a remote it does not go to."},
+  "pushSheetSkipped": "skipped",
+  "@pushSheetSkipped": {"description": "A ref the chosen mode skips; jj's reason follows."},
+  "pushSheetRefused": "refused",
+  "@pushSheetRefused": {"description": "A ref that cannot be named by hand; jj's reason follows."},
+  "pushSheetAllowedWith": "Allowed · pushed with {flags}",
+  "@pushSheetAllowedWith": {
+    "description": "Under a commit jj would refuse, once its reasons are allowed.",
+    "placeholders": {"flags": {"type": "String", "example": "--allow-empty-description"}}
+  },
+  "pushSheetAllow": "Allow",
+  "@pushSheetAllow": {"description": "The short inline chip that allows the one reason jj refuses a commit for."},
+  "pushSheetAllowEmptyDescription": "Allow empty descriptions",
+  "@pushSheetAllowEmptyDescription": {"description": "Chip for --allow-empty-description."},
+  "pushSheetAllowPrivate": "Allow private commits",
+  "@pushSheetAllowPrivate": {"description": "Chip for --allow-private."},
+  "pushSheetAllowConflicts": "Allow conflicts",
+  "@pushSheetAllowConflicts": {"description": "Chip for --allow-conflicts."},
+  "pushSheetChange": "Push {id} as a new bookmark",
+  "@pushSheetChange": {
+    "description": "The change row's label; id is @ or a change id.",
+    "placeholders": {"id": {"type": "String", "example": "@"}}
+  },
+  "pushSheetChangeName": "Bookmark name",
+  "@pushSheetChangeName": {"description": "VoiceOver name of the change row's name field."},
+  "pushSheetChangeGenerated": "The name jj generates (templates.git_push_bookmark) — type your own to name it.",
+  "@pushSheetChangeGenerated": {"description": "Under the change row's name field while it holds jj's name."},
+  "pushSheetChangeNamed": "Your name — pushed with --named.",
+  "@pushSheetChangeNamed": {"description": "Under the change row's name field once the user typed a name."},
+  "pushSheetEmptyRemotes": "Nothing goes to {remotes}. jj still runs git push there, which fails, and then the push is not recorded.",
+  "@pushSheetEmptyRemotes": {
+    "description": "Warning when one of several chosen remotes gets nothing.",
+    "placeholders": {"remotes": {"type": "String", "example": "upstream"}}
+  },
+  "pushSheetSigning": "git.sign-on-push is on: the push signs commits and rebases their descendants, so the pushed ids can differ from this preview.",
+  "@pushSheetSigning": {"description": "Note while git.sign-on-push is on."},
+  "pushSheetChecked": "Checked with --dry-run",
+  "@pushSheetChecked": {"description": "Footer: the command was checked by a dry run."},
+  "pushSheetChecking": "Checking…",
+  "@pushSheetChecking": {"description": "Footer while the dry run of the command runs."},
+  "pushSheetRan": "Ran",
+  "@pushSheetRan": {"description": "Footer after the push ran."},
+  "pushSheetCommand": "Command",
+  "@pushSheetCommand": {"description": "VoiceOver name of the footer's command."},
+  "pushSheetCancel": "Cancel",
+  "@pushSheetCancel": {"description": "Closes the Push sheet without pushing."},
+  "pushSheetPush": "Push",
+  "@pushSheetPush": {"description": "Runs the push the footer shows."},
+  "pushSheetDone": "Done",
+  "@pushSheetDone": {"description": "Closes the Push sheet after a push that failed in part."},
+  "pushSheetPushing": "Pushing to {remotes}…",
+  "@pushSheetPushing": {
+    "description": "Footer while the push runs.",
+    "placeholders": {"remotes": {"type": "String", "example": "origin"}}
+  },
+  "pushSheetProgress": "Pushing",
+  "@pushSheetProgress": {"description": "VoiceOver name of the push's progress bar."},
+  "pushSheetRecorded": "The push is recorded, so Undo works as usual.",
+  "@pushSheetRecorded": {"description": "After a push that failed in part but wrote its operation."},
+  "pushSheetNotRecorded": "Nothing was recorded.",
+  "@pushSheetNotRecorded": {"description": "After a push that wrote no operation."},
+  "pushSheetStoppedAt": "The push stopped at {remote}. {earlier} already got their refs.",
+  "@pushSheetStoppedAt": {
+    "description": "A push error at one remote after earlier remotes were pushed.",
+    "placeholders": {"remote": {"type": "String", "example": "upstream"}, "earlier": {"type": "String", "example": "origin"}}
+  },
+  "pushSheetStoppedAtFirst": "The push stopped at {remote}. No remote got its refs.",
+  "@pushSheetStoppedAtFirst": {
+    "description": "A push error at the first remote.",
+    "placeholders": {"remote": {"type": "String", "example": "origin"}}
+  },
+  "pushSheetPushed": "pushed",
+  "@pushSheetPushed": {"description": "A ref's result: pushed."},
+  "pushSheetMovedOn": "moved on {remote}",
+  "@pushSheetMovedOn": {
+    "description": "A ref's result: the remote moved it since the last fetch (the lease failed).",
+    "placeholders": {"remote": {"type": "String", "example": "origin"}}
+  },
+  "pushSheetRejected": "rejected",
+  "@pushSheetRejected": {"description": "A ref's result: the remote rejected the update."},
+  "pushSheetUnexported": "couldn’t be updated locally",
+  "@pushSheetUnexported": {"description": "A ref's result: pushed, but its remote-tracking ref was not updated."},
+  "pushSheetNotReached": "not pushed",
+  "@pushSheetNotReached": {"description": "A ref's result: the push did not reach it."}
 }

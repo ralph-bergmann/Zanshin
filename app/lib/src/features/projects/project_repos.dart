@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
@@ -22,10 +24,48 @@ abstract interface class ProjectRepos {
   /// the CLI's `jj git init --no-colocate <path>`). Throws [ZanshinFfiException] when it fails.
   Future<ProjectCreation> init(String path);
 
-  /// Clones [url] into the existing folder [destination] (`ZanshinWorker.cloneRepo`, the CLI's
-  /// `jj git clone --no-colocate <url> <destination>` with the remote `origin`). Throws [ZanshinFfiException],
-  /// carrying the clone's warnings, when it fails.
-  Future<ProjectCreation> clone({required String url, required String destination});
+  /// Clones [url] into [destination] (`ZanshinWorker.cloneRepo`, the CLI's
+  /// `jj git clone --no-colocate <url> <destination>` with the remote `origin`), which applies the CLI's destination
+  /// rules (`jj.destination_not_empty`; a missing folder is created and removed again on failure). Its progress and
+  /// its cancel go through [ticket] (Story 11.8, I3). Throws [ZanshinFfiException], carrying the clone's warnings,
+  /// when it fails (`jj.cancelled` after a cancel).
+  Future<ProjectCreation> clone({required String url, required String destination, CloneTicket? ticket});
+}
+
+/// A running clone's live progress and its Cancel (Story 11.8, I3): the Projects window's clone form listens to
+/// [progress] and calls [cancel]; the [ProjectRepos] adapter [attach]es the network call to it.
+class CloneTicket extends ChangeNotifier {
+  double? _progress;
+  Future<void> Function()? _cancel;
+  var _cancelled = false;
+
+  /// The clone's completion in `[0, 1]`, or null before its first progress event.
+  double? get progress => _progress;
+
+  /// Whether [cancel] was asked for.
+  bool get cancelled => _cancelled;
+
+  /// Connects the running call: its [progress] events and its [cancel]. A cancel asked before this runs at once.
+  void attach({required Stream<ProgressEvent> progress, required Future<void> Function() cancel}) {
+    _cancel = cancel;
+    progress.listen((event) {
+      _progress = event.progress;
+      notifyListeners();
+    });
+    if (_cancelled) {
+      unawaited(cancel());
+    }
+  }
+
+  /// Asks the clone to stop; it then ends with `jj.cancelled`.
+  Future<void> cancel() async {
+    if (_cancelled) {
+      return;
+    }
+    _cancelled = true;
+    notifyListeners();
+    await _cancel?.call();
+  }
 }
 
 /// A repository a creation made, open, with what the creating call warned about (9.33).

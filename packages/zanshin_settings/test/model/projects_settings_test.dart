@@ -99,7 +99,7 @@ void main() {
     final settings = AppSettings.fromJson(<String, Object?>{
       'projects': <String, Object?>{
         'projects': <Object?>[
-          <String, Object?>{'path': '/r/a', 'name': 'a', 'status': 'syncing', 'bookmark': 'main', 'order': 3},
+          <String, Object?>{'path': '/r/a', 'name': 'a', 'status': 'pulling', 'bookmark': 'main', 'order': 3},
           <String, Object?>{'path': '/r/b', 'name': 'b', 'status': 'dirty'},
         ],
         'openProject': '/r/b',

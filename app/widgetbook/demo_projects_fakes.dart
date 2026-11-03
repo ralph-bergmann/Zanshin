@@ -136,7 +136,7 @@ class DemoProjectRepos implements ProjectRepos {
   Future<ProjectCreation> init(String path) async => ProjectCreation(repo: _DemoRepo());
 
   @override
-  Future<ProjectCreation> clone({required String url, required String destination}) async {
+  Future<ProjectCreation> clone({required String url, required String destination, CloneTicket? ticket}) async {
     await cloneGate?.future;
     return ProjectCreation(repo: _DemoRepo());
   }

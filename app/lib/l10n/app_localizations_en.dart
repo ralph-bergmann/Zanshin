@@ -139,6 +139,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cloneCancel => 'Cancel';
 
   @override
+  String get cloneProgress => 'Cloning';
+
+  @override
   String get cloneSubmit => 'Clone';
 
   @override
@@ -290,6 +293,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get statusDiverged => 'diverged';
+
+  @override
+  String get statusSyncing => 'syncing';
 
   @override
   String get lastOpenedNow => 'now';
@@ -2222,4 +2228,202 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsImmutableReset => 'Reset to jj’s default';
+
+  @override
+  String syncFetchTooltip(String remotes) {
+    return 'Fetch from $remotes';
+  }
+
+  @override
+  String syncFetchChanged(String names, String remote) {
+    return '$names changed on $remote';
+  }
+
+  @override
+  String get syncFetching => 'Fetching…';
+
+  @override
+  String syncFetchingPercent(int percent) {
+    return 'Fetching… $percent%';
+  }
+
+  @override
+  String syncPushTooltip(String remotes) {
+    return 'Choose what to push to $remotes';
+  }
+
+  @override
+  String get syncNoRemote => 'No remote';
+
+  @override
+  String toastFetched(int count, String remotes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Fetched from $remotes · $count bookmarks changed',
+      one: 'Fetched from $remotes · 1 bookmark changed',
+      zero: 'Fetched from $remotes',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String toastPushed(String names, String remotes) {
+    return 'Pushed $names to $remotes';
+  }
+
+  @override
+  String get pushSheetTitle => 'Push';
+
+  @override
+  String get pushSheetTo => 'to';
+
+  @override
+  String get pushSheetRemoteDefault => 'A default remote, no flag';
+
+  @override
+  String get pushSheetRemoteFlag => 'Pushed with --remote';
+
+  @override
+  String get pushSheetBookmarks => 'Bookmarks';
+
+  @override
+  String get pushSheetBookmarksAndTags => 'Bookmarks and tags';
+
+  @override
+  String get pushSheetBare => 'As jj git push';
+
+  @override
+  String pushSheetBareTooltip(String revset, String remotes) {
+    return 'Tracked bookmarks and tags in $revset, to $remotes';
+  }
+
+  @override
+  String pushSheetBareTooltipNoRevset(String remotes) {
+    return 'Tracked bookmarks and tags in revsets.git-push, to $remotes';
+  }
+
+  @override
+  String get pushSheetTracked => 'Tracked';
+
+  @override
+  String get pushSheetAll => 'All';
+
+  @override
+  String get pushSheetDeleted => 'Deleted';
+
+  @override
+  String get pushSheetTag => 'TAG';
+
+  @override
+  String get pushSheetNotSent => 'not sent';
+
+  @override
+  String get pushSheetSkipped => 'skipped';
+
+  @override
+  String get pushSheetRefused => 'refused';
+
+  @override
+  String pushSheetAllowedWith(String flags) {
+    return 'Allowed · pushed with $flags';
+  }
+
+  @override
+  String get pushSheetAllow => 'Allow';
+
+  @override
+  String get pushSheetAllowEmptyDescription => 'Allow empty descriptions';
+
+  @override
+  String get pushSheetAllowPrivate => 'Allow private commits';
+
+  @override
+  String get pushSheetAllowConflicts => 'Allow conflicts';
+
+  @override
+  String pushSheetChange(String id) {
+    return 'Push $id as a new bookmark';
+  }
+
+  @override
+  String get pushSheetChangeName => 'Bookmark name';
+
+  @override
+  String get pushSheetChangeGenerated =>
+      'The name jj generates (templates.git_push_bookmark) — type your own to name it.';
+
+  @override
+  String get pushSheetChangeNamed => 'Your name — pushed with --named.';
+
+  @override
+  String pushSheetEmptyRemotes(String remotes) {
+    return 'Nothing goes to $remotes. jj still runs git push there, which fails, and then the push is not recorded.';
+  }
+
+  @override
+  String get pushSheetSigning =>
+      'git.sign-on-push is on: the push signs commits and rebases their descendants, so the pushed ids can differ from this preview.';
+
+  @override
+  String get pushSheetChecked => 'Checked with --dry-run';
+
+  @override
+  String get pushSheetChecking => 'Checking…';
+
+  @override
+  String get pushSheetRan => 'Ran';
+
+  @override
+  String get pushSheetCommand => 'Command';
+
+  @override
+  String get pushSheetCancel => 'Cancel';
+
+  @override
+  String get pushSheetPush => 'Push';
+
+  @override
+  String get pushSheetDone => 'Done';
+
+  @override
+  String pushSheetPushing(String remotes) {
+    return 'Pushing to $remotes…';
+  }
+
+  @override
+  String get pushSheetProgress => 'Pushing';
+
+  @override
+  String get pushSheetRecorded => 'The push is recorded, so Undo works as usual.';
+
+  @override
+  String get pushSheetNotRecorded => 'Nothing was recorded.';
+
+  @override
+  String pushSheetStoppedAt(String remote, String earlier) {
+    return 'The push stopped at $remote. $earlier already got their refs.';
+  }
+
+  @override
+  String pushSheetStoppedAtFirst(String remote) {
+    return 'The push stopped at $remote. No remote got its refs.';
+  }
+
+  @override
+  String get pushSheetPushed => 'pushed';
+
+  @override
+  String pushSheetMovedOn(String remote) {
+    return 'moved on $remote';
+  }
+
+  @override
+  String get pushSheetRejected => 'rejected';
+
+  @override
+  String get pushSheetUnexported => 'couldn’t be updated locally';
+
+  @override
+  String get pushSheetNotReached => 'not pushed';
 }

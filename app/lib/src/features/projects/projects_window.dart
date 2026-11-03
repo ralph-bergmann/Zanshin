@@ -14,6 +14,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import 'project_registry.dart';
+import 'project_repos.dart' show CloneTicket;
 import 'project_session.dart';
 import 'projects_environment.dart';
 import 'projects_tree.dart';
@@ -55,7 +56,8 @@ final _log = Logger('zanshin.projects');
 ///
 /// **Clone…** opens an inline form under the header: the URL, the destination (mono; pre-filled
 /// `‹last parent or ~›/‹name›` by the CLI's rule), Choose…, Cancel and Clone (gold, busy while it runs; its tooltip the
-/// `jj git clone --no-colocate` command). **New group** names a group inline, last inside the selected group, else
+/// `jj git clone --no-colocate` command); while it runs a progress bar shows its live progress and Cancel stops it,
+/// which ends it without a notice (Story 11.8, I3). **New group** names a group inline, last inside the selected group, else
 /// inside the selected project's group, else at the top level (Story 11.15 item 2). The tree's row menus rename,
 /// delete and move rows (Story 11.15); every move selects the moved row, and a click below the rows clears the
 /// selection. Delete group and Remove from list ask first (`ZsConfirmDialog`, tone destructive; Ralph, 2026-10-29):
@@ -166,7 +168,11 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   _Question? _question;
 
   var _cloneOpen = false;
-  var _cloneBusy = false;
+
+  /// The running clone's progress and Cancel; null while none runs.
+  CloneTicket? _cloneTicket;
+
+  bool get _cloneBusy => _cloneTicket != null;
   var _destinationEdited = false;
   String? _lastParent;
 
@@ -720,16 +726,18 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     if (url.isEmpty || destination.isEmpty || _cloneBusy) {
       return;
     }
-    setState(() => _cloneBusy = true);
+    final ticket = CloneTicket();
+    setState(() => _cloneTicket = ticket);
     final ProjectOpenOutcome outcome = await widget.session.clone(
       url: url,
       destination: destination,
       group: _targetGroup,
+      ticket: ticket,
     );
     if (!mounted) {
       return;
     }
-    setState(() => _cloneBusy = false);
+    setState(() => _cloneTicket = null);
     if (outcome is ProjectOpened) {
       _closeCloneForm();
     }
@@ -990,11 +998,19 @@ class ProjectsWindowState extends State<ProjectsWindow> {
                   identifier: 'projects-clone-choose',
                   onPressed: _cloneBusy ? null : () => unawaited(_chooseCloneParent()),
                 ),
-                ZsButton(
-                  label: context.l10n.cloneCancel,
-                  size: ZsButtonSize.md,
-                  identifier: 'projects-clone-cancel',
-                  onPressed: _cloneBusy ? null : _closeCloneForm,
+                ListenableBuilder(
+                  // The ticket's cancel greys it.
+                  listenable: _cloneTicket ?? Listenable.merge(const <Listenable>[]),
+                  builder: (context, _) => ZsButton(
+                    label: context.l10n.cloneCancel,
+                    size: ZsButtonSize.md,
+                    identifier: 'projects-clone-cancel',
+                    // While the clone runs, Cancel stops it (Story 11.8, I3); it then ends without a notice.
+                    onPressed: switch (_cloneTicket) {
+                      null => _closeCloneForm,
+                      final CloneTicket ticket => ticket.cancelled ? null : () => unawaited(ticket.cancel()),
+                    },
+                  ),
                 ),
                 ZsTooltip(
                   message: context.l10n.cloneSubmit,
@@ -1010,6 +1026,18 @@ class ProjectsWindowState extends State<ProjectsWindow> {
                 ),
               ],
             ),
+            if (_cloneTicket case final CloneTicket ticket)
+              ListenableBuilder(
+                listenable: ticket,
+                builder: (context, _) => LayoutBuilder(
+                  builder: (context, constraints) => ZsProgressBar(
+                    value: ticket.progress,
+                    width: constraints.maxWidth,
+                    label: context.l10n.cloneProgress,
+                    identifier: 'projects-clone-progress',
+                  ),
+                ),
+              ),
           ],
         ),
       ),

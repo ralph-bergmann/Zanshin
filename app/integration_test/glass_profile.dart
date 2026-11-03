@@ -20,6 +20,7 @@ import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
+import 'package:zanshin/src/features/sync/sync_island.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_core/zanshin_core.dart'
     show
@@ -210,7 +211,7 @@ class _SceneState extends State<_Scene> {
         ),
         projectCapsule: demoCapsule(),
         view: GraphViewControls(model: _model, preferences: preferences),
-        syncGroup: GraphReloadIsland(onPressed: _model.reload),
+        syncGroup: SyncIsland(onReload: _model.reload),
         newChange: NewChangeButton(model: _model),
         inspector: GraphView.inspector(inspector),
         atPill: GraphView.atPill(_model),

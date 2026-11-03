@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
@@ -235,11 +234,17 @@ class ProjectSession extends ChangeNotifier {
   );
 
   /// Clones [url] into [destination] (the CLI's `jj git clone --no-colocate <url> <destination>`), registers the
-  /// clone at [index] in [group] and opens it. The CLI's destination rules run here (`clone.rs:186-196`, `:259-270`
-  /// @ v0.46.0): a folder that exists and is not empty is refused before any jj call, a missing one is created, and
-  /// one created here is removed again when the clone fails.
-  Future<ProjectOpenOutcome> clone({required String url, required String destination, String? group, int? index}) =>
-      _serial(() => _clone(url, destination, group: group, index: index));
+  /// clone at [index] in [group] and opens it. The verb applies the CLI's destination rules (`clone.rs:186-196`,
+  /// `:259-270` @ v0.46.0; Story 11.8, I3): a folder that is not empty is refused with jj's text ([ProjectRefused]),
+  /// and the session creates or removes no folder itself. [ticket] carries the clone's progress and its Cancel; a
+  /// cancelled clone ends as [ProjectSwitchCancelled], with no failure.
+  Future<ProjectOpenOutcome> clone({
+    required String url,
+    required String destination,
+    String? group,
+    int? index,
+    CloneTicket? ticket,
+  }) => _serial(() => _clone(url, destination, group: group, index: index, ticket: ticket));
 
   /// Closes the open project (11.13 binds ⌘W to it; 11.12's close intercept runs it): the handle closes and no
   /// project is open.
@@ -358,65 +363,36 @@ class ProjectSession extends ChangeNotifier {
   static const cloneDestinationNotEmpty =
       'Destination path exists and is not an empty directory'; // l10n-ignore: jj's text
 
-  Future<ProjectOpenOutcome> _clone(String url, String destination, {String? group, int? index}) async {
-    final String spelled = canonicalPath(destination);
-    final dir = Directory(spelled);
-    final FileSystemEntityType type = FileSystemEntity.typeSync(spelled);
-    final existed = type != FileSystemEntityType.notFound;
-    if (existed && !_isEmptyDirectory(dir, type)) {
-      _log.fine('$spelled is not an empty folder');
-      return const ProjectRefused(cloneDestinationNotEmpty);
-    }
+  Future<ProjectOpenOutcome> _clone(
+    String url,
+    String destination, {
+    String? group,
+    int? index,
+    CloneTicket? ticket,
+  }) async {
     if (!await _mayLeaveFor(null)) {
       return const ProjectSwitchCancelled();
     }
-    try {
-      dir.createSync(recursive: true);
-    } on FileSystemException catch (error, stack) {
-      _log
-        ..warning('creating the clone destination failed: errno ${error.osError?.errorCode}')
-        ..fine('create failure', error, stack);
-      // The CLI's message with its cause (`user_error_with_message`, `clone.rs:194-195` @ v0.46.0).
-      return ProjectRefused(
-        'Failed to create $destination: ${error.osError?.message ?? error.message}', // l10n-ignore: jj's text
-      );
-    }
-    // The registry's key when another spelling of the folder is listed (a missing entry, say), else its canonical form.
-    final String target = _target(spelled);
-    _log.fine('cloning $url into $target');
+    final String spelled = _target(canonicalPath(destination));
+    _log.fine('cloning $url into $spelled');
     final ProjectCreation creation;
     try {
-      creation = await _repos.clone(url: url, destination: target);
+      creation = await _repos.clone(url: url, destination: spelled, ticket: ticket);
     } on ZanshinFfiException catch (error, stack) {
-      if (!existed) {
-        _removeCreated(Directory(target));
+      switch (error.code) {
+        case 'jj.destination_not_empty':
+          _log.fine('$spelled is not an empty folder');
+          return const ProjectRefused(cloneDestinationNotEmpty);
+        case 'jj.cancelled':
+          _log.fine('the clone of $url was cancelled');
+          return const ProjectSwitchCancelled();
       }
       return _failed('cloning', error, stack);
     }
+    // The folder exists now: the registry's key when another spelling of it is listed (a missing entry, say), else
+    // its canonical form.
+    final String target = _target(canonicalPath(spelled));
     return _switchTo(creation.repo, target, group: group, index: index, warnings: creation.warnings);
-  }
-
-  static bool _isEmptyDirectory(Directory dir, FileSystemEntityType type) {
-    if (type != FileSystemEntityType.directory) {
-      return false;
-    }
-    try {
-      return dir.listSync().isEmpty;
-    } on FileSystemException {
-      return false;
-    }
-  }
-
-  /// Removes the clone destination this session created, as the CLI does after a failed clone (`fs::remove_dir`,
-  /// `clone.rs:265-267`): only while it is empty again.
-  void _removeCreated(Directory dir) {
-    try {
-      dir.deleteSync();
-    } on FileSystemException catch (error, stack) {
-      _log
-        ..warning('removing the clone destination failed: errno ${error.osError?.errorCode}')
-        ..fine('remove failure', error, stack);
-    }
   }
 
   /// The switch both an open and a creation end in (11.5's order): [repo] is read, the reading recorded with [path]
@@ -507,9 +483,39 @@ class ProjectSession extends ChangeNotifier {
 
   Future<void> _record(String path, ProjectReading reading) => _registry.recordState(
     path,
-    reading.status,
+    // A fetch or push keeps the dot on syncing until it ends (Story 11.8, I2).
+    _syncing.containsKey(path) ? ProjectStatus.syncing : reading.status,
     reading.status == ProjectStatus.stale ? _registry.entry(path)?.bookmark : reading.bookmark,
   );
+
+  /// The running syncs per project path.
+  final _syncing = <String, int>{};
+
+  /// Runs the fetch or push [run] of the open project with its dot on [ProjectStatus.syncing] (Story 11.8, I2): the
+  /// readings while it runs keep syncing, and one more reading after it writes the real state back. A project
+  /// switched away from meanwhile gets its last state back.
+  Future<T> syncing<T>(Future<T> Function() run) async {
+    final String? path = _path;
+    if (path == null) {
+      return run();
+    }
+    final ProjectEntry? before = _registry.entry(path);
+    try {
+      _syncing.update(path, (count) => count + 1, ifAbsent: () => 1);
+      await _registry.recordState(path, ProjectStatus.syncing, before?.bookmark);
+      return await run();
+    } finally {
+      final int left = _syncing.update(path, (count) => count - 1);
+      if (left == 0) {
+        _syncing.remove(path);
+        if (path != _path) {
+          await _registry.recordState(path, before?.status, _registry.entry(path)?.bookmark);
+        } else {
+          refresh();
+        }
+      }
+    }
+  }
 
   /// One reading, or null when it failed (the last state stays).
   Future<ProjectReading?> _read(ProjectRepo repo) async {

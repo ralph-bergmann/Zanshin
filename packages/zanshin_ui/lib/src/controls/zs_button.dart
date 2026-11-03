@@ -322,6 +322,7 @@ class ZsIconButton extends StatelessWidget implements ZsControl {
     this.size = ZsIconButtonSize.md,
     this.active = false,
     this.badge,
+    this.busy = false,
     this.disabledReason,
     this.focusNode,
     this.statesController,
@@ -332,6 +333,10 @@ class ZsIconButton extends StatelessWidget implements ZsControl {
 
   /// A `ZI` glyph.
   final String icon;
+
+  /// Whether the action runs: a spinner takes the icon's place, presses are ignored and the cursor shows `progress`
+  /// (as [ZsButton.busy]).
+  final bool busy;
 
   /// The name, also the tooltip.
   final String label;
@@ -392,6 +397,7 @@ class ZsIconButton extends StatelessWidget implements ZsControl {
       onActivate: onPressed,
       enabled: onPressed != null,
       disabledReason: disabledReason,
+      busy: busy,
       selected: active,
       semantics: SemanticsProperties(
         button: true,
@@ -424,7 +430,9 @@ class ZsIconButton extends StatelessWidget implements ZsControl {
                 clipBehavior: Clip.none,
                 children: <Widget>[
                   Center(
-                    child: ZanshinIcon(icon, size: glyph, color: look.icon),
+                    child: busy
+                        ? ZsSpinner(size: glyph, color: look.icon)
+                        : ZanshinIcon(icon, size: glyph, color: look.icon),
                   ),
                   Positioned(
                     top: badgeAt.top,

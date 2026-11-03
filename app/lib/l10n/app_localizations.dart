@@ -296,11 +296,17 @@ abstract class AppLocalizations {
   /// **'Choose'**
   String get cloneChoosePrompt;
 
-  /// Clone form button that closes the form.
+  /// Clone form button that closes the form, or stops the running clone.
   ///
   /// In en, this message translates to:
   /// **'Cancel'**
   String get cloneCancel;
+
+  /// VoiceOver name of the clone form's progress bar while a clone runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Cloning'**
+  String get cloneProgress;
 
   /// Clone form button that runs the clone, and its tooltip title.
   ///
@@ -553,6 +559,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'diverged'**
   String get statusDiverged;
+
+  /// Project status: a fetch or push runs.
+  ///
+  /// In en, this message translates to:
+  /// **'syncing'**
+  String get statusSyncing;
 
   /// When a project was last opened: under a minute ago.
   ///
@@ -3553,6 +3565,324 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Reset to jj’s default'**
   String get settingsImmutableReset;
+
+  /// Fetch button tooltip above the jj command; remotes are the default fetch remotes, comma-separated.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch from {remotes}'**
+  String syncFetchTooltip(String remotes);
+
+  /// Fetch button tooltip line per remote while the poll found changed bookmarks.
+  ///
+  /// In en, this message translates to:
+  /// **'{names} changed on {remote}'**
+  String syncFetchChanged(String names, String remote);
+
+  /// Fetch button tooltip while a fetch runs without progress yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetching…'**
+  String get syncFetching;
+
+  /// Fetch button tooltip while a fetch runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetching… {percent}%'**
+  String syncFetchingPercent(int percent);
+
+  /// Push button tooltip above the jj command; remotes are the default push remotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what to push to {remotes}'**
+  String syncPushTooltip(String remotes);
+
+  /// Why Fetch or Push is disabled: the repository has no Git remote to use.
+  ///
+  /// In en, this message translates to:
+  /// **'No remote'**
+  String get syncNoRemote;
+
+  /// Toast after a fetch; count is the number of remote bookmarks it changed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Fetched from {remotes}} =1{Fetched from {remotes} · 1 bookmark changed} other{Fetched from {remotes} · {count} bookmarks changed}}'**
+  String toastFetched(int count, String remotes);
+
+  /// Toast after a push; names are the pushed bookmarks and tags, remotes where they went.
+  ///
+  /// In en, this message translates to:
+  /// **'Pushed {names} to {remotes}'**
+  String toastPushed(String names, String remotes);
+
+  /// The Push sheet's title and VoiceOver name.
+  ///
+  /// In en, this message translates to:
+  /// **'Push'**
+  String get pushSheetTitle;
+
+  /// Before the Push sheet's remote chips: push to these remotes.
+  ///
+  /// In en, this message translates to:
+  /// **'to'**
+  String get pushSheetTo;
+
+  /// Tooltip of a remote chip jj git push uses without --remote.
+  ///
+  /// In en, this message translates to:
+  /// **'A default remote, no flag'**
+  String get pushSheetRemoteDefault;
+
+  /// Tooltip of a remote chip that is not a default remote.
+  ///
+  /// In en, this message translates to:
+  /// **'Pushed with --remote'**
+  String get pushSheetRemoteFlag;
+
+  /// The Push sheet's list heading without tags.
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmarks'**
+  String get pushSheetBookmarks;
+
+  /// The Push sheet's list heading when it lists tags.
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmarks and tags'**
+  String get pushSheetBookmarksAndTags;
+
+  /// Bulk choice: what jj git push alone sends.
+  ///
+  /// In en, this message translates to:
+  /// **'As jj git push'**
+  String get pushSheetBare;
+
+  /// Tooltip of the As-jj-git-push choice; revset is the evaluated revsets.git-push.
+  ///
+  /// In en, this message translates to:
+  /// **'Tracked bookmarks and tags in {revset}, to {remotes}'**
+  String pushSheetBareTooltip(String revset, String remotes);
+
+  /// Tooltip of the As-jj-git-push choice while the revset is unknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Tracked bookmarks and tags in revsets.git-push, to {remotes}'**
+  String pushSheetBareTooltipNoRevset(String remotes);
+
+  /// Bulk choice: --tracked.
+  ///
+  /// In en, this message translates to:
+  /// **'Tracked'**
+  String get pushSheetTracked;
+
+  /// Bulk choice: --all.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get pushSheetAll;
+
+  /// Bulk choice: --deleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted'**
+  String get pushSheetDeleted;
+
+  /// Marks a tag row in the Push sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'TAG'**
+  String get pushSheetTag;
+
+  /// A ref's line for a remote it does not go to.
+  ///
+  /// In en, this message translates to:
+  /// **'not sent'**
+  String get pushSheetNotSent;
+
+  /// A ref the chosen mode skips; jj's reason follows.
+  ///
+  /// In en, this message translates to:
+  /// **'skipped'**
+  String get pushSheetSkipped;
+
+  /// A ref that cannot be named by hand; jj's reason follows.
+  ///
+  /// In en, this message translates to:
+  /// **'refused'**
+  String get pushSheetRefused;
+
+  /// Under a commit jj would refuse, once its reasons are allowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed · pushed with {flags}'**
+  String pushSheetAllowedWith(String flags);
+
+  /// The short inline chip that allows the one reason jj refuses a commit for.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get pushSheetAllow;
+
+  /// Chip for --allow-empty-description.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow empty descriptions'**
+  String get pushSheetAllowEmptyDescription;
+
+  /// Chip for --allow-private.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow private commits'**
+  String get pushSheetAllowPrivate;
+
+  /// Chip for --allow-conflicts.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow conflicts'**
+  String get pushSheetAllowConflicts;
+
+  /// The change row's label; id is @ or a change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Push {id} as a new bookmark'**
+  String pushSheetChange(String id);
+
+  /// VoiceOver name of the change row's name field.
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmark name'**
+  String get pushSheetChangeName;
+
+  /// Under the change row's name field while it holds jj's name.
+  ///
+  /// In en, this message translates to:
+  /// **'The name jj generates (templates.git_push_bookmark) — type your own to name it.'**
+  String get pushSheetChangeGenerated;
+
+  /// Under the change row's name field once the user typed a name.
+  ///
+  /// In en, this message translates to:
+  /// **'Your name — pushed with --named.'**
+  String get pushSheetChangeNamed;
+
+  /// Warning when one of several chosen remotes gets nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing goes to {remotes}. jj still runs git push there, which fails, and then the push is not recorded.'**
+  String pushSheetEmptyRemotes(String remotes);
+
+  /// Note while git.sign-on-push is on.
+  ///
+  /// In en, this message translates to:
+  /// **'git.sign-on-push is on: the push signs commits and rebases their descendants, so the pushed ids can differ from this preview.'**
+  String get pushSheetSigning;
+
+  /// Footer: the command was checked by a dry run.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked with --dry-run'**
+  String get pushSheetChecked;
+
+  /// Footer while the dry run of the command runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking…'**
+  String get pushSheetChecking;
+
+  /// Footer after the push ran.
+  ///
+  /// In en, this message translates to:
+  /// **'Ran'**
+  String get pushSheetRan;
+
+  /// VoiceOver name of the footer's command.
+  ///
+  /// In en, this message translates to:
+  /// **'Command'**
+  String get pushSheetCommand;
+
+  /// Closes the Push sheet without pushing.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get pushSheetCancel;
+
+  /// Runs the push the footer shows.
+  ///
+  /// In en, this message translates to:
+  /// **'Push'**
+  String get pushSheetPush;
+
+  /// Closes the Push sheet after a push that failed in part.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get pushSheetDone;
+
+  /// Footer while the push runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Pushing to {remotes}…'**
+  String pushSheetPushing(String remotes);
+
+  /// VoiceOver name of the push's progress bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Pushing'**
+  String get pushSheetProgress;
+
+  /// After a push that failed in part but wrote its operation.
+  ///
+  /// In en, this message translates to:
+  /// **'The push is recorded, so Undo works as usual.'**
+  String get pushSheetRecorded;
+
+  /// After a push that wrote no operation.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was recorded.'**
+  String get pushSheetNotRecorded;
+
+  /// A push error at one remote after earlier remotes were pushed.
+  ///
+  /// In en, this message translates to:
+  /// **'The push stopped at {remote}. {earlier} already got their refs.'**
+  String pushSheetStoppedAt(String remote, String earlier);
+
+  /// A push error at the first remote.
+  ///
+  /// In en, this message translates to:
+  /// **'The push stopped at {remote}. No remote got its refs.'**
+  String pushSheetStoppedAtFirst(String remote);
+
+  /// A ref's result: pushed.
+  ///
+  /// In en, this message translates to:
+  /// **'pushed'**
+  String get pushSheetPushed;
+
+  /// A ref's result: the remote moved it since the last fetch (the lease failed).
+  ///
+  /// In en, this message translates to:
+  /// **'moved on {remote}'**
+  String pushSheetMovedOn(String remote);
+
+  /// A ref's result: the remote rejected the update.
+  ///
+  /// In en, this message translates to:
+  /// **'rejected'**
+  String get pushSheetRejected;
+
+  /// A ref's result: pushed, but its remote-tracking ref was not updated.
+  ///
+  /// In en, this message translates to:
+  /// **'couldn’t be updated locally'**
+  String get pushSheetUnexported;
+
+  /// A ref's result: the push did not reach it.
+  ///
+  /// In en, this message translates to:
+  /// **'not pushed'**
+  String get pushSheetNotReached;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

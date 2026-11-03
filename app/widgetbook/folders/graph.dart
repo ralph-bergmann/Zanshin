@@ -34,6 +34,7 @@ import 'package:zanshin/src/features/graph/stale_notice.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
 import 'package:zanshin/src/features/shell/shell_toast.dart';
+import 'package:zanshin/src/features/sync/sync_island.dart';
 import 'package:zanshin_core/zanshin_core.dart'
     show
         ActionOutcome,
@@ -842,7 +843,7 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
           ),
           projectCapsule: demoCapsule(),
           view: GraphViewControls(model: _model, preferences: preferences, search: _search),
-          syncGroup: GraphReloadIsland(onPressed: _model.reload),
+          syncGroup: SyncIsland(onReload: _model.reload),
           newChange: NewChangeButton(model: _model),
           inspector: GraphView.inspector(inspector),
           atPill: GraphView.atPill(_model),

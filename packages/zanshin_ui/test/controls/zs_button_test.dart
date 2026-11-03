@@ -247,6 +247,25 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('busy: a spinner replaces the icon, presses are ignored, the progress cursor', (tester) async {
+      var presses = 0;
+      await tester.pumpWidget(
+        zsHost(
+          ZsIconButton(icon: ZI.fetch, label: 'Fetch', busy: true, onPressed: () => presses++, identifier: 'fetch'),
+          icons: true,
+          overlay: true,
+        ),
+      );
+      expect(find.byType(ZsSpinner), findsOneWidget);
+      expect(find.byType(ZanshinIcon), findsNothing);
+      expect(tester.getSize(find.byType(ZsIconButton)), const Size.square(36));
+      await tester.tap(find.byType(ZsIconButton));
+      expect(presses, 0);
+      await hover(tester, find.byType(ZsIconButton));
+      expect(activeCursor(), SystemMouseCursors.progress);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('without its tooltip (the rail) it shows none on hover, and the label stays its name', (tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       await tester.pumpWidget(

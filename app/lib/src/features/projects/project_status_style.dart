@@ -19,6 +19,7 @@ extension ProjectStatusStyle on ProjectStatus {
     ProjectStatus.ahead => colors.projAhead,
     ProjectStatus.behind => colors.projBehind,
     ProjectStatus.diverged => colors.projDiverged,
+    ProjectStatus.syncing => colors.projSyncing,
   };
 
   /// The dot's label in [strings].
@@ -31,5 +32,6 @@ extension ProjectStatusStyle on ProjectStatus {
     ProjectStatus.ahead => strings.statusAhead,
     ProjectStatus.behind => strings.statusBehind,
     ProjectStatus.diverged => strings.statusDiverged,
+    ProjectStatus.syncing => strings.statusSyncing,
   };
 }

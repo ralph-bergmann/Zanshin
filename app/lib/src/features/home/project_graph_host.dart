@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_core/zanshin_core.dart' show Bookmark;
-import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart' show RemotePollSetting, SettingsStore;
 
 import '../graph/graph_controls.dart';
 import '../graph/graph_inspector.dart';
@@ -22,13 +24,17 @@ import '../projects/projects_environment.dart';
 import '../settings/immutable_heads.dart';
 import '../shell/app_menu.dart';
 import '../shell/shell_toast.dart';
+import '../sync/push_sheet.dart';
+import '../sync/remote_sync.dart';
+import '../sync/sync_island.dart';
+import '../sync/sync_model.dart';
 
 /// What the project window's shell shows of the graph (Story 10.12): the slot widgets, all null without an open
-/// repository but [reload], which then shows disabled.
+/// repository but [sync], which then shows disabled.
 @immutable
 class ProjectGraphSlots {
   const ProjectGraphSlots._({
-    required this.reload,
+    required this.sync,
     this.model,
     this.search,
     this.graph,
@@ -52,8 +58,8 @@ class ProjectGraphSlots {
   /// VIEW: the graph's controls.
   final Widget? view;
 
-  /// ACTION's sync island: Reload.
-  final Widget reload;
+  /// ACTION's sync island: Reload, Fetch and Push (Story 11.8).
+  final Widget sync;
 
   /// ACTION: New change.
   final Widget? newChange;
@@ -86,6 +92,7 @@ class ProjectGraphHost extends StatefulWidget {
     required this.toasts,
     required this.builder,
     this.sourceOf = RepoGraphSource.new,
+    this.syncOf,
     super.key,
   });
 
@@ -107,6 +114,11 @@ class ProjectGraphHost extends StatefulWidget {
   /// The graph's source of an open repository; tests pass a scripted one.
   @visibleForTesting
   final GraphSource Function(ProjectRepo repo) sourceOf;
+
+  /// The sync port of an open repository (Story 11.8); null builds [RepoRemoteSync] over its handle and the
+  /// environment's config. Tests pass a fake.
+  @visibleForTesting
+  final RemoteSync Function(ProjectRepo repo)? syncOf;
 
   /// Builds the window around the graph's slots; it rebuilds when the model or the preferences change.
   final Widget Function(BuildContext context, ProjectGraphSlots slots) builder;
@@ -153,12 +165,34 @@ class _Graph {
     );
     configWrites = host.environment.configWrites..addListener(reasons.invalidate);
     toasts = GraphToasts(model, host.toasts);
+    final ProjectSession session = host.session;
+    sync = SyncModel(
+      sync:
+          host.syncOf?.call(repo) ??
+          RepoRemoteSync(
+            () => repo.handle,
+            config: (name) async =>
+                effectiveConfigEntry(await host.environment.configList(name: name, workspaceRoot: root))?.value,
+          ),
+      graph: model,
+      toasts: host.toasts,
+      pollSetting: () => session.current?.remotePoll ?? RemotePollSetting.fifteenMinutes,
+      pollChanged: session,
+      changeTarget: () => switch (model.actionTarget) {
+        final String id => (id: id, rev: AppMenuModel.targetName(model, id)),
+        null => null,
+      },
+      syncing: session.syncing,
+    );
+    // Once when Zanshin becomes the active app (Story 11.8 item 4).
+    lifecycle = AppLifecycleListener(onResume: () => unawaited(sync.poll()));
     binding = GraphMenuBinding(
       model: model,
       preferences: preferences,
       search: search,
       focusSearch: () => search.focusField(),
       squash: inspector.squash,
+      sync: sync,
     );
   }
 
@@ -178,7 +212,13 @@ class _Graph {
   late final GraphToasts toasts;
   late final GraphMenuBinding binding;
 
+  /// Fetch, Push and the remote-change poll (Story 11.8).
+  late final SyncModel sync;
+  late final AppLifecycleListener lifecycle;
+
   void dispose() {
+    lifecycle.dispose();
+    sync.dispose();
     configWrites.removeListener(reasons.invalidate);
     toasts.dispose();
     inspector.dispose();
@@ -251,6 +291,7 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
   void _reload() {
     widget.session.refresh();
     _graph?.model.reload();
+    unawaited(_graph?.sync.reloadRemotes());
   }
 
   @override
@@ -262,7 +303,7 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
         listenable: Listenable.merge(const <Listenable>[]),
         builder: (context, _) => ImmutableReasonScope(
           reasons: null,
-          child: widget.builder(context, const ProjectGraphSlots._(reload: GraphReloadIsland(onPressed: null))),
+          child: widget.builder(context, const ProjectGraphSlots._(sync: SyncIsland(onReload: null))),
         ),
       );
     }
@@ -277,13 +318,17 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
             model: model,
             search: graph.search,
             // Keyed by the graph set, so a project switch mounts fresh states (no old search text, selection or scroll).
-            graph: GraphView(
-              key: ObjectKey(graph),
-              model: model,
-              options: graph.preferences.options,
-              inspectorModel: graph.inspector,
-              bookmarks: graph.bookmarks,
-              search: graph.search,
+            // The Push sheet mounts from the graph slot: inside the shell's scope (it holds calm), outside any glass.
+            graph: PushSheetHost(
+              sync: graph.sync,
+              child: GraphView(
+                key: ObjectKey(graph),
+                model: model,
+                options: graph.preferences.options,
+                inspectorModel: graph.inspector,
+                bookmarks: graph.bookmarks,
+                search: graph.search,
+              ),
             ),
             view: GraphViewControls(
               key: ObjectKey(graph),
@@ -291,7 +336,7 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
               preferences: graph.preferences,
               search: graph.search,
             ),
-            reload: GraphReloadIsland(onPressed: _reload),
+            sync: SyncIsland(onReload: _reload, sync: graph.sync),
             newChange: NewChangeButton(model: model),
             inspector: GraphView.inspector(graph.inspector),
             minimap: graph.preferences.showMinimap ? GraphView.minimap(model, key: ObjectKey(graph)) : null,

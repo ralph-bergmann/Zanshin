@@ -606,6 +606,12 @@ String joinMessageParagraphs(List<String> paragraphs) =>
 /// `jj log -r <revset>`, shell-quoted as the action commands are (Story 10.21's footer).
 String jjLogCommand(String revset) => _jj(<String>['log', '-r', revset]); // l10n-ignore: jj command
 
+/// `jj` plus [args], each POSIX shell-quoted (the Push sheet's footer, Story 11.8).
+String jjCommand(List<String> args) => _jj(args);
+
+/// [name] as a name pattern matching only itself, the text jj receives and the command shows (Story 11.8).
+String exactNamePattern(String name) => _exactPattern(name);
+
 /// `jj` plus [args], each POSIX shell-quoted.
 String _jj(List<String> args) => <String>['jj', ...args.map(_shellQuote)].join(' '); // l10n-ignore: jj command
 

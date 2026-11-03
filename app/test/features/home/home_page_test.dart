@@ -315,7 +315,11 @@ void main() {
     unawaited(session.open('/r/zanshin').then((_) => drained = true));
     await settle(tester, () => drained);
     expect(repo.reads, reads + 1, reason: 'one ProjectSession.refresh');
-    expect(repo.handleReads, handleReads + 1, reason: "one layout request, reading the handle's logDefaults");
+    expect(
+      repo.handleReads,
+      handleReads + 4,
+      reason: "one layout request, reading the handle's logDefaults; the sync's three remote reads (Story 11.8)",
+    );
     handle.dispose();
   });
 
