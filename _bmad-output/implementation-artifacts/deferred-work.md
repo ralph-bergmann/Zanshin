@@ -2380,6 +2380,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **A renamed or copied file from `Repo::diff` cannot be selected through `select_tree` as one entry: the diff shows it as its target path (no sections), while `select_tree` sees a removed source path plus an added target path.** Medium.
   - `Repo::diff` uses copy records like `jj diff`, folding the source's removal into the target entry; `select_tree` mirrors the builtin diff editor, which uses no copy records (`builtin.rs:567` @ v0.46.0). Choosing the target "whole" leaves the source path unselected (`crates/zanshin-jj/src/hunks.rs` `DiffReader::file` empties a copy's sections).
   - **Follow-up:** Story 10.26 (hunk selection) also selects the source path's removal when a renamed file is chosen whole, or offers renamed files whole-only with that pairing.
+  - **Resolved in Story 10.26 (2026-11-03, commit 5937e4f):** a renamed (or copied) file is whole-only; picked whole, the paths arm adds its `fromPath` (`jj commit root:new root:old`) and the tree arm lists `FileSelection.whole` for both (`InspectorViewModel._composer`, `app/lib/src/features/graph/graph_inspector.dart`). A copy's source is untouched, so nothing is added for it.
 
 ## Surfaced in the follow-up review of Story 10.17 (bmad-build-auto, 2026-10-31)
 
@@ -2701,3 +2702,9 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 - **The drag-and-drop UI was not checked in the running app (ghost, drop target, menu above/below, toast).** Medium.
   - Unattended run with targeted checks only: widget tests cover the canvas drags, the menu rows and the ghost words; no Marionette/Playwright look at `app/lib/src/features/graph/graph_canvas.dart` / `graph_drop_menu.dart` / `packages/zanshin_ui/lib/src/controls/zs_drag_ghost.dart` against the DS cards (DropMenu, DragGhost).
   - **Follow-up:** a Marionette check in the running app (card and bookmark drags, menu above and below, ⌥, a backwards bookmark), recorded in spec-10-10-graph-drag-and-drop.md.
+
+## Surfaced in Story 10.26 (bmad-build-auto, 2026-11-03)
+
+- **The hunk checkboxes, the mixed states and the selected-hunk look were not checked in the running catalogue against the DS DiffHunk card.** Low.
+  - Unattended run with targeted checks only: widget tests pin the colours (`accentSoftHi`, `accentLine`, `hunkBg`) and the checkbox states in `app/lib/src/features/graph/inspector_diff.dart` / `graph_inspector.dart`; no Marionette/Playwright look.
+  - **Follow-up:** a Marionette check of a partly selected file in the catalogue against DS components/content/DiffHunk, recorded in spec-10-26-hunk-selection-gui-tree.md.
