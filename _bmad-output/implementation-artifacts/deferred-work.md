@@ -1109,6 +1109,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - 9.5's `git remote add`, `remove`, `rename` and `set-url` (done) have no UI consumer.
   - The Projects dialog's Remotes tab is inert (SH:2067), and 11.6 proposes to drop it. 11.7's Project tab only picks the fetch and push remotes.
   - **Follow-up:** a "Remotes" group in 11.7's Project tab (add, rename, remove, set URL), when Ralph wants it.
+  - **2026-11-03, Ralph:** wanted, with a design round first → **Story 11.18**. Covered by Story 11.18.
 - ~~**Bookmark tracking has no surface.**~~ — RESOLVED 2026-11-01 (spec-10-15-card-action-menu, commit de471e9e): with 10.14's panel action (e1f77309), the bookmark popover offers Track / Untrack for the card's remote bookmarks. Low.
   - 9.29's untracked rows and 9.11's `track` and `untrack` (backlog) are outside 10.14 (its non-goals).
   - **Follow-up:** a row action in 10.14's panel, through 10.15 and 10.9, once 9.11 and 9.29 land.
@@ -1116,6 +1117,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **Raw config editing has no surface.** Low.
   - 9.28's `configFileRead` and `configFileWrite` (done), the GUI split of `jj config edit`, have no consumer. 11.7 edits only its own rows.
   - **Follow-up:** an "Open config file…" link per tab, if Ralph wants one.
+  - **2026-11-03, Ralph:** wanted, with a design round first → **Story 11.19**. Covered by Story 11.19.
 - **The docked client's command palette and help button are gone.** None; a record.
   - The old status bar advertised a ⌘K palette, and the window had a "?" button (APP@e243dd2:972, :2492).
   - The floating client has neither, and no story plans them.
@@ -1167,6 +1169,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - The DS's Settings card has a Density row, Compact · Balanced · Comfy (`DS components/settings/settings.card.html:30`), and its UI kit defaults to compact.
   - No DS component reads it. In the client it changes only the body font size (`AC:69-71`, `:80`).
   - **Follow-up:** 11.7's design question (a) asks Ralph whether the row stays. The token layer carries the DS's compact sizes only.
+  - **2026-11-03, Ralph:** the row stays (11.7 built it as a text scale); spacing tokens per density, with a design round first → **Story 11.20**. Covered by Story 11.20.
 
 ## Surfaced 2026-10-16 while validating the design-system rounds 1–3 and folding them into Epics 9–11 (console session, Ralph)
 
@@ -2663,6 +2666,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The Immutable commits page's untracked-remote hints can name a tracked remote ref that disagrees with its local target.** Low.
   - `app/lib/src/features/settings/immutable_heads.dart` (`_untrackedRemote`) infers "untracked" from `TopologyRef.synced` ("tracked and agrees"); the bridge has no tracking-state read for remote tags.
   - **Follow-up:** a bridge read of each remote ref's tracking state (or `untracked` on `TopologyRef`), then filter on it.
+  - **2026-11-03, Ralph:** do it → **Story 11.21**. Covered by Story 11.21.
 
 ## Surfaced in Story 11.8 (bmad-build-auto, 2026-11-03)
 
@@ -2675,3 +2679,11 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **The real-worker clone-with-ticket test passes whether or not `WorkerProjectRepos.clone` attaches the ticket, so clone Cancel and progress are unproven against the real worker.** Medium.
   - `app/test/features/projects/worker_project_repos_test.dart` accepts a finished clone or `jj.cancelled`; its only unconditional check (`ticket.cancelled`) is set by `CloneTicket.cancel` itself; other clone Cancel/progress tests use `FakeProjectRepos`, which attaches the ticket itself.
   - **Follow-up:** check it in the running app (clone a large remote, press Cancel, see the progress bar move and the clone end silently), or a deterministic real-worker witness if one becomes possible (`dart test` reaps jj-lib's git child).
+
+## Surfaced 2026-11-03 in Ralph's look at the running app (console session)
+
+_Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story loop 10.16 / 11.7 / 11.8. Fixed the same day, each checked with Marionette on that repo: the bracket-layer crash (commit 2c0c6f81), merge lines through a gutter where the child's lane was free (fc2c2378, design sync #18 in 4d350d02), the inspector jumping to the top on a file click (7cda6a55)._
+
+- **Long histories: commit-free months leave screens of empty canvas, the minimap's day labels are clipped, and the fitted minimap squeezes years together.** Medium.
+  - Free maps time to y with no limit; `graph_minimap.dart` has a fixed 118 px strip with a 58 px label column ("Dec 16, 2015" does not fit) and fits the whole history to its height.
+  - **Follow-up:** Story 10.31 (design round first): shortened gaps with a torn-paper edge, a minimap sized to its content, year labels (sticky while it scrolls), a scrolling minimap, optionally the day pill reaching out of the card. Covered by Story 10.31.

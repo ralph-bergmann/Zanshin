@@ -11948,6 +11948,27 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 ---
 
+### Story 10.31: Time axis and minimap for long histories — shortened gaps, a minimap sized to its content, year labels, a scrolling minimap [UI]
+*(Added 2026-11-03, Ralph — console session: findings 3–5 of Ralph's look at the running app on `dart-intellij-third-party` (4674 changes, 2013–2025) after the story loop 10.16 / 11.7 / 11.8; the direction below is Ralph's, the details are for the design round.)*
+
+**Motivation.** On a long history the Free layout and the minimap stop working: months without commits leave screens of empty canvas with only lines in it, the minimap's day labels lose their left part, and the whole history is squeezed into the minimap's height until years run into one another.
+
+**Scope.**
+1. **Design round first.** Before code, settle with Ralph — as DS components / a design-prototype change, in place (`design/`, `design_system/`, a numbered `DESIGN-SYSTEM-SYNC.md` entry) — the look of the gap marker, the minimap's width rule and maximum, the year label and its sticky behaviour, and the minimap's scrolling. Everything below is direction, not final design.
+2. **Shortened gaps (Free).** A stretch of time without a commit taller than a threshold (proposal: one viewport height) shrinks to a fixed height (proposal: ~48 px) and shows a torn-paper edge across the canvas with the gap's length ("14 months"). Lines run through it (dashed at the edge). The day axis, the gap markers of the graph, the go-to/scroll math and the minimap all read the same shortened y mapping, so the minimap and the canvas never disagree. Open for the design round: whether a gap can be expanded ("show gap").
+3. **Minimap width by content.** No fixed 118 px strip (`graph_minimap.dart` `minimapStripWidth` / `minimapSplit`): the graph part grows with the number of parallel columns, up to a maximum the design round sets (e.g. a share of the window width); the label part fits its labels.
+4. **Year labels.** Day labels stay short ("Dec 16"); the year is a label of its own at each year boundary ("2015"), not a suffix on every day. While the minimap scrolls (item 5) the current year sticks at the top as a header.
+5. **Scrolling minimap.** The minimap keeps a minimum density (proposal: ≥ 2 px per row / day); a history taller than that scrolls inside the minimap, and the viewport band drags it along (as in VS Code's minimap). Shortened gaps (item 2) make this rarer.
+6. **Optional: the day pill reaching out of the minimap.** The day pill may extend left beyond the minimap's glass card (painted outside the card, e.g. via `OverlayPortal`, since the glass clips its children). Ralph: only if it is simple and costs no measurable frame time; otherwise it stays inside.
+
+**Non-goals.** Compact mode's y mapping (rows, no time gaps); a minimap in the inspector or other panels.
+
+**Witnesses.** A gap above the threshold renders at the fixed height with its marker and length, and the canvas, day axis and minimap agree on every node's y; a layout with N columns widens the minimap up to the maximum; no day label is clipped and a year label sits at each year boundary; a long history scrolls the minimap and the band drag scrolls it; Marionette screenshots on `dart-intellij-third-party` compared with the DS cards.
+
+**Depends on.** 10.16 (done), 10.3 (done).
+
+---
+
 ## Epic 11: Floating app shell (Flutter UI)
 
 > **Granularity:** backlog-level, like Epics 9 and 10. Full acceptance criteria are written per story (via `bmad-create-story`) when it is scheduled.
@@ -13735,5 +13756,74 @@ Nothing NEEDS DESIGN.
 **Witnesses.** A Dart toggle flips the native item's `state`; a dialog window key greys the three items and a project window enables them; the Window menu lists the open windows (native test or the in-process probe of project memory "Verify macOS UI without screen permission").
 
 **Depends on.** 11.13 (done), 11.12.
+
+---
+
+### Story 11.18: Remote management in Settings — add, rename, remove, set URL [UI/bridge]
+*(Added 2026-11-03, Ralph — console session after the story loop 10.16 / 11.7 / 11.8: "eine Design-Runde, dann eine Story". deferred-work.md "Remote management has no surface".)*
+
+**Motivation.** 9.5's `jj git remote add`, `rename`, `remove` and `set-url` (done) have no UI; 11.7's Project tab only picks the fetch and push remotes.
+
+**Scope.**
+1. **Design round first** (DS component + prototype, in place, a numbered `DESIGN-SYSTEM-SYNC.md` entry): a "Remotes" group in Settings › Project — the list (name, fetch URL, push URL if different), add, rename, set URL, remove with its confirmation, and how jj's refusals show.
+2. The rows call 9.5's verbs through the bridge (exact CLI behaviour, house rule Commands: every command shown in full, shell-quoted); a credential in a URL never shows (gix `to_bstring`, project memory "jj/gix remotes API").
+3. The fetch/push selects, the remote-change poll (11.8) and the Push sheet re-read the remotes after a change.
+
+**Non-goals.** Remote branch management beyond 10.14's panel; forge integration.
+
+**Witnesses.** Each verb's row on a fake port issues the CLI's command and shows jj's refusal verbatim; a real-worker test adds, renames and removes a remote in a temp repo; Marionette screenshots compared with the new DS card.
+
+**Depends on.** 9.5 (done), 11.7 (done), 11.8 (done).
+
+---
+
+### Story 11.19: Edit the config file — the GUI split of `jj config edit` [UI/bridge]
+*(Added 2026-11-03, Ralph — console session: "eine Design-Runde, dann eine Story". deferred-work.md "Raw config editing has no surface".)*
+
+**Motivation.** 9.28's `configFileRead` / `configFileWrite` (done) — the GUI's replacement for `jj config edit`'s `$EDITOR` — have no consumer; 11.7 edits only its own rows.
+
+**Scope.**
+1. **Design round first:** where it lives (a link per Settings tab "Edit config file…" for user / repo scope, or a page of its own), the editor surface (monospaced text, TOML), Save / Revert, and how a parse error from jj shows (line and message).
+2. Reading and writing go through 9.28 (the CLI's scopes and paths, its validation); a write that jj rejects leaves the file unchanged and shows jj's message. Settings' rows and other open windows re-read after a save (11.7's `configWrites`).
+
+**Non-goals.** Syntax highlighting beyond a plain monospaced field (unless the design round asks for it); a key catalogue.
+
+**Witnesses.** Open shows the file of the chosen scope; Save writes it; an invalid TOML keeps the file and shows jj's message; a saved alias appears in Settings' Immutable page.
+
+**Depends on.** 9.28 (done), 11.7 (done).
+
+---
+
+### Story 11.20: Density with an effect — spacing tokens per density [UI]
+*(Added 2026-11-03, Ralph — console session: "eine Design-Runde, dann eine Story". deferred-work.md "Density has no tokens"; 11.7 design question (a).)*
+
+**Motivation.** 11.7 built Settings › Density (Compact · Balanced · Comfy) as a text scale on 11.1's base size (12.5 / 13 / 13.5 px); no DS component reads it, so islands, cards, rows and menus keep their compact spacing.
+
+**Scope.**
+1. **Design round first:** which tokens change per density (row heights, paddings, card size in the graph, island heights, gaps) and by how much; the DS gets the density token sets and its cards show all three.
+2. The token layer (`packages/zanshin_ui`) carries the three sets; the app switches them with the setting, live, in every open window. The graph's card metrics follow (the router reruns its geometry stage only, §14.5).
+
+**Non-goals.** Per-window density; a custom scale.
+
+**Witnesses.** Each density changes the named tokens in a widget test; the graph's card size follows; Marionette screenshots of one window per density compared with the DS cards.
+
+**Depends on.** 11.7 (done), 11.14 (done).
+
+---
+
+### Story 11.21: Immutable commits page — untracked remote refs by their tracking state [UI/bridge]
+*(Added 2026-11-03, Ralph — console session: "Tracking-Info lesen". deferred-work.md "Surfaced in the closing run of Story 11.7": "The Immutable commits page's untracked-remote hints can name a tracked remote ref that disagrees with its local target".)*
+
+**Motivation.** The page's built-in hints infer "untracked" from `TopologyRef.synced` ("tracked and agrees"), so a tracked remote ref that moved away from its local target is named as untracked (`app/lib/src/features/settings/immutable_heads.dart` `_untrackedRemote`).
+
+**Scope.**
+1. The bridge reports each remote ref's tracking state (an `untracked` flag on `TopologyRef`, or a read of its own) from jj's view (`RemoteRefState`), for bookmarks and tags alike; FlatBuffers schema + codegen.
+2. The page filters on that state instead of `synced`.
+
+**Non-goals.** Any other consumer of the flag.
+
+**Witnesses.** A Rust test: a tracked remote bookmark moved away from its local target reads tracked, an untracked one untracked; the page names only the untracked one; the parity oracle unchanged.
+
+**Depends on.** 11.7 (done).
 
 ---
