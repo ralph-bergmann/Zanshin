@@ -199,6 +199,9 @@ void main() {
 
     model.setName('mine');
     expect(model.request.command, 'jj git push --bookmark main --named mine=@ --allow-empty-description');
+    model.setName('push-ovknlmro');
+    expect(model.named, isFalse, reason: 'the generated name typed back stays generated');
+    expect(model.request.command, 'jj git push --bookmark main --change @ --allow-empty-description');
   });
 
   test('Push runs the command once; a full success finishes and reports', () async {

@@ -402,7 +402,8 @@ class PushSheetModel extends ChangeNotifier {
 
   /// The name typed into the change row.
   void setName(String name) {
-    _name = name;
+    // The generated name typed back stays generated, so a re-plan cannot turn it into `--named`.
+    _name = name == generatedName ? null : name;
     _changed();
   }
 

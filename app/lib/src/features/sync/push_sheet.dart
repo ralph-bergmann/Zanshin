@@ -568,7 +568,7 @@ class _PushSheetState extends State<PushSheet> {
     }
     return _RowShell(
       identifier: 'push-result-${key.kind.name}-${key.name}',
-      checkbox: ZsCheckbox(value: false, label: key.name, identifier: 'push-result-${key.kind.name}-${key.name}-check'),
+      checkbox: ZsCheckbox(value: true, label: key.name, identifier: 'push-result-${key.kind.name}-${key.name}-check'),
       name: _Name(name: key.name, tag: key.kind == PushRefKind.tag),
       subs: subs,
       lines: lines,

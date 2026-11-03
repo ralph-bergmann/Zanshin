@@ -24,13 +24,13 @@ import '../../helpers/shell_host.dart';
 
 /// Story 11.8's island and sheet in a floating shell over a fake port.
 class _Rig {
-  _Rig({void Function(FakeRemoteSync sync)? configure}) {
+  _Rig({void Function(FakeRemoteSync sync)? configure, RemotePollSetting poll = RemotePollSetting.off}) {
     configure?.call(sync);
     model = SyncModel(
       sync: sync,
       graph: graph,
       toasts: toasts,
-      pollSetting: () => RemotePollSetting.off,
+      pollSetting: () => poll,
       changeTarget: () => (id: 'ovknlmro', rev: '@'),
     );
   }
@@ -193,6 +193,11 @@ void main() {
         .data!;
     expect(note, contains('The push is recorded, so Undo works as usual.'));
     expect(find.text('moved on origin'), findsOneWidget);
+    expect(
+      tester.widget<ZsCheckbox>(find.byType(ZsCheckbox).first).value,
+      isTrue,
+      reason: 'a sent row stays ticked in the done state (DS PushDialog.jsx:158)',
+    );
     rig.dispose();
   });
 
@@ -276,5 +281,60 @@ void main() {
     }
     rig.dispose();
     semantics.dispose();
+  });
+
+  testWidgets('the island shows the poll badge, the changes per remote, the fetch progress, and "No remote"', (
+    tester,
+  ) async {
+    useShellWindow(tester);
+    ZsIconButton button(String id) =>
+        tester.widget<ZsIconButton>(find.ancestor(of: _id(id), matching: find.byType(ZsIconButton)).first);
+    ZsTooltip tip(String id) =>
+        tester.widget<ZsTooltip>(find.ancestor(of: _id(id), matching: find.byType(ZsTooltip)).first);
+    RemoteRefChange moved(String name) => RemoteRefChange(
+      kind: RemoteRefKind.bookmark,
+      name: name,
+      change: RemoteRefChangeKind.moved,
+      oldCommitIds: const <String>['a'],
+      newCommitId: 'b',
+    );
+    final rig = _Rig(
+      poll: RemotePollSetting.fiveMinutes,
+      configure: (sync) => sync.changes['origin'] = <RemoteRefChange>[moved('main'), moved('x')],
+    );
+    await tester.pumpWidget(rig.host());
+    await tester.pump();
+    await rig.model.poll();
+    await tester.pump();
+    expect(button('sync-fetch').badge, 2);
+    expect(tip('sync-fetch').message, 'Fetch from origin\nmain, x changed on origin');
+
+    rig.sync.fetchGate = Completer<void>();
+    final Future<void> fetch = rig.model.fetch();
+    await tester.pump();
+    rig.sync.emitProgress(const ProgressEvent(1, 'fetch', 0.4, ''));
+    await tester.pump();
+    expect(button('sync-fetch').busy, isTrue);
+    expect(tip('sync-fetch').message, 'Fetching… 40%');
+    rig.sync.fetchGate!.complete();
+    await fetch;
+    await tester.pump();
+    expect(button('sync-fetch').busy, isFalse);
+    rig.dispose();
+    await tester.pumpWidget(const SizedBox());
+
+    final none = _Rig(
+      configure: (sync) => sync
+        ..fetchRemoteNames = <String>[]
+        ..pushRemoteNames = <String>[]
+        ..names = <String>[],
+    );
+    await tester.pumpWidget(none.host());
+    await tester.pump();
+    for (final id in <String>['sync-fetch', 'sync-push']) {
+      expect(button(id).onPressed, isNull, reason: id);
+      expect(button(id).disabledReason, 'No remote', reason: id);
+    }
+    none.dispose();
   });
 }

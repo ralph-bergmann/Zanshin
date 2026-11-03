@@ -343,6 +343,29 @@ void main() {
       expect(rig.graph.undos.single.$2.id, 'pushop');
     });
 
+    _rigTest('a real push runs inside the syncing dot', (tester) async {
+      final rig = _Rig();
+      rig.sync
+        ..pushGate = Completer<void>()
+        ..pushAnswer = (request) => pushResult(<String, List<PushRef>>{
+          'origin': <PushRef>[
+            pushRef('main', status: request.dryRun ? PushRefStatus.notReached : PushRefStatus.pushed),
+          ],
+        });
+      await tester.pump();
+      rig.model.openPush();
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+      }
+      expect(rig.syncs, 0, reason: 'dry runs are not a sync');
+      final Future<void> push = rig.model.pushSheet!.push();
+      await tester.pump();
+      expect(rig.syncs, 1);
+      rig.sync.pushGate!.complete();
+      await push;
+      expect(rig.syncs, 0);
+    });
+
     _rigTest('an unrecorded push offers no Undo', (tester) async {
       final rig = _Rig();
       await push(
