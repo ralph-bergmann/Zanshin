@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_core/zanshin_core.dart' show RouteGeometry, ShowEntry;
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -458,7 +459,8 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   void _attachDrag(GraphDrag? drag) {
     drag
       ?..addListener(_dragChanged)
-      ..toViewport = _toViewport;
+      ..toViewport = _toViewport
+      ..onBackwards = _announceBackwards;
   }
 
   void _detachDrag(GraphDrag? drag) {
@@ -466,7 +468,15 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     if (drag != null && drag.toViewport == _toViewport) {
       drag.toViewport = null;
     }
+    if (drag != null && drag.onBackwards == _announceBackwards) {
+      drag.onBackwards = null;
+    }
   }
+
+  /// The ghost is excluded from semantics: VoiceOver hears its backwards warning only announced.
+  void _announceBackwards() => unawaited(
+    SemanticsService.sendAnnouncement(View.of(context), context.l10n.dragBackwardsWarning, Directionality.of(context)),
+  );
 
   Rect? _toViewport(Rect global) {
     final Offset? at = _viewport.toLocal(global.topLeft);

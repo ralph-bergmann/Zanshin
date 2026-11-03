@@ -301,6 +301,7 @@ void main() {
   });
 
   group('GraphDrag', () {
+    setUpIconRegistry();
     late _Drops drops;
     late _Ran ran;
     late GraphDrag drag;
@@ -539,6 +540,54 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       expect(drag.payload, isNull);
       expect(ran.ran, isEmpty);
+    });
+
+    for (final altAtOpen in <bool>[false, true]) {
+      testWidgets('the menu opened ${altAtOpen ? 'with' : 'without'} ⌥ keeps its row when ⌥ changes', (tester) async {
+        if (altAtOpen) {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+        }
+        drag
+          ..start(_source, Offset.zero)
+          ..hover('t');
+        await tester.pump(graphDropDebounce);
+        await tester.pump(graphDropMenuDelay);
+        expect(drag.menuOpen, isTrue);
+        final GraphDropKind opened = altAtOpen ? GraphDropKind.moveOnly : GraphDropKind.moveHere;
+        expect(drag.highlightedRow?.kind, opened);
+        if (altAtOpen) {
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+        } else {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+        }
+        expect(drag.alt, !altAtOpen);
+        expect(drag.highlightedRow?.kind, opened);
+        if (!altAtOpen) {
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+        }
+        drag.cancel();
+      });
+    }
+
+    testWidgets('the drop menu enters like the command menus: --dur-menu, glide, from scale .97', (tester) async {
+      final List<GraphDropRow> rows = graphDropRows(
+        _source,
+        targetKey: 't',
+        targetShort: 't',
+        actions: _changeRows(_available),
+      ).rows;
+      await tester.pumpWidget(shellHost(Center(child: GraphDropMenu(rows: rows, highlight: 0, above: false))));
+      double scale() => tester
+          .widget<Transform>(find.descendant(of: find.byType(GraphDropMenu), matching: find.byType(Transform)).first)
+          .transform
+          .entry(0, 0);
+      const ZsMotion motion = ZsMotion.full;
+      final Duration half = motion.durMenu ~/ 2;
+      await tester.pump(half);
+      final double t = half.inMicroseconds / motion.durMenu.inMicroseconds;
+      expect(scale(), closeTo(1 - .03 * (1 - motion.easeGlide.transform(t)), 1e-6));
+      await tester.pump(motion.durMenu);
+      expect(scale(), 1);
     });
   });
 
@@ -979,10 +1028,26 @@ void main() {
 
     for (final backwards in <bool>[true, false]) {
       testWidgets('a ${backwards ? 'backwards' : 'forward'} bookmark drag ${backwards ? 'warns' : 'does not warn'} in '
-          'the ghost, never opens the menu and runs on release', (
+          'the ghost (announced once per target), never opens the menu and runs on release', (
         tester,
       ) async {
         useShellWindow(tester);
+        final announced = <String>[];
+        tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<Object?>(SystemChannels.accessibility, (
+          message,
+        ) async {
+          final event = message! as Map<Object?, Object?>;
+          if (event['type'] == 'announce') {
+            announced.add((event['data']! as Map<Object?, Object?>)['message']! as String);
+          }
+          return null;
+        });
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<Object?>(
+            SystemChannels.accessibility,
+            null,
+          ),
+        );
         final RecordedGraphLayout layout = handLayout(
           <(String, int, int)>[('a', 2, 0), ('b', 1, 0), ('c', 0, 0)],
           edges: <(int, int)>[(0, 1), (1, 2)],
@@ -1020,6 +1085,19 @@ void main() {
         } else {
           expect(warning, findsNothing, reason: 'a fast-forward needs no warning');
         }
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(announced, <String>[if (backwards) _en.dragBackwardsWarning], reason: 'staying adds none');
+        await mouse.moveTo(_centre(tester, 'b'));
+        await tester.pump(graphDropDebounce);
+        await tester.pump();
+        expect(announced, <String>[
+          if (backwards) ...<String>[_en.dragBackwardsWarning, _en.dragBackwardsWarning],
+        ]);
+        await mouse.moveTo(to);
+        await tester.pump(graphDropDebounce);
+        expect(announced, <String>[
+          if (backwards) ...List<String>.filled(3, _en.dragBackwardsWarning),
+        ], reason: 'cached');
         await mouse.up();
         await tester.pumpAndSettle();
         expect(actions.ran.map((a) => a.command), <String>[command], reason: 'the release runs the row');

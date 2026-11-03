@@ -343,9 +343,9 @@ typedef GraphDropOrigin = ({String? key, Rect rect});
 /// target changes, at most one in flight, cached per (source, target) for the layout's operation. For a change drag the
 /// menu opens after [graphDropMenuDelay] on a target with rows; a bookmark drag never opens it (its one row runs, a
 /// backwards one too). A bookmark release on a target runs its row; a change release runs the highlighted row (the
-/// default — ⌥ picks it — unless ↑/↓ or the menu's pointer moved it) only once the menu is open; any other release
-/// cancels. [holding] stays true while the drag runs and until its verb finished: the view model holds
-/// reloads meanwhile.
+/// default — ⌥'s state when the menu opens picks it — unless ↑/↓ or the menu's pointer moved it) only once the menu is
+/// open; any other release cancels. [holding] stays true while the drag runs and until its verb finished: the view
+/// model holds reloads meanwhile.
 class GraphDrag extends ChangeNotifier {
   /// A drag controller; the view model wires it in `init`.
   GraphDrag();
@@ -364,6 +364,10 @@ class GraphDrag extends ChangeNotifier {
 
   /// Runs a row's action with the drop origin.
   Future<GraphActionResult> Function(GraphAction action, GraphDropOrigin? origin)? run;
+
+  /// Called once per target whose bookmark row is backwards: the ghost's warning is excluded from semantics, so the
+  /// canvas announces it; set by the canvas.
+  void Function()? onBackwards;
 
   /// Maps a global rect into the graph viewport's coordinates; set by the canvas, null outside one.
   Rect? Function(Rect global)? toViewport;
@@ -537,6 +541,14 @@ class GraphDrag extends ChangeNotifier {
       _debounce = Timer(graphDropDebounce, _fetch);
     } else {
       _armMenu();
+      _warnBackwards();
+    }
+  }
+
+  // A target's preview becomes known once per target (cached above or fetched), so this fires once per target.
+  void _warnBackwards() {
+    if (_payload is GraphBookmarkDrag && (highlightedRow?.backwards ?? false)) {
+      onBackwards?.call();
     }
   }
 
@@ -603,6 +615,7 @@ class GraphDrag extends ChangeNotifier {
       _preview = preview;
       _highlight = defaultIndex;
       _armMenu();
+      _warnBackwards();
       notifyListeners();
     } else if (_payload != null && _target != null && _preview == null && _debounce == null) {
       // The target (or the whole drag) moved on while this one was in flight, and its own query found one in
@@ -697,7 +710,8 @@ class GraphDrag extends ChangeNotifier {
       final bool alt = HardwareKeyboard.instance.isAltPressed;
       if (alt != _alt) {
         _alt = alt;
-        if (!_arrowed) {
+        // Once the menu is open its row stays: ⌥ picked it when the menu opened.
+        if (!_arrowed && !_menu) {
           _highlight = defaultIndex;
         }
         notifyListeners();

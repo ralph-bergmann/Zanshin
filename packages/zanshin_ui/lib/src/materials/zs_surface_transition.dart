@@ -19,8 +19,7 @@ import '../design/zs_motion.dart';
 /// Reduce motion works by property (decision 16.4): every distance, and every scale step away from 1, is ×
 /// `--motion` (0 under reduce motion), so the surface only fades; the durations stay.
 ///
-/// The drop menu takes [menu], as the epics' design update lists it among the command menus; the DS gives it a
-/// keyframe of its own (DS components/menus/menus.css:40-42; deferred-work, Story 11.2).
+/// The drop menu takes [menu], as the epics' design update lists it among the command menus.
 enum ZsSurfaceMotion {
   /// The context, project, drop and text menus (DS components/menus/menus.css:6-7; base.css:54, :60).
   menu,

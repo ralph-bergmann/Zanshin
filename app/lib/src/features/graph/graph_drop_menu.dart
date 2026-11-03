@@ -200,11 +200,11 @@ class _GraphDropMenuState extends State<GraphDropMenu> with SingleTickerProvider
       child: AnimatedBuilder(
         animation: _fade,
         builder: (context, child) {
-          final double t = motion.easeState.transform(_fade.value);
+          final double t = motion.easeGlide.transform(_fade.value);
           return Opacity(
             opacity: t,
             child: Transform.scale(
-              scale: 1 - .04 * motion.motion * (1 - t),
+              scale: 1 - .03 * motion.motion * (1 - t),
               alignment: widget.above ? Alignment.bottomCenter : Alignment.topCenter,
               child: child,
             ),
