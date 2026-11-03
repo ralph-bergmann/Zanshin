@@ -94,7 +94,7 @@ void main() {
   test('pushConfig reads git.sign-on-push', () async {
     final String? xdg = Platform.environment['XDG_CONFIG_HOME'];
     if (xdg == null || !xdg.endsWith('/target/test-xdg-config')) {
-      fail('XDG_CONFIG_HOME is not pinned to target/test-xdg-config — run via cargo make');
+      fail('XDG_CONFIG_HOME is not pinned to target/test-xdg-config — run via `cargo make test-app`');
     }
     final (String path, _, RemoteSync sync) = await repo();
     expect((await sync.pushConfig()).signOnPush, isFalse);

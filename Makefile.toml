@@ -114,6 +114,11 @@ private = true
 command = "cargo"
 args = ["fmt", "--all", "--check"]
 
+[tasks.test-app]
+# The app's `flutter test` with the gate's pinned environment, for single files or folders:
+# `cargo make test-app test/features/sync`. A plain `flutter test` leaves jj/git config unpinned.
+run_task = "test-flutter"
+
 [tasks.test-flutter]
 private = true
 # WHY: `flutter test` rewrites build/unit_test_assets only when the app's own pubspec or a file-backed
@@ -137,7 +142,9 @@ if [ "$flutter_config" != "$xdg_config" ]; then
     done
 fi
 export XDG_CONFIG_HOME="$xdg_config"
-flutter test
+# `cargo make test-app <paths>` passes test paths through (cargo-make joins them with ';'); the gate passes none.
+IFS=';' read -ra paths <<< "${CARGO_MAKE_TASK_ARGS:-}"
+flutter test ${paths[@]+"${paths[@]}"}
 '''
 cwd = "app"
 # WHY: pin jj/git global config so the Dart suite (which now drives real
