@@ -81,6 +81,7 @@ class InspectorViewModel extends ChangeNotifier {
   String? _commitId;
   String? _focused;
   FileDiff? _focusedDiff;
+  FileDiff? _previousDiff;
   ZanshinFfiException? _focusError;
   var _focusSerial = 0;
 
@@ -142,6 +143,10 @@ class InspectorViewModel extends ChangeNotifier {
   /// The focused file's diff; null while it loads, after a refusal, and when the reply lists no such file.
   FileDiff? get focusedDiff => _focusedDiff;
 
+  /// The diff shown before [focus] switched files, kept while the new one loads so the view keeps its height (and
+  /// its scroll offset); null once the new diff or a refusal arrives.
+  FileDiff? get previousDiff => _previousDiff;
+
   /// The focused diff's refusal.
   ZanshinFfiException? get focusError => _focusError;
 
@@ -151,6 +156,7 @@ class InspectorViewModel extends ChangeNotifier {
       return;
     }
     _focused = path;
+    _previousDiff = _focusedDiff ?? _previousDiff;
     _focusedDiff = null;
     _focusError = null;
     _loadFocus();
@@ -249,6 +255,7 @@ class InspectorViewModel extends ChangeNotifier {
         final Diff diff = await details.diff(commitId, paths: <String>[path]);
         if (serial == _focusSerial) {
           _focusedDiff = diff.files.where((file) => file.path == path).firstOrNull;
+          _previousDiff = null;
           _focusError = null;
           _notify();
         }
@@ -256,6 +263,7 @@ class InspectorViewModel extends ChangeNotifier {
         _log.warning('diff refused: ${error.code}');
         if (serial == _focusSerial) {
           _focusedDiff = null;
+          _previousDiff = null;
           _focusError = error;
           _notify();
         }
@@ -584,6 +592,7 @@ class InspectorViewModel extends ChangeNotifier {
     _commitId = null;
     _focused = null;
     _focusedDiff = null;
+    _previousDiff = null;
     _focusError = null;
     _focusSerial++;
   }
@@ -619,6 +628,7 @@ class InspectorViewModel extends ChangeNotifier {
         final String? focused = paths.contains(_focused) ? _focused : paths.firstOrNull;
         if (focused != _focused) {
           _focusedDiff = null;
+          _previousDiff = null;
           _focusError = null;
         }
         _focused = focused;
@@ -2033,14 +2043,19 @@ class _ChangesState extends State<_Changes> {
           if (focused != null && model.hasSummary)
             Padding(
               padding: const EdgeInsets.only(top: 14),
-              child: InspectorDiffView(
-                path: focused,
-                diff: model.focusedDiff,
-                error: model.focusError,
-                viewed: model.isViewed(focused),
-                onViewedChanged: (viewed) => model.setViewed(focused, viewed),
-                layout: model.layout,
-                onLayoutChanged: model.setLayout,
+              // While another file's diff loads the previous one stays, dimmed: the body keeps its height, so the
+              // scroll offset does not snap to the top.
+              child: Opacity(
+                opacity: model.previousDiff != null ? ZsMetrics.of(context).disabledOpacity : 1,
+                child: InspectorDiffView(
+                  path: model.previousDiff?.path ?? focused,
+                  diff: model.focusedDiff ?? model.previousDiff,
+                  error: model.focusError,
+                  viewed: model.isViewed(focused),
+                  onViewedChanged: (viewed) => model.setViewed(focused, viewed),
+                  layout: model.layout,
+                  onLayoutChanged: model.setLayout,
+                ),
               ),
             ),
         ],

@@ -1305,6 +1305,30 @@ void main() {
       await unmount(tester);
     });
 
+    testWidgets('while another file loads the previous diff stays, dimmed, so the body keeps its height', (
+      tester,
+    ) async {
+      details.holdDiff = true;
+      await pump(tester);
+      await settle(tester);
+      details.heldDiffs[0].$3.complete(details.diffOf(_mutable, paths: <String>['src/a.dart']));
+      await settle(tester);
+      double opacityOf(String text) =>
+          tester.widget<Opacity>(find.ancestor(of: find.text(text), matching: find.byType(Opacity)).first).opacity;
+      expect(opacityOf('old a'), 1);
+      await tester.tap(find.text('src/old.dart → src/new.dart'));
+      await settle(tester);
+      expect(inspector.focusedPath, 'src/new.dart');
+      expect(find.text('old a'), findsOneWidget, reason: 'the previous diff stays while the new one loads');
+      expect(opacityOf('old a'), lessThan(1));
+      details.heldDiffs[1].$3.complete(details.diffOf(_mutable, paths: <String>['src/new.dart']));
+      await settle(tester);
+      expect(inspector.previousDiff, isNull);
+      expect(find.text('old a'), findsNothing);
+      expect(opacityOf('b one'), 1);
+      await unmount(tester);
+    });
+
     testWidgets("a read held across a selection change never lands on the new change's block", (tester) async {
       details
         ..holdDiff = true
