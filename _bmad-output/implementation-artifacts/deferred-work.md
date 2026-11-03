@@ -1749,7 +1749,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 9.31 (bmad-build-auto, 2026-10-21)
 
-- **A rebase row's no-op check applies jj-lib's whole move on a dropped transaction, so a hover pays the tree merges of every descendant it would rebase.** Low.
+- ~~**A rebase row's no-op check applies jj-lib's whole move on a dropped transaction, so a hover pays the tree merges of every descendant it would rebase.**~~ — RESOLVED 2026-11-03 (spec-10-10-graph-drag-and-drop, commit c5d42306): measured 1.5–4.6 s per query on a 200-deep stack; now one cached query per target and a write-free no-op check (26–71 ms). Low.
   - `crates/zanshin-jj/src/rebase.rs::rebase_is_no_op` (`compute_move_commits` + `apply`) — exact by construction (it is the move the verb runs), accepted by the spec's design note; a long stack under the dragged change makes `drop_actions` as slow as the rebase itself.
   - **Follow-up:** measure on a deep stack when 10.10 lands; if it bites, ask only once per drop target or move the check off the hover path.
   - **2026-10-21, Ralph:** measure on a deep stack in Story 10.10 before deciding (epics.md 10.10 dated note). Covered by Story 10.10.
@@ -1760,7 +1760,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
   - **2026-10-21 (follow-on, spec-9-31-matrix-rows-rebase-b-revert-restore-absorb-interdiff):** the `Revert` row joins: `cmd_revert` parses `templates.revert_description` after the location, past `revert::plan_revert` (the spec keeps the parse in Story 9.18's transaction phase).
   - **2026-10-21, Ralph:** stays advisory — the verb's own refusal is authoritative (epics.md 10.10 dated note). Record.
 - ~~**`edit` of the current `@` previews `Available`.**~~ — RESOLVED 2026-10-25 (spec-9-38-edit-current-at-is-noop, commit 5b71805): the card's `edit` row takes `no_op` from `plan_edit`; witnesses `change_actions_of_the_working_copy_report_edit_as_a_no_op` and the `@` pick in `change_actions_rows_agree_with_their_verbs`. Low — already Story 9.38's: when `plan_edit` reports "Already editing that commit." the row becomes `NoOp` with no change here.
-- **The rebase dry run still writes git commit objects, `refs/jj/keep/*` refs and extra-metadata entries for every commit it rebases, on every hover.** Low.
+- ~~**The rebase dry run still writes git commit objects, `refs/jj/keep/*` refs and extra-metadata entries for every commit it rebases, on every hover.**~~ — RESOLVED 2026-11-03 (spec-10-10-graph-drag-and-drop, commit c5d42306): the no-op check writes nothing; a whole query leaves 0 keep refs and 0 loose objects. Low.
   - `crates/zanshin-jj/src/rebase.rs::rebase_is_no_op` → `apply` → `CommitBuilder::write` → `GitBackend::write_commit`, which keeps a no-gc ref per commit (jj-lib 0.46.0 `git_backend.rs` ~:1467); signing is dropped for the dry run (review patch), but the transaction's drop does not remove the objects and refs, which stay until `jj util gc`.
   - **Follow-up:** if they pile up visibly (colocated `git for-each-ref`), compute the no-op from the parents without writing, or move the check off the hover path.
   - **2026-10-21 (follow-on, spec-9-31-matrix-rows-rebase-b-revert-restore-absorb-interdiff):** the new rows add to it — `RebaseBranch` runs the same dry run, `Restore` writes its merged tree and `Absorb` its split's content blobs to the store on every hover (no commit, no ref); kept as the spec defers them. The hover also does more work: a one-target `onto` now plans ten rows instead of five, and `Absorb`'s `split_hunks_to_trees` annotates every changed file of the source through history — measure it with the rebase dry run in Story 10.10.
@@ -2342,7 +2342,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 10.9 (bmad-build-auto, 2026-10-31)
 
-- **The runner has no actions for `commit`, `split`, `rebase` and `duplicate`, though their backend verbs exist.** Medium.
+- ~~**The runner has no actions for `commit`, `split`, `rebase` and `duplicate`, though their backend verbs exist.**~~ — RESOLVED 2026-11-03 (spec-10-10-graph-drag-and-drop, commit c5d42306): `GraphRebase` / `GraphDuplicate` with their mapping and anchor/flash/selection rules (commit/split were 10.25's). Medium.
   - `app/lib/src/features/graph/graph_ports.dart` `GraphAction` covers edit, describe, new (-A/-B), abandon, revert, squash, bookmark create/delete/move/rename, undo, redo; `RepoHandle.commit`, `split`, `rebase`, `duplicate` have no subtype, and their per-verb selection/anchor rules (commit: new @ selected; split: selection stays; both anchored on the source) are not in `GraphViewModel._succeeded`.
   - **Follow-up:** 10.10 (drop rows: rebase, duplicate) and 10.25 (composer: commit, split) add their subtypes, the `RepoGraphActions` mapping and the selection/anchor rule beside the existing ones.
   - **2026-11-01, Story 10.25:** `GraphCommit` / `GraphSplit` with their `RepoGraphActions` mapping and selection/anchor rules (commit: new @ born and selected; split: rest born, selection stays; both anchored on the source) (commit c56d3af7); left: 10.10's rebase and duplicate.
@@ -2482,7 +2482,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 10.14 (bmad-build-auto, 2026-11-01)
 
-- **A bookmark row in the rail starts no drag yet: dragging a local row onto a change (and its stale/remote/`@` refusals) waits for 10.10's drop side.** Medium.
+- ~~**A bookmark row in the rail starts no drag yet: dragging a local row onto a change (and its stale/remote/`@` refusals) waits for 10.10's drop side.**~~ — RESOLVED 2026-11-03 (spec-10-10-graph-drag-and-drop, commit c5d42306): panel and rail rows drag (local, no `@`), inert while stale or busy. Medium.
   - epics.md Story 10.14's 2026-10-14 note "Drag (GV:416)"; `app/lib/src/features/bookmarks/bookmark_list_view.dart` has no drag source, and 10.10 (backlog) owns the drop targets.
   - **Follow-up:** 10.10 adds the row's drag source (local rows only; remote rows and names containing `@` do not drag; disabled with "Working copy is stale").
   - **RESOLVED 2026-11-03 (Story 10.10, commit c5d42306):** `BookmarkRowTile` (panel and rail callout) is a `GraphDragSource`: local rows without `@` drag past 5 px; inert while stale or busy (the stale tooltip stays); widget tests in `bookmark_list_view_test.dart`.
@@ -2516,7 +2516,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 10.20 (bmad-build-auto, 2026-11-01)
 
-- **A dropped change's glide from the drag ghost's rect, and the runner hints of verbs not built yet (rebase, insert, duplicate, split, commit), are missing from the graph animations.** Low.
+- ~~**A dropped change's glide from the drag ghost's rect, and the runner hints of verbs not built yet (rebase, insert, duplicate, split, commit), are missing from the graph animations.**~~ — RESOLVED 2026-11-03 (spec-10-10-graph-drag-and-drop, commit c5d42306): the ghost rect reaches `GraphTransition`; rebase/insert/duplicate have their mappings. Low.
   - The 2026-10-14 note's drop origin needs 10.10; `GraphAction` has no such verbs, so `_plan`/`_succeeded` (`app/lib/src/features/graph/graph_view_model.dart`) give them no anchor, flash or born key.
   - **Follow-up:** 10.10 passes the ghost rect into `GraphTransition` and 10.10/10.25 add each new verb's anchor/flash/born mapping in `_plan`/`_succeeded`.
   - **2026-11-01, Story 10.25:** commit and split have their anchor, flash and born mapping in `_plan`/`_succeeded` (commit c56d3af7); left: 10.10's ghost rect and rebase/insert/duplicate mappings.
