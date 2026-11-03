@@ -11373,7 +11373,7 @@ try { (() => {
         n
       } = e;
       e.side = Math.sign(n.cx - p.cx);
-      let kind = !e.side ? e.i === 0 && colFree(p.col, p.u, n.u) ? "straight" : "gutter" : e.i === 0 ? colFree(n.col, p.u, n.u) ? "fork" : "gutter" : n.u === p.u + U ? "merge1" : colFree(p.col, p.u, n.u) ? "mergeUp" : "gutter";
+      let kind = !e.side ? e.i === 0 && colFree(p.col, p.u, n.u) ? "straight" : "gutter" : e.i === 0 ? colFree(n.col, p.u, n.u) ? "fork" : "gutter" : n.u === p.u + U ? "merge1" : colFree(p.col, p.u, n.u) ? "mergeUp" : colFree(n.col, p.u, n.u) ? "fork" : "gutter";
       if (!e.side) e.side = 1;
       const direct = kind === "mergeUp" ? clear(nBand(n), p.cx, n.cx) : kind === "fork" || kind === "merge1" ? clear(pBand(p), p.cx, n.cx) : true;
       if (kind === "gutter" || !direct) {

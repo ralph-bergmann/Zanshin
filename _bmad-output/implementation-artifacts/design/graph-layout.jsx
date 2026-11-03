@@ -185,7 +185,9 @@ function routeLines(nodes, N, W, H, { bus = false, free = false } = {}) {
     let kind = !e.side ? (e.i === 0 && colFree(p.col, p.u, n.u) ? "straight" : "gutter")
       : e.i === 0 ? (colFree(n.col, p.u, n.u) ? "fork" : "gutter")
       : n.u === p.u + U ? "merge1"
-      : colFree(p.col, p.u, n.u) ? "mergeUp" : "gutter";
+      : colFree(p.col, p.u, n.u) ? "mergeUp"
+      // 2026-11-03 (Ralph's review): the parent's lane is taken — climb the child's lane like a first parent first.
+      : colFree(n.col, p.u, n.u) ? "fork" : "gutter";
     if (!e.side) e.side = 1;
     const direct = kind === "mergeUp" ? clear(nBand(n), p.cx, n.cx) : kind === "fork" || kind === "merge1" ? clear(pBand(p), p.cx, n.cx) : true;
     if (kind === "gutter" || !direct) {
