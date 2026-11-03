@@ -1542,7 +1542,8 @@ Per edge (p, i) with side s = sign(col(i) − col(p)) (GL:178-192):
   `gutter`; s becomes 1 (the gutter on the right).
 - first parent: `fork` iff col(i) is free between them, else `gutter`;
 - non-first: `merge-adjacent` iff y(i) = y(p) + U, else `merge-up` iff col(p) is free, else
-  `gutter`.
+  `fork` iff col(i) is free, else `gutter`. *(The `fork` step added 2026-11-03, Ralph's review: GL
+  sends such a line through a gutter, two extra bends where the child's column was free.)*
 
 **Gutters.** Edge gutter j (j = 0 nearest the child) of an edge with k = |col(i) − col(p)| ≥ 1 is
 2·col(i) − s·(2j + 1), j < k; with k = 0 the one gutter is 2·col(i) + 1. Its two runs: from the

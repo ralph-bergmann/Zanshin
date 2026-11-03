@@ -289,6 +289,16 @@ void main() {
       expect(cardHits(g), isEmpty);
     });
 
+    test('a_lane_blocked_merge_whose_child_column_is_free_climbs_it_as_a_fork', () {
+      // Child 0 (col 0, row 3), first parent 1 (col 0, row 0), second parent 2 (col 1, row 1), and node 3 in
+      // col 1 at row 2 between them; col 0 is free between rows 1 and 3.
+      final RouteClasses c = _grid([3, 0, 1, 2], [0, 0, 1, 1], [(1, 0), (2, 0), (2, 3)]);
+      expect(c.kinds[1], RouteClasses.kindFork);
+      final RouteGeometry g = _geometry(c);
+      expect(_points(g, 1), hasLength(4));
+      expect(cardHits(g), isEmpty);
+    });
+
     test('a_same_column_line_with_a_node_between_takes_the_gutter_on_its_right', () {
       final RouteClasses c = _grid([2, 0, 1], [0, 0, 0], [(1, 0)]);
       expect(c.kinds[0], RouteClasses.kindGutter);

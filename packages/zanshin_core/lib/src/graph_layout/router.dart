@@ -231,8 +231,11 @@ final class RouteClasses {
         kind = classifier.columnFree(cc, rp, rc) ? kindFork : kindGutter;
       } else if (rc == rp + unit) {
         kind = kindMergeAdjacent;
+      } else if (classifier.columnFree(cp, rp, rc)) {
+        kind = kindMergeUp;
       } else {
-        kind = classifier.columnFree(cp, rp, rc) ? kindMergeUp : kindGutter;
+        // The parent's column is taken: climb the child's column like a first parent before a gutter.
+        kind = classifier.columnFree(cc, rp, rc) ? kindFork : kindGutter;
       }
       var j = 0;
       if (free && kind != kindStraight && cc != cp) {
@@ -358,7 +361,8 @@ final class RouteClasses {
   /// A kind: same column, the first parent, and the column is free between the two rows.
   static const kindStraight = 0;
 
-  /// A kind: the first parent in another column; turns above the parent, climbs the child's column.
+  /// A kind: the first parent in another column, or a non-first one whose own column is taken; turns above the
+  /// parent, climbs the child's column.
   static const kindFork = 1;
 
   /// A kind: a non-first parent exactly one pitch below the child.
