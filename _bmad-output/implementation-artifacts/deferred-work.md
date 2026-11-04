@@ -2753,15 +2753,15 @@ _After `jj git init --colocate` on this repo, the Push sheet skipped `main` with
 
 _The bump ported every CLI change that needs no API change (root-merge refusal removed, `reset_head` staging area, push export/`some_pushed`, fetch expansion per remote, fetch description `", "`, `workspace add` order/attribution, capped "Did you mean" hints, builtin diff-editor tree merge, push validator counts remote tags, `workspace remove` / snapshot-config order / `export git refs` / sign-on-push op). These need a public API / FFI decision._
 
-- **`jj config gc` also collects workspace configs since 0.47.** Medium.
+- ~~**`jj config gc` also collects workspace configs since 0.47.**~~ — RESOLVED 2026-11-04 (spec-11-23-jj-0-47-follow-ups, commit b068f068): gc also scans `<cfg>/jj/workspaces`; `MissingRepoConfig.kind` (Repo/Workspace) through schema, FFI and zanshin_core; the CLI's error text. Medium.
   - CLI `cli/src/commands/config/gc.rs:43-112` @ v0.47.0 also scans `<config>/jj/workspaces`; error texts become "No repo configs directory found" / "No workspace configs directory found". Zanshin `crates/zanshin-jj/src/config_cmd.rs` (`gc_root`, `find_missing_repo_configs`) only knows repo configs.
   - **Proposal:** a `kind` (repo / workspace) on `MissingRepoConfig` through FFI + Dart; or leave it (workspace configs stay until the CLI's gc runs).
   - **Follow-up:** Story 11.23 item 1 (Ralph, 2026-11-04: like the CLI, `kind` field).
-- **`jj file search` handles binary files since 0.47.** Medium.
+- ~~**`jj file search` handles binary files since 0.47.**~~ — RESOLVED 2026-11-04 (spec-11-23-jj-0-47-follow-ups, commit b068f068): `binary` = Detect/AsText/Skip, a binary match (or a conflict with a binary side) is one path-only match with `binary: true`, through Rust, FFI and Dart. Medium.
   - CLI `file/search.rs:72-79,138-181` @ v0.47.0: `--binary-as-text` / `--skip-binary`; a binary match (NUL in the first 8000 bytes, or any conflict side) yields only "Binary file matches: <path>". Zanshin `crates/zanshin-jj/src/file.rs` `file_search` returns lines.
   - **Proposal:** a tri-state `binary` mode parameter + a `binary` flag on the match, through FFI; or leave it.
   - **Follow-up:** Story 11.23 item 2 (Ralph, 2026-11-04: tri-state + flag).
-- **Dead wire values after 0.47.** Low.
+- ~~**Dead wire values after 0.47.**~~ — RESOLVED 2026-11-04 (spec-11-23-jj-0-47-follow-ups, commit b068f068): the three values removed end to end; the schema keeps their numbers as gaps so the remaining values stay put. Low.
   - `PushRefStatus::Unexported` and `WarningKind::PushBookmarksNotUpdatedLocally` (`jj.push_bookmarks_not_updated_locally`) are never produced (jj-lib's push no longer exports to Git); `RevsetErrorKind::NotPrefixOperator` never (jj dropped `:x`). Kept so FlatBuffers enum values stay put; the push sheet / l10n still handle them.
   - **Proposal:** remove them end to end (schema, Rust, Dart, l10n) in a cleanup, or keep them as deprecated.
   - **Follow-up:** Story 11.23 item 3 (Ralph, 2026-11-04: remove end to end).
@@ -2783,6 +2783,6 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 - **The Push sheet's action texts name commits by commit id only ("add to 2d0dbb65bad8").** Low.
   - Ralph, 2026-11-04: change id as in the inspector, commit id next to it.
   - **Follow-up:** Story 11.22 item 6.
-- **The inspector's title field opens EMPTY on a change described through the composer after an abandoned title edit.** Medium.
+- ~~**The inspector's title field opens EMPTY on a change described through the composer after an abandoned title edit.**~~ — RESOLVED 2026-11-04 (spec-11-23-jj-0-47-follow-ups, commit b068f068): a draft remembers its base description, an untouched/empty one goes when the description changed, a typed one stays with "The description changed meanwhile.", a composer commit/split drops the change's title draft. Medium.
   - Reproduced by Ralph: type+delete in an undescribed `@`'s title, Esc, commit with a message through the composer, reopen the title. `graph_inspector.dart:1014` prefers `_drafts[key]` over the description; drafts survive cancel (`:300`) and the composer clears only `_composerDrafts` (`:650`). A project reload fixes it.
   - **Follow-up:** Story 11.23 item 4.
