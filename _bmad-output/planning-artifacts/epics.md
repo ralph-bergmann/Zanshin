@@ -13830,3 +13830,26 @@ Nothing NEEDS DESIGN.
 **Depends on.** 11.7 (done).
 
 ---
+
+### Story 11.22: Push help for Git switchers — fix-it actions and plain explanations in the Push sheet, the tracking hint after a conversion [UI/bridge]
+*(Added 2026-11-04, Ralph — console session: his first push of this repo from Zanshin, right after `jj git init --colocate`, skipped `main` with "Non-tracking remote bookmark main@origin exists"; "eine Hilfe an die Hand geben … meine Zielgruppe soll auch git-Umsteiger enthalten, die nicht wissen wie weiter". deferred-work.md "Surfaced 2026-11-04 in Ralph's first push from Zanshin".)*
+
+**Motivation.**
+- `jj git init --colocate` (and Zanshin's conversion, 2.12/9.57) in an existing Git repo imports `origin/main` as `main@origin` but does not track it: `remotes.<name>.auto-track-bookmarks` defaults to `~*` (`cli/src/config-schema.json` @ v0.46.0). `jj git push` then skips `main`. A Git user expects `main` and `origin/main` to be linked already.
+- The Push sheet (11.8) shows jj's refusal and hint verbatim — "Run `jj bookmark track main@origin` to import the remote bookmark." — but offers no way to run it and says nothing about why. Tracking exists: 9.11's verb, and the Bookmarks panel's Track on hover (10.14, `GraphBookmarkTrack`); nobody finds it from the sheet.
+- The same sheet shows "Won't push commit … since it has no description" on "Push @ as a new bookmark" right after a commit. To a Git user that reads as an error; it is jj's normal empty working-copy change, and the work is in its parent.
+- The CLI prints a hint after `jj git init` that names the remote bookmarks not associated with existing local ones, with the `jj bookmark track …` command (`print_trackable_remote_bookmarks`, `cli/src/commands/git/init.rs:376-412` @ v0.46.0). Zanshin's conversion (`crates/zanshin-jj/src/convert.rs`) reports nothing of the kind — a parity gap.
+
+**Scope.**
+1. **Design round first** (DS component + prototype, in place, a numbered `DESIGN-SYSTEM-SYNC.md` entry): how a refusal row in the Push sheet carries a fix-it action and a short "What does this mean?" explanation under jj's verbatim text; how the conversion's tracking hint shows; the tone for Git switchers (one or two sentences, naming the Git term next to the jj one).
+2. **Fix-it where jj's hint names a command.** "Non-tracking remote bookmark X@R exists" gets **Track X@R**: it runs 9.11's track verb (the CLI's `jj bookmark track X@R`, shown in full and shell-quoted, house rule Commands), then the sheet re-runs its dry-run. Tracking merges the remote target as the CLI does; a conflicted result shows as such. The same for a non-tracking remote tag, if jj's hint names a command for it.
+3. **A plain explanation per refusal and warning the sheet shows**, keyed by a refusal kind. Today the bridge carries jj's message and hint only (`PushRefusal` in `packages/zanshin_core/lib/src/ffi/push.dart`), so the kind is added over FlatBuffers (schema + codegen), never derived from the message text. At least: non-tracking remote bookmark or tag; conflicted local or remote bookmark; the commit checks (no description — "@ is your working copy; after a commit jj starts a new, empty change on top, so your work is in its parent" —, no author or committer, conflicts, private via `git.private-commits`); a new bookmark and the allow-new flag; deletions; the `git.sign-on-push` notice. jj's own text stays unchanged.
+4. **Conversion parity.** The conversion outcome carries the CLI's post-init list (local bookmarks with an untracked remote counterpart). After a conversion the UI shows it with a Track action per bookmark and one for all (the CLI's single `jj bookmark track a@origin b@origin …`).
+
+**Non-goals.** A general jj tutorial or onboarding tour; changing jj's auto-track default; explanations outside the Push sheet and the conversion (fetch, rebase, the Bookmarks panel) — candidates for later stories if the pattern holds.
+
+**Witnesses.** A widget test: a skipped `main` with a non-tracking `main@origin` shows Track; pressing it issues `jj bookmark track main@origin` on a fake port, and the re-run dry-run lists `main [move forward …]`. Every refusal kind maps to its explanation (one test per kind). A Rust test: converting a Git repo that has `main` and `origin/main` reports `main@origin` as untracked, as the CLI's hint does; the parity oracle compares the list. Marionette on a freshly colocated copy of a Git repo with a remote, compared with the new DS cards.
+
+**Depends on.** 11.8 (done), 9.11 (done), 9.57 (done), 10.14 (done).
+
+---

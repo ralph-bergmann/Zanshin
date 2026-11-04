@@ -2737,3 +2737,14 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 - **VoiceOver read the backwards-bookmark announcement with an American voice over what sounded like German text.** Low.
   - Ralph, 2026-11-03: "eine Amerikanerin, die deutschen Text vorgelesen hat". The app ships English strings only (`app/lib/l10n/app_en.arb`); `SemanticsService.sendAnnouncement` in `app/lib/src/features/graph/graph_canvas.dart` (`_announceBackwards`) passes no language, so macOS may pick the voice from one locale and the text's language from another (app locale vs. system language German).
   - **Follow-up:** look at it together on the Mac — which text was spoken, the app's locale and `CFBundleDevelopmentRegion`/`CFBundleLocalizations` in `app/macos/Runner/Info.plist`, and whether the announcement needs an explicit locale. Not urgent (Ralph).
+
+## Surfaced 2026-11-04 in Ralph's first push from Zanshin (console session)
+
+_After `jj git init --colocate` on this repo, the Push sheet skipped `main` with "Non-tracking remote bookmark main@origin exists". Fixed for this repo the same day by `jj bookmark track main@origin` (console session); `jj git push --dry-run -b main` then showed `main [move forward from c822ed47d414 to 6c8f0cff87b8]`._
+
+- **The Push sheet shows jj's refusals and hints verbatim but offers no fix and no explanation; a Git switcher does not know what to do.** Medium.
+  - `app/lib/src/features/sync/push_sheet.dart` renders `PushRefusal` (message + hint only, `packages/zanshin_core/lib/src/ffi/push.dart`); the Track action exists only in the Bookmarks panel on hover (`app/lib/src/features/bookmarks/bookmark_list_view.dart`). The "no description" rejection on "Push @ as a new bookmark" reads as an error after every commit.
+  - **Follow-up:** Story 11.22 (design round first).
+- **Zanshin's conversion does not report the remote bookmarks it left untracked, which the CLI's `jj git init` names in a hint.** Medium.
+  - CLI `print_trackable_remote_bookmarks` (`cli/src/commands/git/init.rs:376-412` @ v0.46.0); nothing similar in `crates/zanshin-jj/src/convert.rs`.
+  - **Follow-up:** Story 11.22 item 4.
