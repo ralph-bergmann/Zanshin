@@ -1868,14 +1868,20 @@ class _Chips extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      ref.remote != null
+                      ref.conflicted
+                          ? strings.inspectorBookmarkConflicted
+                          : ref.remote != null
                           ? strings.inspectorBookmarkRemote
                           : ref.synced
                           ? '✓' // l10n-ignore: a symbol for "in sync"
                           : strings.inspectorBookmarkLocal,
                       style: ZsType.id.copyWith(
                         fontSize: ZsType.fsXs,
-                        color: ref.remote != null ? colors.remote : colors.textDim,
+                        color: ref.conflicted
+                            ? colors.conflict
+                            : ref.remote != null
+                            ? colors.remote
+                            : colors.textDim,
                       ),
                     ),
                   ],

@@ -146,7 +146,11 @@ ShellToastEntry? graphOutcomeEntry(GraphOutcome outcome, {required GraphViewMode
       tone: ZsToastTone.warn,
       build: (context, dismiss) => ZsToast(
         tone: ZsToastTone.warn,
-        message: TextSpan(text: error.context ?? error.code),
+        message: TextSpan(
+          text: error.code == 'jj.change_not_found' && error.context != null
+              ? context.l10n.toastRevisionNotFound(error.context!)
+              : error.context ?? error.code,
+        ),
         onDismiss: dismiss,
         identifier: 'graph-toast',
       ),

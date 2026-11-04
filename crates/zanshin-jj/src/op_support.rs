@@ -645,6 +645,10 @@ pub(crate) enum ResolveError {
 /// arbitrary one of several commits would be unsafe (`-r` is `resolve_single_rev`). The read-only
 /// `get_change` reports divergence through `Change::divergent` instead ([`resolve_change`]).
 ///
+/// An `id` in commit-id hex (`0-9a-f`, disjoint from reverse hex `k-z`) resolves as a commit-id
+/// prefix through [`resolve_commit_id_prefix`] — visible or not, as the CLI's `-r <commit id>`
+/// does. That is how the graph names a divergent or hidden commit, which has no unique change id.
+///
 /// # Errors
 ///
 /// - [`ResolveError::NotFound`] — see the variant's doc.
@@ -656,6 +660,14 @@ pub(crate) fn resolve_commit(
     prefixes: &IdPrefixContext,
     id: &crate::ChangeId,
 ) -> Result<Commit, ResolveError> {
+    if !id.0.is_empty()
+        && jj_lib::object_id::HexPrefix::try_from_reverse_hex(&id.0).is_none()
+        && jj_lib::object_id::HexPrefix::try_from_hex(&id.0).is_some()
+    {
+        let index = populate(repo, prefixes)?;
+        return resolve_commit_id_prefix(repo, &index, &crate::CommitId(id.0.clone()))
+            .map_err(|e| from_prefix_error(e, &id.0));
+    }
     let visible = resolve_change(repo, prefixes, id)?;
     if let [(_, commit_id)] = visible.as_slice() {
         return repo
@@ -671,6 +683,31 @@ pub(crate) fn resolve_commit(
         hints: crate::revset::resolution_hints(&err),
         reason: err.to_string(),
     })
+}
+
+/// `prefixes` populated against `repo`; a failed `revsets.short-prefixes` load is a resolution
+/// error carrying jj-lib's error chain.
+fn populate<'a>(
+    repo: &dyn jj_lib::repo::Repo,
+    prefixes: &'a IdPrefixContext,
+) -> Result<IdPrefixIndex<'a>, ResolveError> {
+    prefixes.populate(repo).map_err(|e| ResolveError::Resolution {
+        reason: crate::mutate::flatten_chain(&e),
+        hints: Vec::new(),
+    })
+}
+
+/// A commit-id prefix failure of `id` in [`resolve_commit`]'s terms: malformed or unmatched is
+/// not found, an ambiguous prefix is jj-lib's `AmbiguousCommitIdPrefix`.
+fn from_prefix_error(e: PrefixError, id: &str) -> ResolveError {
+    match e {
+        PrefixError::Malformed | PrefixError::NotFound => ResolveError::NotFound,
+        PrefixError::Ambiguous => ResolveError::Resolution {
+            reason: jj_lib::revset::RevsetResolutionError::AmbiguousCommitIdPrefix(id.to_owned()).to_string(),
+            hints: Vec::new(),
+        },
+        PrefixError::Backend(e) => ResolveError::Backend(e),
+    }
 }
 
 /// [`resolve_commit`] up to its divergence check: the change-id prefix `id` resolved through
@@ -691,10 +728,7 @@ pub(crate) fn resolve_change(
     let prefix = jj_lib::object_id::HexPrefix::try_from_reverse_hex(&id.0)
         .filter(|_| !id.0.is_empty())
         .ok_or(ResolveError::NotFound)?;
-    let index = prefixes.populate(repo).map_err(|e| ResolveError::Resolution {
-        reason: crate::mutate::flatten_chain(&e),
-        hints: Vec::new(),
-    })?;
+    let index = populate(repo, prefixes)?;
     let resolution = pollster::block_on(index.resolve_change_prefix(repo, &prefix))
         .map_err(|e| ResolveError::Backend(e.to_string()))?;
     let targets = match resolution {
@@ -1836,5 +1870,26 @@ mod tests {
             assert!(reason.starts_with("invalid path: "), "{reason}");
             assert!(!reason.contains("is not in the repo"), "{reason}");
         }
+    }
+
+    #[test]
+    fn a_commit_id_prefix_failure_maps_onto_the_resolve_taxonomy() {
+        use super::{from_prefix_error, PrefixError, ResolveError};
+        assert!(matches!(
+            from_prefix_error(PrefixError::Malformed, "0"),
+            ResolveError::NotFound
+        ));
+        assert!(matches!(
+            from_prefix_error(PrefixError::NotFound, "0"),
+            ResolveError::NotFound
+        ));
+        assert!(matches!(
+            from_prefix_error(PrefixError::Ambiguous, "0"),
+            ResolveError::Resolution { reason, .. } if reason == "Commit ID prefix `0` is ambiguous"
+        ));
+        assert!(matches!(
+            from_prefix_error(PrefixError::Backend("x".to_owned()), "0"),
+            ResolveError::Backend(reason) if reason == "x"
+        ));
     }
 }

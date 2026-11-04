@@ -811,16 +811,15 @@ fn interdiff_round_trip_diffs_an_evolog_predecessor_through_the_commit_id_arm() 
         "the two VERSIONS of one change differ by the rewrite"
     );
 
-    // The same hex as a ChangeIdRef stays refused — the change-id arm did not widen.
+    // The same hex as a ChangeIdRef resolves too: commit-id hex (`0-9a-f`) is disjoint from
+    // reverse hex, so the change-id arm takes it as the CLI's `-r <commit id>` does.
     let req = interdiff_request_bytes(Side::Change(&predecessor), Side::Change(&change_id), &[]);
     // SAFETY: see above.
     let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
     // SAFETY: see above.
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
-    assert!(!env.ok());
-    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CHANGE_NOT_FOUND));
-    assert_eq!(env.error().and_then(|e| e.context()), Some(predecessor.as_str()));
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.code()));
 
     close_handle(handle);
 }

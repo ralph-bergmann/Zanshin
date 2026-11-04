@@ -1130,6 +1130,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorBookmarkRemote => 'remote';
 
   @override
+  String get inspectorBookmarkConflicted => 'conflicted';
+
+  @override
+  String toastRevisionNotFound(String id) {
+    return 'Revision `$id` doesn\'t exist';
+  }
+
+  @override
   String inspectorViewedCount(int viewed, int total) {
     return '$viewed/$total viewed';
   }

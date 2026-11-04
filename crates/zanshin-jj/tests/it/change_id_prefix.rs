@@ -290,3 +290,33 @@ fn a_divergent_change_is_refused_with_the_cli_hints() {
     assert!(change.divergent);
     assert_eq!(head_op(&mut repo), before, "nothing written");
 }
+
+/// A commit id names ONE copy of a divergent change — the graph's key for such a row — so a verb
+/// acts on exactly that copy, as the CLI's `jj abandon <commit_id>` does; the twin stays.
+#[test]
+fn a_commit_id_picks_one_copy_of_a_divergent_change() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let original = add_commit_off_root(&fx.path, "original");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let id = resolve_revset(&repo, &original).unwrap().remove(0);
+    let twin = add_divergent_twin(&fx.path, &original, "twin");
+
+    _ = repo.abandon(&[ChangeId(twin)]).unwrap();
+
+    let change = repo.get_change(&id).unwrap();
+    assert!(!change.divergent, "only the twin is gone");
+    assert_eq!(change.description.trim_end(), "original");
+}
+
+/// A commit-id prefix that matches no commit is not found, like an unknown change id.
+#[test]
+fn an_unknown_commit_id_is_not_found() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let err = repo
+        .abandon(&[ChangeId("0123456789abcdef0123456789abcdef01234567".to_owned())])
+        .unwrap_err();
+    assert!(matches!(err, MutateError::ChangeNotFound { .. }), "{err:?}");
+}

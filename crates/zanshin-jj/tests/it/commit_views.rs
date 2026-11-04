@@ -1217,14 +1217,12 @@ fn interdiff_diffs_an_evolog_predecessor_against_the_current_version() {
     );
     assert!(!view.base_has_conflicts);
 
-    // The same hex through the change-id arm is refused exactly as it always was.
-    let err = repo
+    // The same hex through the change-id arm resolves too: commit-id hex is disjoint from
+    // reverse hex, so it is taken as the CLI's `-r <commit id>`.
+    let same = repo
         .interdiff(Some(chg(&ChangeId(pred.0.clone()))), Some(chg(&change)), &[])
-        .expect_err("a commit hex is not a reverse-hex change id");
-    assert!(
-        matches!(&err, CommitViewError::ChangeNotFound { id } if *id == pred.0),
-        "the change-id arm must keep refusing it, echoing the offending id: {err:?}"
-    );
+        .expect("a commit hex resolves through the change-id arm");
+    assert_eq!(summary(&same.file_changes), summary(&view.file_changes));
 
     assert_eq!(head_op_id(&mut repo), before, "neither call writes an operation");
 }

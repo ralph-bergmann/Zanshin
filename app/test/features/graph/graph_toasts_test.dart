@@ -348,6 +348,14 @@ void main() {
     expect(text(tester), 'Commit 1234 is immutable');
   });
 
+  toastTest('a revision that no longer resolves says so in the CLI’s words, not as a bare id', (tester) async {
+    actions.refuse = const ZanshinFfiException('jj.change_not_found', '0803bb67');
+    await tester.runAsync(() => model.run(const GraphAbandon(<String>[_b])));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(text(tester), "Revision `0803bb67` doesn't exist");
+  });
+
   toastTest('a refusal: the warn tone with jj’s message, no Undo, gone after 6.5 s; a stale one shows none', (
     tester,
   ) async {

@@ -668,6 +668,13 @@
   "@inspectorBookmarkLocal": {"description": "Bookmark chip state: the local bookmark is not in sync with a remote."},
   "inspectorBookmarkRemote": "remote",
   "@inspectorBookmarkRemote": {"description": "Bookmark chip state: a remote-tracking bookmark."},
+  "inspectorBookmarkConflicted": "conflicted",
+  "@inspectorBookmarkConflicted": {"description": "Bookmark chip state: the bookmark's target is a conflict (jj's `??`)."},
+  "toastRevisionNotFound": "Revision `{id}` doesn't exist",
+  "@toastRevisionNotFound": {
+    "description": "A verb's refusal: its revision no longer resolves (jj CLI's wording).",
+    "placeholders": {"id": {"type": "String", "example": "0803bb67"}}
+  },
   "inspectorViewedCount": "{viewed}/{total} viewed",
   "@inspectorViewedCount": {
     "description": "Changes header: how many of the listed files are marked Viewed.",

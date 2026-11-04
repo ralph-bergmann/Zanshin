@@ -1730,6 +1730,18 @@ abstract class AppLocalizations {
   /// **'remote'**
   String get inspectorBookmarkRemote;
 
+  /// Bookmark chip state: the bookmark's target is a conflict (jj's `??`).
+  ///
+  /// In en, this message translates to:
+  /// **'conflicted'**
+  String get inspectorBookmarkConflicted;
+
+  /// A verb's refusal: its revision no longer resolves (jj CLI's wording).
+  ///
+  /// In en, this message translates to:
+  /// **'Revision `{id}` doesn\'t exist'**
+  String toastRevisionNotFound(String id);
+
   /// Changes header: how many of the listed files are marked Viewed.
   ///
   /// In en, this message translates to:
