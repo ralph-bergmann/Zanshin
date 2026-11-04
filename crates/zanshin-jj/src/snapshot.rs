@@ -4,10 +4,10 @@
 //! in front of almost every command (Story 9.26, reversing project decision D2).
 //!
 //! Every CLI command that goes through `workspace_helper` / `workspace_helper_with_stats`
-//! (`cli/src/cli_util.rs:473-517` @ v0.46.0) first takes the `git_import_export.lock`, loads the
-//! head, and runs `snapshot_impl` (`:1326-1354`): in a colocated workspace `import git head`,
-//! then `snapshot working copy`, then `import git refs`; in any other workspace the snapshot
-//! alone. [`crate::Repo`] runs the same sequence as the precondition of every verb whose CLI
+//! (`cli/src/cli_util.rs:473-518` @ v0.47.0) first takes the `git_import_export.lock`, loads the
+//! head, and runs `snapshot_impl` (`:1438-1464`): in a colocated workspace `import git head`,
+//! then `snapshot working copy`, then `import git refs` (or, when that imports nothing but the
+//! export changes something, `export git refs`); in any other workspace the snapshot alone. [`crate::Repo`] runs the same sequence as the precondition of every verb whose CLI
 //! counterpart does, so the op log a CLI user sees after a Zanshin session is the one the CLI
 //! itself would have written — and a `git commit`, a `git checkout` or a plain file edit made
 //! outside Zanshin is picked up by the very next verb, exactly as by the next `jj` command.
@@ -26,14 +26,14 @@
 //!   BEFORE the Git import/export lock — `workspace_helper_with_stats` builds it first
 //!   (`cli_util.rs:478`);
 //! - the snapshot knobs (`snapshot.auto-track`, the ignore files, `snapshot.max-new-file-size`)
-//!   at the top of [`snapshot_working_copy`] — AFTER `import git head`, before the working-copy
-//!   lock and the stale check (`cli_util.rs:2098-2103`);
-//! - the Git import options at the top of [`import_git_refs`] (`cli_util.rs:1463-1466`);
+//!   and, colocated, the Git import options as ONE [`SnapshotConfig`] — under the lock but BEFORE
+//!   `import git head` or any other step (`load_snapshot_config`, `cli_util.rs:1765-1788` @
+//!   v0.47.0, called at `:493`), so a fault there writes nothing;
 //! - `snapshot.auto-update-stale` only on a stale working copy, under the lock ([`run`],
-//!   `cli_util.rs:500` @ v0.46.0) — `true` recovers right there ([`crate::stale`], Story 9.23).
+//!   `cli_util.rs:500` @ v0.47.0) — `true` recovers right there ([`crate::stale`], Story 9.23).
 //!
 //! `immutable_heads()` is parsed with the start-up environment but RESOLVED only where a step
-//! needs it (`cli_util.rs:2138-2141`).
+//! needs it (`cli_util.rs:2221-2224` @ v0.47.0).
 
 use std::path::Path;
 use std::sync::Arc;
@@ -42,7 +42,9 @@ use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
 use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::git;
+use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::lock::FileLock;
+use jj_lib::matchers::{Matcher, NothingMatcher};
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_heads_store;
@@ -52,7 +54,7 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoaderError};
 use jj_lib::revset::{RevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::RebaseOptions;
-use jj_lib::working_copy::{self, LockedWorkingCopy, WorkingCopyFreshness};
+use jj_lib::working_copy::{self, LockedWorkingCopy, SnapshotOptions, WorkingCopyFreshness};
 use jj_lib::workspace::Workspace;
 
 use crate::git::GitExportFailure;
@@ -192,11 +194,11 @@ pub enum PreconditionError {
     /// The effective config could not be read, or a value a step reads has the wrong type (the
     /// key is named). Each is refused where the CLI reads it: the start-up environment (the
     /// fileset, revset and template alias tables, the `immutable_heads()` parse, the
-    /// `revsets.short-prefixes` parse) before the Git import/export lock is taken;
-    /// the snapshot knobs (`snapshot.auto-track`, `snapshot.max-new-file-size`) at the start of
-    /// the snapshot step, after the head import; a malformed Git import option at the start of
-    /// the refs step, after the head import and the snapshot. Operations committed before the
-    /// fault stay, as in the CLI, and the partial [`Precondition`] says so.
+    /// `revsets.short-prefixes` parse) before the Git import/export lock is taken; the snapshot
+    /// knobs (`snapshot.auto-track`, `snapshot.max-new-file-size`) and a malformed Git import
+    /// option under the lock, before the first step writes. A fault a later step reads (an
+    /// unresolvable immutable set) leaves the operations committed before it, as in the CLI, and
+    /// the partial [`Precondition`] says so.
     #[error("config error: {reason}")]
     Config {
         /// Human-readable failure, naming the file or the config key.
@@ -386,8 +388,7 @@ pub(crate) fn reload_head(workspace: &Workspace) -> Result<Arc<ReadonlyRepo>, St
 /// Built BEFORE the Git import/export lock, as `workspace_helper_with_stats` builds it (`:478`),
 /// so a bad alias table, `immutable_heads()` alias or short-prefixes revset refuses without
 /// waiting for a concurrent holder and writes nothing. The snapshot knobs are deliberately NOT
-/// here: [`snapshot_working_copy`] reads them where the CLI does, after `import git head`
-/// (Story 9.34).
+/// here: [`SnapshotConfig`] reads them where the CLI does, under the lock, before the first step.
 pub(crate) struct CommandEnv {
     /// `::(immutable_heads() | root())` as the effective config defines it — parsed here,
     /// resolved only where a step needs it.
@@ -487,9 +488,10 @@ impl VerbContext {
 
 // ── The precondition ─────────────────────────────────────────────────────────────
 
-/// Takes the lock, loads the head and runs [`snapshot_locked`] — the body of the CLI's
-/// `workspace_helper_with_stats` after its start-up environment `env` is built (`cli_util.rs:478`
-/// @ v0.46.0, before the lock).
+/// Takes the lock, loads the head, loads the [`SnapshotConfig`] and runs [`snapshot_locked`] — the
+/// body of the CLI's `workspace_helper_with_stats` after its start-up environment `env` is built
+/// (`cli_util.rs:473-518` @ v0.47.0: `env` at `:478` before the lock, the snapshot config at
+/// `:493` under it, before any step).
 ///
 /// On a stale working copy it reads `snapshot.auto-update-stale` — there and only there, under
 /// the held lock (`cli_util.rs:497-512`), so a wrong type is a config fault only on a stale
@@ -506,10 +508,10 @@ impl VerbContext {
 ///
 /// # Errors
 ///
-/// Anything [`snapshot_impl`] returns — a wrong-typed snapshot knob included, refused after the
-/// head import — or [`crate::stale::recover`] returns, [`PreconditionError::Config`] for a
-/// wrong-typed `snapshot.auto-update-stale`, and [`PreconditionError::Backend`] for the lock or
-/// the head load.
+/// Anything [`SnapshotConfig::load`] returns — a wrong-typed snapshot knob or malformed Git
+/// import option, refused before any step writes — anything [`snapshot_impl`] or
+/// [`crate::stale::recover`] returns, [`PreconditionError::Config`] for a wrong-typed
+/// `snapshot.auto-update-stale`, and [`PreconditionError::Backend`] for the lock or the head load.
 pub(crate) fn run(
     workspace: &mut Workspace,
     config: &StackedConfig,
@@ -521,8 +523,9 @@ pub(crate) fn run(
     let lock = lock_git_import_export(workspace, colocated)?;
     let repo = load_head(workspace)?;
     let loaded_op_id = repo.op_id().clone();
+    let snapshot = SnapshotConfig::load(workspace, config, colocated, sink)?;
     let ctx = StepCtx {
-        config,
+        snapshot: &snapshot,
         env,
         colocated,
         lock: &lock,
@@ -589,24 +592,19 @@ fn note_heads_moved(workspace: &Workspace, loaded_op_id: &jj_lib::op_store::Oper
     }
 }
 
-/// Port of `snapshot_impl` (`cli/src/cli_util.rs:1326-1354` @ v0.46.0): colocated → import the
-/// Git HEAD, then snapshot, then import the Git refs; otherwise the snapshot alone.
+/// Port of `snapshot_impl` (`cli/src/cli_util.rs:1438-1464` @ v0.47.0): colocated → import the
+/// Git HEAD, then snapshot, then import (or export) the Git refs; otherwise the snapshot alone.
 ///
-/// `ctx.lock` must be the held [`GitImportExportLock`]; every step runs under it. `ctx.config` is
-/// the effective stack the steps read their own values from, each exactly where the CLI reads
-/// it (Story 9.34): the snapshot knobs at the start of the snapshot step, after the head import;
-/// the Git import options at the start of the refs step, after the head import and the snapshot
-/// committed. The steps' warnings land in `sink` in the CLI's print order (Story 9.32).
+/// `ctx.lock` must be the held [`GitImportExportLock`]; every step runs under it. `ctx.snapshot`
+/// holds every knob the steps read, loaded before the first one. The steps' warnings land in
+/// `sink` in the CLI's print order (Story 9.32).
 ///
 /// # Errors
 ///
 /// - [`PreconditionError::StaleWorkingCopy`] — see [`StaleCause`].
-/// - [`PreconditionError::Config`] — a snapshot knob has the wrong type or
-///   `snapshot.auto-track` does not parse, the immutable set could not be resolved, or
-///   (colocated) a Git import option is malformed; the operations written before the failing
-///   step stay.
-/// - [`PreconditionError::Backend`] — an ignore file could not be read, or any other underlying
-///   jj-lib failure.
+/// - [`PreconditionError::Config`] — the immutable set could not be resolved; the operations
+///   written before the failing step stay.
+/// - [`PreconditionError::Backend`] — any underlying jj-lib failure.
 pub(crate) fn snapshot_impl(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
@@ -636,19 +634,74 @@ fn snapshot_steps(
         repo
     };
     let (repo, stats) = snapshot_working_copy(workspace, repo, ctx, report, facts, sink)?;
-    let repo = if ctx.colocated {
-        import_git_refs(workspace, repo, ctx, report, facts, sink)?
-    } else {
-        repo
+    let repo = match &ctx.snapshot.git_import {
+        Some(options) => import_export_git_refs(workspace, repo, options, ctx, report, facts, sink)?,
+        None => repo,
     };
     Ok((repo, stats))
 }
 
+/// The config the steps read — the CLI's `SnapshotConfig` (`jj-frontend` `runner.rs:178-205` @
+/// v0.47.0), loaded by `load_snapshot_config` (`cli/src/cli_util.rs:1765-1788`) BEFORE
+/// `snapshot_impl` (`:493`, `:662`, `:778`, `:1473`): a fault in any knob refuses before
+/// `import git head` or any other step writes an operation.
+pub(crate) struct SnapshotConfig {
+    /// `snapshot.auto-track` as a matcher.
+    auto_tracking: Box<dyn Matcher>,
+    /// The ignore files beyond the working copy's own `.gitignore`s.
+    base_ignores: Arc<GitIgnoreFile>,
+    /// `snapshot.max-new-file-size`.
+    max_new_file_size: u64,
+    /// The Git import options — `Some` exactly in a colocated workspace, the refs step's trigger.
+    git_import: Option<git::GitImportOptions>,
+}
+
+impl SnapshotConfig {
+    /// Reads the knobs off `config` in the CLI's order: `snapshot.auto-track` (its aliases'
+    /// warnings into `sink`), the ignore files, `snapshot.max-new-file-size`, then — colocated
+    /// only — the Git import options.
+    ///
+    /// # Errors
+    ///
+    /// - [`PreconditionError::Config`] — a knob has the wrong type, `snapshot.auto-track` does
+    ///   not parse, or (colocated) a Git import option is malformed.
+    /// - [`PreconditionError::Backend`] — an ignore file could not be read.
+    pub(crate) fn load(
+        workspace: &Workspace,
+        config: &StackedConfig,
+        colocated: bool,
+        sink: &mut Warnings,
+    ) -> Result<Self, PreconditionError> {
+        let auto_tracking = wc_ops::auto_tracking_matcher(config, sink)?;
+        let base_ignores = wc_ops::base_ignores(workspace)?;
+        let max_new_file_size = crate::config::snapshot_max_new_file_size(config).map_err(mutate::cfg)?;
+        let git_import = colocated
+            .then(|| crate::config::git_import_options(config))
+            .transpose()?;
+        Ok(Self {
+            auto_tracking,
+            base_ignores,
+            max_new_file_size,
+            git_import,
+        })
+    }
+
+    /// `SnapshotConfig::snapshot_options` (`runner.rs:196-204`).
+    fn options(&self) -> SnapshotOptions<'_> {
+        SnapshotOptions {
+            base_ignores: Arc::clone(&self.base_ignores),
+            progress: None,
+            start_tracking_matcher: self.auto_tracking.as_ref(),
+            force_tracking_matcher: &NothingMatcher,
+            max_new_file_size: self.max_new_file_size,
+        }
+    }
+}
+
 /// What every step needs besides the workspace and the repo.
 pub(crate) struct StepCtx<'a> {
-    /// The effective config stack — the snapshot step reads the snapshot knobs and the refs
-    /// step the Git import options off it.
-    pub(crate) config: &'a StackedConfig,
+    /// The snapshot knobs and Git import options, loaded before the first step.
+    pub(crate) snapshot: &'a SnapshotConfig,
     /// The start-up environment, built before the lock.
     pub(crate) env: &'a CommandEnv,
     /// Whether the working copy is shared with a Git work tree.
@@ -716,17 +769,11 @@ fn import_git_head(
     }
 }
 
-/// Port of `snapshot_working_copy` (`cli/src/cli_util.rs:2091-2278` @ v0.46.0) — also the stale
+/// Port of `snapshot_working_copy` (`cli/src/cli_util.rs:2187-2316` @ v0.47.0) — also the stale
 /// recovery's first step, on a repo loaded at the working copy's own operation (Story 9.23).
 ///
-/// First reads the snapshot knobs off `ctx.config`, exactly where the CLI does (`:2098-2103`,
-/// Story 9.34): `snapshot.auto-track` ([`wc_ops::auto_tracking_matcher`]), then the ignore files
-/// and `snapshot.max-new-file-size` ([`wc_ops::snapshot_options`]). That is after a colocated
-/// `import git head` committed — which a wrong-typed knob therefore leaves in the op log, as in
-/// the CLI — and before the working-copy lock and the stale check, so a stale working copy with a
-/// wrong-typed knob refuses on the knob.
-///
-/// Then locks the working copy, settles its freshness ([`handle_stale_working_copy`]),
+/// The snapshot knobs come from `ctx.snapshot`, loaded before the first step. Locks the working
+/// copy, settles its freshness ([`handle_stale_working_copy`]),
 /// snapshots, and — only when the tree changed — writes `snapshot working copy`
 /// (`is_snapshot = true`): `@` rewritten with the new tree, or, when `@` is immutable, a NEW
 /// commit on top of it. In a colocated workspace the change is exported to Git inside the same
@@ -743,8 +790,7 @@ pub(crate) fn snapshot_working_copy(
 ) -> Result<(Arc<ReadonlyRepo>, working_copy::SnapshotStats), PreconditionError> {
     let workspace_name = workspace.workspace_name().to_owned();
     let workspace_root = workspace.workspace_root().to_owned();
-    let auto_tracking = wc_ops::auto_tracking_matcher(ctx.config, sink)?;
-    let options = wc_ops::snapshot_options(workspace, ctx.config, auto_tracking.as_ref())?;
+    let options = ctx.snapshot.options();
     let mut locked_ws = pollster::block_on(workspace.start_working_copy_mutation()).map_err(|e| backend(&e))?;
     let Some((mut repo, wc_commit)) =
         handle_stale_working_copy(locked_ws.locked_wc(), Arc::clone(&repo), &workspace_name)?
@@ -791,7 +837,7 @@ fn commit_snapshot(
             .intersection(&RevsetExpression::commit(wc_commit.id().clone()))
             .evaluate(tx.repo())
             .map_err(|e| backend(&e))?;
-        !set.is_empty().map_err(|e| backend(&e))?
+        !pollster::block_on(set.is_empty()).map_err(|e| backend(&e))?
     };
     let mut_repo = tx.repo_mut();
     let new_wc_commit = if wc_immutable {
@@ -813,19 +859,16 @@ fn commit_snapshot(
     let num_rebased = pollster::block_on(mut_repo.rebase_descendants()).map_err(|e| backend(&e))?;
 
     if ctx.colocated {
-        if wc_immutable {
-            // A new working-copy commit was created on top: reset Git HEAD and the index.
-            mutate::try_reset_git_head(mut_repo, workspace_name, workspace_root, &new_wc_commit, sink)?;
-        } else {
-            // `export_working_copy_changes_to_git` (`cli_util.rs:2705-2717` @ v0.46.0).
-            pollster::block_on(git::update_intent_to_add(
-                mut_repo.base_repo().as_ref(),
-                workspace_root,
-                &wc_commit.tree(),
-                &new_wc_commit.tree(),
-            ))
-            .map_err(|e| backend(&e))?;
-        }
+        // `cli_util.rs:2266-2279` @ v0.47.0: jj-lib's `reset_head` resets HEAD and the index for a
+        // new `@` on top of an immutable one, and only updates intent-to-add entries for a
+        // rewritten tree, keeping the staged changes.
+        mutate::try_reset_git_head(
+            mut_repo,
+            workspace_name,
+            workspace_root,
+            (Some(wc_commit), &new_wc_commit),
+            sink,
+        )?;
         mutate::export_refs_into(mut_repo, facts, sink)?;
     }
     let repo = pollster::block_on(tx.commit("snapshot working copy")).map_err(|e| backend(&e))?;
@@ -844,35 +887,39 @@ fn has_jjconflict_entries(tree: &MergedTree) -> Result<bool, PreconditionError> 
     }))
 }
 
-/// Port of `import_git_refs` (`cli/src/cli_util.rs:1457-1489` @ v0.46.0): read the Git import
-/// options (`git.*` plus `remotes.<name>.auto-track-bookmarks`) off the effective config, import
-/// the Git refs with them, and — only when that changed anything — rebase the MUTABLE
-/// descendants (immutable set resolved against the BASE repo, `rebase_mutable_descendants`)
-/// and finish the transaction as `import git refs`.
+/// Port of `import_export_git_refs` (`cli/src/cli_util.rs:1575-1616` @ v0.47.0): import the Git
+/// refs with `options` (`git.*` plus `remotes.<name>.auto-track-bookmarks`, loaded with the
+/// other knobs before the first step). When that changed anything, rebase the MUTABLE
+/// descendants (immutable set resolved against the BASE repo, `rebase_mutable_descendants`) and
+/// finish the transaction as `import git refs`. When it changed nothing, export jj's refs to Git
+/// (jj #10478) — the failed refs warn `jj.git_export_failed` and land in
+/// [`Precondition::finish`] — and commit `export git refs` only when the export changed the view.
 ///
-/// The options are read HERE, first, as the CLI reads them (`:1463-1466`): a malformed value
-/// fails after `import git head` and `snapshot working copy` were committed, and those
-/// operations stay in the op log, exactly as the CLI leaves them.
-///
-/// The report's [`Precondition::git_refs`] is set whenever the step runs; without this
-/// workspace's `@` in the view (forgotten elsewhere, or a view restored to the root operation)
-/// its `mutation` has `working_copy_change_id: None`.
-fn import_git_refs(
+/// The report's [`Precondition::git_refs`] is set whenever the step runs; its `mutation` names
+/// the `import git refs` or `export git refs` operation, or the step's starting head when neither
+/// was written. Without this workspace's `@` in the view (forgotten elsewhere, or a view restored
+/// to the root operation) its `working_copy_change_id` is `None`.
+fn import_export_git_refs(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
+    options: &git::GitImportOptions,
     ctx: &StepCtx<'_>,
     report: &mut Precondition,
     facts: &mut FinishFacts,
     sink: &mut Warnings,
 ) -> Result<Arc<ReadonlyRepo>, PreconditionError> {
-    let options = crate::config::git_import_options(ctx.config)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let mut tx = start_repo_transaction(&repo, &workspace_name);
-    let stats = pollster::block_on(git::import_refs(tx.repo_mut(), &options)).map_err(|e| backend(&e))?;
-    // `print_git_import_stats_summary`, right after the import (`cli_util.rs:1440`).
+    let stats = pollster::block_on(git::import_refs(tx.repo_mut(), options)).map_err(|e| backend(&e))?;
+    // `print_git_import_stats_summary`, right after the import (`cli_util.rs:1583`).
     sink.extend(warning::git_import_failed(&stats));
     if !tx.repo().has_changes() {
-        drop(tx);
+        mutate::export_refs_into(tx.repo_mut(), facts, sink)?;
+        let repo = if tx.repo().has_changes() {
+            pollster::block_on(tx.commit("export git refs")).map_err(|e| backend(&e))?
+        } else {
+            repo
+        };
         let mutation = mutate::no_op_result(&workspace_name, &repo)?;
         report.git_refs = Some(crate::git::project_import(&stats, &repo, false, mutation));
         return Ok(repo);
@@ -1070,7 +1117,7 @@ mod tests {
 
     /// A snapshot step that fails while the operation heads are divergent writes no reconcile
     /// operation of its own — the CLI returns the step's error and leaves the heads for its next
-    /// command (`cli_util.rs:498` @ v0.46.0) — and the partial report still says the head moved.
+    /// command (`cli_util.rs:494-514` @ v0.47.0) — and the partial report still says the head moved.
     /// The next precondition's head load then reconciles them, naming this workspace.
     #[test]
     fn a_failed_step_leaves_divergent_heads_unreconciled() {
@@ -1084,14 +1131,18 @@ mod tests {
         })
         .result
         .expect("init");
+        // An `immutable_heads()` that parses but does not resolve fails the snapshot step once
+        // there is something to commit.
         std::fs::write(
             tmp.path().join(".jj").join("repo").join("config.toml"),
-            "snapshot.max-new-file-size = true\n",
+            "[revset-aliases]\n'immutable_heads()' = 'missing'\n",
         )
         .expect("repo config");
+        std::fs::write(tmp.path().join("dirty.txt"), "d").expect("dirty");
         let config = crate::config::load(&repo).expect("config");
         let mut sink = super::Warnings::default();
         let env = super::CommandEnv::load(repo.workspace(), &config, &mut sink).expect("env");
+        let snapshot = super::SnapshotConfig::load(repo.workspace(), &config, false, &mut sink).expect("knobs");
         let base = super::load_head(repo.workspace()).expect("head");
         let workspace_name = repo.workspace().workspace_name().to_owned();
         let mut siblings = Vec::new();
@@ -1111,7 +1162,7 @@ mod tests {
 
         let lock = super::lock_git_import_export(repo.workspace(), false).expect("lock");
         let ctx = super::StepCtx {
-            config: &config,
+            snapshot: &snapshot,
             env: &env,
             colocated: false,
             lock: &lock,
@@ -1121,7 +1172,7 @@ mod tests {
         drop(lock);
 
         assert!(
-            matches!(&result, Err(PreconditionError::Config { reason }) if reason.contains("snapshot.max-new-file-size")),
+            matches!(&result, Err(PreconditionError::Config { reason }) if reason.contains("missing")),
             "{:?}",
             result.err()
         );

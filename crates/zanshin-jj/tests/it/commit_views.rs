@@ -29,7 +29,6 @@ use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::matchers::EverythingMatcher;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::working_copy::SnapshotOptions;
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{
     abandon_commit, add_commit_off_root, add_commit_with_files, add_conflicted_merge_off_root, add_divergent_twin,
@@ -42,14 +41,14 @@ use zanshin_jj::{Backend, ChangeId, ChangeKind, CommitId, CommitViewError, Repo,
 /// The head-resolved jj-lib repo — the oracle these tests read trees and commits from.
 fn jj_repo(workspace_root: &Path) -> Arc<ReadonlyRepo> {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
-    pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head")
+    pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head")
 }
 
 fn change_id_of(workspace_root: &Path, commit_hex: &str) -> ChangeId {
@@ -62,11 +61,7 @@ fn change_id_of(workspace_root: &Path, commit_hex: &str) -> ChangeId {
 fn oracle_paths(workspace_root: &Path, commit_hex: &str) -> Vec<String> {
     let repo = jj_repo(workspace_root);
     let id = JjCommitId::try_from_hex(commit_hex).expect("hex commit id");
-    repo.store()
-        .get_commit(&id)
-        .expect("commit")
-        .tree()
-        .entries()
+    futures::executor::block_on_stream(repo.store().get_commit(&id).expect("commit").tree().entries())
         .map(|(path, _)| path.as_internal_file_string().to_owned())
         .collect()
 }
@@ -178,14 +173,14 @@ const COPY_BODY: &str = "line one\nline two\nline three\nline four\n";
 
 fn snapshot_working_copy(workspace_root: &Path) {
     let settings = test_helpers::test_settings();
-    let mut workspace = Workspace::load(
+    let mut workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("workspace loads");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("load_at_head");
     let workspace_name = workspace.workspace_name().to_owned();
 
     let wc_id = repo
@@ -221,14 +216,14 @@ fn snapshot_working_copy(workspace_root: &Path) {
 
 fn jj_new(workspace_root: &Path) {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("workspace loads");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("load_at_head");
     let workspace_name = workspace.workspace_name().to_owned();
 
     let wc_id = repo

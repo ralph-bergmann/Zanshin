@@ -647,10 +647,8 @@ impl Lister<'_> {
 
     /// `count_estimate` of `unwanted..wanted` (jj-lib `walk_revs`), as the CLI counts.
     fn distance(&self, wanted: &[CommitId], unwanted: &[CommitId]) -> Result<RefDistance, BookmarkError> {
-        let (lower, upper) = walk_revs(self.repo, wanted, unwanted)
-            .map_err(be)?
-            .count_estimate()
-            .map_err(be)?;
+        let (lower, upper) =
+            pollster::block_on(walk_revs(self.repo, wanted, unwanted).map_err(be)?.count_estimate()).map_err(be)?;
         Ok(RefDistance {
             lower: lower as u64,
             upper: upper.map(|upper| upper as u64),

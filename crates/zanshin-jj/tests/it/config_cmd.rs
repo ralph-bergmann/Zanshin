@@ -18,7 +18,6 @@ use std::{env, fs};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::Repo as _;
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
     config_file_read, config_file_write, config_gc_delete, config_gc_list, config_get, config_list, config_path,
@@ -68,14 +67,14 @@ fn workspace(backend: Option<Backend>) -> (TempDir, PathBuf) {
 
 /// `(head op id, @'s author name)` straight from the store.
 fn head(root: &Path) -> (String, String) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle load");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("head");
     let wc = repo.view().get_wc_commit_id(workspace.workspace_name()).expect("@");
     let author = repo.store().get_commit(wc).expect("commit").author().name.clone();
     (repo.op_id().hex(), author)
@@ -331,7 +330,8 @@ fn a_wrong_typed_git_key_blocks_open_but_not_the_config_verbs() {
     config_set(
         Some(&root),
         &ConfigTarget::Scope(ConfigScope::Repo),
-        "git.abandon-unreachable-commits",
+        // A key jj-lib 0.47's git backend still reads while loading (`git_backend_settings`).
+        "git.write-change-id-header",
         "nope",
     )
     .result
@@ -350,16 +350,14 @@ fn a_wrong_typed_git_key_blocks_open_but_not_the_config_verbs() {
     );
     assert!(set.precondition.is_none());
     assert_eq!(
-        config_get(Some(&root), "git.abandon-unreachable-commits")
-            .result
-            .unwrap(),
+        config_get(Some(&root), "git.write-change-id-header").result.unwrap(),
         "nope"
     );
 
     config_unset(
         Some(&root),
         &ConfigTarget::Scope(ConfigScope::Repo),
-        "git.abandon-unreachable-commits",
+        "git.write-change-id-header",
     )
     .result
     .expect("unset");

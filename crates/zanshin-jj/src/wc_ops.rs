@@ -40,7 +40,6 @@ use jj_lib::git_backend::GitRepoAtWorkdirError;
 use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::local_working_copy::{EolConversionMode, ExecChangeSetting, TreeState, TreeStateSettings};
 use jj_lib::matchers::{EverythingMatcher, Matcher, NothingMatcher, PrefixMatcher};
-use jj_lib::merge::Merge;
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::merged_tree_builder::MergedTreeBuilder;
 use jj_lib::object_id::ObjectId as _;
@@ -479,8 +478,8 @@ fn untrack_in_tx(
 ) -> Result<UntrackOutcome, MutateError> {
     let wc_tree = wc_commit.tree();
     let mut tree_builder = MergedTreeBuilder::new(wc_tree.clone());
-    for (path, _value) in wc_tree.entries_matching(matcher) {
-        tree_builder.set_or_remove(path, Merge::absent());
+    for (path, _value) in futures::executor::block_on_stream(wc_tree.entries_matching(matcher)) {
+        tree_builder.set_or_remove(path, None);
     }
     let new_tree = pollster::block_on(tree_builder.write_tree()).map_err(be)?;
     let new_commit =
@@ -498,8 +497,7 @@ fn untrack_in_tx(
     // the next snapshot — is refused now rather than silently coming back.
     let (new_wc_tree, stats) = pollster::block_on(locked_wc.snapshot(options)).map_err(be)?;
     if new_wc_tree.tree_ids() != new_commit.tree_ids() {
-        let added_back: Vec<String> = new_wc_tree
-            .entries_matching(matcher)
+        let added_back: Vec<String> = futures::executor::block_on_stream(new_wc_tree.entries_matching(matcher))
             .map(|(path, _value)| path.as_internal_file_string().to_owned())
             .collect();
         if !added_back.is_empty() {
@@ -635,7 +633,7 @@ pub(crate) fn file_chmod(
 
     let matcher = prefix_matcher(&paths);
     let mut builder = MergedTreeBuilder::new(tree.clone());
-    for (path, value) in tree.entries_matching(matcher.as_ref()) {
+    for (path, value) in futures::executor::block_on_stream(tree.entries_matching(matcher.as_ref())) {
         let value = value.map_err(be)?;
         if let Some(reason) = chmod_refusal(&value) {
             return Err(MutateError::invalid(format!(
@@ -643,7 +641,9 @@ pub(crate) fn file_chmod(
                 warning::ui_path(root, &path)
             )));
         }
-        builder.set_or_remove(path, crate::select_tree::with_executable(value, executable));
+        builder
+            .set_or_remove_merge(path, crate::select_tree::with_executable(value, executable))
+            .map_err(be)?;
     }
     let new_tree = pollster::block_on(builder.write_tree()).map_err(be)?;
     pollster::block_on(tx.repo_mut().rewrite_commit(&commit).set_tree(new_tree).write()).map_err(be)?;
@@ -741,8 +741,8 @@ fn edit_in_sparse_copy(
         fsmonitor_settings: FsmonitorSettings::None,
     };
     let mut tree_state = TreeState::init(store.clone(), wc_path, state_dir, &settings).map_err(be)?;
-    tree_state.set_sparse_patterns(vec![path.to_owned()]).map_err(be)?;
-    tree_state.check_out(tree).map_err(be)?;
+    pollster::block_on(tree_state.set_sparse_patterns(vec![path.to_owned()])).map_err(be)?;
+    pollster::block_on(tree_state.check_out(tree)).map_err(be)?;
     let file_path = path
         .to_fs_path(tree_state.working_copy_path())
         .map_err(|e| MutateError::invalid(flatten_chain(&e)))?;
@@ -827,8 +827,8 @@ pub(crate) fn file_delete(
 
     let matcher = prefix_matcher(&paths);
     let mut builder = MergedTreeBuilder::new(tree.clone());
-    for (path, _value) in tree.entries_matching(matcher.as_ref()) {
-        builder.set_or_remove(path, Merge::absent());
+    for (path, _value) in futures::executor::block_on_stream(tree.entries_matching(matcher.as_ref())) {
+        builder.set_or_remove(path, None);
     }
     let new_tree = pollster::block_on(builder.write_tree()).map_err(be)?;
     let description = format!("delete paths in commit {}", commit.id().hex());

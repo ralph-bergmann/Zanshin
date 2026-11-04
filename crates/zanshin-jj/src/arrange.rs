@@ -440,7 +440,7 @@ mod tests {
         })
         .result
         .expect("init");
-        let head = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let head = pollster::block_on(repo.workspace().load_at_head()).expect("head");
         (tmp, head)
     }
 

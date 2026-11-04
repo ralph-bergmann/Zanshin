@@ -20,7 +20,6 @@
 //! have no size cap, so [`file_show`] and [`file_search`] hold whole files in memory where
 //! the CLI streams to stdout. That is a resource divergence, not a behavioral one.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use jj_lib::annotate::FileAnnotator;
@@ -357,7 +356,7 @@ pub(crate) fn file_list(
     let tree = commit.tree();
 
     let mut out = Vec::new();
-    for (path, value) in tree.entries_matching(matcher.as_ref()) {
+    for (path, value) in futures::executor::block_on_stream(tree.entries_matching(matcher.as_ref())) {
         let value = value.map_err(be)?;
         if let Some(entry) = to_file_entry(&path, &value) {
             out.push(entry);
@@ -568,7 +567,7 @@ pub(crate) fn file_show(
     }
 
     let matcher = build_matcher(paths).map_err(|reason| FileError::InvalidInput { reason })?;
-    for (path, value) in tree.entries_matching(matcher.as_ref()) {
+    for (path, value) in futures::executor::block_on_stream(tree.entries_matching(matcher.as_ref())) {
         let value = value.map_err(be)?;
         push(render_entry(&store, &path, value, tree.labels(), &options)?, sink);
     }
@@ -586,19 +585,6 @@ pub(crate) fn file_show(
 /// The search domain is hardcoded to `all()`, exactly as the CLI does (it carries an
 /// upstream TODO about exposing one, and jj-lib silently under-reports for a non-contiguous
 /// domain — an option that can only produce wrong answers is not offered).
-///
-/// # KNOWN DIVERGENCE: a missing origin commit fails the call
-///
-/// For a line whose origin search stopped outside the domain, this resolves
-/// `origin.commit_id` in the store; the CLI substitutes the ROOT commit instead
-/// (`cli/src/commands/file/annotate.rs:124-129` @ v0.46.0), and its comment says WHY: a repo
-/// that was jj-initialized shallowly and then unshallow'd with git has commits jj never
-/// imported, so that id may be ABSENT from the store. There, the CLI still renders every
-/// line; here the store read fails and the whole call becomes [`FileError::Backend`].
-/// The fallback is deliberately NOT implemented: no fixture in this repo can construct a
-/// shallow-then-unshallowed history, so the extra branch would be unreachable by any test
-/// and the coverage ratchet would reject it. Implement it together with a test that can
-/// reach it.
 ///
 /// # Errors
 ///
@@ -634,31 +620,16 @@ pub(crate) fn file_annotate(
     pollster::block_on(annotator.compute(readonly.as_ref(), &RevsetExpression::all())).map_err(be)?;
     let annotation = annotator.to_annotation();
 
-    // Commit id → change id, resolved once per DISTINCT commit. The CLI does one
-    // `get_commit_async` per LINE; a thousand-line file annotated to three commits is three
-    // store reads here.
-    let mut change_ids: HashMap<jj_lib::backend::CommitId, ChangeId> = HashMap::new();
+    // jj-lib 0.47's `LineOrigin` carries the origin commit itself — no store read per line.
     let mut out = Vec::new();
     for (origin, line) in annotation.line_origins() {
         let (origin_found, origin) = match origin {
             Ok(o) => (true, o),
             Err(o) => (false, o),
         };
-        let change_id = if let Some(id) = change_ids.get(&origin.commit_id) {
-            id.clone()
-        } else {
-            // DIVERGENCE (documented on this fn): the CLI substitutes the root commit here
-            // because on a shallow-then-unshallowed repo this id may be absent from the
-            // store; ours propagates the read failure instead — no fixture can reach that
-            // state, so a fallback branch would be untestable.
-            let commit = readonly.store().get_commit(&origin.commit_id).map_err(be)?;
-            let id = ChangeId(commit.change_id().reverse_hex());
-            change_ids.insert(origin.commit_id.clone(), id.clone());
-            id
-        };
         out.push(AnnotationLine {
-            commit_id: CommitId(origin.commit_id.hex()),
-            change_id,
+            commit_id: CommitId(origin.commit.id().hex()),
+            change_id: ChangeId(origin.commit.change_id().reverse_hex()),
             // jj-lib's `LineOrigin.line_number` is 0-based; the CLI adds 1 before display.
             original_line_number: u32::try_from(origin.line_number.saturating_add(1)).unwrap_or(u32::MAX),
             content: line.to_vec(),
@@ -757,7 +728,7 @@ pub(crate) fn file_search(
 
     let mut out = Vec::new();
     let mut skipped = Vec::new();
-    for (path, value) in tree.entries_matching(path_matcher.as_ref()) {
+    for (path, value) in futures::executor::block_on_stream(tree.entries_matching(path_matcher.as_ref())) {
         let value = value.map_err(be)?;
         let display = path.as_internal_file_string().to_owned();
         let materialized =
@@ -875,7 +846,7 @@ mod tests {
         use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
         use jj_lib::repo::Repo as _;
         use jj_lib::secret_backend::SecretBackend;
-        use jj_lib::workspace::Workspace;
+
         use test_helpers::{add_commit_with_entries, extract_fixture, Entry};
 
         test_helpers::pin_test_env();
@@ -902,12 +873,18 @@ mod tests {
         let mut factories = default_backend_factories();
         factories.add_backend(
             SecretBackend::NAME,
-            Box::new(|settings, store_path| Ok(Box::new(SecretBackend::load(settings, store_path)?))),
+            Box::new(|settings, store_path| {
+                let git_settings = settings
+                    .git_backend_settings()
+                    .map_err(jj_lib::backend::BackendLoadError::new)?;
+                Ok(Box::new(SecretBackend::load(&git_settings, store_path)?))
+            }),
         );
-        let workspace = Workspace::load(&settings, &fx.path, &factories, &default_working_copy_factories())
-            .expect("the secret-backend workspace loads");
+        let workspace =
+            test_helpers::load_workspace(&settings, &fx.path, &factories, &default_working_copy_factories())
+                .expect("the secret-backend workspace loads");
 
-        let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head");
+        let readonly = pollster::block_on(workspace.load_at_head()).expect("load_at_head");
         let commit_id = jj_lib::backend::CommitId::try_from_hex(&commit_hex).expect("hex commit id");
         let change = ChangeId(
             readonly
@@ -960,7 +937,7 @@ mod tests {
         use jj_lib::merge::Merge;
         use jj_lib::repo::Repo as _;
         use jj_lib::secret_backend::SecretBackend;
-        use jj_lib::workspace::Workspace;
+
         use test_helpers::{add_commit_with_entries, extract_fixture, Entry};
 
         test_helpers::pin_test_env();
@@ -975,16 +952,21 @@ mod tests {
         let mut factories = default_backend_factories();
         factories.add_backend(
             SecretBackend::NAME,
-            Box::new(|settings, store_path| Ok(Box::new(SecretBackend::load(settings, store_path)?))),
+            Box::new(|settings, store_path| {
+                let git_settings = settings
+                    .git_backend_settings()
+                    .map_err(jj_lib::backend::BackendLoadError::new)?;
+                Ok(Box::new(SecretBackend::load(&git_settings, store_path)?))
+            }),
         );
-        let workspace = Workspace::load(
+        let workspace = test_helpers::load_workspace(
             &test_helpers::test_settings(),
             &fx.path,
             &factories,
             &default_working_copy_factories(),
         )
         .expect("the secret-backend workspace loads");
-        let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head");
+        let readonly = pollster::block_on(workspace.load_at_head()).expect("load_at_head");
         let store = readonly.store().clone();
         let commit_id = jj_lib::backend::CommitId::try_from_hex(&commit_hex).expect("hex commit id");
         let tree = store.get_commit(&commit_id).expect("commit").tree();

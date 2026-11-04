@@ -11,7 +11,6 @@ use std::path::Path;
 
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::op_store::OperationId;
-use jj_lib::workspace::Workspace;
 use zanshin_jj::{ChangeId, GitPushArgs, MovementOptions, Repo};
 
 use crate::driver::{fresh_repo, jj, Step};
@@ -191,7 +190,7 @@ fn stale_working_copy_message_is_the_cli_error_line() {
 /// zanshin-jj's `snapshot_precondition` reach the sibling and missing-operation causes, which no
 /// CLI command leaves behind.
 fn finish_working_copy_at(root: &Path, op_hex: &str) {
-    let mut workspace = Workspace::load(
+    let mut workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),

@@ -11,11 +11,11 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-chrono = { workspace = true }
 etcetera = { workspace = true }  # WHY: one call site — `wc_ops.rs`'s `base_ignores` port needs the home dir exactly where the CLI takes it from
 futures = { workspace = true }
 getrandom = { workspace = true }  # WHY: one call site — `config.rs::SecureLayer::create_path` seeds a `ChaCha20Rng` without `rand::make_rng()`'s panic
 gix = { workspace = true }
+jiff = { workspace = true }  # WHY: the "now" jj-lib's revset/template date patterns are resolved against, as the CLI's `jiff::Zoned::now()`
 # WHY: jj's own template engine (Story 9.51) — `CommitTemplateLanguage`, `template_builder::parse`,
 # `TemplateRenderer` and the builtin `[template-aliases]` / `templates.*` defaults — so a user's
 # `templates.commit_trailers` / `draft_commit_description` / `new_description` /

@@ -13,7 +13,7 @@ use zanshin_jj::{Backend, RemoteError, Repo};
 
 fn oracle_workspace(root: &std::path::Path) -> (Workspace, UserSettings) {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         root,
         &default_backend_factories(),
@@ -32,7 +32,7 @@ fn oracle_workspace(root: &std::path::Path) -> (Workspace, UserSettings) {
 fn add_remotes(root: &std::path::Path, remotes: &[(&str, &str)]) {
     for (name, url) in remotes {
         let (ws, _) = oracle_workspace(root);
-        let base = pollster::block_on(ws.repo_loader().load_at_head()).expect("load_at_head");
+        let base = pollster::block_on(ws.load_at_head()).expect("load_at_head");
         let mut tx = base.start_transaction();
         let remote_name_buf: RemoteNameBuf = (*name).into();
         let remote_name: &RemoteName = &remote_name_buf;

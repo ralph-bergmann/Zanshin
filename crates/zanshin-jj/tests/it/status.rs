@@ -8,7 +8,6 @@ use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::matchers::EverythingMatcher;
 use jj_lib::repo::Repo as _;
 use jj_lib::working_copy::SnapshotOptions;
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::extract_fixture;
 use zanshin_jj::{Backend, ChangeKind, Repo, StatusError};
@@ -19,13 +18,13 @@ use zanshin_jj::{Backend, ChangeKind, Repo, StatusError};
 /// test can stage `@` independently of the pre-verb snapshot every `Repo` read runs (Story 9.26).
 fn snapshot_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let settings = test_helpers::test_settings();
-    let mut workspace = Workspace::load(
+    let mut workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )?;
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head())?;
+    let repo = pollster::block_on(workspace.load_at_head())?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let wc_id = repo
@@ -61,13 +60,13 @@ fn snapshot_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error
 /// snapshots produce Modified/Removed entries rather than re-stating Added.
 fn jj_new(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )?;
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head())?;
+    let repo = pollster::block_on(workspace.load_at_head())?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let wc_id = repo
@@ -92,13 +91,13 @@ fn jj_new(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
 /// TEST SETUP ONLY — drives the status of a workspace without `@`.
 fn remove_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )?;
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head())?;
+    let repo = pollster::block_on(workspace.load_at_head())?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = repo.start_transaction();
@@ -115,14 +114,14 @@ fn remove_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error::
 /// directly via jj-lib — an independent oracle for what `Repo::status()` reports.
 fn wc_and_parent_change_ids(workspace_root: &Path) -> (String, String) {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     let wc_id = repo
         .view()
         .get_wc_commit_id(workspace.workspace_name())

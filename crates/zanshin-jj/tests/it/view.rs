@@ -20,7 +20,7 @@ use zanshin_jj::{Repo, TagKind, ViewError};
 
 /// Opens the fixture as a raw jj-lib `Workspace` for oracle reads.
 fn oracle_workspace(root: &Path) -> Workspace {
-    Workspace::load(
+    test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
@@ -33,7 +33,7 @@ fn oracle_workspace(root: &Path) -> Workspace {
 /// independent jj-lib oracle for the tag rows' `target`.
 fn change_id_of(workspace_root: &Path, commit_hex: &str) -> String {
     let workspace = oracle_workspace(workspace_root);
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     let commit_id = jj_lib::backend::CommitId::try_from_hex(commit_hex).expect("valid commit hex");
     repo.store().get_commit(&commit_id).unwrap().change_id().reverse_hex()
 }
@@ -41,14 +41,14 @@ fn change_id_of(workspace_root: &Path, commit_hex: &str) -> String {
 /// The head commit ids jj-lib's `View::heads()` holds — an unordered oracle for `list_heads`.
 fn head_hexes(workspace_root: &Path) -> HashSet<String> {
     let workspace = oracle_workspace(workspace_root);
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     repo.view().heads().iter().map(ObjectId::hex).collect()
 }
 
 /// The `(workspace name, wc commit hex)` pairs jj-lib's `View::wc_commit_ids()` holds.
 fn wc_pairs(workspace_root: &Path) -> Vec<(String, String)> {
     let workspace = oracle_workspace(workspace_root);
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     repo.view()
         .wc_commit_ids()
         .iter()

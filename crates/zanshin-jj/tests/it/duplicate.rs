@@ -224,7 +224,7 @@ fn a_broken_template_refuses_before_the_alias_unless_the_location_has_children()
 /// (`duplicate.rs:178-199` @ v0.46.0): a broken template — alone or with the alias — names the
 /// template; a valid one, or only the alias broken, the backend. Nothing written either way.
 #[test]
-fn a_root_merge_is_refused_after_the_template_parse() {
+fn a_root_merge_refuses_only_a_broken_template() {
     let mut fx = base();
     let (b, c, zero) = (fx.b.clone(), fx.c.clone(), fx.zero.clone());
     let options = DuplicateOptions {
@@ -241,18 +241,12 @@ fn a_root_merge_is_refused_after_the_template_parse() {
         let err = refused(&mut fx, |repo| repo.duplicate(&options));
         assert_config_class(&err, true, &config);
     }
-    for config in [
+    // jj-lib 0.47 (jj #8076): the Git backend drops the root from the merge instead of refusing.
+    reconfigure(
+        &mut fx,
         "[templates]\nduplicate_description = '\"dup \" ++ description'\n",
-        UNRESOLVABLE_ALIAS,
-    ] {
-        reconfigure(&mut fx, config);
-        let err = refused(&mut fx, |repo| repo.duplicate(&options));
-        assert!(
-            matches!(&err, MutateError::InvalidInput { reason, .. }
-                if reason == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
-            "{config}: {err:?}"
-        );
-    }
+    );
+    fx.repo.duplicate(&options).expect("a root merge is written");
 }
 
 #[test]

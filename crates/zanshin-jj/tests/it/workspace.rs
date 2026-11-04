@@ -26,7 +26,7 @@ use zanshin_jj::{Repo, Warning, WarningKind, WorkspaceError};
 
 /// Opens the fixture as a raw jj-lib `Workspace` for oracle reads.
 fn oracle_workspace(root: &Path) -> Workspace {
-    Workspace::load(
+    test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
@@ -39,7 +39,7 @@ fn oracle_workspace(root: &Path) -> Workspace {
 /// oracle for the VIEW half, so a re-derivation instead of a reuse would show up here.
 fn wc_pairs(workspace_root: &Path) -> Vec<(String, String)> {
     let workspace = oracle_workspace(workspace_root);
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     repo.view()
         .wc_commit_ids()
         .iter()

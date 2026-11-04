@@ -27,9 +27,7 @@ use jj_lib::rewrite::{merge_commit_trees, CommitRewriter};
 use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
-use crate::mutate::{
-    be, finish_verb, mutation_result, no_op_result, refuse_git_root_merge, MutateError, MutationResult,
-};
+use crate::mutate::{be, finish_verb, mutation_result, no_op_result, MutateError, MutationResult};
 use crate::op_support::{
     resolve_commit_location, resolve_ordered, start_repo_transaction, LocationArgs, NO_LOCATION, ONTO_WITH_INSERT,
 };
@@ -158,7 +156,7 @@ fn write_reverse_commits(
     let mut reverted = Vec::with_capacity(commits.len());
     for (commit, description) in commits.iter().zip(descriptions) {
         let old_parents = pollster::block_on(commit.parents()).map_err(be)?;
-        let old_base_tree = pollster::block_on(commit.parent_tree(tx.repo())).map_err(be)?;
+        let old_base_tree = pollster::block_on(commit.parent_tree(tx.repo().index())).map_err(be)?;
         let new_tree = pollster::block_on(MergedTree::merge(Merge::from_vec(vec![
             (new_base_tree, format!("{parent_labels} (revert destination)")),
             (
@@ -260,10 +258,6 @@ pub(crate) fn revert(
         let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
         templates.revert_descriptions(tx.base_repo().as_ref(), &commits, &mut ctx.warnings)?
     };
-    // The Git backend refuses the first reverse commit's write for a root merge; refused before
-    // it, after the template parse — the CLI's order.
-    refuse_git_root_merge(tx.repo().store(), &plan.new_parent_ids)?;
-
     let (reverted, head_ids) = write_reverse_commits(&mut tx, &plan, &commits, &descriptions)?;
     rebase_new_children(&mut tx, &plan, &head_ids)?;
 
@@ -291,7 +285,7 @@ mod tests {
         test_helpers::pin_test_env();
         let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture");
         let repo = crate::Repo::open(&fixture.path).expect("open");
-        let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let readonly = pollster::block_on(repo.workspace().load_at_head()).expect("head");
         let tx = crate::op_support::start_repo_transaction(&readonly, repo.workspace().workspace_name());
         let root = crate::ChangeId(readonly.store().root_commit().change_id().reverse_hex());
         let onto = [root];
@@ -322,7 +316,7 @@ mod tests {
         test_helpers::pin_test_env();
         let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture");
         let mut repo = crate::Repo::open(&fixture.path).expect("open");
-        let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let readonly = pollster::block_on(repo.workspace().load_at_head()).expect("head");
         let root = crate::ChangeId(readonly.store().root_commit().change_id().reverse_hex());
         let config = crate::config::load(&repo).expect("config");
         let mut sink = Warnings::default();

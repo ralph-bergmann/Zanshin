@@ -13,7 +13,6 @@ use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::{RefTarget, RemoteRef, RemoteRefState, View};
 use jj_lib::ref_name::{RefNameBuf, RemoteNameBuf, RemoteRefSymbol};
 use jj_lib::repo::Repo as _;
-use jj_lib::workspace::Workspace;
 use test_helpers::extract_fixture;
 use zanshin_jj::{Change, MutateError, Repo, RestoreWhat, WarningKind};
 
@@ -45,7 +44,7 @@ fn op_heads(root: &Path) -> BTreeSet<String> {
 
 /// The view of the operation `op` (hex), read through jj-lib.
 fn view_at(root: &Path, op: &str) -> View {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
@@ -342,14 +341,14 @@ fn op_revert_of_a_describe_twice_writes_a_second_operation_like_the_cli() {
 /// Commits ONE operation (through jj-lib, as another tool would) that points the local bookmark
 /// `local` and the tracked remote bookmark `main@origin` at the root commit; returns its id.
 fn local_and_remote_bookmark_op(root: &Path) -> String {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
     let target = RefTarget::normal(repo.store().root_commit_id().clone());
     let mut tx = repo.start_transaction();
     let local: RefNameBuf = "local".into();

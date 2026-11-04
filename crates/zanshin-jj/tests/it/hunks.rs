@@ -13,7 +13,6 @@ use std::path::{Path, PathBuf};
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::Repo as _;
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
     Backend, ChangeId, ChangeKind, FileChoice, FileDiff, FileSelection, HunkKey, HunkLine, HunksOptions, MutateError,
@@ -41,14 +40,14 @@ struct Fx {
 }
 
 fn load_head(root: &Path) -> std::sync::Arc<jj_lib::repo::ReadonlyRepo> {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &jj_lib::default_backend_factories::default_working_copy_factories(),
     )
     .expect("load workspace");
-    pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head")
+    pollster::block_on(workspace.load_at_head()).expect("load head")
 }
 
 fn head_op(root: &Path) -> String {

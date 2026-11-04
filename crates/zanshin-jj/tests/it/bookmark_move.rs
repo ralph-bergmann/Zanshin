@@ -19,7 +19,6 @@ use jj_lib::object_id::ObjectId;
 use jj_lib::op_store::RefTarget;
 use jj_lib::ref_name::{RefName, RemoteName, WorkspaceName};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{set_local_bookmark, set_remote_bookmark};
 use zanshin_jj::{
@@ -38,14 +37,14 @@ pub(crate) struct Fx {
 }
 
 fn load(root: &Path) -> Arc<ReadonlyRepo> {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &jj_lib::default_backend_factories::default_working_copy_factories(),
     )
     .expect("load workspace");
-    pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head")
+    pollster::block_on(workspace.load_at_head()).expect("load head")
 }
 
 fn change_id(commit: &Commit) -> ChangeId {

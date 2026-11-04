@@ -12,7 +12,9 @@
 //! phase ([`plan_push`]) — the remotes, the `--change` / `--named` bookmarks created in the
 //! transaction, the targets of the mode, the classification, the commit checks and the operation
 //! description — writes nothing and is shared by the dry run and the real run: a dry run returns
-//! the plan and drops the transaction.
+//! the plan and drops the transaction. Sign-on-push that signed anything splits it in two
+//! (`push.rs:573-608` @ v0.47.0): `sign commits before push` is written first, the push continues
+//! in a fresh transaction carrying the `--change` / `--named` bookmarks.
 //!
 //! What the CLI prints is data here: the `Warning:` lines are registered warnings (the CLI text
 //! verbatim), the hints a UI shows (a refused ref's, a rejected commit's, "Pushing to the only
@@ -164,7 +166,9 @@ pub enum PushRefStatus {
     LeaseRejected,
     /// The remote rejected the update.
     RemoteRejected,
-    /// Pushed, but its remote-tracking ref could not be updated locally.
+    /// Pushed, but its remote-tracking ref could not be updated locally. Never reported since
+    /// jj-lib 0.47, whose push no longer exports pushed refs to Git; kept so the FFI enum's values
+    /// stay put.
     Unexported,
 }
 
@@ -288,8 +292,9 @@ pub struct GitPushOutcome {
     /// Hints the UI shows verbatim: "Pushing to the only existing remote: <name>", and after a
     /// push the CLI's push-stats hints.
     pub hints: Vec<String>,
-    /// What sign-on-push did; `None` when it did not run (`git.sign-on-push` off, a dry run, or
-    /// nothing needed signing).
+    /// What sign-on-push did, in an operation of its own (`sign commits before push`) written
+    /// before the push; `None` when it did not run (`git.sign-on-push` off, a dry run, or nothing
+    /// needed signing).
     pub signing: Option<PushSigning>,
     /// Every remote's plan was empty — the CLI's "Nothing changed.": nothing pushed, nothing
     /// created, no operation.
@@ -303,7 +308,8 @@ pub struct GitPushOutcome {
     /// origin"); in a dry run, the one the real push would write; `None` when no ref would be
     /// pushed (nothing changed, or a dry run whose every explicitly named ref aborts).
     pub description: Option<String>,
-    /// The operation-log head after the call — the push's operation when recorded, else the
+    /// The last operation the call wrote: the push's when recorded, else the `sign commits before
+    /// push` operation when sign-on-push signed anything (it stays when the push fails), else the
     /// head the push started from.
     pub new_op_id: String,
     /// The failure, when the push did not fully succeed.
@@ -503,9 +509,11 @@ struct CommitsValidator<'r, 't> {
 
 impl<'r, 't> CommitsValidator<'r, 't> {
     fn new(base: &'r ReadonlyRepo, remote: &RemoteName, planner: &mut Planner<'t>) -> Result<Self, MutateError> {
-        let known_heads = base
-            .view()
+        // `push.rs:827-833` @ v0.47.0: a commit on the remote as a bookmark OR a tag is known.
+        let view = base.view();
+        let known_heads = view
             .remote_bookmarks(remote)
+            .chain(view.remote_tags(remote))
             .flat_map(|(_, old_head)| old_head.target.present_adds())
             .cloned()
             .collect();
@@ -1745,7 +1753,7 @@ fn skipped_signing_message(summaries: &[String]) -> String {
 }
 
 /// A ref's status after the push, from the push's stats.
-fn status_of(row: &Row, remote: &RemoteName, stats: &GitPushStats) -> (Option<PushRefStatus>, Option<String>) {
+fn status_of(row: &Row, stats: &GitPushStats) -> (Option<PushRefStatus>, Option<String>) {
     let qualified = match row.kind {
         PushRefKind::Bookmark => format!("refs/heads/{}", row.name.as_str()),
         PushRefKind::Tag => format!("refs/tags/{}", row.name.as_str()),
@@ -1764,18 +1772,7 @@ fn status_of(row: &Row, remote: &RemoteName, stats: &GitPushStats) -> (Option<Pu
     if !stats.pushed.iter().any(|name| name.as_str() == qualified) {
         return (None, None);
     }
-    let unexported = stats
-        .unexported_bookmarks
-        .iter()
-        .filter(|_| row.kind == PushRefKind::Bookmark)
-        .find(|(symbol, _)| symbol.name == row.name && symbol.remote.as_str() == remote.as_str());
-    match unexported {
-        Some((_, reason)) => (
-            Some(PushRefStatus::Unexported),
-            Some(crate::warning::error_chain_lines(reason).join(": ")),
-        ),
-        None => (Some(PushRefStatus::Pushed), None),
-    }
+    (Some(PushRefStatus::Pushed), None)
 }
 
 /// The push-stats hints (`git_util.rs:520-546`).
@@ -1857,7 +1854,7 @@ fn render(
             let mut refs = Vec::with_capacity(plan.rows.len());
             for row in plan.rows {
                 let (status, reason) = match (result, row.path) {
-                    (Some(Ok(stats)), PushPath::Push) => status_of(&row, &plan.remote, stats),
+                    (Some(Ok(stats)), PushPath::Push) => status_of(&row, stats),
                     _ => (None, None),
                 };
                 let mut rendered = render_row(repo, row)?;
@@ -1927,6 +1924,11 @@ pub(crate) fn git_push(
         let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, repo.workspace());
         let prefixes = ctx.template_startup.id_prefix_context();
         outcome.signing = sign_before_push(&mut tx, (&templates, &prefixes), &mut plan.remotes, &mut ctx.warnings)?;
+        if outcome.signing.is_some() {
+            let (signed_op, push_tx) = finish_signing(repo, ctx, tx)?;
+            outcome.new_op_id = signed_op;
+            tx = push_tx;
+        }
     }
     let pushed = push_remotes(&mut tx, &readonly, &plan.remotes, (args, progress, cancel), ctx)?;
     outcome.hints.extend(pushed.hints);
@@ -1954,6 +1956,34 @@ pub(crate) fn git_push(
         });
     }
     Ok(outcome)
+}
+
+/// Signing's own operation (`push.rs:583-608` @ v0.47.0), so a failed push keeps the signatures:
+/// the local bookmarks `tx` created (`--change` / `--named`) are taken out, the rest finishes as
+/// `sign commits before push` through the shared finish, and they are put back into a fresh
+/// transaction on top of it — the push's, which a failed push drops with them. Returns the sign
+/// operation's id and that transaction.
+fn finish_signing(
+    repo: &mut Repo,
+    ctx: &mut VerbContext,
+    mut tx: Transaction,
+) -> Result<(String, Transaction), MutateError> {
+    let created: Vec<(RefNameBuf, RefTarget)> = tx
+        .repo()
+        .view()
+        .local_bookmarks()
+        .filter(|(name, _)| tx.base_repo().view().get_local_bookmark(name).is_absent())
+        .map(|(name, target)| (name.to_owned(), target.clone()))
+        .collect();
+    for (name, _) in &created {
+        tx.repo_mut().set_local_bookmark_target(name, RefTarget::absent());
+    }
+    let finish = crate::mutate::finish_verb(repo.workspace_mut(), tx, "sign commits before push", ctx)?;
+    let mut tx = crate::op_support::start_repo_transaction(&finish.repo, repo.workspace().workspace_name());
+    for (name, target) in created {
+        tx.repo_mut().set_local_bookmark_target(&name, target);
+    }
+    Ok((finish.repo.op_id().hex(), tx))
 }
 
 /// The record step (`push.rs:622-655`): the push's operation written with `description` — the
@@ -2006,7 +2036,7 @@ fn push_remotes(
         recordable: false,
         failure: None,
     };
-    let mut some_exported = false;
+    let mut some_pushed = false;
     crate::cancel::watch_store(cancel, tx.repo().store());
     for plan in plans {
         // Story 9.52's checkpoint: before each remote's git push — none after the last one.
@@ -2030,7 +2060,7 @@ fn push_remotes(
                 ctx.warnings.extend(crate::warning::push_stats(&stats));
                 stats_hints(&stats, &mut pushed.hints);
                 pushed.all_ok &= stats.all_ok();
-                some_exported |= stats.some_exported();
+                some_pushed |= !stats.pushed.is_empty();
                 pushed.results.insert(plan.remote.clone(), Ok(stats));
             }
             Err(e) => {
@@ -2049,7 +2079,8 @@ fn push_remotes(
             }
         }
     }
-    pushed.recordable = pushed.all_ok || some_exported;
+    // `push.rs:654` @ v0.47.0: `all_ok || some_pushed`.
+    pushed.recordable = pushed.all_ok || some_pushed;
     Ok(pushed)
 }
 

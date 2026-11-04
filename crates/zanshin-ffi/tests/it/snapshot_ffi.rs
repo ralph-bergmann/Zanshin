@@ -250,10 +250,10 @@ fn git(args: &[&str], dir: &Path) {
 }
 
 /// Story 9.34's outermost witness of the double fault "Git HEAD moved outside AND a wrong-typed
-/// snapshot knob": the pre-verb snapshot reads the knob where the CLI does — after its colocated
-/// `import git head` committed — so the error envelope's partial report names that operation.
+/// snapshot knob": since jj 0.47 the pre-verb snapshot reads the knob where the CLI does —
+/// BEFORE its colocated `import git head` (`load_snapshot_config`) — so nothing is written.
 #[test]
-fn a_wrong_typed_knob_after_a_git_commit_outside_reports_the_head_import_on_the_error_arm() {
+fn a_wrong_typed_knob_after_a_git_commit_outside_refuses_before_the_head_import() {
     test_helpers::pin_test_env();
     let tmp = TempDir::new().expect("tempdir");
     let root = tmp.path().canonicalize().expect("canonical root");
@@ -281,10 +281,11 @@ fn a_wrong_typed_knob_after_a_git_commit_outside_reports_the_head_import_on_the_
         "{:?}",
         err.context()
     );
-    let p = env.precondition().expect("the partial report rides the error envelope");
-    assert!(p.git_head_imported(), "the head import ran before the knob was read");
-    assert!(p.was_snapshot_taken(), "an operation WAS written before the failure");
-    assert!(p.git_refs().is_none(), "the refs step never ran");
+    if let Some(p) = env.precondition() {
+        assert!(!p.git_head_imported(), "the knob is read before the head import");
+        assert!(!p.was_snapshot_taken(), "nothing is written before the failure");
+        assert!(p.git_refs().is_none(), "the refs step never ran");
+    }
     close_handle(handle);
 }
 

@@ -260,9 +260,7 @@ pub(crate) fn change_from_commit(
 
     // 6. Conflict state (D7): path-list only; per-path value errors are dropped.
     let conflict = if commit.has_conflict() {
-        let paths = commit
-            .tree()
-            .conflicts()
+        let paths = futures::executor::block_on_stream(commit.tree().conflicts())
             .map(|(p, _value)| PathBuf::from(p.as_internal_file_string()))
             .collect();
         ConflictState::Conflicted { paths }

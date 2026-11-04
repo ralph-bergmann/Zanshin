@@ -1440,7 +1440,7 @@ four values out of it:
 
 | Layer (ascending precedence) | Source |
 |------------------------------|--------|
-| `ConfigSource::Default`      | jj-lib's own defaults + Zanshin's builtin layer (`[revsets] log` / `log-graph-prioritize`, `ui.log-synthetic-elided-nodes`, `ui.conflict-marker-style` (Story 9.4 — the style `zanshin_file_show` materializes a conflicted file with), and the CLI's 7-entry `[revset-aliases]` table, verbatim from `cli/src/config/{revsets,misc}.toml` @ v0.46.0) |
+| `ConfigSource::Default`      | jj-lib's own defaults + Zanshin's builtin layer (`[revsets] log` / `log-graph-prioritize`, `ui.log-synthetic-elided-nodes`, `ui.conflict-marker-style` (Story 9.4 — the style `zanshin_file_show` materializes a conflicted file with), and the CLI's 7-entry `[revset-aliases]` table, verbatim from `cli/src/config/{revsets,misc}.toml` @ v0.47.0 — unchanged since v0.46.0) |
 | `ConfigSource::System`       | `/etc/jj/config.toml`, `/etc/jj/conf.d/` — ONLY when `JJ_CONFIG` is unset (`cli/src/config.rs:338-349` @ v0.46.0). Non-existent entries are skipped silently. |
 | `ConfigSource::EnvBase`      | `operation.hostname` / `operation.username` from `whoami` (the CLI's own crate; `$USER` as the username fallback), `NO_COLOR` (non-empty) → `ui.color = "never"`, `VISUAL` else `EDITOR` → `ui.editor` — values config files override |
 | `ConfigSource::User`         | `JJ_CONFIG` (a `PATH`-style list of files and/or directories, which REPLACES discovery — including when it is the empty string, which disables user config entirely), else `$HOME/.jjconfig.toml`, `<config_dir>/jj/config.toml`, `<config_dir>/jj/conf.d/`. Non-existent entries are skipped silently. `<config_dir>` = `$XDG_CONFIG_HOME` when absolute, else `$HOME/.config`. |

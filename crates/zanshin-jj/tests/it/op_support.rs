@@ -21,7 +21,6 @@ use std::path::Path;
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::Repo as _;
-use jj_lib::workspace::Workspace;
 use test_helpers::{extract_fixture, set_tag};
 use zanshin_jj::{ChangeId, MutateError, Repo};
 
@@ -39,14 +38,14 @@ struct Layout {
 
 fn oracle_layout(workspace_root: &Path) -> Layout {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
     let store = repo.store();
 
     let mut by_desc: HashMap<String, (String, String)> = HashMap::new();

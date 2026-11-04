@@ -59,14 +59,14 @@ fn write(root: &Path, rel: &str, content: &str) {
 }
 
 fn load(root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("load workspace");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("load head");
     (workspace, repo)
 }
 
@@ -96,9 +96,7 @@ fn at_commit(root: &Path) -> jj_lib::commit::Commit {
 }
 
 fn at_paths(root: &Path) -> Vec<String> {
-    at_commit(root)
-        .tree()
-        .entries()
+    futures::executor::block_on_stream(at_commit(root).tree().entries())
         .map(|(path, _)| path.as_internal_file_string().to_owned())
         .collect()
 }

@@ -294,7 +294,7 @@ fn commits_diff(
     .map_err(be)?;
 
     let estimate = |expr: Arc<ResolvedRevsetExpression>| -> Result<RefDistance, MutateError> {
-        let (lower, upper) = expr.evaluate(current).map_err(be)?.count_estimate().map_err(be)?;
+        let (lower, upper) = pollster::block_on(expr.evaluate(current).map_err(be)?.count_estimate()).map_err(be)?;
         Ok(RefDistance {
             lower: lower as u64,
             upper: upper.map(|upper| upper as u64),

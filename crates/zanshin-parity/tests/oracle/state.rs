@@ -112,7 +112,7 @@ async fn capture_async(root: &Path, before: Option<&State>) -> State {
         &default_backend_factories(),
     )
     .expect("repo loader")
-    .load_at_head()
+    .load_at_head(None)
     .await
     .expect("load the repo at its operation head");
     let commits = visible_commits(&repo).await;
@@ -330,7 +330,7 @@ async fn commit_aspects(
     aspects.insert("conflicts", list_or_none(&conflicted));
     let mut empties = Vec::new();
     for commit in &non_root {
-        if commit.is_empty(repo).await.expect("emptiness of a commit") {
+        if commit.is_empty(repo.index()).await.expect("emptiness of a commit") {
             empties.push(labels.commit(commit.id()));
         }
     }

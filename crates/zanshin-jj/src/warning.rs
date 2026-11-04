@@ -213,7 +213,8 @@ pub enum WarningKind {
     /// Updates the remote rejected (`git_util.rs:528-547`).
     PushRemoteRejected,
     /// Pushed bookmarks whose remote-tracking ref could not be updated locally
-    /// (`git_util.rs:548-561`).
+    /// (`git_util.rs:548-561` @ v0.46.0). Never emitted since jj-lib 0.47, whose push no longer
+    /// exports pushed refs to Git; kept so the FFI warning codes stay put.
     PushBookmarksNotUpdatedLocally,
     /// Sign-on-push met commits to sign that are immutable and left them unsigned
     /// (`push.rs:940-956`).
@@ -637,7 +638,7 @@ fn conflicts_warning(
         return Ok(None);
     }
     let mut conflicts = Vec::new();
-    for (path, value) in commit.tree().conflicts() {
+    for (path, value) in futures::executor::block_on_stream(commit.tree().conflicts()) {
         conflicts.push((ui_path(workspace_root, &path), value?));
     }
     Ok(Some(local(kind, conflicted_paths(heading, &conflicts))))
@@ -697,9 +698,10 @@ pub(crate) fn clone_cleanup_failed(target: &Path, err: &std::io::Error) -> Warni
     )
 }
 
-/// `print_push_stats`' three blocks (`cli/src/git_util.rs:507-565` @ v0.46.0, Story 9.20), each
+/// `print_push_stats`' two blocks (`cli/src/git_util.rs:493-536` @ v0.47.0, Story 9.20), each
 /// heading followed by one `  {ref}` line per entry — `(reason: {r})` appended where the remote gave
-/// one; the unexported bookmarks with their error chain.
+/// one. (0.46's third block, the bookmarks not updated locally, went with jj-lib 0.47's push no
+/// longer exporting to Git.)
 pub(crate) fn push_stats(stats: &jj_lib::git::GitPushStats) -> Vec<Warning> {
     let refs_block = |kind: WarningKind, heading: &str, refs: &[(jj_lib::ref_name::GitRefNameBuf, Option<String>)]| {
         (!refs.is_empty()).then(|| {
@@ -713,18 +715,6 @@ pub(crate) fn push_stats(stats: &jj_lib::git::GitPushStats) -> Vec<Warning> {
             local(kind, lines.join("\n"))
         })
     };
-    let unexported = (!stats.unexported_bookmarks.is_empty()).then(|| {
-        let mut lines = vec!["The following bookmarks couldn't be updated locally:".to_owned()];
-        for (symbol, reason) in &stats.unexported_bookmarks {
-            let mut line = format!("  {symbol}");
-            for err in error_chain_lines(reason) {
-                line.push_str(": ");
-                line.push_str(&err);
-            }
-            lines.push(line);
-        }
-        local(WarningKind::PushBookmarksNotUpdatedLocally, lines.join("\n"))
-    });
     [
         refs_block(
             WarningKind::PushRefsMovedOnRemote,
@@ -736,7 +726,6 @@ pub(crate) fn push_stats(stats: &jj_lib::git::GitPushStats) -> Vec<Warning> {
             "The remote rejected the following updates:",
             &stats.remote_rejected,
         ),
-        unexported,
     ]
     .into_iter()
     .flatten()
@@ -1067,31 +1056,20 @@ mod tests {
 
     #[test]
     fn push_stats_render_the_cli_blocks_with_and_without_a_reason() {
-        use jj_lib::git::{FailedRefExportReason, GitPushStats};
-        use jj_lib::ref_name::{GitRefNameBuf, RefNameBuf, RemoteNameBuf, RemoteRefSymbolBuf};
+        use jj_lib::git::GitPushStats;
+        use jj_lib::ref_name::GitRefNameBuf;
 
         assert!(super::push_stats(&GitPushStats::default()).is_empty());
         let stats = GitPushStats {
             pushed: vec![GitRefNameBuf::from("refs/heads/ok")],
             rejected: vec![(GitRefNameBuf::from("refs/heads/a"), None)],
             remote_rejected: vec![(GitRefNameBuf::from("refs/heads/b"), Some("hook declined".to_owned()))],
-            unexported_bookmarks: vec![(
-                RemoteRefSymbolBuf {
-                    name: RefNameBuf::from("c"),
-                    remote: RemoteNameBuf::from("origin"),
-                },
-                FailedRefExportReason::InvalidGitName,
-            )],
         };
         let warnings = super::push_stats(&stats);
         let kinds: Vec<WarningKind> = warnings.iter().map(|w| w.kind).collect();
         assert_eq!(
             kinds,
-            [
-                WarningKind::PushRefsMovedOnRemote,
-                WarningKind::PushRemoteRejected,
-                WarningKind::PushBookmarksNotUpdatedLocally,
-            ]
+            [WarningKind::PushRefsMovedOnRemote, WarningKind::PushRemoteRejected]
         );
         assert_eq!(
             warnings[0].message,
@@ -1100,10 +1078,6 @@ mod tests {
         assert_eq!(
             warnings[1].message,
             "The remote rejected the following updates:\n  refs/heads/b (reason: hook declined)"
-        );
-        assert_eq!(
-            warnings[2].message,
-            "The following bookmarks couldn't be updated locally:\n  c@origin: Name is not allowed in Git"
         );
     }
 }

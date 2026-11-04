@@ -345,7 +345,7 @@ pub(crate) fn create(
                 });
             }
         }
-        if pollster::block_on(target.is_discardable(tx.repo())).map_err(mutate::be)? {
+        if pollster::block_on(target.is_discardable(tx.repo().index())).map_err(mutate::be)? {
             sink.push(WarningKind::BookmarkTargetEmpty, "Target revision is empty.");
         }
         let auto_track = auto_track.map_err(mutate::cfg)?;
@@ -575,7 +575,7 @@ fn point_bookmarks(
         if names.is_empty() {
             return Ok(());
         }
-        if pollster::block_on(target.is_discardable(tx.repo())).map_err(mutate::be)? {
+        if pollster::block_on(target.is_discardable(tx.repo().index())).map_err(mutate::be)? {
             sink.push(WarningKind::BookmarkTargetEmpty, "Target revision is empty.");
         }
         for name in &names {
@@ -993,7 +993,7 @@ pub(crate) fn set(
             ));
         }
     }
-    if pollster::block_on(target.is_discardable(readonly.as_ref())).map_err(mutate::be)? {
+    if pollster::block_on(target.is_discardable(readonly.index())).map_err(mutate::be)? {
         ctx.warnings
             .push(WarningKind::BookmarkTargetEmpty, "Target revision is empty.");
     }
@@ -1491,7 +1491,7 @@ mod tests {
         })
         .result
         .expect("init");
-        let head = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let head = pollster::block_on(repo.workspace().load_at_head()).expect("head");
         let root = jj_lib::repo::Repo::store(head.as_ref()).root_commit_id().clone();
         assert!(super::is_fast_forward(head.as_ref(), &RefTarget::absent(), &root).expect("absent"));
         assert!(super::is_fast_forward(head.as_ref(), &RefTarget::normal(root.clone()), &root).expect("itself"));

@@ -410,7 +410,7 @@ impl Repo {
     }
 
     /// The implicit snapshot every CLI command whose helper is `workspace_helper` runs first
-    /// (Story 9.26) — `cli/src/cli_util.rs:473-517` @ v0.46.0.
+    /// (Story 9.26) — `cli/src/cli_util.rs:473-518` @ v0.47.0.
     ///
     /// 1. [`Repo::refresh_settings`] — the CLI's start-up secure-config fix-up (Story 9.37), then
     ///    the settings re-derived if the stack changed — so the snapshot runs with the current
@@ -420,14 +420,13 @@ impl Repo {
     ///    `workspace_helper_with_stats` builds it (`cli_util.rs:478`), so a bad
     ///    `immutable_heads()` alias refuses without waiting and writes nothing.
     /// 3. Colocated workspaces take jj's `git_import_export.lock` (blocking), then the head is
-    ///    loaded and `snapshot_impl` runs: `import git head`, `snapshot working copy`,
-    ///    `import git refs` (colocated) or the snapshot alone. Each step reads its own config
-    ///    where the CLI does (Story 9.34): the snapshot knobs (`snapshot.auto-track`, the ignore
-    ///    files, `snapshot.max-new-file-size`) at the start of the snapshot step, AFTER the head
-    ///    import (`cli_util.rs:2098-2103`); the Git import options at the start of the refs step
-    ///    (`cli_util.rs:1463-1466`). A fault in either fails after the earlier steps committed,
-    ///    and their operations stay, as in the CLI. `snapshot.auto-update-stale` is read only on
-    ///    a stale working copy, under the lock (`cli_util.rs:500` @ v0.46.0); `true` recovers
+    ///    loaded, the snapshot config is read — the snapshot knobs (`snapshot.auto-track`, the
+    ///    ignore files, `snapshot.max-new-file-size`) and, colocated, the Git import options, so
+    ///    a fault in any refuses before an operation is written (`load_snapshot_config`,
+    ///    `cli_util.rs:493`) — and `snapshot_impl` runs: `import git head`, `snapshot working
+    ///    copy`, `import git refs` (or `export git refs` when the import changed nothing but the
+    ///    export does) colocated, or the snapshot alone. `snapshot.auto-update-stale` is read only
+    ///    on a stale working copy, under the lock (`cli_util.rs:500`); `true` recovers
     ///    the working copy right there and the verb continues (Story 9.23, see
     ///    [`crate::Precondition::stale_recovery`]).
     /// 4. The report is stored for [`Repo::take_precondition`] — a PARTIAL one when a later
@@ -1914,15 +1913,18 @@ impl Repo {
     /// `--deleted` and the bare push (`revsets.git-push` with `remote` bound) / `-r` skip a refused
     /// ref or a rejected commit with a warning, explicitly named refs refuse the whole push — and
     /// the operation description is built. A dry run returns that plan and writes nothing beyond the
-    /// pre-verb snapshot's operation. A real push then signs (`git.sign-on-push`), pushes remote by
+    /// pre-verb snapshot's operation. A real push then signs (`git.sign-on-push`) — when it signed
+    /// anything, in an operation of its own, `sign commits before push`, which a failed push keeps
+    /// (`push.rs:583-608` @ v0.47.0; the `--change` / `--named` bookmarks move on to the push's
+    /// transaction, so a failed push still drops them) — pushes remote by
     /// remote (progress as `"push"` [`crate::ProgressEvent`]s on `progress`; push progress arrives
     /// mostly as sideband text, so there are few or none), and records the operation when every
-    /// ref succeeded or at least one was exported — the CLI's rule. A push whose plan is empty is
+    /// ref succeeded or at least one was pushed — the CLI's rule. A push whose plan is empty is
     /// [`GitPushOutcome::nothing_changed`](crate::GitPushOutcome::nothing_changed): nothing is
     /// created or written.
     ///
     /// Once the push loop has started, its outcome is data: a lease failure, a remote rejection,
-    /// an unexported ref, a remote that could not be reached — per remote and per ref, with the
+    /// a remote that could not be reached — per remote and per ref, with the
     /// CLI's failure text in [`crate::GitPushOutcome::failure`] — on `Ok`.
     ///
     /// A cancel of `cancel`'s token (Story 9.52) is data too: the push stops before the next
@@ -1996,7 +1998,7 @@ impl Repo {
     /// CLI's `print_imported_changes` prints, projected as [`Repo::git_import`] projects them);
     /// with `Patterns`, branch names no matched
     /// remote has warn `jj.fetch_branches_unmatched`. The operation is `fetch from git remote(s)
-    /// <names joined by ",">`. It finishes like the CLI's `tx.finish` (Story 9.26): a colocated
+    /// <names joined by ", ">`. It finishes like the CLI's `tx.finish` (Story 9.26): a colocated
     /// workspace exports the fetched refs to Git, and the working copy is checked out at the new
     /// operation. A fetch that changed nothing writes no operation, as the CLI's
     /// `WorkspaceCommandTransaction::finish` ("Nothing changed."; Story 9.40): the mutation's
@@ -2084,8 +2086,7 @@ impl Repo {
     /// - [`crate::MutateError::Config`] — the start-up fix-up failed, the changed config stack no
     ///   longer reads, `git.executable-path` does not read, or a `remotes.<name>` entry or the
     ///   remote's `fetch-bookmarks`/`fetch-tags` is malformed.
-    /// - [`crate::MutateError::InvalidInput`] — the remote's Git config does not read, or a
-    ///   `fetch-bookmarks`/`fetch-tags` pattern cannot become a refspec (the fetch refuses it too).
+    /// - [`crate::MutateError::InvalidInput`] — the remote's Git config does not read.
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no Git backend; nothing runs.
     /// - [`crate::MutateError::RemoteNotFound`] — no configured git remote is named `remote_name`
     ///   exactly; git never runs.
@@ -2132,13 +2133,16 @@ impl Repo {
     fn load_workspace_again(&mut self) -> Result<(), String> {
         let root = self.workspace.workspace_root().to_owned();
         let git_stamp = read_git_stamp(self.workspace.repo_path());
-        self.workspace = Workspace::load(
-            &self.settings,
-            &root,
-            &default_backend_factories(),
-            &default_working_copy_factories(),
-        )
-        .map_err(|e| e.to_string())?;
+        self.workspace = DefaultWorkspaceLoaderFactory
+            .create(&root)
+            .and_then(|loader| {
+                loader.load(
+                    &self.settings,
+                    &default_backend_factories(),
+                    &default_working_copy_factories(),
+                )
+            })
+            .map_err(|e| e.to_string())?;
         self.git_stamp = git_stamp;
         Ok(())
     }
@@ -3000,20 +3004,23 @@ impl Repo {
     }
 
     /// Removes workspaces and deletes their directories (Story 9.13) — the CLI's `jj workspace
-    /// remove <names>` (`cli/src/commands/workspace/remove.rs:49-189` @ v0.46.0, new in jj 0.46).
+    /// remove <names>` (`cli/src/commands/workspace/remove.rs:53-249` @ v0.47.0, new in jj 0.46).
     ///
     /// A name the view does not have warns `jj.workspace_names_unmatched` and is skipped; with
     /// none left nothing is written. Every remaining workspace must be removable, checked in
     /// order before anything is written: a recorded path that resolves, not containing this
-    /// repository, holding a workspace of THIS repository. Then each is snapshotted in turn (its
-    /// own operation when its files changed, so tracked edits survive as a commit; untracked and
-    /// ignored files go with the directory), all leave the view in ONE operation, `remove
-    /// workspace <name>` / `remove workspaces <a>, <b>`, their store entries are forgotten, their
+    /// repository, holding a workspace of THIS repository. Then each is snapshotted in turn at
+    /// the operation its working copy was last recorded at — so a stale workspace can be removed
+    /// too — writing no operation of its own: when its files changed, the snapshot becomes a new
+    /// commit on top of its `@`, described "SNAPSHOT OF REMOVED WORKSPACE `<name>`", so tracked
+    /// edits survive (in `mutation.new_change_ids`); ignored files go with the directory. Then
+    /// ONE operation, `remove workspace <name>` / `remove workspaces <a>, <b>`, adds those
+    /// commits and takes the workspaces out of the view; their store entries are forgotten, their
     /// Git worktrees unlinked ([`crate::WorkspaceRemoveResult::git_worktrees_removed`], a failure
     /// warns `jj.git_worktree_unlink_failed`) and their directories deleted
     /// ([`crate::WorkspaceRemoveResult::directories_removed`], a failure warns
     /// `jj.workspace_directory_remove_failed`). Each target's start-up environment warns again, as
-    /// the CLI prints it per workspace, and so does this workspace's before the removal.
+    /// the CLI prints it per workspace.
     ///
     /// Removing THIS handle's own (secondary) workspace is allowed, as in the CLI: the result's
     /// `working_copy_change_id` is `None`, `jj.workspace_no_longer_exists` warns, and the handle is
@@ -3028,11 +3035,14 @@ impl Repo {
     ///   belongs to another repository, or no workspace loads there (the CLI's load-error text).
     ///   The first two and the other-repository refusal carry the hint "Use `jj workspace forget`
     ///   to stop tracking a workspace without deleting files."; the repository refusal carries
-    ///   none, a load error the CLI's own (none, or its `jj git init` hint). Nothing is written.
-    /// - [`crate::MutateError::Precondition`] — this workspace's pre-verb snapshot, a target's
-    ///   snapshot (e.g. a stale target) or a start-up environment failed; earlier snapshots stay.
-    /// - [`crate::MutateError::Config`] — the immutable set does not resolve, or
-    ///   `git.executable-path` does not read (after the operation).
+    ///   none, a load error the CLI's own (none, or its `jj git init` hint). Also a target's
+    ///   snapshot that left untracked or non-UTF-8 paths ("Cannot remove workspace '<name>' with
+    ///   unsnapshotted changes", after the snapshot's warnings). Nothing is written.
+    /// - [`crate::MutateError::Precondition`] — this workspace's pre-verb snapshot or a target's
+    ///   start-up environment failed.
+    /// - [`crate::MutateError::Config`] — a snapshot knob a target's snapshot reads is malformed,
+    ///   the immutable set does not resolve, or `git.executable-path` does not read (after the
+    ///   operation).
     /// - [`crate::MutateError::Backend`] — a workspace load failed internally, or any other
     ///   jj-lib step.
     pub fn workspace_remove(&mut self, names: &[String]) -> Result<crate::WorkspaceRemoveResult, crate::MutateError> {

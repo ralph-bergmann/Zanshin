@@ -7,13 +7,12 @@ use std::sync::Arc;
 use jj_lib::backend::{CopyId, TreeValue};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::merged_tree::MergedTree;
+use jj_lib::merged_tree_builder::MergedTreeBuilder;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::Repo as _;
 use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::rewrite::merge_commit_trees;
 use jj_lib::store::Store;
-use jj_lib::tree_builder::TreeBuilder;
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::extract_fixture;
 use zanshin_jj::{ChangeError, ChangeId, ConflictState, Repo};
@@ -23,13 +22,13 @@ use zanshin_jj::{ChangeError, ChangeId, ConflictState, Repo};
 /// TEST SETUP ONLY — drives the `is_anonymous == false` path.
 fn jj_new_with_description(workspace_root: &Path, description: &str) -> Result<(), Box<dyn std::error::Error>> {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )?;
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head())?;
+    let repo = pollster::block_on(workspace.load_at_head())?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let wc_id = repo
@@ -57,14 +56,14 @@ fn jj_new_with_description(workspace_root: &Path, description: &str) -> Result<(
 /// TEST SETUP ONLY — drives the `divergent == true` path (AC-13).
 fn make_divergent_change(workspace_root: &Path) -> String {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
 
     let root_commit = repo.store().root_commit();
     let root_id = root_commit.id().clone();
@@ -97,20 +96,19 @@ fn make_divergent_change(workspace_root: &Path) -> String {
 
 /// Builds a single-file tree (`path` → `content`). TEST SETUP ONLY.
 fn tree_with_file(store: &Arc<Store>, path: &RepoPathBuf, content: &[u8]) -> MergedTree {
-    let mut builder = TreeBuilder::new(store.clone(), store.empty_tree_id().clone());
+    let mut builder = MergedTreeBuilder::new(store.empty_merged_tree());
     // WHY: &[u8] implements futures AsyncRead directly (jj-lib 0.42 Store::write_file) — no Cursor.
     let mut reader = content;
     let file_id = pollster::block_on(store.write_file(path, &mut reader)).unwrap();
-    builder.set(
+    builder.set_or_remove(
         path.clone(),
-        TreeValue::File {
+        Some(TreeValue::File {
             id: file_id,
             executable: false,
             copy_id: CopyId::placeholder(),
-        },
+        }),
     );
-    let tree_id = pollster::block_on(builder.write_tree()).unwrap();
-    MergedTree::resolved(store.clone(), tree_id)
+    pollster::block_on(builder.write_tree()).unwrap()
 }
 
 /// Creates a genuinely conflicted merge commit: two children of root edit the same file
@@ -121,14 +119,14 @@ fn tree_with_file(store: &Arc<Store>, path: &RepoPathBuf, content: &[u8]) -> Mer
 /// builds `ConflictState::Conflicted { paths }` (D7).
 fn make_conflicted_change(workspace_root: &Path) -> String {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     let store = repo.store().clone();
     let root_id = store.root_commit_id().clone();
 
@@ -177,14 +175,14 @@ fn make_conflicted_change(workspace_root: &Path) -> String {
 #[allow(clippy::type_complexity)]
 fn wc_oracle_fields(workspace_root: &Path) -> (String, String, Vec<String>, String, String, String) {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     let wc_id = repo
         .view()
         .get_wc_commit_id(workspace.workspace_name())
@@ -352,14 +350,14 @@ fn change_on_root_returns_empty_parents() {
 
     // Oracle: get root commit's change id via jj-lib.
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         &fx.path,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo_jj = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo_jj = pollster::block_on(workspace.load_at_head()).unwrap();
     let root_commit = repo_jj.store().root_commit();
     let root_change_id = ChangeId(root_commit.change_id().reverse_hex());
 
@@ -435,14 +433,14 @@ fn change_on_merge_in_medium_fixture_has_three_parents() {
 
     // Oracle: find the 3-parent merge commit via the "merge" bookmark.
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         &fx.path,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo_jj = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo_jj = pollster::block_on(workspace.load_at_head()).unwrap();
 
     let mut merge_change_id: Option<ChangeId> = None;
     let mut oracle_parent_change_ids: Vec<String> = Vec::new();
@@ -510,14 +508,14 @@ fn change_on_divergent_id_returns_divergent_flag() {
     // genuinely maps to exactly two visible commits. We do NOT pin WHICH commit get_change
     // returns — jj-lib's visible-target order is a preference, not a guarantee (D4).
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         tmp.path(),
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo_jj = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo_jj = pollster::block_on(workspace.load_at_head()).unwrap();
     let jj_id = jj_lib::backend::ChangeId::try_from_reverse_hex(&divergent_id.0).unwrap();
     let targets = pollster::block_on(repo_jj.resolve_change_id(&jj_id))
         .unwrap()

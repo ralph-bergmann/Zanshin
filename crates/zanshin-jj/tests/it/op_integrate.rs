@@ -14,7 +14,6 @@ use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::{OperationId, RefTarget};
 use jj_lib::ref_name::RefNameBuf;
 use jj_lib::repo::Repo as _;
-use jj_lib::workspace::Workspace;
 use test_helpers::extract_fixture;
 use zanshin_jj::{MutateError, Repo};
 
@@ -46,7 +45,7 @@ fn published_op(root: &Path, parent: &str, name: &str) -> String {
 
 /// Writes the bookmark-setting operation on `parent`, published or not; returns its id.
 fn write_op(root: &Path, parent: &str, name: &str, publish: bool) -> String {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),

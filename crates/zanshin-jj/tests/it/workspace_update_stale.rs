@@ -90,14 +90,14 @@ pub(crate) fn two_workspaces(colocated: bool, config: &str) -> (Fx, Repo) {
 }
 
 pub(crate) fn load(root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &jj_lib::default_backend_factories::default_working_copy_factories(),
     )
     .expect("load workspace");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("load head");
     (workspace, repo)
 }
 
@@ -359,8 +359,9 @@ fn a_failed_recovery_reports_its_code_and_a_report() {
 }
 
 /// Story 9.53: a recovery that fails AFTER writing operations — here the `reset git head` of a
-/// colocated recovery, then a Git import option only the trailing snapshot's refs step reads (a
-/// `git.*` key would already fail the Git backend's load) —
+/// colocated recovery, then the trailing snapshot's refs step, which imports a branch made with
+/// `git` and resolves an `immutable_heads()` that parses but does not resolve (every config value
+/// is read before the first step since v0.47.0, so a malformed one could not get this far) —
 /// reports `was_snapshot_taken` against the operation the precondition LOADED, not the
 /// recovered one.
 #[test]
@@ -369,20 +370,20 @@ fn a_recovery_failing_after_its_reset_reports_that_it_wrote() {
     let _ = reparent_default_at(&fx);
     fs::write(
         fx.root.join(".jj").join("repo").join("config.toml"),
-        "snapshot.auto-update-stale = true\n[remotes.origin]\nauto-track-bookmarks = \"(\"\n",
+        "snapshot.auto-update-stale = true\n[revset-aliases]\n'immutable_heads()' = 'missing'\n",
     )
     .expect("repo config");
+    git(&["branch", "outside"], &fx.root);
     let loaded = head_op(&fx.root);
 
     let err = repo
         .describe(ChangeId(default_at(&fx.root).change_id().reverse_hex()), "never")
-        .expect_err("malformed import option");
+        .expect_err("unresolvable immutable set");
 
     assert!(
         matches!(
             &err,
-            MutateError::Precondition(PreconditionError::Config { reason })
-                if reason.contains("remotes.origin.auto-track-bookmarks")
+            MutateError::Precondition(PreconditionError::Config { reason }) if reason.contains("missing")
         ),
         "{err:?}"
     );

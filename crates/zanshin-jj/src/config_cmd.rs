@@ -1165,7 +1165,7 @@ fn gc_delete_with(
     let missing = find_missing_repo_configs(&gc_root(env, warnings)?)?;
     let mut result = ConfigGcResult::default();
     for m in missing.iter().filter(|m| dirs.contains(&m.config_dir)) {
-        match secure_config::remove_repo_config_dir(&m.config_dir) {
+        match secure_config::remove_config_dir(&m.config_dir) {
             Ok(()) => result.deleted.push(m.config_dir.clone()),
             Err(e) => {
                 warnings.push(crate::warning::local(

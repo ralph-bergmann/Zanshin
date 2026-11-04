@@ -41,7 +41,6 @@ use std::sync::Arc;
 
 use jj_cli::commit_templater::CommitTemplateLanguage;
 use jj_cli::template_builder;
-use jj_cli::template_parser::{TemplateAliasParser, TemplateAliasesMap, TemplateDiagnostics};
 use jj_cli::templater::TemplateRenderer;
 use jj_lib::commit::Commit;
 use jj_lib::commit_builder::DetachedCommitBuilder;
@@ -52,6 +51,7 @@ use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::ref_name::{WorkspaceName, WorkspaceNameBuf};
 use jj_lib::repo::Repo as JjRepo;
 use jj_lib::revset::{RevsetExtensions, RevsetParseContext, RevsetWorkspaceContext, UserRevsetExpression};
+use jj_lib::template_parser::{TemplateAliasParser, TemplateAliasesMap, TemplateDiagnostics};
 use jj_lib::trailer::{parse_description_trailers, parse_trailers, Trailer};
 use jj_lib::ui_path::RepoPathUiConverter;
 use jj_lib::workspace::Workspace;
@@ -233,7 +233,7 @@ impl<'c> Templates<'c> {
             aliases_map: env.revset.aliases_map(),
             local_variables: std::collections::HashMap::new(),
             user_email: env.revset.user_email(),
-            date_pattern_context: chrono::Local::now().into(),
+            current_time: jiff::Zoned::now(),
             default_ignored_remote: Some("git".as_ref()),
             fileset_aliases_map: &env.fileset_aliases,
             extensions: &env.extensions,
@@ -363,8 +363,6 @@ impl<'c> Templates<'c> {
     /// # Errors
     ///
     /// - [`MutateError::Config`] — the key is not a string, or see [`Templates::parse_commit`].
-    /// - [`MutateError::InvalidInput`] — (Git backend) `builder` merges the root commit
-    ///   ([`crate::mutate::GIT_ROOT_MERGE`]), refused before the hidden write the backend refuses.
     /// - [`MutateError::Backend`] — the hidden write failed.
     pub(crate) fn new_description(
         &self,
@@ -377,8 +375,6 @@ impl<'c> Templates<'c> {
             return Ok(String::new());
         }
         let renderer = self.parse_commit(repo, &text, sink)?;
-        // The CLI's Git backend refuses a root merge at this hidden write (`new.rs:222`).
-        crate::mutate::refuse_git_root_merge(repo.store(), builder.parents())?;
         let temp = write_hidden(builder)?;
         Ok(complete_newline(&String::from_utf8_lossy(
             &renderer.format_plain_text(&temp),
@@ -581,7 +577,7 @@ mod tests {
         }
 
         fn head(&self) -> Arc<ReadonlyRepo> {
-            pollster::block_on(self.repo.workspace().repo_loader().load_at_head()).expect("head")
+            pollster::block_on(self.repo.workspace().load_at_head()).expect("head")
         }
     }
 
@@ -748,7 +744,7 @@ mod tests {
         );
         // The inner fault, with its position in the alias definition.
         assert!(reason.contains("1 | nope("), "{reason}");
-        assert!(reason.contains("expected <identifier> or <expression>"), "{reason}");
+        assert!(reason.contains("expected <argument>"), "{reason}");
     }
 
     /// Trailers that are no trailer block refuse with jj-lib's text.
@@ -859,7 +855,7 @@ mod tests {
         let mut sink = Warnings::default();
         let env = CommandEnv::load(repo.workspace(), &config, &mut sink).expect("start-up");
         super::load_aliases(&config, &mut sink).expect("loads again");
-        let head = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let head = pollster::block_on(repo.workspace().load_at_head()).expect("head");
         let templates = Templates::new(&config, &env.immutable, &env.template_startup, repo.workspace());
         templates
             .parse_commit(head.as_ref(), "change_id.shortest()", &mut sink)

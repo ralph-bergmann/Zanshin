@@ -823,12 +823,12 @@ fn cli_ref(r: &CommitRef) -> String {
 /// the ONE deliberate difference recorded on the golden test below: we render in the
 /// commit's OWN stored offset, not the viewer's local zone.
 fn cli_timestamp(meta: &CommitMeta) -> String {
-    let offset = chrono::FixedOffset::east_opt(meta.committer_timestamp.tz_offset_minutes * 60)
+    let offset = jiff::tz::Offset::from_seconds(meta.committer_timestamp.tz_offset_minutes * 60)
         .expect("a jj tz_offset is within a day");
-    chrono::DateTime::from_timestamp_millis(meta.committer_timestamp.millis_since_epoch)
+    jiff::Timestamp::from_millisecond(meta.committer_timestamp.millis_since_epoch)
         .expect("a jj timestamp is representable")
-        .with_timezone(&offset)
-        .format("%Y-%m-%d %H:%M:%S")
+        .to_zoned(jiff::tz::TimeZone::fixed(offset))
+        .strftime("%Y-%m-%d %H:%M:%S")
         .to_string()
 }
 

@@ -101,10 +101,12 @@
 //! 4. the start-up environment's warnings (alias tables, builtin redefinitions,
 //!    `immutable_heads()` diagnostics), loaded where the CLI's `for_workable_repo` builds the
 //!    workspace command (`init.rs:257`, `cli_util.rs:961-991`): after the refs step, before
-//!    `.jj/.gitignore` and the snapshot — which reads its snapshot knobs itself, inside the
-//!    snapshot step, after the colocated `import git head` (Story 9.34);
+//!    `.jj/.gitignore` and the snapshot — which reads its snapshot knobs first, before the
+//!    colocated `import git head` (`maybe_snapshot`, `cli_util.rs:1473` @ v0.47.0);
 //! 5. the implicit snapshot's own warnings, as every verb's precondition reports them — its
-//!    colocated refs import reports an unreadable ref a SECOND time, as the CLI does;
+//!    colocated refs import reports an unreadable ref a SECOND time, as the CLI does, and when it
+//!    imports nothing its export reports a ref step 3 could not write a second time too
+//!    (`import_export_git_refs`, `cli_util.rs:1586-1590` @ v0.47.0);
 //! 6. on the snapshot's success: `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`
 //!    (`cli_util.rs:1368`);
 //! 7. non-colocated only: the `import git head` finish — `jj.working_copy_immutable` (the new
@@ -462,16 +464,16 @@ pub(crate) fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> std
     std::fs::write(workspace_root.join(".jj").join(".gitignore"), "/*\n")
 }
 
-/// `do_init`'s `workspace_command.maybe_snapshot(ui)` (`cli/src/cli_util.rs:1359-1370` @
-/// v0.46.0): the implicit snapshot every verb runs first ([`crate::snapshot::snapshot_locked`]),
-/// under the Git import/export lock, on the repo the refs step left behind.
+/// `do_init`'s `workspace_command.maybe_snapshot(ui)` (`cli/src/cli_util.rs:1469-1480` @
+/// v0.47.0): the snapshot config read first, BEFORE the lock (`:1473`), then the implicit
+/// snapshot every verb runs ([`crate::snapshot::snapshot_locked`]) under the Git import/export
+/// lock, on the repo the refs step left behind.
 ///
 /// Its report is `report.precondition` — `Some` from the moment this starts, PARTIAL when a step
 /// fails, `was_snapshot_taken` computed as the verb precondition computes it — and its warnings
 /// land in `report.warnings`: the snapshot's own, then, on success only, the snapshot stats
-/// (`print_snapshot_stats`, printed after `snapshot_impl`). The snapshot step reads the snapshot
-/// knobs itself, after the colocated `import git head` (Story 9.34), so a wrong-typed knob fails
-/// the conversion with that operation reported in the partial report, as the CLI has written it.
+/// (`print_snapshot_stats`, printed after `snapshot_impl`). A wrong-typed knob fails the
+/// conversion before the snapshot writes anything, as in the CLI.
 fn maybe_snapshot(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
@@ -480,9 +482,11 @@ fn maybe_snapshot(
     report: &mut ConversionReport,
 ) -> Result<Arc<ReadonlyRepo>, RepoError> {
     let precondition = report.precondition.insert(crate::Precondition::default());
+    let snapshot_config = snapshot::SnapshotConfig::load(workspace, config, colocated, &mut report.warnings)
+        .map_err(precondition_error)?;
     let lock = snapshot::lock_git_import_export(workspace, colocated).map_err(convert_failed)?;
     let ctx = snapshot::StepCtx {
-        config,
+        snapshot: &snapshot_config,
         env,
         colocated,
         lock: &lock,
@@ -600,6 +604,7 @@ fn convert_into(settings: &UserSettings, path: &Path, report: &mut ConversionRep
     let (mut workspace, repo) = pollster::block_on(jj_lib::workspace::Workspace::init_external_git(
         settings,
         path,
+        WorkspaceName::DEFAULT,
         &git_repo_path,
     ))
     .map_err(|e| creation_error(&e, |reason| RepoError::ConvertFailed { reason }))?;
@@ -631,6 +636,7 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut Convers
     let (mut workspace, repo) = pollster::block_on(jj_lib::workspace::Workspace::init_external_git(
         &settings,
         &workspace_path,
+        WorkspaceName::DEFAULT,
         &resolved,
     ))
     .map_err(|e| creation_error(&e, |reason| RepoError::ConvertFailed { reason }))?;
@@ -651,9 +657,8 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut Convers
 /// Every step reports into `report` as it runs (Story 9.33), so a failure keeps what came
 /// before it: the refs step's warnings, the start-up environment's warnings (recorded where the
 /// CLI's `for_workable_repo` prints them, `init.rs:257`), `maybe_snapshot`'s report and
-/// warnings — PARTIAL when its snapshot step refuses a wrong-typed snapshot knob after the
-/// colocated `import git head` (Story 9.34) — and — non-colocated only — the head import's
-/// finish.
+/// warnings — PARTIAL when a later snapshot step fails after an earlier one committed — and —
+/// non-colocated only — the head import's finish.
 fn external_arm(
     workspace: &mut Workspace,
     repo: &Arc<ReadonlyRepo>,
@@ -752,8 +757,12 @@ mod tests {
     fn is_colocated_with_simple_backend_returns_false() {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let settings = settings();
-        let (ws, _repo) =
-            pollster::block_on(jj_lib::workspace::Workspace::init_simple(&settings, tmp.path())).expect("init_simple");
+        let (ws, _repo) = pollster::block_on(jj_lib::workspace::Workspace::init_simple(
+            &settings,
+            tmp.path(),
+            WorkspaceName::DEFAULT,
+        ))
+        .expect("init_simple");
         assert!(!is_colocated_git_workspace(&ws).expect("open"));
     }
 
@@ -765,8 +774,12 @@ mod tests {
     fn maybe_set_trunk_alias_with_simple_backend_is_a_convert_failure() {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let settings = settings();
-        let (ws, repo) =
-            pollster::block_on(jj_lib::workspace::Workspace::init_simple(&settings, tmp.path())).expect("init_simple");
+        let (ws, repo) = pollster::block_on(jj_lib::workspace::Workspace::init_simple(
+            &settings,
+            tmp.path(),
+            WorkspaceName::DEFAULT,
+        ))
+        .expect("init_simple");
         let result = maybe_set_trunk_alias(&ws, repo.as_ref());
         assert!(
             matches!(result, Err(RepoError::ConvertFailed { .. })),
@@ -788,7 +801,10 @@ mod tests {
             .expect("git init");
         let git_dir = root.join(".git");
         let (ws, _repo) = pollster::block_on(jj_lib::workspace::Workspace::init_external_git(
-            &settings, &root, &git_dir,
+            &settings,
+            &root,
+            WorkspaceName::DEFAULT,
+            &git_dir,
         ))
         .expect("init_external_git");
         assert!(is_colocated_git_workspace(&ws).expect("open"));
@@ -851,8 +867,13 @@ mod tests {
             .status()
             .expect("git spawns");
         assert!(status.success(), "git init");
-        let fixture = pollster::block_on(Workspace::init_external_git(&settings, root, &root.join(".git")))
-            .expect("init_external_git");
+        let fixture = pollster::block_on(Workspace::init_external_git(
+            &settings,
+            root,
+            WorkspaceName::DEFAULT,
+            &root.join(".git"),
+        ))
+        .expect("init_external_git");
         std::fs::write(root.join(".jj").join("repo").join("config.toml"), repo_config).expect("repo config");
         fixture
     }

@@ -900,13 +900,20 @@ fn an_unwritable_repo_config_aborts_the_transaction_after_the_git_config_edit() 
     // chmod — which follows the symlink — lands on the file the remote writer saves.
     repo.snapshot().expect("the snapshot migrates the legacy repo config");
     let before = head_op_id(&mut repo);
-    fs::set_permissions(&config_path, fs::Permissions::from_mode(0o444)).expect("chmod");
+    // The secure file's DIRECTORY: jj-lib 0.47 saves through a temp file next to the file,
+    // replacing even a read-only one.
+    let config_dir = fs::canonicalize(&config_path)
+        .expect("resolve")
+        .parent()
+        .expect("dir")
+        .to_owned();
+    fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o555)).expect("chmod");
 
     let err = repo
         .git_remote_remove("origin")
         .expect_err("an unwritable repo config must refuse");
 
-    fs::set_permissions(&config_path, fs::Permissions::from_mode(0o644)).expect("chmod back");
+    fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o755)).expect("chmod back");
     assert!(matches!(err, MutateError::Config { .. }), "got: {err:?}");
     assert_eq!(head_op_id(&mut repo), before, "the transaction was dropped");
     assert!(

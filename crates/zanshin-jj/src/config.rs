@@ -141,7 +141,6 @@ use jj_lib::config::{
     ConfigMigrateLayerError, ConfigMigrationRule, ConfigNamePathBuf, ConfigResolutionContext, ConfigSource,
     ConfigValue, StackedConfig,
 };
-use jj_lib::git_backend::{GitBackendInitError, GitBackendLoadError};
 use jj_lib::ref_name::RemoteRefSymbolBuf;
 use jj_lib::repo::StoreLoadError;
 use jj_lib::secure_config::{self, SecureConfig};
@@ -1334,19 +1333,16 @@ fn config_get_error(err: &(dyn std::error::Error + 'static)) -> Option<ConfigErr
 ///
 /// A wrong-typed value in any layer of the stack fails the load exactly where the CLI fails
 /// too, because jj-lib reads it from the settings the workspace is loaded WITH. Most readers
-/// keep the `ConfigGetError` in the source chain ([`config_get_error`]); the git backend
-/// (`GitSettings::from_settings`: `git.abandon-unreachable-commits` and its siblings) wraps
-/// it TRANSPARENTLY (`StoreLoadError::Backend` → `BackendLoadError` →
-/// `GitBackendLoadError::Config`), which hides it from the chain, so that one is dug out by
-/// type. Either way the result is the same `ConfigError` — naming the key — as a fault
+/// keep the `ConfigGetError` in the source chain ([`config_get_error`]); the git backend's
+/// factory (`UserSettings::git_backend_settings`: `git.executable-path` and its siblings) wraps
+/// it TRANSPARENTLY (`StoreLoadError::Backend` → `BackendLoadError(ConfigGetError)`,
+/// `default_backend_factories.rs` @ jj-lib 0.47.0), which hides it from the chain, so that one is
+/// dug out by type. Either way the result is the same `ConfigError` — naming the key — as a fault
 /// [`settings_from`] catches.
 pub(crate) fn load_config_fault(err: &WorkspaceLoadError) -> Option<ConfigError> {
     let git = match err {
         WorkspaceLoadError::StoreLoadError(StoreLoadError::Backend(BackendLoadError(inner))) => {
-            match inner.downcast_ref::<GitBackendLoadError>() {
-                Some(GitBackendLoadError::Config(e)) => Some(e),
-                _ => None,
-            }
+            inner.downcast_ref::<ConfigGetError>()
         }
         _ => None,
     };
@@ -1354,14 +1350,11 @@ pub(crate) fn load_config_fault(err: &WorkspaceLoadError) -> Option<ConfigError>
 }
 
 /// The config fault behind a failed workspace CREATION, if that is what it was — the
-/// creation-side twin of [`load_config_fault`]: every `GitBackend::init_*` reads the same
-/// `git.*` keys, transparently wrapped as `GitBackendInitError::Config`.
+/// creation-side twin of [`load_config_fault`]: every `Workspace::init_*_git` reads the same
+/// `git.*` keys, transparently wrapped as `BackendInitError(ConfigGetError)`.
 pub(crate) fn init_config_fault(err: &WorkspaceInitError) -> Option<ConfigError> {
     let git = match err {
-        WorkspaceInitError::Backend(BackendInitError(inner)) => match inner.downcast_ref::<GitBackendInitError>() {
-            Some(GitBackendInitError::Config(e)) => Some(e),
-            _ => None,
-        },
+        WorkspaceInitError::Backend(BackendInitError(inner)) => inner.downcast_ref::<ConfigGetError>(),
         _ => None,
     };
     git.map(value_error).or_else(|| config_get_error(err))
@@ -3499,7 +3492,6 @@ mod tests {
     fn load_config_fault_digs_out_only_the_git_backends_config_read() {
         use jj_lib::backend::BackendLoadError;
         use jj_lib::config::ConfigGetError;
-        use jj_lib::git_backend::GitBackendLoadError;
         use jj_lib::repo::StoreLoadError;
         use jj_lib::working_copy::WorkingCopyStateError;
         use jj_lib::workspace::WorkspaceLoadError;
@@ -3507,14 +3499,11 @@ mod tests {
         let backend = |inner: Box<dyn std::error::Error + Send + Sync>| {
             WorkspaceLoadError::StoreLoadError(StoreLoadError::Backend(BackendLoadError(inner)))
         };
-        let config = GitBackendLoadError::Config(ConfigGetError::NotFound {
-            name: "git.abandon-unreachable-commits".to_owned(),
-        });
+        let config = ConfigGetError::NotFound {
+            name: "git.executable-path".to_owned(),
+        };
         let fault = super::load_config_fault(&backend(Box::new(config))).expect("a config fault");
-        assert!(
-            fault.to_string().contains("git.abandon-unreachable-commits"),
-            "got: {fault}"
-        );
+        assert!(fault.to_string().contains("git.executable-path"), "got: {fault}");
 
         assert!(super::load_config_fault(&backend(Box::new(std::io::Error::other("x")))).is_none());
         assert!(super::load_config_fault(&WorkspaceLoadError::NoWorkspaceHere(PathBuf::from("/x"))).is_none());
@@ -3534,14 +3523,13 @@ mod tests {
     fn init_config_fault_digs_out_the_git_backends_and_the_chains_config_reads() {
         use jj_lib::backend::BackendInitError;
         use jj_lib::config::ConfigGetError;
-        use jj_lib::git_backend::GitBackendInitError;
         use jj_lib::working_copy::WorkingCopyStateError;
         use jj_lib::workspace::WorkspaceInitError;
 
         let not_found = |name: &str| ConfigGetError::NotFound { name: name.to_owned() };
         let backend =
             |inner: Box<dyn std::error::Error + Send + Sync>| WorkspaceInitError::Backend(BackendInitError(inner));
-        let git = backend(Box::new(GitBackendInitError::Config(not_found("git.x"))));
+        let git = backend(Box::new(not_found("git.x")));
         assert!(super::init_config_fault(&git)
             .expect("git fault")
             .to_string()
@@ -3868,11 +3856,13 @@ fetch-tags = \"none\"
 
         let (_tmp, path) = repo_config(PINNED);
         let file = load(&path);
-        // Set AFTER the load, so the load succeeds and only `save()` can fail.
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        // Set AFTER the load, so the load succeeds and only `save()` can fail. The DIRECTORY:
+        // jj-lib 0.47 saves through a temp file next to it, replacing even a read-only file.
+        let dir = path.parent().unwrap();
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o555)).unwrap();
         let err = rename_remote_in_repo_config(file, "origin", "upstream").expect_err("an unwritable file must refuse");
         let reason = err.to_string();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(
             reason.contains("config.toml"),
             "the io reason must name the file, got: {reason}"
@@ -4042,11 +4032,13 @@ fetch-bookmarks = \"main\"
 
         let (_tmp, path) = repo_config(PINNED);
         let file = load(&path);
-        // Set AFTER the load, so the load succeeds and only `save()` can fail.
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        // Set AFTER the load, so the load succeeds and only `save()` can fail. The DIRECTORY:
+        // jj-lib 0.47 saves through a temp file next to it, replacing even a read-only file.
+        let dir = path.parent().unwrap();
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o555)).unwrap();
         let err = set_trunk_alias(file, "main@origin").expect_err("an unwritable file must refuse");
         let reason = err.to_string();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(
             reason.contains("config.toml"),
             "the io reason must name the file, got: {reason}"

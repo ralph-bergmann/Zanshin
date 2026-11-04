@@ -306,7 +306,7 @@ pub(crate) fn plan_squash(
     // `select_diff` (`squash.rs:485-533`): the left side is each source's PARENT tree.
     let mut selections: Vec<CommitWithSelection> = Vec::with_capacity(sources.len());
     for source in &sources {
-        let parent_tree = pollster::block_on(source.parent_tree(tx.repo())).map_err(be)?;
+        let parent_tree = pollster::block_on(source.parent_tree(tx.repo().index())).map_err(be)?;
         let source_tree = source.tree();
         let labels = Diff::new(
             pollster::block_on(source.parents_conflict_label()).map_err(be)?,
@@ -725,7 +725,7 @@ pub(crate) fn prepare_split(
     };
 
     // "We check the parent commit to account for deleted files." (`split.rs:237-247`)
-    let parent_tree = pollster::block_on(target.parent_tree(tx.repo())).map_err(be)?;
+    let parent_tree = pollster::block_on(target.parent_tree(tx.repo().index())).map_err(be)?;
     let target_tree = target.tree();
     warn_unmatched(
         workspace,

@@ -38,7 +38,6 @@ use jj_lib::default_backend_factories::{default_backend_factories, default_worki
 use jj_lib::graph::TopoGroupedGraph;
 use jj_lib::repo::{ReadonlyRepo, Repo as JjRepo};
 use jj_lib::revset::{ResolvedRevsetExpression, RevsetFilterPredicate};
-use jj_lib::workspace::Workspace;
 use test_helpers::extract_fixture;
 
 type BenchErr = Box<dyn std::error::Error>;
@@ -94,14 +93,14 @@ fn measure<F: FnMut()>(warmup: u32, iters: u32, mut f: F) -> (Duration, Duration
 /// and ACL-clean (no `Repo` internals reached).
 fn load_head(path: &Path) -> Arc<ReadonlyRepo> {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         path,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("workspace must load");
-    pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head must succeed")
+    pollster::block_on(workspace.load_at_head()).expect("load_at_head must succeed")
 }
 
 /// Walk the whole commit graph in topological order (children-before-parents — the

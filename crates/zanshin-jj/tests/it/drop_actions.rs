@@ -20,7 +20,6 @@ use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::RefTarget;
 use jj_lib::ref_name::{RefName, WorkspaceName};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
     ActionOutcome, ActionStatus, Backend, ChangeId, DropLocation, DropSource, DropVerb, MutateError, Repo,
@@ -28,8 +27,6 @@ use zanshin_jj::{
 };
 
 const UNKNOWN: &str = "qpvuntsmwlqtpvuntsmwlqtpvuntsm";
-const GIT_ROOT_MERGE: &str =
-    "The Git backend does not support creating merge commits with the root commit as one of the parents.";
 const SPLIT_NO_PATHS: &str =
     "split needs paths or a selected tree: the CLI's interactive default without paths is the selected tree (select_tree)";
 
@@ -45,14 +42,14 @@ struct Fx {
 }
 
 fn load(root: &Path) -> Arc<ReadonlyRepo> {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &jj_lib::default_backend_factories::default_working_copy_factories(),
     )
     .expect("load workspace");
-    pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head")
+    pollster::block_on(workspace.load_at_head()).expect("load head")
 }
 
 fn change_id(commit: &Commit) -> ChangeId {
@@ -383,7 +380,8 @@ fn a_change_dropped_onto_the_root() {
             (DropVerb::RebaseSource, 0, available()),
             (DropVerb::RebaseRevisions, 0, available()),
             (DropVerb::Squash, 0, refused(&root_imm)),
-            (DropVerb::NewMerge, 0, refused(&invalid(GIT_ROOT_MERGE))),
+            // jj-lib 0.47 drops the root from the merge (jj #8076): a `new` on B.
+            (DropVerb::NewMerge, 0, available()),
             (DropVerb::Duplicate, 0, available()),
             // `roots(root..B)` is A, already on the root.
             (DropVerb::RebaseBranch, 0, no_op()),
@@ -431,7 +429,8 @@ fn the_root_dropped_onto_a_change() {
             (DropVerb::RebaseSource, 0, refused(&root_imm)),
             (DropVerb::RebaseRevisions, 0, refused(&root_imm)),
             (DropVerb::Squash, 0, refused(&root_imm)),
-            (DropVerb::NewMerge, 0, refused(&invalid(GIT_ROOT_MERGE))),
+            // jj-lib 0.47 drops the root from the merge (jj #8076): a `new` on A.
+            (DropVerb::NewMerge, 0, available()),
             (
                 DropVerb::Duplicate,
                 0,
@@ -446,52 +445,22 @@ fn the_root_dropped_onto_a_change() {
     );
 }
 
-/// A merge with the root among the new parents: the Git backend refuses the write, and every row
-/// that would write it says so with the backend's text — the query itself succeeds.
+/// A merge with the root among the new parents: since jj-lib 0.47 the Git backend drops the root
+/// instead of refusing the write (jj #8076), so every row that writes it is available.
 #[test]
-fn a_change_dropped_onto_the_root_and_another_change_refuses_the_root_merge() {
+fn a_change_dropped_onto_the_root_and_another_change_drops_the_root_parent() {
     let mut fx = base(None);
     let (b, d, zero) = (fx.b.clone(), fx.d.clone(), fx.zero.clone());
     let rows = query(&mut fx, &change(&b), &[onto(&[&zero, &d])]);
-    let root_merge = refused(&invalid(GIT_ROOT_MERGE));
     assert_eq!(
         rows,
         vec![
-            (DropVerb::RebaseSource, 0, root_merge.clone()),
-            (DropVerb::RebaseRevisions, 0, root_merge.clone()),
-            (DropVerb::NewMerge, 0, root_merge.clone()),
-            (DropVerb::Duplicate, 0, root_merge.clone()),
-            (DropVerb::RebaseBranch, 0, root_merge.clone()),
-            (DropVerb::Revert, 0, root_merge),
-        ]
-    );
-}
-
-/// The `new` / `duplicate` / `revert` rows refuse the root merge before they resolve the
-/// immutable set, as the verbs do: with the `immutable_heads()` alias broken they still preview
-/// the Git backend's refusal.
-#[test]
-fn the_root_merge_rows_refuse_before_the_immutable_set_resolves() {
-    let mut fx = base(None);
-    fs::write(
-        fx.root.join(".jj").join("repo").join("config.toml"),
-        crate::revert::UNRESOLVABLE_ALIAS,
-    )
-    .expect("repo config");
-    fx.repo = Repo::open(&fx.root).expect("reopen");
-    let _ = fx.repo.take_warnings();
-    let (b, d, zero) = (fx.b.clone(), fx.d.clone(), fx.zero.clone());
-    let rows: Vec<_> = query(&mut fx, &change(&b), &[onto(&[&zero, &d])])
-        .into_iter()
-        .filter(|(verb, _, _)| matches!(verb, DropVerb::NewMerge | DropVerb::Duplicate | DropVerb::Revert))
-        .collect();
-    let root_merge = refused(&invalid(GIT_ROOT_MERGE));
-    assert_eq!(
-        rows,
-        vec![
-            (DropVerb::NewMerge, 0, root_merge.clone()),
-            (DropVerb::Duplicate, 0, root_merge.clone()),
-            (DropVerb::Revert, 0, root_merge),
+            (DropVerb::RebaseSource, 0, available()),
+            (DropVerb::RebaseRevisions, 0, available()),
+            (DropVerb::NewMerge, 0, available()),
+            (DropVerb::Duplicate, 0, available()),
+            (DropVerb::RebaseBranch, 0, available()),
+            (DropVerb::Revert, 0, available()),
         ]
     );
 }
@@ -1183,7 +1152,8 @@ fn new_merge_rows_agree_with_new_change() {
     }
     assert_eq!(
         statuses,
-        [ActionStatus::Available, ActionStatus::Refused, ActionStatus::Refused]
+        // A root merge drops the root parent since jj-lib 0.47 (jj #8076).
+        [ActionStatus::Available, ActionStatus::Available, ActionStatus::Refused]
     );
 }
 

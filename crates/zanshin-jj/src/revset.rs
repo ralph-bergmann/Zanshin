@@ -117,7 +117,8 @@ impl RevsetError {
 pub enum RevsetErrorKind {
     /// A syntax error.
     SyntaxError,
-    /// An operator used as a prefix operator that is none (`:x`).
+    /// An operator used as a prefix operator that is none. jj-lib emits none since 0.47 (`:x` is a
+    /// plain syntax error now); kept so the FFI enum's values stay put.
     NotPrefixOperator,
     /// An operator used as a postfix operator that is none (`x^`).
     NotPostfixOperator,
@@ -604,7 +605,6 @@ fn parse_revset_in(
     // `mine()`'s input comes from the per-call effective config, like the aliases: the CLI
     // reads it per invocation, so an external `jj config set user.email` is seen at once.
     let user_email: &str = &parse_config.user_email;
-    let date_ctx: jj_lib::time_util::DatePatternContext = chrono::Local::now().into();
     let path_converter = RepoPathUiConverter::Fs {
         cwd: workspace_root.to_owned(),
         base: workspace_root.to_owned(),
@@ -651,7 +651,7 @@ fn parse_revset_in(
             .map(|(name, value)| (*name, revset::new_string_node(value)))
             .collect(),
         user_email,
-        date_pattern_context: date_ctx,
+        current_time: jiff::Zoned::now(),
         default_ignored_remote: Some("git".as_ref()),
         fileset_aliases_map: &fileset_aliases,
         extensions: &extensions,
@@ -673,7 +673,6 @@ fn parse_detail(expr: &str, e: &RevsetParseError) -> RevsetErrorDetail {
     use RevsetParseErrorKind as P;
     let (kind, symbol, candidates) = match e.kind() {
         P::SyntaxError => (K::SyntaxError, None, Vec::new()),
-        P::NotPrefixOperator { op, similar_op, .. } => (K::NotPrefixOperator, Some(op), vec![similar_op.clone()]),
         P::NotPostfixOperator { op, similar_op, .. } => (K::NotPostfixOperator, Some(op), vec![similar_op.clone()]),
         P::NotInfixOperator { op, similar_op, .. } => (K::NotInfixOperator, Some(op), vec![similar_op.clone()]),
         P::NoSuchFunction { name, candidates } => (K::NoSuchFunction, Some(name), candidates.clone()),
@@ -797,13 +796,43 @@ fn render_span(expr: &str, render: &str) -> Option<RevsetSpan> {
     })
 }
 
-/// The CLI's `format_similarity_hint` (`cli/src/command_error.rs:227` @ v0.46.0).
-fn similarity_hint(candidates: &[String]) -> Option<String> {
+/// The CLI's `format_similarity_hint` with `MAX_SIMILAR_NAMES` (`cli/src/command_error.rs:236-257`
+/// @ v0.47.0): the five candidates most similar to `name` — compared by `key` (the CLI's
+/// `SimilarSymbol`) — then a count of the rest.
+pub(crate) fn similarity_hint(name: &str, candidates: &[String], key: fn(&str) -> String) -> Option<String> {
+    struct Keyed<'a> {
+        key: String,
+        shown: &'a str,
+    }
+    impl AsRef<str> for Keyed<'_> {
+        fn as_ref(&self) -> &str {
+            &self.key
+        }
+    }
     if candidates.is_empty() {
         return None;
     }
-    let quoted: Vec<String> = candidates.iter().map(|c| format!("`{c}`")).collect();
-    Some(format!("Did you mean {}?", quoted.join(", ")))
+    let keyed: Vec<Keyed<'_>> = candidates.iter().map(|c| Keyed { key: key(c), shown: c }).collect();
+    let similar = jj_lib::dsl_util::take_most_similar(&key(name), &keyed, 5);
+    let quoted: Vec<String> = similar.iter().map(|s| format!("`{}`", s.shown)).collect();
+    let quoted = quoted.join(", ");
+    match candidates.len() - similar.len() {
+        0 => Some(format!("Did you mean {quoted}?")),
+        n => Some(format!("Did you mean {quoted}, or {n} others?")),
+    }
+}
+
+/// The CLI's `similarity_key` (`command_error.rs:376-391` @ v0.47.0): a symbol is compared by the
+/// name it refers to — unquoted, a remote symbol as `name\0remote` so the local `"a@b"` is not
+/// taken for `a@b`.
+fn symbol_key(symbol: &str) -> String {
+    use jj_lib::revset::ExpressionKind;
+    match revset::parse_program(symbol).map(|node| node.kind) {
+        Ok(ExpressionKind::Identifier(name)) => name.to_owned(),
+        Ok(ExpressionKind::String(name)) => name,
+        Ok(ExpressionKind::RemoteSymbol(symbol)) => format!("{}\0{}", symbol.name.as_str(), symbol.remote.as_str()),
+        _ => symbol.to_owned(),
+    }
 }
 
 /// The CLI's revset-syntax hint.
@@ -817,12 +846,7 @@ fn parse_hint(err: &RevsetParseError) -> Option<String> {
     let bottom = std::iter::successors(Some(err), |e| e.origin()).last()?;
     match bottom.kind() {
         P::SyntaxError => Some(REVSET_SYNTAX_HINT.to_owned()),
-        P::NotPrefixOperator {
-            similar_op,
-            description,
-            ..
-        }
-        | P::NotPostfixOperator {
+        P::NotPostfixOperator {
             similar_op,
             description,
             ..
@@ -832,7 +856,7 @@ fn parse_hint(err: &RevsetParseError) -> Option<String> {
             description,
             ..
         } => Some(format!("Did you mean `{similar_op}` for {description}?")),
-        P::NoSuchFunction { candidates, .. } => similarity_hint(candidates),
+        P::NoSuchFunction { name, candidates } => similarity_hint(name, candidates, str::to_owned),
         P::InvalidFunctionArguments { .. } | P::Expression(_) => source_hint(bottom),
         _ => None,
     }
@@ -882,7 +906,7 @@ fn fileset_hint(err: &FilesetParseError) -> Option<String> {
              match file paths."
                 .to_owned(),
         ),
-        F::NoSuchFunction { candidates, .. } => similarity_hint(candidates),
+        F::NoSuchFunction { name, candidates } => similarity_hint(name, candidates, str::to_owned),
         F::InvalidArguments { .. } | F::Expression(_) => source_hint(err),
         F::RedefinedFunctionParameter | F::InAliasExpansion(_) | F::InParameterExpansion(_) | F::RecursiveAlias(_) => {
             None
@@ -898,7 +922,7 @@ pub(crate) fn resolution_hints(err: &RevsetResolutionError) -> Vec<String> {
         format!("Use commit ID to select single revision from: {}", ids.join(", "))
     };
     match err {
-        R::NoSuchRevision { candidates, .. } => similarity_hint(candidates).into_iter().collect(),
+        R::NoSuchRevision { name, candidates } => similarity_hint(name, candidates, symbol_key).into_iter().collect(),
         R::DivergentChangeId {
             symbol,
             visible_targets,
@@ -1360,7 +1384,7 @@ mod tests {
             aliases_map: &parse_config.aliases_map,
             local_variables: std::collections::HashMap::new(),
             user_email: "",
-            date_pattern_context: chrono::Local::now().into(),
+            current_time: jiff::Zoned::now(),
             default_ignored_remote: None,
             fileset_aliases_map: &FilesetAliasesMap::new(),
             extensions: &jj_lib::revset::RevsetExtensions::default(),
@@ -1514,7 +1538,12 @@ mod tests {
         assert_eq!(postfix.kind, K::NotPostfixOperator);
         assert_eq!(postfix.symbol.as_deref(), Some("^"));
         assert_eq!(postfix.hints, ["Did you mean `-` for parents?"]);
-        assert_eq!(detail(":foo").hints, ["Did you mean `::` for ancestors?"]);
+        // jj 0.47 dropped the `:` compat operator: `:foo` is a plain syntax error now.
+        let colon = detail(":foo");
+        assert_eq!(
+            (colon.kind, colon.hints),
+            (K::SyntaxError, vec![super::REVSET_SYNTAX_HINT.to_owned()])
+        );
         let infix = detail("foo + bar");
         assert_eq!(infix.kind, K::NotInfixOperator);
         assert_eq!(infix.candidates, ["|"]);
@@ -1618,7 +1647,8 @@ mod tests {
             (parameter.kind, parameter.symbol.as_deref()),
             (K::InParameterExpansion, Some("x"))
         );
-        assert_eq!(parameter.hints, ["Did you mean `bisect`, `description`?"]);
+        // jj 0.47 (#8017): the most similar first.
+        assert_eq!(parameter.hints, ["Did you mean `description`, `bisect`?"]);
 
         let recursion = parse_error(&parse_config, root, "rec");
         let recursive = super::parse_detail("rec", recursion.origin().expect("the recursion level"));
@@ -1677,6 +1707,20 @@ mod tests {
         );
         assert!(resolution_hints(&R::AmbiguousChangeIdPrefix("k".to_owned())).is_empty());
         assert!(resolution_hints(&R::EmptyString).is_empty());
+    }
+
+    /// jj 0.47 (#8017): at most five names, the rest counted; a symbol compares by the name it
+    /// refers to — unquoted, a remote symbol apart from a local `"a@b"`.
+    #[test]
+    fn similarity_hints_cap_the_names_and_compare_symbols_by_their_name() {
+        let many: Vec<String> = ["aa", "ab", "ac", "ad", "ae", "af", "ag"].map(str::to_owned).into();
+        let hint = super::similarity_hint("a", &many, str::to_owned).expect("a hint");
+        assert!(hint.ends_with(", or 2 others?"), "{hint}");
+        assert_eq!(hint.matches('`').count(), 10, "five names: {hint}");
+
+        assert_eq!(super::symbol_key("\"a@b\""), "a@b");
+        assert_eq!(super::symbol_key("a@b"), "a\0b");
+        assert_eq!(super::symbol_key("x::"), "x::");
     }
 
     #[test]

@@ -479,8 +479,8 @@ fn parse_errors_carry_kind_span_symbol_candidates_and_hints() {
     let similar = parse_detail(&mut repo, &op, "descripton(x)");
     assert_eq!(similar.kind, RevsetErrorKind::NoSuchFunction);
     assert!(similar.candidates.iter().any(|c| c == "description"), "{similar:?}");
-    let quoted: Vec<String> = similar.candidates.iter().map(|c| format!("`{c}`")).collect();
-    assert_eq!(similar.hints, [format!("Did you mean {}?", quoted.join(", "))]);
+    // jj 0.47 (#8017): the most similar first, at most five.
+    assert_eq!(similar.hints, ["Did you mean `description`, `bisect`?"]);
 
     let unclosed = parse_detail(&mut repo, &op, r#"description("x"#);
     assert_eq!(unclosed.kind, RevsetErrorKind::SyntaxError);

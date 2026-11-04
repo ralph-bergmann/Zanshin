@@ -23,9 +23,7 @@ use jj_lib::rewrite::{duplicate_commits, duplicate_commits_onto_parents, Duplica
 use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
-use crate::mutate::{
-    be, finish_verb, mutation_result, refuse_git_root_merge, resolve_or_wc, MutateError, MutationResult,
-};
+use crate::mutate::{be, finish_verb, mutation_result, resolve_or_wc, MutateError, MutationResult};
 use crate::op_support::{
     resolve_commit_location, resolve_ordered, start_repo_transaction, LocationArgs, ONTO_WITH_INSERT,
 };
@@ -216,18 +214,13 @@ pub(crate) fn duplicate(
     let new_descriptions: HashMap<CommitId, String> = plan.to_duplicate.iter().cloned().zip(descriptions).collect();
 
     let DuplicateCommitsStats { duplicated_commits, .. } = match &plan.location {
-        Some((parents, children)) => {
-            // The Git backend refuses this write for a root merge; refused before it, after the
-            // template parse — the CLI's order.
-            refuse_git_root_merge(tx.repo().store(), parents)?;
-            pollster::block_on(duplicate_commits(
-                tx.repo_mut(),
-                &plan.to_duplicate,
-                &new_descriptions,
-                parents,
-                children,
-            ))
-        }
+        Some((parents, children)) => pollster::block_on(duplicate_commits(
+            tx.repo_mut(),
+            &plan.to_duplicate,
+            &new_descriptions,
+            parents,
+            children,
+        )),
         None => pollster::block_on(duplicate_commits_onto_parents(
             tx.repo_mut(),
             &plan.to_duplicate,
@@ -267,7 +260,7 @@ mod tests {
         let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture");
         let repo = crate::Repo::open(&fixture.path).expect("open");
         let name = repo.workspace().workspace_name().to_owned();
-        let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let readonly = pollster::block_on(repo.workspace().load_at_head()).expect("head");
         let store = readonly.store();
         let by_description = |description: &str| -> jj_lib::commit::Commit {
             let mut pending: Vec<CommitId> = readonly.view().heads().iter().cloned().collect();
@@ -335,7 +328,7 @@ mod tests {
         let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture");
         let repo = crate::Repo::open(&fixture.path).expect("open");
         let name = repo.workspace().workspace_name().to_owned();
-        let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let readonly = pollster::block_on(repo.workspace().load_at_head()).expect("head");
         let store = readonly.store();
         let by_description = |description: &str| -> CommitId {
             let mut pending: Vec<CommitId> = readonly.view().heads().iter().cloned().collect();

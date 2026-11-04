@@ -248,9 +248,8 @@ fn git_import_with_a_non_boolean_config_value_returns_jj_config_error() {
     test_helpers::pin_test_env();
     let tmp = tempfile::TempDir::new().unwrap();
     let handle = init_handle(tmp.path(), 1);
-    // The handle stays OPEN across the write: since Story 9.27 the stack is what the workspace
-    // is loaded with and the git backend reads this key itself, so a fresh `zanshin_repo_open`
-    // would already refuse with the same code; an open handle meets it at the pre-verb refresh.
+    // Since jj-lib 0.47 only the import's options read this key (no longer the backend load), so
+    // the import itself refuses with the config code.
     fs::write(
         tmp.path().join(".jj").join("repo").join("config.toml"),
         "[git]\nabandon-unreachable-commits = \"yes\"\n",

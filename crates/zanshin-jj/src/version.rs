@@ -7,7 +7,7 @@
 /// jj-lib exposes no version of its own, so this repeats the pin; the exact pin makes it the
 /// compiled version. A test fails, naming both values, when a pin bump leaves it behind the
 /// committed `Cargo.lock`.
-pub const JJ_LIB_VERSION: &str = "0.46.0";
+pub const JJ_LIB_VERSION: &str = "0.47.0";
 
 #[cfg(test)]
 mod tests {

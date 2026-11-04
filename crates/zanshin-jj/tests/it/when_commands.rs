@@ -16,7 +16,6 @@ use std::process::Command;
 
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::repo::Repo as _;
-use jj_lib::workspace::Workspace;
 use zanshin_jj::{
     config_file_read, config_file_write, config_gc_delete, config_gc_list, config_get, config_list, config_path,
     config_set, config_unset, resolve_revset, ActionStatus, Backend, ChangeId, ConfigListQuery, ConfigScope,
@@ -67,14 +66,14 @@ fn init_repo(tmp: &Path) -> Repo {
 /// `(committer email, author email)` of `@`, and the head operation's username — read from the
 /// store with jj-lib directly.
 fn head_facts(root: &Path) -> ((String, String), String) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
     let wc_id = repo
         .view()
         .get_wc_commit_id(workspace.workspace_name())

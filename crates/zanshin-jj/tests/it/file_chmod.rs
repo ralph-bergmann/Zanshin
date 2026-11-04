@@ -56,14 +56,14 @@ pub(crate) fn fx() -> Fx {
 }
 
 pub(crate) fn head(root: &Path) -> std::sync::Arc<jj_lib::repo::ReadonlyRepo> {
-    let workspace = jj_lib::workspace::Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &jj_lib::default_backend_factories::default_working_copy_factories(),
     )
     .expect("load workspace");
-    pollster::block_on(workspace.repo_loader().load_at_head()).expect("head")
+    pollster::block_on(workspace.load_at_head()).expect("head")
 }
 
 pub(crate) fn at(root: &Path) -> jj_lib::commit::Commit {

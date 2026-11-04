@@ -22,7 +22,7 @@ use zanshin_jj::{
 /// Open the fixture as a raw jj-lib `Workspace` for oracle reads.
 fn oracle_workspace(root: &Path) -> (Workspace, UserSettings) {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         root,
         &default_backend_factories(),
@@ -61,7 +61,7 @@ fn bookmarks_on_medium_equals_local_oracle() {
 
     // Build the oracle: walk view().local_bookmarks(), resolve CommitId → ChangeId.
     let (oracle_ws, _) = oracle_workspace(&fx.path);
-    let readonly = pollster::block_on(oracle_ws.repo_loader().load_at_head()).unwrap();
+    let readonly = pollster::block_on(oracle_ws.load_at_head()).unwrap();
     let view = readonly.view();
     let store = readonly.store();
     let mut oracle: Vec<(String, String)> = view
@@ -96,7 +96,7 @@ fn bookmarks_on_medium_equals_local_oracle() {
 fn setup_with_remote_bookmarks() -> (FixtureHandle, String) {
     let fx = extract_fixture("medium-1k-commits").unwrap();
     let (oracle_ws, _) = oracle_workspace(&fx.path);
-    let base = pollster::block_on(oracle_ws.repo_loader().load_at_head()).unwrap();
+    let base = pollster::block_on(oracle_ws.load_at_head()).unwrap();
 
     // Grab a real CommitId from the fixture's existing local bookmarks.
     let commit_id = base
@@ -281,7 +281,7 @@ fn bookmarks_conflicted_target_uses_first_added_change_id() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("medium-1k-commits").unwrap();
     let (oracle_ws, _) = oracle_workspace(&fx.path);
-    let base = pollster::block_on(oracle_ws.repo_loader().load_at_head()).unwrap();
+    let base = pollster::block_on(oracle_ws.load_at_head()).unwrap();
 
     // Collect three distinct commit ids from the fixture's local bookmarks to
     // build a divergent (multi-add) RefTarget. `added_ids()` preserves add order,
@@ -344,7 +344,7 @@ fn bookmarks_preserve_non_ascii_name_and_sort_by_codepoint() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("medium-1k-commits").unwrap();
     let (oracle_ws, _) = oracle_workspace(&fx.path);
-    let base = pollster::block_on(oracle_ws.repo_loader().load_at_head()).unwrap();
+    let base = pollster::block_on(oracle_ws.load_at_head()).unwrap();
     let commit_id = base
         .view()
         .local_bookmarks()
@@ -407,7 +407,7 @@ fn exact(n: u64) -> RefDistance {
 /// The reverse-hex change id of the commit `commit_hex`.
 fn change_of(root: &Path, commit_hex: &str) -> zanshin_jj::ChangeId {
     let (ws, _) = oracle_workspace(root);
-    let repo = pollster::block_on(ws.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(ws.load_at_head()).unwrap();
     let id = jj_lib::backend::CommitId::try_from_hex(commit_hex).unwrap();
     zanshin_jj::ChangeId(repo.store().get_commit(&id).unwrap().change_id().reverse_hex())
 }
@@ -668,7 +668,7 @@ fn a_tracked_remote_not_created_yet_has_no_target_and_no_distances() {
     let commit = add_commit_off_root(&fx.path, "n");
     set_local_bookmark(&fx.path, "n", &[&commit]);
     let (ws, _) = oracle_workspace(&fx.path);
-    let base = pollster::block_on(ws.repo_loader().load_at_head()).unwrap();
+    let base = pollster::block_on(ws.load_at_head()).unwrap();
     let mut tx = base.start_transaction();
     tx.repo_mut().set_remote_bookmark(
         RemoteRefSymbol {
@@ -722,7 +722,7 @@ fn a_conflicted_tracked_remote_is_conflicted_and_unsynced() {
     set_remote_bookmark(&fx.path, "x", "origin", &child, true);
     // Turn the remote target into a conflict [child, other].
     let (ws, _) = oracle_workspace(&fx.path);
-    let base = pollster::block_on(ws.repo_loader().load_at_head()).unwrap();
+    let base = pollster::block_on(ws.load_at_head()).unwrap();
     let ids = [&child, &other].map(|hex| jj_lib::backend::CommitId::try_from_hex(hex).unwrap());
     let mut tx = base.start_transaction();
     tx.repo_mut().set_remote_bookmark(
@@ -1002,7 +1002,7 @@ fn list_sorts_by_a_commit_dependent_key() {
     let (fx, p, c) = filter_fixture();
     let mut repo = Repo::open(&fx.path).unwrap();
     let (ws, _) = oracle_workspace(&fx.path);
-    let head = pollster::block_on(ws.repo_loader().load_at_head()).unwrap();
+    let head = pollster::block_on(ws.load_at_head()).unwrap();
     let author_ms = |hex: &str| {
         let id = jj_lib::backend::CommitId::try_from_hex(hex).unwrap();
         head.store().get_commit(&id).unwrap().author().timestamp.timestamp.0
@@ -1043,10 +1043,7 @@ fn list_refusals() {
     fs::write(fx.path.join("dirty.txt"), "dirty").unwrap();
     let head = |root: &Path| {
         let (ws, _) = oracle_workspace(root);
-        pollster::block_on(ws.repo_loader().load_at_head())
-            .unwrap()
-            .op_id()
-            .clone()
+        pollster::block_on(ws.load_at_head()).unwrap().op_id().clone()
     };
     let before = head(&fx.path);
     let conflict = BookmarkListOptions {

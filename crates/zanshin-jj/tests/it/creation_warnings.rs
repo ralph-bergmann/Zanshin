@@ -449,7 +449,9 @@ fn a_refs_step_that_imports_nothing_still_warns() {
 /// `remotes.origin.auto-track-bookmarks` makes the refs step create a local `foo/bar` from
 /// `foo/bar@origin`; its colocated export cannot write `refs/heads/foo/bar` beside
 /// `refs/heads/foo` (a Git file/directory conflict), so the refs step warns
-/// `jj.git_export_failed` (`git/init.rs:311-312`) — the conversion's first warning.
+/// `jj.git_export_failed` (`git/init.rs:311-312`) — the conversion's first warning. The
+/// snapshot's refs step then imports nothing and exports again (`import_export_git_refs`,
+/// `cli_util.rs:1586-1590` @ v0.47.0), so the same failure warns a second time.
 fn a_refs_step_export_failure_warns_first(tmp: &Path) {
     let user = tmp.join("auto-track.toml");
     fs::write(&user, "[remotes.origin]\nauto-track-bookmarks = \"glob:*\"\n").unwrap();
@@ -463,14 +465,21 @@ fn a_refs_step_export_failure_warns_first(tmp: &Path) {
 
     assert!(outcome.result.is_ok(), "{:?}", outcome.result);
     let kinds: Vec<WarningKind> = outcome.warnings.iter().map(|w| w.kind).collect();
-    assert_eq!(kinds, [WarningKind::GitExportFailed], "{:?}", outcome.warnings);
-    assert!(
-        outcome.warnings[0]
-            .message
-            .starts_with("Failed to export some bookmarks:\n  foo/bar"),
+    assert_eq!(
+        kinds,
+        [WarningKind::GitExportFailed, WarningKind::GitExportFailed],
         "{:?}",
-        outcome.warnings[0].message
+        outcome.warnings
     );
+    for warning in &outcome.warnings {
+        assert!(
+            warning
+                .message
+                .starts_with("Failed to export some bookmarks:\n  foo/bar"),
+            "{:?}",
+            warning.message
+        );
+    }
 }
 
 /// A bad `[revset-aliases]` entry: the conversion loads the alias tables where the CLI's
@@ -678,10 +687,10 @@ fn a_refs_step_failure_reports_no_snapshot(tmp: &Path) {
     assert_left_jj(&outcome.left_behind, dir.path());
 }
 
-/// Story 9.34: the conversion reads its snapshot knobs where the CLI does — inside
-/// `maybe_snapshot`'s snapshot step (`cli_util.rs:2065-2070`), after the colocated
-/// `import git head` — so a wrong-typed `snapshot.max-new-file-size` fails with the PARTIAL
-/// snapshot report naming that operation, and `.jj/` stays as the CLI leaves it (Story 9.57).
+/// The conversion reads its snapshot knobs where the CLI does — first thing in `maybe_snapshot`
+/// (`load_snapshot_config`, `cli_util.rs:1473` @ v0.47.0), before the colocated `import git
+/// head` — so a wrong-typed `snapshot.max-new-file-size` fails with an empty snapshot report,
+/// and `.jj/` stays as the CLI leaves it (Story 9.57).
 fn a_wrong_typed_snapshot_knob_fails_inside_the_conversion_snapshot(tmp: &Path) {
     let user = tmp.join("bad-size.toml");
     fs::write(&user, "snapshot.max-new-file-size = true\n").unwrap();
@@ -697,10 +706,10 @@ fn a_wrong_typed_snapshot_knob_fails_inside_the_conversion_snapshot(tmp: &Path) 
     assert!(reason.contains("snapshot.max-new-file-size"), "{reason}");
     let precondition = outcome.precondition.expect("the snapshot started");
     assert!(
-        precondition.git_head_imported,
-        "the head import ran before the knob was read"
+        !precondition.git_head_imported,
+        "the knob is read before the head import"
     );
-    assert!(precondition.was_snapshot_taken, "the head import moved the head");
+    assert!(!precondition.was_snapshot_taken, "nothing written");
     assert!(precondition.git_refs.is_none(), "the snapshot's refs import never ran");
     assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
     assert_left_jj(&outcome.left_behind, dir.path());

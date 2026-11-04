@@ -86,8 +86,8 @@ struct Advertisement {
 /// - [`MutateError::Config`] — `git.executable-path` does not read, or a `remotes.<name>` entry or
 ///   the remote's `fetch-bookmarks`/`fetch-tags` is malformed.
 /// - [`MutateError::InvalidInput`] — the remote's Git config does not read (jj-lib's
-///   `load_default_fetch_bookmarks`), or a filter cannot become a refspec (jj-lib's
-///   `expand_fetch_refspecs`, as the fetch refuses it).
+///   `load_default_fetch_bookmarks`). A filter that cannot become a refspec is no longer refused
+///   here: jj-lib 0.47 keeps that expansion private to the fetch, which refuses it.
 /// - [`MutateError::Cancelled`] — `cancel`'s token was cancelled.
 /// - [`MutateError::NetworkError`] — `git` could not run or failed.
 /// - [`MutateError::Backend`] — `git` printed something that is not a ref advertisement.
@@ -116,8 +116,6 @@ pub(crate) fn remote_changes(
         (None, None),
         &mut Vec::new(),
     )?;
-    // Refused as the fetch refuses it: a pattern that cannot become a refspec.
-    jj_lib::git::expand_fetch_refspecs(remote, filters.clone()).map_err(|e| crate::remotes::expansion_error(&e))?;
     let (bookmark_matcher, tag_matcher) = (filters.bookmark.to_matcher(), filters.tag.to_matcher());
     let options = crate::environment::git_subprocess_options(settings, cancel).map_err(mutate::cfg)?;
     crate::cancel::watch_store(cancel, store);

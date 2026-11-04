@@ -29,7 +29,7 @@ use jj_lib::default_backend_factories::{default_backend_factories, default_worki
 use jj_lib::git;
 use jj_lib::op_store::{OperationId, RefTarget};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
-use jj_lib::workspace::Workspace;
+use jj_lib::workspace::{DefaultWorkspaceLoaderFactory, Workspace, WorkspaceLoaderFactory as _};
 
 use crate::mutate::{self, be, cfg, flatten_chain, MutateError, MutationResult};
 use crate::op_diff::{ref_target, OpRefTarget};
@@ -176,13 +176,16 @@ fn reload(
 ) -> Result<Arc<ReadonlyRepo>, MutateError> {
     let settings = workspace.settings().clone();
     let root = workspace.workspace_root().to_owned();
-    *workspace = Workspace::load(
-        &settings,
-        &root,
-        &default_backend_factories(),
-        &default_working_copy_factories(),
-    )
-    .map_err(be)?;
+    *workspace = DefaultWorkspaceLoaderFactory
+        .create(&root)
+        .and_then(|loader| {
+            loader.load(
+                &settings,
+                &default_backend_factories(),
+                &default_working_copy_factories(),
+            )
+        })
+        .map_err(be)?;
     let loader = workspace.repo_loader();
     let op = pollster::block_on(loader.load_operation(op_id)).map_err(be)?;
     let repo = pollster::block_on(loader.load_at(&op)).map_err(be)?;
@@ -236,7 +239,7 @@ pub(crate) fn enable(workspace: &mut Workspace, ctx: &mut VerbContext) -> Result
         .map_err(|e| MutateError::invalid(format!("Failed to write .jj/.gitignore file: {e}")))?;
     let wc_commit = repo.store().get_commit(&wc_commit_id).map_err(be)?;
     let mut tx = start_repo_transaction(&repo, &name);
-    pollster::block_on(git::reset_head(tx.repo_mut(), &name, &root, &wc_commit))
+    pollster::block_on(git::reset_head(tx.repo_mut(), &name, &root, (None, &wc_commit)))
         .map_err(|e| be(format!("Failed to reset Git HEAD state: {}", flatten_chain(&e))))?;
     let finish = mutate::finish_verb(workspace, tx, "set git head to working copy parent", ctx)?;
     Ok(GitColocationResult {

@@ -128,14 +128,14 @@ fn write(root: &Path, rel: &str, content: &str) {
 }
 
 fn load(root: &Path) -> (Workspace, std::sync::Arc<ReadonlyRepo>) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("load workspace");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("load head");
     (workspace, repo)
 }
 
@@ -169,7 +169,7 @@ fn snapshot(root: &Path, force_all: bool) {
 }
 
 fn paths_of(tree: &MergedTree) -> Vec<String> {
-    tree.entries()
+    futures::executor::block_on_stream(tree.entries())
         .map(|(path, _)| path.as_internal_file_string().to_owned())
         .collect()
 }
@@ -631,7 +631,9 @@ fn untrack_rebases_descendants_of_at() {
 }
 
 /// A colocated workspace: the untrack also drops the git index's intent-to-add entry and
-/// exports refs in the same operation, so a bookmark on `@` follows the rewrite into git.
+/// exports refs in the same operation, so a bookmark on `@` follows the rewrite into git. (The
+/// never-exported bookmark is first exported by the pre-verb snapshot's refs step, `export git
+/// refs` — `import_export_git_refs`, `cli_util.rs:1586-1596` @ v0.47.0.)
 #[test]
 fn untrack_in_a_colocated_workspace_updates_the_git_index_and_exports_refs() {
     let fx = colocated_fx();
@@ -650,7 +652,11 @@ fn untrack_in_a_colocated_workspace_updates_the_git_index_and_exports_refs() {
 
     let result = repo.file_untrack(&strings(&["c.log"])).expect("untrack");
 
-    assert_eq!(op_count(&mut repo), before + 1, "export rides the same operation");
+    assert_eq!(
+        op_count(&mut repo),
+        before + 2,
+        "the precondition's export, then the untrack with its export riding along"
+    );
     assert_eq!(head_op_description(&mut repo), "untrack paths");
     assert!(
         !git(&["ls-files"], &fx.root).lines().any(|l| l == "c.log"),
@@ -685,17 +691,18 @@ fn untrack_in_a_colocated_workspace_reports_a_failed_bookmark_export() {
     assert_eq!(result.failed_bookmarks[0].name, "foo/bar");
     assert_eq!(result.failed_bookmarks[0].remote, "git");
     assert!(result.failed_tags.is_empty(), "{:?}", result.failed_tags);
-    // Story 9.32: `export_working_copy_changes_to_git`'s `print_git_export_stats` block — the
-    // only warning of this call (every path matched, nothing left untracked).
-    assert_eq!(warnings.len(), 1, "{warnings:?}");
-    assert_eq!(warnings[0].kind, WarningKind::GitExportFailed);
-    assert_eq!(
-        warnings[0].message,
-        format!(
-            "Failed to export some bookmarks:\n  foo/bar@git: {}",
-            result.failed_bookmarks[0].reason
-        )
+    // Story 9.32: `print_git_export_stats` twice — the pre-verb snapshot's refs step exports
+    // first (`cli_util.rs:1588-1590` @ v0.47.0), then `export_working_copy_changes_to_git` — the
+    // only warnings of this call (every path matched, nothing left untracked).
+    let expected = format!(
+        "Failed to export some bookmarks:\n  foo/bar@git: {}",
+        result.failed_bookmarks[0].reason
     );
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    for warning in &warnings {
+        assert_eq!(warning.kind, WarningKind::GitExportFailed);
+        assert_eq!(warning.message, expected);
+    }
 }
 
 /// A native (non-git) backend: no git export is attempted and the op is written.

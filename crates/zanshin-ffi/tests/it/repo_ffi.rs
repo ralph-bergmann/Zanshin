@@ -942,7 +942,7 @@ fn init_over_git_whose_snapshot_fails_names_its_jj_in_left_behind() {
 }
 
 /// Story 9.58: a git init into a NEW destination that fails after creating it (a wrong-typed
-/// `git.abandon-unreachable-commits` the git backend reads) is `jj.config_error`, and the error
+/// `git.write-change-id-header` the git backend reads) is `jj.config_error`, and the error
 /// envelope names the destination the call created — canonical — in `FfiError.left_behind`; jj-lib
 /// removed its own `.jj`. Runs in its own process: it points `JJ_CONFIG` at a file of its own.
 #[test]
@@ -951,7 +951,7 @@ fn init_into_a_new_destination_failing_late_names_it_in_left_behind() {
     test_helpers::pin_test_env();
     let tmp = TempDir::new().expect("tempdir");
     let user = tmp.path().join("bad-git.toml");
-    fs::write(&user, "[git]\nabandon-unreachable-commits = \"yes\"\n").expect("write the user config");
+    fs::write(&user, "[git]\nwrite-change-id-header = \"yes\"\n").expect("write the user config");
     // SAFETY: this test runs alone in its own process (`own_process!`), before any jj read.
     unsafe { std::env::set_var("JJ_CONFIG", &user) };
     let target = tmp.path().join("new-dest");

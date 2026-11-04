@@ -7,6 +7,7 @@ use clap::{ArgGroup, Args};
 use jj_lib::backend::{CommitId, CopyId, MillisSinceEpoch, Signature, Timestamp, TreeValue};
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::merged_tree::MergedTree;
+use jj_lib::merged_tree_builder::MergedTreeBuilder;
 use jj_lib::op_store::RefTarget;
 use jj_lib::ref_name::RefNameBuf;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
@@ -14,7 +15,6 @@ use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::settings::UserSettings;
 use jj_lib::store::Store;
 use jj_lib::transaction::Transaction;
-use jj_lib::tree_builder::TreeBuilder;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 
@@ -80,6 +80,7 @@ fn generate(size: FixtureSize) -> Result<(), BoxError> {
     let (_workspace, repo) = pollster::block_on(Workspace::init_internal_git(
         &settings,
         &workspace_root,
+        jj_lib::ref_name::WorkspaceName::DEFAULT,
         gix::hash::Kind::Sha1,
     ))?;
 
@@ -141,23 +142,22 @@ fn sig(commit_index: u32) -> Signature {
 }
 
 fn make_tree(store: &Arc<Store>, commit_index: u32) -> Result<MergedTree, BoxError> {
-    let mut builder = TreeBuilder::new(store.clone(), store.empty_tree_id().clone());
+    let mut builder = MergedTreeBuilder::new(store.empty_merged_tree());
     let path = RepoPathBuf::from_internal_string(format!("commit-{commit_index}.txt"))?;
     let content = format!("commit {commit_index}\n");
     // WHY: &[u8] implements futures AsyncRead, which jj-lib 0.42's Store::write_file wants;
     // no Cursor / tokio wrapper needed (the tokio io-util dep was dropped with this change).
     let mut reader = content.as_bytes();
     let file_id = pollster::block_on(store.write_file(&path, &mut reader))?;
-    builder.set(
+    builder.set_or_remove(
         path,
-        TreeValue::File {
+        Some(TreeValue::File {
             id: file_id,
             executable: false,
             copy_id: CopyId::placeholder(),
-        },
+        }),
     );
-    let tree_id = pollster::block_on(builder.write_tree())?;
-    Ok(MergedTree::resolved(store.clone(), tree_id))
+    Ok(pollster::block_on(builder.write_tree())?)
 }
 
 fn write_commit(

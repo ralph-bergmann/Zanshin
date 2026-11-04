@@ -21,11 +21,10 @@ description = "Zanshin — macOS Flutter GUI for the Jujutsu (jj) VCS"
 homepage = "https://github.com/dasralph/zanshin"
 repository = "https://github.com/dasralph/zanshin"
 authors = ["Ralph Bergmann <ralph@dasralph.de>"]
-rust-version = "1.97.1"
+rust-version = "1.99.1"
 publish = false
 
 [workspace.dependencies]
-chrono = { version = "=0.4.45", features = ["clock"] }  # WHY: the exact version cargo resolves for jj-lib 0.46's `^0.4.44` requirement (jj-lib declares a caret range, not an exact pin); DatePatternContext requires From<DateTime<Local>>
 clap = { version = "4", features = ["derive"] }
 etcetera = "=0.11.0"  # WHY: `zanshin-jj/src/wc_ops.rs`'s port of the CLI's `base_ignores` falls back to `etcetera::home_dir()/.config` exactly as the CLI does (`cli/src/cli_util.rs:1698` @ v0.46.0). Exact-pinned to the version jj's own workspace pins @ v0.46.0 (jj-lib itself stopped depending on it in 0.46, so zanshin-jj is now its only dependent here)
 flatbuffers = "=25.12.19"
@@ -37,7 +36,8 @@ getrandom = "=0.4.2"  # WHY: seeds the `ChaCha20Rng` that `SecureConfig::load_co
 # compiled with the `watchman` feature" error, where the CLI queries Watchman (and falls back to
 # a full scan when the daemon is unreachable). Story 9.26 snapshots before every verb, so the
 # feature is parity, not an option. Zanshin never bundles, installs or launches the daemon.
-jj-lib = { version = "=0.46.0", features = ["watchman"] }  # WHY: pre-1.0 exact-pin; API churn absorbed inside zanshin-jj (FR-JJ-16)
+jiff = "=0.2.38"  # WHY: jj-lib 0.47 moved from chrono to jiff — revset/template date patterns take a `jiff::Zoned` "now" (`core/src/time_util.rs` @ v0.47.0). Exact-pinned to the version jj's own Cargo.lock resolves @ v0.47.0 (jj-lib declares a caret range)
+jj-lib = { version = "=0.47.0", features = ["watchman"] }  # WHY: pre-1.0 exact-pin; API churn absorbed inside zanshin-jj (FR-JJ-16)
 # WHY: the jj CLI crate at EXACTLY the jj-lib pin, with two consumers. `crates/zanshin-jj` links
 # its LIBRARY for jj's template engine only (Story 9.51: `CommitTemplateLanguage`,
 # `template_builder::parse`, `TemplateRenderer`, the builtin `[template-aliases]`), never
@@ -45,7 +45,7 @@ jj-lib = { version = "=0.46.0", features = ["watchman"] }  # WHY: pre-1.0 exact-
 # parity oracle's CLI side (Story 9.47). Default features on purpose — they are the CLI's
 # (`cli/Cargo.toml:140` @ v0.46.0: `["watchman", "git"]`), which jj-lib is built with anyway.
 # Bump it together with `jj-lib` at every pin bump (project-context.md § zanshin-jj, "Pin bump").
-jj-cli = "=0.46.0"
+jj-cli = "=0.47.0"
 libc = "=0.2.186"  # WHY: `zanshin-jj/src/cancel.rs` (Story 9.52) walks our descendant processes (`proc_listchildpids`), reads their environment (`sysctl(KERN_PROCARGS2)`) and signals them (`kill`) to cancel a network verb — jj-lib spawns git with no cancel hook. Exact-pinned to the version already in Cargo.lock as a transitive (deny.toml forbids wildcards)
 notify-debouncer-full = "=0.7.0"  # WHY: watcher core; re-exports notify — no separate notify dep needed; pre-1.0 exact-pin (AD-5)
 pollster = "0.3"
@@ -55,7 +55,7 @@ serde = { version = "=1.0.228", features = ["derive"] }  # WHY: `zanshin-jj/src/
 shlex = "=2.0.1"  # WHY: `zanshin-jj/src/fix.rs` splits a quoted `fix.tools.<name>.command` string exactly as the CLI's `CommandNameAndArgs::split_name_and_args` does (`cli/src/config.rs` @ v0.46.0). Exact-pinned to the version already in Cargo.lock as a jj-cli transitive
 tar = "0.4"
 tempfile = "3"
-gix = { version = "=0.88.0", default-features = false } # WHY: gix::Repository/Direction required by remotes.rs, gix::hash::Kind by repo.rs and xtask's gen_fixture.rs; exact-pinned because gix::hash::Kind is passed INTO jj-lib's Workspace::init_internal_git, so a gix that drifts from jj-lib 0.46's transitive one is a type mismatch, not a warning
+gix = { version = "=0.90.0", default-features = false } # WHY: gix::Repository/Direction required by remotes.rs, gix::hash::Kind by repo.rs and xtask's gen_fixture.rs; exact-pinned because gix::hash::Kind is passed INTO jj-lib's Workspace::init_internal_git, so a gix that drifts from jj-lib 0.47's transitive one is a type mismatch, not a warning
 thiserror = "2"
 tracing = "0.1"
 tracing-appender = "0.2"
@@ -69,6 +69,9 @@ zstd = "0.14.3"  # WHY >=0.14.3: RUSTSEC-2026-0391 / -0398 / -0403 / -0410 (zstd
 # for single pedantic lints) take precedence over the group without a
 # Cargo "ambiguous lint priority" warning.
 pedantic = { level = "warn", priority = -1 }
+# WHY: new in Rust 1.99's pedantic group; its fix for the ~270 `assert!(x.is_empty())` in our
+# tests is `assert_eq!(x, [] as [T; 0])` — a typed empty literal per site, harder to read.
+assert_is_empty = "allow"
 
 # WHY: full DWARF debug info for the ~200+ dependency crates (not our own ~15) is
 # the single biggest contributor to target/ size for a tree this large, and (per

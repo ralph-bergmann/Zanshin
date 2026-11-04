@@ -8,6 +8,7 @@ use jj_lib::backend::{CommitId, CopyId, TreeValue};
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::{default_working_copy_factories, default_working_copy_factory};
 use jj_lib::merged_tree::MergedTree;
+use jj_lib::merged_tree_builder::MergedTreeBuilder;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::{RefTarget, RemoteRef, RemoteRefState};
 use jj_lib::ref_name::{RefNameBuf, RemoteRefSymbol, WorkspaceNameBuf};
@@ -15,8 +16,7 @@ use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::settings::UserSettings;
 use jj_lib::store::Store;
-use jj_lib::tree_builder::TreeBuilder;
-use jj_lib::workspace::Workspace;
+use jj_lib::workspace::{Workspace, WorkspaceLoaderFactory as _};
 use tempfile::TempDir;
 
 /// Handle returned by [`extract_fixture`]. Keeps the temp directory alive while the caller holds
@@ -303,20 +303,36 @@ pub fn build_changed_path_index(root: &Path) {
 
 // ── Shared plumbing ───────────────────────────────────────────────────────────
 
+/// jj-lib 0.46's `Workspace::load` (removed in 0.47): the default loader factory's loader for
+/// `workspace_root`, loaded with these factories — what the tests used to call.
+///
+/// # Errors
+/// Whatever the loader's creation or load returns.
+pub fn load_workspace(
+    settings: &jj_lib::settings::UserSettings,
+    workspace_root: &Path,
+    store_factories: &jj_lib::repo::StoreFactories,
+    working_copy_factories: &jj_lib::workspace::WorkingCopyFactories,
+) -> Result<Workspace, jj_lib::workspace::WorkspaceLoadError> {
+    jj_lib::workspace::DefaultWorkspaceLoaderFactory
+        .create(workspace_root)?
+        .load(settings, store_factories, working_copy_factories)
+}
+
 /// Loads the workspace at `workspace_root` and its head repo.
 ///
 /// # Panics
 /// Panics on any jj-lib failure — a failure here is a broken fixture.
 fn load(workspace_root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
     let settings = test_settings();
-    let workspace = Workspace::load(
+    let workspace = load_workspace(
         &settings,
         workspace_root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     (workspace, repo)
 }
 
@@ -340,7 +356,7 @@ pub enum Entry<'a> {
 /// Writes a tree built from an EMPTY base holding exactly `entries` (repo-relative internal
 /// path → what the entry is).
 fn entry_tree(store: &Arc<Store>, entries: &[(&str, Entry<'_>)]) -> MergedTree {
-    let mut builder = TreeBuilder::new(store.clone(), store.empty_tree_id().clone());
+    let mut builder = MergedTreeBuilder::new(store.empty_merged_tree());
     for (path, entry) in entries {
         let path = RepoPathBuf::from_internal_string(*path).unwrap();
         let value = match entry {
@@ -357,10 +373,9 @@ fn entry_tree(store: &Arc<Store>, entries: &[(&str, Entry<'_>)]) -> MergedTree {
                 TreeValue::Symlink(pollster::block_on(store.write_symlink(&path, target)).unwrap())
             }
         };
-        builder.set(path, value);
+        builder.set_or_remove(path, Some(value));
     }
-    let tree_id = pollster::block_on(builder.write_tree()).unwrap();
-    MergedTree::resolved(store.clone(), tree_id)
+    pollster::block_on(builder.write_tree()).unwrap()
 }
 
 /// Writes a tree built from an EMPTY base holding exactly `files` (repo-relative internal
@@ -754,6 +769,7 @@ pub fn add_workspace(workspace_root: &Path, name: &str) -> (FixtureHandle, Strin
         &repo,
         default_working_copy_factory().as_ref(),
         WorkspaceNameBuf::from(name.to_owned()),
+        Some(workspace.workspace_name()),
     ))
     .unwrap();
     let wc = repo

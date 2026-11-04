@@ -29,9 +29,7 @@ fn revert<const N: usize>(fx: &mut Fx, options: impl FnOnce(&Fx) -> RevertOption
 
 /// The repo paths `id`'s tree holds, sorted.
 fn files(fx: &Fx, id: &ChangeId) -> Vec<String> {
-    let mut paths: Vec<String> = commit(&fx.root, id)
-        .tree()
-        .entries()
+    let mut paths: Vec<String> = futures::executor::block_on_stream(commit(&fx.root, id).tree().entries())
         .map(|(path, _)| path.as_internal_file_string().to_owned())
         .collect();
     paths.sort();
@@ -262,9 +260,9 @@ fn clap_refusals_come_before_the_snapshot() {
 }
 
 #[test]
-fn unknown_immutable_and_root_merge_locations_are_refused() {
+fn unknown_and_immutable_locations_are_refused() {
     let mut fx = base();
-    let (a, b, c, zero) = (fx.a.clone(), fx.b.clone(), fx.c.clone(), fx.zero.clone());
+    let (a, c) = (fx.a.clone(), fx.c.clone());
     // A change id no commit carries (all `z` would be the root's).
     let unknown = ChangeId("kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk".to_owned());
     let err = refused(&mut fx, |repo| {
@@ -275,19 +273,6 @@ fn unknown_immutable_and_root_merge_locations_are_refused() {
         })
     });
     assert!(matches!(&err, MutateError::ChangeNotFound { .. }), "{err:?}");
-
-    let err = refused(&mut fx, |repo| {
-        repo.revert(&RevertOptions {
-            revisions: vec![b.clone()],
-            onto: vec![zero, a.clone()],
-            ..RevertOptions::default()
-        })
-    });
-    assert!(
-        matches!(&err, MutateError::InvalidInput { reason, .. }
-            if reason == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
-        "{err:?}"
-    );
 
     reconfigure(&mut fx, &immutable(&c));
     let err = refused(&mut fx, |repo| {
@@ -300,11 +285,10 @@ fn unknown_immutable_and_root_merge_locations_are_refused() {
     assert!(matches!(&err, MutateError::Immutable { .. }), "{err:?}");
 }
 
-/// A root merge is the Git backend's refusal at the first reverse commit's write, after the
-/// template parse (`revert.rs:132-187` @ v0.46.0): a broken template — alone or with the alias —
-/// names the template; a valid one, or only the alias broken, the backend. Nothing written.
+/// A root merge refuses only a broken template — alone or with the alias — naming the template;
+/// with a valid one the Git backend drops the root from the merge (jj-lib 0.47, jj #8076).
 #[test]
-fn a_root_merge_is_refused_after_the_template_parse() {
+fn a_root_merge_refuses_only_a_broken_template() {
     let mut fx = base();
     let (b, c, zero) = (fx.b.clone(), fx.c.clone(), fx.zero.clone());
     let options = RevertOptions {
@@ -321,18 +305,11 @@ fn a_root_merge_is_refused_after_the_template_parse() {
         let err = refused(&mut fx, |repo| repo.revert(&options));
         assert_config_class(&err, true, &config);
     }
-    for config in [
+    reconfigure(
+        &mut fx,
         "[templates]\nrevert_description = '\"undo \" ++ description'\n",
-        UNRESOLVABLE_ALIAS,
-    ] {
-        reconfigure(&mut fx, config);
-        let err = refused(&mut fx, |repo| repo.revert(&options));
-        assert!(
-            matches!(&err, MutateError::InvalidInput { reason, .. }
-                if reason == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
-            "{config}: {err:?}"
-        );
-    }
+    );
+    fx.repo.revert(&options).expect("a root merge is written");
 }
 
 /// `drop_actions`' `revert` rows (`jj revert -r S -o T` / `-B T`) and the verb on the same head:

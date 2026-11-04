@@ -1519,7 +1519,7 @@ fn ok_git_fetch_result(outcome: &GitFetchOutcome, report: &CallReport) -> Vec<u8
 /// `Patterns` = the `branches` / `tags` patterns, an empty list fetching none of that kind;
 /// `Tracked` = the tracked bookmarks and tags) and `cancel_token`. The working copy is
 /// snapshotted first (Story 9.26); then ONE transaction fetches remote by remote, imports once,
-/// and writes `fetch from git remote(s) <names joined by ",">` — only when something changed;
+/// and writes `fetch from git remote(s) <names joined by ", ">` — only when something changed;
 /// otherwise no operation is written and `new_op_id` is the pre-call head (Story 9.40).
 /// Never moves `@` unless the import abandoned it.
 ///

@@ -39,8 +39,7 @@ use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{
-    be, finish_verb, guard_rewritable, mutation_result, no_op_result, refuse_git_root_merge, resolve_or_wc,
-    MutateError, MutationResult,
+    be, finish_verb, guard_rewritable, mutation_result, no_op_result, resolve_or_wc, MutateError, MutationResult,
 };
 use crate::op_support::{
     resolve_commit_location, resolve_immutable, resolve_ordered, start_repo_transaction, LocationArgs, NO_LOCATION,
@@ -277,7 +276,6 @@ pub(crate) fn rebase_is_no_op(tx: &Transaction, loc: &MoveCommitsLocation) -> Re
         let parents = unique(parents.iter().cloned());
         if parents != commit.parent_ids() {
             moved = true;
-            refuse_git_root_merge(repo.store(), &parents)?;
         }
     }
     if moved {
@@ -858,7 +856,7 @@ mod tests {
         let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture");
         let repo = crate::Repo::open(&fixture.path).expect("open");
         let name = repo.workspace().workspace_name().to_owned();
-        let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let readonly = pollster::block_on(repo.workspace().load_at_head()).expect("head");
         let store = readonly.store();
         let by_description = |description: &str| -> jj_lib::commit::Commit {
             let mut pending: Vec<CommitId> = readonly.view().heads().iter().cloned().collect();
@@ -1039,7 +1037,6 @@ mod tests {
         use jj_lib::revset::{RevsetExpression, UserRevsetExpression};
 
         use super::{apply_move, jj_rebase_options, plan_rebase_revisions, plan_rebase_source, RebaseOptions};
-        use crate::mutate::{MutateError, GIT_ROOT_MERGE};
         use crate::op_support::LocationArgs;
         use crate::template::Templates;
         use crate::ChangeId;
@@ -1049,7 +1046,7 @@ mod tests {
         let mut repo = crate::Repo::open(&fixture.path).expect("open");
         // The fixture is `root → Commit 1 → Commit 2 → Commit 3` plus an empty @ off the root; add a merge M of
         // Commit 2 and @, and a child D on M: merges inside and below the targets, a child with several parents, and
-        // moves that would leave M with the root as a parent (the Git backend's refusal).
+        // moves that would leave M with the root as a parent (which the Git backend drops since jj-lib 0.47).
         let before = changes_of(&super::load_dry_run_head(repo.workspace()).expect("head"));
         let commit2 = before
             .iter()
@@ -1080,7 +1077,6 @@ mod tests {
         }
         let mut compared = 0;
         let mut moved = 0;
-        let mut root_merges = 0;
         for source in &sources {
             for target in &changes {
                 let one = [target.clone()];
@@ -1105,9 +1101,6 @@ mod tests {
                         let expected = apply_move(&mut dry, &loc, &jj_rebase_options(&RebaseOptions::default()), false)
                             .map(|_| !dry.repo().has_changes());
                         moved += usize::from(matches!(expected, Ok(false)));
-                        root_merges += usize::from(
-                            matches!(&expected, Err(MutateError::InvalidInput { reason, .. }) if reason == GIT_ROOT_MERGE),
-                        );
                         assert_eq!(
                             check.map_err(|e| e.to_string()),
                             expected.map_err(|e| e.to_string()),
@@ -1119,8 +1112,8 @@ mod tests {
             }
         }
         assert!(
-            compared > 20 && moved > 0 && moved < compared && root_merges > 0,
-            "{compared} plans, {moved} moves, {root_merges} root merges"
+            compared > 20 && moved > 0 && moved < compared,
+            "{compared} plans, {moved} moves"
         );
     }
 }

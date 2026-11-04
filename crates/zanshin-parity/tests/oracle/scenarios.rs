@@ -216,14 +216,14 @@ fn op_chain_read_back(root: &Path) -> String {
 
 /// Loads the workspace at `dir` and its repo at the head operation.
 fn load_workspace(dir: &Path) -> (Workspace, std::sync::Arc<jj_lib::repo::ReadonlyRepo>) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         dir,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &jj_lib::default_backend_factories::default_working_copy_factories(),
     )
     .expect("load the workspace");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load the head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("load the head");
     (workspace, repo)
 }
 

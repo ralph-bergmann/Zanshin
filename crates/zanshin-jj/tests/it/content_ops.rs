@@ -24,7 +24,6 @@ use jj_lib::backend::CommitId as JjCommitId;
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
-use jj_lib::workspace::Workspace;
 use test_helpers::{
     add_commit_with_files, add_conflicted_merge_off_root, add_conflicted_merge_with_extra_files, extract_fixture,
     set_tag, tree_hex, FixtureHandle,
@@ -36,14 +35,14 @@ use zanshin_jj::{AbsorbResult, ChangeId, MutateError, MutationResult, Repo};
 /// The head-resolved jj-lib repo — the oracle these tests read trees and change ids from.
 fn jj_repo(workspace_root: &Path) -> Arc<ReadonlyRepo> {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
-    pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head")
+    pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head")
 }
 
 /// The reverse-hex change id of the commit named by `commit_hex`.

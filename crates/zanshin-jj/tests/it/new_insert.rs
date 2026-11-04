@@ -37,14 +37,14 @@ struct Fx {
 }
 
 fn load(root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &jj_lib::default_backend_factories::default_working_copy_factories(),
     )
     .expect("load workspace");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("load head");
     (workspace, repo)
 }
 
@@ -454,23 +454,26 @@ fn insert_before_the_root_is_refused_as_immutable() {
     );
 }
 
-/// Story 9.31: a merge with the root commit among its parents is refused up front on a Git-backed
-/// repo, with the Git backend's own text — whichever position the root takes — and nothing is
-/// written. A single root parent (`[root, root]` deduplicates to it) stays a plain `new`.
+/// Since jj-lib 0.47 (jj #8076) the Git backend leaves the root commit out of a merge's parents
+/// instead of refusing it — whichever position the root takes — so `new` on `[B, root]` is a
+/// plain `new` on B, as in the CLI. A single root parent (`[root, root]`) stays a `new` on root.
 #[test]
-fn a_merge_with_the_root_is_refused_with_the_git_backend_text() {
-    let mut fx = base();
-    let (b, root) = (fx.b.clone(), root_change(&fx.root));
-
-    for parents in [[b.clone(), root.clone()], [root.clone(), b.clone()]] {
-        let err = refused(&mut fx, &parents, &[], &[]);
-        assert!(
-            matches!(&err, MutateError::InvalidInput { reason, .. } if reason
-                == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
-            "{err:?}"
-        );
+fn a_merge_with_the_root_drops_the_root_parent() {
+    for order in [0, 1] {
+        let mut fx = base();
+        let (b, root) = (fx.b.clone(), root_change(&fx.root));
+        let given = if order == 0 {
+            [b.clone(), root.clone()]
+        } else {
+            [root.clone(), b.clone()]
+        };
+        let result = fx.repo.new_change(&given, &[], &[]).expect("a root merge is written");
+        let n = assert_new(&fx, &result);
+        assert_eq!(parents(&fx.root, &n), [b]);
     }
 
+    let mut fx = base();
+    let root = root_change(&fx.root);
     let result = fx
         .repo
         .new_change(&[root.clone(), root.clone()], &[], &[])
@@ -479,40 +482,19 @@ fn a_merge_with_the_root_is_refused_with_the_git_backend_text() {
     assert_eq!(parents(&fx.root, &n), [root]);
 }
 
-/// Story 9.31: `-B` computes the parents of its targets — `-B A` (a child of the root) together with
-/// `-B E` (a child of D, another lineage) gives `[root, D]`, no loop and no immutable child — and
-/// that root merge is refused up front with the Git backend's text, nothing written.
+/// `-B A` (a child of the root) together with `-B E` (a child of D, another lineage) computes the
+/// parents `[root, D]`; the Git backend drops the root (jj-lib 0.47), so the new commit sits on D.
 #[test]
-fn an_insert_location_yielding_a_root_merge_is_refused_with_the_git_backend_text() {
+fn an_insert_location_yielding_a_root_merge_drops_the_root_parent() {
     let mut fx = base();
     let (a, root) = (fx.a.clone(), root_change(&fx.root));
     let d = described_child(&mut fx, &root, "D\n");
     let e = described_child(&mut fx, &d, "E\n");
 
-    let err = refused(&mut fx, &[], &[], &[a, e]);
+    let result = fx.repo.new_change(&[], &[], &[a, e]).expect("a root merge is written");
 
-    assert!(
-        matches!(&err, MutateError::InvalidInput { reason, .. } if reason
-            == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
-        "{err:?}"
-    );
-}
-
-/// With a valid non-empty template (the CLI's hidden write reaches the backend) or only the
-/// alias broken, a root merge still refuses with the Git backend's text, nothing written.
-#[test]
-fn a_root_merge_refuses_with_the_git_backend_text_with_a_valid_template_or_only_the_alias_broken() {
-    let mut fx = base();
-    let (c, root) = (fx.c.clone(), root_change(&fx.root));
-    for config in ["[templates]\nnew_description = '\"x\"'\n", UNRESOLVABLE_ALIAS] {
-        set_repo_config(&mut fx, config);
-        let err = refused(&mut fx, &[c.clone(), root.clone()], &[], &[]);
-        assert!(
-            matches!(&err, MutateError::InvalidInput { reason, .. } if reason
-                == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
-            "{config}: {err:?}"
-        );
-    }
+    let n = assert_new(&fx, &result);
+    assert_eq!(parents(&fx.root, &n), [d]);
 }
 
 /// The CLI refuses a root merge at its commit write, after it parsed `templates.new_description`

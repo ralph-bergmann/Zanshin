@@ -93,14 +93,14 @@ fn colocated(config: &str) -> Fx {
 }
 
 fn load(root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &jj_lib::default_backend_factories::default_working_copy_factories(),
     )
     .expect("load workspace");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("load head");
     (workspace, repo)
 }
 
@@ -289,7 +289,7 @@ fn wc_of_bookmark(root: &Path, name: &str) -> jj_lib::backend::CommitId {
 }
 
 #[test]
-fn an_empty_revision_set_refuses_after_the_workspace_exists() {
+fn an_empty_revision_set_refuses_before_the_workspace_exists() {
     let fx = init(Some(Backend::Git), "");
     let mut repo = Repo::open(&fx.root).expect("open");
 
@@ -308,11 +308,9 @@ fn an_empty_revision_set_refuses_after_the_workspace_exists() {
         matches!(&err, MutateError::InvalidInput { reason, .. } if reason == "Empty revision set"),
         "{err:?}"
     );
-    assert!(
-        fx.sibling("ws2").join(".jj").is_dir(),
-        "the workspace exists (CLI order)"
-    );
-    assert_eq!(descriptions(&fx.root)[0], "add workspace 'ws2'", "no second operation");
+    // jj 0.47 resolves the parents before creating anything (`add.rs:139-161`).
+    assert!(!fx.sibling("ws2").exists(), "nothing is created (CLI order)");
+    assert_ne!(descriptions(&fx.root)[0], "add workspace 'ws2'", "no operation");
 }
 
 #[test]
@@ -335,9 +333,9 @@ fn a_bad_revset_refuses_with_the_revset_code() {
         )
         .expect_err("resolve");
     assert!(matches!(err, MutateError::RevsetResolutionError { .. }), "{err:?}");
-    // Resolved after the workspace exists (`add.rs:226-252` @ v0.46.0): it stays, as in the CLI.
-    assert!(fx.sibling("ws3").join(".jj").is_dir(), "the workspace exists");
-    assert_eq!(descriptions(&fx.root)[0], "add workspace 'ws3'");
+    // Resolved before anything is created (`add.rs:139-161` @ v0.47.0), as in the CLI.
+    assert!(!fx.sibling("ws3").exists(), "nothing is created");
+    assert_ne!(descriptions(&fx.root)[0], "add workspace 'ws3'");
 }
 
 #[test]

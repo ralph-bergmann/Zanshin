@@ -15,7 +15,6 @@ use std::path::Path;
 use std::{env, fs};
 
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{Backend, Repo};
 
@@ -29,18 +28,14 @@ fn write(root: &Path, rel: &str, content: &str) {
 
 /// The paths of the working-copy STATE — what `track` records.
 fn wc_state_paths(root: &Path) -> Vec<String> {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("load workspace");
-    workspace
-        .working_copy()
-        .tree()
-        .expect("wc tree")
-        .entries()
+    futures::executor::block_on_stream(workspace.working_copy().tree().expect("wc tree").entries())
         .map(|(path, _)| path.as_internal_file_string().to_owned())
         .collect()
 }

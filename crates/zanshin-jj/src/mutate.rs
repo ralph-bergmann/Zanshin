@@ -74,7 +74,8 @@ pub struct MutationResult {
     /// [`crate::Repo::split`] that gets a new change id (Story 9.15), or (Story 9.9) the change
     /// ids [`crate::Repo::metaedit`]'s `update_change_id` minted (in its rewrite order) and the
     /// duplicates [`crate::Repo::duplicate`] created (jj-lib's `duplicated_commits` order:
-    /// parents before children). Any other rewrite ([`describe`], a `metaedit` without
+    /// parents before children), or the snapshot commits [`crate::Repo::workspace_remove`] wrote
+    /// for its targets. Any other rewrite ([`describe`], a `metaedit` without
     /// `update_change_id`, [`crate::Repo::fix`]) or a pointer move ([`edit`]) never mints a new
     /// change id, so this is empty for those. Empty for [`abandon`] unless
     /// `@` itself was among the abandoned ids. Always empty for [`crate::op_log::undo`]
@@ -754,9 +755,10 @@ pub(crate) struct Finish {
     pub(crate) committed: bool,
 }
 
-/// Resets `workspace_name`'s Git HEAD (in the git worktree at `workspace_root`) to `wc_commit`'s
-/// parent and the index to its tree — the CLI's `try_reset_git_head`
-/// (`cli/src/cli_util.rs:2730-2754` @ v0.46.0). A failure to MOVE the HEAD ref (a concurrent
+/// Resets `workspace_name`'s Git HEAD (in the git worktree at `workspace_root`) to the new `@`'s
+/// parent and the index to its tree — or, when only `@`'s tree changed since the old `@`, just its
+/// intent-to-add entries (jj-lib's `reset_head`; `None` forces the reset) — the CLI's
+/// `try_reset_git_head` (`cli/src/cli_util.rs:2570-2595` @ v0.47.0). A failure to MOVE the HEAD ref (a concurrent
 /// `git checkout`) is a warning there, so it is a `jj.git_head_update_failed` warning here
 /// (Story 9.32); the next snapshot imports whatever HEAD actually is.
 ///
@@ -767,10 +769,10 @@ pub(crate) fn try_reset_git_head(
     mut_repo: &mut MutableRepo,
     workspace_name: &WorkspaceName,
     workspace_root: &Path,
-    wc_commit: &Commit,
+    wc_commits: (Option<&Commit>, &Commit),
     sink: &mut Warnings,
 ) -> Result<(), MutateError> {
-    match pollster::block_on(git::reset_head(mut_repo, workspace_name, workspace_root, wc_commit)) {
+    match pollster::block_on(git::reset_head(mut_repo, workspace_name, workspace_root, wc_commits)) {
         Ok(()) => Ok(()),
         Err(e @ git::GitResetHeadError::UpdateHeadRef(_)) => {
             sink.extend([warning::git_head_update_failed(&e)]);
@@ -817,7 +819,7 @@ fn wc_is_immutable(
         .intersection(&RevsetExpression::commit(wc_commit.id().clone()))
         .evaluate(tx.repo())
         .map_err(be)?;
-    Ok(!set.is_empty().map_err(be)?)
+    Ok(!pollster::block_on(set.is_empty()).map_err(be)?)
 }
 
 /// Port of the CLI's `finish_transaction` (`cli/src/cli_util.rs:2347-2472` @ v0.46.0) minus its
@@ -889,7 +891,13 @@ pub(crate) fn finish_transaction(
     if ctx.colocated {
         if let Some(wc_commit) = &maybe_new_wc_commit {
             let workspace_root = workspace.workspace_root();
-            try_reset_git_head(tx.repo_mut(), &workspace_name, workspace_root, wc_commit, sink)?;
+            try_reset_git_head(
+                tx.repo_mut(),
+                &workspace_name,
+                workspace_root,
+                (maybe_old_wc_commit.as_ref(), wc_commit),
+                sink,
+            )?;
         }
         export_refs_into(tx.repo_mut(), &mut facts, sink)?;
     }
@@ -1166,12 +1174,8 @@ pub(crate) fn check_new_args(
 /// (Story 9.56); `drop_actions`' `Rows::new_change`, the rows' counterpart, resolves it itself
 /// after this plan.
 ///
-/// The plan does not refuse a merge with the root commit (Story 9.17 staleness run): the CLI
-/// reaches the Git backend's refusal at the commit write, after its description template, so
-/// [`new_change`] refuses it right before its write and `Rows::new_change` right after this plan
-/// ([`refuse_git_root_merge`]). `-A`/`-B` can yield such parents too — e.g. `-B` of a child of
-/// the root together with `-B` of a commit in another lineage takes the root and that commit's
-/// parent.
+/// A merge with the root commit among the parents is no refusal: since jj-lib 0.47 the Git backend
+/// leaves the root out of a merge's parents instead of refusing it (jj #8076), as in the CLI.
 ///
 /// The lists' shape is [`check_new_args`]', which [`crate::Repo::new_change`] runs before the
 /// snapshot; every caller passes a valid one.
@@ -1214,28 +1218,6 @@ pub(crate) fn plan_new(
     Ok(NewLocation { parents, children })
 }
 
-/// The Git backend's text for a merge with the root commit among its parents
-/// (`git_backend.rs:1345-1355` @ jj-lib 0.46.0), verbatim.
-pub(crate) const GIT_ROOT_MERGE: &str =
-    "The Git backend does not support creating merge commits with the root commit as one of the parents.";
-
-/// Refuses, before anything is written, the merge the Git backend would refuse at its write: two
-/// or more `parents` with the root commit among them, on a Git-backed store (Story 9.31). The CLI
-/// reaches the same text from the backend's write error. Each verb calls it after its template
-/// parse, the CLI's order: `new` before the template's hidden write or (empty template) its commit
-/// write, `duplicate` / `revert` before their first write. Their `drop_actions` rows call it right
-/// after the plan, so the previews refuse what the verbs refuse.
-pub(crate) fn refuse_git_root_merge(
-    store: &Arc<jj_lib::store::Store>,
-    parents: &[jj_lib::backend::CommitId],
-) -> Result<(), MutateError> {
-    let is_git = store.backend().name() == jj_lib::git_backend::GitBackend::NAME;
-    if is_git && parents.len() > 1 && parents.contains(store.root_commit_id()) {
-        return Err(MutateError::invalid(GIT_ROOT_MERGE.to_owned()));
-    }
-    Ok(())
-}
-
 /// An empty list is a flag that was not given (`None` for [`resolve_ordered`]).
 pub(crate) fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
     (!ids.is_empty()).then_some(ids)
@@ -1261,10 +1243,7 @@ pub(crate) fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — see [`plan_new`]; or (advance case) an
-///   `experimental-advance-branches` pattern does not parse; or (Git backend) two or more parents
-///   — positional or computed by `-A`/`-B` — including the root commit ([`GIT_ROOT_MERGE`]),
-///   refused before anything is written, after the description template is parsed (as the
-///   CLI's backend write refuses it).
+///   `experimental-advance-branches` pattern does not parse.
 /// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, or only-hidden.
 /// - [`MutateError::RevsetResolutionError`] — an id is an ambiguous change-id prefix or a divergent change (the
 ///   CLI's hints in `hints`), or `revsets.short-prefixes` fails to resolve.
@@ -1316,9 +1295,6 @@ pub(crate) fn new_change(
             builder.set_description(description);
         }
     }
-    // The Git backend refuses a root merge at the template's hidden write (`new.rs:221-222`,
-    // checked in `new_description`) or, with an empty template, at this write (`new.rs:237`).
-    refuse_git_root_merge(tx.repo().store(), &location.parents)?;
     let new_commit = pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
     // `new.rs:235-252`: replace each old parent that is a new parent by the new commit, then
     // append it — ordered and deduplicated, like the CLI's `IndexSet`.
@@ -1841,7 +1817,7 @@ pub(crate) fn plan_restore(
         (to_commit, from_tree, vec![from_commit])
     } else {
         let to_commit = resolve_or_wc(tx.repo(), workspace_name, prefixes, changes_in)?;
-        let from_tree = pollster::block_on(to_commit.parent_tree(tx.repo())).map_err(be)?;
+        let from_tree = pollster::block_on(to_commit.parent_tree(tx.repo().index())).map_err(be)?;
         let from_commits = pollster::block_on(to_commit.parents()).map_err(be)?;
         (to_commit, from_tree, from_commits)
     };
@@ -2368,9 +2344,7 @@ mod tests {
         })
         .result
         .expect("init");
-        let load_head = |repo: &crate::Repo| {
-            pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("load_at_head")
-        };
+        let load_head = |repo: &crate::Repo| pollster::block_on(repo.workspace().load_at_head()).expect("load_at_head");
         let at = load_head(&repo)
             .view()
             .get_wc_commit_id(repo.workspace().workspace_name())

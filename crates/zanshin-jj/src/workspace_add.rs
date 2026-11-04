@@ -11,7 +11,9 @@
 //! 1. the pre-verb snapshot of the CURRENT workspace ([`crate::Repo`]'s precondition);
 //! 2. the destination — the current workspace root joined with `destination` — and the name
 //!    (`--name`, else the destination's final component); an empty name and an existing name
-//!    refuse;
+//!    refuse; then the new `@`'s parents — the old `@`'s parents or the `revisions`' union
+//!    (evaluated in the OLD workspace's context) — so a bad revset refuses before anything is
+//!    created (v0.47.0);
 //! 3. the destination directory is created, or must be an empty directory;
 //! 4. the Git worktree, when colocation is asked for or defaulted (`git.colocate`, read only for
 //!    a colocated current workspace);
@@ -22,8 +24,8 @@
 //!    reported a second time, as the CLI prints them again, and a fault refuses as the current
 //!    workspace's would;
 //! 6. a colocated NEW workspace's `.jj/.gitignore`; the sparse patterns (copied, full or empty);
-//! 7. one transaction on the NEW workspace: the new `@` on the old `@`'s parents or on the
-//!    `revisions`' union (evaluated in the OLD workspace's context), a non-empty `-m` with
+//! 7. one transaction on the NEW workspace, attributed to the CURRENT one: the new `@` on the
+//!    parents of step 2, a non-empty `-m` with
 //!    `templates.commit_trailers` added (rendered with the NEW workspace's environment, Stories
 //!    9.51 and 9.54 — a template fault refuses here, after steps 3-6, exactly where the CLI
 //!    refuses), committed as `create initial working-copy commit in workspace <name>` through the
@@ -147,6 +149,22 @@ pub(crate) fn add(
             name: name.as_str().to_owned(),
         });
     }
+    // `add.rs:139-161` @ v0.47.0: the parents resolve BEFORE anything is created, so an invalid
+    // revset leaves no half-created workspace behind.
+    let parents = if args.revisions.is_empty() {
+        match old_repo.view().get_wc_commit_id(&old_name) {
+            Some(old_wc_id) => {
+                let old_wc = old_repo.store().get_commit(old_wc_id).map_err(be)?;
+                pollster::block_on(old_wc.parents()).map_err(be)?
+            }
+            None => vec![old_repo.store().root_commit()],
+        }
+    } else {
+        resolve_some_revsets(repo, ctx, &old_repo, args.revisions)?
+            .iter()
+            .map(|id| old_repo.store().get_commit(id).map_err(be))
+            .collect::<Result<Vec<Commit>, _>>()?
+    };
     if !destination.exists() {
         std::fs::create_dir(&destination).map_err(|e| be(format!("{}: {e}", destination.display())))?;
     } else if !file_util::is_empty_dir(&destination).map_err(|e| be(flatten_chain(&e)))? {
@@ -169,6 +187,7 @@ pub(crate) fn add(
         &old_repo,
         default_working_copy_factory().as_ref(),
         name.clone(),
+        Some(repo.workspace().workspace_name()),
     ))
     .map_err(|e| be(flatten_chain(&e)))?;
     if !args.destination.contains(std::path::is_separator) {
@@ -190,21 +209,8 @@ pub(crate) fn add(
         .map_err(|e| be(format!("Failed to write .jj/.gitignore file: {e}")))?;
     set_sparse_patterns(repo.workspace(), &mut new_workspace, &new_repo, args.sparse)?;
 
-    let mut tx = start_repo_transaction(&new_repo, &name);
-    let parents = if args.revisions.is_empty() {
-        match tx.base_repo().view().get_wc_commit_id(&old_name) {
-            Some(old_wc_id) => {
-                let old_wc = tx.repo().store().get_commit(old_wc_id).map_err(be)?;
-                pollster::block_on(old_wc.parents()).map_err(be)?
-            }
-            None => vec![tx.repo().store().root_commit()],
-        }
-    } else {
-        resolve_some_revsets(repo, ctx, &old_repo, args.revisions)?
-            .iter()
-            .map(|id| tx.repo().store().get_commit(id).map_err(be))
-            .collect::<Result<Vec<Commit>, _>>()?
-    };
+    // Attributed to the workspace the call ran in, so its `undo` undoes it (`add.rs:248-250`).
+    let mut tx = start_repo_transaction(&new_repo, &old_name);
     let tree = pollster::block_on(merge_commit_trees(tx.repo(), &parents)).map_err(be)?;
     let parent_ids = parents.iter().map(|c| c.id().clone()).collect();
     let mut builder = tx.repo_mut().new_commit(parent_ids, tree).detach();

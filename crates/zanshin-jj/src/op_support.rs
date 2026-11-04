@@ -153,12 +153,14 @@ fn immutable_hints(
 ) -> Result<Vec<String>, MutateError> {
     let commit = repo.store().get_commit(commit_id).map_err(be)?;
     let summary = templates.commit_summary(repo, &commit)?;
-    let (lower, upper) = immutable
-        .intersection(&to_rewrite.descendants())
-        .evaluate(repo)
-        .map_err(be)?
-        .count_estimate()
-        .map_err(be)?;
+    let (lower, upper) = pollster::block_on(
+        immutable
+            .intersection(&to_rewrite.descendants())
+            .evaluate(repo)
+            .map_err(be)?
+            .count_estimate(),
+    )
+    .map_err(be)?;
     let or_more = if upper == Some(lower) { "" } else { " or more" };
     Ok(vec![
         format!("Could not modify commit: {summary}"),
@@ -1053,7 +1055,7 @@ mod tests {
         let env =
             crate::snapshot::CommandEnv::load(repo.workspace(), &config, &mut crate::warning::Warnings::default())
                 .expect("builtin immutable_heads() parses");
-        let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("load_at_head");
+        let readonly = pollster::block_on(repo.workspace().load_at_head()).expect("load_at_head");
         let immutable = resolve_immutable(readonly.as_ref(), &env.immutable).expect("immutable set resolves");
         AtHead {
             repo,

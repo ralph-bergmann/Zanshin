@@ -51,7 +51,9 @@ use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, flatten_chain};
 use crate::op_support::start_repo_transaction;
-use crate::snapshot::{self, backend, CommandEnv, FinishFacts, Precondition, PreconditionError, StepCtx};
+use crate::snapshot::{
+    self, backend, CommandEnv, FinishFacts, Precondition, PreconditionError, SnapshotConfig, StepCtx,
+};
 use crate::warning::{self, Warnings};
 use crate::wc_ops::{self, SnapshotStats};
 use crate::{CommitId, OperationId};
@@ -139,13 +141,15 @@ what the parent commits are supposed to be. That means that the diff compared
 to the current parents may contain changes from multiple commits.
 ";
 
-/// `jj workspace update-stale`: the CLI's `recover_stale_working_copy` (`cli_util.rs:615-624` @
-/// v0.46.0) — takes the Git import/export lock and runs [`recover`] under it. The pre-verb
+/// `jj workspace update-stale`: the CLI's `recover_stale_working_copy` (`cli_util.rs:628-637` @
+/// v0.47.0) — takes the Git import/export lock, loads the [`SnapshotConfig`] the recovery's
+/// snapshots read (`:662`, `:778`) and runs [`recover`] under the lock. The pre-verb
 /// precondition does NOT run: this is the recovery.
 ///
 /// # Errors
 ///
-/// Anything [`recover`] returns, and [`PreconditionError::Backend`] for the lock.
+/// Anything [`SnapshotConfig::load`] or [`recover`] returns, and [`PreconditionError::Backend`]
+/// for the lock.
 pub(crate) fn run(
     workspace: &mut Workspace,
     config: &StackedConfig,
@@ -155,8 +159,12 @@ pub(crate) fn run(
     sink: &mut Warnings,
 ) -> Result<(StaleRecovery, working_copy::SnapshotStats), PreconditionError> {
     let lock = snapshot::lock_git_import_export(workspace, colocated)?;
+    // shortcut: the CLI's lost-operation arm loads the head (reconciling divergent heads) before
+    // its `load_snapshot_config` (`cli_util.rs:777-778` @ v0.47.0), so with divergent heads AND a
+    // bad knob it writes that reconcile first; port the order if that triple fault ever matters.
+    let snapshot = SnapshotConfig::load(workspace, config, colocated, sink)?;
     let ctx = StepCtx {
-        config,
+        snapshot: &snapshot,
         env,
         colocated,
         lock: &lock,
@@ -176,8 +184,7 @@ pub(crate) fn run(
 /// - [`PreconditionError::ConcurrentWorkingCopy`] — the working copy's recorded tree is not the
 ///   stale `@`'s ("Concurrent working copy operation. Try again."); a `reset git head` written
 ///   before the check stays, as in the CLI.
-/// - [`PreconditionError::Config`] — a snapshot knob or Git import option the snapshots read is
-///   wrong-typed.
+/// - [`PreconditionError::Config`] — the immutable set a snapshot resolves does not resolve.
 /// - [`PreconditionError::Backend`] — the workspace has no `@`, or any jj-lib failure (a
 ///   conflicted path of the head's `@` that cannot be read included).
 pub(crate) fn recover(
@@ -261,7 +268,7 @@ fn recover_at(
                     tx.repo_mut(),
                     &workspace_name,
                     &workspace_root,
-                    &desired_wc_commit,
+                    (Some(&stale_wc_commit), &desired_wc_commit),
                     sink,
                 )?;
                 if tx.repo().has_changes() {
@@ -417,8 +424,7 @@ mod tests {
         })
         .result
         .expect("init");
-        let load_head =
-            |repo: &crate::Repo| pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let load_head = |repo: &crate::Repo| pollster::block_on(repo.workspace().load_at_head()).expect("head");
         let name = repo.workspace().workspace_name().to_owned();
         let at = load_head(&repo).view().get_wc_commit_id(&name).expect("@").hex();
         let _ = test_helpers::rewrite_commit_files(repo.workspace_root(), &at, &[("elsewhere.txt", "x")]);

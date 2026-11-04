@@ -193,9 +193,9 @@ fn decode_column<'s>(
             ));
         }
         let mut bad = 0u8;
-        for (byte, pair) in dst.iter_mut().zip(raw.chunks_exact(2)) {
-            let hi = nibble(pair[0]);
-            let lo = nibble(pair[1]);
+        for (byte, &[hi, lo]) in dst.iter_mut().zip(raw.as_chunks::<2>().0) {
+            let hi = nibble(hi);
+            let lo = nibble(lo);
             bad |= hi | lo;
             *byte = (hi << 4) | (lo & 0x0f);
         }

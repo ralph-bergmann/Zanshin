@@ -27,13 +27,14 @@
 //!   file whose two file-like sides differ in mode can take the right mode
 //!   ([`FileChoice::ModeAndHunks`]), with or without sections; a binary file's mode can be taken
 //!   alone.
-//! - **Build** is `apply_diff_builtin` / `apply_changes` (`builtin.rs:405-545`): start from the
-//!   right tree, set every path of `left.diff_stream(right)` to its left value, then apply each
-//!   selected file — whole: the right value; the mode alone on a binary file: the left value with
-//!   the right mode; otherwise the matching text, the right side of the selected sections and the
-//!   left side of the others, written as the builtin's `write_file` writes it — over a resolved
-//!   left file a new file with the left copy id, over a conflicted one through
-//!   `conflicts::update_from_content`.
+//! - **Build** is `apply_diff_builtin` / `select_changes` (`builtin.rs:407-585` @ v0.47.0): each
+//!   selected file of `left.diff(right)` — whole: the right value, on top of the right tree; the
+//!   mode alone on a binary file: the left value with the right mode; otherwise the matching text,
+//!   the right side of the selected sections and the left side of the others, written as the
+//!   builtin's `write_file` writes it (over a resolved left file a new file with the left copy id,
+//!   over a conflicted one through `conflicts::update_from_content`) — these on top of the left
+//!   tree. Every changed path without a right value then takes the left tree's diff onto the right
+//!   tree (a three-way merge of the two trees, filtered to those paths).
 //! - **Stale** is a selection whose `left` is no longer the revision's parent tree (a rebase, a
 //!   rewritten parent), or a key that is not one of the file's current sections. A change to the
 //!   revision's OWN content is not stale: every verb snapshots first (9.26), the selected tree is
@@ -67,7 +68,7 @@ use jj_lib::conflict_labels::ConflictLabels;
 use jj_lib::conflicts::{update_from_content, ConflictMaterializeOptions, MIN_CONFLICT_MARKER_LEN};
 use jj_lib::diff::{ContentDiff, DiffHunkKind};
 use jj_lib::id_prefix::IdPrefixContext;
-use jj_lib::matchers::EverythingMatcher;
+use jj_lib::matchers::{EverythingMatcher, FilesMatcher};
 use jj_lib::merge::{Diff, Merge, SameChange};
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::merged_tree_builder::MergedTreeBuilder;
@@ -322,7 +323,7 @@ pub(crate) fn select_tree(
         Some(from) => crate::op_support::resolve_commit(repo, prefixes, from)
             .map_err(|e| res(e, Some(from)))?
             .tree(),
-        None => pollster::block_on(revision.parent_tree(repo)).map_err(be)?,
+        None => pollster::block_on(revision.parent_tree(repo.index())).map_err(be)?,
     };
     check_left(&parent_tree, &options.left)?;
     let materialize = ConflictMaterializeOptions {
@@ -356,21 +357,24 @@ fn parse_files(files: &[FileSelection]) -> Result<Vec<(RepoPathBuf, &FileChoice)
     Ok(parsed)
 }
 
-/// `apply_diff_builtin` (`builtin.rs:405-465` @ v0.46.0) over the GUI's choice; `trees` are the
-/// diff's left (parent) and right (revision) trees.
+/// `apply_diff_builtin` (`builtin.rs:407-492` @ v0.47.0) over the GUI's choice; `trees` are the
+/// diff's left (parent) and right (revision) trees. A right-derived value (a whole file) goes on
+/// top of the right tree, a left-derived one (sections, a binary file's mode) on top of the left
+/// tree; the changed paths without a right-derived value then take the left tree's diff onto the
+/// right tree, so differently conflicted sides keep their own shapes (and labels).
 async fn build(
     store: &Arc<Store>,
     trees: Diff<&MergedTree>,
     materialize: &ConflictMaterializeOptions,
     files: &[(RepoPathBuf, &FileChoice)],
 ) -> Result<MergedTree, MutateError> {
-    let mut builder = MergedTreeBuilder::new(trees.after.clone());
+    let mut left_builder = MergedTreeBuilder::new(trees.before.clone());
+    let mut right_builder = MergedTreeBuilder::new(trees.after.clone());
+    let mut right_paths = HashSet::new();
     let mut changed: HashMap<RepoPathBuf, Diff<MergedTreeValue>> = HashMap::new();
-    let mut stream = trees.before.diff_stream(trees.after, &EverythingMatcher);
+    let mut stream = trees.before.diff(trees.after, &EverythingMatcher);
     while let Some(entry) = stream.next().await {
-        let values = entry.values.map_err(be)?;
-        builder.set_or_remove(entry.path.clone(), values.before.clone());
-        changed.insert(entry.path, values);
+        changed.insert(entry.path, entry.values.map_err(be)?);
     }
     let sides = Sides {
         store,
@@ -382,7 +386,10 @@ async fn build(
             FileChoice::Whole => {
                 // An unchanged path already holds the right (= left) value.
                 if let Some(values) = changed.get(path) {
-                    builder.set_or_remove(path.clone(), values.after.clone());
+                    right_paths.insert(path.clone());
+                    right_builder
+                        .set_or_remove_merge(path.clone(), values.after.clone())
+                        .map_err(be)?;
                 }
                 continue;
             }
@@ -401,9 +408,24 @@ async fn build(
             });
         };
         let value = select_file(&sides, path, values, mode, keys).await?;
-        builder.set_or_remove(path.clone(), value);
+        left_builder.set_or_remove_merge(path.clone(), value).map_err(be)?;
     }
-    builder.write_tree().await.map_err(be)
+    let left_paths = FilesMatcher::new(changed.keys().filter(|path| !right_paths.contains(*path)));
+    let new_left = left_builder.write_tree().await.map_err(be)?;
+    let new_right = right_builder.write_tree().await.map_err(be)?;
+    MergedTree::merge(Merge::from_vec(vec![
+        (new_right, "right side of diff".to_owned()),
+        (
+            trees.after.filtered(&left_paths).await.map_err(be)?,
+            "right side of diff".to_owned(),
+        ),
+        (
+            new_left.filtered(&left_paths).await.map_err(be)?,
+            "changes selected from left side of diff".to_owned(),
+        ),
+    ]))
+    .await
+    .map_err(be)
 }
 
 /// Reads a changed path's two sides as the builtin editor does ([`materialize_file_like`]).

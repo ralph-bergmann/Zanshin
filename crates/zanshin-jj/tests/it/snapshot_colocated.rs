@@ -68,14 +68,14 @@ fn colocated(tmp: &TempDir) -> (PathBuf, Repo) {
 }
 
 fn load(root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("load workspace");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("load head");
     (workspace, repo)
 }
 
@@ -160,7 +160,7 @@ fn a_git_commit_outside_imports_head_then_refs() {
     );
     let (at_commit, at_parent) = at(&root);
     assert_eq!(at_parent, head, "@ sits on the new Git HEAD");
-    assert!(pollster::block_on(at_commit.is_empty(repo_for(&root).as_ref())).expect("emptiness"));
+    assert!(pollster::block_on(at_commit.is_empty(repo_for(&root).index())).expect("emptiness"));
     assert_eq!(git(&["rev-parse", "HEAD"], &root), head, "Git HEAD is untouched");
     assert_eq!(
         local_bookmark_target(&root, "main"),
@@ -400,12 +400,12 @@ fn a_held_git_import_export_lock_is_waited_for() {
     releaser.join().expect("releaser");
 }
 
-/// Story 9.34, the double fault "Git HEAD moved outside AND a wrong-typed snapshot knob": the CLI
-/// reads the snapshot knobs inside `snapshot_working_copy` (`cli_util.rs:2098-2103` @ v0.46.0),
-/// AFTER its lock and its `import git head` — so it writes that operation, then fails. Zanshin
-/// leaves the same op log, and the partial report says so.
+/// The double fault "Git HEAD moved outside AND a wrong-typed snapshot knob": the CLI reads the
+/// snapshot knobs in `load_snapshot_config` (`cli_util.rs:493`, `:1765-1788` @ v0.47.0), under its
+/// lock but BEFORE `import git head` — so it refuses and writes nothing. Zanshin leaves the same
+/// op log, and the partial report says so.
 #[test]
-fn a_wrong_typed_knob_fails_after_the_head_import_like_the_cli() {
+fn a_wrong_typed_knob_fails_before_the_head_import_like_the_cli() {
     let tmp = TempDir::new().expect("tempdir");
     let (root, mut repo) = colocated(&tmp);
     fs::write(
@@ -416,16 +416,16 @@ fn a_wrong_typed_knob_fails_after_the_head_import_like_the_cli() {
     let before = descriptions(&root).len();
     git(&["commit", "-q", "--allow-empty", "-m", "outside"], &root);
 
-    let err = repo.snapshot().expect_err("the snapshot step refuses the knob");
+    let err = repo.snapshot().expect_err("the snapshot config refuses the knob");
 
     assert!(
         matches!(&err, PreconditionError::Config { reason } if reason.contains("snapshot.max-new-file-size")),
         "{err:?}"
     );
-    assert_eq!(new_descriptions(&root, before), ["import git head"]);
+    assert!(new_descriptions(&root, before).is_empty(), "nothing written");
     let report = repo.take_precondition().expect("partial report");
-    assert!(report.git_head_imported);
-    assert!(report.was_snapshot_taken, "an operation WAS written before the failure");
+    assert!(!report.git_head_imported);
+    assert!(!report.was_snapshot_taken);
     assert!(report.git_refs.is_none(), "the refs step never ran");
 }
 
@@ -475,11 +475,11 @@ fn a_wrong_typed_knob_is_refused_only_once_the_held_lock_is_free() {
     );
 }
 
-/// Story 9.34: `snapshot.auto-track` is read with the other snapshot knobs, inside the snapshot
-/// step (`cli_util.rs:2098-2100` @ v0.46.0) — AFTER `import git head`, so a wrong-typed value
-/// leaves that operation in the op log, as in the CLI.
+/// `snapshot.auto-track` is read with the other snapshot knobs (`load_snapshot_config`,
+/// `cli_util.rs:1766` @ v0.47.0) — BEFORE `import git head`, so a wrong-typed value writes
+/// nothing, as in the CLI.
 #[test]
-fn a_wrong_typed_auto_track_fails_after_the_head_import_like_the_cli() {
+fn a_wrong_typed_auto_track_fails_before_the_head_import_like_the_cli() {
     let tmp = TempDir::new().expect("tempdir");
     let (root, mut repo) = colocated(&tmp);
     fs::write(
@@ -490,16 +490,16 @@ fn a_wrong_typed_auto_track_fails_after_the_head_import_like_the_cli() {
     let before = descriptions(&root).len();
     git(&["commit", "-q", "--allow-empty", "-m", "outside"], &root);
 
-    let err = repo.snapshot().expect_err("the snapshot step refuses the knob");
+    let err = repo.snapshot().expect_err("the snapshot config refuses the knob");
 
     assert!(
         matches!(&err, PreconditionError::Config { reason } if reason.contains("snapshot.auto-track")),
         "{err:?}"
     );
-    assert_eq!(new_descriptions(&root, before), ["import git head"]);
+    assert!(new_descriptions(&root, before).is_empty(), "nothing written");
     let report = repo.take_precondition().expect("partial report");
-    assert!(report.git_head_imported);
-    assert!(report.was_snapshot_taken, "an operation WAS written before the failure");
+    assert!(!report.git_head_imported);
+    assert!(!report.was_snapshot_taken);
 }
 
 /// The `[fileset-aliases]` table is part of the start-up environment (`cli_util.rs:963` @
@@ -577,11 +577,10 @@ fn a_bad_immutable_heads_alias_is_refused_before_the_lock() {
     assert_eq!(descriptions(&root).len(), before, "no operation at all");
 }
 
-/// A malformed Git import option fails where the CLI reads it — at the START of the refs step
-/// (`cli_util.rs:1463-1466` @ v0.46.0), AFTER `import git head` was committed: the op log keeps
-/// that operation and the partial report says so.
+/// A malformed Git import option fails where the CLI reads it — with the snapshot knobs, before
+/// any step (`cli_util.rs:1770-1777` @ v0.47.0): `import git head` is never written.
 #[test]
-fn an_invalid_import_option_fails_after_the_head_import_like_the_cli() {
+fn an_invalid_import_option_fails_before_the_head_import_like_the_cli() {
     let tmp = TempDir::new().expect("tempdir");
     let (root, mut repo) = colocated(&tmp);
     fs::write(
@@ -594,18 +593,47 @@ fn an_invalid_import_option_fails_after_the_head_import_like_the_cli() {
     git(&["add", "b.txt"], &root);
     git(&["commit", "-q", "-m", "outside"], &root);
 
-    let err = repo.snapshot().expect_err("the refs step refuses the malformed option");
+    let err = repo
+        .snapshot()
+        .expect_err("the snapshot config refuses the malformed option");
 
     assert!(
         matches!(&err, PreconditionError::Config { reason }
             if reason.contains("Invalid `remotes.origin.auto-track-bookmarks`")),
         "{err:?}"
     );
-    assert_eq!(new_descriptions(&root, before), ["import git head"]);
+    assert!(new_descriptions(&root, before).is_empty(), "nothing written");
     let report = repo.take_precondition().expect("partial report");
-    assert!(report.git_head_imported);
-    assert!(report.was_snapshot_taken, "an operation WAS written before the failure");
+    assert!(!report.git_head_imported);
+    assert!(!report.was_snapshot_taken);
     assert!(report.git_refs.is_none(), "the refs step never imported");
+}
+
+/// A local bookmark jj-lib wrote without exporting it: the refs import finds nothing to import,
+/// so the step exports instead (`import_export_git_refs`, `cli_util.rs:1586-1596` @ v0.47.0,
+/// jj #10478) and writes `export git refs` — the Git branch appears, and the report's refs
+/// mutation names that operation. The next snapshot finds nothing to export.
+#[test]
+fn an_unexported_bookmark_is_exported_by_the_refs_step() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (root, mut repo) = colocated(&tmp);
+    let head = git(&["rev-parse", "HEAD"], &root);
+    test_helpers::set_local_bookmark(&root, "unexported", &[&head]);
+    let before = descriptions(&root).len();
+
+    let report = repo.snapshot().expect("snapshot");
+
+    assert_eq!(new_descriptions(&root, before), ["export git refs"]);
+    assert_eq!(git(&["rev-parse", "refs/heads/unexported"], &root), head);
+    assert!(report.was_snapshot_taken);
+    let (_, jj_head) = load(&root);
+    let refs = report.git_refs.expect("the refs step ran");
+    assert_eq!(refs.mutation.new_op_id.0, jj_head.op_id().hex());
+    assert!(report.finish.is_none(), "every ref exported");
+
+    let before = descriptions(&root).len();
+    repo.snapshot().expect("second snapshot");
+    assert!(new_descriptions(&root, before).is_empty(), "nothing left to export");
 }
 
 /// `git.write-change-id-header` is one of the keys `GitSettings::from_settings` type-checks
@@ -771,9 +799,7 @@ fn converting_a_dirty_work_tree_snapshots_it() {
     assert!(ops(&root)[0].1, "the snapshot operation is flagged");
     let (at_commit, at_parent) = at(&root);
     assert_eq!(at_parent, head, "@ is re-parented onto HEAD");
-    let paths: Vec<String> = at_commit
-        .tree()
-        .entries()
+    let paths: Vec<String> = futures::executor::block_on_stream(at_commit.tree().entries())
         .map(|(path, _)| path.as_internal_file_string().to_owned())
         .collect();
     assert_eq!(paths, ["README.md", "untracked.txt"]);
@@ -905,10 +931,11 @@ fn a_workspace_without_at_still_imports_the_refs() {
     assert_eq!(new_descriptions(&root, before), ["import git refs"]);
 }
 
-/// `git export` in a colocated workspace returns before any transaction, as the CLI does ("No
-/// export needed in colocated workspaces.") — even for a jj bookmark never exported to Git.
+/// `git export` in a colocated workspace returns before a transaction of its own, as the CLI does
+/// ("No export needed in colocated workspaces.") — a jj bookmark never exported to Git is
+/// exported by the pre-verb snapshot's refs step instead (`export git refs`, jj #10478 @ v0.47.0).
 #[test]
-fn git_export_writes_nothing_in_a_colocated_workspace() {
+fn git_export_writes_nothing_of_its_own_in_a_colocated_workspace() {
     let tmp = TempDir::new().expect("tempdir");
     let (root, mut repo) = colocated(&tmp);
     let head = git(&["rev-parse", "HEAD"], &root);
@@ -926,14 +953,13 @@ fn git_export_writes_nothing_in_a_colocated_workspace() {
 
     let result = repo.git_export().expect("git export");
 
-    assert_eq!(descriptions(&root).len(), before, "no operation");
+    assert_eq!(
+        new_descriptions(&root, before),
+        ["export git refs"],
+        "the precondition's only"
+    );
     assert!(result.failed_bookmarks.is_empty());
-    let out = std::process::Command::new("git")
-        .args(["rev-parse", "--verify", "-q", "refs/heads/unexported"])
-        .current_dir(&root)
-        .output()
-        .expect("git spawns");
-    assert!(!out.status.success(), "the bookmark stays unexported");
+    assert_eq!(git(&["rev-parse", "refs/heads/unexported"], &root), head);
 }
 
 /// A finish whose Git HEAD reset cannot take `HEAD.lock` (a concurrent `git` holds it) is a

@@ -11,7 +11,7 @@ workspace:
   - packages/*
 
 dev_dependencies:
-  melos: ^7.8.1
+  melos: ^8.10.0
 
 melos:
   ide:

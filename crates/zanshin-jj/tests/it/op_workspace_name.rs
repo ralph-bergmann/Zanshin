@@ -33,7 +33,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{add_workspace, extract_fixture};
 use zanshin_jj::{convert_colocated, convert_import, resolve_revset, Backend, ChangeId, Repo};
@@ -56,14 +55,14 @@ fn head_op_workspace_name(root: &Path) -> Option<String> {
 /// root), so the convert rows pass 4 and reach the root either way; the cap only keeps a row on
 /// a larger repo from walking the entire history.
 fn recent_ops(root: &Path, limit: usize) -> Vec<(String, Option<String>)> {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
 
     let mut op = repo.operation().clone();
     let mut rows = Vec::new();

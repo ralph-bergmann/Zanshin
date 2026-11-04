@@ -11,7 +11,6 @@ use std::process::Command;
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::object_id::ObjectId;
 use jj_lib::ref_name::{RefName, RemoteName};
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
     Backend, BookmarkKind, ConfigScope, ConfigTarget, FetchRefs, FetchRemotes, GitFetchArgs, GitFetchOutcome,
@@ -196,14 +195,14 @@ impl Fx {
     }
 
     fn load_head(&self) -> std::sync::Arc<jj_lib::repo::ReadonlyRepo> {
-        let workspace = Workspace::load(
+        let workspace = test_helpers::load_workspace(
             &test_helpers::test_settings(),
             &self.root,
             &default_backend_factories(),
             &default_working_copy_factories(),
         )
         .expect("load workspace");
-        pollster::block_on(workspace.repo_loader().load_at_head()).expect("load head")
+        pollster::block_on(workspace.load_at_head()).expect("load head")
     }
 
     /// The names of the tags tracked from `remote`.
@@ -308,7 +307,7 @@ fn git_fetch_names_the_remotes_in_remote_order() {
     fx.set("git.fetch", "['up', 'origin']");
     let outcome = fx.fetch(&GitFetchArgs::default()).expect("fetch both");
     assert_eq!(outcome.remotes, strings(&["origin", "up"]));
-    assert_eq!(fx.head_op().1, "fetch from git remote(s) origin,up");
+    assert_eq!(fx.head_op().1, "fetch from git remote(s) origin, up");
 
     up.commit("main", "second");
     fx.set("git.fetch", "'up'");
@@ -360,7 +359,7 @@ fn all_remotes_are_fetched_in_one_operation() {
         .expect("fetch all");
     assert_eq!(outcome.remotes, strings(&["origin", "up"]));
     assert_eq!(fx.repo.op_log(None).expect("op log").len(), before + 1, "ONE operation");
-    assert_eq!(fx.head_op().1, "fetch from git remote(s) origin,up");
+    assert_eq!(fx.head_op().1, "fetch from git remote(s) origin, up");
     assert_eq!(fx.remote_bookmark("main", "origin"), Some(origin.head("main")));
     assert_eq!(fx.remote_bookmark("main", "up"), Some(up.head("main")));
 }
@@ -613,10 +612,12 @@ fn git_fetch_remotes_resolves_each_default_row() {
     }
 }
 
-/// A ref in jj's reserved `refs/remotes/git/` namespace of the backing Git repo fails the
-/// fetch's import: it warns `jj.git_import_failed` and is reported by name.
+/// Since jj-lib 0.47 a fetch imports only the refs it fetched (into a temporary namespace,
+/// `diff_fetched_refs_to_import`): a ref in jj's reserved `refs/remotes/git/` namespace of the
+/// backing Git repo is not the fetch's to import, so it is neither reported nor warned (the
+/// `git_import` verb still reports it).
 #[test]
-fn a_ref_the_import_cannot_read_is_reported() {
+fn a_ref_outside_the_fetched_refs_is_not_the_fetchs_to_report() {
     let dir = TempDir::new().unwrap();
     let origin = Upstream::new(dir.path(), "origin");
     let mut fx = Fx::new(&[("origin", &origin)]);
@@ -635,13 +636,9 @@ fn a_ref_the_import_cannot_read_is_reported() {
     origin.commit("main", "second");
     let outcome = fx.fetch(&GitFetchArgs::default()).expect("second fetch");
     let warnings = fx.repo.take_warnings();
-    assert_eq!(outcome.failed_ref_names, strings(&["refs/remotes/git/stolen"]));
+    assert!(outcome.failed_ref_names.is_empty(), "{:?}", outcome.failed_ref_names);
     assert!(
-        has(
-            &warnings,
-            WarningKind::GitImportFailed,
-            "Failed to import some Git refs:\n  refs/remotes/git/stolen"
-        ),
+        !warnings.iter().any(|w| w.kind == WarningKind::GitImportFailed),
         "{warnings:?}"
     );
 }
@@ -742,7 +739,8 @@ fn the_poll_filters_tags_like_the_fetch() {
 }
 
 /// A malformed filter refuses the poll as `Config`; a pattern the fetch cannot turn into a
-/// refspec refuses both as `InvalidInput`.
+/// refspec refuses the fetch as `InvalidInput` — the poll no longer pre-checks it (jj-lib 0.47
+/// keeps the expansion private to the fetch).
 #[test]
 fn the_poll_refuses_what_the_fetch_refuses() {
     let dir = TempDir::new().unwrap();
@@ -757,29 +755,19 @@ fn the_poll_refuses_what_the_fetch_refuses() {
 
     // `InvalidBranchPattern`: no hint, as the CLI (`command_error.rs:604-609` @ v0.46.0).
     fx.set("remotes.origin.fetch-bookmarks", "'glob:\"a?b\"'");
-    let err = fx.repo.remote_changes("origin", None).expect_err("no refspec");
-    assert!(
-        matches!(&err, MutateError::InvalidInput { hints, .. } if hints.is_empty()),
-        "{err:?}"
-    );
     let err = fx.fetch(&GitFetchArgs::default()).expect_err("no refspec");
     assert!(
         matches!(&err, MutateError::InvalidInput { hints, .. } if hints.is_empty()),
         "{err:?}"
     );
 
-    // `Expression` (a positive intersection): the CLI's pattern hint, on the poll and the fetch.
+    // `Expression` (a positive intersection): the CLI's pattern hint, on the fetch.
     fx.set("remotes.origin.fetch-bookmarks", "'a & b'");
     let hint = ["Specify patterns in `(positive | ...) & ~(negative | ...)` form."];
-    let err = fx.repo.remote_changes("origin", None).expect_err("not refspec-shaped");
+    let err = fx.fetch(&GitFetchArgs::default()).expect_err("not refspec-shaped");
     assert!(
         matches!(&err, MutateError::InvalidInput { reason, hints }
             if reason == "Cannot use `&` for positive expressions" && *hints == hint),
-        "{err:?}"
-    );
-    let err = fx.fetch(&GitFetchArgs::default()).expect_err("not refspec-shaped");
-    assert!(
-        matches!(&err, MutateError::InvalidInput { hints, .. } if *hints == hint),
         "{err:?}"
     );
 }

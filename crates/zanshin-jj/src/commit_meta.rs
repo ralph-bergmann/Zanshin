@@ -275,7 +275,7 @@ pub(crate) fn object_half(
 /// failure (a non-merge, an indexed commit, unreadable index membership) stays an error.
 fn is_empty(repo_dyn: &dyn jj_lib::repo::Repo, commit: &Commit) -> jj_lib::backend::BackendResult<Option<bool>> {
     pollster::block_on(async {
-        match commit.is_empty(repo_dyn).await {
+        match commit.is_empty(repo_dyn.index()).await {
             Ok(empty) => Ok(Some(empty)),
             Err(_) if commit.parent_ids().len() > 1 && !repo_dyn.index().has_id(commit.id()).await.unwrap_or(true) => {
                 Ok(None)

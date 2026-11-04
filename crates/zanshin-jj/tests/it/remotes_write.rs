@@ -14,7 +14,6 @@ use std::sync::{Arc, Mutex};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::git;
 use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{resolve_revset, Backend, MutateError, ProgressEvent, Repo};
 
@@ -94,14 +93,14 @@ fn write_repo_config(root: &std::path::Path, toml: &str) {
 /// succeeded and imported it into jj's view as `name@remote`.
 fn remote_bookmark_commit_hex(root: &std::path::Path, name: &str, remote: &str) -> Option<String> {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("load workspace to read view");
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head");
+    let readonly = pollster::block_on(workspace.load_at_head()).expect("load_at_head");
     let hex = readonly
         .view()
         .all_remote_bookmarks()
@@ -118,14 +117,14 @@ fn remote_bookmark_commit_hex(root: &std::path::Path, name: &str, remote: &str) 
 /// updated jj's own view — not just the raw git object database.
 fn remote_tag_commit_hex(root: &std::path::Path, name: &str, remote: &str) -> Option<String> {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("load workspace to read view");
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head");
+    let readonly = pollster::block_on(workspace.load_at_head()).expect("load_at_head");
     let hex = readonly
         .view()
         .all_remote_tags()
@@ -156,14 +155,14 @@ fn git_bare_clone(src: &std::path::Path, parent: &std::path::Path) -> std::path:
 /// fresh `GitBackend` reads the new remote from disk.
 fn register_remote(root: &std::path::Path, name: &str, url: &str) {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("load workspace to add remote");
-    let base = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head");
+    let base = pollster::block_on(workspace.load_at_head()).expect("load_at_head");
     let mut tx = base.start_transaction();
     let remote_name_buf: RemoteNameBuf = name.into();
     let remote_name: &RemoteName = &remote_name_buf;
@@ -223,15 +222,9 @@ fn git_fetch_happy_path_imports_commits_and_reports_progress() {
     assert_eq!(after[0].id, result.mutation.new_op_id);
     assert_eq!(after[0].description, "fetch from git remote(s) origin");
 
-    let dst_git_dir = dst.path().join(".jj").join("repo").join("store").join("git");
-    let imported = git_stdout(&["rev-parse", "refs/remotes/origin/main"], &dst_git_dir);
-    assert_eq!(
-        imported, expected_head,
-        "origin/main must be imported at the source's HEAD commit"
-    );
-
-    // The check above only proves the raw git object database was updated by the
-    // `fetch()` subprocess step. Proving `import_refs()` actually updated jj's OWN
+    // jj 0.47: a non-colocated fetch no longer updates the Git remote-tracking ref (it fetches
+    // into a temporary namespace; `jj git export` writes `refs/remotes/...`), so the import is
+    // checked in jj's own view only. Proving `import_refs()` actually updated jj's OWN
     // view (the real point of calling it, and the thing a caller of `Repo::git_fetch`
     // actually cares about — e.g. via `Repo::list_bookmarks` or a revset) needs a
     // separate check: `main@origin` (tracked-or-not) and `v1@origin` (a tag, always
@@ -618,7 +611,8 @@ fn git_fetch_with_a_non_boolean_config_value_refuses_as_config() {
         .expect_err("a wrong-typed value must refuse");
 
     assert!(
-        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("abandon-unreachable-commits")),
+        // jj-lib 0.47 reads the key at the import's options, no longer at the backend load.
+        matches!(&err, MutateError::Config { reason } if reason.contains("abandon-unreachable-commits")),
         "expected Config naming the key, got {err:?}"
     );
     // Every verb refuses while the stack is broken, so it is repaired before the read-back.

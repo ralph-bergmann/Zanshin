@@ -33,7 +33,7 @@ const ABSENT_CHANGE_ID: &str = "pqrstuvwxyzklmnopqrstuvwxyzklmno";
 
 /// Open the fixture as a raw jj-lib `Workspace` for oracle reads.
 fn oracle_workspace(root: &Path) -> Workspace {
-    Workspace::load(
+    test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
@@ -50,7 +50,7 @@ struct Layout {
 
 fn layout(root: &Path) -> Layout {
     let ws = oracle_workspace(root);
-    let repo = pollster::block_on(ws.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(ws.load_at_head()).expect("oracle load_at_head");
     let wc_id = repo
         .view()
         .get_wc_commit_id(ws.workspace_name())
@@ -69,7 +69,7 @@ fn layout(root: &Path) -> Layout {
 /// Reverse-hex change id of the commit with the given hex id.
 fn change_id_of(root: &Path, commit_hex: &str) -> ChangeId {
     let ws = oracle_workspace(root);
-    let repo = pollster::block_on(ws.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(ws.load_at_head()).expect("oracle load_at_head");
     let id = jj_lib::backend::CommitId::try_from_hex(commit_hex).expect("valid commit hex");
     let commit = repo.store().get_commit(&id).expect("commit is readable");
     ChangeId(commit.change_id().reverse_hex())
@@ -79,7 +79,7 @@ fn change_id_of(root: &Path, commit_hex: &str) -> ChangeId {
 /// used where `list_bookmarks`' local/tracked-remote projection would hide the fact.
 fn local_bookmark_names(root: &Path) -> Vec<String> {
     let ws = oracle_workspace(root);
-    let repo = pollster::block_on(ws.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(ws.load_at_head()).expect("oracle load_at_head");
     repo.view()
         .local_bookmarks()
         .map(|(name, _)| name.as_str().to_owned())
@@ -89,7 +89,7 @@ fn local_bookmark_names(root: &Path) -> Vec<String> {
 /// The commit hex a local bookmark points at, or `None` when it is absent.
 fn local_bookmark_target(root: &Path, name: &str) -> Option<String> {
     let ws = oracle_workspace(root);
-    let repo = pollster::block_on(ws.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(ws.load_at_head()).expect("oracle load_at_head");
     let hex = repo
         .view()
         .get_local_bookmark(name.as_ref())
@@ -573,7 +573,7 @@ fn delete_leaves_a_tracked_remote_bookmark_in_place() {
 
     // And the remote ref is still TRACKED, not silently downgraded.
     let ws = oracle_workspace(&fx.path);
-    let head = pollster::block_on(ws.repo_loader().load_at_head()).unwrap();
+    let head = pollster::block_on(ws.load_at_head()).unwrap();
     let states: Vec<RemoteRefState> = head
         .view()
         .all_remote_bookmarks()
@@ -827,7 +827,7 @@ fn create_auto_tracking_an_existing_remote_bookmark_warns_and_merges_its_target(
         [("feature".to_owned(), "origin".to_owned(), true, Some(remote_change))]
     );
     let ws = oracle_workspace(&fx.path);
-    let head = pollster::block_on(ws.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let head = pollster::block_on(ws.load_at_head()).expect("oracle load_at_head");
     let local = head.view().get_local_bookmark("feature".as_ref());
     assert!(
         !local.is_resolved(),

@@ -33,7 +33,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use jj_lib::repo::{ReadonlyRepo, Repo as _};
+use jj_lib::repo::ReadonlyRepo;
 use jj_lib::revset::RevsetExpression;
 use jj_lib::transaction::Transaction;
 use jj_lib::working_copy::SnapshotStats;
@@ -44,8 +44,7 @@ use crate::cli_command::{self, CliCommand};
 use crate::commit_views::plan_interdiff;
 use crate::duplicate::plan_duplicate;
 use crate::mutate::{
-    given, plan_abandon, plan_absorb, plan_describe, plan_edit, plan_new, plan_restore, refuse_git_root_merge,
-    resolve_commit, MutateError,
+    given, plan_abandon, plan_absorb, plan_describe, plan_edit, plan_new, plan_restore, resolve_commit, MutateError,
 };
 use crate::op_support::{resolve_immutable, start_repo_transaction, LocationArgs, NO_LOCATION, ONTO_WITH_INSERT};
 use crate::rebase::{
@@ -405,12 +404,8 @@ impl Rows<'_> {
             // A row reverts exactly one resolved change, so `plan_revert` never returns `None`
             // here; the `Option` form keeps the CLI's rule (only a writing plan resolves the set)
             // without a branch no row can take.
-            // The verb refuses a root merge at its write (after the template); rows keep it.
             plan.as_ref()
-                .map(|plan| {
-                    refuse_git_root_merge(tx.repo().store(), &plan.new_parent_ids)?;
-                    resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)
-                })
+                .map(|_| resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable))
                 .transpose()?;
             Ok(Planned {
                 no_op: plan.is_none(),
@@ -477,9 +472,7 @@ impl Rows<'_> {
         insert_before: &[ChangeId],
     ) -> Result<ActionOutcome, MutateError> {
         self.row(DropVerb::NewMerge.command(), ctx, |tx, ctx| {
-            let location = plan_new(tx, &ctx.templates(self.workspace), parents, insert_after, insert_before)?;
-            // The verb refuses a root merge at its write (after the template); rows keep it.
-            refuse_git_root_merge(tx.repo().store(), &location.parents)?;
+            plan_new(tx, &ctx.templates(self.workspace), parents, insert_after, insert_before)?;
             // Every `new` writes, so the CLI's `tx.finish` resolves the immutable set (Story
             // 9.56). Rows never parse the description template, so with a broken template the
             // verb's refusal (template parse) differs.
@@ -523,13 +516,7 @@ impl Rows<'_> {
                 parents.push(change.clone());
                 rows.push((DropVerb::NewMerge, self.new_change(ctx, &parents, &[], &[])?));
                 let duplicate = self.row(DropVerb::Duplicate.command(), ctx, |tx, ctx| {
-                    let plan = plan_duplicate(tx, &ctx.templates(self.workspace), std::slice::from_ref(change), &args)?;
-                    // The verb refuses a root merge at its write (after the template); rows keep it.
-                    // Always `-o`, so never `None`: the Revert row's `Option` form gives that dead case no line.
-                    plan.location
-                        .as_ref()
-                        .map(|(parents, _)| refuse_git_root_merge(tx.repo().store(), parents))
-                        .transpose()?;
+                    plan_duplicate(tx, &ctx.templates(self.workspace), std::slice::from_ref(change), &args)?;
                     // Every duplicate writes, so the CLI's `tx.finish` resolves the immutable set
                     // (Story 9.56). Rows never parse the description template, so with a broken
                     // template the verb's refusal (template parse) differs.

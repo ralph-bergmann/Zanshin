@@ -27,7 +27,6 @@ use std::process::Command;
 
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::repo::Repo as _;
-use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{add_workspace, extract_fixture, FixtureHandle};
 use zanshin_jj::{
@@ -60,14 +59,14 @@ fn config_file(tmp: &Path, name: &str, body: &str) -> PathBuf {
 /// `(author name, author email)` of `@`, and `(username, hostname)` of the head operation —
 /// read from the store with jj-lib directly (the settings used for READING are irrelevant).
 fn head_facts(root: &Path) -> ((String, String), (String, String)) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
     let wc_id = repo
         .view()
         .get_wc_commit_id(workspace.workspace_name())
@@ -728,7 +727,8 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     set_jj_config(&config_file(
         tmp,
         "bad-git.toml",
-        "[git]\nabandon-unreachable-commits = \"yes\"\n",
+        // A key jj-lib 0.47's git backend still reads while initializing (`git_backend_settings`).
+        "[git]\nwrite-change-id-header = \"yes\"\n",
     ));
     let fresh_git = tmp.join("fresh-git");
     fs::create_dir_all(&fresh_git).unwrap();
@@ -741,7 +741,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     .result
     .expect_err("a wrong-typed git key must refuse");
     assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
+        matches!(&err, RepoError::Config { reason } if reason.contains("write-change-id-header")),
         "unexpected error: {err:?}"
     );
     // Story 9.20 (deferral I3): jj-lib's own creation removes the `.jj` it started — the CLI's
@@ -760,7 +760,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
         ..Default::default()
     });
     assert!(
-        matches!(&outcome.result, Err(RepoError::Config { reason }) if reason.contains("abandon-unreachable-commits")),
+        matches!(&outcome.result, Err(RepoError::Config { reason }) if reason.contains("write-change-id-header")),
         "unexpected result: {:?}",
         outcome.result
     );
@@ -777,7 +777,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     let outcome = convert_colocated(git_repo.path());
     let err = outcome.result.expect_err("a wrong-typed git key must refuse");
     assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
+        matches!(&err, RepoError::Config { reason } if reason.contains("write-change-id-header")),
         "unexpected error: {err:?}"
     );
     // Story 9.57: the git backend's own read fails inside `init_external_git`, whose jj-lib
@@ -793,7 +793,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
         .result
         .expect_err("a wrong-typed git key must refuse the import");
     assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
+        matches!(&err, RepoError::Config { reason } if reason.contains("write-change-id-header")),
         "unexpected error: {err:?}"
     );
     // Story 9.57: the destination the call created stays, as the CLI's `create_or_reuse_dir`

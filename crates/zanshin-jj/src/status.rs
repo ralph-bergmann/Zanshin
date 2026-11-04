@@ -110,7 +110,7 @@ pub(crate) fn working_copy_status(workspace: &Workspace) -> Result<Status, Statu
 
     // Trees: `after` is sync; `before` merges all parents (root-safe, async).
     let after = wc_commit.tree();
-    let before = pollster::block_on(wc_commit.parent_tree(repo.as_ref())).map_err(be)?;
+    let before = pollster::block_on(wc_commit.parent_tree(repo.index())).map_err(be)?;
 
     // Parent commit for copy records + `parent_change_id`.
     // WHY: get_copy_records takes a single root CommitId. For the common single-parent @,
@@ -146,7 +146,7 @@ pub(crate) fn working_copy_status(workspace: &Workspace) -> Result<Status, Statu
     })?;
 
     // Copies-aware diff: one code path for renames/copies and plain changes (D4).
-    let mut diff_stream = before.diff_stream_with_copies(&after, &EverythingMatcher, &records);
+    let mut diff_stream = before.diff_with_copies(&after, &EverythingMatcher, &records);
     let mut files: Vec<FileChange> = Vec::new();
     pollster::block_on(async {
         while let Some(entry) = diff_stream.next().await {

@@ -281,9 +281,8 @@ fn remote_changes_to_envelope(changes: &[RemoteRefChange], report: &crate::envel
 /// - `jj.config_error` — the start-up fix-up failed, the changed config stack no longer reads,
 ///   `git.executable-path` does not read, or a `remotes.<name>` entry or the remote's
 ///   `fetch-bookmarks`/`fetch-tags` is malformed; detail in `context`.
-/// - `jj.invalid_input` — the remote's Git configuration does not read, or a
-///   `fetch-bookmarks`/`fetch-tags` pattern cannot become a refspec (Story 9.30); detail in
-///   `context`. git never runs.
+/// - `jj.invalid_input` — the remote's Git configuration does not read; detail in `context`.
+///   git never runs.
 /// - `jj.network_error` — git could not be spawned or failed (network, authentication,
 ///   transport); jj-lib's text in `context`, e.g. `External git program failed:` + git's stderr.
 /// - `jj.cancelled` — `cancel_token` was cancelled before or right after the git work, or git

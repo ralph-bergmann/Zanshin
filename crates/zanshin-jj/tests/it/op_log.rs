@@ -21,7 +21,7 @@ use zanshin_jj::{ChangeError, ChangeId, MutateError, OpLogError, Repo, WarningKi
 /// Open the fixture as a raw jj-lib `Workspace` for oracle reads.
 fn oracle_workspace(root: &Path) -> (Workspace, UserSettings) {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         root,
         &default_backend_factories(),
@@ -46,7 +46,7 @@ struct Layout {
 
 fn oracle_layout(workspace_root: &Path) -> Layout {
     let (workspace, _settings) = oracle_workspace(workspace_root);
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
     let store = repo.store();
     let view = repo.view();
 
@@ -203,7 +203,7 @@ fn op_log_head_op_matches_oracle() {
 
     // Oracle: open the workspace independently with jj-lib and walk to the head op.
     let (oracle_ws, _settings) = oracle_workspace(&fx.path);
-    let readonly = pollster::block_on(oracle_ws.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let readonly = pollster::block_on(oracle_ws.load_at_head()).expect("oracle load_at_head");
 
     let oracle_head = readonly.operation();
     let oracle_md = oracle_head.metadata();
@@ -276,7 +276,7 @@ fn op_log_all_ids_match_oracle_walk() {
 
     // Walk the oracle stream and collect ids.
     let (oracle_ws, _settings) = oracle_workspace(&fx.path);
-    let readonly = pollster::block_on(oracle_ws.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let readonly = pollster::block_on(oracle_ws.load_at_head()).expect("oracle load_at_head");
     let head_op = readonly.operation().clone();
 
     let oracle_ids: Vec<String> = pollster::block_on(async {
@@ -439,7 +439,7 @@ fn undo_twice_in_a_row_goes_further_back() {
 /// workspace recorded, the shape of an operation another tool wrote. Returns its id.
 fn foreign_op(root: &Path, description: &str) -> String {
     let (workspace, _settings) = oracle_workspace(root);
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
     let repo = pollster::block_on(repo.start_transaction().commit(description)).expect("commit the foreign op");
     repo.op_id().hex()
 }
@@ -794,7 +794,7 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
     // would equal op B's view, the undo would write nothing (Story 9.40's no-change gate),
     // and the git assertions below would hold trivially on the unchanged view.
     let (workspace, _settings) = oracle_workspace(&fx.path);
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let readonly = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
 
     let mut tx = readonly.start_transaction();
     tx.repo_mut().set_git_ref_target(
@@ -840,7 +840,7 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
     // — are unchanged, so this asserts the same property one level closer to the code. Since
     // jj 0.45 the git head is kept per workspace (`View::git_heads`).
     let (oracle, _settings) = oracle_workspace(&fx.path);
-    let view_repo = pollster::block_on(oracle.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let view_repo = pollster::block_on(oracle.load_at_head()).expect("oracle load_at_head");
     let view = view_repo.view();
 
     assert!(
@@ -892,7 +892,7 @@ fn op_log_entries_carry_the_workspace_name_and_the_tags() {
     assert_eq!(root.workspace_name, None);
 
     let (workspace, _settings) = oracle_workspace(&fx.path);
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let readonly = pollster::block_on(workspace.load_at_head()).unwrap();
     let mut tx = readonly.start_transaction();
     tx.set_attribute("zeta".to_owned(), "last".to_owned());
     tx.set_attribute("args".to_owned(), "jj describe".to_owned());

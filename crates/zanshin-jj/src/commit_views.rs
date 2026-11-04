@@ -396,7 +396,7 @@ async fn tree_file_changes(
     matcher: &dyn Matcher,
     records: &CopyRecords,
 ) -> Result<Vec<FileChange>, CommitViewError> {
-    let mut stream = before.diff_stream_with_copies(after, matcher, records);
+    let mut stream = before.diff_with_copies(after, matcher, records);
     let mut out = Vec::new();
     while let Some(entry) = stream.next().await {
         let d = entry.values.map_err(be)?;
@@ -497,7 +497,7 @@ pub(crate) fn show(
             // itself changed. It short-circuits to the commit's own tree for an index-empty
             // commit (`commit.rs:134-143`), so it is surfaced as the `left` the verbs diff
             // against (Story 9.50), never as the parents' own tree.
-            let before = commit.parent_tree(repo_dyn).await.map_err(be)?;
+            let before = commit.parent_tree(repo_dyn.index()).await.map_err(be)?;
             let crate::SelectedTreeId {
                 tree_ids: parent_tree_ids,
                 labels: parent_tree_labels,
@@ -654,8 +654,8 @@ pub(crate) fn interdiff(
         crate::op_support::parse_prefixes(paths).map_err(|reason| CommitViewError::InvalidInput { reason })?;
     let parent_trees = pollster::block_on(async {
         Ok::<_, CommitViewError>((
-            from_commit.parent_tree(repo_dyn).await.map_err(be)?,
-            to_commit.parent_tree(repo_dyn).await.map_err(be)?,
+            from_commit.parent_tree(repo_dyn.index()).await.map_err(be)?,
+            to_commit.parent_tree(repo_dyn.index()).await.map_err(be)?,
         ))
     })?;
     crate::warning::warn_unmatched_paths(
@@ -668,7 +668,7 @@ pub(crate) fn interdiff(
 
     pollster::block_on(async {
         let from_tree =
-            jj_lib::rewrite::rebase_to_dest_parent(repo_dyn, std::slice::from_ref(&from_commit), &to_commit)
+            jj_lib::rewrite::rebase_to_dest_parent(repo_dyn.index(), std::slice::from_ref(&from_commit), &to_commit)
                 .await
                 .map_err(be)?;
         // `MergedTree::has_conflict()` is the same `!…is_resolved()` predicate

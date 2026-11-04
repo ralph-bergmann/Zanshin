@@ -337,9 +337,9 @@ fn decode_column<'s>(mut ids: impl Iterator<Item = &'s str>, nibble: fn(u8) -> u
     for (id, dst) in std::iter::once(first).chain(ids).zip(out.chunks_exact_mut(stride)) {
         let raw = id.as_bytes();
         assert_eq!(raw.len(), 2 * stride, "one even stride per column");
-        for (byte, pair) in dst.iter_mut().zip(raw.chunks_exact(2)) {
-            let hi = nibble(pair[0]);
-            let lo = nibble(pair[1]);
+        for (byte, &[hi, lo]) in dst.iter_mut().zip(raw.as_chunks::<2>().0) {
+            let hi = nibble(hi);
+            let lo = nibble(lo);
             bad |= hi | lo;
             *byte = hi << 4 | lo & 0x0f;
         }

@@ -15,8 +15,8 @@ use gix::remote::Direction;
 use jj_lib::config::StackedConfig;
 use jj_lib::git;
 use jj_lib::git::{
-    expand_fetch_refspecs, GitFetch, GitFetchError, GitFetchRefExpression, GitProgress, GitRefExpansionError,
-    GitSidebandLineTerminator, GitSubprocessCallback, IgnoredRefspec, IgnoredRefspecs, UnexpectedGitBackendError,
+    GitFetch, GitFetchError, GitFetchRefExpression, GitProgress, GitRefExpansionError, GitSidebandLineTerminator,
+    GitSubprocessCallback, IgnoredRefspec, IgnoredRefspecs, UnexpectedGitBackendError,
 };
 use jj_lib::ref_name::{RefName, RemoteName, RemoteNameBuf};
 use jj_lib::refs::LocalAndRemoteRef;
@@ -473,23 +473,24 @@ fn warn_if_branches_not_found(
     }
 }
 
-/// The operation description (`fetch.rs:255-258` @ v0.46.0): every matched remote as its symbol,
-/// joined by `","`.
+/// The operation description (`fetch.rs:234-252` @ v0.47.0): every matched remote as its symbol,
+/// joined by `", "`.
 fn fetch_description(remotes: &[RemoteNameBuf]) -> String {
     let names: Vec<String> = remotes.iter().map(|r| r.as_symbol().to_string()).collect();
-    format!("fetch from git remote(s) {}", names.join(","))
+    format!("fetch from git remote(s) {}", names.join(", "))
 }
 
 /// Maps one remote's `GitFetch::fetch` failure — exhaustive, in the CLI's classification
-/// (`From<GitFetchError>`, `cli/src/command_error.rs:583-593` @ v0.46.0): every variant is a
-/// `user_error`; `RemoteName` carries the CLI's hint (Story 9.56).
+/// (`From<GitFetchError>`, `cli/src/command_error.rs:583-596` @ v0.47.0): every variant is a
+/// `user_error`; `RemoteName` carries the CLI's hint (Story 9.56), `RefExpansion` the expansion's.
 fn fetch_error(e: GitFetchError, cancel: Option<&crate::cancel::CancelGuard>) -> MutateError {
     match e {
         GitFetchError::NoSuchRemote(name) => MutateError::RemoteNotFound {
             name: name.into_string(),
         },
         GitFetchError::RemoteName(e) => MutateError::invalid_hinted(e.to_string(), REMOTE_RENAME_HINT),
-        rejected @ GitFetchError::RejectedUpdates(_) => invalid(rejected),
+        GitFetchError::RefExpansion(e) => expansion_error(&e),
+        e @ (GitFetchError::RejectedUpdates(_) | GitFetchError::FailedToPrune(_)) => invalid(e),
         GitFetchError::Subprocess(_) if crate::cancel::is_cancelled(cancel) => MutateError::Cancelled,
         GitFetchError::Subprocess(sub) => MutateError::NetworkError {
             reason: sub.to_string(),
@@ -526,11 +527,12 @@ pub(crate) fn git_fetch(
     // whatever `args` select — `--tracked` included.
     crate::config::every_remote_settings(&ctx.config).map_err(mutate::cfg)?;
     let (common_bookmarks, common_tags) = specific_expressions(&args.refs)?;
-    let mut expansions = Vec::with_capacity(remotes.len());
+    // A pattern that cannot become a refspec is refused by that remote's `fetch` (jj-lib 0.47
+    // expands there), after the remotes before it fetched — as in the CLI.
+    let mut expressions = Vec::with_capacity(remotes.len());
     if args.refs == FetchRefs::Tracked {
         for remote in &remotes {
-            let expression = tracked_fetch_refs(tx.repo().view(), remote);
-            expansions.push(expand_fetch_refspecs(remote, expression).map_err(|e| expansion_error(&e))?);
+            expressions.push(tracked_fetch_refs(tx.repo().view(), remote));
         }
     } else {
         let git_repo = git::get_git_repo(tx.repo().store()).map_err(|_| MutateError::NotAGitRepo)?;
@@ -545,8 +547,7 @@ pub(crate) fn git_fetch(
             );
             // The CLI warns them as soon as the refspecs load, before it parses `fetch-tags`.
             warn_ignored_refspecs(&mut ctx.warnings, remote, ignored);
-            let expression = expression?;
-            expansions.push(expand_fetch_refspecs(remote, expression).map_err(|e| expansion_error(&e))?);
+            expressions.push(expression?);
         }
     }
 
@@ -570,10 +571,10 @@ pub(crate) fn git_fetch(
     // Story 9.52's checkpoints: before each remote's git work, and after the last but before the
     // import, so a cancelled fetch records nothing. A git that failed after the cancel killed it
     // is the cancel.
-    for (remote, refspecs) in remotes.iter().zip(expansions) {
+    for (remote, expression) in remotes.iter().zip(&expressions) {
         crate::cancel::checkpoint(cancel)?;
         fetcher
-            .fetch(remote, refspecs, &mut callback, depth)
+            .fetch(remote, expression, &mut callback, depth)
             .map_err(|e| fetch_error(e, cancel))?;
     }
     crate::cancel::checkpoint(cancel)?;
@@ -638,7 +639,7 @@ mod tests {
         let remotes: Vec<RemoteNameBuf> = ["origin", "my remote", "up"].map(Into::into).into();
         assert_eq!(
             fetch_description(&remotes),
-            "fetch from git remote(s) origin,\"my remote\",up"
+            "fetch from git remote(s) origin, \"my remote\", up"
         );
         assert_eq!(fetch_description(&remotes[..1]), "fetch from git remote(s) origin");
     }

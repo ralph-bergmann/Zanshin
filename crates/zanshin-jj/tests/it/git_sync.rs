@@ -283,10 +283,8 @@ fn git_import_honours_abandon_unreachable_commits_false() {
 /// A malformed value for a key this verb reads must arrive as `Config`, the same fault class
 /// the read side reports — never the unclassified `Backend` bucket — and must write nothing.
 ///
-/// Since Story 9.27 the stack is also what the workspace is LOADED with, and jj-lib's git
-/// backend reads this key itself while loading — so the refusal comes from the pre-verb
-/// settings refresh (the stack changed after open), and a fresh `Repo::open` refuses too,
-/// exactly as every CLI command in such a repo fails at start-up.
+/// Up to jj-lib 0.46 the git backend read this key while LOADING; since 0.47 only the import's
+/// options read it, so the import refuses and the open does not — as in the CLI.
 #[test]
 fn git_import_with_a_non_boolean_config_value_refuses_as_config() {
     test_helpers::pin_test_env();
@@ -297,15 +295,13 @@ fn git_import_with_a_non_boolean_config_value_refuses_as_config() {
 
     let err = repo.git_import().expect_err("a wrong-typed value must refuse");
 
+    // jj-lib 0.47 reads the key at the import (`GitImportOptions`), no longer at the backend load:
+    // the import refuses, the open does not.
     assert!(
-        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("abandon-unreachable-commits")),
+        matches!(&err, MutateError::Config { reason } if reason.contains("abandon-unreachable-commits")),
         "unexpected error: {err:?}"
     );
-    let reopen = Repo::open(tmp.path()).expect_err("a wrong-typed git key must refuse the open too");
-    assert!(
-        matches!(&reopen, zanshin_jj::RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
-        "unexpected error: {reopen:?}"
-    );
+    Repo::open(tmp.path()).expect("the load no longer reads the key");
     // Every verb refuses while the stack is broken, so it is repaired before the read-back.
     write_repo_config(tmp.path(), "");
     assert_eq!(head_op_id(&mut repo), before, "a refusal writes nothing");
@@ -523,7 +519,7 @@ fn git_import_with_a_non_boolean_record_synthetic_predecessors_refuses_as_config
     let err = repo.git_import().expect_err("a wrong-typed value must refuse");
 
     assert!(
-        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("record-synthetic-predecessors")),
+        matches!(&err, MutateError::Config { reason } if reason.contains("record-synthetic-predecessors")),
         "unexpected error: {err:?}"
     );
     write_repo_config(tmp.path(), "");

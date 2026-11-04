@@ -23,16 +23,14 @@ use std::sync::Arc;
 use jj_lib::config::StackedConfig;
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::file_util;
-use jj_lib::git::{
-    expand_fetch_refspecs, GitFetch, GitFetchError, GitFetchRefExpression, GitImportOptions, GitRemoteManagementError,
-};
-use jj_lib::ref_name::{RefName, RefNameBuf, RemoteName, RemoteNameBuf};
+use jj_lib::git::{GitFetch, GitFetchError, GitFetchRefExpression, GitImportOptions, GitRemoteManagementError};
+use jj_lib::ref_name::{RefName, RefNameBuf, RemoteName, RemoteNameBuf, WorkspaceName};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::rewrite::RebaseOptions;
 use jj_lib::settings::UserSettings;
 use jj_lib::str_util::StringExpression;
 use jj_lib::transaction::Transaction;
-use jj_lib::workspace::{Workspace, WorkspaceInitError};
+use jj_lib::workspace::{DefaultWorkspaceLoaderFactory, Workspace, WorkspaceInitError, WorkspaceLoaderFactory as _};
 
 use crate::cancel::CancelGuard;
 use crate::cli_command::{CliCommand, GIT_CLONE, GIT_INIT};
@@ -277,14 +275,24 @@ fn init_steps(
         external.result?;
     } else if colocate {
         created.git_dir = Some(git_dir);
-        let (workspace, _repo) = pollster::block_on(Workspace::init_colocated_git(&settings, &root, hash))
-            .map_err(|e| init_creation_error(&e, &root))?;
+        let (workspace, _repo) = pollster::block_on(Workspace::init_colocated_git(
+            &settings,
+            &root,
+            WorkspaceName::DEFAULT,
+            hash,
+        ))
+        .map_err(|e| init_creation_error(&e, &root))?;
         created.jj_dir = Some(root.join(".jj"));
         workable_env(&workspace, GIT_INIT, sink, |reason| RepoError::InitFailed { reason })?;
         add_gitignore(&workspace, |reason| RepoError::InitFailed { reason })?;
     } else {
-        pollster::block_on(Workspace::init_internal_git(&settings, &root, hash))
-            .map_err(|e| init_creation_error(&e, &root))?;
+        pollster::block_on(Workspace::init_internal_git(
+            &settings,
+            &root,
+            WorkspaceName::DEFAULT,
+            hash,
+        ))
+        .map_err(|e| init_creation_error(&e, &root))?;
         created.jj_dir = Some(root.join(".jj"));
     }
     Repo::open(&root)
@@ -302,7 +310,8 @@ fn init_native(options: &InitOptions, created: &mut Created) -> Result<Repo, Rep
         reason: format!("{}: {e}", options.path.display()),
     })?;
     let settings = config::user_settings_for_new_workspace(&root, GIT_INIT)?;
-    pollster::block_on(Workspace::init_simple(&settings, &root)).map_err(|e| init_creation_error(&e, &root))?;
+    pollster::block_on(Workspace::init_simple(&settings, &root, WorkspaceName::DEFAULT))
+        .map_err(|e| init_creation_error(&e, &root))?;
     created.jj_dir = Some(root.join(".jj"));
     Repo::open(&root)
 }
@@ -349,6 +358,10 @@ fn fetch_error(e: GitFetchError, cancel: Option<&CancelGuard>) -> RepoError {
         GitFetchError::RemoteName(_) => RepoError::CloneFailed {
             reason: e.to_string(),
             hints: vec![crate::remotes::REMOTE_RENAME_HINT.to_owned()],
+        },
+        GitFetchError::RefExpansion(e) => RepoError::CloneFailed {
+            reason: e.to_string(),
+            hints: crate::remotes::expansion_hints(&e),
         },
         other => clone_failed(other.to_string()),
     }
@@ -491,9 +504,19 @@ fn clone_into_workspace(
     // `init_workspace` (`clone.rs:325-341`).
     let settings = config::user_settings_for_new_workspace(root, GIT_CLONE)?;
     let (workspace, repo) = if plan.colocate {
-        pollster::block_on(Workspace::init_colocated_git(&settings, root, plan.hash))
+        pollster::block_on(Workspace::init_colocated_git(
+            &settings,
+            root,
+            WorkspaceName::DEFAULT,
+            plan.hash,
+        ))
     } else {
-        pollster::block_on(Workspace::init_internal_git(&settings, root, plan.hash))
+        pollster::block_on(Workspace::init_internal_git(
+            &settings,
+            root,
+            WorkspaceName::DEFAULT,
+            plan.hash,
+        ))
     }
     .map_err(|e| creation_error(&e, clone_failed))?;
     let (config, env) = workable_env(&workspace, GIT_CLONE, sink, clone_failed)?;
@@ -540,7 +563,7 @@ fn clone_into_workspace(
     let working = fetch_new_remote(
         &mut cloned,
         &plan.remote,
-        GitFetchRefExpression { bookmark, tag },
+        &GitFetchRefExpression { bookmark, tag },
         plan,
         sink,
     )?;
@@ -599,13 +622,16 @@ fn configure_remote(
     jj_lib::git::add_remote(tx.repo_mut(), remote, source, None).map_err(add_remote_error)?;
     finish(cloned, tx, &format!("add git remote {}", remote.as_symbol()), sink)?;
 
-    let workspace = Workspace::load(
-        &cloned.settings,
-        cloned.workspace.workspace_root(),
-        &default_backend_factories(),
-        &default_working_copy_factories(),
-    )
-    .map_err(|e| clone_failed(e.to_string()))?;
+    let workspace = DefaultWorkspaceLoaderFactory
+        .create(cloned.workspace.workspace_root())
+        .and_then(|loader| {
+            loader.load(
+                &cloned.settings,
+                &default_backend_factories(),
+                &default_working_copy_factories(),
+            )
+        })
+        .map_err(|e| clone_failed(e.to_string()))?;
     let op = pollster::block_on(workspace.repo_loader().load_operation(cloned.repo.op_id()))
         .map_err(|e| clone_failed(e.to_string()))?;
     let repo = pollster::block_on(workspace.repo_loader().load_at(&op)).map_err(|e| clone_failed(e.to_string()))?;
@@ -623,7 +649,7 @@ fn configure_remote(
 fn fetch_new_remote(
     cloned: &mut Cloned,
     remote: &RemoteName,
-    ref_expr: GitFetchRefExpression,
+    ref_expr: &GitFetchRefExpression,
     plan: &ClonePlan<'_>,
     sink: &mut Warnings,
 ) -> Result<Option<(RefNameBuf, bool)>, RepoError> {
@@ -649,10 +675,6 @@ fn fetch_new_remote(
         crate::cancel::watch_store(plan.cancel, tx.repo().store());
         let mut fetcher = GitFetch::new(tx.repo_mut(), subprocess_options, &import_options)
             .map_err(|e| clone_failed(e.to_string()))?;
-        let refspecs = expand_fetch_refspecs(remote, ref_expr).map_err(|e| RepoError::CloneFailed {
-            reason: e.to_string(),
-            hints: crate::remotes::expansion_hints(&e),
-        })?;
         let mut callback = ProgressCallback {
             operation: "clone",
             progress: plan.progress,
@@ -661,7 +683,7 @@ fn fetch_new_remote(
         // cancelled clone removes what it created.
         crate::cancel::checkpoint(plan.cancel)?;
         fetcher
-            .fetch(remote, refspecs, &mut callback, plan.options.depth)
+            .fetch(remote, ref_expr, &mut callback, plan.options.depth)
             .map_err(|e| fetch_error(e, plan.cancel))?;
         let import_stats = pollster::block_on(fetcher.import_refs()).map_err(|e| clone_failed(e.to_string()))?;
         let default_branch = fetcher
@@ -841,7 +863,9 @@ mod tests {
             RepoError::InvalidInput { reason } if reason.contains("reserved")
         ));
         assert!(matches!(
-            add_remote_error(GitRemoteManagementError::InternalGitError("boom".into())),
+            add_remote_error(GitRemoteManagementError::InternalGitError(gix::Error::from_error(
+                std::io::Error::other("boom")
+            ))),
             RepoError::CloneFailed { reason, hints } if reason == "Unexpected Git error when managing remotes" && hints.is_empty()
         ));
         assert!(matches!(

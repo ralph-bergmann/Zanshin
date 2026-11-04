@@ -8,12 +8,12 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
+use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::Repo as _;
 use jj_lib::workspace_store::WorkspaceStore;
 use zanshin_jj::{
-    ChangeId, CommitViewError, FileError, MutateError, PreconditionError, Repo, RevisionRef, SparseInheritance,
-    WarningKind,
+    ChangeId, CommitViewError, FileError, MutateError, Repo, RevisionRef, SparseInheritance, WarningKind,
 };
 
 use crate::workspace_update_stale::{descriptions, head_op, load, two_workspaces};
@@ -258,16 +258,59 @@ fn rename_without_a_working_copy_commit_refuses() {
 
 // ── remove ───────────────────────────────────────────────────────────────────────
 
-/// A dirty `ws2` is snapshotted (its own operation), then removed: the view and the store lose
-/// it, its directory goes.
+/// ws2's `@` commit as the head sees it.
+fn ws2_at(root: &Path) -> jj_lib::commit::Commit {
+    let (_, head) = load(root);
+    let id = head
+        .view()
+        .get_wc_commit_id(WorkspaceName::new("ws2"))
+        .expect("ws2@")
+        .clone();
+    head.store().get_commit(&id).expect("commit")
+}
+
+/// The one snapshot commit `result` reports, read at the head: its description, its parent and
+/// whether it holds `path`.
+fn snapshot_commit(root: &Path, result: &zanshin_jj::WorkspaceRemoveResult) -> jj_lib::commit::Commit {
+    assert_eq!(result.mutation.new_change_ids.len(), 1, "{:?}", result.mutation);
+    let (_, head) = load(root);
+    let heads: Vec<_> = head
+        .view()
+        .heads()
+        .iter()
+        .map(|id| head.store().get_commit(id).expect("head commit"))
+        .collect();
+    let commit = heads
+        .into_iter()
+        .find(|c| c.change_id().reverse_hex() == result.mutation.new_change_ids[0].0)
+        .expect("the snapshot commit is a visible head");
+    assert_eq!(commit.description(), "SNAPSHOT OF REMOVED WORKSPACE `ws2`\n");
+    commit
+}
+
+/// A dirty `ws2` is snapshotted into a hidden commit that the ONE removal operation makes a head
+/// (`remove.rs:132-149` @ v0.47.0 — no `snapshot working copy` of its own), then removed: the
+/// view and the store lose it, its directory goes.
 #[test]
 fn remove_snapshots_then_removes_the_workspace_and_its_directory() {
     let (fx, mut repo) = two_workspaces(false, "");
+    let before = head_op(&fx.root);
+    let old_at = ws2_at(&fx.root);
     fs::write(fx.ws2.join("dirty.txt"), "d").expect("dirty");
     let result = repo.workspace_remove(&names(&["ws2"])).expect("remove");
     let ops = descriptions(&fx.root);
     assert_eq!(ops[0], "remove workspace ws2");
-    assert_eq!(ops[1], "snapshot working copy");
+    assert_eq!(
+        load(&fx.root).1.operation().parent_ids()[0].hex(),
+        before,
+        "one operation"
+    );
+    let snapshot = snapshot_commit(&fx.root, &result);
+    assert_eq!(snapshot.parent_ids(), std::slice::from_ref(old_at.id()));
+    let path = jj_lib::repo_path::RepoPath::from_internal_string("dirty.txt").expect("path");
+    assert!(pollster::block_on(snapshot.tree().path_value(path))
+        .expect("read")
+        .is_present());
     assert!(!in_view(&fx.root, "ws2"));
     assert_eq!(recorded(&fx.root, "ws2"), None);
     assert!(!fx.ws2.exists());
@@ -275,35 +318,75 @@ fn remove_snapshots_then_removes_the_workspace_and_its_directory() {
     assert_eq!(result.mutation.new_op_id.0, head_op(&fx.root));
 }
 
-/// A target whose snapshot refuses (a stale `ws2`, no `snapshot.auto-update-stale`) stops the
-/// call: `ws2` stays in the view, the store and on disk, and no removal is written.
+/// A clean `ws2` leaves no snapshot commit.
 #[test]
-fn remove_stops_at_a_stale_target() {
+fn remove_a_clean_workspace_writes_no_snapshot_commit() {
     let (fx, mut repo) = two_workspaces(false, "");
-    let ws2_at = {
-        let (_, head) = load(&fx.root);
-        let id = head
-            .view()
-            .get_wc_commit_id(WorkspaceName::new("ws2"))
-            .expect("ws2@")
-            .clone();
-        ChangeId(head.store().get_commit(&id).expect("commit").change_id().reverse_hex())
-    };
+    let result = repo.workspace_remove(&names(&["ws2"])).expect("remove");
+    assert!(result.mutation.new_change_ids.is_empty());
+    assert_eq!(descriptions(&fx.root)[0], "remove workspace ws2");
+}
+
+/// A target whose working copy records an operation that knows no `@` for it (here: the root
+/// operation) is not snapshotted — the CLI's `snapshot_workspace` returns no commit — and still
+/// removed.
+#[test]
+fn remove_skips_the_snapshot_of_a_target_whose_operation_knows_no_working_copy() {
+    let (fx, mut repo) = two_workspaces(false, "");
+    {
+        let mut ws2 = test_helpers::load_workspace(
+            &test_helpers::test_settings(),
+            &fx.ws2,
+            &jj_lib::default_backend_factories::default_backend_factories(),
+            &jj_lib::default_backend_factories::default_working_copy_factories(),
+        )
+        .expect("ws2 loads");
+        let root_op = ws2.repo_loader().op_store().root_operation_id().clone();
+        let locked = pollster::block_on(ws2.start_working_copy_mutation()).expect("lock ws2");
+        pollster::block_on(locked.finish(root_op)).expect("ws2 now records the root operation");
+    }
+    fs::write(fx.ws2.join("dirty.txt"), "d").expect("dirty");
+    let result = repo.workspace_remove(&names(&["ws2"])).expect("remove");
+    assert!(result.mutation.new_change_ids.is_empty(), "no snapshot commit");
+    assert!(!in_view(&fx.root, "ws2"));
+    assert!(!fx.ws2.exists());
+}
+
+/// A stale `ws2` is removed all the same (jj #10276): it is snapshotted at its working copy's own
+/// operation, so its snapshot commit sits on the `@` it last checked out, not the rewritten one.
+#[test]
+fn remove_snapshots_a_stale_target_at_its_own_operation() {
+    let (fx, mut repo) = two_workspaces(false, "");
+    let old_at = ws2_at(&fx.root);
     // `@` (with `f.txt`) restored INTO ws2's `@`: its tree changes without a checkout there.
-    repo.restore(None, Some(ws2_at), None, &[], false)
+    repo.restore(None, Some(ChangeId(old_at.change_id().reverse_hex())), None, &[], false)
         .expect("restore into ws2@");
-    let err = repo.workspace_remove(&names(&["ws2"])).expect_err("stale ws2");
-    assert!(
-        matches!(
-            err,
-            MutateError::Precondition(PreconditionError::StaleWorkingCopy { .. })
-        ),
-        "{err:?}"
+    assert_ne!(ws2_at(&fx.root).id(), old_at.id(), "ws2 is stale");
+    fs::write(fx.ws2.join("dirty.txt"), "d").expect("dirty");
+    let result = repo.workspace_remove(&names(&["ws2"])).expect("stale ws2 removed");
+    assert_eq!(
+        snapshot_commit(&fx.root, &result).parent_ids(),
+        std::slice::from_ref(old_at.id())
     );
+    assert!(!in_view(&fx.root, "ws2"));
+    assert!(!fx.ws2.exists());
+}
+
+/// A target whose snapshot leaves an untracked file refuses with the CLI's text, after the
+/// snapshot's warning: `ws2` stays in the view, the store and on disk, nothing is written.
+#[test]
+fn remove_refuses_a_target_with_unsnapshotted_changes() {
+    let (fx, mut repo) = two_workspaces(false, "[snapshot]\nmax-new-file-size = 1\n");
+    let before = head_op(&fx.root);
+    fs::write(fx.ws2.join("big.txt"), "too large").expect("big file");
+    let (reason, hints) = invalid(&repo.workspace_remove(&names(&["ws2"])).expect_err("untracked"));
+    assert_eq!(reason, "Cannot remove workspace 'ws2' with unsnapshotted changes");
+    assert!(hints.is_empty());
+    assert!(warning_kinds(&mut repo).contains(&WarningKind::SnapshotFilesRefused));
     assert!(in_view(&fx.root, "ws2"));
     assert_eq!(recorded(&fx.root, "ws2"), Some(fx.ws2.clone()));
-    assert!(fx.ws2.join(".jj").is_dir());
-    assert!(!descriptions(&fx.root).iter().any(|d| d.starts_with("remove workspace")));
+    assert!(fx.ws2.join("big.txt").is_file());
+    assert_eq!(head_op(&fx.root), before);
 }
 
 /// From a `ws2` handle, removing `ws2` itself is allowed: its directory goes, the handle is left

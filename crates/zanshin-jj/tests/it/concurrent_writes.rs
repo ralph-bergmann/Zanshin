@@ -25,7 +25,6 @@ use std::thread;
 
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::repo::Repo as _;
-use jj_lib::workspace::Workspace;
 use test_helpers::extract_fixture;
 use zanshin_jj::{ChangeId, Repo};
 
@@ -33,14 +32,14 @@ use zanshin_jj::{ChangeId, Repo};
 /// `tiny-3-commits` fixture's shape: `@` and a separate `Commit 1 -> 2 -> 3` chain).
 fn oracle_targets(workspace_root: &Path) -> (String, String) {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
     let store = repo.store();
 
     let mut commit1 = None;

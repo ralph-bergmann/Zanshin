@@ -7,7 +7,6 @@ use std::path::Path;
 
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::object_id::ObjectId as _;
-use jj_lib::workspace::Workspace;
 use test_helpers::extract_fixture;
 use zanshin_jj::{ChangeId, MutateError, Repo};
 
@@ -32,14 +31,14 @@ fn head(repo: &mut Repo) -> (String, String) {
 /// Commits an operation described `description` on top of the head — no view change and no
 /// workspace recorded, the shape of an operation another tool (the CLI) wrote.
 fn foreign_op(root: &Path, description: &str) -> String {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
     let repo = pollster::block_on(repo.start_transaction().commit(description)).expect("commit the foreign op");
     repo.op_id().hex()
 }
@@ -136,7 +135,7 @@ fn redo_without_an_undo_is_nothing_to_redo() {
 /// An undo another tool wrote: the view of the operation `to`, committed as
 /// `undo: restore to operation <to>`.
 fn foreign_undo(root: &Path, to: &str) {
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
@@ -144,7 +143,7 @@ fn foreign_undo(root: &Path, to: &str) {
     )
     .expect("oracle workspace load");
     let loader = workspace.repo_loader();
-    let repo = pollster::block_on(loader.load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(loader.load_at_head(Some(workspace.workspace_name()))).expect("oracle load_at_head");
     let id = jj_lib::op_store::OperationId::try_from_hex(to).expect("hex");
     let op = pollster::block_on(loader.load_operation(&id)).expect("the operation");
     let view = pollster::block_on(op.view()).expect("its view");
@@ -256,7 +255,7 @@ fn redo_of_an_undo_with_two_parents_is_a_backend_error() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     crate::op_show_diff::diverge(&fx.path);
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         &fx.path,
         &default_backend_factories(),

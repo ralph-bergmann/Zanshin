@@ -191,8 +191,7 @@ fn matched_conflicts(
     matcher: &dyn Matcher,
     explicit: &[String],
 ) -> Result<Vec<(RepoPathBuf, MergedTreeValue)>, MutateError> {
-    let conflicts = tree
-        .conflicts_matching(matcher)
+    let conflicts = futures::executor::block_on_stream(tree.conflicts_matching(matcher))
         .map(|(path, value)| value.map(|value| (path, value)))
         .collect::<Result<Vec<_>, _>>()
         .map_err(be)?;
@@ -456,7 +455,7 @@ async fn resolved_tree(
                 })
             }
         };
-        builder.set_or_remove(path, value);
+        builder.set_or_remove_merge(path, value).map_err(be)?;
     }
     builder.write_tree().await.map_err(be)
 }

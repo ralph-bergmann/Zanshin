@@ -241,7 +241,7 @@ fn op_abandon_of_a_bounded_range_reparents_the_head_onto_its_start() {
 
 /// The operation the workspace at `root` records its working copy at, as hex.
 fn working_copy_op(root: &Path) -> String {
-    let workspace = jj_lib::workspace::Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &test_helpers::test_settings(),
         root,
         &jj_lib::default_backend_factories::default_backend_factories(),

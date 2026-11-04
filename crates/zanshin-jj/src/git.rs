@@ -712,7 +712,7 @@ mod tests {
             MutateError::Backend(reason) if reason.contains("disk full")
         ));
         assert!(matches!(
-            map_remote_mgmt_err(E::InternalGitError("boom".into())),
+            map_remote_mgmt_err(E::InternalGitError(gix::Error::from_error(std::io::Error::other("boom")))),
             MutateError::Backend(reason) if reason.contains("boom")
         ));
     }

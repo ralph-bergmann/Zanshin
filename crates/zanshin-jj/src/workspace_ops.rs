@@ -2,7 +2,7 @@
 
 //! `workspace_ops.rs` — `jj workspace forget`, `rename` and `remove` (Story 9.13), ported step
 //! for step from `cmd_workspace_{forget,rename,remove}` (`cli/src/commands/workspace/
-//! {forget.rs:43-126, rename.rs:30-83, remove.rs:49-189}` @ v0.46.0).
+//! {forget.rs:43-126, rename.rs:30-83}` @ v0.46.0, `remove.rs:53-249` @ v0.47.0).
 //!
 //! What each leaves in the workspace STORE (the recorded paths) is the CLI's: `forget` keeps the
 //! path (so `undo` can point the workspace back at its directory, jj #9991), `remove` forgets it,
@@ -21,20 +21,21 @@
 
 use std::path::PathBuf;
 
+use jj_lib::commit::Commit;
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::git;
 use jj_lib::ref_name::{WorkspaceName, WorkspaceNameBuf};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::store::Store;
 use jj_lib::view::RenameWorkspaceError;
-use jj_lib::workspace::{Workspace, WorkspaceLoadError};
+use jj_lib::workspace::{DefaultWorkspaceLoaderFactory, Workspace, WorkspaceLoadError, WorkspaceLoaderFactory as _};
 
 use crate::mutate::{self, be, cfg, flatten_chain, MutateError, MutationResult};
 use crate::op_support::start_repo_transaction;
 use crate::snapshot::{self, CommandEnv, VerbContext};
 use crate::warning::{self, WarningKind, Warnings};
 
-/// `remove`'s hint (`remove.rs:34-35` @ v0.46.0).
+/// `remove`'s hint (`remove.rs:38-39` @ v0.47.0).
 const USE_WORKSPACE_FORGET_HINT: &str =
     "Use `jj workspace forget` to stop tracking a workspace without deleting files.";
 
@@ -44,7 +45,9 @@ const USE_WORKSPACE_FORGET_HINT: &str =
 pub struct WorkspaceRemoveResult {
     /// The call's operation, `forget workspace(s) …` / `remove workspace(s) …` — or, when no
     /// name named a workspace, the pre-call head. `working_copy_change_id` is `None` when this
-    /// workspace itself was forgotten or removed.
+    /// workspace itself was forgotten or removed. For `remove`, `new_change_ids` holds the
+    /// "SNAPSHOT OF REMOVED WORKSPACE" commits, in name order — one per target whose files had
+    /// changed.
     pub mutation: MutationResult,
     /// The workspace directories (canonical) whose Git worktree was unlinked — the CLI's
     /// `Removed Git worktree for "<path>".`, in name order.
@@ -232,7 +235,7 @@ fn workspace_load_error(err: WorkspaceLoadError) -> MutateError {
     }
 }
 
-/// `remove`'s per-name checks (`remove.rs:87-124` @ v0.46.0), in order: the recorded path, its
+/// `remove`'s per-name checks (`remove.rs:91-130` @ v0.47.0), in order: the recorded path, its
 /// canonical form, the repository inside it, the workspace loaded there and its repository.
 fn removable(
     current: &Workspace,
@@ -258,13 +261,16 @@ fn removable(
             "Cannot remove workspace '{symbol}' because it contains the repository"
         )));
     }
-    let loaded = Workspace::load(
-        current.settings(),
-        &path,
-        &default_backend_factories(),
-        &default_working_copy_factories(),
-    )
-    .map_err(workspace_load_error)?;
+    let loaded = DefaultWorkspaceLoaderFactory
+        .create(&path)
+        .and_then(|loader| {
+            loader.load(
+                current.settings(),
+                &default_backend_factories(),
+                &default_working_copy_factories(),
+            )
+        })
+        .map_err(workspace_load_error)?;
     if loaded.repo_path() != current.repo_path() {
         return Err(MutateError::invalid_hinted(
             format!("Cannot remove workspace '{symbol}' because it belongs to another repository"),
@@ -274,31 +280,58 @@ fn removable(
     Ok((path, loaded))
 }
 
-/// `remove`'s `for_workable_repo(…).maybe_snapshot()` on a target workspace (`remove.rs:126-141`
-/// @ v0.46.0): its own start-up environment (warnings repeated, as the CLI prints them again),
-/// then the snapshot under its Git import/export lock and its stats' warnings. Its report is
-/// thrown away — only the CURRENT workspace's precondition is the call's.
-fn snapshot_target(target: &mut Workspace, ctx: &mut VerbContext) -> Result<(), MutateError> {
-    let env = workable_env(target, ctx)?;
-    let colocated = crate::wc_ops::is_colocated_git_workspace(target).map_err(|e| be(flatten_chain(&e)))?;
-    let lock = snapshot::lock_git_import_export(target, colocated)?;
-    let repo = snapshot::load_head(target)?;
-    let step = snapshot::StepCtx {
-        config: &ctx.config,
-        env: &env,
-        colocated,
-        lock: &lock,
+/// `remove`'s `snapshot_workspace` on a target workspace (`remove.rs:136-143,192-249` @ v0.47.0):
+/// its own start-up environment (warnings repeated, as the CLI prints them again), then a snapshot
+/// at the operation its working copy was last recorded at — not the head, so a stale target can
+/// be removed too (jj #10276) — with no operation of its own and no Git import. A changed tree
+/// becomes a HIDDEN commit on top of the target's `@`, described "SNAPSHOT OF REMOVED WORKSPACE
+/// `<name>`", which [`remove`] makes a head; the working copy itself is never finished, its
+/// directory is about to go.
+///
+/// The snapshot knobs are read before the working-copy lock, where the CLI reads them after it:
+/// the lock and the operation load write nothing, so only which of two refusals wins differs.
+///
+/// # Errors
+///
+/// - [`MutateError::InvalidInput`] — the snapshot left untracked or non-UTF-8 paths ("Cannot
+///   remove workspace '<name>' with unsnapshotted changes"), after their warnings.
+fn snapshot_target(target: &mut Workspace, ctx: &mut VerbContext) -> Result<Option<Commit>, MutateError> {
+    workable_env(target, ctx)?;
+    let name = target.workspace_name().to_owned();
+    let root = target.workspace_root().to_owned();
+    let matcher = crate::wc_ops::auto_tracking_matcher(&ctx.config, &mut ctx.warnings)?;
+    let options = crate::wc_ops::snapshot_options(target, &ctx.config, matcher.as_ref())?;
+    let loader = target.repo_loader().clone();
+    let mut locked_ws = pollster::block_on(target.start_working_copy_mutation()).map_err(be)?;
+    let op = pollster::block_on(loader.load_operation(locked_ws.locked_wc().old_operation_id())).map_err(be)?;
+    let repo = pollster::block_on(loader.load_at(&op)).map_err(be)?;
+    let Some(wc_commit_id) = repo.view().get_wc_commit_id(&name) else {
+        return Ok(None);
     };
-    let (_, stats) = snapshot::snapshot_locked(
-        target,
-        repo,
-        &step,
-        &mut crate::Precondition::default(),
-        &mut ctx.warnings,
-    )?;
-    ctx.warnings
-        .extend(warning::snapshot_stats(target.workspace_root(), &stats));
-    Ok(())
+    let wc_commit = repo.store().get_commit(wc_commit_id).map_err(be)?;
+    let (new_tree, stats) = pollster::block_on(locked_ws.locked_wc().snapshot(&options)).map_err(be)?;
+    ctx.warnings.extend(warning::snapshot_stats(&root, &stats));
+    if !stats.untracked_paths.is_empty() || !stats.invalid_utf8_paths.is_empty() {
+        return Err(MutateError::invalid(format!(
+            "Cannot remove workspace '{}' with unsnapshotted changes",
+            name.as_symbol()
+        )));
+    }
+    if new_tree.tree_ids_and_labels() == wc_commit.tree().tree_ids_and_labels() {
+        return Ok(None);
+    }
+    // A new commit, not a rewrite of `@`: nothing is rebased while the workspace goes. The
+    // transaction is never committed; only the hidden commit it writes is kept.
+    let mut tx = start_repo_transaction(&repo, &name);
+    let commit = pollster::block_on(
+        tx.repo_mut()
+            .new_commit(vec![wc_commit.id().clone()], new_tree)
+            .detach()
+            .set_description(format!("SNAPSHOT OF REMOVED WORKSPACE `{}`\n", name.as_symbol()))
+            .write_hidden(),
+    )
+    .map_err(be)?;
+    Ok(Some(commit))
 }
 
 /// `for_workable_repo`'s start-up environment for `workspace`, built with the call's config into a
@@ -335,14 +368,23 @@ pub(crate) fn remove(
 
     // Each target is snapshotted before its directory goes, so its tracked changes survive.
     let mut paths = Vec::new();
+    let mut snapshot_ids = Vec::new();
     for (path, mut target) in targets {
-        snapshot_target(&mut target, ctx)?;
+        if let Some(commit) = snapshot_target(&mut target, ctx)? {
+            // Only the id: the target's store is not this workspace's.
+            snapshot_ids.push(commit.id().clone());
+        }
         paths.push(path);
     }
 
-    workable_env(workspace, ctx)?;
-    let readonly = snapshot::reload_head(workspace).map_err(be)?;
+    // The removal builds on the head loaded above, as the CLI's on its start-up repo.
     let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
+    let mut new_change_ids = Vec::new();
+    for id in &snapshot_ids {
+        let commit = tx.repo().store().get_commit(id).map_err(be)?;
+        pollster::block_on(tx.repo_mut().add_head(&commit)).map_err(be)?;
+        new_change_ids.push(crate::ChangeId(commit.change_id().reverse_hex()));
+    }
     for name in &remove {
         pollster::block_on(tx.repo_mut().remove_workspace(name)).map_err(be)?;
     }
@@ -364,7 +406,7 @@ pub(crate) fn remove(
         }
     }
     Ok(WorkspaceRemoveResult {
-        mutation: mutate::mutation_result(&finish, Vec::new(), Vec::new()),
+        mutation: mutate::mutation_result(&finish, new_change_ids, Vec::new()),
         git_worktrees_removed,
         directories_removed,
     })

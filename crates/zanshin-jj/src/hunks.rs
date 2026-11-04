@@ -353,11 +353,11 @@ pub(crate) fn diff(
                 let from = resolve(from.as_ref(), sink)?;
                 let to = resolve(to.as_ref(), sink)?;
                 if !options.paths.is_empty() {
-                    unmatched_trees.push(from.parent_tree(repo).await.map_err(be)?);
+                    unmatched_trees.push(from.parent_tree(repo.index()).await.map_err(be)?);
                     unmatched_trees.push(from.tree());
-                    unmatched_trees.push(to.parent_tree(repo).await.map_err(be)?);
+                    unmatched_trees.push(to.parent_tree(repo.index()).await.map_err(be)?);
                 }
-                let from_tree = jj_lib::rewrite::rebase_to_dest_parent(repo, std::slice::from_ref(&from), &to)
+                let from_tree = jj_lib::rewrite::rebase_to_dest_parent(repo.index(), std::slice::from_ref(&from), &to)
                     .await
                     .map_err(be)?;
                 descriptions = Some((from.description().to_owned(), to.description().to_owned()));
@@ -367,7 +367,7 @@ pub(crate) fn diff(
                 // `show_change_diff` → `show_inter_diff(&[], commit)`: no predecessors, no copy records.
                 let commit = resolve(Some(text), sink)?;
                 descriptions = Some((String::new(), commit.description().to_owned()));
-                let from_tree = commit.parent_tree(repo).await.map_err(be)?;
+                let from_tree = commit.parent_tree(repo.index()).await.map_err(be)?;
                 (from_tree, commit.tree(), vec![commit_id(&commit)], None)
             }
         };
@@ -515,7 +515,7 @@ impl<'a> DiffReader<'a> {
         records: &CopyRecords,
     ) -> Result<Vec<FileDiff>, MutateError> {
         let labels = trees.map(MergedTree::labels);
-        let mut stream = trees.before.diff_stream_with_copies(trees.after, matcher, records);
+        let mut stream = trees.before.diff_with_copies(trees.after, matcher, records);
         let mut files = Vec::new();
         while let Some(entry) = stream.next().await {
             let values = entry.values.map_err(be)?;

@@ -420,7 +420,9 @@ fn fileset_parse_error_hint(err: &FilesetParseError) -> Option<String> {
              to match file paths."
                 .to_owned(),
         ),
-        FilesetParseErrorKind::NoSuchFunction { candidates, .. } => similarity_hint(candidates),
+        FilesetParseErrorKind::NoSuchFunction { name, candidates } => {
+            crate::revset::similarity_hint(name, candidates, str::to_owned)
+        }
         FilesetParseErrorKind::InvalidArguments { .. } | FilesetParseErrorKind::Expression(_) => {
             source_parse_error_hint(err)
         }
@@ -429,15 +431,6 @@ fn fileset_parse_error_hint(err: &FilesetParseError) -> Option<String> {
         | FilesetParseErrorKind::InParameterExpansion(_)
         | FilesetParseErrorKind::RecursiveAlias(_) => None,
     }
-}
-
-/// `format_similarity_hint` (`command_error.rs:229-237` @ v0.46.0).
-fn similarity_hint(candidates: &[String]) -> Option<String> {
-    if candidates.is_empty() {
-        return None;
-    }
-    let quoted: Vec<String> = candidates.iter().map(|name| format!("`{name}`")).collect();
-    Some(format!("Did you mean {}?", quoted.join(", ")))
 }
 
 /// `find_source_parse_error_hint` (`command_error.rs:789-816` @ v0.46.0) for the sources a fileset

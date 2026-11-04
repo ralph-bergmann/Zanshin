@@ -7,7 +7,6 @@ use std::path::Path;
 use jj_lib::backend::CommitId;
 use jj_lib::default_backend_factories::default_working_copy_factories;
 use jj_lib::repo::Repo as _;
-use jj_lib::workspace::Workspace;
 use test_helpers::{add_commit_off_root, extract_fixture, set_local_bookmark};
 use zanshin_jj::{resolve_revset, Change, Repo, RevsetError};
 
@@ -15,14 +14,14 @@ use zanshin_jj::{resolve_revset, Change, Repo, RevsetError};
 /// computed directly via jj-lib — an independent oracle for AC-2.
 fn wc_and_parent_change_ids(workspace_root: &Path) -> (String, String) {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     let wc_id = repo
         .view()
         .get_wc_commit_id(workspace.workspace_name())
@@ -43,14 +42,14 @@ fn wc_and_parent_change_ids(workspace_root: &Path) -> (String, String) {
 /// bookmark targets — an independent oracle for AC-4.
 fn local_bookmark_change_ids(workspace_root: &Path) -> HashSet<String> {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     let mut out = HashSet::new();
     for (_name, target) in repo.view().local_bookmarks() {
         for commit_id in target.present_adds() {
@@ -64,14 +63,14 @@ fn local_bookmark_change_ids(workspace_root: &Path) -> HashSet<String> {
 /// The change id (reverse-hex) of the commit whose hex commit id is `commit_hex`.
 fn change_id_of(workspace_root: &Path, commit_hex: &str) -> String {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     let commit_id = CommitId::try_from_hex(commit_hex).expect("valid commit hex");
     repo.store().get_commit(&commit_id).unwrap().change_id().reverse_hex()
 }
@@ -399,14 +398,14 @@ fn revset_large_fixture_fully_materialized() {
 /// `resolve_revset`'s dedup branch actually do work (AC-10).
 fn make_divergent_change(workspace_root: &Path) -> String {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
 
     let root_commit = repo.store().root_commit();
     let root_id = root_commit.id().clone();
@@ -454,14 +453,14 @@ fn make_divergent_change(workspace_root: &Path) -> String {
 /// TEST SETUP ONLY — drives the `@`-with-no-working-copy resolution path.
 fn remove_working_copy(workspace_root: &Path) {
     let settings = test_helpers::test_settings();
-    let workspace = Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         workspace_root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let repo = pollster::block_on(workspace.load_at_head()).unwrap();
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = repo.start_transaction();

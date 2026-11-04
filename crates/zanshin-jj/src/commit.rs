@@ -177,7 +177,7 @@ pub(crate) fn commit(
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     // `commit.rs:103-134`: the selection starts from `@`'s PARENT tree.
-    let base_tree = pollster::block_on(wc_commit.parent_tree(tx.repo())).map_err(be)?;
+    let base_tree = pollster::block_on(wc_commit.parent_tree(tx.repo().index())).map_err(be)?;
     let labels = Diff::new(
         pollster::block_on(wc_commit.parents_conflict_label()).map_err(be)?,
         wc_commit.conflict_label(),

@@ -869,12 +869,40 @@ fn an_empty_push_bookmark_name_refuses() {
     assert_eq!(w.head_op(), before);
 }
 
+const SIGN_ON_PUSH: &str = "[git]\nsign-on-push = true\n\n[signing]\nbackend = \"test\"\n";
+
+impl World {
+    /// Whether the one commit `revset` names is signed.
+    fn is_signed(&mut self, revset: &str) -> bool {
+        let mut signed = false;
+        let _ = self
+            .repo
+            .eval_revset(revset, |change| {
+                signed = change.is_signed;
+                ControlFlow::Break(())
+            })
+            .expect("revset");
+        signed
+    }
+
+    /// The newest `n` operation descriptions, newest first.
+    fn op_descriptions(&mut self, n: usize) -> Vec<String> {
+        self.repo
+            .op_log(Some(n))
+            .expect("op log")
+            .into_iter()
+            .map(|op| op.description)
+            .collect()
+    }
+}
+
 /// Sign-on-push with jj-lib's `test` signing backend (the CLI's own test signer): the commits to
-/// push are signed before the push and the counts reported.
+/// push are signed before the push, in an operation of their own (`push.rs:583-608` @ v0.47.0),
+/// and the counts reported.
 #[test]
 fn sign_on_push_signs_the_commits_to_push() {
     let mut w = world();
-    w.add_repo_config("[git]\nsign-on-push = true\n\n[signing]\nbackend = \"test\"\n");
+    w.add_repo_config(SIGN_ON_PUSH);
     let third = advance_main(&mut w);
     let outcome = w.push(&GitPushArgs::default()).expect("push");
     let signing = outcome.signing.expect("signed");
@@ -882,29 +910,57 @@ fn sign_on_push_signs_the_commits_to_push() {
     assert_eq!(signing.rebased_descendants, 1, "@ is rebased onto the signed commit");
     let pushed = w.remote_refs()["refs/heads/main"].clone();
     assert_ne!(pushed, third, "the signed commit is pushed");
-    let mut signed = false;
-    let _ = w
-        .repo
-        .eval_revset(&pushed, |change| {
-            signed = change.is_signed;
-            ControlFlow::Break(())
+    assert!(w.is_signed(&pushed));
+    assert_eq!(
+        w.op_descriptions(2),
+        ["push bookmark main to git remote origin", "sign commits before push"]
+    );
+    assert_eq!(outcome.new_op_id, w.head_op());
+}
+
+/// A push that fails after signing keeps the signatures — the `sign commits before push`
+/// operation stays and is the outcome's `new_op_id` — while the `--change` bookmark, created for
+/// the push, goes with the push's transaction.
+#[test]
+fn a_failed_push_keeps_the_signatures_but_not_the_change_bookmark() {
+    let mut w = world();
+    w.add_repo_config(SIGN_ON_PUSH);
+    let main = w.hex("main");
+    let third = w.commit(&[&main], "third.txt", "third");
+    w.reopen();
+    w.new_wc_on(&[&third]);
+    let hook = w.bare.join("hooks").join("pre-receive");
+    fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
+    let mut permissions = fs::metadata(&hook).unwrap().permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+    fs::set_permissions(&hook, permissions).unwrap();
+    let outcome = w
+        .push(&GitPushArgs {
+            changes: vec!["@-".to_owned()],
+            ..Default::default()
         })
-        .expect("revset");
-    assert!(signed);
+        .expect("the outcome is data");
+    assert!(outcome.signing.is_some());
+    assert!(!outcome.recorded);
+    assert!(outcome.failure.is_some());
+    assert_eq!(w.op_descriptions(1), ["sign commits before push"]);
+    assert_eq!(outcome.new_op_id, w.head_op());
+    assert!(w.is_signed("@-"), "the signature survives the failed push");
+    assert_eq!(w.hex("bookmarks()"), main, "the `--change` bookmark is gone");
 }
 
 /// A new commit on `parent` whose author has neither name nor email — written through jj-lib,
 /// since every Zanshin verb stamps the configured identity.
 fn commit_without_author(root: &Path, parent: &str) -> String {
     let settings = test_helpers::test_settings();
-    let workspace = jj_lib::workspace::Workspace::load(
+    let workspace = test_helpers::load_workspace(
         &settings,
         root,
         &jj_lib::default_backend_factories::default_backend_factories(),
         &jj_lib::default_backend_factories::default_working_copy_factories(),
     )
     .expect("load");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("head");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("head");
     let parent = jj_lib::backend::CommitId::try_from_hex(parent).expect("hex");
     let tree = jj_lib::repo::Repo::store(repo.as_ref())
         .get_commit(&parent)
