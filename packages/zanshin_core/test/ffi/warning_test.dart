@@ -523,24 +523,36 @@ void main() {
       final Uint8List bytes = fbs.EnvelopeObjectBuilder(
         ok: true,
         dataType: fbs.PayloadTypeId.RepoHandle,
-        data: fbs.RepoHandleObjectBuilder(handle: 1, sessionId: 1),
+        data: fbs.RepoHandleObjectBuilder(handle: 1, sessionId: 1, trackableRemoteBookmarks: ['main@origin']),
         precondition: fbs.PreconditionObjectBuilder(wasSnapshotTaken: true),
         warnings: _wire(),
       ).toBytes();
 
-      final (:List<ZanshinWarning> warnings, :Precondition? precondition) = decodeCreationReport(bytes);
+      final (
+        :List<ZanshinWarning> warnings,
+        :Precondition? precondition,
+        :List<String> trackableRemoteBookmarks,
+      ) = decodeCreationReport(
+        bytes,
+      );
 
       expect(warnings, _expected);
       expect(precondition?.wasSnapshotTaken, isTrue);
+      expect(trackableRemoteBookmarks, ['main@origin']);
     });
 
-    test('creation: absent → [] and null', () {
-      final (:List<ZanshinWarning> warnings, :Precondition? precondition) = decodeCreationReport(
+    test('creation: absent → [], null and []', () {
+      final (
+        :List<ZanshinWarning> warnings,
+        :Precondition? precondition,
+        :List<String> trackableRemoteBookmarks,
+      ) = decodeCreationReport(
         _ok(fbs.PayloadTypeId.RepoHandle, fbs.RepoHandleObjectBuilder(handle: 1, sessionId: 1), warned: false),
       );
 
       expect(warnings, isEmpty);
       expect(precondition, isNull);
+      expect(trackableRemoteBookmarks, isEmpty);
     });
   });
 

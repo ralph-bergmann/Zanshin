@@ -156,6 +156,9 @@ class _DemoRepo implements ProjectRepo {
   Future<ProjectReading> read() async => const ProjectReading(status: ProjectStatus.dirty, bookmark: 'feature/new-ui');
 
   @override
+  Future<void> trackBookmarks(List<String> symbols) async {}
+
+  @override
   Future<void> close() async {}
 }
 

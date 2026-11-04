@@ -724,7 +724,12 @@ fn creation_envelope_for(outcome: CreationOutcome, session_id: u64) -> Result<Ve
         .map_err(map_repo_err)
         .and_then(|repo| arm_session_with(repo, session_id, spawn_dispatch_thread));
     match armed {
-        Ok((handle, session_id)) => Ok(ok_repo_handle(handle, session_id, &report)),
+        Ok((handle, session_id)) => Ok(ok_repo_handle(
+            handle,
+            session_id,
+            &outcome.trackable_remote_bookmarks,
+            &report,
+        )),
         Err(e) => Err(e.with_report(report)),
     }
 }
@@ -2378,6 +2383,7 @@ mod tests {
                 "Failed to clean up /t: denied",
             )],
             left_behind: vec![std::path::PathBuf::from("/t"), std::path::PathBuf::from("/t/.jj")],
+            trackable_remote_bookmarks: Vec::new(),
         };
         let e = creation_envelope(outcome).expect_err("a refusal answers with an error");
         assert_eq!(e.code, JJ_JJ_LIB_ERROR);
@@ -2401,6 +2407,7 @@ mod tests {
             precondition: None,
             warnings: vec![warning(zanshin_jj::WarningKind::IdentityMissing, "identity")],
             left_behind: Vec::new(),
+            trackable_remote_bookmarks: vec!["main@origin".to_owned()],
         };
         let e = creation_envelope(outcome).expect_err("an unarmable repo does not open");
         assert_eq!(e.code, crate::WATCHER_IO_ERROR);

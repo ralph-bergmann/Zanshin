@@ -1733,5 +1733,82 @@
   "pushSheetRejected": "rejected",
   "@pushSheetRejected": {"description": "A ref's result: the remote rejected the update."},
   "pushSheetNotReached": "not pushed",
-  "@pushSheetNotReached": {"description": "A ref's result: the push did not reach it."}
+  "@pushSheetNotReached": {"description": "A ref's result: the push did not reach it."},
+  "pushSheetSkipTick": "{refusal} — tick it to push it anyway",
+  "@pushSheetSkipTick": {
+    "description": "Story 11.22: the bare or bulk mode's quiet skip line when ticking the row would still push it; refusal is jj's text verbatim.",
+    "placeholders": {"refusal": {"type": "String", "example": "Refusing to create new remote bookmark fresh@origin"}}
+  },
+  "pushHelpLocalConflicted": "Your {name} points at more than one commit — like a branch that moved two ways. Point it at one commit first.",
+  "@pushHelpLocalConflicted": {
+    "description": "Story 11.22: plain explanation under jj's refusal of a conflicted local bookmark or tag.",
+    "placeholders": {"name": {"type": "String", "example": "main"}}
+  },
+  "pushHelpRemoteConflicted": "{remote}'s {name} moved two ways since your last fetch. Fetching brings it up to date.",
+  "@pushHelpRemoteConflicted": {
+    "description": "Story 11.22: plain explanation under jj's refusal of a conflicted remote bookmark or tag.",
+    "placeholders": {"name": {"type": "String", "example": "main"}, "remote": {"type": "String", "example": "origin"}}
+  },
+  "pushHelpRemoteUntracked": "In Git, {name} would follow {remote}/{name}. jj links them only once you track {symbol} — then pushes and fetches keep them together.",
+  "@pushHelpRemoteUntracked": {
+    "description": "Story 11.22: plain explanation under jj's refusal 'Non-tracking remote bookmark … exists'.",
+    "placeholders": {"name": {"type": "String", "example": "main"}, "remote": {"type": "String", "example": "origin"}, "symbol": {"type": "String", "example": "main@origin"}}
+  },
+  "pushHelpRemoteUntrackedTag": "{remote} has a tag {name} that jj doesn't track, so jj won't overwrite it.",
+  "@pushHelpRemoteUntrackedTag": {
+    "description": "Story 11.22: plain explanation under jj's refusal 'Non-tracking remote tag … exists'.",
+    "placeholders": {"name": {"type": "String", "example": "v1"}, "remote": {"type": "String", "example": "origin"}}
+  },
+  "pushHelpNewRemote": "Like a Git branch without an upstream: jj git push only moves bookmarks that track the remote. Tracking {symbol} sets that up, as git push -u does.",
+  "@pushHelpNewRemote": {
+    "description": "Story 11.22: plain explanation under jj's refusal 'Refusing to create new remote bookmark …'.",
+    "placeholders": {"symbol": {"type": "String", "example": "main@origin"}}
+  },
+  "pushHelpNewRemoteTag": "jj git push only moves tags that track {remote}; naming the tag creates it there.",
+  "@pushHelpNewRemoteTag": {
+    "description": "Story 11.22: plain explanation under jj's refusal 'Refusing to create new remote tag …'.",
+    "placeholders": {"remote": {"type": "String", "example": "origin"}}
+  },
+  "pushHelpDeleted": "You deleted {name} here. jj pushes a deletion only when asked (--deleted), so a remote branch never disappears by accident.",
+  "@pushHelpDeleted": {
+    "description": "Story 11.22: plain explanation under jj's refusal 'Refusing to push deleted bookmark …'.",
+    "placeholders": {"name": {"type": "String", "example": "old"}}
+  },
+  "pushHelpNoDescription": "jj won't push a commit without a message. Describe it first, or allow it.",
+  "@pushHelpNoDescription": {"description": "Story 11.22: plain explanation under jj's 'has no description' commit check."},
+  "pushHelpNoDescriptionWorkingCopy": "jj won't push a commit without a message. @ is your working copy: after a commit jj starts a new, empty change on top, so your work is in its parent.",
+  "@pushHelpNoDescriptionWorkingCopy": {"description": "Story 11.22: plain explanation under jj's 'has no description' commit check when the commit is @."},
+  "pushHelpNoAuthor": "Git would take your name from user.name and user.email; jj needs them set too (Settings › General).",
+  "@pushHelpNoAuthor": {"description": "Story 11.22: plain explanation under jj's 'has no author and/or committer set' commit check."},
+  "pushHelpConflicts": "jj keeps conflicts inside commits instead of stopping a rebase; resolve them before you share the commit.",
+  "@pushHelpConflicts": {"description": "Story 11.22: plain explanation under jj's 'has conflicts' commit check."},
+  "pushHelpSigning": "Like git commit -S, but at push time: jj signs only what you share, so your local work stays unsigned until then.",
+  "@pushHelpSigning": {"description": "Story 11.22: plain explanation under the git.sign-on-push note of the Push sheet."},
+  "pushHelpPrivate": "Your git.private-commits setting keeps this commit off remotes.",
+  "@pushHelpPrivate": {"description": "Story 11.22: plain explanation under jj's 'is private' commit check."},
+  "pushFixTrack": "Track {symbol}",
+  "@pushFixTrack": {
+    "description": "Story 11.22: fix-it chip that runs jj bookmark track on the remote bookmark.",
+    "placeholders": {"symbol": {"type": "String", "example": "main@origin"}}
+  },
+  "pushFixFetch": "Fetch",
+  "@pushFixFetch": {"description": "Story 11.22: fix-it chip that runs jj git fetch."},
+  "pushFixDeleted": "Push with --deleted",
+  "@pushFixDeleted": {"description": "Story 11.22: fix-it chip that switches the sheet to the --deleted mode."},
+  "toastOpenedUntrackedOne": "{name} isn't tracked",
+  "@toastOpenedUntrackedOne": {
+    "description": "Story 11.22: clause of the Opened toast after a conversion left one remote bookmark untracked.",
+    "placeholders": {"name": {"type": "String", "example": "main@origin"}}
+  },
+  "toastOpenedUntrackedMany": "{count, plural, one{{count} remote bookmark isn't tracked} other{{count} remote bookmarks aren't tracked}}",
+  "@toastOpenedUntrackedMany": {
+    "description": "Story 11.22: clause of the Opened toast after a conversion left several remote bookmarks untracked.",
+    "placeholders": {"count": {"type": "int", "example": "3"}}
+  },
+  "toastUntrackedHelp": "In Git a branch follows its remote counterpart; jj links a local bookmark to its remote one only once you track it — then fetches and pushes keep them together.",
+  "@toastUntrackedHelp": {"description": "Story 11.22: the explanation in the tooltip of the Opened toast with untracked remote bookmarks."},
+  "toastTrack": "Track",
+  "@toastTrack": {"description": "Story 11.22: Opened toast action tracking the one untracked remote bookmark."},
+  "toastTrackAll": "Track all",
+  "@toastTrackAll": {"description": "Story 11.22: Opened toast action tracking every untracked remote bookmark."}
 }

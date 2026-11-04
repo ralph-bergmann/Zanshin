@@ -240,7 +240,10 @@ void main() {
                   pushRef(
                     'push-ovknlmro',
                     path: PushPath.abort,
-                    rejection: rejected(<String>['has no description', 'has conflicts']),
+                    rejection: rejected(<PushRejectReason>[
+                      PushRejectReason.noDescription,
+                      PushRejectReason.conflicts,
+                    ]),
                   ),
                 ],
               },
@@ -253,6 +256,280 @@ void main() {
     expect(find.text('Allow'), findsNothing, reason: 'no short inline chip with two reasons');
     expect(find.text('push-ovknlmro'), findsOneWidget, reason: 'the name field stays below');
     rig.dispose();
+  });
+
+  group('Story 11.22 help for Git switchers', () {
+    const untracked = PushRefusal(
+      kind: PushRefusalKind.remoteUntracked,
+      message: 'Non-tracking remote bookmark main@origin exists',
+      hint: 'Run `jj bookmark track main@origin` to import the remote bookmark.',
+    );
+    const fresh = PushRefusal(
+      kind: PushRefusalKind.newRemote,
+      message: 'Refusing to create new remote bookmark fresh@origin',
+      hint: 'Run `jj bookmark track fresh@origin` and try again.',
+    );
+    String text(WidgetTester tester, String id) =>
+        tester.widget<Text>(find.descendant(of: _id(id), matching: find.byType(Text)).first).data!;
+
+    /// Ralph's repository: `fresh` new (the bare push skips it, naming it pushes it) and `main` beside an untracked
+    /// `main@origin` (refused named, too) — tracked once the fake saw the Track.
+    GitPushResult Function(PushRequest) ralph(FakeRemoteSync sync) => (request) {
+      final bool tracked = sync.log.contains('track main@origin');
+      return pushResult(<String, List<PushRef>>{
+        'origin': <PushRef>[
+          if (request.mode == PushMode.bare)
+            pushRef('fresh', action: 'add to 2d0dbb65bad8', path: PushPath.skip, refusal: fresh)
+          else if (request.mode != PushMode.deleted)
+            pushRef('fresh', action: 'add to 2d0dbb65bad8'),
+          if (tracked)
+            pushRef('main')
+          else if (request.mode == PushMode.all)
+            pushRef('main', action: null, path: PushPath.skip, refusal: untracked, explicitRefusal: untracked),
+        ],
+      });
+    };
+
+    testWidgets('a non-tracking remote: jj\'s text, the explanation and Track; Track re-plans to a forward move', (
+      tester,
+    ) async {
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      late FakeRemoteSync fake;
+      final _Rig rig = await open(tester, configure: (sync) => sync.pushAnswer = ralph(fake = sync));
+      expect(
+        text(tester, 'push-row-bookmark-main-refused'),
+        'Non-tracking remote bookmark main@origin exists\n'
+        'Run `jj bookmark track main@origin` to import the remote bookmark.',
+      );
+      expect(text(tester, 'push-row-bookmark-main-refused-help'), startsWith('In Git, main would follow origin/main.'));
+      expect(find.text('Track main@origin'), findsOneWidget);
+      final ZsTooltip tip = tester.widget<ZsTooltip>(
+        find.ancestor(of: _id('push-fix-bookmark-main'), matching: find.byType(ZsTooltip)).first,
+      );
+      expect(tip.cmd, 'jj bookmark track main@origin');
+
+      await tester.tap(find.text('Track main@origin'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(fake.log, contains('track main@origin'));
+      expect(_id('push-row-bookmark-main-refused'), findsNothing);
+      expect(find.text('move forward from aaaaaaaaaaaa to bbbbbbbbbbbb'), findsWidgets);
+      rig.dispose();
+      semantics.dispose();
+    });
+
+    testWidgets('as jj git push: the refusal shows at once, and ticking the new bookmark leaves it as it was', (
+      tester,
+    ) async {
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      final _Rig rig = await open(tester, configure: (sync) => sync.pushAnswer = ralph(sync));
+      expect(rig.model.pushSheet!.mode, PushMode.bare);
+      final String refused = text(tester, 'push-row-bookmark-main-refused');
+      expect(refused, startsWith('Non-tracking remote bookmark main@origin exists'));
+      expect(
+        text(tester, 'push-row-bookmark-fresh-skipped'),
+        'Refusing to create new remote bookmark fresh@origin — tick it to push it anyway\n'
+        'Run `jj bookmark track fresh@origin` and try again.',
+      );
+      expect(_id('push-fix-bookmark-fresh'), findsOneWidget, reason: 'Track for a new remote bookmark');
+
+      await tester.tap(_id('push-row-bookmark-fresh-check'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(rig.model.pushSheet!.mode, PushMode.custom);
+      expect(text(tester, 'push-row-bookmark-main-refused'), refused);
+      rig.dispose();
+      semantics.dispose();
+    });
+
+    testWidgets('an action names the change id before the dimmed commit id', (tester) async {
+      final _Rig rig = await open(
+        tester,
+        configure: (sync) => sync.pushAnswer = (request) => pushResult(<String, List<PushRef>>{
+          'origin': <PushRef>[
+            pushRef(
+              'main',
+              action: 'add to 2d0dbb65bad8',
+              after: '2d0dbb65bad8${'0' * 28}',
+              afterChangeId: 'ksxypqwmzz',
+            ),
+          ],
+        }),
+      );
+      expect(find.text('add to ksxypqwm 2d0dbb65bad8'), findsOneWidget);
+      rig.dispose();
+    });
+
+    testWidgets('a forward move names both change ids, their prefixes bold, before the dimmed commit ids', (
+      tester,
+    ) async {
+      final _Rig rig = await open(
+        tester,
+        configure: (sync) => sync.pushAnswer = (request) => pushResult(<String, List<PushRef>>{
+          'origin': <PushRef>[
+            pushRef(
+              'main',
+              before: 'a' * 40,
+              after: 'b' * 40,
+              beforeChangeId: 'qpvuntsmwlqt',
+              afterChangeId: 'ksxypqwmzzzz',
+              changePrefixLen: 2,
+            ),
+          ],
+        }),
+      );
+      const line = 'move forward from qpvuntsm aaaaaaaaaaaa to ksxypqwm bbbbbbbbbbbb';
+      expect(find.text(line), findsOneWidget);
+      final Text text = tester.widget<Text>(find.text(line));
+      final List<TextSpan> spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
+      final ZsColors colors = ZsColors.of(tester.element(find.text(line)));
+      TextSpan span(String s) => spans.singleWhere((span) => span.text == s);
+      for (final prefix in <String>['qp', 'ks']) {
+        expect(span(prefix).style?.fontWeight, FontWeight.w600, reason: prefix);
+      }
+      for (final commit in <String>['a' * 12, 'b' * 12]) {
+        expect(span(commit).style?.color, colors.textDim, reason: commit);
+      }
+      expect(spans.indexOf(span('qp')), lessThan(spans.indexOf(span('a' * 12))));
+      expect(spans.indexOf(span('ks')), lessThan(spans.indexOf(span('b' * 12))));
+      rig.dispose();
+    });
+
+    testWidgets('the git.sign-on-push note explains signing in Git terms', (tester) async {
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      final _Rig rig = await open(tester, configure: (sync) => sync.config = const PushConfig(signOnPush: true));
+      expect(find.textContaining('Like git commit -S, but at push time'), findsOneWidget);
+      rig.dispose();
+      semantics.dispose();
+    });
+
+    /// One refused row per refusal kind and one rejected row per reason kind: each shows its explanation.
+    final cases = <(String, PushRef, String)>[
+      (
+        'local conflicted',
+        pushRef(
+          'main',
+          action: null,
+          path: PushPath.skip,
+          refusal: const PushRefusal(kind: PushRefusalKind.localConflicted, message: 'Bookmark main is conflicted'),
+        ),
+        'Your main points at more than one commit',
+      ),
+      (
+        'remote conflicted',
+        pushRef(
+          'main',
+          action: null,
+          path: PushPath.skip,
+          refusal: const PushRefusal(
+            kind: PushRefusalKind.remoteConflicted,
+            message: 'Bookmark main@origin is conflicted',
+          ),
+        ),
+        "origin's main moved two ways since your last fetch.",
+      ),
+      (
+        'remote untracked',
+        pushRef('main', action: null, path: PushPath.skip, refusal: untracked),
+        'In Git, main would follow origin/main.',
+      ),
+      ('new remote', pushRef('fresh', path: PushPath.skip, refusal: fresh), 'Like a Git branch without an upstream'),
+      (
+        'deleted',
+        pushRef(
+          'old',
+          action: 'delete from aaaaaaaaaaaa',
+          path: PushPath.skip,
+          refusal: const PushRefusal(kind: PushRefusalKind.deleted, message: 'Refusing to push deleted bookmark old'),
+        ),
+        'You deleted old here.',
+      ),
+      (
+        'no description',
+        pushRef('wip', path: PushPath.skip, rejection: rejected(<PushRejectReason>[PushRejectReason.noDescription])),
+        'Describe it first, or allow it.',
+      ),
+      (
+        'no description on @',
+        pushRef(
+          'wip',
+          path: PushPath.skip,
+          rejection: rejected(<PushRejectReason>[PushRejectReason.noDescription], workingCopy: true),
+        ),
+        '@ is your working copy',
+      ),
+      (
+        'no author',
+        pushRef('wip', path: PushPath.skip, rejection: rejected(<PushRejectReason>[PushRejectReason.noAuthor])),
+        'Git would take your name from user.name and user.email',
+      ),
+      (
+        'conflicts',
+        pushRef('wip', path: PushPath.skip, rejection: rejected(<PushRejectReason>[PushRejectReason.conflicts])),
+        'jj keeps conflicts inside commits',
+      ),
+      (
+        'private',
+        pushRef('wip', path: PushPath.skip, rejection: rejected(<PushRejectReason>[PushRejectReason.private])),
+        'Your git.private-commits setting keeps this commit off remotes.',
+      ),
+    ];
+    for (final (String name, PushRef row, String help) in cases) {
+      testWidgets('$name: the explanation shows', (tester) async {
+        final _Rig rig = await open(
+          tester,
+          configure: (sync) => sync.pushAnswer = (request) => pushResult(<String, List<PushRef>>{
+            'origin': <PushRef>[if (request.mode == PushMode.bare) row],
+          }),
+        );
+        expect(find.textContaining(help), findsOneWidget);
+        rig.dispose();
+      });
+    }
+
+    testWidgets('a conflicted remote fetches; a deleted bookmark offers --deleted', (tester) async {
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      late FakeRemoteSync fake;
+      final _Rig rig = await open(
+        tester,
+        configure: (sync) => (fake = sync).pushAnswer = (request) => pushResult(<String, List<PushRef>>{
+          'origin': <PushRef>[
+            if (request.mode == PushMode.bare) ...<PushRef>[
+              pushRef(
+                'main',
+                action: null,
+                path: PushPath.skip,
+                refusal: const PushRefusal(
+                  kind: PushRefusalKind.remoteConflicted,
+                  message: 'Bookmark main@origin is conflicted',
+                ),
+              ),
+              pushRef(
+                'old',
+                action: 'delete from aaaaaaaaaaaa',
+                path: PushPath.skip,
+                refusal: const PushRefusal(
+                  kind: PushRefusalKind.deleted,
+                  message: 'Refusing to push deleted bookmark old',
+                ),
+              ),
+            ],
+          ],
+        }),
+      );
+      expect(find.text('Fetch'), findsOneWidget);
+      await tester.tap(_id('push-fix-bookmark-main'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(fake.log, contains('fetch'));
+      expect(find.text('Push with --deleted'), findsOneWidget);
+      await tester.tap(_id('push-fix-bookmark-old'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(rig.model.pushSheet!.mode, PushMode.deleted);
+      rig.dispose();
+      semantics.dispose();
+    });
   });
 
   testWidgets('the Fetch tooltip has no shortcut; a stale working copy disables both with its reason', (tester) async {

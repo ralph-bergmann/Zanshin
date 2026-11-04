@@ -4039,6 +4039,138 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'not pushed'**
   String get pushSheetNotReached;
+
+  /// Story 11.22: the bare or bulk mode's quiet skip line when ticking the row would still push it; refusal is jj's text verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'{refusal} — tick it to push it anyway'**
+  String pushSheetSkipTick(String refusal);
+
+  /// Story 11.22: plain explanation under jj's refusal of a conflicted local bookmark or tag.
+  ///
+  /// In en, this message translates to:
+  /// **'Your {name} points at more than one commit — like a branch that moved two ways. Point it at one commit first.'**
+  String pushHelpLocalConflicted(String name);
+
+  /// Story 11.22: plain explanation under jj's refusal of a conflicted remote bookmark or tag.
+  ///
+  /// In en, this message translates to:
+  /// **'{remote}\'s {name} moved two ways since your last fetch. Fetching brings it up to date.'**
+  String pushHelpRemoteConflicted(String name, String remote);
+
+  /// Story 11.22: plain explanation under jj's refusal 'Non-tracking remote bookmark … exists'.
+  ///
+  /// In en, this message translates to:
+  /// **'In Git, {name} would follow {remote}/{name}. jj links them only once you track {symbol} — then pushes and fetches keep them together.'**
+  String pushHelpRemoteUntracked(String name, String remote, String symbol);
+
+  /// Story 11.22: plain explanation under jj's refusal 'Non-tracking remote tag … exists'.
+  ///
+  /// In en, this message translates to:
+  /// **'{remote} has a tag {name} that jj doesn\'t track, so jj won\'t overwrite it.'**
+  String pushHelpRemoteUntrackedTag(String name, String remote);
+
+  /// Story 11.22: plain explanation under jj's refusal 'Refusing to create new remote bookmark …'.
+  ///
+  /// In en, this message translates to:
+  /// **'Like a Git branch without an upstream: jj git push only moves bookmarks that track the remote. Tracking {symbol} sets that up, as git push -u does.'**
+  String pushHelpNewRemote(String symbol);
+
+  /// Story 11.22: plain explanation under jj's refusal 'Refusing to create new remote tag …'.
+  ///
+  /// In en, this message translates to:
+  /// **'jj git push only moves tags that track {remote}; naming the tag creates it there.'**
+  String pushHelpNewRemoteTag(String remote);
+
+  /// Story 11.22: plain explanation under jj's refusal 'Refusing to push deleted bookmark …'.
+  ///
+  /// In en, this message translates to:
+  /// **'You deleted {name} here. jj pushes a deletion only when asked (--deleted), so a remote branch never disappears by accident.'**
+  String pushHelpDeleted(String name);
+
+  /// Story 11.22: plain explanation under jj's 'has no description' commit check.
+  ///
+  /// In en, this message translates to:
+  /// **'jj won\'t push a commit without a message. Describe it first, or allow it.'**
+  String get pushHelpNoDescription;
+
+  /// Story 11.22: plain explanation under jj's 'has no description' commit check when the commit is @.
+  ///
+  /// In en, this message translates to:
+  /// **'jj won\'t push a commit without a message. @ is your working copy: after a commit jj starts a new, empty change on top, so your work is in its parent.'**
+  String get pushHelpNoDescriptionWorkingCopy;
+
+  /// Story 11.22: plain explanation under jj's 'has no author and/or committer set' commit check.
+  ///
+  /// In en, this message translates to:
+  /// **'Git would take your name from user.name and user.email; jj needs them set too (Settings › General).'**
+  String get pushHelpNoAuthor;
+
+  /// Story 11.22: plain explanation under jj's 'has conflicts' commit check.
+  ///
+  /// In en, this message translates to:
+  /// **'jj keeps conflicts inside commits instead of stopping a rebase; resolve them before you share the commit.'**
+  String get pushHelpConflicts;
+
+  /// Story 11.22: plain explanation under the git.sign-on-push note of the Push sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Like git commit -S, but at push time: jj signs only what you share, so your local work stays unsigned until then.'**
+  String get pushHelpSigning;
+
+  /// Story 11.22: plain explanation under jj's 'is private' commit check.
+  ///
+  /// In en, this message translates to:
+  /// **'Your git.private-commits setting keeps this commit off remotes.'**
+  String get pushHelpPrivate;
+
+  /// Story 11.22: fix-it chip that runs jj bookmark track on the remote bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'Track {symbol}'**
+  String pushFixTrack(String symbol);
+
+  /// Story 11.22: fix-it chip that runs jj git fetch.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch'**
+  String get pushFixFetch;
+
+  /// Story 11.22: fix-it chip that switches the sheet to the --deleted mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Push with --deleted'**
+  String get pushFixDeleted;
+
+  /// Story 11.22: clause of the Opened toast after a conversion left one remote bookmark untracked.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} isn\'t tracked'**
+  String toastOpenedUntrackedOne(String name);
+
+  /// Story 11.22: clause of the Opened toast after a conversion left several remote bookmarks untracked.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} remote bookmark isn\'t tracked} other{{count} remote bookmarks aren\'t tracked}}'**
+  String toastOpenedUntrackedMany(int count);
+
+  /// Story 11.22: the explanation in the tooltip of the Opened toast with untracked remote bookmarks.
+  ///
+  /// In en, this message translates to:
+  /// **'In Git a branch follows its remote counterpart; jj links a local bookmark to its remote one only once you track it — then fetches and pushes keep them together.'**
+  String get toastUntrackedHelp;
+
+  /// Story 11.22: Opened toast action tracking the one untracked remote bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'Track'**
+  String get toastTrack;
+
+  /// Story 11.22: Opened toast action tracking every untracked remote bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'Track all'**
+  String get toastTrackAll;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

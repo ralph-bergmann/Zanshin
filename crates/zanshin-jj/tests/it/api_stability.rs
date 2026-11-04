@@ -2584,6 +2584,8 @@ fn story_9_33_creation_outcome_resolves() {
         }],
         // Story 9.57: what a failed conversion created and left on disk.
         left_behind: vec![std::path::PathBuf::new()],
+        // Story 11.22: the post-conversion trackable remote bookmarks.
+        trackable_remote_bookmarks: vec![String::new()],
     };
     assert!(outcome.result.is_err());
 }
@@ -2651,11 +2653,34 @@ fn story_9_20_push_clone_init_resolves() {
     };
 }
 
+/// Story 11.22: the refusal and reason kinds — every variant named by its public path.
+#[test]
+fn story_11_22_push_kinds_resolve() {
+    use zanshin_jj::{PushRefusalKind as K, PushRejectReason as R};
+    for kind in [
+        K::LocalConflicted,
+        K::RemoteConflicted,
+        K::RemoteUntracked,
+        K::NewRemote,
+        K::Deleted,
+    ] {
+        match kind {
+            K::LocalConflicted | K::RemoteConflicted | K::RemoteUntracked | K::NewRemote | K::Deleted => {}
+        }
+    }
+    for reason in [R::NoDescription, R::NoAuthor, R::Conflicts, R::Private] {
+        match reason {
+            R::NoDescription | R::NoAuthor | R::Conflicts | R::Private => {}
+        }
+    }
+}
+
 /// Story 9.20: the push outcome's types — every public type, field and variant named by its
 /// public path.
 #[test]
 fn story_9_20_push_outcome_resolves() {
     let refusal = zanshin_jj::PushRefusal {
+        kind: zanshin_jj::PushRefusalKind::NewRemote,
         message: String::new(),
         hint: None,
     };
@@ -2664,6 +2689,10 @@ fn story_9_20_push_outcome_resolves() {
         name: String::new(),
         before: None,
         after: None,
+        before_change_id: None,
+        before_change_prefix_len: 0,
+        after_change_id: None,
+        after_change_prefix_len: 0,
         action: None,
         path: zanshin_jj::PushPath::Skip,
         refusal: Some(refusal.clone()),
@@ -2671,6 +2700,8 @@ fn story_9_20_push_outcome_resolves() {
         rejection: Some(zanshin_jj::PushCommitRejection {
             commit_id: String::new(),
             reasons: Vec::new(),
+            reason_kinds: vec![zanshin_jj::PushRejectReason::NoDescription],
+            working_copy: false,
             message: String::new(),
             hints: Vec::new(),
         }),

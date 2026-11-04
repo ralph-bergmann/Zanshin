@@ -2876,7 +2876,19 @@ final class RepoHandle {
 /// for a conversion, its PARTIAL `precondition` (Story 9.35).
 final class CreatedRepoHandle extends RepoHandle {
   /// Wrap `handleId` returned by the worker, with the creating call's report.
-  CreatedRepoHandle(super._worker, super._handleId, {required this.warnings, required this.precondition});
+  CreatedRepoHandle(
+    super._worker,
+    super._handleId, {
+    required this.warnings,
+    required this.precondition,
+    this.trackableRemoteBookmarks = const [],
+  });
+
+  /// The remote bookmarks a conversion (or an init over an existing `.git`)
+  /// left untracked beside a local bookmark of the same name — the CLI's
+  /// post-`jj git init` hint list (Story 11.22), `<name>@<remote>` in jj's
+  /// order; empty otherwise.
+  final List<String> trackableRemoteBookmarks;
 
   /// The creating call's warnings, in the jj CLI's print order; empty when
   /// there were none — e.g. `jj.identity_missing` after a clone with an empty

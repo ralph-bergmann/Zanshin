@@ -71,14 +71,22 @@ class CloneTicket extends ChangeNotifier {
 /// A repository a creation made, open, with what the creating call warned about (9.33).
 @immutable
 class ProjectCreation {
-  /// The created and open [repo] with the creation's [warnings].
-  const ProjectCreation({required this.repo, this.warnings = const <ZanshinWarning>[]});
+  /// The created and open [repo] with the creation's [warnings] and [trackableRemoteBookmarks].
+  const ProjectCreation({
+    required this.repo,
+    this.warnings = const <ZanshinWarning>[],
+    this.trackableRemoteBookmarks = const <String>[],
+  });
 
   /// The new repository, open.
   final ProjectRepo repo;
 
   /// The creation's warnings in the CLI's print order, their messages verbatim; empty when there were none.
   final List<ZanshinWarning> warnings;
+
+  /// The remote bookmarks a conversion left untracked beside a local bookmark of the same name, `NAME@REMOTE` in jj's
+  /// order (the CLI's post-`jj git init` hint, Story 11.22); empty otherwise.
+  final List<String> trackableRemoteBookmarks;
 }
 
 /// One open repository as the project session sees it.
@@ -95,6 +103,10 @@ abstract interface class ProjectRepo {
   /// Reads what the status dot and the bookmark label show; a stale working copy reads as [ProjectStatus.stale].
   /// Throws [ZanshinFfiException] when the reads fail otherwise.
   Future<ProjectReading> read();
+
+  /// `jj bookmark track` of the `NAME@REMOTE` [symbols] in one call (the Opened toast's Track, Story 11.22). Throws
+  /// [ZanshinFfiException] when jj refuses.
+  Future<void> trackBookmarks(List<String> symbols);
 
   /// Closes the handle.
   Future<void> close();

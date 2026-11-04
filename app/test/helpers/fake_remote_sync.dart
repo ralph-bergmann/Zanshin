@@ -98,6 +98,22 @@ class FakeRemoteSync implements RemoteSync {
     });
   }
 
+  /// While set, a track fails with it.
+  ZanshinFfiException? trackError;
+
+  /// While set, a track waits for it.
+  Completer<void>? trackGate;
+
+  @override
+  Future<void> track(List<String> symbols) async {
+    log.add('track ${symbols.join(' ')}');
+    await trackGate?.future;
+    final ZanshinFfiException? error = trackError;
+    if (error != null) {
+      throw error;
+    }
+  }
+
   @override
   NetworkOperation<GitPushResult> push(PushRequest request) {
     log.add(request.toString());
@@ -174,21 +190,42 @@ PushRef pushRef(
   PushCommitRejection? rejection,
   PushRefStatus status = PushRefStatus.notReached,
   String? statusReason,
+  String? before,
+  String? after,
+  String? beforeChangeId,
+  String? afterChangeId,
+  int changePrefixLen = 0,
 }) => PushRef(
   kind: kind,
   name: name,
   path: path,
   status: status,
   action: action,
+  before: before,
+  after: after,
+  beforeChangeId: beforeChangeId,
+  beforeChangePrefixLen: beforeChangeId == null ? 0 : changePrefixLen,
+  afterChangeId: afterChangeId,
+  afterChangePrefixLen: afterChangeId == null ? 0 : changePrefixLen,
   refusal: refusal,
   explicitRefusal: explicitRefusal,
   rejection: rejection,
   statusReason: statusReason,
 );
 
-/// jj's rejection of a commit for [reasons].
-PushCommitRejection rejected(List<String> reasons) => PushCommitRejection(
+/// jj's words for each [PushRejectReason].
+const _reasonTexts = <PushRejectReason, String>{
+  PushRejectReason.noDescription: 'has no description', // l10n-ignore: jj's text
+  PushRejectReason.noAuthor: 'has no author and/or committer set', // l10n-ignore: jj's text
+  PushRejectReason.conflicts: 'has conflicts', // l10n-ignore: jj's text
+  PushRejectReason.private: 'is private', // l10n-ignore: jj's text
+};
+
+/// jj's rejection of a commit for [reasons]; [workingCopy] = the commit is @.
+PushCommitRejection rejected(List<PushRejectReason> reasons, {bool workingCopy = false}) => PushCommitRejection(
   commitId: 'c' * 40,
-  reasons: reasons,
-  message: "Won't push commit cccccccccccc since it ${reasons.join(' and ')}",
+  reasons: <String>[for (final PushRejectReason reason in reasons) _reasonTexts[reason]!],
+  reasonKinds: reasons,
+  workingCopy: workingCopy,
+  message: "Won't push commit cccccccccccc since it ${reasons.map((r) => _reasonTexts[r]).join(' and ')}",
 );

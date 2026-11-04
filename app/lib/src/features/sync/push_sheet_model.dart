@@ -29,17 +29,20 @@ enum PushAllow {
   /// The flag.
   final String flag;
 
-  /// The flag for jj's [reason], or null when no flag overrides it ("has no author and/or committer set").
-  static PushAllow? of(String reason) => switch (reason) {
-    'has no description' => emptyDescription, // l10n-ignore: jj's text
-    'is private' => private, // l10n-ignore: jj's text
-    'has conflicts' => conflicts, // l10n-ignore: jj's text
-    _ => null,
+  /// The flag for [reason], or null when no flag overrides it (no author and/or committer).
+  static PushAllow? of(PushRejectReason reason) => switch (reason) {
+    PushRejectReason.noDescription => emptyDescription,
+    PushRejectReason.private => private,
+    PushRejectReason.conflicts => conflicts,
+    PushRejectReason.noAuthor => null,
   };
 }
 
 /// A row of the Push sheet: a bookmark or tag by name.
 typedef PushRowKey = ({PushRefKind kind, String name});
+
+/// A refusal with the remote whose plan reports it (the remote a fix-it acts on).
+typedef PushRemoteRefusal = ({PushRefusal refusal, String remote});
 
 /// Where the Push sheet is.
 enum PushSheetPhase {
@@ -117,6 +120,8 @@ class PushSheetModel extends ChangeNotifier {
   PushRequest? _checked;
   GitPushResult? _checkResult;
   String? _checkError;
+  PushRowKey? _fixing;
+  ({PushRowKey key, String text})? _fixError;
 
   /// Every remote's name.
   List<String> get remoteNames => _remoteNames;
@@ -172,7 +177,13 @@ class PushSheetModel extends ChangeNotifier {
   /// Whether the user typed a name of their own.
   bool get named => _name != null && _name != generatedName;
 
-  bool get _busy => _phase != PushSheetPhase.ready;
+  /// The row whose fix-it runs; null while none does.
+  PushRowKey? get fixing => _fixing;
+
+  /// jj's text for [key]'s failed fix-it; null when its last one did not fail.
+  String? fixErrorOf(PushRowKey key) => _fixError?.key == key ? _fixError?.text : null;
+
+  bool get _busy => _phase != PushSheetPhase.ready || _fixing != null;
 
   List<String>? get _remotesArg => setEquals(_chosen.toSet(), _defaults.toSet()) ? null : _chosen;
 
@@ -219,6 +230,7 @@ class PushSheetModel extends ChangeNotifier {
   Future<void> _replan() async {
     final int serial = ++_planSerial;
     _phase = PushSheetPhase.loading;
+    _fixError = null;
     _notify();
     final plans = <PushMode, GitPushResult>{};
     ZanshinFfiException? planError;
@@ -307,12 +319,22 @@ class PushSheetModel extends ChangeNotifier {
   /// The commit check's rejection of [key], when one plan reports it.
   PushCommitRejection? rejectionOf(PushRowKey key) => _allRefs(key).map((ref) => ref.rejection).nonNulls.firstOrNull;
 
-  /// Why naming [key] by hand is refused on a chosen remote; null when it is not.
-  PushRefusal? explicitRefusalOf(PushRowKey key) =>
-      _allRefs(key).map((ref) => ref.explicitRefusal).nonNulls.firstOrNull;
+  /// Why naming [key] by hand is refused on a chosen remote, with that remote; null when it is not.
+  PushRemoteRefusal? explicitRefusalOf(PushRowKey key) {
+    for (final PushMode mode in _modes) {
+      for (final PushRemote remote in _plans[mode]?.remotes ?? const <PushRemote>[]) {
+        for (final PushRef ref in remote.refs) {
+          if (ref.kind == key.kind && ref.name == key.name && ref.explicitRefusal != null) {
+            return (refusal: ref.explicitRefusal!, remote: remote.name);
+          }
+        }
+      }
+    }
+    return null;
+  }
 
   bool _allows(PushCommitRejection? rejection) =>
-      rejection == null || rejection.reasons.every((reason) => _allow.contains(PushAllow.of(reason)));
+      rejection == null || rejection.reasonKinds.every((reason) => _allow.contains(PushAllow.of(reason)));
 
   /// Whether [key] can be ticked by hand.
   bool tickable(PushRowKey key) => explicitRefusalOf(key) == null && _allows(rejectionOf(key));
@@ -422,14 +444,48 @@ class PushSheetModel extends ChangeNotifier {
     _changed();
   }
 
+  // ---- fix-its (Story 11.22) ----
+
+  /// [key]'s Track fix-it: `jj bookmark track <symbol>`, then the sheet re-plans.
+  Future<void> track(PushRowKey key, String symbol) => _fix(key, () => _sync.track(<String>[symbol]));
+
+  /// [key]'s Fetch fix-it: `jj git fetch` with the default remotes, then the sheet re-plans.
+  Future<void> fetchAndReplan(PushRowKey key) => _fix(key, () async {
+    final NetworkOperation<GitFetchResult> fetch = _sync.fetch();
+    final SyncRun? syncing = _syncing;
+    await (syncing == null ? fetch.result : syncing(() => fetch.result));
+  });
+
+  Future<void> _fix(PushRowKey key, Future<void> Function() run) async {
+    if (_busy) {
+      return;
+    }
+    _fixing = key;
+    _fixError = null;
+    _notify();
+    try {
+      await run();
+    } on ZanshinFfiException catch (error) {
+      _log.warning('a push fix-it failed: ${error.code}');
+      _fixError = (key: key, text: error.context ?? error.code);
+      return;
+    } finally {
+      _fixing = null;
+      _notify();
+    }
+    if (!_disposed) {
+      await _replan();
+    }
+  }
+
   // ---- the command ----
 
   /// The push the sheet would run.
   PushRequest get request {
     final Set<PushAllow> needed = <PushAllow>{
       for (final PushRowKey key in _rows)
-        if (sent(key)) ...?rejectionOf(key)?.reasons.map(PushAllow.of).nonNulls,
-      if (_changeOn) ...?changeRejection?.reasons.map(PushAllow.of).nonNulls,
+        if (sent(key)) ...?rejectionOf(key)?.reasonKinds.map(PushAllow.of).nonNulls,
+      if (_changeOn) ...?changeRejection?.reasonKinds.map(PushAllow.of).nonNulls,
     }.intersection(_allow);
     final PushChangeTarget? target = change;
     final bool withChange = _changeOn && target != null;
@@ -478,7 +534,7 @@ class PushSheetModel extends ChangeNotifier {
   }
 
   /// Whether Push may run: ready, something to send, and the command's dry run passed.
-  bool get canPush => _phase == PushSheetPhase.ready && !empty && _checked == request.asDryRun && _checkError == null;
+  bool get canPush => !_busy && !empty && _checked == request.asDryRun && _checkError == null;
 
   void _changed() {
     _recheck();

@@ -41,6 +41,11 @@
 .zs-push-sub.is-refused{color:var(--warn)}
 .zs-push-sub.is-error{color:var(--rem)}
 .zs-push-sub .zs-cid{font-size:var(--fs-sm)}
+/* sync #19 — help for Git switchers: the mode's skip when ticking still pushes the row (quiet), the plain explanation under jj's
+   words (muted, one or two sentences, the Git term next to the jj one), and the fix-it chip that runs the command jj's hint names */
+.zs-push-sub.is-skip{color:var(--text-dim)}
+.zs-push-help{font-size:var(--fs-sm);line-height:1.4;color:var(--text-muted);text-wrap:pretty}
+.zs-push-fix{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
 .zs-push-move{display:flex;align-items:center;gap:6px;white-space:nowrap}
 .zs-push-move .zs-cid{font-size:var(--fs-id)}
 .zs-push-arrow,.zs-push-none{font:var(--fs-id) var(--font-mono);color:var(--text-faint)}

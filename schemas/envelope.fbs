@@ -1542,9 +1542,14 @@ table FindChangesRequest {
 /// The envelope carrying it from init/clone/convert also carries the creating call's report
 /// (`Envelope.warnings`, and — convert only — `Envelope.precondition`; Story 9.33); from open,
 /// neither.
+/// `trackable_remote_bookmarks` (Story 11.22): from a successful conversion or init over an
+/// existing `.git`, the remote bookmarks left untracked beside a local bookmark of the same name
+/// (the CLI's post-`jj git init` hint list, `<name>@<remote>` in the view's order); empty
+/// otherwise.
 table RepoHandle {
   handle: ulong;
   session_id: ulong;
+  trackable_remote_bookmarks: [string];
 }
 
 /// Diagnostics payload returned by zanshin_diagnostics().
@@ -2335,21 +2340,35 @@ enum PushRefStatus : ubyte { NotReached, Pushed, LeaseRejected, RemoteRejected }
 /// refs). Member order IS the wire value — APPEND only.
 enum PushFailureKind : ubyte { RefRefused, CommitRejected, SomeRefsFailed, PushError, Cancelled }
 
+/// Which refusal a ref got (Story 11.22): the local ref is conflicted, the remote-tracking ref is
+/// conflicted, an untracked remote ref of that name exists, the push would create a new remote
+/// ref, or it would delete one. Member order IS the wire value — APPEND only.
+enum PushRefusalKind : ubyte { LocalConflicted, RemoteConflicted, RemoteUntracked, NewRemote, Deleted }
+
+/// One reason a commit check rejects a commit (Story 11.22): "has no description", "has no
+/// author and/or committer set", "has conflicts", "is private". Member order IS the wire value —
+/// APPEND only.
+enum PushRejectReason : ubyte { NoDescription, NoAuthor, Conflicts, Private }
+
 /// The CLI's message and hint for a refused ref, verbatim. `hint` ABSENT where the CLI gives
-/// none.
+/// none. `kind` (Story 11.22) names the refusal.
 table PushRefusal {
   message: string;
   hint: string;
+  kind: PushRefusalKind;
 }
 
 /// A commit the push refuses to send: its full hex id, the reasons in the CLI's order, the CLI's
 /// text for the ref's path and its hints ("Rejected commit: …" on the abort path, the
-/// `git.private-commits` hint for a private commit).
+/// `git.private-commits` hint for a private commit). Story 11.22: `reason_kinds` = the reasons
+/// as kinds, index for index; `working_copy` = the commit is the workspace's `@`.
 table PushCommitRejection {
   commit_id: string;
   reasons: [string];
   message: string;
   hints: [string];
+  reason_kinds: [PushRejectReason];
+  working_copy: bool;
 }
 
 /// One ref of a remote's plan. `before` / `after` are full commit hex ids — ABSENT when the ref
@@ -2359,6 +2378,9 @@ table PushCommitRejection {
 /// `refusal` is the mode's refusal (Skip / Abort), `explicit_refusal` the one the ref would get if
 /// named explicitly (ABSENT = it could be), `rejection` the commit the push refuses to send.
 /// `status` / `status_reason` after a real push.
+/// Story 11.22: `before_change_id` / `after_change_id` are the change ids (reverse hex) of
+/// `before` / `after` — ABSENT with them — and the `*_change_prefix_len`s their shortest unique
+/// prefixes (0 without an id).
 table PushRef {
   kind: PushRefKind;
   name: string;
@@ -2371,6 +2393,10 @@ table PushRef {
   rejection: PushCommitRejection;
   status: PushRefStatus;
   status_reason: string;
+  before_change_id: string;
+  before_change_prefix_len: uint;
+  after_change_id: string;
+  after_change_prefix_len: uint;
 }
 
 /// A ref and its kind — an explicitly named ref that already matches (the CLI's "Bookmark

@@ -159,6 +159,68 @@ void main() {
       expect(r.warnings.single.code, ZanshinWarningCode.pushRefSkipped);
     });
 
+    test('Story 11.22: refusal kinds, reason kinds, the working copy and the change ids decode', () {
+      GitPushResult decode(fbs.PushRefObjectBuilder row) => decodeGitPushResultEnvelope(
+        _envelope(
+          fbs.GitPushResultObjectBuilder(
+            newOpId: 'op',
+            remotes: [
+              fbs.PushRemoteObjectBuilder(name: 'origin', refs: [row]),
+            ],
+          ),
+        ),
+      );
+      for (final (fbs.PushRefusalKind wire, PushRefusalKind dart) in [
+        (fbs.PushRefusalKind.LocalConflicted, PushRefusalKind.localConflicted),
+        (fbs.PushRefusalKind.RemoteConflicted, PushRefusalKind.remoteConflicted),
+        (fbs.PushRefusalKind.RemoteUntracked, PushRefusalKind.remoteUntracked),
+        (fbs.PushRefusalKind.NewRemote, PushRefusalKind.newRemote),
+        (fbs.PushRefusalKind.Deleted, PushRefusalKind.deleted),
+      ]) {
+        final PushRef row = decode(
+          _row(
+            refusal: fbs.PushRefusalObjectBuilder(message: 'm', kind: wire),
+          ),
+        ).remotes.single.refs.single;
+        expect(row.refusal!.kind, dart);
+      }
+      final PushRef row = decode(
+        fbs.PushRefObjectBuilder(
+          kind: fbs.PushRefKind.Bookmark,
+          name: 'main',
+          before: 'aaa',
+          after: 'bbb',
+          beforeChangeId: 'kkkk',
+          beforeChangePrefixLen: 2,
+          afterChangeId: 'zzzz',
+          afterChangePrefixLen: 3,
+          rejection: fbs.PushCommitRejectionObjectBuilder(
+            commitId: 'bbb',
+            message: 'm',
+            reasons: const ['a', 'b', 'c', 'd'],
+            reasonKinds: const [
+              fbs.PushRejectReason.NoDescription,
+              fbs.PushRejectReason.NoAuthor,
+              fbs.PushRejectReason.Conflicts,
+              fbs.PushRejectReason.Private,
+            ],
+            workingCopy: true,
+          ),
+        ),
+      ).remotes.single.refs.single;
+      expect(row.rejection!.reasonKinds, [
+        PushRejectReason.noDescription,
+        PushRejectReason.noAuthor,
+        PushRejectReason.conflicts,
+        PushRejectReason.private,
+      ]);
+      expect(row.rejection!.workingCopy, isTrue);
+      expect((row.beforeChangeId, row.beforeChangePrefixLen), ('kkkk', 2));
+      expect((row.afterChangeId, row.afterChangePrefixLen), ('zzzz', 3));
+      final PushRef bare = decode(_row()).remotes.single.refs.single;
+      expect((bare.beforeChangeId, bare.beforeChangePrefixLen), (null, 0), reason: 'absent is null and 0');
+    });
+
     test('every failure kind and an empty result decode', () {
       for (final (fbs.PushFailureKind wire, PushFailureKind dart) in [
         (fbs.PushFailureKind.RefRefused, PushFailureKind.refRefused),

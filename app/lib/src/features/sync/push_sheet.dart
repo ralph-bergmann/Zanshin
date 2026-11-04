@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -8,6 +9,7 @@ import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../graph/graph_ports.dart' show jjCommand, remoteBookmarkSymbol;
 import '../shell/calm_controller.dart';
 import '../shell/shell_scope.dart';
 import 'push_sheet_model.dart';
@@ -261,7 +263,11 @@ class _PushSheetState extends State<PushSheet> {
         if (model.pushError case final ZanshinFfiException error)
           _Note(text: error.context ?? error.code, tone: _NoteTone.error, identifier: 'push-error'),
         if (done) _doneNote(context, model),
-        if (model.config.signOnPush) _Note(text: strings.pushSheetSigning, identifier: 'push-signing'),
+        if (model.config.signOnPush)
+          _Note(
+            text: <String>[strings.pushSheetSigning, strings.pushHelpSigning].join('\n'),
+            identifier: 'push-signing',
+          ),
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           spacing: 7,
@@ -352,27 +358,33 @@ class _PushSheetState extends State<PushSheet> {
     final AppLocalizations strings = context.l10n;
     final bool sent = model.sent(key);
     final bool tickable = model.tickable(key);
-    final ready = model.phase == PushSheetPhase.ready;
-    final PushRefusal? explicit = model.explicitRefusalOf(key);
+    final bool ready = model.phase == PushSheetPhase.ready && model.fixing == null;
+    final PushRemoteRefusal? explicit = model.explicitRefusalOf(key);
     final PushCommitRejection? rejection = model.rejectionOf(key);
     final bool multi = model.chosen.length > 1;
-    // The mode's skip, the same on every remote it skips on (jj's reason and hint); one remote's own stays on its line.
-    final PushRefusal? skipped = model.chosen.map((remote) => model.skippedOn(key, remote)).nonNulls.firstOrNull;
+    // Story 11.22 (I3): why naming the row is refused shows in every mode; the mode's own skip (the same on every remote
+    // it skips on) is a quieter line, only while ticking would still push the row.
+    final bool refused = !sent && explicit != null;
+    final String? skipRemote = model.chosen.where((remote) => model.skippedOn(key, remote) != null).firstOrNull;
+    final PushRefusal? skipped = skipRemote == null ? null : model.skippedOn(key, skipRemote);
+    final id = 'push-row-${key.kind.name}-${key.name}';
     final subs = <Widget>[
-      if (skipped != null && rejection == null)
-        _Sub.refusal(skipped, identifier: 'push-row-${key.kind.name}-${key.name}-skipped'),
-      if (model.mode == PushMode.custom && !sent && explicit != null)
-        _Sub.refusal(explicit, identifier: 'push-row-${key.kind.name}-${key.name}-refused'),
-      if (rejection != null) ..._rejection(context, model, rejection, inline: !multi),
+      if (refused)
+        ..._refused(context, model, key, explicit.refusal, explicit.remote, '$id-refused')
+      else if (skipped != null && rejection == null)
+        ..._refused(context, model, key, skipped, skipRemote!, '$id-skipped', skip: true),
+      if (rejection != null) ..._rejection(context, model, rejection, inline: !multi, identifier: '$id-help'),
+      if (model.fixErrorOf(key) case final String error)
+        _Sub(text: error, tone: _Tone.error, identifier: '$id-fix-error'),
     ];
     return _RowShell(
-      identifier: 'push-row-${key.kind.name}-${key.name}',
+      identifier: id,
       checkbox: ZsCheckbox(
         value: sent,
         label: key.kind == PushRefKind.tag ? '${strings.pushSheetTag} ${key.name}' : key.name,
         onChanged: ready && (sent || tickable) ? (_) => model.toggle(key) : null,
-        disabledReason: explicit?.message ?? rejection?.message,
-        identifier: 'push-row-${key.kind.name}-${key.name}-check',
+        disabledReason: explicit?.refusal.message ?? rejection?.message,
+        identifier: '$id-check',
       ),
       name: _Name(name: key.name, tag: key.kind == PushRefKind.tag),
       subs: subs,
@@ -383,11 +395,8 @@ class _PushSheetState extends State<PushSheet> {
             ref: model.refOn(key, remote),
             pill: switch (model.refOn(key, remote)) {
               null => (strings.pushSheetNotSent, _Tone.none),
+              _ when refused => (strings.pushSheetRefused, _Tone.warn),
               _ when model.skippedOn(key, remote) != null => (strings.pushSheetSkipped, _Tone.warn),
-              _ when model.mode == PushMode.custom && !sent && explicit != null => (
-                strings.pushSheetRefused,
-                _Tone.warn,
-              ),
               _ => null,
             },
           ),
@@ -396,14 +405,89 @@ class _PushSheetState extends State<PushSheet> {
     );
   }
 
-  /// The commit check's lines: jj's message, or "Allowed · pushed with …"; the long chips under several reasons.
+  /// A refusal's lines (Story 11.22): jj's text and hint verbatim — the warn line, or for the mode's [skip] the quiet
+  /// "tick it to push it anyway" line — then the plain explanation of its kind and, where jj's hint names a command,
+  /// the fix-it chip.
+  List<Widget> _refused(
+    BuildContext context,
+    PushSheetModel model,
+    PushRowKey key,
+    PushRefusal refusal,
+    String remote,
+    String identifier, {
+    bool skip = false,
+  }) {
+    final AppLocalizations strings = context.l10n;
+    final Widget? fix = _fixIt(context, model, key, refusal.kind, remote);
+    return <Widget>[
+      if (skip)
+        _Sub(
+          text: <String>[strings.pushSheetSkipTick(refusal.message), ?refusal.hint].join('\n'),
+          identifier: identifier,
+        )
+      else
+        _Sub.refusal(refusal, identifier: identifier),
+      _Sub(text: _refusalHelp(strings, refusal.kind, key, remote), tone: _Tone.quiet, identifier: '$identifier-help'),
+      if (fix != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Wrap(spacing: 6, runSpacing: 6, children: <Widget>[fix]),
+        ),
+    ];
+  }
+
+  /// The fix-it chip for a refusal of [kind] on [remote] (Story 11.22; DS PushDialog.prompt.md "Help for Git
+  /// switchers"): Track for a non-tracking or new remote bookmark, Fetch for a conflicted remote ref, Push with
+  /// --deleted for a deleted ref the mode skips; none otherwise. Its tooltip is the command it runs.
+  Widget? _fixIt(BuildContext context, PushSheetModel model, PushRowKey key, PushRefusalKind kind, String remote) {
+    final AppLocalizations strings = context.l10n;
+    final String symbol = remoteBookmarkSymbol(key.name, remote);
+    final bookmark = key.kind == PushRefKind.bookmark;
+    final (String, String, VoidCallback)? fix = switch (kind) {
+      PushRefusalKind.remoteUntracked || PushRefusalKind.newRemote when bookmark => (
+        strings.pushFixTrack(symbol),
+        jjCommand(<String>['bookmark', 'track', symbol]), // l10n-ignore: jj command
+        () => unawaited(model.track(key, symbol)),
+      ),
+      PushRefusalKind.remoteConflicted => (
+        strings.pushFixFetch,
+        jjCommand(<String>['git', 'fetch']), // l10n-ignore: jj command
+        () => unawaited(model.fetchAndReplan(key)),
+      ),
+      PushRefusalKind.deleted when model.mode != PushMode.deleted => (
+        strings.pushFixDeleted,
+        jjCommand(<String>['git', 'push', '--deleted']), // l10n-ignore: jj command
+        () => model.setMode(PushMode.deleted),
+      ),
+      _ => null,
+    };
+    if (fix == null) {
+      return null;
+    }
+    final (String label, String command, VoidCallback run) = fix;
+    final bool enabled = model.phase == PushSheetPhase.ready && model.fixing == null;
+    return ZsTooltip(
+      message: label,
+      cmd: command,
+      child: ZsChip(
+        label: label,
+        size: ZsChipSize.sm,
+        onChanged: enabled ? (_) => run() : null,
+        identifier: 'push-fix-${key.kind.name}-${key.name}',
+      ),
+    );
+  }
+
+  /// The commit check's lines: jj's message, or "Allowed · pushed with …"; the plain explanation of its reasons; the
+  /// long chips under several reasons.
   List<Widget> _rejection(
     BuildContext context,
     PushSheetModel model,
     PushCommitRejection rejection, {
     required bool inline,
+    String? identifier,
   }) {
-    final List<PushAllow?> flags = rejection.reasons.map(PushAllow.of).toList();
+    final List<PushAllow?> flags = rejection.reasonKinds.map(PushAllow.of).toList();
     final bool allowed = flags.every((flag) => flag != null && model.allowed.contains(flag));
     final open = <PushAllow>[
       for (final PushAllow? flag in flags)
@@ -416,8 +500,10 @@ class _PushSheetState extends State<PushSheet> {
           text: context.l10n.pushSheetAllowedWith(flags.nonNulls.map((f) => f.flag).join(' ')),
           tone: _Tone.warn,
         )
-      else
+      else ...<Widget>[
         _Sub(text: <String>[rejection.message, ...rejection.hints].join('\n'), tone: _Tone.warn),
+        _Sub(text: _rejectionHelp(context.l10n, rejection), tone: _Tone.quiet, identifier: identifier),
+      ],
       if (!hard && (open.length > 1 || (!inline && open.isNotEmpty)))
         Wrap(
           spacing: 6,
@@ -429,7 +515,7 @@ class _PushSheetState extends State<PushSheet> {
 
   /// The one inline "Allow" chip, for a single allowable open reason.
   Widget? _inlineAllow(BuildContext context, PushSheetModel model, PushCommitRejection rejection) {
-    final List<PushAllow?> flags = rejection.reasons.map(PushAllow.of).toList();
+    final List<PushAllow?> flags = rejection.reasonKinds.map(PushAllow.of).toList();
     final open = <PushAllow?>[
       for (final PushAllow? flag in flags)
         if (flag == null || !model.allowed.contains(flag)) flag,
@@ -508,7 +594,8 @@ class _PushSheetState extends State<PushSheet> {
                       ],
                     ),
                     if (refusal != null) _Sub(text: refusal, tone: _Tone.warn),
-                    if (rejection != null) ..._rejection(context, model, rejection, inline: true),
+                    if (rejection != null)
+                      ..._rejection(context, model, rejection, inline: true, identifier: 'push-change-help'),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 280),
                       child: ZsTextField(
@@ -718,6 +805,77 @@ Color _toneColor(ZsColors colors, _Tone tone) => switch (tone) {
   _Tone.none => colors.textDim,
 };
 
+/// The plain explanation of a refusal of [kind] for [key] on [remote] (Story 11.22): chosen by the bridge's kind,
+/// never by jj's text.
+String _refusalHelp(AppLocalizations strings, PushRefusalKind kind, PushRowKey key, String remote) {
+  final tag = key.kind == PushRefKind.tag;
+  return switch (kind) {
+    PushRefusalKind.localConflicted => strings.pushHelpLocalConflicted(key.name),
+    PushRefusalKind.remoteConflicted => strings.pushHelpRemoteConflicted(key.name, remote),
+    PushRefusalKind.remoteUntracked when tag => strings.pushHelpRemoteUntrackedTag(key.name, remote),
+    PushRefusalKind.remoteUntracked => strings.pushHelpRemoteUntracked(
+      key.name,
+      remote,
+      remoteBookmarkSymbol(key.name, remote),
+    ),
+    PushRefusalKind.newRemote when tag => strings.pushHelpNewRemoteTag(remote),
+    PushRefusalKind.newRemote => strings.pushHelpNewRemote(remoteBookmarkSymbol(key.name, remote)),
+    PushRefusalKind.deleted => strings.pushHelpDeleted(key.name),
+  };
+}
+
+/// The plain explanation of [rejection]'s reasons, one sentence group per reason (Story 11.22).
+String _rejectionHelp(AppLocalizations strings, PushCommitRejection rejection) => <String>[
+  for (final PushRejectReason reason in rejection.reasonKinds)
+    switch (reason) {
+      PushRejectReason.noDescription =>
+        rejection.workingCopy ? strings.pushHelpNoDescriptionWorkingCopy : strings.pushHelpNoDescription,
+      PushRejectReason.noAuthor => strings.pushHelpNoAuthor,
+      PushRejectReason.conflicts => strings.pushHelpConflicts,
+      PushRejectReason.private => strings.pushHelpPrivate,
+    },
+].join(' ');
+
+/// jj's [action] verbatim, with the change id (its unique prefix bold) inserted before each 12-hex commit id of
+/// [ref]'s `before` / `after` and that commit id dimmed (Story 11.22); a side without its change id stays as it is.
+List<InlineSpan> _actionSpans(String action, PushRef ref, TextStyle style, ZsColors colors) {
+  final spans = <InlineSpan>[];
+  var rest = action;
+  for (final (String? commit, String? change, int prefix) in <(String?, String?, int)>[
+    (ref.before, ref.beforeChangeId, ref.beforeChangePrefixLen),
+    (ref.after, ref.afterChangeId, ref.afterChangePrefixLen),
+  ]) {
+    if (commit == null || change == null || commit.length < 12) {
+      continue;
+    }
+    final String short = commit.substring(0, 12);
+    final int at = rest.indexOf(short);
+    if (at < 0) {
+      continue;
+    }
+    final String shown = change.substring(0, math.min(change.length, math.max(prefix, 8)));
+    final int bold = math.min(prefix, shown.length);
+    spans.addAll(<InlineSpan>[
+      TextSpan(text: rest.substring(0, at)),
+      TextSpan(
+        text: shown.substring(0, bold),
+        style: style.copyWith(
+          fontWeight: FontWeight.w600,
+          fontVariations: const <FontVariation>[FontVariation.weight(600)],
+        ),
+      ),
+      TextSpan(text: '${shown.substring(bold)} '),
+      TextSpan(
+        text: short,
+        style: style.copyWith(color: colors.textDim),
+      ),
+    ]);
+    rest = rest.substring(at + short.length);
+  }
+  spans.add(TextSpan(text: rest));
+  return spans;
+}
+
 /// The tone of jj's dry-run words: add green, forward quiet, backward, sideways and delete warn.
 _Tone _actionTone(String action) {
   if (action.startsWith('add')) {
@@ -862,17 +1020,21 @@ class _RemoteLine extends StatelessWidget {
     final ZsColors colors = ZsColors.of(context);
     final String? action = ref?.action;
     final TextStyle mono = ZsType.id.copyWith(fontSize: ZsType.fsSm);
+    final TextStyle style = mono.copyWith(
+      color: action == null ? colors.textDim : _toneColor(colors, _actionTone(action)),
+    );
+    final PushRef? row = ref;
     final (String, _Tone)? pill = this.pill;
     return Row(
       spacing: 10,
       children: <Widget>[
         if (remote case final String remote) Text(remote, style: mono.copyWith(color: colors.textDim)),
         Expanded(
-          child: Text(
-            action ?? '',
+          child: Text.rich(
+            TextSpan(children: action == null || row == null ? null : _actionSpans(action, row, style, colors)),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: mono.copyWith(color: action == null ? colors.textDim : _toneColor(colors, _actionTone(action))),
+            style: style,
           ),
         ),
         if (pill != null)
@@ -891,7 +1053,7 @@ class _RemoteLine extends StatelessWidget {
 
 /// A note line under a row's name.
 class _Sub extends StatelessWidget {
-  const _Sub({required this.text, this.tone = _Tone.none}) : identifier = null;
+  const _Sub({required this.text, this.tone = _Tone.none, this.identifier});
 
   /// jj's refusal with its hint.
   _Sub.refusal(PushRefusal refusal, {this.identifier})

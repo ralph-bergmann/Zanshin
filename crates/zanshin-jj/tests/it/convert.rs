@@ -1502,3 +1502,47 @@ fn a_source_without_any_remote_head_writes_no_alias() {
         "a plain `git init` has no refs/remotes/*, so nothing may be created"
     );
 }
+
+/// Story 11.22: a Git clone has `main` and an untracked `origin/main` after the conversion — the
+/// CLI's post-`jj git init` hint list (`print_trackable_remote_bookmarks`, `init.rs:391-421` @
+/// v0.47.0). Every External-arm entry point reports it: both conversions and `Repo::init` over
+/// the `.git`; a repo without remotes reports none.
+#[test]
+fn conversions_report_the_trackable_remote_bookmarks() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir");
+    init_git_repo_with_commit(src.path());
+    let clone = |name: &str| {
+        let parent = TempDir::new().expect("tempdir");
+        let dir = parent.path().join(name);
+        git(&["clone", &src.path().to_string_lossy(), name], parent.path());
+        (parent, dir)
+    };
+
+    let (_a, colocated) = clone("colocated");
+    let outcome = convert_colocated(&colocated);
+    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
+    assert_eq!(outcome.trackable_remote_bookmarks, ["main@origin"]);
+
+    let (_b, source) = clone("source");
+    let dst = TempDir::new().expect("tempdir");
+    let outcome = convert_import(&source, &dst.path().join("ws"));
+    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
+    assert_eq!(outcome.trackable_remote_bookmarks, ["main@origin"]);
+
+    let (_c, over) = clone("over");
+    let outcome = Repo::init(&zanshin_jj::InitOptions {
+        path: over,
+        backend: Some(zanshin_jj::Backend::Git),
+        colocate: Some(true),
+        ..Default::default()
+    });
+    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
+    assert_eq!(outcome.trackable_remote_bookmarks, ["main@origin"]);
+
+    let plain = TempDir::new().expect("tempdir");
+    init_git_repo_with_commit(plain.path());
+    let outcome = convert_colocated(plain.path());
+    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
+    assert!(outcome.trackable_remote_bookmarks.is_empty());
+}

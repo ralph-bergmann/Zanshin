@@ -46,7 +46,7 @@ use jj_lib::backend::CommitId as JjCommitId;
 use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
 use jj_lib::git::{GitPushError, GitPushOptions, GitPushRefTargets, GitPushStats};
-use jj_lib::id_prefix::IdPrefixContext;
+use jj_lib::id_prefix::{IdPrefixContext, IdPrefixIndex};
 use jj_lib::merge::Diff;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::RefTarget;
@@ -131,14 +131,57 @@ pub enum PushPath {
     Abort,
 }
 
+/// Why a ref is refused (Story 11.22): the case of the CLI's `classify_*_update` that refused it,
+/// so a consumer explains a refusal without reading its text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PushRefusalKind {
+    /// The local bookmark or tag is conflicted.
+    LocalConflicted,
+    /// The remote-tracking ref is conflicted.
+    RemoteConflicted,
+    /// A remote ref of that name exists and is not tracked.
+    RemoteUntracked,
+    /// The push would create a new remote ref the mode does not allow.
+    NewRemote,
+    /// The push would delete the remote ref, which the mode does not allow.
+    Deleted,
+}
+
 /// The CLI's message and hint for a refused ref (`push.rs:1157-1254` @ v0.46.0), verbatim.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PushRefusal {
+    /// Which refusal it is.
+    pub kind: PushRefusalKind,
     /// The refusal, e.g. "Refusing to create new remote bookmark main@origin".
     pub message: String,
     /// The CLI's hint, e.g. "Run `jj bookmark track main@origin` and try again."; `None` where
     /// the CLI gives none.
     pub hint: Option<String>,
+}
+
+/// One reason a commit check rejects a commit (Story 11.22), parallel to its text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PushRejectReason {
+    /// "has no description".
+    NoDescription,
+    /// "has no author and/or committer set".
+    NoAuthor,
+    /// "has conflicts".
+    Conflicts,
+    /// "is private".
+    Private,
+}
+
+impl PushRejectReason {
+    /// The CLI's words for the reason.
+    fn text(self) -> &'static str {
+        match self {
+            Self::NoDescription => "has no description",
+            Self::NoAuthor => "has no author and/or committer set",
+            Self::Conflicts => "has conflicts",
+            Self::Private => "is private",
+        }
+    }
 }
 
 /// A commit the push refuses to send (`push.rs:778-891` @ v0.46.0).
@@ -149,6 +192,10 @@ pub struct PushCommitRejection {
     /// Its reasons in the CLI's order: "has no description", "has no author and/or committer
     /// set", "has conflicts", "is private".
     pub reasons: Vec<String>,
+    /// The same reasons as kinds, index for index.
+    pub reason_kinds: Vec<PushRejectReason>,
+    /// Whether the rejected commit is the workspace's working-copy commit (`@`).
+    pub working_copy: bool,
     /// The CLI's text: "Won't push bookmark|tag <name>: commit <hash> <reasons>" on the skip
     /// path, "Won't push commit <hash> since it <reasons>" on the abort path.
     pub message: String,
@@ -190,6 +237,14 @@ pub struct PushRef {
     /// Where the push moves it (full commit hex; after sign-on-push, the signed commit);
     /// `None` = deleted there, or not reported for a ref refused as conflicted or untracked.
     pub after: Option<String>,
+    /// The change id of `before` (reverse hex); `None` with `before`.
+    pub before_change_id: Option<String>,
+    /// The length of `before_change_id`'s shortest unique prefix (0 without one).
+    pub before_change_prefix_len: u32,
+    /// The change id of `after` (reverse hex); `None` with `after`.
+    pub after_change_id: Option<String>,
+    /// The length of `after_change_id`'s shortest unique prefix (0 without one).
+    pub after_change_prefix_len: u32,
     /// The move in jj's words — "move forward|backward|sideways from <old> to <new>", "add to
     /// <new>", "delete from <old>" (12-hex ids, `push.rs:1057-1085`); `None` for a conflicted
     /// ref.
@@ -346,40 +401,50 @@ fn classify(
     params: ClassifyParams,
 ) -> Result<Option<Diff<Option<JjCommitId>>>, PushRefusal> {
     let name = symbol.name.as_symbol();
-    let refusal = |message: String, hint: Option<String>| Err(PushRefusal { message, hint });
+    let refusal =
+        |kind: PushRefusalKind, message: String, hint: Option<String>| Err(PushRefusal { kind, message, hint });
     match (kind, classify_ref_push_action(targets)) {
         (_, RefPushAction::AlreadyMatches) => Ok(None),
         (PushRefKind::Bookmark, RefPushAction::LocalConflicted) => refusal(
+            PushRefusalKind::LocalConflicted,
             format!("Bookmark {name} is conflicted"),
             Some("Run `jj bookmark list` to inspect, and use `jj bookmark set` to fix it up.".to_owned()),
         ),
         (PushRefKind::Tag, RefPushAction::LocalConflicted) => refusal(
+            PushRefusalKind::LocalConflicted,
             format!("Tag {name} is conflicted"),
             Some("Run `jj tag list` to inspect, and use `jj tag set` to fix it up.".to_owned()),
         ),
         (PushRefKind::Bookmark, RefPushAction::RemoteConflicted) => refusal(
+            PushRefusalKind::RemoteConflicted,
             format!("Bookmark {symbol} is conflicted"),
             Some("Run `jj git fetch` to update the conflicted remote bookmark.".to_owned()),
         ),
         (PushRefKind::Tag, RefPushAction::RemoteConflicted) => refusal(
+            PushRefusalKind::RemoteConflicted,
             format!("Tag {symbol} is conflicted"),
             Some("Run `jj git fetch` to update the conflicted remote tag.".to_owned()),
         ),
         (PushRefKind::Bookmark, RefPushAction::RemoteUntracked) => refusal(
+            PushRefusalKind::RemoteUntracked,
             format!("Non-tracking remote bookmark {symbol} exists"),
             Some(format!(
                 "Run `jj bookmark track {symbol}` to import the remote bookmark."
             )),
         ),
-        (PushRefKind::Tag, RefPushAction::RemoteUntracked) => {
-            refusal(format!("Non-tracking remote tag {symbol} exists"), None)
-        }
+        (PushRefKind::Tag, RefPushAction::RemoteUntracked) => refusal(
+            PushRefusalKind::RemoteUntracked,
+            format!("Non-tracking remote tag {symbol} exists"),
+            None,
+        ),
         (kind, RefPushAction::Update(_)) if !targets.remote_ref.is_tracked() && !params.allow_new => refusal(
+            PushRefusalKind::NewRemote,
             format!("Refusing to create new remote {} {symbol}", kind.word()),
             Some(format!("Run `jj {} track {symbol}` and try again.", kind.word())),
         ),
         (PushRefKind::Bookmark, RefPushAction::Update(update)) if update.after.is_none() && !params.allow_delete => {
             refusal(
+                PushRefusalKind::Deleted,
                 format!("Refusing to push deleted bookmark {name}"),
                 Some(
                     "Push deleted bookmarks with --deleted or forget the bookmark to suppress this warning.".to_owned(),
@@ -387,6 +452,7 @@ fn classify(
             )
         }
         (PushRefKind::Tag, RefPushAction::Update(update)) if update.after.is_none() && !params.allow_delete => refusal(
+            PushRefusalKind::Deleted,
             format!("Refusing to push deleted tag {name}"),
             Some("Push deleted tags with --deleted.".to_owned()),
         ),
@@ -437,29 +503,39 @@ fn explicit_refusal(
 /// A commit the checks reject, before it is worded for a path.
 struct Rejected {
     commit: Commit,
-    reasons: Vec<&'static str>,
+    reasons: Vec<PushRejectReason>,
     hint: Option<String>,
+    working_copy: bool,
 }
 
 impl Rejected {
     fn message(&self) -> String {
-        self.reasons.join(" and ")
+        self.reasons.iter().map(|r| r.text()).collect::<Vec<_>>().join(" and ")
+    }
+
+    fn rejection(&self, message: String, hints: Vec<String>) -> PushCommitRejection {
+        PushCommitRejection {
+            commit_id: self.commit.id().hex(),
+            reasons: self.reasons.iter().map(|r| r.text().to_owned()).collect(),
+            reason_kinds: self.reasons.clone(),
+            working_copy: self.working_copy,
+            message,
+            hints,
+        }
     }
 
     /// The skip path's rejection (`push.rs:744-750`).
     fn skipped(&self, kind: PushRefKind, name: &RefName) -> PushCommitRejection {
-        PushCommitRejection {
-            commit_id: self.commit.id().hex(),
-            reasons: self.reasons.iter().map(|r| (*r).to_owned()).collect(),
-            message: format!(
+        self.rejection(
+            format!(
                 "Won't push {} {}: commit {} {}",
                 kind.word(),
                 name.as_symbol(),
                 short_hash(self.commit.id()),
                 self.message()
             ),
-            hints: self.hint.iter().cloned().collect(),
-        }
+            self.hint.iter().cloned().collect(),
+        )
     }
 
     /// The abort path's rejection (`push.rs:762-775`): the "Rejected commit:" hint renders
@@ -478,16 +554,14 @@ impl Rejected {
             templates.commit_summary(repo, &self.commit)?
         )];
         hints.extend(self.hint.iter().cloned());
-        Ok(PushCommitRejection {
-            commit_id: self.commit.id().hex(),
-            reasons: self.reasons.iter().map(|r| (*r).to_owned()).collect(),
-            message: format!(
+        Ok(self.rejection(
+            format!(
                 "Won't push commit {} since it {}",
                 short_hash(self.commit.id()),
                 self.message()
             ),
             hints,
-        })
+        ))
     }
 }
 
@@ -501,6 +575,7 @@ struct CommitsValidator<'r, 't> {
     private_commits: Option<(String, Box<RevsetContainingFn<'r>>)>,
     allow_empty_description: bool,
     allow_conflicts: bool,
+    wc_commit: Option<JjCommitId>,
 }
 
 impl<'r, 't> CommitsValidator<'r, 't> {
@@ -539,6 +614,9 @@ impl<'r, 't> CommitsValidator<'r, 't> {
             private_commits,
             allow_empty_description: planner.args.allow_empty_description,
             allow_conflicts: planner.args.allow_conflicts,
+            wc_commit: view
+                .get_wc_commit_id(planner.repo.workspace().workspace_name())
+                .cloned(),
         })
     }
 
@@ -557,26 +635,32 @@ impl<'r, 't> CommitsValidator<'r, 't> {
                 let mut reasons = Vec::new();
                 let mut hint = None;
                 if commit.description().is_empty() && !self.allow_empty_description {
-                    reasons.push("has no description");
+                    reasons.push(PushRejectReason::NoDescription);
                 }
                 if commit.author().name.is_empty()
                     || commit.author().email.is_empty()
                     || commit.committer().name.is_empty()
                     || commit.committer().email.is_empty()
                 {
-                    reasons.push("has no author and/or committer set");
+                    reasons.push(PushRejectReason::NoAuthor);
                 }
                 if commit.has_conflict() && !self.allow_conflicts {
-                    reasons.push("has conflicts");
+                    reasons.push(PushRejectReason::Conflicts);
                 }
                 if let Some((text, is_private)) = &self.private_commits {
                     if is_private(commit.id()).await.map_err(be)? {
-                        reasons.push("is private");
+                        reasons.push(PushRejectReason::Private);
                         hint = Some(format!("Configured git.private-commits: '{text}'"));
                     }
                 }
                 if !reasons.is_empty() {
-                    return Ok::<_, MutateError>(Some(Rejected { commit, reasons, hint }));
+                    let working_copy = self.wc_commit.as_ref() == Some(commit.id());
+                    return Ok::<_, MutateError>(Some(Rejected {
+                        commit,
+                        reasons,
+                        hint,
+                        working_copy,
+                    }));
                 }
             }
             Ok(None)
@@ -1795,8 +1879,23 @@ fn push_error(e: &GitPushError) -> PushFailure {
     }
 }
 
+/// The change id of commit `id` and the length of its shortest unique prefix (Story 11.22).
+fn change_of(
+    repo: &dyn jj_lib::repo::Repo,
+    prefixes: &IdPrefixIndex<'_>,
+    id: Option<&JjCommitId>,
+) -> Result<(Option<String>, u32), MutateError> {
+    let Some(id) = id else { return Ok((None, 0)) };
+    let commit = repo.store().get_commit(id).map_err(be)?;
+    let len = pollster::block_on(prefixes.shortest_change_prefix_len(repo, commit.change_id())).map_err(be)?;
+    Ok((
+        Some(commit.change_id().reverse_hex()),
+        u32::try_from(len).unwrap_or(u32::MAX),
+    ))
+}
+
 /// A row rendered for the outcome; `action` in jj's words against `repo`'s index.
-fn render_row(repo: &dyn jj_lib::repo::Repo, row: Row) -> Result<PushRef, MutateError> {
+fn render_row(repo: &dyn jj_lib::repo::Repo, prefixes: &IdPrefixIndex<'_>, row: Row) -> Result<PushRef, MutateError> {
     let (before, after) = row
         .update
         .as_ref()
@@ -1822,11 +1921,17 @@ fn render_row(repo: &dyn jj_lib::repo::Repo, row: Row) -> Result<PushRef, Mutate
         (None, Some(new)) => Some(format!("add to {}", short_hash(new))),
         (None, None) => None,
     };
+    let (before_change_id, before_change_prefix_len) = change_of(repo, prefixes, before.as_ref())?;
+    let (after_change_id, after_change_prefix_len) = change_of(repo, prefixes, after.as_ref())?;
     Ok(PushRef {
         kind: row.kind,
         name: row.name.as_str().to_owned(),
         before: before.as_ref().map(JjCommitId::hex),
         after: after.as_ref().map(JjCommitId::hex),
+        before_change_id,
+        before_change_prefix_len,
+        after_change_id,
+        after_change_prefix_len,
         action,
         path: row.path,
         refusal: row.refusal,
@@ -1837,12 +1942,17 @@ fn render_row(repo: &dyn jj_lib::repo::Repo, row: Row) -> Result<PushRef, Mutate
     })
 }
 
-/// The remotes of `plans` rendered against `repo`, with the per-remote facts.
+/// The remotes of `plans` rendered against `repo`, with the per-remote facts; change-id prefixes
+/// against `prefixes`.
 fn render(
     repo: &dyn jj_lib::repo::Repo,
+    prefixes: &IdPrefixContext,
     plans: Vec<RemotePlan>,
     results: &HashMap<RemoteNameBuf, Result<GitPushStats, String>>,
 ) -> Result<Vec<PushRemote>, MutateError> {
+    // A broken `revsets.short-prefixes` falls back to whole-repo prefixes here: the ids are a
+    // display aid, and the push's own text never depends on them.
+    let prefixes = prefixes.populate(repo).unwrap_or_else(|_| IdPrefixIndex::empty());
     plans
         .into_iter()
         .map(|plan| {
@@ -1853,7 +1963,7 @@ fn render(
                     (Some(Ok(stats)), PushPath::Push) => status_of(&row, stats),
                     _ => (None, None),
                 };
-                let mut rendered = render_row(repo, row)?;
+                let mut rendered = render_row(repo, &prefixes, row)?;
                 rendered.status = status;
                 rendered.status_reason = reason;
                 refs.push(rendered);
@@ -1900,9 +2010,10 @@ pub(crate) fn git_push(
         new_op_id: base_op,
         failure: None,
     };
+    let prefixes = ctx.template_startup.id_prefix_context();
     if plan.abort.is_none() && plan.nothing_changed() {
         // "Nothing changed.": the transaction — and with it any `--change` bookmark — is dropped.
-        outcome.remotes = render(tx.repo(), plan.remotes, &HashMap::new())?;
+        outcome.remotes = render(tx.repo(), &prefixes, plan.remotes, &HashMap::new())?;
         outcome.created_bookmarks.clear();
         outcome.nothing_changed = true;
         return Ok(outcome);
@@ -1912,13 +2023,12 @@ pub(crate) fn git_push(
     outcome.description = (!plan.nothing_changed()).then(|| description.clone());
     if args.dry_run {
         outcome.failure = plan.abort.take();
-        outcome.remotes = render(tx.repo(), plan.remotes, &HashMap::new())?;
+        outcome.remotes = render(tx.repo(), &prefixes, plan.remotes, &HashMap::new())?;
         return Ok(outcome);
     }
 
     if crate::config::git_sign_on_push(&ctx.config).map_err(cfg)? {
         let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, repo.workspace());
-        let prefixes = ctx.template_startup.id_prefix_context();
         outcome.signing = sign_before_push(&mut tx, (&templates, &prefixes), &mut plan.remotes, &mut ctx.warnings)?;
         if outcome.signing.is_some() {
             let (signed_op, push_tx) = finish_signing(repo, ctx, tx)?;
@@ -1931,7 +2041,7 @@ pub(crate) fn git_push(
     outcome.failure = pushed.failure.or_else(|| (!pushed.all_ok).then(some_refs_failed));
     // Refs are on the remotes now: a later error is data, not an `Err` (Story 9.20).
     let mut late_error = None;
-    match render(tx.repo(), plan.remotes, &pushed.results) {
+    match render(tx.repo(), &prefixes, plan.remotes, &pushed.results) {
         Ok(remotes) => outcome.remotes = remotes,
         Err(e) => late_error = Some(e),
     }
@@ -2101,6 +2211,79 @@ fn some_refs_failed() -> PushFailure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jj_lib::op_store::{RemoteRef, RemoteRefState};
+
+    /// Story 11.22: every refusal of `classify` names its kind — for bookmarks and tags alike.
+    #[test]
+    fn every_refusal_carries_its_kind() {
+        let (a, b) = (JjCommitId::from_hex("aa"), JjCommitId::from_hex("bb"));
+        let normal = |id: &JjCommitId| RefTarget::normal(id.clone());
+        let conflicted = RefTarget::from_legacy_form([], [a.clone(), b.clone()]);
+        let remote = |target: RefTarget, state: RemoteRefState| RemoteRef { target, state };
+        let strict = ClassifyParams {
+            allow_new: false,
+            allow_delete: false,
+        };
+        let cases = [
+            (
+                conflicted.clone(),
+                remote(normal(&a), RemoteRefState::Tracked),
+                PushRefusalKind::LocalConflicted,
+            ),
+            (
+                normal(&a),
+                remote(conflicted, RemoteRefState::Tracked),
+                PushRefusalKind::RemoteConflicted,
+            ),
+            (
+                normal(&a),
+                remote(normal(&b), RemoteRefState::New),
+                PushRefusalKind::RemoteUntracked,
+            ),
+            (normal(&a), RemoteRef::absent(), PushRefusalKind::NewRemote),
+            (
+                RefTarget::absent(),
+                remote(normal(&a), RemoteRefState::Tracked),
+                PushRefusalKind::Deleted,
+            ),
+        ];
+        let symbol = RemoteRefSymbol {
+            name: RefName::new("main"),
+            remote: RemoteName::new("origin"),
+        };
+        for kind in [PushRefKind::Bookmark, PushRefKind::Tag] {
+            for (local, remote_ref, expected) in &cases {
+                let targets = LocalAndRemoteRef {
+                    local_target: local,
+                    remote_ref,
+                };
+                let refusal = classify(kind, symbol, targets, strict).expect_err("refused");
+                assert_eq!(refusal.kind, *expected, "{kind:?}: {}", refusal.message);
+            }
+        }
+    }
+
+    /// Story 11.22: a rejection's reason kinds run parallel to its texts.
+    #[test]
+    fn reason_kinds_parallel_their_texts() {
+        let texts: Vec<_> = [
+            PushRejectReason::NoDescription,
+            PushRejectReason::NoAuthor,
+            PushRejectReason::Conflicts,
+            PushRejectReason::Private,
+        ]
+        .map(PushRejectReason::text)
+        .into();
+        assert_eq!(
+            texts,
+            [
+                "has no description",
+                "has no author and/or committer set",
+                "has conflicts",
+                "is private"
+            ]
+        );
+    }
 
     #[test]
     fn skipped_signing_lists_the_commits_like_the_cli() {

@@ -220,5 +220,19 @@ void main() {
       );
       await converted.close();
     });
+
+    test('convert_of_a_git_clone_reports_its_untracked_origin_main', () async {
+      final source = Directory('${tempDir.path}/source')..createSync();
+      await _gitWithCommit(source);
+      final ProcessResult cloned = await Process.run('git', ['clone', '-q', source.path, '${tempDir.path}/clone']);
+      expect(cloned.exitCode, 0, reason: '${cloned.stderr}');
+
+      final CreatedRepoHandle converted = await worker.convert(
+        Directory('${tempDir.path}/clone').resolveSymbolicLinksSync(),
+      );
+
+      expect(converted.trackableRemoteBookmarks, ['main@origin']);
+      await converted.close();
+    });
   });
 }

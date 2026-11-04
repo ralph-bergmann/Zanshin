@@ -13,7 +13,7 @@ use jj_lib::default_backend_factories::{default_backend_factories, default_worki
 use jj_lib::op_store::OperationId;
 use zanshin_jj::{ChangeId, GitPushArgs, MovementOptions, Repo};
 
-use crate::driver::{fresh_repo, jj, Step};
+use crate::driver::{fresh_repo, git, jj, Step};
 use crate::scenarios::BASE;
 
 /// `immutable_heads()` = `b-mark`: B and A are immutable.
@@ -245,4 +245,37 @@ fn stale_working_copy_at_a_missing_operation_matches_the_cli() {
     let (_dir, root) = fresh_repo(&["git", "init"], &[BASE]);
     finish_working_copy_at(&root, &"ab".repeat(64));
     assert_stale_matches_cli(&root, "Run `jj workspace update-stale`");
+}
+
+/// Story 11.22: converting a Git clone — `main` plus the untracked `origin/main` and a second
+/// remote branch with no local bookmark — reports the remote bookmarks the CLI's `jj git init
+/// --colocate` lists under its "aren't associated with the existing local bookmarks" hint, in its
+/// order.
+#[test]
+fn conversion_lists_the_cli_trackable_remote_bookmarks() {
+    test_helpers::pin_test_env();
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let root = dir.path();
+    git(root, &["init", "-q", "-b", "main", "src"]);
+    std::fs::write(root.join("src/a.txt"), "a\n").expect("write");
+    git(root, &["-C", "src", "add", "."]);
+    git(root, &["-C", "src", "commit", "-q", "-m", "A"]);
+    git(root, &["-C", "src", "branch", "other"]);
+    git(root, &["clone", "-q", "src", "cli"]);
+    git(root, &["clone", "-q", "src", "zanshin"]);
+
+    let run = jj(&root.join("cli"), &["git", "init", "--colocate"]).ok();
+    let cli: Vec<String> = run
+        .stderr
+        .lines()
+        .skip_while(|line| !line.contains("aren't associated with the existing local bookmarks"))
+        .skip(1)
+        .map_while(|line| line.strip_prefix("  "))
+        .map(ToOwned::to_owned)
+        .collect();
+    assert_eq!(cli, ["main@origin"], "{}", run.stderr);
+
+    let outcome = zanshin_jj::convert_colocated(&root.join("zanshin"));
+    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
+    assert_eq!(outcome.trackable_remote_bookmarks, cli);
 }

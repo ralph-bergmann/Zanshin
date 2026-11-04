@@ -149,8 +149,15 @@ pub(crate) fn init(options: &InitOptions) -> CreationOutcome {
     let mut sink = Warnings::default();
     let mut precondition = None;
     let mut created = Created::default();
-    let result = init_steps(options, &mut sink, &mut precondition, &mut created);
+    let mut trackable_remote_bookmarks = Vec::new();
+    let result = init_steps(
+        options,
+        &mut sink,
+        (&mut precondition, &mut trackable_remote_bookmarks),
+        &mut created,
+    );
     let left_behind = if result.is_err() {
+        trackable_remote_bookmarks.clear();
         created.left_behind()
     } else {
         Vec::new()
@@ -160,6 +167,7 @@ pub(crate) fn init(options: &InitOptions) -> CreationOutcome {
         precondition,
         warnings: sink.take(),
         left_behind,
+        trackable_remote_bookmarks,
     }
 }
 
@@ -241,7 +249,7 @@ fn init_creation_error(e: &WorkspaceInitError, root: &Path) -> RepoError {
 fn init_steps(
     options: &InitOptions,
     sink: &mut Warnings,
-    precondition: &mut Option<crate::Precondition>,
+    (precondition, trackable): (&mut Option<crate::Precondition>, &mut Vec<String>),
     created: &mut Created,
 ) -> Result<Repo, RepoError> {
     // The CLI's start-up config check runs before the command touches any path, and its
@@ -272,6 +280,7 @@ fn init_steps(
         *precondition = external.precondition;
         sink.extend(external.warnings);
         created.jj_dir = external.jj_dir;
+        *trackable = external.trackable_remote_bookmarks;
         external.result?;
     } else if colocate {
         created.git_dir = Some(git_dir);
@@ -335,6 +344,7 @@ pub(crate) fn clone(options: &CloneOptions, progress: &ProgressFn, cancel: Optio
         precondition: None,
         warnings: sink.take(),
         left_behind: Vec::new(),
+        trackable_remote_bookmarks: Vec::new(),
     }
 }
 

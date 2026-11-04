@@ -813,10 +813,24 @@ pub fn ok_empty() -> Vec<u8> {
 /// `report` is the creating call's (Story 9.33): its warnings and — convert only — the
 /// conversion's snapshot report. `zanshin_repo_open` passes `&CallReport::default()`, which
 /// writes neither field.
+///
+/// `trackable` is the creation's trackable remote bookmarks (Story 11.22); an empty list stays
+/// ABSENT on the wire.
 #[must_use]
-pub fn ok_repo_handle(handle: u64, session_id: u64, report: &CallReport) -> Vec<u8> {
+pub fn ok_repo_handle(handle: u64, session_id: u64, trackable: &[String], report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(128);
-    let h = fbs::RepoHandle::create(&mut b, &fbs::RepoHandleArgs { handle, session_id });
+    let trackable_remote_bookmarks = (!trackable.is_empty()).then(|| {
+        let items: Vec<_> = trackable.iter().map(|s| b.create_string(s)).collect();
+        b.create_vector(&items)
+    });
+    let h = fbs::RepoHandle::create(
+        &mut b,
+        &fbs::RepoHandleArgs {
+            handle,
+            session_id,
+            trackable_remote_bookmarks,
+        },
+    );
     finish_envelope(b, fbs::Payload::RepoHandle, Some(h.as_union_value()), report)
 }
 
@@ -1619,7 +1633,7 @@ mod tests {
 
     #[test]
     fn ok_repo_handle_produces_repo_handle_envelope() {
-        let buf = ok_repo_handle(0xdead_beef_cafe_1234, 7, &CallReport::default());
+        let buf = ok_repo_handle(0xdead_beef_cafe_1234, 7, &[], &CallReport::default());
         let env = verified_envelope(&buf);
         assert!(env.ok());
         assert!(env.error().is_none());
@@ -1627,6 +1641,8 @@ mod tests {
         let rh = env.data_as_repo_handle().expect("RepoHandle payload must be present");
         assert_eq!(rh.handle(), 0xdead_beef_cafe_1234);
         assert_eq!(rh.session_id(), 7);
+        // Story 11.22: no trackable remote bookmarks = the field stays absent.
+        assert!(rh.trackable_remote_bookmarks().is_none());
         // Story 9.33: an empty report (`open`, or a creation with nothing to report) writes
         // neither field.
         assert!(env.precondition().is_none());
@@ -1649,9 +1665,17 @@ mod tests {
             left_behind: Vec::new(),
             revset: None,
         };
-        let buf = ok_repo_handle(1, 2, &report);
+        let trackable = ["main@origin".to_owned(), "dev@upstream".to_owned()];
+        let buf = ok_repo_handle(1, 2, &trackable, &report);
         let env = verified_envelope(&buf);
         assert_eq!(env.data_as_repo_handle().map(|h| h.handle()), Some(1));
+        let wire: Vec<_> = env
+            .data_as_repo_handle()
+            .and_then(|h| h.trackable_remote_bookmarks())
+            .expect("trackable")
+            .iter()
+            .collect();
+        assert_eq!(wire, ["main@origin", "dev@upstream"]);
         assert!(env.precondition().is_some_and(|p| p.was_snapshot_taken()));
         assert_eq!(
             wire_warnings(&env),

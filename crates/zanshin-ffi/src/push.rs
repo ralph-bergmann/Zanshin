@@ -14,6 +14,7 @@ use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, VerifierOptions, W
 use tracing::debug;
 use zanshin_jj::{
     GitPushArgs, GitPushOutcome, PushFailureKind, PushPath, PushRef, PushRefKind, PushRefStatus, PushRefusal,
+    PushRefusalKind, PushRejectReason,
 };
 
 use crate::envelope::{
@@ -104,6 +105,25 @@ fn failure_kind_of(kind: PushFailureKind) -> fbs::PushFailureKind {
     }
 }
 
+fn refusal_kind_of(kind: PushRefusalKind) -> fbs::PushRefusalKind {
+    match kind {
+        PushRefusalKind::LocalConflicted => fbs::PushRefusalKind::LocalConflicted,
+        PushRefusalKind::RemoteConflicted => fbs::PushRefusalKind::RemoteConflicted,
+        PushRefusalKind::RemoteUntracked => fbs::PushRefusalKind::RemoteUntracked,
+        PushRefusalKind::NewRemote => fbs::PushRefusalKind::NewRemote,
+        PushRefusalKind::Deleted => fbs::PushRefusalKind::Deleted,
+    }
+}
+
+fn reject_reason_of(reason: PushRejectReason) -> fbs::PushRejectReason {
+    match reason {
+        PushRejectReason::NoDescription => fbs::PushRejectReason::NoDescription,
+        PushRejectReason::NoAuthor => fbs::PushRejectReason::NoAuthor,
+        PushRejectReason::Conflicts => fbs::PushRejectReason::Conflicts,
+        PushRejectReason::Private => fbs::PushRejectReason::Private,
+    }
+}
+
 /// A `count` as the wire's `uint`, saturating (a progress figure, never a decision key).
 fn saturate(count: usize) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
@@ -125,6 +145,7 @@ fn build_refusal<'b>(b: &mut FlatBufferBuilder<'b>, refusal: &PushRefusal) -> WI
         &fbs::PushRefusalArgs {
             message: Some(message),
             hint,
+            kind: refusal_kind_of(refusal.kind),
         },
     )
 }
@@ -141,6 +162,8 @@ fn build_ref<'b>(b: &mut FlatBufferBuilder<'b>, row: &PushRef) -> WIPOffset<fbs:
         let reasons = string_vector(b, &rejection.reasons);
         let message = b.create_string(&rejection.message);
         let hints = string_vector(b, &rejection.hints);
+        let kinds: Vec<_> = rejection.reason_kinds.iter().copied().map(reject_reason_of).collect();
+        let reason_kinds = b.create_vector(&kinds);
         fbs::PushCommitRejection::create(
             b,
             &fbs::PushCommitRejectionArgs {
@@ -148,10 +171,14 @@ fn build_ref<'b>(b: &mut FlatBufferBuilder<'b>, row: &PushRef) -> WIPOffset<fbs:
                 reasons: Some(reasons),
                 message: Some(message),
                 hints: Some(hints),
+                reason_kinds: Some(reason_kinds),
+                working_copy: rejection.working_copy,
             },
         )
     });
     let status_reason = row.status_reason.as_deref().map(|reason| b.create_string(reason));
+    let before_change_id = row.before_change_id.as_deref().map(|id| b.create_string(id));
+    let after_change_id = row.after_change_id.as_deref().map(|id| b.create_string(id));
     fbs::PushRef::create(
         b,
         &fbs::PushRefArgs {
@@ -166,6 +193,10 @@ fn build_ref<'b>(b: &mut FlatBufferBuilder<'b>, row: &PushRef) -> WIPOffset<fbs:
             rejection,
             status: status_of(row.status),
             status_reason,
+            before_change_id,
+            before_change_prefix_len: row.before_change_prefix_len,
+            after_change_id,
+            after_change_prefix_len: row.after_change_prefix_len,
         },
     )
 }
@@ -364,9 +395,14 @@ mod tests {
                     name: "v1".to_owned(),
                     before: None,
                     after: Some("ab".repeat(20)),
+                    before_change_id: None,
+                    before_change_prefix_len: 0,
+                    after_change_id: Some("kz".repeat(16)),
+                    after_change_prefix_len: 3,
                     action: Some("add to abababababab".to_owned()),
                     path: PushPath::Skip,
                     refusal: Some(PushRefusal {
+                        kind: PushRefusalKind::NewRemote,
                         message: "Refusing to create new remote tag v1@origin".to_owned(),
                         hint: Some("Run `jj tag track v1@origin` and try again.".to_owned()),
                     }),
@@ -374,6 +410,8 @@ mod tests {
                     rejection: Some(zanshin_jj::PushCommitRejection {
                         commit_id: "ab".repeat(20),
                         reasons: vec!["is private".to_owned()],
+                        reason_kinds: vec![PushRejectReason::Private],
+                        working_copy: true,
                         message: "Won't push tag v1: commit abababababab is private".to_owned(),
                         hints: vec!["Configured git.private-commits: 'all()'".to_owned()],
                     }),
@@ -449,9 +487,19 @@ mod tests {
             row.refusal().expect("refusal").hint(),
             Some("Run `jj tag track v1@origin` and try again.")
         );
+        assert_eq!(row.refusal().expect("refusal").kind(), fbs::PushRefusalKind::NewRemote);
         let rejection = row.rejection().expect("rejection");
         assert_eq!(rejection.reasons().expect("reasons").get(0), "is private");
+        assert_eq!(
+            rejection.reason_kinds().expect("kinds").get(0),
+            fbs::PushRejectReason::Private
+        );
+        assert!(rejection.working_copy());
         assert_eq!(row.status_reason(), Some("why"));
+        assert!(row.before_change_id().is_none());
+        assert_eq!(row.before_change_prefix_len(), 0);
+        assert_eq!(row.after_change_id(), Some("kz".repeat(16).as_str()));
+        assert_eq!(row.after_change_prefix_len(), 3);
     }
 
     /// The enum mappings are total and one-to-one.
@@ -477,6 +525,26 @@ mod tests {
             (PushFailureKind::Cancelled, fbs::PushFailureKind::Cancelled),
         ] {
             assert_eq!(failure_kind_of(kind), wire);
+        }
+        for (kind, wire) in [
+            (PushRefusalKind::LocalConflicted, fbs::PushRefusalKind::LocalConflicted),
+            (
+                PushRefusalKind::RemoteConflicted,
+                fbs::PushRefusalKind::RemoteConflicted,
+            ),
+            (PushRefusalKind::RemoteUntracked, fbs::PushRefusalKind::RemoteUntracked),
+            (PushRefusalKind::NewRemote, fbs::PushRefusalKind::NewRemote),
+            (PushRefusalKind::Deleted, fbs::PushRefusalKind::Deleted),
+        ] {
+            assert_eq!(refusal_kind_of(kind), wire);
+        }
+        for (reason, wire) in [
+            (PushRejectReason::NoDescription, fbs::PushRejectReason::NoDescription),
+            (PushRejectReason::NoAuthor, fbs::PushRejectReason::NoAuthor),
+            (PushRejectReason::Conflicts, fbs::PushRejectReason::Conflicts),
+            (PushRejectReason::Private, fbs::PushRejectReason::Private),
+        ] {
+            assert_eq!(reject_reason_of(reason), wire);
         }
         assert_eq!(saturate(usize::MAX), u32::MAX);
     }

@@ -12,10 +12,11 @@
 (() => {
 const { useState, useEffect, useRef } = React;
 const KIND = { new: ["new", "new"], forward: ["forward", ""], backward: ["backwards", "warn"], sideways: ["sideways", "warn"], delete: ["delete", "warn"], none: ["up to date", "none"] };
+// [jj's reason, the flag, the plain explanation for Git switchers (sync #19)]
 const REFUSE = {
-  "empty-description": ["has no description", "--allow-empty-description"],
-  private: ["is private (git.private-commits)", "--allow-private"],
-  conflicts: ["has conflicts", "--allow-conflicts"],
+  "empty-description": ["has no description", "--allow-empty-description", "jj won't push a commit without a message. @ is your working copy: after a commit jj starts a new, empty change on top, so your work is in its parent."],
+  private: ["is private (git.private-commits)", "--allow-private", "Your git.private-commits setting keeps this commit off remotes."],
+  conflicts: ["has conflicts", "--allow-conflicts", "jj keeps conflicts inside commits instead of stopping a rebase; resolve them before you share the commit."],
 };
 const ALLOW = { "empty-description": "emptyDescription", private: "private", conflicts: "conflicts" };
 const blockedBy = (x, allow) => !!(x && x.refused && !allow[ALLOW[x.refused]]);
@@ -189,6 +190,7 @@ function PushDialog({ plan, remotes = ["origin"], defaultRemote = "origin", erro
                 <div className="gpush-change-l"><span>Push <ID id={change.id}/> as a new bookmark</span>
                   {chBlocked && <button type="button" className="gpush-chip" title={ref[1]} onClick={() => setAllow({ ...allow, [ALLOW[change.refused]]: true })}>Allow</button>}</div>
                 {ref && <span className="gpush-sub is-refused">{chBlocked ? "Refused — " : "Allowed — "}<ID id={change.refusedAt}/> {ref[0]}</span>}
+                {ref && chBlocked && <span className="gpush-help">{ref[2]}</span>}
                 <input className="gpush-in" value={change.name != null ? change.name : change.generated} disabled={!chOn || busy} spellCheck="false" aria-label="Bookmark name"
                   onChange={(e) => setChange({ ...change, name: e.target.value })}/>
                 <span className="gpush-sub">{change.name == null || change.name === change.generated

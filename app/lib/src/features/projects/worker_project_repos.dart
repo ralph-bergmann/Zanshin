@@ -76,7 +76,11 @@ class WorkerProjectRepos implements ProjectRepos {
       rethrow;
     }
     _logWarnings(call, handle.warnings);
-    return ProjectCreation(repo: _WorkerProjectRepo(worker, handle), warnings: handle.warnings);
+    return ProjectCreation(
+      repo: _WorkerProjectRepo(worker, handle),
+      warnings: handle.warnings,
+      trackableRemoteBookmarks: handle.trackableRemoteBookmarks,
+    );
   }
 }
 
@@ -146,6 +150,9 @@ class _WorkerProjectRepo implements ProjectRepo {
       rethrow;
     }
   }
+
+  @override
+  Future<void> trackBookmarks(List<String> symbols) async => await handle.bookmarkTrack(symbols);
 
   @override
   Future<void> close() => handle.close();

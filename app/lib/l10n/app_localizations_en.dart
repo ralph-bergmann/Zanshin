@@ -2530,4 +2530,103 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pushSheetNotReached => 'not pushed';
+
+  @override
+  String pushSheetSkipTick(String refusal) {
+    return '$refusal — tick it to push it anyway';
+  }
+
+  @override
+  String pushHelpLocalConflicted(String name) {
+    return 'Your $name points at more than one commit — like a branch that moved two ways. Point it at one commit first.';
+  }
+
+  @override
+  String pushHelpRemoteConflicted(String name, String remote) {
+    return '$remote\'s $name moved two ways since your last fetch. Fetching brings it up to date.';
+  }
+
+  @override
+  String pushHelpRemoteUntracked(String name, String remote, String symbol) {
+    return 'In Git, $name would follow $remote/$name. jj links them only once you track $symbol — then pushes and fetches keep them together.';
+  }
+
+  @override
+  String pushHelpRemoteUntrackedTag(String name, String remote) {
+    return '$remote has a tag $name that jj doesn\'t track, so jj won\'t overwrite it.';
+  }
+
+  @override
+  String pushHelpNewRemote(String symbol) {
+    return 'Like a Git branch without an upstream: jj git push only moves bookmarks that track the remote. Tracking $symbol sets that up, as git push -u does.';
+  }
+
+  @override
+  String pushHelpNewRemoteTag(String remote) {
+    return 'jj git push only moves tags that track $remote; naming the tag creates it there.';
+  }
+
+  @override
+  String pushHelpDeleted(String name) {
+    return 'You deleted $name here. jj pushes a deletion only when asked (--deleted), so a remote branch never disappears by accident.';
+  }
+
+  @override
+  String get pushHelpNoDescription => 'jj won\'t push a commit without a message. Describe it first, or allow it.';
+
+  @override
+  String get pushHelpNoDescriptionWorkingCopy =>
+      'jj won\'t push a commit without a message. @ is your working copy: after a commit jj starts a new, empty change on top, so your work is in its parent.';
+
+  @override
+  String get pushHelpNoAuthor =>
+      'Git would take your name from user.name and user.email; jj needs them set too (Settings › General).';
+
+  @override
+  String get pushHelpConflicts =>
+      'jj keeps conflicts inside commits instead of stopping a rebase; resolve them before you share the commit.';
+
+  @override
+  String get pushHelpSigning =>
+      'Like git commit -S, but at push time: jj signs only what you share, so your local work stays unsigned until then.';
+
+  @override
+  String get pushHelpPrivate => 'Your git.private-commits setting keeps this commit off remotes.';
+
+  @override
+  String pushFixTrack(String symbol) {
+    return 'Track $symbol';
+  }
+
+  @override
+  String get pushFixFetch => 'Fetch';
+
+  @override
+  String get pushFixDeleted => 'Push with --deleted';
+
+  @override
+  String toastOpenedUntrackedOne(String name) {
+    return '$name isn\'t tracked';
+  }
+
+  @override
+  String toastOpenedUntrackedMany(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count remote bookmarks aren\'t tracked',
+      one: '$count remote bookmark isn\'t tracked',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get toastUntrackedHelp =>
+      'In Git a branch follows its remote counterpart; jj links a local bookmark to its remote one only once you track it — then fetches and pushes keep them together.';
+
+  @override
+  String get toastTrack => 'Track';
+
+  @override
+  String get toastTrackAll => 'Track all';
 }

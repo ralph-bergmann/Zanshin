@@ -167,6 +167,11 @@ pub struct CreationOutcome {
     /// Empty on success, on every refusal that wrote nothing, and for [`Repo::clone`] (which
     /// removes what it created itself) and [`Repo::open_with_report`].
     pub left_behind: Vec<PathBuf>,
+    /// The remote bookmarks a SUCCESSFUL conversion (or [`Repo::init`] over an existing `.git`)
+    /// leaves untracked beside a local bookmark of the same name — the CLI's post-`jj git init`
+    /// hint list (`print_trackable_remote_bookmarks`, Story 11.22), as `<name>@<remote>` in the
+    /// view's order. Empty otherwise.
+    pub trackable_remote_bookmarks: Vec<String>,
 }
 
 /// Selects the jj backend for a new workspace.
@@ -4917,6 +4922,7 @@ impl Repo {
             precondition: None,
             warnings,
             left_behind: Vec::new(),
+            trackable_remote_bookmarks: Vec::new(),
         }
     }
 

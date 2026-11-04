@@ -14,7 +14,7 @@ use std::process::Command;
 use tempfile::TempDir;
 use zanshin_jj::{
     ChangeId, CloneOptions, GitPushArgs, GitPushOutcome, MutateError, ProgressEvent, PushFailureKind, PushPath,
-    PushRefKind, PushRefName, PushRefStatus, Repo, WarningKind,
+    PushRefKind, PushRefName, PushRefStatus, PushRefusalKind, PushRejectReason, Repo, WarningKind,
 };
 
 /// Runs `git` in `dir`; panics on a non-zero exit. Fixture setup only.
@@ -205,6 +205,12 @@ fn a_bare_push_moves_a_tracked_bookmark_forward_and_records() {
         Some(format!("move forward from {} to {}", short(&old), short(&third)).as_str())
     );
     assert_eq!(row.status, Some(PushRefStatus::Pushed));
+    // Story 11.22: both sides carry their change ids and unique-prefix lengths.
+    let (old_change, third_change) = (w.change(&old).0 .0, w.change(&third).0 .0);
+    assert_eq!(row.before_change_id.as_deref(), Some(old_change.as_str()));
+    assert_eq!(row.after_change_id.as_deref(), Some(third_change.as_str()));
+    assert!((1..=32).contains(&row.before_change_prefix_len), "{row:?}");
+    assert!((1..=32).contains(&row.after_change_prefix_len), "{row:?}");
     assert_eq!(w.remote_refs()["refs/heads/main"], third);
     assert_eq!(w.head_op(), outcome.new_op_id);
     assert_eq!(w.hex("main@origin"), third, "the remote bookmark follows");
@@ -299,10 +305,11 @@ fn skip_versus_abort_for_a_commit_without_description() {
     assert!(failure.hint.expect("hint").starts_with("Rejected commit: "));
     let row = &plan.remotes[0].refs[0];
     assert_eq!((row.name.as_str(), row.path), ("side", PushPath::Abort));
-    assert_eq!(
-        row.rejection.as_ref().expect("rejection").reasons,
-        ["has no description"]
-    );
+    let rejection = row.rejection.as_ref().expect("rejection");
+    assert_eq!(rejection.reasons, ["has no description"]);
+    // Story 11.22: the reasons as kinds, and `bad` is not `@`.
+    assert_eq!(rejection.reason_kinds, [PushRejectReason::NoDescription]);
+    assert!(!rejection.working_copy);
     assert!(
         plan.description.is_none(),
         "every explicit ref aborts: nothing to describe"
@@ -404,6 +411,7 @@ fn refused_refs_carry_the_cli_message_and_hint() {
     let main_row = row("main");
     assert_eq!(main_row.path, PushPath::Skip);
     let refusal = main_row.refusal.expect("refused");
+    assert_eq!(refusal.kind, PushRefusalKind::LocalConflicted);
     assert_eq!(refusal.message, "Bookmark main is conflicted");
     assert_eq!(
         refusal.hint.as_deref(),
@@ -414,6 +422,10 @@ fn refused_refs_carry_the_cli_message_and_hint() {
     assert_eq!(
         side_row.refusal.as_ref().map(|r| r.message.as_str()),
         Some("Non-tracking remote bookmark side@origin exists")
+    );
+    assert_eq!(
+        side_row.refusal.as_ref().map(|r| r.kind),
+        Some(PushRefusalKind::RemoteUntracked)
     );
     assert_eq!(
         side_row.refusal.clone().and_then(|r| r.hint).as_deref(),
@@ -444,6 +456,7 @@ fn refused_refs_carry_the_cli_message_and_hint() {
         .expect("fresh is in the default revset");
     assert_eq!(fresh.path, PushPath::Skip);
     let refusal = fresh.refusal.as_ref().expect("the bare push refuses a new bookmark");
+    assert_eq!(refusal.kind, PushRefusalKind::NewRemote);
     assert_eq!(refusal.message, "Refusing to create new remote bookmark fresh@origin");
     assert_eq!(
         refusal.hint.as_deref(),
@@ -477,6 +490,7 @@ fn deleted_bookmarks_need_the_deleted_flag() {
     let row = &plan.remotes[0].refs[0];
     assert_eq!((row.name.as_str(), row.path), ("side", PushPath::Skip));
     let refusal = row.refusal.as_ref().expect("refused");
+    assert_eq!(refusal.kind, PushRefusalKind::Deleted);
     assert_eq!(refusal.message, "Refusing to push deleted bookmark side");
     assert_eq!(
         refusal.hint.as_deref(),
@@ -1356,7 +1370,11 @@ fn the_rejected_commit_hint_renders_the_commit_summary_template() {
         .expect("the dry run plans");
     assert_eq!(plan.failure.and_then(|f| f.hint), Some(hint.clone()));
     let row = &plan.remotes[0].refs[0];
-    assert_eq!(row.rejection.as_ref().expect("rejected").hints, [hint]);
+    let rejection = row.rejection.as_ref().expect("rejected");
+    assert_eq!(rejection.hints, [hint]);
+    // Story 11.22: the rejected commit is the working copy.
+    assert!(rejection.working_copy);
+    assert_eq!(rejection.reason_kinds, [PushRejectReason::NoDescription]);
 }
 
 /// An unparsable `templates.commit_summary` refuses a push whose rejection hint would render it —

@@ -3684,6 +3684,216 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
+        pub const ENUM_MIN_PUSH_REFUSAL_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PUSH_REFUSAL_KIND: u8 = 4;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PUSH_REFUSAL_KIND: [PushRefusalKind; 5] = [
+            PushRefusalKind::LocalConflicted,
+            PushRefusalKind::RemoteConflicted,
+            PushRefusalKind::RemoteUntracked,
+            PushRefusalKind::NewRemote,
+            PushRefusalKind::Deleted,
+        ];
+
+        /// Which refusal a ref got (Story 11.22): the local ref is conflicted, the remote-tracking ref is
+        /// conflicted, an untracked remote ref of that name exists, the push would create a new remote
+        /// ref, or it would delete one. Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct PushRefusalKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl PushRefusalKind {
+            pub const LocalConflicted: Self = Self(0);
+            pub const RemoteConflicted: Self = Self(1);
+            pub const RemoteUntracked: Self = Self(2);
+            pub const NewRemote: Self = Self(3);
+            pub const Deleted: Self = Self(4);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 4;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::LocalConflicted,
+                Self::RemoteConflicted,
+                Self::RemoteUntracked,
+                Self::NewRemote,
+                Self::Deleted,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::LocalConflicted => Some("LocalConflicted"),
+                    Self::RemoteConflicted => Some("RemoteConflicted"),
+                    Self::RemoteUntracked => Some("RemoteUntracked"),
+                    Self::NewRemote => Some("NewRemote"),
+                    Self::Deleted => Some("Deleted"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for PushRefusalKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for PushRefusalKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for PushRefusalKind {
+            type Output = PushRefusalKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for PushRefusalKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for PushRefusalKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for PushRefusalKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PUSH_REJECT_REASON: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PUSH_REJECT_REASON: u8 = 3;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PUSH_REJECT_REASON: [PushRejectReason; 4] = [
+            PushRejectReason::NoDescription,
+            PushRejectReason::NoAuthor,
+            PushRejectReason::Conflicts,
+            PushRejectReason::Private,
+        ];
+
+        /// One reason a commit check rejects a commit (Story 11.22): "has no description", "has no
+        /// author and/or committer set", "has conflicts", "is private". Member order IS the wire value —
+        /// APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct PushRejectReason(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl PushRejectReason {
+            pub const NoDescription: Self = Self(0);
+            pub const NoAuthor: Self = Self(1);
+            pub const Conflicts: Self = Self(2);
+            pub const Private: Self = Self(3);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 3;
+            pub const ENUM_VALUES: &'static [Self] =
+                &[Self::NoDescription, Self::NoAuthor, Self::Conflicts, Self::Private];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::NoDescription => Some("NoDescription"),
+                    Self::NoAuthor => Some("NoAuthor"),
+                    Self::Conflicts => Some("Conflicts"),
+                    Self::Private => Some("Private"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for PushRejectReason {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for PushRejectReason {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for PushRejectReason {
+            type Output = PushRejectReason;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for PushRejectReason {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for PushRejectReason {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for PushRejectReason {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
         pub const ENUM_MIN_FILE_TYPE: i8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -20570,6 +20780,10 @@ pub mod zanshin {
         /// The envelope carrying it from init/clone/convert also carries the creating call's report
         /// (`Envelope.warnings`, and — convert only — `Envelope.precondition`; Story 9.33); from open,
         /// neither.
+        /// `trackable_remote_bookmarks` (Story 11.22): from a successful conversion or init over an
+        /// existing `.git`, the remote bookmarks left untracked beside a local bookmark of the same name
+        /// (the CLI's post-`jj git init` hint list, `<name>@<remote>` in the view's order); empty
+        /// otherwise.
         pub struct RepoHandle<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -20587,6 +20801,7 @@ pub mod zanshin {
         impl<'a> RepoHandle<'a> {
             pub const VT_HANDLE: ::flatbuffers::VOffsetT = 4;
             pub const VT_SESSION_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_TRACKABLE_REMOTE_BOOKMARKS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -20595,11 +20810,14 @@ pub mod zanshin {
             #[allow(unused_mut)]
             pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
                 _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args RepoHandleArgs,
+                args: &'args RepoHandleArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<RepoHandle<'bldr>> {
                 let mut builder = RepoHandleBuilder::new(_fbb);
                 builder.add_session_id(args.session_id);
                 builder.add_handle(args.handle);
+                if let Some(x) = args.trackable_remote_bookmarks {
+                    builder.add_trackable_remote_bookmarks(x);
+                }
                 builder.finish()
             }
 
@@ -20617,6 +20835,19 @@ pub mod zanshin {
                 // which contains a valid value in this slot
                 unsafe { self._tab.get::<u64>(RepoHandle::VT_SESSION_ID, Some(0)).unwrap() }
             }
+            #[inline]
+            pub fn trackable_remote_bookmarks(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RepoHandle::VT_TRACKABLE_REMOTE_BOOKMARKS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for RepoHandle<'_> {
@@ -20626,22 +20857,26 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
-                    .visit_field::<u64>("handle", Self::VT_HANDLE, false)?
-                    .visit_field::<u64>("session_id", Self::VT_SESSION_ID, false)?
-                    .finish();
+     .visit_field::<u64>("handle", Self::VT_HANDLE, false)?
+     .visit_field::<u64>("session_id", Self::VT_SESSION_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("trackable_remote_bookmarks", Self::VT_TRACKABLE_REMOTE_BOOKMARKS, false)?
+     .finish();
                 Ok(())
             }
         }
-        pub struct RepoHandleArgs {
+        pub struct RepoHandleArgs<'a> {
             pub handle: u64,
             pub session_id: u64,
+            pub trackable_remote_bookmarks:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
-        impl<'a> Default for RepoHandleArgs {
+        impl<'a> Default for RepoHandleArgs<'a> {
             #[inline]
             fn default() -> Self {
                 RepoHandleArgs {
                     handle: 0,
                     session_id: 0,
+                    trackable_remote_bookmarks: None,
                 }
             }
         }
@@ -20658,6 +20893,18 @@ pub mod zanshin {
             #[inline]
             pub fn add_session_id(&mut self, session_id: u64) {
                 self.fbb_.push_slot::<u64>(RepoHandle::VT_SESSION_ID, session_id, 0);
+            }
+            #[inline]
+            pub fn add_trackable_remote_bookmarks(
+                &mut self,
+                trackable_remote_bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RepoHandle::VT_TRACKABLE_REMOTE_BOOKMARKS,
+                    trackable_remote_bookmarks,
+                );
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RepoHandleBuilder<'a, 'b, A> {
@@ -20679,6 +20926,7 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("RepoHandle");
                 ds.field("handle", &self.handle());
                 ds.field("session_id", &self.session_id());
+                ds.field("trackable_remote_bookmarks", &self.trackable_remote_bookmarks());
                 ds.finish()
             }
         }
@@ -30770,7 +31018,7 @@ pub mod zanshin {
         #[derive(Copy, Clone, PartialEq)]
 
         /// The CLI's message and hint for a refused ref, verbatim. `hint` ABSENT where the CLI gives
-        /// none.
+        /// none. `kind` (Story 11.22) names the refusal.
         pub struct PushRefusal<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -30788,6 +31036,7 @@ pub mod zanshin {
         impl<'a> PushRefusal<'a> {
             pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 4;
             pub const VT_HINT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -30805,6 +31054,7 @@ pub mod zanshin {
                 if let Some(x) = args.message {
                     builder.add_message(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
@@ -30828,6 +31078,17 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRefusal::VT_HINT, None)
                 }
             }
+            #[inline]
+            pub fn kind(&self) -> PushRefusalKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<PushRefusalKind>(PushRefusal::VT_KIND, Some(PushRefusalKind::LocalConflicted))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for PushRefusal<'_> {
@@ -30839,6 +31100,7 @@ pub mod zanshin {
                 v.visit_table(pos)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("hint", Self::VT_HINT, false)?
+                    .visit_field::<PushRefusalKind>("kind", Self::VT_KIND, false)?
                     .finish();
                 Ok(())
             }
@@ -30846,6 +31108,7 @@ pub mod zanshin {
         pub struct PushRefusalArgs<'a> {
             pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub hint: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub kind: PushRefusalKind,
         }
         impl<'a> Default for PushRefusalArgs<'a> {
             #[inline]
@@ -30853,6 +31116,7 @@ pub mod zanshin {
                 PushRefusalArgs {
                     message: None,
                     hint: None,
+                    kind: PushRefusalKind::LocalConflicted,
                 }
             }
         }
@@ -30871,6 +31135,11 @@ pub mod zanshin {
             pub fn add_hint(&mut self, hint: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRefusal::VT_HINT, hint);
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: PushRefusalKind) {
+                self.fbb_
+                    .push_slot::<PushRefusalKind>(PushRefusal::VT_KIND, kind, PushRefusalKind::LocalConflicted);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushRefusalBuilder<'a, 'b, A> {
@@ -30892,6 +31161,7 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("PushRefusal");
                 ds.field("message", &self.message());
                 ds.field("hint", &self.hint());
+                ds.field("kind", &self.kind());
                 ds.finish()
             }
         }
@@ -30900,7 +31170,8 @@ pub mod zanshin {
 
         /// A commit the push refuses to send: its full hex id, the reasons in the CLI's order, the CLI's
         /// text for the ref's path and its hints ("Rejected commit: …" on the abort path, the
-        /// `git.private-commits` hint for a private commit).
+        /// `git.private-commits` hint for a private commit). Story 11.22: `reason_kinds` = the reasons
+        /// as kinds, index for index; `working_copy` = the commit is the workspace's `@`.
         pub struct PushCommitRejection<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -30920,6 +31191,8 @@ pub mod zanshin {
             pub const VT_REASONS: ::flatbuffers::VOffsetT = 6;
             pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 8;
             pub const VT_HINTS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_REASON_KINDS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_WORKING_COPY: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -30931,6 +31204,9 @@ pub mod zanshin {
                 args: &'args PushCommitRejectionArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<PushCommitRejection<'bldr>> {
                 let mut builder = PushCommitRejectionBuilder::new(_fbb);
+                if let Some(x) = args.reason_kinds {
+                    builder.add_reason_kinds(x);
+                }
                 if let Some(x) = args.hints {
                     builder.add_hints(x);
                 }
@@ -30943,6 +31219,7 @@ pub mod zanshin {
                 if let Some(x) = args.commit_id {
                     builder.add_commit_id(x);
                 }
+                builder.add_working_copy(args.working_copy);
                 builder.finish()
             }
 
@@ -30988,6 +31265,30 @@ pub mod zanshin {
                     >>(PushCommitRejection::VT_HINTS, None)
                 }
             }
+            #[inline]
+            pub fn reason_kinds(&self) -> Option<::flatbuffers::Vector<'a, PushRejectReason>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, PushRejectReason>>>(
+                            PushCommitRejection::VT_REASON_KINDS,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn working_copy(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(PushCommitRejection::VT_WORKING_COPY, Some(false))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for PushCommitRejection<'_> {
@@ -31001,6 +31302,8 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("reasons", Self::VT_REASONS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("hints", Self::VT_HINTS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, PushRejectReason>>>("reason_kinds", Self::VT_REASON_KINDS, false)?
+     .visit_field::<bool>("working_copy", Self::VT_WORKING_COPY, false)?
      .finish();
                 Ok(())
             }
@@ -31012,6 +31315,8 @@ pub mod zanshin {
             pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub hints:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub reason_kinds: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, PushRejectReason>>>,
+            pub working_copy: bool,
         }
         impl<'a> Default for PushCommitRejectionArgs<'a> {
             #[inline]
@@ -31021,6 +31326,8 @@ pub mod zanshin {
                     reasons: None,
                     message: None,
                     hints: None,
+                    reason_kinds: None,
+                    working_copy: false,
                 }
             }
         }
@@ -31057,6 +31364,21 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushCommitRejection::VT_HINTS, hints);
             }
             #[inline]
+            pub fn add_reason_kinds(
+                &mut self,
+                reason_kinds: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, PushRejectReason>>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PushCommitRejection::VT_REASON_KINDS,
+                    reason_kinds,
+                );
+            }
+            #[inline]
+            pub fn add_working_copy(&mut self, working_copy: bool) {
+                self.fbb_
+                    .push_slot::<bool>(PushCommitRejection::VT_WORKING_COPY, working_copy, false);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushCommitRejectionBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 PushCommitRejectionBuilder {
@@ -31078,6 +31400,8 @@ pub mod zanshin {
                 ds.field("reasons", &self.reasons());
                 ds.field("message", &self.message());
                 ds.field("hints", &self.hints());
+                ds.field("reason_kinds", &self.reason_kinds());
+                ds.field("working_copy", &self.working_copy());
                 ds.finish()
             }
         }
@@ -31091,6 +31415,9 @@ pub mod zanshin {
         /// `refusal` is the mode's refusal (Skip / Abort), `explicit_refusal` the one the ref would get if
         /// named explicitly (ABSENT = it could be), `rejection` the commit the push refuses to send.
         /// `status` / `status_reason` after a real push.
+        /// Story 11.22: `before_change_id` / `after_change_id` are the change ids (reverse hex) of
+        /// `before` / `after` — ABSENT with them — and the `*_change_prefix_len`s their shortest unique
+        /// prefixes (0 without an id).
         pub struct PushRef<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -31117,6 +31444,10 @@ pub mod zanshin {
             pub const VT_REJECTION: ::flatbuffers::VOffsetT = 20;
             pub const VT_STATUS: ::flatbuffers::VOffsetT = 22;
             pub const VT_STATUS_REASON: ::flatbuffers::VOffsetT = 24;
+            pub const VT_BEFORE_CHANGE_ID: ::flatbuffers::VOffsetT = 26;
+            pub const VT_BEFORE_CHANGE_PREFIX_LEN: ::flatbuffers::VOffsetT = 28;
+            pub const VT_AFTER_CHANGE_ID: ::flatbuffers::VOffsetT = 30;
+            pub const VT_AFTER_CHANGE_PREFIX_LEN: ::flatbuffers::VOffsetT = 32;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -31128,6 +31459,14 @@ pub mod zanshin {
                 args: &'args PushRefArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<PushRef<'bldr>> {
                 let mut builder = PushRefBuilder::new(_fbb);
+                builder.add_after_change_prefix_len(args.after_change_prefix_len);
+                if let Some(x) = args.after_change_id {
+                    builder.add_after_change_id(x);
+                }
+                builder.add_before_change_prefix_len(args.before_change_prefix_len);
+                if let Some(x) = args.before_change_id {
+                    builder.add_before_change_id(x);
+                }
                 if let Some(x) = args.status_reason {
                     builder.add_status_reason(x);
                 }
@@ -31271,6 +31610,48 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRef::VT_STATUS_REASON, None)
                 }
             }
+            #[inline]
+            pub fn before_change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRef::VT_BEFORE_CHANGE_ID, None)
+                }
+            }
+            #[inline]
+            pub fn before_change_prefix_len(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(PushRef::VT_BEFORE_CHANGE_PREFIX_LEN, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn after_change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRef::VT_AFTER_CHANGE_ID, None)
+                }
+            }
+            #[inline]
+            pub fn after_change_prefix_len(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(PushRef::VT_AFTER_CHANGE_PREFIX_LEN, Some(0))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for PushRef<'_> {
@@ -31303,6 +31684,18 @@ pub mod zanshin {
                         Self::VT_STATUS_REASON,
                         false,
                     )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "before_change_id",
+                        Self::VT_BEFORE_CHANGE_ID,
+                        false,
+                    )?
+                    .visit_field::<u32>("before_change_prefix_len", Self::VT_BEFORE_CHANGE_PREFIX_LEN, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "after_change_id",
+                        Self::VT_AFTER_CHANGE_ID,
+                        false,
+                    )?
+                    .visit_field::<u32>("after_change_prefix_len", Self::VT_AFTER_CHANGE_PREFIX_LEN, false)?
                     .finish();
                 Ok(())
             }
@@ -31319,6 +31712,10 @@ pub mod zanshin {
             pub rejection: Option<::flatbuffers::WIPOffset<PushCommitRejection<'a>>>,
             pub status: PushRefStatus,
             pub status_reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub before_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub before_change_prefix_len: u32,
+            pub after_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub after_change_prefix_len: u32,
         }
         impl<'a> Default for PushRefArgs<'a> {
             #[inline]
@@ -31335,6 +31732,10 @@ pub mod zanshin {
                     rejection: None,
                     status: PushRefStatus::NotReached,
                     status_reason: None,
+                    before_change_id: None,
+                    before_change_prefix_len: 0,
+                    after_change_id: None,
+                    after_change_prefix_len: 0,
                 }
             }
         }
@@ -31404,6 +31805,26 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRef::VT_STATUS_REASON, status_reason);
             }
             #[inline]
+            pub fn add_before_change_id(&mut self, before_change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRef::VT_BEFORE_CHANGE_ID, before_change_id);
+            }
+            #[inline]
+            pub fn add_before_change_prefix_len(&mut self, before_change_prefix_len: u32) {
+                self.fbb_
+                    .push_slot::<u32>(PushRef::VT_BEFORE_CHANGE_PREFIX_LEN, before_change_prefix_len, 0);
+            }
+            #[inline]
+            pub fn add_after_change_id(&mut self, after_change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRef::VT_AFTER_CHANGE_ID, after_change_id);
+            }
+            #[inline]
+            pub fn add_after_change_prefix_len(&mut self, after_change_prefix_len: u32) {
+                self.fbb_
+                    .push_slot::<u32>(PushRef::VT_AFTER_CHANGE_PREFIX_LEN, after_change_prefix_len, 0);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushRefBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 PushRefBuilder {
@@ -31432,6 +31853,10 @@ pub mod zanshin {
                 ds.field("rejection", &self.rejection());
                 ds.field("status", &self.status());
                 ds.field("status_reason", &self.status_reason());
+                ds.field("before_change_id", &self.before_change_id());
+                ds.field("before_change_prefix_len", &self.before_change_prefix_len());
+                ds.field("after_change_id", &self.after_change_id());
+                ds.field("after_change_prefix_len", &self.after_change_prefix_len());
                 ds.finish()
             }
         }

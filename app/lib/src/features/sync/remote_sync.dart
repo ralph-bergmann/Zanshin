@@ -30,6 +30,10 @@ abstract interface class RemoteSync {
 
   /// What the Push sheet says about the config: `git.sign-on-push` and the effective `revsets.git-push`.
   Future<PushConfig> pushConfig();
+
+  /// `jj bookmark track` of the `NAME@REMOTE` [symbols] (`RepoHandle.bookmarkTrack`; the Push sheet's Track fix-it,
+  /// Story 11.22).
+  Future<void> track(List<String> symbols);
 }
 
 /// The config the Push sheet names (Story 11.8 item 7).
@@ -211,6 +215,9 @@ class RepoRemoteSync implements RemoteSync {
     named: request.named,
     dryRun: request.dryRun,
   );
+
+  @override
+  Future<void> track(List<String> symbols) async => await _handle.bookmarkTrack(symbols);
 
   @override
   Future<PushConfig> pushConfig() async {

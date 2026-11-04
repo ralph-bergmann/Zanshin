@@ -48,7 +48,8 @@ enum _Sheet {
   preselection('Preselection'),
   remotes('Two remotes'),
   change('Change allowed'),
-  done('Done in part');
+  done('Done in part'),
+  gitSwitcher('Git switcher');
 
   const _Sheet(this.label);
 
@@ -65,11 +66,21 @@ PushRef _ref(
   PushCommitRejection? rejection,
   PushRefStatus status = PushRefStatus.notReached,
   String? statusReason,
+  String? before,
+  String? after,
+  String? beforeChangeId,
+  String? afterChangeId,
 }) => PushRef(
   kind: kind,
   name: name,
   path: path,
   action: action,
+  before: before,
+  after: after,
+  beforeChangeId: beforeChangeId,
+  beforeChangePrefixLen: beforeChangeId == null ? 0 : 2,
+  afterChangeId: afterChangeId,
+  afterChangePrefixLen: afterChangeId == null ? 0 : 2,
   refusal: refusal,
   explicitRefusal: explicitRefusal,
   rejection: rejection,
@@ -77,11 +88,69 @@ PushRef _ref(
   statusReason: statusReason,
 );
 
-PushCommitRejection _noDescription(String commit) => PushCommitRejection(
+/// `main` moved forward, with both change ids (Story 11.22).
+PushRef _main({PushRefStatus status = PushRefStatus.notReached}) => _ref(
+  'main',
+  status: status,
+  before: '4c1d0e2a9b77${'0' * 28}',
+  after: '9e8f7a6b5c4d${'0' * 28}',
+  beforeChangeId: 'qpvuntsmwlqtpsluzzsnyyzlmlwvmlnu', // l10n-ignore: demo data
+  afterChangeId: 'ksxypqwmzzzzzzzzzzzzzzzzzzzzzzzz', // l10n-ignore: demo data
+);
+
+PushCommitRejection _noDescription(String commit, {bool workingCopy = false}) => PushCommitRejection(
   commitId: commit,
   reasons: const <String>['has no description'], // l10n-ignore: jj's text
+  reasonKinds: const <PushRejectReason>[PushRejectReason.noDescription],
+  workingCopy: workingCopy,
   message: "Won't push commit ${commit.substring(0, 12)} since it has no description", // l10n-ignore: jj's text
 );
+
+/// A Git switcher's first push (Story 11.22): `main` beside an untracked `main@origin`, a new local bookmark `fresh`,
+/// and an undescribed @; Track turns `main` into a forward move.
+GitPushResult _gitSwitcherPlan(PushRequest request, {required bool tracked}) {
+  const untracked = PushRefusal(
+    kind: PushRefusalKind.remoteUntracked,
+    message: 'Non-tracking remote bookmark main@origin exists', // l10n-ignore: jj's text
+    hint: 'Run `jj bookmark track main@origin` to import the remote bookmark.', // l10n-ignore: jj's text
+  );
+  if (request.changes.isNotEmpty || request.named.isNotEmpty) {
+    return _result(
+      <String, List<PushRef>>{
+        'origin': <PushRef>[
+          _ref(
+            'push-ovknlmrozxyw',
+            action: 'add to 7d6c5b4a3f2e', // l10n-ignore: demo data
+            path: request.allowEmptyDescription ? PushPath.push : PushPath.abort,
+            rejection: _noDescription('7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c', workingCopy: true),
+          ),
+        ],
+      },
+      created: const <PushCreatedBookmark>[PushCreatedBookmark(name: 'push-ovknlmrozxyw', changeId: 'ovknlmro')],
+    );
+  }
+  return _result(<String, List<PushRef>>{
+    'origin': <PushRef>[
+      if (tracked)
+        _main()
+      else
+        _ref('main', action: '', path: PushPath.skip, refusal: untracked, explicitRefusal: untracked),
+      if (request.mode == PushMode.bare)
+        _ref(
+          'fresh',
+          action: 'add to 2d0dbb65bad8', // l10n-ignore: demo data
+          path: PushPath.skip,
+          refusal: const PushRefusal(
+            kind: PushRefusalKind.newRemote,
+            message: 'Refusing to create new remote bookmark fresh@origin', // l10n-ignore: jj's text
+            hint: 'Run `jj bookmark track fresh@origin` and try again.', // l10n-ignore: jj's text
+          ),
+        )
+      else if (request.mode == PushMode.all || request.mode == PushMode.custom)
+        _ref('fresh', action: 'add to 2d0dbb65bad8'), // l10n-ignore: demo data
+    ],
+  });
+}
 
 GitPushResult _result(Map<String, List<PushRef>> remotes, {List<PushCreatedBookmark> created = const []}) =>
     GitPushResult(
@@ -100,10 +169,15 @@ GitPushResult _result(Map<String, List<PushRef>> remotes, {List<PushCreatedBookm
 /// Demo plans: `main` forward, `wip` skipped for its empty description, the tag `v1.5.0` new, `feature/ZAN-412`
 /// sideways and new on upstream.
 class _DemoSync implements RemoteSync {
-  _DemoSync({this.names = const <String>['origin'], this.done = false});
+  _DemoSync({this.names = const <String>['origin'], this.done = false, this.gitSwitcher = false});
 
   final List<String> names;
   final bool done;
+  final bool gitSwitcher;
+  var _tracked = false;
+
+  @override
+  Future<void> track(List<String> symbols) async => _tracked = true;
 
   NetworkOperation<T> _now<T>(T value) => NetworkOperation<T>(
     result: Future<T>.value(value),
@@ -153,6 +227,9 @@ class _DemoSync implements RemoteSync {
   @override
   NetworkOperation<GitPushResult> push(PushRequest request) {
     final List<String> remotes = request.remotes ?? const <String>['origin'];
+    if (gitSwitcher) {
+      return _now(_gitSwitcherPlan(request, tracked: _tracked));
+    }
     if (done && !request.dryRun) {
       return _now(
         GitPushResult(
@@ -198,7 +275,7 @@ class _DemoSync implements RemoteSync {
                   'push-ovknlmrozxyw',
                   action: 'add to 7d6c5b4a3f2e', // l10n-ignore: demo data
                   path: request.allowEmptyDescription ? PushPath.push : PushPath.abort,
-                  rejection: _noDescription('7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c'),
+                  rejection: _noDescription('7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c', workingCopy: true),
                 ),
                 for (final String name in request.bookmarks) _ref(name),
               ],
@@ -212,15 +289,12 @@ class _DemoSync implements RemoteSync {
         for (final String remote in remotes)
           remote: switch (request.mode) {
             PushMode.deleted => const <PushRef>[],
-            PushMode.tracked => <PushRef>[_ref('main')],
+            PushMode.tracked => <PushRef>[_main()],
             _ => <PushRef>[
-              _ref('main'),
+              _main(),
               _ref(
                 'wip',
                 path: PushPath.skip,
-                refusal: const PushRefusal(
-                  message: "Won't push commit 3f2e1d0c9b8a since it has no description", // l10n-ignore: jj's text
-                ),
                 rejection: _noDescription('3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e'),
               ),
               _ref(
@@ -345,6 +419,7 @@ class _SheetHostState extends State<_SheetHost> {
       sync: _DemoSync(
         names: sheet == _Sheet.remotes ? const <String>['origin', 'upstream'] : const <String>['origin'],
         done: sheet == _Sheet.done,
+        gitSwitcher: sheet == _Sheet.gitSwitcher,
       ),
       change: (id: 'ovknlmro', rev: '@'),
       onPushed: (_) {},
@@ -355,7 +430,7 @@ class _SheetHostState extends State<_SheetHost> {
   Future<void> _play() async {
     await _model.load();
     switch (widget.sheet) {
-      case _Sheet.preselection:
+      case _Sheet.preselection || _Sheet.gitSwitcher:
         break;
       case _Sheet.remotes:
         _model.toggleRemote('upstream');

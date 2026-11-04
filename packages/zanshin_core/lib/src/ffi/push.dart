@@ -140,9 +140,45 @@ enum PushFailureKind {
   cancelled,
 }
 
+/// Which refusal a ref got (Story 11.22).
+enum PushRefusalKind {
+  /// The local bookmark or tag is conflicted.
+  localConflicted,
+
+  /// The remote-tracking ref is conflicted.
+  remoteConflicted,
+
+  /// An untracked remote ref of that name exists.
+  remoteUntracked,
+
+  /// The push would create a new remote ref the mode does not allow.
+  newRemote,
+
+  /// The push would delete the remote ref, which the mode does not allow.
+  deleted,
+}
+
+/// One reason a commit check rejects a commit (Story 11.22).
+enum PushRejectReason {
+  /// "has no description".
+  noDescription,
+
+  /// "has no author and/or committer set".
+  noAuthor,
+
+  /// "has conflicts".
+  conflicts,
+
+  /// "is private".
+  private,
+}
+
 /// A refusal of a ref, verbatim from the CLI.
 final class PushRefusal {
-  const PushRefusal({required this.message, this.hint});
+  const PushRefusal({required this.kind, required this.message, this.hint});
+
+  /// Which refusal it is.
+  final PushRefusalKind kind;
 
   /// The CLI's message.
   final String message;
@@ -158,6 +194,8 @@ final class PushCommitRejection {
     required this.commitId,
     required this.reasons,
     required this.message,
+    this.reasonKinds = const [],
+    this.workingCopy = false,
     this.hints = const [],
   });
 
@@ -166,6 +204,12 @@ final class PushCommitRejection {
 
   /// The reasons, the CLI's words ("has no description", …).
   final List<String> reasons;
+
+  /// The same reasons as kinds, index for index.
+  final List<PushRejectReason> reasonKinds;
+
+  /// The rejected commit is the workspace's working-copy commit (`@`).
+  final bool workingCopy;
 
   /// The CLI's message ("Won't push commit … since it …").
   final String message;
@@ -183,6 +227,10 @@ final class PushRef {
     required this.status,
     this.before,
     this.after,
+    this.beforeChangeId,
+    this.beforeChangePrefixLen = 0,
+    this.afterChangeId,
+    this.afterChangePrefixLen = 0,
     this.action,
     this.refusal,
     this.explicitRefusal,
@@ -203,6 +251,18 @@ final class PushRef {
   /// The pushed target, full hex; `null` for a deletion, or for a ref refused
   /// as conflicted or untracked.
   final String? after;
+
+  /// The change id of [before] (reverse hex); `null` with it.
+  final String? beforeChangeId;
+
+  /// The length of [beforeChangeId]'s shortest unique prefix (0 without one).
+  final int beforeChangePrefixLen;
+
+  /// The change id of [after] (reverse hex); `null` with it.
+  final String? afterChangeId;
+
+  /// The length of [afterChangeId]'s shortest unique prefix (0 without one).
+  final int afterChangePrefixLen;
 
   /// jj's words: "move forward from … to …", "add to …", "delete from …"; `null` for a
   /// ref refused as conflicted or untracked.
@@ -421,6 +481,10 @@ PushRef _ref(fbs.PushRef row) {
     name: row.name ?? _missing('refs.name'),
     before: row.before,
     after: row.after,
+    beforeChangeId: row.beforeChangeId,
+    beforeChangePrefixLen: row.beforeChangePrefixLen,
+    afterChangeId: row.afterChangeId,
+    afterChangePrefixLen: row.afterChangePrefixLen,
     action: row.action,
     path: _path(row.path),
     refusal: _refusal(row.refusal),
@@ -430,6 +494,8 @@ PushRef _ref(fbs.PushRef row) {
         : PushCommitRejection(
             commitId: rejection.commitId ?? _missing('rejection.commit_id'),
             reasons: rejection.reasons ?? const [],
+            reasonKinds: [for (final kind in rejection.reasonKinds ?? const <fbs.PushRejectReason>[]) _reason(kind)],
+            workingCopy: rejection.workingCopy,
             message: rejection.message ?? _missing('rejection.message'),
             hints: rejection.hints ?? const [],
           ),
@@ -438,8 +504,28 @@ PushRef _ref(fbs.PushRef row) {
   );
 }
 
-PushRefusal? _refusal(fbs.PushRefusal? refusal) =>
-    refusal == null ? null : PushRefusal(message: refusal.message ?? _missing('refusal.message'), hint: refusal.hint);
+PushRefusal? _refusal(fbs.PushRefusal? refusal) => refusal == null
+    ? null
+    : PushRefusal(
+        kind: _refusalKind(refusal.kind),
+        message: refusal.message ?? _missing('refusal.message'),
+        hint: refusal.hint,
+      );
+
+PushRefusalKind _refusalKind(fbs.PushRefusalKind kind) => switch (kind) {
+  fbs.PushRefusalKind.LocalConflicted => PushRefusalKind.localConflicted,
+  fbs.PushRefusalKind.RemoteConflicted => PushRefusalKind.remoteConflicted,
+  fbs.PushRefusalKind.RemoteUntracked => PushRefusalKind.remoteUntracked,
+  fbs.PushRefusalKind.NewRemote => PushRefusalKind.newRemote,
+  fbs.PushRefusalKind.Deleted => PushRefusalKind.deleted,
+};
+
+PushRejectReason _reason(fbs.PushRejectReason reason) => switch (reason) {
+  fbs.PushRejectReason.NoDescription => PushRejectReason.noDescription,
+  fbs.PushRejectReason.NoAuthor => PushRejectReason.noAuthor,
+  fbs.PushRejectReason.Conflicts => PushRejectReason.conflicts,
+  fbs.PushRejectReason.Private => PushRejectReason.private,
+};
 
 PushRefKind _kind(fbs.PushRefKind kind) => switch (kind) {
   fbs.PushRefKind.Bookmark => PushRefKind.bookmark,

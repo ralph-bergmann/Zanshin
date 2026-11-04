@@ -151,16 +151,24 @@ struct ConversionReport {
     /// `.jj/` once `init_external_git` returned `Ok` — the `.jj/` is the call's own only then; a
     /// `.jj` it refused as `DestinationExists` (the user's, or a concurrent process's) is not.
     created: Created,
+    /// The External arm's trackable remote bookmarks (Story 11.22), set when the arm completes.
+    trackable_remote_bookmarks: Vec<String>,
 }
 
 impl ConversionReport {
     /// The verb's outcome: `result` with everything reported on the way to it.
     fn into_outcome(mut self, result: Result<Repo, RepoError>) -> CreationOutcome {
+        let trackable_remote_bookmarks = if result.is_ok() {
+            self.trackable_remote_bookmarks
+        } else {
+            Vec::new()
+        };
         CreationOutcome {
             result,
             precondition: self.precondition,
             warnings: self.warnings.take(),
             left_behind: self.left_behind,
+            trackable_remote_bookmarks,
         }
     }
 }
@@ -578,6 +586,7 @@ pub(crate) fn init_over_git_dir(settings: &UserSettings, root: &Path) -> OverGit
         precondition: report.precondition,
         warnings: report.warnings.take(),
         jj_dir: report.created.jj_dir,
+        trackable_remote_bookmarks: report.trackable_remote_bookmarks,
     }
 }
 
@@ -591,6 +600,8 @@ pub(crate) struct OverGitDir {
     pub(crate) warnings: Vec<crate::Warning>,
     /// `<root>/.jj` once `init_external_git` returned `Ok` (Story 9.58).
     pub(crate) jj_dir: Option<PathBuf>,
+    /// The flow's trackable remote bookmarks, set when it completes (Story 11.22).
+    pub(crate) trackable_remote_bookmarks: Vec<String>,
 }
 
 /// Runs the colocated external-git init and then `do_init`'s External sequence, reporting into
@@ -678,16 +689,37 @@ fn external_arm(
         .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     let repo = maybe_snapshot(workspace, repo, (&config, &env), colocated, report)?;
     maybe_set_trunk_alias(workspace, repo.as_ref())?;
-    if !colocated {
-        return import_head_into_destination(workspace, &repo, &env, &mut report.warnings);
+    // The head import below moves `@` only, never a bookmark or its tracking, so the list read
+    // here is the one the CLI prints after it.
+    let trackable = trackable_remote_bookmarks(repo.view());
+    if colocated {
+        let git_repo = jj_lib::git::get_git_repo(workspace.repo_loader().store()).map_err(convert_failed)?;
+        if git_repo.kind() == gix::repository::Kind::LinkedWorkTree {
+            report
+                .warnings
+                .push(WarningKind::ColocatedInGitWorktree, COLOCATED_IN_GIT_WORKTREE);
+        }
+    } else {
+        import_head_into_destination(workspace, &repo, &env, &mut report.warnings)?;
     }
-    let git_repo = jj_lib::git::get_git_repo(workspace.repo_loader().store()).map_err(convert_failed)?;
-    if git_repo.kind() == gix::repository::Kind::LinkedWorkTree {
-        report
-            .warnings
-            .push(WarningKind::ColocatedInGitWorktree, COLOCATED_IN_GIT_WORKTREE);
-    }
+    report.trackable_remote_bookmarks = trackable;
     Ok(())
+}
+
+/// The CLI's `print_trackable_remote_bookmarks` list (`init.rs:391-421` @ v0.47.0, Story 11.22):
+/// for every bookmark with a local target, its untracked remote refs, in the view's order, as
+/// `<name>@<remote>` symbols.
+fn trackable_remote_bookmarks(view: &jj_lib::view::View) -> Vec<String> {
+    view.bookmarks()
+        .filter(|(_, target)| target.local_target.is_present())
+        .flat_map(|(name, target)| {
+            target
+                .remote_refs
+                .into_iter()
+                .filter(|&(_, remote_ref)| !remote_ref.is_tracked())
+                .map(move |(remote, _)| name.to_remote_symbol(remote).to_string())
+        })
+        .collect()
 }
 
 /// The CLI's warning for a colocated repo created inside a linked git worktree (`init.rs:272-281`

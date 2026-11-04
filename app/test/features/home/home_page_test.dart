@@ -345,6 +345,71 @@ void main() {
     expect(find.byType(ZsToast), findsNothing);
   });
 
+  testWidgets('Story 11.22: a conversion that left main@origin untracked names it, warns and offers Track', (
+    tester,
+  ) async {
+    final repos = FakeProjectRepos()
+      ..creationTrackable['/r/git'] = const <String>['main@origin']
+      ..creationTrackable['/r/two'] = const <String>['main@origin', 'dev@origin'];
+    final ProjectSession session = await pumpHome(tester, repos: repos);
+
+    await tester.runAsync(() => session.convert('/r/git'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    ZsToast toast = tester.widget(find.byType(ZsToast));
+    expect(toast.message.toPlainText(), "Opened git · main@origin isn't tracked");
+    expect(toast.tone, ZsToastTone.warn);
+    expect(toast.actions.single.label, 'Track');
+    expect(toast.actions.single.tooltip, 'jj bookmark track main@origin');
+    expect(
+      toast.tooltip,
+      contains("The following remote bookmarks aren't associated with the existing local bookmarks:\n  main@origin"),
+    );
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.runAsync(() => session.convert('/r/two'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    toast = tester.widget(find.byType(ZsToast));
+    expect(toast.message.toPlainText(), "Opened two · 2 remote bookmarks aren't tracked");
+    expect(toast.actions.single.label, 'Track all');
+    expect(toast.actions.single.tooltip, 'jj bookmark track main@origin dev@origin');
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pump(const Duration(milliseconds: 300));
+  });
+
+  testWidgets('Story 11.22: Track all tracks every symbol in one call and dismisses; a refusal shows an error toast', (
+    tester,
+  ) async {
+    final repos = FakeProjectRepos()..creationTrackable['/r/two'] = const <String>['main@origin', 'dev@origin'];
+    final ProjectSession session = await pumpHome(tester, repos: repos);
+
+    await tester.runAsync(() => session.convert('/r/two'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    tester.widget<ZsToast>(find.byType(ZsToast)).actions.single.onPressed();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(repos.log.where((entry) => entry.startsWith('track')), <String>['track /r/two main@origin dev@origin']);
+    expect(find.bySemanticsIdentifier('project-toast'), findsNothing, reason: 'dismissed');
+    expect(find.byType(ZsToast), findsNothing);
+
+    repos.creationTrackable['/r/bad'] = const <String>['main@origin'];
+    await tester.runAsync(() => session.convert('/r/bad'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    repos.repoAt('/r/bad').trackError = const ZanshinFfiException('jj.invalid_input', 'No such remote bookmark');
+    tester.widget<ZsToast>(find.byType(ZsToast)).actions.single.onPressed();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    final ZsToast error = tester.widget(find.byType(ZsToast));
+    expect(error.identifier, 'project-toast-track-error');
+    expect(error.message.toPlainText(), 'No such remote bookmark');
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pump(const Duration(milliseconds: 300));
+  });
+
   testWidgets('a report the session holds before the window mounts shows once it mounts, and is taken', (tester) async {
     const warning = ZanshinWarning(code: ZanshinWarningCode.identityMissing, message: 'Name and email not configured.');
     final repos = FakeProjectRepos()..creationWarnings['/r/fresh'] = const <ZanshinWarning>[warning];

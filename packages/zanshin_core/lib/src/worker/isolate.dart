@@ -445,9 +445,7 @@ class ZanshinWorker {
     );
     switch (response) {
       case HandleResult(:final handleId, :final bytes):
-        final (:List<ZanshinWarning> warnings, precondition: _) = repo_ffi_precondition.decodeCreationReportInternal(
-          bytes,
-        );
+        final List<ZanshinWarning> warnings = repo_ffi_precondition.decodeCreationReportInternal(bytes).warnings;
         return OpenedRepoHandle(this, handleId, warnings: warnings);
       case BufferResult(:final bytes):
         throw _envelopeToException(bytes);
@@ -592,9 +590,14 @@ class ZanshinWorker {
   CreatedRepoHandle _createdOrThrow(WorkerResponse response) {
     switch (response) {
       case HandleResult(:final handleId, :final bytes):
-        final (:List<ZanshinWarning> warnings, :repo_ffi_precondition.Precondition? precondition) =
-            repo_ffi_precondition.decodeCreationReportInternal(bytes);
-        return CreatedRepoHandle(this, handleId, warnings: warnings, precondition: precondition);
+        final repo_ffi_precondition.CreationReport report = repo_ffi_precondition.decodeCreationReportInternal(bytes);
+        return CreatedRepoHandle(
+          this,
+          handleId,
+          warnings: report.warnings,
+          precondition: report.precondition,
+          trackableRemoteBookmarks: report.trackableRemoteBookmarks,
+        );
       case BufferResult(:final bytes):
         throw _envelopeToException(bytes);
       case TransferResult():

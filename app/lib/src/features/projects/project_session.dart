@@ -30,14 +30,21 @@ final class ProjectOpened extends ProjectOpenOutcome {
 /// every open, so the project window reports them.
 @immutable
 class ProjectOpenReport {
-  /// The project [name] opened with [warnings].
-  const ProjectOpenReport({required this.name, required this.warnings});
+  /// The project [name] opened with [warnings] and [trackableRemoteBookmarks].
+  const ProjectOpenReport({
+    required this.name,
+    required this.warnings,
+    this.trackableRemoteBookmarks = const <String>[],
+  });
 
   /// The project's name.
   final String name;
 
   /// The creation's warnings, in the CLI's print order.
   final List<ZanshinWarning> warnings;
+
+  /// The remote bookmarks the conversion left untracked (Story 11.22), `NAME@REMOTE` in jj's order.
+  final List<String> trackableRemoteBookmarks;
 }
 
 /// An open of `path` made outside Projects that ended in `outcome` — a [ProjectOpenFailed], or a missing path — for
@@ -356,7 +363,14 @@ class ProjectSession extends ChangeNotifier {
     } on ZanshinFfiException catch (error, stack) {
       return _failed(doing, error, stack);
     }
-    return _switchTo(creation.repo, target, group: group, index: index, warnings: creation.warnings);
+    return _switchTo(
+      creation.repo,
+      target,
+      group: group,
+      index: index,
+      warnings: creation.warnings,
+      trackable: creation.trackableRemoteBookmarks,
+    );
   }
 
   /// The jj CLI's refusal of a clone into a folder that is not empty (`clone.rs:190-192` @ v0.46.0).
@@ -392,7 +406,14 @@ class ProjectSession extends ChangeNotifier {
     // The folder exists now: the registry's key when another spelling of it is listed (a missing entry, say), else
     // its canonical form.
     final String target = _target(canonicalPath(spelled));
-    return _switchTo(creation.repo, target, group: group, index: index, warnings: creation.warnings);
+    return _switchTo(
+      creation.repo,
+      target,
+      group: group,
+      index: index,
+      warnings: creation.warnings,
+      trackable: creation.trackableRemoteBookmarks,
+    );
   }
 
   /// The switch both an open and a creation end in (11.5's order): [repo] is read, the reading recorded with [path]
@@ -404,6 +425,7 @@ class ProjectSession extends ChangeNotifier {
     String? group,
     int? index,
     List<ZanshinWarning> warnings = const <ZanshinWarning>[],
+    List<String> trackable = const <String>[],
   }) async {
     // Listening from the start: an operation that lands before the switch (the first reading's own snapshot, another
     // process) reads once more right after it.
@@ -431,9 +453,13 @@ class ProjectSession extends ChangeNotifier {
     _incoming = null;
     if (!_disposed) {
       // A later open without warnings drops an earlier project's report.
-      _openReport.value = warnings.isEmpty
+      _openReport.value = warnings.isEmpty && trackable.isEmpty
           ? null
-          : ProjectOpenReport(name: _registry.entry(path)?.name ?? path, warnings: warnings);
+          : ProjectOpenReport(
+              name: _registry.entry(path)?.name ?? path,
+              warnings: warnings,
+              trackableRemoteBookmarks: trackable,
+            );
     }
     _notify();
     if (changedEarly) {

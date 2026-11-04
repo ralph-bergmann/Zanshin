@@ -1746,6 +1746,99 @@ class _PushFailureKindReader extends fb.Reader<PushFailureKind> {
       PushFailureKind.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
+///  Which refusal a ref got (Story 11.22): the local ref is conflicted, the remote-tracking ref is
+///  conflicted, an untracked remote ref of that name exists, the push would create a new remote
+///  ref, or it would delete one. Member order IS the wire value — APPEND only.
+enum PushRefusalKind {
+  LocalConflicted(0),
+  RemoteConflicted(1),
+  RemoteUntracked(2),
+  NewRemote(3),
+  Deleted(4);
+
+  final int value;
+  const PushRefusalKind(this.value);
+
+  factory PushRefusalKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return PushRefusalKind.LocalConflicted;
+      case 1:
+        return PushRefusalKind.RemoteConflicted;
+      case 2:
+        return PushRefusalKind.RemoteUntracked;
+      case 3:
+        return PushRefusalKind.NewRemote;
+      case 4:
+        return PushRefusalKind.Deleted;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static PushRefusalKind? _createOrNull(int? value) => value == null ? null : PushRefusalKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 4;
+  static const fb.Reader<PushRefusalKind> reader = _PushRefusalKindReader();
+}
+
+class _PushRefusalKindReader extends fb.Reader<PushRefusalKind> {
+  const _PushRefusalKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  PushRefusalKind read(fb.BufferContext bc, int offset) =>
+      PushRefusalKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  One reason a commit check rejects a commit (Story 11.22): "has no description", "has no
+///  author and/or committer set", "has conflicts", "is private". Member order IS the wire value —
+///  APPEND only.
+enum PushRejectReason {
+  NoDescription(0),
+  NoAuthor(1),
+  Conflicts(2),
+  Private(3);
+
+  final int value;
+  const PushRejectReason(this.value);
+
+  factory PushRejectReason.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return PushRejectReason.NoDescription;
+      case 1:
+        return PushRejectReason.NoAuthor;
+      case 2:
+        return PushRejectReason.Conflicts;
+      case 3:
+        return PushRejectReason.Private;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static PushRejectReason? _createOrNull(int? value) => value == null ? null : PushRejectReason.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 3;
+  static const fb.Reader<PushRejectReason> reader = _PushRejectReasonReader();
+}
+
+class _PushRejectReasonReader extends fb.Reader<PushRejectReason> {
+  const _PushRejectReasonReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  PushRejectReason read(fb.BufferContext bc, int offset) =>
+      PushRejectReason.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 ///  What a tree entry IS (Story 9.4) — the CLI's `TreeEntry.file_type` keyword
 ///  (`cli/src/commit_templater.rs::describe_file_type` @ v0.46.0).
 ///  `Tree` is UNREACHABLE through `zanshin_file_list` (jj-lib's `entries_matching` recurses
@@ -11538,6 +11631,10 @@ class FindChangesRequestObjectBuilder extends fb.ObjectBuilder {
 ///  The envelope carrying it from init/clone/convert also carries the creating call's report
 ///  (`Envelope.warnings`, and — convert only — `Envelope.precondition`; Story 9.33); from open,
 ///  neither.
+///  `trackable_remote_bookmarks` (Story 11.22): from a successful conversion or init over an
+///  existing `.git`, the remote bookmarks left untracked beside a local bookmark of the same name
+///  (the CLI's post-`jj git init` hint list, `<name>@<remote>` in the view's order); empty
+///  otherwise.
 class RepoHandle {
   RepoHandle._(this._bc, this._bcOffset);
   factory RepoHandle(List<int> bytes) {
@@ -11552,10 +11649,12 @@ class RepoHandle {
 
   int get handle => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
   int get sessionId => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  List<String>? get trackableRemoteBookmarks =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
 
   @override
   String toString() {
-    return 'RepoHandle{handle: ${handle}, sessionId: ${sessionId}}';
+    return 'RepoHandle{handle: ${handle}, sessionId: ${sessionId}, trackableRemoteBookmarks: ${trackableRemoteBookmarks}}';
   }
 }
 
@@ -11572,7 +11671,7 @@ class RepoHandleBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
   }
 
   int addHandle(int? handle) {
@@ -11585,6 +11684,11 @@ class RepoHandleBuilder {
     return fbBuilder.offset;
   }
 
+  int addTrackableRemoteBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -11593,19 +11697,26 @@ class RepoHandleBuilder {
 class RepoHandleObjectBuilder extends fb.ObjectBuilder {
   final int? _handle;
   final int? _sessionId;
+  final List<String>? _trackableRemoteBookmarks;
 
   RepoHandleObjectBuilder({
     int? handle,
     int? sessionId,
+    List<String>? trackableRemoteBookmarks,
   }) : _handle = handle,
-       _sessionId = sessionId;
+       _sessionId = sessionId,
+       _trackableRemoteBookmarks = trackableRemoteBookmarks;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
-    fbBuilder.startTable(2);
+    final int? trackableRemoteBookmarksOffset = _trackableRemoteBookmarks == null
+        ? null
+        : fbBuilder.writeList(_trackableRemoteBookmarks!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
     fbBuilder.addUint64(0, _handle);
     fbBuilder.addUint64(1, _sessionId);
+    fbBuilder.addOffset(2, trackableRemoteBookmarksOffset);
     return fbBuilder.endTable();
   }
 
@@ -17684,7 +17795,7 @@ class ChangeActionsObjectBuilder extends fb.ObjectBuilder {
 }
 
 ///  The CLI's message and hint for a refused ref, verbatim. `hint` ABSENT where the CLI gives
-///  none.
+///  none. `kind` (Story 11.22) names the refusal.
 class PushRefusal {
   PushRefusal._(this._bc, this._bcOffset);
   factory PushRefusal(List<int> bytes) {
@@ -17699,10 +17810,11 @@ class PushRefusal {
 
   String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
   String? get hint => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  PushRefusalKind get kind => PushRefusalKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 8, 0));
 
   @override
   String toString() {
-    return 'PushRefusal{message: ${message}, hint: ${hint}}';
+    return 'PushRefusal{message: ${message}, hint: ${hint}, kind: ${kind}}';
   }
 }
 
@@ -17719,7 +17831,7 @@ class PushRefusalBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
   }
 
   int addMessageOffset(int? offset) {
@@ -17732,6 +17844,11 @@ class PushRefusalBuilder {
     return fbBuilder.offset;
   }
 
+  int addKind(PushRefusalKind? kind) {
+    fbBuilder.addUint8(2, kind?.value);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -17740,21 +17857,25 @@ class PushRefusalBuilder {
 class PushRefusalObjectBuilder extends fb.ObjectBuilder {
   final String? _message;
   final String? _hint;
+  final PushRefusalKind? _kind;
 
   PushRefusalObjectBuilder({
     String? message,
     String? hint,
+    PushRefusalKind? kind,
   }) : _message = message,
-       _hint = hint;
+       _hint = hint,
+       _kind = kind;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
     final int? hintOffset = _hint == null ? null : fbBuilder.writeString(_hint!);
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
     fbBuilder.addOffset(0, messageOffset);
     fbBuilder.addOffset(1, hintOffset);
+    fbBuilder.addUint8(2, _kind?.value);
     return fbBuilder.endTable();
   }
 
@@ -17769,7 +17890,8 @@ class PushRefusalObjectBuilder extends fb.ObjectBuilder {
 
 ///  A commit the push refuses to send: its full hex id, the reasons in the CLI's order, the CLI's
 ///  text for the ref's path and its hints ("Rejected commit: …" on the abort path, the
-///  `git.private-commits` hint for a private commit).
+///  `git.private-commits` hint for a private commit). Story 11.22: `reason_kinds` = the reasons
+///  as kinds, index for index; `working_copy` = the commit is the workspace's `@`.
 class PushCommitRejection {
   PushCommitRejection._(this._bc, this._bcOffset);
   factory PushCommitRejection(List<int> bytes) {
@@ -17786,10 +17908,13 @@ class PushCommitRejection {
   List<String>? get reasons => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
   String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
   List<String>? get hints => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  List<PushRejectReason>? get reasonKinds =>
+      const fb.ListReader<PushRejectReason>(PushRejectReason.reader).vTableGetNullable(_bc, _bcOffset, 12);
+  bool get workingCopy => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
 
   @override
   String toString() {
-    return 'PushCommitRejection{commitId: ${commitId}, reasons: ${reasons}, message: ${message}, hints: ${hints}}';
+    return 'PushCommitRejection{commitId: ${commitId}, reasons: ${reasons}, message: ${message}, hints: ${hints}, reasonKinds: ${reasonKinds}, workingCopy: ${workingCopy}}';
   }
 }
 
@@ -17806,7 +17931,7 @@ class PushCommitRejectionBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(6);
   }
 
   int addCommitIdOffset(int? offset) {
@@ -17829,6 +17954,16 @@ class PushCommitRejectionBuilder {
     return fbBuilder.offset;
   }
 
+  int addReasonKindsOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWorkingCopy(bool? workingCopy) {
+    fbBuilder.addBool(5, workingCopy);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -17839,16 +17974,22 @@ class PushCommitRejectionObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _reasons;
   final String? _message;
   final List<String>? _hints;
+  final List<PushRejectReason>? _reasonKinds;
+  final bool? _workingCopy;
 
   PushCommitRejectionObjectBuilder({
     String? commitId,
     List<String>? reasons,
     String? message,
     List<String>? hints,
+    List<PushRejectReason>? reasonKinds,
+    bool? workingCopy,
   }) : _commitId = commitId,
        _reasons = reasons,
        _message = message,
-       _hints = hints;
+       _hints = hints,
+       _reasonKinds = reasonKinds,
+       _workingCopy = workingCopy;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -17859,11 +18000,16 @@ class PushCommitRejectionObjectBuilder extends fb.ObjectBuilder {
         : fbBuilder.writeList(_reasons!.map(fbBuilder.writeString).toList());
     final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
     final int? hintsOffset = _hints == null ? null : fbBuilder.writeList(_hints!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(4);
+    final int? reasonKindsOffset = _reasonKinds == null
+        ? null
+        : fbBuilder.writeListUint8(_reasonKinds!.map((f) => f.value).toList());
+    fbBuilder.startTable(6);
     fbBuilder.addOffset(0, commitIdOffset);
     fbBuilder.addOffset(1, reasonsOffset);
     fbBuilder.addOffset(2, messageOffset);
     fbBuilder.addOffset(3, hintsOffset);
+    fbBuilder.addOffset(4, reasonKindsOffset);
+    fbBuilder.addBool(5, _workingCopy);
     return fbBuilder.endTable();
   }
 
@@ -17883,6 +18029,9 @@ class PushCommitRejectionObjectBuilder extends fb.ObjectBuilder {
 ///  `refusal` is the mode's refusal (Skip / Abort), `explicit_refusal` the one the ref would get if
 ///  named explicitly (ABSENT = it could be), `rejection` the commit the push refuses to send.
 ///  `status` / `status_reason` after a real push.
+///  Story 11.22: `before_change_id` / `after_change_id` are the change ids (reverse hex) of
+///  `before` / `after` — ABSENT with them — and the `*_change_prefix_len`s their shortest unique
+///  prefixes (0 without an id).
 class PushRef {
   PushRef._(this._bc, this._bcOffset);
   factory PushRef(List<int> bytes) {
@@ -17906,10 +18055,14 @@ class PushRef {
   PushCommitRejection? get rejection => PushCommitRejection.reader.vTableGetNullable(_bc, _bcOffset, 20);
   PushRefStatus get status => PushRefStatus.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 22, 0));
   String? get statusReason => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 24);
+  String? get beforeChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 26);
+  int get beforeChangePrefixLen => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 28, 0);
+  String? get afterChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 30);
+  int get afterChangePrefixLen => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 32, 0);
 
   @override
   String toString() {
-    return 'PushRef{kind: ${kind}, name: ${name}, before: ${before}, after: ${after}, action: ${action}, path: ${path}, refusal: ${refusal}, explicitRefusal: ${explicitRefusal}, rejection: ${rejection}, status: ${status}, statusReason: ${statusReason}}';
+    return 'PushRef{kind: ${kind}, name: ${name}, before: ${before}, after: ${after}, action: ${action}, path: ${path}, refusal: ${refusal}, explicitRefusal: ${explicitRefusal}, rejection: ${rejection}, status: ${status}, statusReason: ${statusReason}, beforeChangeId: ${beforeChangeId}, beforeChangePrefixLen: ${beforeChangePrefixLen}, afterChangeId: ${afterChangeId}, afterChangePrefixLen: ${afterChangePrefixLen}}';
   }
 }
 
@@ -17926,7 +18079,7 @@ class PushRefBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(11);
+    fbBuilder.startTable(15);
   }
 
   int addKind(PushRefKind? kind) {
@@ -17984,6 +18137,26 @@ class PushRefBuilder {
     return fbBuilder.offset;
   }
 
+  int addBeforeChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(11, offset);
+    return fbBuilder.offset;
+  }
+
+  int addBeforeChangePrefixLen(int? beforeChangePrefixLen) {
+    fbBuilder.addUint32(12, beforeChangePrefixLen);
+    return fbBuilder.offset;
+  }
+
+  int addAfterChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(13, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAfterChangePrefixLen(int? afterChangePrefixLen) {
+    fbBuilder.addUint32(14, afterChangePrefixLen);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -18001,6 +18174,10 @@ class PushRefObjectBuilder extends fb.ObjectBuilder {
   final PushCommitRejectionObjectBuilder? _rejection;
   final PushRefStatus? _status;
   final String? _statusReason;
+  final String? _beforeChangeId;
+  final int? _beforeChangePrefixLen;
+  final String? _afterChangeId;
+  final int? _afterChangePrefixLen;
 
   PushRefObjectBuilder({
     PushRefKind? kind,
@@ -18014,6 +18191,10 @@ class PushRefObjectBuilder extends fb.ObjectBuilder {
     PushCommitRejectionObjectBuilder? rejection,
     PushRefStatus? status,
     String? statusReason,
+    String? beforeChangeId,
+    int? beforeChangePrefixLen,
+    String? afterChangeId,
+    int? afterChangePrefixLen,
   }) : _kind = kind,
        _name = name,
        _before = before,
@@ -18024,7 +18205,11 @@ class PushRefObjectBuilder extends fb.ObjectBuilder {
        _explicitRefusal = explicitRefusal,
        _rejection = rejection,
        _status = status,
-       _statusReason = statusReason;
+       _statusReason = statusReason,
+       _beforeChangeId = beforeChangeId,
+       _beforeChangePrefixLen = beforeChangePrefixLen,
+       _afterChangeId = afterChangeId,
+       _afterChangePrefixLen = afterChangePrefixLen;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -18037,7 +18222,9 @@ class PushRefObjectBuilder extends fb.ObjectBuilder {
     final int? explicitRefusalOffset = _explicitRefusal?.getOrCreateOffset(fbBuilder);
     final int? rejectionOffset = _rejection?.getOrCreateOffset(fbBuilder);
     final int? statusReasonOffset = _statusReason == null ? null : fbBuilder.writeString(_statusReason!);
-    fbBuilder.startTable(11);
+    final int? beforeChangeIdOffset = _beforeChangeId == null ? null : fbBuilder.writeString(_beforeChangeId!);
+    final int? afterChangeIdOffset = _afterChangeId == null ? null : fbBuilder.writeString(_afterChangeId!);
+    fbBuilder.startTable(15);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, nameOffset);
     fbBuilder.addOffset(2, beforeOffset);
@@ -18049,6 +18236,10 @@ class PushRefObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(8, rejectionOffset);
     fbBuilder.addUint8(9, _status?.value);
     fbBuilder.addOffset(10, statusReasonOffset);
+    fbBuilder.addOffset(11, beforeChangeIdOffset);
+    fbBuilder.addUint32(12, _beforeChangePrefixLen);
+    fbBuilder.addOffset(13, afterChangeIdOffset);
+    fbBuilder.addUint32(14, _afterChangePrefixLen);
     return fbBuilder.endTable();
   }
 

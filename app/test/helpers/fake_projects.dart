@@ -30,6 +30,9 @@ class FakeProjectRepos implements ProjectRepos {
   /// The warnings a successful creation at a path (a clone: at its destination) reports.
   final creationWarnings = <String, List<ZanshinWarning>>{};
 
+  /// The trackable remote bookmarks a successful creation at a path reports (Story 11.22).
+  final creationTrackable = <String, List<String>>{};
+
   /// Paths (a clone: destinations) whose creation throws.
   final creationFailures = <String, ZanshinFfiException>{};
 
@@ -134,7 +137,11 @@ class FakeProjectRepos implements ProjectRepos {
     }
     final repo = FakeProjectRepo._(this, path);
     opened.add(repo);
-    return ProjectCreation(repo: repo, warnings: creationWarnings[path] ?? const <ZanshinWarning>[]);
+    return ProjectCreation(
+      repo: repo,
+      warnings: creationWarnings[path] ?? const <ZanshinWarning>[],
+      trackableRemoteBookmarks: creationTrackable[path] ?? const <String>[],
+    );
   }
 }
 
@@ -187,6 +194,18 @@ class FakeProjectRepo implements ProjectRepo {
       throw failure;
     }
     return _repos.readings[path] ?? const ProjectReading(status: ProjectStatus.clean);
+  }
+
+  /// While set, [trackBookmarks] fails with it.
+  ZanshinFfiException? trackError;
+
+  @override
+  Future<void> trackBookmarks(List<String> symbols) async {
+    _repos.log.add('track $path ${symbols.join(' ')}');
+    final ZanshinFfiException? error = trackError;
+    if (error != null) {
+      throw error;
+    }
   }
 
   @override

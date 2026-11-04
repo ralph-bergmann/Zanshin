@@ -97,6 +97,8 @@ export 'src/ffi/push.dart'
         PushRefName,
         PushRefStatus,
         PushRefusal,
+        PushRefusalKind,
+        PushRejectReason,
         PushRemote,
         PushSigning;
 export 'src/ffi/rebase.dart'

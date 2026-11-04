@@ -14,12 +14,20 @@ const ZS_ALLOW = {
   private: ["is private (git.private-commits)", "--allow-private", "Allow private commits", "private"],
   conflicts: ["has conflicts", "--allow-conflicts", "Allow conflicts", "conflicts"],
 };
-// refusals without a flag: jj's reason and the command its hint names (none where jj names none)
+// refusals without a flag: jj's reason, the command its hint names (none where jj names none), the plain explanation for Git
+// switchers (one or two sentences, the Git term next to the jj one — sync #19) and the fix-it: a quiet chip that runs the hint's
+// command (its tooltip the full command), then the sheet re-runs its dry runs
 const ZS_HARD = {
-  "no-author": { text: () => "has no author and/or committer set" },
-  conflicted: { text: (n, r) => (r ? n + "@" + r : n) + " is conflicted", hint: () => "jj git fetch" },
-  "untracked-remote": { text: (n, r) => "an untracked " + n + "@" + r + " exists", hint: (n, r) => "jj bookmark track " + n + "@" + r },
-  "tracked-elsewhere": { text: (n, r, o) => "refusing to create new remote bookmark " + n + "@" + r + (o ? " — it is tracked on " + o : "") },
+  "no-author": { text: () => "has no author and/or committer set", help: () => "Git would take your name from user.name and user.email; jj needs them set too (Settings › General)." },
+  conflicted: { text: (n, r) => (r ? n + "@" + r : n) + " is conflicted", hint: () => "jj git fetch",
+    help: (n, r) => r ? "The remote's " + n + " moved two ways since your last fetch. Fetching brings it up to date." : "Your " + n + " points at more than one commit — like a branch that moved two ways. Point it at one commit first.",
+    fix: (n, r) => r ? ["Fetch", "jj git fetch"] : null },
+  "untracked-remote": { text: (n, r) => "an untracked " + n + "@" + r + " exists", hint: (n, r) => "jj bookmark track " + n + "@" + r,
+    help: (n, r) => "In Git, " + n + " would follow " + r + "/" + n + ". jj links them only once you track " + n + "@" + r + " — then pushes and fetches keep them together.",
+    fix: (n, r) => ["Track " + n + "@" + r, "jj bookmark track " + n + "@" + r] },
+  "tracked-elsewhere": { text: (n, r, o) => "refusing to create new remote bookmark " + n + "@" + r + (o ? " — it is tracked on " + o : ""),
+    help: (n, r) => "Like git push -u, the first push sets up tracking. Track " + n + "@" + r + " to push it there too.",
+    fix: (n, r) => ["Track " + n + "@" + r, "jj bookmark track " + n + "@" + r] },
 };
 const zsList = (x) => (x == null ? [] : Array.isArray(x) ? x : [x]);
 const zsKey = (b) => (b.type === "tag" ? "tag:" : "") + b.name;
@@ -57,7 +65,7 @@ const zsBulk = (rows, k, to) => rows.filter((b) => to.some((r) => { const t = zs
 //   rejected (permissions, hooks); jj recorded the push (Undo works); Fetch where a lease failed; Done.
 // · No click outside: the scrim does nothing (a sheet never closes by a click beside it) — Esc and Cancel cancel, ↩ pushes.
 export function PushDialog({ remotes = ["origin"], defaultRemotes, defaultRemote = "origin", remote, onRemote, bookmarks = [], selected, onSelect, bulk = null, onBulk,
-  change, onChange, allow = {}, onAllow, state = "ready", error, progress, results = [], onPush, onCancel, onDone, onFetch, onRetry, closing = false, scrim = true, width = 560 }) {
+  change, onChange, allow = {}, onAllow, state = "ready", error, progress, results = [], onPush, onCancel, onDone, onFetch, onRetry, onFix, closing = false, scrim = true, width = 560 }) {
   const box = React.useRef(null);
   useSheetFocus(box, '[data-k="push"]');
   const defs = defaultRemotes || [defaultRemote];
@@ -99,6 +107,10 @@ export function PushDialog({ remotes = ["origin"], defaultRemotes, defaultRemote
       const o = h.id === "tracked-elsewhere" ? to.concat(remotes).filter((r, j, a) => a.indexOf(r) === j && r !== h.remote && b.remotes && b.remotes[r] && b.remotes[r].tracked).join(", ") : "";
       const hint = ZS_HARD[h.id].hint && ZS_HARD[h.id].hint(n, h.remote);
       out.push(<span key={"h" + i} className="zs-push-sub is-refused">Refused{multi && h.remote ? " on " + h.remote : ""} — {ZS_HARD[h.id].text(n, h.id === "conflicted" ? h.remote : h.remote, o)}{hint && <> · <code>{hint}</code></>}</span>);
+      // sync #19: the plain explanation under jj's words, and the fix-it where jj's hint names a command
+      const fix = ZS_HARD[h.id].fix && ZS_HARD[h.id].fix(n, h.remote);
+      if (ZS_HARD[h.id].help) out.push(<span key={"x" + i} className="zs-push-help">{ZS_HARD[h.id].help(n, h.remote)}</span>);
+      if (fix && !done) out.push(<span key={"f" + i} className="zs-push-fix"><Chip kind="action" size="sm" title={fix[1]} onClick={(e) => { e.stopPropagation(); onFix && onFix(fix[1]); }}>{fix[0]}</Chip></span>);
     });
     if (done) to.forEach((r) => { const x = res(b, r); if (!x || x.status === "pushed") return;
       out.push(<span key={"r" + r} className={"zs-push-sub " + (x.status === "lease" ? "is-refused" : "is-error")}>{PushDialog.outcomes[x.status].text(n, r, x.message)}</span>); });

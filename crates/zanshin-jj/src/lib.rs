@@ -129,7 +129,8 @@ pub use op_log::{
 };
 pub use push::{
     GitPushArgs, GitPushOutcome, PushCommitRejection, PushCreatedBookmark, PushFailure, PushFailureKind, PushPath,
-    PushRef, PushRefKind, PushRefName, PushRefStatus, PushRefusal, PushRemote, PushSigning,
+    PushRef, PushRefKind, PushRefName, PushRefStatus, PushRefusal, PushRefusalKind, PushRejectReason, PushRemote,
+    PushSigning,
 };
 pub use rebase::RebaseOptions;
 pub use remote_changes::{RemoteRefChange, RemoteRefChangeKind, RemoteRefKind};

@@ -159,18 +159,30 @@ Precondition? decodeEnvelopePreconditionInternal(Uint8List bytes) =>
 
 /// The creating call's report on an init/clone/convert ok envelope (Story 9.33):
 /// its warnings — absent reads as `[]` — and, for convert only, the conversion's
-/// snapshot report — absent reads as `null`.
+/// snapshot report — absent reads as `null` — and (Story 11.22) the
+/// `RepoHandle`'s trackable remote bookmarks — absent reads as `[]`.
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production reads go
 /// through `ZanshinWorker.initRepo` / `cloneRepo` / `convert`.
 @visibleForTesting
-({List<ZanshinWarning> warnings, Precondition? precondition}) decodeCreationReport(Uint8List bytes) =>
-    decodeCreationReportInternal(bytes);
+CreationReport decodeCreationReport(Uint8List bytes) => decodeCreationReportInternal(bytes);
+
+/// A creation's report, as [decodeCreationReport] reads it.
+typedef CreationReport = ({
+  List<ZanshinWarning> warnings,
+  Precondition? precondition,
+  List<String> trackableRemoteBookmarks,
+});
 
 /// Internal decoder used by production code in `isolate.dart`.
-({List<ZanshinWarning> warnings, Precondition? precondition}) decodeCreationReportInternal(Uint8List bytes) {
+CreationReport decodeCreationReportInternal(Uint8List bytes) {
   final env = fbs.Envelope(bytes);
-  return (warnings: decodeEnvelopeWarningsInternal(env), precondition: decodePreconditionInternal(env.precondition));
+  final Object? data = env.data;
+  return (
+    warnings: decodeEnvelopeWarningsInternal(env),
+    precondition: decodePreconditionInternal(env.precondition),
+    trackableRemoteBookmarks: _decodeStrings(data is fbs.RepoHandle ? data.trackableRemoteBookmarks : null),
+  );
 }
 
 /// Decode an error envelope (`ok == false`) into the [ZanshinFfiException] it

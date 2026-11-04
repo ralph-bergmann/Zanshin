@@ -38,6 +38,10 @@
 .gpush-sub.is-refused{color:var(--warn)}
 .gpush-sub .gcid{font-size:11px;vertical-align:-1px}
 .gpush-sub.is-refused .gcid,.gpush-sub.is-refused .gcid b{color:var(--warn)}
+/* sync #19 — help for Git switchers: quiet skip line, plain explanation, fix-it chip */
+.gpush-sub.is-skip{color:var(--text-dim)}
+.gpush-help{font-size:11px;line-height:1.4;color:var(--text-muted);text-wrap:pretty}
+.gpush-fix{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
 .gpush-move{display:flex;align-items:center;gap:6px;white-space:nowrap}
 .gpush-move .gcid{font-size:11.5px}
 .gpush-arrow,.gpush-none{font:11.5px var(--font-mono);color:var(--text-faint)}

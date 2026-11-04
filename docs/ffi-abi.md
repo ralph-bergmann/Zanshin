@@ -859,8 +859,16 @@ RepoHandle {
   handle:     uint64   // raw *mut RepoSession reinterpreted as u64; opaque to Dart
   session_id: uint64   // process-unique event-correlation id (never reused);
                        // async events carry it — see "Correlation and demux"
+  trackable_remote_bookmarks: [string]  // Story 11.22, see below
 }
 ```
+
+`trackable_remote_bookmarks` (Story 11.22): after a SUCCESSFUL `zanshin_repo_convert` or
+`zanshin_repo_init` over an existing `.git`, the remote
+bookmarks left untracked beside a local bookmark of the same name — the CLI's post-`jj git init`
+hint list (`print_trackable_remote_bookmarks`, `init.rs:391-421` @ v0.47.0), `<name>@<remote>` in
+the view's order. ABSENT (read as `[]`) when there are none, and from open, clone and a native or
+new-`.git` init. Dart: `CreatedRepoHandle.trackableRemoteBookmarks`.
 
 **Error codes:**
 
@@ -2172,7 +2180,9 @@ envelope:
 | Field | Meaning |
 |-------|---------|
 | `remotes` | `PushRemote` per matched remote, sorted: `name`, `refs`, `already_matches` (explicit refs already where the push would put them — the CLI's "Bookmark N@R already matches N"), `finished` (the push to it ran), `error` (the CLI's `GitPushError` text that stopped the push there). |
-| `PushRef` | `kind` (`Bookmark`/`Tag`), `name`, `before` / `after` (full hex, ABSENT when absent there, or for a ref refused as conflicted or untracked), `action` (jj's words: "move forward/backward/sideways from <old> to <new>", "add to <new>", "delete from <old>"), `path` (`Push`, `Skip` — the mode refused it and warned —, `Abort` — an explicit ref refused, dry run only), `refusal` / `explicit_refusal` (`PushRefusal { message, hint }` verbatim; the second is what `-b`/`-t` would get — ABSENT = tickable), `rejection` (`PushCommitRejection { commit_id, reasons, message, hints }`), `status` (`NotReached`, `Pushed`, `LeaseRejected`, `RemoteRejected`) and `status_reason`. |
+| `PushRef` | `kind` (`Bookmark`/`Tag`), `name`, `before` / `after` (full hex, ABSENT when absent there, or for a ref refused as conflicted or untracked), `action` (jj's words: "move forward/backward/sideways from <old> to <new>", "add to <new>", "delete from <old>"), `path` (`Push`, `Skip` — the mode refused it and warned —, `Abort` — an explicit ref refused, dry run only), `refusal` / `explicit_refusal` (`PushRefusal { message, hint, kind }` verbatim; the second is what `-b`/`-t` would get — ABSENT = tickable), `rejection` (`PushCommitRejection { commit_id, reasons, message, hints, reason_kinds, working_copy }`), `status` (`NotReached`, `Pushed`, `LeaseRejected`, `RemoteRejected`) and `status_reason`. Story 11.22 appends `before_change_id` / `after_change_id` (reverse hex, ABSENT with `before` / `after`) and `before_change_prefix_len` / `after_change_prefix_len` (shortest unique prefix, 0 without an id). |
+| `PushRefusalKind` (Story 11.22) | `PushRefusal.kind`, which case of the CLI's `classify_*_update` refused the ref: `LocalConflicted` (0), `RemoteConflicted` (1), `RemoteUntracked` (2), `NewRemote` (3), `Deleted` (4). Append-only; a consumer explains a refusal by its kind, never by its text. |
+| `PushRejectReason` (Story 11.22) | `PushCommitRejection.reason_kinds`, parallel to `reasons`: `NoDescription` (0), `NoAuthor` (1), `Conflicts` (2), `Private` (3). Append-only. `working_copy` = the rejected commit is the workspace's `@`. |
 | `created_bookmarks` | The bookmarks `--change` created (`name`, `change_id`). |
 | `hints` | Hints a UI shows verbatim: "Pushing to the only existing remote: R", the push-stats hints. |
 | `signing` | `PushSigning { updated_signatures, rebased_descendants }` when sign-on-push signed; ABSENT otherwise. |

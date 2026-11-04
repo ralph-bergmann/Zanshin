@@ -14,8 +14,6 @@ const ({PushRefKind kind, String name}) _wip = (kind: PushRefKind.bookmark, name
 const ({PushRefKind kind, String name}) _feature = (kind: PushRefKind.bookmark, name: 'feature');
 const ({PushRefKind kind, String name}) _v1 = (kind: PushRefKind.tag, name: 'v1');
 
-const _skipNoDescription = PushRefusal(message: "Won't push commit cccccccccccc since it has no description");
-
 /// The plans of a repository with `main` to push, `wip` skipped for its empty description, `feature` new (only `--all`,
 /// and refused when named: tracked nowhere is fine, here it is tracked elsewhere) and the tag `v1`.
 GitPushResult _plans(PushRequest request) {
@@ -28,8 +26,7 @@ GitPushResult _plans(PushRequest request) {
         pushRef(
           'wip',
           path: PushPath.skip,
-          refusal: _skipNoDescription,
-          rejection: rejected(<String>['has no description']),
+          rejection: rejected(<PushRejectReason>[PushRejectReason.noDescription]),
         ),
         pushRef('v1', kind: PushRefKind.tag, action: 'add to dddddddddddd'),
         if (upstream)
@@ -37,6 +34,7 @@ GitPushResult _plans(PushRequest request) {
             'feature',
             path: PushPath.skip,
             refusal: const PushRefusal(
+              kind: PushRefusalKind.newRemote,
               message: 'Refusing to create new remote bookmark feature@upstream',
               hint: 'Run `jj bookmark track feature@upstream` and try again.',
             ),
@@ -49,6 +47,7 @@ GitPushResult _plans(PushRequest request) {
           'feature',
           action: 'add to eeeeeeeeeeee',
           explicitRefusal: const PushRefusal(
+            kind: PushRefusalKind.newRemote,
             message: 'Refusing to create new remote bookmark feature@origin',
             hint: 'Run `jj bookmark track feature@origin` and try again.',
           ),
@@ -61,7 +60,7 @@ GitPushResult _plans(PushRequest request) {
             'push-ovknlmro',
             action: 'add to ffffffffffff',
             path: request.allowEmptyDescription ? PushPath.push : PushPath.abort,
-            rejection: rejected(<String>['has no description']),
+            rejection: rejected(<PushRejectReason>[PushRejectReason.noDescription], workingCopy: true),
           ),
         for (final String name in request.bookmarks) pushRef(name),
         for (final String name in request.tags) pushRef(name, kind: PushRefKind.tag),
@@ -103,7 +102,8 @@ void main() {
       expect(model.sent(_main), isTrue);
       expect(model.sent(_v1), isTrue, reason: 'a tag row');
       expect(model.sent(_wip), isFalse);
-      expect(model.skippedOn(_wip, 'origin'), same(_skipNoDescription));
+      expect(model.skippedOn(_wip, 'origin'), isNull, reason: 'a commit-check skip carries no refusal');
+      expect(model.rejectionOf(_wip)?.reasonKinds, <PushRejectReason>[PushRejectReason.noDescription]);
       expect(model.request.command, 'jj git push');
       expect(model.canPush, isTrue, reason: 'the dry run of the command passed');
     },
@@ -272,6 +272,114 @@ void main() {
     expect(sync.log, everyElement(isNot(contains('--remote'))), reason: 'no explicit --remote list');
     expect(model.planError?.context, "No git remote named 'origin'");
     expect(model.canPush, isFalse);
+  });
+
+  group('Story 11.22 fix-its', () {
+    const untracked = PushRefusal(
+      kind: PushRefusalKind.remoteUntracked,
+      message: 'Non-tracking remote bookmark main@origin exists',
+      hint: 'Run `jj bookmark track main@origin` to import the remote bookmark.',
+    );
+
+    /// A Git switcher's repository: `main` skipped beside an untracked `main@origin` until it is tracked.
+    GitPushResult Function(PushRequest) switcher(bool Function() tracked) =>
+        (request) => pushResult(
+          <String, List<PushRef>>{
+            'origin': <PushRef>[
+              if (tracked())
+                pushRef('main')
+              else
+                pushRef('main', action: null, path: PushPath.skip, refusal: untracked, explicitRefusal: untracked),
+            ],
+          },
+        );
+
+    test('Track runs jj bookmark track on the refusal\'s remote, then re-plans', () async {
+      late FakeRemoteSync fake;
+      final (PushSheetModel model, FakeRemoteSync sync, _) = await _sheet(
+        configure: (sync) => (fake = sync).pushAnswer = switcher(() => fake.log.contains('track main@origin')),
+      );
+      expect(model.explicitRefusalOf(_main), (refusal: untracked, remote: 'origin'));
+      expect(model.sent(_main), isFalse);
+
+      await model.track(_main, 'main@origin');
+      expect(sync.log, contains('track main@origin'));
+      expect(model.sent(_main), isTrue);
+      expect(model.refOn(_main, 'origin')?.action, 'move forward from aaaaaaaaaaaa to bbbbbbbbbbbb');
+      expect(model.explicitRefusalOf(_main), isNull);
+    });
+
+    test('a failed Track keeps the sheet ready with jj\'s text on the row', () async {
+      final (PushSheetModel model, FakeRemoteSync sync, _) = await _sheet(
+        configure: (sync) => sync
+          ..pushAnswer = switcher(() => false)
+          ..trackError = const ZanshinFfiException('jj.invalid_input', 'No such remote bookmark'),
+      );
+      final int plans = sync.log.length;
+      await model.track(_main, 'main@origin');
+      expect(model.phase, PushSheetPhase.ready);
+      expect(model.fixing, isNull);
+      expect(model.fixErrorOf(_main), 'No such remote bookmark');
+      expect(sync.log.length, plans + 1, reason: 'no re-plan after a failed fix-it');
+    });
+
+    test(
+      'while a Track runs the sheet is busy: no Push, a second Track is ignored; a re-plan clears an old error',
+      () async {
+        final (PushSheetModel model, FakeRemoteSync sync, _) = await _sheet(
+          configure: (sync) => sync
+            ..names = <String>['origin', 'upstream']
+            ..pushAnswer = switcher(() => false)
+            ..trackError = const ZanshinFfiException('jj.invalid_input', 'refused'),
+        );
+        await model.track(_main, 'main@origin');
+        expect(model.fixErrorOf(_main), 'refused');
+        model.toggleRemote('upstream');
+        await pumpEventQueue();
+        expect(model.fixErrorOf(_main), isNull, reason: 'the plans changed');
+        model.toggleRemote('upstream');
+        await pumpEventQueue();
+
+        sync
+          ..trackError = null
+          ..trackGate = Completer<void>();
+        final Future<void> first = model.track(_main, 'main@origin');
+        await pumpEventQueue();
+        expect(model.fixing, _main);
+        expect(model.canPush, isFalse);
+        await model.track(_main, 'main@origin');
+        expect(sync.log.where((entry) => entry.startsWith('track')), hasLength(2), reason: 'the second is ignored');
+        sync.trackGate!.complete();
+        await first;
+        expect(model.fixing, isNull);
+        expect(model.fixErrorOf(_main), isNull);
+      },
+    );
+
+    test('a non-FFI failure of a fix-it does not leave the sheet busy', () async {
+      final (PushSheetModel model, FakeRemoteSync sync, _) = await _sheet(
+        configure: (sync) => sync.pushAnswer = switcher(() => false),
+      );
+      sync.fetchAnswer = () => throw StateError('closed');
+      await expectLater(model.fetchAndReplan(_main), throwsStateError);
+      expect(model.fixing, isNull);
+    });
+
+    test('Fetch fetches, then re-plans', () async {
+      final (PushSheetModel model, FakeRemoteSync sync, _) = await _sheet();
+      final int before = sync.log.length;
+      await model.fetchAndReplan(_main);
+      expect(sync.log[before], 'fetch');
+      expect(sync.log.skip(before + 1), contains(endsWith('--dry-run')));
+      expect(model.phase, PushSheetPhase.ready);
+    });
+
+    test('Allow is chosen by the reason kind, not by jj\'s text', () {
+      expect(PushAllow.of(PushRejectReason.noDescription), PushAllow.emptyDescription);
+      expect(PushAllow.of(PushRejectReason.private), PushAllow.private);
+      expect(PushAllow.of(PushRejectReason.conflicts), PushAllow.conflicts);
+      expect(PushAllow.of(PushRejectReason.noAuthor), isNull);
+    });
   });
 
   test('a failing dry run of the composed command keeps Push disabled with its text', () async {
