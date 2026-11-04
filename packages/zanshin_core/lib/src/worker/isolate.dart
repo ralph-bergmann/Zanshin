@@ -2442,6 +2442,7 @@ class ZanshinWorker {
     String? revision,
     List<String> paths = const <String>[],
     bool nameOnly = false,
+    repo_ffi_file.FileSearchBinary binary = repo_ffi_file.FileSearchBinary.detect,
   }) async {
     final Uint8List bytes = await send(
       FileSearchCommand(
@@ -2451,6 +2452,7 @@ class ZanshinWorker {
         pattern: pattern,
         paths: paths,
         nameOnly: nameOnly,
+        binary: binary,
       ),
     );
     return repo_ffi_file.decodeFileSearchEnvelopeInternal(bytes);
@@ -3629,14 +3631,14 @@ class ZanshinWorker {
     return repo_ffi_config.decodeConfigFileWriteEnvelopeInternal(bytes);
   }
 
-  /// `jj config gc`, half 1: the repo config directories whose repo is gone.
+  /// `jj config gc`, half 1: the repo, then the workspace config directories whose path is gone.
   Future<WarnedList<repo_ffi_config.MissingRepoConfig>> configGcList() async {
     final Uint8List bytes = await send(ConfigGcListCommand(commandId: _correlator.allocateId()));
     return repo_ffi_config.decodeConfigGcListEnvelopeInternal(bytes);
   }
 
   /// `jj config gc`, half 2: deletes those of [configDirs] that are still missing
-  /// repo config directories; everything else rides `failed`.
+  /// repo or workspace config directories; everything else rides `failed`.
   Future<repo_ffi_config.ConfigGcResult> configGcDelete(List<String> configDirs) async {
     rejectInteriorNuls(configDirs, 'configDirs');
     final Uint8List bytes = await send(
@@ -4799,6 +4801,7 @@ void _workerEntry(_WorkerInit init) {
           :final String pattern,
           :final List<String> paths,
           :final bool nameOnly,
+          :final repo_ffi_file.FileSearchBinary binary,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -4812,6 +4815,7 @@ void _workerEntry(_WorkerInit init) {
               revision: revision,
               paths: paths,
               nameOnly: nameOnly,
+              binary: binary,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }

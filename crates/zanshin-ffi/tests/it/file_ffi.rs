@@ -162,6 +162,7 @@ fn search_request_without_pattern() -> Vec<u8> {
             pattern: None,
             paths: None,
             name_only: false,
+            binary: fbs::FileSearchBinary::Detect,
         },
     );
     b.finish(req, None);
@@ -169,6 +170,16 @@ fn search_request_without_pattern() -> Vec<u8> {
 }
 
 fn search_request_bytes(revision: Option<&str>, pattern: &str, paths: &[&str], name_only: bool) -> Vec<u8> {
+    binary_search_request_bytes(revision, pattern, paths, name_only, fbs::FileSearchBinary::Detect)
+}
+
+fn binary_search_request_bytes(
+    revision: Option<&str>,
+    pattern: &str,
+    paths: &[&str],
+    name_only: bool,
+    binary: fbs::FileSearchBinary,
+) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
     let revision_off = revision.map(|s| b.create_string(s));
     let pattern_off = b.create_string(pattern);
@@ -182,6 +193,7 @@ fn search_request_bytes(revision: Option<&str>, pattern: &str, paths: &[&str], n
             pattern: Some(pattern_off),
             paths: Some(paths_vec),
             name_only,
+            binary,
         },
     );
     b.finish(req, None);
@@ -671,6 +683,68 @@ fn file_search_round_trip_carries_name_only_and_the_path_filter() {
     );
 
     close_handle(handle);
+}
+
+/// jj 0.47: the `binary` mode crosses the request, and a binary match comes back as one
+/// path-only `binary` row.
+#[test]
+fn file_search_round_trip_carries_the_binary_mode_and_flag() {
+    test_helpers::pin_test_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let commit_hex = add_commit_with_entries(
+        &fixture.path,
+        &[],
+        &[("bin.dat", Entry::File("x\0\nneedle\n"))],
+        "binary",
+    );
+    let change_id = change_id_for_commit(&fixture.path, &commit_hex);
+    let handle = open_handle(&fixture.path);
+    let search = |binary| {
+        let req = binary_search_request_bytes(Some(&change_id), "needle", &[], false, binary);
+        // SAFETY: handle is live; req is a valid buffer alive for the call.
+        let token = unsafe { zanshin_file_search(handle, req.as_ptr(), req.len()) };
+        // SAFETY: token is the fresh, non-null token the call just returned.
+        unsafe { read_and_free(token) }
+    };
+
+    let bytes = search(fbs::FileSearchBinary::Detect);
+    let matches = parse_envelope(&bytes).data_as_file_search().unwrap().matches().unwrap();
+    assert_eq!(matches.len(), 1);
+    let m = matches.get(0);
+    assert_eq!(
+        (
+            m.path(),
+            m.binary(),
+            m.line_number(),
+            m.content().map_or(0, |c| c.len()),
+            m.has_conflict_side()
+        ),
+        (Some("bin.dat"), true, 0, 0, false)
+    );
+
+    let bytes = search(fbs::FileSearchBinary::AsText);
+    let matches = parse_envelope(&bytes).data_as_file_search().unwrap().matches().unwrap();
+    assert_eq!(
+        (matches.len(), matches.get(0).binary(), matches.get(0).line_number()),
+        (1, false, 2)
+    );
+
+    let bytes = search(fbs::FileSearchBinary::Skip);
+    let env = parse_envelope(&bytes);
+    assert_eq!(env.data_as_file_search().unwrap().matches().map_or(0, |m| m.len()), 0);
+
+    let bytes = search(fbs::FileSearchBinary(9));
+    let error = parse_envelope(&bytes).error().expect("refused");
+    assert_eq!(
+        (error.code(), error.context()),
+        (
+            Some(JJ_INVALID_INPUT),
+            Some("FileSearchRequest.binary is not a known value")
+        )
+    );
+
+    close_handle(handle);
+    drop(fixture);
 }
 
 #[test]

@@ -504,6 +504,7 @@ unsafe fn ok_row(name: &str, handle: u64, file: &str, wc: &CString) -> Vec<u8> {
                             pattern: Some(pattern),
                             paths: None,
                             name_only: false,
+                            binary: fbs::FileSearchBinary::Detect,
                         },
                     );
                     b.finish(req, None);

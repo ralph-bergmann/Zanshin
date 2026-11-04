@@ -233,13 +233,25 @@ pub struct ConfigFileText {
     pub text: String,
 }
 
-/// A repo config directory whose recorded repo no longer exists ([`config_gc_list`]).
+/// A repo or workspace config directory whose recorded path no longer exists
+/// ([`config_gc_list`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MissingRepoConfig {
-    /// `<config_dir>/jj/repos/<config-id>`.
+    /// `<config_dir>/jj/repos/<config-id>` or `<config_dir>/jj/workspaces/<config-id>`.
     pub config_dir: PathBuf,
-    /// The repo path its `metadata.binpb` records.
+    /// The repo (or workspace) path its `metadata.binpb` records.
     pub repo_path: PathBuf,
+    /// Which root the directory lives under.
+    pub kind: ConfigGcKind,
+}
+
+/// Which `jj config gc` root a [`MissingRepoConfig`] lives under.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigGcKind {
+    /// `<config_dir>/jj/repos` — the CLI's "Missing repo configs".
+    Repo,
+    /// `<config_dir>/jj/workspaces` — the CLI's "Missing workspace configs".
+    Workspace,
 }
 
 /// A directory [`config_gc_delete`] did not delete, and why.
@@ -473,26 +485,27 @@ pub fn config_file_write(workspace_root: Option<&Path>, path: &Path, text: &str)
     outcome(|warnings| file_write_with(&ConfigEnv::from_env(), workspace_root, path, text, warnings))
 }
 
-/// `jj config gc`, half 1: the repo config directories under `<config_dir>/jj/repos` whose
-/// recorded repo no longer exists, sorted. Its start-up warns the stack's migrations
+/// `jj config gc`, half 1: the config directories under `<config_dir>/jj/repos`, then those under
+/// `<config_dir>/jj/workspaces`, whose recorded path no longer exists — each root sorted, its
+/// [`MissingRepoConfig::kind`] naming it. Its start-up warns the stack's migrations
 /// (`jj.config_deprecated`, Story 9.9), on success AND on failure.
 ///
 /// # Errors
 ///
 /// In [`ConfigOutcome::result`]:
-/// - [`ConfigCmdError::Config`] — the stack does not load, or the root cannot be read.
-/// - [`ConfigCmdError::NoConfigPath`] — `No config directory found`.
+/// - [`ConfigCmdError::Config`] — the stack does not load, or a root cannot be read.
+/// - [`ConfigCmdError::NoConfigPath`] — `No repo configs directory found`.
 #[must_use = "the outcome carries the result and the warnings"]
 pub fn config_gc_list() -> ConfigOutcome<Vec<MissingRepoConfig>> {
     outcome(|warnings| gc_list_with(&ConfigEnv::from_env(), warnings))
 }
 
-/// `jj config gc`, half 2: deletes those of `dirs` that are still missing repo config
-/// directories; every other request, and every per-directory failure, rides
+/// `jj config gc`, half 2: deletes those of `dirs` that are still missing repo or workspace
+/// config directories; every other request, and every per-directory failure, rides
 /// [`ConfigGcResult::failed`]. A directory that could not be DELETED also warns
-/// `jj.config_gc_delete_failed` (the CLI's "Failed to delete …", `gc.rs:80-84`, Story 9.32),
+/// `jj.config_gc_delete_failed` (the CLI's "Failed to delete …", `gc.rs:106-112`, Story 9.32),
 /// after the start-up's `jj.config_deprecated` (as [`config_gc_list`]); a request that is not a
-/// missing repo config directory has no CLI counterpart and is data only.
+/// missing config directory has no CLI counterpart and is data only.
 ///
 /// # Errors
 ///
@@ -1110,19 +1123,31 @@ fn file_write_with(
     std::fs::write(&path, text).map_err(|e| io_error(&path, &e))
 }
 
-/// `<config_dir>/jj/repos`, after the start-up stack (no workspace), whose migrations warn into
-/// `warnings`.
-fn gc_root(env: &ConfigEnv, warnings: &mut Vec<crate::Warning>) -> Result<PathBuf, ConfigCmdError> {
+/// The missing configs under `<config_dir>/jj/repos` then `<config_dir>/jj/workspaces`, each
+/// sorted, after the start-up stack (no workspace), whose migrations warn into `warnings`
+/// (`cli/src/commands/config/gc.rs:42-53` @ v0.47.0).
+fn gc_missing(env: &ConfigEnv, warnings: &mut Vec<crate::Warning>) -> Result<Vec<MissingRepoConfig>, ConfigCmdError> {
     startup(env, None, cli_command::CONFIG_GC, warnings)?;
-    env.root_config_dir()
-        .map(|r| r.join("repos"))
-        .ok_or_else(|| ConfigCmdError::NoConfigPath {
-            reason: "No config directory found".to_owned(),
-        })
+    let root = |sub: &str, reason: &str| {
+        env.root_config_dir()
+            .map(|r| r.join(sub))
+            .ok_or_else(|| ConfigCmdError::NoConfigPath {
+                reason: reason.to_owned(),
+            })
+    };
+    let mut missing =
+        find_configs_with_missing_paths(&root("repos", "No repo configs directory found")?, ConfigGcKind::Repo)?;
+    // Both roots hang off `root_config_dir`, so this second refusal is unreachable once the first
+    // passed — kept as the CLI's check.
+    missing.extend(find_configs_with_missing_paths(
+        &root("workspaces", "No workspace configs directory found")?,
+        ConfigGcKind::Workspace,
+    )?);
+    Ok(missing)
 }
 
-/// The CLI's `find_missing_repo_configs` (`cli/src/commands/config/gc.rs:88-129` @ v0.46.0).
-fn find_missing_repo_configs(root: &Path) -> Result<Vec<MissingRepoConfig>, ConfigCmdError> {
+/// The CLI's `find_configs_with_missing_paths` (`cli/src/commands/config/gc.rs:119-157` @ v0.47.0).
+fn find_configs_with_missing_paths(root: &Path, kind: ConfigGcKind) -> Result<Vec<MissingRepoConfig>, ConfigCmdError> {
     let failed = |verb: &str, e: std::io::Error| ConfigCmdError::Config {
         reason: format!("Failed to {verb} {}: {e}", root.display()),
     };
@@ -1146,7 +1171,11 @@ fn find_missing_repo_configs(root: &Path) -> Result<Vec<MissingRepoConfig>, Conf
         // deleting configs we can't actually verify.
         if !repo_path.try_exists().unwrap_or(true) {
             let repo_path = repo_path.to_owned();
-            missing.push(MissingRepoConfig { config_dir, repo_path });
+            missing.push(MissingRepoConfig {
+                config_dir,
+                repo_path,
+                kind,
+            });
         }
     }
     missing.sort_by(|a, b| (&a.config_dir, &a.repo_path).cmp(&(&b.config_dir, &b.repo_path)));
@@ -1154,7 +1183,7 @@ fn find_missing_repo_configs(root: &Path) -> Result<Vec<MissingRepoConfig>, Conf
 }
 
 fn gc_list_with(env: &ConfigEnv, warnings: &mut Vec<crate::Warning>) -> Result<Vec<MissingRepoConfig>, ConfigCmdError> {
-    find_missing_repo_configs(&gc_root(env, warnings)?)
+    gc_missing(env, warnings)
 }
 
 fn gc_delete_with(
@@ -1162,7 +1191,7 @@ fn gc_delete_with(
     dirs: &[PathBuf],
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<ConfigGcResult, ConfigCmdError> {
-    let missing = find_missing_repo_configs(&gc_root(env, warnings)?)?;
+    let missing = gc_missing(env, warnings)?;
     let mut result = ConfigGcResult::default();
     for m in missing.iter().filter(|m| dirs.contains(&m.config_dir)) {
         match secure_config::remove_config_dir(&m.config_dir) {
@@ -1182,7 +1211,7 @@ fn gc_delete_with(
     for dir in dirs.iter().filter(|d| !missing.iter().any(|m| &m.config_dir == *d)) {
         result.failed.push(ConfigGcFailure {
             config_dir: dir.clone(),
-            reason: "not a missing repo config directory".to_owned(),
+            reason: "not a missing config directory".to_owned(),
         });
     }
     Ok(result)
@@ -1199,8 +1228,8 @@ mod tests {
 
     use super::{
         gc_delete_with, gc_list_with, is_bare_string, parse_value_or_bare_string, resolve_workspace,
-        resolved_config_values, set_with, toml_error, ConfigCmdError, ConfigEntry, ConfigListQuery, ConfigScope,
-        ConfigTarget, ConfigValueSource, WorkspaceDirs,
+        resolved_config_values, set_with, toml_error, ConfigCmdError, ConfigEntry, ConfigGcKind, ConfigListQuery,
+        ConfigScope, ConfigTarget, ConfigValueSource, WorkspaceDirs,
     };
     use crate::config::{self, ConfigEnv};
 
@@ -1929,13 +1958,53 @@ mod tests {
 
     /// Creates a secure repo config for a (fake) repo dir under `base`, returns the config dir.
     fn repo_config_for(env: &ConfigEnv, base: &Path) -> PathBuf {
+        secure_config_for(env, base, 0)
+    }
+
+    /// The secure config of layer `index` (0 repo, 1 workspace) for a (fake) repo under `base`.
+    fn secure_config_for(env: &ConfigEnv, base: &Path, index: usize) -> PathBuf {
         let dirs = WorkspaceDirs {
             repo_path: base.join(".jj").join("repo"),
             workspace_root: base.to_owned(),
         };
         fs::create_dir_all(&dirs.repo_path).unwrap();
-        let [repo, _] = config::secure_layers(env, dirs.paths());
-        repo.create_path(None).unwrap().unwrap().parent().unwrap().to_owned()
+        let layers = config::secure_layers(env, dirs.paths());
+        layers[index]
+            .create_path(None)
+            .unwrap()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_owned()
+    }
+
+    /// jj 0.47: `config gc` also collects workspace configs — after the repo ones, each root
+    /// sorted, and deletable.
+    #[test]
+    fn gc_lists_and_deletes_missing_workspace_configs_after_the_repo_ones() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_without_user(tmp.path());
+        let repo = repo_config_for(&env, &tmp.path().join("r"));
+        let ws = secure_config_for(&env, &tmp.path().join("w"), 1);
+        fs::remove_dir_all(tmp.path().join("r")).unwrap();
+        fs::remove_dir_all(tmp.path().join("w")).unwrap();
+        assert!(ws.starts_with(tmp.path().join("cfg").join("jj").join("workspaces")));
+
+        let missing = gc_list_with(&env, &mut Vec::new()).unwrap();
+        let listed: Vec<(&Path, ConfigGcKind)> = missing.iter().map(|m| (m.config_dir.as_path(), m.kind)).collect();
+        assert_eq!(
+            listed,
+            [
+                (repo.as_path(), ConfigGcKind::Repo),
+                (ws.as_path(), ConfigGcKind::Workspace)
+            ]
+        );
+        assert_eq!(missing[1].repo_path, tmp.path().join("w").join(".jj"));
+
+        let result = gc_delete_with(&env, std::slice::from_ref(&ws), &mut Vec::new()).unwrap();
+        assert_eq!(result.deleted, std::slice::from_ref(&ws));
+        assert!(result.failed.is_empty());
+        assert!(!ws.exists() && repo.exists());
     }
 
     #[test]
@@ -1966,7 +2035,7 @@ mod tests {
         assert_eq!(result.deleted, std::slice::from_ref(&gone));
         let failed: Vec<&Path> = result.failed.iter().map(|f| f.config_dir.as_path()).collect();
         assert_eq!(failed, [busy.as_path(), kept.as_path()]);
-        assert_eq!(result.failed[1].reason, "not a missing repo config directory");
+        assert_eq!(result.failed[1].reason, "not a missing config directory");
         assert!(!gone.exists() && busy.exists() && kept.exists());
         // Story 9.32: only the REAL delete failure warns (the CLI's "Failed to delete …"); the
         // not-missing request has no CLI counterpart and stays data.
@@ -1987,7 +2056,7 @@ mod tests {
         };
         assert!(matches!(
             gc_list_with(&no_dir, &mut Vec::new()),
-            Err(ConfigCmdError::NoConfigPath { reason }) if reason == "No config directory found"
+            Err(ConfigCmdError::NoConfigPath { reason }) if reason == "No repo configs directory found"
         ));
         let env = env_without_user(tmp.path());
         write(&tmp.path().join("cfg").join("jj").join("repos"), "a file, not a dir");

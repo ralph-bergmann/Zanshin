@@ -942,8 +942,9 @@ ZanshinBuf *zanshin_config_file_read(const uint8_t *data, uintptr_t len);
 ZanshinBuf *zanshin_config_file_write(const uint8_t *data, uintptr_t len);
 
 /**
- * `jj config gc`, half 1: the repo config directories under `<config_dir>/jj/repos` whose
- * recorded repo no longer exists, sorted — the CLI's list before its yes/no prompt. The
+ * `jj config gc`, half 1: the config directories under `<config_dir>/jj/repos`, then under
+ * `<config_dir>/jj/workspaces`, whose recorded path no longer exists, each root sorted and each
+ * row's `kind` naming its root — the CLI's lists before its yes/no prompt. The
  * request is a `ConfigGcListRequest` (the tag only); returns a `ConfigGcList`. Writes nothing.
  * Its start-up warns the stack's migrations (`jj.config_deprecated`), on the ok AND the error
  * envelope.
@@ -952,8 +953,8 @@ ZanshinBuf *zanshin_config_file_write(const uint8_t *data, uintptr_t len);
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `ConfigGcListRequest`, or its `kind` is
  *   not `ConfigGcList`.
- * - `jj.config_error` — the stack does not load, or the root cannot be read.
- * - `jj.config_path_not_found` — "No config directory found".
+ * - `jj.config_error` — the stack does not load, or a root cannot be read.
+ * - `jj.config_path_not_found` — "No repo configs directory found".
  *
  * # Safety
  * As `zanshin_config_list`.
@@ -961,8 +962,8 @@ ZanshinBuf *zanshin_config_file_write(const uint8_t *data, uintptr_t len);
 ZanshinBuf *zanshin_config_gc_list(const uint8_t *data, uintptr_t len);
 
 /**
- * `jj config gc`, half 2: delete the requested directories that are still missing repo config
- * directories; any other request, and every per-directory failure, rides
+ * `jj config gc`, half 2: delete the requested directories that are still missing repo or
+ * workspace config directories; any other request, and every per-directory failure, rides
  * `ConfigGcResult.failed` (the CLI warns and continues — a directory that could not be deleted
  * also warns `jj.config_gc_delete_failed`, after the start-up's `jj.config_deprecated` as in
  * `zanshin_config_gc_list`). The arguments cross as a `ConfigGcDeleteRequest` buffer.
@@ -971,8 +972,8 @@ ZanshinBuf *zanshin_config_gc_list(const uint8_t *data, uintptr_t len);
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `ConfigGcDeleteRequest`, or its `kind`
  *   is not `ConfigGcDelete`.
- * - `jj.config_error` — the stack does not load, or the root cannot be read.
- * - `jj.config_path_not_found` — "No config directory found".
+ * - `jj.config_error` — the stack does not load, or a root cannot be read.
+ * - `jj.config_path_not_found` — "No repo configs directory found".
  *
  * # Safety
  * As `zanshin_config_list`.
@@ -3666,7 +3667,7 @@ ZanshinBuf *zanshin_redo(uint64_t handle, bool allow_cross_workspace);
  * `Patterns` = the `branches` / `tags` patterns, an empty list fetching none of that kind;
  * `Tracked` = the tracked bookmarks and tags) and `cancel_token`. The working copy is
  * snapshotted first (Story 9.26); then ONE transaction fetches remote by remote, imports once,
- * and writes `fetch from git remote(s) <names joined by ",">` — only when something changed;
+ * and writes `fetch from git remote(s) <names joined by ", ">` — only when something changed;
  * otherwise no operation is written and `new_op_id` is the pre-call head (Story 9.40).
  * Never moves `@` unless the import abandoned it.
  *

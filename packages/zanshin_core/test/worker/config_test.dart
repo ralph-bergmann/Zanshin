@@ -133,7 +133,7 @@ void main() {
       expect(missing.map((m) => m.configDir), isNot(contains('/not-a-config-dir')));
       final ConfigGcResult result = await worker.configGcDelete(['/not-a-config-dir']);
       expect(result.deleted, isEmpty);
-      expect(result.failed.single.reason, 'not a missing repo config directory');
+      expect(result.failed.single.reason, 'not a missing config directory');
     });
 
     test('an_interior_NUL_is_refused_on_the_calling_side', () {

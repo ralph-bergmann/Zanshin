@@ -429,7 +429,7 @@ fn every_wrapper_works_at_repo_scope() {
         .is_empty());
 }
 
-/// A missing repo config directory that cannot be deleted (it holds a file jj did not write)
+/// A missing repo or workspace config directory that cannot be deleted (it holds a file jj did not write)
 /// is a `failed` entry AND the CLI's "Failed to delete …" warning on the envelope (Story 9.32).
 #[test]
 fn gc_delete_warns_about_a_directory_it_cannot_delete() {

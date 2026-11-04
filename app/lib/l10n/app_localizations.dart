@@ -1574,6 +1574,12 @@ abstract class AppLocalizations {
   /// **'Squash into parent'**
   String get inspectorSquash;
 
+  /// The describe form under a kept draft: the change's description changed since the draft was started.
+  ///
+  /// In en, this message translates to:
+  /// **'The description changed meanwhile.'**
+  String get inspectorDescriptionChangedMeanwhile;
+
   /// The describe form in squash mode: runs jj squash with the combined description as edited.
   ///
   /// In en, this message translates to:
@@ -4027,12 +4033,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'rejected'**
   String get pushSheetRejected;
-
-  /// A ref's result: pushed, but its remote-tracking ref was not updated.
-  ///
-  /// In en, this message translates to:
-  /// **'couldn’t be updated locally'**
-  String get pushSheetUnexported;
 
   /// A ref's result: the push did not reach it.
   ///

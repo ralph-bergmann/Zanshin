@@ -88,7 +88,8 @@ Uint8List zanshinFileAnnotate(int rawHandle, {required String path, String? revi
 ///
 /// [pattern] is jj's own `kind:pattern` string-pattern syntax, passed through
 /// verbatim; a bare pattern defaults to kind `regex`. [nameOnly] stops a file's
-/// scan at its first match.
+/// scan at its first match. [binary] is the CLI's `--binary-as-text` /
+/// `--skip-binary`.
 ///
 /// [pattern] is required on the wire too: a `FileSearchRequest` whose `pattern`
 /// field is absent is refused with `jj.invalid_input`, mirroring the CLI's
@@ -100,6 +101,7 @@ Uint8List zanshinFileSearch(
   String? revision,
   List<String> paths = const <String>[],
   bool nameOnly = false,
+  FileSearchBinary binary = FileSearchBinary.detect,
 }) {
   _rejectPathNuls(revision, paths);
   rejectInteriorNul(pattern, 'pattern');
@@ -109,6 +111,11 @@ Uint8List zanshinFileSearch(
     pattern: pattern,
     paths: paths,
     nameOnly: nameOnly,
+    binary: switch (binary) {
+      FileSearchBinary.detect => fbs.FileSearchBinary.Detect,
+      FileSearchBinary.asText => fbs.FileSearchBinary.AsText,
+      FileSearchBinary.skip => fbs.FileSearchBinary.Skip,
+    },
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_file_search(rawHandle, ptr, len));
 }
@@ -224,6 +231,18 @@ final class AnnotationLine {
   final bool originFound;
 }
 
+/// How `fileSearch` treats a binary file (mirrors `zanshin_jj::BinaryMode`).
+enum FileSearchBinary {
+  /// The CLI's default: a matching binary file is one [SearchMatch.binary] match.
+  detect,
+
+  /// `--binary-as-text`: searched line by line like a text file.
+  asText,
+
+  /// `--skip-binary`: never matches.
+  skip,
+}
+
 /// One matching line of `fileSearch` (mirrors `zanshin_jj::SearchMatch`).
 final class SearchMatch {
   const SearchMatch({
@@ -231,21 +250,26 @@ final class SearchMatch {
     required this.lineNumber,
     required this.content,
     required this.conflictSide,
+    this.binary = false,
   });
 
   /// Repo-relative path in jj's internal (`/`-separated) form.
   final String path;
 
   /// 1-based line number within the searched content. For a conflicted path the
-  /// count restarts at each side.
+  /// count restarts at each side. `0` for a [binary] match.
   final int lineNumber;
 
   /// The raw matching line, newline included when the source line had one.
+  /// Empty for a [binary] match.
   final Uint8List content;
 
   /// 0-based index of the conflict side this line came from, or `null` for a
-  /// resolved file — null-for-absence.
+  /// resolved file — null-for-absence. `null` for a [binary] match.
   final int? conflictSide;
+
+  /// The CLI's "Binary file matches: `<path>`" — the path only.
+  final bool binary;
 }
 
 /// The result of `fileSearch` (mirrors `zanshin_jj::FileSearch`).
@@ -395,6 +419,7 @@ FileSearch _decodeFileSearchEnvelope(Uint8List bytes) {
                 // Presence pair, not a sentinel: `conflictSide` is meaningful only
                 // when `hasConflictSide` is set, so absence stays null.
                 conflictSide: m.hasConflictSide ? m.conflictSide : null,
+                binary: m.binary,
               ),
             )
             .toList() ??

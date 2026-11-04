@@ -72,11 +72,15 @@ void main() {
       ok(
         fbs.PayloadTypeId.ConfigGcList,
         fbs.ConfigGcListObjectBuilder(
-          missing: [fbs.MissingRepoConfigObjectBuilder(configDir: '/c', repoPath: '/r')],
+          missing: [
+            fbs.MissingRepoConfigObjectBuilder(configDir: '/c', repoPath: '/r'),
+            fbs.MissingRepoConfigObjectBuilder(configDir: '/w', repoPath: '/r/.jj', kind: fbs.ConfigGcKind.Workspace),
+          ],
         ),
       ),
     );
-    expect((missing.single.configDir, missing.single.repoPath), ('/c', '/r'));
+    expect((missing.first.configDir, missing.first.repoPath, missing.first.kind), ('/c', '/r', ConfigGcKind.repo));
+    expect((missing.last.configDir, missing.last.kind), ('/w', ConfigGcKind.workspace));
     final ConfigGcResult gc = decodeConfigGcResultEnvelopeInternal(
       ok(
         fbs.PayloadTypeId.ConfigGcResult,

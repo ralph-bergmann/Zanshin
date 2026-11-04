@@ -456,7 +456,6 @@ void main() {
         'jj.push_commit_skipped',
         'jj.push_refs_moved_on_remote',
         'jj.push_remote_rejected',
-        'jj.push_bookmarks_not_updated_locally',
         'jj.push_signing_skipped_immutable',
         'jj.clone_branches_unmatched',
         'jj.template_diagnostic',
@@ -477,7 +476,7 @@ void main() {
         'jj.resolve_conflicts_remain',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(78), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(77), reason: 'no code is registered twice');
     });
   });
 

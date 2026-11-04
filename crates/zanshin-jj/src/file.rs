@@ -9,7 +9,8 @@
 //! copy FIRST (Story 9.26), and that snapshot is what may write one. An omitted `revision` is
 //! therefore the up-to-date `@`, on-disk edits included.
 //!
-//! CLI parity is at tag **v0.46.0** (`cli/src/commands/file/{list,show,annotate,search}.rs`)
+//! CLI parity is at tag **v0.46.0** (`cli/src/commands/file/{list,show,annotate}.rs`; `search.rs`
+//! at **v0.47.0**, its binary-file handling)
 //! for the observable behavior — defaults, refusals, skip rules, pattern parsing — never for
 //! its terminal UX (NFR-R-2, ADR-0003): `-T/--template` and `--line-number` render text and
 //! are dropped, because the typed result already carries the structured fields they would
@@ -31,6 +32,7 @@ use jj_lib::conflicts::{
     materialize_merge_result_to_bytes, materialize_tree_value, resolve_file_executable, ConflictMaterializeOptions,
     MaterializedTreeValue,
 };
+use jj_lib::file_util;
 use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
@@ -142,15 +144,41 @@ pub struct SearchMatch {
     pub path: String,
     /// 1-based line number WITHIN the searched content. For a conflicted path the count
     /// restarts at each side (`conflict_side`) — there is no meaningful unified numbering
-    /// across sides, which is the CLI's own reasoning at `search.rs:146-147`. Saturates at
-    /// 4294967295, as [`FileEntry::conflict_side_count`] does.
+    /// across sides, which is the CLI's own reasoning at `search.rs:189-190`. Saturates at
+    /// 4294967295, as [`FileEntry::conflict_side_count`] does. `0` for a [`Self::binary`]
+    /// match, which names no line.
     pub line_number: u32,
-    /// The raw matching line, newline included when the source line had one.
+    /// The raw matching line, newline included when the source line had one. Empty for a
+    /// [`Self::binary`] match.
     pub content: Vec<u8>,
     /// 0-based index of the conflict side this line came from, or `None` for a resolved
     /// file — null-for-absence. Saturates at 4294967295, as
-    /// [`FileEntry::conflict_side_count`] does.
+    /// [`FileEntry::conflict_side_count`] does. `None` for a [`Self::binary`] match.
     pub conflict_side: Option<u32>,
+    /// `true` for the CLI's "Binary file matches: <path>" — a file (or a conflict with a binary
+    /// side) that matches under [`BinaryMode::Detect`]; it carries the path only.
+    pub binary: bool,
+}
+
+/// How `jj file search` treats a binary file (one jj's `file_util::is_binary` flags).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum BinaryMode {
+    /// The CLI's default: a matching binary file is ONE [`SearchMatch::binary`] match.
+    #[default]
+    Detect,
+    /// `--binary-as-text`: searched line by line like a text file.
+    AsText,
+    /// `--skip-binary`: never matches.
+    Skip,
+}
+
+/// The `jj file search` flags that shape the result, not the searched set.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SearchFlags {
+    /// `--name-only`.
+    pub name_only: bool,
+    /// `--binary-as-text` / `--skip-binary`.
+    pub binary: BinaryMode,
 }
 
 /// The result of `jj file search`: the matching lines, plus the paths that could not be
@@ -161,7 +189,7 @@ pub struct FileSearch {
     pub matches: Vec<SearchMatch>,
     /// Paths whose blob could NOT be read. This carries `AccessDenied` and nothing else,
     /// because that is the only case `jj file search` warns about
-    /// (`cli/src/commands/file/search.rs:109-115` @ v0.46.0); symlinks, Git submodules and
+    /// (`cli/src/commands/file/search.rs:127-133` @ v0.47.0); symlinks, Git submodules and
     /// non-file conflicts are skipped SILENTLY there and never appear here — the exact
     /// OPPOSITE of `jj file show`, whose [`FileContents::skipped`] reports them.
     ///
@@ -679,6 +707,7 @@ fn collect_matches(
             line_number: u32::try_from(i.saturating_add(1)).unwrap_or(u32::MAX),
             content: line.to_vec(),
             conflict_side,
+            binary: false,
         });
         if name_only {
             break;
@@ -687,18 +716,40 @@ fn collect_matches(
     found
 }
 
+/// Pushes the one path-only "Binary file matches" result when any of `contents` matches.
+fn binary_match(
+    path: &str,
+    mut contents: impl Iterator<Item: AsRef<[u8]>>,
+    matcher: &jj_lib::str_util::StringMatcher,
+    out: &mut Vec<SearchMatch>,
+) {
+    if contents.any(|c| matcher.match_lines(c.as_ref()).next().is_some()) {
+        out.push(SearchMatch {
+            path: path.to_owned(),
+            line_number: 0,
+            content: Vec::new(),
+            conflict_side: None,
+            binary: true,
+        });
+    }
+}
+
 /// Searches the files of `revision` matching `paths` for `pattern` (Story 9.4).
 ///
-/// Ports `cli/src/commands/file/search.rs::cmd_file_search` @ v0.46.0. `pattern` is jj's
+/// Ports `cli/src/commands/file/search.rs::cmd_file_search` @ v0.47.0. `pattern` is jj's
 /// `kind:pattern` string-pattern syntax, defaulting to `regex`. Symlinks, Git submodules and
 /// non-file conflicts are silently not searched, exactly as the CLI skips them
-/// (`search.rs:134, :159-161`); a path whose blob cannot be READ is reported in
-/// [`FileSearch::skipped`] with the CLI's own warning sentence (`search.rs:109-115`), which
+/// (`search.rs:160, :202-203`); a path whose blob cannot be READ is reported in
+/// [`FileSearch::skipped`] with the CLI's own warning sentence (`search.rs:127-133`), which
 /// is the only case it warns about.
 ///
-/// `name_only` stops a file's scan at its FIRST match — it changes the work done, not the
+/// `flags.name_only` stops a file's scan at its FIRST match — it changes the work done, not the
 /// result shape, so each file still contributes its first matching line. That is a superset
 /// of the CLI's output, which prints only the path.
+///
+/// `flags.binary` ports `--binary-as-text` / `--skip-binary` (`search.rs:138-199`): under
+/// [`BinaryMode::Detect`] a binary file — or a conflict with ANY binary side — that matches is
+/// one [`SearchMatch::binary`] match (the CLI's "Binary file matches: <path>").
 ///
 /// Warnings (Story 9.32): `jj.path_access_denied` per unreadable blob as it is reached, then
 /// `jj.paths_unmatched`.
@@ -718,8 +769,10 @@ pub(crate) fn file_search(
     revision: Option<&ChangeId>,
     pattern: &str,
     paths: &[String],
-    name_only: bool,
+    flags: SearchFlags,
 ) -> Result<FileSearch, FileError> {
+    let SearchFlags { name_only, binary } = flags;
+    let detect = binary != BinaryMode::AsText;
     let matcher = parse_pattern(pattern)?.to_matcher();
     let path_matcher = build_matcher(paths).map_err(|reason| FileError::InvalidInput { reason })?;
     let (readonly, commit) = head_commit(workspace, prefixes, revision)?;
@@ -736,11 +789,26 @@ pub(crate) fn file_search(
         match materialized {
             MaterializedTreeValue::File(mut file) => {
                 let content = pollster::block_on(file.read_all(&path)).map_err(be)?;
-                collect_matches(&display, &content, &matcher, None, name_only, &mut out);
+                if detect && file_util::is_binary(&content) {
+                    if binary == BinaryMode::Detect {
+                        binary_match(&display, std::iter::once(&content), &matcher, &mut out);
+                    }
+                } else {
+                    collect_matches(&display, &content, &matcher, None, name_only, &mut out);
+                }
+            }
+            // At least one side looks binary: the whole file is binary rather than the text
+            // side(s)' lines (`search.rs:163-178`).
+            MaterializedTreeValue::FileConflict(file)
+                if detect && file.contents.adds().any(|c| file_util::is_binary(c)) =>
+            {
+                if binary == BinaryMode::Detect {
+                    binary_match(&display, file.contents.adds(), &matcher, &mut out);
+                }
             }
             MaterializedTreeValue::FileConflict(file) => {
                 // Line numbers restart per side: there is no meaningful unified numbering
-                // across sides (the CLI's own reasoning at `search.rs:146-147`).
+                // across sides (the CLI's own reasoning at `search.rs:189-190`).
                 for (side, content) in file.contents.adds().enumerate() {
                     let side = u32::try_from(side).unwrap_or(u32::MAX);
                     let found = collect_matches(&display, content, &matcher, Some(side), name_only, &mut out);
@@ -751,7 +819,7 @@ pub(crate) fn file_search(
                 }
             }
             // An unreadable blob is the ONE case `jj file search` warns about
-            // (`search.rs:109-115`), so it gets a SkippedPath rather than silence. The
+            // (`search.rs:127-133`), so it gets a SkippedPath rather than silence. The
             // sentence is search's own — `file show`'s wording is a different verb's
             // contract and must not be reused here (NFR-R-2).
             MaterializedTreeValue::AccessDenied(e) => {
@@ -759,7 +827,7 @@ pub(crate) fn file_search(
                 sink.push(WarningKind::PathAccessDenied, reason.clone());
                 skipped.push(SkippedPath { reason, path: display });
             }
-            // Silently not searched — CLI parity (`search.rs:134, :159-160`). `Absent` and
+            // Silently not searched — CLI parity (`search.rs:160, :202-203`). `Absent` and
             // `Tree` are `panic!`s the walk cannot actually produce.
             MaterializedTreeValue::Symlink { .. }
             | MaterializedTreeValue::GitSubmodule(_)
@@ -897,7 +965,11 @@ mod tests {
 
         let mut sink = crate::warning::Warnings::default();
         let prefixes = IdPrefixContext::default();
-        let search = super::file_search(&workspace, &mut sink, &prefixes, Some(&change), "needle", &[], false)
+        let flags = super::SearchFlags {
+            name_only: false,
+            binary: super::BinaryMode::Detect,
+        };
+        let search = super::file_search(&workspace, &mut sink, &prefixes, Some(&change), "needle", &[], flags)
             .expect("an unreadable blob is not an error — the call SUCCEEDS");
 
         let paths: Vec<&str> = search.matches.iter().map(|m| m.path.as_str()).collect();

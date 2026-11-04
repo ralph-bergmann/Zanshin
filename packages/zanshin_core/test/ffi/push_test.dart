@@ -86,7 +86,7 @@ void main() {
                   fbs.PushRefObjectBuilder(
                     kind: fbs.PushRefKind.Bookmark,
                     name: 'b',
-                    status: fbs.PushRefStatus.Unexported,
+                    status: fbs.PushRefStatus.Pushed,
                   ),
                 ],
                 alreadyMatches: [fbs.PushRefNameObjectBuilder(kind: fbs.PushRefKind.Tag, name: 'v0')],
@@ -141,7 +141,7 @@ void main() {
       expect(tag.statusReason, 'hook declined');
       expect(origin.refs[2].path, PushPath.abort);
       expect(origin.refs[2].status, PushRefStatus.leaseRejected);
-      expect(origin.refs[3].status, PushRefStatus.unexported);
+      expect(origin.refs[3].status, PushRefStatus.pushed);
       expect(origin.refs[3].action, isNull, reason: 'a conflicted ref has no action');
       expect(r.createdBookmarks.single.name, 'push-abc');
       expect(r.createdBookmarks.single.changeId, 'abc');

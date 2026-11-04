@@ -27,10 +27,10 @@ use jj_lib::backend::CommitId as JjCommitId;
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use test_helpers::{
-    add_commit_with_entries, add_commit_with_files, add_conflicted_merge_off_root,
+    add_commit_with_entries, add_commit_with_files, add_conflicted_merge_of, add_conflicted_merge_off_root,
     add_conflicted_merge_with_extra_files, add_divergent_twin, extract_fixture, Entry, FixtureHandle,
 };
-use zanshin_jj::{ChangeId, FileError, FileType, Repo};
+use zanshin_jj::{BinaryMode, ChangeId, FileError, FileType, Repo, SearchMatch};
 
 // ── Harness ───────────────────────────────────────────────────────────────────────
 
@@ -649,7 +649,7 @@ fn file_search_reports_one_match_per_matching_line() {
     let before = head_op_id(&mut repo);
 
     let search = repo
-        .file_search(Some(t.change), "needle", &[], false)
+        .file_search(Some(t.change), "needle", &[], false, BinaryMode::Detect)
         .expect("search succeeds");
 
     let found: Vec<(String, u32, Vec<u8>)> = search
@@ -682,13 +682,13 @@ fn file_search_splits_the_pattern_kind_and_defaults_to_regex() {
     let mut repo = open(&t.fx);
 
     let substring = repo
-        .file_search(Some(t.change.clone()), "substring:ndl", &[], false)
+        .file_search(Some(t.change.clone()), "substring:ndl", &[], false, BinaryMode::Detect)
         .expect("an explicit kind is honoured");
     assert!(substring.matches.is_empty(), "'ndl' is not a substring of 'needle'");
 
     // The bare form is a REGEX, so a character class matches where a substring would not.
     let regex = repo
-        .file_search(Some(t.change), "n[e]+dle", &[], false)
+        .file_search(Some(t.change), "n[e]+dle", &[], false, BinaryMode::Detect)
         .expect("a bare pattern is a regex");
     assert_eq!(regex.matches.len(), 2, "the regex matches both files");
 }
@@ -701,7 +701,7 @@ fn file_search_refuses_an_unparseable_pattern() {
     let before = head_op_id(&mut repo);
 
     let err = repo
-        .file_search(Some(t.change), "(", &[], false)
+        .file_search(Some(t.change), "(", &[], false, BinaryMode::Detect)
         .expect_err("an unbalanced paren is not a valid regex");
 
     assert!(
@@ -725,7 +725,7 @@ fn file_search_name_only_stops_a_file_at_its_first_match() {
     let mut repo = open(&fx);
 
     let all = repo
-        .file_search(Some(change.clone()), "needle", &[], false)
+        .file_search(Some(change.clone()), "needle", &[], false, BinaryMode::Detect)
         .expect("search succeeds");
     assert_eq!(
         all.matches.len(),
@@ -734,7 +734,7 @@ fn file_search_name_only_stops_a_file_at_its_first_match() {
     );
 
     let first_only = repo
-        .file_search(Some(change), "needle", &[], true)
+        .file_search(Some(change), "needle", &[], true, BinaryMode::Detect)
         .expect("search succeeds");
     assert_eq!(
         first_only.matches.len(),
@@ -755,7 +755,7 @@ fn file_search_numbers_conflict_sides_independently() {
     let mut repo = open(&fx);
 
     let search = repo
-        .file_search(Some(change), "substring:left", &[], false)
+        .file_search(Some(change), "substring:left", &[], false, BinaryMode::Detect)
         .expect("search succeeds");
 
     let conflicted: Vec<_> = search.matches.iter().filter(|m| m.path == "conflicted.txt").collect();
@@ -781,7 +781,13 @@ fn file_search_with_no_match_is_an_empty_success() {
     let mut repo = open(&t.fx);
 
     let search = repo
-        .file_search(Some(t.change), "substring:definitely-not-present", &[], false)
+        .file_search(
+            Some(t.change),
+            "substring:definitely-not-present",
+            &[],
+            false,
+            BinaryMode::Detect,
+        )
         .expect("search succeeds");
 
     assert!(search.matches.is_empty(), "no match is an empty result, not an error");
@@ -804,7 +810,7 @@ fn file_search_name_only_stops_a_conflicted_file_at_its_first_side() {
     let mut repo = open(&fx);
 
     let both: Vec<_> = repo
-        .file_search(Some(change.clone()), "substring:t", &[], false)
+        .file_search(Some(change.clone()), "substring:t", &[], false, BinaryMode::Detect)
         .expect("search succeeds")
         .matches
         .into_iter()
@@ -817,7 +823,7 @@ fn file_search_name_only_stops_a_conflicted_file_at_its_first_side() {
     );
 
     let first: Vec<_> = repo
-        .file_search(Some(change), "substring:t", &[], true)
+        .file_search(Some(change), "substring:t", &[], true, BinaryMode::Detect)
         .expect("search succeeds")
         .matches
         .into_iter()
@@ -837,13 +843,77 @@ fn file_search_refuses_a_malformed_path_filter() {
     let mut repo = open(&t.fx);
 
     let err = repo
-        .file_search(Some(t.change), "needle", &["dir/".to_owned()], false)
+        .file_search(
+            Some(t.change),
+            "needle",
+            &["dir/".to_owned()],
+            false,
+            BinaryMode::Detect,
+        )
         .expect_err("a trailing slash is not a repo path");
 
     assert!(
         matches!(&err, FileError::InvalidInput { reason } if reason.contains("invalid path")),
         "unexpected error: {err:?}"
     );
+}
+
+/// The CLI's "Binary file matches: <path>": one path-only match, no line.
+fn binary_hit(path: &str) -> SearchMatch {
+    SearchMatch {
+        path: path.to_owned(),
+        line_number: 0,
+        content: Vec::new(),
+        conflict_side: None,
+        binary: true,
+    }
+}
+
+/// jj 0.47: a file with a NUL is one "Binary file matches" by default, its lines under
+/// `--binary-as-text`, and nothing under `--skip-binary`.
+#[test]
+fn file_search_reports_a_binary_file_per_binary_mode() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let commit = add_commit_with_files(&fx.path, &[], &[("bin.dat", "x\0y\nneedle\n")], "binary");
+    let change = change_id_of(&fx.path, &commit);
+    let mut repo = open(&fx);
+    let mut search = |mode| {
+        repo.file_search(Some(change.clone()), "needle", &[], false, mode)
+            .expect("search succeeds")
+            .matches
+    };
+
+    assert_eq!(search(BinaryMode::Detect), [binary_hit("bin.dat")]);
+    let text = search(BinaryMode::AsText);
+    assert_eq!(text.len(), 1);
+    assert_eq!(
+        (text[0].line_number, text[0].content.as_slice(), text[0].binary),
+        (2, &b"needle\n"[..], false)
+    );
+    assert!(search(BinaryMode::Skip).is_empty());
+}
+
+/// A conflict with ANY binary side is binary as a whole: one match by default, the sides'
+/// lines as text, nothing skipped.
+#[test]
+fn file_search_treats_a_conflict_with_a_binary_side_as_binary() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let merge_hex = add_conflicted_merge_of(&fx.path, "needle left\n", "\0needle right\n");
+    let change = change_id_of(&fx.path, &merge_hex);
+    let mut repo = open(&fx);
+    let mut search = |mode| {
+        repo.file_search(Some(change.clone()), "needle", &[], false, mode)
+            .expect("search succeeds")
+            .matches
+    };
+
+    assert_eq!(search(BinaryMode::Detect), [binary_hit("conflicted.txt")]);
+    let text = search(BinaryMode::AsText);
+    assert_eq!(text.len(), 2, "{text:?}");
+    assert!(text.iter().all(|m| m.conflict_side.is_some() && !m.binary));
+    assert!(search(BinaryMode::Skip).is_empty());
 }
 
 // ── Repository corruption is Backend, never ChangeNotFound ────────────────────────

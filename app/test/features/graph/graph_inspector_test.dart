@@ -935,6 +935,35 @@ void main() {
     await unmount(tester);
   });
 
+  testWidgets('Story 11.23: a stale untouched draft is dropped; a typed one stays with the "changed meanwhile" note', (
+    tester,
+  ) async {
+    await pump(tester);
+    final Finder summary = find.descendant(of: _id('inspector-summary'), matching: find.byType(EditableText));
+    String shown() => tester.widget<EditableText>(summary).controller.text;
+    const note = 'The description changed meanwhile.';
+
+    await openForm(tester);
+    await tester.enterText(summary, 'about $_mutable');
+    inspector.closeForm(_mutable);
+    details.descriptions[_mutable] = 'new\n';
+    await reload(tester);
+    await openForm(tester);
+    expect(shown(), 'new', reason: 'the draft still held the old prefill: the new description prefills');
+    expect(find.text(note), findsNothing);
+    expect(inspector.draftOf(_mutable), isNull);
+
+    await tester.enterText(summary, 'my text');
+    inspector.closeForm(_mutable);
+    details.descriptions[_mutable] = 'newer\n';
+    await reload(tester);
+    await openForm(tester);
+    expect(shown(), 'my text', reason: 'a typed draft survives');
+    expect(find.text(note), findsOneWidget);
+    expect(inspector.describedMeanwhile(_mutable), isTrue);
+    await unmount(tester);
+  });
+
   testWidgets('Esc: a dirty field only unfocuses, then the form closes, then the selection clears', (tester) async {
     await pump(tester);
     await openForm(tester);
@@ -1498,6 +1527,42 @@ void main() {
       expect(commit.paths, isEmpty);
       expect(commit.command, 'jj commit -m Fix -m Body');
       expect(inspector.composerDraftOf(_at), isNull);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 11.23: a title draft typed and deleted, then a commit with a message: the title prefills it', (
+      tester,
+    ) async {
+      await pump(tester, select: _at);
+      await openForm(tester);
+      await type(tester, 'inspector-summary', 'x');
+      await type(tester, 'inspector-summary', '');
+      inspector.closeForm(_at);
+      await tester.pump();
+      expect(inspector.draftOf(_at), (summary: '', details: ''), reason: 'the emptied draft is kept');
+      await type(tester, 'inspector-composer-summary', 'Fix');
+      details.descriptions[_at] = 'Fix\n';
+      await runIt(tester);
+      await reload(tester);
+      expect(inspector.draftOf(_at), isNull, reason: 'the commit described the change: its title draft goes');
+      await openForm(tester);
+      expect(tester.widget<EditableText>(field('inspector-summary')).controller.text, 'Fix');
+      await unmount(tester);
+    });
+
+    testWidgets('Story 11.23: a typed title draft goes when the composer commits with a message', (tester) async {
+      await pump(tester, select: _at);
+      await openForm(tester);
+      await type(tester, 'inspector-summary', 'abc');
+      inspector.closeForm(_at);
+      await tester.pump();
+      await type(tester, 'inspector-composer-summary', 'Fix');
+      details.descriptions[_at] = 'Fix\n';
+      await runIt(tester);
+      await reload(tester);
+      expect(inspector.draftOf(_at), isNull, reason: 'a typed draft survives draftOf, so runComposer drops it');
+      await openForm(tester);
+      expect(tester.widget<EditableText>(field('inspector-summary')).controller.text, 'Fix');
       await unmount(tester);
     });
 

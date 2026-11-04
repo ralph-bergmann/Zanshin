@@ -74,7 +74,6 @@ Uint8List zanshinFindChanges(
 /// kinds.
 enum RevsetErrorKind {
   syntaxError,
-  notPrefixOperator,
   notPostfixOperator,
   notInfixOperator,
   noSuchFunction,
@@ -226,7 +225,6 @@ RevsetErrorDetail? decodeRevsetErrorDetailInternal(fbs.RevsetErrorDetail? detail
 
 RevsetErrorKind _kind(fbs.RevsetErrorKind kind) => switch (kind) {
   fbs.RevsetErrorKind.SyntaxError => RevsetErrorKind.syntaxError,
-  fbs.RevsetErrorKind.NotPrefixOperator => RevsetErrorKind.notPrefixOperator,
   fbs.RevsetErrorKind.NotPostfixOperator => RevsetErrorKind.notPostfixOperator,
   fbs.RevsetErrorKind.NotInfixOperator => RevsetErrorKind.notInfixOperator,
   fbs.RevsetErrorKind.NoSuchFunction => RevsetErrorKind.noSuchFunction,

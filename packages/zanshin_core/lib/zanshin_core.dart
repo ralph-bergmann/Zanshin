@@ -19,6 +19,7 @@ export 'src/ffi/config.dart'
         ConfigFileText,
         ConfigFileWriteResult,
         ConfigGcFailure,
+        ConfigGcKind,
         ConfigGcResult,
         ConfigGetResult,
         ConfigScope,
@@ -56,7 +57,7 @@ export 'src/ffi/fetch.dart'
         NamedFetchRemotes,
         PatternFetchRefs,
         TrackedFetchRefs;
-export 'src/ffi/file.dart' show FileEntry;
+export 'src/ffi/file.dart' show FileEntry, FileSearchBinary;
 export 'src/ffi/file_ops.dart' show FileNotAutoTracked, FileTooLarge, SnapshotStats, UntrackedPath, UntrackedReason;
 export 'src/ffi/git.dart'
     show GitColocationResult, GitColocationStatus, GitExportFailure, GitRefUpdate, GitRefUpdateKind;

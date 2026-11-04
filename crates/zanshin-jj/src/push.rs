@@ -166,10 +166,6 @@ pub enum PushRefStatus {
     LeaseRejected,
     /// The remote rejected the update.
     RemoteRejected,
-    /// Pushed, but its remote-tracking ref could not be updated locally. Never reported since
-    /// jj-lib 0.47, whose push no longer exports pushed refs to Git; kept so the FFI enum's values
-    /// stay put.
-    Unexported,
 }
 
 /// A ref and its kind.

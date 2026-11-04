@@ -324,7 +324,7 @@ pub const JJ_PATH_ACCESS_DENIED: &str = "jj.path_access_denied";
 pub const JJ_PATH_NOT_A_FILE: &str = "jj.path_not_a_file";
 /// Warning: `user.name`/`user.email` was set but `@`'s author stays the old one.
 pub const JJ_CONFIG_WORKING_COPY_AUTHOR: &str = "jj.config_working_copy_author";
-/// Warning: a missing repo config directory could not be deleted.
+/// Warning: a missing repo or workspace config directory could not be deleted.
 pub const JJ_CONFIG_GC_DELETE_FAILED: &str = "jj.config_gc_delete_failed";
 /// Warning: `config list` found nothing to list.
 pub const JJ_CONFIG_NOTHING_LISTED: &str = "jj.config_nothing_listed";
@@ -383,8 +383,6 @@ pub const JJ_PUSH_COMMIT_SKIPPED: &str = "jj.push_commit_skipped";
 pub const JJ_PUSH_REFS_MOVED_ON_REMOTE: &str = "jj.push_refs_moved_on_remote";
 /// Warning: updates the remote rejected during `zanshin_git_push` (Story 9.20).
 pub const JJ_PUSH_REMOTE_REJECTED: &str = "jj.push_remote_rejected";
-/// Warning: pushed bookmarks whose remote-tracking ref `zanshin_git_push` could not update locally (Story 9.20).
-pub const JJ_PUSH_BOOKMARKS_NOT_UPDATED_LOCALLY: &str = "jj.push_bookmarks_not_updated_locally";
 /// Warning: sign-on-push left immutable commits unsigned (Story 9.20).
 pub const JJ_PUSH_SIGNING_SKIPPED_IMMUTABLE: &str = "jj.push_signing_skipped_immutable";
 /// Warning: `zanshin_repo_clone`'s exact `-b` names the remote does not have (Story 9.20).
@@ -494,7 +492,6 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::PushCommitSkipped => JJ_PUSH_COMMIT_SKIPPED,
         K::PushRefsMovedOnRemote => JJ_PUSH_REFS_MOVED_ON_REMOTE,
         K::PushRemoteRejected => JJ_PUSH_REMOTE_REJECTED,
-        K::PushBookmarksNotUpdatedLocally => JJ_PUSH_BOOKMARKS_NOT_UPDATED_LOCALLY,
         K::PushSigningSkippedImmutable => JJ_PUSH_SIGNING_SKIPPED_IMMUTABLE,
         K::CloneBranchesUnmatched => JJ_CLONE_BRANCHES_UNMATCHED,
         K::TemplateDiagnostic => JJ_TEMPLATE_DIAGNOSTIC,
@@ -1477,7 +1474,6 @@ fn revset_error_kind(kind: zanshin_jj::RevsetErrorKind) -> fbs::RevsetErrorKind 
     use zanshin_jj::RevsetErrorKind as K;
     match kind {
         K::SyntaxError => W::SyntaxError,
-        K::NotPrefixOperator => W::NotPrefixOperator,
         K::NotPostfixOperator => W::NotPostfixOperator,
         K::NotInfixOperator => W::NotInfixOperator,
         K::NoSuchFunction => W::NoSuchFunction,
@@ -1868,7 +1864,6 @@ mod tests {
             K::PushCommitSkipped => "jj.push_commit_skipped",
             K::PushRefsMovedOnRemote => "jj.push_refs_moved_on_remote",
             K::PushRemoteRejected => "jj.push_remote_rejected",
-            K::PushBookmarksNotUpdatedLocally => "jj.push_bookmarks_not_updated_locally",
             K::PushSigningSkippedImmutable => "jj.push_signing_skipped_immutable",
             K::CloneBranchesUnmatched => "jj.clone_branches_unmatched",
             K::TemplateDiagnostic => "jj.template_diagnostic",
@@ -1955,7 +1950,6 @@ mod tests {
             K::PushCommitSkipped,
             K::PushRefsMovedOnRemote,
             K::PushRemoteRejected,
-            K::PushBookmarksNotUpdatedLocally,
             K::PushSigningSkippedImmutable,
             K::CloneBranchesUnmatched,
             K::TemplateDiagnostic,
@@ -2598,7 +2592,6 @@ mod tests {
         };
         let kinds = [
             (K::SyntaxError, fbs::RevsetErrorKind::SyntaxError),
-            (K::NotPrefixOperator, fbs::RevsetErrorKind::NotPrefixOperator),
             (K::NotPostfixOperator, fbs::RevsetErrorKind::NotPostfixOperator),
             (K::NotInfixOperator, fbs::RevsetErrorKind::NotInfixOperator),
             (K::NoSuchFunction, fbs::RevsetErrorKind::NoSuchFunction),

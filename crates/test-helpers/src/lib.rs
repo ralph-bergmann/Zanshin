@@ -592,7 +592,7 @@ pub fn abandon_commit(workspace_root: &Path, commit_id_hex: &str) {
 /// Panics on any jj-lib failure — a failure here is a broken fixture.
 #[must_use = "the conflicted merge's commit id is what the assertions compare against"]
 pub fn add_conflicted_merge_off_root(workspace_root: &Path) -> String {
-    conflicted_merge(workspace_root, &[])
+    conflicted_merge(workspace_root, ["left\n", "right\n"], &[])
 }
 
 /// Like [`add_conflicted_merge_off_root`], but the RIGHT side additionally introduces
@@ -606,25 +606,36 @@ pub fn add_conflicted_merge_off_root(workspace_root: &Path) -> String {
 /// Panics on any jj-lib failure — a failure here is a broken fixture.
 #[must_use = "the conflicted merge's commit id is what the assertions compare against"]
 pub fn add_conflicted_merge_with_extra_files(workspace_root: &Path, right_extra: &[(&str, &str)]) -> String {
-    conflicted_merge(workspace_root, right_extra)
+    conflicted_merge(workspace_root, ["left\n", "right\n"], right_extra)
 }
 
-/// Shared body of the two conflicted-merge helpers.
-fn conflicted_merge(workspace_root: &Path, right_extra: &[(&str, &str)]) -> String {
+/// Like [`add_conflicted_merge_off_root`], but `conflicted.txt` holds `left` and `right` on the
+/// two sides (e.g. one side binary).
+///
+/// # Panics
+/// Panics on any jj-lib failure — a failure here is a broken fixture.
+#[must_use = "the merge commit id is what the assertions compare against"]
+pub fn add_conflicted_merge_of(workspace_root: &Path, left: &str, right: &str) -> String {
+    conflicted_merge(workspace_root, [left, right], &[])
+}
+
+/// Shared body of the conflicted-merge helpers.
+fn conflicted_merge(workspace_root: &Path, sides: [&str; 2], right_extra: &[(&str, &str)]) -> String {
     let (_workspace, repo) = load(workspace_root);
     let store = repo.store().clone();
     let root_id = store.root_commit_id().clone();
 
     let mut tx = repo.start_transaction();
     let mut side = Vec::with_capacity(2);
-    for (content, extra) in [("left\n", &[][..]), ("right\n", right_extra)] {
+    for (content, extra) in [(sides[0], &[][..]), (sides[1], right_extra)] {
         let mut files: Vec<(&str, &str)> = vec![("conflicted.txt", content)];
         files.extend_from_slice(extra);
         let tree = multi_file_tree(&store, &files);
         let commit = pollster::block_on(
             tx.repo_mut()
                 .new_commit(vec![root_id.clone()], tree)
-                .set_description(format!("side {content}"))
+                // A NUL (a binary side) has no place in a commit message.
+                .set_description(format!("side {}", content.replace('\0', "\\0")))
                 .write(),
         )
         .unwrap();

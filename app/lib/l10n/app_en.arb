@@ -607,6 +607,8 @@
   "@inspectorEdit": {"description": "Inspector action: jj edit, moving the working copy to the change."},
   "inspectorSquash": "Squash into parent",
   "@inspectorSquash": {"description": "Inspector action: jj squash -r, folding the change into its parent."},
+  "inspectorDescriptionChangedMeanwhile": "The description changed meanwhile.",
+  "@inspectorDescriptionChangedMeanwhile": {"description": "The describe form under a kept draft: the change's description changed since the draft was started."},
   "inspectorSquashConfirm": "Squash",
   "@inspectorSquashConfirm": {"description": "The describe form in squash mode: runs jj squash with the combined description as edited."},
   "inspectorSelectAll": "Select all",
@@ -1730,8 +1732,6 @@
   },
   "pushSheetRejected": "rejected",
   "@pushSheetRejected": {"description": "A ref's result: the remote rejected the update."},
-  "pushSheetUnexported": "couldn’t be updated locally",
-  "@pushSheetUnexported": {"description": "A ref's result: pushed, but its remote-tracking ref was not updated."},
   "pushSheetNotReached": "not pushed",
   "@pushSheetNotReached": {"description": "A ref's result: the push did not reach it."}
 }

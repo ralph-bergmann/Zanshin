@@ -1126,6 +1126,10 @@ impl Repo {
     /// prints. The CLI's `--line-number` has no counterpart: the result always carries
     /// [`crate::SearchMatch::line_number`], so there is nothing left for the flag to switch.
     ///
+    /// `binary` is the CLI's `--binary-as-text` / `--skip-binary` ([`crate::BinaryMode`]): by
+    /// default a matching binary file (or a conflict with a binary side) is one path-only
+    /// [`crate::SearchMatch::binary`] match.
+    ///
     /// A conflicted path is searched side by side, with `conflict_side` set and line numbers
     /// restarting at each side (the CLI's own choice — there is no meaningful unified
     /// numbering across sides). Symlinks, Git submodules and non-file conflicts are SILENTLY
@@ -1150,6 +1154,7 @@ impl Repo {
         pattern: &str,
         paths: &[String],
         name_only: bool,
+        binary: crate::BinaryMode,
     ) -> Result<crate::FileSearch, crate::FileError> {
         self.with_verb(cli_command::FILE_SEARCH, |repo, ctx| {
             let prefixes = ctx.template_startup.id_prefix_context();
@@ -1160,7 +1165,7 @@ impl Repo {
                 revision.as_ref(),
                 pattern,
                 paths,
-                name_only,
+                crate::file::SearchFlags { name_only, binary },
             )
         })
     }
@@ -1939,8 +1944,7 @@ impl Repo {
     /// `jj.push_bookmarks_unmatched` / `jj.push_tags_unmatched`, revset diagnostics,
     /// `jj.push_revset_empty` / `jj.push_revisions_empty`, `jj.push_ref_skipped` /
     /// `jj.push_commit_skipped` for each skipped ref, `jj.push_signing_skipped_immutable`, the push
-    /// stats (`jj.push_refs_moved_on_remote`, `jj.push_remote_rejected`,
-    /// `jj.push_bookmarks_not_updated_locally`), and the finish's.
+    /// stats (`jj.push_refs_moved_on_remote`, `jj.push_remote_rejected`), and the finish's.
     ///
     /// # Errors
     ///
@@ -5447,7 +5451,11 @@ mod tests {
         records!(repo, FILE_LIST, file_list(Some(none()), &[]));
         records!(repo, FILE_SHOW, file_show(Some(none()), &names));
         records!(repo, FILE_ANNOTATE, file_annotate(Some(none()), "nope"));
-        records!(repo, FILE_SEARCH, file_search(Some(none()), "nope", &[], false));
+        records!(
+            repo,
+            FILE_SEARCH,
+            file_search(Some(none()), "nope", &[], false, crate::BinaryMode::Detect)
+        );
         records!(repo, LOG, walk_graph("none()", "", "", |_| ControlFlow::Continue(())));
         records!(repo, LOG, graph_topology("none()", "", "", &[], false));
         records!(repo, LOG, eval_revset("none()", |_| ControlFlow::Continue(())));

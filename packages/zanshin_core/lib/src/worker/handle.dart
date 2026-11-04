@@ -17,7 +17,7 @@ import '../ffi/drop_actions.dart'
         DropSource,
         SelectionDropSource;
 import '../ffi/fetch.dart' show DefaultFetchRefs, DefaultFetchRemotes, FetchRefs, FetchRemotes, GitFetchResult;
-import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSearch;
+import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSearch, FileSearchBinary;
 import '../ffi/file_ops.dart' show TrackResult, UntrackResult;
 import '../ffi/git.dart' show GitColocationResult, GitColocationStatus, GitExportResult, GitImportResult;
 import '../ffi/graph.dart'
@@ -1878,6 +1878,10 @@ final class RepoHandle {
   /// matching line (a superset of what the CLI prints). The CLI's `--line-number`
   /// has no counterpart: `SearchMatch.lineNumber` is always carried.
   ///
+  /// [binary] is the CLI's `--binary-as-text` / `--skip-binary`: by default a
+  /// matching binary file (or a conflict with a binary side) is one path-only
+  /// `SearchMatch.binary` match.
+  ///
   /// A conflicted path is searched side by side, with `conflictSide` set and line
   /// numbers restarting at each side. Symlinks, submodules and non-file conflicts
   /// are SILENTLY not searched, as the CLI skips them; a path whose blob could not
@@ -1894,11 +1898,19 @@ final class RepoHandle {
     String? revision,
     List<String> paths = const <String>[],
     bool nameOnly = false,
+    FileSearchBinary binary = FileSearchBinary.detect,
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.fileSearch(_handleId, pattern: pattern, revision: revision, paths: paths, nameOnly: nameOnly);
+    return _worker.fileSearch(
+      _handleId,
+      pattern: pattern,
+      revision: revision,
+      paths: paths,
+      nameOnly: nameOnly,
+      binary: binary,
+    );
   }
 
   /// Import the backing git repo's refs into jj's view (Story 9.5) — the CLI's

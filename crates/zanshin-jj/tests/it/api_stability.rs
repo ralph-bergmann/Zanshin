@@ -264,6 +264,7 @@ fn sample_search_match() -> zanshin_jj::SearchMatch {
         line_number: 0,
         content: Vec::new(),
         conflict_side: Some(0),
+        binary: false,
     }
 }
 
@@ -736,7 +737,13 @@ fn file_reads_surface_resolves() {
             &str,
             &[String],
             bool,
+            zanshin_jj::BinaryMode,
         ) -> Result<zanshin_jj::FileSearch, zanshin_jj::FileError>;
+    _ = [
+        zanshin_jj::BinaryMode::Detect,
+        zanshin_jj::BinaryMode::AsText,
+        zanshin_jj::BinaryMode::Skip,
+    ];
 }
 
 /// Git sync + remote config (Story 9.5): 5 new types, 3 new `MutateError` variants, 6 new
@@ -2274,7 +2281,9 @@ fn story_9_28_surface_resolves() {
     _ = zanshin_jj::MissingRepoConfig {
         config_dir: PathBuf::new(),
         repo_path: PathBuf::new(),
+        kind: zanshin_jj::ConfigGcKind::Repo,
     };
+    _ = zanshin_jj::ConfigGcKind::Workspace;
     _ = zanshin_jj::ConfigGcResult {
         deleted: Vec::new(),
         failed: vec![zanshin_jj::ConfigGcFailure {
@@ -2314,7 +2323,7 @@ fn story_9_28_surface_resolves() {
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
 /// run the bookmark auto-track warning; Story 9.19 the four rename warnings; Story 9.11 the five
 /// tracking warnings; Story 9.13 the three workspace forget/remove warnings).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 77] = {
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 76] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -2375,7 +2384,6 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 77] = {
         K::PushCommitSkipped,
         K::PushRefsMovedOnRemote,
         K::PushRemoteRejected,
-        K::PushBookmarksNotUpdatedLocally,
         K::PushSigningSkippedImmutable,
         K::CloneBranchesUnmatched,
         K::TemplateDiagnostic,
@@ -2511,7 +2519,6 @@ fn story_9_32_warning_surface_resolves() {
             | K::PushCommitSkipped
             | K::PushRefsMovedOnRemote
             | K::PushRemoteRejected
-            | K::PushBookmarksNotUpdatedLocally
             | K::PushSigningSkippedImmutable
             | K::CloneBranchesUnmatched
             | K::TemplateDiagnostic
@@ -2532,7 +2539,7 @@ fn story_9_32_warning_surface_resolves() {
             | K::ResolveConflictsRemain => {}
         }
     }
-    assert_eq!(every.len(), 77);
+    assert_eq!(every.len(), 76);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 
@@ -2667,7 +2674,7 @@ fn story_9_20_push_outcome_resolves() {
             message: String::new(),
             hints: Vec::new(),
         }),
-        status: Some(zanshin_jj::PushRefStatus::Unexported),
+        status: Some(zanshin_jj::PushRefStatus::RemoteRejected),
         status_reason: None,
     };
     for path in [
@@ -2683,13 +2690,11 @@ fn story_9_20_push_outcome_resolves() {
         zanshin_jj::PushRefStatus::Pushed,
         zanshin_jj::PushRefStatus::LeaseRejected,
         zanshin_jj::PushRefStatus::RemoteRejected,
-        zanshin_jj::PushRefStatus::Unexported,
     ] {
         match status {
             zanshin_jj::PushRefStatus::Pushed
             | zanshin_jj::PushRefStatus::LeaseRejected
-            | zanshin_jj::PushRefStatus::RemoteRejected
-            | zanshin_jj::PushRefStatus::Unexported => {}
+            | zanshin_jj::PushRefStatus::RemoteRejected => {}
         }
     }
     for kind in [
@@ -2826,7 +2831,6 @@ fn graph_search_surface_resolves() {
     _ = parse.hints() as Vec<String>;
     for kind in [
         K::SyntaxError,
-        K::NotPrefixOperator,
         K::NotPostfixOperator,
         K::NotInfixOperator,
         K::NoSuchFunction,

@@ -9,10 +9,9 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 
 ///  Which jj-lib revset failure a `RevsetErrorDetail` describes (Story 9.25): jj-lib's
 ///  `RevsetParseErrorKind` variants, then its `RevsetResolutionError` variants. Member order IS
-///  the wire value — APPEND only.
+///  the wire value — APPEND only (value 1, a prefix-operator kind jj 0.47 no longer has, stays retired).
 enum RevsetErrorKind {
   SyntaxError(0),
-  NotPrefixOperator(1),
   NotPostfixOperator(2),
   NotInfixOperator(3),
   NoSuchFunction(4),
@@ -41,8 +40,6 @@ enum RevsetErrorKind {
     switch (value) {
       case 0:
         return RevsetErrorKind.SyntaxError;
-      case 1:
-        return RevsetErrorKind.NotPrefixOperator;
       case 2:
         return RevsetErrorKind.NotPostfixOperator;
       case 3:
@@ -721,6 +718,46 @@ class _InitBackendReader extends fb.Reader<InitBackend> {
 
   @override
   InitBackend read(fb.BufferContext bc, int offset) => InitBackend.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  How `zanshin_file_search` treats a binary file. Member order IS the wire value — APPEND only.
+enum FileSearchBinary {
+  Detect(0),
+  AsText(1),
+  Skip(2);
+
+  final int value;
+  const FileSearchBinary(this.value);
+
+  factory FileSearchBinary.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return FileSearchBinary.Detect;
+      case 1:
+        return FileSearchBinary.AsText;
+      case 2:
+        return FileSearchBinary.Skip;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static FileSearchBinary? _createOrNull(int? value) => value == null ? null : FileSearchBinary.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<FileSearchBinary> reader = _FileSearchBinaryReader();
+}
+
+class _FileSearchBinaryReader extends fb.Reader<FileSearchBinary> {
+  const _FileSearchBinaryReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  FileSearchBinary read(fb.BufferContext bc, int offset) =>
+      FileSearchBinary.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  Which currency one side of `zanshin_interdiff` is written in.
@@ -1613,13 +1650,13 @@ class _PushPathReader extends fb.Reader<PushPath> {
 }
 
 ///  What happened to a ref after a real push. `NotReached = 0` (the absent-field default) = a
-///  plan, a skipped ref, or a remote the push did not reach.
+///  plan, a skipped ref, or a remote the push did not reach. Value 4 (an unexported ref, which jj 0.47
+///  no longer reports) stays retired.
 enum PushRefStatus {
   NotReached(0),
   Pushed(1),
   LeaseRejected(2),
-  RemoteRejected(3),
-  Unexported(4);
+  RemoteRejected(3);
 
   final int value;
   const PushRefStatus(this.value);
@@ -1634,8 +1671,6 @@ enum PushRefStatus {
         return PushRefStatus.LeaseRejected;
       case 3:
         return PushRefStatus.RemoteRejected;
-      case 4:
-        return PushRefStatus.Unexported;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1644,7 +1679,7 @@ enum PushRefStatus {
   static PushRefStatus? _createOrNull(int? value) => value == null ? null : PushRefStatus.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 4;
+  static const int maxValue = 3;
   static const fb.Reader<PushRefStatus> reader = _PushRefStatusReader();
 }
 
@@ -1937,6 +1972,43 @@ class _ConfigValueSourceReader extends fb.Reader<ConfigValueSource> {
   @override
   ConfigValueSource read(fb.BufferContext bc, int offset) =>
       ConfigValueSource.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
+///  Which `jj config gc` root a `MissingRepoConfig` lives under: `<config_dir>/jj/repos` or
+///  `<config_dir>/jj/workspaces`. Member order IS the wire value — APPEND only.
+enum ConfigGcKind {
+  Repo(0),
+  Workspace(1);
+
+  final int value;
+  const ConfigGcKind(this.value);
+
+  factory ConfigGcKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return ConfigGcKind.Repo;
+      case 1:
+        return ConfigGcKind.Workspace;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static ConfigGcKind? _createOrNull(int? value) => value == null ? null : ConfigGcKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 1;
+  static const fb.Reader<ConfigGcKind> reader = _ConfigGcKindReader();
+}
+
+class _ConfigGcKindReader extends fb.Reader<ConfigGcKind> {
+  const _ConfigGcKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  ConfigGcKind read(fb.BufferContext bc, int offset) => ConfigGcKind.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  What a `HunkLine` is (Story 5.5): on both sides, the left side only, or the right side only.
@@ -6822,7 +6894,8 @@ class FileAnnotateRequestObjectBuilder extends fb.ObjectBuilder {
 ///  an absence, and is the empty regex, which matches every line (`jj file search -p ""`).
 ///  `name_only` stops a file's scan at its first match — it changes the WORK done, not the
 ///  result shape, which is why it survives the terminal-UX cut that dropped `--line-number`
-///  (the result always carries `SearchMatch.line_number`).
+///  (the result always carries `SearchMatch.line_number`). `binary` is the CLI's
+///  `--binary-as-text` (`AsText`) / `--skip-binary` (`Skip`); absent = `Detect`, the default.
 class FileSearchRequest {
   FileSearchRequest._(this._bc, this._bcOffset);
   factory FileSearchRequest(List<int> bytes) {
@@ -6840,10 +6913,11 @@ class FileSearchRequest {
   String? get pattern => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
   List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
   bool get nameOnly => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  FileSearchBinary get binary => FileSearchBinary.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 14, 0));
 
   @override
   String toString() {
-    return 'FileSearchRequest{kind: ${kind}, revision: ${revision}, pattern: ${pattern}, paths: ${paths}, nameOnly: ${nameOnly}}';
+    return 'FileSearchRequest{kind: ${kind}, revision: ${revision}, pattern: ${pattern}, paths: ${paths}, nameOnly: ${nameOnly}, binary: ${binary}}';
   }
 }
 
@@ -6860,7 +6934,7 @@ class FileSearchRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
   }
 
   int addKind(RequestKind? kind) {
@@ -6888,6 +6962,11 @@ class FileSearchRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addBinary(FileSearchBinary? binary) {
+    fbBuilder.addUint8(5, binary?.value);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -6899,6 +6978,7 @@ class FileSearchRequestObjectBuilder extends fb.ObjectBuilder {
   final String? _pattern;
   final List<String>? _paths;
   final bool? _nameOnly;
+  final FileSearchBinary? _binary;
 
   FileSearchRequestObjectBuilder({
     RequestKind? kind,
@@ -6906,11 +6986,13 @@ class FileSearchRequestObjectBuilder extends fb.ObjectBuilder {
     String? pattern,
     List<String>? paths,
     bool? nameOnly,
+    FileSearchBinary? binary,
   }) : _kind = kind,
        _revision = revision,
        _pattern = pattern,
        _paths = paths,
-       _nameOnly = nameOnly;
+       _nameOnly = nameOnly,
+       _binary = binary;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -6918,12 +7000,13 @@ class FileSearchRequestObjectBuilder extends fb.ObjectBuilder {
     final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
     final int? patternOffset = _pattern == null ? null : fbBuilder.writeString(_pattern!);
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionOffset);
     fbBuilder.addOffset(2, patternOffset);
     fbBuilder.addOffset(3, pathsOffset);
     fbBuilder.addBool(4, _nameOnly);
+    fbBuilder.addUint8(5, _binary?.value);
     return fbBuilder.endTable();
   }
 
@@ -19196,7 +19279,9 @@ class FileAnnotationObjectBuilder extends fb.ObjectBuilder {
 ///  when has_conflict_side == true (presence pair, same rule as ShowRequest.limit: flatc
 ///  25.12.19 rejects optional scalars for Dart); it is the 0-based side of a conflicted
 ///  path, whose line numbers restart at each side — there is no meaningful unified numbering
-///  across sides (the CLI's own reasoning at `search.rs:146-147`).
+///  across sides (the CLI's own reasoning at `search.rs:189-190` @ v0.47.0). `binary` = the CLI's
+///  "Binary file matches: <path>" (`FileSearchBinary.Detect`): path only, `line_number` 0, no
+///  `content`, no side.
 class SearchMatch {
   SearchMatch._(this._bc, this._bcOffset);
   factory SearchMatch(List<int> bytes) {
@@ -19214,10 +19299,11 @@ class SearchMatch {
   List<int>? get content => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 8);
   int get conflictSide => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
   bool get hasConflictSide => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get binary => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
 
   @override
   String toString() {
-    return 'SearchMatch{path: ${path}, lineNumber: ${lineNumber}, content: ${content}, conflictSide: ${conflictSide}, hasConflictSide: ${hasConflictSide}}';
+    return 'SearchMatch{path: ${path}, lineNumber: ${lineNumber}, content: ${content}, conflictSide: ${conflictSide}, hasConflictSide: ${hasConflictSide}, binary: ${binary}}';
   }
 }
 
@@ -19234,7 +19320,7 @@ class SearchMatchBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
   }
 
   int addPathOffset(int? offset) {
@@ -19262,6 +19348,11 @@ class SearchMatchBuilder {
     return fbBuilder.offset;
   }
 
+  int addBinary(bool? binary) {
+    fbBuilder.addBool(5, binary);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -19273,6 +19364,7 @@ class SearchMatchObjectBuilder extends fb.ObjectBuilder {
   final List<int>? _content;
   final int? _conflictSide;
   final bool? _hasConflictSide;
+  final bool? _binary;
 
   SearchMatchObjectBuilder({
     String? path,
@@ -19280,23 +19372,26 @@ class SearchMatchObjectBuilder extends fb.ObjectBuilder {
     List<int>? content,
     int? conflictSide,
     bool? hasConflictSide,
+    bool? binary,
   }) : _path = path,
        _lineNumber = lineNumber,
        _content = content,
        _conflictSide = conflictSide,
-       _hasConflictSide = hasConflictSide;
+       _hasConflictSide = hasConflictSide,
+       _binary = binary;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
     final int? contentOffset = _content == null ? null : fbBuilder.writeListUint8(_content!);
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
     fbBuilder.addOffset(0, pathOffset);
     fbBuilder.addUint32(1, _lineNumber);
     fbBuilder.addOffset(2, contentOffset);
     fbBuilder.addUint32(3, _conflictSide);
     fbBuilder.addBool(4, _hasConflictSide);
+    fbBuilder.addBool(5, _binary);
     return fbBuilder.endTable();
   }
 
@@ -22539,7 +22634,7 @@ class ConfigFileTextObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  A repo config directory whose recorded repo no longer exists.
+///  A repo or workspace config directory whose recorded path no longer exists.
 class MissingRepoConfig {
   MissingRepoConfig._(this._bc, this._bcOffset);
   factory MissingRepoConfig(List<int> bytes) {
@@ -22554,10 +22649,11 @@ class MissingRepoConfig {
 
   String? get configDir => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
   String? get repoPath => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  ConfigGcKind get kind => ConfigGcKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 8, 0));
 
   @override
   String toString() {
-    return 'MissingRepoConfig{configDir: ${configDir}, repoPath: ${repoPath}}';
+    return 'MissingRepoConfig{configDir: ${configDir}, repoPath: ${repoPath}, kind: ${kind}}';
   }
 }
 
@@ -22574,7 +22670,7 @@ class MissingRepoConfigBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
   }
 
   int addConfigDirOffset(int? offset) {
@@ -22587,6 +22683,11 @@ class MissingRepoConfigBuilder {
     return fbBuilder.offset;
   }
 
+  int addKind(ConfigGcKind? kind) {
+    fbBuilder.addUint8(2, kind?.value);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -22595,21 +22696,25 @@ class MissingRepoConfigBuilder {
 class MissingRepoConfigObjectBuilder extends fb.ObjectBuilder {
   final String? _configDir;
   final String? _repoPath;
+  final ConfigGcKind? _kind;
 
   MissingRepoConfigObjectBuilder({
     String? configDir,
     String? repoPath,
+    ConfigGcKind? kind,
   }) : _configDir = configDir,
-       _repoPath = repoPath;
+       _repoPath = repoPath,
+       _kind = kind;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? configDirOffset = _configDir == null ? null : fbBuilder.writeString(_configDir!);
     final int? repoPathOffset = _repoPath == null ? null : fbBuilder.writeString(_repoPath!);
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
     fbBuilder.addOffset(0, configDirOffset);
     fbBuilder.addOffset(1, repoPathOffset);
+    fbBuilder.addUint8(2, _kind?.value);
     return fbBuilder.endTable();
   }
 
@@ -22622,7 +22727,8 @@ class MissingRepoConfigObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  `zanshin_config_gc_list`'s answer, sorted by directory.
+///  `zanshin_config_gc_list`'s answer: the repo configs, then the workspace configs, each sorted
+///  by directory.
 class ConfigGcList {
   ConfigGcList._(this._bc, this._bcOffset);
   factory ConfigGcList(List<int> bytes) {
@@ -22781,7 +22887,7 @@ class ConfigGcFailureObjectBuilder extends fb.ObjectBuilder {
 }
 
 ///  `zanshin_config_gc_delete`'s answer: `deleted` in the sorted missing order; every other
-///  requested directory (not a missing repo config, or its removal failed) in `failed`.
+///  requested directory (not a missing repo or workspace config, or its removal failed) in `failed`.
 class ConfigGcResult {
   ConfigGcResult._(this._bc, this._bcOffset);
   factory ConfigGcResult(List<int> bytes) {

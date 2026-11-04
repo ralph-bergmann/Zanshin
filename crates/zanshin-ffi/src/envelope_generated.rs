@@ -23,9 +23,8 @@ pub mod zanshin {
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REVSET_ERROR_KIND: [RevsetErrorKind; 22] = [
+        pub const ENUM_VALUES_REVSET_ERROR_KIND: [RevsetErrorKind; 21] = [
             RevsetErrorKind::SyntaxError,
-            RevsetErrorKind::NotPrefixOperator,
             RevsetErrorKind::NotPostfixOperator,
             RevsetErrorKind::NotInfixOperator,
             RevsetErrorKind::NoSuchFunction,
@@ -50,14 +49,13 @@ pub mod zanshin {
 
         /// Which jj-lib revset failure a `RevsetErrorDetail` describes (Story 9.25): jj-lib's
         /// `RevsetParseErrorKind` variants, then its `RevsetResolutionError` variants. Member order IS
-        /// the wire value — APPEND only.
+        /// the wire value — APPEND only (value 1, a prefix-operator kind jj 0.47 no longer has, stays retired).
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct RevsetErrorKind(pub u8);
         #[allow(non_upper_case_globals)]
         impl RevsetErrorKind {
             pub const SyntaxError: Self = Self(0);
-            pub const NotPrefixOperator: Self = Self(1);
             pub const NotPostfixOperator: Self = Self(2);
             pub const NotInfixOperator: Self = Self(3);
             pub const NoSuchFunction: Self = Self(4);
@@ -83,7 +81,6 @@ pub mod zanshin {
             pub const ENUM_MAX: u8 = 21;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::SyntaxError,
-                Self::NotPrefixOperator,
                 Self::NotPostfixOperator,
                 Self::NotInfixOperator,
                 Self::NoSuchFunction,
@@ -109,7 +106,6 @@ pub mod zanshin {
             pub fn variant_name(self) -> Option<&'static str> {
                 match self {
                     Self::SyntaxError => Some("SyntaxError"),
-                    Self::NotPrefixOperator => Some("NotPrefixOperator"),
                     Self::NotPostfixOperator => Some("NotPostfixOperator"),
                     Self::NotInfixOperator => Some("NotInfixOperator"),
                     Self::NoSuchFunction => Some("NoSuchFunction"),
@@ -1376,6 +1372,101 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for InitBackend {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_FILE_SEARCH_BINARY: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_FILE_SEARCH_BINARY: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_FILE_SEARCH_BINARY: [FileSearchBinary; 3] = [
+            FileSearchBinary::Detect,
+            FileSearchBinary::AsText,
+            FileSearchBinary::Skip,
+        ];
+
+        /// How `zanshin_file_search` treats a binary file. Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct FileSearchBinary(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl FileSearchBinary {
+            pub const Detect: Self = Self(0);
+            pub const AsText: Self = Self(1);
+            pub const Skip: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Detect, Self::AsText, Self::Skip];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Detect => Some("Detect"),
+                    Self::AsText => Some("AsText"),
+                    Self::Skip => Some("Skip"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for FileSearchBinary {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for FileSearchBinary {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for FileSearchBinary {
+            type Output = FileSearchBinary;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for FileSearchBinary {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for FileSearchBinary {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for FileSearchBinary {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -3380,22 +3471,22 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PUSH_REF_STATUS: u8 = 4;
+        pub const ENUM_MAX_PUSH_REF_STATUS: u8 = 3;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PUSH_REF_STATUS: [PushRefStatus; 5] = [
+        pub const ENUM_VALUES_PUSH_REF_STATUS: [PushRefStatus; 4] = [
             PushRefStatus::NotReached,
             PushRefStatus::Pushed,
             PushRefStatus::LeaseRejected,
             PushRefStatus::RemoteRejected,
-            PushRefStatus::Unexported,
         ];
 
         /// What happened to a ref after a real push. `NotReached = 0` (the absent-field default) = a
-        /// plan, a skipped ref, or a remote the push did not reach.
+        /// plan, a skipped ref, or a remote the push did not reach. Value 4 (an unexported ref, which jj 0.47
+        /// no longer reports) stays retired.
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct PushRefStatus(pub u8);
@@ -3405,16 +3496,14 @@ pub mod zanshin {
             pub const Pushed: Self = Self(1);
             pub const LeaseRejected: Self = Self(2);
             pub const RemoteRejected: Self = Self(3);
-            pub const Unexported: Self = Self(4);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 4;
+            pub const ENUM_MAX: u8 = 3;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NotReached,
                 Self::Pushed,
                 Self::LeaseRejected,
                 Self::RemoteRejected,
-                Self::Unexported,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -3423,7 +3512,6 @@ pub mod zanshin {
                     Self::Pushed => Some("Pushed"),
                     Self::LeaseRejected => Some("LeaseRejected"),
                     Self::RemoteRejected => Some("RemoteRejected"),
-                    Self::Unexported => Some("Unexported"),
                     _ => None,
                 }
             }
@@ -4110,6 +4198,96 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for ConfigValueSource {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_CONFIG_GC_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_CONFIG_GC_KIND: u8 = 1;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_CONFIG_GC_KIND: [ConfigGcKind; 2] = [ConfigGcKind::Repo, ConfigGcKind::Workspace];
+
+        /// Which `jj config gc` root a `MissingRepoConfig` lives under: `<config_dir>/jj/repos` or
+        /// `<config_dir>/jj/workspaces`. Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ConfigGcKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl ConfigGcKind {
+            pub const Repo: Self = Self(0);
+            pub const Workspace: Self = Self(1);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Repo, Self::Workspace];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Repo => Some("Repo"),
+                    Self::Workspace => Some("Workspace"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ConfigGcKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigGcKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ConfigGcKind {
+            type Output = ConfigGcKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ConfigGcKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ConfigGcKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ConfigGcKind {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -12550,7 +12728,8 @@ pub mod zanshin {
         /// an absence, and is the empty regex, which matches every line (`jj file search -p ""`).
         /// `name_only` stops a file's scan at its first match — it changes the WORK done, not the
         /// result shape, which is why it survives the terminal-UX cut that dropped `--line-number`
-        /// (the result always carries `SearchMatch.line_number`).
+        /// (the result always carries `SearchMatch.line_number`). `binary` is the CLI's
+        /// `--binary-as-text` (`AsText`) / `--skip-binary` (`Skip`); absent = `Detect`, the default.
         pub struct FileSearchRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -12571,6 +12750,7 @@ pub mod zanshin {
             pub const VT_PATTERN: ::flatbuffers::VOffsetT = 8;
             pub const VT_PATHS: ::flatbuffers::VOffsetT = 10;
             pub const VT_NAME_ONLY: ::flatbuffers::VOffsetT = 12;
+            pub const VT_BINARY: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -12591,6 +12771,7 @@ pub mod zanshin {
                 if let Some(x) = args.revision {
                     builder.add_revision(x);
                 }
+                builder.add_binary(args.binary);
                 builder.add_name_only(args.name_only);
                 builder.add_kind(args.kind);
                 builder.finish()
@@ -12649,6 +12830,17 @@ pub mod zanshin {
                         .unwrap()
                 }
             }
+            #[inline]
+            pub fn binary(&self) -> FileSearchBinary {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<FileSearchBinary>(FileSearchRequest::VT_BINARY, Some(FileSearchBinary::Detect))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for FileSearchRequest<'_> {
@@ -12663,6 +12855,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("pattern", Self::VT_PATTERN, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
      .visit_field::<bool>("name_only", Self::VT_NAME_ONLY, false)?
+     .visit_field::<FileSearchBinary>("binary", Self::VT_BINARY, false)?
      .finish();
                 Ok(())
             }
@@ -12674,6 +12867,7 @@ pub mod zanshin {
             pub paths:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub name_only: bool,
+            pub binary: FileSearchBinary,
         }
         impl<'a> Default for FileSearchRequestArgs<'a> {
             #[inline]
@@ -12684,6 +12878,7 @@ pub mod zanshin {
                     pattern: None,
                     paths: None,
                     name_only: false,
+                    binary: FileSearchBinary::Detect,
                 }
             }
         }
@@ -12722,6 +12917,11 @@ pub mod zanshin {
                     .push_slot::<bool>(FileSearchRequest::VT_NAME_ONLY, name_only, false);
             }
             #[inline]
+            pub fn add_binary(&mut self, binary: FileSearchBinary) {
+                self.fbb_
+                    .push_slot::<FileSearchBinary>(FileSearchRequest::VT_BINARY, binary, FileSearchBinary::Detect);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileSearchRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 FileSearchRequestBuilder {
@@ -12744,6 +12944,7 @@ pub mod zanshin {
                 ds.field("pattern", &self.pattern());
                 ds.field("paths", &self.paths());
                 ds.field("name_only", &self.name_only());
+                ds.field("binary", &self.binary());
                 ds.finish()
             }
         }
@@ -33239,7 +33440,9 @@ pub mod zanshin {
         /// when has_conflict_side == true (presence pair, same rule as ShowRequest.limit: flatc
         /// 25.12.19 rejects optional scalars for Dart); it is the 0-based side of a conflicted
         /// path, whose line numbers restart at each side — there is no meaningful unified numbering
-        /// across sides (the CLI's own reasoning at `search.rs:146-147`).
+        /// across sides (the CLI's own reasoning at `search.rs:189-190` @ v0.47.0). `binary` = the CLI's
+        /// "Binary file matches: <path>" (`FileSearchBinary.Detect`): path only, `line_number` 0, no
+        /// `content`, no side.
         pub struct SearchMatch<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -33260,6 +33463,7 @@ pub mod zanshin {
             pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
             pub const VT_CONFLICT_SIDE: ::flatbuffers::VOffsetT = 10;
             pub const VT_HAS_CONFLICT_SIDE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_BINARY: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -33279,6 +33483,7 @@ pub mod zanshin {
                 if let Some(x) = args.path {
                     builder.add_path(x);
                 }
+                builder.add_binary(args.binary);
                 builder.add_has_conflict_side(args.has_conflict_side);
                 builder.finish()
             }
@@ -33331,6 +33536,13 @@ pub mod zanshin {
                         .unwrap()
                 }
             }
+            #[inline]
+            pub fn binary(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(SearchMatch::VT_BINARY, Some(false)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SearchMatch<'_> {
@@ -33349,6 +33561,7 @@ pub mod zanshin {
                     )?
                     .visit_field::<u32>("conflict_side", Self::VT_CONFLICT_SIDE, false)?
                     .visit_field::<bool>("has_conflict_side", Self::VT_HAS_CONFLICT_SIDE, false)?
+                    .visit_field::<bool>("binary", Self::VT_BINARY, false)?
                     .finish();
                 Ok(())
             }
@@ -33359,6 +33572,7 @@ pub mod zanshin {
             pub content: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
             pub conflict_side: u32,
             pub has_conflict_side: bool,
+            pub binary: bool,
         }
         impl<'a> Default for SearchMatchArgs<'a> {
             #[inline]
@@ -33369,6 +33583,7 @@ pub mod zanshin {
                     content: None,
                     conflict_side: 0,
                     has_conflict_side: false,
+                    binary: false,
                 }
             }
         }
@@ -33403,6 +33618,10 @@ pub mod zanshin {
                     .push_slot::<bool>(SearchMatch::VT_HAS_CONFLICT_SIDE, has_conflict_side, false);
             }
             #[inline]
+            pub fn add_binary(&mut self, binary: bool) {
+                self.fbb_.push_slot::<bool>(SearchMatch::VT_BINARY, binary, false);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SearchMatchBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 SearchMatchBuilder {
@@ -33425,6 +33644,7 @@ pub mod zanshin {
                 ds.field("content", &self.content());
                 ds.field("conflict_side", &self.conflict_side());
                 ds.field("has_conflict_side", &self.has_conflict_side());
+                ds.field("binary", &self.binary());
                 ds.finish()
             }
         }
@@ -38778,7 +38998,7 @@ pub mod zanshin {
         pub enum MissingRepoConfigOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// A repo config directory whose recorded repo no longer exists.
+        /// A repo or workspace config directory whose recorded path no longer exists.
         pub struct MissingRepoConfig<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -38796,6 +39016,7 @@ pub mod zanshin {
         impl<'a> MissingRepoConfig<'a> {
             pub const VT_CONFIG_DIR: ::flatbuffers::VOffsetT = 4;
             pub const VT_REPO_PATH: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -38813,6 +39034,7 @@ pub mod zanshin {
                 if let Some(x) = args.config_dir {
                     builder.add_config_dir(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
@@ -38836,6 +39058,17 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(MissingRepoConfig::VT_REPO_PATH, None)
                 }
             }
+            #[inline]
+            pub fn kind(&self) -> ConfigGcKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ConfigGcKind>(MissingRepoConfig::VT_KIND, Some(ConfigGcKind::Repo))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for MissingRepoConfig<'_> {
@@ -38847,6 +39080,7 @@ pub mod zanshin {
                 v.visit_table(pos)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("config_dir", Self::VT_CONFIG_DIR, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("repo_path", Self::VT_REPO_PATH, false)?
+                    .visit_field::<ConfigGcKind>("kind", Self::VT_KIND, false)?
                     .finish();
                 Ok(())
             }
@@ -38854,6 +39088,7 @@ pub mod zanshin {
         pub struct MissingRepoConfigArgs<'a> {
             pub config_dir: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub repo_path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub kind: ConfigGcKind,
         }
         impl<'a> Default for MissingRepoConfigArgs<'a> {
             #[inline]
@@ -38861,6 +39096,7 @@ pub mod zanshin {
                 MissingRepoConfigArgs {
                     config_dir: None,
                     repo_path: None,
+                    kind: ConfigGcKind::Repo,
                 }
             }
         }
@@ -38879,6 +39115,11 @@ pub mod zanshin {
             pub fn add_repo_path(&mut self, repo_path: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(MissingRepoConfig::VT_REPO_PATH, repo_path);
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: ConfigGcKind) {
+                self.fbb_
+                    .push_slot::<ConfigGcKind>(MissingRepoConfig::VT_KIND, kind, ConfigGcKind::Repo);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MissingRepoConfigBuilder<'a, 'b, A> {
@@ -38900,13 +39141,15 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("MissingRepoConfig");
                 ds.field("config_dir", &self.config_dir());
                 ds.field("repo_path", &self.repo_path());
+                ds.field("kind", &self.kind());
                 ds.finish()
             }
         }
         pub enum ConfigGcListOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// `zanshin_config_gc_list`'s answer, sorted by directory.
+        /// `zanshin_config_gc_list`'s answer: the repo configs, then the workspace configs, each sorted
+        /// by directory.
         pub struct ConfigGcList<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -39152,7 +39395,7 @@ pub mod zanshin {
         #[derive(Copy, Clone, PartialEq)]
 
         /// `zanshin_config_gc_delete`'s answer: `deleted` in the sorted missing order; every other
-        /// requested directory (not a missing repo config, or its removal failed) in `failed`.
+        /// requested directory (not a missing repo or workspace config, or its removal failed) in `failed`.
         pub struct ConfigGcResult<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

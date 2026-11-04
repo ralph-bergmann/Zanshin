@@ -121,13 +121,13 @@ pub enum WarningKind {
     BookmarkGitTrackingUntrack,
     /// A path `absorb` could not split (`absorb.rs:156-159`).
     AbsorbPathSkipped,
-    /// A path whose content could not be read (`file/show.rs:163-169`, `file/search.rs:109-115`).
+    /// A path whose content could not be read (`file/show.rs:163-169`, `file/search.rs:127-133` @ v0.47.0).
     PathAccessDenied,
     /// A path that exists but is not a file (`file/show.rs:190-196`).
     PathNotAFile,
     /// `user.name`/`user.email` was set but `@`'s author stays the old one (`config/set.rs:110-117`).
     ConfigWorkingCopyAuthor,
-    /// A missing repo config directory could not be deleted (`config/gc.rs:80-84`).
+    /// A missing repo or workspace config directory could not be deleted (`config/gc.rs:106-112` @ v0.47.0).
     ConfigGcDeleteFailed,
     /// `config list` found nothing to list (`config/list.rs:116-123`).
     ConfigNothingListed,
@@ -212,10 +212,6 @@ pub enum WarningKind {
     PushRefsMovedOnRemote,
     /// Updates the remote rejected (`git_util.rs:528-547`).
     PushRemoteRejected,
-    /// Pushed bookmarks whose remote-tracking ref could not be updated locally
-    /// (`git_util.rs:548-561` @ v0.46.0). Never emitted since jj-lib 0.47, whose push no longer
-    /// exports pushed refs to Git; kept so the FFI warning codes stay put.
-    PushBookmarksNotUpdatedLocally,
     /// Sign-on-push met commits to sign that are immutable and left them unsigned
     /// (`push.rs:940-956`).
     PushSigningSkippedImmutable,

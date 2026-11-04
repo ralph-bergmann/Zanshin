@@ -8,6 +8,7 @@ import '../ffi/config.dart' show ConfigScope, ConfigTarget;
 import '../ffi/diff.dart' show DiffWhitespace;
 import '../ffi/drop_actions.dart' show DropLocation, DropSource;
 import '../ffi/fetch.dart' show FetchRefs, FetchRemotes;
+import '../ffi/file.dart' show FileSearchBinary;
 import '../ffi/movement.dart' show MovementDirection;
 import '../ffi/op_log.dart' show RestoreWhat;
 import '../ffi/rebase.dart' show ArrangeAction;
@@ -989,6 +990,7 @@ final class FileSearchCommand extends WorkerCommand implements HandleScopedComma
     required this.pattern,
     required this.paths,
     required this.nameOnly,
+    required this.binary,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -1006,6 +1008,9 @@ final class FileSearchCommand extends WorkerCommand implements HandleScopedComma
 
   /// Stop a file's scan at its first match.
   final bool nameOnly;
+
+  /// The CLI's `--binary-as-text` / `--skip-binary`.
+  final FileSearchBinary binary;
 }
 
 /// Import the backing git repo's refs into jj's view, in the repo identified by

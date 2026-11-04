@@ -228,6 +228,7 @@ void main() {
               content: utf8.encode('needle two\n'),
               conflictSide: 1,
               hasConflictSide: true,
+              binary: true,
             ),
           ],
         ),
@@ -237,6 +238,7 @@ void main() {
       final List<SearchMatch> matches = search.matches;
 
       expect(matches, hasLength(2));
+      expect((matches[0].binary, matches[1].binary), (false, true));
       expect(matches[0].conflictSide, isNull, reason: 'null-for-absence, not the 0 sentinel');
       expect(matches[0].lineNumber, 2);
       expect(utf8.decode(matches[0].content), 'needle\n');

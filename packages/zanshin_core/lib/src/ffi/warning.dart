@@ -149,7 +149,7 @@ abstract final class ZanshinWarningCode {
   /// `user.name`/`user.email` was set but `@`'s author stays the old one.
   static const configWorkingCopyAuthor = 'jj.config_working_copy_author';
 
-  /// A missing repo config directory could not be deleted.
+  /// A missing repo or workspace config directory could not be deleted.
   static const configGcDeleteFailed = 'jj.config_gc_delete_failed';
 
   /// `config list` found nothing to list.
@@ -241,9 +241,6 @@ abstract final class ZanshinWarningCode {
 
   /// `gitPush`: the remote rejected updates, e.g. in a hook (Story 9.20).
   static const pushRemoteRejected = 'jj.push_remote_rejected';
-
-  /// `gitPush` pushed bookmarks whose remote-tracking refs could not be updated locally (Story 9.20).
-  static const pushBookmarksNotUpdatedLocally = 'jj.push_bookmarks_not_updated_locally';
 
   /// `git.sign-on-push` left immutable commits unsigned (Story 9.20).
   static const pushSigningSkippedImmutable = 'jj.push_signing_skipped_immutable';
@@ -387,7 +384,6 @@ abstract final class ZanshinWarningCode {
     pushCommitSkipped,
     pushRefsMovedOnRemote,
     pushRemoteRejected,
-    pushBookmarksNotUpdatedLocally,
     pushSigningSkippedImmutable,
     cloneBranchesUnmatched,
     templateDiagnostic,

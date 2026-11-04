@@ -97,9 +97,9 @@ pub use commit_views::{CommitViewError, EvologEntry, InterdiffView, RevisionRef,
 pub use config::{ConfigError, LogDefaults};
 pub use config_cmd::{
     config_file_read, config_file_write, config_gc_delete, config_gc_list, config_get, config_list, config_path,
-    config_set, config_unset, ConfigCmdError, ConfigEntry, ConfigFileText, ConfigGcFailure, ConfigGcResult,
-    ConfigListQuery, ConfigOutcome, ConfigScope, ConfigSetOutcome, ConfigSetResult, ConfigTarget, ConfigValueSource,
-    MissingRepoConfig, WorkingCopyAuthor,
+    config_set, config_unset, ConfigCmdError, ConfigEntry, ConfigFileText, ConfigGcFailure, ConfigGcKind,
+    ConfigGcResult, ConfigListQuery, ConfigOutcome, ConfigScope, ConfigSetOutcome, ConfigSetResult, ConfigTarget,
+    ConfigValueSource, MissingRepoConfig, WorkingCopyAuthor,
 };
 pub use convert::{convert_colocated, convert_import};
 pub use creation::{CloneOptions, InitOptions, ObjectHash};
@@ -110,7 +110,9 @@ pub use drop_actions::{
 };
 pub use duplicate::DuplicateOptions;
 pub use environment::adopt_environment;
-pub use file::{AnnotationLine, FileContents, FileEntry, FileError, FileSearch, FileType, SearchMatch, ShownFile};
+pub use file::{
+    AnnotationLine, BinaryMode, FileContents, FileEntry, FileError, FileSearch, FileType, SearchMatch, ShownFile,
+};
 pub use fix::{FixOptions, FixResult, FixToolStderr};
 pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};

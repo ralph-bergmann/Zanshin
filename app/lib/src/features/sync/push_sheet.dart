@@ -558,7 +558,6 @@ class _PushSheetState extends State<PushSheet> {
         PushRefStatus.pushed => (strings.pushSheetPushed, _Tone.add),
         PushRefStatus.leaseRejected => (strings.pushSheetMovedOn(remote.name), _Tone.warn),
         PushRefStatus.remoteRejected => (strings.pushSheetRejected, _Tone.error),
-        PushRefStatus.unexported => (strings.pushSheetUnexported, _Tone.warn),
         PushRefStatus.notReached => (strings.pushSheetNotReached, _Tone.none),
       };
       lines.add(_RemoteLine(remote: multi ? remote.name : null, ref: ref, pill: pill));

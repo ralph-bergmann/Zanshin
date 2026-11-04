@@ -1040,6 +1040,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorSquash => 'Squash into parent';
 
   @override
+  String get inspectorDescriptionChangedMeanwhile => 'The description changed meanwhile.';
+
+  @override
   String get inspectorSquashConfirm => 'Squash';
 
   @override
@@ -2524,9 +2527,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pushSheetRejected => 'rejected';
-
-  @override
-  String get pushSheetUnexported => 'couldn’t be updated locally';
 
   @override
   String get pushSheetNotReached => 'not pushed';

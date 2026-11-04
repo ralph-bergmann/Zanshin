@@ -485,6 +485,11 @@ fn gc_lists_and_deletes_the_config_of_a_deleted_repo() {
     let (tmp, root) = workspace(None);
     let file = config_path(Some(&root), ConfigScope::Repo).result.unwrap().remove(0);
     let dir = file.parent().unwrap().to_owned();
+    let ws_file = config_path(Some(&root), ConfigScope::Workspace)
+        .result
+        .unwrap()
+        .remove(0);
+    let ws_dir = ws_file.parent().unwrap().to_owned();
     fs::remove_dir_all(tmp.path().join("ws")).unwrap();
 
     let listed = config_gc_list();
@@ -492,13 +497,24 @@ fn gc_lists_and_deletes_the_config_of_a_deleted_repo() {
     let missing = listed.result.expect("list");
     let mine = missing.iter().find(|m| m.config_dir == dir).expect("listed");
     assert_eq!(mine.repo_path, root.join(".jj").join("repo"));
+    assert_eq!(mine.kind, zanshin_jj::ConfigGcKind::Repo);
+    let ws = missing
+        .iter()
+        .position(|m| m.config_dir == ws_dir)
+        .expect("workspace listed");
+    assert_eq!(missing[ws].kind, zanshin_jj::ConfigGcKind::Workspace);
+    assert!(
+        missing.iter().position(|m| m.config_dir == dir).unwrap() < ws,
+        "repos first"
+    );
 
-    let deleted = config_gc_delete(std::slice::from_ref(&dir));
+    let both = [dir.clone(), ws_dir.clone()];
+    let deleted = config_gc_delete(&both);
     assert!(deleted.warnings.is_empty(), "{:?}", deleted.warnings);
     let result = deleted.result.expect("delete");
-    assert_eq!(result.deleted, std::slice::from_ref(&dir));
+    assert_eq!(result.deleted, both);
     assert!(result.failed.is_empty());
-    assert!(!dir.exists());
+    assert!(!dir.exists() && !ws_dir.exists());
 }
 
 /// Story 9.9 closing run: `config gc` starts like every CLI command, so a deprecated user key

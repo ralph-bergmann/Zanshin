@@ -94,7 +94,8 @@ class InspectorViewModel extends ChangeNotifier {
   ChangeActions? _actions;
   ZanshinFfiException? _error;
   var _loading = false;
-  final _drafts = <String, InspectorDraft>{};
+  // Each draft with its base: the description shown when it was first kept.
+  final _drafts = <String, ({InspectorDraft draft, String base})>{};
   final _open = <String>{};
   var _disposed = false;
 
@@ -287,8 +288,29 @@ class InspectorViewModel extends ChangeNotifier {
   /// Whether [key]'s describe form is open.
   bool isOpen(String key) => _open.contains(key);
 
-  /// [key]'s draft, when the form was edited.
-  InspectorDraft? draftOf(String key) => _drafts[key];
+  /// [key]'s draft, when the form was edited. A draft that is stale — the selection's description changed since it
+  /// was kept, and it is empty or still the old prefill — is dropped, so the form prefills the new description.
+  InspectorDraft? draftOf(String key) {
+    final ({InspectorDraft draft, String base})? kept = _drafts[key];
+    if (kept == null) {
+      return null;
+    }
+    final InspectorDraft draft = kept.draft;
+    final bool untouched = (draft.summary.isEmpty && draft.details.isEmpty) || draft == draftFrom(kept.base);
+    if (_describedMeanwhile(key, kept.base) && untouched) {
+      _drafts.remove(key);
+      return null;
+    }
+    return draft;
+  }
+
+  /// The selection [key]'s description changed since its kept draft was first kept, and the draft differs from it.
+  bool describedMeanwhile(String key) {
+    final ({InspectorDraft draft, String base})? kept = _drafts[key];
+    return kept != null && _describedMeanwhile(key, kept.base) && !_unchanged(kept.draft);
+  }
+
+  bool _describedMeanwhile(String key, String base) => key == _key && description != null && description != base;
 
   /// Opens [key]'s describe form.
   void openForm(String key) {
@@ -304,8 +326,9 @@ class InspectorViewModel extends ChangeNotifier {
     }
   }
 
-  /// Keeps [draft] as [key]'s.
-  void updateDraft(String key, InspectorDraft draft) => _drafts[key] = draft;
+  /// Keeps [draft] as [key]'s; the first one records the description shown as its base.
+  void updateDraft(String key, InspectorDraft draft) =>
+      _drafts[key] = (draft: draft, base: _drafts[key]?.base ?? (key == _key ? description ?? '' : ''));
 
   /// The card menu's "Describe…" (10.15 calls it): selects [key] and opens its form.
   void describe(String key) {
@@ -318,7 +341,7 @@ class InspectorViewModel extends ChangeNotifier {
 
   /// [key]'s draft differs from the current description.
   bool dirty(String key) {
-    final InspectorDraft? draft = _drafts[key];
+    final InspectorDraft? draft = _drafts[key]?.draft;
     return draft != null && key == _key && !_unchanged(draft);
   }
 
@@ -634,7 +657,8 @@ class InspectorViewModel extends ChangeNotifier {
     return pick.mode ? FileSelection.modeAndHunks(path, keys) : FileSelection.hunks(path, keys);
   }
 
-  /// Runs [composerAction] through the runner: done clears the key's draft and checks; a refusal stays in
+  /// Runs [composerAction] through the runner: done clears the key's drafts (the composer's and the title's — the
+  /// change was described) and checks; a refusal stays in
   /// [composerError], the draft and checks with it.
   Future<GraphActionResult?> runComposer() async {
     final GraphAction? action = composerAction;
@@ -648,6 +672,7 @@ class InspectorViewModel extends ChangeNotifier {
     switch (result) {
       case GraphActionDone():
         _composerDrafts.remove(key);
+        _drafts.remove(key);
         if (_key == key) {
           _picked.clear();
           _partial.clear();
@@ -1687,6 +1712,11 @@ class _DescribeFormState extends State<_DescribeForm> {
                 ),
               ],
             ),
+            if (widget.squashCommand == null && widget.model.describedMeanwhile(widget.changeKey))
+              Text(
+                strings.inspectorDescriptionChangedMeanwhile,
+                style: ZsType.secondary.copyWith(fontSize: ZsType.fsSm, color: colors.textDim),
+              ),
             Row(
               spacing: 6,
               children: <Widget>[

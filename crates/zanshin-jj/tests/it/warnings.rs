@@ -125,8 +125,14 @@ fn file_show_and_file_search_warn_about_unmatched_paths_on_the_multi_path_branch
         unmatched("x, y")
     );
 
-    repo.file_search(None, "needle", &["nope".to_owned()], false)
-        .expect("search");
+    repo.file_search(
+        None,
+        "needle",
+        &["nope".to_owned()],
+        false,
+        zanshin_jj::BinaryMode::Detect,
+    )
+    .expect("search");
     assert_eq!(
         only(&repo.take_warnings(), WarningKind::PathsUnmatched).message,
         unmatched("nope")

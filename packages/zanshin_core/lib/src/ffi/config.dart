@@ -207,15 +207,27 @@ final class ConfigFileText {
   final List<ZanshinWarning> warnings;
 }
 
-/// A repo config directory whose recorded repo no longer exists.
-final class MissingRepoConfig {
-  const MissingRepoConfig({required this.configDir, required this.repoPath});
+/// Which `jj config gc` root a [MissingRepoConfig] lives under.
+enum ConfigGcKind {
+  /// `<config_dir>/jj/repos` — the CLI's "Missing repo configs".
+  repo,
 
-  /// `<config_dir>/jj/repos/<config-id>`.
+  /// `<config_dir>/jj/workspaces` — the CLI's "Missing workspace configs".
+  workspace,
+}
+
+/// A repo or workspace config directory whose recorded path no longer exists.
+final class MissingRepoConfig {
+  const MissingRepoConfig({required this.configDir, required this.repoPath, required this.kind});
+
+  /// `<config_dir>/jj/repos/<config-id>` or `<config_dir>/jj/workspaces/<config-id>`.
   final String configDir;
 
-  /// The repo path its metadata records.
+  /// The repo (or workspace) path its metadata records.
   final String repoPath;
+
+  /// Which root [configDir] lives under.
+  final ConfigGcKind kind;
 }
 
 /// A directory `configGcDelete` did not delete, and why.
@@ -465,7 +477,10 @@ WarnedList<MissingRepoConfig> decodeConfigGcListEnvelopeInternal(Uint8List bytes
   return WarnedList(
     _payload<fbs.ConfigGcList>(
           env,
-        ).missing?.map((m) => MissingRepoConfig(configDir: m.configDir ?? '', repoPath: m.repoPath ?? '')).toList() ??
+        ).missing?.map((m) {
+          final ConfigGcKind kind = m.kind == fbs.ConfigGcKind.Workspace ? ConfigGcKind.workspace : ConfigGcKind.repo;
+          return MissingRepoConfig(configDir: m.configDir ?? '', repoPath: m.repoPath ?? '', kind: kind);
+        }).toList() ??
         const [],
     decodeEnvelopeWarningsInternal(env),
   );

@@ -127,6 +127,24 @@ void main() {
       await handle.close();
     });
 
+    test('fileSearch_carries_the_binary_mode_and_decodes_a_binary_match', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      // The pre-verb snapshot (Story 9.26) records this file into `@`.
+      File('${tempDir.path}/bin.dat').writeAsBytesSync([0x78, 0x00, 0x0a, ...'needle\n'.codeUnits]);
+
+      final FileSearch detect = await handle.fileSearch(pattern: 'needle');
+      expect(detect.matches.single.path, 'bin.dat');
+      expect(detect.matches.single.binary, isTrue, reason: "the CLI's \"Binary file matches\"");
+      expect(detect.matches.single.lineNumber, 0);
+
+      final FileSearch asText = await handle.fileSearch(pattern: 'needle', binary: FileSearchBinary.asText);
+      expect((asText.matches.single.binary, asText.matches.single.lineNumber), (false, 2));
+
+      final FileSearch skip = await handle.fileSearch(pattern: 'needle', binary: FileSearchBinary.skip);
+      expect(skip.matches, isEmpty);
+      await handle.close();
+    });
+
     test('fileSearch_carries_the_pattern_through_the_request_buffer', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
 

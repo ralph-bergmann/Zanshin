@@ -14,7 +14,7 @@
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
-use zanshin_jj::{AnnotationLine, ChangeId, FileContents, FileEntry, FileError, FileSearch, FileType};
+use zanshin_jj::{AnnotationLine, BinaryMode, ChangeId, FileContents, FileEntry, FileError, FileSearch, FileType};
 
 use crate::envelope::{
     catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, missing_field,
@@ -75,6 +75,7 @@ struct FileSearchRequestOwned {
     pattern: String,
     paths: Vec<String>,
     name_only: bool,
+    binary: BinaryMode,
 }
 
 /// Parse a `FileListRequest` buffer into an owned [`RevisionAndPathsOwned`].
@@ -145,7 +146,7 @@ fn read_file_annotate_request(data: *const u8, len: usize) -> Result<FileAnnotat
 ///   `kind` is not `FileSearch`.
 /// - `jj.invalid_input` — `pattern` is ABSENT from the buffer (the CLI marks `-p/--pattern`
 ///   `required = true`); an explicitly empty string is a value and is passed through, where
-///   it is the empty regex and matches every line.
+///   it is the empty regex and matches every line. Also a `binary` value outside the enum.
 fn read_file_search_request(data: *const u8, len: usize) -> Result<FileSearchRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only.
@@ -158,6 +159,19 @@ fn read_file_search_request(data: *const u8, len: usize) -> Result<FileSearchReq
         pattern: req.pattern().ok_or_else(|| missing_field("pattern"))?.to_owned(),
         paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
         name_only: req.name_only(),
+        binary: match req.binary() {
+            fbs::FileSearchBinary::Detect => BinaryMode::Detect,
+            fbs::FileSearchBinary::AsText => BinaryMode::AsText,
+            fbs::FileSearchBinary::Skip => BinaryMode::Skip,
+            _ => {
+                return Err(FfiErrorObj {
+                    report: None,
+                    hints: Vec::new(),
+                    code: JJ_INVALID_INPUT.to_owned(),
+                    context: Some("FileSearchRequest.binary is not a known value".to_owned()),
+                })
+            }
+        },
     })
 }
 
@@ -295,6 +309,7 @@ fn file_search_to_envelope(search: &FileSearch, report: &crate::envelope::CallRe
                     content: Some(content),
                     conflict_side: m.conflict_side.unwrap_or(0),
                     has_conflict_side: m.conflict_side.is_some(),
+                    binary: m.binary,
                 },
             )
         })
@@ -538,7 +553,7 @@ pub unsafe extern "C" fn zanshin_file_search(handle: u64, data: *const u8, len: 
         let session = unsafe { session_from_handle(handle) }?;
         let search = session
             .repo
-            .file_search(req.revision, &req.pattern, &req.paths, req.name_only);
+            .file_search(req.revision, &req.pattern, &req.paths, req.name_only, req.binary);
         precondition_envelope(&mut session.repo, search, map_file_err, file_search_to_envelope)
     });
     vec_into_token(buf)
@@ -752,12 +767,14 @@ mod tests {
                     line_number: 2,
                     content: b"needle\n".to_vec(),
                     conflict_side: None,
+                    binary: false,
                 },
                 SearchMatch {
                     path: "c.txt".to_owned(),
                     line_number: 1,
                     content: b"needle two\n".to_vec(),
                     conflict_side: Some(1),
+                    binary: true,
                 },
             ],
             skipped: vec![],
@@ -781,6 +798,10 @@ mod tests {
         );
         assert!(fbs_matches.get(1).has_conflict_side());
         assert_eq!(fbs_matches.get(1).conflict_side(), 1);
+        assert_eq!(
+            (fbs_matches.get(0).binary(), fbs_matches.get(1).binary()),
+            (false, true)
+        );
         let fbs_skipped = payload
             .skipped()
             .expect("an empty skipped vector is still WRITTEN, as a present empty vector");
@@ -798,6 +819,7 @@ mod tests {
                 line_number: 1,
                 content: b"needle\n".to_vec(),
                 conflict_side: None,
+                binary: false,
             }],
             skipped: vec![SkippedPath {
                 path: "secret.txt".to_owned(),

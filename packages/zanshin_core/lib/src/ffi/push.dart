@@ -116,9 +116,6 @@ enum PushRefStatus {
 
   /// The remote refused the update (e.g. a hook).
   remoteRejected,
-
-  /// Pushed, but the local remote-tracking ref could not be updated.
-  unexported,
 }
 
 /// How a push did not fully succeed.
@@ -227,7 +224,7 @@ final class PushRef {
   /// Where the row ended.
   final PushRefStatus status;
 
-  /// The remote's reason for a rejected or unexported row.
+  /// The remote's reason for a rejected row.
   final String? statusReason;
 }
 
@@ -460,7 +457,6 @@ PushRefStatus _status(fbs.PushRefStatus status) => switch (status) {
   fbs.PushRefStatus.Pushed => PushRefStatus.pushed,
   fbs.PushRefStatus.LeaseRejected => PushRefStatus.leaseRejected,
   fbs.PushRefStatus.RemoteRejected => PushRefStatus.remoteRejected,
-  fbs.PushRefStatus.Unexported => PushRefStatus.unexported,
 };
 
 PushFailureKind _failureKind(fbs.PushFailureKind kind) => switch (kind) {

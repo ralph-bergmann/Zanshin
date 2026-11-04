@@ -251,7 +251,8 @@ fn an_omitted_revision_without_a_working_copy_commit_is_the_clis_user_error() {
         ),
         (
             "file search",
-            repo.file_search(None, "needle", &[], false).expect_err("file search"),
+            repo.file_search(None, "needle", &[], false, zanshin_jj::BinaryMode::Detect)
+                .expect_err("file search"),
         ),
     ];
     for (verb, err) in file_reads {

@@ -117,9 +117,6 @@ impl RevsetError {
 pub enum RevsetErrorKind {
     /// A syntax error.
     SyntaxError,
-    /// An operator used as a prefix operator that is none. jj-lib emits none since 0.47 (`:x` is a
-    /// plain syntax error now); kept so the FFI enum's values stay put.
-    NotPrefixOperator,
     /// An operator used as a postfix operator that is none (`x^`).
     NotPostfixOperator,
     /// An operator used as an infix operator that is none.

@@ -702,7 +702,9 @@ fn the_file_reads_see_an_on_disk_edit() {
         listed.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
         ["f.txt", "g.txt"]
     );
-    let found = repo.file_search(None, "READ", &[], false).expect("search");
+    let found = repo
+        .file_search(None, "READ", &[], false, zanshin_jj::BinaryMode::Detect)
+        .expect("search");
     assert_eq!(found.matches.len(), 1);
     let annotated = repo.file_annotate(None, "f.txt").expect("annotate");
     assert_eq!(annotated.len(), 3);

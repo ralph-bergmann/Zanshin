@@ -54,11 +54,10 @@ table FfiError {
 
 /// Which jj-lib revset failure a `RevsetErrorDetail` describes (Story 9.25): jj-lib's
 /// `RevsetParseErrorKind` variants, then its `RevsetResolutionError` variants. Member order IS
-/// the wire value — APPEND only.
+/// the wire value — APPEND only (value 1, a prefix-operator kind jj 0.47 no longer has, stays retired).
 enum RevsetErrorKind : ubyte {
   SyntaxError,
-  NotPrefixOperator,
-  NotPostfixOperator,
+  NotPostfixOperator = 2,
   NotInfixOperator,
   NoSuchFunction,
   InvalidFunctionArguments,
@@ -856,6 +855,9 @@ table FileAnnotateRequest {
   path: string;
 }
 
+/// How `zanshin_file_search` treats a binary file. Member order IS the wire value — APPEND only.
+enum FileSearchBinary : ubyte { Detect, AsText, Skip }
+
 /// Arguments of `zanshin_file_search` (Story 9.4). `revision`/`paths` as in
 /// FileListRequest.
 ///
@@ -866,13 +868,15 @@ table FileAnnotateRequest {
 /// an absence, and is the empty regex, which matches every line (`jj file search -p ""`).
 /// `name_only` stops a file's scan at its first match — it changes the WORK done, not the
 /// result shape, which is why it survives the terminal-UX cut that dropped `--line-number`
-/// (the result always carries `SearchMatch.line_number`).
+/// (the result always carries `SearchMatch.line_number`). `binary` is the CLI's
+/// `--binary-as-text` (`AsText`) / `--skip-binary` (`Skip`); absent = `Detect`, the default.
 table FileSearchRequest {
   kind: RequestKind;
   revision: string;
   pattern: string;
   paths: [string];
   name_only: bool;
+  binary: FileSearchBinary;
 }
 
 /// Arguments of `zanshin_git_remote_add` (Story 9.5) — the CLI's `jj git remote add`.
@@ -2318,8 +2322,9 @@ enum PushRefKind : ubyte { Bookmark, Tag }
 enum PushPath : ubyte { Push, Skip, Abort }
 
 /// What happened to a ref after a real push. `NotReached = 0` (the absent-field default) = a
-/// plan, a skipped ref, or a remote the push did not reach.
-enum PushRefStatus : ubyte { NotReached, Pushed, LeaseRejected, RemoteRejected, Unexported }
+/// plan, a skipped ref, or a remote the push did not reach. Value 4 (an unexported ref, which jj 0.47
+/// no longer reports) stays retired.
+enum PushRefStatus : ubyte { NotReached, Pushed, LeaseRejected, RemoteRejected }
 
 /// Why a push failed after its planning phase: a dry run's explicit `RefRefused` /
 /// `CommitRejected` (the real run's error codes), `SomeRefsFailed` (the CLI's "Failed to push
@@ -2504,13 +2509,16 @@ table FileAnnotation {
 /// when has_conflict_side == true (presence pair, same rule as ShowRequest.limit: flatc
 /// 25.12.19 rejects optional scalars for Dart); it is the 0-based side of a conflicted
 /// path, whose line numbers restart at each side — there is no meaningful unified numbering
-/// across sides (the CLI's own reasoning at `search.rs:146-147`).
+/// across sides (the CLI's own reasoning at `search.rs:189-190` @ v0.47.0). `binary` = the CLI's
+/// "Binary file matches: <path>" (`FileSearchBinary.Detect`): path only, `line_number` 0, no
+/// `content`, no side.
 table SearchMatch {
   path: string;
   line_number: uint;           // saturates at 4294967295, as conflict_side does
   content: [ubyte];            // the raw matching line, newline included
   conflict_side: uint;         // 0 / ignored when has_conflict_side == false
   has_conflict_side: bool;
+  binary: bool;
 }
 
 /// The matches of `zanshin_file_search`, in `entries_matching` (tree) order then line order,
@@ -2948,13 +2956,19 @@ table ConfigFileText {
   text: string;
 }
 
-/// A repo config directory whose recorded repo no longer exists.
+/// Which `jj config gc` root a `MissingRepoConfig` lives under: `<config_dir>/jj/repos` or
+/// `<config_dir>/jj/workspaces`. Member order IS the wire value — APPEND only.
+enum ConfigGcKind : ubyte { Repo, Workspace }
+
+/// A repo or workspace config directory whose recorded path no longer exists.
 table MissingRepoConfig {
   config_dir: string;
-  repo_path: string;
+  repo_path: string;           // the repo (or workspace) path its metadata records
+  kind: ConfigGcKind;
 }
 
-/// `zanshin_config_gc_list`'s answer, sorted by directory.
+/// `zanshin_config_gc_list`'s answer: the repo configs, then the workspace configs, each sorted
+/// by directory.
 table ConfigGcList {
   missing: [MissingRepoConfig];
 }
@@ -2966,7 +2980,7 @@ table ConfigGcFailure {
 }
 
 /// `zanshin_config_gc_delete`'s answer: `deleted` in the sorted missing order; every other
-/// requested directory (not a missing repo config, or its removal failed) in `failed`.
+/// requested directory (not a missing repo or workspace config, or its removal failed) in `failed`.
 table ConfigGcResult {
   deleted: [string];
   failed: [ConfigGcFailure];

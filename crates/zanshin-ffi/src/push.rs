@@ -91,7 +91,6 @@ fn status_of(status: Option<PushRefStatus>) -> fbs::PushRefStatus {
         Some(PushRefStatus::Pushed) => fbs::PushRefStatus::Pushed,
         Some(PushRefStatus::LeaseRejected) => fbs::PushRefStatus::LeaseRejected,
         Some(PushRefStatus::RemoteRejected) => fbs::PushRefStatus::RemoteRejected,
-        Some(PushRefStatus::Unexported) => fbs::PushRefStatus::Unexported,
     }
 }
 
@@ -378,7 +377,7 @@ mod tests {
                         message: "Won't push tag v1: commit abababababab is private".to_owned(),
                         hints: vec!["Configured git.private-commits: 'all()'".to_owned()],
                     }),
-                    status: Some(PushRefStatus::Unexported),
+                    status: Some(PushRefStatus::RemoteRejected),
                     status_reason: Some("why".to_owned()),
                 }],
                 already_matches: vec![zanshin_jj::PushRefName {
@@ -442,7 +441,7 @@ mod tests {
             (
                 fbs::PushRefKind::Tag,
                 fbs::PushPath::Skip,
-                fbs::PushRefStatus::Unexported
+                fbs::PushRefStatus::RemoteRejected
             )
         );
         assert!(row.before().is_none() && row.explicit_refusal().is_none());
