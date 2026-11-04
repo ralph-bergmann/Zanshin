@@ -9,7 +9,7 @@ an undo timeline over the operation log, bookmarks, and push/fetch.
 > **Status:** pre-1.0 and work in progress. macOS only. There are no release
 > builds yet; expect missing features and breaking changes.
 
-![Zanshin with the jj repository open: the commit graph on the left, the selected change with its description and diff on the right](docs/readme_screenshot.jpeg)
+![Zanshin with the jj repository open: the commit graph on the left, the selected change with its description and diff on the right](docs/readme_screenshot.webp)
 
 **How it fits together.** The UI is Flutter (`app/`, `packages/`). The
 repository work is Rust (`crates/`) on top of
