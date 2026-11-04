@@ -364,7 +364,10 @@ void main() {
     final BaseWindowController projects = windows.controllerOf(projectsWindowKey)!;
 
     factory.requestClose(main);
-    await tester.pump();
+    // The handler runs from a timer, not from the native callback: after an isolateLocal callback Dart runs no
+    // microtask until the next message, which an inactive app only gets on focus.
+    expect(requests, 0);
+    await tester.pump(Duration.zero);
 
     expect(requests, 1);
     expect(windows.isOpen(mainWindowKey), isTrue);
@@ -561,7 +564,7 @@ void main() {
     windows
       ..setCloseHandler(mainWindowKey, () async => asked++)
       ..requestClose(mainWindowKey);
-    await tester.pump();
+    await tester.pump(Duration.zero);
     expect(asked, 1);
     expect(windows.isOpen(mainWindowKey), isTrue);
 

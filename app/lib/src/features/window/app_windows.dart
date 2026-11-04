@@ -450,10 +450,17 @@ class AppWindows {
       controller.destroy();
       return;
     }
-    unawaited(
-      handler().catchError((Object error, StackTrace stackTrace) {
-        _log.severe('Closing the window $key failed', error, stackTrace);
-      }),
+    // WHY a timer: Flutter's macOS windowing calls the red button's delegate straight from AppKit
+    // (`FlutterWindowOwner windowShouldClose:`), outside an engine task, and the engine drains microtasks only after
+    // its own tasks — in an inactive app the next one is the focus event, so every `await` of the handler would stall
+    // until then. A timer is such a task, posted now. Upstream: https://github.com/flutter/flutter/issues/195963
+    // (drop the timer once it is fixed).
+    Timer.run(
+      () => unawaited(
+        handler().catchError((Object error, StackTrace stackTrace) {
+          _log.severe('Closing the window $key failed', error, stackTrace);
+        }),
+      ),
     );
   }
 

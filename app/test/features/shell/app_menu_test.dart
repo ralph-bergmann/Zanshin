@@ -482,7 +482,8 @@ void main() {
     rig
       ..focus(mainWindowKey)
       ..select('Close Window');
-    await tester.pump();
+    // The close handler runs from a timer (AppWindows._closeRequested).
+    await tester.pump(Duration.zero);
     expect(rig.closes, <String>[mainWindowKey]);
     expect(rig.windows.isOpen(mainWindowKey), isTrue);
 
