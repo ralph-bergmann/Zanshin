@@ -2748,3 +2748,41 @@ _After `jj git init --colocate` on this repo, the Push sheet skipped `main` with
 - **Zanshin's conversion does not report the remote bookmarks it left untracked, which the CLI's `jj git init` names in a hint.** Medium.
   - CLI `print_trackable_remote_bookmarks` (`cli/src/commands/git/init.rs:376-412` @ v0.46.0); nothing similar in `crates/zanshin-jj/src/convert.rs`.
   - **Follow-up:** Story 11.22 item 4.
+
+## Surfaced 2026-11-04 in the jj 0.46.0 → 0.47.0 pin bump (console session)
+
+_The bump ported every CLI change that needs no API change (root-merge refusal removed, `reset_head` staging area, push export/`some_pushed`, fetch expansion per remote, fetch description `", "`, `workspace add` order/attribution, capped "Did you mean" hints, builtin diff-editor tree merge, push validator counts remote tags, `workspace remove` / snapshot-config order / `export git refs` / sign-on-push op). These need a public API / FFI decision._
+
+- **`jj config gc` also collects workspace configs since 0.47.** Medium.
+  - CLI `cli/src/commands/config/gc.rs:43-112` @ v0.47.0 also scans `<config>/jj/workspaces`; error texts become "No repo configs directory found" / "No workspace configs directory found". Zanshin `crates/zanshin-jj/src/config_cmd.rs` (`gc_root`, `find_missing_repo_configs`) only knows repo configs.
+  - **Proposal:** a `kind` (repo / workspace) on `MissingRepoConfig` through FFI + Dart; or leave it (workspace configs stay until the CLI's gc runs).
+  - **Follow-up:** Story 11.23 item 1 (Ralph, 2026-11-04: like the CLI, `kind` field).
+- **`jj file search` handles binary files since 0.47.** Medium.
+  - CLI `file/search.rs:72-79,138-181` @ v0.47.0: `--binary-as-text` / `--skip-binary`; a binary match (NUL in the first 8000 bytes, or any conflict side) yields only "Binary file matches: <path>". Zanshin `crates/zanshin-jj/src/file.rs` `file_search` returns lines.
+  - **Proposal:** a tri-state `binary` mode parameter + a `binary` flag on the match, through FFI; or leave it.
+  - **Follow-up:** Story 11.23 item 2 (Ralph, 2026-11-04: tri-state + flag).
+- **Dead wire values after 0.47.** Low.
+  - `PushRefStatus::Unexported` and `WarningKind::PushBookmarksNotUpdatedLocally` (`jj.push_bookmarks_not_updated_locally`) are never produced (jj-lib's push no longer exports to Git); `RevsetErrorKind::NotPrefixOperator` never (jj dropped `:x`). Kept so FlatBuffers enum values stay put; the push sheet / l10n still handle them.
+  - **Proposal:** remove them end to end (schema, Rust, Dart, l10n) in a cleanup, or keep them as deprecated.
+  - **Follow-up:** Story 11.23 item 3 (Ralph, 2026-11-04: remove end to end).
+- **`zanshin_git_remote_changes` no longer refuses a filter that cannot become a refspec.** Low.
+  - jj-lib 0.47 made `expand_fetch_refspecs` private (only `GitFetch::fetch` expands); the poll now just matches, the next fetch refuses. Porting the ~80-line private expansion check was not worth it for a non-CLI poll.
+  - **Proposal:** leave it.
+  - **Follow-up:** none — Ralph, 2026-11-04: leave it. Record.
+- **`resolve`'s "too many sides" hint changed and `:editor` resolves any number of sides (0.47).** Low.
+  - `merge_tools/mod.rs`, `command_error.rs:625-629` @ v0.47.0; Zanshin's `ConflictNotResolvable` carries no hint (predates 0.47).
+  - **Proposal:** decide with the resolve UI whether `ResolveTool::Files` should lift the two-sides limit like `:editor`.
+- **Rust 1.99 lint `assert_is_empty` allowed workspace-wide** (`Cargo.toml` `[workspace.lints.clippy]`) — its fix for ~270 test asserts is `assert_eq!(x, [] as [T; 0])`. Revert if preferred.
+- **`spikes/graph-layout-ab/rust-inputs` not rebuilt** (own `Cargo.lock`, path deps on zanshin-jj, still `chrono`); outside the gate.
+
+## Surfaced 2026-11-04 in Ralph's push and inspector tries (console session)
+
+- **The Push sheet's refusal seems to jump rows when a row is ticked.** Medium.
+  - In "As jj git push" a new local bookmark shows the bare push's skip ("Refusing to create new remote bookmark …") and a bookmark with a non-tracking remote shows nothing; ticking the first turns the mode custom and the second suddenly shows its `-b` refusal. `app/lib/src/features/sync/push_sheet.dart:364` shows `explicitRefusal` only in the custom mode.
+  - **Follow-up:** Story 11.22 item 5.
+- **The Push sheet's action texts name commits by commit id only ("add to 2d0dbb65bad8").** Low.
+  - Ralph, 2026-11-04: change id as in the inspector, commit id next to it.
+  - **Follow-up:** Story 11.22 item 6.
+- **The inspector's title field opens EMPTY on a change described through the composer after an abandoned title edit.** Medium.
+  - Reproduced by Ralph: type+delete in an undescribed `@`'s title, Esc, commit with a message through the composer, reopen the title. `graph_inspector.dart:1014` prefers `_drafts[key]` over the description; drafts survive cancel (`:300`) and the composer clears only `_composerDrafts` (`:650`). A project reload fixes it.
+  - **Follow-up:** Story 11.23 item 4.
