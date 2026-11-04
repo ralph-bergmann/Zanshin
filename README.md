@@ -1,8 +1,36 @@
 # Zanshin
 
-Zanshin is a macOS-native Flutter GUI for
-the [Jujutsu (jj)](https://www.jj-vcs.dev/latest/) VCS, with a Rust backend
-exposed via Dart Hooks + ffigen-generated FFI. macOS-only. Pre-1.0; WIP.
+Zanshin is a macOS desktop client for the
+[Jujutsu (jj)](https://www.jj-vcs.dev/latest/) version control system. It is
+built around jj's own model — changes, the operation log, bookmarks — rather
+than being a Git GUI with jj added on: a commit graph you work in directly,
+an undo timeline over the operation log, bookmarks, and push/fetch.
+
+> **Status:** pre-1.0 and work in progress. macOS only. There are no release
+> builds yet; expect missing features and breaking changes.
+
+![Zanshin with the jj repository open: the commit graph on the left, the selected change with its description and diff on the right](docs/readme_screenshot.jpeg)
+
+**How it fits together.** The UI is Flutter (`app/`, `packages/`). The
+repository work is Rust (`crates/`) on top of
+[`jj-lib`](https://crates.io/crates/jj-lib), loaded into the app as a native
+library through a Dart build hook; data crosses the boundary as FlatBuffers
+([ADR-0001](docs/adr/0001-ffi-data-transport-flatbuffers.md)). Zanshin
+replicates the jj CLI's observable behaviour at the pinned version, and
+`crates/zanshin-parity` checks that against the stock CLI.
+
+| Path                                                        | What it is                                                                                             |
+|-------------------------------------------------------------|--------------------------------------------------------------------------------------------------------|
+| `app/`                                                      | the Flutter macOS app (features under `app/lib/src/features/`)                                         |
+| `packages/zanshin_core`                                     | the pure-Dart bridge to the Rust library (FFI, worker isolate)                                         |
+| `packages/zanshin_ui`, `zanshin_shell*`, `zanshin_settings` | UI components, window shell, settings                                                                  |
+| `crates/zanshin-jj`                                         | jj operations on `jj-lib` (open, log, rebase, squash, push, …)                                         |
+| `crates/zanshin-ffi`                                        | the C ABI the app loads (`cdylib`)                                                                     |
+| `crates/zanshin-parity`                                     | parity oracle: runs the stock jj CLI and compares                                                      |
+| `crates/zanshin-mcp`                                        | an MCP server over the same operations (experimental)                                                  |
+| `docs/`                                                     | ADRs, the FFI ABI, graph layout, coverage, setup                                                       |
+| `spikes/`                                                   | throwaway experiments; `graph-layout-ab` still generates the graph recordings                          |
+| `_bmad-output/`                                             | planning artifacts and the design system (see [How this project is built](#how-this-project-is-built)) |
 
 ## Toolchain
 
@@ -18,23 +46,18 @@ overrides.**
 
 **Why these versions:**
 
-- **Rust `1.97.1`** — pinned exactly to make CI and developer machines
-  byte-equivalent
-  in compiler output. Bumps are explicit PRs with a `# WHY:` rationale; the
-  release-phase
-  reproducibility CI (FR-BO-8) re-validates artefacts on every bump.
-- **Flutter `main` channel** — the Flutter UI work (Ralph's separate scope, not
-  in this
-  repo) targets multi-window APIs that are not in any stable channel release.
-  Stable
-  pins are not viable until multi-window support ships on a stable Flutter.
-  Revisit then.
+- **Rust `1.97.1`** — pinned exactly so every machine produces the same
+  compiler output. Bumps are explicit changes with a `# WHY:` rationale.
+- **Flutter `main` channel** — the app creates its windows from Dart with
+  Flutter's multi-window API, which is not in any stable channel release yet.
+  Stable pins are not viable until multi-window support ships on a stable
+  Flutter. Revisit then.
 - **Dart `main` channel** — bundled with Flutter `main`; tracks in lockstep. No
   independent Dart pin.
 - **`flatc 25.12.19`** — the FlatBuffers compiler that generates the Rust and
   Dart FFI-wire accessors (ADR-0001). It must stay on the same `25.x` line as
-  the `flatbuffers` crate (`=25.12.19`) and the `flat_buffers` Dart package
-  (`^25.9.23`); move all three together. See `docs/development-setup.md`.
+  the `flatbuffers` crate (`=25.12.19`) and the `flat_buffers` Dart package (`^25.9.23`); move all three together. See
+  `docs/development-setup.md`.
 
 **One-time install (per machine):**
 
@@ -54,7 +77,7 @@ flutter upgrade
 # builds but comes up with no window. Machine-global, compiled into the app.
 flutter config --enable-windowing
 
-# cargo-make (used by Story 1.4+ build/test entry points):
+# cargo-make (the build/test entry point):
 cargo install cargo-make
 
 # FlatBuffers compiler — generates the Rust + Dart FFI-wire accessors (ADR-0001).
@@ -69,12 +92,8 @@ dart pub global activate ffigen
 
 See `docs/development-setup.md` for the full prerequisites and version-pin table.
 
-**CI note:** GitHub Actions workflow (Story 1.9) reads `rust-toolchain.toml` via
-`dtolnay/rust-toolchain@master` (or equivalent action that respects the file) —
-no hardcoded Rust version in YAML. Flutter setup in CI uses
-`subosito/flutter-action@v2` with `channel: 'master'` (the action's name for
-Flutter's `main` channel) and the exact `flutter-version` from
-`app/pubspec.yaml`.
+**No CI.** There is no hosted CI; `cargo make test` (below) is the quality gate
+and runs locally.
 
 ## Build & development
 
@@ -104,10 +123,11 @@ cargo make run
 cargo make run-release
 ```
 
-### WIP quality gate: cargo test + clippy + fmt + flutter test + dart analyze + dart format + cargo deny + cargo hygiene
+### quality gate for what changed since its last green run (`test-full` runs every step)
 
 ```sh
 cargo make test
+cargo make test-full
 ```
 
 ### regenerate FlatBuffers accessors (flatc) + FFI C header (cbindgen) + Dart bindings (ffigen)
@@ -132,13 +152,13 @@ cargo make clean
 
 ### How the build chains together
 
-`app/hook/build.dart` is a Dart Hook that uses `native_toolchain_rust` to build
-`crates/zanshin-ffi` (the cdylib) automatically whenever Flutter touches the app
+`packages/zanshin_core/hook/build.dart` is a Dart Hook that uses
+`native_toolchain_rust` to build `crates/zanshin-ffi` (the cdylib)
+automatically whenever Flutter touches the app
 — `flutter run`, `flutter build macos`, `flutter test` all trigger it.
 
 **You don't need to run `cargo build` manually before `flutter run`.** The hook
-handles it. The Rust workspace gets compiled in the same mode Flutter is in
-(debug → debug, release → release).
+handles it. The Rust workspace gets compiled in the same mode Flutter is in (debug → debug, release → release).
 
 `cargo make build` exists for the release path because it _also_ builds the
 non-FFI Rust artefacts (e.g. the `zanshin-mcp` binary), which the Flutter hook
@@ -184,10 +204,15 @@ unsigned bundle is fine; macOS will warn on first launch.
 cargo make test
 ```
 
-Runs the WIP-minimal gate: `cargo test --workspace`, `cargo clippy -D warnings`,
-`cargo fmt --check`, `flutter test`, `dart analyze`, `dart format --check`,
-`cargo deny check advisories bans`, and a `Cargo.toml` hygiene check (every
-`default-features = false` needs an inline `# WHY:`). Same checks as CI.
+Runs the gate: `cargo clippy` (pedantic, `-D warnings`), `cargo fmt --check`,
+Rust doctests, `flutter test` / `dart analyze` / `dart format --check` per Dart
+package, `cargo deny check advisories bans`, a `Cargo.toml` hygiene check (every
+`default-features = false` needs an inline `# WHY:`), and the coverage ratchet,
+which runs the Rust and `zanshin_core` test suites and fails if per-file Rust
+line coverage drops ([docs/coverage.md](docs/coverage.md)).
+
+It runs only the steps the changes since its last green run need (`cargo xtask gate-plan`); `cargo make test-full` runs
+every step.
 
 ### The FFI wire format (ADR-0001)
 
@@ -213,25 +238,26 @@ rationale: [ADR-0001](docs/adr/0001-ffi-data-transport-flatbuffers.md).
 1. Edit the Rust source.
 2. Regenerate: `cargo make codegen`.
 3. Commit `crates/zanshin-ffi/include/zanshin_ffi.h` _and_
-   `app/lib/src/ffi/bindings.dart` in the same PR as the Rust change.
+   `packages/zanshin_core/lib/src/ffi/bindings.dart` in the same change as the
+   Rust edit.
 4. Verify nothing drifted: `cargo make verify-codegen`.
 
 ### How do I change a wire schema (`.fbs`)?
 
 1. Edit the `.fbs` in `schemas/`. (WIP: breaking changes are in-place edits — no
    `_v2` suffix, no in-wire `schema_version` field; update all callers in the
-   same PR.)
+   same change.)
 2. Regenerate both sides: `cargo make codegen`. This runs `flatc --rust` +
    `flatc --dart` (normalising the output with `rustfmt` / `dart format`), then
    `cbindgen` + `ffigen`.
-3. Commit the schema diff **and** the regenerated accessors
-   (`crates/zanshin-ffi/src/*_generated.rs`,
-   `app/lib/src/ffi/*.ffi_generated.dart`) in the same PR. The typed accessors
-   turn a wrong-shape payload into a compile error, so update every caller.
+3. Commit the schema diff **and** the regenerated accessors (`crates/zanshin-ffi/src/*_generated.rs`,
+   `packages/zanshin_core/lib/src/ffi/*.ffi_generated.dart`) in the same
+   change. The typed accessors turn a wrong-shape payload into a compile error,
+   so update every caller.
 
-Generated code is **committed** and the build never auto-regenerates it. The CI
-drift-gate (`verify-codegen`) is deferred while WIP — review enforces the
-discipline rule.
+Generated code is **committed** and the build never auto-regenerates it.
+`cargo make verify-codegen` checks for drift; it is a manual check, not part of
+the gate.
 
 ### How do I reset / start clean?
 
@@ -248,12 +274,11 @@ the files manually and run `cargo make codegen`.
 
 `cargo make test` runs `cargo deny --workspace check advisories bans` as
 the security backstop. The full license-gate (`cargo deny check licenses`)
-and Dart-side `pana` integration are deferred to the release phase
-(see `_bmad-output/planning-artifacts/prd.md` § 5.4).
+and Dart-side `pana` integration are deferred to the release phase (see `_bmad-output/planning-artifacts/prd.md` § 5.4).
 
 ### First-run advisory database download
 
-On a fresh machine (and on CI cache misses), the first invocation
+On a fresh machine, the first invocation
 fetches `https://github.com/rustsec/advisory-db` into
 `~/.cargo/advisory-dbs/`. This is a one-time ~30–60s download.
 Subsequent runs are local-only and finish in under 5s on this workspace.
@@ -283,7 +308,36 @@ comment explaining its choice.
 ## Project documentation
 
 - `docs/development-setup.md` — full toolchain prerequisites (incl. `flatc`) + install commands
-- `docs/adr/0001-ffi-data-transport-flatbuffers.md` — the FFI transport decision (FlatBuffers)
+- `docs/adr/` — architecture decisions: FFI transport (FlatBuffers), repository state model, jj operation API
+- `docs/ffi-abi.md` — the FFI contract between `zanshin_core` and the Rust library
+- `docs/graph-layout.md` — the commit-graph layout engine
+- `docs/coverage.md` — the coverage ratchet
 - `schemas/README.md` — FlatBuffers wire-contract schemas + regeneration discipline
-- `_bmad-output/planning-artifacts/` — PRD + architecture + epics
-- `_bmad-output/project-context.md` — the AI-agent rule set
+- `_bmad-output/planning-artifacts/` — PRD, architecture, epics, research
+- `_bmad-output/project-context.md` — the implementation rules (tech stack, FFI, errors, testing)
+
+## How this project is built
+
+Zanshin is developed by one person with AI coding agents:
+[Claude Code](https://claude.com/claude-code) writes most of the code, with
+the [BMad Method](https://docs.bmad-method.org/) for planning and story-sized
+work. The planning is kept in the repository on purpose, so the reasoning
+behind the code stays readable:
+
+- `_bmad-output/planning-artifacts/` — PRD, architecture, epics and research.
+- `_bmad-output/implementation-artifacts/` — one spec per story or run, the
+  sprint status, deferred work, the design system (`design_system/`) and the
+  clickable design prototype (`design/`).
+- `CLAUDE.md`, `.claude/` — agent instructions, skills and hooks for Claude Code.
+- `docs/superpowers/` — design notes and plans from earlier agent sessions.
+
+**None of this is required to build, run or change Zanshin.** The code, the
+tests and `cargo make test` work without BMad or any AI tool. If you use a
+coding agent, point it at `_bmad-output/project-context.md` — it holds the
+rules the code follows.
+
+## License
+
+MIT ([LICENSE](LICENSE)). `crates/zanshin-jj` also contains code ported from
+the jj CLI under Apache-2.0 ([LICENSE-APACHE](LICENSE-APACHE)). The bundled
+fonts are under the SIL Open Font License (see `packages/zanshin_ui/assets/fonts/`).
