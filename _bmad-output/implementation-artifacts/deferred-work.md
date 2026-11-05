@@ -2792,7 +2792,7 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 - **A new remote tag refused as "Refusing to create new remote tag X@R" gets no fix-it, though jj's hint names `jj tag track X@R`.** Low.
   - Zanshin has no `jj tag track` verb (only `RepoHandle.bookmarkTrack`); `_fixIt` in `app/lib/src/features/sync/push_sheet.dart` offers Track for bookmarks only.
   - **Follow-up:** a tag track/untrack verb (CLI `jj tag track` @ v0.47.0) through FFI, then a Track chip for tag rows.
-- **The Marionette check of the Push sheet's help lines, fix-its and the post-conversion toast against the DS cards was not done in the unattended run.** Medium.
+- ~~**The Marionette check of the Push sheet's help lines, fix-its and the post-conversion toast against the DS cards was not done in the unattended run.**~~ — RESOLVED 2026-11-05 (console session): checked in the catalogue against sync #19 (the DS bundle is not rebuilt yet); the toast got its own use case (Sync › Opened toast, via the extracted `openReportToast`) and the Git-switcher demo's `fresh` row its change id. Medium.
   - Only widget tests cover it; `app/widgetbook/folders/sync.dart` has the "Git switcher" use case, the toast is in `app/lib/src/features/home/home_page.dart`.
   - **Follow-up:** a Marionette pass in the catalogue and on a freshly colocated Git repo with a remote, compared with DS `components/push` and sync #19.
 

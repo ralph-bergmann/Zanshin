@@ -5,7 +5,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:inject_flutter/inject_flutter.dart';
-import 'package:zanshin_core/zanshin_core.dart' show RepoKind, ZanshinFfiException, ZanshinWarning, ZanshinWarningCode;
+import 'package:zanshin_core/zanshin_core.dart' show RepoKind, ZanshinFfiException;
 import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry, SettingsStore;
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -14,7 +14,6 @@ import '../../l10n/strings.dart';
 import '../bookmarks/bookmark_list_model.dart';
 import '../bookmarks/bookmark_list_view.dart';
 import '../bootstrap/boot_window_host.dart' show mainWindowTitle;
-import '../graph/graph_ports.dart' show jjCommand;
 import '../graph/graph_search_controller.dart' show GraphSearchController;
 import '../graph/graph_search_field.dart' show GraphSearchShortcuts;
 import '../projects/project_capsule.dart';
@@ -32,6 +31,7 @@ import '../undo_timeline/operation_changes.dart';
 import '../undo_timeline/undo_timeline_model.dart';
 import '../undo_timeline/undo_timeline_view.dart';
 import '../window/app_window_actions.dart';
+import 'open_report_toast.dart';
 import 'project_graph_host.dart';
 
 part 'home_page.factory.dart';
@@ -199,69 +199,20 @@ class _OpenReportToastState extends State<_OpenReportToast> {
       return;
     }
     final ProjectOpenReport report = widget.session.takeOpenReport()!;
-    final List<String> untracked = report.trackableRemoteBookmarks;
-    // Story 11.22: the CLI's post-`jj git init` hint, and Track / Track all for its one command — in the repository the
-    // report is about, even after a later switch.
-    final String track = jjCommand(<String>['bookmark', 'track', ...untracked]); // l10n-ignore: jj command
+    // Story 11.22: Track acts in the repository the report is about, even after a later switch.
     final ProjectRepo? repo = widget.session.repo;
-    // The CLI prints the hint after the conversion's other warnings and before the linked-worktree one (`init.rs:285`).
-    bool afterHint(ZanshinWarning w) => w.code == ZanshinWarningCode.colocatedInGitWorktree;
     widget.toasts.show(
       ShellToastEntry(
-        tone: untracked.isEmpty ? ZsToastTone.success : ZsToastTone.warn,
-        build: (context, dismiss) {
-          final AppLocalizations strings = context.l10n;
-          final ZsColors colors = ZsColors.of(context);
-          final InlineSpan opened = toastWithWarnings(
-            colors,
-            toastSpan(strings.toastOpened(toastSlot(0)), <InlineSpan>[TextSpan(text: report.name)]),
-            report.warnings,
-          );
-          return ZsToast(
-            tone: untracked.isEmpty ? ZsToastTone.success : ZsToastTone.warn,
-            message: untracked.isEmpty
-                ? opened
-                : TextSpan(
-                    children: <InlineSpan>[
-                      opened,
-                      const TextSpan(text: ' · '), // l10n-ignore: separator
-                      if (untracked.length == 1)
-                        toastSpan(strings.toastOpenedUntrackedOne(toastSlot(0)), <InlineSpan>[
-                          toastMono(colors, untracked.single),
-                        ])
-                      else
-                        TextSpan(text: strings.toastOpenedUntrackedMany(untracked.length)),
-                    ],
-                  ),
-            tooltip: <String>[
-              for (final ZanshinWarning w in report.warnings)
-                if (!afterHint(w)) w.message,
-              if (untracked.isNotEmpty) ...<String>[
-                "Hint: The following remote bookmarks aren't associated with the existing local bookmarks:", // l10n-ignore: jj's text
-                for (final String symbol in untracked) '  $symbol',
-                'Hint: Run the following command to keep local bookmarks updated on future pulls:', // l10n-ignore: jj's text
-                '  $track',
-                strings.toastUntrackedHelp,
-              ],
-              for (final ZanshinWarning w in report.warnings)
-                if (afterHint(w)) w.message,
-            ].join('\n'),
-            actions: <ZsToastAction>[
-              if (untracked.isNotEmpty)
-                ZsToastAction(
-                  label: untracked.length == 1 ? strings.toastTrack : strings.toastTrackAll,
-                  tooltip: track,
-                  identifier: 'project-toast-track',
-                  onPressed: () {
-                    dismiss();
-                    unawaited(_track(repo, untracked));
-                  },
-                ),
-            ],
-            onDismiss: dismiss,
-            identifier: 'project-toast',
-          );
-        },
+        tone: report.trackableRemoteBookmarks.isEmpty ? ZsToastTone.success : ZsToastTone.warn,
+        build: (context, dismiss) => openReportToast(
+          context,
+          report,
+          onTrack: () {
+            dismiss();
+            unawaited(_track(repo, report.trackableRemoteBookmarks));
+          },
+          onDismiss: dismiss,
+        ),
       ),
     );
   }

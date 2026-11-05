@@ -24,6 +24,9 @@ deferred:
     location: >-
       app/widgetbook/folders/sync.dart ("Git switcher" use case); app/lib/src/features/home/home_page.dart
     severity: medium
+    resolved: >-
+      2026-11-05 — fixed (console session): Marionette check in the catalogue against sync #19; the toast got the
+      use case Sync › Opened toast (extracted `openReportToast`).
   - summary: >-
       No test pins that the Opened toast's tooltip puts the linked-worktree warning after jj's trackable-bookmark hint, as the CLI prints it.
     evidence: |-

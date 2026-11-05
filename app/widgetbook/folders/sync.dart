@@ -8,6 +8,8 @@ import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
+import 'package:zanshin/src/features/home/open_report_toast.dart';
+import 'package:zanshin/src/features/projects/project_session.dart' show ProjectOpenReport;
 import 'package:zanshin/src/features/shell/shell_toast.dart';
 import 'package:zanshin/src/features/sync/push_sheet.dart';
 import 'package:zanshin/src/features/sync/push_sheet_model.dart';
@@ -29,6 +31,12 @@ final syncFolder = WidgetbookFolder(
       name: 'Sync island',
       useCases: <WidgetbookUseCase>[
         WidgetbookUseCase(name: 'States', builder: (context) => const _IslandStates()),
+      ],
+    ),
+    WidgetbookComponent(
+      name: 'Opened toast',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(name: 'After a conversion', builder: (context) => const _OpenedToasts()),
       ],
     ),
     WidgetbookComponent(
@@ -139,6 +147,8 @@ GitPushResult _gitSwitcherPlan(PushRequest request, {required bool tracked}) {
         _ref(
           'fresh',
           action: 'add to 2d0dbb65bad8', // l10n-ignore: demo data
+          after: '2d0dbb65bad8${'0' * 28}',
+          afterChangeId: _freshChange,
           path: PushPath.skip,
           refusal: const PushRefusal(
             kind: PushRefusalKind.newRemote,
@@ -147,10 +157,18 @@ GitPushResult _gitSwitcherPlan(PushRequest request, {required bool tracked}) {
           ),
         )
       else if (request.mode == PushMode.all || request.mode == PushMode.custom)
-        _ref('fresh', action: 'add to 2d0dbb65bad8'), // l10n-ignore: demo data
+        _ref(
+          'fresh',
+          action: 'add to 2d0dbb65bad8', // l10n-ignore: demo data
+          after: '2d0dbb65bad8${'0' * 28}',
+          afterChangeId: _freshChange,
+        ),
     ],
   });
 }
+
+/// `fresh`'s change id (Story 11.22: the row names it before the commit id).
+const _freshChange = 'ovvzwvxvqnqnzzzzzzzzzzzzzzzzzzzz'; // l10n-ignore: demo data
 
 GitPushResult _result(Map<String, List<PushRef>> remotes, {List<PushCreatedBookmark> created = const []}) =>
     GitPushResult(
@@ -309,6 +327,39 @@ class _DemoSync implements RemoteSync {
       }),
     );
   }
+}
+
+/// The project window's "Opened" toast after a conversion (Story 11.22): nothing left untracked, one remote bookmark
+/// (Track), several with a warning (Track all) — the app's own [openReportToast].
+class _OpenedToasts extends StatelessWidget {
+  const _OpenedToasts();
+
+  static const _reports = <ProjectOpenReport>[
+    ProjectOpenReport(name: 'myapp', warnings: <ZanshinWarning>[]),
+    ProjectOpenReport(name: 'myapp', warnings: <ZanshinWarning>[], trackableRemoteBookmarks: <String>['main@origin']),
+    ProjectOpenReport(
+      name: 'myapp',
+      warnings: <ZanshinWarning>[
+        ZanshinWarning(
+          code: ZanshinWarningCode.colocatedInGitWorktree,
+          message: 'Workspace is a linked Git worktree; colocation may not work as expected.', // l10n-ignore: demo data
+        ),
+      ],
+      trackableRemoteBookmarks: <String>['main@origin', 'stage@origin', 'feature/ZAN-412@origin'],
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 16,
+      children: <Widget>[
+        for (final ProjectOpenReport report in _reports)
+          openReportToast(context, report, onTrack: () {}, onDismiss: () {}),
+      ],
+    ),
+  );
 }
 
 /// The island in its states: idle, with the poll's badge, fetching, without a remote, stale.
