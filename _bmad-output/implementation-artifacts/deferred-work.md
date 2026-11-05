@@ -2786,3 +2786,12 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 - ~~**The inspector's title field opens EMPTY on a change described through the composer after an abandoned title edit.**~~ — RESOLVED 2026-11-04 (spec-11-23-jj-0-47-follow-ups, commit b068f068): a draft remembers its base description, an untouched/empty one goes when the description changed, a typed one stays with "The description changed meanwhile.", a composer commit/split drops the change's title draft. Medium.
   - Reproduced by Ralph: type+delete in an undescribed `@`'s title, Esc, commit with a message through the composer, reopen the title. `graph_inspector.dart:1014` prefers `_drafts[key]` over the description; drafts survive cancel (`:300`) and the composer clears only `_composerDrafts` (`:650`). A project reload fixes it.
   - **Follow-up:** Story 11.23 item 4.
+
+## Surfaced in Story 11.22 (bmad-build-auto, 2026-11-04)
+
+- **A new remote tag refused as "Refusing to create new remote tag X@R" gets no fix-it, though jj's hint names `jj tag track X@R`.** Low.
+  - Zanshin has no `jj tag track` verb (only `RepoHandle.bookmarkTrack`); `_fixIt` in `app/lib/src/features/sync/push_sheet.dart` offers Track for bookmarks only.
+  - **Follow-up:** a tag track/untrack verb (CLI `jj tag track` @ v0.47.0) through FFI, then a Track chip for tag rows.
+- **The Marionette check of the Push sheet's help lines, fix-its and the post-conversion toast against the DS cards was not done in the unattended run.** Medium.
+  - Only widget tests cover it; `app/widgetbook/folders/sync.dart` has the "Git switcher" use case, the toast is in `app/lib/src/features/home/home_page.dart`.
+  - **Follow-up:** a Marionette pass in the catalogue and on a freshly colocated Git repo with a remote, compared with DS `components/push` and sync #19.
