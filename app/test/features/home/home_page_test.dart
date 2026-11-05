@@ -379,6 +379,43 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   });
 
+  testWidgets("Story 11.22 closing: the linked-worktree warning follows jj's trackable hint in the tooltip", (
+    tester,
+  ) async {
+    const identity = ZanshinWarning(
+      code: ZanshinWarningCode.identityMissing,
+      message: 'Name and email not configured.',
+    );
+    const worktree = ZanshinWarning(
+      code: ZanshinWarningCode.colocatedInGitWorktree,
+      message: 'This is a linked Git worktree.',
+    );
+    final repos = FakeProjectRepos()
+      ..creationWarnings['/r/wt'] = const <ZanshinWarning>[identity, worktree]
+      ..creationTrackable['/r/wt'] = const <String>['main@origin'];
+    final ProjectSession session = await pumpHome(tester, repos: repos);
+
+    await tester.runAsync(() => session.convert('/r/wt'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    final ZsToast toast = tester.widget(find.byType(ZsToast));
+    expect(
+      toast.tooltip,
+      <String>[
+        'Name and email not configured.',
+        "Hint: The following remote bookmarks aren't associated with the existing local bookmarks:",
+        '  main@origin',
+        'Hint: Run the following command to keep local bookmarks updated on future pulls:',
+        '  jj bookmark track main@origin',
+        ('In Git a branch follows its remote counterpart; jj links a local bookmark to its remote one only once you '
+            'track it — then fetches and pushes keep them together.'),
+        'This is a linked Git worktree.',
+      ].join('\n'),
+    );
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pump(const Duration(milliseconds: 300));
+  });
+
   testWidgets('Story 11.22: Track all tracks every symbol in one call and dismisses; a refusal shows an error toast', (
     tester,
   ) async {
