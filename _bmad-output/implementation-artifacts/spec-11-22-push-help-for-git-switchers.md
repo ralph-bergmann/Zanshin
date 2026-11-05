@@ -5,7 +5,7 @@ created: '2026-11-04'
 status: 'done'
 baseline_revision: '9d9b23d1cacc52079897eace2793f2187c72215f'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: ['oversized']
@@ -24,6 +24,13 @@ deferred:
     location: >-
       app/widgetbook/folders/sync.dart ("Git switcher" use case); app/lib/src/features/home/home_page.dart
     severity: medium
+  - summary: >-
+      No test pins that the Opened toast's tooltip puts the linked-worktree warning after jj's trackable-bookmark hint, as the CLI prints it.
+    evidence: |-
+      home_page_test only checks the tooltip `contains` the hint; dropping the `afterHint` split in home_page.dart keeps every test green.
+    location: >-
+      app/lib/src/features/home/home_page.dart:207-247 (afterHint); app/test/features/home/home_page_test.dart
+    severity: low
 ---
 
 <intent-contract>
@@ -144,6 +151,53 @@ deferred:
     - `[false]` `[reject]` Commit ids inside rejection messages stay unchanged (item 6) — those are jj's verbatim messages; item 6 names the `action` texts.
     - `[false]` `[reject]` Prototype shows only the change row's help — the prototype is a click-dummy and the DS is the source of truth; small deviations are expected (design-is-inspiration rule).
 
+### 2026-11-05 — Review pass (follow-up)
+- verdicts: 39 findings — high 0, medium 5, low 23, false 10, maybe-false 1
+- findings:
+  - Blind Hunter
+    - `[false]` `[reject]` Absent `PushRefusal.kind` reads as LocalConflicted — carried: Rust always writes `kind`; FlatBuffers omits only the default, which reads back as itself.
+    - `[low]` `[reject]` `reasonKinds` never checked against `reasons` — carried: the producer always writes the vector; unlikely in use, fix touches every constructor.
+    - `[false]` `[reject]` `change_of` failure fails the whole plan — carried: `get_commit` of a ref target fails only on a corrupt store, and `render_row` already fails on index errors (`is_ancestor`) the same way.
+    - `[low]` `[reject]` Extra commit load and prefix lookup per ref per plan — commits are store-cached and the prefix lookup is an index search on an already-populated index; unmeasured but negligible next to the dry run, and a fix would add caching complexity.
+    - `[maybe-false]` `[reject]` Revset-quoted symbols (`"feat x"@origin`) untested through `bookmarkTrack` — would need a track of a quoted symbol to settle; if broken the track fails with jj's error toast/row line (no wrong write), so it would be low only.
+    - `[low]` `[reject]` "Push with --deleted" replaces the selection — carried: `--deleted` is the CLI's bulk mode; the tooltip shows the command.
+    - `[low]` `[reject]` Fetch fix-it fetches the default remotes — carried: it runs exactly jj's hint (`jj git fetch`).
+    - `[low]` `[patch]` A non-FFI fix-it error escapes the unawaited call; the row shows nothing — the first pass only cleared `_fixing` in `finally`; `_fix` now catches every error onto the row's error line (push_sheet_model.dart `_fix`); the model test now expects the row error instead of the throw.
+    - `[low]` `[reject]` DS `_ds_bundle.js` / `PushDialog.d.ts` / Push cards not rebuilt for the help lines — the bundle is rebuilt when the DS is republished (design-artifacts skill, a publishing step for Ralph); no app behavior depends on it. Named as a residual risk.
+    - `[low]` `[reject]` DS lacks the deleted entry and tag/sign-on-push texts — carried: design is inspiration; the DS prompt documents the deleted fix-it.
+    - `[low]` `[reject]` App wording differs from the DS — carried: design is inspiration.
+    - `[false]` `[reject]` Prototype covers only the `@` row — carried: the prototype is a click-dummy, the DS is the source of truth.
+    - `[low]` `[reject]` Toast tooltip re-types jj's hint text — carried: jj's words verbatim at the pin; wording drift is a pin-bump re-check.
+    - `[medium]` `[defer]` Story marked done before the Marionette check — carried: already in `deferred` (the Marionette check).
+    - `[false]` `[reject]` CLI references disagree on version (deferred-work/sprint-status cite `init.rs:376-412 @ v0.46.0`) — those are the dated HISTORY records written when v0.46.0 was the pin; the code and tests cite the current pin v0.47.0 (Cargo.toml:40).
+    - `[low]` `[reject]` Toast Track gives no success feedback — carried: the toast dismisses and the graph reloads on the op-heads event.
+    - `[low]` `[reject]` Fix-it chips show disabled in the done phase where the DS hides them — cosmetic, design is inspiration; a disabled chip in a finished sheet does nothing.
+    - `[false]` `[reject]` `toastOpenedUntrackedMany`'s `one{}` branch is unreachable — no bad outcome: an unused plural branch shows nothing and ICU plurals need `other` anyway.
+  - Edge Case Hunter
+    - `[low]` `[patch]` `_fix` non-FFI error goes nowhere — same fix as above.
+    - `[low]` `[reject]` Toast Track after a switch hits a closed handle; a null repo no-ops — the captured repo is the one the report names (correct target); a closed handle raises and `_track` shows the error toast; a report only exists after the open set the repo.
+    - `[low]` `[reject]` Fetch fix-it on the wrong remote — carried, as above.
+    - `[low]` `[reject]` `reasonKinds` shorter than `reasons` → vacuous allow — carried, as above.
+    - `[false]` `[reject]` Absent `kind` reads LocalConflicted — carried, as above.
+    - `[false]` `[reject]` `change_of` fails the dry run — carried, as above.
+    - `[false]` `[reject]` Empty change id inserts a stray space — `change_of` returns `Some(reverse_hex)` of a real change id, never empty, or `None`.
+    - `[low]` `[reject]` `--deleted` chip in custom mode clears hand picks — carried, as above.
+    - `[low]` `[reject]` Fix-it Fetch discards the fetch's warnings/failed refs — the re-plan shows the resulting state; surfacing fetch warnings from a chip would add a second report path; uncommon.
+  - Verification Gap
+    - `[medium]` `[patch]` `WorkerProjectRepos` never checked to carry the trackable list to `ProjectCreation` — added `worker_project_repos_test` "convert of a Git clone carries its untracked origin/main…": real `git clone` → `repos.convert` → `['main@origin']`, then `trackBookmarks` on the real handle completes.
+    - `[medium]` `[patch]` Nothing checks Track acts on the reported repo after a switch — added `home_page_test` "Track acts on the converted repository even after a switch to another one".
+    - `[low]` `[defer]` Tooltip order of the linked-worktree warning vs the hint is unpinned — filed disposition defer; tooltip-only order.
+    - `[low]` `[patch]` (other finding) `_fix` lets non-FFI errors escape — same fix as above.
+  - Intent Alignment
+    - `[low]` `[reject]` Track → re-plan only through the fake — `bookmarkTrack` and the dry run are each covered against real repos (9.11, push integration tests); the new adapter test tracks on a real handle.
+    - `[medium]` `[defer]` Marionette check not done (R1) — carried: already deferred.
+    - `[medium]` `[patch]` Toast after a real conversion covered only to the bridge — grouped with the WorkerProjectRepos gap; same added test.
+    - `[low]` `[reject]` Parity oracle compares only the colocated conversion — all three paths call the same `trackable_remote_bookmarks(view)`; the oracle pins its output.
+    - `[false]` `[reject]` Trackable read before the head import on the import path — the head import sets `git_head` and checks out `@`; it does not touch local bookmarks or remote refs, the list's only inputs.
+    - `[false]` `[reject]` Fetch / --deleted chips on tag rows break "tags: no fix-it" — jj's own tag hints name `jj git fetch` and `--deleted` (`cli/src/commands/git/push.rs:1260,1280` @ v0.47.0); the Never clause excludes only a tag-track verb.
+    - `[low]` `[reject]` Toast tooltip re-types the CLI's hint lines — carried, as above.
+    - `[low]` `[reject]` RemoteConflicted/NoAuthor/Conflicts/Private checked only in unit/decode tests — the unit tests drive `classify`/the validator directly, which is where the kinds are set.
+
 ## Design Notes
 
 - **Ids in action lines:** jj's `action` text stays verbatim; the UI locates the 12-hex commit ids it already has from `before`/`after` (first 12 chars) inside it and inserts the change id span before each — no meaning is parsed.
@@ -172,6 +226,12 @@ deferred:
 - `dart analyze packages/zanshin_core app` -- no issues; `dart format --set-exit-if-changed` -- 0 changed.
 - Not done: Marionette check in the running catalogue (deferred).
 
+**Verification notes (follow-up review pass, 2026-11-05; no full gate per the loop's gate rule):**
+- `cargo make --allow-private test-app test/features/sync/push_sheet_model_test.dart test/features/home/home_page_test.dart test/features/projects/worker_project_repos_test.dart` -- 78 passed (incl. the three new/changed tests).
+- `cargo make --allow-private test-app test/features/sync` -- 62 passed; `test/features/home/home_page_test.dart` alone -- 25 passed.
+- `dart analyze app` -- no issues; `dart format --set-exit-if-changed` on the 4 touched files -- 0 changed.
+- No Rust, schema or `packages/zanshin_core` change in this pass, so no cargo/codegen/oracle run.
+
 ## Auto Run Result
 
 Status: done. Blocking condition: none.
@@ -198,5 +258,16 @@ Status: done. Blocking condition: none.
 - I2 (conversion does not report untracked remote bookmarks) -- fixed (58509d308dd6eabdee152524420588bb944adc6d); the parity oracle compares the list with `jj git init --colocate`'s hint.
 - I3 (refusal seems to jump rows when a row is ticked) -- fixed (58509d308dd6eabdee152524420588bb944adc6d): the explicit refusal shows in every mode; ticking another row leaves it unchanged (widget test).
 - I4 (action texts name commits by commit id only) -- fixed (58509d308dd6eabdee152524420588bb944adc6d): change id first, commit id dimmed.
+
+**Follow-up review pass (2026-11-05).** Status: done. Blocking condition: none.
+- Summary: one code fix and two missing tests. `PushSheetModel._fix` now catches every error onto the row's error line. The first pass only cleared the busy flag, so a non-FFI error from the unawaited chip escaped to the zone. Tests added: the conversion's trackable list through the real `WorkerProjectRepos` adapter, and toast Track after a project switch.
+- Files changed: `app/lib/src/features/sync/push_sheet_model.dart` (`_fix` catch-all); `app/test/features/sync/push_sheet_model_test.dart` (expects the row error); `app/test/features/projects/worker_project_repos_test.dart` (real clone → convert → `['main@origin']` → track); `app/test/features/home/home_page_test.dart` (Track after a switch); `deferred-work.md` (mirror).
+- Findings: 39 (high 0, medium 5, low 23, false 10, maybe-false 1).
+  - Patched entries: 1 low (`_fix` catch-all, 3 rows) and 2 medium (the adapter test, 2 rows; the switch test).
+  - Deferred: 1 low (tooltip line order unpinned). 2 carried rows point at the Marionette check, which was already deferred.
+  - Rejected: everything else, each with its reason in the triage log above.
+- Follow-up review recommended: false. This follow-up pass patched no `high` entry (patched by verdict: medium 2, low 1).
+- Verification: see "Verification notes (follow-up review pass)".
+- Residual risk added: the DS bundle (`_ds_bundle.js`, `PushDialog.d.ts`, Push cards) is not rebuilt for the help lines until the DS is republished.
 
 **Residual risks.** Explanation wording is Claude's (Ralph to review, especially the tag and new-remote texts); a new remote tag has no fix-it; the Track fix-it/ toast write an operation outside the graph's own undo toast (the Undo Timeline has it); the Marionette visual check is still owed.

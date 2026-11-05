@@ -2795,3 +2795,9 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 - **The Marionette check of the Push sheet's help lines, fix-its and the post-conversion toast against the DS cards was not done in the unattended run.** Medium.
   - Only widget tests cover it; `app/widgetbook/folders/sync.dart` has the "Git switcher" use case, the toast is in `app/lib/src/features/home/home_page.dart`.
   - **Follow-up:** a Marionette pass in the catalogue and on a freshly colocated Git repo with a remote, compared with DS `components/push` and sync #19.
+
+## Surfaced in the follow-up review of Story 11.22 (bmad-build-auto, 2026-11-05)
+
+- **No test pins that the Opened toast's tooltip puts the linked-worktree warning after jj's trackable-bookmark hint, as the CLI prints it.** Low.
+  - `app/lib/src/features/home/home_page.dart:207-247` (`afterHint`); `app/test/features/home/home_page_test.dart` only checks the tooltip `contains` the hint, so dropping the split keeps every test green.
+  - **Follow-up:** add a `colocatedInGitWorktree` warning plus a trackable list to the existing toast test and assert the line order.
