@@ -2742,10 +2742,10 @@ _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story 
 
 _After `jj git init --colocate` on this repo, the Push sheet skipped `main` with "Non-tracking remote bookmark main@origin exists". Fixed for this repo the same day by `jj bookmark track main@origin` (console session); `jj git push --dry-run -b main` then showed `main [move forward from c822ed47d414 to 6c8f0cff87b8]`._
 
-- **The Push sheet shows jj's refusals and hints verbatim but offers no fix and no explanation; a Git switcher does not know what to do.** Medium.
+- ~~**The Push sheet shows jj's refusals and hints verbatim but offers no fix and no explanation; a Git switcher does not know what to do.**~~ — RESOLVED 2026-11-05 (spec-11-22-push-help-for-git-switchers, commit 58509d30): `PushRefusal.kind` / reason kinds over FlatBuffers, a plain explanation per kind under jj's text (incl. the @ case), fix-it chips Track / Fetch / Push --deleted that re-plan. Medium.
   - `app/lib/src/features/sync/push_sheet.dart` renders `PushRefusal` (message + hint only, `packages/zanshin_core/lib/src/ffi/push.dart`); the Track action exists only in the Bookmarks panel on hover (`app/lib/src/features/bookmarks/bookmark_list_view.dart`). The "no description" rejection on "Push @ as a new bookmark" reads as an error after every commit.
   - **Follow-up:** Story 11.22 (design round first).
-- **Zanshin's conversion does not report the remote bookmarks it left untracked, which the CLI's `jj git init` names in a hint.** Medium.
+- ~~**Zanshin's conversion does not report the remote bookmarks it left untracked, which the CLI's `jj git init` names in a hint.**~~ — RESOLVED 2026-11-05 (spec-11-22-push-help-for-git-switchers, commit 58509d30): `trackable_remote_bookmarks` on the creation outcome as the CLI computes it (parity oracle compares), the Opened toast offers Track / Track all. Medium.
   - CLI `print_trackable_remote_bookmarks` (`cli/src/commands/git/init.rs:376-412` @ v0.46.0); nothing similar in `crates/zanshin-jj/src/convert.rs`.
   - **Follow-up:** Story 11.22 item 4.
 
@@ -2777,10 +2777,10 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 
 ## Surfaced 2026-11-04 in Ralph's push and inspector tries (console session)
 
-- **The Push sheet's refusal seems to jump rows when a row is ticked.** Medium.
+- ~~**The Push sheet's refusal seems to jump rows when a row is ticked.**~~ — RESOLVED 2026-11-05 (spec-11-22-push-help-for-git-switchers, commit 58509d30): a row's refusal shows in every mode, the mode's skip as a quieter line; widget test with Ralph's two rows. Medium.
   - In "As jj git push" a new local bookmark shows the bare push's skip ("Refusing to create new remote bookmark …") and a bookmark with a non-tracking remote shows nothing; ticking the first turns the mode custom and the second suddenly shows its `-b` refusal. `app/lib/src/features/sync/push_sheet.dart:364` shows `explicitRefusal` only in the custom mode.
   - **Follow-up:** Story 11.22 item 5.
-- **The Push sheet's action texts name commits by commit id only ("add to 2d0dbb65bad8").** Low.
+- ~~**The Push sheet's action texts name commits by commit id only ("add to 2d0dbb65bad8").**~~ — RESOLVED 2026-11-05 (spec-11-22-push-help-for-git-switchers, commit 58509d30): `PushRef` carries before/after change ids; change id first, commit id dimmed. Low.
   - Ralph, 2026-11-04: change id as in the inspector, commit id next to it.
   - **Follow-up:** Story 11.22 item 6.
 - ~~**The inspector's title field opens EMPTY on a change described through the composer after an abandoned title edit.**~~ — RESOLVED 2026-11-04 (spec-11-23-jj-0-47-follow-ups, commit b068f068): a draft remembers its base description, an untouched/empty one goes when the description changed, a typed one stays with "The description changed meanwhile.", a composer commit/split drops the change's title draft. Medium.
