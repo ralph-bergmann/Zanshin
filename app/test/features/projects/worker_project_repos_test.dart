@@ -454,6 +454,21 @@ void main() {
       },
     );
 
+    test('convert of a Git clone carries its untracked origin/main to the creation, and Track tracks it', () async {
+      final String root = temp.resolveSymbolicLinksSync();
+      final source = '$root/source';
+      await Directory(source).create();
+      await gitWithCommit(source);
+      final ProcessResult cloned = await Process.run('git', <String>['clone', '-q', source, '$root/clone']);
+      expect(cloned.exitCode, 0, reason: '${cloned.stderr}');
+
+      final ProjectCreation creation = await repos.convert('$root/clone');
+      addTearDown(creation.repo.close);
+
+      expect(creation.trackableRemoteBookmarks, <String>['main@origin']);
+      await creation.repo.trackBookmarks(creation.trackableRemoteBookmarks);
+    });
+
     test(
       'clone attaches its ticket: a cancel right after the call ends in jj.cancelled, or the clone finished first',
       () async {

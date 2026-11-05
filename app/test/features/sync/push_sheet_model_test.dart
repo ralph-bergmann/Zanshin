@@ -361,8 +361,9 @@ void main() {
         configure: (sync) => sync.pushAnswer = switcher(() => false),
       );
       sync.fetchAnswer = () => throw StateError('closed');
-      await expectLater(model.fetchAndReplan(_main), throwsStateError);
+      await model.fetchAndReplan(_main);
       expect(model.fixing, isNull);
+      expect(model.fixErrorOf(_main), contains('closed'));
     });
 
     test('Fetch fetches, then re-plans', () async {

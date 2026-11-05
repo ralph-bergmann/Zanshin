@@ -410,6 +410,25 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   });
 
+  testWidgets('Story 11.22: Track acts on the converted repository even after a switch to another one', (tester) async {
+    final repos = FakeProjectRepos()..creationTrackable['/r/two'] = const <String>['main@origin'];
+    final ProjectSession session = await pumpHome(tester, repos: repos);
+
+    await tester.runAsync(() => session.convert('/r/two'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    final VoidCallback track = tester.widget<ZsToast>(find.byType(ZsToast)).actions.single.onPressed;
+
+    await tester.runAsync(() => session.open('/r/other'));
+    await tester.pump();
+    track();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(repos.log.where((entry) => entry.startsWith('track')), <String>['track /r/two main@origin']);
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pump(const Duration(milliseconds: 300));
+  });
+
   testWidgets('a report the session holds before the window mounts shows once it mounts, and is taken', (tester) async {
     const warning = ZanshinWarning(code: ZanshinWarningCode.identityMissing, message: 'Name and email not configured.');
     final repos = FakeProjectRepos()..creationWarnings['/r/fresh'] = const <ZanshinWarning>[warning];

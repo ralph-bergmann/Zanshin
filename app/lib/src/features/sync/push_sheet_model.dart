@@ -465,9 +465,11 @@ class PushSheetModel extends ChangeNotifier {
     _notify();
     try {
       await run();
-    } on ZanshinFfiException catch (error) {
-      _log.warning('a push fix-it failed: ${error.code}');
-      _fixError = (key: key, text: error.context ?? error.code);
+    } on Object catch (error) {
+      // The sheet runs fix-its unawaited: every failure lands on the row, none escapes to the zone.
+      final String text = error is ZanshinFfiException ? error.context ?? error.code : '$error';
+      _log.warning('a push fix-it failed: ${error is ZanshinFfiException ? error.code : error.runtimeType}');
+      _fixError = (key: key, text: text);
       return;
     } finally {
       _fixing = null;
