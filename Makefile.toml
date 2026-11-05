@@ -831,7 +831,7 @@ echo "extern-coverage: OK — every zanshin-ffi extern \"C\" fn is covered (allo
 
 [tasks.clean]
 description = "Remove all build outputs (cargo + flutter). Generated codegen is committed and stays."
-dependencies = ["clean-cargo", "clean-flutter"]
+dependencies = ["clean-cargo", "clean-flutter", "delete-dart-tool", "delete-build"]
 
 [tasks.clean-cargo]
 private = true
@@ -842,3 +842,13 @@ args = ["clean"]
 private = true
 command = "melos"
 args = ["clean"]
+
+[tasks.delete-dart-tool]
+private = true
+command = "rm"
+args = ["-rf", ".dart_tool"]
+
+[tasks.delete-build]
+private = true
+command = "rm"
+args = ["-rf", "build"]
