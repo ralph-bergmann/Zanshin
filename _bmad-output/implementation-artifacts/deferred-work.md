@@ -2798,6 +2798,6 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 
 ## Surfaced in the follow-up review of Story 11.22 (bmad-build-auto, 2026-11-05)
 
-- **No test pins that the Opened toast's tooltip puts the linked-worktree warning after jj's trackable-bookmark hint, as the CLI prints it.** Low.
+- ~~**No test pins that the Opened toast's tooltip puts the linked-worktree warning after jj's trackable-bookmark hint, as the CLI prints it.**~~ — RESOLVED 2026-11-05 (closing run of Story 11.22, commit 23c562a7c209c64bc09d4d07f95bb6a6d7f505db): a sibling test asserts the whole tooltip in order. Low.
   - `app/lib/src/features/home/home_page.dart:207-247` (`afterHint`); `app/test/features/home/home_page_test.dart` only checks the tooltip `contains` the hint, so dropping the split keeps every test green.
   - **Follow-up:** add a `colocatedInGitWorktree` warning plus a trackable list to the existing toast test and assert the line order.
