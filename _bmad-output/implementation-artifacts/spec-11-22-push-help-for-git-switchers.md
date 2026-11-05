@@ -31,6 +31,8 @@ deferred:
     location: >-
       app/lib/src/features/home/home_page.dart:207-247 (afterHint); app/test/features/home/home_page_test.dart
     severity: low
+    resolved: >-
+      2026-11-05 — fixed (spec-11-22-closing-opened-toast-tooltip-line-order, commit 23c562a7): a sibling test asserts the whole tooltip in order.
 ---
 
 <intent-contract>
