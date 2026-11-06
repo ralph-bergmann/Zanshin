@@ -2342,6 +2342,73 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsRemoteRemoveConfirm => 'Remove remote';
 
   @override
+  String get settingsConfigEdit => 'Edit…';
+
+  @override
+  String get settingsConfigTitle => 'Config file';
+
+  @override
+  String get settingsConfigIntroUser =>
+      'jj’s settings for every repository on this Mac, as TOML. The rows in General write here too.';
+
+  @override
+  String settingsConfigIntroProject(String name) {
+    return 'jj’s settings for $name only. They win over your user file.';
+  }
+
+  @override
+  String get settingsConfigEdited => 'Edited';
+
+  @override
+  String get settingsConfigSaved => 'Saved';
+
+  @override
+  String get settingsConfigStale => 'The file changed on disk while you edited it.';
+
+  @override
+  String get settingsConfigReload => 'Reload';
+
+  @override
+  String settingsConfigEditorLabel(String path) {
+    return 'Contents of $path';
+  }
+
+  @override
+  String get settingsConfigNotSaved => 'Not saved';
+
+  @override
+  String settingsConfigNotSavedAt(int line, int column) {
+    return 'Not saved: line $line, column $column';
+  }
+
+  @override
+  String get settingsConfigHelp =>
+      'jj only writes a file it can read back. Fix the marked spot, or Revert to the saved file.';
+
+  @override
+  String get settingsConfigShow => 'Show';
+
+  @override
+  String get settingsConfigKey => '⌘S saves';
+
+  @override
+  String get settingsConfigRevert => 'Revert';
+
+  @override
+  String get settingsConfigSave => 'Save';
+
+  @override
+  String settingsConfigDiscardTitle(String file) {
+    return 'Discard your edits to $file?';
+  }
+
+  @override
+  String get settingsConfigDiscardBody => 'The file stays as you last saved it.';
+
+  @override
+  String get settingsConfigDiscardConfirm => 'Discard edits';
+
+  @override
   String get settingsHistory => 'History';
 
   @override

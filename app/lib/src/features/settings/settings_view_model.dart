@@ -693,6 +693,14 @@ class SettingsViewModel extends ChangeNotifier {
     _notify();
   }
 
+  /// The config page saved a file (Story 11.19): both tabs read everything again — the Project tab's remotes, trunk
+  /// and Immutable commits page included — and the graph re-requests its layout once.
+  Future<void> configFileSaved() async {
+    graph.value?.model.configChanged();
+    final int generation = _generation;
+    await Future.wait(<Future<void>>[_readGeneral(generation), _readProject(generation)]);
+  }
+
   /// Writes the Immutable commits page's [heads] at repo scope, unless the alias already reads so.
   Future<bool> writeImmutable(ImmutableHeads heads) {
     final String alias = heads.compose();

@@ -42,6 +42,19 @@ abstract interface class ProjectsEnvironment {
   /// `jj config path --<scope>` (9.28): the scope's first file. Throws [ZanshinFfiException] when it fails.
   Future<String> configPath(ConfigScope scope, {String? workspaceRoot});
 
+  /// `jj config edit --<scope>`, editor half 1 (9.28; Story 11.19): the scope's first file and its exact text, created
+  /// first when absent (as the CLI does). Throws [ZanshinFfiException] when it fails.
+  Future<ConfigFileText> configFileRead(ConfigScope scope, {String? workspaceRoot});
+
+  /// `jj config edit`, editor half 2: replaces [path]'s text with [text] after jj checked it — refused with
+  /// `jj.config_parse_error`, nothing written, unless it is valid TOML. Notifies [configWrites] once it succeeded.
+  /// Throws [ZanshinFfiException] when it fails.
+  Future<void> configFileWrite(String path, String text, {String? workspaceRoot});
+
+  /// Fires whenever the file at [path] may have changed on disk (created, written or moved there) and exists; a
+  /// removal does not fire.
+  Stream<void> fileChanges(String path);
+
   /// Fires after every config write through this environment (Settings, Story 11.7), so a reader of the identity
   /// reads it again.
   Listenable get configWrites;
@@ -167,6 +180,31 @@ class DesktopProjectsEnvironment implements ProjectsEnvironment {
   @override
   Future<String> configPath(ConfigScope scope, {String? workspaceRoot}) async =>
       (await (await _worker).configPath(scope, workspaceRoot: workspaceRoot)).first;
+
+  @override
+  Future<ConfigFileText> configFileRead(ConfigScope scope, {String? workspaceRoot}) async =>
+      (await _worker).configFileRead(ConfigScopeTarget(scope), workspaceRoot: workspaceRoot);
+
+  @override
+  Future<void> configFileWrite(String path, String text, {String? workspaceRoot}) async {
+    await (await _worker).configFileWrite(path, text, workspaceRoot: workspaceRoot);
+    _configWrites.fire();
+  }
+
+  @override
+  Stream<void> fileChanges(String path) {
+    final file = File(path);
+    final String name = file.uri.pathSegments.last;
+    // The folder, not the file: an editor that saves by replacing the file ends a watch on the file itself. Names,
+    // not paths: the watcher may report the folder's resolved path (/private/var/… for /var/…).
+    bool isFile(String? changed) => changed != null && File(changed).uri.pathSegments.last == name;
+    return file.parent
+        .watch()
+        .where((event) => isFile(event.path) || (event is FileSystemMoveEvent && isFile(event.destination)))
+        // A removed file is not read again: `configFileRead` would create it and undo the delete.
+        .where((_) => file.existsSync())
+        .map((_) {});
+  }
 
   @override
   Future<String?> chooseDirectory({required int viewId, String? initialDirectory, String? prompt}) =>

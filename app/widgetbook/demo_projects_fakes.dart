@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -233,6 +234,40 @@ class DemoProjectsEnvironment implements ProjectsEnvironment {
     ConfigScope.user => '$home/.config/jj/config.toml',
     ConfigScope.repo || ConfigScope.workspace => '$home/.config/jj/repos/1f3a/config.toml',
   };
+
+  /// The demo's config files' text, in memory, by scope (Story 11.19).
+  final configFiles = <ConfigScope, String>{
+    ConfigScope.user: '[user]\nname = "Ralph Stein"\nemail = "ralph@example.com"\n\n[ui]\npager = "less -FRX"\ndefault-command = "log"\n',
+    ConfigScope.repo: '[revset-aliases]\n"trunk()" = "main@origin"\n',
+  };
+
+  // The DS card's check (remotes-config.card.html): a value that is no string, table, list, boolean or number.
+  static final _unquoted = RegExp(r'''^[\w.-]+ = (?!["'\[{]|true|false|\d)(\S+)''', multiLine: true);
+
+  @override
+  Future<ConfigFileText> configFileRead(ConfigScope scope, {String? workspaceRoot}) async =>
+      ConfigFileText(path: await configPath(scope), text: configFiles[scope] ?? '');
+
+  @override
+  Future<void> configFileWrite(String path, String text, {String? workspaceRoot}) async {
+    if (_unquoted.firstMatch(text) case final RegExpMatch match) {
+      final int start = match.end - match[1]!.length;
+      final int bytes = utf8.encode(text.substring(0, start)).length;
+      throw ZanshinFfiException(
+        'jj.config_parse_error',
+        '$bytes..${bytes + utf8.encode(match[1]!).length}\ninvalid string\nexpected `"`, `\'`',
+      );
+    }
+    for (final scope in <ConfigScope>[ConfigScope.user, ConfigScope.repo]) {
+      if (await configPath(scope) == path) {
+        configFiles[scope] = text;
+      }
+    }
+    _writes.fire();
+  }
+
+  @override
+  Stream<void> fileChanges(String path) => const Stream<void>.empty();
 }
 
 /// The Projects window's content over the demo: a temp-folder settings store holding [demoProjectsSettings] (or none

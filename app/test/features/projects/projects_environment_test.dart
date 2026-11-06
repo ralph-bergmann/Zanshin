@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
@@ -60,6 +61,21 @@ class _ConfigWorker implements ZanshinWorker {
   }
 
   @override
+  Future<ConfigFileText> configFileRead(ConfigTarget target, {String? workspaceRoot}) async {
+    calls.add('read ${(target as ConfigScopeTarget).scope.name} $workspaceRoot');
+    return ConfigFileText(path: '/first/${target.scope.name}.toml', text: 'a = 1\n');
+  }
+
+  @override
+  Future<ConfigFileWriteResult> configFileWrite(String path, String text, {String? workspaceRoot}) async {
+    calls.add('write $path $text $workspaceRoot');
+    if (failure case final ZanshinFfiException error) {
+      throw error;
+    }
+    return const ConfigFileWriteResult();
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -107,6 +123,52 @@ void main() {
       expect(await environment.configPath(ConfigScope.repo, workspaceRoot: '/r/a'), '/first/repo.toml');
     },
   );
+
+  test('Story 11.19: the config file reads and writes pass through; a landed write fires configWrites once', () async {
+    final worker = _ConfigWorker(const <String, String>{});
+    final environment = DesktopProjectsEnvironment(Future<ZanshinWorker>.value(worker), diagnostics: _diagnostics);
+    var fired = 0;
+    environment.configWrites.addListener(() => fired++);
+
+    final ConfigFileText file = await environment.configFileRead(ConfigScope.repo, workspaceRoot: '/r/a');
+    expect((file.path, file.text), ('/first/repo.toml', 'a = 1\n'));
+    expect(fired, 0, reason: 'a read writes nothing');
+
+    await environment.configFileWrite('/first/repo.toml', 'a = 2\n', workspaceRoot: '/r/a');
+    expect(fired, 1);
+    expect(worker.calls, <String>['read repo /r/a', 'write /first/repo.toml a = 2\n /r/a']);
+
+    worker.failure = const ZanshinFfiException('jj.config_parse_error', '4..5\ninvalid');
+    await expectLater(environment.configFileWrite('/first/repo.toml', 'a = \n'), throwsA(isA<ZanshinFfiException>()));
+    expect(fired, 1, reason: 'a refused write fires nothing');
+  });
+
+  test('Story 11.19: fileChanges reports the file, not its neighbours, and a move onto it', () async {
+    final Directory dir = await Directory.systemTemp.createTemp('config_watch_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final environment = DesktopProjectsEnvironment(
+      Future<ZanshinWorker>.value(_ConfigWorker(const <String, String>{})),
+      diagnostics: _diagnostics,
+    );
+    // The file does not exist before the watch, so no event about it predates the watch.
+    final file = File('${dir.path}/config.toml');
+    var changes = 0;
+    final StreamSubscription<void> watch = environment.fileChanges(file.path).listen((_) => changes++);
+    addTearDown(watch.cancel);
+    // FSEvents starts delivering a moment after the watch is set up.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    File('${dir.path}/other.toml').writeAsStringSync('b = 1\n');
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    expect(changes, 0, reason: 'a neighbour is not the file');
+
+    File('${dir.path}/config.tmp').writeAsStringSync('a = 2\n');
+    File('${dir.path}/config.tmp').renameSync(file.path);
+    for (var i = 0; i < 60 && changes == 0; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    expect(changes, greaterThan(0), reason: 'a save that moves a new file onto it');
+  });
 
   test("the version line is the splash's: ‹version› · Build ‹build›", () async {
     PackageInfo.setMockInitialValues(

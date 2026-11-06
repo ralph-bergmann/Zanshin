@@ -46,6 +46,8 @@ enum WindowLevelMode: String {
 ///   edge on every later resize (re-anchored on `didResize`, the top updated on
 ///   `didMove`): `setContentSize`, which the engine calls for a window sized to
 ///   its content, keeps the bottom-left origin instead (Claude's proposal; I1).
+///   Once the user resized (a live resize) or zoomed the window, it keeps the
+///   frame they gave it (Story 11.19, the resizable Settings window).
 /// - **First placement** without a saved frame: the project window as for a
 ///   first launch (`placeForFirstLaunch`); a dialog centred over the visible
 ///   project window, else the screen's visible frame, clamped into it — a sized
@@ -77,6 +79,10 @@ final class WindowFrameStore {
 
         /// A dialog without a saved frame is centred until it first becomes key.
         var centring = false
+
+        /// The user resized or zoomed the window (Story 11.19): a position-only
+        /// window then keeps the frame they gave it instead of its top edge.
+        var userSized = false
 
         init(key: String, mode: WindowFrameMode) {
             self.key = key
@@ -211,12 +217,20 @@ final class WindowFrameStore {
             center.addObserver(forName: NSWindow.didResizeNotification, object: window, queue: .main) {
                 [weak self, weak window] _ in
                 guard let self = self, let window = window else { return }
+                // A live resize starts with willStartLiveResize; a zoom ends zoomed.
+                if window.inLiveResize || window.isZoomed {
+                    placement.userSized = true
+                }
                 if placement.centring && !window.isVisible {
                     self.centre(window, placement)
-                } else if let top = placement.top, abs(window.frame.maxY - top) > 0.5 {
+                } else if !placement.userSized, let top = placement.top, abs(window.frame.maxY - top) > 0.5 {
                     window.setFrameOrigin(NSPoint(x: window.frame.minX, y: top - window.frame.height))
                 }
                 self.save(window, key: placement.key)
+            },
+            center.addObserver(forName: NSWindow.willStartLiveResizeNotification, object: window, queue: .main) {
+                _ in
+                placement.userSized = true
             },
             center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) {
                 [weak self, weak window] _ in

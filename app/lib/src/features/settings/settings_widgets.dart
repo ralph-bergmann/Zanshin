@@ -368,8 +368,12 @@ class SettingsPage extends StatelessWidget {
     required this.title,
     required this.intro,
     required this.children,
+    this.spacing = 18,
     super.key,
   });
+
+  /// The gap between the heading block and each child (the config page's is 14, DS settings.css:93).
+  final double spacing;
 
   /// Where back leads: the tab's name.
   final String back;
@@ -396,7 +400,7 @@ class SettingsPage extends StatelessWidget {
       child: FocusTraversalGroup(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          spacing: 18,
+          spacing: spacing,
           children: <Widget>[
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,

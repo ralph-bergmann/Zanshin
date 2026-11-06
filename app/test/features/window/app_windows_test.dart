@@ -16,11 +16,7 @@ import '../../helpers/fake_windows.dart';
 
 Widget _nothing(BuildContext context) => const SizedBox.shrink();
 
-const _settings = DialogWindowSpec(
-  constraints: BoxConstraints(maxWidth: 620, maxHeight: 740),
-  resizable: false,
-  frame: WindowFrameMode.position,
-);
+const DialogWindowSpec _settings = settingsWindowSpec;
 
 const _configurations = DialogWindowSpec(
   size: Size(880, 580),
@@ -187,9 +183,11 @@ void main() {
       isA<DialogWindowPlan>()
           .having((plan) => plan.size, 'size', isNull)
           .having((plan) => plan.constraints, 'constraints', const BoxConstraints(maxWidth: 620, maxHeight: 740))
-          .having((plan) => plan.resizable, 'resizable', isFalse),
-      reason: 'content-sized',
+          .having((plan) => plan.resizable, 'resizable', isTrue),
+      reason: 'content-sized, resizable (Story 11.19)',
     );
+    expect(settingsWindowSpec.keepsAppAlive, isFalse);
+    expect(settingsWindowMinimum, const Size(620, 420), reason: 'set after the first frame');
     expect(settings.runnerArguments(window: 3), <String, Object>{
       'window': 3,
       'key': 'settings',

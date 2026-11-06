@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:zanshin/src/features/projects/projects_environment.dart';
 import 'package:zanshin_core/zanshin_core.dart';
@@ -133,4 +135,50 @@ class FakeProjectsEnvironment implements ProjectsEnvironment {
 
   @override
   Future<String> configPath(ConfigScope scope, {String? workspaceRoot}) async => configPaths[scope] ?? '';
+
+  // ---- config file (Story 11.19) ----
+
+  /// What [configFileRead] answers as the text, by scope; a missing scope is an empty file.
+  final configFileTexts = <ConfigScope, String>{};
+
+  /// When set, [configFileRead] throws it.
+  ZanshinFfiException? configFileReadFailure;
+
+  /// When set, [configFileWrite] throws it (nothing is written).
+  ZanshinFfiException? configFileWriteFailure;
+
+  /// Every landed write as `<path> <text>`.
+  final configFileWrites = <String>[];
+
+  /// Runs on every landed write with its path and text (before [configWrites] fires).
+  void Function(String path, String text)? onConfigFileWrite;
+
+  /// The [fileChanges] streams, by path; a test adds to one to report a change on disk.
+  final fileChangeControllers = <String, StreamController<void>>{};
+
+  @override
+  Future<ConfigFileText> configFileRead(ConfigScope scope, {String? workspaceRoot}) async {
+    if (configFileReadFailure case final ZanshinFfiException failure) {
+      throw failure;
+    }
+    return ConfigFileText(path: configPaths[scope] ?? '', text: configFileTexts[scope] ?? '');
+  }
+
+  @override
+  Future<void> configFileWrite(String path, String text, {String? workspaceRoot}) async {
+    if (configFileWriteFailure case final ZanshinFfiException failure) {
+      throw failure;
+    }
+    configFileWrites.add('$path $text');
+    for (final MapEntry<ConfigScope, String> entry in configPaths.entries) {
+      if (entry.value == path) {
+        configFileTexts[entry.key] = text;
+      }
+    }
+    onConfigFileWrite?.call(path, text);
+    _writes.fire();
+  }
+
+  @override
+  Stream<void> fileChanges(String path) => (fileChangeControllers[path] ??= StreamController<void>.broadcast()).stream;
 }

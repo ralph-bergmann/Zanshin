@@ -3680,6 +3680,120 @@ abstract class AppLocalizations {
   /// **'Remove remote'**
   String get settingsRemoteRemoveConfirm;
 
+  /// The scope line's link after the config file's path: opens the Config file page (jj config edit).
+  ///
+  /// In en, this message translates to:
+  /// **'Edit…'**
+  String get settingsConfigEdit;
+
+  /// The Config file page's title, and the Settings window's title on it.
+  ///
+  /// In en, this message translates to:
+  /// **'Config file'**
+  String get settingsConfigTitle;
+
+  /// The Config file page's sentence under its title in the General tab (the user config file).
+  ///
+  /// In en, this message translates to:
+  /// **'jj’s settings for every repository on this Mac, as TOML. The rows in General write here too.'**
+  String get settingsConfigIntroUser;
+
+  /// The Config file page's sentence under its title in the Project tab (the repo config file).
+  ///
+  /// In en, this message translates to:
+  /// **'jj’s settings for {name} only. They win over your user file.'**
+  String settingsConfigIntroProject(String name);
+
+  /// The editor's bar while the text differs from the saved file.
+  ///
+  /// In en, this message translates to:
+  /// **'Edited'**
+  String get settingsConfigEdited;
+
+  /// The editor's bar for a moment after a save, after a check mark.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get settingsConfigSaved;
+
+  /// Notice under the editor's bar when the file changed on disk while the draft has edits.
+  ///
+  /// In en, this message translates to:
+  /// **'The file changed on disk while you edited it.'**
+  String get settingsConfigStale;
+
+  /// The changed-on-disk notice's button: replaces the edits with the file on disk.
+  ///
+  /// In en, this message translates to:
+  /// **'Reload'**
+  String get settingsConfigReload;
+
+  /// VoiceOver name of the config file editor.
+  ///
+  /// In en, this message translates to:
+  /// **'Contents of {path}'**
+  String settingsConfigEditorLabel(String path);
+
+  /// Heading of the error under the editor when jj refused the text (no position known).
+  ///
+  /// In en, this message translates to:
+  /// **'Not saved'**
+  String get settingsConfigNotSaved;
+
+  /// Heading of the error under the editor when jj refused the text at a position.
+  ///
+  /// In en, this message translates to:
+  /// **'Not saved: line {line}, column {column}'**
+  String settingsConfigNotSavedAt(int line, int column);
+
+  /// The sentence after jj's parse error under the editor.
+  ///
+  /// In en, this message translates to:
+  /// **'jj only writes a file it can read back. Fix the marked spot, or Revert to the saved file.'**
+  String get settingsConfigHelp;
+
+  /// The parse error's button: puts the caret on the marked spot.
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get settingsConfigShow;
+
+  /// The Config file page's footer hint.
+  ///
+  /// In en, this message translates to:
+  /// **'⌘S saves'**
+  String get settingsConfigKey;
+
+  /// The Config file page's button: back to the saved file.
+  ///
+  /// In en, this message translates to:
+  /// **'Revert'**
+  String get settingsConfigRevert;
+
+  /// The Config file page's primary button (⌘S): writes the file after jj checked it.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get settingsConfigSave;
+
+  /// Title of the sheet asking before the Config file page is left with edits.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard your edits to {file}?'**
+  String settingsConfigDiscardTitle(String file);
+
+  /// Body of the discard-edits sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'The file stays as you last saved it.'**
+  String get settingsConfigDiscardBody;
+
+  /// The discard-edits sheet's destructive button.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard edits'**
+  String get settingsConfigDiscardConfirm;
+
   /// Settings › Project group heading.
   ///
   /// In en, this message translates to:

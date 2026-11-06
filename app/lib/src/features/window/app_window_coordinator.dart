@@ -150,6 +150,7 @@ class AppWindowCoordinator implements AppWindowActions {
       return _show(
         settingsWindowKey,
         switch ((settingsState.tab, settingsState.page)) {
+          (_, SettingsPage.configFile) => s.settingsConfigTitle,
           (SettingsTab.general, _) => s.settingsTabGeneral,
           (SettingsTab.project, SettingsPage.immutableCommits) => s.settingsImmutableTitle,
           (SettingsTab.project, null) => session.current?.name ?? s.settingsTabGeneral,

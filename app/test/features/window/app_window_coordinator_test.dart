@@ -266,7 +266,7 @@ void main() {
         expect(settingsWindowSpec.constraints, const BoxConstraints(maxWidth: 620, maxHeight: 740));
         expect(settingsWindowSpec.constraints.smallest, Size.zero, reason: 'no minimum');
         expect(settingsWindowSpec.size, isNull);
-        expect(settingsWindowSpec.resizable, isFalse);
+        expect(settingsWindowSpec.resizable, isTrue, reason: 'Story 11.19');
         expect(settingsWindowSpec.frame, WindowFrameMode.position);
         expect(settingsWindowSpec.keepsAppAlive, isFalse);
         expect(rig.settingsContents, 1);
@@ -275,6 +275,15 @@ void main() {
         expect(rig.coordinator.settingsState.page, SettingsPage.immutableCommits);
       },
     );
+
+    test('Story 11.19: the Config file page titles the window "Config file"', () async {
+      final _Rig rig = await launched();
+      rig.coordinator.settingsState.openPage(SettingsPage.configFile);
+
+      await rig.coordinator.openSettings();
+
+      expect(settingsRequests(rig).single.title, 'Config file');
+    });
 
     test('no project open: ⌘, on the Project tab shown last opens General, Project disabled', () async {
       final _Rig rig = await launched(project: false);

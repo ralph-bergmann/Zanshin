@@ -50,6 +50,9 @@ class SettingsRig {
   final themes = <ThemeMode>[];
   final model = SettingsRigGraph();
 
+  /// The app's windows the content registers its close handler and close guard with.
+  final windows = AppWindows(createController: FakeWindowFactory().call, exitProcess: () async {});
+
   /// The project window's sync the remote verbs reload; set before [pump].
   SyncModel? sync;
   late SettingsStore store;
@@ -80,7 +83,6 @@ class SettingsRig {
     if (target != null) {
       state.show(target);
     }
-    final windows = AppWindows(createController: FakeWindowFactory().call, exitProcess: () async {});
     await tester.pumpWidget(
       shellHost(
         SettingsWindow(
