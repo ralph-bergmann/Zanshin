@@ -70,7 +70,7 @@ deferred: []
 Status: done
 
 **Items:**
-1. fixed (commit recorded in the run report / `git log` for this spec) — real: no test pinned `home_page.dart:116`. A `home_page_test` case now pins the hand-over: no project → `minimapWidth` null; project open → minimap shown and `minimapWidth` identical to the open graph's `minimapSource.cardWidth`; switching project → the new model's listenable, not the disposed one. Deviation from the ledger wording: identity instead of a multi-column value, because the fake repos have no worker handle (a real multi-column graph through the home page needs FFI fixtures); the value-following half is already pinned in `floating_shell_test.dart:577-606`.
+1. fixed (59d281f50cb1a99c53834312775c325dd07cdbd9) — real: no test pinned `home_page.dart:116`. A `home_page_test` case now pins the hand-over: no project → `minimapWidth` null; project open → minimap shown and `minimapWidth` identical to the open graph's `minimapSource.cardWidth`; switching project → the new model's listenable, not the disposed one. Deviation from the ledger wording: identity instead of a multi-column value, because the fake repos have no worker handle (a real multi-column graph through the home page needs FFI fixtures); the value-following half is already pinned in `floating_shell_test.dart:577-606`.
 
 **Files changed:**
 - `app/test/features/home/home_page_test.dart` — the new test case and a `ValueListenable` import.
