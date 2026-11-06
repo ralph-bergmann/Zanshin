@@ -2234,6 +2234,114 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsRemotePoll15 => '15 min';
 
   @override
+  String settingsNotARemote(String name) {
+    return '$name — not a remote';
+  }
+
+  @override
+  String get settingsRemotesEmpty => 'No remotes yet. Fetch and push need one.';
+
+  @override
+  String get settingsRemoteNoFetchUrl => 'No fetch URL';
+
+  @override
+  String get settingsRemotePushLabel => 'push';
+
+  @override
+  String settingsRemoteRow(String name, String url) {
+    return '$name, $url';
+  }
+
+  @override
+  String settingsRemoteMore(String name) {
+    return 'More for $name';
+  }
+
+  @override
+  String get settingsRemoteRenameItem => 'Rename…';
+
+  @override
+  String get settingsRemoteSetUrlItem => 'Set URL…';
+
+  @override
+  String get settingsRemoteRemoveItem => 'Remove…';
+
+  @override
+  String get settingsRemoteAdd => 'Add remote…';
+
+  @override
+  String get settingsRemoteAddTitle => 'Add remote';
+
+  @override
+  String get settingsRemoteRenameTitle => 'Rename';
+
+  @override
+  String get settingsRemoteSetUrlTitle => 'Set URL';
+
+  @override
+  String get settingsRemoteName => 'Name';
+
+  @override
+  String get settingsRemoteNewName => 'New name';
+
+  @override
+  String get settingsRemoteUrl => 'URL';
+
+  @override
+  String get settingsRemotePushUrl => 'Push URL';
+
+  @override
+  String get settingsRemoteSameAsUrl => 'Same as URL';
+
+  @override
+  String get settingsRemoteAddPushHint =>
+      'Optional. jj can’t remove a remote with a push URL later — git remote remove can.';
+
+  @override
+  String settingsRemoteRenameHint(String before, String after) {
+    return 'Its remote bookmarks follow: $before becomes $after.';
+  }
+
+  @override
+  String get settingsRemoteCredentialHint => 'Holds a credential, so it stays hidden. Type a new URL to replace it.';
+
+  @override
+  String get settingsRemotePushKeepHint => 'Empty leaves it as it is: jj can set a push URL, not remove one.';
+
+  @override
+  String get settingsRemoteCancel => 'Cancel';
+
+  @override
+  String get settingsRemoteAddVerb => 'Add';
+
+  @override
+  String get settingsRemoteRenameVerb => 'Rename';
+
+  @override
+  String get settingsRemoteSetUrlVerb => 'Set URL';
+
+  @override
+  String get settingsRemoteReservedHelp => 'jj uses the name git for the repository on disk. Pick another name.';
+
+  @override
+  String settingsRemoteNonstandardHelp(String command) {
+    return 'Its git config has entries jj doesn’t manage, such as a push URL, so jj leaves it alone. $command removes it.';
+  }
+
+  @override
+  String settingsRemoteRemoveTitle(String name) {
+    return 'Remove $name?';
+  }
+
+  @override
+  String settingsRemoteRemoveBody(String bookmark, String undo) {
+    return 'Its remote bookmarks ($bookmark and the rest) leave this repository and git forgets its URLs. Your own bookmarks and changes stay. $undo can’t bring the URLs back.';
+  }
+
+  @override
+  String get settingsRemoteRemoveConfirm => 'Remove remote';
+
+  @override
   String get settingsHistory => 'History';
 
   @override

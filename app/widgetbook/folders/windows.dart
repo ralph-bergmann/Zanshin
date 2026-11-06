@@ -25,7 +25,15 @@ import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin/src/features/window/window_chrome_builder.dart';
 import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart'
-    show RevsetCount, RevsetCounts, TopologyRef, TopologyRefKind, ZanshinWarning;
+    show
+        Remote,
+        RevsetCount,
+        RevsetCounts,
+        TopologyRef,
+        TopologyRefKind,
+        ZanshinFfiException,
+        ZanshinWarning,
+        ZanshinWarningCode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart' show ShellTheme;
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -525,10 +533,85 @@ class _OpenSettingsWindow extends StatelessWidget {
   );
 }
 
-/// The Settings window's repository reads over fixed demo answers.
+/// The Settings window's repository reads over fixed demo answers; the remote verbs change an in-memory list of the
+/// DS card's three remotes (`upstream` with a push URL, `mirror` with a credential) and refuse as jj does.
 class _DemoSettingsReads implements SettingsRepoReads {
+  final _remotes = <Remote>[
+    const Remote(name: 'origin', url: 'git@github.com:ralph/myapp.git', pushUrl: null),
+    const Remote(
+      name: 'upstream',
+      url: 'https://github.com/acme-platform/myapp-monorepo-with-a-rather-long-name.git',
+      pushUrl: 'git@github.com:ralph/myapp-monorepo-with-a-rather-long-name.git',
+    ),
+    const Remote(name: 'mirror', url: 'https://ralph:secret@git.example.com/team/myapp.git', pushUrl: null),
+  ];
+
+  bool _has(String name) => _remotes.any((remote) => remote.name == name);
+
+  void _check(String name) {
+    if (name == 'git') {
+      throw const ZanshinFfiException(
+        'jj.invalid_input',
+        "Git remote named 'git' is reserved for local Git repository",
+      );
+    }
+    if (_has(name)) {
+      throw ZanshinFfiException('jj.remote_exists', name);
+    }
+  }
+
+  int _index(String name) {
+    final int index = _remotes.indexWhere((remote) => remote.name == name);
+    return index >= 0 ? index : throw ZanshinFfiException('jj.remote_not_found', name);
+  }
+
   @override
-  Future<List<String>> remoteNames() async => const <String>['origin', 'upstream'];
+  Future<List<Remote>> remotes() async => List<Remote>.of(_remotes);
+
+  @override
+  Future<List<ZanshinWarning>> remoteAdd({required String name, required String url, String? pushUrl}) async {
+    _check(name);
+    final warnings = <ZanshinWarning>[
+      for (final Remote remote in _remotes)
+        if (remote.url == url || remote.pushUrl == url)
+          ZanshinWarning(
+            code: ZanshinWarningCode.remoteUrlDuplicate,
+            message: 'Remote ${remote.name} already uses the same URL.',
+          ),
+    ];
+    _remotes.add(Remote(name: name, url: url, pushUrl: pushUrl == url ? null : pushUrl));
+    return warnings;
+  }
+
+  @override
+  Future<List<ZanshinWarning>> remoteRename(String oldName, String newName) async {
+    _check(newName);
+    final int index = _index(oldName);
+    final Remote remote = _remotes[index];
+    _remotes[index] = Remote(name: newName, url: remote.url, pushUrl: remote.pushUrl);
+    return const <ZanshinWarning>[];
+  }
+
+  @override
+  Future<List<ZanshinWarning>> remoteSetUrl({required String name, String? url, String? pushUrl}) async {
+    final int index = _index(name);
+    final Remote remote = _remotes[index];
+    final String? fetch = url ?? remote.url;
+    final String? push = pushUrl ?? remote.pushUrl;
+    _remotes[index] = Remote(name: name, url: fetch, pushUrl: push == fetch ? null : push);
+    return const <ZanshinWarning>[];
+  }
+
+  @override
+  Future<List<ZanshinWarning>> remoteRemove(String name) async {
+    final int index = _index(name);
+    // jj refuses a remote with a push URL: a git key it doesn't manage.
+    if (_remotes[index].pushUrl != null) {
+      throw ZanshinFfiException('jj.remote_nonstandard_config', name);
+    }
+    _remotes.removeAt(index);
+    return const <ZanshinWarning>[];
+  }
 
   @override
   Future<List<String>> defaultFetchRemotes() async => const <String>['origin'];

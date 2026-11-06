@@ -8,6 +8,8 @@ import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
+import '../graph/graph_layout.dart' show jjRefSymbol;
+import '../graph/graph_ports.dart' show jjCommand;
 import '../projects/project_repos.dart';
 import '../projects/project_session.dart';
 import '../projects/projects_environment.dart';
@@ -43,10 +45,22 @@ abstract final class SettingsKeys {
   static const general = <String>[userName, userEmail];
 }
 
-/// What Settings reads of the open repository besides the config (a port, so tests pass a fake).
+/// What Settings reads of the open repository besides the config, and its remote verbs (a port, so tests pass a fake).
 abstract interface class SettingsRepoReads {
-  /// The remotes' names (`jj git remote list`).
-  Future<List<String>> remoteNames();
+  /// The remotes (`jj git remote list`), URLs unredacted.
+  Future<List<Remote>> remotes();
+
+  /// `jj git remote add`; the call's warnings.
+  Future<List<ZanshinWarning>> remoteAdd({required String name, required String url, String? pushUrl});
+
+  /// `jj git remote rename`; the call's warnings.
+  Future<List<ZanshinWarning>> remoteRename(String oldName, String newName);
+
+  /// `jj git remote set-url`, a null side left as it is; the call's warnings.
+  Future<List<ZanshinWarning>> remoteSetUrl({required String name, String? url, String? pushUrl});
+
+  /// `jj git remote remove`; the call's warnings.
+  Future<List<ZanshinWarning>> remoteRemove(String name);
 
   /// The remotes `jj git fetch` without `--remote` fetches from.
   Future<List<String>> defaultFetchRemotes();
@@ -75,9 +89,22 @@ class RepoSettingsReads implements SettingsRepoReads {
   final ProjectRepo _repo;
 
   @override
-  Future<List<String>> remoteNames() async => <String>[
-    for (final Remote remote in await _repo.handle.remotes()) remote.name,
-  ];
+  Future<List<Remote>> remotes() => _repo.handle.remotes();
+
+  @override
+  Future<List<ZanshinWarning>> remoteAdd({required String name, required String url, String? pushUrl}) async =>
+      (await _repo.handle.gitRemoteAdd(name: name, url: url, pushUrl: pushUrl)).warnings;
+
+  @override
+  Future<List<ZanshinWarning>> remoteRename(String oldName, String newName) async =>
+      (await _repo.handle.gitRemoteRename(oldName, newName)).warnings;
+
+  @override
+  Future<List<ZanshinWarning>> remoteSetUrl({required String name, String? url, String? pushUrl}) async =>
+      (await _repo.handle.gitRemoteSetUrl(name: name, url: url, pushUrl: pushUrl)).warnings;
+
+  @override
+  Future<List<ZanshinWarning>> remoteRemove(String name) async => (await _repo.handle.gitRemoteRemove(name)).warnings;
 
   @override
   Future<List<String>> defaultFetchRemotes() => _repo.handle.gitFetchRemotes();
@@ -123,6 +150,159 @@ class RepoSettingsReads implements SettingsRepoReads {
 
 /// The text of an [error] for a row.
 String settingsErrorText(ZanshinFfiException error) => error.context ?? error.code;
+
+// DS RemotesGroup.jsx `zsRemScrub`, but up to the LAST `@` before the path: a password may hold an unencoded `@`.
+final _remoteCredential = RegExp(r'^([a-z][a-z0-9+.-]*://)[^/]*@', caseSensitive: false);
+
+/// [url] with a credential hidden as `•••` (`https://•••@host/…`); every remote URL Settings shows goes through it.
+String scrubRemoteUrl(String url) => url.replaceFirstMapped(_remoteCredential, (match) => '${match[1]}•••@');
+
+/// Whether [url] holds a credential [scrubRemoteUrl] hides.
+bool remoteUrlHasCredential(String? url) => url != null && scrubRemoteUrl(url) != url;
+
+/// A remote verb (Story 11.18), as a Remotes form or the Remove sheet issues it.
+sealed class RemoteOp {
+  const RemoteOp(this.name);
+
+  /// The remote the verb is about; for an add, the new remote's name.
+  final String name;
+
+  /// The name the user typed, which jj validates (the new name for a rename).
+  String get typedName => name;
+
+  List<String> get _args;
+
+  /// `jj git remote …` as the CLI takes it, each word shell-quoted, credentials hidden, missing values as
+  /// placeholders.
+  String get command => jjCommand(<String>['git', 'remote', ..._args]); // l10n-ignore: jj command
+}
+
+/// `jj git remote add <name> <url> [--push-url <push>]`.
+final class RemoteAdd extends RemoteOp {
+  /// Adds [name] at [url], pushing to [pushUrl] when given.
+  const RemoteAdd(super.name, {required this.url, this.pushUrl});
+
+  /// The fetch URL.
+  final String url;
+
+  /// The push URL, or null to push to [url].
+  final String? pushUrl;
+
+  @override
+  List<String> get _args => <String>[
+    'add', // l10n-ignore: jj command
+    if (name.isEmpty) '<name>' else name, // l10n-ignore: jj command placeholder
+    if (url.isEmpty) '<url>' else scrubRemoteUrl(url), // l10n-ignore: jj command placeholder
+    if (pushUrl case final String push) ...<String>['--push-url', scrubRemoteUrl(push)],
+  ];
+}
+
+/// `jj git remote rename <old> <new>`.
+final class RemoteRename extends RemoteOp {
+  /// Renames [name] to [newName].
+  const RemoteRename(super.name, this.newName);
+
+  /// The new name.
+  final String newName;
+
+  @override
+  String get typedName => newName;
+
+  @override
+  List<String> get _args => <String>[
+    'rename', // l10n-ignore: jj command
+    name,
+    if (newName.isEmpty) '<new name>' else newName, // l10n-ignore: jj command placeholder
+  ];
+}
+
+/// `jj git remote set-url <name> [<url>] [--push <push>]`; a null side stays as it is.
+final class RemoteSetUrl extends RemoteOp {
+  /// Re-points [name]'s [url] and/or [pushUrl].
+  const RemoteSetUrl(super.name, {this.url, this.pushUrl});
+
+  /// The new fetch URL, or null to keep it.
+  final String? url;
+
+  /// The new push URL, or null to keep it.
+  final String? pushUrl;
+
+  @override
+  List<String> get _args => <String>[
+    'set-url', // l10n-ignore: jj command
+    name,
+    if (url case final String url) scrubRemoteUrl(url),
+    if (pushUrl case final String push) ...<String>['--push', scrubRemoteUrl(push)],
+  ];
+}
+
+/// `jj git remote remove <name>`.
+final class RemoteRemove extends RemoteOp {
+  /// Removes [name].
+  const RemoteRemove(super.name);
+
+  @override
+  List<String> get _args => <String>['remove', name]; // l10n-ignore: jj command
+}
+
+/// What a remote verb left to show: a [RemoteRefusal] or a [RemoteWarning].
+sealed class RemoteOutcome {
+  const RemoteOutcome(this.message);
+
+  /// jj's text, verbatim.
+  final String message;
+}
+
+/// The plain sentence after a refusal, where the DS defines one.
+enum RemoteHelp {
+  /// The reserved name `git`.
+  reservedName,
+
+  /// A remote with git keys jj doesn't manage.
+  nonstandardConfig,
+}
+
+/// jj refused the verb: its [message], and the [help] sentence about [name] where one is defined.
+final class RemoteRefusal extends RemoteOutcome {
+  /// The refusal [message].
+  const RemoteRefusal(super.message, {this.help, this.name});
+
+  /// The sentence after it, or null.
+  final RemoteHelp? help;
+
+  /// The remote the help names.
+  final String? name;
+}
+
+/// jj warned after the verb landed: its [message] and its [hint].
+final class RemoteWarning extends RemoteOutcome {
+  /// The warning [message] with jj's [hint].
+  const RemoteWarning(super.message, {required this.hint});
+
+  /// jj's hint.
+  final String hint;
+}
+
+/// jj's text for [error], a remote verb's failure, keyed by its code (never parsed from text); [typedName] is the name
+/// the user typed. The bridge sends the offending name as the context; jj-lib prints it with `as_symbol()`.
+RemoteRefusal remoteRefusal(ZanshinFfiException error, String typedName) {
+  final String name = error.context ?? typedName;
+  final String symbol = jjRefSymbol(name);
+  return switch (error.code) {
+    'jj.remote_exists' => RemoteRefusal("Git remote named '$symbol' already exists"), // l10n-ignore: jj's text
+    'jj.remote_not_found' => RemoteRefusal("No git remote named '$symbol'"), // l10n-ignore: jj's text
+    'jj.remote_nonstandard_config' => RemoteRefusal(
+      "Git remote named '$symbol' has nonstandard configuration", // l10n-ignore: jj's text
+      help: RemoteHelp.nonstandardConfig,
+      name: name,
+    ),
+    'jj.invalid_input' => RemoteRefusal(
+      settingsErrorText(error),
+      help: typedName == 'git' ? RemoteHelp.reservedName : null, // l10n-ignore: jj's reserved remote name
+    ),
+    _ => RemoteRefusal(settingsErrorText(error)),
+  };
+}
 
 /// The Settings window's state and writes (Story 11.7): the app preferences in [store], the jj config through
 /// [environment]'s config verbs at the tab's scope, the open project's reads through a [SettingsRepoReads].
@@ -175,8 +355,20 @@ class SettingsViewModel extends ChangeNotifier {
   /// `jj config path --repo`, or null until read.
   String? repoPath;
 
+  /// The remotes, URLs unredacted (show them through [scrubRemoteUrl]).
+  var remoteList = const <Remote>[];
+
   /// The remotes' names.
-  var remotes = const <String>[];
+  List<String> get remotes => <String>[for (final Remote remote in remoteList) remote.name];
+
+  /// What the last remote verb left under a row, by remote name; cleared by the next verb.
+  final remoteNotes = <String, RemoteOutcome>{};
+
+  /// The remote the Remove sheet asks about, or null.
+  String? removing;
+
+  /// Whether the Remove sheet leaves.
+  var removeClosing = false;
 
   /// The remotes a fetch without `--remote` uses.
   var fetchDefault = const <String>[];
@@ -271,7 +463,10 @@ class SettingsViewModel extends ChangeNotifier {
     // Nothing of the project before survives the switch.
     projectConfig = <String, List<ConfigEntry>>{};
     repoPath = null;
-    remotes = const <String>[];
+    remoteList = const <Remote>[];
+    remoteNotes.clear();
+    removing = null;
+    removeClosing = false;
     fetchDefault = const <String>[];
     pushDefault = const <String>[];
     trunkChoices = const <String>[];
@@ -350,7 +545,7 @@ class SettingsViewModel extends ChangeNotifier {
 
   Future<void> _readRemotes(SettingsRepoReads reads, int generation) async {
     try {
-      final List<String> names = await reads.remoteNames();
+      final List<Remote> list = await reads.remotes();
       final List<String> fetch = await reads.defaultFetchRemotes();
       final List<String> push = await reads.defaultPushRemotes();
       final String? remote = fetch.firstOrNull;
@@ -360,7 +555,7 @@ class SettingsViewModel extends ChangeNotifier {
       if (generation != _generation) {
         return;
       }
-      remotes = names;
+      remoteList = list;
       fetchDefault = fetch;
       pushDefault = push;
       trunkChoices = trunk;
@@ -510,6 +705,107 @@ class SettingsViewModel extends ChangeNotifier {
 
   /// Reset to jj's default: unsets the alias at repo scope.
   Future<bool> resetImmutable() => unsetConfig(ConfigScope.repo, immutableHeadsKey);
+
+  // ---- remote verbs ----
+
+  /// Clears the notes under the rows (a form opens).
+  void clearRemoteNotes() {
+    if (remoteNotes.isNotEmpty) {
+      remoteNotes.clear();
+      _notify();
+    }
+  }
+
+  /// Runs [op]: a refusal is returned (and, for a remove, noted under its row); a landed verb re-reads the remotes
+  /// here and in the project window's sync, and returns Add's duplicate-URL warning (noted under the new row).
+  Future<RemoteOutcome?> runRemote(RemoteOp op) async {
+    final SettingsRepoReads? reads = _reads;
+    if (reads == null) {
+      return null;
+    }
+    final int generation = _generation;
+    remoteNotes.clear();
+    _notify();
+    final List<ZanshinWarning> warnings;
+    try {
+      warnings = await switch (op) {
+        RemoteAdd(:final name, :final url, :final pushUrl) => reads.remoteAdd(name: name, url: url, pushUrl: pushUrl),
+        RemoteRename(:final name, :final newName) => reads.remoteRename(name, newName),
+        RemoteSetUrl(:final name, :final url, :final pushUrl) => reads.remoteSetUrl(
+          name: name,
+          url: url,
+          pushUrl: pushUrl,
+        ),
+        RemoteRemove(:final name) => reads.remoteRemove(name),
+      };
+    } on ZanshinFfiException catch (error) {
+      _log.fine('the remote verb failed: ${error.code}');
+      if (generation != _generation) {
+        return null;
+      }
+      final RemoteRefusal refusal = remoteRefusal(error, op.typedName);
+      if (op is RemoteRemove) {
+        remoteNotes[op.name] = refusal;
+      }
+      _notify();
+      return refusal;
+    }
+    // The project switched while the verb ran: its results belong to the old project.
+    if (generation != _generation) {
+      return null;
+    }
+    final messages = <String>[
+      for (final ZanshinWarning warning in warnings)
+        if (warning.code == ZanshinWarningCode.remoteUrlDuplicate) warning.message,
+    ];
+    // CLI add.rs:111-115 @ v0.47.0 prints the hint once after the warnings.
+    final RemoteWarning? warning = op is RemoteAdd && messages.isNotEmpty
+        ? RemoteWarning(
+            messages.join('\n'),
+            hint:
+                'If this was a mistake, run `jj git remote remove ${jjRefSymbol(op.name)}`.', // l10n-ignore: jj's text
+          )
+        : null;
+    if (warning != null) {
+      remoteNotes[op.name] = warning;
+    }
+    unawaited(graph.value?.sync?.reloadRemotes());
+    await _readRemotes(reads, generation);
+    // jj rewrites a `trunk()` naming the remote in the repo config on rename and remove.
+    if (op is RemoteRename || op is RemoteRemove) {
+      await _reread(trunkKey);
+      await recountImmutable();
+    }
+    return warning;
+  }
+
+  /// Remove…: the sheet asks about [name].
+  void askRemove(String name) {
+    remoteNotes.clear();
+    removing = name;
+    removeClosing = false;
+    _notify();
+  }
+
+  /// The sheet's answer: it leaves, and [confirm] removes the remote.
+  void answerRemove({required bool confirm}) {
+    final String? name = removing;
+    if (name == null || removeClosing) {
+      return;
+    }
+    removeClosing = true;
+    _notify();
+    if (confirm) {
+      unawaited(runRemote(RemoteRemove(name)));
+    }
+  }
+
+  /// The sheet's exit ended.
+  void removeClosed() {
+    removing = null;
+    removeClosing = false;
+    _notify();
+  }
 
   // ---- pending text writes ----
 

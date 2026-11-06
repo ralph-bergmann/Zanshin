@@ -225,6 +225,36 @@ void main() {
     expect(model.closing, isTrue);
   });
 
+  test('reloadRemotes reads the remotes again while idle, never while a push runs', () async {
+    final (PushSheetModel model, FakeRemoteSync sync, _) = await _sheet();
+    sync
+      ..names = <String>['origin', 'fork']
+      ..pushAnswer = ((request) => request.dryRun ? _plans(request) : pushResult(const <String, List<PushRef>>{}))
+      ..pushGate = Completer<void>();
+    final Future<void> push = model.push();
+    await pumpEventQueue();
+    await model.reloadRemotes();
+    expect(model.remoteNames, <String>['origin'], reason: 'busy: the push runs');
+    sync.pushGate!.complete();
+    await push;
+
+    final (PushSheetModel idle, FakeRemoteSync idleSync, _) = await _sheet();
+    idleSync.names = <String>['origin', 'fork'];
+    await idle.reloadRemotes();
+    expect(idle.remoteNames, <String>['origin', 'fork']);
+  });
+
+  test('reloadRemotes does nothing while the sheet leaves', () async {
+    final (PushSheetModel model, FakeRemoteSync sync, _) = await _sheet();
+    model.cancel();
+    expect(model.closing, isTrue);
+    final PushSheetPhase phase = model.phase;
+    sync.names = <String>['origin', 'fork'];
+    await model.reloadRemotes();
+    expect(model.remoteNames, <String>['origin']);
+    expect(model.phase, phase);
+  });
+
   test('a partial push stays as done until Done; nothing recorded is reported as such', () async {
     final (PushSheetModel model, FakeRemoteSync sync, List<GitPushResult> pushed) = await _sheet(
       configure: (sync) => sync.names = <String>['origin', 'upstream'],

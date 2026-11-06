@@ -12,6 +12,7 @@ import '../../l10n/strings.dart';
 import '../graph/hatch_swatch.dart';
 import 'general_tab.dart';
 import 'immutable_heads.dart';
+import 'remotes_group.dart';
 import 'settings_view_model.dart';
 import 'settings_widgets.dart';
 
@@ -73,7 +74,8 @@ class ImmutableCount extends StatelessWidget {
   }
 }
 
-/// Settings › Project (Story 11.7): Remotes (Fetch from `git.fetch`, Push to `git.push`, Check for remote changes),
+/// Settings › Project (Story 11.7): Remotes (the remote list with its verbs, Story 11.18; Fetch from `git.fetch`, Push
+/// to `git.push`, Check for remote changes),
 /// History (Trunk `revset-aliases."trunk()"`, Immutable commits ›) and Identity (a repo-scope `user.email`).
 class SettingsProjectTab extends StatefulWidget {
   /// The tab over [vm]; [onImmutableCommits] opens the page.
@@ -103,8 +105,8 @@ class _SettingsProjectTabState extends State<SettingsProjectTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       spacing: 18,
       children: <Widget>[
-        SettingsGroup(
-          title: s.settingsRemotes,
+        SettingsRemotesGroup(
+          vm: vm,
           children: <Widget>[
             _remoteRow(s, s.settingsFetchFrom, SettingsKeys.gitFetch, vm.fetchDefault, 'settings-git-fetch'),
             _remoteRow(s, s.settingsPushTo, SettingsKeys.gitPush, vm.pushDefault, 'settings-git-push'),
@@ -228,7 +230,13 @@ class _SettingsProjectTabState extends State<SettingsProjectTab> {
               mono: true,
               identifier: identifier,
               options: <ZsSelectEntry<String>>[
-                for (final String remote in options) ZsSelectOption<String>(value: remote, label: remote, mono: true),
+                for (final String remote in options)
+                  ZsSelectOption<String>(
+                    value: remote,
+                    // jj doesn't rewrite git.fetch / git.push when the remote goes.
+                    label: vm.remotes.contains(remote) ? remote : s.settingsNotARemote(remote),
+                    mono: true,
+                  ),
               ],
               value: shown,
               onChanged: (remote) {

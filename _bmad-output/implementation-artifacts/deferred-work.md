@@ -2813,3 +2813,9 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 - **The Marionette witness on `dart-intellij-third-party` against the DS card *Long history* was not run.** Low.
   - The running app with that repository could not be started in the unattended run; widget tests cover the paint and the math only.
   - **Follow-up:** Ralph's look at the running app (or a Marionette run) compared with `design_system/components/graph/long-history.card.html`.
+
+## Surfaced in Story 11.18 (bmad-build-auto, 2026-11-06)
+
+- **The Marionette witness for Settings › Remotes against the DS card "Settings — Remotes and config file" was not run.** Medium.
+  - The catalogue / app needs a long-lived `flutter run`, which the unattended run could not hold; `app/lib/src/features/settings/remotes_group.dart` is covered by widget tests only, and the new `ClipRRect` in `SettingsGroup` (`settings_widgets.dart`, every Settings group) is unchecked visually.
+  - **Follow-up:** a Marionette run of the Widgetbook Settings use case (or the app) compared with `design_system/components/settings/remotes-config.card.html` (rows, a form with a refusal, the Remove sheet).

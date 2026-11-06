@@ -132,11 +132,19 @@ class SyncModel extends ChangeNotifier {
     _fetchRemotes = await _read('git fetch remotes', _sync.fetchRemotes);
     _pushRemotes = await _read('git push remotes', _sync.pushRemotes);
     _remoteNames = await _read('remotes', _sync.remoteNames);
+    // A remote no longer fetched keeps no poll findings.
+    _changes = <String, List<String>>{
+      for (final MapEntry<String, List<String>> entry in _changes.entries)
+        if (_fetchRemotes.contains(entry.key)) entry.key: entry.value,
+    };
     _notify();
   }
 
-  /// Reads the remotes again (View › Reload).
-  Future<void> reloadRemotes() => _loadRemotes();
+  /// Reads the remotes again (View › Reload, a Settings remote verb), and so does an open, idle Push sheet.
+  Future<void> reloadRemotes() async {
+    await _loadRemotes();
+    await _push?.reloadRemotes();
+  }
 
   /// [read]'s names; none when it fails (`jj.not_a_git_repo`, a closed handle).
   Future<List<String>> _read(String what, Future<List<String>> Function() read) async {

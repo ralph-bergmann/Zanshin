@@ -697,6 +697,9 @@ String jjLogCommand(String revset) => _jj(<String>['log', '-r', revset]); // l10
 /// `jj` plus [args], each POSIX shell-quoted (the Push sheet's footer, Story 11.8).
 String jjCommand(List<String> args) => _jj(args);
 
+/// [text] as one POSIX shell word, quoted as [jjCommand] quotes its words (Story 11.18's `git remote remove`).
+String shellQuote(String text) => _shellQuote(text);
+
 /// [name] as a name pattern matching only itself, the text jj receives and the command shows (Story 11.8).
 String exactNamePattern(String name) => _exactPattern(name);
 

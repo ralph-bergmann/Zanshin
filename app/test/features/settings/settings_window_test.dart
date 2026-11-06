@@ -1,77 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
-import 'package:zanshin/src/features/graph/graph_preferences.dart';
-import 'package:zanshin/src/features/graph/graph_view_model.dart';
-import 'package:zanshin/src/features/projects/project_registry.dart';
-import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/settings/immutable_heads.dart';
 import 'package:zanshin/src/features/settings/settings_view_model.dart';
-import 'package:zanshin/src/features/settings/settings_window.dart';
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
-import 'package:zanshin/src/features/shell/app_menu.dart' show GraphMenuBinding;
 import 'package:zanshin/src/features/window/app_window_actions.dart';
-import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
-import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart' show ZsNamiMark;
 
-import '../../helpers/fake_projects.dart';
-import '../../helpers/fake_projects_environment.dart';
-import '../../helpers/fake_windows.dart';
 import '../../helpers/icon_registry.dart';
-import '../../helpers/recording_shell.dart';
-import '../../helpers/shell_host.dart';
-
-const _project = '/r/zanshin';
-
-/// The repository reads: two remotes, `origin` the default, `main` and `dev` on it; [count] and [errors] scripted.
-class _Reads implements SettingsRepoReads {
-  var count = const RevsetCount(n: 14, capped: false, error: null);
-
-  /// Expressions whose count is an error.
-  final errors = <String, ZanshinFfiException>{};
-
-  @override
-  Future<List<String>> remoteNames() async => const <String>['origin', 'upstream'];
-
-  @override
-  Future<List<String>> defaultFetchRemotes() async => const <String>['origin'];
-
-  @override
-  Future<List<String>> defaultPushRemotes() async => const <String>['upstream'];
-
-  @override
-  Future<List<String>> remoteBookmarks(String remote) async => const <String>['main', 'dev'];
-
-  @override
-  Future<List<String>> localBookmarks() async => const <String>['develop', 'main'];
-
-  @override
-  Future<RevsetCounts> revsetCounts(List<String> expressions, {required int cap}) async => RevsetCounts(
-    <RevsetCount>[
-      for (final String expression in expressions)
-        if (errors[expression] case final ZanshinFfiException error)
-          RevsetCount(n: 0, capped: false, error: error)
-        else
-          count,
-    ],
-    const <ZanshinWarning>[],
-  );
-
-  /// Each revset's members; an unscripted revset fails like an unread repository.
-  final members = <String, List<RevsetMember>>{};
-
-  @override
-  Future<List<RevsetMember>> revsetMembers(String revset) async =>
-      members[revset] ?? (throw const ZanshinFfiException('jj.revset_resolution_error', 'unscripted'));
-}
+import '../../helpers/settings_rig.dart';
 
 TopologyRef _ref(String name, {TopologyRefKind kind = TopologyRefKind.bookmark, String? remote, bool synced = false}) =>
     // A synced remote entry is tracked (synced = tracked AND agrees).
@@ -85,90 +27,7 @@ TopologyRef _ref(String name, {TopologyRefKind kind = TopologyRefKind.bookmark, 
       tracked: remote != null && synced,
     );
 
-class _Model extends GraphViewModel {
-  var configChanges = 0;
-
-  @override
-  void configChanged() => configChanges++;
-}
-
-class _Rig {
-  _Rig(this.tester);
-
-  final WidgetTester tester;
-  final env = FakeProjectsEnvironment();
-  final reads = _Reads();
-  final state = SettingsWindowState();
-  final graph = ValueNotifier<GraphMenuBinding?>(null);
-  final themes = <ThemeMode>[];
-  final model = _Model();
-  late SettingsStore store;
-  late ProjectSession session;
-
-  SettingsWindowContentState get content => tester.state<SettingsWindowContentState>(find.byType(SettingsWindow));
-
-  List<String> get calls => env.configCalls;
-
-  Future<void> pump({bool project = true, SettingsTarget? target}) async {
-    // Taller than the window's 740, so every row is on screen without scrolling.
-    useShellWindow(tester, const Size(620, 1600));
-    ZanshinShellPlatform.instance = RecordingShell();
-    final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('settings_window_test')))!;
-    addTearDown(() => dir.deleteSync(recursive: true));
-    store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
-    session = ProjectSession(registry: ProjectRegistry(store), repos: FakeProjectRepos());
-    addTearDown(session.dispose);
-    addTearDown(state.dispose);
-    final preferences = GraphPreferences(store);
-    addTearDown(preferences.dispose);
-    addTearDown(model.dispose);
-    graph.value = GraphMenuBinding(model: model, preferences: preferences);
-    if (project) {
-      await tester.runAsync(() => session.open(_project));
-    }
-    state.projectOpen = project;
-    if (target != null) {
-      state.show(target);
-    }
-    final windows = AppWindows(createController: FakeWindowFactory().call, exitProcess: () async {});
-    await tester.pumpWidget(
-      shellHost(
-        SettingsWindow(
-          state: state,
-          windows: windows,
-          store: store,
-          environment: env,
-          session: session,
-          graph: graph,
-          setThemeMode: (mode) async => themes.add(mode),
-          readsOf: (_) => reads,
-        ),
-      ),
-    );
-    await settle();
-  }
-
-  Future<void> settle() async {
-    for (var i = 0; i < 4; i++) {
-      await tester.pump();
-    }
-  }
-
-  Finder id(String identifier) => find.bySemanticsIdentifier(identifier);
-
-  Finder field(String identifier) => find.descendant(of: id(identifier), matching: find.byType(EditableText));
-
-  Future<void> submit(String identifier, String text) async {
-    await tester.enterText(field(identifier), text);
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await settle();
-  }
-
-  Future<void> tap(String identifier) async {
-    await tester.tap(id(identifier));
-    await settle();
-  }
-}
+typedef _Rig = SettingsRig;
 
 ConfigEntry _entry(String name, String value, ConfigValueSource source) =>
     ConfigEntry(name: name, value: value, source: source, path: null, overridden: false);

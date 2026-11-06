@@ -3494,6 +3494,192 @@ abstract class AppLocalizations {
   /// **'15 min'**
   String get settingsRemotePoll15;
 
+  /// Fetch from / Push to option naming a remote the repository no longer has.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} — not a remote'**
+  String settingsNotARemote(String name);
+
+  /// Settings › Project › Remotes row while the repository has no remote.
+  ///
+  /// In en, this message translates to:
+  /// **'No remotes yet. Fetch and push need one.'**
+  String get settingsRemotesEmpty;
+
+  /// A remote row's URL line when the remote has only a push URL.
+  ///
+  /// In en, this message translates to:
+  /// **'No fetch URL'**
+  String get settingsRemoteNoFetchUrl;
+
+  /// Lead word of a remote row's second URL line, the push URL.
+  ///
+  /// In en, this message translates to:
+  /// **'push'**
+  String get settingsRemotePushLabel;
+
+  /// VoiceOver reading of a remote row: its name and its fetch URL (credentials hidden).
+  ///
+  /// In en, this message translates to:
+  /// **'{name}, {url}'**
+  String settingsRemoteRow(String name, String url);
+
+  /// VoiceOver name of a remote row's ••• button.
+  ///
+  /// In en, this message translates to:
+  /// **'More for {name}'**
+  String settingsRemoteMore(String name);
+
+  /// A remote's ••• menu item: rename it in the row.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename…'**
+  String get settingsRemoteRenameItem;
+
+  /// A remote's ••• menu item: change its URLs in the row.
+  ///
+  /// In en, this message translates to:
+  /// **'Set URL…'**
+  String get settingsRemoteSetUrlItem;
+
+  /// A remote's ••• menu item: remove it (asks first).
+  ///
+  /// In en, this message translates to:
+  /// **'Remove…'**
+  String get settingsRemoteRemoveItem;
+
+  /// The Remotes list's last row: opens the add form.
+  ///
+  /// In en, this message translates to:
+  /// **'Add remote…'**
+  String get settingsRemoteAdd;
+
+  /// Heading of the add form row.
+  ///
+  /// In en, this message translates to:
+  /// **'Add remote'**
+  String get settingsRemoteAddTitle;
+
+  /// Beside the remote's name while its row is the rename form.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get settingsRemoteRenameTitle;
+
+  /// Beside the remote's name while its row is the set-URL form.
+  ///
+  /// In en, this message translates to:
+  /// **'Set URL'**
+  String get settingsRemoteSetUrlTitle;
+
+  /// Add form field label: the new remote's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get settingsRemoteName;
+
+  /// Rename form field label.
+  ///
+  /// In en, this message translates to:
+  /// **'New name'**
+  String get settingsRemoteNewName;
+
+  /// Remote form field label: the fetch URL.
+  ///
+  /// In en, this message translates to:
+  /// **'URL'**
+  String get settingsRemoteUrl;
+
+  /// Remote form field label: the push URL.
+  ///
+  /// In en, this message translates to:
+  /// **'Push URL'**
+  String get settingsRemotePushUrl;
+
+  /// Placeholder of an empty push URL field: the remote pushes to its URL.
+  ///
+  /// In en, this message translates to:
+  /// **'Same as URL'**
+  String get settingsRemoteSameAsUrl;
+
+  /// Hint under the add form's push URL field.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional. jj can’t remove a remote with a push URL later — git remote remove can.'**
+  String get settingsRemoteAddPushHint;
+
+  /// Hint under the rename form's field; before/after are a bookmark@remote under the old and new name.
+  ///
+  /// In en, this message translates to:
+  /// **'Its remote bookmarks follow: {before} becomes {after}.'**
+  String settingsRemoteRenameHint(String before, String after);
+
+  /// Hint under the set-URL form's URL field when the URL carries a credential.
+  ///
+  /// In en, this message translates to:
+  /// **'Holds a credential, so it stays hidden. Type a new URL to replace it.'**
+  String get settingsRemoteCredentialHint;
+
+  /// Hint under the set-URL form's push URL field when the remote has its own push URL.
+  ///
+  /// In en, this message translates to:
+  /// **'Empty leaves it as it is: jj can set a push URL, not remove one.'**
+  String get settingsRemotePushKeepHint;
+
+  /// A remote form's cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get settingsRemoteCancel;
+
+  /// The add form's primary button.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get settingsRemoteAddVerb;
+
+  /// The rename form's primary button.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get settingsRemoteRenameVerb;
+
+  /// The set-URL form's primary button.
+  ///
+  /// In en, this message translates to:
+  /// **'Set URL'**
+  String get settingsRemoteSetUrlVerb;
+
+  /// Plain sentence after jj's refusal of the reserved remote name git.
+  ///
+  /// In en, this message translates to:
+  /// **'jj uses the name git for the repository on disk. Pick another name.'**
+  String get settingsRemoteReservedHelp;
+
+  /// Plain sentence after jj's 'nonstandard configuration' refusal; command is the git command that removes the remote.
+  ///
+  /// In en, this message translates to:
+  /// **'Its git config has entries jj doesn’t manage, such as a push URL, so jj leaves it alone. {command} removes it.'**
+  String settingsRemoteNonstandardHelp(String command);
+
+  /// Title of the sheet asking before a remote is removed.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}?'**
+  String settingsRemoteRemoveTitle(String name);
+
+  /// Body of the remove-remote sheet; bookmark is an example remote bookmark, undo the jj command.
+  ///
+  /// In en, this message translates to:
+  /// **'Its remote bookmarks ({bookmark} and the rest) leave this repository and git forgets its URLs. Your own bookmarks and changes stay. {undo} can’t bring the URLs back.'**
+  String settingsRemoteRemoveBody(String bookmark, String undo);
+
+  /// The remove-remote sheet's destructive button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove remote'**
+  String get settingsRemoteRemoveConfirm;
+
   /// Settings › Project group heading.
   ///
   /// In en, this message translates to:

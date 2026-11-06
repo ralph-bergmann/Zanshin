@@ -9,11 +9,13 @@ import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../graph/graph_layout.dart' show jjRefSymbol;
 import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/project_window_title.dart';
 import '../projects/projects_environment.dart';
 import '../shell/app_menu.dart' show GraphMenuBinding;
+import '../shell/shell_toast.dart' show toastSlot, toastSpan;
 import '../window/app_windows.dart';
 import 'general_tab.dart';
 import 'immutable_page.dart';
@@ -138,6 +140,7 @@ class SettingsWindowContentState extends State<SettingsWindow> {
           : onPage
           ? SettingsImmutablePage(vm: vm, project: project, onBack: state.closePage)
           : SettingsProjectTab(vm: vm, onImmutableCommits: () => state.openPage(SettingsPage.immutableCommits));
+      final String? removing = vm.removing;
       return ProjectWindowTitle(
         title: title,
         child: Semantics(
@@ -145,60 +148,91 @@ class SettingsWindowContentState extends State<SettingsWindow> {
           container: true,
           child: KeyedSubtree(
             key: const ValueKey<String>('settings-window'),
-            child: ZsWindowScaffold(
-              title: title,
-              titleHidden: true,
-              align: ZsWindowHeaderAlign.center,
-              header: <Widget>[
-                ZsSegmented<SettingsTab>(
-                  variant: ZsSegmentedVariant.tabs,
-                  label: s.settingsTabsLabel,
-                  identifier: 'settings-tabs',
-                  segments: <ZsSegment<SettingsTab>>[
-                    ZsSegment<SettingsTab>(value: SettingsTab.general, label: s.settingsTabGeneral, icon: ZI.settings),
-                    ZsSegment<SettingsTab>(
-                      value: SettingsTab.project,
-                      label: project ?? s.settingsTabProject,
-                      leading: const ZsNamiMark(size: 14),
-                      disabledReason: state.projectOpen ? null : s.settingsOpenProjectFirst,
+            child: Stack(
+              children: <Widget>[
+                ZsWindowScaffold(
+                  title: title,
+                  titleHidden: true,
+                  align: ZsWindowHeaderAlign.center,
+                  header: <Widget>[
+                    ZsSegmented<SettingsTab>(
+                      variant: ZsSegmentedVariant.tabs,
+                      label: s.settingsTabsLabel,
+                      identifier: 'settings-tabs',
+                      segments: <ZsSegment<SettingsTab>>[
+                        ZsSegment<SettingsTab>(
+                          value: SettingsTab.general,
+                          label: s.settingsTabGeneral,
+                          icon: ZI.settings,
+                        ),
+                        ZsSegment<SettingsTab>(
+                          value: SettingsTab.project,
+                          label: project ?? s.settingsTabProject,
+                          leading: const ZsNamiMark(size: 14),
+                          disabledReason: state.projectOpen ? null : s.settingsOpenProjectFirst,
+                        ),
+                      ],
+                      value: onProject ? SettingsTab.project : SettingsTab.general,
+                      onChanged: state.selectTab,
                     ),
                   ],
-                  value: onProject ? SettingsTab.project : SettingsTab.general,
-                  onChanged: state.selectTab,
-                ),
-              ],
-              body: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  _ScopeLine(
-                    lead: onProject ? s.settingsScopeProject(project) : s.settingsScopeGeneral,
-                    path: onProject ? vm.repoPath : vm.userPath,
-                  ),
-                  Flexible(
-                    child: ZsScrollArea(
-                      controller: _scroll,
-                      child: SingleChildScrollView(
-                        controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(24, 12, 24, 18),
-                        // Keyed by the project too: a switch disposes the old project's fields, pending edits
-                        // included, so none writes into the new project's config.
-                        child: KeyedSubtree(
-                          key: ValueKey<Object>((state.tab, state.page, vm.root)),
-                          child: content,
+                  body: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      _ScopeLine(
+                        lead: onProject ? s.settingsScopeProject(project) : s.settingsScopeGeneral,
+                        path: onProject ? vm.repoPath : vm.userPath,
+                      ),
+                      Flexible(
+                        child: ZsScrollArea(
+                          controller: _scroll,
+                          child: SingleChildScrollView(
+                            controller: _scroll,
+                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 18),
+                            // Keyed by the project too: a switch disposes the old project's fields, pending edits
+                            // included, so none writes into the new project's config.
+                            child: KeyedSubtree(
+                              key: ValueKey<Object>((state.tab, state.page, vm.root)),
+                              child: content,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      const _Footer(),
+                    ],
                   ),
-                  const _Footer(),
-                ],
-              ),
+                ),
+                if (removing != null) Positioned.fill(child: _removeSheet(context, s, vm, removing)),
+              ],
             ),
           ),
         ),
       );
     },
   );
+
+  /// Remove…'s question (DS RemotesGroup.jsx:149-153): a destructive sheet over the window.
+  Widget _removeSheet(BuildContext context, AppLocalizations s, SettingsViewModel vm, String name) {
+    final ZsColors colors = ZsColors.of(context);
+    final TextStyle mono = ZsType.id.copyWith(fontSize: ZsType.fsSm, color: colors.text);
+    return ZsConfirmDialog(
+      title: s.settingsRemoteRemoveTitle(name),
+      confirmLabel: s.settingsRemoteRemoveConfirm,
+      body: Text.rich(
+        toastSpan(s.settingsRemoteRemoveBody(toastSlot(0), toastSlot(1)), <InlineSpan>[
+          TextSpan(text: 'main@${jjRefSymbol(name)}', style: mono), // l10n-ignore: example bookmark
+          TextSpan(text: 'jj undo', style: mono), // l10n-ignore: jj command
+        ]),
+      ),
+      cmd: RemoteRemove(name).command,
+      closing: vm.removeClosing,
+      onConfirm: () => vm.answerRemove(confirm: true),
+      onCancel: () => vm.answerRemove(confirm: false),
+      onClosed: vm.removeClosed,
+      identifier: 'settings-remote-remove',
+    );
+  }
 }
 
 /// The scope line (DS kit.css:213-214): centred 12 `--text-dim`, the path in mono `--text-muted`.

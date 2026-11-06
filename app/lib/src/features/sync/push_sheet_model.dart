@@ -211,6 +211,9 @@ class PushSheetModel extends ChangeNotifier {
     await _replan();
   }
 
+  /// Reads the remotes again ([load]) after they changed elsewhere; nothing while the sheet is busy or leaves.
+  Future<void> reloadRemotes() => _busy || _closing ? Future<void>.value() : load();
+
   /// Chooses [remote] in or out; the last chosen remote stays.
   void toggleRemote(String remote) {
     if (_busy) {

@@ -294,6 +294,48 @@ void main() {
     });
   });
 
+  _rigTest('reloadRemotes (a Settings remote verb) drops the poll findings of a remote no longer fetched', (
+    tester,
+  ) async {
+    final rig = _Rig(
+      configure: (sync) => sync
+        ..fetchRemoteNames = <String>['origin', 'upstream']
+        ..changes['origin'] = <RemoteRefChange>[_change('main')]
+        ..changes['upstream'] = <RemoteRefChange>[_change('dev'), _change('x')],
+    );
+    await tester.pump();
+    await rig.model.poll();
+    expect(rig.model.badge, 3);
+
+    rig.sync
+      ..fetchRemoteNames = <String>['origin']
+      ..names = <String>['origin'];
+    await rig.model.reloadRemotes();
+    expect(rig.model.remoteChanges, <String, List<String>>{
+      'origin': <String>['main'],
+    });
+    expect(rig.model.badge, 1);
+  });
+
+  _rigTest('reloadRemotes re-reads an open, idle Push sheet', (tester) async {
+    final rig = _Rig();
+    await tester.pump();
+    rig.model.openPush();
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+    final PushSheetModel sheet = rig.model.pushSheet!;
+    expect(sheet.remoteNames, <String>['origin']);
+
+    rig.sync.names = <String>['origin', 'fork'];
+    await rig.model.reloadRemotes();
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+    expect(sheet.remoteNames, <String>['origin', 'fork']);
+    expect(sheet.phase, PushSheetPhase.ready, reason: 'replanned');
+  });
+
   _rigTest('a fetch refused for a stale working copy shows no toast and ends not fetching', (tester) async {
     final rig = _Rig();
     await tester.pump();

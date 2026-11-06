@@ -62,20 +62,24 @@ class SettingsGroup extends StatelessWidget {
               color: colors.flHover,
               borderRadius: BorderRadius.circular(ZsMetrics.of(context).radiusWell),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                for (var i = 0; i < children.length; i++)
-                  if (i == 0)
-                    children[i]
-                  else
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: colors.flBorder)),
+            // A row painting its own fill (a remote form's `--fl-on`) keeps the box's corners.
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(ZsMetrics.of(context).radiusWell),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  for (var i = 0; i < children.length; i++)
+                    if (i == 0)
+                      children[i]
+                    else
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border(top: BorderSide(color: colors.flBorder)),
+                        ),
+                        child: children[i],
                       ),
-                      child: children[i],
-                    ),
-              ],
+                ],
+              ),
             ),
           ),
       ],
