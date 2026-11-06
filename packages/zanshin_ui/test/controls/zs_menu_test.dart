@@ -8,6 +8,7 @@ import 'package:zanshin_ui/src/controls/zs_button.dart';
 import 'package:zanshin_ui/src/controls/zs_confirm_dialog.dart';
 import 'package:zanshin_ui/src/controls/zs_menu.dart';
 import 'package:zanshin_ui/src/controls/zs_tooltip.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
 import 'package:zanshin_ui/src/design/zs_colors.dart';
 import 'package:zanshin_ui/src/design/zs_motion.dart';
 import 'package:zanshin_ui/src/design/zs_type.dart';
@@ -50,7 +51,9 @@ Widget _host({
   String? semanticLabel,
   double maxWidth = ZsMenuPanel.defaultMaxWidth,
   double? cmdMaxWidth,
+  ZsAppearance appearance = const ZsAppearance(),
 }) => zsHost(
+  appearance: appearance,
   // An opaque window background, as the app's window fill is: an outside click needs something to hit.
   ColoredBox(
     color: const Color(0x00000000),
@@ -184,6 +187,48 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pump();
     expect(ran, 1);
+  });
+
+  testWidgets('a row is 28 high plus the density step (Story 11.20)', (tester) async {
+    for (final (ZsDensity density, double height) in const <(ZsDensity, double)>[
+      (ZsDensity.compact, 28),
+      (ZsDensity.balanced, 31),
+      (ZsDensity.comfy, 34),
+    ]) {
+      await tester.pumpWidget(
+        _host(
+          button: button,
+          appearance: ZsAppearance(density: density),
+        ),
+      );
+      await _openByKey(tester, button);
+      final Finder row = find.ancestor(of: find.text('Copy id'), matching: find.byType(SizedBox)).first;
+      expect(tester.getSize(row).height, height, reason: density.name);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('under a window zoom the safe triangle is the submenu as drawn (Story 11.20)', (tester) async {
+    // A zoomed window scales everything below its root; the triangle must use the submenu's transformed rect.
+    handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      Transform.scale(
+        scale: 1.25,
+        alignment: Alignment.topLeft,
+        child: _host(button: button, alignment: Alignment.topLeft),
+      ),
+    );
+    final TestGesture mouse = await _openSubmenuByPointer(tester);
+    final Offset last = tester.getCenter(find.text('More'));
+    final Rect commit = tester.getRect(find.bySemanticsLabel('Commit'));
+    final Offset point = _inTriangle(tester, last, .15, .1, .75);
+    expect(commit.contains(point), isTrue, reason: 'the way to the submenu crosses Commit');
+    await mouse.moveTo(point);
+    await tester.pump();
+    expect(_highlighted(tester, 'Commit'), isFalse);
+    expect(_highlighted(tester, 'More'), isTrue);
+    handle.dispose();
   });
 
   testWidgets('↑ ↓ move and wrap, skipping disabled rows; Home End', (tester) async {

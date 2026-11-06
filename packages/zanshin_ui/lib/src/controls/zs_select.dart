@@ -255,11 +255,15 @@ class _ZsSelectState<T> extends State<ZsSelect<T>> {
       },
   ];
 
+  /// A menu row's height at the density (the menu's rows add `--row-step`).
+  double get _rowHeight => ZsSelect._row + ZsMetrics.of(context).rowStep;
+
   int get _chosenIndex =>
       widget.options.indexWhere((entry) => entry is ZsSelectOption<T> && entry.value == widget.value);
 
   /// The list's content height and the chosen row's top inside it, from the menu's fixed geometry.
   (double, double) _geometry() {
+    final double row = _rowHeight;
     double y = ZsSelect._inset;
     double rowTop = ZsSelect._inset;
     final int chosen = _chosenIndex;
@@ -271,7 +275,7 @@ class _ZsSelectState<T> extends State<ZsSelect<T>> {
         rowTop = y;
       }
       y += switch (widget.options[i]) {
-        ZsSelectOption<T>() || ZsSelectCustom<T>() => ZsSelect._row,
+        ZsSelectOption<T>() || ZsSelectCustom<T>() => row,
         ZsSelectSeparator<T>() => ZsSelect._separator,
         // The caps line (`--type-caps`, 10.5 × 1.2) with `padding:7px … 3px` (the first 3 on top).
         ZsSelectHeader<T>() => (i == 0 ? 3 : 7) + 3 + ZsType.capsLabel.fontSize! * ZsType.capsLabel.height!,
@@ -331,7 +335,8 @@ class _ZsSelectState<T> extends State<ZsSelect<T>> {
     }
     for (var i = 0; i < _rowKeys.length; i++) {
       final row = _rowKeys[i].currentContext?.findRenderObject() as RenderBox?;
-      if (row != null && row.hasSize && (row.localToGlobal(Offset.zero) & row.size).contains(event.position)) {
+      // In the row's own units: a zoomed window scales the row, so a global rect from its local size would miss.
+      if (row != null && row.hasSize && (Offset.zero & row.size).contains(row.globalToLocal(event.position))) {
         _panel.currentState?.activateEntry(i);
         return;
       }
@@ -459,7 +464,7 @@ class _ZsSelectState<T> extends State<ZsSelect<T>> {
     double top;
     var scroll = 0.0;
     if (over) {
-      top = trigger.top - rowTop + ((trigger.height - ZsSelect._row) / 2).roundToDouble() - 1;
+      top = trigger.top - rowTop + ((trigger.height - _rowHeight) / 2).roundToDouble() - 1;
       if (top < ZsSelect._margin) {
         final double under = ZsSelect._margin - top;
         top += under;
@@ -482,7 +487,7 @@ class _ZsSelectState<T> extends State<ZsSelect<T>> {
     );
     final double left = over ? trigger.left - ZsSelect._left : trigger.left;
     final int chosen = _chosenIndex;
-    final double originY = over ? (rowTop - scroll + ZsSelect._row / 2) : 0;
+    final double originY = over ? (rowTop - scroll + _rowHeight / 2) : 0;
     return Positioned.fill(
       child: CustomSingleChildLayout(
         delegate: _ListLayout(Offset(left, top)),

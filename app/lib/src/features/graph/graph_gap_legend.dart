@@ -152,7 +152,8 @@ class _GraphGapLegendState extends State<GraphGapLegend> with SingleTickerProvid
     if (chip is! RenderBox || !chip.hasSize) {
       return 0;
     }
-    final double right = chip.localToGlobal(Offset.zero).dx + graphGapLegendWidth;
+    // In the overlay's units, as its width is (a zoomed window scales global positions).
+    final double right = chip.localToGlobal(Offset.zero, ancestor: overlay.findRenderObject()).dx + graphGapLegendWidth;
     return math.min(0, MediaQuery.sizeOf(overlay).width - 8 - right);
   }
 

@@ -22,6 +22,7 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport_render.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
+import 'package:zanshin/src/features/window/window_zoom.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -245,14 +246,16 @@ void main() {
     ).rows;
 
     test('below: the footer first, then top-down with hairlines between groups; above: bottom-up, the footer last', () {
-      final ({Size size, List<Rect> rows, Rect footer}) below = graphDropMenuGeometry(rows, above: false);
+      final ({Size size, List<Rect> rows, Rect footer}) below = graphDropMenuGeometry(rows, above: false, rowStep: 0);
       expect(below.rows[0].top, lessThan(below.rows[1].top));
       expect(below.rows[2].top - below.rows[1].bottom, greaterThan(below.rows[1].top - below.rows[0].bottom));
       expect(below.footer.bottom, lessThanOrEqualTo(below.rows.first.top), reason: 'the footer on the card side');
-      final ({Size size, List<Rect> rows, Rect footer}) above = graphDropMenuGeometry(rows, above: true);
+      final ({Size size, List<Rect> rows, Rect footer}) above = graphDropMenuGeometry(rows, above: true, rowStep: 0);
       expect(above.rows[0].top, greaterThan(above.rows[1].top), reason: 'the default row nearest the card below');
       expect(above.footer.top, greaterThanOrEqualTo(above.rows.first.bottom), reason: 'the footer on the card side');
       expect(above.size, below.size);
+      final ({Size size, List<Rect> rows, Rect footer}) comfy = graphDropMenuGeometry(rows, above: false, rowStep: 6);
+      expect(comfy.rows.first.height, below.rows.first.height + 6, reason: 'a row gains the density step');
     });
 
     test('12 px above the card when it fits under the area top, else below; centred and clamped', () {
@@ -734,6 +737,44 @@ void main() {
       expect(find.byType(ZsDragGhost), findsNothing);
       expect(model.transition?.dropped?.key, 'a', reason: 'the landing glides a from the ghost');
       expect(model.transition?.dropped?.rect.isEmpty, isFalse);
+      await tester.pumpWidget(const SizedBox());
+      model.dispose();
+    });
+
+    testWidgets('under a window zoom the ghost sits at the pointer and the drop origin is the ghost in the viewport '
+        '(Story 11.20)', (tester) async {
+      useShellWindow(tester);
+      final source = ScriptedGraphSource(respond: (_) => _opLayout(<String>['a', 'b', 'c'], 'op1'));
+      final model = GraphViewModel()..init(source, actions: _Actions(), drops: _Drops());
+      await tester.pumpWidget(WindowZoomBox(scale: 1.25, child: shellHost(GraphView(model: model))));
+      await tester.pumpAndSettle();
+      source.respond = (_) => _opLayout(<String>['b', 'c', 'a'], 'op2');
+
+      final Offset from = _centre(tester, 'a');
+      final Offset to = _centre(tester, 'c');
+      final TestGesture mouse = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+      await mouse.moveTo(Offset.lerp(from, to, .5)!);
+      await tester.pump();
+      await mouse.moveTo(to);
+      await tester.pump(graphDropDebounce);
+      await tester.pump(graphDropMenuDelay);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.drag.menuOpen, isTrue);
+      final ghost = model.drag.ghostKey.currentContext!.findRenderObject()! as RenderBox;
+      final RenderGraphViewport viewport = tester.allRenderObjects.whereType<RenderGraphViewport>().single;
+      // The ghost hangs off the pointer by its offset, scaled with everything else.
+      final Offset ghostAt = ghost.localToGlobal(Offset.zero);
+      expect(ghostAt.dx, greaterThan(to.dx));
+      expect(ghostAt.dx - to.dx, lessThan(graphGhostOffset.dx * 1.25 + 30), reason: 'at the pointer, not at ÷ zoom');
+      final expected = Rect.fromPoints(
+        viewport.globalToLocal(ghost.localToGlobal(Offset.zero)),
+        viewport.globalToLocal(ghost.localToGlobal(ghost.size.bottomRight(Offset.zero))),
+      );
+      expect(expected.size, within(distance: 1e-6, from: ghost.size), reason: 'viewport units are the ghost\'s');
+
+      await mouse.up();
+      await tester.pumpAndSettle();
+      expect(model.transition?.dropped?.rect, within(distance: 1e-6, from: expected));
       await tester.pumpWidget(const SizedBox());
       model.dispose();
     });

@@ -168,7 +168,13 @@ final class WindowFrameStore {
         if let saved = load(key) {
             switch mode {
             case .full:
-                window.setFrame(NSRect(origin: saved.position, size: saved.size), display: true)
+                // At least the window's content minimum, which Dart scales with the zoom (Story 11.20): a frame saved
+                // at a smaller zoom grows, its top edge kept.
+                let minimum = window.frameRect(forContentRect: NSRect(origin: .zero, size: window.contentMinSize)).size
+                let size = NSSize(
+                    width: max(saved.size.width, minimum.width), height: max(saved.size.height, minimum.height))
+                let top = saved.position.y + saved.size.height
+                window.setFrame(NSRect(origin: NSPoint(x: saved.position.x, y: top - size.height), size: size), display: true)
             case .position:
                 // The content decides the height; the saved top edge stays.
                 let top = saved.position.y + saved.size.height

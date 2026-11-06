@@ -455,7 +455,11 @@ class _GraphDragGhostLayer extends StatelessWidget {
         return const SizedBox.shrink();
       }
       final AppLocalizations strings = context.l10n;
-      final Offset at = (drag.dropPoint ?? drag.pointer) + graphGhostOffset;
+      // The pointer is a window position; the overlay's units are zoomed (Story 11.20).
+      final Offset pointer = drag.dropPoint ?? drag.pointer;
+      final RenderObject? overlay = Overlay.maybeOf(context)?.context.findRenderObject();
+      final Offset at =
+          (overlay is RenderBox && overlay.hasSize ? overlay.globalToLocal(pointer) : pointer) + graphGhostOffset;
       // A change drag runs only a menu row: no command before the menu (its footer names it).
       final String? command = drag.highlightedTarget == null || payload is GraphChangeDrag
           ? null

@@ -1,16 +1,24 @@
 // SPDX-License-Identifier: MIT
 
+// The windowing API is experimental and only reachable through implementation
+// imports; see https://github.com/flutter/flutter/issues/30701.
+// ignore_for_file: invalid_use_of_internal_member
+
 import 'package:flutter/services.dart';
+import 'package:flutter/src/foundation/_features.dart';
+import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:zanshin/src/features/settings/immutable_heads.dart';
 import 'package:zanshin/src/features/settings/settings_view_model.dart';
+import 'package:zanshin/src/features/settings/settings_widgets.dart' show SettingsRow;
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
+import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
-import 'package:zanshin_ui/zanshin_ui.dart' show ZsNamiMark;
+import 'package:zanshin_ui/zanshin_ui.dart' show ZsAppearance, ZsDensity, ZsNamiMark, ZsRoot;
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/settings_rig.dart';
@@ -58,6 +66,93 @@ void main() {
       expect(rig.store.value.general.diffLayout, DiffLayoutSetting.sideBySide);
       expect(rig.store.value.general.hideControls, isFalse);
       expect(rig.calls, isEmpty, reason: 'app preferences are not jj config');
+    });
+
+    testWidgets(
+      'Density says it is space only; the Zoom row offers the steps and writes appearance.zoom (Story 11.20)',
+      (
+        tester,
+      ) async {
+        final rig = _Rig(tester);
+        await rig.pump(project: false);
+
+        expect(find.text('Space between rows and cards. Text keeps its size.'), findsOneWidget);
+        expect(find.text('Text and everything with it, in every window. ⌘+ ⌘− ⌘0'), findsOneWidget);
+        expect(find.text('100% (Actual Size)'), findsOneWidget);
+
+        await rig.tap('settings-zoom');
+        await rig.settle();
+        for (final label in <String>['90%', '110%', '125%', '150%']) {
+          expect(find.text(label), findsOneWidget, reason: label);
+        }
+        await tester.tap(find.text('125%'));
+        // The picked row blinks before it applies.
+        await tester.pump(const Duration(seconds: 1));
+        await rig.settle();
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        expect(rig.store.value.appearance.zoom, 125);
+        expect(rig.calls, isEmpty, reason: 'an app preference, not jj config');
+      },
+    );
+
+    testWidgets('a zoom change reaches the open window: its minimum becomes 620 × 420 × the zoom', (tester) async {
+      final bool windowingWasEnabled = isWindowingEnabled;
+      isWindowingEnabled = true;
+      addTearDown(() => isWindowingEnabled = windowingWasEnabled);
+      final rig = _Rig(tester);
+      rig.windows.attach(WindowRegistry());
+      final WindowEntry entry = await rig.windows.create(
+        key: settingsWindowKey,
+        title: 'General',
+        builder: (_) => const SizedBox(),
+        dialog: settingsWindowSpec,
+      );
+      addTearDown(entry.controller.destroy);
+      await rig.pump(project: false);
+      final window = entry.controller as DialogWindowController;
+
+      await tester.runAsync(() => rig.store.update((s) => s.copyWith.appearance(zoom: 125)));
+      await rig.settle();
+
+      // The test controller keeps its constraints private; a request below them shows the minimum.
+      window.setSize(Size.zero);
+      expect(window.contentSize, const Size(775, 525));
+    });
+
+    testWidgets('a settings row gains the density step: its minimum and half the step above and below', (tester) async {
+      Future<(double, double)> row(ZsDensity density, {String? hint}) async {
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: ZsRoot(
+              appearance: ZsAppearance(density: density),
+              // A column, as a settings group is: the row takes its own height.
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  SizedBox(
+                    width: 500,
+                    child: SettingsRow(
+                      label: 'Label',
+                      hint: hint,
+                      child: const SizedBox(key: ValueKey<String>('control'), width: 40, height: 20),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        final Rect rect = tester.getRect(find.byType(SettingsRow));
+        return (rect.height, tester.getRect(find.text('Label')).top - rect.top);
+      }
+
+      expect((await row(ZsDensity.compact)).$1, 46);
+      expect((await row(ZsDensity.comfy)).$1, 52, reason: 'min 46 + 6');
+      final (double compactHeight, double compactTop) = await row(ZsDensity.compact, hint: 'A hint on its line.');
+      final (double comfyHeight, double comfyTop) = await row(ZsDensity.comfy, hint: 'A hint on its line.');
+      expect(comfyTop - compactTop, 3, reason: 'padding 8 + 3');
+      expect(comfyHeight - compactHeight, 6, reason: 'a row with a hint grows too');
     });
 
     testWidgets('Name writes once at user scope on ↩; an unchanged blur writes nothing; the author fact shows', (

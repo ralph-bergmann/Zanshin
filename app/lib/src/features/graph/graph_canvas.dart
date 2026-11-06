@@ -339,9 +339,21 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     _enter.duration = _motion.durSlide;
     _flash.duration = _motion.durFlash;
     _transition.duration = graphTransitionDuration(_motion);
+    // A density change moves the cards: the visible page is another one.
+    final tokens = ZsMetrics.of(context);
+    final ZsMetrics? old = _tokens;
+    if (old != null &&
+        (tokens.cardHCompact != old.cardHCompact ||
+            tokens.cardHDetailed != old.cardHDetailed ||
+            tokens.graphGapX != old.graphGapX ||
+            tokens.graphGapY != old.graphGapY)) {
+      _scheduleContent();
+    }
+    _tokens = tokens;
   }
 
   ZsMotion _motion = ZsMotion.full;
+  ZsMetrics? _tokens;
 
   @override
   void didUpdateWidget(GraphCanvas oldWidget) {
@@ -479,8 +491,10 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
   );
 
   Rect? _toViewport(Rect global) {
-    final Offset? at = _viewport.toLocal(global.topLeft);
-    return at == null ? null : at & global.size;
+    // Both corners through the transform: a zoomed window scales global sizes.
+    final Offset? topLeft = _viewport.toLocal(global.topLeft);
+    final Offset? bottomRight = _viewport.toLocal(global.bottomRight);
+    return topLeft == null || bottomRight == null ? null : Rect.fromPoints(topLeft, bottomRight);
   }
 
   void _dragChanged() {
@@ -540,7 +554,11 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     final Rect? menu = drag.menuOpen ? _menuRect : null;
     if (local != null && menu != null && menu.contains(local)) {
       final List<GraphDropRow> rows = drag.rows ?? const <GraphDropRow>[];
-      final List<Rect> rects = graphDropMenuGeometry(rows, above: _menuAbove).rows;
+      final List<Rect> rects = graphDropMenuGeometry(
+        rows,
+        above: _menuAbove,
+        rowStep: ZsMetrics.of(context).rowStep,
+      ).rows;
       final Offset inMenu = local - menu.topLeft;
       drag.hover(drag.target, menuRow: rects.indexWhere((r) => r.contains(inMenu)));
       return;
@@ -1375,7 +1393,8 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    final metrics = GraphMetrics.fromOptions(widget.options);
+    // The card heights and gaps follow the density (Story 11.20).
+    final metrics = GraphMetrics.fromOptions(widget.options, tokens: ZsMetrics.of(context));
     final VerticalLayout rows = _rowsFor(metrics);
     final GraphTheme theme = GraphTheme.of(context);
     final ZsColors colors = ZsColors.of(context);
@@ -1594,7 +1613,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
       _menuRect = null;
       return const SizedBox.shrink();
     }
-    final Size size = graphDropMenuGeometry(rows, above: false).size;
+    final Size size = graphDropMenuGeometry(rows, above: false, rowStep: ZsMetrics.of(context).rowStep).size;
     final ({Offset topLeft, bool above}) place = graphDropMenuPlacement(card, size, area);
     _menuRect = place.topLeft & size;
     _menuAbove = place.above;

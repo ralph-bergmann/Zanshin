@@ -5,15 +5,9 @@
    Text, controls (buttons, fields, segmented, selects), the chrome (bar, rail, islands) and window sizes stay —
    size is Zoom's job (readme › Density and zoom). Compact = the sizes everywhere else in the system.
 
-   WHY THIS FILE IS NOT IN tokens/: the token layer (zanshin_ui ZsMetrics) and its parity test
-   (packages/zanshin_ui/test/design/css_token_reader.dart, `data-density` unknown) do not carry the density sets yet.
-   Story 11.20 adds them there and moves the token block below into tokens/spacing.css; the row rules stay here.
+   The sets (--row-step, the card heights and the gaps per data-density) are tokens: Story 11.20 moved them into
+   tokens/spacing.css, where the token layer (zanshin_ui ZsMetrics) and its parity test read them. The row rules stay here.
    ============================================================ */
-
-/* the sets — Compact repeats tokens/spacing.css */
-:root{--row-step:0px}
-[data-density="balanced"]{--row-step:3px;--card-h-compact:44px;--card-h-detailed:68px;--graph-gap-x:62px;--graph-gap-y:54px}
-[data-density="comfy"]{--row-step:6px;--card-h-compact:48px;--card-h-detailed:74px;--graph-gap-x:68px;--graph-gap-y:60px}
 
 /* rows with a fixed height: + the step */
 .zs-menu-item{height:calc(28px + var(--row-step))}

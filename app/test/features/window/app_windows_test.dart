@@ -592,4 +592,84 @@ void main() {
     expect(attached, isTrue, reason: 'attached completes with the first registry');
     entry.controller.destroy();
   });
+
+  testWidgets('at a zoom a window is created with its constraints × the zoom and at least that minimum (Story 11.20)', (
+    tester,
+  ) async {
+    final (_, AppWindows windows, FakeWindowFactory factory, _) = newWindows();
+    windows.zoom = 1.5;
+    await windows.openOrActivate(key: mainWindowKey, title: 'Zanshin', builder: _nothing);
+    await windows.openOrActivate(key: settingsWindowKey, title: 'General', builder: _nothing, dialog: _settings);
+    await windows.openOrActivate(
+      key: revsetConfigsWindowKey,
+      title: 'jj log Configurations',
+      builder: _nothing,
+      dialog: _configurations,
+    );
+
+    final [AppWindowRequest main, AppWindowRequest settings, AppWindowRequest configs] = factory.requests;
+    expect(main.constraints, const BoxConstraints(minWidth: 1320, minHeight: 840));
+    expect(main.size, const Size(1320, 840), reason: '1200 × 800 is below the zoomed minimum');
+    expect(settings.constraints, const BoxConstraints(maxWidth: 930, maxHeight: 1110));
+    expect(settings.size, isNull, reason: 'still sized to its content');
+    expect(configs.constraints, const BoxConstraints(minWidth: 1230, minHeight: 690));
+    expect(configs.size, const Size(1230, 690));
+    expect(planNativeWindow(configs).constraints, configs.constraints, reason: 'the plan takes the zoomed values');
+  });
+
+  testWidgets('a zoom change grows a window below its new minimum, keeps a larger one and skips Settings', (
+    tester,
+  ) async {
+    final (_, AppWindows windows, _, _) = newWindows();
+    await windows.openOrActivate(
+      key: mainWindowKey,
+      title: 'Zanshin',
+      builder: _nothing,
+      size: const Size(900, 600),
+    );
+    await windows.openOrActivate(
+      key: projectsWindowKey,
+      title: 'Projects',
+      builder: _nothing,
+      dialog: projectsWindowSpec,
+    );
+    await windows.openOrActivate(key: settingsWindowKey, title: 'General', builder: _nothing, dialog: _settings);
+    final Size settingsBefore = windows.controllerOf(settingsWindowKey)!.contentSize;
+
+    windows.zoom = 1.1;
+
+    expect(
+      windows.controllerOf(mainWindowKey)!.contentSize,
+      within(distance: 1e-6, from: const Size(968, 616)),
+      reason: 'grown to 880 × 560 × 1.1',
+    );
+    expect(windows.controllerOf(projectsWindowKey)!.contentSize, const Size(900, 640), reason: 'above 748 × 484');
+    expect(windows.controllerOf(settingsWindowKey)!.contentSize, settingsBefore, reason: 'its follower scales it');
+
+    windows.zoom = 1.25;
+    expect(windows.controllerOf(mainWindowKey)!.contentSize, const Size(1100, 700));
+    windows.zoom = 1;
+    expect(windows.controllerOf(mainWindowKey)!.contentSize, const Size(1100, 700), reason: 'a larger frame is kept');
+  });
+
+  testWidgets('a zoom change grows a dialog window below its minimum and sets its constraints × the zoom', (
+    tester,
+  ) async {
+    final (_, AppWindows windows, _, _) = newWindows();
+    await windows.openOrActivate(
+      key: projectsWindowKey,
+      title: 'Projects',
+      builder: _nothing,
+      dialog: projectsWindowSpec,
+    );
+    final projects = windows.controllerOf(projectsWindowKey)! as DialogWindowController..setSize(const Size(700, 450));
+    expect(projects.contentSize, const Size(700, 450));
+
+    windows.zoom = 1.25;
+
+    expect(projects.contentSize, const Size(850, 550), reason: 'grown to 680 × 440 × 1.25');
+    // The test controller keeps its constraints private; a request below them shows the minimum.
+    projects.setSize(Size.zero);
+    expect(projects.contentSize, const Size(850, 550), reason: 'the minimum is 850 × 550');
+  });
 }

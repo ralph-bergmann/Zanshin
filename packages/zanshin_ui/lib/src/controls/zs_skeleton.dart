@@ -146,7 +146,7 @@ class _ZsSkeletonState extends State<ZsSkeleton> with SingleTickerProviderStateM
         ),
       ),
       ZsSkeletonKind.row => SizedBox(
-        height: 30,
+        height: 30 + ZsMetrics.of(context).rowStep,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Row(

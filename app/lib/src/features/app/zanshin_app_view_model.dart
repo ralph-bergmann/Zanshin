@@ -10,6 +10,8 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../window/window_zoom.dart';
+
 /// Theme state for the app root: the persisted [ThemeMode] and accent choice
 /// plus the live macOS shell theme, resolved into the mode `MaterialApp` should
 /// use and the [ZsAppearance] its windows show.
@@ -31,8 +33,17 @@ class ZanshinAppViewModel extends ChangeNotifier {
   /// The user's persisted choice (may be `system`).
   ThemeMode get selectedMode => _settings.value.appearance.themeMode;
 
-  /// The Settings density, which the window roots turn into a text scale.
+  /// The Settings density, which [appearance] carries to the token layer (rows, cards and gaps; Story 11.20).
   DensitySetting get density => _settings.value.appearance.density;
+
+  /// The Settings zoom in percent, snapped to its step (Story 11.20).
+  int get zoom => zoomStepOf(_settings.value.appearance.zoom);
+
+  /// The zoom as a scale factor: 1.25 for 125 %.
+  double get zoomScale => zoomScaleOf(_settings.value.appearance.zoom);
+
+  /// Persists the zoom [percent]; every window follows through the store.
+  Future<void> setZoom(int percent) => _settings.update((s) => s.copyWith.appearance(zoom: zoomStepOf(percent)));
 
   /// The mode `MaterialApp` should use.
   ///
@@ -51,7 +62,8 @@ class ZanshinAppViewModel extends ChangeNotifier {
 
   /// What the app's windows show: the theme from [effectiveMode] (night until the shell resolves `system`; the window
   /// root follows the `MaterialApp`'s resolved brightness either way), the accent family from the Settings choice
-  /// and the shell's report (decision 16.2; [ZsAccentFamily.resolve]), and the shell's accessibility flags.
+  /// and the shell's report (decision 16.2; [ZsAccentFamily.resolve]), the shell's accessibility flags and the
+  /// Settings density.
   ///
   /// Full screen, the traffic-light block and the key status are per window: the window root (`ZanshinWindowRoot`)
   /// copies them in from its chrome report (Story 11.4) and from the active-window tracker (Story 11.12).
@@ -59,7 +71,14 @@ class ZanshinAppViewModel extends ChangeNotifier {
     theme: effectiveMode == ThemeMode.light ? ZsTheme.paper : ZsTheme.night,
     accentSource: _settings.value.appearance.accentSource,
     shell: _shellTheme,
-  );
+  ).copyWith(density: zsDensityOf(density));
+
+  /// The token layer's density for the Settings [density].
+  static ZsDensity zsDensityOf(DensitySetting density) => switch (density) {
+    DensitySetting.compact => ZsDensity.compact,
+    DensitySetting.balanced => ZsDensity.balanced,
+    DensitySetting.comfy => ZsDensity.comfy,
+  };
 
   /// One-shot setup for `ViewModelBuilder`'s `init`.
   ///

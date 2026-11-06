@@ -1194,7 +1194,8 @@ class _NavRow extends StatelessWidget {
         child: child,
       ),
       child: SizedBox(
-        height: metrics.controlMd,
+        // `.zs-dialog-navitem` at the density (DS density.css .zs-dialog-navitem).
+        height: metrics.controlMd + metrics.rowStep,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 9),
           child: Row(

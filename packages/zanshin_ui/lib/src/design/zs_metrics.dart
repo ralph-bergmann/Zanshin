@@ -99,6 +99,7 @@ class ZsMetrics {
     required this.graphGapX,
     required this.graphGapY,
     required this.graphPad,
+    required this.rowStep,
     required this.radiusKbd,
     required this.radiusXs,
     required this.radiusTag,
@@ -124,10 +125,27 @@ class ZsMetrics {
     required this.zDrag,
   });
 
-  /// The metrics [appearance] shows: full screen moves the chrome, a measured traffic-light block places it,
-  /// increased contrast widens the focus ring.
+  /// The metrics [appearance] shows: the density sets the row step, card heights and graph gaps, full screen moves
+  /// the chrome, a measured traffic-light block places it, increased contrast widens the focus ring.
   factory ZsMetrics.resolve(ZsAppearance appearance) {
-    ZsMetrics metrics = standard;
+    // DS tokens/spacing.css:55-57; compact is `standard`.
+    ZsMetrics metrics = switch (appearance.density) {
+      ZsDensity.compact => standard,
+      ZsDensity.balanced => standard.copyWith(
+        rowStep: 3,
+        cardHCompact: 44,
+        cardHDetailed: 68,
+        graphGapX: 62,
+        graphGapY: 54,
+      ),
+      ZsDensity.comfy => standard.copyWith(
+        rowStep: 6,
+        cardHCompact: 48,
+        cardHDetailed: 74,
+        graphGapX: 68,
+        graphGapY: 60,
+      ),
+    };
     final Rect? block = appearance.trafficLights;
     if (appearance.fullScreen) {
       // DS tokens/spacing.css:52; the chrome values derived from the block follow.
@@ -208,6 +226,7 @@ class ZsMetrics {
     graphGapX: 56,
     graphGapY: 48,
     graphPad: 56,
+    rowStep: 0,
     radiusKbd: 3,
     radiusXs: 4,
     radiusTag: 5,
@@ -416,6 +435,10 @@ class ZsMetrics {
   /// `--graph-pad` (DS tokens/spacing.css:48).
   final double graphPad;
 
+  /// `--row-step` (DS tokens/spacing.css:55-57): what every listed row gains at the density — a fixed height adds it,
+  /// a padded row half above and half below (DS components/density.css).
+  final double rowStep;
+
   /// `--radius-kbd` (DS tokens/effects.css:7).
   final double radiusKbd;
 
@@ -543,6 +566,7 @@ class ZsMetrics {
     double? graphGapX,
     double? graphGapY,
     double? graphPad,
+    double? rowStep,
     double? radiusKbd,
     double? radiusXs,
     double? radiusTag,
@@ -623,6 +647,7 @@ class ZsMetrics {
     graphGapX: graphGapX ?? this.graphGapX,
     graphGapY: graphGapY ?? this.graphGapY,
     graphPad: graphPad ?? this.graphPad,
+    rowStep: rowStep ?? this.rowStep,
     radiusKbd: radiusKbd ?? this.radiusKbd,
     radiusXs: radiusXs ?? this.radiusXs,
     radiusTag: radiusTag ?? this.radiusTag,
@@ -717,6 +742,7 @@ class ZsMetrics {
     '--graph-gap-x': graphGapX,
     '--graph-gap-y': graphGapY,
     '--graph-pad': graphPad,
+    '--row-step': rowStep,
     '--radius-kbd': radiusKbd,
     '--radius-xs': radiusXs,
     '--radius-tag': radiusTag,
@@ -802,6 +828,7 @@ class ZsMetrics {
           other.graphGapX == graphGapX &&
           other.graphGapY == graphGapY &&
           other.graphPad == graphPad &&
+          other.rowStep == rowStep &&
           other.radiusKbd == radiusKbd &&
           other.radiusXs == radiusXs &&
           other.radiusTag == radiusTag &&
@@ -884,6 +911,7 @@ class ZsMetrics {
     graphGapX,
     graphGapY,
     graphPad,
+    rowStep,
     radiusKbd,
     radiusXs,
     radiusTag,

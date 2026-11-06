@@ -40,6 +40,7 @@ const _attributes = <String, String>{
   'data-window': 'window',
   'data-motion': 'motion',
   'data-fullscreen': 'fullscreen',
+  'data-density': 'density',
 };
 
 /// One `--name: value` declaration.
@@ -253,6 +254,7 @@ class CssTokenSheet {
         'window' => appearance.inactive && value == 'inactive',
         'motion' => appearance.reduceMotion && value == 'reduce',
         'fullscreen' => appearance.fullScreen,
+        'density' => appearance.density.name == value,
         _ => throw FormatException('unknown condition $name'),
       };
       if (!holds) {
@@ -632,4 +634,5 @@ String appearanceLabel(ZsAppearance appearance) => <String>[
   if (appearance.inactive) 'inactive',
   if (appearance.reduceMotion) 'reduce motion',
   if (appearance.fullScreen) 'full screen',
+  if (appearance.density != ZsDensity.compact) appearance.density.name,
 ].join(', ');

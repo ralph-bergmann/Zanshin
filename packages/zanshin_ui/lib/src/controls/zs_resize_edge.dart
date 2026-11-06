@@ -250,7 +250,11 @@ class _ZsResizeEdgeState extends State<ZsResizeEdge> with SingleTickerProviderSt
 
   void _dragUpdate(DragUpdateDetails details) {
     if (_dragging) {
-      _report(_clamp((_dragValue + (details.globalPosition.dx - _dragX) * widget.side._grow).roundToDouble()));
+      // The travel in the edge's own units (a zoomed window scales them); both points through the current transform,
+      // so the edge's own movement cancels out.
+      final box = context.findRenderObject()! as RenderBox;
+      final double travel = box.globalToLocal(details.globalPosition).dx - box.globalToLocal(Offset(_dragX, 0)).dx;
+      _report(_clamp((_dragValue + travel * widget.side._grow).roundToDouble()));
     }
   }
 

@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry;
+import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -25,6 +25,7 @@ import '../sync/sync_model.dart';
 import '../window/active_window_tracker.dart';
 import '../window/app_window_actions.dart';
 import '../window/app_windows.dart';
+import '../window/window_zoom.dart';
 
 final _log = Logger('zanshin.menu');
 
@@ -128,11 +129,25 @@ class AppMenuModel extends ChangeNotifier {
   var _scheduled = false;
   var _disposed = false;
 
-  /// Hands over the app's [windows] and the window [actions] (the coordinator).
-  void attach(AppWindows windows, AppWindowActions actions) {
+  /// Hands over the app's [windows], the window [actions] (the coordinator) and the [settings], whose
+  /// `appearance.zoom` View › Zoom In, Zoom Out and Actual Size read and write (Story 11.20).
+  void attach(AppWindows windows, AppWindowActions actions, SettingsStore settings) {
     _windows = windows;
     _actions = actions;
+    _settings?.removeListener(_changed);
+    _settings = settings..addListener(_changed);
     _changed();
+  }
+
+  SettingsStore? _settings;
+
+  /// Sets the zoom to [percent]; null (grey) without settings or when [percent] is the zoom already.
+  VoidCallback? _zoomTo(int percent) {
+    final SettingsStore? settings = _settings;
+    if (settings == null || percent == zoomStepOf(settings.value.appearance.zoom)) {
+      return null;
+    }
+    return () => unawaited(settings.update((s) => s.copyWith.appearance(zoom: percent)));
   }
 
   void _graphChanged() {
@@ -358,6 +373,7 @@ class AppMenuModel extends ChangeNotifier {
 
     final GraphPreferences? preferences = ready?.preferences;
     final bool canReload = (_session.repo != null || graph.value != null) && !projectSheet;
+    final int zoom = zoomStepOf(_settings?.value.appearance.zoom ?? zoomActualSize);
 
     return <PlatformMenuItem>[
       _appMenu(s, onSettings: actions == null ? null : _run(actions.openSettings)),
@@ -506,6 +522,27 @@ class AppMenuModel extends ChangeNotifier {
                         graph.value?.model.reload();
                       }
                     : null,
+              ),
+            ],
+          ),
+          // Zoom (Story 11.20; DS readme › View): Settings › General › Zoom's steps, in every window; each item grey
+          // at its end.
+          PlatformMenuItemGroup(
+            members: <PlatformMenuItem>[
+              PlatformMenuItem(
+                label: s.menuZoomIn,
+                shortcut: const CharacterActivator('+', meta: true),
+                onSelected: _zoomTo(zoomInFrom(zoom)),
+              ),
+              PlatformMenuItem(
+                label: s.menuZoomOut,
+                shortcut: const SingleActivator(LogicalKeyboardKey.minus, meta: true),
+                onSelected: _zoomTo(zoomOutFrom(zoom)),
+              ),
+              PlatformMenuItem(
+                label: s.menuActualSize,
+                shortcut: const SingleActivator(LogicalKeyboardKey.digit0, meta: true),
+                onSelected: _zoomTo(zoomActualSize),
               ),
             ],
           ),
@@ -683,6 +720,7 @@ class AppMenuModel extends ChangeNotifier {
     _session.removeListener(_changed);
     ZsSheet.openViews.removeListener(_changed);
     FocusManager.instance.removeListener(_changed);
+    _settings?.removeListener(_changed);
     _bound?.model.removeListener(_changed);
     _bound?.preferences.removeListener(_changed);
     _bound?.sync?.removeListener(_changed);

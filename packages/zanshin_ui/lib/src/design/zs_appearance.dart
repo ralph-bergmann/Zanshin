@@ -32,6 +32,18 @@ enum ZsTheme {
   };
 }
 
+/// How much air rows and graph cards get (DS tokens/spacing.css, `data-density`; Story 11.20): never how big.
+enum ZsDensity {
+  /// The DS spacing everywhere else in the system (the default).
+  compact,
+
+  /// Rows +3, cards 44 / 68, gaps 62 × 54.
+  balanced,
+
+  /// Rows +6, cards 48 / 74, gaps 68 × 60.
+  comfy,
+}
+
 /// The accent families of the accent role (decision 16.2; DS tokens/accents.css:2-26): Multicolor is Zanshin's own
 /// moon, the eight named ones follow a named macOS accent.
 enum ZsAccentFamily {
@@ -160,6 +172,7 @@ class ZsAppearance {
     this.inactive = false,
     this.fullScreen = false,
     this.trafficLights,
+    this.density = ZsDensity.compact,
   });
 
   /// The nearest installed appearance, or the default one (night, Multicolor, no delta) outside any window root.
@@ -214,6 +227,9 @@ class ZsAppearance {
   /// then the metrics take the reference geometry.
   final Rect? trafficLights;
 
+  /// The Settings density (DS tokens/spacing.css, `data-density`): the row step, card heights and graph gaps.
+  final ZsDensity density;
+
   /// The nearest installed appearance, or null outside any window root.
   static ZsAppearance? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ZsAppearanceScope>()?.appearance;
@@ -228,6 +244,7 @@ class ZsAppearance {
     bool? inactive,
     bool? fullScreen,
     Rect? trafficLights,
+    ZsDensity? density,
   }) => ZsAppearance(
     theme: theme ?? this.theme,
     family: family ?? this.family,
@@ -237,6 +254,7 @@ class ZsAppearance {
     inactive: inactive ?? this.inactive,
     fullScreen: fullScreen ?? this.fullScreen,
     trafficLights: trafficLights ?? this.trafficLights,
+    density: density ?? this.density,
   );
 
   @override
@@ -250,7 +268,8 @@ class ZsAppearance {
           other.reduceTransparency == reduceTransparency &&
           other.inactive == inactive &&
           other.fullScreen == fullScreen &&
-          other.trafficLights == trafficLights;
+          other.trafficLights == trafficLights &&
+          other.density == density;
 
   @override
   int get hashCode => Object.hash(
@@ -262,13 +281,14 @@ class ZsAppearance {
     inactive,
     fullScreen,
     trafficLights,
+    density,
   );
 
   @override
   String toString() =>
       'ZsAppearance(${theme.name}, ${family.name}, increasedContrast: $increasedContrast, reduceMotion: '
       '$reduceMotion, reduceTransparency: $reduceTransparency, inactive: $inactive, fullScreen: $fullScreen, '
-      'trafficLights: $trafficLights)';
+      'trafficLights: $trafficLights, density: ${density.name})';
 }
 
 /// Installs the effective [ZsAppearance] for a subtree; `ZsRoot` places it at every window root.

@@ -23,9 +23,15 @@ const double _footerH = 30;
 
 /// The drop menu's geometry for [rows] (Story 10.10): its size, each row's rect and the footer's, top-down; [above]
 /// runs the list bottom-up (the default row nearest the card below it); the footer sits on the card's side, under the
-/// list above the card and over it below the card (DS components/menus/DropMenu.jsx).
-({Size size, List<Rect> rows, Rect footer}) graphDropMenuGeometry(List<GraphDropRow> rows, {required bool above}) {
+/// list above the card and over it below the card (DS components/menus/DropMenu.jsx). Each row gains the density's
+/// [rowStep] (`ZsMetrics.rowStep`, DS density.css .zs-drop-item).
+({Size size, List<Rect> rows, Rect footer}) graphDropMenuGeometry(
+  List<GraphDropRow> rows, {
+  required bool above,
+  required double rowStep,
+}) {
   const double inner = graphDropMenuWidth - 2 * _pad;
+  final double rowH = _rowH + rowStep;
   // Top-down in list order: each row's height and whether a hairline comes before it.
   final order = List<int>.generate(rows.length, (k) => above ? rows.length - 1 - k : k);
   final rects = List<Rect>.filled(rows.length, Rect.zero);
@@ -42,8 +48,8 @@ const double _footerH = 30;
     } else if (k > 0) {
       y += _rowGap;
     }
-    rects[i] = Rect.fromLTWH(_pad, y, inner, _rowH);
-    y += _rowH;
+    rects[i] = Rect.fromLTWH(_pad, y, inner, rowH);
+    y += rowH;
   }
   if (above) {
     footer = Rect.fromLTWH(_pad, y, inner, _footerH);
@@ -118,7 +124,11 @@ class _GraphDropMenuState extends State<GraphDropMenu> with SingleTickerProvider
     final ZsMotion motion = ZsMotion.of(context);
     final metrics = ZsMetrics.of(context);
     final List<GraphDropRow> rows = widget.rows;
-    final ({Size size, List<Rect> rows, Rect footer}) geometry = graphDropMenuGeometry(rows, above: widget.above);
+    final ({Size size, List<Rect> rows, Rect footer}) geometry = graphDropMenuGeometry(
+      rows,
+      above: widget.above,
+      rowStep: metrics.rowStep,
+    );
     final int hi = widget.highlight.clamp(0, math.max(0, rows.length - 1));
     final children = <Widget>[];
     for (var i = 0; i < rows.length; i++) {

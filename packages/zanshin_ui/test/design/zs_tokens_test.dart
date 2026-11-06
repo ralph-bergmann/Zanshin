@@ -350,6 +350,23 @@ void main() {
       expect(fullScreen.chromeTop, 68);
       expect(ZsMetrics.resolve(const ZsAppearance()), ZsMetrics.standard);
     });
+
+    test('each density sets the row step, card heights and gaps; everything else stays', () {
+      (double, double, double, double, double) set(ZsDensity density) {
+        final m = ZsMetrics.resolve(ZsAppearance(density: density));
+        return (m.rowStep, m.cardHCompact, m.cardHDetailed, m.graphGapX, m.graphGapY);
+      }
+
+      expect(set(ZsDensity.compact), (0, 40, 62, 56, 48));
+      expect(set(ZsDensity.balanced), (3, 44, 68, 62, 54));
+      expect(set(ZsDensity.comfy), (6, 48, 74, 68, 60));
+      expect(ZsMetrics.resolve(const ZsAppearance()), ZsMetrics.standard);
+      final comfy = ZsMetrics.resolve(const ZsAppearance(density: ZsDensity.comfy));
+      expect(
+        comfy.copyWith(rowStep: 0, cardHCompact: 40, cardHDetailed: 62, graphGapX: 56, graphGapY: 48),
+        ZsMetrics.standard,
+      );
+    });
   });
 
   test('the token layer records the DS sync it mirrors', () {

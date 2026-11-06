@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin_ui/src/controls/zs_popover.dart';
 import 'package:zanshin_ui/src/controls/zs_switch.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
 import 'package:zanshin_ui/src/design/zs_colors.dart';
 import 'package:zanshin_ui/src/design/zs_type.dart';
 import 'package:zanshin_ui/src/materials/zs_menu_material.dart';
@@ -11,7 +12,8 @@ import 'package:zanshin_ui/src/materials/zs_menu_material.dart';
 import '../helpers/controls.dart';
 import '../helpers/zs_host.dart';
 
-Widget _popover({VoidCallback? onSettings}) => zsHost(
+Widget _popover({VoidCallback? onSettings, ZsAppearance appearance = const ZsAppearance()}) => zsHost(
+  appearance: appearance,
   ZsPopover(
     label: 'View',
     identifier: 'popover',
@@ -46,6 +48,13 @@ void main() {
     expect(header.style?.color, c.textDim);
     expect(tester.getSize(find.byType(ZsOptionRow)).height, 36);
     expect(tester.getSize(find.byType(ZsOptionLink)).height, 36);
+  });
+
+  testWidgets('at comfy density the option rows are 42 high (Story 11.20)', (tester) async {
+    await tester.pumpWidget(_popover(appearance: const ZsAppearance(density: ZsDensity.comfy)));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(ZsOptionRow)).height, 42);
+    expect(tester.getSize(find.byType(ZsOptionLink)).height, 42);
   });
 
   testWidgets('the option link: hover --fl-hover with --text; its faint shortcut steps up a rung', (tester) async {

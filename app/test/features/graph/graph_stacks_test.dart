@@ -964,7 +964,13 @@ void main() {
   });
 
   group('the list (item 2)', () {
-    Future<GraphCardController> pumpList(WidgetTester tester, GraphLayout layout, Rect card, Rect area) async {
+    Future<GraphCardController> pumpList(
+      WidgetTester tester,
+      GraphLayout layout,
+      Rect card,
+      Rect area, {
+      ZsAppearance appearance = const ZsAppearance(),
+    }) async {
       final cards = GraphCardController(now: 1790000000000 + 600 * 60000);
       addTearDown(cards.dispose);
       useShellWindow(tester, const Size(1200, 900));
@@ -978,6 +984,7 @@ void main() {
             controller: cards,
             closing: false,
           ),
+          appearance: appearance,
         ),
       );
       await tester.pumpAndSettle();
@@ -1003,6 +1010,31 @@ void main() {
       expect(find.byKey(const ValueKey<String>('graph-stack-row-m499')), findsNothing);
       expect(rows.evaluate().length, lessThan(20));
       expect(find.text(platformStrings().stackExpandHint(500)), findsOneWidget);
+    });
+
+    testWidgets('at comfy density the rows are 34 high and a row\'s callout starts at that row (Story 11.20)', (
+      tester,
+    ) async {
+      final RecordedGraphLayout layout = hugeStackLayout(20);
+      await pumpList(
+        tester,
+        layout,
+        const Rect.fromLTWH(100, 100, 240, 62),
+        const Rect.fromLTWH(0, 0, 1200, 900),
+        appearance: const ZsAppearance(density: ZsDensity.comfy),
+      );
+      expect(tester.getSize(find.byType(ListView)).height, graphStackMaxRows * 34);
+      final Finder row = find.byKey(const ValueKey<String>('graph-stack-row-m15'));
+      expect(tester.getSize(row).height, 34);
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: tester.getCenter(row));
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      await tester.pump(graphStackRowRest + const Duration(milliseconds: 10));
+      await tester.pumpAndSettle();
+      final Finder callout = find.byKey(const ValueKey<String>('graph-stack-callout-m15'));
+      expect(callout, findsOneWidget);
+      expect(tester.getTopLeft(callout).dy, moreOrLessEquals(tester.getTopLeft(row).dy, epsilon: .5));
     });
 
     testWidgets('above the card when it does not fit below the area; x and width clamped', (tester) async {

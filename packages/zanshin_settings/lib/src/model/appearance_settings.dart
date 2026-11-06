@@ -18,15 +18,16 @@ enum AccentSource {
   zanshin,
 }
 
-/// How large the app's text is: Settings › General's "Density: Compact · Balanced · Comfy" (Story 11.7).
+/// How much air the app's rows and cards get: Settings › General's "Density: Compact · Balanced · Comfy"
+/// (Story 11.7; spacing tokens since Story 11.20).
 enum DensitySetting {
-  /// The DS sizes as they are (the default).
+  /// The DS spacing as it is (the default).
   compact,
 
-  /// One step larger.
+  /// One step more space.
   balanced,
 
-  /// Two steps larger.
+  /// Two steps more space.
   comfy,
 }
 
@@ -42,8 +43,12 @@ abstract class AppearanceSettings with _$AppearanceSettings {
     /// Where the accent colour comes from; [AccentSource.followMacOS] by default.
     @Default(AccentSource.followMacOS) AccentSource accentSource,
 
-    /// The text density; [DensitySetting.compact] by default, and for a value this version does not know.
+    /// The density; [DensitySetting.compact] by default, and for a value this version does not know.
     @JsonKey(unknownEnumValue: DensitySetting.compact) @Default(DensitySetting.compact) DensitySetting density,
+
+    /// The app-wide zoom in percent (90 · 100 · 110 · 125 · 150); 100 by default. The app snaps a value off
+    /// those steps to the nearest one where it uses it.
+    @Default(100) int zoom,
   }) = _AppearanceSettings;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

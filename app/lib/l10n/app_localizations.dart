@@ -2288,6 +2288,24 @@ abstract class AppLocalizations {
   /// **'Reload'**
   String get menuReload;
 
+  /// View menu: the next larger zoom step, in every window.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom In'**
+  String get menuZoomIn;
+
+  /// View menu: the next smaller zoom step, in every window.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom Out'**
+  String get menuZoomOut;
+
+  /// View menu: back to 100 % zoom.
+  ///
+  /// In en, this message translates to:
+  /// **'Actual Size'**
+  String get menuActualSize;
+
   /// Change menu: jj new on the target change.
   ///
   /// In en, this message translates to:
@@ -3320,29 +3338,59 @@ abstract class AppLocalizations {
   /// **'Auto'**
   String get settingsThemeAuto;
 
-  /// Settings › General › Appearance row: the text size.
+  /// Settings › General › Appearance row: the space between rows and cards.
   ///
   /// In en, this message translates to:
   /// **'Density'**
   String get settingsDensity;
 
-  /// Density choice: the default size.
+  /// Hint under the Density row.
+  ///
+  /// In en, this message translates to:
+  /// **'Space between rows and cards. Text keeps its size.'**
+  String get settingsDensityHint;
+
+  /// Density choice: the default spacing.
   ///
   /// In en, this message translates to:
   /// **'Compact'**
   String get settingsDensityCompact;
 
-  /// Density choice: one step larger.
+  /// Density choice: one step more space.
   ///
   /// In en, this message translates to:
   /// **'Balanced'**
   String get settingsDensityBalanced;
 
-  /// Density choice: two steps larger.
+  /// Density choice: two steps more space.
   ///
   /// In en, this message translates to:
   /// **'Comfy'**
   String get settingsDensityComfy;
+
+  /// Settings › General › Appearance row: how big everything is, in every window.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom'**
+  String get settingsZoom;
+
+  /// Hint under the Zoom row; the shortcuts of View › Zoom In, Zoom Out and Actual Size.
+  ///
+  /// In en, this message translates to:
+  /// **'Text and everything with it, in every window. ⌘+ ⌘− ⌘0'**
+  String get settingsZoomHint;
+
+  /// A Zoom choice other than 100: the percentage.
+  ///
+  /// In en, this message translates to:
+  /// **'{percent}%'**
+  String settingsZoomStep(int percent);
+
+  /// The Zoom choice 100, the default.
+  ///
+  /// In en, this message translates to:
+  /// **'100% (Actual Size)'**
+  String get settingsZoomActualSize;
 
   /// Settings › General › Appearance row.
   ///

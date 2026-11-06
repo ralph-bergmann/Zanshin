@@ -34,6 +34,7 @@ import 'src/features/shell/app_menu.dart';
 import 'src/features/window/app_window_actions.dart';
 import 'src/features/window/app_window_coordinator.dart';
 import 'src/features/window/app_windows.dart';
+import 'src/features/window/window_zoom.dart';
 import 'src/features/window/zanshin_window_root.dart';
 
 final _log = Logger('zanshin.bootstrap');
@@ -144,7 +145,9 @@ Future<BootFirstWindow> _startApp(
   // A switch away from the open project asks the close guards first, as closing and quitting do (Story 10.22).
   mainComponent.projectSession.mayLeave = windows.mayClose;
   final AppWindowCoordinator coordinator = appWindowCoordinator(mainComponent, windows);
-  final AppMenuModel appMenu = mainComponent.appMenu..attach(windows, coordinator);
+  // Before the first window: it is created at the stored zoom (Story 11.20). Bound for the app's life.
+  bindWindowZoom(settings, windows);
+  final AppMenuModel appMenu = mainComponent.appMenu..attach(windows, coordinator, settings);
   menu.value = appMenu;
   return coordinator.start();
 }

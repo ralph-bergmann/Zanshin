@@ -43,7 +43,7 @@ export 'src/controls/zs_toast.dart' show ZsToast, ZsToastAction, ZsToastTone;
 export 'src/controls/zs_tooltip.dart' show ZsTooltip, ZsTooltipBubble, ZsTooltipPlacement;
 export 'src/design/graph_theme.dart' show GraphTheme;
 export 'src/design/zs_app_theme.dart' show ZsAppTheme;
-export 'src/design/zs_appearance.dart' show ZsAccentFamily, ZsAppearance, ZsAppearanceOverride, ZsTheme;
+export 'src/design/zs_appearance.dart' show ZsAccentFamily, ZsAppearance, ZsAppearanceOverride, ZsDensity, ZsTheme;
 export 'src/design/zs_colors.dart' show ZsColors;
 export 'src/design/zs_elevation.dart' show ZsElevation;
 export 'src/design/zs_metrics.dart' show ZsIconSize, ZsMetrics;

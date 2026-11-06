@@ -6,9 +6,12 @@ import 'package:zanshin/src/features/settings/settings_window_sizer.dart';
 
 /// A follower over a recorded window: every size and constraints it asks for.
 class _Window {
+  _Window({this.zoom = 1});
+
+  final double zoom;
   final sizes = <Size>[];
   final constraints = <BoxConstraints>[];
-  late final follower = SettingsHeightFollower(setSize: sizes.add, setConstraints: constraints.add);
+  late final follower = SettingsHeightFollower(setSize: sizes.add, setConstraints: constraints.add, zoom: zoom);
 }
 
 void main() {
@@ -62,6 +65,60 @@ void main() {
         ..windowSized(const Size(800, 700));
       expect(window.sizes, isEmpty, reason: 'the size is kept');
       expect(notified, 1);
+    });
+
+    test('at zoom 125 the minimum is 775 × 525, the cap 925 and the content height × 1.25 (Story 11.20)', () {
+      final window = _Window(zoom: 1.25);
+      addTearDown(window.follower.dispose);
+
+      window.follower.windowSized(const Size(775, 600));
+      expect(window.constraints, <BoxConstraints>[const BoxConstraints(minWidth: 775, minHeight: 525)]);
+      window.follower.contentHeight(500);
+      expect(window.sizes, <Size>[const Size(775, 625)]);
+      window.follower
+        ..windowSized(const Size(775, 625))
+        ..contentHeight(900);
+      expect(window.sizes.last, const Size(775, 925), reason: 'capped at 740 × 1.25');
+      expect(window.follower.following, isTrue);
+    });
+
+    test('a zoom change while following scales the width and the height; the size it causes is not a resize', () {
+      final window = _Window();
+      addTearDown(window.follower.dispose);
+      window.follower
+        ..windowSized(const Size(620, 500))
+        ..contentHeight(500)
+        ..windowSized(const Size(620, 500));
+      expect(window.sizes, isEmpty);
+
+      window.follower.zoom = 1.25;
+      expect(window.constraints.last, const BoxConstraints(minWidth: 775, minHeight: 525));
+      expect(window.sizes.last, const Size(775, 625));
+      window.follower.windowSized(const Size(775, 625));
+      expect(window.follower.following, isTrue);
+
+      window.follower.zoom = .9;
+      expect(window.constraints.last, const BoxConstraints(minWidth: 558, minHeight: 378));
+      expect(window.sizes.last, const Size(558, 450));
+      window.follower.windowSized(const Size(558, 450));
+      expect(window.follower.following, isTrue);
+    });
+
+    test('a zoom change after a resize keeps the frame, growing it only to a larger minimum', () {
+      final window = _Window();
+      addTearDown(window.follower.dispose);
+      window.follower
+        ..windowSized(const Size(620, 500))
+        ..windowSized(const Size(700, 450));
+      expect(window.follower.following, isFalse);
+
+      window.follower.zoom = 1.25;
+      expect(window.constraints.last, const BoxConstraints(minWidth: 775, minHeight: 525));
+      expect(window.sizes.last, const Size(775, 525), reason: 'grown to the zoomed minimum');
+      window.follower.windowSized(const Size(775, 525));
+      final int asked = window.sizes.length;
+      window.follower.zoom = 1;
+      expect(window.sizes, hasLength(asked), reason: 'a larger frame is kept');
     });
   });
 

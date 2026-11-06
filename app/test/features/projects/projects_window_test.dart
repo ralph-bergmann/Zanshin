@@ -275,6 +275,11 @@ void main() {
       expect(find.text('now'), findsOneWidget, reason: 'opened just now');
       expect(tester.getSize(rig.row('MyApp')).height, ProjectsTree.projectHeight);
       expect(tester.getSize(rig.row('WORK')).height, ProjectsTree.groupHeight);
+      // Story 11.20: at comfy density both rows gain the step.
+      await rig.showIn(const ZsAppearance(density: ZsDensity.comfy));
+      expect(tester.getSize(rig.row('MyApp')).height, 50);
+      expect(tester.getSize(rig.row('WORK')).height, 34);
+      await rig.showIn(const ZsAppearance());
       expect(tester.getTopLeft(rig.row('MyApp')).dx - tester.getTopLeft(rig.row('WORK')).dx, 0);
       expect(
         tester.getTopLeft(find.text('MOBILE')).dx - tester.getTopLeft(find.text('WORK')).dx,

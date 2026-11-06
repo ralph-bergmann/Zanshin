@@ -1509,6 +1509,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get menuReload => 'Reload';
 
   @override
+  String get menuZoomIn => 'Zoom In';
+
+  @override
+  String get menuZoomOut => 'Zoom Out';
+
+  @override
+  String get menuActualSize => 'Actual Size';
+
+  @override
   String get menuNewChange => 'New Change';
 
   @override
@@ -2148,6 +2157,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDensity => 'Density';
 
   @override
+  String get settingsDensityHint => 'Space between rows and cards. Text keeps its size.';
+
+  @override
   String get settingsDensityCompact => 'Compact';
 
   @override
@@ -2155,6 +2167,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDensityComfy => 'Comfy';
+
+  @override
+  String get settingsZoom => 'Zoom';
+
+  @override
+  String get settingsZoomHint => 'Text and everything with it, in every window. ⌘+ ⌘− ⌘0';
+
+  @override
+  String settingsZoomStep(int percent) {
+    return '$percent%';
+  }
+
+  @override
+  String get settingsZoomActualSize => '100% (Actual Size)';
 
   @override
   String get settingsAccent => 'Accent colour';

@@ -87,6 +87,27 @@ void main() {
       expect(tester.getSize(find.byType(ZsFieldListRow)).height, greaterThanOrEqualTo(34));
     });
 
+    testWidgets('a one-line row is 34 high, 40 at comfy density (Story 11.20)', (tester) async {
+      // In a list, as the field's list has it: the row takes its own height.
+      Widget listed(ZsDensity density) => zsHost(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SizedBox(
+              width: 300,
+              child: ZsFieldListRow(icon: ZI.bookmark, onPressed: () {}, child: const Text('main')),
+            ),
+          ],
+        ),
+        appearance: ZsAppearance(density: density),
+        icons: true,
+      );
+      await tester.pumpWidget(listed(ZsDensity.compact));
+      expect(tester.getSize(find.byType(ZsFieldListRow)).height, 34);
+      await tester.pumpWidget(listed(ZsDensity.comfy));
+      expect(tester.getSize(find.byType(ZsFieldListRow)).height, 40);
+    });
+
     testWidgets('hover is --fl-hover and never the keyboard row', (tester) async {
       await tester.pumpWidget(_row());
       await hover(tester, find.byType(ZsFieldListRow));

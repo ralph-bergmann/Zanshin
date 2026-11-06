@@ -7,6 +7,7 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../window/window_zoom.dart';
 import 'settings_view_model.dart';
 import 'settings_widgets.dart';
 
@@ -93,6 +94,7 @@ class SettingsGeneralTab extends StatelessWidget {
             ),
             SettingsRow(
               label: s.settingsDensity,
+              hint: s.settingsDensityHint,
               child: ZsSegmented<DensitySetting>(
                 variant: ZsSegmentedVariant.inset,
                 label: s.settingsDensity,
@@ -105,6 +107,23 @@ class SettingsGeneralTab extends StatelessWidget {
                 value: prefs.appearance.density,
                 onChanged: (density) =>
                     vm.updatePreferences((settings) => settings.copyWith.appearance(density: density)),
+              ),
+            ),
+            SettingsRow(
+              label: s.settingsZoom,
+              hint: s.settingsZoomHint,
+              child: ZsSelect<int>(
+                label: s.settingsZoom,
+                identifier: 'settings-zoom',
+                options: <ZsSelectEntry<int>>[
+                  for (final int step in zoomSteps)
+                    ZsSelectOption<int>(
+                      value: step,
+                      label: step == zoomActualSize ? s.settingsZoomActualSize : s.settingsZoomStep(step),
+                    ),
+                ],
+                value: zoomStepOf(prefs.appearance.zoom),
+                onChanged: (zoom) => vm.updatePreferences((settings) => settings.copyWith.appearance(zoom: zoom)),
               ),
             ),
             SettingsRow(

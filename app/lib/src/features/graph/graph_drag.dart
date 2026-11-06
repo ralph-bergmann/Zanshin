@@ -670,7 +670,8 @@ class GraphDrag extends ChangeNotifier {
   Rect? _ghostRect() {
     final RenderObject? box = ghostKey.currentContext?.findRenderObject();
     if (box is RenderBox && box.attached && box.hasSize) {
-      return box.localToGlobal(Offset.zero) & box.size;
+      // Through the transform: a zoomed window scales the ghost.
+      return MatrixUtils.transformRect(box.getTransformTo(null), Offset.zero & box.size);
     }
     return null;
   }

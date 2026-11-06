@@ -2342,7 +2342,8 @@ class InspectorFileRow extends StatelessWidget {
     final FileDiff? summary = this.summary;
     final TextStyle stat = ZsType.id.copyWith(fontSize: ZsType.fsSm);
     final Widget row = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      // `.zs-file` at the density: half the step above and below (DS density.css .zs-file).
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6 + metrics.rowStep / 2),
       decoration: BoxDecoration(
         color: focused
             ? colors.flOn

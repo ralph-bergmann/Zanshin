@@ -19,6 +19,10 @@ final double settingsWindowMaxHeight = settingsWindowSpec.constraints.maxHeight;
 /// window from then on.
 ///
 /// Pure: [setSize] and [setConstraints] are the window controller's.
+///
+/// Zoom (Story 11.20): the window's content is drawn [zoom] times larger, so the minimum, the follow cap and the
+/// content height are scaled by it, and while following the width too; the content reports its height in zoomed
+/// units. A window that no longer follows keeps its frame on a zoom change and only grows to a larger minimum.
 class SettingsHeightFollower extends ChangeNotifier {
   /// A follower driving a window through [setSize] and [setConstraints].
   SettingsHeightFollower({
@@ -26,6 +30,7 @@ class SettingsHeightFollower extends ChangeNotifier {
     required this.setConstraints,
     this.minimum = settingsWindowMinimum,
     double? maxHeight,
+    this._zoom = 1,
   }) : maxHeight = maxHeight ?? settingsWindowMaxHeight;
 
   /// Asks the window for a content size.
@@ -34,15 +39,24 @@ class SettingsHeightFollower extends ChangeNotifier {
   /// Sets the window's content constraints.
   final void Function(BoxConstraints constraints) setConstraints;
 
-  /// The smallest content size.
+  /// The smallest content size at Actual Size.
   final Size minimum;
 
-  /// The tallest content height while following.
+  /// The tallest content height while following, at Actual Size.
   final double maxHeight;
 
   Size? _asked;
   double? _content;
   var _following = true;
+
+  /// The window's width at Actual Size while following, from its first frame.
+  late double _width;
+
+  /// The last size the window took.
+  Size? _last;
+
+  /// While a zoom change's two calls run: the size the first causes on the way is not the user's.
+  var _applying = false;
 
   /// A window size within a pixel of another is the same size (AppKit rounds to its backing pixels).
   static const double _tolerance = 1;
@@ -53,14 +67,65 @@ class SettingsHeightFollower extends ChangeNotifier {
   /// Whether the window's height still follows the content (the user has not resized it).
   bool get following => _following;
 
+  /// The zoom factor the window's content is drawn at.
+  double get zoom => _zoom;
+  double _zoom;
+  set zoom(double value) {
+    if (value == _zoom) {
+      return;
+    }
+    _zoom = value;
+    final Size? last = _last;
+    if (_asked == null || last == null) {
+      return;
+    }
+    if (_following) {
+      final double? content = _content;
+      final Size target = _clamp(Size(_width * value, content == null ? last.height : content * value));
+      _asked = target;
+      _apply(() {
+        setConstraints(_minimumConstraints);
+        setSize(target);
+      });
+      return;
+    }
+    final grown = Size(
+      last.width < minimum.width * value ? minimum.width * value : last.width,
+      last.height < minimum.height * value ? minimum.height * value : last.height,
+    );
+    _apply(() {
+      setConstraints(_minimumConstraints);
+      if (!_near(grown, last)) {
+        setSize(grown);
+      }
+    });
+  }
+
+  BoxConstraints get _minimumConstraints =>
+      BoxConstraints(minWidth: minimum.width * _zoom, minHeight: minimum.height * _zoom);
+
+  void _apply(VoidCallback calls) {
+    _applying = true;
+    try {
+      calls();
+    } finally {
+      _applying = false;
+    }
+  }
+
   /// The window took [size] (its content size): its first frame, or a resize.
   void windowSized(Size size) {
+    _last = size;
+    if (_applying) {
+      return;
+    }
     final Size? asked = _asked;
     if (asked == null) {
       // Recorded before the calls: the engine reports the resize they cause synchronously.
       final Size clamped = _clamp(size);
       _asked = clamped;
-      setConstraints(BoxConstraints(minWidth: minimum.width, minHeight: minimum.height));
+      _width = clamped.width / _zoom;
+      setConstraints(_minimumConstraints);
       if (!_near(clamped, size)) {
         setSize(clamped);
       }
@@ -73,7 +138,7 @@ class SettingsHeightFollower extends ChangeNotifier {
     }
   }
 
-  /// The shown content's natural height.
+  /// The shown content's natural height, in the content's (zoomed) units.
   void contentHeight(double height) {
     _content = height;
     _follow();
@@ -85,7 +150,7 @@ class SettingsHeightFollower extends ChangeNotifier {
     if (!_following || asked == null || content == null) {
       return;
     }
-    final Size target = _clamp(Size(asked.width, content));
+    final Size target = _clamp(Size(asked.width, content * _zoom));
     if (_near(target, asked)) {
       return;
     }
@@ -93,10 +158,15 @@ class SettingsHeightFollower extends ChangeNotifier {
     setSize(target);
   }
 
-  Size _clamp(Size size) => Size(
-    size.width < minimum.width ? minimum.width : size.width,
-    size.height.clamp(minimum.height, maxHeight < minimum.height ? minimum.height : maxHeight),
-  );
+  Size _clamp(Size size) {
+    final double minWidth = minimum.width * _zoom;
+    final double minHeight = minimum.height * _zoom;
+    final double cap = maxHeight * _zoom;
+    return Size(
+      size.width < minWidth ? minWidth : size.width,
+      size.height.clamp(minHeight, cap < minHeight ? minHeight : cap),
+    );
+  }
 
   static bool _near(Size a, Size b) =>
       (a.width - b.width).abs() < _tolerance && (a.height - b.height).abs() < _tolerance;

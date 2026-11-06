@@ -11,6 +11,7 @@ import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
+import 'package:zanshin/src/features/window/window_zoom.dart';
 import 'package:zanshin/src/features/window/zanshin_window_root.dart';
 import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
@@ -276,12 +277,11 @@ void main() {
     },
   );
 
-  testWidgets('a content-sized root has no navigator and takes its content size; the density scales its text', (
-    tester,
-  ) async {
+  /// A content-sized root over a 300 × 200 box (key `content`), over the settings [json]; answers the store.
+  Future<SettingsStore> pumpContentSized(WidgetTester tester, String json) async {
     final SettingsStore store = (await tester.runAsync(() async {
       final file = File('${dir.path}/settings.json');
-      await file.writeAsString('{"appearance": {"density": "comfy"}}');
+      await file.writeAsString(json);
       return SettingsStore.load(file);
     }))!;
     final tracker = ActiveWindowTracker();
@@ -289,7 +289,8 @@ void main() {
     await tester.pumpWidget(
       IconRegistryScope(
         registry: testIconRegistry,
-        child: Center(
+        child: Align(
+          alignment: Alignment.topLeft,
           child: ZanshinWindowRoot(
             viewModelFactory: _viewModels(() => ZanshinAppViewModel(store)),
             tracker: tracker,
@@ -302,14 +303,50 @@ void main() {
     );
     shell.theme.complete(const ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF4757A1)));
     await tester.pumpAndSettle();
+    return store;
+  }
+
+  BuildContext content(WidgetTester tester) => tester.element(find.byKey(const ValueKey<String>('content')));
+
+  testWidgets('a content-sized root has no navigator and takes its content size; the density reaches the tokens, '
+      'not the text (Story 11.20)', (tester) async {
+    final SettingsStore store = await pumpContentSized(tester, '{"appearance": {"density": "comfy"}}');
 
     expect(find.byType(Navigator), findsNothing);
     expect(find.byKey(const ValueKey<String>('window:settings')), findsOneWidget);
     expect(tester.getSize(find.byKey(const ValueKey<String>('window:settings'))), const Size(300, 200));
-    final BuildContext content = tester.element(find.byKey(const ValueKey<String>('content')));
-    expect(MediaQuery.textScalerOf(content).scale(12.5), moreOrLessEquals(13.5));
-    expect(ZanshinWindowRoot.textScaleOf(DensitySetting.compact), 1);
-    expect(ZanshinWindowRoot.textScaleOf(DensitySetting.balanced) * 12.5, moreOrLessEquals(13));
+    expect(MediaQuery.textScalerOf(content(tester)).scale(12.5), 12.5, reason: 'text keeps its size');
+    final metrics = ZsMetrics.of(content(tester));
+    expect((metrics.rowStep, metrics.cardHDetailed, metrics.graphGapY), (6, 74, 60));
+
+    // Live: back to Compact restores the standard tokens.
+    await tester.runAsync(() => store.update((s) => s.copyWith.appearance(density: DensitySetting.compact)));
+    await tester.pumpAndSettle();
+    expect(ZsMetrics.of(content(tester)), ZsMetrics.standard);
+  });
+
+  testWidgets('the zoom scales the content and its MediaQuery, and divides the traffic-light block (Story 11.20)', (
+    tester,
+  ) async {
+    shell.chrome = const WindowChrome(trafficLights: Rect.fromLTWH(20, 20, 60, 15));
+    final SettingsStore store = await pumpContentSized(tester, '{"appearance": {"zoom": 125}}');
+    final MediaQueryData window = MediaQuery.of(tester.element(find.byType(ZanshinWindowRoot)));
+
+    // Drawn 1.25 × larger: the window takes 375 × 250 for the 300 × 200 content.
+    expect(tester.getSize(find.byType(WindowZoomBox)), const Size(375, 250));
+    expect(tester.getSize(find.byKey(const ValueKey<String>('content'))), const Size(300, 200));
+    expect(tester.getBottomRight(find.byKey(const ValueKey<String>('content'))), const Offset(375, 250));
+    final MediaQueryData zoomed = MediaQuery.of(content(tester));
+    expect(zoomed.size, window.size / 1.25);
+    expect(zoomed.devicePixelRatio, window.devicePixelRatio * 1.25);
+    expect(ZsAppearance.of(content(tester)).trafficLights, const Rect.fromLTWH(16, 16, 48, 12));
+    // The bar's rule in zoomed units: the first island at the block's end + 12.
+    expect(ZsMetrics.of(content(tester)).chromeFirstX, 16 + 48 + 12);
+
+    // A stored value off the steps snaps; 95 is a tie and goes to 90.
+    await tester.runAsync(() => store.update((s) => s.copyWith.appearance(zoom: 95)));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(WindowZoomBox)), const Size(270, 180));
   });
 }
 

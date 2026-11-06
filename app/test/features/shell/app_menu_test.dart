@@ -221,7 +221,7 @@ class _Rig {
     windows = AppWindows(createController: factory.call, exitProcess: () async {});
     tracker = ActiveWindowTracker();
     menu = AppMenuModel(tracker, session)
-      ..attach(windows, actions)
+      ..attach(windows, actions, store)
       ..openUrl = (url) async => urls.add(url);
     addTearDown(() {
       menu.dispose();
@@ -330,6 +330,9 @@ void main() {
       'Edit Configurations…',
       'Show Minimap',
       'Reload',
+      'Zoom In',
+      'Zoom Out',
+      'Actual Size',
     ]);
     expect(_labels(menus, 'Change'), <String>[
       'New Change',
@@ -373,8 +376,43 @@ void main() {
       describe(const SingleActivator(LogicalKeyboardKey.keyM, meta: true)),
       describe(const SingleActivator(LogicalKeyboardKey.keyF, meta: true, control: true)),
     ];
-    expect(shortcuts, hasLength(19));
+    // ⌘− and ⌘0 (Story 11.20); Zoom In's ⌘+ is a character activator, below.
+    expect(shortcuts, hasLength(21));
     expect(<String>{...shortcuts, ...provided}, hasLength(shortcuts.length + provided.length));
+  });
+
+  testWidgets('View › Zoom In ⌘+, Zoom Out ⌘−, Actual Size ⌘0 step appearance.zoom, each grey at its end', (
+    tester,
+  ) async {
+    final rig = _Rig();
+    await rig.setUp(tester);
+    expect(rig.item('Zoom In').shortcut, const CharacterActivator('+', meta: true));
+    expect(rig.item('Zoom Out').shortcut, const SingleActivator(LogicalKeyboardKey.minus, meta: true));
+    expect(rig.item('Actual Size').shortcut, const SingleActivator(LogicalKeyboardKey.digit0, meta: true));
+    Future<void> select(String label) async {
+      rig.select(label);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+    }
+
+    // At 100: Actual Size is grey.
+    expect(rig.enabled('Actual Size'), isFalse);
+    expect(rig.enabled('Zoom In'), isTrue);
+    expect(rig.enabled('Zoom Out'), isTrue);
+    await select('Zoom In');
+    expect(rig.store.value.appearance.zoom, 110);
+    expect(rig.enabled('Actual Size'), isTrue);
+    await select('Zoom In');
+    await select('Zoom In');
+    expect(rig.store.value.appearance.zoom, 150);
+    expect(rig.enabled('Zoom In'), isFalse, reason: 'grey at 150');
+    expect(rig.enabled('Zoom Out'), isTrue);
+    expect(rig.enabled('Actual Size'), isTrue);
+    await select('Actual Size');
+    expect(rig.store.value.appearance.zoom, 100);
+    await select('Zoom Out');
+    expect(rig.store.value.appearance.zoom, 90);
+    expect(rig.enabled('Zoom Out'), isFalse, reason: 'grey at 90');
   });
 
   testWidgets(

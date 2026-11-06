@@ -138,7 +138,7 @@ class ZsOptionRow extends StatelessWidget implements ZsControl {
   Widget build(BuildContext context) => Semantics(
     identifier: identifier,
     child: ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: _minHeight),
+      constraints: BoxConstraints(minHeight: _minHeight + ZsMetrics.of(context).rowStep),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Row(
@@ -230,7 +230,7 @@ class ZsOptionLink extends StatelessWidget implements ZsControl {
           builder: (context, look, _) => DecoratedBox(
             decoration: BoxDecoration(color: look.$1, borderRadius: BorderRadius.circular(radius)),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: _minHeight),
+              constraints: BoxConstraints(minHeight: _minHeight + ZsMetrics.of(context).rowStep),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Row(

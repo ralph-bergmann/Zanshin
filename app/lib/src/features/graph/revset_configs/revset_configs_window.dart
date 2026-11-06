@@ -726,10 +726,11 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
     final isHome = draft.selected == draft.home;
     return DecoratedBox(
       decoration: BoxDecoration(color: colors.flHover, borderRadius: BorderRadius.circular(metrics.radiusWell)),
+      // `.zs-rsd-opt` at the density (DS density.css .zs-rsd-opt).
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 46),
+        constraints: BoxConstraints(minHeight: 46 + metrics.rowStep),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8 + metrics.rowStep / 2),
           child: Row(
             spacing: 16,
             children: <Widget>[

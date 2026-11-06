@@ -40,7 +40,7 @@ class FakeWindowFactory {
         delegate: request.delegate,
       );
     }
-    final Size? size = dialog.size;
+    final Size? size = request.size;
     return size == null
         ? DialogWindowController.shrinkWrap(
             constraints: request.constraints,

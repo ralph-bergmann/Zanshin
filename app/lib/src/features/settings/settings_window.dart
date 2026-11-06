@@ -25,6 +25,7 @@ import '../projects/projects_environment.dart';
 import '../shell/app_menu.dart' show GraphMenuBinding;
 import '../shell/shell_toast.dart' show toastSlot, toastSpan;
 import '../window/app_windows.dart';
+import '../window/window_zoom.dart';
 import 'config_file_page.dart';
 import 'general_tab.dart';
 import 'immutable_page.dart';
@@ -199,14 +200,24 @@ class SettingsWindowContentState extends State<SettingsWindow> with WidgetsBindi
     }
     if (widget.windows.controllerOf(widget.windowKey) case final DialogWindowController window) {
       _window = window..addListener(_windowChanged);
-      _follower = SettingsHeightFollower(setSize: window.setSize, setConstraints: window.setConstraints)
-        ..addListener(_followingChanged);
+      _follower = SettingsHeightFollower(
+        setSize: window.setSize,
+        setConstraints: window.setConstraints,
+        zoom: _zoom,
+      )..addListener(_followingChanged);
+      // The window is sized to its content, so its minimum scales here, not in AppWindows (Story 11.20).
+      widget.store.addListener(_zoomChanged);
       WidgetsBinding.instance.addObserver(this);
       _windowChanged();
     }
   }
 
+  double get _zoom => zoomScaleOf(widget.store.value.appearance.zoom);
+
+  void _zoomChanged() => _follower?.zoom = _zoom;
+
   void _unbindWindow() {
+    widget.store.removeListener(_zoomChanged);
     _window?.removeListener(_windowChanged);
     _window = null;
     _follower?.dispose();

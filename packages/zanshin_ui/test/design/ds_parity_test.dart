@@ -17,7 +17,7 @@ import 'package:zanshin_ui/src/icons/zanshin_icon.dart';
 import 'css_token_reader.dart';
 
 /// Every appearance the parity test resolves: 2 themes × 9 families × the contrast, transparency and inactive deltas,
-/// and the theme-independent groups under reduce motion and full screen as well.
+/// and the theme-independent groups under reduce motion, full screen and the three densities as well.
 final _appearances = <ZsAppearance>[
   for (final ZsTheme theme in ZsTheme.values)
     for (final ZsAccentFamily family in ZsAccentFamily.values)
@@ -26,15 +26,17 @@ final _appearances = <ZsAppearance>[
           for (final inactive in const <bool>[false, true])
             for (final reduceMotion in const <bool>[false, true])
               for (final fullScreen in const <bool>[false, true])
-                ZsAppearance(
-                  theme: theme,
-                  family: family,
-                  increasedContrast: increasedContrast,
-                  reduceTransparency: reduceTransparency,
-                  inactive: inactive,
-                  reduceMotion: reduceMotion,
-                  fullScreen: fullScreen,
-                ),
+                for (final ZsDensity density in ZsDensity.values)
+                  ZsAppearance(
+                    theme: theme,
+                    family: family,
+                    increasedContrast: increasedContrast,
+                    reduceTransparency: reduceTransparency,
+                    inactive: inactive,
+                    reduceMotion: reduceMotion,
+                    fullScreen: fullScreen,
+                    density: density,
+                  ),
 ];
 
 /// The token layer's view of [appearance]: every group's `toCss()`.
@@ -175,7 +177,7 @@ void main() {
     });
 
     test('every custom property of every DS token file matches in every appearance', () {
-      expect(_appearances, hasLength(576));
+      expect(_appearances, hasLength(1728));
       final List<String> mismatches = _mismatches(sheet, _appearances);
       expect(mismatches.take(40).toList(), isEmpty, reason: '${mismatches.length} mismatches');
     });

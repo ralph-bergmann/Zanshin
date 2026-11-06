@@ -228,7 +228,7 @@ class _ZsFieldListRowState extends State<ZsFieldListRow> {
               builder: (context, look, _) => CustomPaint(
                 painter: _RowPainter(look: look, radius: ZsMetrics.of(context).radiusMd),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: ZsFieldListRow._minHeight),
+                  constraints: BoxConstraints(minHeight: ZsFieldListRow._minHeight + ZsMetrics.of(context).rowStep),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Row(

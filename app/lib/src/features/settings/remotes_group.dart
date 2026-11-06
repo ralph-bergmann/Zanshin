@@ -154,10 +154,12 @@ class _SettingsRemotesGroupState extends State<SettingsRemotesGroup> {
     final RemoteOutcome? note = vm.remoteNotes[name];
     ZsMenuItem item(String label, String cmd, String id, VoidCallback run) =>
         ZsMenuItem(label: label, cmd: cmd, identifier: id, onSelected: run);
+    // A settings row at the density (DS density.css .zs-setrow).
+    final double step = ZsMetrics.of(context).rowStep;
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 46),
+      constraints: BoxConstraints(minHeight: 46 + step),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8 + step / 2),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           spacing: 16,

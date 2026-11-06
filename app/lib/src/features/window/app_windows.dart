@@ -139,10 +139,10 @@ class AppWindowRequest {
   /// The window's lifecycle: hand it to the controller as its delegate.
   final AppWindowLifecycle delegate;
 
-  /// The content constraints: the project window's, or [dialog]'s.
+  /// The content constraints: the project window's, or [dialog]'s, × the zoom.
   final BoxConstraints constraints;
 
-  /// The first-launch content size; null only for a dialog sized to its content.
+  /// The first-launch content size, at least the zoomed minimum; null only for a dialog sized to its content.
   final Size? size;
 
   /// The dialog window's spec, or null for a project window.
@@ -174,8 +174,9 @@ NativeWindowPlan planNativeWindow(AppWindowRequest request) {
   return DialogWindowPlan(
     key: request.key,
     title: request.title,
-    size: dialog.size,
-    constraints: dialog.constraints,
+    // The request's: the spec's, zoomed (Story 11.20).
+    size: request.size,
+    constraints: request.constraints,
     resizable: dialog.resizable,
     frame: dialog.frame,
     level: dialog.level,
@@ -197,8 +198,9 @@ typedef AppExit = Future<void> Function();
 
 Future<void> _exitProcess() => ServicesBinding.instance.exitApplication(AppExitType.required);
 
-/// A window this instance keys: its `entry` and whether it keeps the process running.
-typedef _OpenWindow = ({WindowEntry entry, bool keepsAppAlive});
+/// A window this instance keys: its `entry`, whether it keeps the process running, its spec `constraints` at Actual
+/// Size and whether it is sized to its content (which scales its own minimum, Story 11.20).
+typedef _OpenWindow = ({WindowEntry entry, bool keepsAppAlive, BoxConstraints constraints, bool contentSized});
 
 /// The app's windows, keyed so the same window never opens twice.
 ///
@@ -268,6 +270,45 @@ class AppWindows {
   /// The controller of the open window [key], or null.
   BaseWindowController? controllerOf(String key) => _open[key]?.entry.controller;
 
+  /// The app-wide zoom factor (Story 11.20; 1 is Actual Size): every window's minimum is its spec's × the zoom.
+  double get zoom => _zoom;
+  double _zoom = 1;
+
+  /// Sets the zoom: every open window with a minimum, except one sized to its content (whose content scales its own),
+  /// gets its spec's constraints × [value]; a window below its new minimum grows to it, a larger one keeps its frame.
+  set zoom(double value) {
+    if (value == _zoom) {
+      return;
+    }
+    _zoom = value;
+    for (final _OpenWindow open in _open.values) {
+      if (open.contentSized) {
+        continue;
+      }
+      final BaseWindowController controller = open.entry.controller;
+      final BoxConstraints constraints = open.constraints * value;
+      final Size current = controller.contentSize;
+      final grown = Size(
+        current.width < constraints.minWidth ? constraints.minWidth : current.width,
+        current.height < constraints.minHeight ? constraints.minHeight : current.height,
+      );
+      switch (controller) {
+        case final WindowController window:
+          window.setConstraints(constraints);
+          if (grown != current) {
+            window.setSize(grown);
+          }
+        case final DialogWindowController dialog:
+          dialog.setConstraints(constraints);
+          if (grown != current) {
+            dialog.setSize(grown);
+          }
+        case _:
+          break;
+      }
+    }
+  }
+
   /// Creates the window for [key] and returns its entry **without**
   /// registering it.
   ///
@@ -299,13 +340,23 @@ class AppWindows {
     if (dialog != null && dialog.size == null && dialog.constraints.smallest != Size.zero) {
       throw ArgumentError('A window sized to its content takes no minimum constraints; it would never show.');
     }
+    final BoxConstraints spec = dialog?.constraints ?? constraints ?? defaultWindowConstraints;
+    final BoxConstraints zoomed = spec * _zoom;
+    final Size? specSize = dialog == null ? size ?? defaultWindowSize : dialog.size;
     // Recorded before the first await, so a second open of the key sees it.
     final Future<WindowEntry> creating = _create(
       key: key,
       title: title,
       builder: builder,
-      size: dialog == null ? size ?? defaultWindowSize : dialog.size,
-      constraints: dialog?.constraints ?? constraints ?? defaultWindowConstraints,
+      // At least the zoomed minimum (Story 11.20).
+      size: specSize == null
+          ? null
+          : Size(
+              specSize.width < zoomed.minWidth ? zoomed.minWidth : specSize.width,
+              specSize.height < zoomed.minHeight ? zoomed.minHeight : specSize.height,
+            ),
+      constraints: zoomed,
+      specConstraints: spec,
       dialog: dialog,
     );
     _creating[key] = (future: creating, keepsAppAlive: dialog?.keepsAppAlive ?? true);
@@ -322,6 +373,7 @@ class AppWindows {
     required WidgetBuilder builder,
     required Size? size,
     required BoxConstraints constraints,
+    required BoxConstraints specConstraints,
     required DialogWindowSpec? dialog,
   }) async {
     final lifecycle = AppWindowLifecycle._(this, key);
@@ -337,7 +389,12 @@ class AppWindows {
     );
     final entry = WindowEntry(controller: controller, builder: capture(builder));
     lifecycle._entry = entry;
-    _open[key] = (entry: entry, keepsAppAlive: dialog?.keepsAppAlive ?? true);
+    _open[key] = (
+      entry: entry,
+      keepsAppAlive: dialog?.keepsAppAlive ?? true,
+      constraints: specConstraints,
+      contentSized: size == null,
+    );
     return entry;
   }
 

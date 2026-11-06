@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin_ui/src/controls/zs_menu.dart';
 import 'package:zanshin_ui/src/controls/zs_select.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
 import 'package:zanshin_ui/src/design/zs_motion.dart';
 import 'package:zanshin_ui/src/icons/zanshin_icon.dart';
 
@@ -26,7 +27,9 @@ Widget _select({
   Alignment alignment = Alignment.center,
   FocusNode? focusNode,
   ZsSelectPlacement placement = ZsSelectPlacement.over,
+  ZsAppearance appearance = const ZsAppearance(),
 }) => zsHost(
+  appearance: appearance,
   // An opaque window background, as the app's window fill is: the outside click needs something to hit.
   ColoredBox(
     color: const Color(0x00000000),
@@ -146,6 +149,43 @@ void main() {
     await gesture.up();
     await tester.pump(_m.durBlink * 2 + const Duration(milliseconds: 1));
     expect(picked, <String>['r4']);
+  });
+
+  testWidgets('at comfy density the rows are 34 high and the chosen one still sits on the trigger', (tester) async {
+    await tester.pumpWidget(
+      _select(
+        value: 'r3',
+        onChanged: (_) {},
+        appearance: const ZsAppearance(density: ZsDensity.comfy),
+      ),
+    );
+    final Rect trigger = tester.getRect(find.byType(ZsSelect<String>));
+    await tester.tap(find.byType(ZsSelect<String>));
+    await _settle(tester);
+    final Rect row = tester.getRect(find.descendant(of: find.byType(ZsMenuPanel), matching: find.text('remote-3')));
+    expect((row.center.dy - trigger.center.dy).abs(), lessThanOrEqualTo(1));
+    final Rect next = tester.getRect(find.descendant(of: find.byType(ZsMenuPanel), matching: find.text('remote-4')));
+    expect(next.center.dy - row.center.dy, 34 + 1, reason: 'a 34 row and the 1 gap');
+  });
+
+  testWidgets('under a window zoom, press – drag – release picks the row under the pointer', (tester) async {
+    final picked = <String>[];
+    await tester.pumpWidget(
+      Transform.scale(
+        scale: 1.5,
+        alignment: Alignment.topLeft,
+        child: _select(value: 'r0', onChanged: picked.add),
+      ),
+    );
+    final TestGesture gesture = await tester.startGesture(tester.getCenter(find.byType(ZsSelect<String>)));
+    await _settle(tester);
+    // The label's lower right: inside the row as drawn, outside its unscaled size.
+    final Finder label = find.descendant(of: find.byType(ZsMenuPanel), matching: find.text('remote-3'));
+    await gesture.moveTo(tester.getBottomRight(label) - const Offset(1, 1));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump(_m.durBlink * 2 + const Duration(milliseconds: 1));
+    expect(picked, <String>['r3']);
   });
 
   testWidgets('a click on the open trigger closes it', (tester) async {

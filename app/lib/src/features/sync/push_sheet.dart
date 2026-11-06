@@ -929,7 +929,8 @@ class _RowShell extends StatelessWidget {
     identifier: identifier,
     container: true,
     child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      // `.zs-push-row.is-multi` at the density: half the step above and below (DS density.css .zs-push-row.is-multi).
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7 + ZsMetrics.of(context).rowStep / 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 12,

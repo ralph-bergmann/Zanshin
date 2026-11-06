@@ -3,13 +3,13 @@
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DensitySetting;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import '../app/zanshin_app_view_model.dart';
 import 'active_window_tracker.dart';
 import 'window_chrome_builder.dart';
+import 'window_zoom.dart';
 
 part 'zanshin_window_root.factory.dart';
 
@@ -28,8 +28,11 @@ part 'zanshin_window_root.factory.dart';
 ///
 /// A window sized to its content (Settings, Story 11.7) passes [sizeToContent]: a navigator's overlay takes the largest
 /// size its constraints allow, so the child then sits in an `Overlay.wrap(alwaysSizeToContent: true)` under the
-/// builder, with no `home` and no navigator, as the catalogue's `catalogueAppBuilder` does. The Settings density
-/// (`appearance.density`) scales the window's text linearly: 1, 13 ⁄ 12.5, 13.5 ⁄ 12.5 (Claude's proposal).
+/// builder, with no `home` and no navigator, as the catalogue's `catalogueAppBuilder` does.
+///
+/// Story 11.20: the Settings density reaches the token layer through the view model's appearance (rows, cards and
+/// gaps; text keeps its size), and the Settings zoom scales the whole content in a [WindowZoomBox] with a
+/// [MediaQuery] in zoomed units ([zoomedMediaQuery]); the measured traffic-light block is divided by the zoom.
 class ZanshinWindowRoot extends StatelessWidget {
   /// The root of the window [windowKey] showing [child].
   @assistedInject
@@ -54,13 +57,6 @@ class ZanshinWindowRoot extends StatelessWidget {
   /// Whether the window takes its content's size (null: no).
   final bool? sizeToContent;
 
-  /// The text scale of [density].
-  static double textScaleOf(DensitySetting density) => switch (density) {
-    DensitySetting.compact => 1,
-    DensitySetting.balanced => 13 / 12.5,
-    DensitySetting.comfy => 13.5 / 12.5,
-  };
-
   @override
   Widget build(BuildContext context) => _viewModelFactory(
     init: (vm) => vm.init(),
@@ -70,7 +66,7 @@ class ZanshinWindowRoot extends StatelessWidget {
       // traffic-light block from the window's chrome report and the key status from the tracker.
       final ZsAppearance appearance = vm.appearance;
       final bool contentSized = sizeToContent ?? false;
-      final double textScale = textScaleOf(vm.density);
+      final double zoom = vm.zoomScale;
       return _WindowMaterialApp(
         themeMode: vm.effectiveMode,
         lightTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.paper)),
@@ -79,19 +75,21 @@ class ZanshinWindowRoot extends StatelessWidget {
           builder: (context, chrome) => ListenableBuilder(
             listenable: _tracker,
             builder: (context, _) => MediaQuery(
-              // On top of the platform's own scale, not instead of it.
-              data: MediaQuery.of(context).copyWith(
-                textScaler: TextScaler.linear(MediaQuery.textScalerOf(context).scale(1) * textScale),
-              ),
-              child: ZsRoot(
-                appearance: appearance.copyWith(
-                  theme: ZsTheme.of(Theme.of(context).brightness),
-                  fullScreen: chrome?.fullScreen,
-                  trafficLights: chrome?.trafficLights,
-                  inactive: !_tracker.isActive(View.of(context).viewId),
+              data: zoomedMediaQuery(MediaQuery.of(context), zoom),
+              child: WindowZoomBox(
+                scale: zoom,
+                child: ZsRoot(
+                  appearance: appearance.copyWith(
+                    theme: ZsTheme.of(Theme.of(context).brightness),
+                    fullScreen: chrome?.fullScreen,
+                    // In zoomed units, so the bar keeps its rule (block end + 12) under zoom; the native buttons
+                    // themselves never scale.
+                    trafficLights: _zoomedRect(chrome?.trafficLights, zoom),
+                    inactive: !_tracker.isActive(View.of(context).viewId),
+                  ),
+                  shellTheme: vm.shellTheme,
+                  child: _keyed(contentSized ? Overlay.wrap(alwaysSizeToContent: true, child: child) : navigator),
                 ),
-                shellTheme: vm.shellTheme,
-                child: _keyed(contentSized ? Overlay.wrap(alwaysSizeToContent: true, child: child) : navigator),
               ),
             ),
           ),
@@ -100,6 +98,9 @@ class ZanshinWindowRoot extends StatelessWidget {
       );
     },
   );
+
+  static Rect? _zoomedRect(Rect? rect, double zoom) =>
+      rect == null ? null : Rect.fromLTRB(rect.left / zoom, rect.top / zoom, rect.right / zoom, rect.bottom / zoom);
 
   Widget _keyed(Widget? navigator) =>
       KeyedSubtree(key: ValueKey<String>('window:$windowKey'), child: navigator ?? const SizedBox.shrink());

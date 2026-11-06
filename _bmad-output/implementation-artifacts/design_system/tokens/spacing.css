@@ -50,3 +50,8 @@
 /* full screen — the system hides the buttons (they return with the menu bar): no block, so the bar takes the plain 12px rhythm
    (first island 12, bar top 12, content 68). Derived tokens are re-declared because custom properties resolve where declared. */
 [data-fullscreen]{--tl-block-w:0px;--tl-x:0px;--tl-mid-y:34px;--chrome-first-x:12px;--chrome-bar-y:12px;--chrome-top:68px}
+/* density (sync #21, Story 11.20) — Settings › General › Density: how much air, never how big. Every row gains --row-step
+   (the row rules are components/density.css); graph cards grow and the gaps between them widen. Compact = :root above. */
+:root{--row-step:0px}
+[data-density="balanced"]{--row-step:3px;--card-h-compact:44px;--card-h-detailed:68px;--graph-gap-x:62px;--graph-gap-y:54px}
+[data-density="comfy"]{--row-step:6px;--card-h-compact:48px;--card-h-detailed:74px;--graph-gap-x:68px;--graph-gap-y:60px}

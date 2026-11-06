@@ -119,6 +119,18 @@ void main() {
     await _settleTaps(tester);
   });
 
+  testWidgets('under a window zoom of 1.25 a 50 px drag changes the width by 40 (Story 11.20)', (tester) async {
+    final log = _Log();
+    await tester.pumpWidget(Transform.scale(scale: 1.25, alignment: Alignment.topLeft, child: _edge(log)));
+    final TestGesture drag = await tester.startGesture(tester.getCenter(_strip), kind: PointerDeviceKind.mouse);
+    await drag.moveBy(const Offset(50, 0));
+    await tester.pump();
+    expect(log.changes.last, 340);
+    await drag.up();
+    await tester.pump();
+    await _settleTaps(tester);
+  });
+
   testWidgets('an edge removed mid-drag still ends the drag and commits the width (Story 10.8 I3)', (tester) async {
     final log = _Log();
     await tester.pumpWidget(_edge(log));

@@ -58,6 +58,17 @@ void main() {
     expect(tester.getSize(find.byType(ZsSkeleton)).height, 30);
   });
 
+  testWidgets('at comfy density a row is 36 high (Story 11.20)', (tester) async {
+    await tester.pumpWidget(
+      _skeleton(
+        kind: ZsSkeletonKind.row,
+        appearance: const ZsAppearance(density: ZsDensity.comfy),
+      ),
+    );
+    await tester.pump(delay + const Duration(milliseconds: 1));
+    expect(tester.getSize(find.byType(ZsSkeleton)).height, 36);
+  });
+
   testWidgets('under reduce motion no sweep: the bars pulse', (tester) async {
     await tester.pumpWidget(_skeleton(appearance: const ZsAppearance(reduceMotion: true)));
     await tester.pump(delay + const Duration(milliseconds: 1));

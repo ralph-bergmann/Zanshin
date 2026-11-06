@@ -687,7 +687,8 @@ class ZsMenuPanelState extends State<ZsMenuPanel> {
     if (box == null || !box.hasSize || last == null) {
       return false;
     }
-    final Rect rect = box.localToGlobal(Offset.zero) & box.size;
+    // Through the transform: under a window zoom the global rect is the local size scaled.
+    final Rect rect = MatrixUtils.transformRect(box.getTransformTo(null), Offset.zero & box.size);
     final double nearX = rect.left >= last.dx ? rect.left : rect.right;
     return _inTriangle(point, last, Offset(nearX, rect.top), Offset(nearX, rect.bottom));
   }
@@ -1064,7 +1065,7 @@ class _Row extends StatelessWidget {
   final ValueChanged<Offset> onEnter;
   final VoidCallback onTap;
 
-  /// `height:28px` (DS components/menus/menus.css:15).
+  /// `height:28px` (DS components/menus/menus.css:15), plus the density's `--row-step` (DS density.css .zs-menu-item).
   static const double _height = 28;
 
   @override
@@ -1115,7 +1116,7 @@ class _Row extends StatelessWidget {
     Widget row = DecoratedBox(
       decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(metrics.radiusMd)),
       child: SizedBox(
-        height: _height,
+        height: _height + metrics.rowStep,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Row(

@@ -136,6 +136,8 @@ class _GraphStackPopoverState extends State<GraphStackPopover> with SingleTicker
     final GraphCardController cards = widget.controller;
     final String key = _key;
     int memberAt(int row) => members[members.length - 1 - row];
+    // A row at the density (DS components/density.css: a fixed height gains the step).
+    final double rowHeight = graphStackRowHeight + ZsMetrics.of(context).rowStep;
     final Widget list = MouseRegion(
       onEnter: (_) => cards.holdHover(),
       onExit: (_) => cards.leave(key),
@@ -146,11 +148,11 @@ class _GraphStackPopoverState extends State<GraphStackPopover> with SingleTicker
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             SizedBox(
-              height: math.min(members.length, graphStackMaxRows) * graphStackRowHeight,
+              height: math.min(members.length, graphStackMaxRows) * rowHeight,
               child: ListView.builder(
                 controller: _scroll,
                 padding: EdgeInsets.zero,
-                itemExtent: graphStackRowHeight,
+                itemExtent: rowHeight,
                 itemCount: members.length,
                 itemBuilder: (context, row) => MouseRegion(
                   key: ValueKey<String>('graph-stack-row-${layout.keyOf(memberAt(row))}'),
@@ -177,6 +179,7 @@ class _GraphStackPopoverState extends State<GraphStackPopover> with SingleTicker
             card: widget.card,
             area: widget.area,
             row: callout,
+            rowHeight: rowHeight,
             scroll: _scroll,
             motion: _motion,
             closing: widget.closing,
@@ -225,6 +228,7 @@ class _PopoverLayout extends MultiChildLayoutDelegate {
     required this.card,
     required this.area,
     required this.row,
+    required this.rowHeight,
     required this.scroll,
     required this.motion,
     required this.closing,
@@ -234,6 +238,7 @@ class _PopoverLayout extends MultiChildLayoutDelegate {
   final Rect card;
   final Rect area;
   final int? row;
+  final double rowHeight;
   final ScrollController scroll;
   final Animation<double> motion;
   final bool closing;
@@ -253,7 +258,7 @@ class _PopoverLayout extends MultiChildLayoutDelegate {
     final int? row = this.row;
     if (row != null && hasChild(_Part.callout)) {
       final double offset = scroll.hasClients ? scroll.offset : 0;
-      final rowRect = Rect.fromLTWH(x, y + _pad + 1 + row * graphStackRowHeight - offset, width, graphStackRowHeight);
+      final rowRect = Rect.fromLTWH(x, y + _pad + 1 + row * rowHeight - offset, width, rowHeight);
       final Size peek = layoutChild(_Part.callout, BoxConstraints.loose(size));
       positionChild(_Part.callout, graphPeekPosition(rowRect, peek, area).topLeft);
     }
@@ -264,6 +269,7 @@ class _PopoverLayout extends MultiChildLayoutDelegate {
       card != oldDelegate.card ||
       area != oldDelegate.area ||
       row != oldDelegate.row ||
+      rowHeight != oldDelegate.rowHeight ||
       closing != oldDelegate.closing ||
       factor != oldDelegate.factor;
 }

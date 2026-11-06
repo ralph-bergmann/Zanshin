@@ -159,14 +159,17 @@ class SettingsRow extends StatelessWidget {
       ],
     );
     final VoidCallback? open = onOpen;
+    // The density (DS density.css .zs-setrow, .zs-setrow.is-stack): the minimum gains the step, the padding half of it each side.
+    final double step = ZsMetrics.of(context).rowStep;
+    final double half = step / 2;
     if (open == null) {
       final Widget? control = child;
       return ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 46),
+        constraints: BoxConstraints(minHeight: 46 + step),
         child: Padding(
           padding: stack
-              ? const EdgeInsets.fromLTRB(14, 10, 14, 12)
-              : const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              ? EdgeInsets.fromLTRB(14, 10 + half, 14, 12 + half)
+              : EdgeInsets.symmetric(horizontal: 14, vertical: 8 + half),
           child: stack
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -196,9 +199,9 @@ class SettingsRow extends StatelessWidget {
             ? colors.flOn
             : const Color(0x00000000),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 46),
+          constraints: BoxConstraints(minHeight: 46 + step),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8 + half),
             child: Row(
               spacing: 16,
               children: <Widget>[

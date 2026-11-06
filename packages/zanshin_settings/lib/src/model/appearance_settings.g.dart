@@ -30,6 +30,7 @@ _AppearanceSettings _$AppearanceSettingsFromJson(Map<String, dynamic> json) =>
               ) ??
               DensitySetting.compact,
         ),
+        zoom: $checkedConvert('zoom', (v) => (v as num?)?.toInt() ?? 100),
       );
       return val;
     });
@@ -39,6 +40,7 @@ Map<String, dynamic> _$AppearanceSettingsToJson(_AppearanceSettings instance) =>
       'themeMode': _$ThemeModeEnumMap[instance.themeMode]!,
       'accentSource': _$AccentSourceEnumMap[instance.accentSource]!,
       'density': _$DensitySettingEnumMap[instance.density]!,
+      'zoom': instance.zoom,
     };
 
 const _$ThemeModeEnumMap = {

@@ -69,8 +69,8 @@ final class MainWindowChrome {
         case .main:
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             window.backgroundColor = NSColor(named: "CanvasBase") ?? .windowBackgroundColor
-            // The project window's minimum (decision 16.37), as `defaultWindowConstraints` in Dart.
-            window.minSize = NSSize(width: 880, height: 560)
+            // No minimum here: Dart's constraints set the content minimum (decision 16.37), scaled with the zoom
+            // (Story 11.20) — a fixed 880 × 560 would block 90 %.
         case .secondary:
             // The engine's dialog mask stays (no minimise; zoom only where resizable); the dialog passes its own
             // minimum through its constraints.
