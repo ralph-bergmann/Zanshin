@@ -2825,3 +2825,9 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 - **The Config file page and the resizable Settings window were not checked in the running app.** Medium.
   - No Marionette run against `design_system/components/settings/remotes-config.card.html` (column 3); the window binding (`_bindWindow`/`_windowChanged` in `app/lib/src/features/settings/settings_window.dart`: minimum 620 × 420 after the first frame, height following the tab, filling after a user resize, `setConstraints` with no maximum) and the runner's `userSized` handling (`app/macos/Runner/WindowFrameStore.swift`) have no automated test; only `SettingsHeightFollower` / `NaturalHeight` are unit-tested.
   - **Follow-up:** run the app, open Settings › Edit… on both tabs, resize from every edge, zoom, switch tabs before and after a resize, compare with the DS card.
+
+## Surfaced in Story 11.20 (bmad-build-auto, 2026-11-07)
+
+- **Density and Zoom were not checked in the running app, and their native window behaviour is untested.** Medium.
+  - No Marionette run per density and zoom against `design_system/components/settings/density.card.html` and `settings.card.html`. Unexercised: the native View menu's ⌘+ (`CharacterActivator('+')` in `app/lib/src/features/shell/app_menu.dart`); engine `setConstraints`/`setSize` growing windows on a zoom change (`app/lib/src/features/window/app_windows.dart` `zoom` setter); the removed native `minSize` (`app/macos/Runner/MainWindowChrome.swift`); a restored frame grown to the zoomed minimum (`WindowFrameStore.swift` `.full` restore, which assumes `contentMinSize` is set before `restore` runs). Widget tests cover the Dart side only.
+  - **Follow-up:** run the app; switch Density in Settings and compare one window per density with the DS cards; step Zoom 90→150 with ⌘+ ⌘= ⌘− ⌘0; check the windows grow and shrink, the traffic lights and the bar, and menus/drags at 125 %; relaunch at 150 % with a frame saved at 100 %.
