@@ -79,6 +79,66 @@ void main() {
     expect(_alpha(bytes, 8, 25), greaterThan(0));
   });
 
+  test('a raster window: nodes and edge dots off the raster are not stamped, those on it are (Story 10.31)', () {
+    // One edge running from far above the raster to far below it, and two nodes outside it.
+    final input = MinimapRasterInput(
+      nodeXs: Float64List.fromList(<double>[5, 5, 12]),
+      nodeYs: Float64List.fromList(<double>[-500, 20, 900]),
+      nodeStacks: Uint8List.fromList(<int>[0, 0, 1]),
+      edgeStarts: Int32List.fromList(<int>[0, 2]),
+      edgePoints: Float64List.fromList(<double>[15, -100000, 15, 100000]),
+      ax: 0,
+      bx: 1,
+      ay: 0,
+      by: 1,
+      dpr: 1,
+      width: _w,
+      height: _h,
+      outNode: _faint,
+      outEdge: _faint,
+      inNode: _text,
+      inEdge: _muted,
+    );
+    final Uint8List bytes = rasterMinimap(input);
+    expect(_alpha(bytes, 4, 19), 255, reason: 'the node inside');
+    expect(_alpha(bytes, 14, 0), greaterThan(0), reason: 'the edge dots at the top row');
+    expect(_alpha(bytes, 14, _h - 1), greaterThan(0), reason: 'and at the bottom row');
+    expect(_alpha(bytes, 14, 1), 0, reason: 'still on the shared 3 px grid');
+  });
+
+  test('a window\'s input maps the content window onto the raster: ay shifts by the window top', () {
+    final GraphLayout layout = handLayout(<(String, int, int)>[('a', 1, 0), ('b', 0, 0)], edges: <(int, int)>[(0, 1)]);
+    final metrics = GraphMetrics();
+    final vertical = ScrollController();
+    addTearDown(vertical.dispose);
+    final frame = GraphMinimapFrame(
+      layout: layout,
+      rows: UniformRows(layout, metrics),
+      metrics: metrics,
+      geometry: null,
+      insets: const EdgeInsets.only(top: 60),
+      vertical: vertical,
+      horizontal: vertical,
+    );
+    MinimapRasterInput input({double top = 0, double? height}) => minimapRasterInput(
+      frame,
+      100,
+      2,
+      faint: _faint,
+      text: _text,
+      muted: _muted,
+      windowTop: top,
+      windowHeight: height,
+    );
+    final MinimapRasterInput whole = input();
+    final MinimapRasterInput window = input(top: 40, height: 250);
+    expect(window.ay, whole.ay - 2 * 40);
+    expect(window.by, whole.by);
+    expect(window.height, 500);
+    expect(whole.height, 200);
+    expect(whole.width, (MinimapSize.of(0).strip * 2).round(), reason: 'one column: the narrowest strip');
+  });
+
   test('an empty input rasters empty layers', () {
     final Uint8List bytes = rasterMinimap(
       MinimapRasterInput(
@@ -133,7 +193,7 @@ void main() {
           vertical: vertical,
           horizontal: horizontal,
         ),
-        const Size(118, 300),
+        300,
         2,
         faint: _faint,
         text: _text,
@@ -160,7 +220,7 @@ void main() {
         vertical: vertical,
         horizontal: vertical,
       ),
-      const Size(118, 100),
+      100,
       1,
       faint: _faint,
       text: _text,
@@ -191,7 +251,7 @@ void main() {
           vertical: vertical,
           horizontal: vertical,
         ),
-        const Size(118, 900),
+        900,
         1,
         faint: _faint,
         text: _text,

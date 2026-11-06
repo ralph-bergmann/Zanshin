@@ -1320,7 +1320,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
 
   /// The day-axis painter, recreated (the old one disposed) when the rows, the theme, the strings or the local day
   /// change.
-  GraphDayAxisPainter _axisFor(VerticalLayout rows, GraphTheme theme) {
+  GraphDayAxisPainter _axisFor(VerticalLayout rows, GraphTheme theme, ZsColors colors) {
     final int nowMs = widget.cards.now.value;
     final int day = _dayOf(nowMs);
     final AppLocalizations strings = context.l10n;
@@ -1328,6 +1328,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     if (axis != null &&
         identical(_axisRows, rows) &&
         axis.theme == theme &&
+        axis.colors == colors &&
         identical(axis.strings, strings) &&
         _axisDay == day) {
       return axis;
@@ -1338,6 +1339,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     return _axis = GraphDayAxisPainter(
       axis: GraphDayAxis.of(widget.layout, rows),
       theme: theme,
+      colors: colors,
       strings: strings,
       nowMs: nowMs,
       utcOffsetMinutes: widget.layout.utcOffsetMinutes,
@@ -1376,12 +1378,12 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     final metrics = GraphMetrics.fromOptions(widget.options);
     final VerticalLayout rows = _rowsFor(metrics);
     final GraphTheme theme = GraphTheme.of(context);
-    final GraphDayAxisPainter axis = _axisFor(rows, theme);
+    final ZsColors colors = ZsColors.of(context);
+    final GraphDayAxisPainter axis = _axisFor(rows, theme, colors);
     final GraphEdgePainter? edges = _edgesFor(metrics, theme, rows);
     final GraphGaps? gaps = edges == null ? null : _gaps;
     final elided = '~ ${context.l10n.gapElided}'; // l10n-ignore: jj's end-of-history mark
     final double leftInset = widget.insets.left;
-    final ZsColors colors = ZsColors.of(context);
     final Color accent = colors.accent;
     final GraphCardController cards = widget.cards;
     final double disabledOpacity = ZsMetrics.of(context).disabledOpacity;
@@ -1510,7 +1512,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                   paintBackground: axis.paintGuides,
                   // The gap marks after the edges, the brackets after them, never dimmed (Stories 10.17, 10.19); the flash
                   // last — under the cards, like the DS's box-shadow, so it never crosses a card's legend pill.
-                  paintEdges: edges == null && brackets.isEmpty && _flashKeys.isEmpty
+                  paintEdges: edges == null && brackets.isEmpty && _flashKeys.isEmpty && axis.axis.breaks.isEmpty
                       ? null
                       : (context, origin, visible) {
                           if (layer >= 1) {
@@ -1525,6 +1527,8 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                           if (born != null && drawn > 0) {
                             edges?.paint(context, origin, visible, highlight: highlight, only: born, drawn: drawn);
                           }
+                          // Story 10.31: the breaks' torn strips over the lines and gap marks, under the cards.
+                          axis.paintBreaks(context, origin, visible);
                           _paintFlash(context.canvas, origin, visible, rows, metrics, colors);
                         },
                   transition: elapsed == null ? null : _moving,

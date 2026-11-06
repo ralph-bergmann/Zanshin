@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -15,6 +16,9 @@ import 'shell_controller.dart';
 import 'shell_layout.dart';
 import 'shell_scope.dart';
 import 'top_bar.dart';
+
+/// How long the minimap card takes to follow a new width (design float.css `.gmini`, 200 ms on `--ease-state`).
+const _minimapResize = Duration(milliseconds: 200);
 
 /// The project window's floating overlay host (epics.md Story 11.3; DS readme.md:84, :100; ui_kits/desktop/kit.css):
 /// the graph fills the window and every control floats over it on glass islands, in named slots the other stories
@@ -75,6 +79,7 @@ class FloatingShell extends StatefulWidget {
     this.newChange,
     this.inspector,
     this.minimap,
+    this.minimapWidth,
     this.atPill,
     this.toast,
     this.staleNotice,
@@ -113,6 +118,10 @@ class FloatingShell extends StatefulWidget {
 
   /// The minimap (10.16).
   final Widget? minimap;
+
+  /// The minimap card's width (Story 10.31: it follows the graph's columns); the token `--minimap-w` (134) while
+  /// null.
+  final ValueListenable<double>? minimapWidth;
 
   /// The @ pill (10.6).
   final Widget? atPill;
@@ -295,7 +304,7 @@ class _FloatingShellState extends State<FloatingShell> {
         onKeyEvent: _key,
         child: LayoutBuilder(
           builder: (context, box) => ListenableBuilder(
-            listenable: Listenable.merge(<Listenable>[controller, controller.calm, _viewFocus]),
+            listenable: Listenable.merge(<Listenable?>[controller, controller.calm, _viewFocus, widget.minimapWidth]),
             builder: (context, _) => _layers(context, box.biggest),
           ),
         ),
@@ -311,7 +320,7 @@ class _FloatingShellState extends State<FloatingShell> {
       windowWidth: size.width,
       metrics: metrics,
       inspectorOpen: widget.inspector != null,
-      minimapShown: widget.minimap != null,
+      minimapWidth: widget.minimap == null ? 0 : widget.minimapWidth?.value ?? metrics.minimapW,
     );
     final CalmPhase phase = controller.calm.value;
     final bool calm = phase.calm;
@@ -413,12 +422,15 @@ class _FloatingShellState extends State<FloatingShell> {
           ),
         ),
       if (minimap != null)
-        Positioned(
+        AnimatedPositioned(
           key: const ValueKey<String>('shell-minimap'),
+          // Story 10.31 (design float.css `.gmini`): the card's width follows the graph's columns.
+          duration: motion.motion == 0 ? Duration.zero : _minimapResize,
+          curve: motion.easeState,
           right: metrics.chromeInset,
           top: metrics.chromeTop,
           bottom: metrics.chromeInset,
-          width: metrics.minimapW,
+          width: insets.minimapWidth,
           child: _MinimapMotion(visible: inspector == null || (calm && !phase.inspectorPinned), child: minimap),
         ),
       if (items.isNotEmpty) ...<Widget>[

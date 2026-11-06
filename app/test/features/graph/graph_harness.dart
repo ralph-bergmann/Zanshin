@@ -75,6 +75,107 @@ RecordedGraphLayout hugeStackLayout(int members) {
   );
 }
 
+/// [inner] with [breaks] (Story 10.31): a hand-made Free layout whose rows are already the shortened ones.
+class BrokenLayout extends GraphLayout {
+  /// [inner] carrying [breaks].
+  BrokenLayout(this.inner, this.breaks);
+
+  /// The layout read through.
+  final GraphLayout inner;
+
+  @override
+  final List<GraphBreak> breaks;
+
+  @override
+  GraphMode get mode => inner.mode;
+  @override
+  int get unit => inner.unit;
+  @override
+  int get rows => inner.rows;
+  @override
+  int get colCount => inner.colCount;
+  @override
+  int get nodeCount => inner.nodeCount;
+  @override
+  String keyOf(int node) => inner.keyOf(node);
+  @override
+  int? indexOfKey(String key) => inner.indexOfKey(key);
+  @override
+  int colOf(int node) => inner.colOf(node);
+  @override
+  int rowOf(int node) => inner.rowOf(node);
+  @override
+  int? timestampOf(int node) => inner.timestampOf(node);
+  @override
+  int parentCountOf(int node) => inner.parentCountOf(node);
+  @override
+  bool elidedOf(int node) => inner.elidedOf(node);
+  @override
+  int missingCountOf(int node) => inner.missingCountOf(node);
+  @override
+  int get edgeCount => inner.edgeCount;
+  @override
+  int childOf(int edge) => inner.childOf(edge);
+  @override
+  int parentOf(int edge) => inner.parentOf(edge);
+  @override
+  GraphEdgeKind kindOf(int edge) => inner.kindOf(edge);
+  @override
+  GraphEdgeShape shapeOf(int edge) => inner.shapeOf(edge);
+  @override
+  ({int start, int end}) parentEdges(int node) => inner.parentEdges(node);
+  @override
+  ({int start, int end}) childEdges(int node) => inner.childEdges(node);
+  @override
+  int childEdgeAt(int slot) => inner.childEdgeAt(slot);
+  @override
+  int get bucketCount => inner.bucketCount;
+  @override
+  GraphBucketKind bucketKindOf(int bucket) => inner.bucketKindOf(bucket);
+  @override
+  int bucketValueOf(int bucket) => inner.bucketValueOf(bucket);
+  @override
+  int bucketFirstRowOf(int bucket) => inner.bucketFirstRowOf(bucket);
+  @override
+  int bucketLastRowOf(int bucket) => inner.bucketLastRowOf(bucket);
+  @override
+  int get utcOffsetMinutes => inner.utcOffsetMinutes;
+  @override
+  int? get rootIndex => inner.rootIndex;
+  @override
+  int? get workingCopyIndex => inner.workingCopyIndex;
+  @override
+  int get shownCount => inner.shownCount;
+  @override
+  int? get totalCount => inner.totalCount;
+  @override
+  String? get operationId => inner.operationId;
+  @override
+  String changeIdOf(int node) => inner.changeIdOf(node);
+  @override
+  String commitIdOf(int node) => inner.commitIdOf(node);
+  @override
+  int changeIdPrefixLengthOf(int node) => inner.changeIdPrefixLengthOf(node);
+  @override
+  int? changeOffsetOf(int node) => inner.changeOffsetOf(node);
+  @override
+  bool isImmutable(int node) => inner.isImmutable(node);
+  @override
+  bool isHidden(int node) => inner.isHidden(node);
+  @override
+  bool isDivergent(int node) => inner.isDivergent(node);
+  @override
+  List<GraphRef> refsOf(int node) => inner.refsOf(node);
+  @override
+  List<String> workingCopiesOf(int node) => inner.workingCopiesOf(node);
+  @override
+  String? get workspaceName => inner.workspaceName;
+  @override
+  GraphCommitContent? contentOf(int node) => inner.contentOf(node);
+  @override
+  int get version => inner.version;
+}
+
 /// A hand-built layout: one (key, row, col) per node, edges as (child, parent) node indices (in any order; a child's
 /// edges keep their list order, so its first listed parent is its first parent), [indirect] as positions in [edges],
 /// day [buckets] as (value, first row, last row), oldest first. The card facts are optional, one entry per node.

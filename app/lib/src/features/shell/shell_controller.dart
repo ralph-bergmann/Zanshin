@@ -102,7 +102,7 @@ class ShellController extends ChangeNotifier {
   CalmHold? _edgeHold;
 
   /// The inputs of the last [layoutFor], for the flyout's probe.
-  ({double width, ZsMetrics metrics, bool inspectorOpen, bool minimapShown})? _inputs;
+  ({double width, ZsMetrics metrics, bool inspectorOpen, double minimapWidth})? _inputs;
 
   /// The pinned item's id, or null.
   String? get pinnedId => _pinnedId;
@@ -165,15 +165,15 @@ class ShellController extends ChangeNotifier {
     required double windowWidth,
     required ZsMetrics metrics,
     required bool inspectorOpen,
-    required bool minimapShown,
+    required double minimapWidth,
   }) {
-    _inputs = (width: windowWidth, metrics: metrics, inspectorOpen: inspectorOpen, minimapShown: minimapShown);
+    _inputs = (width: windowWidth, metrics: metrics, inspectorOpen: inspectorOpen, minimapWidth: minimapWidth);
     final layout = ShellLayout.resolve(
       windowWidth: windowWidth,
       metrics: metrics,
       pinned: _pinnedId != null,
       inspectorOpen: inspectorOpen,
-      minimapShown: minimapShown,
+      minimapWidth: minimapWidth,
       rememberedPanel: _panelWidth,
       rememberedInspector: _inspectorWidth,
       wasCollapsed: _collapsed,
@@ -326,7 +326,7 @@ class ShellController extends ChangeNotifier {
   }
 
   bool _wouldCollapse() {
-    final ({double width, ZsMetrics metrics, bool inspectorOpen, bool minimapShown})? inputs = _inputs;
+    final ({double width, ZsMetrics metrics, bool inspectorOpen, double minimapWidth})? inputs = _inputs;
     if (inputs == null) {
       return false;
     }
@@ -335,7 +335,7 @@ class ShellController extends ChangeNotifier {
       metrics: inputs.metrics,
       pinned: true,
       inspectorOpen: inputs.inspectorOpen,
-      minimapShown: inputs.minimapShown,
+      minimapWidth: inputs.minimapWidth,
       rememberedPanel: _panelWidth,
       rememberedInspector: _inspectorWidth,
       wasCollapsed: _pinnedId != null && _collapsed,

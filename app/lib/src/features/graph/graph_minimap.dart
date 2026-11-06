@@ -21,10 +21,7 @@ import 'graph_view_model.dart';
 import 'minimap_raster.dart';
 import 'vertical_layout.dart';
 
-// The design's constants (graph-view.jsx:444, 480; DS ui_kits/desktop/kit.css:155-172), CSS px.
-
-/// The strip's width: the 134 px card less 8 px on each side (`MINI_W`).
-const double minimapStripWidth = 118;
+// The design's constants (graph-view.jsx `minimapSize`, sync #22; DS ui_kits/desktop/kit.css:155-172), CSS px.
 
 /// The strip's inset in the card (kit.css:157, `inset:12px 8px`).
 const minimapStripInset = EdgeInsets.symmetric(vertical: 12, horizontal: 8);
@@ -32,14 +29,48 @@ const minimapStripInset = EdgeInsets.symmetric(vertical: 12, horizontal: 8);
 /// The split between the day labels (left) and the graph's dots (right) (`MINI_SPLIT`).
 const double minimapSplit = 58;
 
-/// The graph's right edge in the strip (`gr = MINI_W − 4`).
-const double _graphRight = 114;
-
-/// The graph's left limit: at most 48 px of graph width (`MINI_GL`).
-const double _graphLeft = 66;
-
-/// The largest x scale (`MINI_KX`).
+/// The largest x scale (`MINI_KX`): one column ≈ 12 px.
 const _kxMax = 0.04;
+
+/// The graph part's padding on either side (`MINI_PAD`).
+const double _pad = 8;
+
+/// The graph part's least and largest width (`MINI_GW_MIN`, `MINI_GW_MAX`).
+const double _graphMin = 60;
+const double _graphMax = 160;
+
+/// The least height of one pitch on the strip (`MINI_MIN_PITCH`): a taller history scrolls the minimap.
+const double minimapMinPitch = 2;
+
+/// The minimap's size for a graph whose laid-out card centres span `span` px in x (Story 10.31, design graph-view.jsx
+/// `minimapSize`): the graph part [graph] = clamp(span · 0.04 + 16, 60, 160), the [strip] = 58 + graph, the [card] =
+/// strip + 16 and the x scale [kx] (0.04, less once the graph part is full).
+@immutable
+class MinimapSize {
+  /// The size for [span].
+  factory MinimapSize.of(double span) {
+    final double graph = (span * _kxMax + 2 * _pad).clamp(_graphMin, _graphMax);
+    final double strip = minimapSplit + graph;
+    return MinimapSize._(graph, strip, span > 0 ? math.min(_kxMax, (graph - 2 * _pad) / span) : 0);
+  }
+
+  const MinimapSize._(this.graph, this.strip, this.kx);
+
+  /// The graph part's width.
+  final double graph;
+
+  /// The strip's width.
+  final double strip;
+
+  /// The x scale.
+  final double kx;
+
+  /// The card's width.
+  double get card => strip + 2 * _pad;
+}
+
+/// The card width without a graph: the token `--minimap-w` (134).
+final double minimapDefaultCardWidth = MinimapSize.of(0).card;
 
 /// What the canvas hands the minimap (Story 10.16): its layout, rows, metrics, route geometry (null while routing),
 /// insets and scroll controllers.
@@ -105,9 +136,22 @@ class GraphMinimapFrame {
 class GraphMinimapSource extends ChangeNotifier {
   GraphMinimapFrame? _frame;
   var _disposed = false;
+  final _cardWidth = ValueNotifier<double>(minimapDefaultCardWidth);
+
+  // The x extent of the laid-out nodes' centres, per layout and metrics.
+  GraphLayout? _extentLayout;
+  GraphMetrics? _extentMetrics;
+  (double, double) _extent = (0, 0);
 
   /// The current frame, null without a canvas.
   GraphMinimapFrame? get frame => _frame;
+
+  /// The min and max centre x of the current frame's laid-out nodes; (0, 0) without any.
+  (double, double) get extent => _extent;
+
+  /// The minimap card's width for the current frame (Story 10.31): it follows the columns; [minimapDefaultCardWidth]
+  /// without a frame. Notifies only when it changes.
+  ValueListenable<double> get cardWidth => _cardWidth;
 
   /// Makes [frame] current; notifies only when it changed.
   void publish(GraphMinimapFrame frame) {
@@ -115,6 +159,14 @@ class GraphMinimapSource extends ChangeNotifier {
       return;
     }
     _frame = frame;
+    if (!identical(_extentLayout, frame.layout) || _extentMetrics != frame.metrics) {
+      _extentLayout = frame.layout;
+      _extentMetrics = frame.metrics;
+      _extent = _extentOf(frame.layout, frame.metrics);
+    }
+    final (double x0, double x1) = _extent;
+    // Published after the canvas's build: the shell rebuilds on the next frame.
+    _cardWidth.value = MinimapSize.of(x1 - x0).card;
     notifyListeners();
   }
 
@@ -127,6 +179,7 @@ class GraphMinimapSource extends ChangeNotifier {
     _frame = null;
     scheduleMicrotask(() {
       if (!_disposed) {
+        _cardWidth.value = minimapDefaultCardWidth;
         notifyListeners();
       }
     });
@@ -135,18 +188,48 @@ class GraphMinimapSource extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _cardWidth.dispose();
     super.dispose();
   }
 }
 
-/// The minimap's day labels in plane coordinates, ascending y (Story 10.16).
+/// A year boundary on the minimap in plane coordinates (Story 10.31): at `y`, `year` above it and `below` under it
+/// (null at the history's oldest day, which opens its first year).
+typedef MinimapYear = ({double y, int year, int? below});
+
+/// The minimap's day labels in plane coordinates, ascending y (Story 10.16), with the year boundaries (ascending y)
+/// and the breaks' centre ys (Story 10.31).
 @immutable
 class MinimapLabels {
   /// Labels at [ys] reading [texts].
-  const MinimapLabels(this.ys, this.texts, {required this.free});
+  const MinimapLabels(
+    this.ys,
+    this.texts, {
+    required this.free,
+    this.years = const <MinimapYear>[],
+    this.breaks = const <double>[],
+    this.nowYear,
+    this.silent = const <int>{},
+    this.yearTexts = const <int, String>{},
+  });
 
   /// No labels.
   static const empty = MinimapLabels(<double>[], <String>[], free: false);
+
+  /// The labels the day lookup reads but nothing draws (Story 10.31): a day whose divider lies in a break.
+  final Set<int> silent;
+
+  /// Each year of [years] as its label text.
+  final Map<int, String> yearTexts;
+
+  /// The year boundaries, ascending y: the topmost first.
+  final List<MinimapYear> years;
+
+  /// The breaks' centre ys, in plane coordinates.
+  final List<double> breaks;
+
+  /// The current year at the layout's offset; a history that lies in it alone gets no sticky header.
+  final int? nowYear;
 
   /// Each label's centre y in plane coordinates, ascending.
   final List<double> ys;
@@ -162,9 +245,11 @@ class MinimapLabels {
 }
 
 /// The minimap's day labels of [layout] mapped by [rows] (graph-view.jsx:445-459):
-/// - **Free:** one label per [GraphDayAxis] bucket at its label y, reading [graphDayLabel] of the bucket;
+/// - **Free:** one label per shown [GraphDayAxis] day at its label y, reading [graphDayLabel] of the bucket; the
+///   axis's year boundaries and breaks (Story 10.31);
 /// - **Compact:** per row the newest timestamp of its laid-out nodes (the root and nodes without one left out); a row
-///   gets a label at its card centre only when its day ([graphLocalDay]) is older than the last label's.
+///   gets a label at its card centre only when its day ([graphLocalDay]) is older than the last label's; a year
+///   boundary midway between two labels of different years.
 MinimapLabels minimapLabels(
   GraphLayout layout,
   VerticalLayout rows, {
@@ -172,15 +257,36 @@ MinimapLabels minimapLabels(
   required int nowMs,
 }) {
   final int offset = layout.utcOffsetMinutes;
+  final int nowYear = graphYearOf(nowMs, utcOffsetMinutes: offset);
   String label(int day) => graphDayLabel(strings, day, nowMs: nowMs, utcOffsetMinutes: offset);
+  Map<int, String> yearTexts(List<MinimapYear> years) => <int, String>{
+    for (final MinimapYear y in years) ...<int, String>{
+      y.year: graphYearLabel(strings, y.year),
+      if (y.below case final int below) below: graphYearLabel(strings, below),
+    },
+  };
   if (layout.mode == GraphMode.free) {
     final axis = GraphDayAxis.of(layout, rows);
-    final int n = axis.length;
-    // labelYs decrease with the bucket, so the newest day comes first.
+    // The shown days and the days dropped in a break (looked up, never drawn), ascending y.
+    final days = <(double, int, bool)>[
+      for (var b = 0; b < axis.length; b++) (axis.labelYs[b], axis.values[b], false),
+      for (var b = 0; b < axis.droppedValues.length; b++) (axis.droppedYs[b], axis.droppedValues[b], true),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    final years = <MinimapYear>[
+      for (final GraphAxisYear y in axis.years.reversed) (y: y.y, year: y.year, below: y.below),
+    ];
     return MinimapLabels(
-      <double>[for (int b = n - 1; b >= 0; b--) axis.labelYs[b]],
-      <String>[for (int b = n - 1; b >= 0; b--) label(axis.values[b])],
+      <double>[for (final (double y, _, _) in days) y],
+      <String>[for (final (_, int value, _) in days) label(value)],
       free: true,
+      years: years,
+      breaks: <double>[for (final GraphAxisBreak b in axis.breaks.reversed) b.centre],
+      nowYear: nowYear,
+      silent: <int>{
+        for (var i = 0; i < days.length; i++)
+          if (days[i].$3) i,
+      },
+      yearTexts: yearTexts(years),
     );
   }
   final int? root = layout.rootIndex;
@@ -200,6 +306,7 @@ MinimapLabels minimapLabels(
   final List<int> order = newest.keys.toList()..sort((a, b) => b.compareTo(a));
   final ys = <double>[];
   final texts = <String>[];
+  final labelYears = <int>[];
   double last = double.infinity;
   final double half = rows.metrics.cardHeight / 2;
   for (final row in order) {
@@ -208,9 +315,16 @@ MinimapLabels minimapLabels(
       last = day.toDouble();
       ys.add(rows.topOfRow(row) + half);
       texts.add(label(day));
+      labelYears.add(graphYearOf(day, utcOffsetMinutes: offset));
     }
   }
-  return MinimapLabels(ys, texts, free: false);
+  final years = <MinimapYear>[
+    for (var i = 1; i < ys.length; i++)
+      if (labelYears[i] != labelYears[i - 1])
+        (y: (ys[i - 1] + ys[i]) / 2, year: labelYears[i - 1], below: labelYears[i]),
+    if (ys.isNotEmpty) (y: ys.last, year: labelYears.last, below: null),
+  ];
+  return MinimapLabels(ys, texts, free: false, years: years, nowYear: nowYear, yearTexts: yearTexts(years));
 }
 
 /// The day the minimap names at plane y [planeY] (graph-view.jsx:495-499): Free, the first label at or below
@@ -239,39 +353,83 @@ typedef MinimapRasterRunner = Future<Uint8List> Function(MinimapRasterInput inpu
 
 Future<Uint8List> _isolateRaster(MinimapRasterInput input) => Isolate.run(() => rasterMinimap(input));
 
-/// The plane → strip map of one frame and strip height (graph-view.jsx:476-482).
+/// The plane → strip map of one frame and strip height (graph-view.jsx `GraphMinimap`, sync #22): x through
+/// [MinimapSize], y at `k = max(stripH / total, 2 / pitch)`; content [over] the strip's height scrolls by [msOf].
 @immutable
-class _Mapping {
-  const _Mapping(this.k, this.kx, this.x1, this.top);
+class MinimapMapping {
+  const MinimapMapping._(this.k, this.kx, this.x1, this.top, this.strip, this.stripHeight, this.over);
 
   /// [frame]'s map onto a strip [stripHeight] tall, with the laid-out nodes' centre x [extent] (min, max).
-  factory _Mapping.of(GraphMinimapFrame frame, double stripHeight, (double, double) extent) {
+  factory MinimapMapping.of(GraphMinimapFrame frame, double stripHeight, (double, double) extent) {
     final (double x0, double x1) = extent;
+    final size = MinimapSize.of(x1 - x0);
     final EdgeInsets insets = frame.insets;
-    final double k = stripHeight / math.max(1, frame.rows.contentHeight + insets.top + insets.bottom);
-    final double kx = x1 > x0 ? math.min((_graphRight - _graphLeft) / (x1 - x0), _kxMax) : 0;
-    return _Mapping(k, kx, x1, insets.top);
+    final double total = math.max(1, frame.rows.contentHeight + insets.top + insets.bottom);
+    final double pitch = frame.metrics.cardHeight + frame.metrics.gapY;
+    final double k = math.max(stripHeight / total, minimapMinPitch / pitch);
+    final double over = math.max(0, total * k - stripHeight);
+    return MinimapMapping._(k, size.kx, x1, insets.top, size.strip, stripHeight, over);
   }
 
+  /// Strip px per plane px in y.
   final double k;
+
+  /// Strip px per plane px in x.
   final double kx;
+
+  /// The rightmost centre x.
   final double x1;
+
+  /// The plane's top inset.
   final double top;
 
-  double mx(double x) => _graphRight - (x1 - x) * kx;
+  /// The strip's width.
+  final double strip;
 
+  /// The strip's height.
+  final double stripHeight;
+
+  /// How far the content overflows the strip: the minimap's scroll range.
+  final double over;
+
+  /// The content's height on the strip.
+  double get contentHeight => stripHeight + over;
+
+  /// The strip x of plane x [x].
+  double mx(double x) => strip - 4 - (x1 - x) * kx;
+
+  /// The content y of plane y [y]; the strip y is this less [msOf].
   double my(double y) => (y + top) * k;
 
-  /// The plane y of strip y [sy].
-  double planeY(double sy) => sy / math.max(k, 1e-6) - top;
+  /// The plane y of strip y [sy] at scroll offset [ms].
+  double planeY(double sy, double ms) => (sy + ms) / math.max(k, 1e-6) - top;
+
+  /// The minimap's scroll offset at the canvas's [position]: 0 at the top to [over] at the bottom, in proportion.
+  double msOf(ScrollPosition position) {
+    if (over == 0 || !position.hasPixels || !position.hasContentDimensions) {
+      return 0;
+    }
+    return over * (position.pixels / math.max(1, position.maxScrollExtent)).clamp(0, 1);
+  }
 
   @override
   bool operator ==(Object other) =>
-      other is _Mapping && other.k == k && other.kx == kx && other.x1 == x1 && other.top == top;
+      other is MinimapMapping &&
+      other.k == k &&
+      other.kx == kx &&
+      other.x1 == x1 &&
+      other.top == top &&
+      other.strip == strip &&
+      other.stripHeight == stripHeight &&
+      other.over == over;
 
   @override
-  int get hashCode => Object.hash(k, kx, x1, top);
+  int get hashCode => Object.hash(k, kx, x1, top, strip, stripHeight, over);
 }
+
+/// The minimap's scroll offset for [frame] under [mapping]: 0 while the canvas has no position.
+double _msOf(GraphMinimapFrame frame, MinimapMapping mapping) =>
+    frame.vertical.hasClients ? mapping.msOf(frame.vertical.position) : 0;
 
 /// Whether [node] has a place on the plane (not a folded stack member).
 bool _laidOut(GraphLayout layout, int node) => layout.rowOf(node) >= 0 && !layout.isFolded(node);
@@ -290,22 +448,26 @@ bool _laidOut(GraphLayout layout, int node) => layout.rowOf(node) >= 0 && !layou
   return x0.isFinite ? (x0, x1) : (0, 0);
 }
 
-/// The raster input of [frame] on a strip of [strip] CSS px at [dpr] (Story 10.16): the laid-out nodes' plane centres
-/// (x the card's centre, y `rows.top + cardHeight / 2`), the route polylines with their indirect flags (none while
+/// The raster input of [frame] on a strip [stripHeight] CSS px tall at [dpr] (Story 10.16): the laid-out nodes' plane
+/// centres (x the card's centre, y `rows.top + cardHeight / 2`), the route polylines (none while
 /// [GraphMinimapFrame.geometry] is null), the plane → device map and the colours [faint] (the out layer), [text] (the
-/// in layer's nodes) and [muted] (its edges), each 0xAARRGGBB.
+/// in layer's nodes) and [muted] (its edges), each 0xAARRGGBB. The raster is the strip's width and covers the content
+/// window [windowTop] (content px) down [windowHeight] (default the strip's height) — Story 10.31: a history taller
+/// than the strip rasters at most three strip heights around the visible part.
 MinimapRasterInput minimapRasterInput(
   GraphMinimapFrame frame,
-  Size strip,
+  double stripHeight,
   double dpr, {
   required int faint,
   required int text,
   required int muted,
+  double windowTop = 0,
+  double? windowHeight,
 }) {
   final GraphLayout layout = frame.layout;
   final GraphMetrics metrics = frame.metrics;
   final VerticalLayout rows = frame.rows;
-  final mapping = _Mapping.of(frame, strip.height, _extentOf(layout, metrics));
+  final mapping = MinimapMapping.of(frame, stripHeight, _extentOf(layout, metrics));
   final nodes = <int>[
     for (var node = 0; node < layout.nodeCount; node++)
       if (_laidOut(layout, node)) node,
@@ -326,13 +488,13 @@ MinimapRasterInput minimapRasterInput(
     nodeStacks: stacks,
     edgeStarts: edgeStarts,
     edgePoints: edgePoints,
-    ax: dpr * (_graphRight - mapping.x1 * mapping.kx),
+    ax: dpr * (mapping.strip - 4 - mapping.x1 * mapping.kx),
     bx: dpr * mapping.kx,
-    ay: dpr * mapping.top * mapping.k,
+    ay: dpr * (mapping.top * mapping.k - windowTop),
     by: dpr * mapping.k,
     dpr: dpr,
-    width: (strip.width * dpr).round(),
-    height: (strip.height * dpr).round(),
+    width: (mapping.strip * dpr).round(),
+    height: ((windowHeight ?? stripHeight) * dpr).round(),
     outNode: faint,
     outEdge: faint,
     inNode: text,
@@ -374,14 +536,29 @@ MinimapRasterInput minimapRasterInput(
   return (starts, Float64List.fromList(points));
 }
 
-/// The raster's key: a change re-rasters (Story 10.16).
+/// The raster's key: a change re-rasters (Story 10.16); [windowTop] and [windowHeight] are the content window it
+/// covers (Story 10.31), [width] × [height] its device pixels.
 @immutable
 class _RasterKey {
-  const _RasterKey(this.frame, this.top, this.bottom, this.width, this.height, this.dpr, this.colors);
+  const _RasterKey(
+    this.frame,
+    this.top,
+    this.bottom,
+    this.stripHeight,
+    this.windowTop,
+    this.windowHeight,
+    this.width,
+    this.height,
+    this.dpr,
+    this.colors,
+  );
 
   final GraphMinimapFrame frame;
   final double top;
   final double bottom;
+  final double stripHeight;
+  final double windowTop;
+  final double windowHeight;
   final int width;
   final int height;
   final double dpr;
@@ -396,6 +573,9 @@ class _RasterKey {
       identical(other.frame.geometry, frame.geometry) &&
       other.top == top &&
       other.bottom == bottom &&
+      other.stripHeight == stripHeight &&
+      other.windowTop == windowTop &&
+      other.windowHeight == windowHeight &&
       other.width == width &&
       other.height == height &&
       other.dpr == dpr &&
@@ -409,6 +589,9 @@ class _RasterKey {
     identityHashCode(frame.geometry),
     top,
     bottom,
+    stripHeight,
+    windowTop,
+    windowHeight,
     width,
     height,
     dpr,
@@ -439,16 +622,17 @@ class GraphMinimap extends StatefulWidget {
   State<GraphMinimap> createState() => _GraphMinimapState();
 }
 
-enum _Text { label, pill, hoverPill }
+enum _Text { label, pill, hoverPill, year }
 
 class _GraphMinimapState extends State<GraphMinimap> {
   final _hover = ValueNotifier<double?>(null);
   var _dragging = false;
 
-  // The x extent of the laid-out nodes' centres, per layout and metrics.
-  GraphLayout? _extentLayout;
-  GraphMetrics? _extentMetrics;
-  (double, double) _extent = (0, 0);
+  // The content window the raster covers (Story 10.31), per mapping; the canvas controller watched for leaving it.
+  MinimapMapping? _windowMapping;
+  double _windowTop = 0;
+  double _windowHeight = 0;
+  ScrollController? _watched;
 
   // The labels, per rows, "now" and strings.
   VerticalLayout? _labelRows;
@@ -462,6 +646,7 @@ class _GraphMinimapState extends State<GraphMinimap> {
   var _running = false;
   ui.Image? _out;
   ui.Image? _in;
+  _RasterKey? _shown;
 
   // The text painters, per text and kind, kept while the colours stay.
   final _texts = <String, TextPainter>{};
@@ -469,6 +654,7 @@ class _GraphMinimapState extends State<GraphMinimap> {
 
   @override
   void dispose() {
+    _watched?.removeListener(_scrolled);
     _hover.dispose();
     _out?.dispose();
     _in?.dispose();
@@ -497,6 +683,7 @@ class _GraphMinimapState extends State<GraphMinimap> {
           color: colors.text,
         ),
         _Text.hoverPill => ZsType.id.copyWith(color: colors.textMuted),
+        _Text.year => graphYearStyle(colors),
       };
       return TextPainter(
         text: TextSpan(text: text, style: style),
@@ -506,13 +693,51 @@ class _GraphMinimapState extends State<GraphMinimap> {
     });
   }
 
-  _Mapping _mappingOf(GraphMinimapFrame frame, double stripHeight) {
-    if (!identical(_extentLayout, frame.layout) || _extentMetrics != frame.metrics) {
-      _extentLayout = frame.layout;
-      _extentMetrics = frame.metrics;
-      _extent = _extentOf(frame.layout, frame.metrics);
+  MinimapMapping _mappingOf(GraphMinimapFrame frame, double stripHeight) =>
+      MinimapMapping.of(frame, stripHeight, widget.model.minimapSource.extent);
+
+  /// The content window to raster for [mapping] at scroll offset [ms]: the whole strip while nothing overflows, else
+  /// at most three strip heights around the visible strip; re-centred once the visible strip comes within half a
+  /// strip height of an edge that is not the content's, so a fast scroll finds the next raster ready.
+  (double, double) _windowFor(MinimapMapping mapping, double ms) {
+    final double h = mapping.stripHeight;
+    final double height = mapping.over == 0 ? h : math.min(mapping.contentHeight, 3 * h);
+    if (mapping == _windowMapping && _windowHeight == height && _comfortable(mapping, ms)) {
+      return (_windowTop, _windowHeight);
     }
-    return _Mapping.of(frame, stripHeight, _extent);
+    _windowMapping = mapping;
+    _windowHeight = height;
+    _windowTop = mapping.over == 0 ? 0 : (ms - h).clamp(0, mapping.contentHeight - height);
+    return (_windowTop, _windowHeight);
+  }
+
+  /// Whether the visible strip at [ms] keeps half a strip height from each window edge that is not the content's.
+  bool _comfortable(MinimapMapping mapping, double ms) {
+    final double margin = mapping.stripHeight / 2;
+    final double bottom = _windowTop + _windowHeight;
+    final bool top = _windowTop <= .5 || ms >= _windowTop + margin;
+    final bool end = bottom >= mapping.contentHeight - .5 || ms + mapping.stripHeight <= bottom - margin;
+    return top && end;
+  }
+
+  /// Watches [controller] for a scroll that leaves the raster window.
+  void _watch(ScrollController controller) {
+    if (identical(_watched, controller)) {
+      return;
+    }
+    _watched?.removeListener(_scrolled);
+    _watched = controller..addListener(_scrolled);
+  }
+
+  void _scrolled() {
+    final MinimapMapping? mapping = _windowMapping;
+    final GraphMinimapFrame? frame = widget.model.minimapSource.frame;
+    if (mapping == null || frame == null || mapping.over == 0) {
+      return;
+    }
+    if (!_comfortable(mapping, _msOf(frame, mapping))) {
+      setState(() {});
+    }
   }
 
   MinimapLabels _labelsOf(GraphMinimapFrame frame, AppLocalizations strings) {
@@ -528,20 +753,41 @@ class _GraphMinimapState extends State<GraphMinimap> {
 
   // ---- raster ----
 
-  void _request(GraphMinimapFrame frame, Size size, double dpr, ZsColors colors) {
-    final int width = (size.width * dpr).round();
-    final int height = (size.height * dpr).round();
+  void _request(GraphMinimapFrame frame, MinimapMapping mapping, double dpr, ZsColors colors) {
+    final (double windowTop, double windowHeight) = _windowFor(mapping, _msOf(frame, mapping));
+    final int width = (mapping.strip * dpr).round();
+    final int height = (windowHeight * dpr).round();
     if (width <= 0 || height <= 0) {
       return;
     }
     final (int, int, int) ink = (colors.textFaint.toARGB32(), colors.text.toARGB32(), colors.textMuted.toARGB32());
-    final key = _RasterKey(frame, frame.insets.top, frame.insets.bottom, width, height, dpr, ink);
+    final key = _RasterKey(
+      frame,
+      frame.insets.top,
+      frame.insets.bottom,
+      mapping.stripHeight,
+      windowTop,
+      windowHeight,
+      width,
+      height,
+      dpr,
+      ink,
+    );
     if (key == _wanted?.key) {
       return;
     }
     _wanted = (
       key: key,
-      input: () => minimapRasterInput(frame, size, dpr, faint: ink.$1, text: ink.$2, muted: ink.$3),
+      input: () => minimapRasterInput(
+        frame,
+        mapping.stripHeight,
+        dpr,
+        faint: ink.$1,
+        text: ink.$2,
+        muted: ink.$3,
+        windowTop: windowTop,
+        windowHeight: windowHeight,
+      ),
     );
     _pump();
   }
@@ -603,6 +849,7 @@ class _GraphMinimapState extends State<GraphMinimap> {
     setState(() {
       _out = images[0];
       _in = images[1];
+      _shown = key;
     });
   }
 
@@ -624,11 +871,15 @@ class _GraphMinimapState extends State<GraphMinimap> {
       return;
     }
     final ScrollPosition position = frame.vertical.position;
-    final double top = frame.insets.top;
-    final double target =
-        sy / math.max(_mappingOf(frame, stripHeight).k, 1e-6) -
-        (top + (position.viewportDimension - top - frame.insets.bottom) / 2);
-    frame.vertical.jumpTo(target.clamp(0, math.max(0, position.maxScrollExtent)));
+    frame.vertical.jumpTo(
+      minimapJumpTarget(
+        _mappingOf(frame, stripHeight),
+        sy,
+        viewport: position.viewportDimension,
+        maxScrollExtent: position.maxScrollExtent,
+        insets: frame.insets,
+      ),
+    );
   }
 
   static void _scrollBy(ScrollController controller, double delta) {
@@ -680,8 +931,9 @@ class _GraphMinimapState extends State<GraphMinimap> {
       return const SizedBox.expand();
     }
     final ZsColors colors = ZsColors.of(context);
-    final _Mapping mapping = _mappingOf(frame, size.height);
-    _request(frame, size, MediaQuery.devicePixelRatioOf(context), colors);
+    final MinimapMapping mapping = _mappingOf(frame, size.height);
+    _watch(frame.vertical);
+    _request(frame, mapping, MediaQuery.devicePixelRatioOf(context), colors);
     final MinimapLabels labels = _labelsOf(frame, context.l10n);
     final GraphLayout layout = frame.layout;
     final String? selected = widget.model.selected;
@@ -729,6 +981,7 @@ class _GraphMinimapState extends State<GraphMinimap> {
             frame: frame,
             mapping: mapping,
             inLayer: _in,
+            raster: _shown,
             labels: labels,
             selected: selected == null ? null : layout.placeOfKey(selected),
             workingCopy: at == null ? null : layout.placeOfKey(layout.keyOf(at)),
@@ -737,7 +990,10 @@ class _GraphMinimapState extends State<GraphMinimap> {
             text: (text, kind) => _text(text, kind, colors),
           ),
           child: RepaintBoundary(
-            child: CustomPaint(size: size, painter: _RasterPainter(_out)),
+            child: CustomPaint(
+              size: size,
+              painter: _RasterPainter(_out, raster: _shown, frame: frame, mapping: mapping),
+            ),
           ),
         ),
       ),
@@ -745,8 +1001,25 @@ class _GraphMinimapState extends State<GraphMinimap> {
   }
 }
 
-/// The band's top and bottom in strip px (graph-view.jsx:494), or null while the canvas has no scroll position.
-(double, double)? _bandOf(GraphMinimapFrame frame, _Mapping mapping) {
+/// The canvas scroll offset that centres the band on strip y [sy] (Story 10.31, graph-view.jsx `jump`): the band's
+/// centre lies at `pixels · (k − over / range) + c0 · k` with `c0 = top + (viewport − top − bottom) / 2`, solved for
+/// `pixels` and clamped to the scroll range.
+double minimapJumpTarget(
+  MinimapMapping mapping,
+  double sy, {
+  required double viewport,
+  required double maxScrollExtent,
+  required EdgeInsets insets,
+}) {
+  final double range = math.max(1, maxScrollExtent);
+  final double c0 = insets.top + (viewport - insets.top - insets.bottom) / 2;
+  final double target = (sy - c0 * mapping.k) / math.max(mapping.k - mapping.over / range, 1e-6);
+  return target.clamp(0, math.max(0, maxScrollExtent));
+}
+
+/// The band's top and bottom in strip px with the minimap's scroll offset (graph-view.jsx `vTop`, `vBot`, `ms`), or
+/// null while the canvas has no scroll position.
+({double top, double bottom, double ms})? _bandOf(GraphMinimapFrame frame, MinimapMapping mapping) {
   final ScrollController vertical = frame.vertical;
   if (!vertical.hasClients) {
     return null;
@@ -756,9 +1029,11 @@ class _GraphMinimapState extends State<GraphMinimap> {
     return null;
   }
   final double offset = position.pixels;
+  final double ms = mapping.msOf(position);
   return (
-    (offset + frame.insets.top) * mapping.k,
-    (offset + position.viewportDimension - frame.insets.bottom) * mapping.k,
+    top: (offset + frame.insets.top) * mapping.k - ms,
+    bottom: (offset + position.viewportDimension - frame.insets.bottom) * mapping.k - ms,
+    ms: ms,
   );
 }
 
@@ -767,19 +1042,23 @@ class _BandPainter extends CustomPainter {
   _BandPainter({required this.frame, required this.mapping, required this.color}) : super(repaint: frame.vertical);
 
   final GraphMinimapFrame frame;
-  final _Mapping mapping;
+  final MinimapMapping mapping;
   final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final (double, double)? band = _bandOf(frame, mapping);
+    final ({double top, double bottom, double ms})? band = _bandOf(frame, mapping);
     if (band == null) {
       return;
     }
-    final (double top, double bottom) = band;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(minimapSplit + 2, top, minimapStripWidth - minimapSplit + 2, math.max(4, bottom - top)),
+        Rect.fromLTWH(
+          minimapSplit + 2,
+          band.top,
+          mapping.strip - minimapSplit + 2,
+          math.max(4, band.bottom - band.top),
+        ),
         const Radius.circular(4),
       ),
       Paint()..color = color,
@@ -790,11 +1069,21 @@ class _BandPainter extends CustomPainter {
   bool shouldRepaint(_BandPainter old) => old.frame != frame || old.mapping != mapping || old.color != color;
 }
 
-/// The out layer (kit.css:163, `.zk-mini-g{opacity:.6}`): the raster at 60 %, repainted only for a new raster.
+/// Where a raster covering [raster]'s window lands on the strip at scroll offset [ms]; the whole strip without a key.
+Rect _rasterRect(_RasterKey? raster, MinimapMapping mapping, double ms, Size size) => raster == null
+    ? Offset.zero & size
+    : Rect.fromLTWH(0, raster.windowTop - ms, raster.width / raster.dpr, raster.windowHeight);
+
+/// The out layer (kit.css:163, `.zk-mini-g{opacity:.6}`): the raster at 60 %, moved with the minimap's scroll offset
+/// (Story 10.31).
 class _RasterPainter extends CustomPainter {
-  _RasterPainter(this.image);
+  _RasterPainter(this.image, {required this.raster, required this.frame, required this.mapping})
+    : super(repaint: mapping.over == 0 ? null : frame.vertical);
 
   final ui.Image? image;
+  final _RasterKey? raster;
+  final GraphMinimapFrame frame;
+  final MinimapMapping mapping;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -805,7 +1094,7 @@ class _RasterPainter extends CustomPainter {
     canvas.drawImageRect(
       image,
       Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      Offset.zero & size,
+      _rasterRect(raster, mapping, _msOf(frame, mapping), size),
       Paint()
         ..color = const Color.fromRGBO(0, 0, 0, .6)
         ..filterQuality = FilterQuality.low,
@@ -813,7 +1102,8 @@ class _RasterPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RasterPainter old) => !identical(old.image, image);
+  bool shouldRepaint(_RasterPainter old) =>
+      !identical(old.image, image) || old.raster != raster || old.mapping != mapping || old.frame != frame;
 }
 
 /// Everything above the out layer (graph-view.jsx:494-537; kit.css:163-172): the in layer clipped to the band, the
@@ -823,6 +1113,7 @@ class _OverlayPainter extends CustomPainter {
     required this.frame,
     required this.mapping,
     required this.inLayer,
+    required this.raster,
     required this.labels,
     required this.selected,
     required this.workingCopy,
@@ -831,9 +1122,14 @@ class _OverlayPainter extends CustomPainter {
     required this.text,
   }) : super(repaint: Listenable.merge(<Listenable>[frame.vertical, hover]));
 
+  // The sticky header's height and the gap a year keeps from the day labels (graph-view.jsx, sync #22).
+  static const double _stickyHeight = 22;
+  static const double _yearClear = 16;
+
   final GraphMinimapFrame frame;
-  final _Mapping mapping;
+  final MinimapMapping mapping;
   final ui.Image? inLayer;
+  final _RasterKey? raster;
   final MinimapLabels labels;
   final int? selected;
   final int? workingCopy;
@@ -843,11 +1139,14 @@ class _OverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final (double, double)? band = _bandOf(frame, mapping);
+    final ({double top, double bottom, double ms})? band = _bandOf(frame, mapping);
     if (band == null) {
       return;
     }
-    final (double vTop, double vBot) = band;
+    final double vTop = band.top;
+    final double vBot = band.bottom;
+    final double ms = band.ms;
+    final double strip = mapping.strip;
     final double cy = (vTop + vBot) / 2;
     final ui.Image? image = inLayer;
     if (image != null && vBot > vTop) {
@@ -857,52 +1156,110 @@ class _OverlayPainter extends CustomPainter {
         ..drawImageRect(
           image,
           Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-          Offset.zero & size,
+          _rasterRect(raster, mapping, ms, size),
           Paint()..filterQuality = FilterQuality.low,
         )
         ..restore();
     }
-    _mark(canvas, selected, colors.accentLine);
-    _mark(canvas, workingCopy, colors.co);
+    // The breaks (Story 10.31): a small zigzag across the graph part.
+    final breakPaint = Paint()
+      ..color = colors.textDim
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeJoin = StrokeJoin.round;
+    for (final double y in labels.breaks) {
+      final double sy = mapping.my(y) - ms;
+      if (sy < -4 || sy > size.height + 4) {
+        continue;
+      }
+      const double x0 = minimapSplit + 4;
+      final points = <Offset>[
+        for (final Offset p in graphZigzag(0, strip - x0, sy, 0, amp: 2, step: 5))
+          Offset(math.min(x0 + p.dx, strip), p.dy),
+      ];
+      canvas.drawPath(Path()..addPolygon(points, false), breakPaint);
+    }
+    _mark(canvas, selected, colors.accentLine, ms);
+    _mark(canvas, workingCopy, colors.co, ms);
     final double? hov = hover.value;
     if (hov != null) {
       final dash = Paint()
         ..color = colors.textDim
         ..strokeWidth = 1;
-      for (double x = minimapSplit; x < minimapStripWidth; x += 4) {
-        canvas.drawLine(Offset(x, hov), Offset(math.min(x + 2, minimapStripWidth), hov), dash);
+      for (double x = minimapSplit; x < strip; x += 4) {
+        canvas.drawLine(Offset(x, hov), Offset(math.min(x + 2, strip), hov), dash);
       }
     }
     canvas.drawLine(
       Offset(minimapSplit, cy),
-      Offset(minimapStripWidth, cy),
+      Offset(strip, cy),
       Paint()
         ..color = colors.atChrome
         ..strokeWidth = 1,
     );
+    // The years (Story 10.31): each boundary heads the section below it with the older year; the top section's year
+    // sticks as a header — none when the whole history lies in this year.
+    final years = <({double sy, int year})>[
+      for (final MinimapYear y in labels.years)
+        if (y.below != null) (sy: mapping.my(y.y) - ms, year: y.below!),
+    ];
+    int? sticky;
+    for (final y in years) {
+      if (y.sy <= _stickyHeight) {
+        sticky = y.year;
+      }
+    }
+    if (sticky == null && labels.years.isNotEmpty && (years.isNotEmpty || labels.years.first.year != labels.nowYear)) {
+      sticky = labels.years.first.year;
+    }
     var lastY = -99.0;
     for (var i = 0; i < labels.length; i++) {
-      final double sy = mapping.my(labels.ys[i]);
-      if (sy - lastY < 18 || (sy - cy).abs() < 15 || (hov != null && (sy - hov).abs() < 13)) {
+      final double sy = mapping.my(labels.ys[i]) - ms;
+      if (labels.silent.contains(i) ||
+          sy - lastY < 18 ||
+          (sy - cy).abs() < 15 ||
+          (hov != null && (sy - hov).abs() < 13) ||
+          (sticky != null && sy < _stickyHeight) ||
+          years.any((y) => (y.sy - sy).abs() < _yearClear)) {
         continue;
       }
       lastY = sy;
       final TextPainter painter = text(labels.texts[i], _Text.label);
       painter.paint(canvas, Offset(minimapSplit - 4 - painter.width, sy - painter.height / 2));
     }
+    for (final y in years) {
+      if (y.sy > _stickyHeight && y.sy < size.height - 4) {
+        final TextPainter painter = text(labels.yearTexts[y.year]!, _Text.year);
+        painter.paint(canvas, Offset(minimapSplit - 4 - painter.width, y.sy + 3));
+      }
+    }
+    if (sticky != null) {
+      final TextPainter painter = text(labels.yearTexts[sticky]!, _Text.year);
+      const double right = minimapSplit - 4;
+      final rect = Rect.fromLTRB(right - painter.width - 8, 0, right, painter.height + 6);
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.linear(rect.topLeft, rect.topLeft + const Offset(8, 0), <Color>[
+            colors.flBgSolid.withValues(alpha: 0),
+            colors.flBgSolid,
+          ]),
+      );
+      painter.paint(canvas, Offset(right - painter.width, 3));
+    }
     if (hov != null) {
-      final String? day = minimapDayAt(labels, mapping.planeY(hov));
+      final String? day = minimapDayAt(labels, mapping.planeY(hov, ms));
       if (day != null) {
         _pill(canvas, day, hov, hovered: true);
       }
     }
-    final String? day = minimapDayAt(labels, mapping.planeY(cy));
+    final String? day = minimapDayAt(labels, mapping.planeY(cy, ms));
     if (day != null) {
       _pill(canvas, day, cy, hovered: false);
     }
   }
 
-  void _mark(Canvas canvas, int? node, Color color) {
+  void _mark(Canvas canvas, int? node, Color color, double ms) {
     if (node == null) {
       return;
     }
@@ -912,7 +1269,7 @@ class _OverlayPainter extends CustomPainter {
       return;
     }
     final double x = mapping.mx(metrics.x(layout.colOf(node)) + metrics.cardWidth / 2);
-    final double y = mapping.my(frame.rows.top(node) + metrics.cardHeight / 2);
+    final double y = mapping.my(frame.rows.top(node) + metrics.cardHeight / 2) - ms;
     canvas.drawCircle(Offset(x, y), 3.2, Paint()..color = color);
   }
 
@@ -945,6 +1302,7 @@ class _OverlayPainter extends CustomPainter {
       old.frame != frame ||
       old.mapping != mapping ||
       !identical(old.inLayer, inLayer) ||
+      old.raster != raster ||
       !identical(old.labels, labels) ||
       old.selected != selected ||
       old.workingCopy != workingCopy ||

@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/backend_graph_layout.dart';
+import 'package:zanshin/src/features/graph/graph_breaks.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_edges.dart';
 import 'package:zanshin/src/features/graph/graph_gaps.dart';
@@ -42,24 +43,38 @@ Future<BackendGraphLayout> _layout(
   return BackendGraphLayout(reply.topology, reply.grid, utcOffsetMinutes: _utcOffset);
 }
 
-/// The view equals its grid and topology: counts, then every node's key, row and column, every edge's ends, and the
-/// edge index's ranges.
+/// The view equals its grid and topology: counts, then every node's key, row (Free's through its shortening, Story
+/// 10.31) and column, every edge's ends, and the edge index's ranges.
 void _expectMirrors(BackendGraphLayout layout) {
   final GraphTopologyView t = layout.topology;
   final GraphGridView g = layout.grid;
   final int n = t.nodeCount;
+  final GraphBreaks cuts = layout.mode == GraphMode.free
+      ? GraphBreaks.compute(g.nodeRows, g.unit, layout.timestampOf)
+      : GraphBreaks.none;
+  expect(layout.breaks, cuts.breaks);
+  if (layout.mode == GraphMode.compact) {
+    expect(layout.breaks, isEmpty);
+  }
+  for (final GraphBreak b in layout.breaks) {
+    expect(b.upperRow - b.lowerRow, 24, reason: 'a break is 1½ pitches card to card');
+    for (var i = 0; i < layout.nodeCount; i++) {
+      final int row = layout.rowOf(i);
+      expect(row > b.lowerRow && row < b.upperRow, isFalse, reason: 'no card inside a break');
+    }
+  }
   expect(layout.nodeCount, n + g.stackCount);
   expect(layout.shownCount, n);
   expect(layout.edgeCount, g.edgeCount);
   expect(layout.totalCount, t.allCount);
   expect(layout.operationId, t.operationId);
-  expect(layout.rows, g.rows);
+  expect(layout.rows, g.rows == 0 ? 0 : cuts.map(g.rows - g.unit) + g.unit);
   expect(layout.colCount, g.lanes);
   expect(layout.unit, g.unit);
   expect(layout.bucketCount, g.bucketCount);
   expect(layout.runCount, g.runCount);
   for (var i = 0; i < layout.nodeCount; i++) {
-    expect(layout.rowOf(i), g.nodeRows[i]);
+    expect(layout.rowOf(i), cuts.map(g.nodeRows[i]));
     expect(layout.colOf(i), g.nodeCols[i]);
     final String key = layout.keyOf(i);
     expect(layout.indexOfKey(key), i);
@@ -83,8 +98,8 @@ void _expectMirrors(BackendGraphLayout layout) {
   }
   for (var b = 0; b < layout.bucketCount; b++) {
     expect(layout.bucketValueOf(b), g.bucketValues[b]);
-    expect(layout.bucketFirstRowOf(b), g.bucketStarts[b]);
-    expect(layout.bucketLastRowOf(b), g.bucketEnds[b]);
+    expect(layout.bucketFirstRowOf(b), cuts.map(g.bucketStarts[b]));
+    expect(layout.bucketLastRowOf(b), cuts.map(g.bucketEnds[b]));
   }
   for (var i = 0; i < layout.nodeCount; i++) {
     final ({int start, int end}) parents = layout.parentEdges(i);

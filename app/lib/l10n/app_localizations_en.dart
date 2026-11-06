@@ -392,6 +392,60 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dayYesterday => 'Yesterday';
 
   @override
+  String graphBreakYears(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n years',
+      one: '1 year',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String graphBreakMonths(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n months',
+      one: '1 month',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String graphBreakWeeks(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n weeks',
+      one: '1 week',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String graphBreakDays(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n days',
+      one: '1 day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String graphBreakRange(String from, String to) {
+    return '$from – $to';
+  }
+
+  @override
+  String graphBreakLabel(String length, String range) {
+    return '$length · $range';
+  }
+
+  @override
   String get relativeNow => 'now';
 
   @override

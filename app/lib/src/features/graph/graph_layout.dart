@@ -3,6 +3,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:zanshin_core/zanshin_core.dart' show revsetStringLiteral;
 
+import 'graph_breaks.dart';
+
+export 'graph_breaks.dart' show GraphBreak;
+
 /// How a layout spaces its rows (docs/graph-layout.md §4.2): `free` follows compressed commit time (U = 16, the
 /// default), `compact` the dependency depth (U = 1).
 enum GraphMode {
@@ -302,6 +306,10 @@ abstract class GraphLayout {
   /// Identifies this layout: two layouts with one version are the same layout (the delegate's `shouldRebuild`), so a
   /// version must be unique across every [GraphLayout] implementation, not only within one.
   int get version;
+
+  /// The shortened card-free stretches of a Free layout (Story 10.31), lowest first; [rowOf], [rows] and the bucket
+  /// rows already read the shortened rows.
+  List<GraphBreak> get breaks => const <GraphBreak>[];
 
   /// The number of linear runs (Story 10.17); 0 in an ungrouped layout.
   int get runCount => 0;

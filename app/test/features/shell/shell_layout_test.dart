@@ -10,6 +10,7 @@ ShellLayout _layout(
   bool pinned = true,
   bool inspector = true,
   bool minimap = false,
+  double minimapWidth = 134,
   double panel = 300,
   double inspectorWidth = 460,
   bool wasCollapsed = false,
@@ -19,7 +20,7 @@ ShellLayout _layout(
   metrics: metrics,
   pinned: pinned,
   inspectorOpen: inspector,
-  minimapShown: minimap,
+  minimapWidth: minimap ? minimapWidth : 0,
   rememberedPanel: panel,
   rememberedInspector: inspectorWidth,
   wasCollapsed: wasCollapsed,
@@ -93,6 +94,14 @@ void main() {
     final ShellLayout layout = _layout(900, inspector: false, minimap: true, panel: 440);
     expect(layout.collapsed, isFalse);
     expect(layout.panelWidth, 900 - 88 - 158 - 320);
+  });
+
+  test('the minimap column follows the card width the graph asks for (Story 10.31)', () {
+    final ShellLayout wide = _layout(1440, pinned: false, inspector: false, minimap: true, minimapWidth: 234);
+    expect(wide.insets.minimapWidth, 234);
+    expect(wide.insets.right, 234 + 24);
+    final ShellLayout pinned = _layout(1000, inspector: false, minimap: true, minimapWidth: 200, panel: 440);
+    expect(pinned.panelWidth, 1000 - 88 - 224 - 320);
   });
 
   test('remembered widths outside their ranges are used clamped', () {

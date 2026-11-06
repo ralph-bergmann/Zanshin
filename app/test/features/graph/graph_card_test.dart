@@ -241,7 +241,11 @@ void main() {
       expect(graphRelativeDate(_en, _now - 13 * _hour, nowMs: _now, utcOffsetMinutes: 120), '13h');
       expect(rel(_now - 3 * _day), '3d');
       expect(rel(_now - 9 * _day), 'Sep 19');
-      expect(rel(DateTime.utc(2025, 12, 29, 12).millisecondsSinceEpoch), 'Dec 29, 2025');
+      expect(
+        rel(DateTime.utc(2025, 12, 29, 12).millisecondsSinceEpoch),
+        'Dec 29, 2025',
+        reason: 'a card keeps the year',
+      );
       expect(rel(_now + 5 * _hour), 'now');
       // The day form is read at the layout's offset: 23:30 UTC on Sep 18 is Sep 19 at +02:00.
       expect(
@@ -406,6 +410,11 @@ void main() {
       );
       expect(graphCardLabel(_en, of(one(workingCopy: true)), nowMs: _now), startsWith('Working copy, feat'));
       expect(graphCardLabel(_en, of(one(ts: _now - 9 * _day)), nowMs: _now), endsWith(', Ralph, Sep 19'));
+      expect(
+        graphCardLabel(_en, of(one(ts: DateTime.utc(2025, 12, 29, 12).millisecondsSinceEpoch)), nowMs: _now),
+        endsWith(', Ralph, Dec 29, 2025'),
+        reason: 'a card keeps the year (it has no year label beside it)',
+      );
       expect(graphCardLabel(_en, of(one(ts: _now - 20 * _hour)), nowMs: _now), endsWith(', 1 day ago, Yesterday'));
       expect(graphCardLabel(_en, of(one(ts: _now - 30000)), nowMs: _now), endsWith(', Ralph, now, Today'));
       expect(graphCardLabel(_en, of(one(ts: _now - _minute)), nowMs: _now), endsWith(', 1 minute ago, Today'));

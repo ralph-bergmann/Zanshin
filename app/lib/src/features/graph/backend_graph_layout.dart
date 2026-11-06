@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:zanshin_core/zanshin_core.dart';
 
+import 'graph_breaks.dart';
 import 'graph_layout.dart';
 
 /// The worker's layout (Story 10.12): a lazy [GraphLayout] over one `RepoHandle.graphLayout` reply — the ids, flags,
@@ -40,8 +41,16 @@ class BackendGraphLayout extends GraphLayout {
   @override
   int get unit => grid.unit;
 
+  // Free's shortened stretches (Story 10.31); Compact keeps the engine's rows.
+  late final GraphBreaks _cuts = mode == GraphMode.free
+      ? GraphBreaks.compute(grid.nodeRows, unit, timestampOf)
+      : GraphBreaks.none;
+
   @override
-  int get rows => grid.rows;
+  List<GraphBreak> get breaks => _cuts.breaks;
+
+  @override
+  int get rows => grid.rows == 0 ? 0 : _cuts.map(grid.rows - unit) + unit;
 
   @override
   int get colCount => grid.lanes;
@@ -90,7 +99,7 @@ class BackendGraphLayout extends GraphLayout {
   int colOf(int node) => grid.nodeCols[node];
 
   @override
-  int rowOf(int node) => grid.nodeRows[node];
+  int rowOf(int node) => _cuts.map(grid.nodeRows[node]);
 
   @override
   int? timestampOf(int node) =>
@@ -158,10 +167,10 @@ class BackendGraphLayout extends GraphLayout {
   int bucketValueOf(int bucket) => grid.bucketValues[bucket];
 
   @override
-  int bucketFirstRowOf(int bucket) => grid.bucketStarts[bucket];
+  int bucketFirstRowOf(int bucket) => _cuts.map(grid.bucketStarts[bucket]);
 
   @override
-  int bucketLastRowOf(int bucket) => grid.bucketEnds[bucket];
+  int bucketLastRowOf(int bucket) => _cuts.map(grid.bucketEnds[bucket]);
 
   // One flags scan finds both.
   late final ({int? root, int? at}) _special = () {

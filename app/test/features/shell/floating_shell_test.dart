@@ -45,6 +45,7 @@ class _Rig {
 
   late final ShellController controller;
   final scroll = ScrollController();
+  final minimapWidth = ValueNotifier<double>(134);
   final commits = <double>[];
   final insets = <GraphInsets>[];
   var presses = 0;
@@ -64,6 +65,7 @@ class _Rig {
   void dispose() {
     controller.dispose();
     scroll.dispose();
+    minimapWidth.dispose();
   }
 
   Widget shell({ZsAppearance appearance = const ZsAppearance()}) => shellHost(
@@ -103,6 +105,7 @@ class _Rig {
               child: SizedBox.expand(key: _minimap),
             )
           : null,
+      minimapWidth: minimapWidth,
       atPill: atPill ? _island(_pill, 60) : null,
       toast: toast ? _island(_toast, 200) : null,
       staleNotice: stale ? _island(_stale, 240) : null,
@@ -131,6 +134,10 @@ Future<void> _wheel(WidgetTester tester, double dy, {Offset at = const Offset(70
 
 Finder _edge(String identifier) =>
     find.byWidgetPredicate((widget) => widget is ZsResizeEdge && widget.identifier == identifier);
+
+/// The minimap card's width: the glass around the demo minimap.
+double _cardWidth(WidgetTester tester) =>
+    tester.getSize(find.ancestor(of: find.byKey(_minimap), matching: find.byType(ZsGlass))).width;
 
 double _fade(WidgetTester tester, Key key) => ZsFade.of(tester.element(find.byKey(key, skipOffstage: false)));
 
@@ -575,6 +582,32 @@ void main() {
     expect(rig.insets.last.top, 68);
     await tester.pumpAndSettle();
   });
+
+  for (final reduce in <bool>[false, true]) {
+    testWidgets(
+      'the minimap card takes the graph\'s width, the right inset follows, the card animates over 200 ms'
+      '${reduce ? ' (at once under reduce motion)' : ''} (Story 10.31)',
+      (tester) async {
+        final _Rig rig = await _pump(tester, _Rig()..inspector = false, appearance: ZsAppearance(reduceMotion: reduce));
+        expect(_cardWidth(tester), 134);
+        expect(rig.insets.last.right, 158);
+        rig.minimapWidth.value = 234;
+        await tester.pump();
+        expect(rig.insets.last.right, 258, reason: 'the graph keeps its right inset beside the new column');
+        expect(rig.insets.last.minimapWidth, 234);
+        await tester.pump(const Duration(milliseconds: 100));
+        final double midway = _cardWidth(tester);
+        if (reduce) {
+          expect(midway, 234);
+        } else {
+          expect(midway, allOf(greaterThan(134), lessThan(234)));
+        }
+        await tester.pump(const Duration(milliseconds: 101));
+        expect(_cardWidth(tester), 234);
+        await tester.pumpAndSettle();
+      },
+    );
+  }
 
   testWidgets('the @ pill and the toast centre on the visible rect 20 above the bottom; a toast hides the pill', (
     tester,

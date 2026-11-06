@@ -421,7 +421,7 @@ const _dayMs = 86400000;
 
 /// The relative committer time a card shows in [strings] (Story 10.3, Claude's proposal (h)), against [nowMs]: "now"
 /// under a minute and in the future, then for today "Nm" under an hour, else "Nh"; before today "Nd" in calendar days
-/// (1d = yesterday, matching the day axis) under a week, else the day as [graphDayLabel] writes it ("Sep 19",
+/// (1d = yesterday, matching the day axis) under a week, else the day as [graphDayLabel] writes it for a card ("Sep 19",
 /// "Sep 19, 2025" in another year) at the layout's offset.
 String graphRelativeDate(AppLocalizations strings, int tsMs, {required int nowMs, required int utcOffsetMinutes}) {
   final int age = nowMs - tsMs;
@@ -440,6 +440,7 @@ String graphRelativeDate(AppLocalizations strings, int tsMs, {required int nowMs
     graphLocalDay(tsMs, utcOffsetMinutes: utcOffsetMinutes),
     nowMs: nowMs,
     utcOffsetMinutes: utcOffsetMinutes,
+    withYear: true,
   );
 }
 
@@ -522,6 +523,7 @@ String graphCardLabel(AppLocalizations strings, GraphCardData data, {required in
           graphLocalDay(ts, utcOffsetMinutes: off),
           nowMs: nowMs,
           utcOffsetMinutes: off,
+          withYear: true,
         );
   final String? author = data.author;
   final String? workspace = data.workspaceName;

@@ -18,7 +18,7 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Story 10.7: Graph controls in the floating top bar (done)
 - Story 10.8: Inspector (done)
 - Story 10.9: Action runner (done)
-- Story 10.10: Drag-and-drop on the graph (backlog)
+- Story 10.10: Drag-and-drop on the graph (done)
 - Story 10.11: Content paging (done)
 - Story 10.12: Adopt the backend layout, reload button (done)
 - Story 10.13: Time-layout lab, experiment (done, outcome decided)
@@ -34,12 +34,12 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Story 10.23: Operation toast (done)
 - Story 10.24: Inspector diff view (done)
 - Story 10.25: Commit/split composer, file level (done)
-- Story 10.26: Hunk selection through a GUI tree (backlog)
+- Story 10.26: Hunk selection through a GUI tree (done)
 - Story 10.27: Drag files and hunks onto a change (backlog)
 - Story 10.28: Raw revset rule in the jj log Configurations window (done)
 - Story 10.29: Operation diff view, Show changes in the Undo Timeline (done)
 - Story 10.30: Review findings 2026-11-02: revset errors, the `$` pill, ID copy, uniform graph ports (done)
-- Story 10.31: Time axis and minimap for long histories: shortened gaps, content-sized minimap, year labels, scrolling minimap (backlog, needs design)
+- Story 10.31: Time axis and minimap for long histories: shortened gaps, content-sized minimap, year labels, scrolling minimap (backlog, design round done, ready)
 
 ## Requirements & Constraints
 
@@ -48,12 +48,12 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Intended deviations from the design that stay: crossing bridges always on; go-to-change pulse; a stack toggle never moves a column; runs of mutable ancestors of @ start expanded.
 - Hidden history: marker family "Break" (`//`), no counts anywhere; markers keep 12 px of line to every card; a hidden merge gets one shared marker.
 - Immutable changes: 135° hatch (`--hatch`), no glyph or colour; menus offer only rows that leave the change untouched (exactly the verbs jj refuses are left out).
-- Every jj command shown in UI text exists in jj v0.46.0 exactly as written, in full with the change id, shell-quoted. The UI never composes a sequence of commands.
+- Every jj command shown in UI text exists in the pinned jj (now v0.47.0; the epic was checked against v0.46.0) exactly as written, in full with the change id, shell-quoted. The UI never composes a sequence of commands.
 - Behave like the CLI: parse, resolve and refuse as jj does; show jj's own error text (e.g. `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`) in place. Where the design does not fit jj, resolve it along jj's behaviour in the owning story (Claude's proposal, no question to Ralph).
 - jj errors in a proportional-font UI are one short sentence (kind, column, what jj expected), never jj's pest rendering (`-->`, `^---`); prefer a structured short message from the backend over parsing jj's text in Dart. A text field keeps its focus when its error message appears or disappears.
 - Inspector header IDs: short change ID with a `jj` subscript and short commit ID with a `git` subscript (`--text-faint`); a click copies the full ID ("Click to copy" / "Copied"; a failed clipboard write opens a popover with the full ID as selectable text). Graph cards keep click = select. The search field's `$` pill has no tint.
 - Hunk selection offers everything the CLI's builtin diff editor offers: mode changes get their own row, conflicted files get per-section checkboxes.
-- Long histories (10.31, Free only; Compact keeps its row mapping): a commit-free stretch above a threshold (proposal: one viewport height) shrinks to a fixed height (proposal ~48 px) with a torn-paper edge and its length ("14 months"), lines running through dashed at the edge. Canvas, day axis, gap markers, go-to/scroll math and minimap all read one shortened y mapping and must agree on every node's y. Minimap width grows with the column count up to a design-set maximum (no fixed strip); day labels stay short and never clip, a separate year label sits at each year boundary (sticky while the minimap scrolls); the minimap keeps a minimum density (proposal ≥ 2 px per row/day) and scrolls, dragged along by the viewport band. The design round with Ralph (DS / prototype in place, numbered sync entry) comes before code; a day pill reaching out of the minimap only if simple and free of frame cost.
+- Long histories (10.31, Free only; Compact keeps its row mapping), design settled (DS sync #22, build to the DS `GraphBreak`, `DayAxis years`, card "Long history", readme › Long histories; prototype `?history=long`). The empty screens come from collapsed stacks keeping their hidden members' time below them, not from commit-free time (Free already damps real gaps). Rule: any stretch with no card in any column taller than 8 pitches shrinks to 1½ pitches card to card and shows a `GraphBreak` (torn strip over the lines, span label like "6 years · Sep 2019 – May 2025"), in layout units; expanding the stack removes it; no "show gap". Canvas, day axis, gap markers, go-to/scroll math and minimap read one shortened y mapping and agree on every node's y. Years: never in a day label; the canvas labels a year where it begins (not inside a break, not for one-year histories); the minimap reads top-down with year section headers and a sticky top header. Minimap width = 58 px labels + ≈ 12 px per column (graph part 60–160 px), minimum density 2 px per pitch, beyond that it scrolls in proportion (band drags it along, VS Code style), measuring the layout's extent. The day pill stays inside the card (the "pill outside" option is dropped). Already done: minimap edges run into the dots, all dotted alike on one grid; the stack list caps at 420 px and scrolls.
 - Refresh: window focus plus an explicit reload button (and View › Reload ⌘R), both coalesced; no timer, no file watcher.
 - Workstreams dropped; Reviews hidden. The app is English but l10n-ready.
 - The design export is inspiration, not a 1:1 template: small gaps get a Claude proposal Ralph can overrule; NEEDS DESIGN questions are only for architecture or scope. A decision recorded in the epic wins over the export, except where Ralph ruled the floating client's explicit change wins. Prototype defects listed in the epic are never copied.
@@ -81,12 +81,12 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Keyboard: one roving focus node, not a tab stop per card; Esc is scoped, never a window-level listener.
 - Motion (FLIP): moved cards glide 460 ms with the anchor still; born change grows from its anchor (540 ms); edges fade back in 260 ms; flash 2.4 s. Reduce motion zeroes movement only; colour/opacity fades keep their tokens.
 - Inspector: 460 px glass island; describe in place; file list; diff (±, Unified / Side by side, Viewed per repository keyed by fingerprint); composer. Selected hunks use `--accent-soft-hi` plus a 2 px `--accent-line` edge; unselected headers stay `--hunk-bg`; hunk checkboxes are the Zs Checkbox with the mixed dash, the hunk is a Tab stop and Space toggles it.
-- Drag-and-drop: menu after a 260 ms rest on a card target, a plain drop runs the default row (its command shown under the ghost), ⌥ makes `rebase -r` the default, only applicable rows listed.
+- Drag-and-drop: menu after a 260 ms rest on a card target, a plain drop runs the default row (its command shown under the ghost), ⌥ makes `rebase -r` the default, only applicable rows listed. A bookmark drag never opens the menu: release runs the move, backwards too, passing `--allow-backwards` exactly when the move is not a fast-forward; over a backwards target the ghost adds a `--warn` line ("Moves the bookmark back. A push drops the later commits from the shared branch."). File/hunk drags (10.27) reuse this engine: targets any mutable card except the source and root, stacks inert, no edge targets, never `-i` in a call.
 - Search: one menu with jj log variants, Go to, Filter by, async capped counts (zero rows dimmed), Recent per repository; the `jj log` built-in is always the effective `revsets.log`, never written by the UI. Configurations window: structured rules plus (10.28) a raw "Revset" rule mixed in via the same builder, errors and "did you mean" candidates shown at the rule's row, the raw text verbatim in the command preview.
 - Operation diff (10.29): Show changes in the Undo Timeline opens `jj op show <id>`'s changed commits with before/after and a per-commit diff reusing 10.24's view, without Viewed marks; Esc returns to the list; refusals show jj's text in place of the diff.
 
 ## Cross-Story Dependencies
 
-- Open stories: 10.10 after 10.9/10.15, real rows from 9.31, 9.16, 9.9, 9.19, 9.48. 10.26 after 10.24/10.25, 9.50 and 11.11. 10.27 after 10.10/10.26 (a `diff` source in 9.31). 10.31 builds on 10.16 (minimap) and 10.3 (cards), both done, and needs its design round first; its witnesses include Marionette screenshots on `dart-intellij-third-party` (4674 changes, 2013–2025).
+- Open stories: 10.27 builds on 10.10, 10.24, 10.23, 10.26 (all done) and needs 9.15, 9.31's `diff` drop source and 9.50 (partial selections pass 9.50's tree id). 10.31 builds on 10.16 (minimap) and 10.3 (cards), both done, and its design round is done; its witnesses include Marionette screenshots on `dart-intellij-third-party` (4674 changes, 2013–2025) compared with the DS cards.
 - Router changes (10.30 and later) must keep router tests, goldens and layout invariants in `packages/zanshin_core` green.
 - Epic 11: 11.11 (Zs controls, Widgetbook) precedes every control user; 11.13 (menu bar) binds this epic's shortcuts and View › Reload; 11.9 owns the Undo Timeline that 10.29 extends.

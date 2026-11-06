@@ -2801,3 +2801,15 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 - ~~**No test pins that the Opened toast's tooltip puts the linked-worktree warning after jj's trackable-bookmark hint, as the CLI prints it.**~~ — RESOLVED 2026-11-05 (closing run of Story 11.22, commit 23c562a7c209c64bc09d4d07f95bb6a6d7f505db): a sibling test asserts the whole tooltip in order. Low.
   - `app/lib/src/features/home/home_page.dart:207-247` (`afterHint`); `app/test/features/home/home_page_test.dart` only checks the tooltip `contains` the hint, so dropping the split keeps every test green.
   - **Follow-up:** add a `colocatedInGitWorktree` warning plus a trackable list to the existing toast test and assert the line order.
+
+## Surfaced in Story 10.31 (bmad-build-auto, 2026-11-06)
+
+- **No test pins that the home page hands the graph's minimap card width to the floating shell.** Low.
+  - `app/lib/src/features/home/home_page.dart:116` passes `minimapWidth: graph.model?.minimapSource.cardWidth`; the shell and minimap tests wire their own notifier, so dropping the argument would pin the card at 134 px unnoticed.
+  - **Follow-up:** a `home_page_test` case with a multi-column graph asserting the shell's minimap width follows `cardWidth`.
+- **The Widgetbook catalogue cannot show a long history: breaks live in `BackendGraphLayout`, recorded layouts carry none.** Low.
+  - `GraphLayout.breaks` defaults to empty (`app/lib/src/features/graph/graph_layout.dart`); `RecordedGraphLayout` and the synthetic fixtures keep their rows, so no catalogue use case renders a `GraphBreak`.
+  - **Follow-up:** a "Long history" catalogue use case on a layout with breaks, if a catalogue check is wanted.
+- **The Marionette witness on `dart-intellij-third-party` against the DS card *Long history* was not run.** Low.
+  - The running app with that repository could not be started in the unattended run; widget tests cover the paint and the math only.
+  - **Follow-up:** Ralph's look at the running app (or a Marionette run) compared with `design_system/components/graph/long-history.card.html`.

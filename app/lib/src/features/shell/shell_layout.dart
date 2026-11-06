@@ -16,7 +16,7 @@ import 'graph_insets.dart';
 /// changes the remembered ones.
 ///
 /// **The collapse rule.** With r the right side (the effective inspector + 24 while the inspector is open, else the
-/// minimap column 158 while a minimap shows, else 12) and need(p, r) = 88 + p + r + 320 the window width a panel p
+/// minimap column, its card + 24 (158 with the 134 px card), while a minimap shows, else 12) and need(p, r) = 88 + p + r + 320 the window width a panel p
 /// needs beside it: when the remembered widths do not fit, the inspector shrinks first, down to 380, then the panel,
 /// down to 240; when even those do not fit, the pinned panel collapses — its pin stays, the left inset falls back to
 /// 76 — and it returns at its remembered width once need(remembered panel, 404 or the right side) fits. The inspector
@@ -42,15 +42,16 @@ class ShellLayout {
 
   /// The layout of a [windowWidth] wide window in [metrics] (`fullScreen` moves the top inset).
   ///
-  /// [pinned] whether a panel is pinned, [inspectorOpen] whether the inspector shows, [minimapShown] whether the
-  /// minimap slot holds a minimap, [rememberedPanel] and [rememberedInspector] the user's widths (clamped here),
-  /// [wasCollapsed] the previous layout's [collapsed].
+  /// [pinned] whether a panel is pinned, [inspectorOpen] whether the inspector shows, [minimapWidth] the minimap's
+  /// card width while the minimap slot holds a minimap, else 0 (Story 10.31: it follows the graph's columns),
+  /// [rememberedPanel] and [rememberedInspector] the user's widths (clamped here), [wasCollapsed] the previous
+  /// layout's [collapsed].
   factory ShellLayout.resolve({
     required double windowWidth,
     required ZsMetrics metrics,
     required bool pinned,
     required bool inspectorOpen,
-    required bool minimapShown,
+    required double minimapWidth,
     required double rememberedPanel,
     required double rememberedInspector,
     required bool wasCollapsed,
@@ -61,7 +62,7 @@ class ShellLayout {
     // The rail column and its gap: 76 + 12 (DS tokens/spacing.css:32, :40).
     final double railSide = metrics.chromeLeft + metrics.chromeInset;
     final double graph = metrics.graphMinW;
-    final double withoutInspector = minimapShown ? _minimapColumn : metrics.chromeInset;
+    final double withoutInspector = minimapWidth > 0 ? minimapWidth + _minimapGaps : metrics.chromeInset;
     double rightSide(double inspector) => inspectorOpen ? inspector + _inspectorGap : withoutInspector;
     double need(double panel, double right) => railSide + panel + right + graph;
     // The inspector without a pinned panel beside it: everything left of it but the rail and 320 of graph.
@@ -103,7 +104,7 @@ class ShellLayout {
         right: right,
         bottom: metrics.chromeInset,
         inspectorWidth: inspectorOpen ? inspector : 0,
-        minimapWidth: minimapShown ? metrics.minimapW : 0,
+        minimapWidth: math.max(0, minimapWidth),
       ),
       panelMax: math.max(metrics.panelWMin, math.min(metrics.panelWMax, w - railSide - right - graph)),
       inspectorMax: math.max(
@@ -117,8 +118,9 @@ class ShellLayout {
   /// ui_kits/desktop/app.jsx:168, `insW + EDGE * 2`).
   static const double _inspectorGap = 24;
 
-  /// The minimap's column: the minimap and its two 12 px gaps (DS ui_kits/desktop/app.jsx:6, :168, `MINI + EDGE`).
-  static const double _minimapColumn = 158;
+  /// The minimap column's two 12 px gaps beside the card (DS ui_kits/desktop/app.jsx:6, :168, `MINI + EDGE`): 158
+  /// with the 134 px card.
+  static const double _minimapGaps = 24;
 
   /// The pinned panel's effective width (its remembered width, clamped, while it is not pinned).
   final double panelWidth;

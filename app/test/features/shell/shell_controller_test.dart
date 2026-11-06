@@ -22,7 +22,7 @@ ShellLayout _lay(ShellController controller, double width, {bool inspector = tru
   windowWidth: width,
   metrics: ZsMetrics.standard,
   inspectorOpen: inspector,
-  minimapShown: false,
+  minimapWidth: 0,
 );
 
 void main() {

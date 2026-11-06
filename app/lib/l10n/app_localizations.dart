@@ -722,6 +722,42 @@ abstract class AppLocalizations {
   /// **'Yesterday'**
   String get dayYesterday;
 
+  /// A shortened stretch of the graph (a break): how long it lasts, in years.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{1 year} other{{n} years}}'**
+  String graphBreakYears(int n);
+
+  /// A break's length in months.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{1 month} other{{n} months}}'**
+  String graphBreakMonths(int n);
+
+  /// A break's length in weeks.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{1 week} other{{n} weeks}}'**
+  String graphBreakWeeks(int n);
+
+  /// A break's length in days.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{1 day} other{{n} days}}'**
+  String graphBreakDays(int n);
+
+  /// A break's time range: "Sep 2019 – May 2025", "Jun – Dec 2025", "Jun 3 – 24" (the dates are formatted by intl).
+  ///
+  /// In en, this message translates to:
+  /// **'{from} – {to}'**
+  String graphBreakRange(String from, String to);
+
+  /// A break's label on the graph: its length, then its range ("6 years · Sep 2019 – May 2025").
+  ///
+  /// In en, this message translates to:
+  /// **'{length} · {range}'**
+  String graphBreakLabel(String length, String range);
+
   /// A card's commit time: under a minute ago.
   ///
   /// In en, this message translates to:

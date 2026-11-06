@@ -405,6 +405,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
         graphLocalDay(ts, utcOffsetMinutes: off),
         nowMs: now,
         utcOffsetMinutes: off,
+        withYear: true,
       ),
     );
   }

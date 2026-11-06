@@ -137,6 +137,9 @@ Uint8List rasterMinimap(MinimapRasterInput input) {
   for (var i = 0; i < input.nodeXs.length; i++) {
     final double x = input.ax + input.bx * input.nodeXs[i];
     final double y = input.ay + input.by * input.nodeYs[i];
+    if (y < -ring - stroke - 1 || y > h + ring + stroke + 1) {
+      continue;
+    }
     if (input.nodeStacks[i] != 0) {
       _ring(nodes, w, h, x, y, ring, stroke);
     } else {
@@ -161,8 +164,14 @@ void _dots(Float32List cov, int w, int h, double x0, double y0, double x1, doubl
   if (a0 == a1) {
     return;
   }
-  final int last = (math.max(a0, a1) / step).floor();
-  for (int k = (math.min(a0, a1) / step).ceil(); k <= last; k++) {
+  // Story 10.31: a raster may cover only a window of the content; the dots off it are not stamped.
+  final double reach = r + 1;
+  if (math.max(y0, y1) < -reach || math.min(y0, y1) > h + reach) {
+    return;
+  }
+  final double limit = (vertical ? h : w) + reach;
+  final int last = (math.min(math.max(a0, a1), limit) / step).floor();
+  for (int k = (math.max(math.min(a0, a1), -reach) / step).ceil(); k <= last; k++) {
     final double t = (k * step - a0) / (a1 - a0);
     _disc(cov, w, h, x0 + dx * t, y0 + dy * t, r);
   }
