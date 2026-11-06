@@ -7,6 +7,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/src/foundation/_features.dart';
 import 'package:flutter/src/widgets/_window.dart';
 
@@ -321,6 +322,23 @@ void main() {
       reason: "one layout request, reading the handle's logDefaults; the sync's three remote reads (Story 11.8)",
     );
     handle.dispose();
+  });
+
+  testWidgets("the shell's minimap card width is the open graph's minimapSource.cardWidth", (tester) async {
+    FloatingShell shell() => tester.widget<FloatingShell>(find.byType(FloatingShell));
+    final ProjectSession session = await pumpHome(tester, repos: FakeProjectRepos());
+    expect(shell().minimapWidth, isNull, reason: 'no project, no graph');
+
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+    final ValueListenable<double> first = appMenu.graph.value!.model.minimapSource.cardWidth;
+    expect(shell().minimap, isNotNull, reason: 'the shell only sizes a shown minimap');
+    expect(shell().minimapWidth, same(first));
+
+    await tester.runAsync(() => session.open('/r/jj'));
+    await tester.pump();
+    expect(shell().minimapWidth, same(appMenu.graph.value!.model.minimapSource.cardWidth));
+    expect(shell().minimapWidth, isNot(same(first)), reason: "the old project's model is disposed");
   });
 
   testWidgets("a creation's warnings show as the toast \"Opened ‹name›\" with a warn clause, reported once", (
