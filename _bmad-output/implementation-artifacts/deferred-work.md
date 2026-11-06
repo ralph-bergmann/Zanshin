@@ -1114,7 +1114,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - 9.29's untracked rows and 9.11's `track` and `untrack` (backlog) are outside 10.14 (its non-goals).
   - **Follow-up:** a row action in 10.14's panel, through 10.15 and 10.9, once 9.11 and 9.29 land.
   - **2026-11-01, Story 10.14** (commit e1f773091695a3bcd19c1484df44f8fda0f79b0a): the panel's remote rows offer Track / Untrack (`jj bookmark track|untrack <name>@<remote>`) through the graph's runner; left: 10.15's action popup/menu entry.
-- **Raw config editing has no surface.** Low.
+- ~~**Raw config editing has no surface.**~~ — RESOLVED 2026-11-06 (spec-11-19-settings-config-file-editor, commit 14fade2c): each Settings tab's scope line opens a Config file page over 9.28's configFileRead/configFileWrite (Save/Revert, jj's parse error marked, changed-on-disk notice). Low.
   - 9.28's `configFileRead` and `configFileWrite` (done), the GUI split of `jj config edit`, have no consumer. 11.7 edits only its own rows.
   - **Follow-up:** an "Open config file…" link per tab, if Ralph wants one.
   - **2026-11-03, Ralph:** wanted, with a design round first → **Story 11.19**. Covered by Story 11.19.
