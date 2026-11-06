@@ -179,7 +179,9 @@ Status: done
 
 **Follow-up review recommendation:** false — patched: high 0, medium 2, low 7; both medium patches carry their own tests and the targeted suites re-ran green after them; no named unverified risk in the patched code.
 
-**Deferred-work item I1** ("Remote management has no surface"): fixed — the Remotes group in Settings › Project offers add, rename, set URL and remove (commit hash below).
+**Deferred-work item I1** ("Remote management has no surface"): fixed — the Remotes group in Settings › Project offers add, rename, set URL and remove (commit 02cd6aa2c010ec6a18869dbe3fbe7df4eb3d2cb6).
+
+**Commits:** 02cd6aa2c010ec6a18869dbe3fbe7df4eb3d2cb6 (the story), plus this record's docs commit.
 
 **Verification** (gate rule of this run: no full gate):
 - `flutter gen-l10n` (app/) — ran.
