@@ -1105,7 +1105,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - **Follow-up:** Ralph decides what each should mean, for example Gerrit or forge reviews. Backend stories follow, and then 11.3 shows the items.
   - *(Resolved 2026-10-16 for Workstreams: they are dropped everywhere, not hidden, because they are not a jj concept (decision 16.26; 11.3's rail, 10.14, and 11.10 removes `ZI.workstream` and its SVG). Reviews stays hidden until a backend exists; this entry stays its record.)*
   - **2026-10-30, Story 11.10:** `ZI.workstream` and `packages/zanshin_ui/assets/icons/svg/workstream.svg` are removed, and the icon set check tolerates no leftover (commit 9a7f3c6); left: what Reviews should mean (Ralph).
-- **Remote management has no surface.** Low.
+- ~~**Remote management has no surface.**~~ — RESOLVED 2026-11-06 (spec-11-18-settings-remote-management, commit 02cd6aa2): Settings › Project's Remotes group adds, renames, removes and sets URLs through 9.5's verbs, showing the command and jj's refusal. Low.
   - 9.5's `git remote add`, `remove`, `rename` and `set-url` (done) have no UI consumer.
   - The Projects dialog's Remotes tab is inert (SH:2067), and 11.6 proposes to drop it. 11.7's Project tab only picks the fetch and push remotes.
   - **Follow-up:** a "Remotes" group in 11.7's Project tab (add, rename, remove, set URL), when Ralph wants it.
