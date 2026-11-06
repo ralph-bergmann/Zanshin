@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x470" name="Settings" subtitle="SettingsGroup + SettingsRow — General and Project scopes in one window" -->
+<!-- @dsCard group="Components" viewport="700x560" name="Settings" subtitle="SettingsGroup + SettingsRow — General and Project scopes in one window" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -19,6 +19,7 @@
     const [tab, setTab] = React.useState("general");
     const [th, setTh] = React.useState("system");
     const [den, setDen] = React.useState("compact");
+    const [zoom, setZoom] = React.useState("100");
     const [hide, setHide] = React.useState(true);
     return (
       <div className="win">
@@ -27,7 +28,8 @@
         <div className="bd">
           <SettingsGroup title="Appearance">
             <SettingsRow label="Theme"><Segmented variant="inset" label="Theme" value={th} onChange={setTh} options={[{ value: "paper", label: "Paper", icon: "sun" }, { value: "night", label: "Night", icon: "moon" }, { value: "system", label: "Auto", icon: "auto" }]}/></SettingsRow>
-            <SettingsRow label="Density"><Segmented variant="inset" label="Density" value={den} onChange={setDen} options={[{ value: "compact", label: "Compact" }, { value: "balanced", label: "Balanced" }, { value: "comfy", label: "Comfy" }]}/></SettingsRow>
+            <SettingsRow label="Density" hint="Space between rows and cards. Text keeps its size."><Segmented variant="inset" label="Density" value={den} onChange={setDen} options={[{ value: "compact", label: "Compact" }, { value: "balanced", label: "Balanced" }, { value: "comfy", label: "Comfy" }]}/></SettingsRow>
+            <SettingsRow label="Zoom" hint="Text and everything with it, in every window. ⌘+ ⌘− ⌘0"><Select label="Zoom" value={zoom} onChange={setZoom} options={["90", "100", "110", "125", "150"].map((z) => ({ value: z, label: z === "100" ? "100% (Actual Size)" : z + "%" }))}/></SettingsRow>
           </SettingsGroup>
           <SettingsGroup title="While you scroll">
             <SettingsRow label="Hide controls" hint="Toolbars and panels step aside while you scroll the graph. The minimap stays."><Switch label="Hide controls while scrolling" checked={hide} onChange={setHide}/></SettingsRow>

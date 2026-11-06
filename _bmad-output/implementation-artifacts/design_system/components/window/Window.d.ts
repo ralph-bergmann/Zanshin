@@ -1,6 +1,6 @@
 import * as React from "react";
 
-/** A macOS window of its own — Settings, Projects, jj log Configurations. The system draws corners, shadow and appearance; no scrim, no ✕, no entrance. States: active (key) · inactive (accent role neutral, no focus shown, title dimmed) · traffic lights per window (Settings: close only · Projects and Configurations: close + zoom). */
+/** A macOS window of its own — Settings, Projects, jj log Configurations. The system draws corners, shadow and appearance; no scrim, no ✕, no entrance. States: active (key) · inactive (accent role neutral, no focus shown, title dimmed) · traffic lights per window (Settings, Projects and Configurations: close + zoom; Settings resizable since sync #20, minimum 620 × 420). */
 export interface WindowProps {
   /** the window title — Window menu and Mission Control; shown at block end + 12 unless titleHidden */
   title: string;

@@ -52,3 +52,69 @@
 .zs-imm-note{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 4px 0;font-size:var(--fs-id);line-height:1.45;color:var(--text-dim);text-wrap:pretty}
 .zs-imm-note code{font:var(--fs-sm) var(--font-mono);color:var(--text-muted);white-space:nowrap}
 .zs-imm-note>.zs-btn{flex-shrink:0}
+
+/* RemotesGroup (sync #20) — a remote per row (name, mono URLs on one line each), ••• with its Menu, Add remote…, the row as a form */
+.zs-rem-row{align-items:flex-start}
+.zs-rem-lbl{flex:1;gap:3px}
+.zs-rem-name{font-size:var(--fs-base);color:var(--text)}
+.zs-rem-url{display:block;min-width:0;font:var(--fs-id)/1.45 var(--font-mono);color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:text}
+.zs-rem-url i{font:var(--fs-id) var(--font-sans);font-style:normal;color:var(--text-faint)}
+.zs-rem-k{margin-right:6px;font:var(--fs-xs) var(--font-sans);color:var(--text-faint)}
+.zs-rem-more{position:relative;margin:-2px -6px 0 0}
+.zs-rem-more>.zs-menu{position:absolute;top:calc(100% + 4px);right:0;z-index:var(--z-menu)}
+.zs-rem-add{min-height:40px}
+.zs-rem-add-l{display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-control);color:var(--text-muted)}
+.zs-rem-add:hover .zs-rem-add-l{color:var(--text)}
+.zs-rem-empty{min-height:40px;font-size:var(--fs-md);color:var(--text-dim)}
+.zs-rem-warn{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 6px;margin-top:3px;font-size:var(--fs-id);line-height:1.45;color:var(--warn);white-space:normal}
+.zs-rem-warn>.zs-icon{align-self:center}
+.zs-rem-hint{color:var(--text-dim)}
+.zs-rem-row.is-editing{gap:10px;background:var(--fl-on)}
+.zs-setbox>.zs-rem-row.is-editing:first-child{border-top-left-radius:var(--radius-well);border-top-right-radius:var(--radius-well)}
+.zs-setbox>.zs-rem-row.is-editing:last-child{border-bottom-left-radius:var(--radius-well);border-bottom-right-radius:var(--radius-well)}
+.zs-rem-head{display:flex;align-items:baseline;gap:8px}
+.zs-rem-what{font-size:var(--fs-id);color:var(--text-dim)}
+.zs-rem-form{display:flex;flex-direction:column;gap:8px}
+.zs-rem-f{display:grid;grid-template-columns:72px minmax(0,1fr);align-items:baseline;gap:10px}
+.zs-rem-fl{font-size:var(--fs-md);color:var(--text-muted);text-align:right}
+.zs-rem-fc{display:flex;flex-direction:column;gap:4px;min-width:0}
+.zs-rem-fc>.zs-field{width:100%}
+.zs-rem-fh{font-size:var(--fs-sm);line-height:1.4;color:var(--text-dim);text-wrap:pretty}
+.zs-rem-cmd{display:block;margin-left:82px;padding:7px 10px;border-radius:var(--radius-md);background:var(--code-bg);border:1px solid var(--fl-border);font:var(--fs-id)/1.55 var(--font-mono);color:var(--text-muted);white-space:pre-wrap;word-break:break-all}
+.zs-rem-form>.zs-rem-err{margin-left:82px}
+.zs-rem-err{display:flex;flex-direction:column;gap:3px;margin-top:3px;white-space:normal}
+.zs-rem-err-msg{display:flex;align-items:baseline;gap:6px;font-size:var(--fs-md);line-height:1.45;color:var(--warn)}
+.zs-rem-err-msg>.zs-icon{flex-shrink:0;transform:translateY(1px)}
+.zs-rem-help{padding-left:18px;font-size:var(--fs-id);line-height:1.45;color:var(--text-muted);text-wrap:pretty}
+.zs-rem-help code{font:var(--fs-sm) var(--font-mono);color:var(--text)}
+.zs-rem-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
+
+/* ConfigFilePage (sync #20) — the page fills the window: the editor well (bar, notice, gutter + text, no wrapping), the error, the buttons */
+.zs-cfg-page{flex:1;min-height:0;gap:14px}
+.zs-cfg{flex:1 1 380px;min-height:180px;display:flex;flex-direction:column;overflow:hidden;border-radius:var(--radius-well);background:var(--code-bg);border:1px solid var(--fl-border)}
+.zs-cfg:focus-within{border-color:var(--accent-ring)}
+.zs-cfg.has-error{border-color:var(--rem)}
+.zs-cfg-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;height:30px;padding:0 12px;border-bottom:1px solid var(--fl-border)}
+.zs-cfg-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--fs-sm) var(--font-mono);color:var(--text-dim)}
+.zs-cfg-state{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;font-size:var(--fs-sm);color:var(--text-dim)}
+.zs-cfg-state.is-dirty::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--gold)}
+.zs-cfg-note{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;background:var(--warn-bg);font-size:var(--fs-md);color:var(--text)}
+.zs-cfg-note>.zs-icon{flex-shrink:0;color:var(--warn)}
+.zs-cfg-note>span{flex:1;min-width:0}
+.zs-cfg-ed{flex:1;min-height:0;display:flex;font:var(--fs-md)/19.5px var(--font-mono)}
+.zs-cfg-gut{flex-shrink:0;width:44px;overflow:hidden;padding:8px 0;border-right:1px solid var(--fl-border);text-align:right;color:var(--text-faint);user-select:none}
+.zs-cfg-gut span{display:block;padding-right:10px}
+.zs-cfg-gut span.is-error{color:var(--rem);font-weight:600}
+.zs-cfg-text{position:relative;flex:1;min-width:0;overflow:hidden}
+.zs-cfg-mirror,.zs-cfg-text>textarea{margin:0;padding:8px 12px;font:inherit;letter-spacing:0;tab-size:4;white-space:pre;overflow-wrap:normal}
+.zs-cfg-mirror{position:absolute;top:0;left:0;min-width:100%;color:transparent;pointer-events:none}
+.zs-cfg-mirror mark{border-radius:2px;color:transparent;background:var(--rem-bg);text-decoration:underline wavy var(--rem);text-decoration-skip-ink:none;text-underline-offset:3px}
+.zs-cfg-text>textarea{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;resize:none;border:0;outline:none;background:none;color:var(--text);caret-color:var(--text);overflow:auto;user-select:text}
+.zs-cfg-err{display:flex;align-items:flex-start;gap:9px;padding:10px 10px 10px 12px;border-radius:var(--radius-md);background:var(--rem-bg);font-size:var(--fs-md);line-height:1.45;color:var(--text)}
+.zs-cfg-err>.zs-icon{flex-shrink:0;margin-top:3px;color:var(--rem)}
+.zs-cfg-err>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.zs-cfg-err b{font-weight:600}
+.zs-cfg-msg{font:var(--fs-id)/1.55 var(--font-mono);white-space:pre-wrap}
+.zs-cfg-help{color:var(--text-muted)}
+.zs-cfg-ft{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.zs-cfg-key{margin-right:auto;font-size:var(--fs-sm);color:var(--text-faint)}

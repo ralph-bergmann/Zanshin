@@ -1,0 +1,32 @@
+/* ============================================================
+   ZANSHIN — density (sync #21, Story 11.20)
+   Settings › General › Density: Compact · Balanced · Comfy — how much air, never how big. Every row (menus, lists,
+   settings, search, push, files, projects) gains --row-step; graph cards grow and the gaps between them widen.
+   Text, controls (buttons, fields, segmented, selects), the chrome (bar, rail, islands) and window sizes stay —
+   size is Zoom's job (readme › Density and zoom). Compact = the sizes everywhere else in the system.
+
+   WHY THIS FILE IS NOT IN tokens/: the token layer (zanshin_ui ZsMetrics) and its parity test
+   (packages/zanshin_ui/test/design/css_token_reader.dart, `data-density` unknown) do not carry the density sets yet.
+   Story 11.20 adds them there and moves the token block below into tokens/spacing.css; the row rules stay here.
+   ============================================================ */
+
+/* the sets — Compact repeats tokens/spacing.css */
+:root{--row-step:0px}
+[data-density="balanced"]{--row-step:3px;--card-h-compact:44px;--card-h-detailed:68px;--graph-gap-x:62px;--graph-gap-y:54px}
+[data-density="comfy"]{--row-step:6px;--card-h-compact:48px;--card-h-detailed:74px;--graph-gap-x:68px;--graph-gap-y:60px}
+
+/* rows with a fixed height: + the step */
+.zs-menu-item{height:calc(28px + var(--row-step))}
+.zs-drop-item{height:calc(30px + var(--row-step))}
+.zs-dialog-navitem{height:calc(var(--control-md) + var(--row-step))}
+.zs-skel-row{height:calc(30px + var(--row-step))}
+.zs-option,.zs-option-link{min-height:calc(36px + var(--row-step))}
+.zs-gs-row,.zs-gs-srow{min-height:calc(34px + var(--row-step))}
+.zs-gs-row.is-more{min-height:calc(30px + var(--row-step))}
+.zs-push-row{min-height:calc(var(--control-lg) + var(--row-step))}
+/* rows sized by their padding: half the step above, half below (settings rows also keep their minimum + the step, so a
+   one-line row and a row with a hint both grow) */
+.zs-setrow,.zs-rsd-opt{min-height:calc(46px + var(--row-step));padding-top:calc(8px + var(--row-step) / 2);padding-bottom:calc(8px + var(--row-step) / 2)}
+.zs-setrow.is-stack{padding-top:calc(10px + var(--row-step) / 2);padding-bottom:calc(10px + var(--row-step) / 2)}
+.zs-file,.zs-proj{padding-top:calc(6px + var(--row-step) / 2);padding-bottom:calc(6px + var(--row-step) / 2)}
+.zs-push-row.is-multi{padding-top:calc(7px + var(--row-step) / 2);padding-bottom:calc(7px + var(--row-step) / 2)}

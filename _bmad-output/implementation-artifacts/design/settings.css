@@ -91,3 +91,104 @@
 .gimp-note code{font:11px var(--font-mono);color:var(--text-muted)}
 .gimp-reset{flex-shrink:0;height:28px;padding:0 12px;border-radius:8px;background:var(--fl-hover);font-size:12px;font-weight:500;color:var(--text-muted)}
 .gimp-reset:hover{background:var(--fl-on);color:var(--text)}
+
+/* ============================================================
+   sync #20 — REMOTES (remotes.jsx), CONFIG FILE (config-file.jsx), the sheet on the Settings window
+   ============================================================ */
+.zsw{--warn:#f7c243;--warn-bg:rgba(234,181,50,.16)}
+[data-theme="light"] .zsw{--warn:#895604}
+.gset-link{display:inline;height:auto;padding:0;border:0;background:none;font:inherit;color:var(--accent);cursor:default}
+.gset-link:hover{text-decoration:underline;text-underline-offset:2px}
+
+/* a remote: name, the fetch URL (mono, one line), the push URL when it differs; ••• at the end */
+.grem-row{align-items:flex-start}
+.grem-lbl{flex:1;gap:3px}
+.grem-name{font-size:13px;color:var(--text)}
+.grem-url{display:block;min-width:0;font:11.5px/1.45 var(--font-mono);color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:text}
+.grem-url i{font:11.5px var(--font-sans);font-style:normal;color:var(--text-faint)}
+.grem-k{margin-right:6px;font:10.5px var(--font-sans);color:var(--text-faint)}
+.grem-more{display:grid;place-items:center;width:26px;height:26px;margin:-2px -6px 0 0;border-radius:7px;color:var(--text-dim)}
+.grem-more:hover,.grem-more[aria-expanded="true"]{background:var(--fl-on);color:var(--text)}
+.grem-add{min-height:40px}
+.grem-add-l{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-muted)}
+.grem-add:hover .grem-add-l{color:var(--text)}
+.grem-empty{min-height:40px;font-size:12px;color:var(--text-dim)}
+.grem-warn{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 6px;margin-top:3px;font-size:11.5px;line-height:1.45;color:var(--warn);white-space:normal}
+.grem-warn svg{align-self:center}
+.grem-hint{color:var(--text-dim)}
+
+/* the row as a small form (Add · Rename · Set URL): fields on a label column, the command well, jj's refusal, Cancel + the verb */
+.grem-row.is-editing{background:var(--fl-on);gap:10px}
+.gset-box>.grem-row.is-editing:first-child{border-radius:12px 12px 0 0}
+.gset-box>.grem-row.is-editing:last-child{border-radius:0 0 12px 12px}
+.grem-head{display:flex;align-items:baseline;gap:8px}
+.grem-what{font-size:11.5px;color:var(--text-dim)}
+.grem-head .grem-what:first-child{font-size:13px;color:var(--text)}
+.grem-form{display:flex;flex-direction:column;gap:8px}
+.grem-f{display:grid;grid-template-columns:72px minmax(0,1fr);align-items:baseline;gap:10px}
+.grem-fl{font-size:12px;color:var(--text-muted);text-align:right}
+.grem-fc{display:flex;flex-direction:column;gap:4px;min-width:0}
+.grem-fc .gset-in{width:100%}
+.grem-fc .gset-in[aria-invalid="true"]{border-color:var(--warn)}
+.grem-fh{font-size:11px;line-height:1.4;color:var(--text-dim);text-wrap:pretty}
+.grem-cmd{display:block;margin-left:82px;padding:7px 10px;border-radius:8px;background:rgba(8,10,22,.42);border:1px solid var(--fl-border);font:11.5px/1.55 var(--font-mono);color:var(--text-muted);white-space:pre-wrap;word-break:break-all}
+[data-theme="light"] .grem-cmd{background:rgba(255,255,255,.66)}
+.grem-form .grem-err{margin-left:82px}
+.grem-err{display:flex;flex-direction:column;gap:3px;margin-top:3px;white-space:normal}
+.grem-err-msg{display:flex;align-items:baseline;gap:6px;font-size:12px;line-height:1.45;color:var(--warn)}
+.grem-err-msg svg{flex-shrink:0;transform:translateY(1px)}
+.grem-help{padding-left:18px;font-size:11.5px;line-height:1.45;color:var(--text-muted);text-wrap:pretty}
+.grem-help code{font:11px var(--font-mono);color:var(--text)}
+.grem-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
+.grem-btns .rsd-btn,.gcfg-ft .rsd-btn{height:28px;padding:0 14px;font-size:12px}
+.rsd-btn:disabled{opacity:.4}
+
+/* the sheet on the Settings window — DS ConfirmDialog (destructive: the red button is its one primary, focus on Cancel, ⌘↩) */
+.gconf-scrim{position:absolute;inset:0;z-index:50;display:grid;place-items:start center;padding-top:72px;background:rgba(7,9,20,.42);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);animation:gset-fade 160ms ease-out}
+[data-theme="light"] .gconf-scrim{background:rgba(58,46,34,.16)}
+.gconf{display:flex;flex-direction:column;gap:10px;width:400px;max-width:calc(100% - 48px);padding:20px 20px 16px;border-radius:18px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:0 40px 100px -24px rgba(0,0,0,.72),0 2px 10px rgba(0,0,0,.2);animation:gset-in 220ms cubic-bezier(.32,.72,0,1)}
+.gconf-title{margin:0;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-.01em}
+.gconf-body{font-size:12.5px;line-height:1.5;color:var(--text-muted);text-wrap:pretty}
+.gconf-body code{font:11.5px var(--font-mono);color:var(--text)}
+.gconf-cmd{display:block;padding:8px 10px;border-radius:8px;background:rgba(8,10,22,.42);border:1px solid var(--fl-border);font:11.5px/1.55 var(--font-mono);color:var(--text-muted);word-break:break-all}
+[data-theme="light"] .gconf-cmd{background:rgba(255,255,255,.66)}
+.gconf-ft{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:8px}
+.gconf-key{margin-right:auto;font-size:11px;color:var(--text-faint)}
+.rsd-btn.danger{color:var(--text);border-color:color-mix(in oklch,var(--rem) 55%,transparent);background:linear-gradient(180deg,color-mix(in oklch,var(--rem) 26%,transparent),color-mix(in oklch,var(--rem) 12%,transparent))}
+.rsd-btn.danger:hover{color:var(--text);border-color:var(--rem);background:linear-gradient(180deg,color-mix(in oklch,var(--rem) 34%,transparent),color-mix(in oklch,var(--rem) 16%,transparent))}
+
+/* CONFIG FILE — the page fills the window: intro, the editor well (path bar, gutter + text, no wrapping), the error, the buttons */
+.zsw .gset-bd{flex:1}
+.gset-bd.is-fill{overflow:hidden}
+.gcfg-page{flex:1;min-height:0;display:flex;flex-direction:column;gap:14px}
+.gcfg-page .gimp-top{margin-bottom:-4px}
+.gcfg{flex:1 1 380px;min-height:180px;display:flex;flex-direction:column;overflow:hidden;border-radius:12px;background:rgba(8,10,22,.42);border:1px solid var(--fl-border)}
+[data-theme="light"] .gcfg{background:rgba(255,255,255,.66)}
+.gcfg:focus-within{border-color:var(--accent-ring)}
+.gcfg.has-err{border-color:color-mix(in oklch,var(--rem) 60%,transparent)}
+.gcfg-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;height:30px;padding:0 12px;border-bottom:1px solid var(--fl-border)}
+.gcfg-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11px var(--font-mono);color:var(--text-dim)}
+.gcfg-state{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;font-size:11px;color:var(--text-dim)}
+.gcfg-state.is-dirty::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--fl-gold)}
+.gcfg-note{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;background:var(--warn-bg);font-size:12px;color:var(--text)}
+.gcfg-note svg{flex-shrink:0;color:var(--warn)}
+.gcfg-note span{flex:1;min-width:0}
+.gcfg-nbtn{flex-shrink:0;height:24px!important;padding:0 10px!important;font-size:11.5px!important}
+.gcfg-ed{flex:1;min-height:0;display:flex;font:12px/19.5px var(--font-mono)}
+.gcfg-gut{flex-shrink:0;width:44px;overflow:hidden;padding:8px 0;border-right:1px solid var(--fl-border);text-align:right;color:var(--text-faint);user-select:none}
+.gcfg-gut span{display:block;padding-right:10px}
+.gcfg-gut span.is-err{color:var(--rem);font-weight:600}
+.gcfg-text{position:relative;flex:1;min-width:0;overflow:hidden}
+.gcfg-mirror,.gcfg-text textarea{margin:0;padding:8px 12px;font:inherit;letter-spacing:0;tab-size:4;white-space:pre;overflow-wrap:normal}
+.gcfg-mirror{position:absolute;top:0;left:0;min-width:100%;color:transparent;pointer-events:none}
+.gcfg-mirror mark{border-radius:2px;background:none;color:transparent;text-decoration:underline wavy var(--rem);text-decoration-skip-ink:none;text-underline-offset:3px;box-shadow:0 0 0 1px color-mix(in oklch,var(--rem) 45%,transparent);background-color:var(--rem-bg)}
+.gcfg-text textarea{position:absolute;inset:0;width:100%;height:100%;resize:none;border:0;border-radius:0;outline:none;background:none;color:var(--text);caret-color:var(--text);overflow:auto;box-shadow:none}
+.gcfg-err{display:flex;align-items:flex-start;gap:9px;padding:10px 10px 10px 12px;border-radius:8px;background:var(--rem-bg);font-size:12px;line-height:1.45;color:var(--text)}
+.gcfg-err>svg{flex-shrink:0;margin-top:3px;color:var(--rem)}
+.gcfg-err>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.gcfg-err b{font-weight:600}
+.gcfg-msg{font:11.5px/1.55 var(--font-mono);white-space:pre-wrap}
+.gcfg-help{color:var(--text-muted)}
+.gcfg-text textarea{scrollbar-color:color-mix(in oklch,var(--text) 22%,transparent) transparent}
+.gcfg-ft{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.gcfg-key{margin-right:auto;font-size:11px;color:var(--text-faint)}

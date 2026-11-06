@@ -20,8 +20,10 @@ function TrafficLights({ buttons = { close: true, minimize: true, zoom: true }, 
 
 // where a window opens: centred, or beside the other one (Settings from the Projects sidebar opens beside it)
 const GAP = 16, EDGE = 12;
+// the screen in the windows' own units — Zoom (sync #21) scales the page, so the screen holds fewer of them
+const vw = () => window.innerWidth / (window.__zsZoom || 1), vh = () => window.innerHeight / (window.__zsZoom || 1);
 function placeWindow(kind, open) {
-  const W = window.innerWidth, H = window.innerHeight;
+  const W = vw(), H = vh();
   if (kind === "projects") {
     const w = Math.min(900, W - 2 * EDGE), h = Math.min(640, H - 2 * EDGE), s = open.settings;
     let x = Math.round((W - w) / 2), y = Math.max(EDGE, Math.round((H - h) * .4));
@@ -38,7 +40,7 @@ function placeWindow(kind, open) {
 }
 // keep a window reachable when the screen shrinks: its header stays on screen, a sized window never exceeds it
 function clampWindow(g) {
-  const W = window.innerWidth, H = window.innerHeight;
+  const W = vw(), H = vh();
   const w = g.h ? Math.min(g.w, W - 2 * EDGE) : g.w, h = g.h ? Math.min(g.h, H - 2 * EDGE) : g.h;
   return { ...g, w, h, x: Math.min(Math.max(g.x, 80 - w), W - 80), y: Math.min(Math.max(g.y, 0), H - 52) };
 }
@@ -56,7 +58,7 @@ function WindowFrame({ title, titleHidden = false, active, buttons = { close: tr
     e.preventDefault();
     const el = ref.current, g0 = { ...geo, h: geo.h || el.offsetHeight }, x0 = e.clientX, y0 = e.clientY;
     const move = (ev) => {
-      const dx = ev.clientX - x0, dy = ev.clientY - y0, W = window.innerWidth, H = window.innerHeight;
+      const dx = ev.clientX - x0, dy = ev.clientY - y0, W = vw(), H = vh();
       if (mode === "move") { setGeo({ ...geo, x: Math.min(Math.max(g0.x + dx, 80 - g0.w), W - 80), y: Math.min(Math.max(g0.y + dy, 0), H - 52) }); return; }
       let { x, w, h } = g0;
       if (mode.includes("e")) w = Math.max(minW, Math.min(g0.w + dx, W - g0.x));
@@ -92,31 +94,49 @@ function WindowFrame({ title, titleHidden = false, active, buttons = { close: tr
 
 // ------------------------------------------------------------
 // SETTINGS — one window for "Settings…" (⌘,), "Project Settings…" and "Appearance, diffs and more". 620 wide, the height follows the
-// tab up to 740, not resizable; only close is active. The window title is the tab's name; the tabs sit centred in the header.
-// No Esc, no ✕: changes apply at once.
+// tab up to 740 — until you resize it (sync #20: resizable, minimum 620 × 420, zoom active; long URLs and long config lines get the
+// room). The window title is the tab's or the page's name; the tabs sit centred in the header. No Esc, no ✕: changes apply at once —
+// except in the config file, which saves on Save and asks before unsaved edits go.
 // ------------------------------------------------------------
-// page: a page inside the Project tab ("immutable" = Immutable commits, immutable.jsx) — Back returns to the tab
-function SettingsWin({ tab, setTab, page, setPage, project, t, setTweak, active, geo, setGeo, z, onActivate, onClose }) {
+// page: a page inside a tab — "immutable" (Project, immutable.jsx) or "config" (either tab, config-file.jsx). Back returns to the tab.
+function SettingsWin({ tab, setTab, page, setPage, project, t, setTweak, active, geo, setGeo, z, onActivate, onClose, onZoom }) {
   const shown = tab === "project" && !project ? "general" : tab;
-  const sub = shown === "project" && page === "immutable" && window.ImmutablePage;
+  const sub = page === "config" && window.ConfigFilePage ? "config" : shown === "project" && page === "immutable" && window.ImmutablePage ? "immutable" : null;
+  const path = shown === "general" ? "~/.config/jj/config.toml" : project && project.path ? project.path + "/.jj/repo/config.toml" : ".jj/repo/config.toml";
+  // unsaved edits in the config file: leaving asks first (ConfirmDialog as a sheet on this window)
+  const guard = useRef(null);
+  const [ask, setAsk] = useState(null);
+  const leave = (fn) => () => { if (guard.current) setAsk({ name: guard.current, fn }); else fn(); };
+  const toTab = (v) => leave(() => { setTab(v); setPage(null); });
+  const edit = sub !== "config" && window.ConfigFilePage && <> · <button className="gset-link" onClick={() => setPage("config")} title={shown === "general" ? "jj config edit --user" : "jj config edit --repo"}>Edit…</button></>;
   const tabs = (
     <div className="gtb-seg gset-tabs" role="tablist" aria-label="Settings">
-      <button role="tab" aria-selected={shown === "general"} className={shown === "general" ? "on" : ""} onClick={() => setTab("general")}><Ic name="settings" size={13}/>General</button>
+      <button role="tab" aria-selected={shown === "general"} className={shown === "general" ? "on" : ""} onClick={toTab("general")}><Ic name="settings" size={13}/>General</button>
       {project
-        ? <button role="tab" aria-selected={shown === "project"} className={shown === "project" ? "on" : ""} onClick={() => setTab("project")}><span className="gset-mark"><window.ZanshinMark size={14}/></span>{project.name}</button>
+        ? <button role="tab" aria-selected={shown === "project"} className={shown === "project" ? "on" : ""} onClick={toTab("project")}><span className="gset-mark"><window.ZanshinMark size={14}/></span>{project.name}</button>
         : <span className="zsw-off" title="Open a project first"><button role="tab" aria-selected="false" aria-disabled="true" disabled><Ic name="folder" size={13}/>Project</button></span>}
     </div>
   );
+  const title = sub === "config" ? "Config file" : sub === "immutable" ? "Immutable commits" : shown === "general" ? "General" : "Project";
   return (
-    <WindowFrame title={shown === "general" ? "General" : sub ? "Immutable commits" : "Project"} titleHidden center active={active} buttons={{ close: true }} onClose={onClose}
-      header={tabs} geo={geo} setGeo={setGeo} z={z} maxH={Math.min(740, window.innerHeight - geo.y - EDGE)} onActivate={onActivate} className="zsw">
+    <WindowFrame title={title} titleHidden center active={active} buttons={{ close: true, zoom: true }} onClose={leave(onClose)} onZoom={onZoom}
+      header={tabs} geo={geo} setGeo={setGeo} z={z} resizable minW={620} minH={420} maxH={geo.h ? undefined : Math.min(740, vh() - geo.y - EDGE)} onActivate={onActivate} className="zsw">
       <div className="gset-scope">
         {shown === "general"
-          ? <>For Zanshin on this Mac · jj settings go to <code>~/.config/jj/config.toml</code></>
-          : <>For {project.name} only{project.path ? <> · <code>{project.path}/.jj/repo/config.toml</code></> : null}</>}
+          ? <>For Zanshin on this Mac · jj settings go to <code>{path}</code>{edit}</>
+          : <>For {project.name} only · <code>{path}</code>{edit}</>}
       </div>
-      <div className="gset-bd">{shown === "general" ? <window.GeneralPane t={t} setTweak={setTweak}/> : sub ? <window.ImmutablePage project={project} onBack={() => setPage(null)}/> : <window.ProjectPane key={project.id} project={project} onPage={setPage}/>}</div>
+      <div className={"gset-bd" + (sub === "config" ? " is-fill" : "")}>{sub === "config"
+        ? <window.ConfigFilePage key={shown} scope={shown === "general" ? "user" : "repo"} project={project} path={path} back={shown === "general" ? "General" : project.name} onBack={leave(() => setPage(null))} guard={guard}/>
+        : shown === "general" ? <window.GeneralPane t={t} setTweak={setTweak}/>
+        : sub === "immutable" ? <window.ImmutablePage project={project} onBack={() => setPage(null)}/>
+        : <window.ProjectPane key={project.id} project={project} onPage={setPage}/>}</div>
       <footer className="gset-ft">How the graph looks lives with the graph: <b>View options</b> in the toolbar.</footer>
+      {ask && window.ConfirmSheet && (
+        <window.ConfirmSheet title={"Discard your edits to " + ask.name + "?"} confirmLabel="Discard edits" onCancel={() => setAsk(null)} onConfirm={() => { const fn = ask.fn; guard.current = null; setAsk(null); fn(); }}>
+          The file stays as you last saved it.
+        </window.ConfirmSheet>
+      )}
     </WindowFrame>
   );
 }
@@ -175,7 +195,7 @@ function MenuPanel({ x, y, anchor, items, sub, onSub, onClose }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
   useLayoutEffect(() => {
-    const w = ref.current.offsetWidth, h = ref.current.offsetHeight, W = window.innerWidth, H = window.innerHeight;
+    const w = ref.current.offsetWidth, h = ref.current.offsetHeight, W = vw(), H = vh();
     let left = anchor ? anchor.right + 2 : x;
     if (left + w > W - 6) left = anchor ? anchor.left - w - 2 : W - w - 6;
     setPos({ left: Math.max(6, left), top: Math.max(6, Math.min(anchor ? anchor.top - 6 : y, H - h - 6)) });
@@ -431,5 +451,5 @@ function ProjectsWin({ tree, setTree, activeProjectId, onOpenProject, onSettings
   );
 }
 
-Object.assign(window, { TrafficLights, WindowFrame, SettingsWin, ProjectsWin, placeWindow, clampWindow });
+Object.assign(window, { TrafficLights, WindowFrame, SettingsWin, ProjectsWin, RowMenu, placeWindow, clampWindow });
 })();

@@ -64,13 +64,15 @@ function ZKPeek({ n, isWC, style }) {
 function ZKStackPop({ n, style }) {
   return (
     <div className="zk-stackpop" style={style}>
-      {n.members.slice().reverse().map((m) => (
-        <div key={m.id} className="zk-stackpop-row">
-          <span className="zs-cid"><b>{m.id.slice(0, 2)}</b>{m.id.slice(2, 6)}</span>
-          <span className="zk-stackpop-subj">{m.subject}</span>
-          <span className="zk-stackpop-date">{m.date}</span>
-        </div>
-      ))}
+      <div className="zk-stackpop-rows">
+        {n.members.slice().reverse().map((m) => (
+          <div key={m.id} className="zk-stackpop-row">
+            <span className="zs-cid"><b>{m.id.slice(0, 2)}</b>{m.id.slice(2, 6)}</span>
+            <span className="zk-stackpop-subj">{m.subject}</span>
+            <span className="zk-stackpop-date">{m.date}</span>
+          </div>
+        ))}
+      </div>
       <div className="zk-stackpop-hint">Click to expand {n.count} changes</div>
     </div>
   );
@@ -149,7 +151,7 @@ function ZKMinimap({ nodes, L, W, H, wcId, selId, view, scrollH, hidden, onJump 
   nodes.forEach((n) => allParents(n).forEach((pid) => {
     const a = P.get(pid), b = P.get(n.id); if (!a || !b) return;
     const bend = my(L.pos.get(n.id).y + H + G.gapY / 2);
-    lines.push({ k: pid + ">" + n.id, dashed: n.gapParents.includes(pid), d: [[a.x, a.y], [a.x, bend], [b.x, bend], [b.x, b.y]].map(([x, y]) => x.toFixed(1) + "," + y.toFixed(1)).join(" ") });
+    lines.push({ k: pid + ">" + n.id, d: [[a.x, a.y], [a.x, bend], [b.x, bend], [b.x, b.y]].map(([x, y]) => x.toFixed(1) + "," + y.toFixed(1)).join(" ") });
   }));
   const vTop = my(view.top), vBot = my(view.bottom), cy = (vTop + vBot) / 2;
   const free = L.days.length > 0, rowLabels = [];
@@ -169,7 +171,7 @@ function ZKMinimap({ nodes, L, W, H, wcId, selId, view, scrollH, hidden, onJump 
   const shown = rowLabels.filter((l) => { if (l.y - last < 18 || Math.abs(l.y - cy) < 15 || (hov != null && Math.abs(l.y - hov) < 13)) return false; last = l.y; return true; });
   const layer = (cls, clip) => (
     <g className={"zk-mini-g " + cls} clipPath={clip}>
-      {lines.map((e) => <polyline key={e.k} points={e.d} className={"zk-mini-e" + (e.dashed ? " dashed" : "")}></polyline>)}
+      {lines.map((e) => <polyline key={e.k} points={e.d} className="zk-mini-e"></polyline>)}
       {pts.map((p) => <circle key={p.id} cx={p.x} cy={p.y} r={p.grp ? 2.6 : 2} className={"zk-mini-n" + (p.grp ? " grp" : "")}></circle>)}
     </g>
   );

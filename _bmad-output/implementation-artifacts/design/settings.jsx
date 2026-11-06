@@ -76,7 +76,8 @@ function GeneralPane({ t, setTweak }) {
   return <>
     <Group title="Appearance">
       <Row label="Theme"><Seg value={t.theme} onChange={v => setTweak("theme", v)} label="Theme" opts={[{ v: "light", l: "Light", icon: "sun" }, { v: "dark", l: "Dark", icon: "moon" }, { v: "system", l: "Auto", icon: "auto" }]}/></Row>
-      <Row label="Density"><Seg value={t.density} onChange={v => setTweak("density", v)} label="Density" opts={[{ v: "compact", l: "Compact" }, { v: "balanced", l: "Balanced" }, { v: "comfy", l: "Comfy" }]}/></Row>
+      <Row label="Density" hint="Space between rows and cards. Text keeps its size."><Seg value={t.density} onChange={v => setTweak("density", v)} label="Density" opts={[{ v: "compact", l: "Compact" }, { v: "balanced", l: "Balanced" }, { v: "comfy", l: "Comfy" }]}/></Row>
+      <Row label="Zoom" hint="Text and everything with it, in every window. ⌘+ ⌘− ⌘0"><select className="gset-sel" value={t.zoom || 100} onChange={e => setTweak("zoom", +e.target.value)} aria-label="Zoom">{window.ZOOM_STEPS.map(z => <option key={z} value={z}>{z === 100 ? "100% (Actual Size)" : z + "%"}</option>)}</select></Row>
     </Group>
     <Group title="While you scroll">
       <Row label="Hide controls" hint="Toolbars and panels step aside while you scroll the graph. The minimap stays."><Switch on={t.autoHide !== false} set={v => setTweak("autoHide", v)} label="Hide controls while scrolling"/></Row>
@@ -105,14 +106,19 @@ function ImmutableNav({ onOpen }) {
 
 function ProjectPane({ project, onPage }) {
   const [p, set] = useLocal("zanshin.settings.project." + (project ? project.id : "_"), { fetch: "origin", push: "origin", auto: "15", trunk: "main", immutable: "builtin_immutable_heads()", own: false, email: "ralph@work.example" });
-  const remotes = ["origin", "upstream"];
+  // sync #20: the remotes are a list of their own (remotes.jsx) where it is loaded; the selects offer what the list holds
+  const [list, setList] = window.useRemotes ? window.useRemotes(project && project.id) : [null, null];
+  const remotes = list ? list.map(r => r.name) : ["origin", "upstream"];
+  // a remote that is gone stays named in its select (jj doesn't rewrite git.fetch / git.push), marked as such
+  const opts = (v) => [...remotes, ...(remotes.includes(v) ? [] : [v])].map(r => <option key={r} value={r}>{remotes.includes(r) ? r : r + " — not a remote"}</option>);
   const imm = window.useImmutable ? window.useImmutable() : null;   // trunk() and immutable_heads() live in immutable.jsx where it is loaded
+  const sync = <>
+    <Row label="Fetch from" cfg="git.fetch"><select className="gset-sel" value={p.fetch} onChange={e => set("fetch", e.target.value)}>{opts(p.fetch)}</select></Row>
+    <Row label="Push to" cfg="git.push"><select className="gset-sel" value={p.push} onChange={e => set("push", e.target.value)}>{opts(p.push)}</select></Row>
+    <Row label="Fetch automatically"><Seg value={p.auto} onChange={v => set("auto", v)} label="Fetch automatically" opts={[{ v: "off", l: "Off" }, { v: "5", l: "5 min" }, { v: "15", l: "15 min" }]}/></Row>
+  </>;
   return <>
-    <Group title="Remotes">
-      <Row label="Fetch from" cfg="git.fetch"><select className="gset-sel" value={p.fetch} onChange={e => set("fetch", e.target.value)}>{remotes.map(r => <option key={r}>{r}</option>)}</select></Row>
-      <Row label="Push to" cfg="git.push"><select className="gset-sel" value={p.push} onChange={e => set("push", e.target.value)}>{remotes.map(r => <option key={r}>{r}</option>)}</select></Row>
-      <Row label="Fetch automatically"><Seg value={p.auto} onChange={v => set("auto", v)} label="Fetch automatically" opts={[{ v: "off", l: "Off" }, { v: "5", l: "5 min" }, { v: "15", l: "15 min" }]}/></Row>
-    </Group>
+    {list ? <window.RemotesGroup list={list} setList={setList}>{sync}</window.RemotesGroup> : <Group title="Remotes">{sync}</Group>}
     <Group title="History">
       <Row label="Trunk" cfg={'revset-aliases."trunk()"'}><select className="gset-sel" value={imm ? imm.trunkName : p.trunk} onChange={e => imm ? window.setImmutable({ trunkName: e.target.value }) : set("trunk", e.target.value)}>{["main", "develop", "release/1.5.x@origin"].map(r => <option key={r}>{r}</option>)}</select></Row>
       {imm && onPage ? <ImmutableNav onOpen={() => onPage("immutable")}/> : (

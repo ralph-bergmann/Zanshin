@@ -1,7 +1,7 @@
 // Windows — Projects (the project picker, the start window) and Settings (General · Project). Both are macOS windows of their own
 // (components/window: Window) above the project window: no scrim, no ✕ — the red button and ⌘W close them; the system draws the frame.
 (() => {
-const { Window, SearchField, Button, ProjectRow, DragGhost, Menu, NamiMark, Icon, Segmented, Switch, Select, TextField, SettingsGroup, SettingsRow, HatchSwatch, ImmutablePage } = window.ZanshinDesignSystem_a33847;
+const { Window, SearchField, Button, ProjectRow, DragGhost, Menu, NamiMark, Icon, Segmented, Switch, Select, TextField, SettingsGroup, SettingsRow, HatchSwatch, ImmutablePage, RemotesGroup, ConfigFilePage, ConfirmDialog, Link } = window.ZanshinDesignSystem_a33847;
 const Swatch = HatchSwatch || (() => null);
 
 function zkFlatten(nodes, depth = 0, all = false, out = [], parent = null) {
@@ -203,25 +203,68 @@ function ZKProjects({ tree, setTree, activeId, onOpen, onClose, onSettings, acti
 
 // page "immutable": Settings › Project › Immutable commits (ImmutablePage) — a page inside the Project tab, reached from History's navigation row
 // or the card menu of an immutable change; the window's title becomes the page's name, ‹ MyApp returns to the tab.
+// page "config" (sync #20): either tab's config file (ConfigFilePage), reached from the scope line's Edit…; the Remotes group is RemotesGroup.
+const ZK_REMOTES = [
+  { name: "origin", url: "git@github.com:ralph/myapp.git" },
+  { name: "upstream", url: "https://github.com/acme-platform/myapp.git", pushUrl: "git@github.com:ralph/myapp.git" },
+];
+const ZK_FILES = {
+  user: '[user]\nname = "Ralph Stein"\nemail = "ralph@dasralph.de"\n\n[ui]\ndefault-command = "log"\ndiff-editor = ":builtin"\n\n[git]\nsign-on-push = true\n',
+  repo: '[revset-aliases]\n"trunk()" = "main@origin"\n\n[git]\nfetch = ["origin", "upstream"]\npush = "origin"\n',
+};
+// what jj answers — jj-lib's messages, verbatim (a mock; the app runs the verbs)
+function zkRunRemote(list, setList, op) {
+  const has = (n) => list.some((r) => r.name === n), name = op.verb === "rename" ? op.newName : op.name;
+  if ((op.verb === "add" || op.verb === "rename") && name === "git") return { refusal: { message: "Git remote named 'git' is reserved for local Git repository", help: "jj uses the name git for the repository on disk. Pick another name." } };
+  if ((op.verb === "add" || op.verb === "rename") && has(name)) return { refusal: { message: "Git remote named '" + name + "' already exists" } };
+  if (op.verb === "remove" && (list.find((r) => r.name === op.name) || {}).pushUrl) return { refusal: { message: "Git remote named '" + op.name + "' has nonstandard configuration",
+    help: <>Its git config has entries jj doesn’t manage, such as a push URL, so jj leaves it alone. <code>{"git remote remove " + op.name}</code> removes it.</> } };
+  if (op.verb === "add") setList([...list, { name: op.name, url: op.url, pushUrl: op.pushUrl }]);
+  if (op.verb === "rename") setList(list.map((r) => (r.name === op.name ? { ...r, name: op.newName } : r)));
+  if (op.verb === "set-url") setList(list.map((r) => (r.name === op.name ? { ...r, url: op.url || r.url, pushUrl: op.pushUrl || r.pushUrl } : r)));
+  if (op.verb === "remove") setList(list.filter((r) => r.name !== op.name));
+  return null;
+}
+// a TOML check good enough for the kit: a value that is no string, number, bool, array or table
+function zkCheckToml(text) {
+  const m = text.match(/^[\w."-]+ *= *(?!["'[{]|true\b|false\b|-?\d)(\S.*)$/m);
+  if (!m) return null;
+  const start = text.indexOf(m[0]) + m[0].length - m[1].length;
+  return { error: { message: "invalid string\nexpected `\"`, `'`", start, end: start + m[1].length } };
+}
 function ZKSettings({ tab, setTab, page, setPage, imm, setImm, trunk, setTrunk, immInfo = {}, onClose, prefs, setPref, project, active = true, onFocus, style }) {
   const [g, setG] = React.useState({ name: "Ralph Stein", email: "ralph@dasralph.de" });
   const [p, setP] = React.useState({ fetch: "origin", push: "origin", auto: "15", own: false, email: "ralph@work.example" });
-  const sub = tab === "project" && page === "immutable" && ImmutablePage;
+  const [remotes, setRemotes] = React.useState(ZK_REMOTES);
+  const [files, setFiles] = React.useState(ZK_FILES);
+  const [dirty, setDirty] = React.useState(false);
+  const sub = page === "config" && ConfigFilePage ? "config" : tab === "project" && page === "immutable" && ImmutablePage ? "immutable" : null;
   const setp = (k, v) => setP((o) => ({ ...o, [k]: v }));
-  // the window title is the tab's name (Window menu, Mission Control); no Esc, no ✕ — changes apply at once
+  const scope = tab === "general" ? "user" : "repo", path = tab === "general" ? "~/.config/jj/config.toml" : project.path + "/.jj/repo/config.toml";
+  // unsaved edits in the config file ask before they go (the app: a ConfirmDialog sheet on this window)
+  const [ask, setAsk] = React.useState(null);
+  const leave = (fn) => { if (dirty) setAsk(() => fn); else fn(); };
+  const names = remotes.map((r) => r.name), opts = (v) => (names.includes(v) ? names : [...names, v]);
+  // the window title is the tab's or page's name (Window menu, Mission Control); no Esc, no ✕ — changes apply at once (the config file on Save)
   return (
     <div onMouseDown={onFocus} style={style}>
-      <Window title={tab === "general" ? "General" : sub ? "Immutable commits" : "Project"} titleHidden active={active} buttons={{ close: true }} onClose={onClose} width={620} headerAlign="center" style={{ maxHeight: 740 }}
-        header={<Segmented variant="tabs" label="Settings" value={tab} onChange={setTab} options={[{ value: "general", label: "General", icon: "settings" },
+      <Window title={sub === "config" ? "Config file" : sub === "immutable" ? "Immutable commits" : tab === "general" ? "General" : "Project"} titleHidden active={active} buttons={{ close: true, zoom: true }} onClose={() => leave(onClose)} width={620} headerAlign="center"
+        style={sub === "config" ? { height: 680, maxHeight: 740 } : { maxHeight: 740 }}
+        header={<Segmented variant="tabs" label="Settings" value={tab} onChange={(v) => leave(() => { setTab(v); setPage(null); })} options={[{ value: "general", label: "General", icon: "settings" },
           project ? { value: "project", label: project.name, icon: <span className="zk-set-mark"><NamiMark size={14}/></span> } : { value: "project", label: "Project", icon: "folder", disabled: true, title: "Open a project first" }]}/>}>
         <div className="zk-set-scope">
-          {tab === "general" ? <>For Zanshin on this Mac · jj settings go to <code>~/.config/jj/config.toml</code></> : <>For {project.name} only · <code>{project.path}/.jj/repo/config.toml</code></>}
+          {tab === "general" ? <>For Zanshin on this Mac · jj settings go to <code>{path}</code></> : <>For {project.name} only · <code>{path}</code></>}
+          {sub !== "config" && ConfigFilePage && <> · <Link onClick={() => setPage("config")} title={"jj config edit --" + scope}>Edit…</Link></>}
         </div>
-        <div className="zk-set-bd">
-          {tab === "general" ? <>
+        <div className={"zk-set-bd" + (sub === "config" ? " is-fill" : "")}>
+          {sub === "config" ? <ConfigFilePage key={scope} scope={scope} path={path} project={project && project.name} back={tab === "general" ? "General" : project.name} text={files[scope]}
+            onBack={() => leave(() => setPage(null))} onDirtyChange={setDirty}
+            onSave={(t) => { const e = zkCheckToml(t); if (e) return e; setFiles((f) => ({ ...f, [scope]: t })); return null; }}/>
+          : tab === "general" ? <>
             <SettingsGroup title="Appearance">
               <SettingsRow label="Theme"><Segmented variant="inset" label="Theme" value={prefs.theme} onChange={(v) => setPref("theme", v)} options={[{ value: "paper", label: "Paper", icon: "sun" }, { value: "night", label: "Night", icon: "moon" }, { value: "system", label: "Auto", icon: "auto" }]}/></SettingsRow>
-              <SettingsRow label="Density"><Segmented variant="inset" label="Density" value={prefs.density} onChange={(v) => setPref("density", v)} options={[{ value: "compact", label: "Compact" }, { value: "balanced", label: "Balanced" }, { value: "comfy", label: "Comfy" }]}/></SettingsRow>
+              <SettingsRow label="Density" hint="Space between rows and cards. Text keeps its size."><Segmented variant="inset" label="Density" value={prefs.density} onChange={(v) => setPref("density", v)} options={[{ value: "compact", label: "Compact" }, { value: "balanced", label: "Balanced" }, { value: "comfy", label: "Comfy" }]}/></SettingsRow>
+              <SettingsRow label="Zoom" hint="Text and everything with it, in every window. ⌘+ ⌘− ⌘0"><Select label="Zoom" value={String(prefs.zoom || 100)} onChange={(v) => setPref("zoom", +v)} options={window.ZK_ZOOM_STEPS.map((z) => ({ value: String(z), label: z === 100 ? "100% (Actual Size)" : z + "%" }))}/></SettingsRow>
               <SettingsRow label="Accent colour" hint="Selection, focus and controls take the colour from System Settings › Appearance. Gold stays with @ and the primary action."><Segmented variant="inset" label="Accent colour" value={prefs.accent || "macos"} onChange={(v) => setPref("accent", v)} options={[{ value: "macos", label: "Follow macOS" }, { value: "zanshin", label: "Zanshin" }]}/></SettingsRow>
             </SettingsGroup>
             <SettingsGroup title="While you scroll">
@@ -234,12 +277,12 @@ function ZKSettings({ tab, setTab, page, setPage, imm, setImm, trunk, setTrunk, 
               <SettingsRow label="Name" configKey="user.name"><TextField value={g.name} onChange={(e) => setG({ ...g, name: e.target.value })} aria-label="Name"/></SettingsRow>
               <SettingsRow label="Email" configKey="user.email"><TextField value={g.email} onChange={(e) => setG({ ...g, email: e.target.value })} aria-label="Email"/></SettingsRow>
             </SettingsGroup>
-          </> : sub ? <ImmutablePage config={imm} onChange={setImm} project={project.name} trunkName={trunk} onBack={() => setPage(null)} {...immInfo}/> : <>
-            <SettingsGroup title="Remotes">
-              <SettingsRow label="Fetch from" configKey="git.fetch"><Select label="Fetch from" value={p.fetch} onChange={(v) => setp("fetch", v)} options={["origin", "upstream"]}/></SettingsRow>
-              <SettingsRow label="Push to" configKey="git.push"><Select label="Push to" value={p.push} onChange={(v) => setp("push", v)} options={["origin", "upstream"]}/></SettingsRow>
+          </> : sub === "immutable" ? <ImmutablePage config={imm} onChange={setImm} project={project.name} trunkName={trunk} onBack={() => setPage(null)} {...immInfo}/> : <>
+            <RemotesGroup remotes={remotes} onRun={(op) => zkRunRemote(remotes, setRemotes, op)}>
+              <SettingsRow label="Fetch from" configKey="git.fetch"><Select label="Fetch from" value={p.fetch} onChange={(v) => setp("fetch", v)} options={opts(p.fetch)}/></SettingsRow>
+              <SettingsRow label="Push to" configKey="git.push"><Select label="Push to" value={p.push} onChange={(v) => setp("push", v)} options={opts(p.push)}/></SettingsRow>
               <SettingsRow label="Fetch automatically"><Segmented variant="inset" label="Fetch automatically" value={p.auto} onChange={(v) => setp("auto", v)} options={[{ value: "off", label: "Off" }, { value: "5", label: "5 min" }, { value: "15", label: "15 min" }]}/></SettingsRow>
-            </SettingsGroup>
+            </RemotesGroup>
             <SettingsGroup title="History">
               <SettingsRow label="Trunk" configKey={'revset-aliases."trunk()"'}><Select label="Trunk" value={trunk} onChange={setTrunk} options={["main", "develop", "release/1.5.x@origin"]}/></SettingsRow>
               {ImmutablePage && (
@@ -255,6 +298,8 @@ function ZKSettings({ tab, setTab, page, setPage, imm, setImm, trunk, setTrunk, 
           </>}
         </div>
         <footer className="zk-set-ft">How the graph looks lives with the graph: <b>View options</b> in the toolbar.</footer>
+        {ask && <ConfirmDialog title="Discard your edits to config.toml?" confirmLabel="Discard edits" onCancel={() => setAsk(null)}
+          onConfirm={() => { const fn = ask; setAsk(null); setDirty(false); fn(); }}>The file stays as you last saved it.</ConfirmDialog>}
       </Window>
     </div>
   );

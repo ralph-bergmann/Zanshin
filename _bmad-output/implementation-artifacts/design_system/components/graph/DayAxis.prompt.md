@@ -15,5 +15,6 @@ The day axis of the **Free** layout (the default) — calendar days on the graph
 - **No gutter:** Free reserves no extra width. Days never interleave in Free (rows follow commit time), so the band around a divider never holds cards.
 - **Sticky:** the label column stays at the left edge while the graph scrolls sideways — in the floating client right of the rail or the pinned panel (`stickyLeft = inset − 6`, `labelLeft = 2`).
 - **Look:** `DayLabel` is mono 11px in `--text-muted` on a `--card-solid` pill with a 1px `--border`, radius 5; the divider is 1px `--border-strong`, dashed 2 6.
-- **Minimap:** uses the same day labels; its current-day pill names the day the viewport centre is in (labels mark a day's bottom edge).
+- **Years** (sync #22): a day label never carries a year ("Dec 16", not "Dec 16, 2015"). Where a year begins, `years` puts the year as its own label just above that day's label (600, `--fs-xs`, `--tracking-pill`, `--text-muted`) — reading upward, "2025 starts here", like the day labels. None for a history inside one year, none at a boundary inside a `GraphBreak` (its label names both ends). A divider inside a break is dropped from `days`.
+- **Minimap:** uses the same day labels; its current-day pill names the day the viewport centre is in (labels mark a day's bottom edge). It reads its years top-down instead: each boundary heads the section below it (the older year), and the year at its top sticks as a header (readme › Time in the graph).
 - Cards keep their relative age (`now`, `3h`, `2d`); the axis only ever shows calendar days.

@@ -1,0 +1,93 @@
+<!-- @dsCard group="Components" viewport="1320x1340" name="Settings — Remotes and config file" subtitle="RemotesGroup: the list, a row as a form with jj refusing, Remove refused · ConfigFilePage: the editor, a parse error marked · the Settings window resizes" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:18px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);font-family:var(--font-sans)}.g{display:grid;grid-template-columns:620px 620px;gap:28px;align-items:start}.col{display:flex;flex-direction:column;gap:22px}.cap{margin:0 0 10px;font-size:var(--fs-md);line-height:1.45;color:var(--text-dim);text-wrap:pretty}.cap b{color:var(--text);font-weight:600}.mark{display:grid;border-radius:var(--radius-xs);overflow:hidden}.scope{padding:12px 28px 4px;text-align:center;font-size:var(--fs-md);line-height:1.5;color:var(--text-dim)}.scope code{font:var(--fs-id) var(--font-mono);color:var(--text-muted)}.bd{flex:1;min-height:0;display:flex;flex-direction:column;gap:18px;padding:12px 24px 18px}.bd.is-fill{overflow:hidden}.ft{padding:12px 24px 15px;border-top:1px solid var(--fl-border);text-align:center;font-size:var(--fs-id);color:var(--text-dim)}.ft b{font-weight:500;color:var(--text-muted)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Window, Segmented, SettingsRow, Select, Link, RemotesGroup, ConfigFilePage, NamiMark } = window.ZanshinDesignSystem_a33847;
+  const tabs = (v) => <Segmented variant="tabs" label="Settings" value={v} onChange={() => {}} options={[{ value: "general", label: "General", icon: "settings" }, { value: "project", label: "MyApp", icon: <span className="mark"><NamiMark size={14}/></span> }]}/>;
+  const Shell = ({ title, tab = "project", path, edit = true, height, fill, children }) => (
+    <Window title={title} titleHidden buttons={{ close: true, zoom: true }} width={620} height={height} headerAlign="center" header={tabs(tab)}>
+      <div className="scope">{tab === "general" ? "For Zanshin on this Mac · jj settings go to " : "For MyApp only · "}<code>{path}</code>{edit && <> · <Link onClick={() => {}}>Edit…</Link></>}</div>
+      <div className={"bd" + (fill ? " is-fill" : "")}>{children}</div>
+      <footer className="ft">How the graph looks lives with the graph: <b>View options</b> in the toolbar.</footer>
+    </Window>
+  );
+  const REPO = "~/code/work/mobile/myapp/.jj/repo/config.toml", USER = "~/.config/jj/config.toml";
+  const REMOTES = [
+    { name: "origin", url: "git@github.com:ralph/myapp.git" },
+    { name: "upstream", url: "https://github.com/acme-platform/myapp-monorepo-with-a-rather-long-name.git", pushUrl: "git@github.com:ralph/myapp-monorepo-with-a-rather-long-name.git" },
+    { name: "mirror", url: "https://ralph:ghp_8f3kQ2xVn7tLw0@git.example.com/team/myapp.git" },
+  ];
+  // what jj answers (jj-lib's messages, verbatim)
+  function useRemotes() {
+    const [list, setList] = React.useState(REMOTES);
+    const run = (op) => {
+      const has = (n) => list.some((r) => r.name === n);
+      if ((op.verb === "add" && op.name === "git") || (op.verb === "rename" && op.newName === "git"))
+        return { refusal: { message: "Git remote named 'git' is reserved for local Git repository", help: "jj uses the name git for the repository on disk. Pick another name." } };
+      if ((op.verb === "add" && has(op.name)) || (op.verb === "rename" && has(op.newName)))
+        return { refusal: { message: "Git remote named '" + (op.newName || op.name) + "' already exists" } };
+      if (op.verb === "remove" && (list.find((r) => r.name === op.name) || {}).pushUrl) return { refusal: NONSTD(op.name) };
+      if (op.verb === "add") setList([...list, { name: op.name, url: op.url, pushUrl: op.pushUrl }]);
+      if (op.verb === "rename") setList(list.map((r) => r.name === op.name ? { ...r, name: op.newName } : r));
+      if (op.verb === "set-url") setList(list.map((r) => r.name === op.name ? { ...r, url: op.url || r.url, pushUrl: op.pushUrl || r.pushUrl } : r));
+      if (op.verb === "remove") setList(list.filter((r) => r.name !== op.name));
+      return null;
+    };
+    return [list, run];
+  }
+  const NONSTD = (n) => ({ message: "Git remote named '" + n + "' has nonstandard configuration",
+    help: <>Its git config has entries jj doesn’t manage, such as a push URL, so jj leaves it alone. <code>{"git remote remove " + n}</code> removes it.</> });
+  const sync = <>
+    <SettingsRow label="Fetch from" configKey="git.fetch"><Select label="Fetch from" value="origin" options={["origin", "upstream", "mirror"]}/></SettingsRow>
+    <SettingsRow label="Push to" configKey="git.push"><Select label="Push to" value="origin" options={["origin", "upstream", "mirror"]}/></SettingsRow>
+  </>;
+  const FILE = '[user]\nname = "Ralph Stein"\nemail = "ralph@dasralph.de"\n\n[ui]\ndefault-command = "log"\ndiff-editor = ":builtin"\npager = "less -FRX"\n\n[git]\nsign-on-push = true\n\n[aliases]\ntug = ["bookmark", "move", "--from", "closest_bookmark(@-)", "--to", "@-"]\n\n[revset-aliases]\n"closest_bookmark(to)" = "heads(::to & bookmarks())"\n';
+  const BAD = FILE.replace('pager = "less -FRX"', 'pager = "less -FRX"\nconflict-marker-style = git');
+  const at = BAD.indexOf("git", BAD.indexOf("conflict-marker-style"));
+  function Demo() {
+    const [a, runA] = useRemotes(), [b, runB] = useRemotes();
+    const [file, setFile] = React.useState(FILE);
+    return (
+      <div className="g">
+        <div className="col">
+          <div>
+            <p className="cap"><b>1 · Remotes, a row as a form</b> — Settings › MyApp › Remotes: the list (name, fetch URL, the push URL when it differs; the credential in <i>mirror</i> hidden), ••• per row, Add remote… last, then Fetch from / Push to. Add with a name jj refuses: the form stays, the field is marked, jj's message verbatim under the command. ↩ runs, Esc cancels.</p>
+            <Shell title="Project" path={REPO}>
+              <RemotesGroup remotes={a} onRun={runA} initialForm={{ mode: "add", of: null, name: "origin", url: "https://github.com/jj-vcs/jj.git", push: "", refusal: { message: "Git remote named 'origin' already exists" } }}>{sync}</RemotesGroup>
+            </Shell>
+          </div>
+          <div>
+            <p className="cap"><b>2 · Remove, refused</b> — Remove… asks first (ConfirmDialog, a sheet on this window). jj refuses <i>upstream</i>: it was added with a push URL, a git key jj doesn't manage. The refusal shows under the row with one plain sentence. Try it on <i>origin</i> — that one goes.</p>
+            <Shell title="Project" path={REPO}>
+              <RemotesGroup remotes={b} onRun={runB} initialNotes={{ upstream: { refusal: NONSTD("upstream") } }}>{sync}</RemotesGroup>
+            </Shell>
+          </div>
+        </div>
+        <div>
+          <p className="cap"><b>3 · Config file</b> — General's scope line, <b>Edit…</b>: the user file as text, the GUI half of <code>jj config edit --user</code>. Monospaced, line numbers, no wrapping; Save checks it first. Shown: a value without quotes — nothing written, line 9 marked, jj's message, Show. Revert brings the saved file back; leaving with edits asks. The Settings window is resizable (minimum 620 × 420): a taller window gives the editor the room, a wider one the long lines and URLs.</p>
+          <Shell title="Config file" tab="general" path={USER} edit={false} height={760} fill>
+            <ConfigFilePage scope="user" path={USER} back="General" text={file} onBack={() => {}}
+              initialDraft={BAD} initialError={{ message: "invalid string\nexpected `\"`, `'`", start: at, end: at + 3 }}
+              onSave={(t) => { const m = t.match(/^[\w.-]+ = (?!["'\[{]|true|false|\d)(\S+)/m); if (m) { const s = t.indexOf(m[0]) + m[0].length - m[1].length; return { error: { message: "invalid string\nexpected `\"`, `'`", start: s, end: s + m[1].length } }; } setFile(t); return null; }}/>
+          </Shell>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

@@ -34,7 +34,7 @@
     </div>
   );
   const SettingsWin = ({ active, tab = "general" }) => (
-    <Window title={tab === "general" ? "General" : "Project"} titleHidden active={active} buttons={{ close: true }} width={620} headerAlign="center"
+    <Window title={tab === "general" ? "General" : "Project"} titleHidden active={active} buttons={{ close: true, zoom: true }} width={620} headerAlign="center"
       header={<Segmented variant="tabs" label="Settings" value={tab} onChange={() => {}} options={[{ value: "general", label: "General", icon: "settings" }, { value: "project", label: "MyApp", icon: <span style={{ display: "grid", borderRadius: 4, overflow: "hidden" }}><NamiMark size={14}/></span> }]}/>}>
       <div className="setbd">
         <SettingsGroup title="While you scroll"><SettingsRow label="Hide controls" hint="Toolbars and panels step aside while you scroll the graph."><Switch label="Hide controls" checked onChange={() => {}}/></SettingsRow></SettingsGroup>

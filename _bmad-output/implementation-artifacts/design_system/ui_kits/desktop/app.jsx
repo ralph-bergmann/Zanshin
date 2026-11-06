@@ -10,6 +10,26 @@ const EDGE = 12, TOP = 60, RAIL_R = 76, PANEL_W = 300, DETAIL_W = 460, MINI = 14
 const s8 = (id) => id.slice(0, 8);
 const short = (name) => { const m = name.match(/[A-Z][A-Z0-9]+-\d+/); return m ? m[0] : name.split("/").pop(); };
 
+// Settings › General (sync #21). Density: [card compact, card detailed, gap x, gap y] — components/density.css.
+// Zoom: the steps of Zoom In ⌘+ · Zoom Out ⌘− · Actual Size ⌘0.
+const ZK_DENSITY = { compact: [40, 62, 56, 48], balanced: [44, 68, 62, 54], comfy: [48, 74, 68, 60] };
+const ZK_ZOOM_STEPS = [90, 100, 110, 125, 150];
+window.ZK_ZOOM_STEPS = ZK_ZOOM_STEPS;
+// The kit zooms the page with CSS zoom; the browser then reports rects and pointer positions in zoomed pixels while CSS
+// keeps unzoomed ones, so these divide them back — kit plumbing only (the app scales its views' pixel ratio instead).
+(() => {
+  const k = () => window.__zsZoom || 1;
+  const rect = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function () { const r = rect.call(this), z = k(); return z === 1 ? r : new DOMRect(r.x / z, r.y / z, r.width / z, r.height / z); };
+  for (const p of ["clientX", "clientY", "pageX", "pageY", "x", "y"]) {
+    const d = Object.getOwnPropertyDescriptor(MouseEvent.prototype, p);
+    Object.defineProperty(MouseEvent.prototype, p, { configurable: true, get() { return d.get.call(this) / k(); } });
+  }
+  const at = Document.prototype.elementFromPoint, all = Document.prototype.elementsFromPoint;
+  Document.prototype.elementFromPoint = function (x, y) { return at.call(this, x * k(), y * k()); };
+  Document.prototype.elementsFromPoint = function (x, y) { return all.call(this, x * k(), y * k()); };
+})();
+
 function zkNewId(taken) { const a = "kmnopqrstuvwxyz"; let s; do { s = ""; for (let i = 0; i < 8; i++) s += a[Math.floor(Math.random() * a.length)]; } while (taken.has(s)); return s; }
 const hex = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, "0");
 
@@ -158,7 +178,10 @@ function ZKApp() {
   }, [repo.changes, imm, trunk]);
 
   // ---- derived graph ----
-  const W = opts.cardW, H = opts.detailed ? 62 : 40;
+  // Settings › Density (sync #21): card heights and the gaps between cards — the sets of components/density.css
+  const [hC, hD, gx, gy] = ZK_DENSITY[prefs.density] || ZK_DENSITY.compact;
+  Object.assign(window.ZK_G, { gapX: gx, gapY: gy });
+  const W = opts.cardW, H = opts.detailed ? hD : hC;
   const visibleChanges = React.useMemo(() => {
     if (revset === "default" || revset === "all") return repo.changes;
     const keep = window.zkRevsetMatch(revset, configs, D.me);
@@ -168,7 +191,7 @@ function ZKApp() {
     return repo.changes.filter((c) => ids.has(c.id)).map((c) => { const direct = c.parents.filter((p) => ids.has(p)); const hidden = [...new Set(near(c.id))].filter((p) => !direct.includes(p)); return { ...c, parents: direct, gapParents: hidden, realParents: P(c).length, endBelow: c.endBelow || (!direct.length && !hidden.length && P(c).length > 0) }; });
   }, [repo.changes, revset, configs]);
   const nodes = React.useMemo(() => window.zkFold(visibleChanges, repo.wc, opts.stacks, expanded), [visibleChanges, repo.wc, opts.stacks, expanded]);
-  const L = React.useMemo(() => window.zkLayout(nodes, W, H, opts.layout), [nodes, W, H, opts.layout]);
+  const L = React.useMemo(() => window.zkLayout(nodes, W, H, opts.layout), [nodes, W, H, opts.layout, gx, gy]);
   const byId = (id) => repo.changes.find((c) => c.id === id);
   const selected = sel ? byId(sel) : null;
   const project = window.zkFlatten(tree, 0, true).map((x) => x.node).find((n) => n.id === activeId) || { name: "—", path: "" };
@@ -183,6 +206,19 @@ function ZKApp() {
     root.dataset.theme = prefs.theme;
   }, [prefs.theme]);
   React.useEffect(() => { document.documentElement.dataset.density = prefs.density; }, [prefs.density]);
+  // Zoom (sync #21): every window scales; the kit scales the page (see ZK_ZOOM_STEPS)
+  React.useEffect(() => { const z = (prefs.zoom || 100) / 100; window.__zsZoom = z; document.documentElement.style.zoom = z === 1 ? "" : String(z); }, [prefs.zoom]);
+  React.useEffect(() => {
+    const k = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const d = e.key === "=" || e.key === "+" ? 1 : e.key === "-" ? -1 : e.key === "0" ? 0 : null;
+      if (d == null) return;
+      e.preventDefault();
+      setPrefs((p) => ({ ...p, zoom: d === 0 ? 100 : ZK_ZOOM_STEPS[Math.max(0, Math.min(ZK_ZOOM_STEPS.length - 1, ZK_ZOOM_STEPS.indexOf(p.zoom || 100) + d))] }));
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
   React.useEffect(() => {
     const root = document.documentElement;
     if (prefs.accent === "macos" && SYS_ACCENT !== "multicolor") root.dataset.accent = SYS_ACCENT; else delete root.dataset.accent;

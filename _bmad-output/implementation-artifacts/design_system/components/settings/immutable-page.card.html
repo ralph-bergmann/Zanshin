@@ -17,7 +17,7 @@
   const { Window, Segmented, SettingsGroup, SettingsRow, Select, Switch, ImmutablePage, HatchSwatch, NamiMark } = window.ZanshinDesignSystem_a33847;
   const tabs = <Segmented variant="tabs" label="Settings" value="project" onChange={() => {}} options={[{ value: "general", label: "General", icon: "settings" }, { value: "project", label: "MyApp", icon: <span className="mark"><NamiMark size={14}/></span> }]}/>;
   const Shell = ({ title, children }) => (
-    <Window title={title} titleHidden buttons={{ close: true }} width={620} headerAlign="center" header={tabs}>
+    <Window title={title} titleHidden buttons={{ close: true, zoom: true }} width={620} headerAlign="center" header={tabs}>
       <div className="scope">For MyApp only · <code>~/code/work/mobile/myapp/.jj/repo/config.toml</code></div>
       <div className="bd">{children}</div>
       <footer className="ft">How the graph looks lives with the graph: <b>View options</b> in the toolbar.</footer>

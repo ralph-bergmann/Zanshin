@@ -6,6 +6,13 @@
 //   horizontal stretches nest instead of crossing. route "A" = the routing before, "C" = shared fork lines (study only).
 (() => {
 const G = { gapX: 56, gapY: 48, pad: 56, hCompact: 40, hDetailed: 62, elide: 44, gutter: 88 };
+// Settings › Density (sync #21): more air around the cards, never larger text — card heights and the gaps between them.
+// Compact = G's own values; the client copies a set into G before it lays out (graph-view.jsx).
+const DENSITY = {
+  compact:  { gapX: 56, gapY: 48, hCompact: 40, hDetailed: 62 },
+  balanced: { gapX: 62, gapY: 54, hCompact: 44, hDetailed: 68 },
+  comfy:    { gapX: 68, gapY: 60, hCompact: 48, hDetailed: 74 },
+};
 const U = 16;
 const CUT_CLEAR = 12;
 const colMemo = new WeakMap();                          // graph list → chosen lanes + columns                                       // a bridge keeps this much visible line to the next bend or card
@@ -37,15 +44,15 @@ function gapUnits(g) {
 }
 
 function dayStart(t) { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); }
-// local calendar day of a time stamp (ms) → key + label: Today · Yesterday · Sep 23 (· year when it isn't this year)
+// local calendar day of a time stamp (ms) → key + label + year: Today · Yesterday · Sep 23 — never a year in the label;
+// the year is a label of its own at each year boundary (sync #22)
 function dayBucket(t) {
   if (t == null || isNaN(t)) return { key: -Infinity, label: "" };
   const now = new Date(dayStart(Date.parse(window.GRAPH_NOW) || Date.now())), yd = new Date(now);
   yd.setDate(yd.getDate() - 1);
   const key = dayStart(t), d = new Date(key);
-  const label = key >= now.getTime() ? "Today" : key === yd.getTime() ? "Yesterday"
-    : d.toLocaleDateString("en-US", d.getFullYear() === now.getFullYear() ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" });
-  return { key, label };
+  const label = key >= now.getTime() ? "Today" : key === yd.getTime() ? "Yesterday" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return { key, label, year: d.getFullYear() };
 }
 
 function segsOf(e) {
@@ -445,6 +452,35 @@ function freeRows(nodes, N) {
   });
 }
 
+// Free, long histories (sync #22, Story 10.31): a collapsed stack keeps its hidden members' time below it, so a long one
+// leaves screens of canvas with only lines in it. Any stretch with no card in any column taller than BREAK_MIN shrinks to
+// BREAK_TO (card to card) and becomes a break: a torn band naming the time it skips. Layout units, so a break never
+// depends on the window; an expanded stack fills its stretch with cards and the break is gone.
+const BREAK_MIN = 8 * U, BREAK_TO = 1.5 * U;
+function shortenFree(nodes) {
+  const byU = new Map();
+  nodes.forEach(n => { const a = byU.get(n.u); a ? a.push(n) : byU.set(n.u, [n]); });
+  const us = [...byU.keys()].sort((a, b) => a - b), cuts = [];
+  for (let i = 1; i < us.length; i++) {
+    if (us[i] - us[i - 1] <= BREAK_MIN) continue;
+    const t = (u, f) => f(...byU.get(u).map(n => n.t).filter(x => x != null && !isNaN(x)));
+    cuts.push({ lo: us[i - 1], hi: us[i], save: us[i] - us[i - 1] - BREAK_TO, tLo: t(us[i - 1], Math.max), tHi: t(us[i], Math.min) });
+  }
+  if (!cuts.length) return [];
+  const shift = u => cuts.reduce((s, c) => s + (c.hi <= u ? c.save : 0), 0);
+  cuts.forEach(c => { c.hiU = c.hi - shift(c.hi); });
+  nodes.forEach(n => { n.u -= shift(n.u); });
+  return cuts.map(c => ({ hiU: c.hiU, tLo: c.tLo, tHi: c.tHi, label: spanLabel(c.tLo, c.tHi) }));
+}
+// "4 years · Feb 2021 – Mar 2025" · "8 months · Jun – Dec 2025" · "3 weeks · Jun 3 – 24"
+function spanLabel(t0, t1) {
+  const d = (t1 - t0) / 864e5, a = new Date(t0), b = new Date(t1), M = (x) => x.toLocaleDateString("en-US", { month: "short" });
+  const len = d >= 548 ? Math.round(d / 365) + " years" : d >= 60 ? Math.round(d / 30.4) + " months" : d >= 14 ? Math.round(d / 7) + " weeks" : Math.max(1, Math.round(d)) + " days";
+  const range = a.getFullYear() !== b.getFullYear() ? `${M(a)} ${a.getFullYear()} – ${M(b)} ${b.getFullYear()}`
+    : a.getMonth() !== b.getMonth() ? `${M(a)} – ${M(b)} ${b.getFullYear()}` : `${M(a)} ${a.getDate()} – ${b.getDate()}`;
+  return len + " · " + range;
+}
+
 function routeAll(nodes, N, W, H, route, free) {
   const R = route === "A" ? routeLegacy(nodes, N, W, H) : routeLines(nodes, N, W, H, { bus: route === "C", free });
   const { cross } = analyzeEdges(R.edges), cuts = placeCuts(R.edges, cross);
@@ -502,6 +538,7 @@ function computeLayout(all, revset, W, H, mode = "free", opts = {}) {
   nodes.forEach(n => n.parents.forEach(p => N.get(p.id).children.push(n.id)));
   // rows in both layouts — they share their columns, so switching layouts only moves cards up and down (same width, same order)
   freeRows(nodes, N);
+  const breaks = shortenFree(nodes);
   const rowOf = (n) => n.rowC != null ? n.rowC : (n.rowC = n.parents.length ? Math.max(...n.parents.map(p => rowOf(N.get(p.id)))) + 1 : 0);
   nodes.forEach(n => { n.uF = n.u; n.uC = U * rowOf(n); });
   const M = [n => n.uF, n => n.uC];
@@ -625,7 +662,10 @@ function computeLayout(all, revset, W, H, mode = "free", opts = {}) {
 
   // Free: day axis — a dashed divider between two local calendar days (by clamped T); each day's label sits on the divider below its
   // first commit, at the left edge. Days never interleave in Free, so the band around a divider holds no cards — the label needs no gutter.
-  const days = [];
+  const days = [], years = [];
+  // breaks (sync #22): the band between the upper card's bottom and the lower card's top; a day divider inside it is the break
+  const bands = free ? breaks.map((b, i) => { const top = G.pad + (maxU - b.hiU) / U * pitch; return { key: "brk" + i, top: top + H, bottom: top + BREAK_TO / U * pitch, label: b.label }; }) : [];
+  const inBand = (y) => bands.some(b => y > b.top - 1 && y < b.bottom + 1);
   if (free) {
     const by = new Map(), root = nodes.find(n => n.c.isRoot);
     nodes.forEach(n => {
@@ -637,13 +677,17 @@ function computeLayout(all, revset, W, H, mode = "free", opts = {}) {
     let prev = null, lastY = Infinity;
     [...by.values()].sort((a, b) => a.key - b.key).forEach(d => {
       const floor = prev ? prev.hi.y : root ? root.y : d.lo.y + H + G.gapY, g = (floor + d.lo.y + H) / 2, y = Math.min(g, lastY - 22);
-      days.push({ key: d.key, label: d.label, y, guide: prev ? g : null });
+      // a year boundary at this divider (or the oldest day): year = the year above (the canvas pairs it with that day's label,
+      // read upward like the day labels), below = the year under it (the minimap's section header, read downward)
+      // inside a break the band's own label names both ends, so the canvas shows no year there
+      if (!prev || prev.year !== d.year) years.push({ key: "y" + d.year, year: d.year, below: prev ? prev.year : null, inBand: !!prev && inBand(g), y: prev && inBand(g) ? bands.find(b => g > b.top - 1 && g < b.bottom + 1).top : y });
+      if (!(prev && inBand(g))) days.push({ key: d.key, label: d.label, y, guide: prev ? g : null });
       prev = d; lastY = y;
     });
   }
 
   return {
-    nodes, N, ...R, days, offX: 0, mode: free ? "free" : "compact",
+    nodes, N, ...R, days, years, bands, offX: 0, mode: free ? "free" : "compact",
     width: G.pad * 2 + colCount * (W + G.gapX) - G.gapX,
     height: G.pad * 2 + botExtra + maxU / U * pitch + H,
     total: all.length, shown: list.length,
@@ -701,6 +745,6 @@ function groupStacks(all, revset, expanded) {
   return { list: out, runs };
 }
 
-window.GraphLayout = { G, U, CUT_CLEAR, gapUnits, dayBucket, roundedPath, analyzeEdges, reroute };
+window.GraphLayout = { G, DENSITY, U, CUT_CLEAR, gapUnits, dayBucket, roundedPath, analyzeEdges, reroute };
 Object.assign(window, { computeLayout, groupStacks });
 })();

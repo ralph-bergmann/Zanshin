@@ -11954,6 +11954,8 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 ### Story 10.31: Time axis and minimap for long histories — shortened gaps, a minimap sized to its content, year labels, a scrolling minimap [UI]
 *(Added 2026-11-03, Ralph — console session: findings 3–5 of Ralph's look at the running app on `dart-intellij-third-party` (4674 changes, 2013–2025) after the story loop 10.16 / 11.7 / 11.8; the direction below is Ralph's, the details are for the design round.)*
 
+*(2026-11-06, design round with Ralph — DESIGN-SYSTEM-SYNC #22. Build to the DS: `GraphBreak`, `DayAxis years`, card *Long history*, readme › Long histories. **The cause differs from item 2's premise:** the empty screens come from collapsed stacks keeping their hidden members' time below them (on `dart-intellij-third-party` the largest, 486 changes, left ≈ 64 screens), not from commit-free time — Free already damps gaps (the longest real one is 227 px), so "a gap taller than a viewport" never occurs. Decided (approach A): any stretch with no card in any column taller than **8 pitches** shrinks to **1½ pitches** card to card and shows a `GraphBreak` (layout units; expanding the stack removes it; no "show gap"). Years: no year in a day label; the canvas labels a year where it begins (not inside a break); the minimap reads top-down with section headers and a sticky top header. Minimap: 58 px labels + ≈ 12 px per column (60–160), minimum density 2 px per pitch, then it scrolls in proportion, measuring the layout's extent. Item 6 (the pill outside the card) is dropped — short labels fit. Already done in the app the same day (Ralph's screenshot): minimap edges run into the dots, every edge dotted alike on one grid. The stack list caps at 420 px and scrolls.)*
+
 **Motivation.** On a long history the Free layout and the minimap stop working: months without commits leave screens of empty canvas with only lines in it, the minimap's day labels lose their left part, and the whole history is squeezed into the minimap's height until years run into one another.
 
 **Scope.**
@@ -13765,6 +13767,8 @@ Nothing NEEDS DESIGN.
 ### Story 11.18: Remote management in Settings — add, rename, remove, set URL [UI/bridge]
 *(Added 2026-11-03, Ralph — console session after the story loop 10.16 / 11.7 / 11.8: "eine Design-Runde, dann eine Story". deferred-work.md "Remote management has no surface".)*
 
+*(Design round done 2026-11-06 with Ralph — `DESIGN-SYSTEM-SYNC.md` #20: DS `RemotesGroup` + card "Settings — Remotes and config file", prototype `design/remotes.jsx`. Scope item 1 is done; build to the DS.)*
+
 **Motivation.** 9.5's `jj git remote add`, `rename`, `remove` and `set-url` (done) have no UI; 11.7's Project tab only picks the fetch and push remotes.
 
 **Scope.**
@@ -13783,6 +13787,8 @@ Nothing NEEDS DESIGN.
 ### Story 11.19: Edit the config file — the GUI split of `jj config edit` [UI/bridge]
 *(Added 2026-11-03, Ralph — console session: "eine Design-Runde, dann eine Story". deferred-work.md "Raw config editing has no surface".)*
 
+*(Design round done 2026-11-06 with Ralph — `DESIGN-SYSTEM-SYNC.md` #20: a page in each Settings tab, reached from "Edit…" in the scope line; DS `ConfigFilePage`, prototype `design/config-file.jsx`. Ralph decided with it: **the Settings window becomes resizable** (minimum 620 × 420, zoom active; the height follows the tab until resized) — this story builds that too. Scope item 1 is done; build to the DS.)*
+
 **Motivation.** 9.28's `configFileRead` / `configFileWrite` (done) — the GUI's replacement for `jj config edit`'s `$EDITOR` — have no consumer; 11.7 edits only its own rows.
 
 **Scope.**
@@ -13799,6 +13805,8 @@ Nothing NEEDS DESIGN.
 
 ### Story 11.20: Density with an effect — spacing tokens per density [UI]
 *(Added 2026-11-03, Ralph — console session: "eine Design-Runde, dann eine Story". deferred-work.md "Density has no tokens"; 11.7 design question (a).)*
+
+*(2026-11-06, design round with Ralph — DESIGN-SYSTEM-SYNC #21. Build to the DS: readme › Density and zoom, `components/density.css`, cards *Density* and *Settings*. **Density is air only**: rows +0 / +3 / +6, graph cards 40/62 · 44/68 · 48/74, gaps 56×48 · 62×54 · 68×60; text, controls, chrome and window sizes stay, and the 12.5 / 13 / 13.5 text scale goes. **The scope grows by Zoom** (Ralph's choice over a font size): Settings › General › Zoom 90 · 100 · 110 · 125 · 150 % and View › Zoom In ⌘+ · Zoom Out ⌘− · Actual Size ⌘0 scale everything in every window, the window minimums with it, never the traffic lights — Flutter on macOS never receives the system's text size. The token layer gets the three sets and the parity reader `data-density`; the token block then moves from `components/density.css` into `tokens/spacing.css`. The non-goal "a custom scale" stands: Zoom is a fixed list of steps.)*
 
 **Motivation.** 11.7 built Settings › Density (Compact · Balanced · Comfy) as a text scale on 11.1's base size (12.5 / 13 / 13.5 px); no DS component reads it, so islands, cards, rows and menus keep their compact spacing.
 

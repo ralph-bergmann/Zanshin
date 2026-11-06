@@ -437,11 +437,39 @@ function BookmarkList({ commits, onPick, visibleSet, limit, onBeginDrag }) {
 
 // ============================================================
 // WORKSPACE
+// BREAK (sync #22) — a shortened card-free stretch: a torn strip across the whole plane, over the lines that run through it
+// (they show as cut at its edges); its label (the time it skips) sits with the day labels at the left edge.
+const zigzag = (x0, x1, y, phase, amp = 3, step = 9) => {
+  const pts = [];
+  for (let x = x0, k = phase; x <= x1 + step; x += step, k++) pts.push(Math.min(x, x1) + "," + (y + (k % 2 ? -amp : amp)));
+  return pts;
+};
+function BreakBand({ b, width }) {
+  const c = (b.top + b.bottom) / 2, up = zigzag(0, width, c - 9, 0), lo = zigzag(0, width, c + 9, 1);
+  return (
+    <g className="gbreak">
+      <path className="gbreak-fill" d={"M" + up.join(" L") + " L" + [...lo].reverse().join(" L") + " Z"}/>
+      <polyline className="gbreak-edge" points={up.join(" ")}/>
+      <polyline className="gbreak-edge" points={lo.join(" ")}/>
+    </g>
+  );
+}
+
 // ============================================================
 // ============================================================
 // MINIMAP (floating mode) — vertical density strip + time labels, replaces the time gutter
 // ============================================================
-const MINI_W = 118, MINI_CARD = 134, MINI_GL = 66, MINI_KX = 0.04, MINI_SPLIT = 58;
+// Width by content (sync #22): the labels keep MINI_SPLIT (short day labels and years fit), the graph part grows with the
+// columns at MINI_KX (one column ≈ 12 px) from MINI_GW_MIN up to MINI_GW_MAX, then squeezes. Card = strip + 2 × 8.
+const MINI_KX = 0.04, MINI_SPLIT = 58, MINI_GW_MIN = 60, MINI_GW_MAX = 160, MINI_PAD = 8;
+// Minimum density (sync #22): one pitch never shrinks below MINI_MIN_PITCH px; a taller history scrolls the minimap.
+const MINI_MIN_PITCH = 2;
+function minimapSize(L) {
+  const xs = L.nodes.map(n => n.cx), span = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+  const gw = Math.max(MINI_GW_MIN, Math.min(MINI_GW_MAX, span * MINI_KX + 2 * MINI_PAD));
+  const strip = MINI_SPLIT + gw;
+  return { gw, strip, card: strip + 2 * MINI_PAD, kx: span > 0 ? Math.min(MINI_KX, (gw - 2 * MINI_PAD) / span) : 0 };
+}
 function minimapLabels(L, H) {
   if (L.days.length) { const out = L.days.map(d => ({ y: d.y, label: d.label })).sort((a, b) => a.y - b.y); out.below = true; return out; }   // Free: a day's label sits at its bottom
   const rows = new Map();
@@ -466,75 +494,97 @@ function GraphMinimap({ L, H, scrollRef, planeRef, pos, hidden, top, bottom, wcI
   useEffect(() => {
     const el = scrollRef.current, m = ref.current, p = planeRef.current;
     if (!el || !m) return;
-    const read = () => setVp({ st: el.scrollTop, sh: el.scrollHeight, ch: el.clientHeight, mh: m.clientHeight, oy: p ? p.offsetTop + p.clientTop : 0 });
+    // the graph's own extent (the plane's border box), not scrollHeight: a hovered stack's list overflows the plane and would
+    // rescale the minimap while it shows (sync #22)
+    const read = () => setVp({ st: el.scrollTop, sh: p ? p.offsetTop + p.offsetHeight : el.scrollHeight, ch: el.clientHeight, mh: m.clientHeight, oy: p ? p.offsetTop + p.clientTop : 0 });
     read();
     el.addEventListener("scroll", read, { passive: true });
     const ro = new ResizeObserver(read);
     ro.observe(el); ro.observe(m); if (p) ro.observe(p, { box: "border-box" });
     return () => { el.removeEventListener("scroll", read); ro.disconnect(); };
   }, []);
-  const k = vp.mh / Math.max(1, vp.sh);
+  const size = useMemo(() => minimapSize(L), [L]), W = size.strip;
+  // minimum density: k never below one pitch = MINI_MIN_PITCH px; then the minimap scrolls with the canvas (VS Code):
+  // its offset ms runs from 0 at the top to (content − strip) at the bottom, in proportion to the canvas's scroll
+  const k = Math.max(vp.mh / Math.max(1, vp.sh), MINI_MIN_PITCH / (H + G.gapY));
+  const over = Math.max(0, vp.sh * k - vp.mh), range = Math.max(1, vp.sh - vp.ch);
+  const ms = over * Math.min(1, Math.max(0, vp.st / range));
   const labels = useMemo(() => minimapLabels(L, H), [L, H]);
   const geo = useMemo(() => {
-    if (!L.nodes.length || !vp.mh) return { nodes: [], edges: [] };
-    const xs = L.nodes.map(n => n.cx), x0 = Math.min(...xs), x1 = Math.max(...xs), gr = MINI_W - 4;
-    const kx = x1 > x0 ? Math.min((gr - MINI_GL) / (x1 - x0), MINI_KX) : 0;
-    const mx = (x) => gr - (x1 - x) * kx, my = (y) => (y + vp.oy) * k;
+    if (!L.nodes.length || !vp.mh) return { nodes: [], edges: [], bands: [] };
+    const x1 = Math.max(...L.nodes.map(n => n.cx)), gr = W - 4;
+    const mx = (x) => gr - (x1 - x) * size.kx, my = (y) => (y + vp.oy) * k;
     const nodes = L.nodes.map(n => ({ id: n.id, x: mx(n.cx), y: my(n.y + H / 2), grp: !!n.c.isGroup }));
     const edges = L.edges.map((e, i) => {
       const p = L.N.get(e.from), c = L.N.get(e.to);
       if (!e.pts || !p || !c) return null;
       const pts = [[p.cx, p.y + H / 2], ...e.pts, [c.cx, c.y + H / 2]];
-      return { k: e.from + ">" + e.to + i, dashed: e.dashed, d: pts.map(([x, y]) => mx(x).toFixed(1) + "," + my(y).toFixed(1)).join(" ") };
+      return { k: e.from + ">" + e.to + i, d: pts.map(([x, y]) => mx(x).toFixed(1) + "," + my(y).toFixed(1)).join(" ") };
     }).filter(Boolean);
-    return { nodes, edges };
-  }, [L, H, k, vp.mh, vp.oy]);
+    const bands = (L.bands || []).map(b => ({ key: b.key, d: zigzag(MINI_SPLIT + 4, W, my((b.top + b.bottom) / 2), 0, 2, 5).join(" ") }));
+    return { nodes, edges, bands };
+  }, [L, H, k, vp.mh, vp.oy, W, size.kx]);
 
-  const view = (sy) => sy / Math.max(k, 1e-6);
-  const vTop = (vp.st + top) * k, vBot = (vp.st + vp.ch - bottom) * k, cy = (vTop + vBot) / 2;
+  // strip y ↔ canvas: the band's centre sits at a·st + b; a jump solves for st
+  const view = (sy) => (sy + ms) / Math.max(k, 1e-6);
+  const vTop = (vp.st + top) * k - ms, vBot = (vp.st + vp.ch - bottom) * k - ms, cy = (vTop + vBot) / 2;
   const labelAt = (sy) => {
     const y = view(sy) - vp.oy;
     if (labels.below) { const l = labels.find(x => x.y >= y - 1) || labels[labels.length - 1]; return l ? l.label : ""; }
     let pick = labels[0]; labels.forEach(l => { if (l.y <= y + 1) pick = l; }); return pick ? pick.label : "";
   };
+  // years (Free): read downward like a list, each year boundary heads the section below it (the older year), and the
+  // section the strip's top is in sticks there as a header (sync #22)
+  const bounds = (L.years || []).map(y => ({ ...y, sy: (y.y + vp.oy) * k - ms })).sort((a, b) => a.sy - b.sy);
+  const years = bounds.filter(y => y.below != null).map(y => ({ key: y.key, year: y.below, sy: y.sy }));
+  // no header for a history that lies in this year alone — Today, Yesterday and Sep 22 say enough there
+  const passed = years.filter(y => y.sy <= 22).pop(), thisYear = new Date(Date.parse(window.GRAPH_NOW) || Date.now()).getFullYear();
+  const sticky = passed ? passed.year : bounds.length && (years.length || bounds[0].year !== thisYear) ? bounds[0].year : null;
   let lastY = -99;
-  const shown = labels.map(l => ({ ...l, sy: (l.y + vp.oy) * k })).filter(l => {
-    if (l.sy - lastY < 18 || Math.abs(l.sy - cy) < 15 || (hov != null && Math.abs(l.sy - hov) < 13)) return false;
+  const shown = labels.map(l => ({ ...l, sy: (l.y + vp.oy) * k - ms })).filter(l => {
+    if (l.sy < (sticky ? 22 : 4) || l.sy > vp.mh - 4) return false;
+    if (l.sy - lastY < 18 || Math.abs(l.sy - cy) < 15 || (hov != null && Math.abs(l.sy - hov) < 13) || years.some(y => Math.abs(y.sy - l.sy) < 16)) return false;
     lastY = l.sy; return true;
   });
   const jump = (e) => {
     const el = scrollRef.current, r = ref.current.getBoundingClientRect();
-    el.scrollTop = view(e.clientY - r.top) - (top + (vp.ch - top - bottom) / 2);
+    const a = k - over / range, b = (top + (vp.ch - top - bottom) / 2) * k;
+    el.scrollTop = (e.clientY - r.top - b) / Math.max(a, 1e-6);
   };
   const pillLabel = labelAt(cy), hovLabel = hov != null ? labelAt(hov) : null;
   const layer = (cls, clip) => (
     <g className={"gmini-g " + cls} clipPath={clip}>
-      {geo.edges.map(e => <polyline key={e.k} points={e.d} className={"gmini-e " + (e.dashed ? "dashed" : "")}></polyline>)}
+      {geo.edges.map(e => <polyline key={e.k} points={e.d} className="gmini-e"></polyline>)}
       {geo.nodes.map(n => <circle key={n.id} cx={n.x} cy={n.y} r={n.grp ? 2.6 : 2} className={"gmini-n " + (n.grp ? "grp" : "")}></circle>)}
     </g>
   );
   const mark = (id, cls) => { const n = id && geo.nodes.find(x => x.id === id); return n ? <circle cx={n.x} cy={n.y} r="3.2" className={"gmini-n " + cls}></circle> : null; };
   return (
-    <div className={"gmini" + (hidden ? " is-hidden" : "")} style={pos} aria-label="Minimap" aria-hidden={hidden}>
+    <div className={"gmini" + (hidden ? " is-hidden" : "")} style={{ ...pos, width: size.card }} aria-label="Minimap" aria-hidden={hidden}>
     <div className="gmini-strip" ref={ref}
       onPointerDown={(e) => { drag.current = true; e.currentTarget.setPointerCapture(e.pointerId); setHov(null); jump(e); }}
       onPointerMove={(e) => { if (drag.current) { onScrub && onScrub(40); return jump(e); } const r = ref.current.getBoundingClientRect(); setHov(e.clientY - r.top); }}
       onPointerUp={() => { drag.current = false; }} onPointerCancel={() => { drag.current = false; }}
       onPointerLeave={() => setHov(null)}
       onWheel={(e) => { if (scrollRef.current) scrollRef.current.scrollBy(e.deltaX, e.deltaY); onScrub && onScrub(Math.abs(e.deltaX) + Math.abs(e.deltaY)); }}>
-      <svg className="gmini-svg" width={MINI_W} height={vp.mh}>
-        <defs><clipPath id="gmini-clip"><rect x="-8" y={vTop} width={MINI_W + 16} height={Math.max(0, vBot - vTop)}></rect></clipPath></defs>
-        <rect className="gmini-view" x={MINI_SPLIT + 2} y={vTop} width={MINI_W - MINI_SPLIT + 2} height={Math.max(4, vBot - vTop)} rx="4"></rect>
-        {layer("", undefined)}
-        {layer("in", "url(#gmini-clip)")}
-        {mark(selectedId, "sel")}
-        {mark(wcId, "wc")}
-        {hov != null && <line className="gmini-hline" x1={MINI_SPLIT} x2={MINI_W} y1={hov} y2={hov}></line>}
-        <line className="gmini-conn" x1={MINI_SPLIT} x2={MINI_W} y1={cy} y2={cy}></line>
+      <svg className="gmini-svg" width={W} height={vp.mh}>
+        <defs><clipPath id="gmini-clip"><rect x="-8" y={vTop + ms} width={W + 16} height={Math.max(0, vBot - vTop)}></rect></clipPath></defs>
+        <rect className="gmini-view" x={MINI_SPLIT + 2} y={vTop} width={W - MINI_SPLIT + 2} height={Math.max(4, vBot - vTop)} rx="4"></rect>
+        <g transform={`translate(0 ${-ms})`}>
+          {layer("", undefined)}
+          {layer("in", "url(#gmini-clip)")}
+          {geo.bands.map(b => <polyline key={b.key} points={b.d} className="gmini-break"></polyline>)}
+          {mark(selectedId, "sel")}
+          {mark(wcId, "wc")}
+        </g>
+        {hov != null && <line className="gmini-hline" x1={MINI_SPLIT} x2={W} y1={hov} y2={hov}></line>}
+        <line className="gmini-conn" x1={MINI_SPLIT} x2={W} y1={cy} y2={cy}></line>
       </svg>
-      {shown.map(l => <span key={l.label + l.y} className="gmini-lbl" style={{ top: l.sy, right: MINI_W - MINI_SPLIT + 4 }}>{l.label}</span>)}
-      {hovLabel && <span className="gmini-pill is-hov" style={{ top: hov, right: MINI_W - MINI_SPLIT }}>{hovLabel}</span>}
-      {pillLabel && <span className="gmini-pill" style={{ top: cy, right: MINI_W - MINI_SPLIT }}>{pillLabel}</span>}
+      {shown.map(l => <span key={l.label + l.y} className="gmini-lbl" style={{ top: l.sy, right: W - MINI_SPLIT + 4 }}>{l.label}</span>)}
+      {years.filter(y => y.sy > 22 && y.sy < vp.mh - 4).map(y => <span key={y.key} className="gmini-year" style={{ top: y.sy, right: W - MINI_SPLIT + 4 }}>{y.year}</span>)}
+      {sticky && <span className="gmini-year is-sticky" style={{ right: W - MINI_SPLIT + 4 }}>{sticky}</span>}
+      {hovLabel && <span className="gmini-pill is-hov" style={{ top: hov, right: W - MINI_SPLIT }}>{hovLabel}</span>}
+      {pillLabel && <span className="gmini-pill" style={{ top: cy, right: W - MINI_SPLIT }}>{pillLabel}</span>}
     </div>
     </div>
   );
@@ -584,6 +634,8 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
   const pendingScroll = useRef(GQ.get("focus") || wcId);
   const mounted = useRef(false);
   const clickT = useRef(null);
+  const dens = t.density in window.GraphLayout.DENSITY ? t.density : "compact";
+  Object.assign(G, window.GraphLayout.DENSITY[dens]);   // Settings › Density: card heights + gaps (sync #21)
   const H = detailed ? G.hDetailed : G.hCompact;
   const optimize = t.laneOrder !== "greedy";
   const S = useMemo(() => stacks ? groupStacks(all, revset, expanded) : { list: all, runs: [] }, [all, revset, rsv, stacks, expanded]);
@@ -595,9 +647,10 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
     const m = new Map();
     L0.nodes.forEach(n => (n.c.isGroup ? n.c.members : [n]).forEach(x => m.set(x.id, n.col)));
     return m;
-  }, [all, revset, rsv, stacks, expanded, cardW, H, optimize]);
-  const L = useMemo(() => computeLayout(S.list, revset, cardW, H, layout, { optimize, cols }), [S, revset, rsv, cardW, H, layout, optimize, cols]);
+  }, [all, revset, rsv, stacks, expanded, cardW, H, optimize, dens]);
+  const L = useMemo(() => computeLayout(S.list, revset, cardW, H, layout, { optimize, cols }), [S, revset, rsv, cardW, H, layout, optimize, cols, dens]);
   const shownCount = L.nodes.reduce((s, n) => s + (n.c.members ? n.c.members.length : 1), 0);
+  const MINI_CARD = minimapSize(L).card;   // the minimap's width follows the columns (sync #22)
   const toggleStack = (gid) => {
     const run = S.runs.find(r => r.id === gid); if (!run) return;
     const m = run.members;
@@ -1155,6 +1208,8 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
             {L.days.length > 0 && (
               <div className="gtime" style={{ height: L.height, width: G.gutter, ...(floating ? { left: Math.max(0, (fi.left || 0) - 6) } : null) }}>
                 {L.days.map(d => <div key={d.key} className="gtime-label" style={{ top: d.y }}>{d.label}</div>)}
+                {(L.years || []).filter(y => y.below != null && !y.inBand).map(y => <div key={y.key} className="gtime-year" style={{ top: y.y }}>{y.year}</div>)}
+                {(L.bands || []).map(b => <div key={b.key} className="gtime-label gbreak-label" style={{ top: (b.top + b.bottom) / 2 }}>{b.label}</div>)}
               </div>
             )}
             <svg className="gedges" width={L.width} height={L.height}>
@@ -1175,6 +1230,7 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
               ))}
               {L.markers.map(m => <window.GapMark key={m.key} m={m} variant={gapVariant} count={showCount || counted.has(m.key) ? m.count : null} cls={markerCls(m)}/>)}
               {L.stubs.map(s => <window.GapEnd key={s.key} s={s} variant={gapVariant} count={showCount || counted.has(s.key) ? s.count : null} cls={stubCls(s)}/>)}
+              {(L.bands || []).map(b => <BreakBand key={b.key} b={b} width={L.width}/>)}
               {L.markers.map(m => m.edges.map(i => (
                 <path key={"h" + m.key + i} d={L.edges[i].d} className="ghit" onMouseEnter={() => gapEnter(m)} onMouseLeave={gapLeave}/>
               )))}

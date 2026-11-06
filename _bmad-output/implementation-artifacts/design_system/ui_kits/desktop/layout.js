@@ -271,7 +271,8 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 function dayOf(t, now) {
   const d0 = (x) => { const d = new Date(x); d.setHours(0, 0, 0, 0); return d.getTime(); };
   const key = d0(t), today = d0(now), d = new Date(key);
-  return { key, label: key >= today ? "Today" : key === d0(today - 3600000) ? "Yesterday" : MONTHS[d.getMonth()] + " " + d.getDate() + (d.getFullYear() !== new Date(now).getFullYear() ? ", " + d.getFullYear() : "") };
+  // never a year in a day label (sync #22): years are labels of their own at year boundaries (DayAxis years)
+  return { key, label: key >= today ? "Today" : key === d0(today - 3600000) ? "Yesterday" : MONTHS[d.getMonth()] + " " + d.getDate() };
 }
 
 // nodes: folded changes ({ id, parents, gapParents, lane, t (minutes ago), stack, members, endBelow }) · mode "free" | "compact"

@@ -102,6 +102,14 @@
 .zs-days-col{position:sticky;top:0;width:88px;z-index:8}
 .zs-day-label{position:absolute;transform:translateY(-50%);font:var(--fs-sm) var(--font-mono);color:var(--text-muted);white-space:nowrap;padding:2px 7px;border-radius:var(--radius-tag);background:var(--card-solid);border:1px solid var(--border)}
 .zs-days-col>.zs-day-label{left:14px}
+/* long histories (sync #22, Story 10.31): the year as its own label above the day label where a year begins (the day labels
+   never carry a year); GraphBreak = a shortened card-free stretch — a torn strip over the lines, its span at the left edge */
+.zs-year-label{position:absolute;transform:translateY(calc(-50% - 22px));font:var(--fw-semibold) var(--fs-xs)/1 var(--font-sans);letter-spacing:var(--tracking-pill);color:var(--text-muted);white-space:nowrap}
+.zs-break{position:absolute;left:0;display:flex;align-items:center;pointer-events:none}
+.zs-break-strip{position:absolute;left:0;top:0;overflow:visible}
+.zs-break-fill{fill:var(--fl-bg-solid);opacity:.92}
+.zs-break-edge{fill:none;stroke:var(--border-strong);stroke-width:1;stroke-linejoin:round}
+.zs-break-label{position:sticky;font:var(--fs-sm) var(--font-mono);color:var(--text-dim);white-space:nowrap;padding:2px 7px;border-radius:var(--radius-tag);background:var(--card-solid);border:1px solid var(--border)}
 
 /* Immutable — no colour, no ◆: the hatch is the marker. 135°, 1px every 6px in --hatch, on the normal card — it stays on hover, selection,
    open menu and drop target (this block comes last, so the states' background shorthands don't clear it); stacks follow (the front card).

@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/brand/Icon.jsx":"df15e6713ebc","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"017e79b469f3","components/content/DiffView.jsx":"04b319036eb4","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"cb9ce51e065b","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"daf511168e2f","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"c7c18348d2bf","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"7e3ccde5113a","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"1622468fa8bc","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"e890a01991e8","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"b6e9c7fe0cc6","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"b103786c1ee8","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphBreak","sourcePath":"components/graph/GraphBreak.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/brand/Icon.jsx":"df15e6713ebc","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"017e79b469f3","components/content/DiffView.jsx":"04b319036eb4","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"cb9ce51e065b","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"cca3d50ba617","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphBreak.jsx":"40dd930f7931","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"c7c18348d2bf","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"7e3ccde5113a","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"1622468fa8bc","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"e890a01991e8","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"b6e9c7fe0cc6","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"b103786c1ee8","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -2176,7 +2176,7 @@ Object.assign(__ds_scope, { ChangeCard });
 
 // components/graph/DayAxis.jsx
 try { (() => {
-// DayLabel — one calendar day on the graph's day axis: "Today", "Yesterday", "Sep 23" (+ year when it isn't this year).
+// DayLabel — one calendar day on the graph's day axis: "Today", "Yesterday", "Sep 23" — never a year (sync #22).
 function DayLabel({
   children,
   className = "",
@@ -2192,9 +2192,12 @@ function DayLabel({
 // the divider below that day's first commit, at the left edge, sticky. The oldest day's label sits below its first commit.
 // Reading upward: label = "this day starts here". Days never interleave in Free, so the band around a divider holds no cards.
 // days: [{ key, label, y, guide }] — y = label centre; guide = divider y (none for the oldest day).
+// years: [{ key, year, y }] — where a year begins (sync #22): the year above the divider, its own label just above that day's
+// label (y = the day label's y). None where the history holds one year, none inside a GraphBreak.
 // Place it first in the graph plane (under cards and lines); the labels stay in view while the plane scrolls sideways.
 function DayAxis({
   days = [],
+  years = [],
   width,
   height,
   x0 = 0,
@@ -2234,7 +2237,14 @@ function DayAxis({
       top: d.y,
       left: labelLeft
     }
-  }, d.label))));
+  }, d.label)), years.map(y => /*#__PURE__*/React.createElement("span", {
+    key: y.key || y.year,
+    className: "zs-year-label",
+    style: {
+      top: y.y,
+      left: labelLeft
+    }
+  }, y.year))));
 }
 Object.assign(__ds_scope, { DayLabel, DayAxis });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/graph/DayAxis.jsx", error: String((e && e.message) || e) }); }
@@ -2259,6 +2269,81 @@ function Flag({
 }
 Object.assign(__ds_scope, { Flag });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/graph/Flag.jsx", error: String((e && e.message) || e) }); }
+
+// components/graph/GraphBreak.jsx
+try { (() => {
+// GraphBreak — a shortened card-free stretch of the Free layout (sync #22, Story 10.31). A collapsed stack keeps its hidden
+// members' time below it, so a long one would leave screens of canvas with only lines in it: any stretch with no card in
+// any column taller than 8 pitches shrinks to 1½ pitches card to card, and this strip marks it — torn edges across the
+// whole plane over the lines that run through (they read as cut), its span at the left edge with the day labels, sticky.
+// top / bottom = the band between the upper card's bottom and the lower card's top; label = GraphBreak.label(t0, t1).
+function GraphBreak({
+  top,
+  bottom,
+  width,
+  label,
+  stickyLeft = 0,
+  labelLeft = 14,
+  className = "",
+  style
+}) {
+  const h = bottom - top,
+    c = h / 2,
+    up = zigzag(width, c - 9, 0),
+    lo = zigzag(width, c + 9, 1);
+  return /*#__PURE__*/React.createElement("div", {
+    className: ("zs-break " + className).trim(),
+    style: {
+      top,
+      width,
+      height: h,
+      ...style
+    },
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("svg", {
+    className: "zs-break-strip",
+    width: width,
+    height: h
+  }, /*#__PURE__*/React.createElement("path", {
+    className: "zs-break-fill",
+    d: "M" + up.join(" L") + " L" + [...lo].reverse().join(" L") + " Z"
+  }), /*#__PURE__*/React.createElement("polyline", {
+    className: "zs-break-edge",
+    points: up.join(" ")
+  }), /*#__PURE__*/React.createElement("polyline", {
+    className: "zs-break-edge",
+    points: lo.join(" ")
+  })), label && /*#__PURE__*/React.createElement("span", {
+    className: "zs-break-label",
+    style: {
+      left: stickyLeft + labelLeft,
+      marginLeft: labelLeft
+    }
+  }, label));
+}
+
+// the torn edge: a zigzag of amplitude 3 every 9px
+function zigzag(width, y, phase, amp = 3, step = 9) {
+  const pts = [];
+  for (let x = 0, k = phase; x <= width + step; x += step, k++) pts.push(Math.min(x, width) + "," + (y + (k % 2 ? -amp : amp)));
+  return pts;
+}
+
+// The span a break skips, from the lower card's time t0 to the upper card's t1 (ms):
+// "4 years · Feb 2021 – Mar 2025" · "8 months · Jun – Dec 2025" · "3 weeks · Jun 3 – 24"
+GraphBreak.label = function (t0, t1) {
+  const d = (t1 - t0) / 864e5,
+    a = new Date(t0),
+    b = new Date(t1),
+    M = x => x.toLocaleDateString("en-US", {
+      month: "short"
+    });
+  const len = d >= 548 ? Math.round(d / 365) + " years" : d >= 60 ? Math.round(d / 30.4) + " months" : d >= 14 ? Math.round(d / 7) + " weeks" : Math.max(1, Math.round(d)) + " days";
+  const range = a.getFullYear() !== b.getFullYear() ? `${M(a)} ${a.getFullYear()} – ${M(b)} ${b.getFullYear()}` : a.getMonth() !== b.getMonth() ? `${M(a)} – ${M(b)} ${b.getFullYear()}` : `${M(a)} ${a.getDate()} – ${b.getDate()}`;
+  return len + " · " + range;
+};
+Object.assign(__ds_scope, { GraphBreak });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/graph/GraphBreak.jsx", error: String((e && e.message) || e) }); }
 
 // components/graph/GraphEdge.jsx
 try { (() => {
@@ -4441,6 +4526,519 @@ ImmutablePage.summary = config => zsImmSummary({
 ImmutablePage.toml = (config, trunkName = "main") => "[revset-aliases]\n" + (trunkName !== "main" ? '"trunk()" = ' + zsTomlStr(trunkName) + "\n" : "") + '"immutable_heads()" = ' + zsTomlStr(ImmutablePage.expr(config));
 Object.assign(__ds_scope, { ImmutablePage });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/settings/ImmutablePage.jsx", error: String((e && e.message) || e) }); }
+
+// components/settings/ConfigFilePage.jsx
+try { (() => {
+// ConfigFilePage — the GUI half of `jj config edit` (sync #20): a page inside each Settings tab, reached from the scope line's "Edit…"
+// (General → --user, Project → --repo; the scope's first file, as the CLI picks). It takes the window's height; the window is resizable.
+// The editor: the file's exact text, monospaced, line numbers, no wrapping (long lines scroll sideways). Save (gold, ⌘S) — jj checks the
+// text as TOML first (the CLI's re-edit loop): an error writes nothing, marks its span (gutter line + wavy underline), names line and column
+// and shows jj's message; you keep editing or Revert (the CLI's "previous config will be restored"). After a save Settings reads the file
+// again. Unsaved edits ask before Back, another tab or closing (onDirtyChange — the window asks with a ConfirmDialog). stale: the file
+// changed on disk while you edited — a notice with Reload. onSave(text) returns null or { error: { message, start, end } } (text offsets).
+function zsCfgPos(text, at) {
+  const before = text.slice(0, at).split("\n");
+  return {
+    line: before.length,
+    col: before[before.length - 1].length + 1
+  };
+}
+function ConfigFilePage({
+  scope = "user",
+  path,
+  text = "",
+  back,
+  project,
+  onBack,
+  onSave,
+  onReload,
+  onDirtyChange,
+  stale = false,
+  initialDraft,
+  initialError = null,
+  className = ""
+}) {
+  const [draft, setDraft] = React.useState(initialDraft != null ? initialDraft : text);
+  const [error, setError] = React.useState(initialError);
+  const [saved, setSaved] = React.useState(false);
+  const ta = React.useRef(null),
+    gut = React.useRef(null),
+    mir = React.useRef(null);
+  // a new saved text (a save, Reload) replaces the draft; the first render keeps initialDraft
+  const mounted = React.useRef(false);
+  React.useEffect(() => {
+    if (mounted.current) {
+      setDraft(text);
+      setError(null);
+    }
+    mounted.current = true;
+  }, [text]);
+  const dirty = draft !== text;
+  React.useEffect(() => {
+    if (onDirtyChange) onDirtyChange(dirty);
+  }, [dirty]);
+  const lines = draft.split("\n").length;
+  const pos = error ? zsCfgPos(draft, error.start) : null;
+  const sync = () => {
+    const el = ta.current;
+    if (!el) return;
+    if (gut.current) gut.current.style.transform = "translateY(" + -el.scrollTop + "px)";
+    if (mir.current) mir.current.style.transform = "translate(" + -el.scrollLeft + "px," + -el.scrollTop + "px)";
+  };
+  React.useLayoutEffect(sync, [draft, error]);
+  const show = e => {
+    const el = ta.current;
+    if (!el || !e) return;
+    el.focus();
+    el.setSelectionRange(e.start, e.start);
+  };
+  const save = () => {
+    if (!dirty) return;
+    const res = onSave ? onSave(draft) : null;
+    if (res && res.error) {
+      setError(res.error);
+      show(res.error);
+      return;
+    }
+    setError(null);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1600);
+  };
+  const onKey = e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      e.stopPropagation();
+      save();
+    }
+  };
+  return /*#__PURE__*/React.createElement(__ds_scope.SettingsPage, {
+    className: ("zs-cfg-page " + className).trim(),
+    back: back,
+    onBack: onBack,
+    title: "Config file",
+    intro: scope === "user" ? "jj’s settings for every repository on this Mac, as TOML. The rows in General write here too." : "jj’s settings for " + (project || "this project") + " only. They win over your user file."
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-cfg" + (error ? " has-error" : ""),
+    onKeyDown: onKey
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-cfg-bar"
+  }, /*#__PURE__*/React.createElement("code", {
+    className: "zs-cfg-path",
+    title: path
+  }, path), /*#__PURE__*/React.createElement("span", {
+    className: "zs-cfg-state" + (dirty ? " is-dirty" : "")
+  }, dirty ? "Edited" : saved ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "check",
+    size: "xs"
+  }), "Saved") : null)), stale && /*#__PURE__*/React.createElement("div", {
+    className: "zs-cfg-note",
+    role: "status"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "conflict",
+    size: "sm"
+  }), /*#__PURE__*/React.createElement("span", null, "The file changed on disk while you edited it."), /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "sm",
+    onClick: onReload,
+    title: "Replaces your edits with the file on disk"
+  }, "Reload")), /*#__PURE__*/React.createElement("div", {
+    className: "zs-cfg-ed"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-cfg-gut",
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("div", {
+    ref: gut
+  }, Array.from({
+    length: lines
+  }, (_, i) => /*#__PURE__*/React.createElement("span", {
+    key: i,
+    className: pos && pos.line === i + 1 ? "is-error" : undefined
+  }, i + 1)))), /*#__PURE__*/React.createElement("div", {
+    className: "zs-cfg-text"
+  }, /*#__PURE__*/React.createElement("pre", {
+    className: "zs-cfg-mirror",
+    "aria-hidden": "true",
+    ref: mir
+  }, error ? /*#__PURE__*/React.createElement(React.Fragment, null, draft.slice(0, error.start), /*#__PURE__*/React.createElement("mark", null, draft.slice(error.start, error.end) || " "), draft.slice(error.end)) : draft, "\n"), /*#__PURE__*/React.createElement("textarea", {
+    ref: ta,
+    value: draft,
+    onChange: e => setDraft(e.target.value),
+    onScroll: sync,
+    wrap: "off",
+    spellCheck: false,
+    autoCapitalize: "off",
+    autoComplete: "off",
+    "aria-label": "Contents of " + path
+  })))), error && /*#__PURE__*/React.createElement("div", {
+    className: "zs-cfg-err",
+    role: "alert"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "conflict",
+    size: "sm"
+  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("b", null, "Not saved: line ", pos.line, ", column ", pos.col), /*#__PURE__*/React.createElement("span", {
+    className: "zs-cfg-msg"
+  }, error.message), /*#__PURE__*/React.createElement("span", {
+    className: "zs-cfg-help"
+  }, "jj only writes a file it can read back. Fix the marked spot, or Revert to the saved file.")), /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "sm",
+    onClick: () => show(error)
+  }, "Show")), /*#__PURE__*/React.createElement("div", {
+    className: "zs-cfg-ft"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-cfg-key"
+  }, "⌘S saves"), /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    disabled: !dirty,
+    onClick: () => {
+      setDraft(text);
+      setError(null);
+    },
+    title: "Back to the saved file"
+  }, "Revert"), /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    variant: "primary",
+    disabled: !dirty,
+    onClick: save,
+    title: "⌘S"
+  }, "Save")));
+}
+ConfigFilePage.position = zsCfgPos;
+Object.assign(__ds_scope, { ConfigFilePage });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/settings/ConfigFilePage.jsx", error: String((e && e.message) || e) }); }
+
+// components/settings/RemotesGroup.jsx
+try { (() => {
+// RemotesGroup — Settings › Project › Remotes (sync #20): the git remotes (jj git remote list), then the group's other rows (children:
+// Fetch from · Push to · Fetch automatically). A row: the name, the fetch URL (mono, one line, ellipsis — the window is resizable), the
+// push URL when it differs. ••• → Rename… · Set URL… · Remove…; "Add remote…" is the list's last row. Rename, Set URL and Add edit IN the
+// row (the Projects window's in-place rename grown to a small form): fields, the exact command, Cancel + the verb; ↩ runs, Esc cancels.
+// Remove asks first (ConfirmDialog, a sheet on the Settings window): git forgets the URLs and jj undo can't bring them back.
+// A credential never shows — rows, fields, commands, tooltips hide everything between "scheme://" and "@".
+// onRun(op) runs the jj verb and returns null, { refusal: { message, help } } (jj's text verbatim + one plain sentence) or { warning }.
+const zsRemScrub = u => u == null ? u : u.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]+@/i, "$1•••@");
+const zsRemCred = u => u != null && zsRemScrub(u) !== u;
+const zsSh = s => /^[A-Za-z0-9_@%+=:,./-]+$/.test(s) ? s : "'" + s.replace(/'/g, "'\\''") + "'";
+// set-url sends only the sides that change; an empty field leaves its side alone (jj can set a URL, not remove one)
+const zsRemSide = (v, was) => {
+  const t = (v || "").trim();
+  return t && t !== was ? t : null;
+};
+function zsRemOp(f, r) {
+  if (f.mode === "add") return {
+    verb: "add",
+    name: f.name.trim(),
+    url: f.url.trim(),
+    pushUrl: f.push.trim() || null
+  };
+  if (f.mode === "rename") return {
+    verb: "rename",
+    name: f.of,
+    newName: f.name.trim()
+  };
+  if (f.mode === "url") return {
+    verb: "set-url",
+    name: f.of,
+    url: zsRemSide(f.url, r && r.url),
+    pushUrl: zsRemSide(f.push, r && (r.pushUrl || r.url))
+  };
+  return {
+    verb: "remove",
+    name: f.of
+  };
+}
+function zsRemCommand(op) {
+  const a = ["jj git remote", op.verb];
+  if (op.verb === "add") {
+    a.push(zsSh(op.name || "<name>"), zsSh(zsRemScrub(op.url) || "<url>"));
+    if (op.pushUrl) a.push("--push-url", zsSh(zsRemScrub(op.pushUrl)));
+  } else if (op.verb === "rename") a.push(zsSh(op.name), zsSh(op.newName || "<new name>"));else if (op.verb === "set-url") {
+    a.push(zsSh(op.name));
+    if (op.url) a.push(zsSh(zsRemScrub(op.url)));
+    if (op.pushUrl) a.push("--push", zsSh(zsRemScrub(op.pushUrl)));
+  } else a.push(zsSh(op.name));
+  return a.join(" ");
+}
+function ZsRemRefusal({
+  refusal
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "zs-rem-err",
+    role: "alert"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-err-msg"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "conflict",
+    size: "sm"
+  }), refusal.message), refusal.help && /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-help"
+  }, refusal.help));
+}
+function ZsRemForm({
+  f,
+  setF,
+  remote,
+  onRun,
+  onCancel
+}) {
+  const first = React.useRef(null);
+  React.useEffect(() => {
+    const el = first.current;
+    if (el) {
+      el.focus();
+      if (f.mode === "rename") el.select();
+    }
+  }, []);
+  const op = zsRemOp(f, remote);
+  const ok = f.mode === "add" ? op.name && op.url : f.mode === "rename" ? op.newName && op.newName !== f.of : !!(op.url || op.pushUrl);
+  const onKey = e => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (ok) onRun();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    }
+  };
+  const field = (k, label, o = {}) => /*#__PURE__*/React.createElement("label", {
+    className: "zs-rem-f"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-fl"
+  }, label), /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-fc"
+  }, /*#__PURE__*/React.createElement(__ds_scope.TextField, {
+    size: "sm",
+    mono: o.mono,
+    inputRef: o.first ? first : undefined,
+    value: f[k],
+    placeholder: o.placeholder,
+    error: !!(o.marks && f.refusal),
+    onChange: e => setF({
+      ...f,
+      [k]: e.target.value,
+      refusal: null
+    }),
+    spellCheck: false,
+    autoComplete: "off",
+    "aria-label": label
+  }), o.hint && /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-fh"
+  }, o.hint)));
+  const cred = u => zsRemCred(u) ? zsRemScrub(u) : "";
+  return /*#__PURE__*/React.createElement("div", {
+    className: "zs-rem-form",
+    onKeyDown: onKey
+  }, f.mode === "add" && /*#__PURE__*/React.createElement(React.Fragment, null, field("name", "Name", {
+    first: true,
+    placeholder: "upstream",
+    marks: true
+  }), field("url", "URL", {
+    mono: true,
+    placeholder: "https://github.com/owner/repo.git"
+  }), field("push", "Push URL", {
+    mono: true,
+    placeholder: "Same as URL",
+    hint: "Optional. jj can’t remove a remote with a push URL later — git remote remove can."
+  })), f.mode === "rename" && field("name", "New name", {
+    first: true,
+    marks: true,
+    hint: "Its remote bookmarks follow: main@" + f.of + " becomes main@" + (f.name.trim() || "…") + "."
+  }), f.mode === "url" && /*#__PURE__*/React.createElement(React.Fragment, null, field("url", "URL", {
+    first: true,
+    mono: true,
+    placeholder: cred(remote.url),
+    hint: zsRemCred(remote.url) ? "Holds a credential, so it stays hidden. Type a new URL to replace it." : null
+  }), field("push", "Push URL", {
+    mono: true,
+    placeholder: remote.pushUrl ? cred(remote.pushUrl) : "Same as URL",
+    hint: remote.pushUrl ? "Empty leaves it as it is: jj can set a push URL, not remove one." : null
+  })), /*#__PURE__*/React.createElement("code", {
+    className: "zs-rem-cmd"
+  }, zsRemCommand(op)), f.refusal && /*#__PURE__*/React.createElement(ZsRemRefusal, {
+    refusal: f.refusal
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "zs-rem-btns"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    onClick: onCancel
+  }, "Cancel"), /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    variant: "primary",
+    disabled: !ok,
+    onClick: onRun,
+    title: "↩"
+  }, {
+    add: "Add",
+    rename: "Rename",
+    url: "Set URL"
+  }[f.mode])));
+}
+function RemotesGroup({
+  remotes = [],
+  onRun,
+  initialForm = null,
+  initialNotes = {},
+  children,
+  className = ""
+}) {
+  const [form, setForm] = React.useState(initialForm); // { mode: add | rename | url, of, name, url, push, refusal }
+  const [menu, setMenu] = React.useState(null); // the remote whose ••• is open
+  const [confirm, setConfirm] = React.useState(null); // the remote Remove… asks about
+  const [notes, setNotes] = React.useState(initialNotes); // name → { refusal } | { warning }, until the next verb
+  const open = (mode, r) => {
+    setNotes({});
+    setMenu(null);
+    setForm({
+      mode,
+      of: r ? r.name : null,
+      name: mode === "rename" ? r.name : "",
+      url: mode === "url" && !zsRemCred(r.url) ? r.url || "" : "",
+      push: mode === "url" && r.pushUrl && !zsRemCred(r.pushUrl) ? r.pushUrl : "",
+      refusal: null
+    });
+  };
+  const run = () => {
+    const op = zsRemOp(form, remotes.find(x => x.name === form.of));
+    const res = onRun ? onRun(op) : null;
+    if (res && res.refusal) {
+      setForm({
+        ...form,
+        refusal: res.refusal
+      });
+      return;
+    }
+    setForm(null);
+    setNotes(res && res.warning ? {
+      [op.name]: {
+        warning: res.warning
+      }
+    } : {});
+  };
+  const remove = name => {
+    const res = onRun ? onRun({
+      verb: "remove",
+      name
+    }) : null;
+    setConfirm(null);
+    setNotes(res && res.refusal ? {
+      [name]: {
+        refusal: res.refusal
+      }
+    } : {});
+  };
+  const editing = r => form && form.mode !== "add" && form.of === r.name;
+  return /*#__PURE__*/React.createElement(__ds_scope.SettingsGroup, {
+    title: "Remotes",
+    className: ("zs-rem " + className).trim()
+  }, remotes.length === 0 && !form && /*#__PURE__*/React.createElement("div", {
+    className: "zs-setrow zs-rem-empty"
+  }, "No remotes yet. Fetch and push need one."), remotes.map(r => editing(r) ? /*#__PURE__*/React.createElement("div", {
+    key: r.name,
+    className: "zs-setrow is-stack zs-rem-row is-editing"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-rem-head"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-name"
+  }, r.name), /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-what"
+  }, form.mode === "rename" ? "Rename" : "Set URL")), /*#__PURE__*/React.createElement(ZsRemForm, {
+    f: form,
+    setF: setForm,
+    remote: r,
+    onRun: run,
+    onCancel: () => setForm(null)
+  })) : /*#__PURE__*/React.createElement("div", {
+    key: r.name,
+    className: "zs-setrow zs-rem-row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-setrow-lbl zs-rem-lbl"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-name"
+  }, r.name), /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-url",
+    title: r.url ? zsRemScrub(r.url) : undefined
+  }, r.url ? zsRemScrub(r.url) : /*#__PURE__*/React.createElement("i", null, "No fetch URL")), r.pushUrl && /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-url",
+    title: zsRemScrub(r.pushUrl)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-k"
+  }, "push"), zsRemScrub(r.pushUrl)), notes[r.name] && notes[r.name].refusal && /*#__PURE__*/React.createElement(ZsRemRefusal, {
+    refusal: notes[r.name].refusal
+  }), notes[r.name] && notes[r.name].warning && /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-warn"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "conflict",
+    size: "sm"
+  }), notes[r.name].warning.message, notes[r.name].warning.hint && /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-hint"
+  }, notes[r.name].warning.hint))), /*#__PURE__*/React.createElement("div", {
+    className: "zs-setrow-ctl zs-rem-more"
+  }, /*#__PURE__*/React.createElement(__ds_scope.IconButton, {
+    icon: "more",
+    label: "More for " + r.name,
+    size: "sm",
+    active: menu === r.name,
+    "aria-haspopup": "menu",
+    "aria-expanded": menu === r.name,
+    onClick: () => setMenu(menu === r.name ? null : r.name)
+  }), menu === r.name && /*#__PURE__*/React.createElement(__ds_scope.Menu, {
+    autoFocus: true,
+    items: [{
+      id: "rename",
+      text: "Rename…",
+      cmd: "jj git remote rename"
+    }, {
+      id: "url",
+      text: "Set URL…",
+      cmd: "jj git remote set-url"
+    }, "sep", {
+      id: "remove",
+      text: "Remove…",
+      cmd: "jj git remote remove"
+    }],
+    onSelect: id => {
+      setMenu(null);
+      if (id === "remove") {
+        setNotes({});
+        setConfirm(r.name);
+      } else open(id, r);
+    },
+    onClose: () => setMenu(null)
+  })))), form && form.mode === "add" ? /*#__PURE__*/React.createElement("div", {
+    className: "zs-setrow is-stack zs-rem-row is-editing"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-rem-head"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-name"
+  }, "Add remote")), /*#__PURE__*/React.createElement(ZsRemForm, {
+    f: form,
+    setF: setForm,
+    onRun: run,
+    onCancel: () => setForm(null)
+  })) : /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-setrow is-nav zs-rem-add",
+    onClick: () => open("add"),
+    title: "jj git remote add"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rem-add-l"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "plus",
+    size: "sm"
+  }), "Add remote…")), children, confirm && /*#__PURE__*/React.createElement(__ds_scope.ConfirmDialog, {
+    title: "Remove " + confirm + "?",
+    confirmLabel: "Remove remote",
+    cmd: zsRemCommand({
+      verb: "remove",
+      name: confirm
+    }),
+    onConfirm: () => remove(confirm),
+    onCancel: () => setConfirm(null)
+  }, "Its remote bookmarks (", /*#__PURE__*/React.createElement("code", null, "main@" + confirm), " and the rest) leave this repository and git forgets its URLs. Your own bookmarks and changes stay. ", /*#__PURE__*/React.createElement("code", null, "jj undo"), " can’t bring the URLs back."));
+}
+RemotesGroup.scrub = zsRemScrub;
+RemotesGroup.command = zsRemCommand;
+Object.assign(__ds_scope, { RemotesGroup });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/settings/RemotesGroup.jsx", error: String((e && e.message) || e) }); }
 
 // components/surfaces/Callout.jsx
 try { (() => {
@@ -12585,6 +13183,8 @@ __ds_ns.Flag = __ds_scope.Flag;
 
 __ds_ns.GraphPorts = __ds_scope.GraphPorts;
 
+__ds_ns.GraphBreak = __ds_scope.GraphBreak;
+
 __ds_ns.GraphEdge = __ds_scope.GraphEdge;
 
 __ds_ns.GraphEnd = __ds_scope.GraphEnd;
@@ -12631,7 +13231,11 @@ __ds_ns.SearchTag = __ds_scope.SearchTag;
 
 __ds_ns.SearchAvatar = __ds_scope.SearchAvatar;
 
+__ds_ns.ConfigFilePage = __ds_scope.ConfigFilePage;
+
 __ds_ns.ImmutablePage = __ds_scope.ImmutablePage;
+
+__ds_ns.RemotesGroup = __ds_scope.RemotesGroup;
 
 __ds_ns.SettingsGroup = __ds_scope.SettingsGroup;
 

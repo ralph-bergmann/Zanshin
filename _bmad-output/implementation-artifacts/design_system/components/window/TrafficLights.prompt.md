@@ -2,8 +2,7 @@ The system's window buttons, as a mock for cards and the UI kit. In the app AppK
 
 ~~~jsx
 <TrafficLights />                                   {/* the project window */}
-<TrafficLights buttons={{ close: true }} />         {/* Settings: minimise and zoom greyed */}
-<TrafficLights buttons={{ close: true, zoom: true }} /> {/* Projects */}
+<TrafficLights buttons={{ close: true, zoom: true }} /> {/* Settings, Projects, Configurations: minimise greyed */}
 ~~~
 
 - **Geometry is the system's, read at runtime** (`NSWindow.standardWindowButton(…).frame`). Reference (macOS 27.0.1, standard buttons, the app's toolbar): 14 × 14pt, pitch 23, the block 60 wide at x 19–79, centre y 26. Without a toolbar: x 9–69, y 16. Before macOS 26: 12pt at a 20pt pitch. The rule is relative, so it holds on every version: the top bar's first island starts at **block end + 12** and the bar centres on **the block's centre line**; content starts at bar bottom + 12. Full screen: the buttons leave with the menu bar → first island at 12, bar at 12, content at 68.

@@ -1,0 +1,33 @@
+/* ============================================================
+   DENSITY (sync #21, Story 11.20) — how much air, never how big.
+   Every list, menu and settings row gains --row-step (Compact 0 · Balanced 3 · Comfy 6 px); the graph's card heights
+   and gaps come from graph-layout.jsx (DENSITY). Text, controls (buttons, fields, segmented, selects), the chrome
+   (bar, rail, islands) and window sizes stay — size is Zoom's job (Settings › General › Zoom, ⌘+ ⌘− ⌘0).
+   Compact = the sizes in the other files. Loaded last so these win over them.
+   ============================================================ */
+:root{--row-step:0px}
+[data-density="balanced"]{--row-step:3px}
+[data-density="comfy"]{--row-step:6px}
+/* the old text scale (app.css: 12.5 / 13 / 13.5) is gone — every density keeps Compact's text */
+[data-density]{--font-base:12.5px}
+
+/* rows with a fixed height */
+.gmenu-item{height:calc(28px + var(--row-step))}
+.gpm-item{height:calc(30px + var(--row-step))}
+.home-side-item{height:calc(32px + var(--row-step))}
+.fl-row{min-height:calc(36px + var(--row-step))}
+.gset-row{min-height:calc(46px + var(--row-step));padding-top:calc(8px + var(--row-step) / 2);padding-bottom:calc(8px + var(--row-step) / 2)}
+.gset-row.is-stack{padding-top:calc(10px + var(--row-step) / 2);padding-bottom:calc(12px + var(--row-step) / 2)}
+.gs-row,.gs-srow{min-height:calc(34px + var(--row-step))}
+.gpush-row{min-height:calc(36px + var(--row-step))}
+.rsd-opt{min-height:calc(46px + var(--row-step))}
+/* rows sized by padding: half the step above, half below */
+.home-row{padding-top:calc(6px + var(--row-step) / 2);padding-bottom:calc(6px + var(--row-step) / 2)}
+.gch-file{padding-top:calc(6px + var(--row-step) / 2);padding-bottom:calc(6px + var(--row-step) / 2)}
+.gbl-row{padding-top:calc(7px + var(--row-step) / 2);padding-bottom:calc(7px + var(--row-step) / 2)}
+.gbm-item{padding-top:calc(6px + var(--row-step) / 2);padding-bottom:calc(6px + var(--row-step) / 2)}
+.gstack-row{padding-top:calc(5px + var(--row-step) / 2);padding-bottom:calc(5px + var(--row-step) / 2)}
+.rsd-item{padding-top:calc(7px + var(--row-step) / 2);padding-bottom:calc(7px + var(--row-step) / 2)}
+
+/* ZOOM — the prototype scales the whole page (app-float.jsx); the traffic lights are the system's and keep their size */
+.ztl{zoom:calc(1 / var(--zoom, 1))}

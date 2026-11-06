@@ -10,12 +10,33 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "system",
   "density": "compact",
   "diffMode": "inline",
-  "autoHide": true
+  "autoHide": true,
+  "zoom": 100
 }/*EDITMODE-END*/;
 // settled design decisions (formerly tweaks)
 const FIXED = { hoverFocus: true, showFiles: true, bookmarkLabels: "legend", addButtons: "both", laneOrder: "optimized", crossings: "bridge", gapMarker: "break", gapCount: false, immStyle: "hatched" };
 const URLQ = new URLSearchParams(location.search);
-const URL_TWEAKS = Object.fromEntries([["theme", URLQ.get("th") || URLQ.get("theme")]].filter(([, v]) => v != null));
+// ?theme= · ?density=compact|balanced|comfy · ?zoom=90|100|110|125|150
+const URL_TWEAKS = Object.fromEntries([["theme", URLQ.get("th") || URLQ.get("theme")], ["density", URLQ.get("density")], ["zoom", URLQ.get("zoom") && +URLQ.get("zoom")]].filter(([, v]) => v != null));
+
+// ZOOM (sync #21) — Settings › General › Zoom and View › Zoom In ⌘+ · Zoom Out ⌘− · Actual Size ⌘0: the steps, app-wide.
+const ZOOM_STEPS = [90, 100, 110, 125, 150];
+window.ZOOM_STEPS = ZOOM_STEPS;
+const zoomStep = (z, d) => d === 0 ? 100 : ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, ZOOM_STEPS.indexOf(z) + d))] || 100;
+// The mock scales the page with CSS zoom. The browser then reports rects and pointer positions in zoomed pixels while CSS
+// keeps unzoomed ones, so these divide them back — prototype plumbing only (the app scales its views' pixel ratio).
+(() => {
+  const k = () => window.__zsZoom || 1;
+  const rect = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function () { const r = rect.call(this), z = k(); return z === 1 ? r : new DOMRect(r.x / z, r.y / z, r.width / z, r.height / z); };
+  for (const p of ["clientX", "clientY", "pageX", "pageY", "x", "y"]) {
+    const d = Object.getOwnPropertyDescriptor(MouseEvent.prototype, p);
+    Object.defineProperty(MouseEvent.prototype, p, { configurable: true, get() { return d.get.call(this) / k(); } });
+  }
+  const at = Document.prototype.elementFromPoint, all = Document.prototype.elementsFromPoint;
+  Document.prototype.elementFromPoint = function (x, y) { return at.call(this, x * k(), y * k()); };
+  Document.prototype.elementsFromPoint = function (x, y) { return all.call(this, x * k(), y * k()); };
+})();
 
 const RAIL = [
   { id: "branches",   label: "Bookmarks",     icon: "branch" },
@@ -252,8 +273,9 @@ function FloatApp() {
   });
   const [stack, setStack] = useState(() => [...(URLQ.has("settings") ? ["settings"] : []), ...(URLQ.has("embed") ? [] : ["projects"]), "project"]);
   const key = stack[0];
-  const [page, setPage] = useState(() => URLQ.get("settings") === "immutable" ? "immutable" : null);
-  const [tab, setTabState] = useState(() => { const q = URLQ.get("settings"); if (q === "general" || q === "project") return q; if (q === "immutable") return "project"; try { return localStorage.getItem(TAB_KEY) || "general"; } catch { return "general"; } });
+  // ?settings=immutable · config (General's file) · project-config (the project's)
+  const [page, setPage] = useState(() => { const q = URLQ.get("settings"); return q === "immutable" ? "immutable" : q === "config" || q === "project-config" ? "config" : null; });
+  const [tab, setTabState] = useState(() => { const q = URLQ.get("settings"); if (q === "general" || q === "project") return q; if (q === "immutable" || q === "project-config") return "project"; if (q === "config") return "general"; try { return localStorage.getItem(TAB_KEY) || "general"; } catch { return "general"; } });
   const setTab = (v) => { setTabState(v); try { localStorage.setItem(TAB_KEY, v); } catch {} };
   const front = (w) => setStack(s => s[0] === w ? s : [w, ...s.filter(x => x !== w)]);
   const openWin = (w) => { setWins(o => o[w] ? o : { ...o, [w]: window.placeWindow(w, o) }); front(w); };
@@ -261,12 +283,12 @@ function FloatApp() {
   const setGeo = (w) => (g) => setWins(o => o[w] ? { ...o, [w]: g } : o);
   const zoom = (w) => setWins(o => {
     const g = o[w]; if (!g) return o;
-    return { ...o, [w]: g.zoomed ? { ...g.zoomed, zoomed: null } : { x: 12, y: 12, w: window.innerWidth - 24, h: window.innerHeight - 24, zoomed: g } };
+    return { ...o, [w]: g.zoomed ? { ...g.zoomed, zoomed: null } : { x: 12, y: 12, w: window.innerWidth / (window.__zsZoom || 1) - 24, h: window.innerHeight / (window.__zsZoom || 1) - 24, zoomed: g } };
   });
   const zOf = (w) => 10 - stack.filter(x => x !== "project").indexOf(w);
   // "Settings…" and "Appearance, diffs and more" → General · "Project Settings…" → Project · ⌘, → the tab shown last, never switched
   const openSettings = (which) => { if (which === "general" || which === "project") setTab(which); openWin("settings"); };
-  const fns = useRef(null); fns.current = { openSettings, openWin, closeWin, key };
+  const fns = useRef(null); fns.current = { openSettings, openWin, closeWin, key, zoomBy: (d) => setTweak("zoom", zoomStep(t.zoom || 100, d)) };
   // the graph asks for a page of Settings (card menu › Immutable commits…)
   useEffect(() => {
     const h = (e) => { const d = e.detail || {}; fns.current.openSettings(d.tab); setPage(d.page || null); };
@@ -280,6 +302,9 @@ function FloatApp() {
       if (c === "," && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); f.openSettings(); }
       else if (c === "o" && e.shiftKey) { e.preventDefault(); e.stopPropagation(); f.openWin("projects"); }
       else if (c === "w" && !e.shiftKey && f.key !== "project") { e.preventDefault(); e.stopPropagation(); f.closeWin(f.key); }
+      else if (c === "=" || c === "+") { e.preventDefault(); e.stopPropagation(); f.zoomBy(1); }   // View › Zoom In
+      else if (c === "-") { e.preventDefault(); e.stopPropagation(); f.zoomBy(-1); }               // View › Zoom Out
+      else if (c === "0") { e.preventDefault(); e.stopPropagation(); f.zoomBy(0); }                // View › Actual Size
     };
     const r = () => setWins(o => Object.fromEntries(Object.entries(o).map(([w, g]) => [w, window.clampWindow(g)])));
     window.addEventListener("keydown", k, true); window.addEventListener("resize", r);
@@ -297,6 +322,12 @@ function FloatApp() {
     document.documentElement.dataset.theme = t.theme;
   }, [t.theme]);
   useEffect(() => { document.documentElement.dataset.density = t.density; }, [t.density]);
+  // Zoom scales every window; the windows' minimum sizes grow with it (a smaller window grows), the traffic lights don't
+  useEffect(() => {
+    const z = (t.zoom || 100) / 100, s = document.documentElement.style;
+    window.__zsZoom = z; s.zoom = z === 1 ? "" : String(z); s.setProperty("--zoom", String(z));
+    setWins(o => Object.fromEntries(Object.entries(o).map(([w, g]) => [w, window.clampWindow(g)])));
+  }, [t.zoom]);
 
   const project = useMemo(() => (flattenAll(homeTree).find(x => x.node.id === activeProjectId) || {}).node || null, [homeTree, activeProjectId]);
   const insets = { left: pinned ? RAIL_R + PANEL_W + EDGE : RAIL_R, right: EDGE, top: TOP, bottom: EDGE, detail: DETAIL_W + EDGE };
@@ -313,7 +344,7 @@ function FloatApp() {
           geo={wins.projects} setGeo={setGeo("projects")} onActivate={() => front("projects")} onClose={() => closeWin("projects")} onZoom={() => zoom("projects")}
           onSettings={() => openSettings("general")} onOpenProject={(p) => { setActiveProjectId(p.id); closeWin("projects"); front("project"); }}/>}
         {wins.settings && <window.SettingsWin tab={tab} setTab={setTab} page={page} setPage={setPage} project={project} t={t} setTweak={setTweak} active={key === "settings"} z={zOf("settings")}
-          geo={wins.settings} setGeo={setGeo("settings")} onActivate={() => front("settings")} onClose={() => closeWin("settings")}/>}
+          geo={wins.settings} setGeo={setGeo("settings")} onActivate={() => front("settings")} onClose={() => closeWin("settings")} onZoom={() => zoom("settings")}/>}
       </div>
     </>
   );

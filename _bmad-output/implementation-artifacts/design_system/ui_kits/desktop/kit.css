@@ -22,6 +22,7 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-stackpop-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:5px 8px;border-radius:var(--radius-md);font-size:var(--fs-md);color:var(--text)}
 .zk-stackpop-subj{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .zk-stackpop-date{font:var(--fs-sm) var(--font-mono);color:var(--text-faint)}
+.zk-stackpop-rows{display:flex;flex-direction:column;max-height:min(420px,50vh);overflow:auto}/* a long stack scrolls inside (sync #22) */
 .zk-stackpop-hint{margin-top:4px;padding:7px 8px 3px;border-top:1px solid var(--border);font-size:var(--fs-sm);color:var(--text-dim)}
 
 /* overlay layer */
@@ -158,7 +159,6 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-mini-strip{position:absolute;inset:12px 8px;touch-action:none}
 .zk-mini-svg{position:absolute;left:0;top:0;overflow:visible}
 .zk-mini-e{fill:none;stroke:var(--text-faint);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:0 3}
-.zk-mini-e.dashed{stroke-dasharray:0 6}
 .zk-mini-n{fill:var(--text-faint)}
 .zk-mini-n.grp{fill:none;stroke:var(--text-faint);stroke-width:1.2}
 .zk-mini-g{opacity:.6}.zk-mini-g.in{opacity:1}
@@ -212,7 +212,8 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-set-mark{display:grid;border-radius:var(--radius-xs);overflow:hidden}
 .zk-set-scope{padding:12px 28px 4px;text-align:center;font-size:var(--fs-md);line-height:1.5;color:var(--text-dim);text-wrap:pretty}
 .zk-set-scope code{font:var(--fs-id) var(--font-mono);color:var(--text-muted)}
-.zk-set-bd{overflow-x:hidden;overflow-y:auto;display:flex;flex-direction:column;gap:18px;min-height:0;padding:12px 24px 18px}
+.zk-set-bd{flex:1;overflow-x:hidden;overflow-y:auto;display:flex;flex-direction:column;gap:18px;min-height:0;padding:12px 24px 18px}
+.zk-set-bd.is-fill{overflow:hidden}  /* sync #20: the config file takes the window's height */
 .zk-set-ft{padding:12px 24px 15px;border-top:1px solid var(--fl-border);text-align:center;font-size:var(--fs-id);color:var(--text-dim)}
 .zk-set-ft b{font-weight:500;color:var(--text-muted)}
 

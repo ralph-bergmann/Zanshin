@@ -1,0 +1,64 @@
+<!-- @dsCard group="Components" viewport="1320x840" name="Density" subtitle="Compact · Balanced · Comfy — rows +0 / +3 / +6, cards and gaps grow, text stays (components/density.css)" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>
+body{margin:0;padding:22px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);font:13px/1.5 var(--font-sans)}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;align-items:start}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.hd{display:flex;align-items:baseline;gap:10px}.hd h2{margin:0;font:var(--type-panel-title)}.hd span{font:var(--type-meta);color:var(--text-dim)}
+.box{border-radius:12px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);padding:6px}
+.menu .zs-menu{position:static;box-shadow:none}
+.files{display:flex;flex-direction:column;gap:1px}
+.graph{position:relative;border-radius:12px;border:1px dashed var(--border);background-image:radial-gradient(circle,var(--grid-dot) 1px,transparent 1.3px);background-size:24px 24px}
+.graph .zs-card{position:absolute}
+.gap{position:absolute;left:12px;font:var(--type-meta);color:var(--text-dim)}
+.note{margin:18px 0 0;font:var(--type-secondary);color:var(--text-dim);max-width:980px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Menu, SettingsGroup, SettingsRow, Segmented, Switch, FileRow, ChangeCard } = window.ZanshinDesignSystem_a33847;
+  // the sets of components/density.css: [row step, card compact, card detailed, gap y]
+  const SETS = [["compact", "Compact", 0, 40, 62, 48], ["balanced", "Balanced", 3, 44, 68, 54], ["comfy", "Comfy", 6, 48, 74, 60]];
+  const ITEMS = [{ id: "new", label: "New change on top", icon: "new-on-top", cmd: "new" }, { id: "edit", label: "Edit", icon: "edit", cmd: "edit" }, { id: "desc", label: "Describe…", icon: "describe", cmd: "describe" }, "sep", { id: "ab", label: "Abandon", icon: "abandon", danger: true, cmd: "abandon" }];
+  function Col({ set: [key, name, step, hc, hd, gy] }) {
+    const [hide, setHide] = React.useState(true);
+    const yD = 14, yC = yD + hd + gy;
+    return (
+      <div className="col" data-density={key}>
+        <div className="hd"><h2>{name}</h2><span>rows +{step} · cards {hc} / {hd} · gap {gy}</span></div>
+        <div className="menu"><Menu still id="vtnoqyrv" subject="fix(ios): account for safe area" items={ITEMS}/></div>
+        <SettingsGroup title="While you scroll">
+          <SettingsRow label="Hide controls" hint="Toolbars and panels step aside while you scroll the graph."><Switch label="Hide controls" checked={hide} onChange={setHide}/></SettingsRow>
+          <SettingsRow label="Layout"><Segmented variant="inset" label="Diff layout" value="unified" options={[{ value: "unified", label: "Unified" }, { value: "split", label: "Side by side" }]}/></SettingsRow>
+        </SettingsGroup>
+        <div className="box files">
+          <FileRow status="M" path="lib/src/graph/graph_view.dart" added={24} removed={6}/>
+          <FileRow status="A" path="lib/src/graph/density.dart" added={58}/>
+          <FileRow status="D" path="lib/src/graph/old_metrics.dart" removed={31}/>
+        </div>
+        <div className="graph" style={{ height: yC + hc + 14 }}>
+          <ChangeCard detailed id="vtnoqyrv" subject="fix(ios): account for safe area" author="Ralph" date="3h" bookmarks={["ios-safe-area"]} style={{ left: 60, top: yD }}/>
+          <ChangeCard detailed={false} id="kmzzspql" subject="perf(api): cache page cursors" author="Ralph" date="1d" style={{ left: 60, top: yC }}/>
+          <span className="gap" style={{ top: yD + hd + gy / 2 - 9 }}>{gy}</span>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<>
+    <div className="cols">{SETS.map((s) => <Col key={s[0]} set={s}/>)}</div>
+    <p className="note">Density is how much air, never how big: text, controls, the chrome and window sizes stay. Every row grows by the step (fixed heights add it, padded rows add half above and half below); graph cards take the set's heights and the gaps between cards widen (x 56 / 62 / 68). Larger text is Zoom: 90 · 100 · 110 · 125 · 150 %, everything scales.</p>
+  </>);
+})();
+</script>
+</body>
+</html>

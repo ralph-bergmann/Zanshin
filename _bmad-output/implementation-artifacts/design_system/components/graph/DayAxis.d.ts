@@ -2,7 +2,7 @@ import * as React from "react";
 
 export interface DayAxisDay {
   key?: string | number;
-  /** "Today" · "Yesterday" · "Sep 23" (· year when it isn't this year) */
+  /** "Today" · "Yesterday" · "Sep 23" — never a year; years are labels of their own (`years`) */
   label: string;
   /** label centre — on the divider below that day's first commit (the oldest day: below its first commit) */
   y: number;
@@ -11,8 +11,18 @@ export interface DayAxisDay {
 }
 
 /** The Free layout's day axis: dashed dividers between calendar days, one sticky label per day at the left edge. States: none — labels stick to the left edge. */
+/** A year boundary (sync #22): the year that begins there reading upward, labelled just above that day's label. */
+export interface DayAxisYear {
+  key?: string | number;
+  year: number;
+  /** the day label's y at that divider */
+  y: number;
+}
+
 export interface DayAxisProps {
   days: DayAxisDay[];
+  /** year labels — only where a year begins; none for a one-year history, none inside a GraphBreak */
+  years?: DayAxisYear[];
   /** plane size */
   width: number;
   height: number;

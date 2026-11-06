@@ -1,0 +1,122 @@
+<!-- @dsCard group="Components" viewport="1120x820"name="Long history" subtitle="GraphBreak + DayAxis years — a card-free stretch shrinks to a torn strip; the minimap sized to its columns, years as section headers, scrolling at its minimum density" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>
+body{margin:0;padding:0;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}
+.row{display:flex;gap:28px;padding:20px 24px 0}
+.plane{position:relative;flex:none;overflow:hidden;border-radius:12px;border:1px dashed var(--border)}.plane>.zs-card{position:absolute}
+.edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.minis{display:flex;gap:22px;align-items:flex-start}
+.mini{position:relative;border-radius:14px;background:var(--fl-sheen),var(--fl-bg-strong);border:1px solid var(--fl-border);box-shadow:var(--fl-shadow)}
+.mini-cap{margin:8px 2px 0;font:var(--type-meta);color:var(--text-dim);width:200px}
+.strip{position:absolute;inset:12px 8px}
+.strip svg{position:absolute;left:0;top:0;overflow:visible}
+.m-e{fill:none;stroke:var(--text-muted);stroke-width:1.5;stroke-linecap:round;stroke-dasharray:0 3}
+.m-n{fill:var(--text)}.m-n.grp{fill:none;stroke:var(--text);stroke-width:1.2}.m-n.wc{fill:var(--co)}
+.m-brk{fill:none;stroke:var(--text-dim);stroke-width:1.2;stroke-linejoin:round}
+.m-view{fill:var(--fl-hover)}
+.m-lbl,.m-year{position:absolute;right:calc(100% - 54px);transform:translateY(-50%);white-space:nowrap;pointer-events:none}
+.m-lbl{font:var(--fs-xs) var(--font-mono);color:var(--text-dim)}
+.m-year{transform:translateY(3px);font:var(--fw-semibold) var(--fs-xs)/1 var(--font-sans);letter-spacing:var(--tracking-pill);color:var(--text-muted)}
+.m-year.sticky{top:0;transform:none;padding:3px 0 3px 8px;background:linear-gradient(to right,transparent,var(--fl-bg-solid) 8px)}
+.m-pill{position:absolute;right:calc(100% - 58px);transform:translateY(-50%);padding:3px 9px;border-radius:999px;border:1px solid var(--at-chrome);background:var(--fl-bg-solid);font:600 11.5px var(--font-mono);color:var(--text);white-space:nowrap}
+.m-conn{stroke:var(--at-chrome);stroke-width:1}
+.foot{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding:16px 24px 20px;font-size:12px;line-height:1.5;color:var(--text-dim);text-wrap:pretty}.foot b{font-weight:600;color:var(--text-muted)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { ChangeCard, StackCard, GraphEdge, DayAxis, GraphBreak } = window.ZanshinDesignSystem_a33847;
+  // A slice of the Free layout (detailed cards: H 62, pitch 110). The 335-change stack keeps its members' six years below it;
+  // that card-free stretch is longer than 8 pitches, so it shrinks to 1½ pitches card to card and becomes a GraphBreak.
+  const W = 240, H = 62, PITCH = 110, X = 72, PW = 470, PH = 600;
+  const cards = [
+    { id: "xyzrmwpo", s: "docs: update the README", y: 24, date: "Jan 5" },
+    { id: "uszzpvtv", s: "build: drop the old target", y: 134, date: "Dec 18", bm: ["v1.3"] },
+    { id: "trypqmnn", stack: 335, s: "perf: cache page cursors", y: 244, from: "trypqmnn", to: "pmvoryqk", date: "Sep 2019 – Dec 2025" },
+    { id: "pkyuyvso", s: "feat(search): match change ids", y: 244 + 1.5 * PITCH, date: "Sep 18, 2019", bm: ["v1.2"] },
+    { id: "rwtxyykq", s: "fix(graph): a stale lane", y: 244 + 2.5 * PITCH, date: "Sep 13, 2019" },
+  ];
+  const mid = (a, b) => (cards[a].y + H + cards[b].y) / 2;
+  // day dividers: between Jan 5 / Dec 18 a year begins (2026 above); Dec 11's divider lies in the break and is dropped
+  const days = [
+    { key: "jan5", label: "Jan 5", y: mid(0, 1), guide: mid(0, 1) },
+    { key: "dec18", label: "Dec 18", y: mid(1, 2), guide: mid(1, 2) },
+    { key: "sep18", label: "Sep 18", y: mid(3, 4), guide: mid(3, 4) },
+  ];
+  const years = [{ key: "y2026", year: 2026, y: mid(0, 1) }];
+  const brk = { top: cards[2].y + H, bottom: cards[3].y, label: GraphBreak.label(Date.parse("2019-09-18T15:00"), Date.parse("2025-12-11T11:00")) };
+
+  // the minimap, drawn as the client draws it: labels in 58 px, the graph part sized to its columns
+  function Mini({ height, width = 134, nodes, breaks = [], labels = [], years = [], sticky, band, pill, cols = 1 }) {
+    const gr = width - 16 - 4, cx = (c) => gr - (cols - 1 - c) * 12;
+    return (
+      <div className="mini" style={{ width, height }}>
+        <div className="strip">
+          <svg width={width - 16} height={height - 24}>
+            {band && <rect className="m-view" x="60" y={band[0]} width={width - 16 - 58} height={band[1] - band[0]} rx="4"></rect>}
+            {nodes.slice(1).map((n, i) => <polyline key={i} className="m-e" points={`${cx(nodes[i].c)},${nodes[i].y} ${cx(nodes[i].c)},${(nodes[i].y + n.y) / 2} ${cx(n.c)},${(nodes[i].y + n.y) / 2} ${cx(n.c)},${n.y}`}></polyline>)}
+            {breaks.map((y) => { const p = []; for (let x = 62, k = 0; x <= width - 16; x += 5, k++) p.push(x + "," + (y + (k % 2 ? -2 : 2))); return <polyline key={y} className="m-brk" points={p.join(" ")}></polyline>; })}
+            {nodes.map((n, i) => <circle key={i} cx={cx(n.c)} cy={n.y} r={n.grp ? 2.6 : n.wc ? 3.2 : 2} className={"m-n" + (n.grp ? " grp" : "") + (n.wc ? " wc" : "")}></circle>)}
+            {pill && <line className="m-conn" x1="58" x2={width - 16} y1={pill[0]} y2={pill[0]}></line>}
+          </svg>
+          {labels.map(([l, y]) => <span key={l + y} className="m-lbl" style={{ top: y }}>{l}</span>)}
+          {years.map(([yr, y]) => <span key={yr} className="m-year" style={{ top: y }}>{yr}</span>)}
+          {sticky && <span className="m-year sticky" style={{ right: "calc(100% - 54px)" }}>{sticky}</span>}
+          {pill && <span className="m-pill" style={{ top: pill[0] }}>{pill[1]}</span>}
+        </div>
+      </div>
+    );
+  }
+  const col = (ys, c = 0) => ys.map((y) => ({ y, c }));
+  const Demo = () => (
+    <div>
+      <div className="row">
+        <div className="plane" style={{ width: PW, height: PH }}>
+          <DayAxis width={PW} height={PH} days={days} years={years}/>
+          <svg className="edges" width={PW} height={PH}>
+            {cards.slice(1).map((c, i) => <GraphEdge key={c.id} from={[X + W / 2, c.y]} to={[X + W / 2, cards[i].y + H]}/>)}
+          </svg>
+          <GraphBreak top={brk.top} bottom={brk.bottom} width={PW} label={brk.label}/>
+          {cards.map((c) => c.stack
+            ? <StackCard key={c.id} style={{ position: "absolute", left: X, top: c.y }} width={W} detailed count={c.stack} subject={c.s} from={c.from} to={c.to} author="Bob, Charlie" date={c.date} immutable/>
+            : <ChangeCard key={c.id} style={{ left: X, top: c.y }} width={W} detailed id={c.id} subject={c.s} author="Alice" date={c.date} bookmarks={c.bm} immutable/>)}
+        </div>
+        <div className="minis">
+          <div>
+            <Mini height={560} width={166} cols={4} sticky="2026" pill={[96, "Today"]} band={[40, 150]}
+              nodes={[{ y: 14, c: 0, wc: true }, { y: 40, c: 1 }, { y: 70, c: 2 }, { y: 96, c: 3 }, { y: 120, c: 0 }, { y: 150, c: 1 }, { y: 176, c: 0, grp: true }, { y: 236, c: 0 }, { y: 262, c: 0, grp: true }, { y: 330, c: 0 }, { y: 356, c: 0, grp: true }, { y: 420, c: 0 }, { y: 446, c: 0 }, { y: 470, c: 0, grp: true }, { y: 520, c: 0 }]}
+              breaks={[204, 290, 384, 496]} years={[["2025", 222], ["2019", 398]]}
+              labels={[["Yesterday", 140], ["Sep 22", 168], ["Sep 21", 252], ["Jul 9", 318], ["Jul 16", 432], ["May 11", 512]]}/>
+            <p className="mini-cap"><b>Fits:</b> the collapsed history, 4 columns → 166 wide. Years head their sections (2025, 2019 under the breaks); 2026 sticks at the top.</p>
+          </div>
+          <div>
+            <Mini height={560} cols={1} sticky="2024" pill={[300, "Mar 9"]} band={[262, 338]}
+              nodes={col([20, 44, 70, 96, 120, 146, 172, 200, 226, 252, 278, 300, 326, 352, 378, 404, 430, 456, 482, 508, 534])}
+              years={[["2023", 112], ["2022", 344], ["2021", 520]]}
+              labels={[["Oct 18", 28], ["Aug 29", 60], ["Mar 28", 92], ["Nov 4", 136], ["Sep 3", 168], ["Jun 5", 236], ["Feb 3", 282], ["Dec 16", 362], ["Sep 19", 400], ["Jul 29", 440], ["Jun 6", 478]]}/>
+            <p className="mini-cap"><b>Scrolls:</b> the stack expanded (62 000 px of canvas) — one pitch stays ≥ 2 px, so the minimap scrolls with the canvas; 2024 is the header of the section at its top.</p>
+          </div>
+        </div>
+      </div>
+      <div className="foot">
+        <div><b>GraphBreak.</b> Any stretch with no card in any column taller than 8 pitches shrinks to 1½ pitches card to card: a torn strip over the lines (cut at its edges), its span at the left edge, sticky — "{brk.label}". Expanding the stack fills it; the break is gone.</div>
+        <div><b>Years.</b> Day labels never carry a year. On the canvas the year is its own label above the day label where it begins (2026 here) — not inside a break, not for a one-year history. The minimap reads top-down: a boundary heads the section below it, the top one sticks.</div>
+        <div><b>Minimap.</b> Labels 58 px, the graph part ≈ 12 px per column, 60–160 px. One pitch ≥ 2 px, then it scrolls in proportion with the canvas. Every edge dotted alike (every 3 px, on one grid), running into the dots. It measures the graph's extent, not the scroll area.</div>
+      </div>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>
