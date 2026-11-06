@@ -234,7 +234,11 @@ void main() {
       String rel(int ts) => graphRelativeDate(_en, ts, nowMs: _now, utcOffsetMinutes: 0);
       expect(rel(_now - 30000), 'now');
       expect(rel(_now - 40 * _minute), '40m');
-      expect(rel(_now - 20 * _hour), '20h');
+      expect(rel(_now - 11 * _hour), '11h');
+      // Before today the days are calendar days, as the day axis counts them: 23:00 yesterday is 1d, not 13h.
+      expect(rel(_now - 13 * _hour), '1d');
+      expect(rel(_now - 47 * _hour), '2d');
+      expect(graphRelativeDate(_en, _now - 13 * _hour, nowMs: _now, utcOffsetMinutes: 120), '13h');
       expect(rel(_now - 3 * _day), '3d');
       expect(rel(_now - 9 * _day), 'Sep 19');
       expect(rel(DateTime.utc(2025, 12, 29, 12).millisecondsSinceEpoch), 'Dec 29, 2025');
@@ -402,7 +406,7 @@ void main() {
       );
       expect(graphCardLabel(_en, of(one(workingCopy: true)), nowMs: _now), startsWith('Working copy, feat'));
       expect(graphCardLabel(_en, of(one(ts: _now - 9 * _day)), nowMs: _now), endsWith(', Ralph, Sep 19'));
-      expect(graphCardLabel(_en, of(one(ts: _now - 20 * _hour)), nowMs: _now), endsWith(', 20 hours ago, Yesterday'));
+      expect(graphCardLabel(_en, of(one(ts: _now - 20 * _hour)), nowMs: _now), endsWith(', 1 day ago, Yesterday'));
       expect(graphCardLabel(_en, of(one(ts: _now - 30000)), nowMs: _now), endsWith(', Ralph, now, Today'));
       expect(graphCardLabel(_en, of(one(ts: _now - _minute)), nowMs: _now), endsWith(', 1 minute ago, Today'));
       expect(graphCardLabel(_en, of(one(ts: _now - _hour)), nowMs: _now), endsWith(', 1 hour ago, Today'));
@@ -1263,14 +1267,14 @@ void main() {
       await tester.pump();
       expect(label(), endsWith(', 1 minute ago, Today'));
 
-      // Sep 28 23:59:30 → Sep 29 00:00:30: still "1 day ago", but Sep 27 is no longer "Yesterday".
+      // Sep 28 23:59:30 → Sep 29 00:00:30: Sep 27 is no longer "Yesterday", and its calendar days move with it.
       const int lateNight = _now + 12 * _hour - 30000;
       controller = GraphCardController(now: lateNight);
       await pumpCard(tester, one(ts: _now - 23 * _hour), controller);
       expect(label(), endsWith(', 1 day ago, Yesterday'));
       controller.now.value += 60000;
       await tester.pump();
-      expect(label(), endsWith(', 1 day ago, Sep 27'));
+      expect(label(), endsWith(', 2 days ago, Sep 27'));
       semantics.dispose();
     });
   });

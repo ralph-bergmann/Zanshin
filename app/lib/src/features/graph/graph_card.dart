@@ -420,21 +420,20 @@ const _hourMs = 3600000;
 const _dayMs = 86400000;
 
 /// The relative committer time a card shows in [strings] (Story 10.3, Claude's proposal (h)), against [nowMs]: "now"
-/// under a minute and in the future, "Nm" under an hour, "Nh" under a day, "Nd" under a week, else the day as
-/// [graphDayLabel] writes it ("Sep 19", "Sep 19, 2025" in another year) at the layout's offset.
+/// under a minute and in the future, then for today "Nm" under an hour, else "Nh"; before today "Nd" in calendar days
+/// (1d = yesterday, matching the day axis) under a week, else the day as [graphDayLabel] writes it ("Sep 19",
+/// "Sep 19, 2025" in another year) at the layout's offset.
 String graphRelativeDate(AppLocalizations strings, int tsMs, {required int nowMs, required int utcOffsetMinutes}) {
   final int age = nowMs - tsMs;
   if (age < _minuteMs) {
     return strings.relativeNow;
   }
-  if (age < _hourMs) {
-    return strings.relativeMinutes(age ~/ _minuteMs);
+  final int days = _calendarDaysAgo(tsMs, nowMs, utcOffsetMinutes);
+  if (days == 0) {
+    return age < _hourMs ? strings.relativeMinutes(age ~/ _minuteMs) : strings.relativeHours(age ~/ _hourMs);
   }
-  if (age < _dayMs) {
-    return strings.relativeHours(age ~/ _hourMs);
-  }
-  if (age < 7 * _dayMs) {
-    return strings.relativeDays(age ~/ _dayMs);
+  if (days < 7) {
+    return strings.relativeDays(days);
   }
   return graphDayLabel(
     strings,
@@ -451,17 +450,21 @@ String _spokenRelativeDate(AppLocalizations strings, int tsMs, {required int now
   if (age < _minuteMs) {
     return strings.relativeNow;
   }
-  if (age < _hourMs) {
-    return strings.spokenMinutesAgo(age ~/ _minuteMs);
+  final int days = _calendarDaysAgo(tsMs, nowMs, utcOffsetMinutes);
+  if (days == 0) {
+    return age < _hourMs ? strings.spokenMinutesAgo(age ~/ _minuteMs) : strings.spokenHoursAgo(age ~/ _hourMs);
   }
-  if (age < _dayMs) {
-    return strings.spokenHoursAgo(age ~/ _hourMs);
-  }
-  if (age < 7 * _dayMs) {
-    return strings.spokenDaysAgo(age ~/ _dayMs);
+  if (days < 7) {
+    return strings.spokenDaysAgo(days);
   }
   return graphRelativeDate(strings, tsMs, nowMs: nowMs, utcOffsetMinutes: utcOffsetMinutes);
 }
+
+/// How many local calendar days [tsMs] lies before [nowMs] at the fixed offset: 0 today, 1 yesterday.
+int _calendarDaysAgo(int tsMs, int nowMs, int utcOffsetMinutes) =>
+    (graphLocalDay(nowMs, utcOffsetMinutes: utcOffsetMinutes) -
+        graphLocalDay(tsMs, utcOffsetMinutes: utcOffsetMinutes)) ~/
+    _dayMs;
 
 /// The local midnight (epoch ms) of the day [tsMs] falls in, at the fixed offset [utcOffsetMinutes].
 int graphLocalDay(int tsMs, {required int utcOffsetMinutes}) {
