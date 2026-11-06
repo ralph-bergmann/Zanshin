@@ -2819,3 +2819,9 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 - **The Marionette witness for Settings › Remotes against the DS card "Settings — Remotes and config file" was not run.** Medium.
   - The catalogue / app needs a long-lived `flutter run`, which the unattended run could not hold; `app/lib/src/features/settings/remotes_group.dart` is covered by widget tests only, and the new `ClipRRect` in `SettingsGroup` (`settings_widgets.dart`, every Settings group) is unchecked visually.
   - **Follow-up:** a Marionette run of the Widgetbook Settings use case (or the app) compared with `design_system/components/settings/remotes-config.card.html` (rows, a form with a refusal, the Remove sheet).
+
+## Surfaced in Story 11.19 (bmad-build-auto, 2026-11-06)
+
+- **The Config file page and the resizable Settings window were not checked in the running app.** Medium.
+  - No Marionette run against `design_system/components/settings/remotes-config.card.html` (column 3); the window binding (`_bindWindow`/`_windowChanged` in `app/lib/src/features/settings/settings_window.dart`: minimum 620 × 420 after the first frame, height following the tab, filling after a user resize, `setConstraints` with no maximum) and the runner's `userSized` handling (`app/macos/Runner/WindowFrameStore.swift`) have no automated test; only `SettingsHeightFollower` / `NaturalHeight` are unit-tested.
+  - **Follow-up:** run the app, open Settings › Edit… on both tabs, resize from every edge, zoom, switch tabs before and after a resize, compare with the DS card.
