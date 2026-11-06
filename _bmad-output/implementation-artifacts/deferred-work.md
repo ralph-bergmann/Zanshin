@@ -2691,7 +2691,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 _Ralph's findings on `dart-intellij-third-party` (4674 changes) after the story loop 10.16 / 11.7 / 11.8. Fixed the same day, each checked with Marionette on that repo: the bracket-layer crash (commit 2c0c6f81), merge lines through a gutter where the child's lane was free (fc2c2378, design sync #18 in 4d350d02), the inspector jumping to the top on a file click (7cda6a55)._
 
-- **Long histories: commit-free months leave screens of empty canvas, the minimap's day labels are clipped, and the fitted minimap squeezes years together.** Medium.
+- ~~**Long histories: commit-free months leave screens of empty canvas, the minimap's day labels are clipped, and the fitted minimap squeezes years together.**~~ — RESOLVED 2026-11-06 (spec-10-31-long-history-time-axis-minimap, commit 88e876f8): card-free stretches > 8 pitches shrink to a GraphBreak, day labels are short with year labels of their own, the minimap is sized by its columns and scrolls at a 2 px minimum density. Medium.
   - Free maps time to y with no limit; `graph_minimap.dart` has a fixed 118 px strip with a 58 px label column ("Dec 16, 2015" does not fit) and fits the whole history to its height.
   - **Follow-up:** Story 10.31 (design round first): shortened gaps with a torn-paper edge, a minimap sized to its content, year labels (sticky while it scrolls), a scrolling minimap, optionally the day pill reaching out of the card. Covered by Story 10.31.
 
