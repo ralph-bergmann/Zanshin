@@ -2804,7 +2804,7 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
 
 ## Surfaced in Story 10.31 (bmad-build-auto, 2026-11-06)
 
-- **No test pins that the home page hands the graph's minimap card width to the floating shell.** Low.
+- ~~**No test pins that the home page hands the graph's minimap card width to the floating shell.**~~ — RESOLVED 2026-11-06 (spec-10-31-closing-home-minimap-width-wiring-test, commit 59d281f5): home_page_test pins the hand-over (null without a project, the open graph's cardWidth, follows a project switch). Low.
   - `app/lib/src/features/home/home_page.dart:116` passes `minimapWidth: graph.model?.minimapSource.cardWidth`; the shell and minimap tests wire their own notifier, so dropping the argument would pin the card at 134 px unnoticed.
   - **Follow-up:** a `home_page_test` case with a multi-column graph asserting the shell's minimap width follows `cardWidth`.
 - **The Widgetbook catalogue cannot show a long history: breaks live in `BackendGraphLayout`, recorded layouts carry none.** Low.

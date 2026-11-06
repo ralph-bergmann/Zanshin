@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/home/home_page.dart:116
     severity: low
+    resolved: >-
+      2026-11-06 — fixed (spec-10-31-closing-home-minimap-width-wiring-test, commit 59d281f5): home_page_test pins that the shell's minimapWidth is the open graph's minimapSource.cardWidth, null without a project, and follows a project switch.
   - summary: >-
       The Widgetbook catalogue cannot show a long history: breaks live in BackendGraphLayout, recorded layouts carry none.
     evidence: |-
