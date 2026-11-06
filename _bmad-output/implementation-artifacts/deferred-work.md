@@ -1165,7 +1165,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - `DS components/surfaces/Popover.prompt.md:6` offers the Layout "Compact, Time"; Time is gone since #7.
   - **Follow-up:** mention it with the next DS sync. Stories cite the components' code, not these examples.
   - *(Resolved 2026-10-16: the DS fixed `Island.prompt.md` (GraphSearch, not CommandField) and `Popover.prompt.md` (Free · Compact, not Time) (DS readme.md:303).)*
-- **Density has no tokens.** Low.
+- ~~**Density has no tokens.**~~ — RESOLVED 2026-11-07 (spec-11-20-density-spacing-tokens, commit 8b364e7a): ZsMetrics carries the three density sets (rows +0/+3/+6, graph cards, gaps), switched live in every window; the DS tokens sit in tokens/spacing.css under the parity test; density no longer scales text. Low.
   - The DS's Settings card has a Density row, Compact · Balanced · Comfy (`DS components/settings/settings.card.html:30`), and its UI kit defaults to compact.
   - No DS component reads it. In the client it changes only the body font size (`AC:69-71`, `:80`).
   - **Follow-up:** 11.7's design question (a) asks Ralph whether the row stays. The token layer carries the DS's compact sizes only.
