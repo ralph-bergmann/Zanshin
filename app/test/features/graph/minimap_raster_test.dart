@@ -29,15 +29,15 @@ const _h = 40;
 int _alpha(Uint8List bytes, int x, int y) => _px(bytes, 0, x, y).$4;
 
 void main() {
-  test('a hand-made raster: discs and a hollow ring at the mapped centres, edge dots every 3 vs 6 px, two layers', () {
+  test('a hand-made raster: discs and a hollow ring at the mapped centres, edge dots on one 3 px grid, two layers', () {
     final input = MinimapRasterInput(
       nodeXs: Float64List.fromList(<double>[5, 5, 12]),
       nodeYs: Float64List.fromList(<double>[5, 20, 30]),
       nodeStacks: Uint8List.fromList(<int>[0, 0, 1]),
-      // A direct edge straight down, an indirect one with two bends.
+      // An edge straight down, and one with two bends that starts 1 px lower on the same x: where they run together
+      // their dots must coincide (design sync #22).
       edgeStarts: Int32List.fromList(<int>[0, 2, 6]),
-      edgePoints: Float64List.fromList(<double>[5, 7, 5, 18, 5, 22, 5, 26, 12, 26, 12, 28]),
-      edgeIndirect: Uint8List.fromList(<int>[0, 1]),
+      edgePoints: Float64List.fromList(<double>[5, 7, 5, 18, 5, 8, 5, 26, 12, 26, 12, 28]),
       ax: 0,
       bx: 1,
       ay: 0,
@@ -63,16 +63,20 @@ void main() {
     expect(_alpha(bytes, 11, 29), 0);
     expect(_alpha(bytes, 14, 29), 255);
 
-    // The direct edge's dots at y 7, 10, 13, 16: one at 10, none between 10 and 13.
+    // Both lines dot at y 9, 12, 15 (the multiples of 3), so pixel rows 10 and 13 stay clear — a dot of the second
+    // line at 8, 11, 14 would cover them.
     expect(_alpha(bytes, 4, 9), greaterThan(0));
-    expect(_alpha(bytes, 4, 11), 0);
+    expect(_alpha(bytes, 4, 11), greaterThan(0));
+    expect(_alpha(bytes, 4, 10), 0);
+    expect(_alpha(bytes, 4, 13), 0);
     // The in layer draws edges in --text-muted.
     final (int r, _, _, int a) = _px(bytes, 1, 4, 9);
     expect(r / a, closeTo(0xC0 / 255, .01));
 
-    // The indirect edge's dots every 6 px: one at y 22, the next around the first bend — none at 25.
-    expect(_alpha(bytes, 4, 24), 0);
-    expect(_alpha(bytes, 6, 25), greaterThan(0), reason: 'the dot carried around the bend at (7, 26)');
+    // The horizontal stretch at y 26 dots at x 6, 9, 12: none at x 7.
+    expect(_alpha(bytes, 5, 25), greaterThan(0));
+    expect(_alpha(bytes, 7, 25), 0);
+    expect(_alpha(bytes, 8, 25), greaterThan(0));
   });
 
   test('an empty input rasters empty layers', () {
@@ -83,7 +87,6 @@ void main() {
         nodeStacks: Uint8List(0),
         edgeStarts: Int32List(1),
         edgePoints: Float64List(0),
-        edgeIndirect: Uint8List(0),
         ax: 0,
         bx: 1,
         ay: 0,
@@ -164,7 +167,51 @@ void main() {
       muted: _muted,
     );
     expect(input.nodeXs, hasLength(2));
-    expect(input.edgeIndirect, isEmpty);
+    expect(input.edgeStarts, <int>[0]);
     expect(rasterMinimap(input).any((b) => b != 0), isTrue);
   });
+
+  test(
+    'every edge runs on from the card edges to both cards\' centres, so a stretched strip shows no gap at a dot',
+    () {
+      final GraphLayout layout = handLayout(
+        <(String, int, int)>[('a', 2, 0), ('b', 1, 1), ('c', 0, 0)],
+        edges: <(int, int)>[(0, 2), (1, 2)],
+      );
+      final metrics = GraphMetrics();
+      final vertical = ScrollController();
+      addTearDown(vertical.dispose);
+      final MinimapRasterInput input = minimapRasterInput(
+        GraphMinimapFrame(
+          layout: layout,
+          rows: UniformRows(layout, metrics),
+          metrics: metrics,
+          geometry: routeGraph(layout, metrics) as RouteGeometry,
+          insets: EdgeInsets.zero,
+          vertical: vertical,
+          horizontal: vertical,
+        ),
+        const Size(118, 900),
+        1,
+        faint: _faint,
+        text: _text,
+        muted: _muted,
+      );
+      (double, double) centre(int node) => (input.nodeXs[node], input.nodeYs[node]);
+      (double, double) point(int q) => (input.edgePoints[2 * q], input.edgePoints[2 * q + 1]);
+      expect(input.edgeStarts, hasLength(layout.edgeCount + 1));
+      for (var e = 0; e < layout.edgeCount; e++) {
+        expect(
+          point(input.edgeStarts[e]),
+          centre(layout.parentOf(e)),
+          reason: 'edge $e starts at its parent\'s centre',
+        );
+        expect(
+          point(input.edgeStarts[e + 1] - 1),
+          centre(layout.childOf(e)),
+          reason: 'edge $e ends at its child\'s centre',
+        );
+      }
+    },
+  );
 }

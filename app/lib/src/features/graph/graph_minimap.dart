@@ -319,19 +319,13 @@ MinimapRasterInput minimapRasterInput(
     ys[i] = rows.top(node) + metrics.cardHeight / 2;
     stacks[i] = layout.isStackNode(node) ? 1 : 0;
   }
-  final RouteGeometry? geometry = frame.geometry;
-  final int edges = geometry == null ? 0 : math.min(geometry.pointStarts.length - 1, layout.edgeCount);
-  final indirect = Uint8List(edges);
-  for (var e = 0; e < edges; e++) {
-    indirect[e] = layout.kindOf(e) == GraphEdgeKind.indirect ? 1 : 0;
-  }
+  final (Int32List edgeStarts, Float64List edgePoints) = _centredEdges(frame);
   return MinimapRasterInput(
     nodeXs: xs,
     nodeYs: ys,
     nodeStacks: stacks,
-    edgeStarts: geometry == null ? Int32List(1) : Int32List.fromList(geometry.pointStarts.sublist(0, edges + 1)),
-    edgePoints: geometry?.points ?? Float64List(0),
-    edgeIndirect: indirect,
+    edgeStarts: edgeStarts,
+    edgePoints: edgePoints,
     ax: dpr * (_graphRight - mapping.x1 * mapping.kx),
     bx: dpr * mapping.kx,
     ay: dpr * mapping.top * mapping.k,
@@ -344,6 +338,40 @@ MinimapRasterInput minimapRasterInput(
     inNode: text,
     inEdge: muted,
   );
+}
+
+/// [frame]'s route polylines (CSR offsets, x/y pairs) with each end carried on to its card's centre. The router runs
+/// a line from the parent's top edge to the child's bottom edge; the minimap draws a card as a dot at its centre, and a
+/// stretched strip would open a gap of half a card on either side of every dot (design sync #22).
+(Int32List, Float64List) _centredEdges(GraphMinimapFrame frame) {
+  final RouteGeometry? geometry = frame.geometry;
+  if (geometry == null) {
+    return (Int32List(1), Float64List(0));
+  }
+  final GraphLayout layout = frame.layout;
+  final GraphMetrics metrics = frame.metrics;
+  final int edges = math.min(geometry.pointStarts.length - 1, layout.edgeCount);
+  final starts = Int32List(edges + 1);
+  final points = <double>[];
+  void centre(int node) => points
+    ..add(metrics.x(layout.colOf(node)) + metrics.cardWidth / 2)
+    ..add(frame.rows.top(node) + metrics.cardHeight / 2);
+  for (var e = 0; e < edges; e++) {
+    final int from = geometry.pointStarts[e];
+    final int to = geometry.pointStarts[e + 1];
+    final int parent = layout.parentOf(e);
+    final int child = layout.childOf(e);
+    final bool ends = to > from && _laidOut(layout, parent) && _laidOut(layout, child);
+    if (ends) {
+      centre(parent);
+    }
+    points.addAll(geometry.points.sublist(2 * from, 2 * to));
+    if (ends) {
+      centre(child);
+    }
+    starts[e + 1] = points.length ~/ 2;
+  }
+  return (starts, Float64List.fromList(points));
 }
 
 /// The raster's key: a change re-rasters (Story 10.16).

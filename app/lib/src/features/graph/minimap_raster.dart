@@ -16,7 +16,6 @@ class MinimapRasterInput {
     required this.nodeStacks,
     required this.edgeStarts,
     required this.edgePoints,
-    required this.edgeIndirect,
     required this.ax,
     required this.bx,
     required this.ay,
@@ -29,7 +28,7 @@ class MinimapRasterInput {
     required this.inNode,
     required this.inEdge,
   }) : assert(nodeXs.length == nodeYs.length && nodeXs.length == nodeStacks.length),
-       assert(edgeStarts.isNotEmpty && edgeStarts.length == edgeIndirect.length + 1);
+       assert(edgeStarts.isNotEmpty);
 
   /// Each node's centre x, in plane coordinates.
   final Float64List nodeXs;
@@ -45,9 +44,6 @@ class MinimapRasterInput {
 
   /// Every polyline's points as x, y pairs, in plane coordinates.
   final Float64List edgePoints;
-
-  /// 1 where the edge is indirect (dotted every 6 px instead of 3).
-  final Uint8List edgeIndirect;
 
   /// Device x = [ax] + [bx] · plane x.
   final double ax;
@@ -95,11 +91,9 @@ const minimapRingStroke = 1.2;
 /// An edge dot's diameter (kit.css:159, `stroke-width:1.5` with round caps).
 const minimapEdgeDot = 1.5;
 
-/// The dot spacing of a direct edge (kit.css:159, `stroke-dasharray:0 3`).
+/// The dot spacing of every edge, direct and indirect alike (kit.css:159, `stroke-dasharray:0 3`; one spacing since
+/// design sync #22).
 const double minimapEdgeStep = 3;
-
-/// The dot spacing of an indirect edge (kit.css:160, `stroke-dasharray:0 6`).
-const double minimapIndirectStep = 6;
 
 /// Both raster layers of [input], one after the other, each `width · height · 4` bytes of RGBA with premultiplied
 /// alpha (the form `decodeImageFromPixels` reads `rgba8888` in): first the out layer (nodes in [MinimapRasterInput.outNode],
@@ -118,33 +112,22 @@ Uint8List rasterMinimap(MinimapRasterInput input) {
   final double dpr = input.dpr;
 
   final double dotR = minimapEdgeDot / 2 * dpr;
+  final double step = minimapEdgeStep * dpr;
   final Float64List p = input.edgePoints;
-  final int edgeCount = input.edgeIndirect.length;
-  for (var e = 0; e < edgeCount; e++) {
-    final double step = (input.edgeIndirect[e] != 0 ? minimapIndirectStep : minimapEdgeStep) * dpr;
-    final int start = input.edgeStarts[e];
+  for (var e = 0; e + 1 < input.edgeStarts.length; e++) {
     final int end = input.edgeStarts[e + 1];
-    if (end - start < 1) {
-      continue;
-    }
-    double px = input.ax + input.bx * p[2 * start];
-    double py = input.ay + input.by * p[2 * start + 1];
-    _disc(edges, w, h, px, py, dotR);
-    // The distance still to go to the next dot, carried across the bends as a dash pattern is.
-    var toNext = step;
-    for (int q = start + 1; q < end; q++) {
-      final double qx = input.ax + input.bx * p[2 * q];
-      final double qy = input.ay + input.by * p[2 * q + 1];
-      final double len = math.sqrt((qx - px) * (qx - px) + (qy - py) * (qy - py));
-      var at = toNext;
-      while (at <= len) {
-        final double t = at / len;
-        _disc(edges, w, h, px + (qx - px) * t, py + (qy - py) * t, dotR);
-        at += step;
-      }
-      toNext = at - len;
-      px = qx;
-      py = qy;
+    for (int q = input.edgeStarts[e] + 1; q < end; q++) {
+      _dots(
+        edges,
+        w,
+        h,
+        input.ax + input.bx * p[2 * q - 2],
+        input.ay + input.by * p[2 * q - 1],
+        input.ax + input.bx * p[2 * q],
+        input.ay + input.by * p[2 * q + 1],
+        step,
+        dotR,
+      );
     }
   }
 
@@ -164,6 +147,25 @@ Uint8List rasterMinimap(MinimapRasterInput input) {
   _compose(out, 0, edges, nodes, input.outEdge, input.outNode);
   _compose(out, area * 4, edges, nodes, input.inEdge, input.inNode);
   return out;
+}
+
+/// Stamps the dots of the segment ([x0], [y0]) → ([x1], [y1]) into [cov]: one where its major axis crosses a multiple of
+/// [step]. The grid is the raster's own, shared by every edge, so lines that run together put their dots on the same
+/// spots and read as one line, not a denser one (design sync #22).
+void _dots(Float32List cov, int w, int h, double x0, double y0, double x1, double y1, double step, double r) {
+  final double dx = x1 - x0;
+  final double dy = y1 - y0;
+  final bool vertical = dy.abs() >= dx.abs();
+  final a0 = vertical ? y0 : x0;
+  final a1 = vertical ? y1 : x1;
+  if (a0 == a1) {
+    return;
+  }
+  final int last = (math.max(a0, a1) / step).floor();
+  for (int k = (math.min(a0, a1) / step).ceil(); k <= last; k++) {
+    final double t = (k * step - a0) / (a1 - a0);
+    _disc(cov, w, h, x0 + dx * t, y0 + dy * t, r);
+  }
 }
 
 /// Stamps an anti-aliased disc of radius [r] at ([cx], [cy]) into [cov] (max per pixel).
