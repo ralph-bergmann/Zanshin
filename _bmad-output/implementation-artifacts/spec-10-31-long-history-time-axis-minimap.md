@@ -187,6 +187,6 @@ Status: done
 **Follow-up review:** false (no high patched; the five medium patches are a one-place lookup fix and four tests, each covered by its own test).
 
 **Items.**
-- I1 — fixed (this story's commit): the empty screens (breaks), the clipped minimap labels (year-free short labels, years of their own) and the squeezed years (minimum density + scrolling minimap) are gone; item 6 (pill outside the card) dropped by the design round.
+- I1 — fixed (commit 88e876f8a4ce4d435aa6d202f0775673988797ca): the empty screens (breaks), the clipped minimap labels (year-free short labels, years of their own) and the squeezed years (minimum density + scrolling minimap) are gone; item 6 (pill outside the card) dropped by the design round.
 
 **Residual risks.** Compact minimap year boundaries sit midway between two labels (the prototype has none in Compact). No test pins the early raster re-centre on a fast scroll. Not checked in the running app.
