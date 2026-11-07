@@ -23,8 +23,7 @@ import 'package:zanshin_core/src/ffi/zanshin_version.dart';
 void main() {
   group('zanshin_ffi_version FFI seam (real cdylib)', () {
     test('production wrapper returns a non-empty "<version> (<sha>)" build stamp', () {
-      final ZanshinFfiVersion getVersion = ZanshinFfiModule().zanshinFfiVersion();
-      final String version = getVersion();
+      final String version = zanshinFfiVersion();
 
       // A String CAN be empty, so isNotEmpty is a real (non-vacuous) check.
       expect(version, isNotEmpty, reason: 'version build-stamp must be non-empty');

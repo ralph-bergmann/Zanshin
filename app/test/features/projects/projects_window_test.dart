@@ -10,16 +10,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin/l10n/app_localizations_en.dart';
 import 'package:zanshin/main.dart' show MainComponent;
+import 'package:zanshin/src/app/boot/icon_module.dart';
 import 'package:zanshin/src/app/worker_lifecycle_module.dart';
-import 'package:zanshin/src/features/bootstrap/icon_module.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/projects/projects_environment.dart';
 import 'package:zanshin/src/features/projects/projects_module.dart';
+import 'package:zanshin/src/features/projects/projects_search_focus.dart';
 import 'package:zanshin/src/features/projects/projects_tree.dart';
 import 'package:zanshin/src/features/projects/projects_window.dart';
 import 'package:zanshin/src/features/projects/tree_drop.dart';
+import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
@@ -27,6 +29,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_projects.dart';
 import '../../helpers/fake_projects_environment.dart';
+import '../../helpers/fake_window_actions.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/recording_shell.dart';
 import '../../helpers/shell_host.dart';
@@ -91,11 +94,16 @@ class _Rig {
 
   /// Runs when the content reports an open, after it is recorded in [opened].
   void Function(ProjectOpened outcome)? whenOpened;
-  var settings = 0;
-  var identitySettings = 0;
+
+  /// What the content asked of the windows while it sits in their scope.
+  final actions = FakeWindowActions();
+
+  /// Where the content registers its search.
+  final searchFocus = ProjectsSearchFocus();
 
   String get home => env.home;
 
+  /// Pumps the content; with [callbacks] it reports its opens and sits in an [AppWindowActionsScope] over [actions].
   Future<void> pump({
     Size size = const Size(900, 640),
     bool demo = true,
@@ -122,20 +130,20 @@ class _Rig {
       repos.readings[path] = ProjectReading(status: stored?.status ?? ProjectStatus.clean, bookmark: stored?.bookmark);
       await tester.runAsync(() => session.open(path));
     }
-    _content = ProjectsWindow(
+    final content = ProjectsWindow(
       key: UniqueKey(),
       session: session,
       registry: registry,
       environment: env,
+      searchFocus: searchFocus,
       onOpened: callbacks
           ? (outcome) {
               opened.add(outcome);
               whenOpened?.call(outcome);
             }
           : null,
-      onSettings: callbacks ? () => settings++ : null,
-      onIdentitySettings: callbacks ? () => identitySettings++ : null,
     );
+    _content = callbacks ? AppWindowActionsScope(actions: actions, child: content) : content;
     await tester.pumpWidget(shellHost(_content, appearance: appearance));
     await tester.pump();
     await tester.pump();
@@ -521,7 +529,9 @@ void main() {
       expect(rig.focused, 'projects search', reason: 'Esc clears and keeps focus; it closes nothing');
     });
 
-    testWidgets("focusSearch (the menu bar's Find) focuses the search with its text selected", (tester) async {
+    testWidgets("the registered search focus (the menu bar's Find) focuses the search with its text selected", (
+      tester,
+    ) async {
       final rig = _Rig(tester);
       await rig.pump();
       final Finder field = find.descendant(of: rig.id('projects-search'), matching: find.byType(EditableText));
@@ -530,13 +540,56 @@ void main() {
       await tester.pump();
       expect(rig.focused, isNot('projects search'));
 
-      tester.state<ProjectsWindowState>(find.byType(ProjectsWindow)).focusSearch();
+      rig.searchFocus.focus!();
       await tester.pump();
       expect(rig.focused, 'projects search');
       expect(
         tester.widget<EditableText>(field).controller.selection,
         const TextSelection(baseOffset: 0, extentOffset: 6),
       );
+    });
+
+    testWidgets('the content registers its search while mounted; its dispose drops only its own registration', (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      expect(rig.searchFocus.focus, tester.state<ProjectsWindowState>(find.byType(ProjectsWindow)).focusSearch);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(rig.searchFocus.focus, isNull, reason: 'the content went');
+
+      await rig.pump();
+      void other() {}
+      rig.searchFocus.register(other);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(rig.searchFocus.focus, other, reason: "another content's registration stays");
+    });
+
+    testWidgets('a rebuild over another search focus moves the registration there', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final ProjectsWindow shown = tester.widget<ProjectsWindow>(find.byType(ProjectsWindow));
+      final ProjectsWindowState state = tester.state<ProjectsWindowState>(find.byType(ProjectsWindow));
+      final moved = ProjectsSearchFocus();
+
+      await tester.pumpWidget(
+        shellHost(
+          AppWindowActionsScope(
+            actions: rig.actions,
+            child: ProjectsWindow(
+              key: shown.key,
+              session: shown.session,
+              registry: shown.registry,
+              environment: shown.environment,
+              searchFocus: moved,
+              onOpened: shown.onOpened,
+            ),
+          ),
+        ),
+      );
+      expect(tester.state<ProjectsWindowState>(find.byType(ProjectsWindow)), same(state), reason: 'the same content');
+      expect(rig.searchFocus.focus, isNull);
+      expect(moved.focus, state.focusSearch);
     });
 
     testWidgets('a group toggled during a search keeps its state for when the search is cleared', (tester) async {
@@ -1995,7 +2048,9 @@ void main() {
       );
     });
 
-    testWidgets('without callbacks Settings… is disabled and no link shows; with them both run', (tester) async {
+    testWidgets('without window actions Settings… is disabled and no link shows; with them both open Settings', (
+      tester,
+    ) async {
       final rig = _Rig(tester);
       rig.env.identityAnswer = JjIdentity(name: '', email: '');
       await rig.pump(callbacks: false);
@@ -2008,7 +2063,7 @@ void main() {
       await tester.tap(rig.id('projects-settings'));
       await tester.tap(find.text('Set identity…'));
       await tester.pump();
-      expect((rig.settings, rig.identitySettings), (1, 1));
+      expect(rig.actions.settings, <SettingsTarget?>[null, SettingsTarget.general], reason: 'last tab, then General');
     });
 
     testWidgets("the identity footer gives the CLI's phrase for what is missing; a failed read hides it", (
@@ -2108,6 +2163,8 @@ void main() {
     expect(window.session, same(component.projectSession));
     expect(window.registry, same(component.projectSession.registry));
     expect(window.environment, isA<DesktopProjectsEnvironment>());
-    expect(component.projectsWindowFactory.create().session, same(window.session), reason: 'singletons');
+    final ProjectsWindow other = component.projectsWindowFactory.create();
+    expect(other.session, same(window.session), reason: 'singletons');
+    expect(other.searchFocus, same(window.searchFocus), reason: "one search focus: the menu bar's Find");
   });
 }

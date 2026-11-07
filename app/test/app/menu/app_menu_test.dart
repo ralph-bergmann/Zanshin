@@ -13,13 +13,15 @@ import 'package:flutter/src/foundation/_features.dart';
 import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/app/menu/app_menu.dart';
+import 'package:zanshin/src/features/graph/active_graph.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_preferences.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
-import 'package:zanshin/src/features/shell/app_menu.dart';
+import 'package:zanshin/src/features/projects/projects_search_focus.dart';
 import 'package:zanshin/src/features/shell/shell_toast.dart';
 import 'package:zanshin/src/features/sync/sync_model.dart';
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
@@ -182,6 +184,8 @@ class _Rig {
   late final AppWindows windows;
   late final ActiveWindowTracker tracker;
   late final AppMenuModel menu;
+  final graph = ActiveGraph();
+  final projectsSearch = ProjectsSearchFocus();
   final factory = FakeWindowFactory();
   final actions = _WindowActions();
   final mainSheet = ValueNotifier<bool>(false);
@@ -220,11 +224,12 @@ class _Rig {
     addTearDown(session.dispose);
     windows = AppWindows(createController: factory.call, exitProcess: () async {});
     tracker = ActiveWindowTracker();
-    menu = AppMenuModel(tracker, session)
-      ..attach(windows, actions, store)
+    menu = AppMenuModel(tracker, session, store, graph, projectsSearch)
+      ..attach(windows, actions)
       ..openUrl = (url) async => urls.add(url);
     addTearDown(() {
       menu.dispose();
+      graph.dispose();
       tracker.dispose();
       field.dispose();
       text.dispose();
@@ -785,6 +790,66 @@ void main() {
       ..select('Detailed Cards');
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     expect(rig.store.value.graph.detailedCards, isNot(const GraphSettings().detailedCards));
+    rig.unbindGraph();
+  });
+
+  testWidgets("Find while Projects is key runs the Projects content's registered search focus; grey under its sheet", (
+    tester,
+  ) async {
+    final rig = _Rig();
+    await rig.setUp(tester);
+    var projectsFinds = 0;
+    void focus() => projectsFinds++;
+    rig.projectsSearch.register(focus);
+    rig
+      ..focus(projectsWindowKey)
+      ..select('Find');
+    expect(projectsFinds, 1);
+
+    rig.projectsSheet.value = true;
+    await tester.pump();
+    expect(rig.enabled('Find'), isFalse, reason: 'a sheet shows in Projects');
+    rig.projectsSheet.value = false;
+    await tester.pump();
+
+    // No Projects content registered: the graph search, as from any other window.
+    rig.projectsSearch.unregister(focus);
+    expect(rig.enabled('Find'), isFalse, reason: 'no graph bound either');
+    await rig.bindGraph(tester);
+    rig.select('Find');
+    expect((projectsFinds, rig.searches), (1, 1));
+    expect(
+      (rig.windows.controllerOf(mainWindowKey)! as WindowController).isActivated,
+      isTrue,
+      reason: 'the graph search activates the project window',
+    );
+    rig.unbindGraph();
+  });
+
+  testWidgets('a menu made over an already published graph listens to it at once', (tester) async {
+    final rig = _Rig();
+    await rig.setUp(tester);
+    await rig.bindGraph(tester);
+    final menu = AppMenuModel(rig.tracker, rig.session, rig.store, rig.graph, rig.projectsSearch);
+    addTearDown(menu.dispose);
+    var notified = 0;
+    menu.addListener(() => notified++);
+    await tester.pump();
+    notified = 0;
+
+    rig.model!.select(_mid);
+    await tester.pump();
+    expect(notified, 1, reason: "the bound graph's model notified");
+    rig.unbindGraph();
+  });
+
+  testWidgets('the ActiveGraph outlives a disposed menu: dispose only stops listening', (tester) async {
+    final rig = _Rig();
+    await rig.setUp(tester);
+    AppMenuModel(rig.tracker, rig.session, rig.store, rig.graph, rig.projectsSearch).dispose();
+
+    await rig.bindGraph(tester);
+    expect(rig.enabled('New Change'), isTrue, reason: "the graph still publishes to the rig's menu");
     rig.unbindGraph();
   });
 

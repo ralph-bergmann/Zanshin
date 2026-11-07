@@ -123,7 +123,7 @@ export 'src/ffi/workspace.dart'
         WorkspaceAddResult,
         WorkspaceRemoveResult,
         WorkspaceRootResult;
-export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;
+export 'src/ffi/zanshin_version.dart' show zanshinFfiVersion;
 export 'src/graph_layout/graph_grid_view.dart' show GraphGridView;
 export 'src/graph_layout/layout_request.dart'
     show LaneOrder, LayoutContractException, LayoutMode, defaultLaneOrder, defaultLayoutBudget, defaultLayoutMode;

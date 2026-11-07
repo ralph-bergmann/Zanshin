@@ -6,10 +6,10 @@ import 'package:material_ui/material_ui.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
-import '../app/zanshin_app_view_model.dart';
 import 'active_window_tracker.dart';
 import 'window_chrome_builder.dart';
 import 'window_zoom.dart';
+import 'zanshin_app_view_model.dart';
 
 part 'zanshin_window_root.factory.dart';
 

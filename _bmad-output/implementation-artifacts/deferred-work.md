@@ -2452,6 +2452,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 - **Help › jj Documentation's URL carries the jj version separately from the jj-lib pin.** Low.
   - `jjDocumentationUrl` = `https://docs.jj-vcs.dev/v0.46.0/` (`app/lib/src/features/shell/app_menu.dart`); the pin-bump checklist in project-context.md does not name it.
   - **Follow-up:** add the URL to the pin-bump checklist (an agent-context edit).
+  - **2026-11-07, Story 11.24:** the URL moved to `app/lib/src/links.dart` unchanged (still `v0.46.0`, the pin is 0.47.0); the story changed no behaviour.
 
 ## Surfaced in Story 11.9 (bmad-build-auto, 2026-11-01)
 
@@ -2867,3 +2868,15 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - **`zanshin_ui` imports the persisted settings model, and `zanshin_settings` imports the UI library.** `AccentSource` in `zs_appearance.dart:6`; `ThemeMode` from `material_ui` in the settings model. Low.
   - Review §4, Phase 5. 11.14 kept this on purpose (its non-goal "Moving `AccentSource` out of `zanshin_settings` or `ShellTheme` out of `zanshin_shell`").
   - **Proposal:** (a) the design system defines its own accent type and the app maps the setting onto it; the settings store their own theme enum. (b) Leave it (recommended: it does not hurt today).
+
+## Surfaced in Story 11.24 (bmad-build-auto, 2026-11-07)
+
+- **The running-app witness of Story 11.24 (Marionette) was not run.** Low.
+  - The unattended run allows foreground commands only, so `flutter run -d macos` cannot stay up beside Marionette (and the app would reopen this machine's last project). Widget tests cover the wiring: menu Find through `ProjectsSearchFocus`, the Projects sidebar through `AppWindowActionsScope`, `ActiveGraph` publish/clear, one `ActiveGraph` / one `ProjectsSearchFocus` in main.dart's DI graph.
+  - **Follow-up:** run the app: a project opens and View/Change act on its graph; Edit › Find focuses the Projects search while Projects is key; Settings opens from the capsule and from the Projects window (Settings… and Set identity…); jj log Configurations shows the graph's revsets; Help › jj Documentation opens the browser.
+- **A Recent project that is no longer a jj workspace opens nothing and says nothing.** Low.
+  - `openRecentProject` (`app/lib/src/features/projects/project_session.dart:614-624`, moved unchanged from `home_page.dart`) reports only `ProjectOpenFailed` and a missing folder; `ProjectNotARepo` (a plain Git repository or folder) and `ProjectInsideRepo` from the capsule's Recent rows or File › Open Recent are dropped silently.
+  - **Follow-up:** report them too (`session.reportFailedOpen` + `openProjects()`), so the Projects window shows its convert/init/enclosing offer — or leave it.
+- **The app's layer rule is written down only in its guard test.** Low.
+  - `app/test/architecture/layers_test.dart` enforces "features never import `lib/src/app/`, feature folders import each other without a cycle"; `_bmad-output/project-context.md` (which names the other source guards) and the `app/` row of `README.md:24` ("features under `app/lib/src/features/`") do not mention the frame folder or the rule.
+  - **Follow-up:** one line in project-context.md (Code Quality § file organization) and the README row naming `app/lib/src/app/` (an agent-context edit).

@@ -12,8 +12,9 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../../l10n/strings.dart';
-import '../../shell/app_menu.dart' show GraphMenuBinding, jjDocumentationUrl;
+import '../../../links.dart' show jjDocumentationUrl;
 import '../../window/app_windows.dart';
+import '../active_graph.dart' show GraphMenuBinding;
 import '../graph_ports.dart' show jjLogCommand;
 import '../graph_search_controller.dart';
 import '../graph_search_model.dart';

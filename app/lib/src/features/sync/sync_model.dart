@@ -9,6 +9,7 @@ import 'package:zanshin_settings/zanshin_settings.dart' show RemotePollSetting;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../graph/active_graph.dart' show GraphMenuSync;
 import '../graph/graph_ports.dart';
 import '../graph/graph_view_model.dart';
 import '../shell/shell_toast.dart';
@@ -39,7 +40,7 @@ Duration? remotePollInterval(RemotePollSetting setting) => switch (setting) {
 ///   is stale or the setting is Off.
 /// - **Push:** [openPush] opens the sheet ([pushSheet]); its result shows in the toast with Undo while recorded, through
 ///   [GraphViewModel.undoOperation] (the undo's own toast carries jj's warning and Redo).
-class SyncModel extends ChangeNotifier {
+class SyncModel extends ChangeNotifier implements GraphMenuSync {
   /// The sync of [_sync] beside [_graph]'s view model, toasting into [_toasts]; `pollSetting` reads the project's
   /// interval and `pollChanged` says when it may have changed; `changeTarget` is the Push sheet's change row.
   SyncModel({
@@ -96,9 +97,11 @@ class SyncModel extends ChangeNotifier {
   double? get fetchProgress => _fetchProgress;
 
   /// Whether Fetch may run.
+  @override
   bool get canFetch => !_stale && !_fetching && _push == null && _fetchRemotes.isNotEmpty;
 
   /// Whether Push may open its sheet.
+  @override
   bool get canPush => !_stale && !_fetching && _push == null && _remoteNames.isNotEmpty;
 
   /// Whether the repository has a remote at all.
@@ -141,6 +144,7 @@ class SyncModel extends ChangeNotifier {
   }
 
   /// Reads the remotes again (View › Reload, a Settings remote verb), and so does an open, idle Push sheet.
+  @override
   Future<void> reloadRemotes() async {
     await _loadRemotes();
     await _push?.reloadRemotes();
@@ -159,6 +163,7 @@ class SyncModel extends ChangeNotifier {
   // ---- fetch ----
 
   /// `jj git fetch` with the default remotes.
+  @override
   Future<void> fetch() async {
     if (_disposed || !canFetch) {
       return;
@@ -283,6 +288,7 @@ class SyncModel extends ChangeNotifier {
   // ---- push ----
 
   /// Opens the Push sheet; nothing pushes before its Push.
+  @override
   void openPush() {
     if (!canPush) {
       return;

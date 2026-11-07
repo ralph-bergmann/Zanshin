@@ -9,7 +9,9 @@ import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/projects/projects_environment.dart';
+import 'package:zanshin/src/features/projects/projects_search_focus.dart';
 import 'package:zanshin/src/features/projects/projects_window.dart';
+import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
@@ -295,6 +297,7 @@ class DemoProjectsWindow extends StatefulWidget {
 
 class _DemoProjectsWindowState extends State<DemoProjectsWindow> {
   final _content = GlobalKey<ProjectsWindowState>();
+  final _searchFocus = ProjectsSearchFocus();
   late final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_projects');
   late final String _home = _dir.resolveSymbolicLinksSync();
   late final _repos = DemoProjectRepos(_home)..cloneGate = widget.busyClone ? Completer<void>() : null;
@@ -355,12 +358,30 @@ class _DemoProjectsWindowState extends State<DemoProjectsWindow> {
     if (session == null || registry == null) {
       return const SizedBox.expand();
     }
-    return ProjectsWindow(
-      key: _content,
-      session: session,
-      registry: registry,
-      environment: DemoProjectsEnvironment(_home, identity: widget.identity),
-      onIdentitySettings: () {},
+    // Settings… and Set identity… show enabled and open nothing: the catalogue has no Settings window behind them.
+    return AppWindowActionsScope(
+      actions: const _NoWindowActions(),
+      child: ProjectsWindow(
+        key: _content,
+        session: session,
+        registry: registry,
+        environment: DemoProjectsEnvironment(_home, identity: widget.identity),
+        searchFocus: _searchFocus,
+      ),
     );
   }
+}
+
+/// Window actions that open nothing.
+class _NoWindowActions implements AppWindowActions {
+  const _NoWindowActions();
+
+  @override
+  Future<void> openProjects() async {}
+
+  @override
+  Future<void> openRevsetConfigs() async {}
+
+  @override
+  Future<void> openSettings({SettingsTarget? target}) async {}
 }

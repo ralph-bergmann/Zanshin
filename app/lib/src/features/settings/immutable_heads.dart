@@ -3,6 +3,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:zanshin_core/zanshin_core.dart' show ConfigEntry, TopologyRef, TopologyRefKind;
 
+import '../graph/immutable_reasons.dart' show builtinImmutableHeads, immutableBuiltins, splitRevsetUnion;
+
 /// The effective value among [entries] (`jj config list NAME --include-overridden`, lowest layer first): the last
 /// entry no higher layer overrides, or null when there is none.
 ConfigEntry? effectiveConfigEntry(List<ConfigEntry> entries) => entries.lastWhereOrNull((entry) => !entry.overridden);
@@ -23,17 +25,6 @@ const immutableHeadsKey = 'revset-aliases."immutable_heads()"'; // l10n-ignore: 
 
 /// The config key History › Trunk writes.
 const trunkKey = 'revset-aliases."trunk()"'; // l10n-ignore: jj's config key
-
-/// jj's default for `immutable_heads()`.
-const builtinImmutableHeads = 'builtin_immutable_heads()'; // l10n-ignore: jj's revset
-
-/// What [builtinImmutableHeads] stands for, in the jj CLI's order (`cli/src/config/revsets.toml` @ v0.46.0).
-const immutableBuiltins = <String>[
-  'trunk()', // l10n-ignore: jj's revset
-  'tags()', // l10n-ignore: jj's revset
-  'untracked_remote_bookmarks()', // l10n-ignore: jj's revset
-  'untracked_remote_tags()', // l10n-ignore: jj's revset
-];
 
 /// One commit a revset denotes, as the Immutable commits page names it.
 @immutable
@@ -111,45 +102,6 @@ const _othersCompact = '(trunk()..&~mine())';
 
 /// A bookmark name jj takes bare as a revset symbol.
 final _bareSymbol = RegExp(r'^[\w./@+-]+$');
-
-/// [revset]'s top-level `|` terms, trimmed, empty ones dropped: a `|` inside parentheses or a quoted string does not
-/// split. `builtin_immutable_heads() | present(develop) | heads(foo)` → those three.
-List<String> splitRevsetUnion(String revset) {
-  final terms = <String>[];
-  final current = StringBuffer();
-  var depth = 0;
-  String? quote;
-  for (var i = 0; i < revset.length; i++) {
-    final String c = revset[i];
-    if (quote != null) {
-      current.write(c);
-      if (c == r'\' && quote == '"' && i + 1 < revset.length) {
-        current.write(revset[++i]);
-      } else if (c == quote) {
-        quote = null;
-      }
-      continue;
-    }
-    switch (c) {
-      case '"' || "'":
-        quote = c;
-      case '(':
-        depth++;
-      case ')':
-        depth--;
-      case '|' when depth == 0:
-        terms.add(current.toString());
-        current.clear();
-        continue;
-    }
-    current.write(c);
-  }
-  terms.add(current.toString());
-  return <String>[
-    for (final String term in terms)
-      if (term.trim().isNotEmpty) term.trim(),
-  ];
-}
 
 /// The text of a TOML string value ([toml] as `jj config list` reads it: a basic `"…"`, a literal `'…'` or a
 /// multi-line `"""…"""` / `'''…'''` string), or null when [toml] is not a string (a list, a table, a number).

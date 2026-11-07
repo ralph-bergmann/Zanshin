@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
-import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -11,21 +9,19 @@ import 'package:logging/logging.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../features/graph/active_graph.dart';
+import '../../features/graph/graph_layout.dart';
+import '../../features/graph/graph_ports.dart';
+import '../../features/graph/graph_preferences.dart';
+import '../../features/graph/graph_view_model.dart';
+import '../../features/projects/project_session.dart';
+import '../../features/projects/projects_search_focus.dart';
+import '../../features/window/active_window_tracker.dart';
+import '../../features/window/app_window_actions.dart';
+import '../../features/window/app_windows.dart';
+import '../../features/window/window_zoom.dart';
 import '../../l10n/strings.dart';
-import '../bootstrap/boot_window_host.dart' show mainWindowTitle;
-import '../graph/graph_layout.dart';
-import '../graph/graph_ports.dart';
-import '../graph/graph_preferences.dart';
-import '../graph/graph_search_controller.dart';
-import '../graph/graph_view_model.dart';
-import '../home/home_page.dart' show openRecentProject;
-import '../projects/project_session.dart';
-import '../projects/projects_window.dart';
-import '../sync/sync_model.dart';
-import '../window/active_window_tracker.dart';
-import '../window/app_window_actions.dart';
-import '../window/app_windows.dart';
-import '../window/window_zoom.dart';
+import '../../links.dart';
 
 final _log = Logger('zanshin.menu');
 
@@ -37,48 +33,6 @@ const menuStateChannel = MethodChannel('zanshin/menu_state');
 const _minimize = 'performMiniaturize:'; // l10n-ignore: an AppKit selector
 const _zoom = 'performZoom:'; // l10n-ignore: an AppKit selector
 const _fullScreen = 'toggleFullScreen:'; // l10n-ignore: an AppKit selector
-
-/// jj's documentation at the pinned jj-lib version.
-final Uri jjDocumentationUrl = Uri.parse('https://docs.jj-vcs.dev/v0.46.0/'); // l10n-ignore: a URL
-
-Future<void> _openInBrowser(Uri url) async {
-  // Detached: a non-detached Dart child lets the VM reap the cdylib's children (project-context.md § Dart).
-  await Process.start('/usr/bin/open', <String>[url.toString()], mode: ProcessStartMode.detached);
-}
-
-/// What the project window publishes for the menu bar once its graph is mounted (10.12): the graph's view model, its
-/// View preferences and the search's focus.
-@immutable
-class GraphMenuBinding {
-  /// The binding of [model] and [preferences].
-  const GraphMenuBinding({
-    required this.model,
-    required this.preferences,
-    this.search,
-    this.focusSearch,
-    this.squash,
-    this.sync,
-  });
-
-  /// The graph's view model: the Change, Go and Undo items act on it.
-  final GraphViewModel model;
-
-  /// The View items' setters.
-  final GraphPreferences preferences;
-
-  /// The graph search: the jj log Configurations window counts, shows and redraws through it (Story 10.22).
-  final GraphSearchController? search;
-
-  /// Focuses the graph search (Edit › Find); null while there is none.
-  final VoidCallback? focusSearch;
-
-  /// Change › Squash into Parent through the inspector (`InspectorViewModel.squash`, Story 10.25), which asks for the
-  /// combined description; null runs `jj squash -r` directly.
-  final ValueChanged<String>? squash;
-
-  /// Change › Fetch and Push… (Story 11.8); null leaves them grey.
-  final SyncModel? sync;
-}
 
 /// The menu bar's state (Story 11.13; DS readme.md:196–209): the menus follow the key window, the open project, the
 /// sheets ([ZsSheet.openViews]), the focused text field and the [graph] the project window publishes. Every item runs
@@ -101,53 +55,54 @@ class GraphMenuBinding {
 @inject
 @singleton
 class AppMenuModel extends ChangeNotifier {
-  /// The model over [_tracker] and [_session]; [attach] hands it the windows.
-  AppMenuModel(this._tracker, this._session) {
+  /// The model over [_tracker], [_session], [_settings], the project window's [graph] and [_projectsSearch]; [attach]
+  /// hands it the windows.
+  AppMenuModel(this._tracker, this._session, this._settings, this.graph, this._projectsSearch) {
     _tracker.addListener(_changed);
     _session.addListener(_changed);
+    _settings.addListener(_changed);
     ZsSheet.openViews.addListener(_changed);
     graph.addListener(_graphChanged);
     FocusManager.instance.addListener(_changed);
+    // The injected graph may hold a binding already.
+    _graphChanged();
   }
 
   final ActiveWindowTracker _tracker;
   final ProjectSession _session;
+
+  /// The settings, whose `appearance.zoom` View › Zoom In, Zoom Out and Actual Size read and write (Story 11.20).
+  final SettingsStore _settings;
+
+  /// The Projects content's search, for Edit › Find while Projects is key.
+  final ProjectsSearchFocus _projectsSearch;
   AppWindows? _windows;
   AppWindowActions? _actions;
 
-  /// The Projects window content's key, for Edit › Find while Projects is key.
-  final projectsKey = GlobalKey<ProjectsWindowState>();
-
-  /// The project window's graph, once it publishes one.
-  final graph = ValueNotifier<GraphMenuBinding?>(null);
+  /// The project window's graph, once it publishes one; the model reads it and never disposes it.
+  final ActiveGraph graph;
   GraphMenuBinding? _bound;
 
   /// Opens a URL in the browser (Help › jj Documentation, the Configurations window's Revset reference); a seam for
   /// tests.
-  Future<void> Function(Uri url) openUrl = _openInBrowser;
+  Future<void> Function(Uri url) openUrl = openInBrowser;
 
   var _scheduled = false;
   var _disposed = false;
 
-  /// Hands over the app's [windows], the window [actions] (the coordinator) and the [settings], whose
-  /// `appearance.zoom` View › Zoom In, Zoom Out and Actual Size read and write (Story 11.20).
-  void attach(AppWindows windows, AppWindowActions actions, SettingsStore settings) {
+  /// Hands over the app's [windows] and the window [actions] (the coordinator).
+  void attach(AppWindows windows, AppWindowActions actions) {
     _windows = windows;
     _actions = actions;
-    _settings?.removeListener(_changed);
-    _settings = settings..addListener(_changed);
     _changed();
   }
 
-  SettingsStore? _settings;
-
-  /// Sets the zoom to [percent]; null (grey) without settings or when [percent] is the zoom already.
+  /// Sets the zoom to [percent]; null (grey) when [percent] is the zoom already.
   VoidCallback? _zoomTo(int percent) {
-    final SettingsStore? settings = _settings;
-    if (settings == null || percent == zoomStepOf(settings.value.appearance.zoom)) {
+    if (percent == zoomStepOf(_settings.value.appearance.zoom)) {
       return null;
     }
-    return () => unawaited(settings.update((s) => s.copyWith.appearance(zoom: percent)));
+    return () => unawaited(_settings.update((s) => s.copyWith.appearance(zoom: percent)));
   }
 
   void _graphChanged() {
@@ -212,18 +167,6 @@ class AppMenuModel extends ChangeNotifier {
           return null;
         }),
       );
-
-  /// How a menu names [id]: "@" for the working copy, else max(prefix, 8) characters (decision 16.35).
-  static String targetName(GraphViewModel model, String id) {
-    final GraphLayout? layout = model.layout;
-    final int? at = layout?.workingCopyIndex;
-    if (at != null && layout!.keyOf(at) == id) {
-      return '@'; // l10n-ignore: jj's symbol
-    }
-    final int? node = layout?.indexOfKey(id);
-    final int prefix = node == null ? 2 : layout!.changeIdPrefixLengthOf(node);
-    return id.substring(0, math.min(id.length, math.max(prefix, 8)));
-  }
 
   /// "‹verb› ‹target›" of [action], for Undo and Redo.
   static String actionName(AppLocalizations s, GraphViewModel model, GraphAction action) {
@@ -360,10 +303,10 @@ class AppMenuModel extends ChangeNotifier {
           };
 
     // Find: Projects' own search while it is key, else the graph search in the project window.
-    final ProjectsWindowState? projects = key == projectsWindowKey ? projectsKey.currentState : null;
+    final VoidCallback? projects = key == projectsWindowKey ? _projectsSearch.focus : null;
     final VoidCallback? focusSearch = ready?.focusSearch;
     final VoidCallback? find = projects != null
-        ? (_sheetIn(projectsWindowKey) ? null : projects.focusSearch)
+        ? (_sheetIn(projectsWindowKey) ? null : projects)
         : focusSearch == null
         ? null
         : () {
@@ -373,7 +316,7 @@ class AppMenuModel extends ChangeNotifier {
 
     final GraphPreferences? preferences = ready?.preferences;
     final bool canReload = (_session.repo != null || graph.value != null) && !projectSheet;
-    final int zoom = zoomStepOf(_settings?.value.appearance.zoom ?? zoomActualSize);
+    final int zoom = zoomStepOf(_settings.value.appearance.zoom);
 
     return <PlatformMenuItem>[
       _appMenu(s, onSettings: actions == null ? null : _run(actions.openSettings)),
@@ -589,7 +532,7 @@ class AppMenuModel extends ChangeNotifier {
               PlatformMenuItem(
                 label: s.menuFetch,
                 onSelected: switch (ready?.sync) {
-                  final SyncModel sync when sync.canFetch => _run(sync.fetch),
+                  final GraphMenuSync sync when sync.canFetch => _run(sync.fetch),
                   _ => null,
                 },
               ),
@@ -597,7 +540,7 @@ class AppMenuModel extends ChangeNotifier {
                 label: s.menuPush,
                 shortcut: const SingleActivator(LogicalKeyboardKey.keyP, meta: true, shift: true),
                 onSelected: switch (ready?.sync) {
-                  final SyncModel sync when sync.canPush => sync.openPush,
+                  final GraphMenuSync sync when sync.canPush => sync.openPush,
                   _ => null,
                 },
               ),
@@ -720,11 +663,11 @@ class AppMenuModel extends ChangeNotifier {
     _session.removeListener(_changed);
     ZsSheet.openViews.removeListener(_changed);
     FocusManager.instance.removeListener(_changed);
-    _settings?.removeListener(_changed);
+    _settings.removeListener(_changed);
+    graph.removeListener(_graphChanged);
     _bound?.model.removeListener(_changed);
     _bound?.preferences.removeListener(_changed);
     _bound?.sync?.removeListener(_changed);
-    graph.dispose();
     super.dispose();
   }
 }

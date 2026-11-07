@@ -8,12 +8,13 @@ import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
+import '../graph/active_graph.dart' show GraphMenuBinding;
 import '../graph/graph_layout.dart' show jjRefSymbol;
 import '../graph/graph_ports.dart' show jjCommand;
+import '../graph/immutable_reasons.dart' show builtinImmutableHeads, immutableBuiltins;
 import '../projects/project_repos.dart';
 import '../projects/project_session.dart';
 import '../projects/projects_environment.dart';
-import '../shell/app_menu.dart' show GraphMenuBinding;
 import 'immutable_heads.dart';
 
 final _log = Logger('zanshin.settings');

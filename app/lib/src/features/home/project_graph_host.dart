@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:zanshin_core/zanshin_core.dart' show Bookmark;
 import 'package:zanshin_settings/zanshin_settings.dart' show RemotePollSetting, SettingsStore;
 
+import '../graph/active_graph.dart';
 import '../graph/graph_controls.dart';
 import '../graph/graph_inspector.dart';
 import '../graph/graph_ports.dart';
@@ -22,7 +23,6 @@ import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/projects_environment.dart';
 import '../settings/immutable_heads.dart';
-import '../shell/app_menu.dart';
 import '../shell/shell_toast.dart';
 import '../sync/push_sheet.dart';
 import '../sync/remote_sync.dart';
@@ -80,15 +80,15 @@ class ProjectGraphSlots {
 /// The project window's graph (Story 10.12): one set of graph objects per open [ProjectRepo] of [session] — the
 /// [GraphViewModel] over [sourceOf]'s source (the worker's layout and content), its [GraphPreferences] in [settings],
 /// the search, the inspector and the toasts in [toasts] — recreated when the repository changes and disposed on
-/// unmount. It publishes the graph to [appMenu] (View, Change, Go, Undo and Find) and clears that binding, if it is
-/// still its own, before it disposes the model.
+/// unmount. It publishes the graph to [activeGraph] (the menu bar's View, Change, Go, Undo and Find) and clears that
+/// binding, if it is still its own, before it disposes the model.
 class ProjectGraphHost extends StatefulWidget {
   /// The graph of [session]'s open repository.
   const ProjectGraphHost({
     required this.session,
     required this.settings,
     required this.environment,
-    required this.appMenu,
+    required this.activeGraph,
     required this.toasts,
     required this.builder,
     this.sourceOf = RepoGraphSource.new,
@@ -105,8 +105,8 @@ class ProjectGraphHost extends StatefulWidget {
   /// Reads the search's `user.email`.
   final ProjectsEnvironment environment;
 
-  /// The menu bar the graph is published to.
-  final AppMenuModel appMenu;
+  /// The project window's graph, which this host publishes to.
+  final ActiveGraph activeGraph;
 
   /// The window's toast queue.
   final ShellToasts toasts;
@@ -180,7 +180,7 @@ class _Graph {
       pollSetting: () => session.current?.remotePoll ?? RemotePollSetting.fifteenMinutes,
       pollChanged: session,
       changeTarget: () => switch (model.actionTarget) {
-        final String id => (id: id, rev: AppMenuModel.targetName(model, id)),
+        final String id => (id: id, rev: targetName(model, id)),
         null => null,
       },
       syncing: session.syncing,
@@ -269,7 +269,7 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
     _root = root;
     if (repo != null && root != null) {
       final _Graph graph = _graph = _Graph(widget, repo, root);
-      widget.appMenu.graph.value = graph.binding;
+      widget.activeGraph.value = graph.binding;
     }
     if (mounted) {
       setState(() {});
@@ -282,8 +282,8 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
     if (graph == null) {
       return;
     }
-    if (identical(widget.appMenu.graph.value, graph.binding)) {
-      widget.appMenu.graph.value = null;
+    if (identical(widget.activeGraph.value, graph.binding)) {
+      widget.activeGraph.value = null;
     }
     graph.dispose();
     _graph = null;

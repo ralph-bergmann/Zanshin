@@ -5,6 +5,18 @@ import 'package:zanshin/src/features/graph/immutable_reasons.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
 void main() {
+  group('splitRevsetUnion', () {
+    test('splits at top-level | only, not inside parentheses or quotes', () {
+      expect(splitRevsetUnion('builtin_immutable_heads() | present(develop) | heads(foo)'), <String>[
+        'builtin_immutable_heads()',
+        'present(develop)',
+        'heads(foo)',
+      ]);
+      expect(splitRevsetUnion('(a | b) | description("x | y") | c'), <String>['(a | b)', 'description("x | y")', 'c']);
+      expect(splitRevsetUnion('  '), isEmpty);
+    });
+  });
+
   test('a custom alias is split at its top-level terms; a failed count answers null', () async {
     final asked = <List<String>>[];
     var fail = false;

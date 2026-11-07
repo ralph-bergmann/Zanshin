@@ -5,7 +5,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:inject_flutter/inject_flutter.dart';
-import 'package:zanshin_core/zanshin_core.dart' show RepoKind, ZanshinFfiException;
+import 'package:zanshin_core/zanshin_core.dart' show ZanshinFfiException;
 import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry, SettingsStore;
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -13,15 +13,15 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import '../bookmarks/bookmark_list_model.dart';
 import '../bookmarks/bookmark_list_view.dart';
-import '../bootstrap/boot_window_host.dart' show mainWindowTitle;
+import '../graph/active_graph.dart';
 import '../graph/graph_search_controller.dart' show GraphSearchController;
 import '../graph/graph_search_field.dart' show GraphSearchShortcuts;
+import '../graph/graph_view_model.dart' show UndoTimelineActions;
 import '../projects/project_capsule.dart';
 import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/project_window_title.dart';
 import '../projects/projects_environment.dart';
-import '../shell/app_menu.dart';
 import '../shell/floating_shell.dart';
 import '../shell/floating_shell_view_model.dart';
 import '../shell/shell_controller.dart' show ShellRailItem;
@@ -31,6 +31,7 @@ import '../undo_timeline/operation_changes.dart';
 import '../undo_timeline/undo_timeline_model.dart';
 import '../undo_timeline/undo_timeline_view.dart';
 import '../window/app_window_actions.dart';
+import '../window/app_windows.dart' show mainWindowTitle;
 import 'open_report_toast.dart';
 import 'project_graph_host.dart';
 
@@ -44,7 +45,7 @@ part 'home_page.factory.dart';
 ///
 /// Story 10.12: while a project is open the shell holds its commit graph ([ProjectGraphHost]): the graph, VIEW's
 /// controls and search, New change, the inspector, the @ pill and the stale notice; the graph is published to
-/// [appMenu], and the rail's Undo Timeline runs through its model. ACTION's sync island is Reload (⌘R's tooltip):
+/// [activeGraph], and the rail's Undo Timeline runs through its model. ACTION's sync island is Reload (⌘R's tooltip):
 /// one [ProjectSession.refresh] and one graph reload per press, each coalesced; disabled without a project — then
 /// Fetch and Push… (Story 11.8). Without
 /// one VIEW and New change stay empty islands. The bar's row is the window's drag region (design question (a),
@@ -57,7 +58,8 @@ class HomePage extends StatelessWidget {
     required this.viewModelFactory,
     required this.projects,
     required this.environment,
-    required this.appMenu,
+    required this.settings,
+    required this.activeGraph,
     @assisted super.key,
   });
 
@@ -70,8 +72,11 @@ class HomePage extends StatelessWidget {
   /// Reads the graph search's `user.email`.
   final ProjectsEnvironment environment;
 
-  /// The menu bar the graph is published to.
-  final AppMenuModel appMenu;
+  /// The app settings, where the graph keeps its preferences (Story 10.12) and the Undo Timeline its diff layout.
+  final SettingsStore settings;
+
+  /// The project window's graph, which the page's graph host publishes.
+  final ActiveGraph activeGraph;
 
   @override
   Widget build(BuildContext context) => _OnWindowActive(
@@ -88,16 +93,16 @@ class HomePage extends StatelessWidget {
             listenable: vm.toasts,
             builder: (context, _) => ProjectGraphHost(
               session: projects,
-              settings: vm.settings,
+              settings: settings,
               environment: environment,
-              appMenu: appMenu,
+              activeGraph: activeGraph,
               toasts: vm.toasts,
               builder: (context, graph) => _BookmarksHost(
                 repo: projects.repo,
                 search: graph.search,
                 builder: (context, bookmarks) => _UndoTimelineHost(
                   session: projects,
-                  settings: vm.settings,
+                  settings: settings,
                   actions: graph.model,
                   builder: (context, railItems) {
                     final shell = FloatingShell(
@@ -146,20 +151,6 @@ class HomePage extends StatelessWidget {
       onProjectSettings: windows == null ? null : () => unawaited(windows.openSettings(target: SettingsTarget.project)),
       onSettings: windows == null ? null : () => unawaited(windows.openSettings()),
     );
-  }
-}
-
-/// A Recent row (the capsule's, File › Open Recent's): opens [path] in [session]; a failed open or a missing folder
-/// shows the Projects window through [windows] with its notice (Ralph, 2026-11-01); the open project stays.
-Future<void> openRecentProject(ProjectSession session, AppWindowActions? windows, String path) async {
-  final ProjectOpenOutcome outcome = await session.open(path);
-  switch (outcome) {
-    // Without the actions scope nothing opens Projects, so nothing is reported (it would show stale later).
-    case ProjectOpenFailed() || ProjectNotARepo(kind: RepoKind.pathNotFound) when windows != null:
-      session.reportFailedOpen(path, outcome);
-      await windows.openProjects();
-    case _:
-      break;
   }
 }
 

@@ -7,18 +7,6 @@ import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart' show TopologyRef, TopologyRefKind;
 
 void main() {
-  group('splitRevsetUnion', () {
-    test('splits at top-level | only, not inside parentheses or quotes', () {
-      expect(splitRevsetUnion('builtin_immutable_heads() | present(develop) | heads(foo)'), <String>[
-        'builtin_immutable_heads()',
-        'present(develop)',
-        'heads(foo)',
-      ]);
-      expect(splitRevsetUnion('(a | b) | description("x | y") | c'), <String>['(a | b)', 'description("x | y")', 'c']);
-      expect(splitRevsetUnion('  '), isEmpty);
-    });
-  });
-
   group('ImmutableHeads', () {
     test('compose: all four built-ins write builtin_immutable_heads()', () {
       expect(const ImmutableHeads().compose(), 'builtin_immutable_heads()');

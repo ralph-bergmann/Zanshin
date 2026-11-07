@@ -40,7 +40,7 @@ typedef GetDiagnostics = Diagnostics Function();
 ///
 /// The factory calls [zanshin_diagnostics] (handle-free, main-isolate safe),
 /// decodes the returned `Envelope`, and returns a [Diagnostics] value.
-/// Modelled on `ZanshinFfiModule` (see `zanshin_version.dart`) but decodes a
+/// Like `zanshinFfiVersion` (see `zanshin_version.dart`), but decodes a
 /// FlatBuffers `Envelope` instead of a lone C string (ADR-0001). See also
 /// `request_bytes.dart`'s `readToken` for the token-ownership pattern every
 /// adapter shares.

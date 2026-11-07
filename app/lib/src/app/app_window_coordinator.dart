@@ -13,14 +13,13 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 
-import '../../l10n/strings.dart';
-import '../bootstrap/boot_window_host.dart' show mainWindowTitle;
-import '../bootstrap/zanshin_bootstrap.dart';
-import '../projects/project_session.dart';
-import '../settings/settings_window_state.dart';
-import 'app_window_actions.dart';
-import 'app_windows.dart';
-import 'remembered_window_controller.dart' show windowFramesChannel;
+import '../features/projects/project_session.dart';
+import '../features/settings/settings_window_state.dart';
+import '../features/window/app_window_actions.dart';
+import '../features/window/app_windows.dart';
+import '../features/window/remembered_window_controller.dart' show windowFramesChannel;
+import '../l10n/strings.dart';
+import 'boot/zanshin_bootstrap.dart';
 
 final _log = Logger('zanshin.window');
 

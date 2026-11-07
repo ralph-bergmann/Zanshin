@@ -17,24 +17,23 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import 'main.inject.dart' as g;
+import 'src/app/app_window_coordinator.dart';
+import 'src/app/boot/boot_window_host.dart';
+import 'src/app/boot/icon_module.dart';
+import 'src/app/boot/zanshin_bootstrap.dart';
+import 'src/app/menu/app_menu.dart';
 import 'src/app/worker_lifecycle_module.dart';
+import 'src/app/zanshin_app.dart';
 import 'src/app/zanshin_marionette.dart';
-import 'src/features/app/zanshin_app.dart';
-import 'src/features/app/zanshin_app_view_model.dart';
-import 'src/features/bootstrap/boot_window_host.dart';
-import 'src/features/bootstrap/icon_module.dart';
-import 'src/features/bootstrap/zanshin_bootstrap.dart';
 import 'src/features/graph/revset_configs/revset_configs_window.dart';
 import 'src/features/projects/project_session.dart';
 import 'src/features/projects/projects_environment.dart';
 import 'src/features/projects/projects_module.dart';
 import 'src/features/projects/projects_window.dart';
 import 'src/features/settings/settings_window.dart';
-import 'src/features/shell/app_menu.dart';
-import 'src/features/window/app_window_actions.dart';
-import 'src/features/window/app_window_coordinator.dart';
 import 'src/features/window/app_windows.dart';
 import 'src/features/window/window_zoom.dart';
+import 'src/features/window/zanshin_app_view_model.dart';
 import 'src/features/window/zanshin_window_root.dart';
 
 final _log = Logger('zanshin.bootstrap');
@@ -147,7 +146,7 @@ Future<BootFirstWindow> _startApp(
   final AppWindowCoordinator coordinator = appWindowCoordinator(mainComponent, windows);
   // Before the first window: it is created at the stored zoom (Story 11.20). Bound for the app's life.
   bindWindowZoom(settings, windows);
-  final AppMenuModel appMenu = mainComponent.appMenu..attach(windows, coordinator, settings);
+  final AppMenuModel appMenu = mainComponent.appMenu..attach(windows, coordinator);
   menu.value = appMenu;
   return coordinator.start();
 }
@@ -159,24 +158,18 @@ Future<BootFirstWindow> _startApp(
 ///
 /// Settings (Story 11.7) shows its window under the content-sized `window:settings` root over the settings, the jj
 /// config through the Projects environment, the session and the graph the menu bar holds; the Projects window's
-/// Settings… and Set identity… open it.
+/// Settings… and Set identity… open it through the coordinator's window actions.
 @visibleForTesting
 AppWindowCoordinator appWindowCoordinator(MainComponent component, AppWindows windows) {
-  late final AppWindowCoordinator coordinator;
   // One for the app's life: its theme switch mirrors the choice onto every window's native chrome.
   final theme = ZanshinAppViewModel(component.settings);
-  return coordinator = AppWindowCoordinator(
+  return AppWindowCoordinator(
     windows: windows,
     session: component.projectSession,
     buildProject: component.zanshinAppFactory.create,
     buildProjects: (onOpened) => component.zanshinWindowRootFactory.create(
       windowKey: projectsWindowKey,
-      child: component.projectsWindowFactory.create(
-        onOpened: onOpened,
-        onSettings: () => unawaited(coordinator.openSettings()),
-        onIdentitySettings: () => unawaited(coordinator.openSettings(target: SettingsTarget.general)),
-        key: component.appMenu.projectsKey,
-      ),
+      child: component.projectsWindowFactory.create(onOpened: onOpened),
     ),
     buildRevsetConfigs: () => component.zanshinWindowRootFactory.create(
       windowKey: revsetConfigsWindowKey,

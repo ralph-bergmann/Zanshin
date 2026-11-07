@@ -3,7 +3,55 @@
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_core/zanshin_core.dart' show RevsetCounts, ZanshinFfiException;
 
-import '../settings/immutable_heads.dart';
+/// jj's default for `immutable_heads()`.
+const builtinImmutableHeads = 'builtin_immutable_heads()'; // l10n-ignore: jj's revset
+
+/// What [builtinImmutableHeads] stands for, in the jj CLI's order (`cli/src/config/revsets.toml` @ v0.46.0).
+const immutableBuiltins = <String>[
+  'trunk()', // l10n-ignore: jj's revset
+  'tags()', // l10n-ignore: jj's revset
+  'untracked_remote_bookmarks()', // l10n-ignore: jj's revset
+  'untracked_remote_tags()', // l10n-ignore: jj's revset
+];
+
+/// [revset]'s top-level `|` terms, trimmed, empty ones dropped: a `|` inside parentheses or a quoted string does not
+/// split. `builtin_immutable_heads() | present(develop) | heads(foo)` → those three.
+List<String> splitRevsetUnion(String revset) {
+  final terms = <String>[];
+  final current = StringBuffer();
+  var depth = 0;
+  String? quote;
+  for (var i = 0; i < revset.length; i++) {
+    final String c = revset[i];
+    if (quote != null) {
+      current.write(c);
+      if (c == r'\' && quote == '"' && i + 1 < revset.length) {
+        current.write(revset[++i]);
+      } else if (c == quote) {
+        quote = null;
+      }
+      continue;
+    }
+    switch (c) {
+      case '"' || "'":
+        quote = c;
+      case '(':
+        depth++;
+      case ')':
+        depth--;
+      case '|' when depth == 0:
+        terms.add(current.toString());
+        current.clear();
+        continue;
+    }
+    current.write(c);
+  }
+  terms.add(current.toString());
+  return <String>[
+    for (final String term in terms)
+      if (term.trim().isNotEmpty) term.trim(),
+  ];
+}
 
 /// Counts revsets at an operation, as `RepoHandle.revsetCounts`.
 typedef ImmutableReasonCounts = Future<RevsetCounts> Function(

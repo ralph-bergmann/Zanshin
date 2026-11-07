@@ -10,6 +10,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import '../graph/graph_ports.dart';
+import '../graph/graph_view_model.dart' show UndoTimelineActions;
 import '../projects/relative_time.dart';
 import '../shell/shell_controller.dart';
 import 'operation_changes.dart';

@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
+import 'package:zanshin/src/features/graph/active_graph.dart' show GraphMenuBinding;
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_preferences.dart';
@@ -19,7 +20,6 @@ import 'package:zanshin/src/features/settings/immutable_heads.dart' show RevsetM
 import 'package:zanshin/src/features/settings/settings_view_model.dart' show SettingsRepoReads;
 import 'package:zanshin/src/features/settings/settings_window.dart';
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
-import 'package:zanshin/src/features/shell/app_menu.dart' show GraphMenuBinding;
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin/src/features/window/window_chrome_builder.dart';

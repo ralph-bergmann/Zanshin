@@ -24,6 +24,9 @@ final _log = Logger('zanshin.window');
 /// The one project window's key, which is also its frame key whichever project it shows (decision 16.42 j).
 const mainWindowKey = 'main';
 
+/// Title of the main window.
+const mainWindowTitle = 'Zanshin'; // l10n-ignore: the product name
+
 /// The Projects window's key (Story 11.6; decision 16.13).
 const projectsWindowKey = 'projects';
 

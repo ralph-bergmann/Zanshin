@@ -10,10 +10,5 @@ part of 'projects_window.dart';
 
 // ignore_for_file: type=lint, type=warning
 abstract class ProjectsWindowFactory {
-  ProjectsWindow create({
-    ValueChanged<ProjectOpened>? onOpened,
-    VoidCallback? onSettings,
-    VoidCallback? onIdentitySettings,
-    Key? key,
-  });
+  ProjectsWindow create({ValueChanged<ProjectOpened>? onOpened, Key? key});
 }

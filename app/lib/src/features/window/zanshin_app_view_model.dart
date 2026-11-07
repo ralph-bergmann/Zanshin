@@ -10,7 +10,7 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../window/window_zoom.dart';
+import 'window_zoom.dart';
 
 /// Theme state for the app root: the persisted [ThemeMode] and accent choice
 /// plus the live macOS shell theme, resolved into the mode `MaterialApp` should

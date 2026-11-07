@@ -35,28 +35,6 @@ class RepoUndoTimelineSource implements UndoTimelineSource {
   Stream<RepoEvent> get events => _repo.events;
 }
 
-/// The runner the Undo Timeline's actions go through: 10.9's `GraphViewModel` (busy, stale, the expect-head check, the
-/// published outcome the toast shows, Zanshin's own undo/redo state). It notifies when any of these change.
-abstract interface class UndoTimelineActions implements Listenable {
-  /// Whether a trigger may run an action now.
-  bool get actionsEnabled;
-
-  /// Zanshin's own latest undo while it is the op-log head; [redoLast] takes it back.
-  GraphOutcome? get redoable;
-
-  /// `jj undo` while [head] (an id) is still the op-log head; [of] names the operation it takes back.
-  Future<GraphActionResult> undoOperation(String head, GraphLoggedOperation of);
-
-  /// `jj redo` of [redoable].
-  Future<GraphActionResult> redoLast();
-
-  /// `jj redo` while [head] (an id) is still the op-log head; [of] names the operation it brings back.
-  Future<GraphActionResult> redoOperation(String head, GraphLoggedOperation of);
-
-  /// `jj op restore <operation>`.
-  Future<GraphActionResult> restoreOperation(String operation);
-}
-
 /// [id] as jj shows and takes an operation id: its first 12 hex digits (`format_short_operation_id`).
 String shortOperationId(String id) => id.substring(0, math.min(12, id.length));
 

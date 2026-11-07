@@ -30,7 +30,7 @@ abstract interface class AppWindowActions {
 }
 
 /// Provides the [AppWindowActions] to a window's content; the window coordinator places one in each root it builds.
-/// Outside one (a catalogue preview, a test) there are none, and the rows that need them stay disabled.
+/// Outside one (a test, most catalogue previews) there are none, and the rows that need them stay disabled.
 class AppWindowActionsScope extends InheritedWidget {
   /// Provides [actions] to [child].
   const AppWindowActionsScope({required this.actions, required super.child, super.key});

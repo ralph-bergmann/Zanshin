@@ -9,8 +9,8 @@ import 'package:flutter/src/foundation/_features.dart';
 import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/features/bootstrap/boot_window_host.dart';
-import 'package:zanshin/src/features/shell/app_menu.dart';
+import 'package:zanshin/src/app/boot/boot_window_host.dart';
+import 'package:zanshin/src/app/menu/app_menu.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_ui/zanshin_ui.dart' show IconRegistry, IconRegistryScope;
 

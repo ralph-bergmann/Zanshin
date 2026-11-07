@@ -18,12 +18,12 @@ import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../graph/active_graph.dart' show GraphMenuBinding;
 import '../graph/graph_layout.dart' show jjRefSymbol;
 import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/project_window_title.dart';
 import '../projects/projects_environment.dart';
-import '../shell/app_menu.dart' show GraphMenuBinding;
 import '../shell/shell_toast.dart' show toastSlot, toastSpan;
 import '../window/app_windows.dart';
 import '../window/window_zoom.dart';

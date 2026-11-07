@@ -4,82 +4,68 @@
 
 ## Goal
 
-Build everything around the commit graph that is not the graph itself: the design-system foundation, the glass material, the Zs control library and its Widgetbook catalogue, the floating overlay host (top bar Place · View · Action, rail, pinned panels, calm scrolling), the native window chrome, real windows for Projects / Settings / jj log Configurations, the menu bar, projects and switching, sync (Fetch, Push, remote-change poll), the Undo Timeline, the retirement of the docked mock UI, and the follow-ups that keep the shell honest to jj (remote management, config file editing, density tokens, push help for Git switchers, jj 0.47 parity gaps). The user launches Zanshin, picks or adds a project, and works in one window where the graph fills the space and every control floats above it on glass islands. Claude builds the UI (scope change 2026-10-14); Ralph accompanies and reviews.
+Build everything around the commit graph that is not the graph itself, so a user launches Zanshin, picks or adds a project and works in one window where the graph fills the space and every control floats above it on glass islands: the design-system foundation and glass material, the `zanshin_ui` package with the Zs controls and the Widgetbook catalogue, the floating overlay host, the native chrome, real windows for Projects, Settings and jj log Configurations, the menu bar, projects and switching, sync (Fetch, Push, the remote-change poll), the Undo Timeline, l10n-readiness, and follow-ups that keep the shell honest to jj. The last two stories (11.24, 11.25, from the 2026-11-07 Dart architecture review) change no behaviour: they make the inject.dart graph the app's one composition root — every symbol in its layer, no import cycles between the app's folders, one component entry point, a boot that reads top to bottom — so the app is wired through constructors instead of by hand in `main.dart`. Claude builds the UI (scope change 2026-10-14); Ralph accompanies and reviews.
 
 ## Stories
 
 - Story 11.0: Record the scope change in the canonical rules
-- Story 11.1: Design-system foundation (tokens, type, metrics, motion, theme, fonts, icons, DS parity test)
+- Story 11.1: Design-system foundation — tokens, type, metrics, motion, theme, fonts, icons, DS parity test
 - Story 11.2: Glass material primitives
-- Story 11.3: Floating overlay host
+- Story 11.3: Floating overlay host — top bar, rail, pinned panels, insets, calm scrolling
 - Story 11.4: Window chrome for the floating layout
-- Story 11.5: Projects — registry, capsule, Project menu, switching
-- Story 11.6: Projects dialog (window) on real data
+- Story 11.5: Projects — registry, project capsule, Project menu, switching
+- Story 11.6: Projects dialog on real data (now the Projects window)
 - Story 11.7: Settings window — General and Project tabs
-- Story 11.8: Sync — Fetch, Push, remote-change poll, upstream badge
+- Story 11.8: Sync — Fetch, Push, the remote-change poll, the upstream badge
 - Story 11.9: Undo Timeline panel
 - Story 11.10: Retire the docked mock UI
 - Story 11.11: Zs control library, Widgetbook catalogue, shared Marionette configuration
 - Story 11.12: Window foundation — dialog windows, chrome kinds, frames, per-window roots
 - Story 11.13: Menu bar and shortcuts
 - Story 11.14: The `zanshin_ui` package
-- Story 11.15: Projects window — deselect, group naming/menu, New group…, drag ghost
+- Story 11.15: Projects window — deselect, group naming and menu, New group…, drag ghost
 - Story 11.16: l10n-ready — strings into ARB files (English only)
-- Story 11.17: Menu bar state via a native channel
+- Story 11.17: Menu bar state — checkmarks and greyed window items via a native channel
 - Story 11.18: Remote management in Settings — add, rename, remove, set URL
-- Story 11.19: Edit the config file — GUI split of `jj config edit`
-- Story 11.20: Density with an effect — spacing tokens per density, plus Zoom
+- Story 11.19: Edit the config file — the GUI split of `jj config edit`
+- Story 11.20: Density with an effect — spacing tokens per density (plus Zoom)
 - Story 11.21: Immutable commits page — untracked remote refs by tracking state
 - Story 11.22: Push help for Git switchers — fix-it actions, plain explanations, post-conversion tracking hint
-- Story 11.23: jj 0.47 follow-ups — workspace configs in config gc, binary files in file search, dead wire values, stale title draft
+- Story 11.23: jj 0.47 follow-ups
+- Story 11.24: Dart architecture, part 1 — dead DI out, every symbol in its layer, no import cycles between the app's folders
+- Story 11.25: Dart architecture, part 2 — one composition root, a linear boot
 
 ## Requirements & Constraints
 
-- **CLI parity:** every repo-side effect behaves like the pinned jj (now **v0.47.0**; read the CLI at that tag in `../jj`). The UI never composes jj operations; it pre-fills parameters from the effective config and passes them explicitly. Missing CLI parameters are backend gaps, not UI work. CLI hints/outcomes Zanshin's verbs omit (e.g. the post-`git init` trackable-bookmarks list) are parity gaps to close.
-- **Commands shown are real:** any jj command in UI text exists in the pinned jj exactly as written, shown in full with the change id, shell-quoted (`jj new -A kmnvxoqp`, `jj bookmark track main@origin`, `exact:` patterns). DS empty-state copy is used where it exists.
-- **jj's own text stays verbatim.** Explanations for Git switchers sit beside jj's message/hint, keyed by a kind the bridge sends over FlatBuffers — never derived by parsing jj's text. The same goes for ids (change ids come from the bridge, not from jj's strings).
-- **Remote poll** is read-only (ls-remote semantics): no op-log entry, no working-copy change, no commit count. Silent failure on a tick, no overlap, next tick retries; no special auth handling.
-- **Push** follows the CLI per mode: bare/`-r`/bulk modes skip refused refs with jj's reason verbatim; explicitly named refs abort the whole push. `--allow-*` flags passed where allowed. Tags pushed and listed; classification per remote. Why a row cannot be ticked is visible in every mode.
-- **Undo:** three places only (toast, ⌘Z/Edit menu for Zanshin's own latest op while current, Undo Timeline). Every undo ends in the toast "Undid ‹action› · Redo".
-- **Strings:** all user-facing text through ARB (`app/lib/l10n/app_en.arb`, `packages/zanshin_ui/lib/l10n/zs_en.arb`; `flutter gen-l10n` after edits); jj's verbatim words marked `// l10n-ignore: <reason>`. Every window root registers `zanshinLocalizationsDelegates`.
-- **Accessibility:** Epic 11 surfaces carry their own VoiceOver semantics (e.g. resize edges as adjustable values, not a splitter role).
-- **No telemetry / analytics SDKs.**
-- **Done = `cargo make test` green** (from the repo root), plus a Marionette check of the running catalogue/app compared to the DS cards; widget tests alone do not count. Coverage ratchet is Rust-only, so named witnesses are the Dart safety net. Bridge changes (new fields/kinds) go through the FlatBuffers schema + `cargo make codegen`, and update `docs/ffi-abi.md` / `docs/rust-error-codes.md` where wire values change.
-- **Design rounds are done** for 11.18/11.19 (sync #20: DS `RemotesGroup`, `ConfigFilePage`, card "Settings — Remotes and config file", prototypes `design/remotes.jsx`, `design/config-file.jsx`) and 11.20 (sync #21: readme "Density and zoom", `components/density.css`, cards Density + Settings) — build to the DS, no new round.
-- **Remotes (11.18):** rows call the existing remote verbs (add/rename/remove/set-url) with the full shell-quoted command and jj's refusal verbatim; Remove confirms via a ConfirmDialog sheet on the Settings window; a credential in a URL never shows (gix `to_bstring`, never `Display`). Fetch/push selects, the poll and the Push sheet re-read remotes after a change.
-- **Config file (11.19):** reads/writes go through the existing configFileRead/Write (CLI scopes and paths, jj's validation); a rejected write leaves the file unchanged and shows jj's message (parse error marked from jj's span); other open windows re-read after a save. The Settings window becomes resizable (min 620 × 420, zoom enabled; height follows the tab until resized).
-- **Density (11.20) is air only:** rows +0/+3/+6 px, graph cards 40/62 · 44/68 · 48/74, gaps 56×48 · 62×54 · 68×60; text, controls, chrome, radii, window sizes stay; the 12.5/13/13.5 text scale goes. **Zoom** (90·100·110·125·150 %, Settings › General + View › Zoom In ⌘+ / Zoom Out ⌘− / Actual Size ⌘0) scales everything in every window, live, remembered app-wide, multiplied with density; window minimums scale, traffic lights never. Needs a settings field `appearance.zoom`. Non-goals: per-window density, a custom scale.
+- **11.24/11.25 are pure restructuring:** no change of behaviour, visuals or splash timings, and no faster boot. 11.24 moves code without renaming or rewriting it beyond paths, imports and the parameters it names.
+- **Done** = `cargo make test` green from the repo root, plus a check of the running app or catalogue through Marionette (widget tests alone don't count; UI changes are compared with the DS cards). The coverage ratchet is Rust-only, so each story's named witnesses are the Dart safety net; the ratchet credits `zanshin_ffi_version` to the `packages/zanshin_core` test that calls it, so that call stays when its wrapper becomes a top-level function.
+- **CLI parity:** repo-side effects behave like the pinned jj (v0.47.0). The UI never composes jj operations; it pre-fills parameters from the effective config and passes them explicitly. A jj command in UI text is real, shown in full with the change id, shell-quoted. jj's own text stays verbatim; Zanshin's explanations hang off kinds the bridge sends over FlatBuffers, never off parsed jj text.
+- **Strings** go through ARB (`app/lib/l10n/app_en.arb`, `packages/zanshin_ui/lib/l10n/zs_en.arb`; `flutter gen-l10n` after edits); jj's verbatim words are marked `// l10n-ignore: <reason>`; every window root registers `zanshinLocalizationsDelegates`.
+- **Tests:** app tests never call a jj config verb for real; real-cdylib widget tests wrap worker and watcher I/O in `tester.runAsync`.
+- Epic 11 surfaces carry their own VoiceOver semantics. No telemetry or analytics.
 
 ## Technical Decisions
 
-- **Design source:** the design system `_bmad-output/implementation-artifacts/design_system/` (tokens and CSS win over its prose and cards) and the floating-client prototype under `design/`. Design is inspiration; where DS and prototype differ, the DS wins. A DS re-download that changes an icon turns the gate red (icon parity check).
-- **Code locations:** `packages/zanshin_ui` holds tokens (`lib/src/design/`), materials (`lib/src/materials/`), DS icons (`lib/src/icons/`) and Zs controls (`lib/src/controls/`); the app imports only `package:zanshin_ui/zanshin_ui.dart`. App features: `app/lib/src/features/{shell,projects,settings,sync,undo_timeline,window}/`; menu bar in `shell/`; catalogue `app/widgetbook/`; tests mirror under `app/test/`.
-- **Bridge:** the app imports only `package:zanshin_core/zanshin_core.dart`; a `[UI/bridge]` story adds the types it consumes to the export `show` list.
-- **Controls:** own Zs library on Flutter widgets-layer primitives; no visible Material/Yaru control; text entry is an undecorated `TextField`. Material types (`MaterialApp`, `ThemeData`) only from `package:material_ui` (its `ThemeMode` ≠ Flutter's). Control heights 22 · 26 · 30 · 36 · 44.
-- **Visuals** are `RenderBox`es with text slots, not nested Column/Row trees.
-- **Accent:** Multicolor = moon (Zanshin's); a named macOS accent recolours only the accent role (`--accent*`, `--focus-ring`); gold, brand and data colours stay fixed. "Moon" in older story text means the accent role for selection/focus/flash; moon as data (`--status-m`, `--hunk`, `--remote`) stays fixed. Picked data rows use `--accent-soft`, navigation `--fl-on`. Themes: night and paper (`light` alias).
-- **Motion:** reduce motion by property — colour/opacity keep their tokens, movement/size/position go to 0. One exit for transient surfaces: fade + mirrored drift, 180 ms, `--ease-exit`. Calm scrolling returns after one 650 ms wait.
-- **Icons:** SVG via `vector_graphics_compiler` asset transformer; boot-time `IconRegistry` (parallel to settings in `ZanshinBootSequence`, injected via a module with a required ctor param); `ZanshinIcon` leaf RenderBox in six sizes; no Material fallback. Widget tests load the registry in a shared `setUpAll` (`tester.runAsync`).
-- **Windows:** one project window (opening another project switches it in place; minimum 880 × 560). Settings and Projects are parentless dialog windows at normal level; Projects is the start window, closing it quits; ⌘W on the project window closes the project and shows Projects. jj log Configurations is its own floating window (min 820 × 460) that asks "Discard changes?" on close/quit. Only two sheets: ConfirmDialog and Push. Native traffic lights are never moved; the bar derives from their measured block.
-- **Resize edges:** inspector 380–720 (default 460), left panels 240–440 (default 300); collapse rule keeps ≥ 320 px of graph; dragged widths persist in an AppSettings `layout` sub-model.
-- **Density** (11.7) is a text scale today; 11.20 replaces it with per-density token sets in `zanshin_ui` (`ZsMetrics`), switched live in every window, graph card metrics following (router geometry stage only); the DS parity reader learns `data-density` and the token block moves from `components/density.css` into `tokens/spacing.css`.
-- **Tooling:** Widgetbook 3.25.0 pinned exactly is the one review catalogue; `marionette_flutter` ^0.7.0 with one shared `MarionetteConfiguration`; match by Semantics identifier or text, never coordinates; each window root carries a key. App tests never call a jj config verb for real.
+- **Packages:** `packages/zanshin_ui` holds tokens, materials, DS icons and Zs controls and never depends on `zanshin_core`, `inject_*` or the app (its DI modules stay in the app). The app imports only `package:zanshin_ui/zanshin_ui.dart` and `package:zanshin_core/zanshin_core.dart`; a `[UI/bridge]` story adds the types it consumes to the core library's `show` list.
+- **App layout (11.24):** features in `app/lib/src/features/<name>/` (graph, shell, projects, settings, sync, undo_timeline, window); the app's frame in `app/lib/src/app/`, next to the DI wiring — the boot (`boot/`), the window coordinator, the project window's content root, the menu bar (`menu/`). `features/window/` keeps the window infrastructure the features use (registry, specs, keys, roots, tracker, zoom). Nothing under `lib/src/features/` imports `lib/src/app/`, and no two feature folders import each other; a guard test in `app/test/architecture/` reads the imports and fails on either. Shared symbols sit with their owner: the active-graph binding, the undo-timeline actions and jj's built-in immutable heads in `features/graph/`; the jj docs URL and the browser opener in `lib/src/links.dart`. Features open windows through `AppWindowActionsScope`; Edit › Find reaches the Projects search through an injected `ProjectsSearchFocus`, not a `GlobalKey`. Catalogue in `app/widgetbook/`; tests mirror under `app/test/`.
+- **DI by the book (11.25):** `MainComponent` (name kept) is the one composition root with one getter, `ZanshinApplication get application`; everything below arrives through constructors — no `attach()`, setters, `late` self-references or mutable function fields wired after construction. Values needed before the graph (settings store, icon registry, worker, `AppWindows`) are resolved first and enter through a module's constructor, so every entry point stays synchronous: no `@asynchronous` provider, `Completer` or `Future<ZanshinWorker>` passed through classes. One `BootModule(boot, windows)` is recommended over a module per package (design question (a): Ralph decides before the build, else the recommendation is built). Own classes take `@inject` (`@singleton` when shared); modules bind interfaces (each on its own, so a test module can replace it), third-party types, pre-graph values and the window coordinator, whose builder-closure constructor stays. Widgets with runtime parameters use assisted injection (test seams stay optional `@assisted` parameters); per-window view models come from `ViewModelFactory`. App-wide side effects (theme mirroring onto the native chrome, the quit handler) are app-level singletons, not per-window view models or provision listeners. The per-repository project scope stays built by the project hosts, and `GraphViewModel` stays hand-built.
+- **Boot (11.25):** `main.dart` sets up binding, logging and zone, creates the windows and the host, then runs one boot function: load the boot values (settings ‖ login-shell environment ‖ icon decode; then the worker, which must start after the environment because Rust tracing reads the log filter, log directory and `HOME` from it) → create the component → hand the menu to the host → `start()` (zoom binding before the first window, exit handler, appearance sync, coordinator). The splash race stays: shown after 250 ms, for at least 3 s; the first window through `runWidget`; the fade; `onShown` after the first window. The failure page uses the persisted theme; neither it nor the splash uses icons. Quit: ⌘Q → close guards → worker close.
+- **Tests through the graph:** a test component over the production modules plus a test module with fakes (skill `inject_annotation-write-tests`); no hand-written implementations of generated factories or `Provider<T>`. If an overridden provider still needs a worker, the test module starts a real one.
+- **Windows:** one project window (another project switches it in place; min 880 × 560); Projects (the start window; closing it quits) and Settings are parentless dialog windows at normal level; jj log Configurations is its own window (min 820 × 460) floating above the project window. Each window root carries a key. Native traffic lights never move.
+- **Design rules:** the DS (`_bmad-output/implementation-artifacts/design_system/`) is the reference — its tokens and CSS win over its prose and cards, and a decision recorded in the epic wins over the DS. Own Zs controls on widgets-layer primitives (text entry an undecorated `TextField`); Material types only from `package:material_ui` (its `ThemeMode` ≠ Flutter's); designed visuals are `RenderBox`es with text slots. Selection, focus and flash use the accent role (moon only under Multicolor); reduce motion by property.
+- **Icons:** SVGs precompiled by `vector_graphics_compiler` into a boot-loaded `IconRegistry` (from 11.25 injected into each `ZanshinWindowRoot`, which provides `IconRegistryScope`); `ZanshinIcon` has no Material fallback; widget tests load the registry in a shared `setUpAll` (`tester.runAsync`).
+- **Tooling:** Widgetbook 3.25.0 (pinned exactly) is the review catalogue; `marionette_flutter` ^0.7.0 with one shared `MarionetteConfiguration`, matching by Semantics identifier or text, never coordinates.
 
 ## UX & Interaction Patterns
 
-- Graph fills the window; controls float on glass islands. Top bar grid Place (project capsule) · View · Action (Fetch, Push…); rail with hover previews and pins.
-- Menu bar items in Title Case; the Change menu targets the selection, else @, and names its target ("Abandon @"). Go/Change/project commands target the project window from any Zanshin window.
-- Rows showing ⌘, open/bring forward Settings on the tab shown last; only "Project Settings…" and "Appearance, diffs and more" pick a tab. Settings has pages (a row opens a page; ⌘[ goes back). ⌘J scrolls to the selection, ⇧⌘J to @ (scroll only). Fetch has no shortcut; Push… is ⇧⌘P.
-- A click beside a sheet does nothing; Esc and Cancel cancel. No hover painted in a non-key window.
-- Workstreams and Reviews are dropped; no Workspaces section in the Project menu. Workspaces show as `name@` on cards plus a project-level stale-working-copy state with jj's text and no Retry.
-- Change ids: one `Text.rich`, bold shortest-unique prefix, no gap. Where a commit is named, the change id comes first and the commit id dimmed after it, as in the inspector.
-- Help for Git switchers: one or two plain sentences naming the Git term next to the jj one; a fix-it action wherever jj's hint names a command (it runs the verb, shows the command, then refreshes the preview).
+- The graph fills the window; controls float on glass islands (top bar Place · View · Action, rail with hover previews and pins, pinned panels).
+- ⌘W on the project window closes the project and shows Projects. Closing the project (⌘W, a switch) or quitting first brings unsaved jj log Configurations forward and asks "Discard changes?"; Cancel aborts.
+- Two sheets only (ConfirmDialog, Push): a click beside one does nothing; Esc and Cancel cancel. No hover is painted in a non-key window.
+- Menu bar in Title Case; the Change menu targets the selection, else @, and names it ("Abandon @"); Go, Change and project commands reach the project window from any Zanshin window; rows showing ⌘, open Settings on the tab shown last.
+- Undo in three places (toast, ⌘Z for Zanshin's own latest operation while it is current, Undo Timeline); every undo ends in the toast "Undid ‹action› · Redo".
 
 ## Cross-Story Dependencies
 
-- Build order of the core shell: 11.0, 11.1 → 11.2 → 11.14 → 11.11 → 11.3 onward; 11.12 before 11.5–11.7 and 10.22; 11.13 before 11.5–11.8 (unwired menu items stay grey). 11.7, 11.8, 11.21, 11.22 and 11.23 are done; 11.18, 11.19 and 11.20 are backlog (designs ready).
-- 11.18 needs 9.5 (remote verbs), 11.7, 11.8; 11.19 needs 9.28 (configFileRead/Write) and 11.7; 11.20 needs 11.7 and 11.14 — all done. 11.18 and 11.19 share the Settings window (11.19 makes it resizable).
-- 11.22 builds on 11.8's Push sheet, 9.11's track verb, 9.57's conversion (`crates/zanshin-jj/src/convert.rs`) and 10.14's Bookmarks panel track action; it adds a refusal kind to `PushRefusal` and change ids to `PushRef` over FlatBuffers.
-- 11.23 follows the jj 0.47 pin bump (done) and touches 9.28's config gc (`MissingRepoConfig` gains a kind), 9.4's file search (binary mode), wire values removed across schema/Rust/zanshin_core/Push sheet/l10n/docs, and the 10.24/10.25 inspector describe form + composer drafts.
-- Epic 10 keeps everything graph-semantic (View capsule contents, search, Configurations content, Bookmarks panel, @ pill, inspector, minimap, toast) and plugs into 11.3's slots and 10.5's contract (insets into the graph; calm and the chrome-facing api out of it).
-- Backend verbs from Epic 9: push (9.20), remote poll (9.24), fetch parity (9.30), op-log/redo (9.21), config surface (9.27/9.28), remotes (9.5), bookmark track (9.11), conversion (9.57).
+- 11.24 follows 11.12 and 11.13 (both done) and blocks 11.25, which depends on it. Neither waits for another open story: a story landing in between wires the old way, and 11.24/11.25 take it along.
+- 11.24/11.25 touch Epic 10 only at its edges: the project graph host publishes the active graph that the menu, Settings and the jj log Configurations window (10.22) read; the Undo Timeline (11.9) consumes actions the graph view model implements; the immutable reasons and Settings' Immutable commits page (11.7) share jj's built-in heads from the graph feature; the zoom binding (11.20) moves into `start()`.
+- Epic 10 keeps everything graph-semantic (View capsule contents, search, Configurations content, Bookmarks panel, @ pill, inspector, minimap, toast) and plugs into 11.3's slots and 10.5's contract; backend verbs come from Epic 9.

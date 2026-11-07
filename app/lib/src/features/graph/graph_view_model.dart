@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
-import '../undo_timeline/undo_timeline_model.dart' show UndoTimelineActions;
 import 'graph_content.dart';
 import 'graph_drag.dart';
 import 'graph_inspector.dart' show graphShortId;
@@ -152,6 +151,40 @@ class GraphFlash {
 /// The cap of a gap's flash (Story 10.19): the walk over the hidden commits stops there, so at most this many flash.
 const graphGapFlashCap = 10000;
 
+/// The runner the Undo Timeline's actions go through: 10.9's `GraphViewModel` (busy, stale, the expect-head check, the
+/// published outcome the toast shows, Zanshin's own undo/redo state). It notifies when any of these change.
+abstract interface class UndoTimelineActions implements Listenable {
+  /// Whether a trigger may run an action now.
+  bool get actionsEnabled;
+
+  /// Zanshin's own latest undo while it is the op-log head; [redoLast] takes it back.
+  GraphOutcome? get redoable;
+
+  /// `jj undo` while [head] (an id) is still the op-log head; [of] names the operation it takes back.
+  Future<GraphActionResult> undoOperation(String head, GraphLoggedOperation of);
+
+  /// `jj redo` of [redoable].
+  Future<GraphActionResult> redoLast();
+
+  /// `jj redo` while [head] (an id) is still the op-log head; [of] names the operation it brings back.
+  Future<GraphActionResult> redoOperation(String head, GraphLoggedOperation of);
+
+  /// `jj op restore <operation>`.
+  Future<GraphActionResult> restoreOperation(String operation);
+}
+
+/// How a menu names [id]: "@" for the working copy, else max(prefix, 8) characters (decision 16.35).
+String targetName(GraphViewModel model, String id) {
+  final GraphLayout? layout = model.layout;
+  final int? at = layout?.workingCopyIndex;
+  if (at != null && layout!.keyOf(at) == id) {
+    return '@'; // l10n-ignore: jj's symbol
+  }
+  final int? node = layout?.indexOfKey(id);
+  final int prefix = node == null ? 2 : layout!.changeIdPrefixLengthOf(node);
+  return id.substring(0, math.min(id.length, math.max(prefix, 8)));
+}
+
 /// The graph's view model (Story 10.5): it requests layouts through a [GraphSource] and keeps the view coherent while
 /// jj re-derives the graph after every operation (ADR-0002).
 ///
@@ -184,7 +217,6 @@ const graphGapFlashCap = 10000;
 /// - **Story 11.9**: the Undo Timeline's runner — [undoOperation] undoes any op-log head, [restoreOperation] restores.
 /// - **Story 10.10**: [drag] previews through `init`'s [GraphDrops] and runs its drop through [run] with the ghost's
 ///   rect; while a drag or its verb runs ([GraphDrag.holding]) every reload waits (at most one) and runs after it.
-@inject
 class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   /// A view model; [init] connects it.
   GraphViewModel();

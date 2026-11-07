@@ -5,7 +5,7 @@ import 'dart:ui' show Brightness, Color;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
-import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
+import 'package:zanshin/src/features/window/zanshin_app_view_model.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';

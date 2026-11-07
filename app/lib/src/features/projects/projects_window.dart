@@ -13,10 +13,12 @@ import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../window/app_window_actions.dart';
 import 'project_registry.dart';
 import 'project_repos.dart' show CloneTicket;
 import 'project_session.dart';
 import 'projects_environment.dart';
+import 'projects_search_focus.dart';
 import 'projects_tree.dart';
 import 'projects_tree_model.dart';
 import 'relative_time.dart';
@@ -36,9 +38,10 @@ final _log = Logger('zanshin.projects');
 ///
 /// **Sidebar** (200): the brand — the 32 px Nami chip, "Zanshin", the version line "‹version› · Build ‹build›" (the
 /// splash's) and below it "jj-lib ‹version›" (Claude's proposal) —, the navigation — Projects (current, `--fl-on`) and
-/// Settings…, which runs [onSettings] and is disabled without it — and the identity footer: `user.name` and
-/// `user.email` with an avatar, or the jj CLI's phrase for what is missing with "Set identity…" when
-/// [onIdentitySettings] is given (Claude's proposal). A failed read hides the footer.
+/// Settings…, which opens Settings on the tab shown last through the window's [AppWindowActionsScope] and is disabled
+/// without one — and the identity footer: `user.name` and `user.email` with an avatar, or the jj CLI's phrase for what
+/// is missing with "Set identity…" (Settings' General tab) inside an [AppWindowActionsScope] (Claude's proposal). A
+/// failed read hides the footer.
 ///
 /// **Header** (the scaffold's): "Projects" at sidebar + 12 (600 13/1.2, `--text-dim` in an inactive window), then the
 /// controls — the search (230; not focused on open — Ralph, 2026-10-29; Esc clears it and never closes; ↓ moves into the tree), Add directory
@@ -65,7 +68,8 @@ final _log = Logger('zanshin.projects');
 ///
 /// Every successful open reaches [onOpened] (11.12's window coordinator closes the `projects` dialog window there; a
 /// creation's warnings show in the project window's toast, Story 10.23). The identity is read again whenever the window
-/// becomes key. Identifiers: `projects-window` (also the root's key), `projects-search`, `projects-add-directory`,
+/// becomes key, and while mounted the content registers its search with [searchFocus] (Edit › Find, Story 11.13).
+/// Identifiers: `projects-window` (also the root's key), `projects-search`, `projects-add-directory`,
 /// `projects-clone`, `projects-new-group`, `projects-settings`, `projects-identity-settings`, `projects-notice`, `projects-offer`,
 /// `projects-clone-url`, `projects-clone-destination`, `projects-clone-choose`, `projects-clone-submit`,
 /// `projects-clone-cancel`, `projects-drop-hint`, and the tree's.
@@ -76,9 +80,8 @@ class ProjectsWindow extends StatefulWidget {
     required this.session,
     required this.registry,
     required this.environment,
+    required this.searchFocus,
     @assisted this.onOpened,
-    @assisted this.onSettings,
-    @assisted this.onIdentitySettings,
     @assisted super.key,
   });
 
@@ -91,14 +94,11 @@ class ProjectsWindow extends StatefulWidget {
   /// The version, the identity, the folder picker and Reveal in Finder.
   final ProjectsEnvironment environment;
 
+  /// Where the content registers its search for Edit › Find while it is mounted.
+  final ProjectsSearchFocus searchFocus;
+
   /// Runs after every successful open or creation, with its outcome.
   final ValueChanged<ProjectOpened>? onOpened;
-
-  /// Settings… in the sidebar (11.7, the tab shown last); null disables the row.
-  final VoidCallback? onSettings;
-
-  /// "Set identity…" in the footer (11.7's Identity rows); null leaves the link out.
-  final VoidCallback? onIdentitySettings;
 
   /// The sidebar's width (Window.prompt.md:23).
   static const double sidebarWidth = 200;
@@ -196,6 +196,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     widget.session.addListener(_sessionChanged);
     widget.session.failedOpen.addListener(_failedOpen);
     widget.environment.configWrites.addListener(_configWritten);
+    widget.searchFocus.register(focusSearch);
     unawaited(_readVersions());
     unawaited(_readIdentity(open));
     // After this frame: the notice is state of this window, set once it is built.
@@ -239,6 +240,10 @@ class ProjectsWindowState extends State<ProjectsWindow> {
       widget.session.addListener(_sessionChanged);
       widget.session.failedOpen.addListener(_failedOpen);
     }
+    if (!identical(oldWidget.searchFocus, widget.searchFocus)) {
+      oldWidget.searchFocus.unregister(focusSearch);
+      widget.searchFocus.register(focusSearch);
+    }
   }
 
   @override
@@ -246,6 +251,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     widget.session.removeListener(_sessionChanged);
     widget.session.failedOpen.removeListener(_failedOpen);
     widget.environment.configWrites.removeListener(_configWritten);
+    widget.searchFocus.unregister(focusSearch);
     _search.dispose();
     _searchFocus.dispose();
     _cloneUrl.dispose();
@@ -793,7 +799,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
                       ),
                       sidebar: FocusTraversalOrder(
                         order: const NumericFocusOrder(3),
-                        child: FocusTraversalGroup(child: _sidebar()),
+                        child: FocusTraversalGroup(child: _sidebar(AppWindowActionsScope.maybeOf(context))),
                       ),
                     ),
                   ),
@@ -808,8 +814,9 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     ),
   );
 
-  /// The sidebar's column; [ZsWindowScaffold] draws its hairline and its empty top.
-  Widget _sidebar() => SizedBox(
+  /// The sidebar's column; [ZsWindowScaffold] draws its hairline and its empty top. Settings… and Set identity… open
+  /// Settings through the window's [windows]; without them Settings… is disabled and Set identity… left out.
+  Widget _sidebar(AppWindowActions? windows) => SizedBox(
     width: ProjectsWindow.sidebarWidth,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -829,7 +836,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
                 child: _NavRow(
                   icon: ZI.settings,
                   label: context.l10n.settingsEllipsis,
-                  onPressed: widget.onSettings,
+                  onPressed: windows == null ? null : () => unawaited(windows.openSettings()),
                   identifier: 'projects-settings',
                 ),
               ),
@@ -838,7 +845,10 @@ class ProjectsWindowState extends State<ProjectsWindow> {
         ),
         const Spacer(),
         if (_identity case final JjIdentity identity)
-          _IdentityFooter(identity: identity, onSettings: widget.onIdentitySettings),
+          _IdentityFooter(
+            identity: identity,
+            onSettings: windows == null ? null : () => unawaited(windows.openSettings(target: SettingsTarget.general)),
+          ),
       ],
     ),
   );

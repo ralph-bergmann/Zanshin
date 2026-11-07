@@ -10,6 +10,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import '../graph/hatch_swatch.dart';
+import '../graph/immutable_reasons.dart' show immutableBuiltins;
 import 'general_tab.dart';
 import 'immutable_heads.dart';
 import 'remotes_group.dart';

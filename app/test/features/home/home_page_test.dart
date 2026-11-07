@@ -15,6 +15,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inject_annotation/inject_annotation.dart' show Provider;
 import 'package:inject_flutter/inject_flutter.dart';
+import 'package:zanshin/src/features/graph/active_graph.dart';
 import 'package:zanshin/src/features/graph/graph_controls.dart';
 import 'package:zanshin/src/features/graph/graph_search_field.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
@@ -22,14 +23,12 @@ import 'package:zanshin/src/features/home/home_page.dart';
 import 'package:zanshin/src/features/projects/project_capsule.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
-import 'package:zanshin/src/features/shell/app_menu.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin/src/features/shell/pinned_panel.dart';
 import 'package:zanshin/src/features/shell/rail.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_view.dart';
-import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart'
     show RepoDetectResult, RepoKind, ZanshinFfiException, ZanshinWarning, ZanshinWarningCode;
@@ -98,10 +97,10 @@ void main() {
   setUp(() => ZanshinShellPlatform.instance = shell = RecordingShell());
   tearDown(() => shell.close());
 
-  late AppMenuModel appMenu;
+  late ActiveGraph activeGraph;
 
   /// Pumps the home page over a fresh settings store and a project session on fake repositories in a 1440 × 900
-  /// window showing [appearance], wrapped by [wrap]; returns the session. The menu bar's model is [appMenu].
+  /// window showing [appearance], wrapped by [wrap]; returns the session. The graph is published to [activeGraph].
   Future<ProjectSession> pumpHome(
     WidgetTester tester, {
     ZsAppearance appearance = const ZsAppearance(),
@@ -118,14 +117,15 @@ void main() {
     if (before != null) {
       await tester.runAsync(() => before(session));
     }
-    appMenu = AppMenuModel(ActiveWindowTracker(), session);
-    addTearDown(appMenu.dispose);
+    activeGraph = ActiveGraph();
+    addTearDown(activeGraph.dispose);
     final Widget home = shellHost(
       HomePage(
         viewModelFactory: _factory(store),
         projects: session,
         environment: FakeProjectsEnvironment(),
-        appMenu: appMenu,
+        settings: store,
+        activeGraph: activeGraph,
       ),
       appearance: appearance,
     );
@@ -255,20 +255,20 @@ void main() {
     final Finder field = find.descendant(of: find.byType(GraphSearchField), matching: find.byType(EditableText));
     expect(tester.widget<EditableText>(field).focusNode.hasFocus, isFalse);
 
-    appMenu.graph.value!.focusSearch!();
+    activeGraph.value!.focusSearch!();
     await tester.pump();
     expect(tester.widget<EditableText>(field).focusNode.hasFocus, isTrue);
   });
 
-  testWidgets('the graph is published to the menu bar per repository and cleared when the project switches or closes', (
+  testWidgets('the graph is published to ActiveGraph per repository and cleared when the project switches or closes', (
     tester,
   ) async {
     final ProjectSession session = await pumpHome(tester);
-    expect(appMenu.graph.value, isNull);
+    expect(activeGraph.value, isNull);
 
     await tester.runAsync(() => session.open('/r/zanshin'));
     await tester.pump();
-    final GraphMenuBinding? first = appMenu.graph.value;
+    final GraphMenuBinding? first = activeGraph.value;
     expect(first, isNotNull);
     expect(tester.widget<GraphView>(find.byType(GraphView)).model, same(first!.model));
     expect(first.focusSearch, isNotNull);
@@ -280,7 +280,7 @@ void main() {
     await tester.pump();
     expect(tester.state(find.byType(GraphView)), isNot(same(graphState)), reason: 'a fresh graph state');
     expect(tester.state(find.byType(GraphSearchField)), isNot(same(searchState)), reason: 'no old search text');
-    final GraphMenuBinding? second = appMenu.graph.value;
+    final GraphMenuBinding? second = activeGraph.value;
     expect(second, isNotNull);
     expect(second!.model, isNot(same(first.model)), reason: 'a new set of graph objects for the new repository');
     expect(tester.widget<GraphView>(find.byType(GraphView)).model, same(second.model));
@@ -288,7 +288,7 @@ void main() {
 
     await tester.runAsync(session.closeProject);
     await tester.pump();
-    expect(appMenu.graph.value, isNull);
+    expect(activeGraph.value, isNull);
   });
 
   testWidgets('the Undo Timeline runs through the graph model; Reload refreshes the session and reloads the graph', (
@@ -302,7 +302,7 @@ void main() {
 
     final FloatingShell shell = tester.widget<FloatingShell>(find.byType(FloatingShell));
     final panel = shell.railItems.singleWhere((item) => item.id == 'undo').panel as UndoTimelinePanel;
-    expect(panel.actions, same(appMenu.graph.value!.model));
+    expect(panel.actions, same(activeGraph.value!.model));
 
     final FakeProjectRepo repo = repos.repoAt('/r/zanshin');
     expect(
@@ -331,13 +331,13 @@ void main() {
 
     await tester.runAsync(() => session.open('/r/zanshin'));
     await tester.pump();
-    final ValueListenable<double> first = appMenu.graph.value!.model.minimapSource.cardWidth;
+    final ValueListenable<double> first = activeGraph.value!.model.minimapSource.cardWidth;
     expect(shell().minimap, isNotNull, reason: 'the shell only sizes a shown minimap');
     expect(shell().minimapWidth, same(first));
 
     await tester.runAsync(() => session.open('/r/jj'));
     await tester.pump();
-    expect(shell().minimapWidth, same(appMenu.graph.value!.model.minimapSource.cardWidth));
+    expect(shell().minimapWidth, same(activeGraph.value!.model.minimapSource.cardWidth));
     expect(shell().minimapWidth, isNot(same(first)), reason: "the old project's model is disposed");
   });
 

@@ -7,6 +7,7 @@ import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
+import '../window/app_window_actions.dart' show AppWindowActions;
 import 'project_registry.dart';
 import 'project_repos.dart';
 
@@ -605,5 +606,19 @@ class ProjectSession extends ChangeNotifier {
       unawaited(_closeRepo(repo));
     }
     super.dispose();
+  }
+}
+
+/// A Recent row (the capsule's, File › Open Recent's): opens [path] in [session]; a failed open or a missing folder
+/// shows the Projects window through [windows] with its notice (Ralph, 2026-11-01); the open project stays.
+Future<void> openRecentProject(ProjectSession session, AppWindowActions? windows, String path) async {
+  final ProjectOpenOutcome outcome = await session.open(path);
+  switch (outcome) {
+    // Without the actions scope nothing opens Projects, so nothing is reported (it would show stale later).
+    case ProjectOpenFailed() || ProjectNotARepo(kind: RepoKind.pathNotFound) when windows != null:
+      session.reportFailedOpen(path, outcome);
+      await windows.openProjects();
+    case _:
+      break;
   }
 }

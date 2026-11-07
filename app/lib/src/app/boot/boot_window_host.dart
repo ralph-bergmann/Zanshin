@@ -13,16 +13,11 @@ import 'package:logging/logging.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../shell/app_menu.dart';
-import '../window/app_windows.dart';
-import '../window/splash_window_controller.dart';
+import '../../features/window/app_windows.dart';
+import '../../features/window/splash_window_controller.dart';
+import '../menu/app_menu.dart';
 import 'splash_card.dart';
 import 'zanshin_bootstrap.dart';
-
-export '../window/app_windows.dart' show mainWindowKey;
-
-/// Title of the main window.
-const mainWindowTitle = 'Zanshin'; // l10n-ignore: the product name
 
 final _log = Logger('zanshin.bootstrap');
 

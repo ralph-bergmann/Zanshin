@@ -12,18 +12,18 @@ import 'package:flutter/src/foundation/_features.dart';
 import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/features/bootstrap/zanshin_bootstrap.dart';
+import 'package:zanshin/src/app/app_window_coordinator.dart';
+import 'package:zanshin/src/app/boot/zanshin_bootstrap.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
-import 'package:zanshin/src/features/window/app_window_coordinator.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
-import '../../helpers/fake_projects.dart';
-import '../../helpers/fake_windows.dart';
+import '../helpers/fake_projects.dart';
+import '../helpers/fake_windows.dart';
 
 /// How long `until` waits, in real time, for the coordinator's chains.
 const _untilBudget = Duration(seconds: 10);

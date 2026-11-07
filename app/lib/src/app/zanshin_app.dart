@@ -3,9 +3,9 @@
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 
-import '../home/home_page.dart';
-import '../window/app_windows.dart' show mainWindowKey;
-import '../window/zanshin_window_root.dart';
+import '../features/home/home_page.dart';
+import '../features/window/app_windows.dart' show mainWindowKey;
+import '../features/window/zanshin_window_root.dart';
 
 part 'zanshin_app.factory.dart';
 

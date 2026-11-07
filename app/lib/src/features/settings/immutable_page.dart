@@ -8,6 +8,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import '../graph/hatch_swatch.dart';
+import '../graph/immutable_reasons.dart' show builtinImmutableHeads, immutableBuiltins;
 import 'immutable_heads.dart';
 import 'project_tab.dart' show immutableCountText;
 import 'settings_view_model.dart';

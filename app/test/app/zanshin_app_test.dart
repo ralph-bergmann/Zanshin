@@ -8,10 +8,11 @@ import 'package:inject_annotation/inject_annotation.dart' show Provider;
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:zanshin/main.dart' show MainComponent, appWindowCoordinator;
+import 'package:zanshin/src/app/app_window_coordinator.dart';
+import 'package:zanshin/src/app/boot/icon_module.dart';
 import 'package:zanshin/src/app/worker_lifecycle_module.dart';
-import 'package:zanshin/src/features/app/zanshin_app.dart';
-import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
-import 'package:zanshin/src/features/bootstrap/icon_module.dart';
+import 'package:zanshin/src/app/zanshin_app.dart';
+import 'package:zanshin/src/features/graph/active_graph.dart';
 import 'package:zanshin/src/features/graph/revset_configs/revset_configs_window.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
@@ -20,12 +21,12 @@ import 'package:zanshin/src/features/projects/projects_module.dart';
 import 'package:zanshin/src/features/projects/projects_window.dart';
 import 'package:zanshin/src/features/settings/settings_window.dart';
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
-import 'package:zanshin/src/features/shell/app_menu.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
+import 'package:zanshin/src/features/window/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/window/zanshin_window_root.dart';
 import 'package:zanshin_core/zanshin_core.dart' show ZanshinWorker;
 import 'package:zanshin_settings/zanshin_settings.dart';
@@ -33,9 +34,9 @@ import 'package:zanshin_shell/zanshin_shell.dart' show WindowDragArea;
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../../helpers/fake_projects.dart';
-import '../../helpers/fake_projects_environment.dart';
-import '../../helpers/recording_shell.dart';
+import '../helpers/fake_projects.dart';
+import '../helpers/fake_projects_environment.dart';
+import '../helpers/recording_shell.dart';
 
 /// The home page the DI graph would build, over [_store].
 class _HomePageFactory implements HomePageFactory {
@@ -46,8 +47,8 @@ class _HomePageFactory implements HomePageFactory {
   /// The app's one session, as the DI graph's singleton.
   late final _projects = ProjectSession(registry: ProjectRegistry(_store), repos: FakeProjectRepos());
 
-  /// The menu bar's model, as the DI graph's singleton.
-  late final _appMenu = AppMenuModel(ActiveWindowTracker(), _projects);
+  /// The project window's graph, as the DI graph's singleton.
+  final _activeGraph = ActiveGraph();
 
   @override
   HomePage create({Key? key}) => HomePage(
@@ -55,7 +56,8 @@ class _HomePageFactory implements HomePageFactory {
     viewModelFactory: _viewModels(() => FloatingShellViewModel(_store)),
     projects: _projects,
     environment: FakeProjectsEnvironment(),
-    appMenu: _appMenu,
+    settings: _store,
+    activeGraph: _activeGraph,
   );
 }
 
@@ -195,8 +197,11 @@ void main() {
     await tester.pumpAndSettle();
 
     final ProjectSession session = component.projectSession;
-    expect(tester.widget<HomePage>(find.byType(HomePage)).projects, same(session));
+    final HomePage home = tester.widget<HomePage>(find.byType(HomePage));
+    expect(home.projects, same(session));
     expect(component.projectSession, same(session), reason: 'a singleton');
+    expect(home.settings, same(component.settings));
+    expect(home.activeGraph, same(component.appMenu.graph), reason: 'the menu bar reads the graph the page publishes');
     expect(find.byKey(const ValueKey<String>('window:main')), findsOneWidget, reason: "the project window's root key");
     expect(
       find.descendant(of: find.byKey(const ValueKey<String>('window:main')), matching: find.byType(HomePage)),
@@ -209,17 +214,17 @@ void main() {
   ) async {
     final MainComponent component = await mainComponent(tester);
     void onOpened(ProjectOpened outcome) {}
+    final AppWindowCoordinator coordinator = appWindowCoordinator(component, AppWindows(exitProcess: () async {}));
 
-    final Widget root = appWindowCoordinator(component, AppWindows(exitProcess: () async {})).buildProjects(onOpened);
+    final Widget root = coordinator.buildProjects(onOpened);
 
     expect(root, isA<ZanshinWindowRoot>().having((root) => root.windowKey, 'windowKey', projectsWindowKey));
     final Widget content = (root as ZanshinWindowRoot).child;
     expect(content, isA<ProjectsWindow>());
     expect((content as ProjectsWindow).onOpened, same(onOpened));
     expect(content.session, same(component.projectSession));
-    expect(content.key, same(component.appMenu.projectsKey), reason: "the menu bar's Find reaches Projects' search");
-    expect(content.onSettings, isNotNull, reason: 'Story 11.7: the sidebar Settings…');
-    expect(content.onIdentitySettings, isNotNull, reason: 'Story 11.7: the footer Set identity…');
+    final next = (coordinator.buildProjects(onOpened) as ZanshinWindowRoot).child as ProjectsWindow;
+    expect(next.searchFocus, same(content.searchFocus), reason: "one ProjectsSearchFocus: the menu bar's Find");
   });
 
   testWidgets("main.dart's coordinator builds jj log Configurations under its root over the settings and the graph", (
