@@ -610,13 +610,14 @@ class ProjectSession extends ChangeNotifier {
   }
 }
 
-/// A Recent row (the capsule's, File › Open Recent's): opens [path] in [session]; a failed open or a missing folder
-/// shows the Projects window through [windows] with its notice (Ralph, 2026-11-01); the open project stays.
+/// A Recent row (the capsule's, File › Open Recent's): opens [path] in [session]; a failed open, a missing folder and
+/// a folder that holds no jj workspace (any more) show the Projects window through [windows] with the notice or the
+/// convert/init/enclosing offer an open from there shows (Ralph, 2026-11-01); the open project stays.
 Future<void> openRecentProject(ProjectSession session, AppWindowActions? windows, String path) async {
   final ProjectOpenOutcome outcome = await session.open(path);
   switch (outcome) {
     // Without the actions scope nothing opens Projects, so nothing is reported (it would show stale later).
-    case ProjectOpenFailed() || ProjectNotARepo(kind: RepoKind.pathNotFound) when windows != null:
+    case ProjectOpenFailed() || ProjectNotARepo() || ProjectInsideRepo() when windows != null:
       session.reportFailedOpen(path, outcome);
       await windows.openProjects();
     case _:

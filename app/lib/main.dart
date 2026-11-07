@@ -79,8 +79,10 @@ Future<void> main() async {
         final BootValues boot = await loadBootValues(progress);
         final MainComponent component = MainComponent.create(bootModule: BootModule(boot, windows));
         final ZanshinApplication app = component.application;
+        final BootFirstWindow first = app.start();
+        // After start(): a start that throws keeps the boot's system menus, not app menus whose windows never come.
         host.showMenu(app.menu);
-        return app.start();
+        return first;
       });
     },
     (error, stackTrace) {

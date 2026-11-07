@@ -541,11 +541,40 @@ void main() {
     handle.dispose();
   });
 
-  for (final failing in <bool>[true, false]) {
+  for (final (recent, arrange, reported) in <(String, void Function(FakeProjectRepos), Matcher)>[
+    (
+      'whose open fails shows Projects with the failure',
+      (repos) => repos.openFailures['/r/zanshin'] = const ZanshinFfiException('jj.jj_lib_error', 'the store is broken'),
+      isA<ProjectOpenFailed>().having((f) => f.context, 'context', 'the store is broken'),
+    ),
+    (
+      'whose folder is gone shows Projects with that',
+      (repos) => repos.detections['/r/zanshin'] = const RepoDetectResult(kind: RepoKind.pathNotFound),
+      isA<ProjectNotARepo>().having((f) => f.kind, 'kind', RepoKind.pathNotFound),
+    ),
+    // The Projects window answers these three with its convert, init and enclosing offers.
+    (
+      'that is a Git repository now shows Projects with it',
+      (repos) => repos.detections['/r/zanshin'] = const RepoDetectResult(kind: RepoKind.git),
+      isA<ProjectNotARepo>().having((f) => f.kind, 'kind', RepoKind.git),
+    ),
+    (
+      'that is a plain folder now shows Projects with it',
+      (repos) => repos.detections['/r/zanshin'] = const RepoDetectResult(kind: RepoKind.neither),
+      isA<ProjectNotARepo>().having((f) => f.kind, 'kind', RepoKind.neither),
+    ),
+    (
+      'that lies inside a repository now shows Projects with it',
+      (repos) => repos.detections['/r/zanshin'] = const RepoDetectResult(
+        kind: RepoKind.neither,
+        suggestedRoot: '/r',
+        suggestedKind: RepoKind.jj,
+      ),
+      isA<ProjectInsideRepo>().having((f) => f.root, 'root', '/r'),
+    ),
+  ]) {
     testWidgets(
-      failing
-          ? 'a Recent row whose open fails shows Projects with the failure; the open project stays'
-          : 'a Recent row whose folder is gone shows Projects with that; the open project stays',
+      'a Recent row $recent; the open project stays',
       (tester) async {
         final SemanticsHandle handle = tester.ensureSemantics();
         final actions = _Actions();
@@ -558,11 +587,7 @@ void main() {
         await tester.runAsync(() => session.open('/r/zanshin'));
         await tester.runAsync(() => session.open('/r/jj'));
         await tester.pump();
-        if (failing) {
-          repos.openFailures['/r/zanshin'] = const ZanshinFfiException('jj.jj_lib_error', 'the store is broken');
-        } else {
-          repos.detections['/r/zanshin'] = const RepoDetectResult(kind: RepoKind.pathNotFound);
-        }
+        arrange(repos);
 
         await tester.tap(find.bySemanticsIdentifier('project-capsule'));
         await tester.pump();
@@ -576,12 +601,7 @@ void main() {
         expect(session.current?.path, '/r/jj');
         final ProjectFailedOpen? failed = session.failedOpen.value;
         expect(failed?.path, '/r/zanshin');
-        expect(
-          failed?.outcome,
-          failing
-              ? isA<ProjectOpenFailed>().having((f) => f.context, 'context', 'the store is broken')
-              : isA<ProjectNotARepo>().having((f) => f.kind, 'kind', RepoKind.pathNotFound),
-        );
+        expect(failed?.outcome, reported);
         handle.dispose();
       },
     );

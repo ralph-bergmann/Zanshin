@@ -572,7 +572,7 @@ void main() {
     await rig.tap(tester, 'revset-configs-item-c1');
     expect(find.textContaining('changes match'), findsNothing);
     await rig.tap(tester, 'revset-configs-reference');
-    expect(rig.urls, <Uri>[Uri.parse('https://docs.jj-vcs.dev/v0.46.0/revsets/')]);
+    expect(rig.urls, <Uri>[Uri.parse('https://docs.jj-vcs.dev/v0.47.0/revsets/')]);
     await rig.tap(tester, 'revset-configs-default');
     await rig.tap(tester, 'revset-configs-ok');
     expect(rig.store.value.graph.revsetDefault, 'c1');

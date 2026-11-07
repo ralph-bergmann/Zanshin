@@ -21,7 +21,7 @@ replicates the jj CLI's observable behaviour at the pinned version, and
 
 | Path                                                        | What it is                                                                                             |
 |-------------------------------------------------------------|--------------------------------------------------------------------------------------------------------|
-| `app/`                                                      | the Flutter macOS app (features under `app/lib/src/features/`)                                         |
+| `app/`                                                      | the Flutter macOS app: its frame in `app/lib/src/app/`, the features in `app/lib/src/features/`        |
 | `packages/zanshin_core`                                     | the pure-Dart bridge to the Rust library (FFI, worker isolate)                                         |
 | `packages/zanshin_ui`, `zanshin_shell*`, `zanshin_settings` | UI components, window shell, settings                                                                  |
 | `crates/zanshin-jj`                                         | jj operations on `jj-lib` (open, log, rebase, squash, push, …)                                         |

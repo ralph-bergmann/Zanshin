@@ -515,7 +515,7 @@ void main() {
     expect(rig.actions.configurations, 1);
     rig.select('jj Documentation ↗');
     await tester.pump();
-    expect(rig.urls, <Uri>[Uri.parse('https://docs.jj-vcs.dev/v0.46.0/')]);
+    expect(rig.urls, <Uri>[Uri.parse('https://docs.jj-vcs.dev/v0.47.0/')]);
   });
 
   testWidgets("Close Window runs the key window's red-button path: the project window's handler, Projects closes", (

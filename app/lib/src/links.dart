@@ -3,7 +3,7 @@
 import 'dart:io';
 
 /// jj's documentation at the pinned jj-lib version.
-final Uri jjDocumentationUrl = Uri.parse('https://docs.jj-vcs.dev/v0.46.0/'); // l10n-ignore: a URL
+final Uri jjDocumentationUrl = Uri.parse('https://docs.jj-vcs.dev/v0.47.0/'); // l10n-ignore: a URL
 
 /// Opens a URL in the browser: [openInBrowser] in the app, a recording stand-in in tests.
 typedef OpenUrl = Future<void> Function(Uri url);

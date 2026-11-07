@@ -223,6 +223,8 @@ the `zanshin-graph` lane crate was removed)*
   `planned_parents` / `TargetGraph` / `new_children` / `children_parents` copy jj-lib's
   `rewrite.rs::compute_move_commits` (+ its private helpers) so `rebase_is_no_op` writes nothing;
   port any change — the inline dry-run comparison catches drift only on the shapes it builds.
+  (8) Point `jjDocumentationUrl` (`app/lib/src/links.dart`: Help › jj Documentation and the
+  Revset reference) at the new tag's docs, and its two tests with it (Ralph, 2026-11-07).
 - When jj-lib's API changes (it will — pre-1.0), absorb the diff inside `zanshin-jj`'s
   module body. The crate's public surface stays stable. Mutations are visible in
   `jj op log` indistinguishably from CLI-initiated ones (NFR-R-2).
@@ -463,6 +465,10 @@ the `zanshin-graph` lane crate was removed)*
 - Dart files are `snake_case.dart` matching their class/feature name.
 - Each Dart `lib/src/` subdirectory has a barrel file ONLY if it makes imports
   meaningfully shorter. No barrel-for-the-sake-of-barrel.
+- The app's frame — boot, window coordinator, menu bar — lives in `app/lib/src/app/`, its
+  features in `app/lib/src/features/<feature>/`. No feature imports the frame, and feature
+  folders import each other without a cycle; `app/test/architecture/layers_test.dart`
+  enforces both (Story 11.24).
 
 **Naming conventions:**
 - Rust: types `PascalCase`, functions/vars `snake_case`, consts `SCREAMING_SNAKE`,
