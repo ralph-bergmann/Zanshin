@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "skills": {
+    "inject_annotation-add-assisted-injection": {
+      "source": "ralph-bergmann/inject.dart",
+      "ref": "master",
+      "sourceType": "github",
+      "skillPath": "packages/inject_annotation/skills/inject_annotation-add-assisted-injection/SKILL.md",
+      "computedHash": "b8e44a611f841c7fc8beeb9ca42d37eb4650e1a52b2452a2e184cb3b5256626b"
+    },
+    "inject_annotation-add-injectable": {
+      "source": "ralph-bergmann/inject.dart",
+      "ref": "master",
+      "sourceType": "github",
+      "skillPath": "packages/inject_annotation/skills/inject_annotation-add-injectable/SKILL.md",
+      "computedHash": "d34596892274e1c5d7622348236e1989ff416c57593fc51b82ee8541563dc716"
+    },
+    "inject_annotation-add-provision-listener": {
+      "source": "ralph-bergmann/inject.dart",
+      "ref": "master",
+      "sourceType": "github",
+      "skillPath": "packages/inject_annotation/skills/inject_annotation-add-provision-listener/SKILL.md",
+      "computedHash": "c7a6e432c9710713b600e773e9dba61a4e6ca5c1403f17e09a038987ead39c51"
+    },
+    "inject_annotation-create-module": {
+      "source": "ralph-bergmann/inject.dart",
+      "ref": "master",
+      "sourceType": "github",
+      "skillPath": "packages/inject_annotation/skills/inject_annotation-create-module/SKILL.md",
+      "computedHash": "9b1f9b1db7c3a43098d0cc9cd8aa61c112f76d8c3b06cefe513abc9532d08886"
+    },
+    "inject_annotation-flutter-view-model": {
+      "source": "ralph-bergmann/inject.dart",
+      "ref": "master",
+      "sourceType": "github",
+      "skillPath": "packages/inject_annotation/skills/inject_annotation-flutter-view-model/SKILL.md",
+      "computedHash": "b8d1ab732c8f958cd3e6a96a9f56a65fd4af4016aa4164552c5727de314fef81"
+    },
+    "inject_annotation-inject-provider": {
+      "source": "ralph-bergmann/inject.dart",
+      "ref": "master",
+      "sourceType": "github",
+      "skillPath": "packages/inject_annotation/skills/inject_annotation-inject-provider/SKILL.md",
+      "computedHash": "32cc87cd5e4b99e457cd9014be07765279132b804dc617482a3330cde1750e65"
+    },
+    "inject_annotation-setup-di": {
+      "source": "ralph-bergmann/inject.dart",
+      "ref": "master",
+      "sourceType": "github",
+      "skillPath": "packages/inject_annotation/skills/inject_annotation-setup-di/SKILL.md",
+      "computedHash": "da8c44cc6d4b9827d06270b97c57960e803f159b00ceb7fff16791e67cfd2762"
+    },
+    "inject_annotation-write-tests": {
+      "source": "ralph-bergmann/inject.dart",
+      "ref": "master",
+      "sourceType": "github",
+      "skillPath": "packages/inject_annotation/skills/inject_annotation-write-tests/SKILL.md",
+      "computedHash": "d1c7da7d67bbaf71615eb65cdc36200226ac9ab0ba346f5543bdd960e23adc61"
+    }
+  }
+}
