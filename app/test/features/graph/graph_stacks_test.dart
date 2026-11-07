@@ -9,6 +9,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/l10n/app_localizations_en.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_content.dart';
@@ -108,7 +109,8 @@ void main() {
         final String from = date(members.first);
         final String to = date(members.last);
         expect(slots[GraphStackSlot.badge], '${members.length}');
-        expect(slots[GraphStackSlot.range], '${id(members.last)}‥${id(members.first)}');
+        // Oldest‥newest, the way the dates run (Ralph, 2026-11-07).
+        expect(slots[GraphStackSlot.range], '${id(members.first)}‥${id(members.last)}');
         expect(slots[GraphStackSlot.subject], newest.subject.isEmpty ? '(no description set)' : newest.subject);
         expect(
           slots[GraphStackSlot.authors],
@@ -121,6 +123,133 @@ void main() {
           reason: layout.keyOf(stack),
         );
       }
+    });
+
+    test('graphShortDateRange: months, then days, then one day, always with the year; oldest first, at the layout '
+        'offset (2026-11-07)', () {
+      String range(DateTime a, DateTime b, {int offset = 0}) => graphShortDateRange(
+        AppLocalizationsEn(),
+        a.millisecondsSinceEpoch,
+        b.millisecondsSinceEpoch,
+        utcOffsetMinutes: offset,
+      );
+      expect(range(DateTime.utc(2019, 9, 2), DateTime.utc(2025, 5, 20)), 'Sep 2019 – May 2025');
+      expect(range(DateTime.utc(2025, 4, 10), DateTime.utc(2025, 12, 2)), 'Apr – Dec 2025');
+      expect(range(DateTime.utc(2025, 6, 3), DateTime.utc(2025, 6, 24)), 'Jun 3 – 24, 2025');
+      expect(range(DateTime.utc(2025, 6, 3, 9), DateTime.utc(2025, 6, 3, 10)), 'Jun 3, 2025');
+      expect(range(DateTime.utc(2025, 5, 20), DateTime.utc(2019, 9, 2)), 'Sep 2019 – May 2025', reason: 'reversed');
+      // 23:30 UTC on Dec 31 is Jan 1 at +01:00.
+      expect(range(DateTime.utc(2024, 12, 31, 23, 30), DateTime.utc(2025, 1, 30), offset: 60), 'Jan 1 – 30, 2025');
+    });
+
+    test("shortDates: a missing time takes the other member's; none at all, null", () {
+      GraphCardData member(int? t) => GraphCardData(key: 'k', changeId: 'kkkkkkkk', prefixLength: 1, timestampMs: t);
+      final int jun3 = DateTime.utc(2025, 6, 3, 9).millisecondsSinceEpoch;
+      GraphStackData stack(int? newest, int? oldest) =>
+          GraphStackData(key: 's', count: 2, newest: member(newest), oldest: member(oldest));
+      expect(stack(null, jun3).shortDates(AppLocalizationsEn()), 'Jun 3, 2025');
+      expect(stack(jun3, null).shortDates(AppLocalizationsEn()), 'Jun 3, 2025');
+      expect(stack(null, null).shortDates(AppLocalizationsEn()), isNull);
+    });
+
+    testWidgets('narrowing a card: the authors go, then the dates take the narrower form and end in "…"; below one '
+        'character, no dates (2026-11-07)', (tester) async {
+      useShellWindow(tester, _window);
+      final RecordedGraphLayout layout = stackRecording('design-default free default');
+      final AppLocalizations strings = AppLocalizationsEn();
+      double width(String text) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: ZsType.meta),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        addTearDown(painter.dispose);
+        return painter.width;
+      }
+
+      var shortened = 0;
+      var cut = 0;
+      var fullCut = 0;
+      var none = 0;
+      var sliver = 0;
+      // The sample's own now (relative dates, often narrower than the short form), then a year on (every date with its
+      // year, so the full form is the long one).
+      for (final now in <int>[_now, _now + 400 * 86400000]) {
+        // A fresh canvas per pass: a card keeps the controller it was built with.
+        await tester.pumpWidget(const SizedBox());
+        // Just above the minimum, line 2 leaves a sliver beside the range.
+        for (final cardWidth in <double>[400, 340, 280, 240, 200, 172, 168, 164, 160]) {
+          final cards = GraphCardController(now: now);
+          addTearDown(cards.dispose);
+          await tester.pumpWidget(
+            shellHost(
+              GraphCanvas(
+                layout: layout,
+                cards: cards,
+                options: GraphViewOptions(cardWidth: cardWidth),
+              ),
+            ),
+          );
+          await tester.pump();
+          for (var run = 0; run < layout.runCount; run++) {
+            final List<int> members = layout.runMembersOf(run);
+            final RenderGraphStackCard render = _stackRender(tester, layout.keyOf(layout.stackNodeOf(run)!))!;
+            final slots = <GraphStackSlot, ({GraphStackSlot kind, Rect rect, String? text})>{
+              for (final slot in render.debugSlots) slot.kind: slot,
+            };
+            String date(int node) =>
+                graphRelativeDate(strings, layout.timestampOf(node)!, nowMs: now, utcOffsetMinutes: 0);
+            final String from = date(members.first);
+            final String to = date(members.last);
+            final full = from == to ? to : '$from – $to';
+            final String short = graphShortDateRange(
+              strings,
+              layout.timestampOf(members.first)!,
+              layout.timestampOf(members.last)!,
+              utcOffsetMinutes: 0,
+            );
+            // Line 2 ends at the padding, or before the ⚠ and its 8 px gap (graph_stack_card.dart `_metaGap`).
+            final double? icon = slots[GraphStackSlot.conflict]?.rect.width;
+            final double limit = render.cardRect.right - ZsMetrics.standard.cardPadX - (icon == null ? 0 : 8 + icon);
+            final double room = limit - slots[GraphStackSlot.range]!.rect.right - 8;
+            final ({GraphStackSlot kind, Rect rect, String? text})? dates = slots[GraphStackSlot.dates];
+            final reason = '${layout.keyOf(layout.stackNodeOf(run)!)} at $cardWidth, now $now';
+            final expected = width(full) <= room
+                ? full
+                : width(short) < width(full)
+                ? short
+                : full;
+            if (room < width(expected.characters.first)) {
+              expect(dates, isNull, reason: reason);
+              expect(slots.containsKey(GraphStackSlot.authors), isFalse, reason: reason);
+              none++;
+              if (room > 0) {
+                sliver++;
+              }
+              continue;
+            }
+            expect(dates?.text, expected, reason: reason);
+            expect(dates!.rect.width, closeTo(math.min(width(expected), room), .01), reason: reason);
+            if (slots.containsKey(GraphStackSlot.authors)) {
+              expect(dates.text, full, reason: '$reason: the authors only beside the full dates');
+            }
+            expect(slots.values.map((slot) => slot.rect.width), everyElement(greaterThanOrEqualTo(0)), reason: reason);
+            if (expected != full) {
+              shortened++;
+            }
+            if (width(expected) > room) {
+              cut++;
+              if (expected == full) {
+                fullCut++;
+              }
+            }
+          }
+        }
+      }
+      expect(shortened, isPositive, reason: 'some card shows the short form');
+      expect(cut, isPositive, reason: 'some card cuts its dates with "…"');
+      expect(fullCut, isPositive, reason: 'some card keeps a full form narrower than its short form, cut');
+      expect(none, isPositive, reason: 'some card has no room for dates');
+      expect(sliver, isPositive, reason: 'some card has room, but less than one character');
     });
 
     testWidgets('compact: badge, range, subject and ⚠ on one line', (tester) async {

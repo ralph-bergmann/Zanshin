@@ -21,7 +21,7 @@ export interface DayAxisYear {
 
 export interface DayAxisProps {
   days: DayAxisDay[];
-  /** year labels — only where a year begins; none for a one-year history, none inside a GraphBreak */
+  /** year labels — only where a year begins; none for a one-year history */
   years?: DayAxisYear[];
   /** plane size */
   width: number;

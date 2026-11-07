@@ -96,7 +96,6 @@ const _openStories = <String, String>{
   'CalloutText': '10.14',
   'RemotesGroup': '11.18',
   'ConfigFilePage': '11.19',
-  'GraphBreak': '10.31',
 };
 
 /// DS components that never become a catalogue use case, with the reason.

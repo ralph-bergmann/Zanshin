@@ -10,7 +10,7 @@ export function DayLabel({ children, className = "", style }) {
 // Reading upward: label = "this day starts here". Days never interleave in Free, so the band around a divider holds no cards.
 // days: [{ key, label, y, guide }] — y = label centre; guide = divider y (none for the oldest day).
 // years: [{ key, year, y }] — where a year begins (sync #22): the year above the divider, its own label just above that day's
-// label (y = the day label's y). None where the history holds one year, none inside a GraphBreak.
+// label (y = the day label's y). None where the history holds one year.
 // Place it first in the graph plane (under cards and lines); the labels stay in view while the plane scrolls sideways.
 export function DayAxis({ days = [], years = [], width, height, x0 = 0, stickyLeft = 0, labelLeft = 14, className = "", style }) {
   return (

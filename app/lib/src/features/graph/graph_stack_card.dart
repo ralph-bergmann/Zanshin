@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -88,8 +89,9 @@ class GraphStackData {
   /// Whether every member is immutable.
   final bool immutable;
 
-  /// The id range as the card shows it: newest‥oldest, each id max(prefix, 5) long.
-  String get range => '${_id(newest)}‥${_id(oldest)}';
+  /// The id range as the card shows it: oldest‥newest, the way its dates run (2026-11-07, Ralph), each id
+  /// max(prefix, 5) long.
+  String get range => '${_id(oldest)}‥${_id(newest)}';
 
   static String _id(GraphCardData data) {
     final (:String prefix, :String rest, :String offset) = data.idParts(detailed: false);
@@ -109,6 +111,39 @@ class GraphStackData {
     }
     return '$from – $to'; // l10n-ignore: a range of two dates
   }
+
+  /// The date range shortened (2026-11-07, Ralph: a stack card always shows its period): [graphShortDateRange] of the
+  /// oldest and the newest member, a missing time read as the other's; null without timestamps.
+  String? shortDates(AppLocalizations strings) {
+    final int? first = oldest.timestampMs ?? newest.timestampMs;
+    final int? last = newest.timestampMs ?? oldest.timestampMs;
+    return first == null || last == null
+        ? null
+        : graphShortDateRange(strings, first, last, utcOffsetMinutes: utcOffsetMinutes);
+  }
+}
+
+/// [first]–[second] (epoch ms, read at the fixed offset, oldest first) as a stack card's short dates (2026-11-07, the
+/// range of the retired break label), always with the year (Ralph): "Sep 2019 – May 2025" across years, "Apr – Dec
+/// 2025" across months, "Jun 3 – 24, 2025" within a month, "Jun 3, 2025" within a day.
+String graphShortDateRange(AppLocalizations strings, int first, int second, {required int utcOffsetMinutes}) {
+  final int off = utcOffsetMinutes * 60000;
+  final a = DateTime.fromMillisecondsSinceEpoch(math.min(first, second) + off, isUtc: true);
+  final b = DateTime.fromMillisecondsSinceEpoch(math.max(first, second) + off, isUtc: true);
+  ensureDateFormatting();
+  final String locale = strings.localeName;
+  String at(DateFormat format, DateTime t) => format.format(t);
+  // Ranges of two dates in the app's English punctuation, like [GraphStackData.dates] (l10n-ignore).
+  if (a.year != b.year) {
+    return '${at(DateFormat.yMMM(locale), a)} – ${at(DateFormat.yMMM(locale), b)}';
+  }
+  if (a.month != b.month) {
+    return '${at(DateFormat.MMM(locale), a)} – ${at(DateFormat.yMMM(locale), b)}';
+  }
+  if (a.day != b.day) {
+    return '${at(DateFormat.MMMd(locale), a)} – ${at(DateFormat.d(locale), b)}, ${at(DateFormat.y(locale), b)}';
+  }
+  return at(DateFormat.yMMMd(locale), a);
 }
 
 /// One stack card (Story 10.17; DS components/graph/StackCard.*, graph.css:27-31): a collapsed linear run, drawn by one
@@ -523,14 +558,15 @@ class RenderGraphStackCard extends RenderBox implements MouseTrackerAnnotation {
       );
     }
 
-    // One paragraph: newest‥oldest, the separator faint (graph.css:31); its 1 px padding rides on the letter spacing.
+    // One paragraph: oldest‥newest like the dates, the separator faint (graph.css:31); its 1 px padding rides on the
+    // letter spacing.
     final TextPainter range = _paragraph(
       TextSpan(
         style: ZsType.id.copyWith(color: t.cardTextFaint),
         children: <InlineSpan>[
-          id(d.newest),
-          TextSpan(text: '‥', style: ZsType.id.copyWith(letterSpacing: 2)), // l10n-ignore: a range separator
           id(d.oldest),
+          TextSpan(text: '‥', style: ZsType.id.copyWith(letterSpacing: 2)), // l10n-ignore: a range separator
+          id(d.newest),
         ],
       ),
     );
@@ -538,7 +574,7 @@ class RenderGraphStackCard extends RenderBox implements MouseTrackerAnnotation {
     final String? authorsText = _detailed ? d.authors : null;
     final String? datesText = _detailed ? d.dates(_strings, _controller.now.value) : null;
     final TextPainter? authors = authorsText == null ? null : _paragraph(TextSpan(text: authorsText, style: meta));
-    final TextPainter? dates = datesText == null ? null : _paragraph(TextSpan(text: datesText, style: meta));
+    final TextPainter? full = datesText == null ? null : _paragraph(TextSpan(text: datesText, style: meta));
     final bool conflict = d.conflict;
 
     double x0 = _card.left + _metrics.cardPadX;
@@ -550,18 +586,32 @@ class RenderGraphStackCard extends RenderBox implements MouseTrackerAnnotation {
     }
 
     if (_detailed) {
-      // Line 2's yield: the authors shrink (gone below one character), then the dates go.
+      // Line 2's yield: the authors shrink (gone below one character), then the dates take the narrower short form and
+      // end in "…" — they go only below one character (2026-11-07, Ralph: a stack card always shows its period). The
+      // authors stand only beside the full dates.
       final double fixed = range.width + (conflict ? _metaGap + _icon : 0);
-      double datesW = dates == null ? 0 : _metaGap + dates.width;
-      double authorsW = authors == null ? 0 : math.max(0, avail - fixed - datesW - _metaGap);
-      if (authors != null) {
-        authorsW = math.min(authorsW, authors.width);
-        if (authorsW < _paragraph(TextSpan(text: authorsText!.characters.first, style: meta)).width) {
-          authorsW = 0;
+      final double room = avail - fixed - _metaGap;
+      double firstChar(String text) => _paragraph(TextSpan(text: text.characters.first, style: meta)).width;
+      var dates = full;
+      var datesShown = datesText;
+      if (full != null && full.width > room) {
+        final String? shortText = d.shortDates(_strings);
+        final TextPainter? short = shortText == null ? null : _paragraph(TextSpan(text: shortText, style: meta));
+        if (short != null && short.width < full.width) {
+          dates = short;
+          datesShown = shortText;
         }
       }
-      if (fixed + datesW + (authorsW > 0 ? _metaGap + authorsW : 0) > avail) {
+      double datesW = dates == null ? 0 : math.min(dates.width, room);
+      if (datesShown != null && datesW < firstChar(datesShown)) {
         datesW = 0;
+      }
+      double authorsW = 0;
+      if (authors != null && dates == full) {
+        authorsW = math.min(authors.width, math.max(0, room - (datesW > 0 ? datesW + _metaGap : 0)));
+        if (authorsW < firstChar(authorsText!)) {
+          authorsW = 0;
+        }
       }
       final double h1 = math.max(_badgeH, subject.height);
       final double h2 = range.height;
@@ -579,7 +629,7 @@ class RenderGraphStackCard extends RenderBox implements MouseTrackerAnnotation {
       }
       if (datesW > 0) {
         x0 += _metaGap;
-        place(GraphStackSlot.dates, dates!.width, c2, dates);
+        place(GraphStackSlot.dates, datesW, c2, dates);
       }
       if (conflict) {
         x0 += _metaGap;

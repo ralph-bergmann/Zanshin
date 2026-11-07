@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'package:zanshin_core/zanshin_core.dart';
 
-import 'graph_breaks.dart';
+import 'graph_cuts.dart';
 import 'graph_layout.dart';
 
 /// The worker's layout (Story 10.12): a lazy [GraphLayout] over one `RepoHandle.graphLayout` reply — the ids, flags,
@@ -42,12 +42,7 @@ class BackendGraphLayout extends GraphLayout {
   int get unit => grid.unit;
 
   // Free's shortened stretches (Story 10.31); Compact keeps the engine's rows.
-  late final GraphBreaks _cuts = mode == GraphMode.free
-      ? GraphBreaks.compute(grid.nodeRows, unit, timestampOf)
-      : GraphBreaks.none;
-
-  @override
-  List<GraphBreak> get breaks => _cuts.breaks;
+  late final GraphCuts _cuts = mode == GraphMode.free ? GraphCuts.compute(grid.nodeRows, unit) : GraphCuts.none;
 
   @override
   int get rows => grid.rows == 0 ? 0 : _cuts.map(grid.rows - unit) + unit;

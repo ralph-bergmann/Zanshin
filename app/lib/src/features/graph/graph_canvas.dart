@@ -1531,7 +1531,7 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                   paintBackground: axis.paintGuides,
                   // The gap marks after the edges, the brackets after them, never dimmed (Stories 10.17, 10.19); the flash
                   // last — under the cards, like the DS's box-shadow, so it never crosses a card's legend pill.
-                  paintEdges: edges == null && brackets.isEmpty && _flashKeys.isEmpty && axis.axis.breaks.isEmpty
+                  paintEdges: edges == null && brackets.isEmpty && _flashKeys.isEmpty
                       ? null
                       : (context, origin, visible) {
                           if (layer >= 1) {
@@ -1546,8 +1546,6 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
                           if (born != null && drawn > 0) {
                             edges?.paint(context, origin, visible, highlight: highlight, only: born, drawn: drawn);
                           }
-                          // Story 10.31: the breaks' torn strips over the lines and gap marks, under the cards.
-                          axis.paintBreaks(context, origin, visible);
                           _paintFlash(context.canvas, origin, visible, rows, metrics, colors);
                         },
                   transition: elapsed == null ? null : _moving,

@@ -452,33 +452,18 @@ function freeRows(nodes, N) {
   });
 }
 
-// Free, long histories (sync #22, Story 10.31): a collapsed stack keeps its hidden members' time below it, so a long one
-// leaves screens of canvas with only lines in it. Any stretch with no card in any column taller than BREAK_MIN shrinks to
-// BREAK_TO (card to card) and becomes a break: a torn band naming the time it skips. Layout units, so a break never
-// depends on the window; an expanded stack fills its stretch with cards and the break is gone.
-const BREAK_MIN = 8 * U, BREAK_TO = 1.5 * U;
+// Free, long histories (sync #22, #23 · Story 10.31): a collapsed stack keeps its hidden members' time below it. A real
+// pause is never taller than 3 pitches (gapUnits ≤ 48), so a stretch with no card in any column taller than SHORTEN_MIN
+// only comes from folded members: it shrinks to SHORTEN_TO (card to card) with no mark — no tear, the stack card names
+// its period, the day and year labels stay. Layout units, so it never depends on the window.
+const SHORTEN_MIN = 3 * U, SHORTEN_TO = 1.5 * U;
 function shortenFree(nodes) {
-  const byU = new Map();
-  nodes.forEach(n => { const a = byU.get(n.u); a ? a.push(n) : byU.set(n.u, [n]); });
-  const us = [...byU.keys()].sort((a, b) => a - b), cuts = [];
+  const us = [...new Set(nodes.map(n => n.u))].sort((a, b) => a - b), cuts = [];
   for (let i = 1; i < us.length; i++) {
-    if (us[i] - us[i - 1] <= BREAK_MIN) continue;
-    const t = (u, f) => f(...byU.get(u).map(n => n.t).filter(x => x != null && !isNaN(x)));
-    cuts.push({ lo: us[i - 1], hi: us[i], save: us[i] - us[i - 1] - BREAK_TO, tLo: t(us[i - 1], Math.max), tHi: t(us[i], Math.min) });
+    if (us[i] - us[i - 1] > SHORTEN_MIN) cuts.push({ hi: us[i], save: us[i] - us[i - 1] - SHORTEN_TO });
   }
-  if (!cuts.length) return [];
   const shift = u => cuts.reduce((s, c) => s + (c.hi <= u ? c.save : 0), 0);
-  cuts.forEach(c => { c.hiU = c.hi - shift(c.hi); });
-  nodes.forEach(n => { n.u -= shift(n.u); });
-  return cuts.map(c => ({ hiU: c.hiU, tLo: c.tLo, tHi: c.tHi, label: spanLabel(c.tLo, c.tHi) }));
-}
-// "4 years · Feb 2021 – Mar 2025" · "8 months · Jun – Dec 2025" · "3 weeks · Jun 3 – 24"
-function spanLabel(t0, t1) {
-  const d = (t1 - t0) / 864e5, a = new Date(t0), b = new Date(t1), M = (x) => x.toLocaleDateString("en-US", { month: "short" });
-  const len = d >= 548 ? Math.round(d / 365) + " years" : d >= 60 ? Math.round(d / 30.4) + " months" : d >= 14 ? Math.round(d / 7) + " weeks" : Math.max(1, Math.round(d)) + " days";
-  const range = a.getFullYear() !== b.getFullYear() ? `${M(a)} ${a.getFullYear()} – ${M(b)} ${b.getFullYear()}`
-    : a.getMonth() !== b.getMonth() ? `${M(a)} – ${M(b)} ${b.getFullYear()}` : `${M(a)} ${a.getDate()} – ${b.getDate()}`;
-  return len + " · " + range;
+  if (cuts.length) nodes.forEach(n => { n.u -= shift(n.u); });
 }
 
 function routeAll(nodes, N, W, H, route, free) {
@@ -538,7 +523,7 @@ function computeLayout(all, revset, W, H, mode = "free", opts = {}) {
   nodes.forEach(n => n.parents.forEach(p => N.get(p.id).children.push(n.id)));
   // rows in both layouts — they share their columns, so switching layouts only moves cards up and down (same width, same order)
   freeRows(nodes, N);
-  const breaks = shortenFree(nodes);
+  shortenFree(nodes);
   const rowOf = (n) => n.rowC != null ? n.rowC : (n.rowC = n.parents.length ? Math.max(...n.parents.map(p => rowOf(N.get(p.id)))) + 1 : 0);
   nodes.forEach(n => { n.uF = n.u; n.uC = U * rowOf(n); });
   const M = [n => n.uF, n => n.uC];
@@ -663,9 +648,6 @@ function computeLayout(all, revset, W, H, mode = "free", opts = {}) {
   // Free: day axis — a dashed divider between two local calendar days (by clamped T); each day's label sits on the divider below its
   // first commit, at the left edge. Days never interleave in Free, so the band around a divider holds no cards — the label needs no gutter.
   const days = [], years = [];
-  // breaks (sync #22): the band between the upper card's bottom and the lower card's top; a day divider inside it is the break
-  const bands = free ? breaks.map((b, i) => { const top = G.pad + (maxU - b.hiU) / U * pitch; return { key: "brk" + i, top: top + H, bottom: top + BREAK_TO / U * pitch, label: b.label }; }) : [];
-  const inBand = (y) => bands.some(b => y > b.top - 1 && y < b.bottom + 1);
   if (free) {
     const by = new Map(), root = nodes.find(n => n.c.isRoot);
     nodes.forEach(n => {
@@ -679,15 +661,14 @@ function computeLayout(all, revset, W, H, mode = "free", opts = {}) {
       const floor = prev ? prev.hi.y : root ? root.y : d.lo.y + H + G.gapY, g = (floor + d.lo.y + H) / 2, y = Math.min(g, lastY - 22);
       // a year boundary at this divider (or the oldest day): year = the year above (the canvas pairs it with that day's label,
       // read upward like the day labels), below = the year under it (the minimap's section header, read downward)
-      // inside a break the band's own label names both ends, so the canvas shows no year there
-      if (!prev || prev.year !== d.year) years.push({ key: "y" + d.year, year: d.year, below: prev ? prev.year : null, inBand: !!prev && inBand(g), y: prev && inBand(g) ? bands.find(b => g > b.top - 1 && g < b.bottom + 1).top : y });
-      if (!(prev && inBand(g))) days.push({ key: d.key, label: d.label, y, guide: prev ? g : null });
+      if (!prev || prev.year !== d.year) years.push({ key: "y" + d.year, year: d.year, below: prev ? prev.year : null, y });
+      days.push({ key: d.key, label: d.label, y, guide: prev ? g : null });
       prev = d; lastY = y;
     });
   }
 
   return {
-    nodes, N, ...R, days, years, bands, offX: 0, mode: free ? "free" : "compact",
+    nodes, N, ...R, days, years, offX: 0, mode: free ? "free" : "compact",
     width: G.pad * 2 + colCount * (W + G.gapX) - G.gapX,
     height: G.pad * 2 + botExtra + maxU / U * pitch + H,
     total: all.length, shown: list.length,

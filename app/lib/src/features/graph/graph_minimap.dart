@@ -197,8 +197,8 @@ class GraphMinimapSource extends ChangeNotifier {
 /// (null at the history's oldest day, which opens its first year).
 typedef MinimapYear = ({double y, int year, int? below});
 
-/// The minimap's day labels in plane coordinates, ascending y (Story 10.16), with the year boundaries (ascending y)
-/// and the breaks' centre ys (Story 10.31).
+/// The minimap's day labels in plane coordinates, ascending y (Story 10.16), with the year boundaries (ascending y,
+/// Story 10.31).
 @immutable
 class MinimapLabels {
   /// Labels at [ys] reading [texts].
@@ -207,26 +207,18 @@ class MinimapLabels {
     this.texts, {
     required this.free,
     this.years = const <MinimapYear>[],
-    this.breaks = const <double>[],
     this.nowYear,
-    this.silent = const <int>{},
     this.yearTexts = const <int, String>{},
   });
 
   /// No labels.
   static const empty = MinimapLabels(<double>[], <String>[], free: false);
 
-  /// The labels the day lookup reads but nothing draws (Story 10.31): a day whose divider lies in a break.
-  final Set<int> silent;
-
   /// Each year of [years] as its label text.
   final Map<int, String> yearTexts;
 
   /// The year boundaries, ascending y: the topmost first.
   final List<MinimapYear> years;
-
-  /// The breaks' centre ys, in plane coordinates.
-  final List<double> breaks;
 
   /// The current year at the layout's offset; a history that lies in it alone gets no sticky header.
   final int? nowYear;
@@ -245,8 +237,8 @@ class MinimapLabels {
 }
 
 /// The minimap's day labels of [layout] mapped by [rows] (graph-view.jsx:445-459):
-/// - **Free:** one label per shown [GraphDayAxis] day at its label y, reading [graphDayLabel] of the bucket; the
-///   axis's year boundaries and breaks (Story 10.31);
+/// - **Free:** one label per [GraphDayAxis] day at its label y, reading [graphDayLabel] of the bucket; the axis's year
+///   boundaries (Story 10.31);
 /// - **Compact:** per row the newest timestamp of its laid-out nodes (the root and nodes without one left out); a row
 ///   gets a label at its card centre only when its day ([graphLocalDay]) is older than the last label's; a year
 ///   boundary midway between two labels of different years.
@@ -267,25 +259,16 @@ MinimapLabels minimapLabels(
   };
   if (layout.mode == GraphMode.free) {
     final axis = GraphDayAxis.of(layout, rows);
-    // The shown days and the days dropped in a break (looked up, never drawn), ascending y.
-    final days = <(double, int, bool)>[
-      for (var b = 0; b < axis.length; b++) (axis.labelYs[b], axis.values[b], false),
-      for (var b = 0; b < axis.droppedValues.length; b++) (axis.droppedYs[b], axis.droppedValues[b], true),
-    ]..sort((a, b) => a.$1.compareTo(b.$1));
     final years = <MinimapYear>[
       for (final GraphAxisYear y in axis.years.reversed) (y: y.y, year: y.year, below: y.below),
     ];
+    // The axis lists its days oldest first (y decreasing); the minimap reads them top-down.
     return MinimapLabels(
-      <double>[for (final (double y, _, _) in days) y],
-      <String>[for (final (_, int value, _) in days) label(value)],
+      <double>[for (int b = axis.length - 1; b >= 0; b--) axis.labelYs[b]],
+      <String>[for (int b = axis.length - 1; b >= 0; b--) label(axis.values[b])],
       free: true,
       years: years,
-      breaks: <double>[for (final GraphAxisBreak b in axis.breaks.reversed) b.centre],
       nowYear: nowYear,
-      silent: <int>{
-        for (var i = 0; i < days.length; i++)
-          if (days[i].$3) i,
-      },
       yearTexts: yearTexts(years),
     );
   }
@@ -626,7 +609,9 @@ enum _Text { label, pill, hoverPill, year }
 
 class _GraphMinimapState extends State<GraphMinimap> {
   final _hover = ValueNotifier<double?>(null);
-  var _dragging = false;
+
+  // The press a drag moves from: where it was and the minimap's scroll offset then; null while no button is down.
+  ({double sy, double ms})? _press;
 
   // The content window the raster covers (Story 10.31), per mapping; the canvas controller watched for leaving it.
   MinimapMapping? _windowMapping;
@@ -863,9 +848,15 @@ class _GraphMinimapState extends State<GraphMinimap> {
 
   void _report(double amount) => ShellScope.maybeOf(context)?.reportUserScroll(amount);
 
-  /// Jumps the graph so the band centres on strip y [sy] of a strip [stripHeight] tall, read against the frame current
-  /// at the event (a scroll may have changed the insets since the last build).
-  void _jump(double sy, double stripHeight) {
+  /// The press at strip y [sy] of a strip [stripHeight] tall, with the minimap's scroll offset at the event.
+  ({double sy, double ms}) _pressAt(double sy, double stripHeight) {
+    final GraphMinimapFrame? frame = widget.model.minimapSource.frame;
+    return (sy: sy, ms: frame == null ? 0 : _msOf(frame, _mappingOf(frame, stripHeight)));
+  }
+
+  /// Jumps the graph to what [press] pointed at, dragged [dy] since ([minimapJumpTarget]), on a strip [stripHeight]
+  /// tall, read against the frame current at the event (a scroll may have changed the insets since the last build).
+  void _jump(({double sy, double ms}) press, double dy, double stripHeight) {
     final GraphMinimapFrame? frame = widget.model.minimapSource.frame;
     if (frame == null || !frame.vertical.hasClients) {
       return;
@@ -874,10 +865,12 @@ class _GraphMinimapState extends State<GraphMinimap> {
     frame.vertical.jumpTo(
       minimapJumpTarget(
         _mappingOf(frame, stripHeight),
-        sy,
+        press.sy,
+        ms: press.ms,
         viewport: position.viewportDimension,
         maxScrollExtent: position.maxScrollExtent,
         insets: frame.insets,
+        dy: dy,
       ),
     );
   }
@@ -984,7 +977,7 @@ class _GraphMinimapState extends State<GraphMinimap> {
     return MouseRegion(
       cursor: SystemMouseCursors.basic,
       onHover: (event) {
-        if (!_dragging) {
+        if (_press == null) {
           _hover.value = event.localPosition.dy;
         }
       },
@@ -995,19 +988,20 @@ class _GraphMinimapState extends State<GraphMinimap> {
           if (event.buttons & kPrimaryButton == 0) {
             return;
           }
-          _dragging = true;
+          final ({double sy, double ms}) press = _pressAt(event.localPosition.dy, size.height);
+          _press = press;
           _hover.value = null;
           _report(40);
-          _jump(event.localPosition.dy, size.height);
+          _jump(press, 0, size.height);
         },
         onPointerMove: (event) {
-          if (_dragging) {
+          if (_press case final press?) {
             _report(40);
-            _jump(event.localPosition.dy, size.height);
+            _jump(press, event.localPosition.dy - press.sy, size.height);
           }
         },
-        onPointerUp: (_) => _dragging = false,
-        onPointerCancel: (_) => _dragging = false,
+        onPointerUp: (_) => _press = null,
+        onPointerCancel: (_) => _press = null,
         onPointerSignal: (event) {
           if (event is PointerScrollEvent) {
             GestureBinding.instance.pointerSignalResolver.register(
@@ -1044,19 +1038,24 @@ class _GraphMinimapState extends State<GraphMinimap> {
   }
 }
 
-/// The canvas scroll offset that centres the band on strip y [sy] (Story 10.31, graph-view.jsx `jump`): the band's
-/// centre lies at `pixels · (k − over / range) + c0 · k` with `c0 = top + (viewport − top − bottom) / 2`, solved for
-/// `pixels` and clamped to the scroll range.
+/// The canvas scroll offset for a press at strip y [sy] while the minimap stood at scroll offset [ms], dragged [dy]
+/// since (Story 10.31, graph-view.jsx `jump`): the band centres on what the strip showed under the press — the day
+/// its hover pill names (Ralph 2026-11-07: a click on "Aug 6" went to March) — `(pixels + c0) · k = sy + ms` with
+/// `c0 = top + (viewport − top − bottom) / 2`; a drag then moves the band with the pointer, `k − over / range` strip
+/// px per canvas px as the strip scrolls along. Clamped to the scroll range.
 double minimapJumpTarget(
   MinimapMapping mapping,
   double sy, {
+  required double ms,
   required double viewport,
   required double maxScrollExtent,
   required EdgeInsets insets,
+  double dy = 0,
 }) {
   final double range = math.max(1, maxScrollExtent);
   final double c0 = insets.top + (viewport - insets.top - insets.bottom) / 2;
-  final double target = (sy - c0 * mapping.k) / math.max(mapping.k - mapping.over / range, 1e-6);
+  final double target =
+      (sy + ms) / math.max(mapping.k, 1e-6) - c0 + dy / math.max(mapping.k - mapping.over / range, 1e-6);
   return target.clamp(0, math.max(0, maxScrollExtent));
 }
 
@@ -1214,24 +1213,6 @@ class _OverlayPainter extends CustomPainter {
         )
         ..restore();
     }
-    // The breaks (Story 10.31): a small zigzag across the graph part.
-    final breakPaint = Paint()
-      ..color = colors.textDim
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..strokeJoin = StrokeJoin.round;
-    for (final double y in labels.breaks) {
-      final double sy = mapping.my(y) - ms;
-      if (sy < -4 || sy > size.height + 4) {
-        continue;
-      }
-      const double x0 = minimapSplit + 4;
-      final points = <Offset>[
-        for (final Offset p in graphZigzag(0, strip - x0, sy, 0, amp: 2, step: 5))
-          Offset(math.min(x0 + p.dx, strip), p.dy),
-      ];
-      canvas.drawPath(Path()..addPolygon(points, false), breakPaint);
-    }
     _mark(canvas, selected, colors.accentLine, ms);
     _mark(canvas, workingCopy, colors.co, ms);
     final double? hov = hover.value;
@@ -1271,7 +1252,7 @@ class _OverlayPainter extends CustomPainter {
     for (var i = 0; i < labels.length; i++) {
       final double y = mapping.my(labels.ys[i]);
       final double sy = y - ms;
-      if (labels.silent.contains(i) || y - last < 18 || years.any((year) => (year.sy - sy).abs() < _yearClear)) {
+      if (y - last < 18 || years.any((year) => (year.sy - sy).abs() < _yearClear)) {
         continue;
       }
       last = y;

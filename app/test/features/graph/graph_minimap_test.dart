@@ -41,9 +41,9 @@ RecordedGraphLayout _chain(int rows) {
   );
 }
 
-/// A Free chain of 30 days, one card each two pitches apart (Story 10.31): Dec 20–29 2023, Jan 1–10 2024, a break,
-/// then Jun 1–10 of [lastYear]. With [lastYear] 2026 and [oneYear] every day lies in 2026 (Mar 1–30) and there is no
-/// break.
+/// A Free chain of 30 days, one card each two pitches apart (Story 10.31): Dec 20–29 2023, Jan 1–10 2024, a shortened
+/// stretch (1½ pitches), then Jun 1–10 of [lastYear]. With [lastYear] 2026 and [oneYear] every day lies in 2026 (Mar
+/// 1–30), two pitches apart.
 GraphLayout _history({int lastYear = 2025, bool oneYear = false}) {
   int dayOf(int k) => oneYear
       ? DateTime.utc(2026, 3, 1 + k).millisecondsSinceEpoch
@@ -54,18 +54,13 @@ GraphLayout _history({int lastYear = 2025, bool oneYear = false}) {
       : DateTime.utc(lastYear, 6, k - 19).millisecondsSinceEpoch;
   int rowOf(int k) => oneYear || k < 20 ? 32 * k : 32 * 19 + 24 + 32 * (k - 20);
   const n = 30;
-  final RecordedGraphLayout inner = handLayout(
+  return handLayout(
     <(String, int, int)>[for (int k = n - 1; k >= 0; k--) ('h$k', rowOf(k), k % 3)],
     edges: <(int, int)>[for (var i = 0; i + 1 < n; i++) (i, i + 1)],
     unit: 16,
     timestamps: <int?>[for (int k = n - 1; k >= 0; k--) dayOf(k) + 12 * 3600000],
     buckets: <(int, int, int)>[for (var k = 0; k < n; k++) (dayOf(k), rowOf(k), rowOf(k))],
   );
-  return oneYear
-      ? inner
-      : BrokenLayout(inner, <GraphBreak>[
-          GraphBreak(lowerRow: rowOf(19), upperRow: rowOf(20), t0: dayOf(19), t1: dayOf(20)),
-        ]);
 }
 
 /// A Free history of [n] days up to today, one card a day two pitches apart: taller than the strip at 2 px a pitch,
@@ -125,33 +120,25 @@ void main() {
     });
 
     test(
-      'Free: the year boundaries top-down, the breaks\' centres; Compact: a boundary between two labels\' years',
+      'Free: the year boundaries top-down, every day labelled; Compact: a boundary between two labels\' years',
       () {
         int at(int y, int m, int d) => DateTime.utc(y, m, d).millisecondsSinceEpoch;
-        final GraphLayout free = BrokenLayout(
-          handLayout(
-            const <(String, int, int)>[('c', 64, 0), ('b', 40, 0), ('a', 16, 0)],
-            unit: 16,
-            timestamps: <int?>[at(2025, 5, 2), at(2023, 3, 1), at(2023, 2, 1)],
-            buckets: <(int, int, int)>[(at(2023, 2, 1), 16, 16), (at(2023, 3, 1), 40, 40), (at(2025, 5, 2), 64, 64)],
-          ),
-          <GraphBreak>[GraphBreak(lowerRow: 40, upperRow: 64, t0: at(2023, 3, 1), t1: at(2025, 5, 2))],
+        // Mar 1 and May 2 lie a shortened stretch (24 units) apart.
+        final GraphLayout free = handLayout(
+          const <(String, int, int)>[('c', 64, 0), ('b', 40, 0), ('a', 16, 0)],
+          unit: 16,
+          timestamps: <int?>[at(2025, 5, 2), at(2023, 3, 1), at(2023, 2, 1)],
+          buckets: <(int, int, int)>[(at(2023, 2, 1), 16, 16), (at(2023, 3, 1), 40, 40), (at(2025, 5, 2), 64, 64)],
         );
         final rows = UniformRows(free, GraphMetrics());
         final MinimapLabels labels = minimapLabels(free, rows, strings: strings, nowMs: _noon.millisecondsSinceEpoch);
-        final axis = GraphDayAxis.of(free, rows);
         expect(labels.nowYear, 2026);
         expect(labels.years.map((y) => (y.year, y.below)), <(int, int?)>[(2025, 2023), (2023, null)]);
         expect(labels.years.first.y, lessThan(labels.years.last.y), reason: 'ascending y');
-        expect(labels.breaks, <double>[axis.breaks.single.centre]);
         expect(labels.yearTexts, <int, String>{2025: '2025', 2023: '2023'});
-        // May 2's divider lies in the break: never drawn, but the lookup still names it for its card right above.
-        final int may2 = labels.texts.indexOf(day(at(2025, 5, 2)));
-        expect(may2, isNonNegative);
-        expect(labels.silent, <int>{may2});
+        expect(labels.texts, <String>[day(at(2025, 5, 2)), day(at(2023, 3, 1)), day(at(2023, 2, 1))]);
         final double card = rows.top(free.indexOfKey('c')!) + GraphMetrics().cardHeight / 2;
         expect(minimapDayAt(labels, card), day(at(2025, 5, 2)));
-        expect(minimapDayAt(labels, axis.breaks.single.bottom + 1), day(at(2023, 3, 1)), reason: 'below the break');
 
         final GraphLayout compact = handLayout(
           const <(String, int, int)>[('c', 2, 0), ('b', 1, 0), ('a', 0, 0)],
@@ -167,7 +154,6 @@ void main() {
         );
         expect(c.years.map((y) => (y.year, y.below)), <(int, int?)>[(2024, 2023), (2023, null)]);
         expect(c.years.first.y, (c.ys[0] + c.ys[1]) / 2);
-        expect(c.breaks, isEmpty);
       },
     );
 
@@ -539,7 +525,8 @@ void main() {
 
     testWidgets(
       'a history taller than the strip at 2 px a pitch: the minimap scrolls in proportion, the band stays inside, '
-      'a press centres the band on it, a node sits at my(y) − ms, the raster covers a window (Story 10.31)',
+      'a press jumps to the content under it, a drag moves the band with the pointer, a node sits at my(y) − ms, the '
+      'raster covers a window (Story 10.31)',
       (tester) async {
         await pump(tester, rows: 2000);
         final GraphMinimapFrame frame = model.minimapSource.frame!;
@@ -566,22 +553,38 @@ void main() {
         }
         expect(runs, greaterThan(1), reason: 'leaving the window re-rasters');
 
-        // A press at strip y 300 lands the band's centre there.
-        await tester.tapAt(s.topLeft + const Offset(80, 300), kind: PointerDeviceKind.mouse);
+        // A press at strip y 300 jumps to what the strip shows there — the day its hover pill names (Ralph 2026-11-07:
+        // a click on "Aug 6" went to March) — although the strip then scrolls along; a drag moves the band with the
+        // pointer from there.
+        frame.vertical.jumpTo(position.maxScrollExtent / 2);
         await tester.pump();
-        final double ms = mapping.msOf(position);
+        final double ms0 = mapping.msOf(position);
         final double c0 = insets.top + (position.viewportDimension - insets.top - insets.bottom) / 2;
-        expect((position.pixels + c0) * mapping.k - ms, closeTo(300, 1e-6));
+        double centre() => (position.pixels + c0) * mapping.k - mapping.msOf(position);
+        final TestGesture press = await tester.startGesture(
+          s.topLeft + const Offset(80, 300),
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        expect((position.pixels + c0) * mapping.k, closeTo(300 + ms0, 1e-6), reason: 'the pressed content');
         expect(
           position.pixels,
           minimapJumpTarget(
             mapping,
             300,
+            ms: ms0,
             viewport: position.viewportDimension,
             maxScrollExtent: position.maxScrollExtent,
             insets: insets,
           ),
         );
+        final double pressed = centre();
+        expect(pressed, isNot(closeTo(300, 1)), reason: 'the strip scrolled along, so the band left the pointer');
+        await press.moveBy(const Offset(0, 40));
+        await tester.pump();
+        expect(centre(), closeTo(pressed + 40, 1e-6), reason: 'the band follows the pointer');
+        await press.up();
+        await tester.pump();
 
         // @ (r100) paints at my(top + H/2) − ms.
         final GraphLayout layout = frame.layout;
@@ -612,31 +615,9 @@ void main() {
 
     Finder overlay() => find.descendant(of: find.byType(GraphMinimap), matching: find.byType(CustomPaint)).first;
 
-    testWidgets('the canvas paints a break\'s strip: its fill, then its two torn edges (Story 10.31)', (tester) async {
-      await pump(tester, layout: _history);
-      await tester.pumpAndSettle();
-      final GraphMinimapFrame frame = model.minimapSource.frame!;
-      final axis = GraphDayAxis.of(frame.layout, frame.rows);
-      frame.vertical.jumpTo(math.max(0, axis.breaks.single.centre - 300));
-      await tester.pump();
-      final ZsColors colors = ZsColors.of(tester.element(find.byType(GraphView)));
-      final paths = <(int, PaintingStyle)>[
-        for (final (Symbol method, List<dynamic> args) in calls(tester, find.byType(GraphView)))
-          if (method == #drawPath) ((args[1] as Paint).color.toARGB32(), (args[1] as Paint).style),
-      ];
-      final int fill = colors.flBgSolid.withValues(alpha: colors.flBgSolid.a * .92).toARGB32();
-      final int at = paths.indexOf((fill, PaintingStyle.fill));
-      expect(at, isNonNegative, reason: 'the strip\'s fill');
-      expect(paths.sublist(at + 1, at + 3), <(int, PaintingStyle)>[
-        (colors.borderStrong.toARGB32(), PaintingStyle.stroke),
-        (colors.borderStrong.toARGB32(), PaintingStyle.stroke),
-      ]);
-      await finish(tester);
-    });
-
     testWidgets(
-      'the minimap over years and a break: the zigzag, the year heading its section, the sticky top year, no day '
-      'label beside a year (Story 10.31)',
+      'the minimap over years: the year heading its section, the sticky top year, no day label beside a year '
+      '(Story 10.31)',
       (tester) async {
         await pump(tester, layout: _history);
         await tester.pumpAndSettle();
@@ -665,13 +646,6 @@ void main() {
           for (final (Symbol method, List<dynamic> args) in drawn)
             if (method == #drawParagraph) args[1] as Offset,
         ];
-        expect(
-          drawn.where(
-            (c) => c.$1 == #drawPath && (c.$2[1] as Paint).color.toARGB32() == colors.textDim.toARGB32(),
-          ),
-          hasLength(1),
-          reason: 'the break\'s zigzag',
-        );
         // "2023" heads the section under the 2024 boundary: its text top 3 px below the boundary.
         final MinimapYear boundary = labels.years.firstWhere((y) => y.below == 2023);
         final double sy = mapping.my(boundary.y);

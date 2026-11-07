@@ -3,7 +3,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:zanshin/src/features/graph/graph_breaks.dart';
+import 'package:zanshin/src/features/graph/graph_cuts.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 
@@ -22,7 +22,7 @@ const syntheticSizes = <int>[10000, 50000, 100000];
 ///
 /// With [longGapEvery] > 0 (Free only, Story 10.31's long history) every [longGapEvery]-th row starts after a quiet
 /// stretch of 40 pitches and 400 days, and the rows come back shortened as the worker's layout shortens them
-/// ([GraphBreaks]), with their [GraphLayout.breaks]. Keep it a multiple of 25 so the gaps fall between day buckets.
+/// ([GraphCuts]). Keep it a multiple of 25 so the gaps fall between day buckets.
 RecordedGraphLayout syntheticLayout(
   int nodeCount, {
   bool free = false,
@@ -178,9 +178,7 @@ RecordedGraphLayout syntheticLayout(
     }
   }
   // The long history comes back shortened, as BackendGraphLayout shortens a worker layout.
-  final GraphBreaks cuts = longGapEvery > 0 && free
-      ? GraphBreaks.compute(nodeRows, unit, (node) => timestamps[node])
-      : GraphBreaks.none;
+  final GraphCuts cuts = longGapEvery > 0 && free ? GraphCuts.compute(nodeRows, unit) : GraphCuts.none;
   for (var i = 0; i < nodeCount; i++) {
     nodeRows[i] = cuts.map(nodeRows[i]);
   }
@@ -192,7 +190,6 @@ RecordedGraphLayout syntheticLayout(
     mode: free ? GraphMode.free : GraphMode.compact,
     unit: unit,
     rows: nodeCount == 0 ? 0 : cuts.map(y[row - 1]) + unit,
-    breaks: cuts.breaks,
     colCount: colCount,
     keys: keys,
     cols: cols,

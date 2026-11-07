@@ -206,8 +206,9 @@ final graphFolder = WidgetbookFolder(
             );
           },
         ),
-        // Story 10.31: nine years with a 400-day quiet stretch every 75 rows — breaks, year labels, a minimap sized by
-        // its columns and scrolled past its minimum density (DS card *Long history*).
+        // Story 10.31: nine years with a 400-day quiet stretch every 75 rows, each shortened to 1½ pitches with its day
+        // and year labels in it; a minimap sized by its columns and scrolled past its minimum density (DS card *Long
+        // history*).
         WidgetbookUseCase(
           name: 'Long history',
           builder: (context) {

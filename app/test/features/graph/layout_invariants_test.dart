@@ -3,6 +3,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/graph/day_axis.dart';
 import 'package:zanshin/src/features/graph/graph_edges.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_metrics.dart';
@@ -43,16 +44,15 @@ void main() {
         });
       }
     }
-    test("the catalogue's long history: shortened like the worker's, with a break per quiet stretch", () {
+    test("the catalogue's long history: shortened like the worker's, every day and year labelled", () {
       final RecordedGraphLayout layout = syntheticLayout(1500, free: true, lanes: 6, longGapEvery: 75);
       expect(checkLayoutInvariants(layout), isEmpty);
-      expect(layout.breaks, isNotEmpty);
-      for (final GraphBreak cut in layout.breaks) {
-        expect(cut.upperRow - cut.lowerRow, 24, reason: '$cut: 1½ pitches card to card');
-        expect(cut.t1! - cut.t0!, greaterThan(400 * 86400000), reason: '$cut: spans the 400 quiet days');
-      }
-      // Without the gaps nothing is cut; the generator's rows and its other output stay as they were.
-      expect(syntheticLayout(10000, free: true).breaks, isEmpty);
+      final List<int> rows = <int>{for (var i = 0; i < layout.nodeCount; i++) layout.rowOf(i)}.toList()..sort();
+      final steps = <int>[for (var k = 1; k < rows.length; k++) rows[k] - rows[k - 1]];
+      expect(steps.every((step) => step <= 48), isTrue, reason: 'the 40-pitch quiet stretches are cut');
+      final axis = GraphDayAxis.of(layout, UniformRows(layout, GraphMetrics()));
+      expect(axis.length, layout.bucketCount, reason: 'no day loses its label in a shortened stretch');
+      expect(axis.canvasYears, isNotEmpty, reason: 'the 400-day stretches cross years');
     });
 
     test('the synthetic generator is deterministic', () {

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'graph_cuts.dart';
 import 'graph_layout.dart';
 
 /// An array-backed [GraphLayout]: the recorded layouts (Story 10.1 item 13) and the synthetic scale fixtures.
@@ -46,7 +47,6 @@ class RecordedGraphLayout extends GraphLayout {
     this.workspaceName,
     List<List<int>> runMembers = const <List<int>>[],
     List<int?>? runStackNodes,
-    this.breaks = const <GraphBreak>[],
   }) : _runMembers = runMembers,
        _runStackNodes = runStackNodes ?? List<int?>.filled(runMembers.length, null),
        _keys = keys,
@@ -219,10 +219,22 @@ class RecordedGraphLayout extends GraphLayout {
       bucketFirstRows[b] = bucket['start']! as int;
       bucketLastRows[b] = bucket['end']! as int;
     }
+    // Free rows read shortened, as BackendGraphLayout reads a worker's reply (Story 10.31, 2026-11-07).
+    final GraphMode mode = GraphMode.values.byName(output['mode']! as String);
+    final unit = output['unit']! as int;
+    final rows = output['rows']! as int;
+    final GraphCuts cuts = mode == GraphMode.free ? GraphCuts.compute(nodeRows, unit) : GraphCuts.none;
+    for (var i = 0; i < total; i++) {
+      nodeRows[i] = cuts.map(nodeRows[i]);
+    }
+    for (var b = 0; b < bucketValues.length; b++) {
+      bucketFirstRows[b] = cuts.map(bucketFirstRows[b]);
+      bucketLastRows[b] = cuts.map(bucketLastRows[b]);
+    }
     return RecordedGraphLayout(
-      mode: GraphMode.values.byName(output['mode']! as String),
-      unit: output['unit']! as int,
-      rows: output['rows']! as int,
+      mode: mode,
+      unit: unit,
+      rows: rows == 0 ? 0 : cuts.map(rows - unit) + unit,
       colCount: output['lanes']! as int,
       keys: keys,
       cols: cols,
@@ -260,10 +272,6 @@ class RecordedGraphLayout extends GraphLayout {
       runStackNodes: runStackNodes,
     );
   }
-
-  /// Free's shortened stretches, already applied to the given rows (the catalogue's long history); none by default.
-  @override
-  final List<GraphBreak> breaks;
 
   /// The `flags` bit of an immutable node.
   static const flagImmutable = 1;

@@ -8,8 +8,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/backend_graph_layout.dart';
-import 'package:zanshin/src/features/graph/graph_breaks.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
+import 'package:zanshin/src/features/graph/graph_cuts.dart';
 import 'package:zanshin/src/features/graph/graph_edges.dart';
 import 'package:zanshin/src/features/graph/graph_gaps.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
@@ -49,18 +49,14 @@ void _expectMirrors(BackendGraphLayout layout) {
   final GraphTopologyView t = layout.topology;
   final GraphGridView g = layout.grid;
   final int n = t.nodeCount;
-  final GraphBreaks cuts = layout.mode == GraphMode.free
-      ? GraphBreaks.compute(g.nodeRows, g.unit, layout.timestampOf)
-      : GraphBreaks.none;
-  expect(layout.breaks, cuts.breaks);
-  if (layout.mode == GraphMode.compact) {
-    expect(layout.breaks, isEmpty);
-  }
-  for (final GraphBreak b in layout.breaks) {
-    expect(b.upperRow - b.lowerRow, 24, reason: 'a break is 1½ pitches card to card');
-    for (var i = 0; i < layout.nodeCount; i++) {
-      final int row = layout.rowOf(i);
-      expect(row > b.lowerRow && row < b.upperRow, isFalse, reason: 'no card inside a break');
+  final GraphCuts cuts = layout.mode == GraphMode.free ? GraphCuts.compute(g.nodeRows, g.unit) : GraphCuts.none;
+  if (layout.mode == GraphMode.free) {
+    final List<int> rows = <int>{
+      for (var i = 0; i < layout.nodeCount; i++)
+        if (layout.rowOf(i) >= 0) layout.rowOf(i),
+    }.toList()..sort();
+    for (var k = 1; k < rows.length; k++) {
+      expect(rows[k] - rows[k - 1], lessThanOrEqualTo(48), reason: 'no card-free stretch taller than 3 pitches');
     }
   }
   expect(layout.nodeCount, n + g.stackCount);

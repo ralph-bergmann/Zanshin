@@ -1,7 +1,8 @@
 import React from "react";
 
 // StackCard — a linear run of ≥ 2 changes (one parent, one child, no bookmark, not @) folded into one card.
-// The count bubble leads; the meta line shows the range newest‥oldest (from = top member, to = bottom member).
+// The count bubble leads; the meta line shows the range oldest‥newest, the way its date runs (from = bottom member,
+// to = top member; sync #23).
 // immutable: every member is — the front card is hatched like a ChangeCard.
 export function StackCard({ count, subject, from = "", to = "", author, date, detailed = true, immutable = false, width, className = "", style, ...rest }) {
   const cls = ["zs-card is-stack", !detailed && "is-compact", immutable && "is-immutable", className].filter(Boolean).join(" ");

@@ -41,12 +41,11 @@ body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 .gmini-hline{stroke:var(--text-dim);stroke-width:1;stroke-dasharray:2 2}
 .gmini-lbl{position:absolute;transform:translateY(-50%);font:10.5px var(--font-mono);color:var(--text-dim);white-space:nowrap;text-align:right;pointer-events:none}
 .gmini-pill{position:absolute;transform:translateY(-50%);padding:3px 9px;border-radius:999px;border:1px solid var(--fl-gold);background:var(--fl-bg-solid);font:600 11.5px var(--font-mono);color:var(--text);white-space:nowrap;box-shadow:0 4px 14px -4px rgba(0,0,0,.5);pointer-events:none}
-/* long histories (sync #22): one dot spacing for every edge (indirect ones too); a year label where a year begins, the year
-   at the top as a sticky header; a break's zigzag across the graph part; the card's width follows the columns (inline) */
+/* long histories (sync #22, #23): one dot spacing for every edge (indirect ones too); a year label where a year begins, the
+   year at the top as a sticky header; the card's width follows the columns (inline) */
 .gmini{transition:width 200ms cubic-bezier(.32,.72,0,1)}
 .gmini-year{position:absolute;transform:translateY(3px);font:600 10.5px/1 var(--font-sans);letter-spacing:.08em;color:var(--text-muted);white-space:nowrap;text-align:right;pointer-events:none}
 .gmini-year.is-sticky{top:0;transform:none;padding:3px 0 3px 8px;background:linear-gradient(to right,transparent,var(--fl-bg-solid) 8px)}
-.gmini-break{fill:none;stroke:var(--text-dim);stroke-width:1.2;stroke-linejoin:round}
 .gmini-pill.is-hov{border-color:var(--border-strong);color:var(--text-muted);font-weight:400;box-shadow:none}
 
 /* overlay */

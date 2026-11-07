@@ -214,6 +214,27 @@ void main() {
       expect(() => RecordedGraphLayout.fromSpec(input, output), throwsFormatException);
     });
 
+    test(
+      "a Free stack recording reads shortened like the worker's: no card-free stretch over 3 pitches (2026-11-07)",
+      () {
+        var cut = false;
+        for (final String name in graphStackRecordings.keys.where((name) => name.split(' ')[1] == 'free')) {
+          final (String input, String output, _) = graphStackRecordings[name]!;
+          final layout = RecordedGraphLayout.fromSpec(input, output);
+          final List<int> rows = <int>{
+            for (var i = 0; i < layout.nodeCount; i++)
+              if (layout.rowOf(i) >= 0) layout.rowOf(i),
+          }.toList()..sort();
+          for (var k = 1; k < rows.length; k++) {
+            expect(rows[k] - rows[k - 1], lessThanOrEqualTo(48), reason: '$name at row ${rows[k - 1]}');
+          }
+          expect(layout.rows, rows.last + layout.unit, reason: name);
+          cut = cut || ((jsonDecode(output) as Map<String, Object?>)['rows']! as int) != layout.rows;
+        }
+        expect(cut, isTrue, reason: 'some stack recording has a stretch the worker cuts');
+      },
+    );
+
     test('every stack recording passes the hard invariants and I7 against its ungrouped recording', () {
       for (final String name in graphStackRecordings.keys) {
         final RecordedGraphLayout layout = stackRecording(name, inlineContent: false);

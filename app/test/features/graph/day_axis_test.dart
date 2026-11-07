@@ -121,56 +121,12 @@ void main() {
     });
   });
 
-  group('graphBreakLabel (Story 10.31)', () {
-    String? label(DateTime t0, DateTime t1, {int offset = 0}) => graphBreakLabel(
-      AppLocalizationsEn(),
-      t0.millisecondsSinceEpoch,
-      t1.millisecondsSinceEpoch,
-      utcOffsetMinutes: offset,
-    );
-
-    test('years, months, weeks and days, with the range by what differs', () {
-      expect(label(DateTime.utc(2019, 9, 2), DateTime.utc(2025, 5, 20)), '6 years · Sep 2019 – May 2025');
-      expect(label(DateTime.utc(2025, 4, 10), DateTime.utc(2025, 12, 2)), '8 months · Apr – Dec 2025');
-      expect(label(DateTime.utc(2025, 6, 3), DateTime.utc(2025, 6, 24)), '3 weeks · Jun 3 – 24');
-      expect(label(DateTime.utc(2025, 6, 3), DateTime.utc(2025, 6, 4)), '1 day · Jun 3 – 4');
-      expect(
-        label(DateTime.utc(2025, 6, 3, 9), DateTime.utc(2025, 6, 3, 10)),
-        '1 day · Jun 3',
-        reason: 'at least 1; one day names its date once',
-      );
-      expect(
-        label(DateTime.utc(2025, 5, 20), DateTime.utc(2019, 9, 2)),
-        '6 years · Sep 2019 – May 2025',
-        reason: 'a reversed pair reads oldest first',
-      );
-      expect(label(DateTime.utc(2024, 1, 2), DateTime.utc(2025, 7, 2)), '18 months · Jan 2024 – Jul 2025');
-    });
-
-    test('the boundaries: 548 days are years, 60 months, 14 weeks', () {
-      final t0 = DateTime.utc(2020, 2, 2);
-      expect(label(t0, t0.add(const Duration(days: 548))), startsWith('2 years'));
-      expect(label(t0, t0.add(const Duration(days: 547))), startsWith('18 months'));
-      expect(label(t0, t0.add(const Duration(days: 60))), startsWith('2 months'));
-      expect(label(t0, t0.add(const Duration(days: 59))), startsWith('8 weeks'));
-      expect(label(t0, t0.add(const Duration(days: 14))), startsWith('2 weeks'));
-      expect(label(t0, t0.add(const Duration(days: 13))), startsWith('13 days'));
-    });
-
-    test('read at the layout offset; null when a time is missing', () {
-      // 23:30 UTC on Dec 31 is Jan 1 at +01:00.
-      expect(label(DateTime.utc(2024, 12, 31, 23, 30), DateTime.utc(2025, 1, 30), offset: 60), '4 weeks · Jan 1 – 30');
-      expect(graphBreakLabel(AppLocalizationsEn(), null, 1, utcOffsetMinutes: 0), isNull);
-      expect(graphBreakLabel(AppLocalizationsEn(), 1, null, utcOffsetMinutes: 0), isNull);
-    });
-  });
-
-  group('breaks and years (Story 10.31)', () {
+  group('years (Story 10.31)', () {
     final metrics = GraphMetrics();
     final double h = metrics.cardHeight;
     int day(int y, int m, int d) => DateTime.utc(y, m, d).millisecondsSinceEpoch;
 
-    // Four days, one card each: Aug 20 and Sep 1 2019, then (after a break) May 10 and May 12 2025.
+    // Four days, one card each: Aug 20 and Sep 1 2019, then (after a shortened stretch, 24 units) May 10 and May 12 2025.
     final GraphLayout inner = handLayout(
       const <(String, int, int)>[('n2', 88, 0), ('n1', 64, 0), ('o', 40, 0), ('b', 0, 0)],
       edges: const <(int, int)>[(0, 1), (1, 2), (2, 3)],
@@ -183,29 +139,14 @@ void main() {
         (day(2025, 5, 12), 88, 88),
       ],
     );
-    final broken = BrokenLayout(inner, <GraphBreak>[
-      GraphBreak(lowerRow: 40, upperRow: 64, t0: day(2019, 9, 1), t1: day(2025, 5, 10)),
-    ]);
-
-    test('the band runs from the upper card\'s bottom to the lower card\'s top; its day and year drop out', () {
-      final rows = UniformRows(broken, metrics);
-      final axis = GraphDayAxis.of(broken, rows);
-      expect(axis.breaks, hasLength(1));
-      final GraphAxisBreak band = axis.breaks.single;
-      expect(band.top, rows.topOfRow(64) + h);
-      expect(band.bottom, rows.topOfRow(40));
-      expect(axis.length, 3, reason: 'May 10\'s divider lies in the band: no label, no divider');
-      expect(axis.values, <int>[day(2019, 8, 20), day(2019, 9, 1), day(2025, 5, 12)]);
-      expect(axis.guideYs, hasLength(2));
-      for (final double g in axis.guideYs) {
-        expect(band.contains(g), isFalse);
-      }
-      expect(axis.years.map((y) => (y.year, y.below, y.inBand)), <(int, int?, bool)>[
-        (2019, null, false),
-        (2025, 2019, true),
-      ]);
-      expect(axis.years.last.y, band.top, reason: 'a boundary in a break sits at the band\'s top');
-      expect(axis.canvasYears, isEmpty, reason: 'no canvas year inside a break');
+    test('a shortened stretch keeps its day and year: May 10 between the cards, 2025 at its label', () {
+      final rows = UniformRows(inner, metrics);
+      final axis = GraphDayAxis.of(inner, rows);
+      expect(axis.values, <int>[day(2019, 8, 20), day(2019, 9, 1), day(2025, 5, 10), day(2025, 5, 12)]);
+      expect(axis.guideYs, hasLength(3));
+      expect(axis.guideYs[1], (rows.topOfRow(40) + rows.topOfRow(64) + h) / 2);
+      expect(axis.years.map((y) => (y.year, y.below)), <(int, int?)>[(2019, null), (2025, 2019)]);
+      expect(axis.canvasYears.single.y, axis.labelYs[2]);
     });
 
     test('a year where it begins: the newer year at its first day\'s label; none for a one-year history', () {
@@ -226,49 +167,6 @@ void main() {
         buckets: <(int, int, int)>[(day(2024, 1, 2), 16, 16), (day(2024, 1, 3), 32, 32)],
       );
       expect(GraphDayAxis.of(oneYear, UniformRows(oneYear, metrics)).canvasYears, isEmpty);
-    });
-
-    testWidgets('the strip paints over the edges and under the cards; the break label and the year paint as labels', (
-      tester,
-    ) async {
-      final g = GraphHarness(broken);
-      final rows = UniformRows(broken, metrics);
-      g.verticalLayout = rows;
-      final painter = GraphDayAxisPainter(
-        axis: GraphDayAxis.of(broken, rows),
-        theme: GraphTheme.night,
-        strings: AppLocalizationsEn(),
-        nowMs: day(2026, 11, 6),
-        utcOffsetMinutes: 0,
-      );
-      addTearDown(painter.dispose);
-      g
-        ..background = painter.paintGuides
-        ..edges = ((context, origin, visible) {
-          context.canvas.drawPath(Path(), Paint());
-          painter.paintBreaks(context, origin, visible);
-        })
-        ..overlay = ((context, origin, visible) => painter.paintLabels(context, origin, visible, leftInset: 0));
-      await pumpGraph(tester, g);
-      final Painted p = painted(tester, g);
-      final List<Symbol> calls = p.calls;
-      // The edge hook's empty path, then the strip's fill and its two torn edges, then the cards, then the pills.
-      expect(calls.where((m) => m == #drawPath), hasLength(4));
-      expect(calls.lastIndexOf(#drawPath), lessThan(calls.indexOf(#drawRect)));
-      expect(
-        g.render(tester),
-        paints
-          ..path()
-          ..path(color: ZsColors.night.flBgSolid.withValues(alpha: ZsColors.night.flBgSolid.a * .92))
-          ..path(color: ZsColors.night.borderStrong, style: PaintingStyle.stroke)
-          ..path(color: ZsColors.night.borderStrong, style: PaintingStyle.stroke),
-      );
-      final double centre = GraphDayAxis.of(broken, rows).breaks.single.centre;
-      expect(
-        p.pills.where((pill) => (pill.center.dy - (centre - g.v.offset)).abs() < 1),
-        hasLength(1),
-        reason: 'the break label pill sits on the band\'s centre',
-      );
     });
   });
 

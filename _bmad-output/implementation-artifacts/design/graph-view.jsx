@@ -341,8 +341,9 @@ function GraphCard({ reveal, flash, n, W, H, detailed, legend, addMode, isCtx, o
 }
 
 function StackCard({ n, W, H, detailed, dim, onClick, onHover }) {
+  // the range runs oldest‥newest, the way its dates do (sync #23)
   const c = n.c, m = c.members, a = m[0].id, b = m[m.length - 1].id;
-  const range = <span className="gcid"><b>{b.slice(0, 2)}</b>{b.slice(2, 5)}<span className="grange-sep">‥</span><b>{a.slice(0, 2)}</b>{a.slice(2, 5)}</span>;
+  const range = <span className="gcid"><b>{a.slice(0, 2)}</b>{a.slice(2, 5)}<span className="grange-sep">‥</span><b>{b.slice(0, 2)}</b>{b.slice(2, 5)}</span>;
   const count = <span className="gstack-n" title={m.length + " changes"}>{m.length}</span>;
   return (
     <div className={"gcard gstack " + (detailed ? "is-detailed " : "is-compact ") + (c.immutable ? "immutable " : "") + (dim ? "dim " : "")}
@@ -437,23 +438,6 @@ function BookmarkList({ commits, onPick, visibleSet, limit, onBeginDrag }) {
 
 // ============================================================
 // WORKSPACE
-// BREAK (sync #22) — a shortened card-free stretch: a torn strip across the whole plane, over the lines that run through it
-// (they show as cut at its edges); its label (the time it skips) sits with the day labels at the left edge.
-const zigzag = (x0, x1, y, phase, amp = 3, step = 9) => {
-  const pts = [];
-  for (let x = x0, k = phase; x <= x1 + step; x += step, k++) pts.push(Math.min(x, x1) + "," + (y + (k % 2 ? -amp : amp)));
-  return pts;
-};
-function BreakBand({ b, width }) {
-  const c = (b.top + b.bottom) / 2, up = zigzag(0, width, c - 9, 0), lo = zigzag(0, width, c + 9, 1);
-  return (
-    <g className="gbreak">
-      <path className="gbreak-fill" d={"M" + up.join(" L") + " L" + [...lo].reverse().join(" L") + " Z"}/>
-      <polyline className="gbreak-edge" points={up.join(" ")}/>
-      <polyline className="gbreak-edge" points={lo.join(" ")}/>
-    </g>
-  );
-}
 
 // ============================================================
 // ============================================================
@@ -488,7 +472,7 @@ function minimapLabels(L, H) {
 // top/bottom = view insets (px of the scrollport covered by chrome); pos = card placement
 // Layout (mirrored): time labels left of MINI_SPLIT, the graph itself drawn in dots on the right.
 function GraphMinimap({ L, H, scrollRef, planeRef, pos, hidden, top, bottom, wcId, selectedId, onScrub }) {
-  const ref = useRef(null), drag = useRef(false);
+  const ref = useRef(null), drag = useRef(null);
   const [vp, setVp] = useState({ st: 0, sh: 1, ch: 1, mh: 0, oy: 0 });
   const [hov, setHov] = useState(null);
   useEffect(() => {
@@ -511,7 +495,7 @@ function GraphMinimap({ L, H, scrollRef, planeRef, pos, hidden, top, bottom, wcI
   const ms = over * Math.min(1, Math.max(0, vp.st / range));
   const labels = useMemo(() => minimapLabels(L, H), [L, H]);
   const geo = useMemo(() => {
-    if (!L.nodes.length || !vp.mh) return { nodes: [], edges: [], bands: [] };
+    if (!L.nodes.length || !vp.mh) return { nodes: [], edges: [] };
     const x1 = Math.max(...L.nodes.map(n => n.cx)), gr = W - 4;
     const mx = (x) => gr - (x1 - x) * size.kx, my = (y) => (y + vp.oy) * k;
     const nodes = L.nodes.map(n => ({ id: n.id, x: mx(n.cx), y: my(n.y + H / 2), grp: !!n.c.isGroup }));
@@ -521,11 +505,10 @@ function GraphMinimap({ L, H, scrollRef, planeRef, pos, hidden, top, bottom, wcI
       const pts = [[p.cx, p.y + H / 2], ...e.pts, [c.cx, c.y + H / 2]];
       return { k: e.from + ">" + e.to + i, d: pts.map(([x, y]) => mx(x).toFixed(1) + "," + my(y).toFixed(1)).join(" ") };
     }).filter(Boolean);
-    const bands = (L.bands || []).map(b => ({ key: b.key, d: zigzag(MINI_SPLIT + 4, W, my((b.top + b.bottom) / 2), 0, 2, 5).join(" ") }));
-    return { nodes, edges, bands };
+    return { nodes, edges };
   }, [L, H, k, vp.mh, vp.oy, W, size.kx]);
 
-  // strip y ↔ canvas: the band's centre sits at a·st + b; a jump solves for st
+  // strip y ↔ canvas: the band's centre sits at (st + c0)·k − ms
   const view = (sy) => (sy + ms) / Math.max(k, 1e-6);
   const vTop = (vp.st + top) * k - ms, vBot = (vp.st + vp.ch - bottom) * k - ms, cy = (vTop + vBot) / 2;
   const labelAt = (sy) => {
@@ -546,10 +529,13 @@ function GraphMinimap({ L, H, scrollRef, planeRef, pos, hidden, top, bottom, wcI
     if (l.sy - lastY < 18 || Math.abs(l.sy - cy) < 15 || (hov != null && Math.abs(l.sy - hov) < 13) || years.some(y => Math.abs(y.sy - l.sy) < 16)) return false;
     lastY = l.sy; return true;
   });
-  const jump = (e) => {
-    const el = scrollRef.current, r = ref.current.getBoundingClientRect();
-    const a = k - over / range, b = (top + (vp.ch - top - bottom) / 2) * k;
-    el.scrollTop = (e.clientY - r.top - b) / Math.max(a, 1e-6);
+  // a press jumps to what the strip shows under it — the day the hover pill names, though the strip then scrolls along
+  // (a click on "Aug 6" went to March) — and a drag moves the band with the pointer from there: k − over/range strip px
+  // per canvas px (sync #24)
+  const stripY = (e) => e.clientY - ref.current.getBoundingClientRect().top;
+  const jump = (p, dy) => {
+    const c0 = top + (vp.ch - top - bottom) / 2;
+    scrollRef.current.scrollTop = (p.sy + p.ms) / Math.max(k, 1e-6) - c0 + dy / Math.max(k - over / range, 1e-6);
   };
   const pillLabel = labelAt(cy), hovLabel = hov != null ? labelAt(hov) : null;
   const layer = (cls, clip) => (
@@ -562,9 +548,9 @@ function GraphMinimap({ L, H, scrollRef, planeRef, pos, hidden, top, bottom, wcI
   return (
     <div className={"gmini" + (hidden ? " is-hidden" : "")} style={{ ...pos, width: size.card }} aria-label="Minimap" aria-hidden={hidden}>
     <div className="gmini-strip" ref={ref}
-      onPointerDown={(e) => { drag.current = true; e.currentTarget.setPointerCapture(e.pointerId); setHov(null); jump(e); }}
-      onPointerMove={(e) => { if (drag.current) { onScrub && onScrub(40); return jump(e); } const r = ref.current.getBoundingClientRect(); setHov(e.clientY - r.top); }}
-      onPointerUp={() => { drag.current = false; }} onPointerCancel={() => { drag.current = false; }}
+      onPointerDown={(e) => { const p = { sy: stripY(e), ms }; drag.current = p; e.currentTarget.setPointerCapture(e.pointerId); setHov(null); jump(p, 0); }}
+      onPointerMove={(e) => { const p = drag.current; if (p) { onScrub && onScrub(40); return jump(p, stripY(e) - p.sy); } setHov(stripY(e)); }}
+      onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}
       onPointerLeave={() => setHov(null)}
       onWheel={(e) => { if (scrollRef.current) scrollRef.current.scrollBy(e.deltaX, e.deltaY); onScrub && onScrub(Math.abs(e.deltaX) + Math.abs(e.deltaY)); }}>
       <svg className="gmini-svg" width={W} height={vp.mh}>
@@ -573,7 +559,6 @@ function GraphMinimap({ L, H, scrollRef, planeRef, pos, hidden, top, bottom, wcI
         <g transform={`translate(0 ${-ms})`}>
           {layer("", undefined)}
           {layer("in", "url(#gmini-clip)")}
-          {geo.bands.map(b => <polyline key={b.key} points={b.d} className="gmini-break"></polyline>)}
           {mark(selectedId, "sel")}
           {mark(wcId, "wc")}
         </g>
@@ -1208,8 +1193,7 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
             {L.days.length > 0 && (
               <div className="gtime" style={{ height: L.height, width: G.gutter, ...(floating ? { left: Math.max(0, (fi.left || 0) - 6) } : null) }}>
                 {L.days.map(d => <div key={d.key} className="gtime-label" style={{ top: d.y }}>{d.label}</div>)}
-                {(L.years || []).filter(y => y.below != null && !y.inBand).map(y => <div key={y.key} className="gtime-year" style={{ top: y.y }}>{y.year}</div>)}
-                {(L.bands || []).map(b => <div key={b.key} className="gtime-label gbreak-label" style={{ top: (b.top + b.bottom) / 2 }}>{b.label}</div>)}
+                {(L.years || []).filter(y => y.below != null).map(y => <div key={y.key} className="gtime-year" style={{ top: y.y }}>{y.year}</div>)}
               </div>
             )}
             <svg className="gedges" width={L.width} height={L.height}>
@@ -1230,7 +1214,6 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
               ))}
               {L.markers.map(m => <window.GapMark key={m.key} m={m} variant={gapVariant} count={showCount || counted.has(m.key) ? m.count : null} cls={markerCls(m)}/>)}
               {L.stubs.map(s => <window.GapEnd key={s.key} s={s} variant={gapVariant} count={showCount || counted.has(s.key) ? s.count : null} cls={stubCls(s)}/>)}
-              {(L.bands || []).map(b => <BreakBand key={b.key} b={b} width={L.width}/>)}
               {L.markers.map(m => m.edges.map(i => (
                 <path key={"h" + m.key + i} d={L.edges[i].d} className="ghit" onMouseEnter={() => gapEnter(m)} onMouseLeave={gapLeave}/>
               )))}
