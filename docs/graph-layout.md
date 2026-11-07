@@ -1556,9 +1556,15 @@ between A and B sits 1–12 units above the parent (a run in the band above the 
 y(p) ≤ 12) or 1–12 units below the child (a run in the band below the child: 1 ≤ y(i) − y(o) ≤ 12).
 `fork` and `merge-adjacent` check their run above the parent, `merge-up` its run below the child.
 If that run is blocked, or for every `gutter`, the edge takes the first gutter (from j = 0) whose
-two runs are free; a `gutter` with none takes j = 0; a blocked direct kind with none stays direct
-and is **reported** (`directFallbacks`). Both cases may pass behind a card and are flagged per
-edge (`fallbackEdges`; the count covers the direct kinds only). In `compact` nothing is blocked and a `gutter` takes j = 0.
+two runs are free. With none it takes a **hook** where it can: a `gutter` on j = 0 whose run above
+the parent is raised to the band above a hook row h — from y(p), h becomes the highest row of a
+visible node 1–12 units above h in a column the run crosses (2c strictly between the parent and the
+gutter), until there is none — if the parent's column is free between y(p) and h + 13, where the
+line climbs (`hookRows`, −1 for every other edge). The raised run is free by construction and the run
+below the child crosses no column, so the line passes no card. *(Added 2026-11-07, Ralph: a line
+behind a card on `jj`.)* Without a hook a `gutter` takes j = 0 and a blocked direct kind stays
+direct and is **reported** (`directFallbacks`). Both cases may pass behind a card and are flagged
+per edge (`fallbackEdges`; the count covers the direct kinds only). In `compact` nothing is blocked and a `gutter` takes j = 0.
 The end columns need no check: nodes of one column are ≥ one pitch apart (I2), and `fork` /
 `merge-up` need their column free.
 
@@ -1581,8 +1587,8 @@ edges shares that node's one entry slot and is **deep** (its cluster sits as far
 as it can, GL:117): all those edges go through the one hidden parent. Every other edge has its own
 slot. (GL groups dashed edges by its own gap walk's `via`, GL:212; jj reports no `via`.)
 
-Output, per edge: kind, side, gutter (doubled position) and step, slot (the slot's first edge),
-deep, first parent; per column its visible nodes by row; the two reports (counts, and per edge
+Output, per edge: kind, side, gutter (doubled position) and step, hook row, slot (the slot's first
+edge), deep, first parent; per column its visible nodes by row; the two reports (counts, and per edge
 whether the unit rule left it no free route).
 
 ### 14.3 Geometry stage (per metrics)
@@ -1596,9 +1602,10 @@ its step.
 only the stretch right at a card edge decides, whatever the line's kind. A line's *reach* at an edge is
 the distance from the edge to the near side of the band it first turns in (`straight`: infinite); it is
 *vertical* there when reach ≥ gapY, else it *turns* there. Turn bands: at a parent's top a `merge-up`
-turns in the band right below its child, `fork` / `merge-adjacent` / `gutter` in the band right above
-the parent; at a child's bottom a `fork` turns in the band right above its parent, `merge-adjacent` /
-`merge-up` / `gutter` in the band right below the child. A line's *side* is the x it turns toward (the
+turns in the band right below its child, a hook in the band above its hook row, `fork` /
+`merge-adjacent` / `gutter` in the band right above the parent; at a child's bottom a `fork` turns in
+the band right above its parent, `merge-adjacent` / `merge-up` / `gutter` in the band right below the
+child. A line's *side* is the x it turns toward (the
 gutter x for a `gutter`, else the entry at the top and the parent's cx at the bottom; equal to cx counts
 as the right side). One line sits at the centre; of several, the vertical line that stays straight
 longest does; with none vertical the centre stays free. The rest fan to their side: vertical lines
@@ -1626,7 +1633,8 @@ cx ± fan(m, 24, 16, 8, W/2 − 18), the entries' fan. Nine lines: 16 px apart a
 at 160 with the outer five on one exit. (Before Story 10.30: an exit fan of its own, 12 px apart
 centred on 0.28·W; before its follow-up: centre by `straight` kind, a `merge-up` never centred.)
 
-**Runs and tracks** (GL:251-290). Bands: above the parent [y(p) − gapY, y(p)], below the child
+**Runs and tracks** (GL:251-290). Bands: above the parent [y(p) − gapY, y(p)] (a hook's: above its
+hook row h, [y(h) − gapY, y(h)] with y(h) the top of a card in row h), below the child
 [y(i) + H, y(i) + H + gapY]. Runs: `merge-up` one below the child (exit → entry); `gutter` one above
 the parent (exit → gutter) and one below the child (gutter → entry, deep if the edge is); `fork` /
 `merge-adjacent` one above the parent (exit → entry; deep only for a deep `merge-adjacent`). A run's
@@ -1642,8 +1650,8 @@ when the cluster holds a deep run). An overfull cluster keeps its order and spac
 mean middle of its runs' free parts, and is **reported** (`overfullClusters`).
 
 **Polylines** (GL:291-297). `straight`: 2 points; `gutter`: 6 points (exit, track above the parent,
-gutter, track below the child, entry); the other kinds: 4 points. Each starts on the parent's top
-edge and ends on the child's bottom edge.
+gutter, track below the child, entry; a hook's gutter stretch may run down); the other kinds: 4
+points. Each starts on the parent's top edge and ends on the child's bottom edge.
 
 **Output** (typed arrays only): the polylines as a CSR (`pointStarts`, `points` as x, y pairs; the
 points are the bends); per node its entry ports as a CSR (`portStarts`, `portXs`); the vertical
@@ -1653,7 +1661,8 @@ polyline order); the reports (`overfullClusters` with a per-edge flag, `unavoida
 ### 14.4 Bridges (a per-window query)
 
 `bridges(x0, y0, x1, y1)` returns every crossing whose point lies in [x0, x1) × [y0, y1), between
-two edges that share no node (GL:62), strict by 1 px: the vertical's x lies more than 1 px inside
+two edges, also two that share a node (since 2026-11-07, Ralph: a hook crossed its sibling's line
+unbridged on `jj`; GL:62 skips such pairs), strict by 1 px: the vertical's x lies more than 1 px inside
 the horizontal and the horizontal's y more than 1 px inside the vertical. Per crossing, with room =
 the distance to the run's ends minus 6: the horizontal breaks 12 × 10 (x − 6, y − 5) unless its room
 is < 12 and the vertical's room is larger, then the vertical breaks 10 × 12 (x − 5, y − 6)
@@ -1682,6 +1691,9 @@ inputs (fixture-medium/large `all()`, synth-10k / 50k / 100k); it is not bounded
 ### 14.6 Differences from GL
 
 - Free detours use the unit rule (§14.2), not GL's pixel test.
+- A free line with no free gutter takes a hook over the blocking cards where its parent's column lets
+  it (§14.2); GL keeps it on its blocked route, behind the card.
+- Crossings of two edges that share a node bridge too (§14.4); GL skips them.
 - Shared entries group by `parentCount` = 1, not by GL's `via`.
 - Variant B only: no bus (variant C), no `routeLegacy` (A), no gap markers or end stubs (Story
   10.19), no rounded corners, dashes or styles (Story 10.4).

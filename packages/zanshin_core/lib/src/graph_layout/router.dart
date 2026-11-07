@@ -88,6 +88,7 @@ final class RouteClasses {
     required this.sides,
     required this.gutters,
     required this.gutterSteps,
+    required this.hookRows,
     required this.slots,
     required this.deep,
     required this.firstParents,
@@ -212,6 +213,7 @@ final class RouteClasses {
     final gutters = Int32List(e);
     final firstParents = Uint8List(e);
     final fallbackEdges = Uint8List(e);
+    final hookRows = Int32List(e)..fillRange(0, e, -1);
     var directFallbacks = 0;
     for (var k = 0; k < e; k++) {
       final int p = edgeFroms[k];
@@ -262,12 +264,19 @@ final class RouteClasses {
             kind = kindGutter;
             j = above;
           } else {
-            // No free gutter: a direct kind stays direct (counted), a `gutter` takes j = 0; both may
-            // pass behind a card, so both are flagged.
-            if (kind != kindGutter) {
-              directFallbacks++;
+            // No free gutter: a hook over the blocking cards through gutter j = 0 where the parent's
+            // column lets it climb (Ralph 2026-11-07); else a direct kind stays direct (counted), a
+            // `gutter` takes j = 0; both may pass behind a card, so both are flagged.
+            final int hook = classifier.hookRow(cp, cc, side, span, rp);
+            if (hook >= 0) {
+              kind = kindGutter;
+              hookRows[k] = hook;
+            } else {
+              if (kind != kindGutter) {
+                directFallbacks++;
+              }
+              fallbackEdges[k] = 1;
             }
-            fallbackEdges[k] = 1;
           }
         }
       }
@@ -343,6 +352,7 @@ final class RouteClasses {
       sides: sides,
       gutters: gutters,
       gutterSteps: gutterSteps,
+      hookRows: hookRows,
       slots: slots,
       deep: deep,
       firstParents: firstParents,
@@ -413,6 +423,11 @@ final class RouteClasses {
   /// order per gutter); 0 for the other kinds.
   final Int32List gutterSteps;
 
+  /// Each hook's row (docs/graph-layout.md §14.2), −1 for every other edge: a `free` line the unit
+  /// rule left no free gutter climbs its parent's column into the band above this row, over the
+  /// cards that blocked it, then takes gutter j = 0 like any [kindGutter] line.
+  final Int32List hookRows;
+
   /// Each edge's entry slot: the index of the slot's first edge (its own index unless it shares).
   final Int32List slots;
 
@@ -430,13 +445,13 @@ final class RouteClasses {
   /// Every visible node, by column, then by row ascending.
   final Int32List columnNodes;
 
-  /// Reported: edges whose direct run is blocked (unit rule) while every gutter is blocked too; they
-  /// stay direct and may pass behind a card.
+  /// Reported: edges whose direct run is blocked (unit rule) while every gutter is blocked too and no
+  /// hook ([hookRows]) fits; they stay direct and may pass behind a card.
   final int directFallbacks;
 
-  /// Per edge, 1 where the unit rule left it no free route: one of the [directFallbacks], or a
-  /// `free` [kindGutter] line whose every gutter is blocked (it takes the gutter nearest the child);
-  /// either may pass behind a card. 0 otherwise.
+  /// Per edge, 1 where the unit rule left it no free route and no hook: one of the
+  /// [directFallbacks], or a `free` [kindGutter] line whose every gutter is blocked (it takes the
+  /// gutter nearest the child); either may pass behind a card. 0 otherwise.
   final Uint8List fallbackEdges;
 
   /// Reported: gutters with more than 9 lines, whose outer lines may reach into the cards.
@@ -508,6 +523,29 @@ final class _Classifier {
       }
     }
     return span;
+  }
+
+  /// A hook's row (docs/graph-layout.md §14.2): from the parent row [rp] up to the highest card 1–12
+  /// units above the row reached, in the columns `child − side·t` (1 ≤ t < [span]) the hook's first
+  /// run crosses, until no card is that close; −1 unless column [parent] is free from [rp] up to 12
+  /// units above that row, where the line climbs.
+  int hookRow(int parent, int child, int side, int span, int rp) {
+    var row = rp;
+    for (;;) {
+      var highest = -1;
+      for (var t = 1; t < span; t++) {
+        final int col = child - side * t;
+        final int k = _lowerBound(col, row + _detourUnits + 1) - 1;
+        if (k >= starts[col] && rows[nodes[k]] > row && rows[nodes[k]] > highest) {
+          highest = rows[nodes[k]];
+        }
+      }
+      if (highest < 0) {
+        break;
+      }
+      row = highest;
+    }
+    return columnFree(parent, rp, row + _detourUnits + 1) ? row : -1;
   }
 }
 
@@ -629,7 +667,8 @@ final class RouteGeometry {
   final int unsettledPorts;
 
   /// The bridges whose crossing point lies in [x0, x1) × [y0, y1) (docs/graph-layout.md §14.4), by
-  /// horizontal run index, then vertical run index. Only edges that share no node bridge.
+  /// horizontal run index, then vertical run index. Any two edges bridge, also two that share a node
+  /// (Ralph 2026-11-07; GL skips those).
   ///
   /// A break reaches 6 px around its crossing point, so a caller that paints tiles queries each
   /// tile's window grown by 6 px on every side and drops the crossings it already painted.
@@ -639,8 +678,6 @@ final class RouteGeometry {
   /// even a small window scan them all — then a test of each horizontal in the window against the
   /// verticals that overlap it.
   RouteBridges bridges(double x0, double y0, double x1, double y1) {
-    final Int32List froms = classes.edgeFroms;
-    final Int32List tos = classes.edgeTos;
     final int hFrom = _lowerBound(horizontalYs, y0);
     final int hTo = _lowerBound(horizontalYs, y1);
     final int vFrom = _lowerBound(verticalXs, x0);
@@ -672,7 +709,7 @@ final class RouteGeometry {
           continue;
         }
         final int ve = verticalEdges[q];
-        if (froms[he] == froms[ve] || tos[he] == tos[ve] || froms[he] == tos[ve] || tos[he] == froms[ve]) {
+        if (he == ve) {
           continue;
         }
         final double hRoom = _min(vx - _cutHalf - ha, hb - vx - _cutHalf);
@@ -880,10 +917,17 @@ final class _GeometryBuilder {
   /// Port [k] of [count] on one side of a card edge, top or bottom (Story 10.30: the entry fan at both ends).
   double _portFan(int count, int k) => _fan(count, _entryFirst, _entryStep, _entryMin, w / 2 - _entryInset, k);
 
+  /// The bottom of the band a line's run above its parent lies in: the parent's top, or for a hook the top of a
+  /// card in its hook row (docs/graph-layout.md §14.3).
+  double _aboveY(int k) {
+    final int row = c.hookRows[k];
+    return row < 0 ? y[c.edgeFroms[k]] : m.pad + (c.maxRow - row) / c.unit * pitch;
+  }
+
   /// Each line's reach at both card edges: at the child's bottom a fork climbs the child's column from the band
   /// above its parent, the other bending kinds turn in the band right below the child; at the parent's top a
-  /// merge-up climbs the parent's column to the band right below its child, the other bending kinds turn in the
-  /// band right above the parent.
+  /// merge-up climbs the parent's column to the band right below its child, a hook to the band above its hook row,
+  /// the other bending kinds turn in the band right above the parent.
   void _reaches() {
     final Int32List froms = c.edgeFroms;
     final Int32List tos = c.edgeTos;
@@ -901,7 +945,7 @@ final class _GeometryBuilder {
           ? double.infinity
           : kind == RouteClasses.kindMergeUp
           ? top - gy - bottom
-          : 0;
+          : top - _aboveY(k);
       towardIn[k] = kind == RouteClasses.kindGutter ? xg[k] : cx[froms[k]];
       tieIn[k] = c.nodeRows[froms[k]].toDouble();
     }
@@ -1326,7 +1370,7 @@ final class _Runs {
         continue;
       }
       final int s = edgeSeg[k];
-      final double py = g.y[c.edgeFroms[k]];
+      final double py = g._aboveY(k);
       final double ny = g.y[c.edgeTos[k]];
       final isDeep = c.deep[k] != 0;
       void run(int q, double top, double bottom, double d, double u, {required bool deepRun}) {

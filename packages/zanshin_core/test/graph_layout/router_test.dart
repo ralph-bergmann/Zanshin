@@ -78,7 +78,8 @@ int _compareBridges(_Bridge a, _Bridge b) {
 }
 
 /// GL's `analyzeEdges` + `placeCuts` (graph-layout.jsx:47-82), all pairs, as the oracle of the
-/// per-window query: every crossing of two edges that share no node, with its orientation.
+/// per-window query: every crossing of two edges, with its orientation (GL skips edges that share a
+/// node; the router bridges them too since 2026-11-07).
 List<_Bridge> _allPairs(RouteGeometry g) {
   final RouteClasses c = g.classes;
   final segs = <List<(bool, double, double, double)>>[];
@@ -98,13 +99,6 @@ List<_Bridge> _allPairs(RouteGeometry g) {
   final out = <_Bridge>[];
   for (var i = 0; i < c.edgeCount; i++) {
     for (int j = i + 1; j < c.edgeCount; j++) {
-      final int fi = c.edgeFroms[i];
-      final int ti = c.edgeTos[i];
-      final int fj = c.edgeFroms[j];
-      final int tj = c.edgeTos[j];
-      if (fi == fj || ti == tj || fi == tj || ti == fj) {
-        continue;
-      }
       for (final (bool, double, double, double) s in segs[i]) {
         for (final (bool, double, double, double) t in segs[j]) {
           if (s.$1 == t.$1) {
@@ -126,7 +120,6 @@ List<_Bridge> _allPairs(RouteGeometry g) {
 /// The bridges of a window in the documented order — every horizontal run by index, then every
 /// vertical run by index — straight from the run arrays, without the query's candidate filter.
 List<_Bridge> _byRunOrder(RouteGeometry g, double x0, double y0, double x1, double y1) {
-  final RouteClasses c = g.classes;
   final out = <_Bridge>[];
   for (var h = 0; h < g.horizontalYs.length; h++) {
     final double hy = g.horizontalYs[h];
@@ -140,10 +133,7 @@ List<_Bridge> _byRunOrder(RouteGeometry g, double x0, double y0, double x1, doub
       }
       final int he = g.horizontalEdges[h];
       final int ve = g.verticalEdges[v];
-      if (c.edgeFroms[he] == c.edgeFroms[ve] ||
-          c.edgeTos[he] == c.edgeTos[ve] ||
-          c.edgeFroms[he] == c.edgeTos[ve] ||
-          c.edgeTos[he] == c.edgeFroms[ve]) {
+      if (he == ve) {
         continue;
       }
       final double ha = g.horizontalLefts[h];
@@ -323,14 +313,61 @@ void main() {
       expect(_grid([2, 0, 1], [2, 0, 1], [(1, 0)]).kinds[0], RouteClasses.kindFork);
     });
 
-    test('a_blocked_direct_run_with_every_gutter_blocked_stays_direct_and_is_reported', () {
-      // Card 2 (col 1, row 5) is 5 units above the parent and 11 below the child: both gutters blocked.
+    test('a_blocked_direct_run_with_every_gutter_blocked_hooks_over_the_card', () {
+      // Card 2 (col 1, row 5) is 5 units above the parent and 11 below the child: both gutters are blocked. The
+      // parent's column is free, so the line climbs it over the card, crosses above it, comes down the gutter next to
+      // the child and enters from below (Ralph 2026-11-07).
       final RouteClasses c = _grid([16, 0, 5], [2, 0, 1], [(1, 0)], free: true);
+      expect(c.kinds[0], RouteClasses.kindGutter);
+      expect(c.gutters[0], 3); // between col 1 and col 2
+      expect(c.hookRows, [5]);
+      expect(c.directFallbacks, 0);
+      expect(c.fallbackEdges, [0]);
+      final RouteGeometry g = _geometry(c);
+      final List<(double, double)> pts = _points(g, 0);
+      expect(pts, hasLength(6));
+      // y(row) = 56 + (16 − row) / 16 · 110: the card's top at 131.625, the child's bottom at 56 + 62.
+      expect(pts[1].$2, inInclusiveRange(131.625 - 36, 131.625 - 12), reason: 'the first run above the card');
+      expect(pts[2].$1, _cx(1) + 296 / 2, reason: 'the gutter next to the child');
+      expect(pts[3].$2, inInclusiveRange(118 + 12, 118 + 36), reason: 'the second run below the child');
+      expect(cardHits(g), isEmpty);
+    });
+
+    test('a_hook_needs_the_parents_column_free_up_to_its_band_else_the_line_stays_direct_and_is_reported', () {
+      // As above, with node 3 in the parent's column one pitch above it, where the hook would climb.
+      final RouteClasses c = _grid([16, 0, 5, 16], [2, 0, 1, 0], [(1, 0)], free: true);
       expect(c.kinds[0], RouteClasses.kindFork);
+      expect(c.hookRows, [-1]);
       expect(c.directFallbacks, 1);
       expect(c.fallbackEdges, [1]);
+      expect(cardHits(_geometry(c)).every((h) => h.edge == 0), isTrue);
+    });
+
+    test('a_hook_crossing_a_sibling_lines_climb_bridges_it', () {
+      // jj's case (Ralph 2026-11-07): parent 1 (col 0, row 0) has child 0 (col 3, row 16) behind card 2 (col 2,
+      // row 10) and child 3 (col 1, row 40), whose line climbs col 1 through the hook's band. The two lines share
+      // the parent and still bridge where they cross.
+      final RouteClasses c = _grid([16, 0, 10, 40], [3, 0, 2, 1], [(1, 0), (1, 3)], free: true);
+      expect(c.hookRows, [10, -1]);
       final RouteGeometry g = _geometry(c);
-      expect(cardHits(g).every((h) => h.edge == 0), isTrue);
+      expect(cardHits(g), isEmpty);
+      final List<_Bridge> bridges = _bridgeList(g.bridges(0, 0, 1000000, 1000000));
+      expect(bridges, hasLength(1));
+      final (double x, double y, int h, int v, int vertical) = bridges.single;
+      expect((h, v, vertical), (0, 1, 0), reason: 'the hook\'s run breaks over the sibling\'s climb');
+      expect(x, _points(g, 1)[2].$1);
+      expect(y, _points(g, 0)[1].$2);
+    });
+
+    test('a_hook_climbs_past_every_card_within_12_units_above_its_band', () {
+      // Parent 1 (col 0, row 0) forks to child 0 (col 3, row 20). Card 2 (col 1, row 5) blocks the run above the
+      // parent, card 3 (col 2, row 14) the runs below the child and, 9 units above card 2, the hook's first band.
+      final RouteClasses c = _grid([20, 0, 5, 14], [3, 0, 1, 2], [(1, 0)], free: true);
+      expect(c.kinds[0], RouteClasses.kindGutter);
+      expect(c.gutters[0], 5); // between col 2 and col 3
+      expect(c.hookRows, [14]);
+      expect(c.fallbackEdges, [0]);
+      expect(cardHits(_geometry(c)), isEmpty);
     });
 
     test('a_free_gutter_line_with_every_gutter_blocked_takes_the_nearest_and_is_flagged', () {

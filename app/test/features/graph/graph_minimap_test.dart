@@ -68,6 +68,19 @@ GraphLayout _history({int lastYear = 2025, bool oneYear = false}) {
         ]);
 }
 
+/// A Free history of [n] days up to today, one card a day two pitches apart: taller than the strip at 2 px a pitch,
+/// its day labels 4 strip px apart, across a year boundary.
+GraphLayout _daily(int n) {
+  int dayOf(int k) => _today - (n - 1 - k) * _dayMs;
+  return handLayout(
+    <(String, int, int)>[for (int k = n - 1; k >= 0; k--) ('d$k', 32 * k, k % 3)],
+    edges: <(int, int)>[for (var i = 0; i + 1 < n; i++) (i, i + 1)],
+    unit: 16,
+    timestamps: <int?>[for (int k = n - 1; k >= 0; k--) dayOf(k) + 12 * 3600000],
+    buckets: <(int, int, int)>[for (var k = 0; k < n; k++) (dayOf(k), 32 * k, 32 * k)],
+  );
+}
+
 class _Recorder extends ShellController {
   final reported = <double>[];
 
@@ -692,6 +705,72 @@ void main() {
       expect(calls(tester, overlay()).where((c) => c.$1 == #drawRect), isEmpty);
       await finish(tester);
     });
+
+    testWidgets(
+      'scrolling never trades a day label for its neighbour: the labels are picked in content y, the sticky year and '
+      'the pill only hide those they cover',
+      (tester) async {
+        await pump(tester, layout: () => _daily(400));
+        await tester.pumpAndSettle();
+        final GraphMinimapFrame frame = model.minimapSource.frame!;
+        final mapping = MinimapMapping.of(frame, strip(tester).height, model.minimapSource.extent);
+        expect(mapping.over, greaterThan(0), reason: 'the minimap scrolls');
+        final MinimapLabels labels = minimapLabels(
+          frame.layout,
+          frame.rows,
+          strings: platformStrings(),
+          nowMs: _noon.millisecondsSinceEpoch,
+        );
+        expect(labels.years.where((y) => y.below != null), isNotEmpty, reason: 'a sticky year when scrolled');
+        // Each label's paragraph offset: x from its width, y its content y less ms and half a line.
+        final TextStyle style = ZsType.id.copyWith(fontSize: ZsType.fsXs);
+        Size sizeOf(String text) {
+          final painter = TextPainter(
+            text: TextSpan(text: text, style: style),
+            textDirection: TextDirection.ltr,
+          )..layout();
+          final Size size = painter.size;
+          painter.dispose();
+          return size;
+        }
+
+        final lefts = <double>[
+          for (final String text in labels.texts) minimapSplit - 4 - sizeOf(text).width,
+        ];
+        final double half = sizeOf('Oct 30').height / 2;
+
+        // Every label drawn at any of 61 offsets, by index.
+        final shown = <int>{};
+        final ScrollPosition position = frame.vertical.position;
+        for (var step = 0; step <= 60; step++) {
+          frame.vertical.jumpTo(position.maxScrollExtent * step / 60);
+          await tester.pump();
+          final double ms = mapping.msOf(position);
+          for (final (Symbol method, List<dynamic> args) in calls(tester, overlay())) {
+            if (method != #drawParagraph) {
+              continue;
+            }
+            final offset = args[1] as Offset;
+            for (var i = 0; i < labels.length; i++) {
+              if ((offset.dx - lefts[i]).abs() < 1e-6 &&
+                  (offset.dy + half + ms - mapping.my(labels.ys[i])).abs() < 1e-6) {
+                shown.add(i);
+              }
+            }
+          }
+        }
+        expect(shown.length, greaterThan(20));
+        final List<int> order = shown.toList()..sort();
+        for (var q = 1; q < order.length; q++) {
+          expect(
+            mapping.my(labels.ys[order[q]]) - mapping.my(labels.ys[order[q - 1]]),
+            greaterThanOrEqualTo(18),
+            reason: '${labels.texts[order[q - 1]]} and ${labels.texts[order[q]]} both showed',
+          );
+        }
+        await finish(tester);
+      },
+    );
 
     testWidgets('the glass fades only through ZsFade, with no Opacity or FadeTransition above it', (tester) async {
       await pump(tester);

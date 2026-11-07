@@ -9042,7 +9042,7 @@ NEEDS DESIGN:
 > - **Item 4 (bridges):**
 >   - the horizontal breaks 12 × 10, unless that keeps less than 12 px of line to the next bend or card and the vertical has more room; then the vertical breaks 10 × 12 (GL:72-82; 4.15);
 >   - still per visible window, against whole-layout run indexes that 4.15 builds;
->   - design question (d) follows the export: crossings of edges that share a node are neither bridged nor counted (GL:62; Claude's proposal);
+>   - design question (d) follows the export: crossings of edges that share a node are neither bridged nor counted (GL:62; Claude's proposal); *changed 2026-11-07 (Ralph): they bridge like any crossing — router B's new hook crossed its sibling's line unbridged on `jj` (docs/graph-layout.md §14.4);*
 >   - bridges stay always on (decision (b)).
 > - **Item 8:** the vertical-extent index is built from 4.15's polylines.
 > - **Item 9 (hit lookup):** shared buses and exit stubs are gone. Lines overlap only on a hidden merge's shared entry stem and on an overflowing shared exit, and the lookup returns those sets.

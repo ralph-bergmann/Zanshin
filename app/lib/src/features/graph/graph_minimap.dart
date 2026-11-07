@@ -1265,18 +1265,19 @@ class _OverlayPainter extends CustomPainter {
     if (sticky == null && labels.years.isNotEmpty && (years.isNotEmpty || labels.years.first.year != labels.nowYear)) {
       sticky = labels.years.first.year;
     }
-    var lastY = -99.0;
+    // The labels are thinned in content y, so scrolling never trades a label for its neighbour (Ralph 2026-11-07);
+    // the pill, the hover line and the sticky year only hide the ones they cover.
+    double last = double.negativeInfinity;
     for (var i = 0; i < labels.length; i++) {
-      final double sy = mapping.my(labels.ys[i]) - ms;
-      if (labels.silent.contains(i) ||
-          sy - lastY < 18 ||
-          (sy - cy).abs() < 15 ||
-          (hov != null && (sy - hov).abs() < 13) ||
-          (sticky != null && sy < _stickyHeight) ||
-          years.any((y) => (y.sy - sy).abs() < _yearClear)) {
+      final double y = mapping.my(labels.ys[i]);
+      final double sy = y - ms;
+      if (labels.silent.contains(i) || y - last < 18 || years.any((year) => (year.sy - sy).abs() < _yearClear)) {
         continue;
       }
-      lastY = sy;
+      last = y;
+      if ((sy - cy).abs() < 15 || (hov != null && (sy - hov).abs() < 13) || (sticky != null && sy < _stickyHeight)) {
+        continue;
+      }
       final TextPainter painter = text(labels.texts[i], _Text.label);
       painter.paint(canvas, Offset(minimapSplit - 4 - painter.width, sy - painter.height / 2));
     }

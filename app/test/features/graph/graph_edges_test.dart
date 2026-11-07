@@ -41,7 +41,7 @@ Matcher near(Offset at, [double tolerance = .05]) =>
     predicate<Offset>((o) => (o - at).distance <= tolerance, 'within $tolerance of $at');
 
 /// A test-only oracle (docs/graph-layout.md §14.4, all pairs): every crossing of a horizontal and a vertical run of
-/// [edges] inside both runs by 1 px, in [x0, x1) × [y0, y1), of two edges that share no node, with the edge that breaks.
+/// two of [edges] inside both runs by 1 px, in [x0, x1) × [y0, y1), with the edge that breaks.
 Set<(int, double, double, bool)> oracleCuts(RouteGeometry g, List<int> edges, Rect window) {
   final h = <(int, double, double, double)>[];
   final v = <(int, double, double, double)>[];
@@ -59,8 +59,6 @@ Set<(int, double, double, bool)> oracleCuts(RouteGeometry g, List<int> edges, Re
     }
   }
   final out = <(int, double, double, bool)>{};
-  final Int32List froms = g.classes.edgeFroms;
-  final Int32List tos = g.classes.edgeTos;
   for (final (int he, double hy, double ha, double hb) in h) {
     for (final (int ve, double vx, double va, double vb) in v) {
       if (!(vx > ha + 1 && vx < hb - 1 && hy > va + 1 && hy < vb - 1)) {
@@ -69,7 +67,7 @@ Set<(int, double, double, bool)> oracleCuts(RouteGeometry g, List<int> edges, Re
       if (vx < window.left || vx >= window.right || hy < window.top || hy >= window.bottom) {
         continue;
       }
-      if (froms[he] == froms[ve] || tos[he] == tos[ve] || froms[he] == tos[ve] || tos[he] == froms[ve]) {
+      if (he == ve) {
         continue;
       }
       final double hRoom = math.min(vx - 6 - ha, hb - vx - 6);
@@ -367,7 +365,7 @@ void main() {
       }
     });
 
-    test('random windows of the synthetic 10k: cutsIn equals an all-pairs oracle; lines sharing a node never cut', () {
+    test('random windows of the synthetic 10k: cutsIn equals an all-pairs oracle', () {
       final GraphEdgePainter painter = painterOf(syntheticLayout(10000));
       final RouteGeometry g = painter.geometry;
       final rng = math.Random(7);
@@ -397,7 +395,7 @@ void main() {
       expect(offScreenVertical, isTrue);
     });
 
-    test('two lines sharing a node that cross are not cut', () {
+    test('two lines sharing a node that cross are cut like any other two (Ralph 2026-11-07)', () {
       var found = 0;
       for (final layout in <GraphLayout>[
         for (final name in graphRecordingNames) recording(name),
@@ -429,7 +427,7 @@ void main() {
             final Set<(int, double, double, bool)> cuts = cutSet(
               painter.cutsIn(Rect.fromCenter(center: Offset(vx, hy), width: 100, height: 100)),
             );
-            expect(cuts.where((c) => c.$2 == vx && c.$3 == hy && (c.$1 == he || c.$1 == ve)), isEmpty);
+            expect(cuts.where((c) => c.$2 == vx && c.$3 == hy && (c.$1 == he || c.$1 == ve)), hasLength(1));
           }
         }
       }
