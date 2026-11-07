@@ -650,6 +650,8 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 
 **Design update 2026-10-29** (Ralph, design session on the prototype in the repo, commit `994454ca`; DS synced through #15): the Projects window deselects on a click below the rows, names and renames groups in place, gives group rows the row menu (Rename… · Move to group › · Delete group), ends Move to group › with New group…, and carries the DS drag ghost while a row moves. Story 11.15 takes what 11.6 does not ship yet.
 
+**Update 2026-11-07** (Ralph, console session; the Dart architecture review, `research/technical-dart-architecture-di-boot-review-2026-11-07.md`): Stories 11.24 and 11.25 make the DI graph the app's one composition root and the boot linear — dead DI out, every symbol in its layer, no import cycles between the app's folders (11.24), then one component entry point, the pre-graph values in one module and a boot without step callbacks (11.25). No behaviour changes. Order: 11.24 → 11.25.
+
 ---
 
 ### Cross-Cutting Concerns (no dedicated epic)
@@ -664,6 +666,7 @@ These are reviewed in every epic's acceptance criteria rather than implemented o
 > **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD). **2026-09-26:** Epic 4 is reopened for Stories 4.10–4.12 (topology/content split, the Dart layout engine on the worker isolate, the topology wire); Epic 10 (the commit-graph view — Flutter UI built by Claude at Ralph's request) runs 10.1–10.4 on fake data and adopts 4.10–4.12 in 10.11 / 10.12. **2026-09-28:** the design update adds Story 4.13 (commit stacks in the engine) and Story 10.17 (commit stacks in the view). **2026-09-30:** the gaps study and the animation showcase add Stories 10.19 (hidden history) and 10.20 (graph animations). **2026-10-14:** the floating-client export and the design system add Stories 4.14, 4.15, 9.48–9.50 and 10.21–10.27, and Epic 11, the floating app shell, which Claude builds after Ralph's scope change.
 > **2026-10-16:** the design-system rounds 1–3 add Stories 11.11 (the Zs control library and the Widgetbook catalogue), 11.12 (the window foundation) and 11.13 (the menu bar and shortcuts); the decisions 16.1–16.47 are in the Epic 11 header.
 > **2026-10-17:** Story 11.14 (the `zanshin_ui` package: tokens, materials, DS icons and later the controls leave `app/`) comes before 11.11.
+> **2026-11-07:** the Dart architecture review adds Stories 11.24 and 11.25 (the DI graph as the app's one composition root, a linear boot); 11.24 comes first.
 
 ---
 
@@ -12003,6 +12006,8 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 > **Update 2026-10-17 (Ralph, console session after 11.1 and 11.2 landed): the `zanshin_ui` package.** Tokens, materials and the DS icons move from `app/lib/src/shared/` into `packages/zanshin_ui`, and 11.11's controls are built there (Story 11.14). This supersedes 11.1's design question (a), "a package only once a second consumer outside the app appears", and its 2026-10-16 restatement. It amends the house rule Code locations and the Sequencing in place, 11.11 items 2 and 3 and its non-goal on a separate Widgetbook package (11.11's note), and the path in the Epic 10 house rule Material. It adds Story 11.14.
 
+> **Update 2026-11-07 (Ralph, console session): the Dart architecture review.** Ralph asked for an architect's review of the Dart/Flutter code ("DI nicht konsequent und nach Lehrbuch"); the report is `_bmad-output/planning-artifacts/research/technical-dart-architecture-di-boot-review-2026-11-07.md`. Its Phases 0–3 become Stories 11.24 (dead DI out, every symbol in its layer, the app's frame out of `features/`, no import cycles between the app's folders) and 11.25 (one composition root: the DI graph wires the app, the boot runs top to bottom). Its optional Phases 4–5 are proposals in deferred-work.md. It amends the house rule Code locations and the Sequencing in place, and it adds Stories 11.24 and 11.25.
+
 **Decisions 2026-10-15/16 (design-system rounds 1–3).** Ralph's decisions of 2026-10-15 (E1–E12 and the evening addendum) and of 2026-10-16 (round 2's decisions 1–6, round 3's proposals 1–6, "mit deinen Vorschlägen"). They apply to Epics 9–11. Claude's proposals are marked. Sources:
 - V1 = `_bmad-output/planning-artifacts/research/design-system-validation-2026-10-15.md` (§3 E1–E12 and Ralph's "Stand" block, §4, §6);
 - V2 = `…/research/design-system-validation-round-2-2026-10-16.md` (§4 "what we do right in Flutter", §5, §6);
@@ -12130,6 +12135,7 @@ Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the 
   - `app/widgetbook/`: 11.11's Widgetbook catalogue, a dev entrypoint *(added 2026-10-16; decision 16.29)*;
   - `app/lib/src/features/window/`: 11.12's window foundation *(added 2026-10-16; `AppWindows` already lives there)*;
   - the menu bar (11.13) goes in `app/lib/src/features/shell/` *(added 2026-10-16, Claude's proposal)*;
+  - *Amended 2026-11-07 (Ralph; Story 11.24):* the app's frame lives under `app/lib/src/app/`, next to the DI wiring: the boot (`boot/`), the window coordinator and the project window's content root, and the menu bar (`menu/`, superseding the line above). `features/window/` keeps the window infrastructure the features use. Nothing under `lib/src/features/` imports `lib/src/app/`, and no two feature folders import each other (11.24's guard test);
   - tests mirror these under `app/test/`.
 - **App home:** the app's `MaterialApp` home becomes 11.3's shell, and the Yaru test page goes (11.10).
 - **Strings** *(added 2026-10-31, Story 11.16)*: Epic 10's house rule Strings applies to every Epic 11 story — user-facing strings go through the ARB (`app/lib/l10n/app_en.arb`, `packages/zanshin_ui/lib/l10n/zs_en.arb`; `flutter gen-l10n` in that package after an edit); no hard-coded UI text, jj's verbatim words marked `// l10n-ignore: <reason>`. Every window root registers `AppLocalizations.delegate` and `ZsLocalizations.delegate` (`zanshinLocalizationsDelegates`), never `AppLocalizations.localizationsDelegates`.
@@ -12146,6 +12152,7 @@ Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the 
   - 11.13 (the menu bar) follows 11.12, 10.9 and 10.23. It comes before 11.5, 11.6, 11.7, 11.8 and 10.16: they wire their handlers to its items and list 11.13 in their Depends on (11.13's Depends on; their dated notes). So 11.5–11.8 now also wait for 10.9 and 10.23. The other handler owners (10.5, 10.6, 10.7, 10.21, 10.22, 9.21) wire theirs when both they and 11.13 have landed; until a handler lands, its item stays grey (11.13 item 3; Claude's proposal).
   - 11.10 also follows 11.11: Yaru, `flutter_svg` and the separate `main*.dart` demo hosts leave once the Zs controls and the Widgetbook catalogue exist (Claude's proposal).
 - *Added 2026-10-17 (Ralph; Story 11.14):* 11.14 (the `zanshin_ui` package) follows 11.1 and 11.2 and comes before 11.11, so the order is 11.1 → 11.2 → 11.14 → 11.11 → 11.3. It also comes before 10.1, whose `GraphTheme` derives from the tokens.
+- *Added 2026-11-07 (Ralph; Stories 11.24, 11.25):* 11.24 follows 11.12 and 11.13 (both done) and comes before 11.25. Neither waits for another open story; a story that lands in between wires the old way, and 11.24/11.25 take it along.
 
 ### Story 11.0: Record the scope change in the canonical rules [docs]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`.)*
@@ -13884,5 +13891,105 @@ Nothing NEEDS DESIGN.
 **Witnesses.** (1) A Rust test: a missing workspace config is listed with `kind: workspace` and deleted; the error texts; a Dart test reads the kind. (2) Rust tests per mode on a file with a NUL byte and on a conflict with a binary side; FFI round trip. (3) The schema no longer has the values; `cargo make codegen` clean; Dart and l10n compile without them. (4) A widget test of Ralph's exact sequence (field prefilled with the new description), and one where a typed draft survives with the "changed meanwhile" note.
 
 **Depends on.** The jj 0.47 pin bump (done 2026-11-04), 9.28 (config verbs), 9.4 (file search), 10.24/10.25 (inspector describe + composer).
+
+---
+
+### Story 11.24: Dart architecture, part 1 — dead DI out, every symbol in its layer, no import cycles between the app's folders [UI/bridge]
+*(Added 2026-11-07, Ralph — console session: an architect's review of the Dart/Flutter code he asked for ("DI nicht konsequent und nach Lehrbuch"), `_bmad-output/planning-artifacts/research/technical-dart-architecture-di-boot-review-2026-11-07.md` §§2, 4 and §6 Phases 0–1; "Ja, Stories anlegen". Claude builds it under the scope change of 11.0. 11.25 continues it.)*
+
+**Motivation.** The review found inject.dart used as a supplier of factories, not as the composition root, and the folders under `app/lib/src/features/` importing each other in nine cycles. This story clears what stands in the way of a by-the-book graph; the wiring itself changes in 11.25.
+- **DI that misleads:** `@inject` on `GraphViewModel` (`graph_view_model.dart:187`), which is always built as `GraphViewModel()..init(…)`; `ZanshinFfiModule` (`packages/zanshin_core/lib/src/ffi/zanshin_version.dart:10`), installed on no component.
+- **The graph's `SettingsStore` by hand:** `AppMenuModel` gets it through `attach()` (`app_menu.dart:134`); `HomePage` gets it tunnelled through `FloatingShellViewModel.settings` (`floating_shell_view_model.dart:41`, `home_page.dart:91, 100`).
+- **`AppMenuModel` is the knot:** it holds the project window's graph (`graph`, `GraphMenuBinding`), a `GlobalKey<ProjectsWindowState>`, the jj documentation URL and the browser opener. So `home`, `settings`, `bootstrap` and `graph/revset_configs` import the menu, and the menu imports six feature folders. The same knot makes the cycle coordinator → window contents → menu → coordinator that `main.dart` breaks with `attach()`.
+- **Symbols in the wrong folder:** `mainWindowTitle` in the boot host, `openRecentProject` in the home page, `ZanshinAppViewModel` in `features/app/`, `UndoTimelineActions` in `undo_timeline/`, `builtinImmutableHeads` and `immutableBuiltins` in `settings/`. The app's frame (boot, window coordinator, menu bar) sits among the features it builds.
+
+**Scope.**
+1. **Dead and misleading DI.**
+   - `@inject` leaves `GraphViewModel`.
+   - `ZanshinFfiModule` becomes a top-level function `zanshinFfiVersion()` (exported from `zanshin_core.dart`). `packages/zanshin_core/test/ffi/zanshin_version_test.dart` keeps calling the FFI symbol: the coverage ratchet attributes `zanshin_ffi_version` to it (project memory "Extern fn needs zanshin_core coverage test"). `app/test/native_asset_smoke_test.dart` follows.
+   - `IconModule` stays: 11.25 gives its registry a consumer.
+2. **The graph's `SettingsStore` by constructor.** `HomePage` gets it injected, and `ProjectGraphHost` and `_UndoTimelineHost` take it from the page; `FloatingShellViewModel.settings` goes. `AppMenuModel` takes it in its constructor; `attach()` keeps only the windows and the window actions (11.25 removes it).
+3. **`ActiveGraph`.** The project window's graph leaves the menu. `GraphMenuBinding` and an `@inject @singleton ActiveGraph` — the `ValueNotifier<GraphMenuBinding?>` that `AppMenuModel.graph` is today — live in `features/graph/`. `ProjectGraphHost` publishes to it and clears only its own binding, as today; `AppMenuModel`, `SettingsWindow`, `SettingsViewModel` and `RevsetConfigsWindow` read it. `HomePage` takes `ActiveGraph` instead of `AppMenuModel`. `AppMenuModel.targetName` (a change's name: "@", else its id prefix) moves next to `GraphViewModel`.
+4. **Find in the Projects window.** Edit › Find reaches the Projects search through an injected `@singleton ProjectsSearchFocus`, which the window registers with while it is mounted (Claude's proposal). It replaces `AppMenuModel.projectsKey` (`app_menu.dart:119, 363`), a `GlobalKey` into `ProjectsWindowState.focusSearch`.
+5. **Settings from the Projects window through the window actions.** `ProjectsWindow` opens Settings and Set identity… through `AppWindowActionsScope`, as `HomePage` does (`home_page.dart:140–147`). Its `onSettings` and `onIdentitySettings` callbacks go, and with them the `late` self-reference in `main.dart:165`.
+6. **Every symbol in its layer.**
+   - `mainWindowTitle` → `features/window/app_windows.dart`, next to `mainWindowKey`; the boot host's re-export of `mainWindowKey` (`boot_window_host.dart:22`) goes.
+   - `openRecentProject` → `features/projects/`.
+   - `ZanshinAppViewModel` → `features/window/`, next to the window root that uses it.
+   - `UndoTimelineActions` → `features/graph/`: `GraphViewModel` implements it, the timeline consumes it.
+   - `builtinImmutableHeads` and `immutableBuiltins` → `features/graph/`: jj revset facts the immutable reasons need; Settings imports them from there.
+   - `jjDocumentationUrl` and the browser opener → `app/lib/src/links.dart` (11.25 injects the opener).
+7. **The app's frame out of `features/`.** `features/bootstrap/` → `lib/src/app/boot/`; `features/window/app_window_coordinator.dart` and `features/app/zanshin_app.dart` → `lib/src/app/`; `features/shell/app_menu.dart` → `lib/src/app/menu/`. The rest of `features/window/` — the registry, specs, keys, roots, tracker and zoom — stays: it is infrastructure the features use. Tests follow their code (`app/test/app/…`).
+8. **The rule and its guard** (Claude's proposal): nothing under `lib/src/features/` imports `lib/src/app/`, and no two feature folders import each other. One test in `app/test/architecture/` reads the imports under `app/lib/src/` and fails on either.
+
+**Non-goals.**
+- Wiring changes: `appWindowCoordinator`, the worker `Completer`, `ProjectSession.mayLeave` and the component's getters stay as they are (11.25).
+- Renaming or rewriting moved code beyond paths, imports and the parameters named above.
+- `graph/` as a package; `zanshin_ui` without `zanshin_settings` (11.14's non-goal stands; deferred-work "Surfaced 2026-11-07 in the Dart architecture review").
+- Any change of behaviour or visuals.
+
+**Design status.** FINAL: Ralph's go of 2026-11-07 on the review's Phases 0–1. Claude's proposals are marked. Nothing NEEDS DESIGN.
+
+**Witnesses.**
+- The guard test passes; its rule fails on a planted feature → `lib/src/app/` import and on a planted two-folder cycle.
+- No `@inject` on `GraphViewModel`; no `ZanshinFfiModule`, `projectsKey` or `FloatingShellViewModel.settings` left; `HomePage` has no `appMenu` parameter; `AppMenuModel.attach` takes two parameters.
+- `cargo make test` green with the moved tests.
+- The running app (Marionette): a project opens; the View and Change items act on its graph (through `ActiveGraph`); Edit › Find focuses the Projects search; Settings opens from the capsule and from the Projects window; jj log Configurations shows the graph's revsets; Help › jj Documentation opens the browser.
+
+**Depends on.** 11.12 and 11.13 (both done). It blocks 11.25.
+
+**Related:** the review above; 11.14, the same kind of move for the design layer.
+
+---
+
+### Story 11.25: Dart architecture, part 2 — one composition root: the DI graph wires the app, the boot runs top to bottom [UI/bridge]
+*(Added 2026-11-07, Ralph — console session; the same review, §§2, 3 and §6 Phases 2–3. Claude builds it under the scope change of 11.0.)*
+
+**Motivation.**
+- **`MainComponent` works as a service locator.** Its eight getters (`main.dart:214–251`) exist so that `main.dart` can take objects out and wire them by hand, in `_startApp` (`main.dart:130–153`) and `appWindowCoordinator` (`main.dart:164–204`). By the book, the component hands out one entry point and everything below arrives through constructors.
+- **Pre-graph objects take detours.** `SettingsModule(store:)` shows how a value that must exist before the graph enters it. `AppWindows` is not in the graph at all. The worker goes through an `@asynchronous` provider, a `Completer`, `ProjectsModule(worker: worker.future)` and a `Future<ZanshinWorker>` inside `WorkerProjectRepos` and `DesktopProjectsEnvironment`. So objects are wired after their construction: `ProjectSession.mayLeave = …`, `AppMenuModel.attach(…)`, the mutable `AppMenuModel.openUrl`.
+- **`ZanshinAppViewModel` exists twice:** per window through DI, and once by hand (`main.dart:167`) so that Settings can switch the theme — never initialised, never disposed. Mirroring the theme on the native chrome is app-wide but lives in the per-window view model. Every new window mirrors again (`zanshin_app_view_model.dart:95`), although the plugin applies the last choice to later windows anyway (`ZanshinShellPlugin.swift:96`).
+- **The quit flow is hidden.** ⌘Q → close guards → `worker.close` is a side effect of provisioning the worker (`worker_lifecycle_module.dart`).
+- **The boot passes 14 functions through five files:** four step callbacks into `ZanshinBootSequence` (one of them writes the icons into a notifier as a side effect), the `menu` and `icons` notifiers through `main`, the host and `_startApp`, the coordinator's builders, `BootFirstWindow.onShown`.
+- **Tests rebuild generated code.** `zanshin_app_test.dart:41–107`, `home_page_test.dart` and `zanshin_window_root_test.dart` implement the generated factories by hand; four tests check `main.dart`'s hand wiring; `projects_window_test.dart:2094–2112` and `zanshin_app_test.dart` build `MainComponent` with a never-completed worker `Completer`.
+
+**Scope.**
+1. **Pre-graph values in one module** (design question (a)). `loadBootValues(progress)` loads the settings, adopts the login shell's environment and decodes the icons in parallel, then starts the worker — after the environment, as today, because `tracing_init.rs:78, 152` reads the log filter, the log directory and `HOME` from it. `BootModule(boot, windows)` provides `SettingsStore`, `IconRegistry`, `ZanshinWorker` and `AppWindows` as singletons. `SettingsModule` (`zanshin_settings`, with its test), `IconModule`, `WorkerModule` (`zanshin_core`), `WorkerLifecycleModule` and the `Completer` go.
+2. **The worker, resolved.** `WorkerProjectRepos` and `DesktopProjectsEnvironment` take a `ZanshinWorker`; their tests drop `Future<ZanshinWorker>.value(…)` (about 14 places).
+3. **`ProjectsModule`.** `ProjectRepos` is bound on its own to `WorkerProjectRepos`, so a test module can replace it. `ProjectSession` takes `mayLeave` as a constructor parameter, wired to `AppWindows.mayClose` in its provider. `ProjectRegistry` becomes `@inject @singleton`.
+4. **Window contents by assisted injection.** `SettingsWindow` (assisted: `state`, `key`) and `RevsetConfigsWindow` (assisted: `key`) get their collaborators from the graph. Defaulted parameters and test seams such as `windowKey` and `readsOf` stay optional `@assisted` parameters (Claude's proposal). The browser opener is an injected `OpenUrl` (11.24 item 6), so the mutable `AppMenuModel.openUrl` goes.
+5. **The coordinator inside the graph** (Claude's proposal). `AppModule` provides the `@singleton AppWindowCoordinator` from injected factories — the code of today's `appWindowCoordinator()`, which goes with its `@visibleForTesting` — and binds `AppWindowActions` to it. The coordinator's constructor and its 22 tests stay as they are.
+6. **`AppMenuModel` by constructor only:** tracker, session, settings, `ActiveGraph`, `ProjectsSearchFocus`, windows, window actions and opener; `attach()` goes.
+7. **`WindowAppearanceSync`** (`@inject @singleton`) mirrors `settings.appearance.themeMode` onto the native chrome (macOS), once at start and on every change. `ZanshinAppViewModel` loses `setThemeMode` and the mirroring; Settings' Theme row writes the setting; the hand-built view model goes.
+8. **`AppExitHandler`** (`@inject @singleton`, over the windows and the worker) registers the `AppLifecycleListener` whose `onExitRequested` runs `answerExitRequest` (unchanged, with its tests). The provision listener goes.
+9. **`ZanshinApplication`** (`@inject @singleton`), the one entry point. It holds the coordinator and the menu; `start()` runs, in this order, the zoom binding (before the first window, so that it opens at the stored zoom, 11.20), the exit handler, the appearance sync and `coordinator.start()`.
+10. **`MainComponent`** (name unchanged) lists `ZanshinDiagnosticsModule`, `BootModule`, `ProjectsModule` and `AppModule` and has one getter: `ZanshinApplication get application`.
+11. **The boot, top to bottom.**
+    - `ZanshinBootSequence.run(boot)` takes one function, `Future<BootFirstWindow> Function(BootProgress progress)`. `BootProgress` carries the status line and the persisted theme for the failure page (today `_persistedMode`). The sequence no longer knows settings, icons or the shell environment. Its splash race stays — 250 ms / 3 s, the first window through `runWidget`, the fade, `onShown` after the first window — and its 24 tests are adapted, not dropped.
+    - `ZanshinWindowHost` owns the menu bar's notifier and takes the app's menu once the app exists. The `icons` notifier goes: `ZanshinWindowRoot` gets the `IconRegistry` injected and provides `IconRegistryScope` itself. The splash and the failure page use no icons (checked 2026-11-07).
+    - `main.dart` keeps the binding, logging and zone setup; the rest reads windows → host → `run((progress) async { load the boot values; create the component; hand the menu to the host; return app.start(); })`, as sketched in the review §3.
+12. **Tests through the graph** (skill `inject_annotation-write-tests`). A test component over the production modules plus a test module — a settings store in a temp dir, `testIconRegistry`, `AppWindows` with a fake factory, fake `ProjectRepos` and `ProjectsEnvironment` — replaces the hand-built factories in `zanshin_app_test.dart`, `home_page_test.dart` and `zanshin_window_root_test.dart` and the hand-built components in `zanshin_app_test.dart` and `projects_window_test.dart`. The test graph needs no worker as long as nothing it exposes reaches one; if inject.dart still requires a worker for an overridden provider, the test module starts a real one, as the real-worker tests do (Claude's proposal). The "main.dart's coordinator builds …" tests become "the graph builds …" tests.
+
+**Non-goals.**
+- The project scope as one object or a subcomponent (review §5; deferred-work "Surfaced 2026-11-07 in the Dart architecture review").
+- A faster boot: the critical path stays max(settings, login shell ≈ 210 ms, icons) plus the worker start.
+- Any change of behaviour, visuals or splash timings.
+
+**Design questions.**
+(a) **Where pre-graph values enter the graph.** One app-level `BootModule` (recommended: one place to look) — or one module per package in the `SettingsModule(store:)` style: `SettingsModule` stays, `WorkerModule(worker:)` in `zanshin_core`, `IconModule(registry:)`, plus a windows module. Ralph decides before the build; without an answer, the recommendation is built.
+
+**Design status.** FINAL apart from design question (a): Ralph's go of 2026-11-07 on the review's Phases 2–3. Claude's proposals are marked.
+
+**Witnesses.**
+- `MainComponent` has one getter. `main.dart` holds no `ValueNotifier`, no `Completer`, no setter and no `attach()` after `create()`. `ZanshinAppViewModel(` appears in `app/lib/src` only in generated code; no class in `app/test` implements `HomePageFactory`, `ZanshinWindowRootFactory` or `Provider<T>`.
+- The boot sequence's tests: a fast boot opens the first window with no splash; a slow one shows the splash its minimum and fades it; a failed boot shows the failure page in the persisted theme; `onShown` runs after the first window is up.
+- A test-component test: the project window, Projects, Settings and jj log Configurations are built over one `ProjectSession`, one `SettingsStore` and one `ActiveGraph`.
+- `answerExitRequest`'s tests unchanged; `AppExitHandler` registers its listener once.
+- `cargo make test` green.
+- The running app (Marionette): it starts and reopens the last project; a project switch with unsaved jj log Configurations asks "Discard changes?", and so does ⌘Q, which then cancels or quits; switching the theme in Settings restyles every open window's chrome; View › Zoom In grows the window minimums as before.
+
+**Depends on.** 11.24.
+
+**Related:** the review; 11.12 (window foundation), 11.13 (menu bar), 11.20 (zoom); project memories "Resolve async before the DI graph" and "Start-up work in the boot sequence".
 
 ---
