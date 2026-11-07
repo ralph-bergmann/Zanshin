@@ -905,22 +905,65 @@ class _GraphMinimapState extends State<GraphMinimap> {
   @override
   Widget build(BuildContext context) {
     final GraphViewModel model = widget.model;
+    final listenable = Listenable.merge(<Listenable>[model, model.now, model.minimapSource]);
     return Semantics(
       container: true,
       label: context.l10n.graphMinimap,
-      child: ZsGlass(
-        fill: ZsGlassFill.strong,
-        blur: ZsGlassBlur.strong,
-        radius: ZsMetrics.of(context).radiusIsland,
-        child: Padding(
-          // The strip's inset counts from the card's outer edge; the glass lays its child out inside its border.
-          padding: minimapStripInset - const EdgeInsets.all(ZsSurface.borderWidth),
-          child: ListenableBuilder(
-            listenable: Listenable.merge(<Listenable>[model, model.now, model.minimapSource]),
-            builder: (context, _) =>
-                LayoutBuilder(builder: (context, constraints) => _strip(context, constraints.biggest)),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          ZsGlass(
+            fill: ZsGlassFill.strong,
+            blur: ZsGlassBlur.strong,
+            radius: ZsMetrics.of(context).radiusIsland,
+            child: Padding(
+              // The strip's inset counts from the card's outer edge; the glass lays its child out inside its border.
+              padding: minimapStripInset - const EdgeInsets.all(ZsSurface.borderWidth),
+              child: ListenableBuilder(
+                listenable: listenable,
+                builder: (context, _) =>
+                    LayoutBuilder(builder: (context, constraints) => _strip(context, constraints.biggest)),
+              ),
+            ),
           ),
-        ),
+          // The day pills above the clipping glass, on the strip's own coordinates.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Padding(
+                padding: minimapStripInset,
+                child: ListenableBuilder(
+                  listenable: listenable,
+                  builder: (context, _) =>
+                      LayoutBuilder(builder: (context, constraints) => _pills(context, constraints.biggest)),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pills(BuildContext context, Size size) {
+    final GraphMinimapFrame? frame = widget.model.minimapSource.frame;
+    if (frame == null || size.isEmpty) {
+      return const SizedBox.expand();
+    }
+    final ZsColors colors = ZsColors.of(context);
+    return CustomPaint(
+      size: size,
+      painter: _OverlayPainter(
+        frame: frame,
+        mapping: _mappingOf(frame, size.height),
+        inLayer: null,
+        raster: null,
+        labels: _labelsOf(frame, context.l10n),
+        selected: null,
+        workingCopy: null,
+        hover: _hover,
+        colors: colors,
+        text: (text, kind) => _text(text, kind, colors),
+        pills: true,
       ),
     );
   }
@@ -1120,7 +1163,13 @@ class _OverlayPainter extends CustomPainter {
     required this.hover,
     required this.colors,
     required this.text,
+    this.pills = false,
   }) : super(repaint: Listenable.merge(<Listenable>[frame.vertical, hover]));
+
+  /// Paints only the day pills — in their own layer above the glass card, which clips, so a pill wider than the label
+  /// column ("Yesterday") reaches out of the card to the left (Story 10.31 item 6, Ralph 2026-11-07); else everything
+  /// but the pills.
+  final bool pills;
 
   // The sticky header's height and the gap a year keeps from the day labels (graph-view.jsx, sync #22).
   static const double _stickyHeight = 22;
@@ -1148,6 +1197,10 @@ class _OverlayPainter extends CustomPainter {
     final double ms = band.ms;
     final double strip = mapping.strip;
     final double cy = (vTop + vBot) / 2;
+    if (pills) {
+      _pills(canvas, cy, ms);
+      return;
+    }
     final ui.Image? image = inLayer;
     if (image != null && vBot > vTop) {
       canvas
@@ -1247,6 +1300,10 @@ class _OverlayPainter extends CustomPainter {
       );
       painter.paint(canvas, Offset(right - painter.width, 3));
     }
+  }
+
+  void _pills(Canvas canvas, double cy, double ms) {
+    final double? hov = hover.value;
     if (hov != null) {
       final String? day = minimapDayAt(labels, mapping.planeY(hov, ms));
       if (day != null) {
@@ -1306,5 +1363,6 @@ class _OverlayPainter extends CustomPainter {
       !identical(old.labels, labels) ||
       old.selected != selected ||
       old.workingCopy != workingCopy ||
+      old.pills != pills ||
       !identical(old.colors, colors);
 }

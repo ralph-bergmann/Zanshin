@@ -2814,6 +2814,7 @@ _The bump ported every CLI change that needs no API change (root-merge refusal r
   - The running app with that repository could not be started in the unattended run; widget tests cover the paint and the math only.
   - **Follow-up:** Ralph's look at the running app (or a Marionette run) compared with `design_system/components/graph/long-history.card.html`.
   - **2026-11-07, console session (Marionette, catalogue Long history):** the minimap matches the card — width by columns, year sections with zigzag breaks, the sticky year once the band leaves the top (at the very top the Today pill covers it, as in the prototype `graph-view.jsx:585-587`), scrolling with the canvas; left: the canvas's torn strip (≈ 10 000 px down, out of reach for Marionette swipes; widget tests cover its paint) and the real `dart-intellij-third-party` run (Ralph).
+  - **2026-11-07, Ralph (his look at the running app):** the "Yesterday" day pill was cut off by the glass card. Decided: it reaches out of the card to the left (10.31 item 6 after all; the prototype's `.gmini` does not clip either) — the pills are painted in their own layer above the glass, pointer-transparent (`graph_minimap.dart` `_pills`), every pill's right edge on the label column; checked in the catalogue (Long history).
 
 ## Surfaced in Story 11.18 (bmad-build-auto, 2026-11-06)
 

@@ -484,6 +484,47 @@ void main() {
     });
 
     testWidgets(
+      'a day pill wider than the label column reaches out of the card: its layer sits above the clipping glass',
+      (
+        tester,
+      ) async {
+        await pump(tester);
+        final ZsColors colors = ZsColors.of(tester.element(find.byType(GraphMinimap)));
+        final pills = <(Rect, Element)>[];
+        for (final Element element
+            in find.descendant(of: find.byType(GraphMinimap), matching: find.byType(CustomPaint)).evaluate()) {
+          expect(
+            element.renderObject,
+            paints..everything((method, arguments) {
+              // The pill's fill; a Paint keeps its colour as 32-bit ARGB.
+              if (method == #drawRRect && (arguments[1] as Paint).color.toARGB32() == colors.flBgSolid.toARGB32()) {
+                pills.add(((arguments[0] as RRect).outerRect, element));
+              }
+              return true;
+            }),
+          );
+        }
+        expect(pills, isNotEmpty);
+        expect(pills.any((p) => p.$1.left < 0), isTrue, reason: 'the label is wider than the label column');
+        for (final (Rect rect, Element element) in pills) {
+          expect(rect.right, minimapSplit, reason: 'every pill ends at the label column: $rect');
+          expect(
+            find.ancestor(
+              of: find.byElementPredicate((e) => identical(e, element)),
+              matching: find.descendant(
+                of: find.byType(GraphMinimap),
+                matching: find.byWidgetPredicate((w) => w is ClipRRect || w is ClipRect || w is ClipPath),
+              ),
+            ),
+            findsNothing,
+            reason: 'nothing in the minimap clips the pills',
+          );
+        }
+        await finish(tester);
+      },
+    );
+
+    testWidgets(
       'a history taller than the strip at 2 px a pitch: the minimap scrolls in proportion, the band stays inside, '
       'a press centres the band on it, a node sits at my(y) − ms, the raster covers a window (Story 10.31)',
       (tester) async {
