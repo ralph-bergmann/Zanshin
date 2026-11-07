@@ -161,6 +161,7 @@ class SettingsConfigFilePage extends StatefulWidget {
 class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
   final _text = _ConfigEditingController();
   final _focus = FocusNode(debugLabel: 'config file editor');
+  final _undo = UndoHistoryController();
   final _vertical = ScrollController();
   final _horizontal = ScrollController();
 
@@ -216,6 +217,7 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
     _justSavedTimer?.cancel();
     _text.dispose();
     _focus.dispose();
+    _undo.dispose();
     _vertical.dispose();
     _horizontal.dispose();
     super.dispose();
@@ -601,7 +603,9 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
                                     smartDashesType: SmartDashesType.disabled,
                                     smartQuotesType: SmartQuotesType.disabled,
                                     cursorColor: colors.text,
-                                    contextMenuBuilder: null,
+                                    undoController: _undo,
+                                    // The DS text menu (TextField.prompt.md:11) at the pointer.
+                                    contextMenuBuilder: (context, state) => zsTextContextMenu(context, state, _undo),
                                   ),
                                 ),
                               ),

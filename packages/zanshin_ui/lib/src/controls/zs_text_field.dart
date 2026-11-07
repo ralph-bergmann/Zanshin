@@ -185,8 +185,9 @@ KeyEventResult _fieldKeys(KeyEvent event, ZsFieldListController? list, bool Func
 /// Cut · Copy · Paste — Select all, the shortcuts in the right column, no icons, each enabled per the field's state.
 /// Focus stays in the field; the menu takes the pointer only.
 ///
-/// Claude's proposal (Story 11.11): the text menu is built with the control library rather than left to later.
-Widget _textContextMenu(BuildContext context, EditableTextState state, UndoHistoryController undo) {
+/// Claude's proposal (Story 11.11): the text menu is built with the control library rather than left to later. Public
+/// for a field built on another text widget (the config file editor); [undo] must be that field's undo controller.
+Widget zsTextContextMenu(BuildContext context, EditableTextState state, UndoHistoryController undo) {
   void run(VoidCallback action) {
     action();
     state.hideToolbar();
@@ -503,7 +504,9 @@ class _ZsTextFieldState extends State<ZsTextField> {
             keyboardType: widget.multiline ? TextInputType.multiline : TextInputType.text,
             onChanged: widget.onChanged,
             onSubmitted: widget.onSubmitted,
-            contextMenuBuilder: widget.contextMenu ? (context, state) => _textContextMenu(context, state, _undo) : null,
+            contextMenuBuilder: widget.contextMenu
+                ? (context, state) => zsTextContextMenu(context, state, _undo)
+                : null,
           ),
         ),
       ],
@@ -822,7 +825,7 @@ class _ZsSearchFieldState extends State<ZsSearchField> {
                                   style: style,
                                   cursorColor: inactive ? _clear : colors.accentLine,
                                   onChanged: widget.onChanged,
-                                  contextMenuBuilder: (context, state) => _textContextMenu(context, state, _undo),
+                                  contextMenuBuilder: (context, state) => zsTextContextMenu(context, state, _undo),
                                 ),
                               ),
                             ],

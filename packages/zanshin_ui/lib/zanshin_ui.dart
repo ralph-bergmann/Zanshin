@@ -37,7 +37,8 @@ export 'src/controls/zs_skeleton.dart' show ZsSkeleton, ZsSkeletonKind, paintZsS
 export 'src/controls/zs_slider.dart' show ZsSlider;
 export 'src/controls/zs_spinner.dart' show ZsSpinner;
 export 'src/controls/zs_switch.dart' show ZsSwitch;
-export 'src/controls/zs_text_field.dart' show ZsSearchField, ZsTextEditingController, ZsTextField, ZsTextFieldSize;
+export 'src/controls/zs_text_field.dart'
+    show ZsSearchField, ZsTextEditingController, ZsTextField, ZsTextFieldSize, zsTextContextMenu;
 export 'src/controls/zs_text_rung.dart' show ZsTextRung;
 export 'src/controls/zs_toast.dart' show ZsToast, ZsToastAction, ZsToastTone;
 export 'src/controls/zs_tooltip.dart' show ZsTooltip, ZsTooltipBubble, ZsTooltipPlacement;

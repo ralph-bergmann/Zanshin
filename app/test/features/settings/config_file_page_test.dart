@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kSecondaryMouseButton;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -207,6 +208,36 @@ void main() {
       await rig.afterSaved();
       expect(find.text('Saved'), findsNothing);
     });
+
+    testWidgets(
+      "a right click opens the DS text menu; its Undo reverts the editor's last edit",
+      (tester) async {
+        final rig = SettingsRig(tester);
+        await rig.openConfig();
+        // The undo history records an edit once its throttle (500 ms) has passed.
+        await rig.edit('a = 1\n');
+        await tester.pump(const Duration(seconds: 1));
+        await rig.edit('a = 2\n');
+        await tester.pump(const Duration(seconds: 1));
+
+        final TestGesture mouse = await tester.startGesture(
+          tester.getCenter(rig.editor),
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await mouse.up();
+        await tester.pumpAndSettle();
+        for (final label in <String>['Undo', 'Redo', 'Cut', 'Copy', 'Paste', 'Select all']) {
+          expect(find.text(label), findsOneWidget, reason: label);
+        }
+        await tester.tap(find.text('Undo'));
+        // The activation blink, then the command.
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pumpAndSettle();
+        expect(rig.editorText, 'a = 1\n');
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    );
 
     testWidgets('⌘S saves', (tester) async {
       final rig = SettingsRig(tester);

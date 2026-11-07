@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:ui' show ViewFocusEvent, ViewFocusState;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/src/widgets/_window.dart' show DialogWindowController;
 import 'package:flutter/src/widgets/_window_macos.dart' show BaseWindowControllerMacOS;
 import 'package:flutter/widgets.dart';
@@ -116,6 +117,9 @@ class SettingsWindowContentState extends State<SettingsWindow> with WidgetsBindi
   DialogWindowController? _window;
   SettingsHeightFollower? _follower;
 
+  /// The window calls waiting for a frame to end, in order.
+  final _waiting = <VoidCallback>[];
+
   @override
   void initState() {
     super.initState();
@@ -200,9 +204,32 @@ class SettingsWindowContentState extends State<SettingsWindow> with WidgetsBindi
     }
     if (widget.windows.controllerOf(widget.windowKey) case final DialogWindowController window) {
       _window = window..addListener(_windowChanged);
+      // A native resize runs the engine's next frame synchronously, which asserts inside a frame (the first-frame
+      // binding and the content's height arrive in post-frame callbacks): there it waits for the frame to end, and
+      // every call after it waits too, so the calls keep their order.
+      void outsideFrame(VoidCallback call) {
+        if (_waiting.isEmpty && SchedulerBinding.instance.schedulerPhase == SchedulerPhase.idle) {
+          call();
+          return;
+        }
+        _waiting.add(call);
+        if (_waiting.length == 1) {
+          // A microtask runs once the engine's frame callback has returned, the phase idle again.
+          scheduleMicrotask(() {
+            final calls = List<VoidCallback>.of(_waiting);
+            _waiting.clear();
+            if (identical(_window, window)) {
+              for (final c in calls) {
+                c();
+              }
+            }
+          });
+        }
+      }
+
       _follower = SettingsHeightFollower(
-        setSize: window.setSize,
-        setConstraints: window.setConstraints,
+        setSize: (size) => outsideFrame(() => window.setSize(size)),
+        setConstraints: (constraints) => outsideFrame(() => window.setConstraints(constraints)),
         zoom: _zoom,
       )..addListener(_followingChanged);
       // The window is sized to its content, so its minimum scales here, not in AppWindows (Story 11.20).
