@@ -2418,7 +2418,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_push_remotes(
 /// is not `GitRemoteAdd`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `name` or `url` is absent from the buffer, or `name` is the
 /// reserved `git`, contains a slash, or is not a valid gix remote name.
-/// - `jj.remote_exists` — `name` already has a configured remote; the name in `context`.
+/// - `jj.remote_exists` — `name` already has a configured remote; the name and jj's message in
+/// `context`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 /// longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
@@ -2465,8 +2466,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_add(
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `remote_name` is a null pointer.
 /// - `ffi.utf8_error` — `remote_name` is not valid UTF-8.
-/// - `jj.remote_not_found` — no configured git remote is named `remote_name` exactly; the name in
-/// `context`. git never runs.
+/// - `jj.remote_not_found` — no configured git remote is named `remote_name` exactly; the name and
+/// jj's message in `context`. git never runs.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.config_error` — the start-up fix-up failed, the changed config stack no longer reads,
 /// `git.executable-path` does not read, or a `remotes.<name>` entry or the remote's
@@ -2534,9 +2535,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_changes(
 /// `.jj/repo/config-id`, an unreadable file, invalid TOML), which refuses before anything
 /// is mutated; or it could not be WRITTEN back, which aborts the transaction after
 /// jj-lib's git-config edit has landed. Detail in `context`.
-/// - `jj.remote_not_found` — no such remote; the name in `context`.
+/// - `jj.remote_not_found` — no such remote; the name and jj's message in `context`.
 /// - `jj.remote_nonstandard_config` — jj refuses to rewrite this remote's git config (a
-/// remote ADDED with a push URL is exactly this case); the name in `context`.
+/// remote ADDED with a push URL is exactly this case); the name and jj's message in `context`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 /// the cause and both operation ids in `context`, nothing is written.
@@ -2590,10 +2591,11 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_remove(
 /// jj-lib's git-config edit has landed. Detail in `context`.
 /// - `jj.invalid_input` — `new_name` is the reserved `git`, contains a slash, or is not a
 /// valid gix remote name.
-/// - `jj.remote_not_found` — `old_name` has no configured remote; the name in `context`.
-/// - `jj.remote_exists` — `new_name` is already taken; the name in `context`.
+/// - `jj.remote_not_found` — `old_name` has no configured remote; the name and jj's message in
+/// `context`.
+/// - `jj.remote_exists` — `new_name` is already taken; the name and jj's message in `context`.
 /// - `jj.remote_nonstandard_config` — `old_name`'s git config is not the plain
-/// single-fetch-refspec shape jj knows how to rewrite; the name in `context`.
+/// single-fetch-refspec shape jj knows how to rewrite; the name and jj's message in `context`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 /// the cause and both operation ids in `context`, nothing is written.
@@ -2640,7 +2642,7 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_rename(
 /// - `jj.invalid_input` — `name` is absent from the buffer, or is the reserved `git`,
 /// contains a slash, or is not a valid gix remote name.
 /// - `jj.remote_not_found` — at least one URL was supplied and `name` has no configured
-/// remote; the name in `context`.
+/// remote; the name and jj's message in `context`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 /// longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the

@@ -556,13 +556,16 @@ class _DemoSettingsReads implements SettingsRepoReads {
       );
     }
     if (_has(name)) {
-      throw ZanshinFfiException('jj.remote_exists', name);
+      // As Rust sends it: the name, then jj's message.
+      throw ZanshinFfiException('jj.remote_exists', "$name\nGit remote named '${jjRefSymbol(name)}' already exists");
     }
   }
 
   int _index(String name) {
     final int index = _remotes.indexWhere((remote) => remote.name == name);
-    return index >= 0 ? index : throw ZanshinFfiException('jj.remote_not_found', name);
+    return index >= 0
+        ? index
+        : throw ZanshinFfiException('jj.remote_not_found', "$name\nNo git remote named '${jjRefSymbol(name)}'");
   }
 
   @override
@@ -607,7 +610,10 @@ class _DemoSettingsReads implements SettingsRepoReads {
     final int index = _index(name);
     // jj refuses a remote with a push URL: a git key it doesn't manage.
     if (_remotes[index].pushUrl != null) {
-      throw ZanshinFfiException('jj.remote_nonstandard_config', name);
+      throw ZanshinFfiException(
+        'jj.remote_nonstandard_config',
+        "$name\nGit remote named '${jjRefSymbol(name)}' has nonstandard configuration",
+      );
     }
     _remotes.removeAt(index);
     return const <ZanshinWarning>[];

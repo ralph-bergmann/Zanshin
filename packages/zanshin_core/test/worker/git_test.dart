@@ -162,7 +162,7 @@ void main() {
         throwsA(
           isA<ZanshinFfiException>()
               .having((e) => e.code, 'code', 'jj.remote_exists')
-              .having((e) => e.context, 'context', 'origin'),
+              .having((e) => e.context, 'context', "origin\nGit remote named 'origin' already exists"),
         ),
       );
 
@@ -203,7 +203,7 @@ void main() {
         throwsA(
           isA<ZanshinFfiException>()
               .having((e) => e.code, 'code', 'jj.remote_not_found')
-              .having((e) => e.context, 'context', 'nonexistent'),
+              .having((e) => e.context, 'context', "nonexistent\nNo git remote named 'nonexistent'"),
         ),
       );
 

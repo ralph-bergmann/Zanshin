@@ -250,7 +250,9 @@ pub enum MutateError {
     ///
     /// A workspace with no git backend at all is NOT this variant — it is
     /// [`MutateError::NotAGitRepo`], the same answer the six `crate::git` verbs give.
-    #[error("no such remote: {name}")]
+    ///
+    /// Displays jj-lib's `NoSuchRemote` text, the CLI's `Error: ` line (parity oracle).
+    #[error("No git remote named '{}'", jj_lib::ref_name::RemoteName::new(name).as_symbol())]
     RemoteNotFound {
         /// The remote name that could not be resolved.
         name: String,
@@ -272,7 +274,9 @@ pub enum MutateError {
     ///
     /// Distinct from [`MutateError::InvalidInput`] because the remedy is: the remote is
     /// already there — re-point it with `git_remote_set_url` instead of adding it again.
-    #[error("git remote already exists: {name}")]
+    ///
+    /// Displays jj-lib's `RemoteAlreadyExists` text, the CLI's `Error: ` line (parity oracle).
+    #[error("Git remote named '{}' already exists", jj_lib::ref_name::RemoteName::new(name).as_symbol())]
     RemoteExists {
         /// The remote name that is already taken.
         name: String,
@@ -285,7 +289,12 @@ pub enum MutateError {
     /// with a push URL and then REMOVING it hits this. The remedy is to edit the git config
     /// by hand — nothing this crate offers can unblock it, which is why it is not
     /// [`MutateError::InvalidInput`] and not the unclassified [`MutateError::Backend`].
-    #[error("git remote has nonstandard configuration: {name}")]
+    ///
+    /// Displays jj-lib's `NonstandardConfiguration` text, the CLI's `Error: ` line (parity oracle).
+    #[error(
+        "Git remote named '{}' has nonstandard configuration",
+        jj_lib::ref_name::RemoteName::new(name).as_symbol()
+    )]
     RemoteNonstandardConfig {
         /// The remote whose git config jj refuses to rewrite.
         name: String,

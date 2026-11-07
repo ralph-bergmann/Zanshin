@@ -218,14 +218,14 @@ fn remote_changes_round_trip_reports_moved_new_and_deleted() {
     close_handle(handle);
 }
 
-/// An unknown remote: `jj.remote_not_found` with the name in `context`.
+/// An unknown remote: `jj.remote_not_found` with the name and jj's message in `context`.
 #[test]
 fn remote_changes_unknown_remote_returns_jj_remote_not_found() {
     let w = world();
     let handle = open_handle(&w.root);
     let (code, context) = error_code(&poll(handle, Some("nope"), 0));
     assert_eq!(code.as_deref(), Some(JJ_REMOTE_NOT_FOUND));
-    assert_eq!(context.as_deref(), Some("nope"));
+    assert_eq!(context.as_deref(), Some("nope\nNo git remote named 'nope'"));
     close_handle(handle);
 }
 

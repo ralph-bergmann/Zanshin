@@ -142,7 +142,7 @@ void main() {
         throwsA(
           isA<ZanshinFfiException>()
               .having((e) => e.code, 'code', 'jj.remote_not_found')
-              .having((e) => e.context, 'context', 'nope'),
+              .having((e) => e.context, 'context', "nope\nNo git remote named 'nope'"),
         ),
       );
     });

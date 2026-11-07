@@ -762,13 +762,13 @@ fn git_ops_surface_resolves() {
     let exists = zanshin_jj::MutateError::RemoteExists {
         name: "origin".to_owned(),
     };
-    assert_eq!(exists.to_string(), "git remote already exists: origin");
+    assert_eq!(exists.to_string(), "Git remote named 'origin' already exists");
     let nonstandard = zanshin_jj::MutateError::RemoteNonstandardConfig {
         name: "origin".to_owned(),
     };
     assert_eq!(
         nonstandard.to_string(),
-        "git remote has nonstandard configuration: origin"
+        "Git remote named 'origin' has nonstandard configuration"
     );
     assert_eq!(zanshin_jj::MutateError::NotAGitRepo.to_string(), "not a git repository");
 

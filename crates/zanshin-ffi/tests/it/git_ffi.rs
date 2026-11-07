@@ -371,7 +371,7 @@ fn git_remote_add_duplicate_returns_jj_remote_exists() {
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_REMOTE_EXISTS));
     assert_eq!(
         env.error().and_then(|e| e.context()),
-        Some("origin"),
+        Some("origin\nGit remote named 'origin' already exists"),
         "user data rides `context`, never the code"
     );
 
@@ -459,7 +459,10 @@ fn git_remote_remove_happy_path_and_nonstandard_config_refusal() {
     let refused = unsafe { read_and_free(zanshin_git_remote_remove(handle, pushy_name.as_ptr())) };
     let env = parse_envelope(&refused);
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_REMOTE_NONSTANDARD_CONFIG));
-    assert_eq!(env.error().and_then(|e| e.context()), Some("pushy"));
+    assert_eq!(
+        env.error().and_then(|e| e.context()),
+        Some("pushy\nGit remote named 'pushy' has nonstandard configuration")
+    );
 
     close_handle(handle);
 }

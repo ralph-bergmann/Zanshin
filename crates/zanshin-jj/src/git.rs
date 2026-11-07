@@ -696,6 +696,17 @@ mod tests {
             map_remote_mgmt_err(E::NonstandardConfiguration(name.clone())),
             MutateError::RemoteNonstandardConfig { name } if name == "origin"
         ));
+        // The three keep jj-lib's own text, with a name that needs quoting as a symbol.
+        let quoted: RemoteNameBuf = "my remote".into();
+        for e in [
+            E::NoSuchRemote(quoted.clone()),
+            E::RemoteAlreadyExists(quoted.clone()),
+            E::NonstandardConfiguration(quoted.clone()),
+        ] {
+            let jj_lib_text = e.to_string();
+            assert!(jj_lib_text.contains("'\"my remote\"'"), "{jj_lib_text}");
+            assert_eq!(map_remote_mgmt_err(e).to_string(), jj_lib_text);
+        }
         assert!(
             matches!(
                 map_remote_mgmt_err(E::RemoteName(GitRemoteNameError::ReservedForLocalGitRepo)),

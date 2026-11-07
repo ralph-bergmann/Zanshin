@@ -23,6 +23,7 @@ mod ledger;
 mod log_at_operation;
 mod prompt;
 mod refusal_order;
+mod remote_refusals;
 mod scenarios;
 mod state;
 

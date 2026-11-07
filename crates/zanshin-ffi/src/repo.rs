@@ -170,6 +170,8 @@ fn map_repo_err_code(e: RepoError) -> FfiErrorObj {
 /// `OperationNotFound` to the registered `jj.operation_not_found`.
 pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     let hints = e.hints();
+    // The remote refusals' second `context` line: jj's message, the CLI's `Error: ` line.
+    let message = e.to_string();
     let (code, context) = match e {
         MutateError::Precondition(e) => return map_precondition_err(e),
         MutateError::ChangeNotFound { id } => (JJ_CHANGE_NOT_FOUND, Some(id)),
@@ -185,11 +187,13 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
             (JJ_REDO_CROSS_WORKSPACE, Some(format!("{operation}\n{workspace}")))
         }
         MutateError::OperationNotFound { reason } => (JJ_OPERATION_NOT_FOUND, Some(reason)),
-        MutateError::RemoteNotFound { name } => (JJ_REMOTE_NOT_FOUND, Some(name)),
+        MutateError::RemoteNotFound { name } => (JJ_REMOTE_NOT_FOUND, Some(format!("{name}\n{message}"))),
         MutateError::NetworkError { reason } => (JJ_NETWORK_ERROR, Some(reason)),
         MutateError::Cancelled => (JJ_CANCELLED, Some("Cancelled".to_owned())),
-        MutateError::RemoteExists { name } => (JJ_REMOTE_EXISTS, Some(name)),
-        MutateError::RemoteNonstandardConfig { name } => (JJ_REMOTE_NONSTANDARD_CONFIG, Some(name)),
+        MutateError::RemoteExists { name } => (JJ_REMOTE_EXISTS, Some(format!("{name}\n{message}"))),
+        MutateError::RemoteNonstandardConfig { name } => {
+            (JJ_REMOTE_NONSTANDARD_CONFIG, Some(format!("{name}\n{message}")))
+        }
         // No `context`: this variant names no path and no remote — the fault is the whole
         // workspace's backend, which the code already says.
         MutateError::NotAGitRepo => (JJ_NOT_A_GIT_REPO, None),
@@ -2177,7 +2181,7 @@ mod tests {
             name: "origin".to_owned(),
         });
         assert_eq!(e.code, JJ_REMOTE_NOT_FOUND);
-        assert_eq!(e.context.unwrap(), "origin");
+        assert_eq!(e.context.unwrap(), "origin\nNo git remote named 'origin'");
     }
 
     #[test]

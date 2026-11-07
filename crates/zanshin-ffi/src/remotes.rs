@@ -275,8 +275,8 @@ fn remote_changes_to_envelope(changes: &[RemoteRefChange], report: &crate::envel
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `remote_name` is a null pointer.
 /// - `ffi.utf8_error` — `remote_name` is not valid UTF-8.
-/// - `jj.remote_not_found` — no configured git remote is named `remote_name` exactly; the name in
-///   `context`. git never runs.
+/// - `jj.remote_not_found` — no configured git remote is named `remote_name` exactly; the name and
+///   jj's message in `context`. git never runs.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.config_error` — the start-up fix-up failed, the changed config stack no longer reads,
 ///   `git.executable-path` does not read, or a `remotes.<name>` entry or the remote's

@@ -283,26 +283,23 @@ final class RemoteWarning extends RemoteOutcome {
   final String hint;
 }
 
-/// jj's text for [error], a remote verb's failure, keyed by its code (never parsed from text); [typedName] is the name
-/// the user typed. The bridge sends the offending name as the context; jj-lib prints it with `as_symbol()`.
-RemoteRefusal remoteRefusal(ZanshinFfiException error, String typedName) {
-  final String name = error.context ?? typedName;
-  final String symbol = jjRefSymbol(name);
-  return switch (error.code) {
-    'jj.remote_exists' => RemoteRefusal("Git remote named '$symbol' already exists"), // l10n-ignore: jj's text
-    'jj.remote_not_found' => RemoteRefusal("No git remote named '$symbol'"), // l10n-ignore: jj's text
-    'jj.remote_nonstandard_config' => RemoteRefusal(
-      "Git remote named '$symbol' has nonstandard configuration", // l10n-ignore: jj's text
-      help: RemoteHelp.nonstandardConfig,
-      name: name,
-    ),
-    'jj.invalid_input' => RemoteRefusal(
-      settingsErrorText(error),
-      help: typedName == 'git' ? RemoteHelp.reservedName : null, // l10n-ignore: jj's reserved remote name
-    ),
-    _ => RemoteRefusal(settingsErrorText(error)),
-  };
-}
+/// jj's text for [error], a remote verb's failure, as the bridge sends it (the parity oracle proves it is the CLI's);
+/// [typedName] is the name the user typed. The three remote codes carry `"<name>\n<jj's message>"`, the help keyed by
+/// the code (never parsed from text).
+RemoteRefusal remoteRefusal(ZanshinFfiException error, String typedName) =>
+    switch ((error.code, error.context?.split('\n'))) {
+      ('jj.remote_exists' || 'jj.remote_not_found', [_, final String message]) => RemoteRefusal(message),
+      ('jj.remote_nonstandard_config', [final String name, final String message]) => RemoteRefusal(
+        message,
+        help: RemoteHelp.nonstandardConfig,
+        name: name,
+      ),
+      ('jj.invalid_input', _) => RemoteRefusal(
+        settingsErrorText(error),
+        help: typedName == 'git' ? RemoteHelp.reservedName : null, // l10n-ignore: jj's reserved remote name
+      ),
+      _ => RemoteRefusal(settingsErrorText(error)),
+    };
 
 /// The Settings window's state and writes (Story 11.7): the app preferences in [store], the jj config through
 /// [environment]'s config verbs at the tab's scope, the open project's reads through a [SettingsRepoReads].

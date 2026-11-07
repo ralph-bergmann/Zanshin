@@ -94,10 +94,12 @@ pub const JJ_REDO_CROSS_WORKSPACE: &str = "jj.redo_cross_workspace";
 /// remote (a workspace with NO git backend is `jj.not_a_git_repo` instead); and — since Story
 /// 9.5 — by `git.rs::zanshin_git_remote_remove`/`_rename`/`_set_url` when the named remote does
 /// not exist (for `rename`, the OLD name; for `set_url`, only when at least one URL was given).
+/// `context` is `"<name>\n<message>"`, `message` jj's error text — the CLI's `Error: ` line
+/// without its label (parity oracle); the same shape for the two codes below.
 pub const JJ_REMOTE_NOT_FOUND: &str = "jj.remote_not_found";
 /// AR-P-4: emitted by `git.rs::zanshin_git_remote_add` when the name already has a
 /// configured git remote, and by `zanshin_git_remote_rename` when the NEW name does; the
-/// offending remote name in `context` (Story 9.5).
+/// offending remote name and jj's message in `context` (Story 9.5).
 ///
 /// Its own code rather than `jj.invalid_input` because the remedy differs: the remote is
 /// already there — re-point it with `zanshin_git_remote_set_url` instead of adding it again.
@@ -105,7 +107,7 @@ pub const JJ_REMOTE_EXISTS: &str = "jj.remote_exists";
 /// AR-P-4: emitted by `git.rs::zanshin_git_remote_remove`/`_rename` when jj refuses to
 /// rewrite the remote's git config — it carries a key outside `url`/`fetch`/`tagOpt`, or a
 /// `[branch]` section referencing it carries one outside `remote`/`merge`/`rebase`; the
-/// remote name in `context` (Story 9.5).
+/// remote name and jj's message in `context` (Story 9.5).
 ///
 /// Not exotic: jj-lib's own `save_remote` writes a `pushurl` key, so a remote ADDED with a
 /// push URL cannot afterwards be removed. The only remedy is editing the git config by

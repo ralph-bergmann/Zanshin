@@ -103,14 +103,34 @@ void main() {
     expect(scrubRemoteUrl('https://github.com/a@b/x'), 'https://github.com/a@b/x', reason: 'an @ after the host');
   });
 
-  test('remoteRefusal renders jj-lib\'s text from the code, the name as_symbol', () {
+  test('remoteRefusal shows the message the bridge carries, the help by code', () {
     expect(
-      remoteRefusal(const ZanshinFfiException('jj.remote_exists', 'origin'), 'origin').message,
+      remoteRefusal(
+        const ZanshinFfiException('jj.remote_exists', "origin\nGit remote named 'origin' already exists"),
+        'origin',
+      ).message,
       "Git remote named 'origin' already exists",
     );
     expect(
-      remoteRefusal(const ZanshinFfiException('jj.remote_not_found', 'a b'), 'a b').message,
+      remoteRefusal(
+        const ZanshinFfiException('jj.remote_not_found', "a b\nNo git remote named '\"a b\"'"),
+        'x',
+      ).message,
       "No git remote named '\"a b\"'",
+    );
+    final RemoteRefusal nonstandard = remoteRefusal(
+      const ZanshinFfiException(
+        'jj.remote_nonstandard_config',
+        "old\nGit remote named 'old' has nonstandard configuration",
+      ),
+      'new',
+    );
+    expect(nonstandard.message, "Git remote named 'old' has nonstandard configuration");
+    expect((nonstandard.help, nonstandard.name), (RemoteHelp.nonstandardConfig, 'old'));
+    expect(
+      remoteRefusal(const ZanshinFfiException('jj.remote_exists'), 'x').message,
+      'jj.remote_exists',
+      reason: 'a context without the message shows what came',
     );
     final RemoteRefusal reserved = remoteRefusal(
       const ZanshinFfiException('jj.invalid_input', "Git remote named 'git' is reserved for local Git repository"),
@@ -179,7 +199,10 @@ void main() {
 
   testWidgets("a taken name: the form stays, jj's text under the command; the next edit clears it", (tester) async {
     final SettingsRig rig = await _pump(tester);
-    rig.reads.verbError = const ZanshinFfiException('jj.remote_exists', 'origin');
+    rig.reads.verbError = const ZanshinFfiException(
+      'jj.remote_exists',
+      "origin\nGit remote named 'origin' already exists",
+    );
 
     await rig.tap('settings-remote-add');
     await rig.type('Name', 'origin');
@@ -249,7 +272,7 @@ void main() {
     expect(rig.reads.verbs, <String>['rename upstream fork']);
     expect(rig.id('settings-remote-fork'), findsOneWidget);
 
-    rig.reads.verbError = const ZanshinFfiException('jj.remote_not_found', 'fork');
+    rig.reads.verbError = const ZanshinFfiException('jj.remote_not_found', "fork\nNo git remote named 'fork'");
     await rig.menu('fork', 'rename');
     await rig.type('New name', 'x');
     await rig.run();
@@ -308,7 +331,10 @@ void main() {
 
   testWidgets('a refused remove shows jj\'s text and the help under the row', (tester) async {
     final SettingsRig rig = await _pump(tester);
-    rig.reads.verbError = const ZanshinFfiException('jj.remote_nonstandard_config', 'upstream');
+    rig.reads.verbError = const ZanshinFfiException(
+      'jj.remote_nonstandard_config',
+      "upstream\nGit remote named 'upstream' has nonstandard configuration",
+    );
     await rig.menu('upstream', 'remove');
     await rig.answer('Remove remote');
 
