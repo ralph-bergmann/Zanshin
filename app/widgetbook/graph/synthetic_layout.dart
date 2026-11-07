@@ -3,6 +3,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:zanshin/src/features/graph/graph_breaks.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 
@@ -18,7 +19,18 @@ const syntheticSizes = <int>[10000, 50000, 100000];
 ///
 /// This is test and demo data written directly as a layout (the spike's 10k–100k outputs are not committed), not a
 /// layout of a topology; the invariant checker gates it like every fixture.
-RecordedGraphLayout syntheticLayout(int nodeCount, {bool free = false, int seed = 101, int lanes = 120}) {
+///
+/// With [longGapEvery] > 0 (Free only, Story 10.31's long history) every [longGapEvery]-th row starts after a quiet
+/// stretch of 40 pitches and 400 days, and the rows come back shortened as the worker's layout shortens them
+/// ([GraphBreaks]), with their [GraphLayout.breaks]. Keep it a multiple of 25 so the gaps fall between day buckets.
+RecordedGraphLayout syntheticLayout(
+  int nodeCount, {
+  bool free = false,
+  int seed = 101,
+  int lanes = 120,
+  int longGapEvery = 0,
+}) {
+  assert(longGapEvery % 25 == 0, 'a long gap starts a day bucket');
   final rng = math.Random(seed);
   // Generated bottom-up: id 0 is the root (the oldest); the layout's node index is nodeCount − 1 − id.
   final rowOf = Int32List(nodeCount);
@@ -106,8 +118,12 @@ RecordedGraphLayout syntheticLayout(int nodeCount, {bool free = false, int seed 
   // Free: strictly increasing y with gaps of 16–40 (one to two and a half pitches), so every invariant still holds.
   final gaps = math.Random(seed + 1);
   final y = Int32List(row);
+  // The days skipped by the long gaps up to and including row r.
+  final skippedDays = Int32List(row);
   for (var r = 1; r < row; r++) {
-    y[r] = free ? y[r - 1] + 16 + gaps.nextInt(25) : r;
+    final bool longGap = free && longGapEvery > 0 && r > 1 && (r - 1) % longGapEvery == 0;
+    skippedDays[r] = skippedDays[r - 1] + (longGap ? 400 : 0);
+    y[r] = free ? y[r - 1] + 16 + gaps.nextInt(25) + (longGap ? 40 * 16 : 0) : r;
   }
   final missing = math.Random(seed + 2);
   final keys = <String>[];
@@ -132,7 +148,11 @@ RecordedGraphLayout syntheticLayout(int nodeCount, {bool free = false, int seed 
     parentCounts[i] = parents[id].length + (stub ? 1 : 0);
     // Half an hour per row inside its day bucket (25 rows per day, below), so a card's time falls in its day.
     timestamps.add(
-      id == 0 ? null : _baseMidnight + (rowOf[id] - 1) ~/ 25 * 86400000 + (rowOf[id] - 1) % 25 * 1800000,
+      id == 0
+          ? null
+          : _baseMidnight +
+                ((rowOf[id] - 1) ~/ 25 + skippedDays[rowOf[id]]) * 86400000 +
+                (rowOf[id] - 1) % 25 * 1800000,
     );
     for (var position = 0; position < parents[id].length; position++) {
       final int parent = parents[id][position];
@@ -152,15 +172,27 @@ RecordedGraphLayout syntheticLayout(int nodeCount, {bool free = false, int seed 
   final bucketLastRows = <int>[];
   if (free) {
     for (var first = 1; first < row; first += 25) {
-      bucketValues.add(_baseMidnight + bucketValues.length * 86400000);
+      bucketValues.add(_baseMidnight + (bucketValues.length + skippedDays[first]) * 86400000);
       bucketFirstRows.add(y[first]);
       bucketLastRows.add(y[math.min(first + 24, row - 1)]);
     }
   }
+  // The long history comes back shortened, as BackendGraphLayout shortens a worker layout.
+  final GraphBreaks cuts = longGapEvery > 0 && free
+      ? GraphBreaks.compute(nodeRows, unit, (node) => timestamps[node])
+      : GraphBreaks.none;
+  for (var i = 0; i < nodeCount; i++) {
+    nodeRows[i] = cuts.map(nodeRows[i]);
+  }
+  for (var b = 0; b < bucketValues.length; b++) {
+    bucketFirstRows[b] = cuts.map(bucketFirstRows[b]);
+    bucketLastRows[b] = cuts.map(bucketLastRows[b]);
+  }
   return RecordedGraphLayout(
     mode: free ? GraphMode.free : GraphMode.compact,
     unit: unit,
-    rows: nodeCount == 0 ? 0 : y[row - 1] + unit,
+    rows: nodeCount == 0 ? 0 : cuts.map(y[row - 1]) + unit,
+    breaks: cuts.breaks,
     colCount: colCount,
     keys: keys,
     cols: cols,

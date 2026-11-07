@@ -206,6 +206,23 @@ final graphFolder = WidgetbookFolder(
             );
           },
         ),
+        // Story 10.31: nine years with a 400-day quiet stretch every 75 rows — breaks, year labels, a minimap sized by
+        // its columns and scrolled past its minimum density (DS card *Long history*).
+        WidgetbookUseCase(
+          name: 'Long history',
+          builder: (context) {
+            final int lanes = context.knobs.int.slider(label: 'columns', initialValue: 6, min: 1, max: 24);
+            return _MinimapDemo(
+              key: ValueKey<int>(lanes),
+              revset: 'jj log',
+              options: _options(context, laneOrder: false),
+              layoutOf: (request) => _fixture(
+                'long history $lanes ${request.mode.name}',
+                () => syntheticLayout(1500, free: request.mode == GraphMode.free, lanes: lanes, longGapEvery: 75),
+              ),
+            );
+          },
+        ),
       ],
     ),
     WidgetbookComponent(
@@ -671,27 +688,43 @@ final _minimapDemoKeys = Expando<GlobalKey<_MinimapDemoState>>('minimap demo key
 /// "Minimap / Recording" (Story 10.16): the floating shell over a [GraphView] on the view-model demo's fake source,
 /// with the minimap in its slot (no inspector, so it shows) and the @ pill.
 class _MinimapDemo extends StatefulWidget {
-  const _MinimapDemo({required this.revset, required this.options, super.key});
+  const _MinimapDemo({required this.revset, required this.options, this.layoutOf, super.key});
 
   final String revset;
   final GraphViewOptions options;
+
+  /// The layout of a request; the design recordings when null.
+  final GraphLayout Function(GraphRequest request)? layoutOf;
 
   @override
   State<_MinimapDemo> createState() => _MinimapDemoState();
 }
 
 class _MinimapDemoState extends State<_MinimapDemo> {
-  final _source = FakeGraphSource(
-    (request) => requestedLayout(request.revset == 'all()' ? 'design-all' : 'design-default', request),
-  )..parentsLayout = _allParents;
+  // The last layout answered: a given [_MinimapDemo.layoutOf]'s "now" is half a day after its newest day.
+  GraphLayout? _last;
+  late final _source = FakeGraphSource(
+    (request) => _last = (widget.layoutOf ?? _recording)(request),
+  )..parentsLayout = widget.layoutOf == null ? _allParents : null;
   final _model = GraphViewModel();
   final _shell = ShellController();
+
+  static GraphLayout _recording(GraphRequest request) =>
+      requestedLayout(request.revset == 'all()' ? 'design-all' : 'design-default', request);
 
   @override
   void initState() {
     super.initState();
-    final int now = recordedNowMs('design-default');
-    _model.init(_source, clock: () => DateTime.fromMillisecondsSinceEpoch(now), mode: widget.options.layout);
+    final int? now = widget.layoutOf == null ? recordedNowMs('design-default') : null;
+    _model.init(
+      _source,
+      clock: () => now != null
+          ? DateTime.fromMillisecondsSinceEpoch(now)
+          : _last == null
+          ? DateTime.now()
+          : DateTime.fromMillisecondsSinceEpoch(_syntheticNowMs(_last!)),
+      mode: widget.options.layout,
+    );
     _apply(null);
   }
 

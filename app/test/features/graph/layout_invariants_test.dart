@@ -43,6 +43,18 @@ void main() {
         });
       }
     }
+    test("the catalogue's long history: shortened like the worker's, with a break per quiet stretch", () {
+      final RecordedGraphLayout layout = syntheticLayout(1500, free: true, lanes: 6, longGapEvery: 75);
+      expect(checkLayoutInvariants(layout), isEmpty);
+      expect(layout.breaks, isNotEmpty);
+      for (final GraphBreak cut in layout.breaks) {
+        expect(cut.upperRow - cut.lowerRow, 24, reason: '$cut: 1½ pitches card to card');
+        expect(cut.t1! - cut.t0!, greaterThan(400 * 86400000), reason: '$cut: spans the 400 quiet days');
+      }
+      // Without the gaps nothing is cut; the generator's rows and its other output stay as they were.
+      expect(syntheticLayout(10000, free: true).breaks, isEmpty);
+    });
+
     test('the synthetic generator is deterministic', () {
       final RecordedGraphLayout a = syntheticLayout(10000);
       final RecordedGraphLayout b = syntheticLayout(10000);

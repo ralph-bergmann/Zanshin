@@ -46,6 +46,7 @@ class RecordedGraphLayout extends GraphLayout {
     this.workspaceName,
     List<List<int>> runMembers = const <List<int>>[],
     List<int?>? runStackNodes,
+    this.breaks = const <GraphBreak>[],
   }) : _runMembers = runMembers,
        _runStackNodes = runStackNodes ?? List<int?>.filled(runMembers.length, null),
        _keys = keys,
@@ -259,6 +260,10 @@ class RecordedGraphLayout extends GraphLayout {
       runStackNodes: runStackNodes,
     );
   }
+
+  /// Free's shortened stretches, already applied to the given rows (the catalogue's long history); none by default.
+  @override
+  final List<GraphBreak> breaks;
 
   /// The `flags` bit of an immutable node.
   static const flagImmutable = 1;
