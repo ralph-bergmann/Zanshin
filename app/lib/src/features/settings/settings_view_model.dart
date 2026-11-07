@@ -82,6 +82,9 @@ abstract interface class SettingsRepoReads {
   Future<List<RevsetMember>> revsetMembers(String revset);
 }
 
+/// The [SettingsRepoReads] of an open [ProjectRepo]: [RepoSettingsReads.new] in the app, fakes in tests.
+typedef SettingsReadsOf = SettingsRepoReads Function(ProjectRepo repo);
+
 /// [SettingsRepoReads] over an open repository's handle.
 class RepoSettingsReads implements SettingsRepoReads {
   /// The reads of [_repo].
@@ -316,8 +319,7 @@ class SettingsViewModel extends ChangeNotifier {
     required this.environment,
     required this.session,
     required this.graph,
-    required this.setThemeMode,
-    SettingsRepoReads Function(ProjectRepo repo)? readsOf,
+    SettingsReadsOf? readsOf,
   }) : _readsOf = readsOf ?? RepoSettingsReads.new;
 
   /// The app preferences.
@@ -332,10 +334,7 @@ class SettingsViewModel extends ChangeNotifier {
   /// The project window's graph, which a trunk or immutable write re-requests.
   final ValueListenable<GraphMenuBinding?> graph;
 
-  /// Sets the theme (and mirrors it onto the native window chrome).
-  final Future<void> Function(ThemeMode mode) setThemeMode;
-
-  final SettingsRepoReads Function(ProjectRepo repo) _readsOf;
+  final SettingsReadsOf _readsOf;
 
   var _disposed = false;
   ProjectRepo? _repo;
@@ -841,6 +840,10 @@ class SettingsViewModel extends ChangeNotifier {
   /// Writes [change] to the store; a failed write keeps the value for the session (the store logs it).
   void updatePreferences(AppSettings Function(AppSettings settings) change) =>
       unawaited(store.update(change).onError<Object>((_, _) {}));
+
+  /// Persists the theme [mode]; every window's root follows the store, the native window chrome through
+  /// `WindowAppearanceSync`.
+  void setThemeMode(ThemeMode mode) => updatePreferences((s) => s.copyWith.appearance(themeMode: mode));
 
   /// The open project's "Check for remote changes".
   RemotePollSetting get remotePoll => session.current?.remotePoll ?? RemotePollSetting.fifteenMinutes;

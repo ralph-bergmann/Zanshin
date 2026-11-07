@@ -5,7 +5,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
-import 'package:zanshin/src/features/graph/active_graph.dart' show GraphMenuBinding;
+import 'package:zanshin/src/features/graph/active_graph.dart' show ActiveGraph, GraphMenuBinding;
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_preferences.dart';
@@ -706,7 +706,7 @@ class _DemoSettingsWindowState extends State<_DemoSettingsWindow> {
   late final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_settings');
   late final String _home = _dir.resolveSymbolicLinksSync();
   final _state = SettingsWindowState();
-  final _graph = ValueNotifier<GraphMenuBinding?>(null);
+  final _graph = ActiveGraph();
   SettingsStore? _store;
   ProjectSession? _session;
 
@@ -762,7 +762,6 @@ class _DemoSettingsWindowState extends State<_DemoSettingsWindow> {
       environment: DemoProjectsEnvironment(_home),
       session: session,
       graph: _graph,
-      setThemeMode: (mode) => store.update((settings) => settings.copyWith.appearance(themeMode: mode)),
       readsOf: (_) => _DemoSettingsReads(),
     );
   }
@@ -808,7 +807,7 @@ class _DemoRevsetConfigsWindow extends StatefulWidget {
 
 class _DemoRevsetConfigsWindowState extends State<_DemoRevsetConfigsWindow> {
   late final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_configurations');
-  final _graph = ValueNotifier<GraphMenuBinding?>(null);
+  final _graph = ActiveGraph();
   SettingsStore? _store;
   GraphViewModel? _model;
   GraphSearchController? _search;

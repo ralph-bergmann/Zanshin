@@ -5,7 +5,6 @@
 // ignore_for_file: invalid_use_of_internal_member
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/src/foundation/_features.dart';
@@ -13,18 +12,14 @@ import 'package:flutter/src/widgets/_window.dart';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inject_annotation/inject_annotation.dart' show Provider;
-import 'package:inject_flutter/inject_flutter.dart';
 import 'package:zanshin/src/features/graph/active_graph.dart';
 import 'package:zanshin/src/features/graph/graph_controls.dart';
 import 'package:zanshin/src/features/graph/graph_search_field.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
 import 'package:zanshin/src/features/projects/project_capsule.dart';
-import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
-import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin/src/features/shell/pinned_panel.dart';
 import 'package:zanshin/src/features/shell/rail.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
@@ -38,10 +33,10 @@ import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interfac
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_projects.dart';
-import '../../helpers/fake_projects_environment.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/recording_shell.dart';
 import '../../helpers/shell_host.dart';
+import '../../helpers/test_component.dart';
 
 /// How long `settle` waits, in real time, for work started in the fake zone.
 const _settleBudget = Duration(seconds: 10);
@@ -64,43 +59,18 @@ class _Actions implements AppWindowActions {
   Future<void> openSettings({SettingsTarget? target}) async => settings.add(target);
 }
 
-class _ViewModels implements Provider<FloatingShellViewModel> {
-  _ViewModels(this._store);
-
-  final SettingsStore _store;
-
-  @override
-  FloatingShellViewModel get() => FloatingShellViewModel(_store);
-}
-
-ViewModelFactory<FloatingShellViewModel> _factory(SettingsStore store) =>
-    ({
-      required builder,
-      child,
-      error,
-      init,
-      key,
-      loading,
-    }) => ViewModelBuilder<FloatingShellViewModel>(
-      key: key,
-      viewModelProvider: _ViewModels(store),
-      init: init,
-      loading: loading,
-      error: error,
-      builder: builder,
-      child: child,
-    );
-
 void main() {
   setUpIconRegistry();
+  setUpTestWorker();
   late RecordingShell shell;
   setUp(() => ZanshinShellPlatform.instance = shell = RecordingShell());
   tearDown(() => shell.close());
 
   late ActiveGraph activeGraph;
 
-  /// Pumps the home page over a fresh settings store and a project session on fake repositories in a 1440 × 900
-  /// window showing [appearance], wrapped by [wrap]; returns the session. The graph is published to [activeGraph].
+  /// Pumps the DI graph's home page over a fresh settings store and the graph's project session on fake repositories
+  /// ([repos], a fresh one when null) in a 1440 × 900 window showing [appearance], wrapped by [wrap]; returns the
+  /// session, which [before] sees first. The graph is published to [activeGraph], the graph's.
   Future<ProjectSession> pumpHome(
     WidgetTester tester, {
     ZsAppearance appearance = const ZsAppearance(),
@@ -109,26 +79,15 @@ void main() {
     Future<void> Function(ProjectSession session)? before,
   }) async {
     useShellWindow(tester);
-    final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('home_page_test')))!;
-    addTearDown(() => dir.deleteSync(recursive: true));
-    final SettingsStore store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
-    final session = ProjectSession(registry: ProjectRegistry(store), repos: repos ?? FakeProjectRepos());
+    final TestComponent component = await testComponent(tester, testModule: TestModule(repos: repos));
+    final ProjectSession session = component.session;
     addTearDown(session.dispose);
     if (before != null) {
       await tester.runAsync(() => before(session));
     }
-    activeGraph = ActiveGraph();
+    activeGraph = component.activeGraph;
     addTearDown(activeGraph.dispose);
-    final Widget home = shellHost(
-      HomePage(
-        viewModelFactory: _factory(store),
-        projects: session,
-        environment: FakeProjectsEnvironment(),
-        settings: store,
-        activeGraph: activeGraph,
-      ),
-      appearance: appearance,
-    );
+    final Widget home = shellHost(component.homePageFactory.create(), appearance: appearance);
     await tester.pumpWidget(wrap?.call(home) ?? home);
     return session;
   }

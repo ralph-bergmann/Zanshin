@@ -3,7 +3,8 @@
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/app/worker_lifecycle_module.dart';
+import 'package:zanshin/src/app/app_exit_handler.dart';
+import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
 /// A worker that only counts its closes; nothing else of it is reached.
@@ -45,18 +46,29 @@ void main() {
     expect(steps, <String>['guards', 'close']);
   });
 
-  testWidgets("⌘Q reaches the module's listener: the guards first, the worker only when they allow it", (
-    tester,
-  ) async {
-    var allow = false;
-    final worker = _Worker();
-    WorkerLifecycleModule(mayQuit: () async => allow).workerLifecycle().onProvision(worker);
+  testWidgets(
+    "⌘Q reaches the handler's one listener, started twice: the guards once, the worker only when they allow it",
+    (
+      tester,
+    ) async {
+      var allow = false;
+      var asked = 0;
+      final windows = AppWindows(exitProcess: () async {})
+        ..addCloseGuard(() async {
+          asked++;
+          return allow;
+        });
+      final worker = _Worker();
+      AppExitHandler(windows, worker)
+        ..start()
+        ..start();
 
-    expect(await tester.binding.handleRequestAppExit(), AppExitResponse.cancel);
-    expect(worker.closes, 0);
+      expect(await tester.binding.handleRequestAppExit(), AppExitResponse.cancel);
+      expect((asked, worker.closes), (1, 0), reason: 'refused: cancelled, the worker untouched');
 
-    allow = true;
-    expect(await tester.binding.handleRequestAppExit(), AppExitResponse.exit);
-    expect(worker.closes, 1);
-  });
+      allow = true;
+      expect(await tester.binding.handleRequestAppExit(), AppExitResponse.exit);
+      expect((asked, worker.closes), (2, 1), reason: 'allowed: the worker closes once, then the exit');
+    },
+  );
 }

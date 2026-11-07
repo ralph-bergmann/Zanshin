@@ -4,6 +4,8 @@
 // imports; see https://github.com/flutter/flutter/issues/30701.
 // ignore_for_file: invalid_use_of_internal_member
 
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/src/foundation/_features.dart';
 import 'package:flutter/src/widgets/_window.dart';
@@ -11,17 +13,22 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/app/boot/boot_window_host.dart';
 import 'package:zanshin/src/app/menu/app_menu.dart';
+import 'package:zanshin/src/features/graph/active_graph.dart';
+import 'package:zanshin/src/features/projects/project_registry.dart';
+import 'package:zanshin/src/features/projects/project_session.dart';
+import 'package:zanshin/src/features/projects/projects_search_focus.dart';
+import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
-import 'package:zanshin_ui/zanshin_ui.dart' show IconRegistry, IconRegistryScope;
+import 'package:zanshin_settings/zanshin_settings.dart';
 
+import '../../helpers/fake_projects.dart';
+import '../../helpers/fake_window_actions.dart';
 import '../../helpers/fake_windows.dart';
-import '../../helpers/icon_registry.dart';
 
 const _projectsContent = SizedBox(key: ValueKey<String>('projects content'));
 const _projectContent = SizedBox(key: ValueKey<String>('project content'));
 
 void main() {
-  setUpIconRegistry();
   late bool windowingWasEnabled;
 
   setUp(() {
@@ -43,22 +50,18 @@ void main() {
     // The exit is injected because `flutter_test`'s binding throws on a
     // required application exit rather than recording it.
     final windows = AppWindows(createController: factory.call, exitProcess: () async => exits.add('exit'));
-    final icons = ValueNotifier<IconRegistry?>(null);
-    addTearDown(icons.dispose);
     addTearDown(() {
       for (final key in <String>[mainWindowKey, projectsWindowKey]) {
         windows.controllerOf(key)?.destroy();
       }
     });
-    final menu = ValueNotifier<AppMenuModel?>(null);
-    addTearDown(menu.dispose);
     final menuCalls = <MethodCall>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.menu, (call) async {
       menuCalls.add(call);
       return null;
     });
     addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.menu, null));
-    final host = ZanshinWindowHost(windows: windows, icons: icons, menu: menu);
+    final host = ZanshinWindowHost(windows: windows);
 
     await host.openProjects(_projectsContent);
 
@@ -72,7 +75,6 @@ void main() {
     expect(find.byKey(_projectsContent.key!), findsOneWidget, reason: 'the first window is the one runWidget got');
     final WindowRegistry registry = WindowRegistry.of(tester.element(find.byKey(_projectsContent.key!)));
     expect(registry.windows.single.controller, same(windows.controllerOf(projectsWindowKey)));
-    expect(IconRegistryScope.maybeOf(tester.element(find.byKey(_projectsContent.key!))), isNull, reason: 'not loaded');
     expect(
       tester.widget<PlatformMenuBar>(find.byType(PlatformMenuBar)).menus.map((menu) => (menu as PlatformMenu).label),
       <String>['Zanshin', 'Window'],
@@ -93,14 +95,47 @@ void main() {
     );
     expect(find.byKey(_projectContent.key!), findsOneWidget);
     expect(find.byKey(_projectsContent.key!), findsOneWidget);
-
-    // The icons arrive through the listenable; every window sees them once they are there.
-    icons.value = testIconRegistry;
-    await tester.pump();
-    for (final content in <Finder>[find.byKey(_projectsContent.key!), find.byKey(_projectContent.key!)]) {
-      expect(IconRegistryScope.maybeOf(tester.element(content)), same(testIconRegistry));
-    }
     expect(exits, isEmpty);
     // The menu bar's system items exist on macOS only.
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets("showMenu hands the menu bar the app's menus in place of the boot's system items", (tester) async {
+    final windows = AppWindows(createController: FakeWindowFactory().call, exitProcess: () async {});
+    addTearDown(() => windows.controllerOf(projectsWindowKey)?.destroy());
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.menu, (_) async => null);
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.menu, null));
+    final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('boot_window_host_test')))!;
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final SettingsStore store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
+    final session = ProjectSession(registry: ProjectRegistry(store), repos: FakeProjectRepos());
+    addTearDown(session.dispose);
+    final tracker = ActiveWindowTracker();
+    addTearDown(tracker.dispose);
+    final graph = ActiveGraph();
+    addTearDown(graph.dispose);
+    final model = AppMenuModel(
+      tracker,
+      session,
+      store,
+      graph,
+      ProjectsSearchFocus(),
+      windows,
+      FakeWindowActions(),
+      (_) async {},
+    );
+    addTearDown(model.dispose);
+    final host = ZanshinWindowHost(windows: windows);
+    await host.openProjects(_projectsContent);
+    await tester.pump();
+    List<String> labels() => <String>[
+      for (final PlatformMenuItem menu in tester.widget<PlatformMenuBar>(find.byType(PlatformMenuBar)).menus)
+        menu.label,
+    ];
+    expect(labels(), <String>['Zanshin', 'Window'], reason: "the boot's system items");
+
+    host.showMenu(model);
+    await tester.pump();
+
+    expect(labels(), <String>['Zanshin', 'File', 'Edit', 'View', 'Change', 'Go', 'Window', 'Help']);
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 }

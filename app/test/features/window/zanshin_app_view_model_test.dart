@@ -32,10 +32,15 @@ void main() {
     await dir.delete(recursive: true);
   });
 
+  late SettingsStore store;
+
   Future<ZanshinAppViewModel> viewModelWith(ThemeMode persisted) async {
     await file.writeAsString('{"appearance": {"themeMode": "${persisted.name}"}}');
-    return ZanshinAppViewModel(await SettingsStore.load(file));
+    store = await SettingsStore.load(file);
+    return ZanshinAppViewModel(store);
   }
+
+  Future<void> setThemeMode(ThemeMode mode) => store.update((s) => s.copyWith.appearance(themeMode: mode));
 
   test('selectedMode reflects the persisted choice', () async {
     final ZanshinAppViewModel vm = await viewModelWith(ThemeMode.dark);
@@ -45,13 +50,13 @@ void main() {
     vm.dispose();
   });
 
-  test('init mirrors the persisted choice onto the window and applies the shell theme', () async {
+  test('init applies the shell theme and leaves the window chrome to the appearance sync', () async {
     final ZanshinAppViewModel vm = await viewModelWith(ThemeMode.dark);
     var notifications = 0;
     vm
       ..addListener(() => notifications++)
       ..init();
-    expect(shell.calls, ['getTheme', 'setWindowAppearance:dark']);
+    expect(shell.calls, ['getTheme']);
 
     shell.theme.complete(_darkShell);
     await pumpEventQueue();
@@ -65,20 +70,6 @@ void main() {
     vm.dispose();
   });
 
-  test('setThemeMode persists, mirrors onto the window and notifies', () async {
-    final ZanshinAppViewModel vm = await viewModelWith(ThemeMode.dark);
-    var notifications = 0;
-    vm.addListener(() => notifications++);
-
-    await vm.setThemeMode(ThemeMode.light);
-
-    expect(vm.selectedMode, ThemeMode.light);
-    expect(notifications, 1);
-    expect(shell.calls, ['setWindowAppearance:light']);
-    expect(file.readAsStringSync(), contains('"light"'));
-    vm.dispose();
-  });
-
   test('effectiveMode resolves system through the shell theme', () async {
     final ZanshinAppViewModel vm = await viewModelWith(ThemeMode.system);
     expect(vm.effectiveMode, ThemeMode.system);
@@ -88,7 +79,7 @@ void main() {
     await pumpEventQueue();
     expect(vm.effectiveMode, ThemeMode.dark);
 
-    await vm.setThemeMode(ThemeMode.light);
+    await setThemeMode(ThemeMode.light);
     expect(vm.effectiveMode, ThemeMode.light);
     vm.dispose();
   });
@@ -152,7 +143,7 @@ void main() {
       ),
     );
 
-    await vm.setThemeMode(ThemeMode.dark);
+    await setThemeMode(ThemeMode.dark);
     expect(vm.appearance.theme, ZsTheme.night);
     vm.dispose();
   });

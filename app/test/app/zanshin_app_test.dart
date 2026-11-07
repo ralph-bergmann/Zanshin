@@ -1,112 +1,25 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inject_annotation/inject_annotation.dart' show Provider;
-import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:zanshin/main.dart' show MainComponent, appWindowCoordinator;
-import 'package:zanshin/src/app/app_window_coordinator.dart';
-import 'package:zanshin/src/app/boot/icon_module.dart';
-import 'package:zanshin/src/app/worker_lifecycle_module.dart';
-import 'package:zanshin/src/app/zanshin_app.dart';
-import 'package:zanshin/src/features/graph/active_graph.dart';
 import 'package:zanshin/src/features/graph/revset_configs/revset_configs_window.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
-import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
-import 'package:zanshin/src/features/projects/projects_module.dart';
 import 'package:zanshin/src/features/projects/projects_window.dart';
 import 'package:zanshin/src/features/settings/settings_window.dart';
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
-import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
-import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
-import 'package:zanshin/src/features/window/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/window/zanshin_window_root.dart';
-import 'package:zanshin_core/zanshin_core.dart' show ZanshinWorker;
-import 'package:zanshin_settings/zanshin_settings.dart';
+import 'package:zanshin/src/links.dart';
 import 'package:zanshin_shell/zanshin_shell.dart' show WindowDragArea;
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../helpers/fake_projects.dart';
-import '../helpers/fake_projects_environment.dart';
+import '../helpers/icon_registry.dart';
 import '../helpers/recording_shell.dart';
-
-/// The home page the DI graph would build, over [_store].
-class _HomePageFactory implements HomePageFactory {
-  _HomePageFactory(this._store);
-
-  final SettingsStore _store;
-
-  /// The app's one session, as the DI graph's singleton.
-  late final _projects = ProjectSession(registry: ProjectRegistry(_store), repos: FakeProjectRepos());
-
-  /// The project window's graph, as the DI graph's singleton.
-  final _activeGraph = ActiveGraph();
-
-  @override
-  HomePage create({Key? key}) => HomePage(
-    key: key,
-    viewModelFactory: _viewModels(() => FloatingShellViewModel(_store)),
-    projects: _projects,
-    environment: FakeProjectsEnvironment(),
-    settings: _store,
-    activeGraph: _activeGraph,
-  );
-}
-
-/// The window roots the DI graph would build, over [_store] and [_tracker].
-class _RootFactory implements ZanshinWindowRootFactory {
-  _RootFactory(this._store, this._tracker);
-
-  final SettingsStore _store;
-  final ActiveWindowTracker _tracker;
-
-  @override
-  ZanshinWindowRoot create({required String windowKey, required Widget child, bool? sizeToContent, Key? key}) =>
-      ZanshinWindowRoot(
-        key: key,
-        viewModelFactory: _viewModels(() => ZanshinAppViewModel(_store)),
-        tracker: _tracker,
-        windowKey: windowKey,
-        sizeToContent: sizeToContent,
-        child: child,
-      );
-}
-
-class _Provider<T> implements Provider<T> {
-  _Provider(this._create);
-
-  final T Function() _create;
-
-  @override
-  T get() => _create();
-}
-
-/// The view-model factory the DI graph would hand over, creating each view model with [create].
-ViewModelFactory<T> _viewModels<T extends ChangeNotifier>(T Function() create) =>
-    ({
-      required builder,
-      child,
-      error,
-      init,
-      key,
-      loading,
-    }) => ViewModelBuilder<T>(
-      key: key,
-      viewModelProvider: _Provider<T>(create),
-      init: init,
-      loading: loading,
-      error: error,
-      builder: builder,
-      child: child,
-    );
+import '../helpers/test_component.dart';
 
 /// A dark shell; by default macOS on Multicolor with Zanshin's app accent (`--accent-native`) as the reported colour.
 ShellTheme _shell({bool reduceMotion = false, int? appleAccentColor, Color accentColor = const Color(0xFF4757A1)}) =>
@@ -118,23 +31,15 @@ ShellTheme _shell({bool reduceMotion = false, int? appleAccentColor, Color accen
     );
 
 void main() {
-  late Directory dir;
-  late File file;
+  setUpIconRegistry();
+  setUpTestWorker();
   late RecordingShell shell;
-
-  setUp(() async {
-    dir = await Directory.systemTemp.createTemp('zanshin_app_test');
-    file = File('${dir.path}/settings.json');
-  });
-
-  tearDown(() async {
-    await dir.delete(recursive: true);
-  });
 
   /// Pumps the app over persisted [settingsJson] in a 1440 × 900 window, answers the shell with [theme] (or leaves it
   /// pending when null) and the window's chrome watch with [chrome], and returns a context below the app root (the
-  /// home page's floating shell). File IO runs outside the fake-async zone; the shell is made inside it, so its
-  /// answers arrive on the fake clock's microtasks.
+  /// home page's floating shell). The project window's content is the DI graph's ([TestComponent.appFactory]). File IO
+  /// runs outside the fake-async zone; the shell is made inside it, so its answers arrive on the fake clock's
+  /// microtasks.
   Future<BuildContext> pumpApp(
     WidgetTester tester,
     String settingsJson,
@@ -148,15 +53,9 @@ void main() {
     shell = RecordingShell()..chrome = chrome;
     ZanshinShellPlatform.instance = shell;
     addTearDown(shell.close);
-    final SettingsStore? store = await tester.runAsync(() async {
-      await file.writeAsString(settingsJson);
-      return SettingsStore.load(file);
-    });
-    final tracker = ActiveWindowTracker();
-    addTearDown(tracker.dispose);
-    await tester.pumpWidget(
-      ZanshinApp(homePageFactory: _HomePageFactory(store!), rootFactory: _RootFactory(store, tracker)),
-    );
+    final TestComponent component = await testComponent(tester, settingsJson: settingsJson);
+    addTearDown(component.tracker.dispose);
+    await tester.pumpWidget(component.appFactory.create());
     if (theme == null) {
       // The shell has not answered yet: the first frame.
       await tester.pump();
@@ -167,21 +66,16 @@ void main() {
     return tester.element(find.byType(FloatingShell));
   }
 
-  /// main.dart's component over a fresh settings store, its worker never started.
-  Future<MainComponent> mainComponent(WidgetTester tester) async {
-    final (SettingsStore store, IconRegistry icons) = (await tester.runAsync(
-      () async => (await SettingsStore.load(file), await IconRegistry.load()),
-    ))!;
-    return MainComponent.create(
-      settingsModule: SettingsModule(store: store),
-      iconModule: IconModule(registry: icons),
-      // Never completed: the graph is built without starting a worker, and nothing here opens a project.
-      projectsModule: ProjectsModule(worker: Completer<ZanshinWorker>().future),
-      workerLifecycleModule: WorkerLifecycleModule(mayQuit: () async => true),
-    );
+  /// A test component whose tracker and menu are disposed after the test.
+  Future<TestComponent> component(WidgetTester tester, {AppWindows? windows}) async {
+    final TestComponent component = await testComponent(tester, windows: windows);
+    addTearDown(component.tracker.dispose);
+    addTearDown(component.application.menu.dispose);
+    return component;
   }
 
-  testWidgets("the DI graph hands HomePage the one session the boot reopens (main.dart's component)", (tester) async {
+  testWidgets("the graph builds the project window's content: HomePage under the window:main root, over the one "
+      'session, store and graph', (tester) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
       ..devicePixelRatio = 1;
@@ -189,19 +83,23 @@ void main() {
     shell = RecordingShell();
     ZanshinShellPlatform.instance = shell;
     addTearDown(shell.close);
-    final MainComponent component = await mainComponent(tester);
+    final TestComponent graph = await component(tester);
 
-    // The project window's content as main.dart's coordinator builds it.
-    await tester.pumpWidget(appWindowCoordinator(component, AppWindows(exitProcess: () async {})).buildProject());
+    await tester.pumpWidget(graph.coordinator.buildProject());
     shell.theme.complete(_shell());
     await tester.pumpAndSettle();
 
-    final ProjectSession session = component.projectSession;
+    final ProjectSession session = graph.session;
     final HomePage home = tester.widget<HomePage>(find.byType(HomePage));
     expect(home.projects, same(session));
-    expect(component.projectSession, same(session), reason: 'a singleton');
-    expect(home.settings, same(component.settings));
-    expect(home.activeGraph, same(component.appMenu.graph), reason: 'the menu bar reads the graph the page publishes');
+    expect(graph.session, same(session), reason: 'a singleton');
+    expect(home.settings, same(graph.settings));
+    expect(home.activeGraph, same(graph.activeGraph));
+    expect(
+      home.activeGraph,
+      same(graph.application.menu.graph),
+      reason: 'the menu bar reads the graph the page publishes',
+    );
     expect(find.byKey(const ValueKey<String>('window:main')), findsOneWidget, reason: "the project window's root key");
     expect(
       find.descendant(of: find.byKey(const ValueKey<String>('window:main')), matching: find.byType(HomePage)),
@@ -209,60 +107,112 @@ void main() {
     );
   });
 
-  testWidgets("main.dart's coordinator builds Projects under the window:projects root, onOpened handed through", (
-    tester,
-  ) async {
-    final MainComponent component = await mainComponent(tester);
+  testWidgets('the graph builds Projects under the window:projects root, onOpened handed through', (tester) async {
+    final TestComponent graph = await component(tester);
     void onOpened(ProjectOpened outcome) {}
-    final AppWindowCoordinator coordinator = appWindowCoordinator(component, AppWindows(exitProcess: () async {}));
 
-    final Widget root = coordinator.buildProjects(onOpened);
+    final Widget root = graph.coordinator.buildProjects(onOpened);
 
     expect(root, isA<ZanshinWindowRoot>().having((root) => root.windowKey, 'windowKey', projectsWindowKey));
     final Widget content = (root as ZanshinWindowRoot).child;
     expect(content, isA<ProjectsWindow>());
     expect((content as ProjectsWindow).onOpened, same(onOpened));
-    expect(content.session, same(component.projectSession));
-    final next = (coordinator.buildProjects(onOpened) as ZanshinWindowRoot).child as ProjectsWindow;
+    expect(content.session, same(graph.session));
+    expect(content.registry, same(graph.registry));
+    expect(content.environment, same(graph.environment));
+    final next = (graph.coordinator.buildProjects(onOpened) as ZanshinWindowRoot).child as ProjectsWindow;
     expect(next.searchFocus, same(content.searchFocus), reason: "one ProjectsSearchFocus: the menu bar's Find");
+    expect(content.searchFocus, same(graph.searchFocus));
   });
 
-  testWidgets("main.dart's coordinator builds jj log Configurations under its root over the settings and the graph", (
+  testWidgets('the graph builds jj log Configurations under its root over the settings, the graph and the opener', (
     tester,
   ) async {
-    final MainComponent component = await mainComponent(tester);
     final windows = AppWindows(exitProcess: () async {});
+    final TestComponent graph = await component(tester, windows: windows);
 
-    final Widget root = appWindowCoordinator(component, windows).buildRevsetConfigs();
+    final Widget root = graph.coordinator.buildRevsetConfigs();
 
     expect(root, isA<ZanshinWindowRoot>().having((root) => root.windowKey, 'windowKey', revsetConfigsWindowKey));
     final Widget content = (root as ZanshinWindowRoot).child;
     expect(content, isA<RevsetConfigsWindow>());
-    expect((content as RevsetConfigsWindow).settings, same(component.settings));
-    expect(content.graph, same(component.appMenu.graph));
+    expect((content as RevsetConfigsWindow).settings, same(graph.settings));
+    expect(content.graph, same(graph.activeGraph));
     expect(content.windows, same(windows));
+    expect(content.windowKey, revsetConfigsWindowKey);
+    expect(content.openUrl, same(openInBrowser), reason: 'the Revset reference opens in the browser');
   });
 
-  testWidgets("main.dart's coordinator builds Settings under its content-sized root over the session and the graph", (
-    tester,
-  ) async {
-    final MainComponent component = await mainComponent(tester);
+  testWidgets('the graph builds Settings under its content-sized root over the session and the graph', (tester) async {
     final windows = AppWindows(exitProcess: () async {});
+    final TestComponent graph = await component(tester, windows: windows);
     final state = SettingsWindowState();
     addTearDown(state.dispose);
 
-    final Widget root = appWindowCoordinator(component, windows).buildSettings(state);
+    final Widget root = graph.coordinator.buildSettings(state);
 
     expect(root, isA<ZanshinWindowRoot>().having((root) => root.windowKey, 'windowKey', settingsWindowKey));
     expect((root as ZanshinWindowRoot).sizeToContent, isTrue);
     final Widget content = root.child;
     expect(content, isA<SettingsWindow>());
     expect((content as SettingsWindow).state, same(state));
-    expect(content.store, same(component.settings));
-    expect(content.session, same(component.projectSession));
-    expect(content.environment, same(component.projectsEnvironment));
-    expect(content.graph, same(component.appMenu.graph));
+    expect(content.store, same(graph.settings));
+    expect(content.session, same(graph.session));
+    expect(content.environment, same(graph.environment));
+    expect(content.graph, same(graph.activeGraph));
     expect(content.windows, same(windows));
+    expect(content.windowKey, settingsWindowKey);
+    expect(content.readsOf, isNull, reason: "the open project's own reads");
+  });
+
+  testWidgets('the four window contents the coordinator builds share one session, one store and one graph', (
+    tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(1440, 900)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    shell = RecordingShell();
+    ZanshinShellPlatform.instance = shell;
+    addTearDown(shell.close);
+    final TestComponent graph = await component(tester);
+    final state = SettingsWindowState();
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(graph.coordinator.buildProject());
+    shell.theme.complete(_shell());
+    await tester.pumpAndSettle();
+    final HomePage home = tester.widget<HomePage>(find.byType(HomePage));
+    final projects = (graph.coordinator.buildProjects((_) {}) as ZanshinWindowRoot).child as ProjectsWindow;
+    final configurations = (graph.coordinator.buildRevsetConfigs() as ZanshinWindowRoot).child as RevsetConfigsWindow;
+    final settingsRoot = graph.coordinator.buildSettings(state) as ZanshinWindowRoot;
+    final settings = settingsRoot.child as SettingsWindow;
+
+    expect(<Object>{home.projects, projects.session, settings.session}, <Object>{graph.session});
+    expect(<Object>{home.settings, configurations.settings, settings.store}, <Object>{graph.settings});
+    expect(projects.registry, same(graph.session.registry), reason: "the Projects content's registry over that store");
+    expect(<Object>{home.activeGraph, configurations.graph, settings.graph}, <Object>{graph.activeGraph});
+    expect((settingsRoot.windowKey, settingsRoot.sizeToContent), (settingsWindowKey, true));
+  });
+
+  testWidgets("a switch away from the open project asks the windows' close guards: refused, the project stays", (
+    tester,
+  ) async {
+    final TestComponent graph = await component(tester);
+    final ProjectSession session = graph.session;
+    addTearDown(session.dispose);
+    var asked = 0;
+    graph.windows.addCloseGuard(() async {
+      asked++;
+      return false;
+    });
+
+    expect(await tester.runAsync(() => session.open('/r/zanshin')), isA<ProjectOpened>());
+    expect(asked, 0, reason: 'nothing to leave yet');
+
+    expect(await tester.runAsync(() => session.open('/r/other')), isA<ProjectSwitchCancelled>());
+    expect(asked, 1);
+    expect(session.current?.path, '/r/zanshin');
   });
 
   testWidgets('the home is HomePage over the floating shell, titled Zanshin; the Yaru test page is gone', (

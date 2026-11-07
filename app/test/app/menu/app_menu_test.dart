@@ -193,6 +193,9 @@ class _Rig {
   final closes = <String>[];
   final urls = <Uri>[];
   GraphViewModel? model;
+
+  /// The browser opener: records the URLs.
+  Future<void> openUrl(Uri url) async => urls.add(url);
   GraphPreferences? preferences;
   ScriptedGraphSource? source;
   _GraphActions? graphActions;
@@ -224,9 +227,7 @@ class _Rig {
     addTearDown(session.dispose);
     windows = AppWindows(createController: factory.call, exitProcess: () async {});
     tracker = ActiveWindowTracker();
-    menu = AppMenuModel(tracker, session, store, graph, projectsSearch)
-      ..attach(windows, actions)
-      ..openUrl = (url) async => urls.add(url);
+    menu = AppMenuModel(tracker, session, store, graph, projectsSearch, windows, actions, openUrl);
     addTearDown(() {
       menu.dispose();
       graph.dispose();
@@ -830,7 +831,16 @@ void main() {
     final rig = _Rig();
     await rig.setUp(tester);
     await rig.bindGraph(tester);
-    final menu = AppMenuModel(rig.tracker, rig.session, rig.store, rig.graph, rig.projectsSearch);
+    final menu = AppMenuModel(
+      rig.tracker,
+      rig.session,
+      rig.store,
+      rig.graph,
+      rig.projectsSearch,
+      rig.windows,
+      rig.actions,
+      rig.openUrl,
+    );
     addTearDown(menu.dispose);
     var notified = 0;
     menu.addListener(() => notified++);
@@ -846,7 +856,16 @@ void main() {
   testWidgets('the ActiveGraph outlives a disposed menu: dispose only stops listening', (tester) async {
     final rig = _Rig();
     await rig.setUp(tester);
-    AppMenuModel(rig.tracker, rig.session, rig.store, rig.graph, rig.projectsSearch).dispose();
+    AppMenuModel(
+      rig.tracker,
+      rig.session,
+      rig.store,
+      rig.graph,
+      rig.projectsSearch,
+      rig.windows,
+      rig.actions,
+      rig.openUrl,
+    ).dispose();
 
     await rig.bindGraph(tester);
     expect(rig.enabled('New Change'), isTrue, reason: "the graph still publishes to the rig's menu");

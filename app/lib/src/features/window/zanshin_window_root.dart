@@ -26,6 +26,9 @@ part 'zanshin_window_root.factory.dart';
 /// Every window gets its own view model from the factory, over the same settings store and shell reports, so a
 /// theme switch from any window restyles every window. [child] stays window-agnostic.
 ///
+/// The boot-loaded icons are provided above everything in the window ([IconRegistryScope]; decision 16.32), so every
+/// window shares the one registry.
+///
 /// A window sized to its content (Settings, Story 11.7) passes [sizeToContent]: a navigator's overlay takes the largest
 /// size its constraints allow, so the child then sits in an `Overlay.wrap(alwaysSizeToContent: true)` under the
 /// builder, with no `home` and no navigator, as the catalogue's `catalogueAppBuilder` does.
@@ -39,6 +42,7 @@ class ZanshinWindowRoot extends StatelessWidget {
   const ZanshinWindowRoot({
     required this._viewModelFactory,
     required this._tracker,
+    required this._icons,
     @assisted required this.windowKey,
     @assisted required this.child,
     @assisted this.sizeToContent,
@@ -47,6 +51,7 @@ class ZanshinWindowRoot extends StatelessWidget {
 
   final ViewModelFactory<ZanshinAppViewModel> _viewModelFactory;
   final ActiveWindowTracker _tracker;
+  final IconRegistry _icons;
 
   /// The window's key (`AppWindows`), which names the root's subtree key.
   final String windowKey;
@@ -58,45 +63,48 @@ class ZanshinWindowRoot extends StatelessWidget {
   final bool? sizeToContent;
 
   @override
-  Widget build(BuildContext context) => _viewModelFactory(
-    init: (vm) => vm.init(),
-    builder: (context, vm, _) {
-      // The token theme for both modes. The window root follows the theme the MaterialApp resolved, so the first
-      // frame before the shell answered follows the system's brightness too, and takes full screen and the
-      // traffic-light block from the window's chrome report and the key status from the tracker.
-      final ZsAppearance appearance = vm.appearance;
-      final bool contentSized = sizeToContent ?? false;
-      final double zoom = vm.zoomScale;
-      return _WindowMaterialApp(
-        themeMode: vm.effectiveMode,
-        lightTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.paper)),
-        darkTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.night)),
-        builder: (context, navigator) => WindowChromeBuilder(
-          builder: (context, chrome) => ListenableBuilder(
-            listenable: _tracker,
-            builder: (context, _) => MediaQuery(
-              data: zoomedMediaQuery(MediaQuery.of(context), zoom),
-              child: WindowZoomBox(
-                scale: zoom,
-                child: ZsRoot(
-                  appearance: appearance.copyWith(
-                    theme: ZsTheme.of(Theme.of(context).brightness),
-                    fullScreen: chrome?.fullScreen,
-                    // In zoomed units, so the bar keeps its rule (block end + 12) under zoom; the native buttons
-                    // themselves never scale.
-                    trafficLights: _zoomedRect(chrome?.trafficLights, zoom),
-                    inactive: !_tracker.isActive(View.of(context).viewId),
+  Widget build(BuildContext context) => IconRegistryScope(
+    registry: _icons,
+    child: _viewModelFactory(
+      init: (vm) => vm.init(),
+      builder: (context, vm, _) {
+        // The token theme for both modes. The window root follows the theme the MaterialApp resolved, so the first
+        // frame before the shell answered follows the system's brightness too, and takes full screen and the
+        // traffic-light block from the window's chrome report and the key status from the tracker.
+        final ZsAppearance appearance = vm.appearance;
+        final bool contentSized = sizeToContent ?? false;
+        final double zoom = vm.zoomScale;
+        return _WindowMaterialApp(
+          themeMode: vm.effectiveMode,
+          lightTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.paper)),
+          darkTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.night)),
+          builder: (context, navigator) => WindowChromeBuilder(
+            builder: (context, chrome) => ListenableBuilder(
+              listenable: _tracker,
+              builder: (context, _) => MediaQuery(
+                data: zoomedMediaQuery(MediaQuery.of(context), zoom),
+                child: WindowZoomBox(
+                  scale: zoom,
+                  child: ZsRoot(
+                    appearance: appearance.copyWith(
+                      theme: ZsTheme.of(Theme.of(context).brightness),
+                      fullScreen: chrome?.fullScreen,
+                      // In zoomed units, so the bar keeps its rule (block end + 12) under zoom; the native buttons
+                      // themselves never scale.
+                      trafficLights: _zoomedRect(chrome?.trafficLights, zoom),
+                      inactive: !_tracker.isActive(View.of(context).viewId),
+                    ),
+                    shellTheme: vm.shellTheme,
+                    child: _keyed(contentSized ? Overlay.wrap(alwaysSizeToContent: true, child: child) : navigator),
                   ),
-                  shellTheme: vm.shellTheme,
-                  child: _keyed(contentSized ? Overlay.wrap(alwaysSizeToContent: true, child: child) : navigator),
                 ),
               ),
             ),
           ),
-        ),
-        home: contentSized ? null : child,
-      );
-    },
+          home: contentSized ? null : child,
+        );
+      },
+    ),
   );
 
   static Rect? _zoomedRect(Rect? rect, double zoom) =>

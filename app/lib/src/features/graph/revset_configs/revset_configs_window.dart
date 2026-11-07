@@ -3,24 +3,26 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../../l10n/strings.dart';
-import '../../../links.dart' show jjDocumentationUrl;
+import '../../../links.dart' show OpenUrl, jjDocumentationUrl;
 import '../../window/app_windows.dart';
-import '../active_graph.dart' show GraphMenuBinding;
+import '../active_graph.dart' show ActiveGraph, GraphMenuBinding;
 import '../graph_ports.dart' show jjLogCommand;
 import '../graph_search_controller.dart';
 import '../graph_search_model.dart';
 import '../graph_view_model.dart';
 import 'revset_config_expression.dart';
 import 'revset_configs_draft.dart';
+
+part 'revset_configs_window.factory.dart';
 
 final _log = Logger('zanshin.graph.configurations');
 
@@ -51,21 +53,25 @@ final Uri revsetReferenceUrl = jjDocumentationUrl.resolve('revsets/'); // l10n-i
 ///   while the draft is dirty; while dirty the window also guards closing the project, switching it and quitting
 ///   ([AppWindows.addCloseGuard]). ↩ outside a text field = OK.
 class RevsetConfigsWindow extends StatefulWidget {
-  /// The window [windowKey] of [windows] over [settings] and the project window's [graph].
+  /// The window [windowKey] (default [revsetConfigsWindowKey]) of [windows] over [settings] and the project window's
+  /// [graph].
+  @assistedInject
   const RevsetConfigsWindow({
     required this.settings,
     required this.graph,
     required this.windows,
-    this.windowKey = revsetConfigsWindowKey,
-    this.openUrl,
-    super.key,
-  });
+    // WHY assisted: inject_generator 1.2.1 builds its own provider for a typedef'd function type that an assisted
+    // factory's class injects (the ViewModelFactory pattern), which clashes with the module's OpenUrl binding.
+    @assisted required this.openUrl,
+    @assisted String? windowKey,
+    @assisted super.key,
+  }) : windowKey = windowKey ?? revsetConfigsWindowKey;
 
   /// The settings the configurations live in.
   final SettingsStore settings;
 
-  /// The project window's graph, or null without an open project.
-  final ValueListenable<GraphMenuBinding?> graph;
+  /// The project window's graph, which holds no binding without an open project.
+  final ActiveGraph graph;
 
   /// The app's windows: the close handler, the close guard, closing and bringing this window forward.
   final AppWindows windows;
@@ -73,8 +79,8 @@ class RevsetConfigsWindow extends StatefulWidget {
   /// This window's key in [windows].
   final String windowKey;
 
-  /// Opens the revset reference in the browser; null disables the link.
-  final Future<void> Function(Uri url)? openUrl;
+  /// Opens the revset reference in the browser.
+  final OpenUrl openUrl;
 
   /// The list's width (DS search.css:120).
   static const double listWidth = 240;
@@ -1114,7 +1120,7 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
   // ── The footer ────────────────────────────────────────────────────────────
 
   Widget _footer(AppLocalizations s, ZsColors colors) {
-    final Future<void> Function(Uri url)? openUrl = widget.openUrl;
+    final OpenUrl openUrl = widget.openUrl;
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: colors.flBorder)),
@@ -1127,7 +1133,7 @@ class RevsetConfigsWindowState extends State<RevsetConfigsWindow> {
             ZsLink(
               label: s.revsetConfigsReference,
               quiet: true,
-              onPressed: openUrl == null ? null : () => unawaited(openUrl(revsetReferenceUrl)),
+              onPressed: () => unawaited(openUrl(revsetReferenceUrl)),
               identifier: 'revset-configs-reference',
             ),
             const Spacer(),

@@ -55,9 +55,18 @@ const _fullScreen = 'toggleFullScreen:'; // l10n-ignore: an AppKit selector
 @inject
 @singleton
 class AppMenuModel extends ChangeNotifier {
-  /// The model over [_tracker], [_session], [_settings], the project window's [graph] and [_projectsSearch]; [attach]
-  /// hands it the windows.
-  AppMenuModel(this._tracker, this._session, this._settings, this.graph, this._projectsSearch) {
+  /// The model over [_tracker], [_session], [_settings], the project window's [graph], [_projectsSearch], the app's
+  /// [_windows], the window [_actions] (the coordinator) and [_openUrl] (Help › jj Documentation).
+  AppMenuModel(
+    this._tracker,
+    this._session,
+    this._settings,
+    this.graph,
+    this._projectsSearch,
+    this._windows,
+    this._actions,
+    this._openUrl,
+  ) {
     _tracker.addListener(_changed);
     _session.addListener(_changed);
     _settings.addListener(_changed);
@@ -76,26 +85,18 @@ class AppMenuModel extends ChangeNotifier {
 
   /// The Projects content's search, for Edit › Find while Projects is key.
   final ProjectsSearchFocus _projectsSearch;
-  AppWindows? _windows;
-  AppWindowActions? _actions;
+  final AppWindows _windows;
+  final AppWindowActions _actions;
+
+  /// Opens a URL in the browser.
+  final OpenUrl _openUrl;
 
   /// The project window's graph, once it publishes one; the model reads it and never disposes it.
   final ActiveGraph graph;
   GraphMenuBinding? _bound;
 
-  /// Opens a URL in the browser (Help › jj Documentation, the Configurations window's Revset reference); a seam for
-  /// tests.
-  Future<void> Function(Uri url) openUrl = openInBrowser;
-
   var _scheduled = false;
   var _disposed = false;
-
-  /// Hands over the app's [windows] and the window [actions] (the coordinator).
-  void attach(AppWindows windows, AppWindowActions actions) {
-    _windows = windows;
-    _actions = actions;
-    _changed();
-  }
 
   /// Sets the zoom to [percent]; null (grey) when [percent] is the zoom already.
   VoidCallback? _zoomTo(int percent) {
@@ -131,12 +132,12 @@ class AppMenuModel extends ChangeNotifier {
 
   /// The key of the key window, or null.
   String? get _keyWindow => switch (_tracker.keyView) {
-    final int view => _windows?.keyOfView(view),
+    final int view => _windows.keyOfView(view),
     null => null,
   };
 
   bool _sheetIn(String? key) {
-    final int? view = key == null ? null : _windows?.viewIdOf(key);
+    final int? view = key == null ? null : _windows.viewIdOf(key);
     return view != null && ZsSheet.openViews.value.contains(view);
   }
 
@@ -210,7 +211,7 @@ class AppMenuModel extends ChangeNotifier {
     };
   }
 
-  /// The menus before the model is attached (the boot): the system's items only.
+  /// The menus before the model exists (the boot): the system's items only.
   static List<PlatformMenuItem> bootMenus(AppLocalizations s) => <PlatformMenuItem>[
     _appMenu(s, onSettings: null),
     PlatformMenu(
@@ -256,8 +257,6 @@ class AppMenuModel extends ChangeNotifier {
 
   /// The eight top menus in [s]'s strings.
   List<PlatformMenuItem> menus(AppLocalizations s) {
-    final AppWindows? windows = _windows;
-    final AppWindowActions? actions = _actions;
     final String? key = _keyWindow;
     final bool projectSheet = _projectSheet;
     final GraphMenuBinding? ready = _ready;
@@ -310,7 +309,7 @@ class AppMenuModel extends ChangeNotifier {
         : focusSearch == null
         ? null
         : () {
-            windows?.activate(mainWindowKey);
+            _windows.activate(mainWindowKey);
             focusSearch();
           };
 
@@ -319,7 +318,7 @@ class AppMenuModel extends ChangeNotifier {
     final int zoom = zoomStepOf(_settings.value.appearance.zoom);
 
     return <PlatformMenuItem>[
-      _appMenu(s, onSettings: actions == null ? null : _run(actions.openSettings)),
+      _appMenu(s, onSettings: _run(_actions.openSettings)),
       PlatformMenu(
         label: s.menuFile,
         menus: <PlatformMenuItem>[
@@ -328,14 +327,14 @@ class AppMenuModel extends ChangeNotifier {
               PlatformMenuItem(
                 label: s.capsuleAllProjects,
                 shortcut: const SingleActivator(LogicalKeyboardKey.keyO, meta: true, shift: true),
-                onSelected: actions == null ? null : _run(actions.openProjects),
+                onSelected: _run(_actions.openProjects),
               ),
-              _openRecent(s, actions == null || projectSheet ? null : actions),
+              _openRecent(s, projectSheet ? null : _actions),
               PlatformMenuItem(
                 label: s.capsuleProjectSettings,
-                onSelected: actions == null || _session.repo == null
+                onSelected: _session.repo == null
                     ? null
-                    : _run(() => actions.openSettings(target: SettingsTarget.project)),
+                    : _run(() => _actions.openSettings(target: SettingsTarget.project)),
               ),
             ],
           ),
@@ -344,7 +343,7 @@ class AppMenuModel extends ChangeNotifier {
               PlatformMenuItem(
                 label: s.menuCloseWindow,
                 shortcut: const SingleActivator(LogicalKeyboardKey.keyW, meta: true),
-                onSelected: windows == null || key == null || _sheetIn(key) ? null : () => windows.requestClose(key),
+                onSelected: key == null || _sheetIn(key) ? null : () => _windows.requestClose(key),
               ),
             ],
           ),
@@ -450,7 +449,7 @@ class AppMenuModel extends ChangeNotifier {
               PlatformMenuItem(
                 label: s.menuEditConfigurations,
                 shortcut: const SingleActivator(LogicalKeyboardKey.keyL, meta: true, alt: true),
-                onSelected: actions == null ? null : _run(actions.openRevsetConfigs),
+                onSelected: _run(_actions.openRevsetConfigs),
               ),
               PlatformMenuItem(
                 label: s.menuShowMinimap,
@@ -586,7 +585,7 @@ class AppMenuModel extends ChangeNotifier {
             members: <PlatformMenuItem>[
               PlatformMenuItem(
                 label: s.projectsTitle,
-                onSelected: actions == null ? null : _run(actions.openProjects),
+                onSelected: _run(_actions.openProjects),
               ),
             ],
           ),
@@ -603,7 +602,7 @@ class AppMenuModel extends ChangeNotifier {
           PlatformMenuItem(label: s.menuAppHelp(mainWindowTitle)),
           PlatformMenuItem(
             label: s.menuToolDocumentation('jj'), // l10n-ignore: jj's name
-            onSelected: _run(() => openUrl(jjDocumentationUrl)),
+            onSelected: _run(() => _openUrl(jjDocumentationUrl)),
           ),
         ],
       ),

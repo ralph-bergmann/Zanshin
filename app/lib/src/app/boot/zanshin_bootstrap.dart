@@ -6,10 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:zanshin_settings/zanshin_settings.dart';
-import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../../l10n/strings.dart';
 import 'boot_failure.dart';
 
 /// The app's version and build number, as the splash's footer shows them.
@@ -37,8 +34,8 @@ enum BootWindowKind {
   projects,
 }
 
-/// What `ZanshinBootSequence.startApp` hands the boot: the first window's [content] in a window of [kind], and
-/// [onShown], which the sequence runs once that window is up and a splash, if there was one, is gone.
+/// What the boot function given to [ZanshinBootSequence.run] answers: the first window's [content] in a window of
+/// [kind], and [onShown], which the sequence runs once that window is up and a splash, if there was one, is gone.
 @immutable
 class BootFirstWindow {
   /// The first window showing [content].
@@ -79,10 +76,21 @@ abstract interface class BootWindowHost {
   Future<void> dismissSplash(Duration fade);
 }
 
+/// What the boot function reports while it runs: its steps, for the log and the
+/// splash's status line, and the persisted theme, which the failure page shows.
+abstract interface class BootProgress {
+  /// Records a boot step: to the log, and to the splash's status line.
+  void log(String message);
+
+  /// The persisted theme choice; `system` until the boot has read the settings,
+  /// which follows the platform brightness either way.
+  abstract ThemeMode persistedTheme;
+}
+
 /// Runs the asynchronous boot and opens the app's windows around it.
 ///
-/// The boot (`openSettings` alongside `adoptShellEnvironment` and `loadIcons` → `startApp`)
-/// starts before any window exists and races [splashIndicatorDelay]:
+/// The boot function given to [run] starts before any window exists and races
+/// [splashIndicatorDelay]:
 ///
 /// * the boot wins — the first app window is the first and only window, no
 ///   splash object is ever created;
@@ -90,10 +98,11 @@ abstract interface class BootWindowHost {
 ///   follows at `max(boot end, delay + `[splashIndicatorMinShow]`)`, after which
 ///   the splash fades out.
 ///
-/// The first app window is what `startApp` decided ([BootFirstWindow]): the
+/// The first app window is what the boot decided ([BootFirstWindow]): the
 /// project window, or the Projects window when nothing can reopen; a failed
-/// boot shows the failure page in the project window. Once it is up (and the
-/// splash gone) its `onShown` runs.
+/// boot shows the failure page in the project window, in the theme the boot
+/// reported ([persistedTheme]). Once it is up (and the splash gone) its
+/// `onShown` runs.
 ///
 /// Waiting out the minimum with the *window* is what the single-window splash
 /// used to do with opacity: back then the finished app was already mounted
@@ -101,35 +110,12 @@ abstract interface class BootWindowHost {
 ///
 /// Timing is driven by [Timer]s alone, never by reading a clock, so the fake
 /// time of a widget test controls it fully.
-class ZanshinBootSequence {
-  ZanshinBootSequence({
-    required this.host,
-    required this.openSettings,
-    required this.adoptShellEnvironment,
-    required this.loadIcons,
-    required this.startApp,
-  });
+class ZanshinBootSequence implements BootProgress {
+  /// The sequence over [host].
+  ZanshinBootSequence({required this.host});
 
   /// The window layer this sequence drives.
   final BootWindowHost host;
-
-  /// First boot step: the persisted settings, needed by the DI graph and by
-  /// the failure page's theme.
-  final Future<SettingsStore> Function() openSettings;
-
-  /// Runs alongside [openSettings]: adopts the login shell's environment, so
-  /// that no repo is ever opened without it (Story 9.36). [startApp] waits for
-  /// it; a throw fails the boot like a settings failure.
-  final Future<void> Function() adoptShellEnvironment;
-
-  /// Runs alongside [openSettings]: decodes every icon once (decision 16.32),
-  /// so no icon pops in a frame late. [startApp] waits for it; a throw fails
-  /// the boot like a settings failure.
-  final Future<IconRegistry> Function() loadIcons;
-
-  /// Second boot step: builds the DI graph over the loaded settings and icons,
-  /// starts the worker and returns the first window.
-  final Future<BootFirstWindow> Function(SettingsStore settings, IconRegistry icons) startApp;
 
   final _done = Completer<void>();
 
@@ -147,9 +133,8 @@ class ZanshinBootSequence {
   /// no splash.
   var _splashOpening = Future<void>.value();
 
-  /// Persisted theme choice; `system` until [openSettings] answered — which
-  /// follows the platform brightness either way.
-  ThemeMode _persistedMode = ThemeMode.system;
+  @override
+  ThemeMode persistedTheme = ThemeMode.system;
 
   /// The first window of the finished app, or the failure page. Set before
   /// [_bootFinished], which gates every read.
@@ -166,61 +151,35 @@ class ZanshinBootSequence {
   /// The app's version and build, or null while they are unknown.
   ValueListenable<SplashVersion?> get version => _version;
 
-  /// Records a boot step: to the log, and to the splash's status line.
+  @override
   void log(String message) {
     _log.info(message);
     _status.value = message;
   }
 
-  /// Starts the boot; completes once the first app window is up and a splash,
-  /// if there was one, is gone (the window's `onShown` may still run).
-  Future<void> run() {
+  /// Starts [boot], which reports through this sequence and answers the first window; completes once the first app
+  /// window is up and a splash, if there was one, is gone (the window's `onShown` may still run).
+  Future<void> run(Future<BootFirstWindow> Function(BootProgress progress) boot) {
     _delayTimer = Timer(splashIndicatorDelay, _showSplash);
-    unawaited(_boot());
+    unawaited(_boot(boot));
     return _done.future;
   }
 
-  Future<void> _boot() async {
+  Future<void> _boot(Future<BootFirstWindow> Function(BootProgress progress) boot) async {
     BootFirstWindow first;
     try {
-      first = await _load();
+      first = await boot(this);
     } catch (error, stackTrace) {
       // Process-level boundary: a failed boot may surface as an Error (FFI,
       // isolate spawn), so this deliberately catches everything.
       _log.severe('App boot failed', error, stackTrace);
       first = BootFirstWindow(
-        content: BootFailure(error: error, mode: _persistedMode),
+        content: BootFailure(error: error, mode: persistedTheme),
       );
     }
     _first = first;
     _bootFinished = true;
     _openMainWhenDue();
-  }
-
-  /// The boot steps; the persisted mode is known before the app starts, in
-  /// time for a failure in the last one. The login shell's environment is read
-  /// and the icons are decoded while the settings load, so their time is
-  /// hidden behind theirs.
-  ///
-  /// The status lines come from the platform-resolved strings (Story 11.16;
-  /// no window exists yet); the wording is Claude's proposal (Story 11.1).
-  Future<BootFirstWindow> _load() async {
-    final AppLocalizations strings = platformStrings();
-    log(strings.bootLoadingSettings);
-    var shellPending = true;
-    // `ignore` only keeps an early failure from counting as unhandled while
-    // the settings load: the awaits below still throw it.
-    final Future<void> shellEnvironment = adoptShellEnvironment().whenComplete(() => shellPending = false)..ignore();
-    final Future<IconRegistry> icons = loadIcons()..ignore();
-    final SettingsStore settings = await openSettings();
-    _persistedMode = settings.value.appearance.themeMode;
-    if (shellPending) {
-      log(strings.bootReadingShell);
-    }
-    await shellEnvironment;
-    final IconRegistry registry = await icons;
-    log(strings.bootStarting);
-    return startApp(settings, registry);
   }
 
   /// [splashIndicatorDelay] elapsed and the boot is still running.

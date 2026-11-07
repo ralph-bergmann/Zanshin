@@ -88,7 +88,7 @@ void main() {
 
   test('identity reads user.name and user.email for the workspace root; an empty value is not configured', () async {
     final worker = _ConfigWorker(<String, String>{'user.name': 'Ralph', 'user.email': ''});
-    final environment = DesktopProjectsEnvironment(Future<ZanshinWorker>.value(worker), diagnostics: _diagnostics);
+    final environment = DesktopProjectsEnvironment(worker, diagnostics: _diagnostics);
 
     final JjIdentity identity = await environment.identity(workspaceRoot: '/r/a');
 
@@ -104,7 +104,7 @@ void main() {
     'Story 11.7: config writes fire configWrites once on success, never on failure; list and path pass through',
     () async {
       final worker = _ConfigWorker(const <String, String>{});
-      final environment = DesktopProjectsEnvironment(Future<ZanshinWorker>.value(worker), diagnostics: _diagnostics);
+      final environment = DesktopProjectsEnvironment(worker, diagnostics: _diagnostics);
       var fired = 0;
       environment.configWrites.addListener(() => fired++);
 
@@ -126,7 +126,7 @@ void main() {
 
   test('Story 11.19: the config file reads and writes pass through; a landed write fires configWrites once', () async {
     final worker = _ConfigWorker(const <String, String>{});
-    final environment = DesktopProjectsEnvironment(Future<ZanshinWorker>.value(worker), diagnostics: _diagnostics);
+    final environment = DesktopProjectsEnvironment(worker, diagnostics: _diagnostics);
     var fired = 0;
     environment.configWrites.addListener(() => fired++);
 
@@ -147,7 +147,7 @@ void main() {
     final Directory dir = await Directory.systemTemp.createTemp('config_watch_test');
     addTearDown(() => dir.delete(recursive: true));
     final environment = DesktopProjectsEnvironment(
-      Future<ZanshinWorker>.value(_ConfigWorker(const <String, String>{})),
+      _ConfigWorker(const <String, String>{}),
       diagnostics: _diagnostics,
     );
     // The file does not exist before the watch, so no event about it predates the watch.
@@ -179,7 +179,7 @@ void main() {
       buildSignature: '',
     );
     final environment = DesktopProjectsEnvironment(
-      Future<ZanshinWorker>.value(_ConfigWorker(const <String, String>{})),
+      _ConfigWorker(const <String, String>{}),
       diagnostics: _diagnostics,
     );
 
@@ -188,7 +188,7 @@ void main() {
 
   test("jj-lib's version is the diagnostics' bare version", () async {
     final environment = DesktopProjectsEnvironment(
-      Future<ZanshinWorker>.value(_ConfigWorker(const <String, String>{})),
+      _ConfigWorker(const <String, String>{}),
       diagnostics: _diagnostics,
     );
 
@@ -200,7 +200,7 @@ void main() {
     final StreamSubscription<LogRecord> logs = Logger.root.onRecord.listen(records.add);
     addTearDown(logs.cancel);
     final environment = DesktopProjectsEnvironment(
-      Future<ZanshinWorker>.value(_ConfigWorker(const <String, String>{})),
+      _ConfigWorker(const <String, String>{}),
       diagnostics: () => throw const ZanshinFfiException('internal.panic', 'zanshin_diagnostics panicked'),
     );
 

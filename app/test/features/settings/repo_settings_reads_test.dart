@@ -17,7 +17,7 @@ void main() {
     final Directory dir = Directory.systemTemp.createTempSync('zanshin_settings_reads_');
     final String path = dir.resolveSymbolicLinksSync();
     await (await worker.initRepo(path, backend: 0)).close();
-    final ProjectRepo repo = await WorkerProjectRepos(Future<ZanshinWorker>.value(worker)).open(path);
+    final ProjectRepo repo = await WorkerProjectRepos(worker).open(path);
     try {
       final String at = (await repo.handle.status()).workingCopyChangeId!;
       await repo.handle.bookmarkCreate(<String>['feature'], revision: at);
@@ -46,7 +46,7 @@ void main() {
     final Directory dir = Directory.systemTemp.createTempSync('zanshin_settings_remotes_');
     final String path = dir.resolveSymbolicLinksSync();
     await (await worker.initRepo(path, backend: 1, noColocate: true)).close();
-    final ProjectRepo repo = await WorkerProjectRepos(Future<ZanshinWorker>.value(worker)).open(path);
+    final ProjectRepo repo = await WorkerProjectRepos(worker).open(path);
     try {
       final reads = RepoSettingsReads(repo);
       List<(String, String?, String?)> rows(List<Remote> remotes) => <(String, String?, String?)>[

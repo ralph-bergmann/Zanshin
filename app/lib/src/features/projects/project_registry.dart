@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:inject_annotation/inject_annotation.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 /// [path] as the project session registers it (Story 11.6, Claude's proposal): with its symlinks resolved and `.`,
@@ -40,6 +41,8 @@ String canonicalPath(String path) {
 /// nothing. A failed write is logged by the store and swallowed here: the registry keeps the new value for the session
 /// (as the shell's layout writes do, Story 11.3). Siblings — the groups and projects of one parent — share one order,
 /// renumbered 0..n whenever one joins or leaves them; on a tie groups come first.
+@inject
+@singleton
 class ProjectRegistry implements ValueListenable<ProjectsSettings> {
   /// The registry stored in [_store].
   ProjectRegistry(this._store);

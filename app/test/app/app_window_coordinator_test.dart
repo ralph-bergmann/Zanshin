@@ -68,7 +68,9 @@ class _Rig {
   var revsetConfigsContents = 0;
   var settingsContents = 0;
 
-  Future<void> setUp({String? openProject}) async {
+  /// The rig with the project [openProject] stored as open; with [mayLeave] a switch away from the open project asks
+  /// the windows' close guards, as the app's session does.
+  Future<void> setUp({String? openProject, bool mayLeave = false}) async {
     dir = await Directory.systemTemp.createTemp('app_window_coordinator_test');
     addTearDown(() => dir.delete(recursive: true));
     store = await SettingsStore.load(File('${dir.path}/settings.json'));
@@ -82,9 +84,13 @@ class _Rig {
         ),
       );
     }
-    session = ProjectSession(registry: ProjectRegistry(store), repos: repos);
-    addTearDown(session.dispose);
     windows = AppWindows(createController: factory.call, exitProcess: () async => exits.add('exit'))..attach(registry);
+    session = ProjectSession(
+      registry: ProjectRegistry(store),
+      repos: repos,
+      mayLeave: mayLeave ? windows.mayClose : null,
+    );
+    addTearDown(session.dispose);
     addTearDown(() {
       for (final WindowEntry entry in registry.windows) {
         entry.controller.destroy();
@@ -317,9 +323,9 @@ void main() {
   });
 
   group('the project window', () {
-    Future<_Rig> launched() async {
+    Future<_Rig> launched({bool mayLeave = false}) async {
       final rig = _Rig();
-      await rig.setUp(openProject: '/r/zanshin');
+      await rig.setUp(openProject: '/r/zanshin', mayLeave: mayLeave);
       rig.folders.add('/r/zanshin');
       await rig.launch();
       expect(rig.open, <String>[mainWindowKey]);
@@ -373,8 +379,7 @@ void main() {
     });
 
     test('Story 10.22: a guard that refuses keeps the project on a switch (ProjectSwitchCancelled)', () async {
-      final _Rig rig = await launched();
-      rig.session.mayLeave = rig.windows.mayClose;
+      final _Rig rig = await launched(mayLeave: true);
       var refuse = true;
       var asked = 0;
       rig.windows.addCloseGuard(() async {

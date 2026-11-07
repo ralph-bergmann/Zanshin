@@ -2,43 +2,34 @@
 
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart';
 
+import '../window/app_windows.dart';
 import 'project_registry.dart';
+import 'project_repos.dart';
 import 'project_session.dart';
 import 'projects_environment.dart';
 import 'worker_project_repos.dart';
 
-/// DI module providing the app's one [ProjectRegistry] and [ProjectSession] (Story 11.5) and the Projects window's
-/// [ProjectsEnvironment] (Story 11.6): the registry over the settings store, the repositories and the identity over
-/// the boot's worker, jj-lib's version over the diagnostics.
-///
-/// The worker arrives as a constructor argument, like `SettingsModule(store:)`: inject_generator binds an
-/// `@asynchronous` provider only as its resolved value, and a provider taking that value turns asynchronous itself —
-/// and with it every page that injects the session. The boot completes [worker] once the component's worker has
-/// started (`main.dart`), so the graph stays synchronous.
+/// DI module providing the app's repositories, its one [ProjectSession] (Story 11.5) and the Projects window's
+/// [ProjectsEnvironment] (Story 11.6): the repositories and the identity over the boot's worker, jj-lib's version over
+/// the diagnostics. The registry is an `@inject` singleton over the settings store.
 @module
 class ProjectsModule {
-  /// The module over the boot's [worker].
-  ProjectsModule({required this.worker});
-
-  /// The boot's worker, once it has started.
-  final Future<ZanshinWorker> worker;
-
-  /// Provides the app-wide [ProjectRegistry].
+  /// Provides the repositories over the boot's [worker]: one [WorkerProjectRepos] for the app.
   @provides
   @singleton
-  ProjectRegistry projectRegistry(SettingsStore settings) => ProjectRegistry(settings);
+  ProjectRepos projectRepos(ZanshinWorker worker) => WorkerProjectRepos(worker);
 
-  /// Provides the app-wide [ProjectSession] over the registry.
+  /// Provides the app-wide [ProjectSession] over [registry] and [repos]; a switch away from the open project asks
+  /// [windows]' close guards first, as closing and quitting do (Story 10.22).
   @provides
   @singleton
-  ProjectSession projectSession(ProjectRegistry registry) =>
-      ProjectSession(registry: registry, repos: WorkerProjectRepos(worker));
+  ProjectSession projectSession(ProjectRegistry registry, ProjectRepos repos, AppWindows windows) =>
+      ProjectSession(registry: registry, repos: repos, mayLeave: windows.mayClose);
 
-  /// Provides the Projects window's [ProjectsEnvironment] over [diagnostics].
+  /// Provides the Projects window's [ProjectsEnvironment] over the boot's [worker] and [diagnostics].
   @provides
   @singleton
-  ProjectsEnvironment projectsEnvironment(GetDiagnostics diagnostics) =>
+  ProjectsEnvironment projectsEnvironment(ZanshinWorker worker, GetDiagnostics diagnostics) =>
       DesktopProjectsEnvironment(worker, diagnostics: diagnostics);
 }

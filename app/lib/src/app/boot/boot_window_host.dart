@@ -11,7 +11,6 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
-import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../features/window/app_windows.dart';
 import '../../features/window/splash_window_controller.dart';
@@ -30,18 +29,15 @@ final _log = Logger('zanshin.bootstrap');
 /// lines and the CGWindowList probe. The sequencing the host serves is tested
 /// against a fake host.
 class ZanshinWindowHost implements BootWindowHost {
-  ZanshinWindowHost({required this.windows, required this.icons, required this.menu});
+  /// The host over the app's [windows].
+  ZanshinWindowHost({required this.windows});
 
   /// Keyed registry of the app's windows; also the exit rule.
   final AppWindows windows;
 
   /// The menu bar's model (Story 11.13), null until the DI graph exists: until then the menu bar shows the system's
   /// items only.
-  final ValueListenable<AppMenuModel?> menu;
-
-  /// The boot-loaded icons, provided above every window (Claude's proposal,
-  /// Story 11.1), so the dialog windows share them; null until loaded.
-  final ValueListenable<IconRegistry?> icons;
+  final _menu = ValueNotifier<AppMenuModel?>(null);
 
   SplashWindowController? _splash;
   WindowEntry? _splashEntry;
@@ -53,6 +49,11 @@ class ZanshinWindowHost implements BootWindowHost {
 
   /// Whether `runWidget` has already run — it may only run once.
   var _presented = false;
+
+  /// Shows [menu]'s menus in the menu bar above every window, in place of the boot's system items.
+  // WHY a method: the DI graph is wired by constructors alone, so nothing is handed over through a setter.
+  // ignore: use_setters_to_change_properties
+  void showMenu(AppMenuModel menu) => _menu.value = menu;
 
   @override
   Future<void> openSplash({
@@ -135,13 +136,9 @@ class ZanshinWindowHost implements BootWindowHost {
     // The menu bar sits above every window and keeps its shape from this first frame on.
     runWidget(
       ValueListenableBuilder<AppMenuModel?>(
-        valueListenable: menu,
+        valueListenable: _menu,
         builder: (context, model, child) => AppMenuBar(model: model, child: child!),
-        child: ValueListenableBuilder<IconRegistry?>(
-          valueListenable: icons,
-          builder: (context, registry, child) => IconRegistryScope(registry: registry, child: child!),
-          child: WindowManager(initialWindows: <WindowEntry>[entry]),
-        ),
+        child: WindowManager(initialWindows: <WindowEntry>[entry]),
       ),
     );
   }

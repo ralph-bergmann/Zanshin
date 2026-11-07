@@ -65,7 +65,7 @@ void main() {
 
   setUpAll(() async {
     worker = await ZanshinWorker.start();
-    repos = WorkerProjectRepos(Future<ZanshinWorker>.value(worker));
+    repos = WorkerProjectRepos(worker);
   });
 
   tearDownAll(() => worker.close());

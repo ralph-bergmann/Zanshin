@@ -116,7 +116,7 @@ class DesktopProjectsEnvironment implements ProjectsEnvironment {
   /// The environment over [_worker], the boot's worker, and [_diagnostics], the DI-provided diagnostics read.
   DesktopProjectsEnvironment(this._worker, {required this._diagnostics});
 
-  final Future<ZanshinWorker> _worker;
+  final ZanshinWorker _worker;
   final GetDiagnostics _diagnostics;
 
   @override
@@ -144,9 +144,8 @@ class DesktopProjectsEnvironment implements ProjectsEnvironment {
 
   @override
   Future<JjIdentity> identity({String? workspaceRoot}) async {
-    final ZanshinWorker worker = await _worker;
-    final ConfigGetResult name = await worker.configGet('user.name', workspaceRoot: workspaceRoot);
-    final ConfigGetResult email = await worker.configGet('user.email', workspaceRoot: workspaceRoot);
+    final ConfigGetResult name = await _worker.configGet('user.name', workspaceRoot: workspaceRoot);
+    final ConfigGetResult email = await _worker.configGet('user.email', workspaceRoot: workspaceRoot);
     return JjIdentity(name: name.value, email: email.value);
   }
 
@@ -157,11 +156,11 @@ class DesktopProjectsEnvironment implements ProjectsEnvironment {
 
   @override
   Future<List<ConfigEntry>> configList({required String name, String? workspaceRoot}) async =>
-      (await _worker).configList(name: name, workspaceRoot: workspaceRoot, includeOverridden: true);
+      _worker.configList(name: name, workspaceRoot: workspaceRoot, includeOverridden: true);
 
   @override
   Future<ConfigSetResult> configSet(ConfigScope scope, String name, String value, {String? workspaceRoot}) async {
-    final ConfigSetResult result = await (await _worker).configSet(
+    final ConfigSetResult result = await _worker.configSet(
       ConfigScopeTarget(scope),
       name,
       value,
@@ -173,21 +172,21 @@ class DesktopProjectsEnvironment implements ProjectsEnvironment {
 
   @override
   Future<void> configUnset(ConfigScope scope, String name, {String? workspaceRoot}) async {
-    await (await _worker).configUnset(ConfigScopeTarget(scope), name, workspaceRoot: workspaceRoot);
+    await _worker.configUnset(ConfigScopeTarget(scope), name, workspaceRoot: workspaceRoot);
     _configWrites.fire();
   }
 
   @override
   Future<String> configPath(ConfigScope scope, {String? workspaceRoot}) async =>
-      (await (await _worker).configPath(scope, workspaceRoot: workspaceRoot)).first;
+      (await _worker.configPath(scope, workspaceRoot: workspaceRoot)).first;
 
   @override
   Future<ConfigFileText> configFileRead(ConfigScope scope, {String? workspaceRoot}) async =>
-      (await _worker).configFileRead(ConfigScopeTarget(scope), workspaceRoot: workspaceRoot);
+      _worker.configFileRead(ConfigScopeTarget(scope), workspaceRoot: workspaceRoot);
 
   @override
   Future<void> configFileWrite(String path, String text, {String? workspaceRoot}) async {
-    await (await _worker).configFileWrite(path, text, workspaceRoot: workspaceRoot);
+    await _worker.configFileWrite(path, text, workspaceRoot: workspaceRoot);
     _configWrites.fire();
   }
 

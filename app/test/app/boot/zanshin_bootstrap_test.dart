@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:zanshin/src/app/boot/boot_failure.dart';
+import 'package:zanshin/src/app/boot/boot_module.dart';
 import 'package:zanshin/src/app/boot/splash_card.dart';
 import 'package:zanshin/src/app/boot/splash_card_render.dart';
 import 'package:zanshin/src/app/boot/zanshin_bootstrap.dart';
@@ -16,9 +17,7 @@ import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../../helpers/icon_registry.dart';
-
-/// Stands in for the app widget `startApp` returns.
+/// Stands in for the app widget the boot function answers.
 class AppMarker extends StatelessWidget {
   const AppMarker({super.key});
 
@@ -148,48 +147,11 @@ Future<void> _pumpCardWith(
 }
 
 void main() {
-  late Directory dir;
-  late File file;
-
-  setUpIconRegistry();
-
-  setUp(() async {
-    dir = await Directory.systemTemp.createTemp('zanshin_bootstrap_test');
-    file = File('${dir.path}/settings.json');
-  });
-
-  tearDown(() async {
-    await dir.delete(recursive: true);
-  });
-
-  /// A store persisted with [mode]. Real file IO must run outside the widget
-  /// test's fake-async zone, hence `runAsync`.
-  Future<SettingsStore> storeWith(WidgetTester tester, ThemeMode mode) async {
-    final SettingsStore? store = await tester.runAsync(() async {
-      await file.writeAsString('{"appearance": {"themeMode": "${mode.name}"}}');
-      return SettingsStore.load(file);
-    });
-    return store!;
-  }
-
-  /// Starts a sequence whose two boot steps complete through [settings] and
-  /// [app], on an otherwise empty tree.
-  Future<FakeBootWindowHost> startSequence(
-    WidgetTester tester, {
-    required Completer<SettingsStore> settings,
-    required Completer<Widget> app,
-  }) async {
+  /// Starts a sequence whose boot function answers the first window once [app] completes, on an otherwise empty tree.
+  Future<FakeBootWindowHost> startSequence(WidgetTester tester, {required Completer<Widget> app}) async {
     await tester.pumpWidget(const SizedBox.shrink());
     final host = FakeBootWindowHost();
-    unawaited(
-      ZanshinBootSequence(
-        host: host,
-        openSettings: () => settings.future,
-        adoptShellEnvironment: () async {},
-        loadIcons: () async => testIconRegistry,
-        startApp: (_, _) async => BootFirstWindow(content: await app.future),
-      ).run(),
-    );
+    unawaited(ZanshinBootSequence(host: host).run((_) async => BootFirstWindow(content: await app.future)));
     return host;
   }
 
@@ -201,15 +163,11 @@ void main() {
   }
 
   testWidgets('a fast boot opens the main window as the only window', (tester) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>();
     final app = Completer<Widget>();
-    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, app: app);
 
     expect(host.calls, isEmpty);
 
-    settings.complete(store);
-    await flush(tester);
     app.complete(const AppMarker());
     await flush(tester);
 
@@ -217,20 +175,11 @@ void main() {
     expect(host.content, isA<AppMarker>());
   });
 
-  /// Starts a sequence whose app step answers [first] at once, on an otherwise empty tree.
+  /// Starts a sequence whose boot function answers [first] at once, on an otherwise empty tree.
   Future<FakeBootWindowHost> startWith(WidgetTester tester, BootFirstWindow first) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
     await tester.pumpWidget(const SizedBox.shrink());
     final host = FakeBootWindowHost();
-    unawaited(
-      ZanshinBootSequence(
-        host: host,
-        openSettings: () async => store,
-        adoptShellEnvironment: () async {},
-        loadIcons: () async => testIconRegistry,
-        startApp: (_, _) async => first,
-      ).run(),
-    );
+    unawaited(ZanshinBootSequence(host: host).run((_) async => first));
     return host;
   }
 
@@ -251,20 +200,13 @@ void main() {
   });
 
   testWidgets("the project window's onShown runs after the splash is gone", (tester) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
     await tester.pumpWidget(const SizedBox.shrink());
     final host = FakeBootWindowHost();
     unawaited(
-      ZanshinBootSequence(
-        host: host,
-        openSettings: () => settings.future,
-        adoptShellEnvironment: () async {},
-        loadIcons: () async => testIconRegistry,
-        startApp: (_, _) async =>
-            BootFirstWindow(content: await app.future, onShown: () async => host.calls.add('shown')),
-      ).run(),
+      ZanshinBootSequence(host: host).run(
+        (_) async => BootFirstWindow(content: await app.future, onShown: () async => host.calls.add('shown')),
+      ),
     );
 
     await tester.pump(splashIndicatorDelay + splashIndicatorMinShow + _tick);
@@ -298,10 +240,8 @@ void main() {
   testWidgets('the splash appears after the indicator delay and the main window waits out its minimum show', (
     tester,
   ) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
-    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, app: app);
 
     await tester.pump(splashIndicatorDelay - _tick);
     expect(host.calls, isEmpty);
@@ -329,10 +269,8 @@ void main() {
   });
 
   testWidgets('a boot that outlasts the minimum show opens the main window right away', (tester) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
-    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, app: app);
 
     await tester.pump(splashIndicatorDelay + splashIndicatorMinShow + _tick);
     expect(host.calls, <String>['splash']);
@@ -347,10 +285,8 @@ void main() {
     final records = <LogRecord>[];
     final StreamSubscription<LogRecord> logs = Logger.root.onRecord.listen(records.add);
     addTearDown(logs.cancel);
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
-    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, app: app);
 
     // Let the boot reach the app step first: an error completed before
     // anything awaits it would count as unhandled.
@@ -372,10 +308,8 @@ void main() {
   });
 
   testWidgets('a boot that fails after the splash still honours the minimum show', (tester) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
-    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, app: app);
 
     await tester.pump(splashIndicatorDelay + const Duration(milliseconds: 100));
     expect(host.calls, <String>['splash']);
@@ -391,28 +325,66 @@ void main() {
     expect(host.content, isA<BootFailure>());
   });
 
-  testWidgets('the failure page follows the persisted theme mode', (tester) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.dark);
-    final settings = Completer<SettingsStore>()..complete(store);
-    final app = Completer<Widget>();
-    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+  /// Starts a sequence whose boot function runs [boot] until [failure] completes, then throws it, on an otherwise
+  /// empty tree; records the log.
+  Future<(FakeBootWindowHost, List<LogRecord>)> startFailing(
+    WidgetTester tester,
+    Completer<Object> failure, {
+    void Function(BootProgress progress)? boot,
+  }) async {
+    final records = <LogRecord>[];
+    final StreamSubscription<LogRecord> logs = Logger.root.onRecord.listen(records.add);
+    addTearDown(logs.cancel);
+    await tester.pumpWidget(const SizedBox.shrink());
+    final host = FakeBootWindowHost();
+    unawaited(
+      ZanshinBootSequence(host: host).run((progress) async {
+        boot?.call(progress);
+        throw await failure.future;
+      }),
+    );
+    return (host, records);
+  }
+
+  Matcher severeFailureOf<T>() => contains(
+    isA<LogRecord>()
+        .having((r) => r.level, 'level', Level.SEVERE)
+        .having((r) => r.loggerName, 'loggerName', 'zanshin.bootstrap')
+        .having((r) => r.error, 'error', isA<T>()),
+  );
+
+  testWidgets('a late failure shows the failure page in the theme the boot reported, and logs it at SEVERE', (
+    tester,
+  ) async {
+    final failure = Completer<Object>();
+    final (FakeBootWindowHost host, List<LogRecord> records) = await startFailing(
+      tester,
+      failure,
+      boot: (progress) => progress.persistedTheme = ThemeMode.dark,
+    );
 
     await flush(tester);
-    app.completeError(StateError('worker refused to start'));
+    failure.complete(StateError('worker refused to start'));
     await flush(tester);
 
+    expect(host.calls, <String>['main']);
     expect((host.content! as BootFailure).mode, ThemeMode.dark);
+    expect(records, severeFailureOf<StateError>());
   });
 
-  testWidgets('a failure before the settings were read falls back to the system theme', (tester) async {
-    final settings = Completer<SettingsStore>();
-    final app = Completer<Widget>();
-    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+  testWidgets('an early failure, before any theme was reported, shows the failure page following the system', (
+    tester,
+  ) async {
+    final failure = Completer<Object>();
+    final (FakeBootWindowHost host, List<LogRecord> records) = await startFailing(tester, failure);
 
-    settings.completeError(const FileSystemException('unreadable'));
+    await flush(tester);
+    failure.complete(const FileSystemException('unreadable'));
     await flush(tester);
 
+    expect(host.calls, <String>['main']);
     expect((host.content! as BootFailure).mode, ThemeMode.system);
+    expect(records, severeFailureOf<FileSystemException>());
   });
 
   testWidgets('with reduced motion the splash still fades out: the cross-fade is opacity', (tester) async {
@@ -420,10 +392,8 @@ void main() {
       disableAnimations: true,
     );
     addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
-    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, app: app);
 
     await tester.pump(splashIndicatorDelay + splashIndicatorMinShow + _tick);
     app.complete(const AppMarker());
@@ -437,7 +407,6 @@ void main() {
     final records = <LogRecord>[];
     final StreamSubscription<LogRecord> logs = Logger.root.onRecord.listen(records.add);
     addTearDown(logs.cancel);
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
     final app = Completer<Widget>();
     await tester.pumpWidget(const SizedBox.shrink());
     final host = FakeBootWindowHost(failOnOpenMain: true);
@@ -445,11 +414,7 @@ void main() {
     unawaited(
       ZanshinBootSequence(
         host: host,
-        openSettings: () async => store,
-        adoptShellEnvironment: () async {},
-        loadIcons: () async => testIconRegistry,
-        startApp: (_, _) async => BootFirstWindow(content: await app.future),
-      ).run().then((_) => finished = true),
+      ).run((_) async => BootFirstWindow(content: await app.future)).then((_) => finished = true),
     );
 
     app.complete(const AppMarker());
@@ -473,142 +438,72 @@ void main() {
   testWidgets('the boot steps show up in the splash status line, and a failure leaves the last one standing', (
     tester,
   ) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>();
-    final app = Completer<Widget>();
+    final step = Completer<void>();
+    final failure = Completer<Object>();
     await tester.pumpWidget(const SizedBox.shrink());
     final host = FakeBootWindowHost();
-    final sequence = ZanshinBootSequence(
-      host: host,
-      openSettings: () => settings.future,
-      adoptShellEnvironment: () async {},
-      loadIcons: () async => testIconRegistry,
-      startApp: (_, _) async => BootFirstWindow(content: await app.future),
-    );
+    final sequence = ZanshinBootSequence(host: host);
     final seen = <String>[];
     sequence.status.addListener(() => seen.add(sequence.status.value));
 
-    unawaited(sequence.run());
-    settings.complete(store);
+    unawaited(
+      sequence.run((progress) async {
+        progress.log('Loading settings…');
+        await step.future;
+        progress.log('Starting Zanshin…');
+        throw await failure.future;
+      }),
+    );
+    step.complete();
     await flush(tester);
-    app.completeError(StateError('worker refused to start'));
+    failure.complete(StateError('worker refused to start'));
     await flush(tester);
 
     expect(seen, <String>['Loading settings…', 'Starting Zanshin…']);
     expect(sequence.status.value, 'Starting Zanshin…');
+    expect(host.content, isA<BootFailure>());
   });
 
-  testWidgets('the shell environment and the icons load alongside the settings, and the app starts only after them', (
+  testWidgets("over loadBootValues the splash status shows the boot's lines and a failure page its persisted theme", (
     tester,
   ) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>();
+    final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('zanshin_bootstrap_test')))!;
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final SettingsStore store = (await tester.runAsync(() async {
+      final file = File('${dir.path}/settings.json');
+      await file.writeAsString('{"appearance": {"themeMode": "dark"}}');
+      return SettingsStore.load(file);
+    }))!;
     final shell = Completer<void>();
-    final icons = Completer<IconRegistry>();
-    final app = Completer<Widget>();
     await tester.pumpWidget(const SizedBox.shrink());
     final host = FakeBootWindowHost();
-    final steps = <String>[];
-    final sequence = ZanshinBootSequence(
-      host: host,
-      openSettings: () {
-        steps.add('settings');
-        return settings.future;
-      },
-      adoptShellEnvironment: () {
-        steps.add('shell');
-        return shell.future;
-      },
-      loadIcons: () {
-        steps.add('icons');
-        return icons.future;
-      },
-      startApp: (_, registry) async {
-        steps.add('app');
-        expect(registry, same(testIconRegistry));
-        return BootFirstWindow(content: await app.future);
-      },
-    );
+    final sequence = ZanshinBootSequence(host: host);
     final seen = <String>[];
     sequence.status.addListener(() => seen.add(sequence.status.value));
+    var workerStarted = false;
 
-    unawaited(sequence.run());
-    expect(steps, <String>['shell', 'icons', 'settings'], reason: 'all three start at once');
-
-    settings.complete(store);
-    await flush(tester);
-    expect(steps, <String>['shell', 'icons', 'settings'], reason: 'the app waits for the shell environment');
-    expect(sequence.status.value, 'Reading the shell environment…');
-
-    shell.complete();
-    await flush(tester);
-    expect(steps, <String>['shell', 'icons', 'settings'], reason: 'the app waits for the icons');
-
-    icons.complete(testIconRegistry);
-    await flush(tester);
-    expect(steps, <String>['shell', 'icons', 'settings', 'app']);
-
-    app.complete(const AppMarker());
-    await flush(tester);
-    expect(host.calls, <String>['main']);
-    expect(seen, <String>['Loading settings…', 'Reading the shell environment…', 'Starting Zanshin…']);
-  });
-
-  testWidgets('a failed shell environment adoption fails the boot like a settings failure', (tester) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.dark);
-    final settings = Completer<SettingsStore>();
-    await tester.pumpWidget(const SizedBox.shrink());
-    final host = FakeBootWindowHost();
-    var appStarted = false;
     unawaited(
-      ZanshinBootSequence(
-        host: host,
-        openSettings: () => settings.future,
-        adoptShellEnvironment: () async => throw StateError('the shell environment broke'),
-        loadIcons: () async => testIconRegistry,
-        startApp: (_, _) async {
-          appStarted = true;
-          return const BootFirstWindow(content: AppMarker());
-        },
-      ).run(),
+      sequence.run((progress) async {
+        await loadBootValues(
+          progress,
+          openSettings: () async => store,
+          adoptShellEnvironment: () => shell.future,
+          // Never needed: the shell fails first.
+          loadIcons: () => Completer<IconRegistry>().future,
+          startWorker: () async {
+            workerStarted = true;
+            throw StateError('no worker in this test');
+          },
+        );
+        return const BootFirstWindow(content: AppMarker());
+      }),
     );
-
-    // The failure lands while the settings still load: it must not count as
-    // unhandled (that would fail this test), only fail the boot once awaited.
     await flush(tester);
-    settings.complete(store);
+    shell.completeError(StateError('the shell environment broke'));
     await flush(tester);
 
-    expect(appStarted, isFalse);
-    expect(host.calls, <String>['main']);
-    expect((host.content! as BootFailure).mode, ThemeMode.dark);
-  });
-
-  testWidgets('icons that fail to load fail the boot like a settings failure', (tester) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.dark);
-    final settings = Completer<SettingsStore>();
-    await tester.pumpWidget(const SizedBox.shrink());
-    final host = FakeBootWindowHost();
-    var appStarted = false;
-    unawaited(
-      ZanshinBootSequence(
-        host: host,
-        openSettings: () => settings.future,
-        adoptShellEnvironment: () async {},
-        loadIcons: () async => throw StateError('an icon would not decode'),
-        startApp: (_, _) async {
-          appStarted = true;
-          return const BootFirstWindow(content: AppMarker());
-        },
-      ).run(),
-    );
-
-    // The failure lands while the settings still load; it fails the boot only once awaited.
-    await flush(tester);
-    settings.complete(store);
-    await flush(tester);
-
-    expect(appStarted, isFalse);
+    expect(seen, <String>['Loading settings…', 'Reading the shell environment…']);
+    expect(workerStarted, isFalse);
     expect(host.calls, <String>['main']);
     expect((host.content! as BootFailure).mode, ThemeMode.dark);
   });

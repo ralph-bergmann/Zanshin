@@ -7,20 +7,18 @@
 import 'dart:async';
 import 'dart:ui' show ViewFocusEvent, ViewFocusState;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/src/widgets/_window.dart' show DialogWindowController;
 import 'package:flutter/src/widgets/_window_macos.dart' show BaseWindowControllerMacOS;
 import 'package:flutter/widgets.dart';
-import 'package:material_ui/material_ui.dart' show ThemeMode;
+import 'package:inject_annotation/inject_annotation.dart';
 import 'package:zanshin_core/zanshin_core.dart' show ConfigScope;
 import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
-import '../graph/active_graph.dart' show GraphMenuBinding;
+import '../graph/active_graph.dart' show ActiveGraph;
 import '../graph/graph_layout.dart' show jjRefSymbol;
-import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/project_window_title.dart';
 import '../projects/projects_environment.dart';
@@ -34,6 +32,8 @@ import 'project_tab.dart';
 import 'settings_view_model.dart';
 import 'settings_window_sizer.dart';
 import 'settings_window_state.dart';
+
+part 'settings_window.factory.dart';
 
 /// The Settings window's content (Story 11.7; DS ui_kits/desktop/dialogs.jsx:206-261, components/window): window-agnostic,
 /// hosted by the coordinator in the parentless, content-sized `settings` dialog window.
@@ -52,19 +52,19 @@ import 'settings_window_state.dart';
 ///
 /// Identifiers: `settings-window` (also the content's key), `settings-tabs`, and the rows' `settings-*`.
 class SettingsWindow extends StatefulWidget {
-  /// The content showing [state] over its ports.
+  /// The content showing [state] over its ports; [windowKey] defaults to [settingsWindowKey].
+  @assistedInject
   const SettingsWindow({
-    required this.state,
     required this.windows,
     required this.store,
     required this.environment,
     required this.session,
     required this.graph,
-    required this.setThemeMode,
-    this.windowKey = settingsWindowKey,
-    this.readsOf,
-    super.key,
-  });
+    @assisted required this.state,
+    @assisted String? windowKey,
+    @assisted this.readsOf,
+    @assisted super.key,
+  }) : windowKey = windowKey ?? settingsWindowKey;
 
   /// The tab and page shown.
   final SettingsWindowState state;
@@ -85,13 +85,10 @@ class SettingsWindow extends StatefulWidget {
   final ProjectSession session;
 
   /// The project window's graph.
-  final ValueListenable<GraphMenuBinding?> graph;
-
-  /// Sets the theme.
-  final Future<void> Function(ThemeMode mode) setThemeMode;
+  final ActiveGraph graph;
 
   /// The repository reads; [RepoSettingsReads] when null.
-  final SettingsRepoReads Function(ProjectRepo repo)? readsOf;
+  final SettingsReadsOf? readsOf;
 
   @override
   State<SettingsWindow> createState() => SettingsWindowContentState();
@@ -104,7 +101,6 @@ class SettingsWindowContentState extends State<SettingsWindow> with WidgetsBindi
     environment: widget.environment,
     session: widget.session,
     graph: widget.graph,
-    setThemeMode: widget.setThemeMode,
     readsOf: widget.readsOf,
   );
   final _scroll = ScrollController();

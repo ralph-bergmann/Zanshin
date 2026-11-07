@@ -5,8 +5,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_ui/material_ui.dart' show ThemeMode;
-import 'package:zanshin/src/features/graph/active_graph.dart' show GraphMenuBinding;
+import 'package:zanshin/src/features/graph/active_graph.dart' show ActiveGraph, GraphMenuBinding;
 import 'package:zanshin/src/features/graph/graph_preferences.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
@@ -46,8 +45,7 @@ class SettingsRig {
   final env = FakeProjectsEnvironment();
   final reads = FakeSettingsReads();
   final state = SettingsWindowState();
-  final graph = ValueNotifier<GraphMenuBinding?>(null);
-  final themes = <ThemeMode>[];
+  final graph = ActiveGraph();
   final model = SettingsRigGraph();
 
   /// The app's windows the content registers its close handler and close guard with.
@@ -92,7 +90,6 @@ class SettingsRig {
           environment: env,
           session: session,
           graph: graph,
-          setThemeMode: (mode) async => themes.add(mode),
           readsOf: (_) => reads,
         ),
       ),

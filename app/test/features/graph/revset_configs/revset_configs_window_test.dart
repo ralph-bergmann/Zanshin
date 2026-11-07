@@ -6,7 +6,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/features/graph/active_graph.dart' show GraphMenuBinding;
+import 'package:zanshin/src/features/graph/active_graph.dart' show ActiveGraph, GraphMenuBinding;
 import 'package:zanshin/src/features/graph/graph_preferences.dart';
 import 'package:zanshin/src/features/graph/graph_search_controller.dart';
 import 'package:zanshin/src/features/graph/graph_search_model.dart';
@@ -75,7 +75,7 @@ class _Rig {
     ),
   );
   final model = GraphViewModel();
-  final graph = ValueNotifier<GraphMenuBinding?>(null);
+  final graph = ActiveGraph();
   final urls = <Uri>[];
   late final GraphSearchController search;
   late final GraphPreferences preferences;

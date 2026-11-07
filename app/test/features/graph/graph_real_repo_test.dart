@@ -50,7 +50,7 @@ void main() {
       final Directory dir = Directory.systemTemp.createTempSync('zanshin_graph_real_repo_');
       final String path = dir.resolveSymbolicLinksSync();
       await (await worker.initRepo(path, backend: 0)).close();
-      return (worker, dir, await WorkerProjectRepos(Future<ZanshinWorker>.value(worker)).open(path));
+      return (worker, dir, await WorkerProjectRepos(worker).open(path));
     }))!;
     final (String first, String second) = (await tester.runAsync(() async {
       final RepoHandle handle = repo.handle;

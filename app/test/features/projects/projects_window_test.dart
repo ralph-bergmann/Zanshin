@@ -9,9 +9,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin/l10n/app_localizations_en.dart';
-import 'package:zanshin/main.dart' show MainComponent;
-import 'package:zanshin/src/app/boot/icon_module.dart';
-import 'package:zanshin/src/app/worker_lifecycle_module.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
@@ -21,6 +18,7 @@ import 'package:zanshin/src/features/projects/projects_search_focus.dart';
 import 'package:zanshin/src/features/projects/projects_tree.dart';
 import 'package:zanshin/src/features/projects/projects_window.dart';
 import 'package:zanshin/src/features/projects/tree_drop.dart';
+import 'package:zanshin/src/features/projects/worker_project_repos.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
@@ -33,6 +31,7 @@ import '../../helpers/fake_window_actions.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/recording_shell.dart';
 import '../../helpers/shell_host.dart';
+import '../../helpers/test_component.dart';
 
 const ZsMotion _m = ZsMotion.full;
 
@@ -2146,25 +2145,26 @@ void main() {
     expect(colors.accentSoft, isNot(ZsColors.night.accentSoft), reason: 'the inactive delta');
   });
 
-  testWidgets("the DI graph builds the content over the component's one session and registry", (tester) async {
-    final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('projects_window_di')))!;
-    addTearDown(() => dir.deleteSync(recursive: true));
-    final SettingsStore store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
-    final MainComponent component = MainComponent.create(
-      settingsModule: SettingsModule(store: store),
-      iconModule: IconModule(registry: testIconRegistry),
-      // Never completed: the graph is built without starting a worker.
-      projectsModule: ProjectsModule(worker: Completer<ZanshinWorker>().future),
-      workerLifecycleModule: WorkerLifecycleModule(mayQuit: () async => true),
-    );
+  group('the DI graph', () {
+    setUpTestWorker();
 
-    final ProjectsWindow window = component.projectsWindowFactory.create();
+    testWidgets("builds the content over the component's one session and registry", (tester) async {
+      final TestComponent component = await testComponent(tester);
 
-    expect(window.session, same(component.projectSession));
-    expect(window.registry, same(component.projectSession.registry));
-    expect(window.environment, isA<DesktopProjectsEnvironment>());
-    final ProjectsWindow other = component.projectsWindowFactory.create();
-    expect(other.session, same(window.session), reason: 'singletons');
-    expect(other.searchFocus, same(window.searchFocus), reason: "one search focus: the menu bar's Find");
+      final ProjectsWindow window = component.projectsWindowFactory.create();
+
+      expect(window.session, same(component.session));
+      expect(window.registry, same(component.session.registry));
+      expect(window.registry, same(component.registry));
+      expect(window.environment, same(component.environment));
+      final ProjectsWindow other = component.projectsWindowFactory.create();
+      expect(other.session, same(window.session), reason: 'singletons');
+      expect(other.searchFocus, same(window.searchFocus), reason: "one search focus: the menu bar's Find");
+
+      // The app's own bindings, which the test component's fakes replace.
+      final module = ProjectsModule();
+      expect(module.projectRepos(testWorker), isA<WorkerProjectRepos>());
+      expect(module.projectsEnvironment(testWorker, component.diagnostics), isA<DesktopProjectsEnvironment>());
+    });
   });
 }

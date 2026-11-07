@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:io';
 import 'dart:ui' show Scene, SemanticsUpdate, ViewFocusDirection, ViewFocusEvent, ViewFocusState;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inject_annotation/inject_annotation.dart' show Provider;
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/window_zoom.dart';
 import 'package:zanshin/src/features/window/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/window/zanshin_window_root.dart';
@@ -20,6 +17,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/recording_shell.dart';
+import '../../helpers/test_component.dart';
 
 /// A second window's view: renders nothing to the engine, which only knows the test view (Flutter's own multi-view
 /// tests do the same).
@@ -40,33 +38,6 @@ class _SecondView extends TestFlutterView {
   @override
   void updateSemantics(SemanticsUpdate update) {}
 }
-
-class _Provider<T> implements Provider<T> {
-  _Provider(this._create);
-
-  final T Function() _create;
-
-  @override
-  T get() => _create();
-}
-
-ViewModelFactory<T> _viewModels<T extends ChangeNotifier>(T Function() create) =>
-    ({
-      required builder,
-      child,
-      error,
-      init,
-      key,
-      loading,
-    }) => ViewModelBuilder<T>(
-      key: key,
-      viewModelProvider: _Provider<T>(create),
-      init: init,
-      loading: loading,
-      error: error,
-      builder: builder,
-      child: child,
-    );
 
 /// A control on the state core that reports its status, and a text field: a window's content.
 class _Content extends StatelessWidget {
@@ -104,12 +75,11 @@ ViewFocusEvent _focus(int viewId, ViewFocusState state) =>
 
 void main() {
   setUpIconRegistry();
+  setUpTestWorker();
   late RecordingShell shell;
-  late Directory dir;
 
-  setUp(() async {
+  setUp(() {
     ZanshinShellPlatform.instance = shell = RecordingShell();
-    dir = await Directory.systemTemp.createTemp('zanshin_window_root_test');
     // macOS's highlight mode is always "traditional" (RC §4), whatever input the test sends.
     FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
   });
@@ -117,56 +87,46 @@ void main() {
   tearDown(() async {
     FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic;
     await shell.close();
-    await dir.delete(recursive: true);
   });
 
-  /// The project window (the test view) and the Projects window (a second view), each under its own root over one
-  /// settings store and one tracker; answers the tracker, the view models the roots made, the content's statuses and
-  /// the two text fields.
+  /// A component over the settings [json]; its tracker is disposed after the test.
+  Future<TestComponent> component(WidgetTester tester, String json) async {
+    final TestComponent component = await testComponent(tester, settingsJson: json);
+    addTearDown(component.tracker.dispose);
+    return component;
+  }
+
+  /// The project window (the test view) and the Projects window (a second view), each under its own root from the
+  /// component's factory, over one settings store and one tracker; answers the store, the content's statuses and the
+  /// two text fields.
   Future<_TwoWindows> pumpTwoWindows(WidgetTester tester, {String settingsJson = '{}'}) async {
     tester.view
       ..physicalSize = const Size(900, 640)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final SettingsStore store = (await tester.runAsync(() async {
-      final file = File('${dir.path}/settings.json');
-      await file.writeAsString(settingsJson);
-      return SettingsStore.load(file);
-    }))!;
-    final tracker = ActiveWindowTracker();
-    addTearDown(tracker.dispose);
-    final viewModels = <ZanshinAppViewModel>[];
+    final TestComponent graph = await component(tester, settingsJson);
     final statuses = <String, ZsControlStatus>{};
     final main = ZsTextEditingController();
     final projects = ZsTextEditingController();
     addTearDown(main.dispose);
     addTearDown(projects.dispose);
     final second = _SecondView(tester.view);
-    ZanshinWindowRoot root(String windowKey, ZsTextEditingController field) => ZanshinWindowRoot(
-      viewModelFactory: _viewModels(() {
-        final viewModel = ZanshinAppViewModel(store);
-        viewModels.add(viewModel);
-        return viewModel;
-      }),
-      tracker: tracker,
+    ZanshinWindowRoot root(String windowKey, ZsTextEditingController field) => graph.rootFactory.create(
       windowKey: windowKey,
       child: _Content(name: windowKey, statuses: statuses, field: field),
     );
     await tester.pumpWidget(
-      IconRegistryScope(
-        registry: testIconRegistry,
-        child: ViewCollection(
-          views: <Widget>[
-            View(view: tester.view, child: root('main', main)),
-            View(view: second, child: root('projects', projects)),
-          ],
-        ),
+      ViewCollection(
+        views: <Widget>[
+          View(view: tester.view, child: root('main', main)),
+          View(view: second, child: root('projects', projects)),
+        ],
       ),
       wrapWithView: false,
     );
     shell.theme.complete(const ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF4757A1)));
     await tester.pumpAndSettle();
-    return _TwoWindows(viewModels: viewModels, statuses: statuses, main: main, projects: projects, second: second);
+    return _TwoWindows(store: graph.settings, statuses: statuses, main: main, projects: projects, second: second);
   }
 
   ZsAppearance appearanceIn(WidgetTester tester, String windowKey) =>
@@ -239,6 +199,15 @@ void main() {
     }
   });
 
+  testWidgets("each root provides the graph's one icon registry to its window", (tester) async {
+    await pumpTwoWindows(tester);
+
+    for (final key in <String>['main', 'projects']) {
+      final BuildContext content = tester.element(find.bySemanticsIdentifier('probe-$key'));
+      expect(IconRegistryScope.maybeOf(content), same(testIconRegistry), reason: key);
+    }
+  });
+
   testWidgets('a text field in the dialog window takes typed input', (tester) async {
     final _TwoWindows windows = await pumpTwoWindows(tester);
     WidgetsBinding.instance.handleViewFocusChanged(_focus(windows.second.viewId, ViewFocusState.focused));
@@ -254,56 +223,37 @@ void main() {
     expect(windows.main.text, isEmpty);
   });
 
-  testWidgets(
-    'a theme switch from either window restyles both roots and asks the shell to restyle the native windows',
-    (
-      tester,
-    ) async {
-      final _TwoWindows windows = await pumpTwoWindows(
-        tester,
-        settingsJson: '{"appearance": {"themeMode": "dark"}}',
-      );
-      expect(windows.viewModels, hasLength(2), reason: 'one view model per window');
-      expect(appearanceIn(tester, 'main').theme, ZsTheme.night);
-      expect(appearanceIn(tester, 'projects').theme, ZsTheme.night);
+  testWidgets('a theme switch through the store restyles both roots, each over its own view model', (tester) async {
+    final _TwoWindows windows = await pumpTwoWindows(tester, settingsJson: '{"appearance": {"themeMode": "dark"}}');
+    expect(find.byType(ViewModelBuilder<ZanshinAppViewModel>), findsNWidgets(2), reason: 'one view model per window');
+    expect(appearanceIn(tester, 'main').theme, ZsTheme.night);
+    expect(appearanceIn(tester, 'projects').theme, ZsTheme.night);
 
-      // From the Projects window's root.
-      await tester.runAsync(() => windows.viewModels.last.setThemeMode(ThemeMode.light));
-      await tester.pumpAndSettle();
+    // Settings › Theme writes the store; every window's root follows it (the native chrome: WindowAppearanceSync).
+    await tester.runAsync(() => windows.store.update((s) => s.copyWith.appearance(themeMode: ThemeMode.light)));
+    await tester.pumpAndSettle();
 
-      expect(appearanceIn(tester, 'main').theme, ZsTheme.paper);
-      expect(appearanceIn(tester, 'projects').theme, ZsTheme.paper);
-      expect(shell.calls, contains('setWindowAppearance:light'), reason: 'the shell applies it to every app window');
-    },
-  );
+    expect(appearanceIn(tester, 'main').theme, ZsTheme.paper);
+    expect(appearanceIn(tester, 'projects').theme, ZsTheme.paper);
+  });
 
-  /// A content-sized root over a 300 × 200 box (key `content`), over the settings [json]; answers the store.
+  /// A content-sized root from the component's factory over a 300 × 200 box (key `content`), over the settings [json];
+  /// answers the store.
   Future<SettingsStore> pumpContentSized(WidgetTester tester, String json) async {
-    final SettingsStore store = (await tester.runAsync(() async {
-      final file = File('${dir.path}/settings.json');
-      await file.writeAsString(json);
-      return SettingsStore.load(file);
-    }))!;
-    final tracker = ActiveWindowTracker();
-    addTearDown(tracker.dispose);
+    final TestComponent graph = await component(tester, json);
     await tester.pumpWidget(
-      IconRegistryScope(
-        registry: testIconRegistry,
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: ZanshinWindowRoot(
-            viewModelFactory: _viewModels(() => ZanshinAppViewModel(store)),
-            tracker: tracker,
-            windowKey: 'settings',
-            sizeToContent: true,
-            child: const SizedBox(key: ValueKey<String>('content'), width: 300, height: 200),
-          ),
+      Align(
+        alignment: Alignment.topLeft,
+        child: graph.rootFactory.create(
+          windowKey: 'settings',
+          sizeToContent: true,
+          child: const SizedBox(key: ValueKey<String>('content'), width: 300, height: 200),
         ),
       ),
     );
     shell.theme.complete(const ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF4757A1)));
     await tester.pumpAndSettle();
-    return store;
+    return graph.settings;
   }
 
   BuildContext content(WidgetTester tester) => tester.element(find.byKey(const ValueKey<String>('content')));
@@ -350,18 +300,18 @@ void main() {
   });
 }
 
-/// What `pumpTwoWindows` set up: the view models the roots made, the content's statuses, the two text fields and the
-/// second window's view.
+/// What `pumpTwoWindows` set up: the settings store, the content's statuses, the two text fields and the second
+/// window's view.
 class _TwoWindows {
   _TwoWindows({
-    required this.viewModels,
+    required this.store,
     required this.statuses,
     required this.main,
     required this.projects,
     required this.second,
   });
 
-  final List<ZanshinAppViewModel> viewModels;
+  final SettingsStore store;
   final Map<String, ZsControlStatus> statuses;
   final ZsTextEditingController main;
   final ZsTextEditingController projects;

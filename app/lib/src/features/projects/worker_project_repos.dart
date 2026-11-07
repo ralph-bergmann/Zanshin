@@ -24,21 +24,20 @@ class WorkerProjectRepos implements ProjectRepos {
   /// Repositories through [_worker], the boot's worker.
   WorkerProjectRepos(this._worker);
 
-  final Future<ZanshinWorker> _worker;
+  final ZanshinWorker _worker;
 
   @override
   Future<RepoDetectResult> detect(String path) async {
-    final RepoDetectResult detected = await (await _worker).detect(path);
+    final RepoDetectResult detected = await _worker.detect(path);
     _logWarnings('detect', detected.warnings);
     return detected;
   }
 
   @override
   Future<ProjectRepo> open(String path) async {
-    final ZanshinWorker worker = await _worker;
-    final OpenedRepoHandle handle = await worker.openRepo(path);
+    final OpenedRepoHandle handle = await _worker.openRepo(path);
     _logWarnings('open', handle.warnings);
-    return _WorkerProjectRepo(worker, handle);
+    return _WorkerProjectRepo(_worker, handle);
   }
 
   /// `RepoBackend::Git` (the worker's `backend: 1`): the CLI's `jj git init`, never the native backend.
@@ -67,17 +66,16 @@ class WorkerProjectRepos implements ProjectRepos {
   /// Runs one creation [call]: its handle becomes a [ProjectRepo] like an opened one; a failure is rethrown with its
   /// warnings, which are logged by code either way.
   Future<ProjectCreation> _create(String call, Future<CreatedRepoHandle> Function(ZanshinWorker worker) create) async {
-    final ZanshinWorker worker = await _worker;
     final CreatedRepoHandle handle;
     try {
-      handle = await create(worker);
+      handle = await create(_worker);
     } on ZanshinFfiException catch (error) {
       _logWarnings(call, error.warnings);
       rethrow;
     }
     _logWarnings(call, handle.warnings);
     return ProjectCreation(
-      repo: _WorkerProjectRepo(worker, handle),
+      repo: _WorkerProjectRepo(_worker, handle),
       warnings: handle.warnings,
       trackableRemoteBookmarks: handle.trackableRemoteBookmarks,
     );

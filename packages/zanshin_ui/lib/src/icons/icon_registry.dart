@@ -29,13 +29,13 @@ class IconRegistry {
   PictureInfo? operator [](String name) => _pictures[name];
 }
 
-/// Provides the [IconRegistry] to every window: it sits above the window manager (Claude's proposal, Story 11.1), so
-/// the dialog windows share it. Null until the boot has loaded it.
+/// Provides an [IconRegistry] to its subtree: the app's window roots each provide the boot-loaded registry, so every
+/// window shares the one registry. A null registry provides none (a test or a preview without icons).
 class IconRegistryScope extends InheritedWidget {
   /// Provides [registry] to [child].
   const IconRegistryScope({required this.registry, required super.child, super.key});
 
-  /// The loaded registry, or null while the boot still loads it.
+  /// The loaded registry, or null for none.
   final IconRegistry? registry;
 
   /// The nearest registry, or null.

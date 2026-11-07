@@ -12,9 +12,10 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import 'window_zoom.dart';
 
-/// Theme state for the app root: the persisted [ThemeMode] and accent choice
+/// Theme state for a window root: the persisted [ThemeMode] and accent choice
 /// plus the live macOS shell theme, resolved into the mode `MaterialApp` should
-/// use and the [ZsAppearance] its windows show.
+/// use and the [ZsAppearance] its windows show. It follows the settings store;
+/// the native window chrome follows the theme through `WindowAppearanceSync`.
 @inject
 class ZanshinAppViewModel extends ChangeNotifier {
   ZanshinAppViewModel(this._settings) {
@@ -83,28 +84,13 @@ class ZanshinAppViewModel extends ChangeNotifier {
   /// One-shot setup for `ViewModelBuilder`'s `init`.
   ///
   /// On macOS: start the shell-theme query and subscription (both unawaited,
-  /// so the first frame renders immediately with Flutter's own brightness) and
-  /// mirror the persisted choice onto the window chrome once — a saved `dark`
-  /// must style the native title bar after a relaunch, not only Flutter.
+  /// so the first frame renders immediately with Flutter's own brightness).
   void init() {
     if (!_onMacOS) {
       return;
     }
     unawaited(ZanshinShell.getTheme().then(_applyShellTheme));
     _subscription = ZanshinShell.onThemeChanged.listen(_applyShellTheme);
-    _mirrorWindowAppearance(selectedMode);
-  }
-
-  /// Persists [mode] and mirrors it onto the native window chrome of every app
-  /// window (the windows' background, the traffic lights and their rings),
-  /// which Flutter theming cannot reach; every window's root follows the store.
-  ///
-  /// Listeners are notified through the store; the returned future completes
-  /// when the settings file has been written.
-  Future<void> setThemeMode(ThemeMode mode) {
-    final Future<void> written = _settings.update((s) => s.copyWith.appearance(themeMode: mode));
-    _mirrorWindowAppearance(mode);
-    return written;
   }
 
   @override
@@ -125,18 +111,5 @@ class ZanshinAppViewModel extends ChangeNotifier {
     }
     _shellTheme = theme;
     notifyListeners();
-  }
-
-  void _mirrorWindowAppearance(ThemeMode mode) {
-    if (!_onMacOS) {
-      return;
-    }
-    unawaited(
-      ZanshinShell.setWindowAppearance(switch (mode) {
-        ThemeMode.light => WindowAppearance.light,
-        ThemeMode.dark => WindowAppearance.dark,
-        ThemeMode.system => WindowAppearance.system,
-      }),
-    );
   }
 }

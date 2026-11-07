@@ -138,8 +138,9 @@ final class ProjectSwitchCancelled extends ProjectOpenOutcome {
 ///
 /// Paths, names and change ids are logged at FINE only; a WARNING carries the error code.
 class ProjectSession extends ChangeNotifier {
-  /// A session over a [ProjectRegistry] and [ProjectRepos]; [clock] stamps `lastOpened` (UTC is stored).
-  ProjectSession({required this._registry, required this._repos, DateTime Function()? clock})
+  /// A session over a [ProjectRegistry] and [ProjectRepos] that asks [mayLeave] before leaving the open project;
+  /// [clock] stamps `lastOpened` (UTC is stored).
+  ProjectSession({required this._registry, required this._repos, this.mayLeave, DateTime Function()? clock})
     : _clock = clock ?? DateTime.now {
     _registry.addListener(notifyListeners);
   }
@@ -147,6 +148,10 @@ class ProjectSession extends ChangeNotifier {
   final ProjectRegistry _registry;
   final ProjectRepos _repos;
   final DateTime Function() _clock;
+
+  /// Asked before an open or a creation would switch away from an open project (the window close guards, Story
+  /// 10.22): false cancels it with [ProjectSwitchCancelled]. Null asks nothing.
+  final Future<bool> Function()? mayLeave;
 
   ProjectRepo? _repo;
   String? _path;
@@ -158,10 +163,6 @@ class ProjectSession extends ChangeNotifier {
   var _refreshQueued = false;
   var _queue = Future<void>.value();
   var _disposed = false;
-
-  /// Asked before an open or a creation would switch away from an open project (the window close guards, Story
-  /// 10.22): false cancels it with [ProjectSwitchCancelled]. Null asks nothing.
-  Future<bool> Function()? mayLeave;
 
   /// Whether a switch to [target] may leave the open project: nothing to leave, the same project, or [mayLeave].
   Future<bool> _mayLeaveFor(String? target) async {

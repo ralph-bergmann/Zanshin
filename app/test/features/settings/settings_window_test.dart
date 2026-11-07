@@ -54,7 +54,7 @@ void main() {
 
       await tester.tap(find.text('Night'));
       await rig.settle();
-      expect(rig.themes, <ThemeMode>[ThemeMode.dark]);
+      expect(rig.store.value.appearance.themeMode, ThemeMode.dark);
 
       await tester.tap(find.text('Comfy'));
       await tester.tap(find.text('Zanshin'));

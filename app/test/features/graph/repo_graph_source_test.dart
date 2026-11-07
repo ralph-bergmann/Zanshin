@@ -28,7 +28,7 @@ void main() {
     dir = Directory.systemTemp.createTempSync('zanshin_repo_graph_source_');
     path = dir.resolveSymbolicLinksSync();
     await (await worker.initRepo(path, backend: 0)).close();
-    repo = await WorkerProjectRepos(Future<ZanshinWorker>.value(worker)).open(path);
+    repo = await WorkerProjectRepos(worker).open(path);
     final RepoHandle handle = repo.handle;
     first = (await handle.status()).workingCopyChangeId!;
     await handle.describe(changeId: first, description: 'Subject line\n\nThe body,\nover two lines.\n');
@@ -134,7 +134,7 @@ void main() {
   });
 
   test('content without an operation (a recording) asks nothing and answers empty', () async {
-    final ProjectRepo closed = await WorkerProjectRepos(Future<ZanshinWorker>.value(worker)).open(path);
+    final ProjectRepo closed = await WorkerProjectRepos(worker).open(path);
     await closed.close();
     // A call on the closed handle would throw: none is made.
     expect(await RepoGraphSource(closed).content(null, <String>['00']), isEmpty);
