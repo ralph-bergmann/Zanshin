@@ -31,6 +31,9 @@ deferred:
     location: >-
       app/lib/main.dart:82-83, app/lib/src/app/app_window_coordinator.dart:123,129,142
     severity: low
+    resolved: >-
+      2026-11-07 — fixed (console session, commit 1e919409): main.dart hands the menu to the host after start()
+      returned, so a start that throws keeps the boot's system menus.
 ---
 
 <intent-contract>

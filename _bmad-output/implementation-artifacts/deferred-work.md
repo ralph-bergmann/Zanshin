@@ -2449,7 +2449,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
   - The engine builds a fresh `NSMenu` for `NSApp.mainMenu` and never sets `NSApp.windowsMenu`, so AppKit has no menu to add the window list to.
   - **Follow-up:** check the running app; if the list is missing, set `NSApp.windowsMenu` to the Window submenu from the runner after each `Menu.setMenus`.
   - **2026-11-02, Story 11.17 (commit b131abd3):** partly done — the runner sets `NSApp.windowsMenu` to the Window submenu after each menu build; the check in the running app is still open.
-- **Help › jj Documentation's URL carries the jj version separately from the jj-lib pin.** Low.
+- ~~**Help › jj Documentation's URL carries the jj version separately from the jj-lib pin.**~~ — RESOLVED 2026-11-07 (console session, commit 1e919409): the URL points at v0.47.0 (`app/lib/src/links.dart`), and step 8 of the pin-bump checklist in project-context.md names it. Low.
   - `jjDocumentationUrl` = `https://docs.jj-vcs.dev/v0.46.0/` (`app/lib/src/features/shell/app_menu.dart`); the pin-bump checklist in project-context.md does not name it.
   - **Follow-up:** add the URL to the pin-bump checklist (an agent-context edit).
   - **2026-11-07, Story 11.24:** the URL moved to `app/lib/src/links.dart` unchanged (still `v0.46.0`, the pin is 0.47.0); the story changed no behaviour.
@@ -2874,10 +2874,10 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - **The running-app witness of Story 11.24 (Marionette) was not run.** Low.
   - The unattended run allows foreground commands only, so `flutter run -d macos` cannot stay up beside Marionette (and the app would reopen this machine's last project). Widget tests cover the wiring: menu Find through `ProjectsSearchFocus`, the Projects sidebar through `AppWindowActionsScope`, `ActiveGraph` publish/clear, one `ActiveGraph` / one `ProjectsSearchFocus` in main.dart's DI graph.
   - **Follow-up:** run the app: a project opens and View/Change act on its graph; Edit › Find focuses the Projects search while Projects is key; Settings opens from the capsule and from the Projects window (Settings… and Set identity…); jj log Configurations shows the graph's revsets; Help › jj Documentation opens the browser.
-- **A Recent project that is no longer a jj workspace opens nothing and says nothing.** Low.
+- ~~**A Recent project that is no longer a jj workspace opens nothing and says nothing.**~~ — RESOLVED 2026-11-07 (console session, commit 1e919409): `openRecentProject` reports `ProjectNotARepo` and `ProjectInsideRepo` too, so the Projects window shows its convert, init or enclosing offer. Low.
   - `openRecentProject` (`app/lib/src/features/projects/project_session.dart:614-624`, moved unchanged from `home_page.dart`) reports only `ProjectOpenFailed` and a missing folder; `ProjectNotARepo` (a plain Git repository or folder) and `ProjectInsideRepo` from the capsule's Recent rows or File › Open Recent are dropped silently.
   - **Follow-up:** report them too (`session.reportFailedOpen` + `openProjects()`), so the Projects window shows its convert/init/enclosing offer — or leave it.
-- **The app's layer rule is written down only in its guard test.** Low.
+- ~~**The app's layer rule is written down only in its guard test.**~~ — RESOLVED 2026-11-07 (console session, commit 1e919409): the rule is in project-context.md (File & module organization), and the README's `app/` row names `app/lib/src/app/`. Low.
   - `app/test/architecture/layers_test.dart` enforces "features never import `lib/src/app/`, feature folders import each other without a cycle"; `_bmad-output/project-context.md` (which names the other source guards) and the `app/` row of `README.md:24` ("features under `app/lib/src/features/`") do not mention the frame folder or the rule.
   - **Follow-up:** one line in project-context.md (Code Quality § file organization) and the README row naming `app/lib/src/app/` (an agent-context edit).
 
@@ -2889,6 +2889,6 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - **jj log Configurations takes its browser opener as an assisted argument, not injected.** Low.
   - inject_generator 1.2.1 synthesizes a provider for a typedef'd function type that an assisted factory's class injects (the `ViewModelFactory` pattern): `OpenUrl`'s `Future<void>` return type made it build a `Future(computation)` provider, which clashed with `AppModule`'s `OpenUrl` binding ("Duplicate binding" + "Function type is not supported"). So `RevsetConfigsWindow.openUrl` is `@assisted required`, and `AppModule.coordinator` takes the `OpenUrl` and passes it (`app/lib/src/app/app_module.dart`). Non-null, no null branch, one binding.
   - **Follow-up:** move it back to an injected parameter once the generator skips typedefs a module binds — or leave it.
-- **A boot that fails in `ZanshinApplication.start()` shows the failure page under the app's full menus, whose window items then wait forever (pre-existing).** Low.
+- ~~**A boot that fails in `ZanshinApplication.start()` shows the failure page under the app's full menus, whose window items then wait forever (pre-existing).**~~ — RESOLVED 2026-11-07 (console session, commit 1e919409): `main.dart` hands the menu to the host after `start()` returned, so a start that throws keeps the boot's system menus. Low.
   - `app/lib/main.dart:82-83` hands the menu to the host before `app.start()`, as `_startApp` set `menu.value` before `coordinator.start()` at the baseline; Settings…, Projects… and Edit Configurations… await `AppWindowCoordinator._ready` (`app/lib/src/app/app_window_coordinator.dart:123,129,142`), which only the first window's `onShown` completes, so on the failure page they do nothing. Edge-case review, 2026-11-07.
   - **Follow-up:** hand the menu to the host after `app.start()` returned (both still run before the first window opens), so a failed start keeps the boot's system menus — or leave it.

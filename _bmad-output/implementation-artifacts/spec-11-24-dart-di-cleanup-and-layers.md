@@ -24,6 +24,10 @@ deferred:
     location: >-
       app/lib/src/features/projects/project_session.dart:614-624
     severity: low
+    resolved: >-
+      2026-11-07 — fixed (console session, commit 1e919409): openRecentProject reports ProjectNotARepo and
+      ProjectInsideRepo too, so the Projects window shows its convert, init or enclosing offer; three new cases in
+      home_page_test.
   - summary: >-
       The app's layer rule is written down only in its guard test, not in project-context.md or the README.
     evidence: |-
@@ -31,6 +35,9 @@ deferred:
     location: >-
       _bmad-output/project-context.md, README.md:24
     severity: low
+    resolved: >-
+      2026-11-07 — fixed (console session, commit 1e919409): the rule is in project-context.md (File & module
+      organization), and the README's app/ row names app/lib/src/app/.
 ---
 
 <intent-contract>
