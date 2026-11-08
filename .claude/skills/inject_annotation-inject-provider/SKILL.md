@@ -74,10 +74,23 @@ missing `T` is a build error, just as for a direct `T` injection.
 As a **constructor parameter**, `Provider<Future<T>>` injects a provider over a
 raw `Future<T>` binding (a `@provides` returning `Future<T>` with **no**
 `@asynchronous`). The inner `Future<T>` is **preserved** (not unwrapped to `T`):
-`.get()` returns the `Future<T>`, which you `await`. Keep `Provider<Future<T>>`
-to constructor parameters — as a component entry-point getter over a raw
-`Future<T>` binding it does **not** resolve (the generator unwraps it and looks
-for a bare `T`).
+`.get()` returns the `Future<T>`, which you `await`. For a raw `Future<T>`
+binding, keep `Provider<Future<T>>` to constructor parameters — as a component
+entry-point getter it does **not** resolve (the generator unwraps it and looks
+for a bare `T`). A component getter whose dependency chain is `@asynchronous`
+is the opposite case: it must be `Future<T>` or `Provider<Future<T>>`, and
+`Provider<T>` there is a build error.
+
+As a **constructor parameter**, `Provider<T>` needs a synchronous dependency
+chain. Over an `@asynchronous` chain, direct or transitive, it is a build error
+at the parameter, because `.get()` must return `T` synchronously.
+`Provider<Future<T>>` does not help: at a parameter it needs a raw
+`Future<T>` binding. At an `@inject` constructor, declare the parameter as `T`;
+the class then becomes async too.
+
+An injected parameter of an `@assistedInject` constructor or a `@provides`
+method cannot use `Provider<T>`: there it is a plain type that needs its own
+binding, and without one the build fails.
 
 ### 4. Regenerate and verify
 
@@ -93,7 +106,7 @@ dart analyze
 | One eager dependency | `T` |
 | Build only if/when used | `Provider<T>` |
 | A fresh instance per call | `Provider<T>` (non-singleton `T`) |
-| Lazy access to a `Future<T>` binding | `Provider<Future<T>>` |
+| Lazy access to a raw `Future<T>` binding (no `@asynchronous`), as a constructor parameter | `Provider<Future<T>>` |
 
 ## Common mistakes
 
