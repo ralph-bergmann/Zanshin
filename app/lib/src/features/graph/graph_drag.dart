@@ -282,8 +282,14 @@ GraphDropPreview graphDropRows(
       continue;
     }
     final ({GraphAction run, GraphAction shown}) action = switch (payload) {
-      GraphChangeDrag(:final key, :final short) => _changeAction(kind, key, targetKey, short, targetShort),
-      GraphBookmarkDrag(:final name) => (
+      GraphChangeDrag(:final String key, :final String short) => _changeAction(
+        kind,
+        key,
+        targetKey,
+        short,
+        targetShort,
+      ),
+      GraphBookmarkDrag(:final String name) => (
         run: GraphBookmarkMove(<String>[name], to: targetKey, allowBackwards: outcome.allowBackwardsNeeded),
         shown: GraphBookmarkMove(<String>[name], to: targetShort, allowBackwards: outcome.allowBackwardsNeeded),
       ),

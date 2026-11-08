@@ -93,7 +93,7 @@ Future<(int, int)> _measureAsync(Future<void> Function() f) async {
 }
 
 void _report(String store, String what, (int, int) t) {
-  final (min, med) = t;
+  final (int min, int med) = t;
   print('[$store] $what: min $min µs / med $med µs');
 }
 

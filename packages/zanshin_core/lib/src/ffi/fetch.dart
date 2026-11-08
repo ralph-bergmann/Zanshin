@@ -105,12 +105,16 @@ Uint8List gitFetchRequestBytes({required FetchRemotes remotes, required FetchRef
   _rejectInteriorNuls(remotes, refs);
   final (fbs.FetchRemotesMode remotesMode, List<String>? names) = switch (remotes) {
     DefaultFetchRemotes() => (fbs.FetchRemotesMode.Default, null),
-    NamedFetchRemotes(:final patterns) => (fbs.FetchRemotesMode.Named, patterns),
+    NamedFetchRemotes(:final List<String> patterns) => (fbs.FetchRemotesMode.Named, patterns),
     AllFetchRemotes() => (fbs.FetchRemotesMode.All, null),
   };
   final (fbs.FetchRefsMode refsMode, List<String>? branches, List<String>? tags) = switch (refs) {
     DefaultFetchRefs() => (fbs.FetchRefsMode.Default, null, null),
-    PatternFetchRefs(:final branches, :final tags) => (fbs.FetchRefsMode.Patterns, branches, tags),
+    PatternFetchRefs(:final List<String> branches, :final List<String> tags) => (
+      fbs.FetchRefsMode.Patterns,
+      branches,
+      tags,
+    ),
     TrackedFetchRefs() => (fbs.FetchRefsMode.Tracked, null, null),
   };
   return fbs.GitFetchRequestObjectBuilder(

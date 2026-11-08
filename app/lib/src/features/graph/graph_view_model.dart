@@ -846,17 +846,17 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   /// The anchor (and a squash's destination) of [action], from the layout before it runs.
   ({String? anchor, String? destination}) _plan(GraphAction action) {
     switch (action) {
-      case GraphNew(:final parents, :final insertAfter, :final insertBefore):
+      case GraphNew(:final List<String> parents, :final List<String> insertAfter, :final List<String> insertBefore):
         return (anchor: <String>[...parents, ...insertAfter, ...insertBefore].firstOrNull, destination: null);
-      case GraphRebase(:final onto, :final insertAfter, :final insertBefore):
+      case GraphRebase(:final List<String> onto, :final List<String> insertAfter, :final List<String> insertBefore):
         return (anchor: <String>[...onto, ...insertAfter, ...insertBefore].firstOrNull, destination: null);
-      case GraphDuplicate(:final onto):
+      case GraphDuplicate(:final List<String> onto):
         return (anchor: onto.firstOrNull, destination: null);
-      case GraphAbandon(:final ids):
+      case GraphAbandon(:final List<String> ids):
         return (anchor: _firstParent(ids.firstOrNull), destination: null);
-      case GraphRevert(:final id) || GraphCommit(:final id) || GraphSplit(:final id):
+      case GraphRevert(:final String id) || GraphCommit(:final String id) || GraphSplit(:final String id):
         return (anchor: id, destination: null);
-      case GraphSquash(:final revision, :final from, :final into):
+      case GraphSquash(:final String? revision, :final List<String> from, :final String? into):
         final GraphLayout? layout = _layout;
         final String? at = layout == null ? null : _workingCopyKey(layout);
         // jj's defaults: `--from` without `--into` goes into @, `-r` (default @) into its parent.
@@ -888,7 +888,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     final String? born = result.newChangeIds.firstOrNull;
     final String? selected = _selected;
     switch (action) {
-      case GraphNew(:final parents, :final insertAfter):
+      case GraphNew(:final List<String> parents, :final List<String> insertAfter):
         if (born != null && selected != null && (parents.contains(selected) || insertAfter.contains(selected))) {
           _selected = born;
         }
@@ -897,7 +897,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
         if (born != null && selected != null) {
           _selected = born;
         }
-      case GraphCommit(:final id):
+      case GraphCommit(:final String id):
         // The new @ is the working change now: the inspector follows it.
         if (born != null && selected == id) {
           _selected = born;

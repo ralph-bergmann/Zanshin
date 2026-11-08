@@ -635,7 +635,7 @@ class ProjectsTreeState extends State<ProjectsTree> {
   /// [item]'s row height: a group being renamed is its name field's row; group and project rows gain the density's
   /// step (DS density.css .zs-menu-item, .zs-proj).
   double _heightOf(ProjectsItem item) => switch (item) {
-    ProjectsGroupItem(:final group) when group.id == widget.renaming => ProjectsTree.newGroupHeight,
+    ProjectsGroupItem(:final ProjectGroup group) when group.id == widget.renaming => ProjectsTree.newGroupHeight,
     ProjectsGroupItem() || ProjectsProjectItem() => ProjectsTree.heightOf(item) + ZsMetrics.of(context).rowStep,
     ProjectsNewGroupItem() => ProjectsTree.heightOf(item),
   };

@@ -851,13 +851,22 @@ class RepoGraphActions implements GraphActions {
   Future<MutationResult> run(GraphAction action) {
     final RepoHandle handle = _repo.handle;
     return switch (action) {
-      GraphEdit(:final id) => handle.edit(id),
-      GraphDescribe(:final id, :final description) => handle.describe(changeId: id, description: description),
-      GraphNew(:final parents, :final insertAfter, :final insertBefore) =>
+      GraphEdit(:final String id) => handle.edit(id),
+      GraphDescribe(:final String id, :final String description) => handle.describe(
+        changeId: id,
+        description: description,
+      ),
+      GraphNew(:final List<String> parents, :final List<String> insertAfter, :final List<String> insertBefore) =>
         parents.isEmpty && insertAfter.isEmpty && insertBefore.isEmpty
             ? _newOnAt(handle)
             : handle.newChange(parents, insertAfter: insertAfter, insertBefore: insertBefore),
-      GraphRebase(:final source, :final revisions, :final onto, :final insertAfter, :final insertBefore) =>
+      GraphRebase(
+        :final List<String> source,
+        :final List<String> revisions,
+        :final List<String> onto,
+        :final List<String> insertAfter,
+        :final List<String> insertBefore,
+      ) =>
         handle.rebase(
           source: source,
           revisions: revisions,
@@ -865,9 +874,12 @@ class RepoGraphActions implements GraphActions {
           insertAfter: insertAfter,
           insertBefore: insertBefore,
         ),
-      GraphDuplicate(:final revisions, :final onto) => handle.duplicate(revisions: revisions, onto: onto),
-      GraphAbandon(:final ids) => handle.abandon(ids),
-      GraphRevert(:final id) => _revertBeforeAt(handle, id),
+      GraphDuplicate(:final List<String> revisions, :final List<String> onto) => handle.duplicate(
+        revisions: revisions,
+        onto: onto,
+      ),
+      GraphAbandon(:final List<String> ids) => handle.abandon(ids),
+      GraphRevert(:final String id) => _revertBeforeAt(handle, id),
       GraphSquash() => handle.squash(
         revision: action.revision,
         from: action.from,
@@ -878,27 +890,46 @@ class RepoGraphActions implements GraphActions {
         keepEmptied: action.keepEmptied,
         editedDescription: action.editedDescription,
       ),
-      GraphCommit(:final message, :final paths, hunks: null) => handle.commit(message: message, paths: paths),
-      GraphCommit(:final message, :final HunkChoice hunks) => _commitTree(handle, message, hunks),
-      GraphSplit(:final id, :final message, :final paths, :final hunks) => _split(handle, id, message, paths, hunks),
-      GraphBookmarkCreate(:final names, :final revision) => handle.bookmarkCreate(names, revision: revision),
-      GraphBookmarkDelete() => handle.bookmarkDelete(action.patterns),
-      GraphBookmarkMove(:final names, :final from, :final to, :final allowBackwards) => handle.bookmarkMove(
+      GraphCommit(:final List<String> message, :final List<String> paths, hunks: null) => handle.commit(
+        message: message,
+        paths: paths,
+      ),
+      GraphCommit(:final List<String> message, :final HunkChoice hunks) => _commitTree(handle, message, hunks),
+      GraphSplit(
+        :final String id,
+        :final List<String> message,
+        :final List<String> paths,
+        :final HunkChoice? hunks,
+      ) =>
+        _split(handle, id, message, paths, hunks),
+      GraphBookmarkCreate(:final List<String> names, :final String? revision) => handle.bookmarkCreate(
         names,
-        from: from,
-        to: to,
-        allowBackwards: allowBackwards,
+        revision: revision,
       ),
-      GraphBookmarkRename(:final oldName, :final newName, :final overwriteExisting) => handle.bookmarkRename(
-        oldName,
-        newName,
-        overwriteExisting: overwriteExisting,
-      ),
-      GraphBookmarkTrack(:final symbol) => handle.bookmarkTrack(<String>[symbol]),
-      GraphBookmarkUntrack(:final symbol) => handle.bookmarkUntrack(<String>[symbol]),
+      GraphBookmarkDelete() => handle.bookmarkDelete(action.patterns),
+      GraphBookmarkMove(
+        :final List<String> names,
+        :final List<String> from,
+        :final String? to,
+        :final bool allowBackwards,
+      ) =>
+        handle.bookmarkMove(
+          names,
+          from: from,
+          to: to,
+          allowBackwards: allowBackwards,
+        ),
+      GraphBookmarkRename(:final String oldName, :final String newName, :final bool overwriteExisting) =>
+        handle.bookmarkRename(
+          oldName,
+          newName,
+          overwriteExisting: overwriteExisting,
+        ),
+      GraphBookmarkTrack(:final String symbol) => handle.bookmarkTrack(<String>[symbol]),
+      GraphBookmarkUntrack(:final String symbol) => handle.bookmarkUntrack(<String>[symbol]),
       GraphUndo() => handle.undo(),
       GraphRedo() => handle.redo(),
-      GraphOpRestore(:final operation) => handle.opRestore(operation),
+      GraphOpRestore(:final String operation) => handle.opRestore(operation),
       GraphLoggedOperation() => throw ArgumentError.value(action, 'action', 'an op-log entry is not a verb'),
     };
   }

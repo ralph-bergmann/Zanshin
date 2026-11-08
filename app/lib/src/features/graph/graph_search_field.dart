@@ -355,16 +355,21 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
 
   /// A Recent row; a bookmark go-to goes where the bookmark points now, else to the change it was recorded on.
   static GraphSearchRow _recentRow(GraphSearchIndex index, GraphRecent recent) => switch (recent) {
-    GraphRecentGoTo(:final changeId, :final String bookmark) => () {
+    GraphRecentGoTo(:final String changeId, :final String bookmark) => () {
       final String key = index.bookmarks.where((b) => b.name == bookmark).firstOrNull?.key ?? changeId;
       return GraphBookmarkRow(bookmark, key, change: index.change(key), score: 0);
     }(),
-    GraphRecentGoTo(:final changeId) => GraphChangeRow(
+    GraphRecentGoTo(:final String changeId) => GraphChangeRow(
       index.change(changeId) ?? GraphSearchChange(key: changeId, commitId: '', prefixLength: 2, inView: false),
       GraphChangeMatch.recent,
       score: 0,
     ),
-    GraphRecentFilter(:final filter) => GraphFilterRow(filter, GraphFilterRowKind.recent, filter.value, score: 0),
+    GraphRecentFilter(:final GraphFilter filter) => GraphFilterRow(
+      filter,
+      GraphFilterRowKind.recent,
+      filter.value,
+      score: 0,
+    ),
   };
 
   /// Counts the filter rows: author and description rows always, a File row only as the keyboard row (I2: one
@@ -514,14 +519,14 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
 
   void _pick(GraphSearchRow row) {
     switch (row) {
-      case GraphMoreRow(:final scope):
+      case GraphMoreRow(:final GraphSearchScope scope):
         _scope = scope;
         _refresh(reset: true);
-      case GraphChangeRow(:final change):
+      case GraphChangeRow(:final GraphSearchChange change):
         _goTo(change.key, commitId: change.commitId);
-      case GraphBookmarkRow(:final name, :final key, :final change):
+      case GraphBookmarkRow(:final String name, :final String key, :final GraphSearchChange? change):
         _goTo(key, bookmark: name, commitId: change?.commitId);
-      case GraphFilterRow(:final filter):
+      case GraphFilterRow(:final GraphFilter filter):
         _search.apply(filter);
         _scope = filter.scope;
         _setText(filter.value);
@@ -1189,7 +1194,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     final metaParts = <Widget>[];
     var dim = false;
     switch (row) {
-      case GraphChangeRow(:final change, :final how, :final match):
+      case GraphChangeRow(:final GraphSearchChange change, :final GraphChangeMatch how, :final (int, int)? match):
         icon = ZI.change;
         final String subject = change.subject ?? '';
         main = Row(
@@ -1238,14 +1243,25 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         if (byline.isNotEmpty) {
           metaParts.add(Text(byline, style: meta));
         }
-      case GraphBookmarkRow(:final name, :final key, :final change, :final match):
+      case GraphBookmarkRow(
+        :final String name,
+        :final String key,
+        :final GraphSearchChange? change,
+        :final (int, int)? match,
+      ):
         icon = ZI.bookmark;
         main = _highlight(colors, name, match, base.copyWith(color: colors.text));
         if (change == null || !change.inView) {
           metaParts.add(_Tag(s.graphSearchNotInView));
         }
         metaParts.add(_changeId(colors, key, change?.prefixLength ?? 2, small: true));
-      case GraphFilterRow(:final filter, :final kind, :final text, :final match, :final split):
+      case GraphFilterRow(
+        :final GraphFilter filter,
+        :final GraphFilterRowKind kind,
+        :final String text,
+        :final (int, int)? match,
+        :final int split,
+      ):
         final TextStyle path = ZsType.id.copyWith(fontSize: ZsType.fsControl, height: 1.2, color: colors.text);
         switch (kind) {
           case GraphFilterRowKind.author:
@@ -1306,7 +1322,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
             Text(count.capped ? s.graphSearchCountCapped(number) : s.graphSearchCount(count.n, number), style: meta),
           );
         }
-      case GraphMoreRow(:final scope, :final count):
+      case GraphMoreRow(:final GraphSearchScope scope, :final int count):
         main = Text(
           s.graphSearchMore(count, s.graphSearchScope(scope.name)),
           style: ZsType.body.copyWith(
@@ -1316,7 +1332,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
           ),
         );
         metaParts.add(ZanshinIcon(ZI.chevronRight, size: ZsIconSize.sm, color: colors.textDim));
-      case GraphRefusalRow(:final message):
+      case GraphRefusalRow(:final String message):
         icon = ZI.alert;
         main = _plain(message, base.copyWith(color: colors.textDim));
     }
@@ -1347,20 +1363,20 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     final Widget lead;
     String? key;
     switch (row) {
-      case GraphMoreRow(:final scope):
+      case GraphMoreRow(:final GraphSearchScope scope):
         lead = _plain(s.graphSearchNarrows(s.graphSearchScopePlural(scope.name)), text);
         key = s.graphSearchKeyShow;
-      case GraphChangeRow(change: GraphSearchChange(:final inView)) ||
-          GraphBookmarkRow(change: GraphSearchChange(:final inView)):
+      case GraphChangeRow(change: GraphSearchChange(:final bool inView)) ||
+          GraphBookmarkRow(change: GraphSearchChange(:final bool inView)):
         lead = _plain(inView ? s.graphSearchSelects : s.graphSearchSwitches(GraphAllView.expression), text);
         key = inView ? s.graphSearchKeySelect : s.graphSearchKeyShow;
       case GraphBookmarkRow():
         lead = _plain(s.graphSearchSwitches(GraphAllView.expression), text);
         key = s.graphSearchKeyShow;
-      case GraphFilterRow(:final filter):
+      case GraphFilterRow(:final GraphFilter filter):
         lead = ZsTooltip(message: filter.command, child: _plain(filter.command, code));
         key = s.graphSearchKeyFilter;
-      case GraphRefusalRow(:final message):
+      case GraphRefusalRow(:final String message):
         lead = _plain(message, text);
     }
     return _FooterBox(

@@ -306,9 +306,9 @@ Uint8List zanshinConfigPath(ConfigScope scope, {String? workspaceRoot}) {
 /// [target] on the wire: a scope, or a `path` with the scope left ABSENT.
 (fbs.ConfigScope?, String?) _wireTarget(ConfigTarget target) {
   switch (target) {
-    case ConfigScopeTarget(:final scope):
+    case ConfigScopeTarget(:final ConfigScope scope):
       return (scope.wire, null);
-    case ConfigFileTarget(:final path):
+    case ConfigFileTarget(:final String path):
       rejectInteriorNul(path, 'path');
       return (null, path);
   }

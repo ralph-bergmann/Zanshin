@@ -677,7 +677,7 @@ class InspectorViewModel extends ChangeNotifier {
           _picked.clear();
           _partial.clear();
         }
-      case GraphActionRefused(:final error):
+      case GraphActionRefused(:final ZanshinFfiException error):
         if (_key == key) {
           _composerError = error;
         }

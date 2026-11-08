@@ -754,21 +754,26 @@ trap 'rm -f "$CORE/coverage.on"' EXIT
 # built asset as a belt-and-suspenders against a cached non-instrumented dylib being reused.
 # (packages/zanshin_core resolves via a Dart pub WORKSPACE — `resolution: workspace` in its
 # pubspec.yaml, `workspace:` in the root pubspec.yaml — so `.dart_tool` is hoisted to the
-# WORKSPACE ROOT, not nested under packages/zanshin_core/.dart_tool. The instrumented dylib lands
-# at $ROOT/.dart_tool/lib/libzanshin_ffi.dylib per $ROOT/.dart_tool/native_assets.yaml; verified
-# 2026-08-13 by deleting every candidate dylib, rerunning `dart test`, and checking mtimes.)
+# WORKSPACE ROOT, not nested under packages/zanshin_core/.dart_tool.)
 rm -rf "$ROOT/.dart_tool/lib" "$ROOT/.dart_tool/native_assets.yaml"
 ( cd "$CORE" \
   && JJ_CONFIG="" GIT_CONFIG_GLOBAL="" JJ_USER="Zanshin" JJ_EMAIL="zanshin@localhost" JJ_OP_HOSTNAME="localhost" JJ_OP_USERNAME="zanshin" ZANSHIN_LOG_DIR="$ROOT/target/test-logs" XDG_CONFIG_HOME="$ROOT/target/test-xdg-config" \
      LLVM_PROFILE_FILE="$COV/ffi-%p-%m.profraw" \
      dart test )
-DYL="$ROOT/.dart_tool/lib/libzanshin_ffi.dylib"
-[ -f "$DYL" ] || DYL="$(find "$ROOT/.dart_tool" -name 'libzanshin_ffi.dylib' -type f 2>/dev/null | head -1)"
-if [ -z "$DYL" ] || [ ! -f "$DYL" ]; then
-    echo "coverage: instrumented cdylib not found at $ROOT/.dart_tool/lib/libzanshin_ffi.dylib" >&2
+"$LLVM_BIN/llvm-profdata" merge -sparse -o "$COV/ffi.profdata" "$COV"/ffi-*.profraw
+# WHY: `dart test` runs a temporary copy of the asset (Dart 3.15), so the file it ran is gone. `flutter test` and
+# `flutter run` keep builds without coverage data beside the hook's instrumented one, in folders named by a hash.
+DYL=""
+while IFS= read -r built; do
+    if "$LLVM_BIN/llvm-cov" export -summary-only -instr-profile "$COV/ffi.profdata" "$built" >/dev/null 2>&1; then
+        DYL="$built"
+        break
+    fi
+done < <(find "$ROOT/.dart_tool/hooks_runner" -path '*/release/libzanshin_ffi.dylib' -type f -print0 | xargs -0 ls -t)
+if [ -z "$DYL" ]; then
+    echo "coverage: no instrumented cdylib under $ROOT/.dart_tool/hooks_runner" >&2
     exit 1
 fi
-"$LLVM_BIN/llvm-profdata" merge -sparse -o "$COV/ffi.profdata" "$COV"/ffi-*.profraw
 "$LLVM_BIN/llvm-cov" export -format=lcov -instr-profile "$COV/ffi.profdata" \
     -ignore-filename-regex='(_generated\.rs$|/\.cargo/registry/|/rustc/|/\.rustup/|/\.pub-cache/)' \
     "$DYL" > "$COV/ffi.lcov"

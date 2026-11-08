@@ -81,10 +81,18 @@ class FolderDropDispatcher {
 
   /// Answers the platform's folder drag events.
   bool _handle(FolderDragEvent event) => switch (event) {
-    FolderDragEntered(:final viewId, :final position, :final paths) => _enter(viewId, position, paths),
-    FolderDragUpdated(:final viewId, :final position) => _update(viewId, position),
-    FolderDragExited(:final viewId) => _exit(viewId),
-    FolderDropped(:final viewId, :final position, :final paths) => _drop(viewId, position, paths),
+    FolderDragEntered(:final int viewId, :final Offset position, :final List<String> paths) => _enter(
+      viewId,
+      position,
+      paths,
+    ),
+    FolderDragUpdated(:final int viewId, :final Offset position) => _update(viewId, position),
+    FolderDragExited(:final int viewId) => _exit(viewId),
+    FolderDropped(:final int viewId, :final Offset position, :final List<String> paths) => _drop(
+      viewId,
+      position,
+      paths,
+    ),
   };
 
   bool _enter(int viewId, Offset position, List<String> paths) {

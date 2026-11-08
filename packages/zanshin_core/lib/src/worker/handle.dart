@@ -2855,7 +2855,7 @@ final class RepoHandle {
   // a Dart async call across the isolate boundary — Dart Finalizer is the
   // correct mechanism (R4, Story 3.9).
   static final _finalizer = Finalizer<(ZanshinWorker, int)>((token) {
-    final (worker, handleId) = token;
+    final (ZanshinWorker worker, int handleId) = token;
     // WHY: Finalizer callbacks are synchronous; closeRepo is best-effort GC
     // cleanup. .catchError swallows all failures; .ignore() discards the future
     // intentionally (suppresses discarded_futures lint).

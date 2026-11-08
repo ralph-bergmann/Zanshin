@@ -88,9 +88,14 @@ Uint8List zanshinDropActions(int rawHandle, DropSource source, List<DropLocation
 @visibleForTesting
 Uint8List dropActionsRequestBytes(DropSource source, List<DropLocation> locations) {
   final (fbs.DropSourceKind kind, String? changeId, List<String>? paths, String? bookmark) = switch (source) {
-    ChangeDropSource(:final changeId) => (fbs.DropSourceKind.Change, changeId, null, null),
-    SelectionDropSource(:final changeId, :final paths) => (fbs.DropSourceKind.Selection, changeId, paths, null),
-    BookmarkDropSource(:final name) => (fbs.DropSourceKind.Bookmark, null, null, name),
+    ChangeDropSource(:final String changeId) => (fbs.DropSourceKind.Change, changeId, null, null),
+    SelectionDropSource(:final String changeId, :final List<String> paths) => (
+      fbs.DropSourceKind.Selection,
+      changeId,
+      paths,
+      null,
+    ),
+    BookmarkDropSource(:final String name) => (fbs.DropSourceKind.Bookmark, null, null, name),
   };
   rejectDropActionsNuls(source, locations);
   return fbs.DropActionsRequestObjectBuilder(
@@ -115,12 +120,12 @@ Uint8List dropActionsRequestBytes(DropSource source, List<DropLocation> location
 /// runs, and the worker runs before it sends the command.
 void rejectDropActionsNuls(DropSource source, List<DropLocation> locations) {
   switch (source) {
-    case ChangeDropSource(:final changeId):
+    case ChangeDropSource(:final String changeId):
       rejectInteriorNul(changeId, 'changeId');
-    case SelectionDropSource(:final changeId, :final paths):
+    case SelectionDropSource(:final String changeId, :final List<String> paths):
       rejectInteriorNul(changeId, 'changeId');
       rejectInteriorNuls(paths, 'paths');
-    case BookmarkDropSource(:final name):
+    case BookmarkDropSource(:final String name):
       rejectInteriorNul(name, 'bookmark');
   }
   for (final location in locations) {

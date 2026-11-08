@@ -174,40 +174,53 @@ class AppMenuModel extends ChangeNotifier {
     String name(String id) => targetName(model, id);
     String names(List<String> ids) => ids.map(name).join(', ');
     return switch (action) {
-      GraphAbandon(:final ids) => s.menuAbandonTarget(names(ids)),
-      GraphEdit(:final id) => s.menuChangeEditTarget(name(id)),
-      GraphDescribe(:final id) => s.menuDescribeTarget(name(id)),
-      GraphNew(:final parents) when parents.length > 1 => s.menuNewMerge(
+      GraphAbandon(:final List<String> ids) => s.menuAbandonTarget(names(ids)),
+      GraphEdit(:final String id) => s.menuChangeEditTarget(name(id)),
+      GraphDescribe(:final String id) => s.menuDescribeTarget(name(id)),
+      GraphNew(:final List<String> parents) when parents.length > 1 => s.menuNewMerge(
         name(parents.last),
         names(parents.sublist(0, parents.length - 1)),
       ),
       GraphNew() => s.menuNewChange,
-      GraphRebase(:final source, :final revisions, :final onto, :final insertAfter, :final insertBefore) =>
+      GraphRebase(
+        :final List<String> source,
+        :final List<String> revisions,
+        :final List<String> onto,
+        :final List<String> insertAfter,
+        :final List<String> insertBefore,
+      ) =>
         insertAfter.isNotEmpty
             ? s.menuRebaseAfter(names(<String>[...source, ...revisions]), names(insertAfter))
             : insertBefore.isNotEmpty
             ? s.menuRebaseBefore(names(<String>[...source, ...revisions]), names(insertBefore))
             : s.menuRebaseOnto(names(<String>[...source, ...revisions]), names(onto)),
-      GraphDuplicate(:final revisions, :final onto) => s.menuDuplicateOnto(names(revisions), names(onto)),
-      GraphRevert(:final id) => s.menuRevertTarget(name(id)),
-      GraphSquash(:final revision, :final from) => s.menuSquashTarget(
+      GraphDuplicate(:final List<String> revisions, :final List<String> onto) => s.menuDuplicateOnto(
+        names(revisions),
+        names(onto),
+      ),
+      GraphRevert(:final String id) => s.menuRevertTarget(name(id)),
+      GraphSquash(:final String? revision, :final List<String> from) => s.menuSquashTarget(
         revision != null
             ? name(revision)
             : from.isNotEmpty
             ? names(from)
             : '@', // l10n-ignore: jj's symbol
       ),
-      GraphCommit(:final id) => s.menuCommitTarget(name(id)),
-      GraphSplit(:final id) => s.menuSplitTarget(name(id)),
-      GraphBookmarkCreate(:final names) => s.menuBookmarkCreate(names.join(', ')),
-      GraphBookmarkDelete(:final names) => s.menuBookmarkDelete(names.join(', ')),
-      GraphBookmarkMove(:final names) => s.menuBookmarkMove(names.join(', ')),
-      GraphBookmarkRename(:final oldName) => s.menuBookmarkRename(oldName),
-      GraphBookmarkTrack(:final name, :final remote) => s.menuBookmarkTrack('$name@$remote'), // l10n-ignore: symbol
-      GraphBookmarkUntrack(:final name, :final remote) => s.menuBookmarkUntrack('$name@$remote'), // l10n-ignore: symbol
-      GraphUndo(:final of) || GraphRedo(:final of) => actionName(s, model, of),
-      GraphLoggedOperation(:final command) => command,
-      GraphOpRestore(:final operation) => s.menuRestoreOperation(operation),
+      GraphCommit(:final String id) => s.menuCommitTarget(name(id)),
+      GraphSplit(:final String id) => s.menuSplitTarget(name(id)),
+      GraphBookmarkCreate(:final List<String> names) => s.menuBookmarkCreate(names.join(', ')),
+      GraphBookmarkDelete(:final List<String> names) => s.menuBookmarkDelete(names.join(', ')),
+      GraphBookmarkMove(:final List<String> names) => s.menuBookmarkMove(names.join(', ')),
+      GraphBookmarkRename(:final String oldName) => s.menuBookmarkRename(oldName),
+      GraphBookmarkTrack(:final String name, :final String remote) => s.menuBookmarkTrack(
+        '$name@$remote', // l10n-ignore: symbol
+      ),
+      GraphBookmarkUntrack(:final String name, :final String remote) => s.menuBookmarkUntrack(
+        '$name@$remote', // l10n-ignore: symbol
+      ),
+      GraphUndo(:final GraphAction of) || GraphRedo(:final GraphAction of) => actionName(s, model, of),
+      GraphLoggedOperation(:final String command) => command,
+      GraphOpRestore(:final String operation) => s.menuRestoreOperation(operation),
     };
   }
 

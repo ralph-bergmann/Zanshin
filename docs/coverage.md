@@ -46,9 +46,11 @@ the marker forces the hooks-runner to re-run the hook (otherwise a cached
 non-instrumented dylib would be reused and the FFI path would measure nothing).
 `packages/zanshin_core` resolves via a Dart pub **workspace** (`resolution: workspace` in its
 `pubspec.yaml`), which hoists `.dart_tool` to the **workspace root** rather than nesting it
-under the package. The instrumented cdylib lands at the repo root's
-`.dart_tool/lib/libzanshin_ffi.dylib` (per the repo root's `.dart_tool/native_assets.yaml`) —
-not `packages/zanshin_core/.dart_tool/...`. The marker is removed on exit and is git-ignored.
+under the package. The instrumented cdylib is built in a hash-named folder under the repo root's
+`.dart_tool/hooks_runner/shared/zanshin_core/build/`. `dart test` runs a temporary copy of it, so
+`cargo make coverage` takes the newest build there that carries coverage data; `flutter test` and
+`flutter run` keep builds without it in their own folders. The marker is removed on exit and is
+git-ignored.
 
 ## The baseline
 

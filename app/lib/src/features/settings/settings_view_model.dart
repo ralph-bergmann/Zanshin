@@ -734,14 +734,18 @@ class SettingsViewModel extends ChangeNotifier {
     final List<ZanshinWarning> warnings;
     try {
       warnings = await switch (op) {
-        RemoteAdd(:final name, :final url, :final pushUrl) => reads.remoteAdd(name: name, url: url, pushUrl: pushUrl),
-        RemoteRename(:final name, :final newName) => reads.remoteRename(name, newName),
-        RemoteSetUrl(:final name, :final url, :final pushUrl) => reads.remoteSetUrl(
+        RemoteAdd(:final String name, :final String url, :final String? pushUrl) => reads.remoteAdd(
           name: name,
           url: url,
           pushUrl: pushUrl,
         ),
-        RemoteRemove(:final name) => reads.remoteRemove(name),
+        RemoteRename(:final String name, :final String newName) => reads.remoteRename(name, newName),
+        RemoteSetUrl(:final String name, :final String? url, :final String? pushUrl) => reads.remoteSetUrl(
+          name: name,
+          url: url,
+          pushUrl: pushUrl,
+        ),
+        RemoteRemove(:final String name) => reads.remoteRemove(name),
       };
     } on ZanshinFfiException catch (error) {
       _log.fine('the remote verb failed: ${error.code}');

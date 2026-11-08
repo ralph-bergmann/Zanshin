@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 

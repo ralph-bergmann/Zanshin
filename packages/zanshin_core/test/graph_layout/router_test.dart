@@ -104,7 +104,9 @@ List<_Bridge> _allPairs(RouteGeometry g) {
           if (s.$1 == t.$1) {
             continue;
           }
-          final (h, v, he, ve) = s.$1 ? (s, t, i, j) : (t, s, j, i);
+          final ((bool, double, double, double) h, (bool, double, double, double) v, int he, int ve) = s.$1
+              ? (s, t, i, j)
+              : (t, s, j, i);
           if (v.$2 > h.$3 + 1 && v.$2 < h.$4 - 1 && h.$2 > v.$3 + 1 && h.$2 < v.$4 - 1) {
             final double hRoom = min(v.$2 - 6 - h.$3, h.$4 - v.$2 - 6);
             final double vRoom = min(h.$2 - 6 - v.$3, v.$4 - h.$2 - 6);

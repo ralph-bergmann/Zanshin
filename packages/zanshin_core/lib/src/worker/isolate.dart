@@ -444,10 +444,10 @@ class ZanshinWorker {
       OpenRepoCommand(commandId: _correlator.allocateId(), path: path),
     );
     switch (response) {
-      case HandleResult(:final handleId, :final bytes):
+      case HandleResult(:final int handleId, :final Uint8List bytes):
         final List<ZanshinWarning> warnings = repo_ffi_precondition.decodeCreationReportInternal(bytes).warnings;
         return OpenedRepoHandle(this, handleId, warnings: warnings);
-      case BufferResult(:final bytes):
+      case BufferResult(:final Uint8List bytes):
         throw _envelopeToException(bytes);
       case TransferResult():
         throw StateError('openRepo received TransferResult — only GraphTopologyCommand replies with one');
@@ -589,7 +589,7 @@ class ZanshinWorker {
   /// envelope carries (Story 9.33), or the refusal as [ZanshinFfiException].
   CreatedRepoHandle _createdOrThrow(WorkerResponse response) {
     switch (response) {
-      case HandleResult(:final handleId, :final bytes):
+      case HandleResult(:final int handleId, :final Uint8List bytes):
         final repo_ffi_precondition.CreationReport report = repo_ffi_precondition.decodeCreationReportInternal(bytes);
         return CreatedRepoHandle(
           this,
@@ -598,7 +598,7 @@ class ZanshinWorker {
           precondition: report.precondition,
           trackableRemoteBookmarks: report.trackableRemoteBookmarks,
         );
-      case BufferResult(:final bytes):
+      case BufferResult(:final Uint8List bytes):
         throw _envelopeToException(bytes);
       case TransferResult():
         throw StateError('a creation received TransferResult — only GraphTopologyCommand replies with one');
@@ -621,10 +621,10 @@ class ZanshinWorker {
   Future<Uint8List> send(WorkerCommand cmd) async {
     final WorkerResponse response = await _sendCommand(cmd);
     return switch (response) {
-      BufferResult(:final bytes) => _recordPrecondition(cmd, bytes),
+      BufferResult(:final Uint8List bytes) => _recordPrecondition(cmd, bytes),
       // The graph topology's one-copy reply (Story 4.12): materialize() hands the
       // bytes over without a further copy.
-      TransferResult(:final data) => _recordPrecondition(cmd, data.materialize().asUint8List()),
+      TransferResult(:final TransferableTypedData data) => _recordPrecondition(cmd, data.materialize().asUint8List()),
       HandleResult() => throw StateError('send() received HandleResult — use openRepo/initRepo/cloneRepo'),
       GraphLayoutResult() => throw StateError('send() received GraphLayoutResult — use graphLayout'),
     };
@@ -744,7 +744,7 @@ class ZanshinWorker {
       CloseRepoCommand(commandId: _correlator.allocateId(), handleId: handleId),
     );
     switch (response) {
-      case BufferResult(:final bytes):
+      case BufferResult(:final Uint8List bytes):
         final env = fbs.Envelope(bytes);
         if (!env.ok) {
           throw repo_ffi_precondition.decodeEnvelopeErrorInternal(env);
@@ -906,11 +906,11 @@ class ZanshinWorker {
     );
     final WorkerResponse response = await _sendCommand(cmd);
     switch (response) {
-      case GraphLayoutResult(:final topology):
+      case GraphLayoutResult(:final TransferableTypedData topology):
         // materialize() hands the one copy over without a further one.
         final Uint8List bytes = _recordPrecondition(cmd, topology.materialize().asUint8List());
         return decodeGraphLayoutReplyInternal(bytes, response);
-      case BufferResult(:final bytes):
+      case BufferResult(:final Uint8List bytes):
         throw _envelopeToException(_recordPrecondition(cmd, bytes));
       case HandleResult():
         throw StateError('graphLayout received HandleResult');
@@ -3662,7 +3662,13 @@ class ZanshinWorker {
 /// throwAsyncErrorAfterHandshake) as a positional record; the last two are
 /// test-only fault-injection flags (AC 15a/15b), always false in production.
 void _workerEntry(_WorkerInit init) {
-  final (bootstrapSP, responseSP, eventSP, failBeforeHandshake, throwAsyncErrorAfterHandshake) = init;
+  final (
+    SendPort bootstrapSP,
+    SendPort responseSP,
+    SendPort eventSP,
+    bool failBeforeHandshake,
+    bool throwAsyncErrorAfterHandshake,
+  ) = init;
 
   if (failBeforeHandshake) {
     // AC 15a regression test: a failure in the pre-handshake window (where
@@ -5715,10 +5721,10 @@ void _replyRepoOp(
 /// Map a worker-decoded [ZanshinRawEvent] to the public [RepoEvent] sent to
 /// main, substituting the already-resolved `handleId` for the raw handle.
 RepoEvent _rawEventToRepoEvent(int handleId, ZanshinRawEvent raw) => switch (raw) {
-  RawOpHeadsChangedEvent(:final paths) => OpHeadsChangedEvent(handleId, paths),
-  RawWorkingCopyHeartbeatEvent(:final paths) => WorkingCopyHeartbeatEvent(handleId, paths),
-  RawWatchErrorEvent(:final message) => WatchErrorEvent(handleId, message),
-  RawProgressEvent(:final operation, :final progress, :final message) => ProgressEvent(
+  RawOpHeadsChangedEvent(:final List<String> paths) => OpHeadsChangedEvent(handleId, paths),
+  RawWorkingCopyHeartbeatEvent(:final List<String> paths) => WorkingCopyHeartbeatEvent(handleId, paths),
+  RawWatchErrorEvent(:final String message) => WatchErrorEvent(handleId, message),
+  RawProgressEvent(:final String operation, :final double progress, :final String message) => ProgressEvent(
     handleId,
     operation,
     progress,

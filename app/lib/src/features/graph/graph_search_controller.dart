@@ -258,12 +258,12 @@ class GraphSearchController extends ChangeNotifier {
     return _recent
         .where(
           (r) => switch (r) {
-            GraphRecentGoTo(:final changeId, :final bookmark) =>
+            GraphRecentGoTo(:final String changeId, :final String? bookmark) =>
               (scope == GraphSearchScope.any ||
                       (scope == GraphSearchScope.change && bookmark == null) ||
                       (scope == GraphSearchScope.bookmark && bookmark != null)) &&
                   !(all && layout.indexOfKey(changeId) == null),
-            GraphRecentFilter(:final filter) => scope == GraphSearchScope.any || scope == filter.scope,
+            GraphRecentFilter(:final GraphFilter filter) => scope == GraphSearchScope.any || scope == filter.scope,
           },
         )
         .take(shownRecent)

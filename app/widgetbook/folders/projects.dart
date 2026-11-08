@@ -254,6 +254,8 @@ class _CapsuleStates extends StatelessWidget {
       open.copyWith(status: ProjectStatus.diverged),
       open.copyWith(status: ProjectStatus.conflict),
       open.copyWith(status: ProjectStatus.stale),
+      // Not redundant: the generated copyWith tells an explicit null from no argument.
+      // ignore: avoid_redundant_argument_values
       open.copyWith(status: null),
       open.copyWith(name: 'a-project-whose-name-is-far-too-long-for-the-capsule'),
     ];
