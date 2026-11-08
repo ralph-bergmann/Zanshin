@@ -6,6 +6,7 @@ import 'dart:io' show FileSystemException;
 import 'package:flutter/rendering.dart' show SemanticsProperties;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
@@ -18,7 +19,13 @@ import '../graph/inspector_diff.dart';
 import '../projects/project_repos.dart';
 import 'undo_timeline_model.dart' show shortOperationId;
 
+part 'operation_changes.factory.dart';
+
 final _log = Logger('zanshin.operation_changes');
+
+/// Builds the view of one operation: [OperationChangesModelFactory.create] in the app, a stand-in in tests and the
+/// catalogue.
+typedef OperationChangesOf = OperationChangesModel Function({required String operation});
 
 /// What the operation view reads (Story 10.29). A failed call throws [ZanshinFfiException].
 abstract interface class OperationChangesSource {
@@ -83,7 +90,8 @@ typedef OperationChangeLine = ({bool added, String text});
 /// [settings], written and followed.
 class OperationChangesModel extends ChangeNotifier {
   /// The view of [operation] (an id), reading through [_source].
-  OperationChangesModel(this._source, {required this.operation, required this.settings})
+  @assistedInject
+  OperationChangesModel(this._source, {@assisted required this.operation, required this.settings})
     : _layout = settings.value.general.diffLayout {
     settings.addListener(_settingsChanged);
     unawaited(_load());

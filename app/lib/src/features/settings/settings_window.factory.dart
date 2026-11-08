@@ -10,10 +10,5 @@ part of 'settings_window.dart';
 
 // ignore_for_file: type=lint, type=warning
 abstract class SettingsWindowFactory {
-  SettingsWindow create({
-    required SettingsWindowState state,
-    String? windowKey,
-    SettingsReadsOf? readsOf,
-    Key? key,
-  });
+  SettingsWindow create({String? windowKey, Key? key});
 }

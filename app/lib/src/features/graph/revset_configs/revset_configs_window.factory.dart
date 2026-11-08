@@ -10,9 +10,5 @@ part of 'revset_configs_window.dart';
 
 // ignore_for_file: type=lint, type=warning
 abstract class RevsetConfigsWindowFactory {
-  RevsetConfigsWindow create({
-    required OpenUrl openUrl,
-    String? windowKey,
-    Key? key,
-  });
+  RevsetConfigsWindow create({String? windowKey, Key? key});
 }

@@ -24,6 +24,9 @@ deferred:
     location: >-
       app/lib/src/features/graph/revset_configs/revset_configs_window.dart:63-65, app/lib/src/app/app_module.dart:37-48
     severity: low
+    resolved: >-
+      2026-11-08 — fixed (console session): inject.dart_new's Story 9.5 fixed the generator; RevsetConfigsWindow.openUrl
+      is injected again, through a path override in app/pubspec.yaml until that generator is published.
   - summary: >-
       A boot that fails in ZanshinApplication.start() shows the failure page under the app's full menus, whose window items then wait forever (pre-existing).
     evidence: |-

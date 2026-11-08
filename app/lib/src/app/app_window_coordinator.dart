@@ -55,6 +55,7 @@ class AppWindowCoordinator implements AppWindowActions {
   AppWindowCoordinator({
     required this.windows,
     required this.session,
+    required this.settingsState,
     required this.buildProject,
     required this.buildProjects,
     required this.buildRevsetConfigs,
@@ -69,6 +70,9 @@ class AppWindowCoordinator implements AppWindowActions {
   /// The open project.
   final ProjectSession session;
 
+  /// The Settings window's tab and page, kept while the window is closed (in memory only).
+  final SettingsWindowState settingsState;
+
   /// The project window's content: its root over `HomePage`.
   final Widget Function() buildProject;
 
@@ -79,10 +83,7 @@ class AppWindowCoordinator implements AppWindowActions {
   final Widget Function() buildRevsetConfigs;
 
   /// The Settings window's content (Story 11.7): its root over the window, showing [settingsState].
-  final Widget Function(SettingsWindowState state) buildSettings;
-
-  /// The Settings window's tab and page, kept while the window is closed (in memory only).
-  final settingsState = SettingsWindowState();
+  final Widget Function() buildSettings;
 
   final bool Function(String path) _folderExists;
   final MethodChannel _channel;
@@ -154,7 +155,7 @@ class AppWindowCoordinator implements AppWindowActions {
           (SettingsTab.project, SettingsPage.immutableCommits) => s.settingsImmutableTitle,
           (SettingsTab.project, null) => session.current?.name ?? s.settingsTabGeneral,
         },
-        () => AppWindowActionsScope(actions: this, child: buildSettings(settingsState)),
+        () => AppWindowActionsScope(actions: this, child: buildSettings()),
         dialog: settingsWindowSpec,
       );
     });

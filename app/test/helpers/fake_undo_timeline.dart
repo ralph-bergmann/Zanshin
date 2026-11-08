@@ -8,6 +8,11 @@ import 'package:zanshin/src/features/graph/graph_view_model.dart' show UndoTimel
 import 'package:zanshin/src/features/undo_timeline/operation_changes.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
+
+/// Show changes over [source], the diff layout in [settings].
+OperationChangesOf operationChangesOver(OperationChangesSource source, SettingsStore settings) =>
+    ({required operation}) => OperationChangesModel(source, operation: operation, settings: settings);
 
 /// The root operation's id.
 final String rootOpId = '0' * 128;

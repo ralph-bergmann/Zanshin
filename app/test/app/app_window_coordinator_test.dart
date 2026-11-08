@@ -97,9 +97,12 @@ class _Rig {
       }
       channel.setMethodCallHandler(null);
     });
+    final settingsState = SettingsWindowState();
+    addTearDown(settingsState.dispose);
     coordinator = AppWindowCoordinator(
       windows: windows,
       session: session,
+      settingsState: settingsState,
       buildProject: () {
         projectContents++;
         return const _ProjectContent();
@@ -113,7 +116,7 @@ class _Rig {
         revsetConfigsContents++;
         return const _ProjectContent();
       },
-      buildSettings: (state) {
+      buildSettings: () {
         settingsContents++;
         return const _ProjectContent();
       },

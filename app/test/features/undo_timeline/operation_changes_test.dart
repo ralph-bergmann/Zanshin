@@ -76,8 +76,7 @@ void main() {
     final ShellRailItem item = undoTimelineRailItem(
       strings,
       model,
-      changes: changes,
-      settings: settings,
+      changes: operationChangesOver(changes, settings),
       actions: FakeTimelineActions(),
     );
     await tester.pumpWidget(
@@ -338,7 +337,7 @@ void main() {
           width: 400,
           height: 700,
           child: PinnedPanel(
-            item: undoTimelineRailItem(strings, model, changes: changes, settings: settings),
+            item: undoTimelineRailItem(strings, model, changes: operationChangesOver(changes, settings)),
             onClose: () {},
           ),
         ),

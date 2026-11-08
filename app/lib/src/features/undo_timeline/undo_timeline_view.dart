@@ -5,7 +5,6 @@ import 'dart:async';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:zanshin_core/zanshin_core.dart' show Operation;
-import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -18,13 +17,11 @@ import 'undo_timeline_model.dart';
 
 /// The rail's "Undo Timeline" item (Story 11.9): [model]'s hover preview and pinned panel; [actions] is the runner
 /// (the project window passes the graph's view model, Story 10.12; null shows every action disabled with its
-/// command). Show changes reads through [changes], its diff layout in [settings] (Story 10.29). No count (design
-/// question (b)).
+/// command). Show changes opens what [changes] builds. No count (design question (b)).
 ShellRailItem undoTimelineRailItem(
   AppLocalizations strings,
   UndoTimelineModel model, {
-  required OperationChangesSource changes,
-  required SettingsStore settings,
+  required OperationChangesOf changes,
   UndoTimelineActions? actions,
 }) => ShellRailItem(
   id: 'undo',
@@ -32,7 +29,7 @@ ShellRailItem undoTimelineRailItem(
   icon: ZI.undo,
   scrolls: true,
   preview: UndoTimelinePreview(model: model),
-  panel: UndoTimelinePanel(model: model, changes: changes, settings: settings, actions: actions),
+  panel: UndoTimelinePanel(model: model, changes: changes, actions: actions),
 );
 
 /// The Undo Timeline's hover preview (DS ui_kits/desktop/kit.css:68-72, `.zk-ops`/`.zk-op`; chrome.jsx:133): the 3
@@ -100,23 +97,14 @@ class UndoTimelinePreview extends StatelessWidget {
 /// (Story 10.29), which swaps the list for the operation's [OperationChangesView] until Esc or Back. A disabled
 /// button names its reason, its tooltip the full jj command (decisions 16.39, 16.44).
 class UndoTimelinePanel extends StatefulWidget {
-  /// The panel of [model], acting through [actions]; Show changes reads through [changes].
-  const UndoTimelinePanel({
-    required this.model,
-    required this.changes,
-    required this.settings,
-    this.actions,
-    super.key,
-  });
+  /// The panel of [model], acting through [actions]; Show changes opens what [changes] builds.
+  const UndoTimelinePanel({required this.model, required this.changes, this.actions, super.key});
 
   /// The timeline's state.
   final UndoTimelineModel model;
 
-  /// What Show changes reads.
-  final OperationChangesSource changes;
-
-  /// The app settings: the operation view's diff layout.
-  final SettingsStore settings;
+  /// Builds the view Show changes opens.
+  final OperationChangesOf changes;
 
   /// The runner, or null.
   final UndoTimelineActions? actions;
@@ -138,10 +126,8 @@ class _UndoTimelinePanelState extends State<UndoTimelinePanel> {
   @override
   void didUpdateWidget(UndoTimelinePanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Another repository or settings store: the open view read the old one.
-    if (!identical(oldWidget.changes, widget.changes) ||
-        !identical(oldWidget.model, widget.model) ||
-        !identical(oldWidget.settings, widget.settings)) {
+    // Another repository: the open view read the old one.
+    if (!identical(oldWidget.model, widget.model)) {
       _open?.model.dispose();
       _open = null;
     }
@@ -156,12 +142,7 @@ class _UndoTimelinePanelState extends State<UndoTimelinePanel> {
 
   void _show(Operation operation) {
     _open?.model.dispose();
-    setState(
-      () => _open = (
-        operation: operation,
-        model: OperationChangesModel(widget.changes, operation: operation.id, settings: widget.settings),
-      ),
-    );
+    setState(() => _open = (operation: operation, model: widget.changes(operation: operation.id)));
   }
 
   void _back() {

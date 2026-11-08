@@ -60,9 +60,7 @@ class RevsetConfigsWindow extends StatefulWidget {
     required this.settings,
     required this.graph,
     required this.windows,
-    // WHY assisted: inject_generator 1.2.1 builds its own provider for a typedef'd function type that an assisted
-    // factory's class injects (the ViewModelFactory pattern), which clashes with the module's OpenUrl binding.
-    @assisted required this.openUrl,
+    required this.openUrl,
     @assisted String? windowKey,
     @assisted super.key,
   }) : windowKey = windowKey ?? revsetConfigsWindowKey;

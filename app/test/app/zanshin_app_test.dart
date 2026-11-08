@@ -7,7 +7,6 @@ import 'package:zanshin/src/features/home/home_page.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/projects/projects_window.dart';
 import 'package:zanshin/src/features/settings/settings_window.dart';
-import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
@@ -93,7 +92,6 @@ void main() {
     final HomePage home = tester.widget<HomePage>(find.byType(HomePage));
     expect(home.projects, same(session));
     expect(graph.session, same(session), reason: 'a singleton');
-    expect(home.settings, same(graph.settings));
     expect(home.activeGraph, same(graph.activeGraph));
     expect(
       home.activeGraph,
@@ -146,23 +144,23 @@ void main() {
   testWidgets('the graph builds Settings under its content-sized root over the session and the graph', (tester) async {
     final windows = AppWindows(exitProcess: () async {});
     final TestComponent graph = await component(tester, windows: windows);
-    final state = SettingsWindowState();
-    addTearDown(state.dispose);
 
-    final Widget root = graph.coordinator.buildSettings(state);
+    final Widget root = graph.coordinator.buildSettings();
 
     expect(root, isA<ZanshinWindowRoot>().having((root) => root.windowKey, 'windowKey', settingsWindowKey));
     expect((root as ZanshinWindowRoot).sizeToContent, isTrue);
     final Widget content = root.child;
     expect(content, isA<SettingsWindow>());
-    expect((content as SettingsWindow).state, same(state));
-    expect(content.store, same(graph.settings));
-    expect(content.session, same(graph.session));
-    expect(content.environment, same(graph.environment));
-    expect(content.graph, same(graph.activeGraph));
+    expect((content as SettingsWindow).state, same(graph.coordinator.settingsState));
+    expect(content.viewModel.store, same(graph.settings));
+    expect(content.viewModel.session, same(graph.session));
+    expect(content.viewModel.environment, same(graph.environment));
+    expect(content.viewModel.graph, same(graph.activeGraph));
     expect(content.windows, same(windows));
     expect(content.windowKey, settingsWindowKey);
-    expect(content.readsOf, isNull, reason: "the open project's own reads");
+    final next = (graph.coordinator.buildSettings() as ZanshinWindowRoot).child as SettingsWindow;
+    expect(next.viewModel, isNot(same(content.viewModel)), reason: 'each window owns its view model');
+    expect(next.state, same(content.state), reason: 'the tab survives a close');
   });
 
   testWidgets('the four window contents the coordinator builds share one session, one store and one graph', (
@@ -176,8 +174,6 @@ void main() {
     ZanshinShellPlatform.instance = shell;
     addTearDown(shell.close);
     final TestComponent graph = await component(tester);
-    final state = SettingsWindowState();
-    addTearDown(state.dispose);
 
     await tester.pumpWidget(graph.coordinator.buildProject());
     shell.theme.complete(_shell());
@@ -185,13 +181,13 @@ void main() {
     final HomePage home = tester.widget<HomePage>(find.byType(HomePage));
     final projects = (graph.coordinator.buildProjects((_) {}) as ZanshinWindowRoot).child as ProjectsWindow;
     final configurations = (graph.coordinator.buildRevsetConfigs() as ZanshinWindowRoot).child as RevsetConfigsWindow;
-    final settingsRoot = graph.coordinator.buildSettings(state) as ZanshinWindowRoot;
+    final settingsRoot = graph.coordinator.buildSettings() as ZanshinWindowRoot;
     final settings = settingsRoot.child as SettingsWindow;
 
-    expect(<Object>{home.projects, projects.session, settings.session}, <Object>{graph.session});
-    expect(<Object>{home.settings, configurations.settings, settings.store}, <Object>{graph.settings});
+    expect(<Object>{home.projects, projects.session, settings.viewModel.session}, <Object>{graph.session});
+    expect(<Object>{configurations.settings, settings.viewModel.store}, <Object>{graph.settings});
     expect(projects.registry, same(graph.session.registry), reason: "the Projects content's registry over that store");
-    expect(<Object>{home.activeGraph, configurations.graph, settings.graph}, <Object>{graph.activeGraph});
+    expect(<Object>{home.activeGraph, configurations.graph, settings.viewModel.graph}, <Object>{graph.activeGraph});
     expect((settingsRoot.windowKey, settingsRoot.sizeToContent), (settingsWindowKey, true));
   });
 

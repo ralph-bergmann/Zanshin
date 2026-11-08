@@ -13,15 +13,11 @@ import 'package:flutter/src/widgets/_window_macos.dart' show BaseWindowControlle
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:zanshin_core/zanshin_core.dart' show ConfigScope;
-import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
-import '../graph/active_graph.dart' show ActiveGraph;
 import '../graph/graph_layout.dart' show jjRefSymbol;
-import '../projects/project_session.dart';
 import '../projects/project_window_title.dart';
-import '../projects/projects_environment.dart';
 import '../shell/shell_toast.dart' show toastSlot, toastSpan;
 import '../window/app_windows.dart';
 import '../window/window_zoom.dart';
@@ -52,17 +48,13 @@ part 'settings_window.factory.dart';
 ///
 /// Identifiers: `settings-window` (also the content's key), `settings-tabs`, and the rows' `settings-*`.
 class SettingsWindow extends StatefulWidget {
-  /// The content showing [state] over its ports; [windowKey] defaults to [settingsWindowKey].
+  /// The content showing [state] through [viewModel], which it disposes; [windowKey] defaults to [settingsWindowKey].
   @assistedInject
   const SettingsWindow({
     required this.windows,
-    required this.store,
-    required this.environment,
-    required this.session,
-    required this.graph,
-    @assisted required this.state,
+    required this.state,
+    required this.viewModel,
     @assisted String? windowKey,
-    @assisted this.readsOf,
     @assisted super.key,
   }) : windowKey = windowKey ?? settingsWindowKey;
 
@@ -75,20 +67,8 @@ class SettingsWindow extends StatefulWidget {
   /// The window's key.
   final String windowKey;
 
-  /// The app preferences.
-  final SettingsStore store;
-
-  /// The jj config.
-  final ProjectsEnvironment environment;
-
-  /// The open project.
-  final ProjectSession session;
-
-  /// The project window's graph.
-  final ActiveGraph graph;
-
-  /// The repository reads; [RepoSettingsReads] when null.
-  final SettingsReadsOf? readsOf;
+  /// The window's data and writes.
+  final SettingsViewModel viewModel;
 
   @override
   State<SettingsWindow> createState() => SettingsWindowContentState();
@@ -96,13 +76,8 @@ class SettingsWindow extends StatefulWidget {
 
 /// The content's state; [viewModel] for tests.
 class SettingsWindowContentState extends State<SettingsWindow> with WidgetsBindingObserver {
-  late final viewModel = SettingsViewModel(
-    store: widget.store,
-    environment: widget.environment,
-    session: widget.session,
-    graph: widget.graph,
-    readsOf: widget.readsOf,
-  );
+  SettingsViewModel get viewModel => widget.viewModel;
+
   final _scroll = ScrollController();
   VoidCallback? _removeGuard;
 
@@ -120,7 +95,7 @@ class SettingsWindowContentState extends State<SettingsWindow> with WidgetsBindi
   void initState() {
     super.initState();
     viewModel.init();
-    widget.session.addListener(_sessionChanged);
+    viewModel.session.addListener(_sessionChanged);
     _sessionChanged();
     widget.windows.setCloseHandler(widget.windowKey, close);
     widget.state.confirmDiscard = _confirmDiscard;
@@ -130,7 +105,7 @@ class SettingsWindowContentState extends State<SettingsWindow> with WidgetsBindi
 
   @override
   void dispose() {
-    widget.session.removeListener(_sessionChanged);
+    viewModel.session.removeListener(_sessionChanged);
     widget.windows.setCloseHandler(widget.windowKey, null);
     if (widget.state.confirmDiscard == _confirmDiscard) {
       widget.state.confirmDiscard = null;
@@ -145,7 +120,7 @@ class SettingsWindowContentState extends State<SettingsWindow> with WidgetsBindi
     super.dispose();
   }
 
-  void _sessionChanged() => widget.state.projectOpen = widget.session.repo != null;
+  void _sessionChanged() => widget.state.projectOpen = viewModel.session.repo != null;
 
   /// The red button and ⌘W: a config page with edits asks first; then a pending valid field is written, and the
   /// window goes and its pages with it.
@@ -229,18 +204,18 @@ class SettingsWindowContentState extends State<SettingsWindow> with WidgetsBindi
         zoom: _zoom,
       )..addListener(_followingChanged);
       // The window is sized to its content, so its minimum scales here, not in AppWindows (Story 11.20).
-      widget.store.addListener(_zoomChanged);
+      viewModel.store.addListener(_zoomChanged);
       WidgetsBinding.instance.addObserver(this);
       _windowChanged();
     }
   }
 
-  double get _zoom => zoomScaleOf(widget.store.value.appearance.zoom);
+  double get _zoom => zoomScaleOf(viewModel.store.value.appearance.zoom);
 
   void _zoomChanged() => _follower?.zoom = _zoom;
 
   void _unbindWindow() {
-    widget.store.removeListener(_zoomChanged);
+    viewModel.store.removeListener(_zoomChanged);
     _window?.removeListener(_windowChanged);
     _window = null;
     _follower?.dispose();

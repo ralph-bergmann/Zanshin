@@ -10,6 +10,7 @@ import 'package:zanshin/src/features/graph/graph_preferences.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
+import 'package:zanshin/src/features/settings/settings_view_model.dart';
 import 'package:zanshin/src/features/settings/settings_window.dart';
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/sync/sync_model.dart';
@@ -86,11 +87,13 @@ class SettingsRig {
         SettingsWindow(
           state: state,
           windows: windows,
-          store: store,
-          environment: env,
-          session: session,
-          graph: graph,
-          readsOf: (_) => reads,
+          viewModel: SettingsViewModel(
+            store: store,
+            environment: env,
+            session: session,
+            graph: graph,
+            readsOf: (_) => reads,
+          ),
         ),
       ),
     );

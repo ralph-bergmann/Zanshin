@@ -6,34 +6,29 @@ import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:zanshin_core/zanshin_core.dart' show ZanshinFfiException;
-import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry, SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry;
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
-import '../bookmarks/bookmark_list_model.dart';
 import '../bookmarks/bookmark_list_view.dart';
 import '../graph/active_graph.dart';
-import '../graph/graph_search_controller.dart' show GraphSearchController;
 import '../graph/graph_search_field.dart' show GraphSearchShortcuts;
-import '../graph/graph_view_model.dart' show UndoTimelineActions;
 import '../projects/project_capsule.dart';
 import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/project_window_title.dart';
-import '../projects/projects_environment.dart';
 import '../shell/floating_shell.dart';
 import '../shell/floating_shell_view_model.dart';
 import '../shell/shell_controller.dart' show ShellRailItem;
 import '../shell/shell_toast.dart';
 import '../shell/top_bar.dart';
-import '../undo_timeline/operation_changes.dart';
-import '../undo_timeline/undo_timeline_model.dart';
 import '../undo_timeline/undo_timeline_view.dart';
 import '../window/app_window_actions.dart';
 import '../window/app_windows.dart' show mainWindowTitle;
 import 'open_report_toast.dart';
 import 'project_graph_host.dart';
+import 'project_scope.dart';
 
 part 'home_page.factory.dart';
 
@@ -57,8 +52,7 @@ class HomePage extends StatelessWidget {
   const HomePage({
     required this.viewModelFactory,
     required this.projects,
-    required this.environment,
-    required this.settings,
+    required this.scopes,
     required this.activeGraph,
     @assisted super.key,
   });
@@ -69,11 +63,8 @@ class HomePage extends StatelessWidget {
   /// The open project.
   final ProjectSession projects;
 
-  /// Reads the graph search's `user.email`.
-  final ProjectsEnvironment environment;
-
-  /// The app settings, where the graph keeps its preferences (Story 10.12) and the Undo Timeline its diff layout.
-  final SettingsStore settings;
+  /// Creates the graph of the open repository.
+  final ProjectComponentFactory scopes;
 
   /// The project window's graph, which the page's graph host publishes.
   final ActiveGraph activeGraph;
@@ -93,21 +84,29 @@ class HomePage extends StatelessWidget {
             listenable: vm.toasts,
             builder: (context, _) => ProjectGraphHost(
               session: projects,
-              settings: settings,
-              environment: environment,
+              scopes: scopes,
               activeGraph: activeGraph,
               toasts: vm.toasts,
-              builder: (context, graph) => _BookmarksHost(
-                repo: projects.repo,
-                search: graph.search,
-                builder: (context, bookmarks) => _UndoTimelineHost(
-                  session: projects,
-                  settings: settings,
-                  actions: graph.model,
-                  builder: (context, railItems) {
+              builder: (context, graph) {
+                final ProjectScope? scope = graph.scope;
+                // One ListenableBuilder either way, so nothing below remounts when a project opens or closes. The
+                // bookmark list's rail item shows its count, so it rebuilds with the list.
+                return ListenableBuilder(
+                  listenable: scope?.bookmarks ?? Listenable.merge(const <Listenable>[]),
+                  builder: (context, _) {
                     final shell = FloatingShell(
                       controller: vm.shell,
-                      railItems: <ShellRailItem>[?bookmarks, ...railItems],
+                      railItems: <ShellRailItem>[
+                        if (scope != null) ...<ShellRailItem>[
+                          bookmarksRailItem(context.l10n, scope.bookmarks),
+                          undoTimelineRailItem(
+                            context.l10n,
+                            scope.undoTimeline,
+                            changes: scope.operationChanges,
+                            actions: scope.model,
+                          ),
+                        ],
+                      ],
                       canvas: const ZsCanvas(),
                       graph: graph.graph,
                       // An opaque target, so a press in the bar's row moves the window and never reaches the graph below.
@@ -118,15 +117,15 @@ class HomePage extends StatelessWidget {
                       newChange: graph.newChange,
                       inspector: graph.inspector,
                       minimap: graph.minimap,
-                      minimapWidth: graph.model?.minimapSource.cardWidth,
+                      minimapWidth: scope?.model.minimapSource.cardWidth,
                       atPill: graph.atPill,
                       staleNotice: graph.staleNotice,
                       toast: vm.toasts.occupied ? ShellToastView(toasts: vm.toasts) : null,
                     );
-                    return GraphSearchShortcuts(search: graph.search, child: shell);
+                    return GraphSearchShortcuts(search: scope?.search, child: shell);
                   },
-                ),
-              ),
+                );
+              },
             ),
           ),
         ),
@@ -231,137 +230,6 @@ class _OpenReportToastState extends State<_OpenReportToast> {
 
   @override
   Widget build(BuildContext context) => widget.child;
-}
-
-/// The rail's Undo Timeline (Story 11.9) while [session] has a repository open: one [UndoTimelineModel] per
-/// [ProjectRepo], recreated when the repository changes and disposed on unmount. Its Undo, Redo and Restore run through
-/// [actions], the graph's view model (Story 10.12); without one they show disabled. Show changes reads the same
-/// repository, its diff layout in [settings] (Story 10.29).
-class _UndoTimelineHost extends StatefulWidget {
-  const _UndoTimelineHost({required this.session, required this.settings, required this.builder, this.actions});
-
-  final ProjectSession session;
-  final SettingsStore settings;
-  final UndoTimelineActions? actions;
-  final Widget Function(BuildContext context, List<ShellRailItem> railItems) builder;
-
-  @override
-  State<_UndoTimelineHost> createState() => _UndoTimelineHostState();
-}
-
-class _UndoTimelineHostState extends State<_UndoTimelineHost> {
-  ProjectRepo? _repo;
-  UndoTimelineModel? _model;
-  OperationChangesSource? _changes;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.session.addListener(_sync);
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(_UndoTimelineHost oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.session != widget.session) {
-      oldWidget.session.removeListener(_sync);
-      widget.session.addListener(_sync);
-      _sync();
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.session.removeListener(_sync);
-    _model?.dispose();
-    super.dispose();
-  }
-
-  void _sync() {
-    final ProjectRepo? repo = widget.session.repo;
-    if (identical(repo, _repo)) {
-      return;
-    }
-    _model?.dispose();
-    _repo = repo;
-    _model = repo == null ? null : UndoTimelineModel(RepoUndoTimelineSource(repo));
-    _changes = repo == null ? null : RepoOperationChangesSource(repo);
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final UndoTimelineModel? model = _model;
-    final OperationChangesSource? changes = _changes;
-    return widget.builder(context, <ShellRailItem>[
-      if (model != null && changes != null)
-        undoTimelineRailItem(
-          context.l10n,
-          model,
-          changes: changes,
-          settings: widget.settings,
-          actions: widget.actions,
-        ),
-    ]);
-  }
-}
-
-/// The rail's Bookmarks (Story 10.14) while [repo] is open with its graph [search]: one [BookmarkListModel] per graph,
-/// recreated when either changes and disposed on unmount; [builder] gets its item (first in the rail), rebuilt when the
-/// list changes (the preview's count), or null without a graph.
-class _BookmarksHost extends StatefulWidget {
-  const _BookmarksHost({required this.repo, required this.search, required this.builder});
-
-  final ProjectRepo? repo;
-  final GraphSearchController? search;
-  final Widget Function(BuildContext context, ShellRailItem? bookmarks) builder;
-
-  @override
-  State<_BookmarksHost> createState() => _BookmarksHostState();
-}
-
-class _BookmarksHostState extends State<_BookmarksHost> {
-  BookmarkListModel? _model;
-
-  @override
-  void initState() {
-    super.initState();
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(_BookmarksHost oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.repo, widget.repo) || !identical(oldWidget.search, widget.search)) {
-      _model?.dispose();
-      _sync();
-    }
-  }
-
-  @override
-  void dispose() {
-    _model?.dispose();
-    super.dispose();
-  }
-
-  void _sync() {
-    final ProjectRepo? repo = widget.repo;
-    final GraphSearchController? search = widget.search;
-    _model = repo == null || search == null ? null : BookmarkListModel(RepoBookmarkListSource(repo), search: search);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final BookmarkListModel? model = _model;
-    // One ListenableBuilder either way, so nothing below remounts when a project opens or closes.
-    return ListenableBuilder(
-      listenable: model ?? Listenable.merge(const <Listenable>[]),
-      builder: (context, _) => widget.builder(context, model == null ? null : bookmarksRailItem(context.l10n, model)),
-    );
-  }
 }
 
 /// Runs [onActive] each time the window turns active again ([ZsAppearance.inactive] true → false).

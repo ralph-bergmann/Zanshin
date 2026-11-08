@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:inject_annotation/inject_annotation.dart';
 
 import '../window/app_window_actions.dart';
 
@@ -24,8 +25,8 @@ enum SettingsPage {
   configFile,
 }
 
-/// Which tab and page the Settings window shows (Stories 11.7, 11.19), held by the window coordinator in memory, so
-/// the tab survives a close (the pages do not).
+/// Which tab and page the Settings window shows (Stories 11.7, 11.19), one for the app and in memory only, so the tab
+/// survives a close (the pages do not).
 ///
 /// - The Project tab exists only while a project is open: without one it is disabled and General shows; a project
 ///   closing while Project shows switches to General.
@@ -33,6 +34,8 @@ enum SettingsPage {
 ///   again. A config page closes when it is left (its draft lives in the page), so coming back shows the tab.
 /// - Leaving a config page with edits ([editing]) — back, the other tab, an entry point that switches — asks
 ///   [confirmDiscard] first and only goes on when it answers true.
+@inject
+@singleton
 class SettingsWindowState extends ChangeNotifier {
   SettingsTab _tab = SettingsTab.general;
   final _pages = <SettingsTab, SettingsPage>{};

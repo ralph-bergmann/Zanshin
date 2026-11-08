@@ -17,7 +17,7 @@ import 'package:zanshin/src/features/graph/revset_configs/revset_configs_window.
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/settings/immutable_heads.dart' show RevsetMember;
-import 'package:zanshin/src/features/settings/settings_view_model.dart' show SettingsRepoReads;
+import 'package:zanshin/src/features/settings/settings_view_model.dart' show SettingsRepoReads, SettingsViewModel;
 import 'package:zanshin/src/features/settings/settings_window.dart';
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
@@ -707,8 +707,8 @@ class _DemoSettingsWindowState extends State<_DemoSettingsWindow> {
   late final String _home = _dir.resolveSymbolicLinksSync();
   final _state = SettingsWindowState();
   final _graph = ActiveGraph();
-  SettingsStore? _store;
   ProjectSession? _session;
+  SettingsViewModel? _viewModel;
 
   @override
   void initState() {
@@ -728,8 +728,14 @@ class _DemoSettingsWindowState extends State<_DemoSettingsWindow> {
     }
     final session = ProjectSession(registry: ProjectRegistry(store), repos: DemoProjectRepos(_home));
     setState(() {
-      _store = store;
       _session = session;
+      _viewModel = SettingsViewModel(
+        store: store,
+        environment: DemoProjectsEnvironment(_home),
+        session: session,
+        graph: _graph,
+        readsOf: (_) => _DemoSettingsReads(),
+      );
     });
     await session.open(demoOpenProject(_home));
   }
@@ -749,21 +755,11 @@ class _DemoSettingsWindowState extends State<_DemoSettingsWindow> {
 
   @override
   Widget build(BuildContext context) {
-    final SettingsStore? store = _store;
-    final ProjectSession? session = _session;
-    if (store == null || session == null) {
+    final SettingsViewModel? viewModel = _viewModel;
+    if (viewModel == null) {
       return const SizedBox(width: 620, height: 120);
     }
-    return SettingsWindow(
-      state: _state,
-      windows: widget.windows,
-      windowKey: widget.windowKey,
-      store: store,
-      environment: DemoProjectsEnvironment(_home),
-      session: session,
-      graph: _graph,
-      readsOf: (_) => _DemoSettingsReads(),
-    );
+    return SettingsWindow(state: _state, windows: widget.windows, windowKey: widget.windowKey, viewModel: viewModel);
   }
 }
 

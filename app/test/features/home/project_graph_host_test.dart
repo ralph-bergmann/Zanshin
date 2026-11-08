@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,38 +11,42 @@ import 'package:zanshin/src/features/graph/graph_preferences.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/home/project_graph_host.dart';
+import 'package:zanshin/src/features/home/project_scope.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/shell/shell_toast.dart';
 import 'package:zanshin/src/features/sync/sync_model.dart';
+import 'package:zanshin/src/features/undo_timeline/operation_changes.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 import '../../helpers/fake_projects.dart';
-import '../../helpers/fake_projects_environment.dart';
 import '../../helpers/fake_remote_sync.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
 import '../../helpers/shell_host.dart';
+import '../../helpers/test_component.dart';
 
 void main() {
   setUpIconRegistry();
+  setUpTestWorker();
 
   testWidgets('Reload pressed three times while a layout is in flight: one more request runs after it, not two', (
     tester,
   ) async {
     final SemanticsHandle semantics = tester.ensureSemantics();
     useShellWindow(tester);
-    final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('project_graph_host_test')))!;
-    addTearDown(() => dir.deleteSync(recursive: true));
-    final SettingsStore store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
     final repos = FakeProjectRepos();
-    final session = ProjectSession(registry: ProjectRegistry(store), repos: repos);
+    final source = ScriptedGraphSource();
+    final TestComponent component = await testComponent(
+      tester,
+      testModule: TestModule(repos: repos, graphSources: (_) => source),
+    );
+    final ProjectSession session = component.session;
     addTearDown(session.dispose);
-    final activeGraph = ActiveGraph();
+    final ActiveGraph activeGraph = component.activeGraph;
     addTearDown(activeGraph.dispose);
     final toasts = ShellToasts();
     addTearDown(toasts.dispose);
-    final source = ScriptedGraphSource();
     ProjectGraphSlots? lastSlots;
     await tester.runAsync(() => session.open('/r/zanshin'));
 
@@ -51,11 +54,9 @@ void main() {
       shellHost(
         ProjectGraphHost(
           session: session,
-          settings: store,
-          environment: FakeProjectsEnvironment(),
+          scopes: component.projectScopes,
           activeGraph: activeGraph,
           toasts: toasts,
-          sourceOf: (_) => source,
           builder: (context, slots) {
             lastSlots = slots;
             return Stack(
@@ -116,26 +117,25 @@ void main() {
 
   testWidgets('a project switch publishes the new graph; the host clears only its own binding', (tester) async {
     useShellWindow(tester);
-    final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('project_graph_host_test')))!;
-    addTearDown(() => dir.deleteSync(recursive: true));
-    final SettingsStore store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
-    final session = ProjectSession(registry: ProjectRegistry(store), repos: FakeProjectRepos());
+    final source = ScriptedGraphSource()..respond = (_) => keysLayout(<String>['a'], at: 'a');
+    final TestComponent component = await testComponent(
+      tester,
+      testModule: TestModule(graphSources: (_) => source),
+    );
+    final ProjectSession session = component.session;
     addTearDown(session.dispose);
-    final activeGraph = ActiveGraph();
+    final ActiveGraph activeGraph = component.activeGraph;
     addTearDown(activeGraph.dispose);
     final toasts = ShellToasts();
     addTearDown(toasts.dispose);
-    final source = ScriptedGraphSource()..respond = (_) => keysLayout(<String>['a'], at: 'a');
     await tester.runAsync(() => session.open('/r/zanshin'));
     await tester.pumpWidget(
       shellHost(
         ProjectGraphHost(
           session: session,
-          settings: store,
-          environment: FakeProjectsEnvironment(),
+          scopes: component.projectScopes,
           activeGraph: activeGraph,
           toasts: toasts,
-          sourceOf: (_) => source,
           builder: (context, slots) => Stack(fit: StackFit.expand, children: <Widget>[?slots.graph, slots.sync]),
         ),
       ),
@@ -151,7 +151,7 @@ void main() {
     // Another graph took the slot meanwhile: the host's close leaves it alone.
     final foreignModel = GraphViewModel();
     addTearDown(foreignModel.dispose);
-    final foreignPreferences = GraphPreferences(store);
+    final foreignPreferences = GraphPreferences(component.settings);
     addTearDown(foreignPreferences.dispose);
     final foreign = GraphMenuBinding(model: foreignModel, preferences: foreignPreferences);
     activeGraph.value = foreign;
@@ -167,6 +167,43 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('each repository gets its own objects, wired to each other and to the app-wide ones', (tester) async {
+    final source = ScriptedGraphSource()..respond = (_) => keysLayout(<String>['a'], at: 'a');
+    final TestComponent component = await testComponent(
+      tester,
+      testModule: TestModule(graphSources: (_) => source),
+    );
+    final toasts = ShellToasts();
+    addTearDown(toasts.dispose);
+    final repos = FakeProjectRepos();
+    Future<ProjectScope> scopeAt(String path) async =>
+        component.projectScopes.create((await tester.runAsync(() => repos.open(path)))!, path, toasts).scope;
+
+    final ProjectScope one = await scopeAt('/r/one');
+    final ProjectScope other = await scopeAt('/r/other');
+    await tester.pump();
+
+    expect(source.requests, hasLength(2), reason: 'each scope started its own graph');
+    expect(other.model, isNot(same(one.model)));
+    expect(other.search, isNot(same(one.search)));
+    expect(one.search.model, same(one.model));
+    expect(one.inspector.graph, same(one.model));
+    expect(one.bookmarks.graph, same(one.model));
+    expect(one.bookmarks.search, same(one.search));
+    expect(one.binding.model, same(one.model));
+    expect(one.binding.sync, same(one.sync));
+    expect(one.inspector.settings, same(component.settings));
+    expect(other.inspector.settings, same(component.settings), reason: 'one store for the app');
+
+    final OperationChangesModel changes = one.operationChanges(operation: 'an operation');
+    expect(changes.operation, 'an operation');
+    expect(changes.settings, same(component.settings));
+
+    changes.dispose();
+    one.dispose();
+    other.dispose();
+  });
+
   group('sync wiring (Story 11.8)', () {
     /// The host over an open `/r/zanshin` at [poll], its sync over [remotes].
     Future<(ProjectSession, ActiveGraph)> mount(
@@ -175,29 +212,27 @@ void main() {
       RemotePollSetting poll = RemotePollSetting.fiveMinutes,
     }) async {
       useShellWindow(tester);
-      final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('project_graph_host_test')))!;
-      addTearDown(() => dir.deleteSync(recursive: true));
-      final SettingsStore store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
-      final registry = ProjectRegistry(store);
-      final session = ProjectSession(registry: registry, repos: FakeProjectRepos());
+      final source = ScriptedGraphSource()..respond = (_) => keysLayout(<String>['a', 'b', 'c'], at: 'a');
+      final TestComponent component = await testComponent(
+        tester,
+        testModule: TestModule(graphSources: (_) => source, remoteSyncs: (_, _) => remotes),
+      );
+      final ProjectRegistry registry = component.registry;
+      final ProjectSession session = component.session;
       addTearDown(session.dispose);
-      final activeGraph = ActiveGraph();
+      final ActiveGraph activeGraph = component.activeGraph;
       addTearDown(activeGraph.dispose);
       final toasts = ShellToasts();
       addTearDown(toasts.dispose);
       await tester.runAsync(() => session.open('/r/zanshin'));
       await tester.runAsync(() => registry.setRemotePoll('/r/zanshin', poll));
-      final source = ScriptedGraphSource()..respond = (_) => keysLayout(<String>['a', 'b', 'c'], at: 'a');
       await tester.pumpWidget(
         shellHost(
           ProjectGraphHost(
             session: session,
-            settings: store,
-            environment: FakeProjectsEnvironment(),
+            scopes: component.projectScopes,
             activeGraph: activeGraph,
             toasts: toasts,
-            sourceOf: (_) => source,
-            syncOf: (_) => remotes,
             builder: (context, slots) => Stack(fit: StackFit.expand, children: <Widget>[?slots.graph, slots.sync]),
           ),
         ),

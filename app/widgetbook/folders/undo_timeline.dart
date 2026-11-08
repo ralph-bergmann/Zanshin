@@ -117,8 +117,7 @@ class _DemoHostState extends State<_DemoHost> {
     final ShellRailItem timeline = undoTimelineRailItem(
       context.l10n,
       _model,
-      changes: _changes,
-      settings: settings,
+      changes: ({required operation}) => OperationChangesModel(_changes, operation: operation, settings: settings),
       actions: _actions,
     );
     final OperationChangesModel? open = _open;

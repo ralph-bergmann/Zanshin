@@ -65,8 +65,10 @@ void main() {
     final ShellRailItem item = undoTimelineRailItem(
       strings,
       model,
-      changes: changes ?? FakeOperationChangesSource(testOpShow(testOperation(0, now: _now), const [])),
-      settings: settings,
+      changes: operationChangesOver(
+        changes ?? FakeOperationChangesSource(testOpShow(testOperation(0, now: _now), const [])),
+        settings,
+      ),
       actions: actions,
     );
     await tester.pumpWidget(
@@ -371,8 +373,10 @@ void main() {
             undoTimelineRailItem(
               strings,
               model,
-              changes: FakeOperationChangesSource(testOpShow(testOperation(0, now: _now), const [])),
-              settings: settings,
+              changes: operationChangesOver(
+                FakeOperationChangesSource(testOpShow(testOperation(0, now: _now), const [])),
+                settings,
+              ),
             ),
           ],
         ),
