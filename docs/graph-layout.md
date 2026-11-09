@@ -723,7 +723,8 @@ not depend on the requested mode.
 - **Cost:** cost(W) = 16·cost_c(W) + cost_f(W), each the local cost above in its own model (U_c = 1,
   U_f = 16, gravity κ·col·(b_k − a_k)). Both are per-pitch costs, `free`'s in 1/16-pitch units, so
   the weight 16 keeps the sum integer. An exchange stays iff the joint cost falls. κ, the reach,
-  the rounds and the budget are unchanged; column 0 stays fixed; empty columns are dropped.
+  the rounds and the budget are unchanged; column 0 stays fixed (until the closing pass below); empty
+  columns are dropped.
 - **Skipping:** per model k a window's span is [min lo_k, 10·max b_k); kept spans are recorded per
   model. After the first round a window is skipped iff in **both** models its span meets no span
   kept since the previous round began (tested model c then f, each against the previous round's
@@ -735,6 +736,40 @@ not depend on the requested mode.
   window, as before.
 - **One model.** With a single model every rule above is §4.7's, work units included (the spike's
   `JointCompactOrder(single: true)` equals `CompactOrder` at every budget, `dart/test`).
+
+**Closing pass** *(amended 2026-11-09, Ralph: short branches left an empty column between themselves
+and the trunk; amended again the same day: a branch of 11 cards sat in column 0, two columns left of
+the trunk)*. After the joint search the same rounds, reach and window walk run once more, with a
+fresh budget and these changes:
+- the gravity term is 0;
+- column 0 takes part: c starts at 0, and a column the pass empties is dropped, column 0 included;
+- only a window that is one segment is tried;
+- an exchange stays iff 400·X + 4·Len falls in the joint cost and, for a segment of more than 8
+  cards, Len falls too.
+
+Why:
+- **Cause.** Gravity pulls toward column 0, but the trunk can sit further right, because it can lose
+  its lane to its own merge reservations (§4.3). "Left" then means away from the trunk. For a card,
+  one column of gravity costs about six times what the shorter lines gain.
+- **Why column 0.** The search keeps greedy lane 0 in column 0, for the trunk. On a real 1,622-commit
+  repository the trunk has 8 of its 158 cards there; the other segments of lane 0 are side branches.
+  All 12 segments with a free column between themselves and their lines sat in column 0.
+- **Why not every window.** Without the window limit the crossings halve on that repository
+  (142 → 69), but its empty cells grow from 16.5 % to 37.4 %: the sprawl that ruled out
+  `optimized`. Keeping the trunk in column 0 instead costs 240 crossings.
+- **Why 8.** A crossing weighs 100 run columns, so a segment leaves its lines to remove one. Without
+  a card limit the crossings fall to 97 on that repository, but the empty cells grow to 26.7 %. (With
+  column 0 pinned, 3 cards gave 137 crossings, 8 and 16 gave 134, 32 gave 119 and 20.9 % empty cells.)
+- **Why Len for longer segments.** A longer segment moves only toward the lines it connects to, so
+  it cannot sprawl. Without this rule the branch of 11 cards stayed where the packing put it.
+- **Measured** on that repository (`free`, order `compact`, router B): 142 → 128 crossings, 712 → 710
+  bends, 16.5 % → 18.5 % empty cells, 11 columns before and after. No segment has a free column
+  between itself and its lines; with the first version of this pass (pinned column 0, at most 8 cards)
+  12 segments with 138 cards had one, at 134 crossings and 19.1 % empty cells. The ordering phase
+  takes 14.6 instead of 12.2 ms, on synth-100k 104 instead of 68 ms.
+
+The pass can raise the gravity term, never 400·X + 4·Len. The search before it keeps the claim that the
+joint cost is never above joint greedy's.
 
 ### 4.8 Stacks [stacks] — Dart-only (not in the Rust A/B reference), 2026-10-01
 
@@ -1181,7 +1216,7 @@ difference at H 40 (d = 12, Story 4.15's derivation). The router was not changed
   in both — the same `lane` and `col`. The product's grids carry the same day keys in both modes too.
 - I1–I7 hold in both modes on the joint columns, I2 included in the model that did not drive the
   packing; the joint `compact` order's joint cost (16·cost_c + cost_f) is never above joint
-  greedy's.
+  greedy's before the closing pass (§4.7), which only lowers the crossings and runs.
 
 ## 8. Benchmark protocol
 
@@ -1313,6 +1348,9 @@ Record the CPU, the OS, and the rustc and Dart versions.
   chain's next node into another column, and the design leaves it there. After the joint packing a
   piece of at most 8 cards returns (§4.3). The non-joint Rust and Dart reference paths keep the
   design's result.
+- **D14 — a closing pass without gravity** *(added 2026-11-09, Ralph)*. The design has no `compact`
+  order at all, and §4.7's gravity leaves a branch far from a trunk that sits right of it. A closing
+  pass lets a segment alone in its window move toward its lines, out of column 0 too (§4.7).
 
 ## 10. Project layout and detaching
 

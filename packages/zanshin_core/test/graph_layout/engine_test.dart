@@ -682,7 +682,7 @@ void main() {
         for (final y in greedyEngine(nested, LayoutMode.compact).y) 16 * y,
       ]);
       final LayoutEngine l = greedyEngine(nested, LayoutMode.compact);
-      final co = CompactOrder(l, budget: defaultLayoutBudget);
+      final co = CompactOrder(l, budget: defaultLayoutBudget, closing: false);
       // Compact: segments trunk (col 0), L [2, 7) col 1, S [3, 5) col 2, X [8, 10) col 1. X = 2,
       // Len = 8, gravity 24·(1·5 + 2·2 + 1·2) = 264: 400·2 + 4·8 + 264 = 1096. Free: the same X and
       // Len times U = 16, every reservation 16× as long: 16·1096. Joint: 16·1096 + 16·1096 = 35072.
@@ -691,6 +691,66 @@ void main() {
       // L col 2, S col 1: X = 0, Len = 8, gravity 24·(2·5 + 1·2 + 1·2) = 336, so 368 per model:
       // 32·368 = 11776.
       expect(co.totalCost(), 11776);
+    });
+
+    test('the_closing_pass_moves_a_lone_short_branch_next_to_its_parent', () {
+      // Found by a random search. Node 0 is a one-card branch of node 3 (column 3). The search leaves it in column 1,
+      // because gravity outweighs the shorter lines; column 2 is free at its rows, and the pass moves it there.
+      final LayoutInput g = specGraph(
+        [
+          [3],
+          [3],
+          [],
+          [6, 4],
+          [6, 5],
+          [6],
+          [],
+        ],
+        priority: [1, 0, 0, 2, 1, 2, 0],
+        ts: [999999149482, 999998039467, 999947111457, 999896048025, 999859646116, 999790076913, null],
+        roots: {6},
+      );
+      final LayoutEngine l = greedyEngine(g, LayoutMode.compact);
+      expect(CompactOrder(l, budget: defaultLayoutBudget, closing: false).run(), [1, 3, 0, 3, 1, 2, 1]);
+      expect(CompactOrder(l, budget: defaultLayoutBudget).run(), [2, 3, 0, 3, 1, 2, 1]);
+    });
+
+    test('the_closing_pass_moves_a_branch_of_any_length_out_of_column_0_next_to_its_parents', () {
+      // The one-card case was found by a random search. The branch (the first `cards` nodes) has its parents in
+      // column 2. The packing puts it in lane 0, which the search never exchanges; column 1 is free at its rows, and
+      // the pass moves it there. With more than 8 cards it moves because its lines get shorter.
+      for (final int cards in [1, compactClosingMax + 1]) {
+        final int b = cards - 1; // the branch's first card; the nodes below it follow
+        final LayoutInput g = specGraph(
+          [
+            for (var i = 0; i < b; i++) [i + 1],
+            [b + 2, b + 1, null],
+            [b + 2],
+            [b + 5, b + 3],
+            [b + 4, b + 5],
+            [b + 5],
+            [],
+          ],
+          priority: [for (var i = 0; i < cards; i++) 2, 1, 2, 1, 1, 2],
+          ts: [
+            for (var i = 0; i < b; i++) 999998918873 + (b - i) * 60000,
+            ...[999998918873, 999998063568, 999909705303, 999819091424, 999778389575, null],
+          ],
+          roots: {b + 5},
+        );
+        final LayoutEngine l = greedyEngine(g, LayoutMode.compact);
+        final below = [2, 2, 1, 0, 0];
+        expect(
+          CompactOrder(l, budget: defaultLayoutBudget, closing: false).run(),
+          [for (var i = 0; i < cards; i++) 0, ...below],
+          reason: '$cards cards, search',
+        );
+        expect(
+          CompactOrder(l, budget: defaultLayoutBudget).run(),
+          [for (var i = 0; i < cards; i++) 1, ...below],
+          reason: '$cards cards, closing pass',
+        );
+      }
     });
 
     test('the_joint_search_cost_is_exact_never_above_greedy_mode_independent_and_keeps_chains_routes_and_lane_0', () {
@@ -703,7 +763,7 @@ void main() {
           final what = 'case $t $mode';
           final LayoutEngine l = greedyEngine(g, mode);
           final int start = naiveCompactCost(g, l.lane);
-          final co = CompactOrder(l, budget: defaultLayoutBudget);
+          final co = CompactOrder(l, budget: defaultLayoutBudget, closing: false);
           expect(co.totalCost(), start, reason: '$what: start cost');
           expect(
             CompactOrder(l, budget: defaultLayoutBudget, rounds: 0).run(),
@@ -711,7 +771,8 @@ void main() {
             reason: '$what: no rounds = greedy',
           );
           final Int32List lanes = co.run();
-          expect(lanes, fromFree, reason: '$what: the search does not depend on the mode');
+          final Int32List closed = CompactOrder(l, budget: defaultLayoutBudget).run();
+          expect(closed, fromFree, reason: '$what: the search does not depend on the mode');
           final beforeDrop = Int32List.fromList([for (var i = 0; i < g.n; i++) co.colOf[co.seg[i]]]);
           final int searched = naiveCompactCost(g, beforeDrop);
           expect(co.totalCost(), searched, reason: '$what: searched cost');
@@ -720,12 +781,12 @@ void main() {
           if (searched < start) {
             swapped++;
           }
-          expect(reservationFailures(greedyEngine(g, LayoutMode.compact), lanes), isEmpty, reason: '$what compact');
-          expect(reservationFailures(greedyEngine(g, LayoutMode.free), lanes), isEmpty, reason: '$what free');
+          expect(reservationFailures(greedyEngine(g, LayoutMode.compact), closed), isEmpty, reason: '$what compact');
+          expect(reservationFailures(greedyEngine(g, LayoutMode.free), closed), isEmpty, reason: '$what free');
 
           final GraphGridView greedy = run(g, mode);
           final GraphGridView compact = run(g, mode, LaneOrder.compact);
-          expect(compact.nodeLanes, lanes, reason: '$what: computeGraphGrid lanes');
+          expect(compact.nodeLanes, closed, reason: '$what: computeGraphGrid lanes');
           expect(compactAgainstGreedy(g, greedy, compact), isEmpty, reason: what);
           expect(
             canonicalOutput(run(g, mode, LaneOrder.compact)),

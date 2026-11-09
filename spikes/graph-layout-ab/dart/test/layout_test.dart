@@ -412,16 +412,17 @@ void jointColumns() {
       final what = 'case $t';
       final lc = jointGreedy(g, Mode.compact), lf = jointGreedy(g, Mode.free);
       final start = naiveJointCost(g, lc.lane);
-      final co = JointCompactOrder(lc);
+      final co = JointCompactOrder(lc, closing: false);
       expectEq(co.totalCost(), start, '$what: start cost');
       expectEq(JointCompactOrder(lc, rounds: 0).run(), lc.lane, '$what: no rounds = greedy');
-      final lanes = co.run();
+      final searchedLanes = co.run();
       final beforeDrop = Int32List.fromList([for (var i = 0; i < g.n; i++) co.colOf[co.seg[i]]]);
       final searched = naiveJointCost(g, beforeDrop);
       expectEq(co.totalCost(), searched, '$what: searched cost');
       check(searched <= start, '$what: cost $searched > greedy $start');
-      check(naiveJointCost(g, lanes) <= searched, '$what: dropping empty columns raised the cost');
+      check(naiveJointCost(g, searchedLanes) <= searched, '$what: dropping empty columns raised the cost');
       if (searched < start) swapped++;
+      final lanes = JointCompactOrder(lc).run();
       checkDisjointReservations(lc, lanes, '$what compact');
       checkDisjointReservations(lf, lanes, '$what free');
       expectEq(JointCompactOrder(lf).run(), lanes, '$what: same search from the free layout');
@@ -429,7 +430,8 @@ void jointColumns() {
       expectEq(c.lane, lanes, '$what: computeLayout lanes');
       expectEq(c.edgeRoute, greedy.edgeRoute, '$what: routes');
       for (var i = 0; i < g.n; i++) {
-        check((c.lane[i] == 0) == (greedy.lane[i] == 0), '$what: lane 0 node $i');
+        // Lane 0 stays through the search; the closing pass may move its segments next to their lines.
+        check((searchedLanes[i] == 0) == (greedy.lane[i] == 0), '$what: lane 0 node $i');
       }
       check(c.lanes <= greedy.lanes, '$what: more lanes than greedy');
       expectEq(c.lane.toSet().length, c.lanes, '$what: an empty column');

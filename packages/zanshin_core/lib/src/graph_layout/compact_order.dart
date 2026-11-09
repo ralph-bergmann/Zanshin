@@ -23,6 +23,11 @@ const compactRounds = 16;
 /// cost_free, both models' per-pitch costs scaled to stay integer.
 const modelWeights = <int>[16, 1];
 
+/// The most cards of a segment the closing pass moves to remove a crossing (§4.7, amended 2026-11-09);
+/// a longer one moves only when its lines get shorter too. Moving every segment for a crossing would
+/// halve the crossings but open far more empty cells.
+const compactClosingMax = 8;
+
 /// The `compact` lane order (§4.7, amended 2026-10-27): the new lane (= column) of every node of
 /// the joint greedy layout [engine]. The search stops at the first window after the work units it
 /// has spent exceed [budget] (§4.7, "stop the search"), so it may overshoot [budget] by one window.
@@ -31,9 +36,10 @@ const modelWeights = <int>[16, 1];
 /// of two columns inside one window at a time, where a window is a connected component of the two
 /// columns' segments under "reservations overlap in some model". An exchange stays when it lowers
 /// Σ weight·(U·(400·X + 4·Len) + κ·Σ column·(reservation length)) over both vertical models, with
-/// X and Len the crossings and horizontal run lengths of §4.6's tick model in that model. Lane 0's
-/// segments stay in column 0; columns left empty are dropped at the end. The result does not
-/// depend on the engine's mode.
+/// X and Len the crossings and horizontal run lengths of §4.6's tick model in that model. A closing
+/// pass then lets a segment alone in its window move without the gravity term, toward the lines it
+/// connects to. Lane 0's segments stay in column 0 until that pass; columns left empty are dropped
+/// at the end. The result does not depend on the engine's mode.
 ///
 /// Needs [LayoutEngine.packLanes], [LayoutEngine.markBlocked] and [LayoutEngine.route] to have run.
 Int32List compactColumns(LayoutEngine engine, {required int budget}) => CompactOrder(engine, budget: budget).run();
@@ -41,7 +47,7 @@ Int32List compactColumns(LayoutEngine engine, {required int budget}) => CompactO
 /// The search state of [compactColumns]. Public for the engine's tests.
 final class CompactOrder {
   /// The search over the joint greedy layout [g], with the request's [budget] and the §4.7
-  /// constants; [skip] is false only in the tests.
+  /// constants; [skip] and [closing] are false only in the tests.
   CompactOrder(
     this.g, {
     required this.budget,
@@ -49,6 +55,7 @@ final class CompactOrder {
     this.reach = compactReach,
     this.rounds = compactRounds,
     this.skip = true,
+    this.closing = true,
   }) : n = g.n {
     if (n == 0) {
       segCount = 0;
@@ -85,6 +92,9 @@ final class CompactOrder {
   /// Skip windows that no kept exchange can have changed (§4.7 "Skipping"); false only in the tests.
   final bool skip;
 
+  /// Run the closing pass after the search (§4.7, amended 2026-11-09); false only in the tests.
+  final bool closing;
+
   /// The two models, `compact` first (its reservation starts order the windows).
   final List<CompactModel> models = [];
 
@@ -105,6 +115,21 @@ final class CompactOrder {
 
   var _spent = 0;
 
+  /// Whether the closing pass is running: no gravity, only lone segments move, column 0 takes part.
+  var _closingNow = false;
+
+  /// Len of the last [_cost], summed over the models.
+  var _runs = 0;
+
+  /// The cards of every segment.
+  late final Int32List _segSize = () {
+    final size = Int32List(segCount);
+    for (var i = 0; i < n; i++) {
+      size[seg[i]]++;
+    }
+    return size;
+  }();
+
   /// Per model k, the members of every window of the current column pair ascending by model k's
   /// reservation start, CSR offsets ([_components]).
   final List<Int32List> _compStart = [];
@@ -121,6 +146,30 @@ final class CompactOrder {
       return Int32List(0);
     }
     final inM = Uint8List(segCount);
+    _search(inM);
+    if (closing) {
+      // The search may have spent its whole budget; the closing pass gets its own.
+      _spent = 0;
+      _closingNow = true;
+      _search(inM);
+      _closingNow = false;
+    }
+    // Drop empty columns, keeping the order of the others (no crossing or run can grow).
+    final List<List<int>> columns = models[0].colSegs;
+    final newCol = Int32List(columns.length);
+    var next = 0;
+    for (var c = 0; c < columns.length; c++) {
+      newCol[c] = columns[c].isEmpty ? -1 : next++;
+    }
+    final lane = Int32List(n);
+    for (var i = 0; i < n; i++) {
+      lane[i] = newCol[colOf[seg[i]]];
+    }
+    return lane;
+  }
+
+  /// Exchange rounds until none keeps an exchange, or [rounds] ran.
+  void _search(Uint8List inM) {
     List<List<int>>? previous; // per model, the level spans of the exchanges the previous round kept
     for (var r = 0; r < rounds; r++) {
       final List<List<int>> kept = [for (var k = 0; k < models.length; k++) <int>[]];
@@ -129,18 +178,6 @@ final class CompactOrder {
       }
       previous = kept;
     }
-    // Drop empty columns, keeping the order of the others (no crossing or run can grow).
-    final List<List<int>> columns = models[0].colSegs;
-    final newCol = Int32List(columns.length);
-    var next = 0;
-    for (var c = 0; c < columns.length; c++) {
-      newCol[c] = columns[c].isEmpty && c > 0 ? -1 : next++;
-    }
-    final lane = Int32List(n);
-    for (var i = 0; i < n; i++) {
-      lane[i] = newCol[colOf[seg[i]]];
-    }
-    return lane;
   }
 
   /// The joint model cost of the current columns: Σ weight·[CompactModel.localCost] over every
@@ -155,8 +192,10 @@ final class CompactOrder {
 
   int _cost(List<int> members, Uint8List inM) {
     var sum = 0;
+    _runs = 0;
     for (final CompactModel m in models) {
       sum += m.weight * m.localCost(members, inM);
+      _runs += m.runs;
     }
     return sum;
   }
@@ -278,8 +317,9 @@ final class CompactOrder {
     return false;
   }
 
-  /// One round (§4.7, amended 2026-10-27): for d = 1 … reach and c = 1, 2, …, try every window of
-  /// the column pair (c, c + d) by its least `compact` start. True if an exchange stayed; [kept]
+  /// One round (§4.7, amended 2026-10-27): for d = 1 … reach and c = 1, 2, … (from 0 in the closing
+  /// pass), try every window of the column pair (c, c + d) by its least `compact` start. True if an
+  /// exchange stayed; [kept]
   /// collects, per model, the level span [lo, hi) of each exchange that stayed. After the first
   /// round ([previous] non-null) a window is skipped iff in both models its span meets no span kept
   /// since the previous round began.
@@ -289,11 +329,14 @@ final class CompactOrder {
     final spanLo = List<int>.filled(mc, 0);
     final spanHi = List<int>.filled(mc, 0);
     for (var d = 1; d <= reach; d++) {
-      for (var c = 1; c + d < models[0].colSegs.length; c++) {
+      for (var c = _closingNow ? 0 : 1; c + d < models[0].colSegs.length; c++) {
         final int count = _components(c, c + d);
         for (var w = 0; w < count; w++) {
           if (_spent > budget) {
             return moved;
+          }
+          if (_closingNow && _compStart[0][w + 1] - _compStart[0][w] != 1) {
+            continue;
           }
           for (var k = 0; k < mc; k++) {
             final CompactModel m = models[k];
@@ -327,8 +370,12 @@ final class CompactOrder {
             inM[s] = 1;
           }
           final int before = _cost(members, inM);
+          final int runsBefore = _runs;
           _exchange(w, c, c + d, inM);
-          if (_cost(members, inM) < before) {
+          // The closing pass moves a long segment only toward the lines it connects to: a crossing
+          // alone would send it away from them.
+          if (_cost(members, inM) < before &&
+              (!_closingNow || _segSize[members[0]] <= compactClosingMax || _runs < runsBefore)) {
             moved = true;
             for (var k = 0; k < mc; k++) {
               kept[k]
@@ -772,7 +819,7 @@ final class CompactModel {
   /// run lengths, their gravity. Each crossing and each run is counted once.
   int localCost(List<int> members, Uint8List inM) {
     final Int32List colOf = _o.colOf;
-    final int gravity = _o.gravity;
+    final int gravity = _o._closingNow ? 0 : _o.gravity;
     var x = 0;
     var len = 0;
     var grav = 0;
@@ -829,6 +876,10 @@ final class CompactModel {
       }
     }
     _o._spent += spent;
+    runs = len;
     return u * (400 * x + 4 * len) + grav;
   }
+
+  /// Len of the last [localCost].
+  var runs = 0;
 }

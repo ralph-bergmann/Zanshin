@@ -6,6 +6,7 @@ import 'layout.dart';
 const int compactGravity = 24; // κ: cost per column per row pitch of a segment's reservation
 const int compactReach = 8; // swaps pair column c with c + 1 … c + reach
 const int compactRounds = 16; // at most this many swap rounds
+const int compactClosingMax = 8; // the most cards of a segment the closing pass moves for a crossing (SPEC §4.7)
 const int compactBudget = 2000000; // work units; the search stops when they are spent
 
 /// The `compact` lane order (SPEC §4.7). Returns the new lane (= column) of every node.
@@ -513,6 +514,7 @@ final class JointCompactOrder {
     this.rounds = compactRounds,
     this.budget = compactBudget,
     this.skip = true,
+    this.closing = true,
   }) : n = g.n {
     if (n == 0) {
       segCount = 0;
@@ -540,6 +542,9 @@ final class JointCompactOrder {
   final int budget;
   final bool skip;
 
+  /// Run the closing pass after the search (SPEC §4.7, amended 2026-11-09); false only in the tests.
+  final bool closing;
+
   /// The models, model 0 first (its reservation starts order the windows).
   final List<CompactModel> models = [];
 
@@ -554,27 +559,54 @@ final class JointCompactOrder {
 
   int _spent = 0;
 
+  /// Whether the closing pass is running: no gravity, only lone segments move, column 0 takes part.
+  bool _closingNow = false;
+
+  /// Len of the last [_cost], summed over the models.
+  int _runs = 0;
+
+  /// The cards of every segment.
+  late final Int32List _segSize = () {
+    final size = Int32List(segCount);
+    for (var i = 0; i < n; i++) {
+      size[seg[i]]++;
+    }
+    return size;
+  }();
+
   /// Runs the search; returns the new lane of every node.
   Int32List run() {
     if (n == 0) return Int32List(0);
     final inM = Uint8List(segCount);
-    List<List<int>>? previous; // per model, the level spans of the exchanges the previous round kept
-    for (var r = 0; r < rounds; r++) {
-      final kept = [for (var k = 0; k < models.length; k++) <int>[]];
-      if (!_swapRound(inM, skip ? previous : null, kept)) break;
-      previous = kept;
+    _search(inM);
+    if (closing && models.length > 1) {
+      // The search may have spent its whole budget; the closing pass gets its own.
+      _spent = 0;
+      _closingNow = true;
+      _search(inM);
+      _closingNow = false;
     }
     final columns = models[0].colSegs;
     final newCol = Int32List(columns.length);
     var next = 0;
     for (var c = 0; c < columns.length; c++) {
-      newCol[c] = columns[c].isEmpty && c > 0 ? -1 : next++;
+      newCol[c] = columns[c].isEmpty ? -1 : next++;
     }
     final lane = Int32List(n);
     for (var i = 0; i < n; i++) {
       lane[i] = newCol[colOf[seg[i]]];
     }
     return lane;
+  }
+
+  /// Exchange rounds until none keeps an exchange, or [rounds] ran.
+  void _search(Uint8List inM) {
+    List<List<int>>? previous; // per model, the level spans of the exchanges the previous round kept
+    for (var r = 0; r < rounds; r++) {
+      final kept = [for (var k = 0; k < models.length; k++) <int>[]];
+      if (!_swapRound(inM, skip ? previous : null, kept)) break;
+      previous = kept;
+    }
   }
 
   /// The joint model cost of the current columns: Σ weight·[CompactModel.localCost] over every
@@ -587,8 +619,10 @@ final class JointCompactOrder {
 
   int _cost(List<int> members, Uint8List inM) {
     var sum = 0;
+    _runs = 0;
     for (final m in models) {
       sum += m.weight * m.localCost(members, inM);
+      _runs += m.runs;
     }
     return sum;
   }
@@ -719,10 +753,11 @@ final class JointCompactOrder {
     final mc = models.length;
     final spanLo = List<int>.filled(mc, 0), spanHi = List<int>.filled(mc, 0);
     for (var d = 1; d <= reach; d++) {
-      for (var c = 1; c + d < models[0].colSegs.length; c++) {
+      for (var c = _closingNow ? 0 : 1; c + d < models[0].colSegs.length; c++) {
         final count = _components(c, c + d);
         for (var w = 0; w < count; w++) {
           if (_spent > budget) return moved;
+          if (_closingNow && _compStart[0][w + 1] - _compStart[0][w] != 1) continue;
           for (var k = 0; k < mc; k++) {
             final m = models[k], start = _compStart[k], members = _compMembers[k];
             var lo = 0x3FFFFFFFFFFFFFFF, end = -0x3FFFFFFFFFFFFFFF;
@@ -745,9 +780,12 @@ final class JointCompactOrder {
           for (final s in members) {
             inM[s] = 1;
           }
-          final before = _cost(members, inM);
+          final before = _cost(members, inM), runsBefore = _runs;
           _exchange(w, c, c + d, inM);
-          if (_cost(members, inM) < before) {
+          // The closing pass moves a long segment only toward the lines it connects to: a crossing
+          // alone would send it away from them.
+          if (_cost(members, inM) < before &&
+              (!_closingNow || _segSize[members[0]] <= compactClosingMax || _runs < runsBefore)) {
             moved = true;
             for (var k = 0; k < mc; k++) {
               kept[k]
@@ -1102,7 +1140,7 @@ final class CompactModel {
 
   /// [CompactOrder.localCost] in this model.
   int localCost(List<int> members, Uint8List inM) {
-    final colOf = _o.colOf, gravity = _o.gravity;
+    final colOf = _o.colOf, gravity = _o._closingNow ? 0 : _o.gravity;
     var x = 0, len = 0, grav = 0, spent = 0;
     for (final s in members) {
       final cs = colOf[s];
@@ -1141,6 +1179,10 @@ final class CompactModel {
       }
     }
     _o._spent += spent;
+    runs = len;
     return u * (400 * x + 4 * len) + grav;
   }
+
+  /// Len of the last [localCost].
+  int runs = 0;
 }

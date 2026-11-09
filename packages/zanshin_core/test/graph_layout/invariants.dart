@@ -297,8 +297,8 @@ LayoutEngine greedyEngine(LayoutInput g, LayoutMode mode) => LayoutEngine(g, mod
 
 /// The failures of §4.7's claims for the `compact` order's grid [compact] against greedy's
 /// [greedy], both laid out from [g] in one mode: the same rows, buckets, edge order and routes,
-/// `blocked` unchanged on every merge (pos ≥ 1), col = lane, the trunk's lane-0 nodes fixed, no
-/// empty column, no more lanes than greedy, and a model cost (§4.7) no higher than greedy's.
+/// `blocked` unchanged on every merge (pos ≥ 1), col = lane, lane 0's nodes fixed before the closing
+/// pass, no empty column, no more lanes than greedy, and a model cost (§4.7) no higher than greedy's.
 List<String> compactAgainstGreedy(LayoutInput g, GraphGridView greedy, GraphGridView compact) {
   final fails = <String>[];
   void check(bool ok, String message) {
@@ -327,13 +327,21 @@ List<String> compactAgainstGreedy(LayoutInput g, GraphGridView greedy, GraphGrid
   }
   for (var i = 0; i < g.n; i++) {
     check(compact.nodeCols[i] == compact.nodeLanes[i], 'col ≠ lane at node $i');
-    check((compact.nodeLanes[i] == 0) == (greedy.nodeLanes[i] == 0), 'lane 0 changed at node $i');
   }
   check(compact.lanes <= greedy.lanes, 'more lanes than greedy');
   check(compact.nodeLanes.toSet().length == compact.lanes, 'an empty column');
   final int greedyCost = naiveCompactCost(g, l.lane);
-  final int compactCost = naiveCompactCost(g, compact.nodeLanes);
-  check(compactCost <= greedyCost, 'joint model cost $compactCost > greedy $greedyCost');
+  final Int32List searched = CompactOrder(l, budget: defaultLayoutBudget, closing: false).run();
+  // Lane 0 stays through the search; the closing pass may move its segments next to their lines.
+  for (var i = 0; i < g.n; i++) {
+    check((searched[i] == 0) == (greedy.nodeLanes[i] == 0), 'lane 0 changed at node $i');
+  }
+  final int searchedCost = naiveCompactCost(g, searched);
+  check(searchedCost <= greedyCost, 'joint model cost $searchedCost > greedy $greedyCost');
+  // The closing pass may raise the gravity on purpose, but never the crossings and runs.
+  final int closedLines = naiveCompactCost(g, compact.nodeLanes, gravity: 0);
+  final int searchedLines = naiveCompactCost(g, searched, gravity: 0);
+  check(closedLines <= searchedLines, 'closing pass: line cost $closedLines > $searchedLines');
   return fails;
 }
 
@@ -409,14 +417,14 @@ List<String> i8Failures(GraphGridView c, GraphGridView f) {
 /// §4.7's joint model cost (amended 2026-10-27) of [lanes] (per node) over [g]'s joint greedy
 /// layout, from scratch: 16·cost_compact + cost_free, each [naiveModelCost] in its model's greedy
 /// engine (the lanes are joint, so both engines share them; y, U and routes are the model's).
-int naiveCompactCost(LayoutInput g, List<int> lanes) =>
-    16 * naiveModelCost(greedyEngine(g, LayoutMode.compact), lanes) +
-    naiveModelCost(greedyEngine(g, LayoutMode.free), lanes);
+int naiveCompactCost(LayoutInput g, List<int> lanes, {int gravity = compactGravity}) =>
+    16 * naiveModelCost(greedyEngine(g, LayoutMode.compact), lanes, gravity: gravity) +
+    naiveModelCost(greedyEngine(g, LayoutMode.free), lanes, gravity: gravity);
 
 /// §4.7's model cost of [lanes] (per node) in the vertical model of the greedy layout [l], from
 /// scratch: U·(400·X + 4·Len) + κ·Σ column·(b − a), with blocked-merge verticals clipped to
 /// 10·a − 3U.
-int naiveModelCost(LayoutEngine l, List<int> lanes) {
+int naiveModelCost(LayoutEngine l, List<int> lanes, {int gravity = compactGravity}) {
   final int u = l.unit;
   final Int64List y = l.y;
   final (List<int> seg, List<int> a, List<int> b) = naiveSegments(l);
@@ -459,7 +467,7 @@ int naiveModelCost(LayoutEngine l, List<int> lanes) {
     col[seg[i]] = lanes[i];
   }
   for (var s = 0; s < a.length; s++) {
-    grav += compactGravity * col[s] * (b[s] - a[s]);
+    grav += gravity * col[s] * (b[s] - a[s]);
   }
   return u * (400 * x + 4 * len) + grav;
 }
