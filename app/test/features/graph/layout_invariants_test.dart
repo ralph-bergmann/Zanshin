@@ -221,7 +221,7 @@ void main() {
       expect((report.collinear, report.passes), (0, true));
     });
 
-    test('D11 (I2): a fork over a lower card in the child column climbs a gutter, no behind-card hit', () {
+    test('D11 (I2): a fork over a lower card in the child column climbs its own free column, no behind-card hit', () {
       // p ← x in column 1 at row 1 sits between p (row 0) and its child c (row 2, column 1).
       final RecordedGraphLayout layout = handLayout(
         const <(String, int, int)>[('p', 0, 0), ('x', 1, 1), ('c', 2, 1)],
@@ -229,7 +229,7 @@ void main() {
         parentCounts: const <int>[0, 1, 1],
       );
       final RouteGeometry g = routed(layout);
-      expect(g.classes.kinds[1], RouteClasses.kindGutter);
+      expect(g.classes.kinds[1], RouteClasses.kindMergeUp);
       final RouteReport report = checkRoutes(g, gate: true);
       expect(report.behindCard + report.behindCardExplained, 0);
       expect(report.passes, isTrue);

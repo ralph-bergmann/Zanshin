@@ -193,12 +193,12 @@ void dayBand() {
   }
 
   final ivs = [for (var k = 0; k < 2; k++) List.generate(n, (i) => iv(k, i))];
-  (List<int>, int) pack(int v) {
+  bool overlap(int k, int x, int i) => ivs[k][x][0] < ivs[k][i][1] && ivs[k][i][0] < ivs[k][x][1];
+  (List<int>, int, List<int>) pack(int v) {
     final y = ls[v].y;
     final order = List.generate(n, (i) => i)
       ..sort((a, b) => y[a] != y[b] ? y[a].compareTo(y[b]) : (prio[a] != prio[b] ? prio[a] - prio[b] : a - b));
     final lanes = <List<int>>[]; // owners per lane
-    bool overlap(int k, int x, int i) => ivs[k][x][0] < ivs[k][i][1] && ivs[k][i][0] < ivs[k][x][1];
     bool fits(int lane, int i, int except) =>
         lane >= lanes.length || !lanes[lane].any((x) => x != except && (overlap(0, x, i) || overlap(1, x, i)));
     final lane = List.filled(n, -1);
@@ -217,12 +217,43 @@ void dayBand() {
       lanes[chosen].add(i);
       lane[i] = chosen;
     }
-    return (lane, lanes.length);
+    return (lane, lanes.length, order);
   }
 
-  final (lc, cc) = pack(0);
-  final (lf, cf) = pack(1);
-  return (cc <= cf ? lc : lf, cc, cf);
+  // SPEC §4.3, amended 2026-11-09, read literally: chain pieces of at most 8 cards return to their parent's lane.
+  List<int> returned(List<int> lane, List<int> order) {
+    final chain = List.filled(n, -1);
+    for (final i in order) {
+      chain[i] = fp[i] >= 0 && cont[fp[i]] == i && lane[fp[i]] == lane[i] ? chain[fp[i]] : i;
+    }
+    bool mergeParentIn(int l, int i) => [
+      for (var e = ls[0].lpStart[i] + 1; e < ls[0].lpStart[i + 1]; e++) lane[ls[0].edgeParent[e]],
+    ].contains(l);
+    bool blockedBy(int o, int s, int to, int f) =>
+        lane[o] == to && chain[o] != chain[f] && (overlap(0, o, s) || overlap(1, o, s));
+    for (final i in order) {
+      final f = fp[i];
+      if (f < 0 || cont[f] != i || lane[f] == lane[i]) continue;
+      final from = lane[i], to = lane[f];
+      final piece = <int>[];
+      for (var s = i; s >= 0 && lane[s] == from; s = cont[s]) {
+        piece.add(s);
+      }
+      if (piece.length <= 8 &&
+          !piece.any((s) => mergeParentIn(to, s) || List.generate(n, (o) => o).any((o) => blockedBy(o, s, to, f)))) {
+        for (final s in piece) {
+          lane[s] = to;
+          chain[s] = chain[f];
+        }
+      }
+    }
+    final used = lane.toSet().toList()..sort();
+    return [for (final l in lane) used.indexOf(l)];
+  }
+
+  final (lc, cc, oc) = pack(0);
+  final (lf, cf, of) = pack(1);
+  return (cc <= cf ? returned(lc, oc) : returned(lf, of), cc, cf);
 }
 
 /// A joint layout through routing: the state the `compact` order starts from.
@@ -311,7 +342,7 @@ void jointColumns() {
     );
     final (lanes, compactCount, freeCount) = naiveJointLanes(g);
     expectEq([compactCount, freeCount], [5, 4]);
-    expectEq(lanes, [3, 2, 1, 3, 0, 0, 2, 1, 0]);
+    expectEq(lanes, [2, 2, 1, 3, 0, 0, 2, 1, 0]);
     for (final mode in [Mode.compact, Mode.free]) {
       expectEq(joint(g, mode).lane, lanes, '$mode');
     }

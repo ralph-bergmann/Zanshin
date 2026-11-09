@@ -19,6 +19,10 @@ import 'stacks.dart';
 /// Stands in for −∞ in the lane packing (every real value is ≥ 0).
 const _negInf = -0x4000000000000000;
 
+/// The longest chain piece that returns to its parent's lane after the packing (§4.3, amended 2026-11-09). Without
+/// a limit long pieces leave the left columns empty and wide histories stay wide.
+const _maxReturnedPiece = 8;
+
 /// U of each vertical model of the joint columns (§4.3, amended 2026-10-27): model 0 is `compact`,
 /// model 1 is `free`.
 const modelUnits = <int>[1, 16];
@@ -468,11 +472,86 @@ final class LayoutEngine {
     final (Int32List lane1, int count1) = _packVisit(1, visits[1], cont, ia, ib);
     modelVisit = visits;
     visitOrder = visits[requestedModel];
-    if (count0 <= count1) {
-      _adoptLanes(lane0, count0);
-    } else {
-      _adoptLanes(lane1, count1);
+    final bool compactVisit = count0 <= count1;
+    final lane = compactVisit ? lane0 : lane1;
+    _adoptLanes(
+      lane,
+      _returnShortPieces(lane, compactVisit ? count0 : count1, cont, ia, ib, visits[compactVisit ? 0 : 1]),
+    );
+  }
+
+  /// §4.3, amended 2026-11-09: a chain piece of at most [_maxReturnedPiece] cards that lost its parent's lane moves
+  /// back there, unless a card of another chain or one of its merge parents is in the way. Every other card stays, so
+  /// nothing cascades. Returns the lane count, empty lanes dropped.
+  ///
+  /// shortcut: scans the target lane per returned piece, O(breaks · lane size); a per-lane index would help if a
+  /// measurement ever shows it.
+  int _returnShortPieces(
+    Int32List lane,
+    int count,
+    Int32List cont,
+    List<Int64List> ia,
+    List<Int64List> ib,
+    Int32List order,
+  ) {
+    final lanes = List<List<int>>.generate(count, (_) => <int>[]);
+    final chain = Int32List(n);
+    for (var k = 0; k < n; k++) {
+      final int i = order[k];
+      final int f = fp[i];
+      chain[i] = f >= 0 && cont[f] == i && lane[f] == lane[i] ? chain[f] : i;
+      lanes[lane[i]].add(i);
     }
+    bool overlaps(int p, int q) =>
+        (ia[0][p] < ib[0][q] && ia[0][q] < ib[0][p]) || (ia[1][p] < ib[1][q] && ia[1][q] < ib[1][p]);
+    final piece = <int>[];
+    for (var k = 0; k < n; k++) {
+      final int i = order[k];
+      final int f = fp[i];
+      if (f < 0 || cont[f] != i || lane[f] == lane[i]) {
+        continue;
+      }
+      final int from = lane[i];
+      final int to = lane[f];
+      piece.clear();
+      for (var s = i; s >= 0 && lane[s] == from && piece.length <= _maxReturnedPiece; s = cont[s]) {
+        piece.add(s);
+      }
+      if (piece.length > _maxReturnedPiece ||
+          piece.any(
+            (s) => _mergeParentIn(lane, to, s) || lanes[to].any((o) => chain[o] != chain[f] && overlaps(s, o)),
+          )) {
+        continue;
+      }
+      for (final s in piece) {
+        lane[s] = to;
+        chain[s] = chain[f];
+        lanes[from].remove(s);
+        lanes[to].add(s);
+      }
+    }
+    final renumbered = Int32List(count);
+    var kept = 0;
+    for (var l = 0; l < count; l++) {
+      renumbered[l] = kept;
+      if (lanes[l].isNotEmpty) {
+        kept++;
+      }
+    }
+    for (var i = 0; i < n; i++) {
+      lane[i] = renumbered[lane[i]];
+    }
+    return kept;
+  }
+
+  /// Whether a non-first parent of [i] sits in lane [l]: a same-lane edge must be a first parent (I3).
+  bool _mergeParentIn(Int32List lane, int l, int i) {
+    for (int e = lpStart[i] + 1; e < lpStart[i + 1]; e++) {
+      if (lane[edgeParent[e]] == l) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// cont(j) of §4.3: the child with fp = j and the least key (priority, index), or −1.

@@ -300,13 +300,14 @@ void main() {
     });
 
     test('free_unit_rule_detours_for_a_card_12_units_above_the_parent_not_13_or_0', () {
-      // Parent 1 (col 0, row 0) forks to child 0 (col 2, row 32); card 2 sits in col 1, d units above.
+      // Parent 1 (col 0, row 0) forks to child 0 (col 2, row 32); card 2 sits in col 1, d units above; card 3 in the
+      // parent's column rules out the two-bend merge-up.
       for (final (int d, int kind, int gutter) in [
         (12, RouteClasses.kindGutter, 1),
         (13, RouteClasses.kindFork, 0),
         (0, RouteClasses.kindFork, 0),
       ]) {
-        final RouteClasses c = _grid([32, 0, d], [2, 0, 1], [(1, 0)], free: true);
+        final RouteClasses c = _grid([32, 0, d, 16], [2, 0, 1, 0], [(1, 0)], free: true);
         expect(c.kinds[0], kind, reason: 'd = $d');
         expect(c.gutters[0], gutter, reason: 'd = $d');
         expect(c.directFallbacks, 0);
@@ -396,6 +397,43 @@ void main() {
         expect(c.gutters[1], gutter, reason: 'd = $d');
         expect(c.fallbackEdges[1], 0, reason: 'd = $d');
       }
+    });
+
+    test('a_free_merge_up_blocked_below_the_child_climbs_the_free_child_column_as_a_fork', () {
+      // Child 0 (col 0, row 48), first parent 1 (col 0, row 0), second parent 2 (col 2, row 16), card 3 in col 1
+      // 6 units below the child: the run below the child is blocked, col 0 is free between rows 16 and 48.
+      final RouteClasses c = _grid([48, 0, 16, 42], [0, 0, 2, 1], [(1, 0), (2, 0)], free: true);
+      expect(c.kinds[1], RouteClasses.kindFork);
+      expect(c.fallbackEdges[1], 0);
+      final RouteGeometry g = _geometry(c);
+      expect(_points(g, 1), hasLength(4));
+      expect(cardHits(g), isEmpty);
+    });
+
+    test('a_free_merge_up_blocked_below_the_child_keeps_the_gutter_when_the_forks_run_is_blocked_too', () {
+      // As above, plus card 4 in col 1 6 units above the parent: the fork's run above the parent is blocked. Column 1
+      // blocks gutter 0 and gutter 1 alike, so the line hooks over the card instead of forking.
+      final RouteClasses c = _grid([48, 0, 16, 42, 22], [0, 0, 2, 1, 1], [(1, 0), (2, 0)], free: true);
+      expect(c.kinds[1], RouteClasses.kindGutter);
+      expect(c.hookRows[1], 22);
+    });
+
+    test('a_free_first_parent_whose_fork_is_blocked_climbs_its_own_free_column_as_a_merge_up', () {
+      // Child 0 (col 0, row 32), first parent 1 (col 2, row 0), card 2 in col 1 6 units above the parent: the fork's
+      // run above the parent is blocked, col 2 is free up to the child and the run below the child is not.
+      final RouteClasses c = _grid([32, 0, 6], [0, 2, 1], [(1, 0)], free: true);
+      expect(c.kinds[0], RouteClasses.kindMergeUp);
+      expect(c.fallbackEdges[0], 0);
+      final RouteGeometry g = _geometry(c);
+      expect(_points(g, 0), hasLength(4));
+      expect(cardHits(g), isEmpty);
+    });
+
+    test('a_first_parent_whose_child_column_is_taken_climbs_its_own_free_column_as_a_merge_up', () {
+      // Child 0 (col 0, row 2), first parent 1 (col 1, row 0), card 2 in col 0 at row 1 between them: compact.
+      final RouteClasses c = _grid([2, 0, 1], [0, 1, 0], [(1, 0)]);
+      expect(c.kinds[0], RouteClasses.kindMergeUp);
+      expect(_points(_geometry(c), 0), hasLength(4));
     });
 
     test('nine_lines_on_one_gutter_are_not_overfull', () {
@@ -538,10 +576,10 @@ void main() {
       expect([_points(g, 0).last.$1 - _cx(1), _points(g, 1).last.$1 - _cx(1)], [0, 24]);
 
       // A same-column second parent turns right below its child (a gutter line), and it blocks the first parent's
-      // fork into a gutter line too: no line is vertical, the centre stays free. Child 0 (col 0, row 2), parents
-      // 1 (col 1, row 0) and 2 (col 0, row 1).
+      // fork, so that line climbs its own column and turns below the child: no line is vertical at the child, the
+      // centre stays free. Child 0 (col 0, row 2), parents 1 (col 1, row 0) and 2 (col 0, row 1).
       final RouteClasses same = _grid([2, 0, 1], [0, 1, 0], [(1, 0), (2, 0)]);
-      expect([same.kinds[0], same.kinds[1]], everyElement(RouteClasses.kindGutter));
+      expect([same.kinds[0], same.kinds[1]], [RouteClasses.kindMergeUp, RouteClasses.kindGutter]);
       final RouteGeometry gs = _geometry(same);
       expect([_points(gs, 0).last.$1, _points(gs, 1).last.$1], everyElement(isNot(_cx(0))));
 

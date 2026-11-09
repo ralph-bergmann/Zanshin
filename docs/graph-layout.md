@@ -451,7 +451,28 @@ above are computed in each model in that model's y and U, giving every node two 
   100k nodes, Dart AOT).
 - The one-pitch buffer, the merge-children term and the stub exception stay as stated above. I2
   (§7.3) holds in both models: a lane's intervals are disjoint in both, apart from a node and its
-  continuation child.
+  continuation child, and the nodes of one chain after a piece returned (below).
+
+**Short pieces return** *(amended 2026-11-09, Ralph: on a real repo a commit and its parent sat in
+different columns with a free column between them)*. After the joint packing is chosen, one pass
+runs in that packing's visit order over every node i with cont(fp(i)) = i and lane(i) ≠ lane(fp(i)):
+- A **chain** is a first-parent line in one lane. The **piece** is i and its continuations in lane(i).
+- The piece moves to lane(fp(i)) iff it has at most 8 cards, none of its nodes has a merge parent
+  (pos ≥ 1) in that lane, and in both models none of its intervals overlaps an interval of another
+  chain there. The intervals of fp(i)'s own chain do not count.
+- Every other card stays, so nothing cascades. Lanes left empty are dropped, the others keep their
+  order.
+- **Cause.** An earlier chain node p with a merge child above p's continuation keeps its reservation
+  up to that child's row. That pushes the chain's next node out, in `compact` even when the `free`
+  layout on screen has room, although p's merge line cannot climb past the chain's cards anyway
+  (§14.2).
+- **Why not in the packing.** Letting every continuation ignore its chain's reservations removes
+  every break, but doubles the crossings on that repo (142 → 280 bridges).
+- **Why 8.** Without a limit long pieces leave the left columns empty: synth-100k's mean width grows
+  from 43 to 104. With 8 it stays at 43.
+- Measured on that 1,621-commit repository (`free`, order `compact`, router B): 7 → 5 broken chains,
+  143 → 142 crossings, 716 → 712 bends, 11 columns before and after. The 5 left are longer than 8
+  cards or blocked by another chain's card.
 
 ### 4.4 Blocked [blocked]
 
@@ -763,10 +784,12 @@ collapsed runs get the **stack nodes** n, n + 1, …, n + S − 1, in run order;
 
 **4. Columns.** Every visible node keeps its lane and col; a stack node takes lane(m_k) and
 col(m_k), so the edge into the run's child stays where it was; `lanes` is the ungrouped value. A
-run is **split** iff col(m_1) ≠ col(m_k). That can happen only between m_1 and m_2: m_1 may continue
-its parent's lane beside the parent's own merge reservation (§4.3 excepts only fp's own interval),
-and then m_2, which may not, takes another lane; every later member continues its predecessor,
-whose only child it is, so the chain m_2 … m_k shares one lane and lies there without a gap.
+run is **split** iff col(m_1) ≠ col(m_k). The packing can split it between m_1 and m_2: m_1 may
+continue its parent's lane beside the parent's own merge reservation (§4.3 excepts only fp's own
+interval), and then m_2, which may not, takes another lane. *(Amended 2026-11-09:)* that piece returns
+unless it is longer than 8 cards or another chain's card is in the way (§4.3, "Short pieces return").
+With joint columns a member can also lose its lane to another chain in the model the packing does not
+visit. A split run's members then lie in more than one lane; the stack node stays in m_k's.
 
 **5. The grouped graph G′.** Its nodes are the visible nodes and the stack nodes. Its edges, in
 §3's order (by child ascending — the input nodes, then the stack nodes — then by position):
@@ -1271,7 +1294,8 @@ Record the CPU, the OS, and the rustc and Dart versions.
   m_1's parent) rises in the stack's column below the card without a reservation and may pass
   behind a lower card there. Reserving from one pitch above the parent, as §4.3 does, would let
   collapsing grow `rows`. *(2026-10-30, Story 10.4, I2:)* router B (§14.2) never lets such an
-  edge climb the stack's column but gives it a gutter, so in Compact no line passes behind the lower
+  edge climb the stack's column but gives it a gutter (since 2026-11-09 a `merge-up` first where the
+  parent's column is free), so in Compact no line passes behind the lower
   card unless the gutter holds more than 9 lines (the reported `overfullGutters`, whose outer lines
   may reach into cards); the route report's Compact gate and a D11 hand case witness it. In Free a
   gutter route whose every gutter is blocked is the router's reported fallback (`fallbackEdges`) and
@@ -1284,6 +1308,11 @@ Record the CPU, the OS, and the rustc and Dart versions.
   so the band around a divider is card-free (I5, amended). This closes the known midnight overlap;
   `rows` grows by at most U − gap per close boundary. Compact's rows and the painter are unchanged; compact's lanes and columns can
   move, since the free model feeds the joint packing (§4.3), and I8 still holds.
+- **D13 — short chain pieces return to their parent's lane** *(added 2026-11-09, Ralph)*. The design
+  excepts only the first parent's interval, so a merge child above the continuation pushes the
+  chain's next node into another column, and the design leaves it there. After the joint packing a
+  piece of at most 8 cards returns (§4.3). The non-joint Rust and Dart reference paths keep the
+  design's result.
 
 ## 10. Project layout and detaching
 
@@ -1545,6 +1574,12 @@ Per edge (p, i) with side s = sign(col(i) − col(p)) (GL:178-192):
   `fork` iff col(i) is free, else `gutter`. *(The `fork` step added 2026-11-03, Ralph's review: GL
   sends such a line through a gutter, two extra bends where the child's column was free.)*
 
+**Two bends before a gutter** *(added 2026-11-09, Ralph: an S-bend around a stack card)*. For s ≠ 0
+and a kind other than `merge-adjacent`, an edge tries its usual two-bend shape (first parent:
+`fork`; others: `merge-up`), then the other one. A shape fits iff its column is free between them
+and, in `free`, the unit rule below does not block its run. With neither, the kind stays as
+classified above.
+
 **Gutters.** Edge gutter j (j = 0 nearest the child) of an edge with k = |col(i) − col(p)| ≥ 1 is
 2·col(i) − s·(2j + 1), j < k; with k = 0 the one gutter is 2·col(i) + 1. Its two runs: from the
 parent to the gutter in the band above the parent, and from the gutter to the child in the band
@@ -1691,6 +1726,7 @@ inputs (fixture-medium/large `all()`, synth-10k / 50k / 100k); it is not bounded
 ### 14.6 Differences from GL
 
 - Free detours use the unit rule (§14.2), not GL's pixel test.
+- An edge tries both two-bend shapes before a `gutter` (§14.2). GL goes through a gutter.
 - A free line with no free gutter takes a hook over the blocking cards where its parent's column lets
   it (§14.2); GL keeps it on its blocked route, behind the card.
 - Crossings of two edges that share a node bridge too (§14.4); GL skips them.

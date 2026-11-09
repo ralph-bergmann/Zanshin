@@ -239,6 +239,19 @@ final class RouteClasses {
         // The parent's column is taken: climb the child's column like a first parent before a gutter.
         kind = classifier.columnFree(cc, rp, rc) ? kindFork : kindGutter;
       }
+      if (cc != cp && kind != kindMergeAdjacent) {
+        // Two bends before a gutter's four: where the parent's usual shape does not fit, try the other one.
+        final int span = cc > cp ? cc - cp : cp - cc;
+        final bool forkFits =
+            classifier.columnFree(cc, rp, rc) && (!free || classifier.lastAbove(cc, side, span, rp) == 0);
+        final bool upFits =
+            classifier.columnFree(cp, rp, rc) && (!free || classifier.firstBelow(cc, side, span, rc) == span);
+        if (first ? forkFits : upFits) {
+          kind = first ? kindFork : kindMergeUp;
+        } else if (first ? upFits : forkFits) {
+          kind = first ? kindMergeUp : kindFork;
+        }
+      }
       var j = 0;
       if (free && kind != kindStraight && cc != cp) {
         final int span = cc > cp ? cc - cp : cp - cc;

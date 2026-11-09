@@ -391,8 +391,8 @@ bool _same(List<int> a, List<int> b) =>
 /// A random stack-shaped graph (the last node the root): mostly chains, broken by refs, working
 /// copies, the immutable boundary, merges, forks and Indirect child edges, with Indirect,
 /// multi-Indirect and Missing parent gaps, non-monotonic timestamps now and then, and, with
-/// [split] true, §4.8 step 4's split-run shape rewired in (m_1 continues its parent beside the
-/// parent's merge reservation).
+/// [split] true, a run rewired in beside its parent's merge reservation, the shape of §4.8 step 4 (since
+/// 2026-11-09 its split-off piece returns when it is short and nothing blocks it, §4.3).
 ({LayoutInput input, SpecStackFacts facts}) randomStackGraph(Random rnd, int n, {bool split = false}) {
   final double pFork = [0.0, 0.08, 0.2][rnd.nextInt(3)];
   final double pMerge = [0.0, 0.06, 0.15][rnd.nextInt(3)];

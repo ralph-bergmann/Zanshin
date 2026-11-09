@@ -62,12 +62,12 @@ List<List<Object>> edges(GraphGridView r) => [
   }
 
   final List<List<List<int>>> ivs = [for (var k = 0; k < 2; k++) List.generate(n, (i) => interval(k, i))];
-  (List<int>, int) pack(int v) {
+  bool overlap(int k, int x, int i) => ivs[k][x][0] < ivs[k][i][1] && ivs[k][i][0] < ivs[k][x][1];
+  (List<int>, int, List<int>) pack(int v) {
     final Int64List y = ls[v].y;
     final List<int> order = List.generate(n, (i) => i)
       ..sort((a, b) => y[a] != y[b] ? y[a].compareTo(y[b]) : (prio[a] != prio[b] ? prio[a] - prio[b] : a - b));
     final lanes = <List<int>>[]; // the owners per lane
-    bool overlap(int k, int x, int i) => ivs[k][x][0] < ivs[k][i][1] && ivs[k][i][0] < ivs[k][x][1];
     bool fits(int lane, int i, int except) =>
         lane >= lanes.length || !lanes[lane].any((x) => x != except && (overlap(0, x, i) || overlap(1, x, i)));
     final List<int> lane = List.filled(n, -1);
@@ -88,12 +88,50 @@ List<List<Object>> edges(GraphGridView r) => [
       lanes[chosen].add(i);
       lane[i] = chosen;
     }
-    return (lane, lanes.length);
+    return (lane, lanes.length, order);
   }
 
-  final (List<int> compactLanes, int compactCount) = pack(0);
-  final (List<int> freeLanes, int freeCount) = pack(1);
-  return (compactCount <= freeCount ? compactLanes : freeLanes, compactCount, freeCount);
+  // §4.3, amended 2026-11-09, read literally: chain pieces of at most 8 cards return to their parent's lane.
+  List<int> returned(List<int> lane, List<int> order) {
+    final List<int> chain = List.filled(n, -1);
+    for (final i in order) {
+      chain[i] = fp[i] >= 0 && cont[fp[i]] == i && lane[fp[i]] == lane[i] ? chain[fp[i]] : i;
+    }
+    bool mergeParentIn(int l, int i) => [
+      for (int e = ls[0].lpStart[i] + 1; e < ls[0].lpStart[i + 1]; e++) lane[ls[0].edgeParent[e]],
+    ].contains(l);
+    bool blockedBy(int o, int s, int to, int f) =>
+        lane[o] == to && chain[o] != chain[f] && (overlap(0, o, s) || overlap(1, o, s));
+    for (final i in order) {
+      final int f = fp[i];
+      if (f < 0 || cont[f] != i || lane[f] == lane[i]) {
+        continue;
+      }
+      final int from = lane[i];
+      final int to = lane[f];
+      final piece = <int>[];
+      for (var s = i; s >= 0 && lane[s] == from; s = cont[s]) {
+        piece.add(s);
+      }
+      if (piece.length <= 8 &&
+          !piece.any((s) => mergeParentIn(to, s) || List.generate(n, (o) => o).any((o) => blockedBy(o, s, to, f)))) {
+        for (final s in piece) {
+          lane[s] = to;
+          chain[s] = chain[f];
+        }
+      }
+    }
+    final List<int> used = lane.toSet().toList()..sort();
+    return [for (final l in lane) used.indexOf(l)];
+  }
+
+  final (List<int> compactLanes, int compactCount, List<int> compactOrder) = pack(0);
+  final (List<int> freeLanes, int freeCount, List<int> freeOrder) = pack(1);
+  return (
+    compactCount <= freeCount ? returned(compactLanes, compactOrder) : returned(freeLanes, freeOrder),
+    compactCount,
+    freeCount,
+  );
 }
 
 /// The design's blocked formula, O(E·n), with D4.
@@ -505,9 +543,10 @@ void main() {
       ]);
     });
 
-    test('continuation_is_refused_by_the_grandparents_merge_reservation', () {
+    test('a_short_piece_returns_to_its_parents_lane_past_a_merge_reservation_of_its_chain', () {
       // 0:I→2:F, 1:M→[3:X, 4:G], 2:F→4:G, 3:X→4:G, 4:G. G reserves lane 0 up to M's row;
-      // F continues G (G's own interval excepted), I cannot continue F (G's interval is not F's).
+      // F continues G (G's own interval excepted), I cannot continue F (G's interval is not F's), so
+      // the packing puts I into a third lane. The piece [I] then returns, and that lane is dropped.
       final GraphGridView r = run(
         specGraph(
           [
@@ -522,14 +561,49 @@ void main() {
         LayoutMode.compact,
       );
       expect(r.nodeRows, [2, 2, 1, 1, 0]);
-      expect(r.nodeLanes, [2, 1, 0, 1, 0]);
+      expect(r.nodeLanes, [0, 1, 0, 1, 0]);
+      expect(r.lanes, 2);
       expect(edges(r), [
-        [2, 0, 'branch_off', false],
+        [2, 0, 'straight', false],
         [3, 1, 'straight', false],
         [4, 1, 'branch_off', true], // blocked merge → branch_off (D9)
         [4, 2, 'straight', false],
         [4, 3, 'branch_off', true],
       ]);
+    });
+
+    test('a_chain_piece_of_8_cards_returns_to_its_parents_lane_one_of_9_stays', () {
+      // The shape above with the piece I_1 … I_k on top of F: nodes 0 … k − 1, then M, F, X, G.
+      for (final (int k, bool back) in [(8, true), (9, false)]) {
+        final LayoutInput g = specGraph(
+          [
+            for (var i = 0; i < k - 1; i++) [i + 1],
+            [k + 1],
+            [k + 2, k + 3],
+            [k + 3],
+            [k + 3],
+            [],
+          ],
+          priority: [...List.filled(k, 0), 1, 0, 1, 0],
+        );
+        final GraphGridView r = run(g, LayoutMode.compact);
+        expect(r.nodeLanes[k - 1] == r.nodeLanes[k + 1], back, reason: 'k = $k');
+        expect(r.lanes, back ? 2 : 3, reason: 'k = $k');
+      }
+    });
+
+    test('a_piece_does_not_return_to_a_lane_holding_one_of_its_merge_parents', () {
+      // 0:M→[N, P] 1:N→P 2:P: M continues N but also merges P, so a same-lane edge would be no first parent.
+      final LayoutInput g = specGraph([
+        [1, 2],
+        [2],
+        [],
+      ]);
+      for (final LayoutMode mode in LayoutMode.values) {
+        final GraphGridView r = run(g, mode);
+        expect(r.nodeLanes[1], r.nodeLanes[2], reason: 'N in P\'s lane, $mode');
+        expect(r.nodeLanes[0], isNot(r.nodeLanes[2]), reason: 'M not in P\'s lane, $mode');
+      }
     });
 
     test('lane_packing_equals_the_literal_two_model_interval_scan_on_random_graphs', () {
@@ -779,7 +853,7 @@ void main() {
       );
       final (List<int> lanes, int compactCount, int freeCount) = naiveJointLanes(g);
       expect([compactCount, freeCount], [5, 4]);
-      expect(lanes, [3, 2, 1, 3, 0, 0, 2, 1, 0]);
+      expect(lanes, [2, 2, 1, 3, 0, 0, 2, 1, 0]);
       for (final LayoutMode mode in LayoutMode.values) {
         expect(run(g, mode).nodeLanes, lanes, reason: mode.name);
       }

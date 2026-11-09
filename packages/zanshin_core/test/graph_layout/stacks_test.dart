@@ -274,45 +274,58 @@ void main() {
   });
 
   group('columns', () {
-    // p = 5 with the children m1 = 4 (its continuation: priority 0) and x = 2 (priority 2); the run
-    // m1 ← m2 = 3 with one child c0 = 0; c = 1 merges x and p, so p's reservation outlives m1 and
-    // m2 cannot continue m1's lane (§4.8 step 4).
+    // The run m1 = 2 ← m2 = 1 with the child c0 = 0 and the parent p = 3 (a ref). In `compact`, z = 6
+    // sits below p in p's lane; in `free`, z is a day younger and sits right above m2, so m2 cannot
+    // continue m1's lane in both models (§4.8 step 4). w = 4 takes q's lane from p (priority).
     final Graph g = specStackGraph(
       [
+        [1],
+        [2],
         [3],
-        [2, 5],
         [5],
-        [4],
         [5],
+        [7],
+        [],
         [],
       ],
-      priority: [0, 0, 2, 0, 0, 0],
+      refs: {3},
+      priority: [0, 0, 0, 1, 0, 0, 0, 0],
+      ts: [
+        1000000000000 + 4 * _minute + _day + _minute,
+        1000000000000 + 4 * _minute,
+        1000000000000 + 3 * _minute,
+        1000000000000 + 2 * _minute,
+        1000000000000 + 2 * _minute,
+        1000000000000 + _minute,
+        1000000000000 + 4 * _minute + _day,
+        1000000000000,
+      ],
     );
 
     test('a_split_run_stacks_in_its_newest_members_column_and_every_other_node_keeps_its_own', () {
       for (final LaneOrder order in LaneOrder.values) {
         final GraphGridView off = ungrouped(g, order: order);
-        expect(off.nodeCols[4], isNot(off.nodeCols[3]), reason: 'the run is split (${order.name})');
+        expect(off.nodeCols[2], isNot(off.nodeCols[1]), reason: 'the run is split (${order.name})');
         final GraphGridView r = grouped(g, order: order);
         expect(runs(r), [
           [
-            [4, 3],
+            [2, 1],
             true,
           ],
         ]);
-        expect([r.nodeLanes[6], r.nodeCols[6]], [off.nodeLanes[3], off.nodeCols[3]], reason: "m_k's column");
-        for (final i in [0, 1, 2, 5]) {
+        expect([r.nodeLanes[8], r.nodeCols[8]], [off.nodeLanes[1], off.nodeCols[1]], reason: "m_k's column");
+        for (final i in [0, 3, 4, 5, 6, 7]) {
           expect([r.nodeLanes[i], r.nodeCols[i]], [off.nodeLanes[i], off.nodeCols[i]], reason: 'node $i');
         }
         expect(r.lanes, off.lanes, reason: 'lanes is the ungrouped value');
-        // The stack sits one row above p, where m1 was; c0 one above it.
-        expect([r.nodeRows[6], r.nodeRows[0], r.rows], [1, 2, 3]);
+        // The stack stays in m2's row: w in its column, two rows below, keeps it from sinking. c0 one above it.
+        expect([r.nodeRows[8], r.nodeRows[0], r.rows], [4, 5, 6]);
       }
     });
 
     test('an_expanded_run_keeps_every_column_and_row', () {
       final GraphGridView off = ungrouped(g);
-      final GraphGridView r = grouped(g, stacks: specStackRequest(g.facts, expanded: [4]));
+      final GraphGridView r = grouped(g, stacks: specStackRequest(g.facts, expanded: [2]));
       expect([r.nodeRows, r.nodeLanes, r.nodeCols], [off.nodeRows, off.nodeLanes, off.nodeCols]);
       expect(
         [r.edgeFroms, r.edgeTos, r.edgeRoutes, r.edgeBlocked],
