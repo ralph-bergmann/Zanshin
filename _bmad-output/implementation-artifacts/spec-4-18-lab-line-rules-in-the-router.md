@@ -2,7 +2,7 @@
 title: 'Story 4.18: Lines by the lab''s rules — a line bends at its card, the lines of a card keep the order of their columns, no two lines lie on top of each other'
 type: 'feature'
 created: '2026-11-10'
-status: 'in-review'
+status: 'done'
 baseline_revision: '2459cc42435b8ff251bae28c597b555cd448c1c4'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -362,3 +362,60 @@ The same commands, re-run on the patched tree, one at a time (no `cargo make tes
 | Before and after the review patches, the router's polylines on the recordings, the 100 fuzz cases and the lab's three data sets × both modes × W 160 / 240 / 400 | 672 geometries, 0 differences (2,090 Indirect edges among them): the patches change only the shared-slot cases their hand cases pin |
 
 The manual checks were not repeated: the patches leave the lines of every recording and repository byte-identical, so the catalogue and the real app show what the sightings above show.
+
+## Auto Run Result
+
+**Summary.** The lab's line rules replace router B's classes and tracks in `router.dart`. A line runs in its branch's column, turns into a gutter before a card in its way, sits on a level that passes no card and shares its row gap with the runs beside it, in the order in which they do not cross. A merge line bends at its parent where its branch goes on, and takes a detour where that saves crossings or keeps the lines of a card in column order. No two lines lie on top of each other. `RouteMetrics`, the output arrays, `bridges()`, shared entries and the ports of 10.30 stay. A polyline can have up to 8 points. `routeSyncNodeLimit` is 7,000, by the rule of GLD §14.5. The product's lines equal the lab's on the lab's three repositories (both modes, with and without stacks), except TWMS in Compact without stacks, where the product has no shared stretch: the lab's last leftover.
+
+**Files changed:**
+
+| File | Change |
+|---|---|
+| `packages/zanshin_core/lib/src/graph_layout/router.dart` | the geometry stage is a port of `labLines` with indexes; `RouteClasses` is the per-layout stage; new reports; `routeSyncNodeLimit` 7,000 |
+| `packages/zanshin_core/benchmark/router_cli.dart` | `oracle` gone; `check` prints the new reports |
+| `packages/zanshin_core/test/graph_layout/router_test.dart`, `support/router_scan.dart`, `engine_test.dart` | a hand case per rule, the line gate with every density, the fuzz test with its ceilings |
+| `app/lib/src/features/graph/{graph_edges,layout_invariants,graph_canvas,graph_gaps,graph_minimap}.dart` | `free` gone; the route report follows the new reports; the wording of the router |
+| `app/test/features/graph/{layout_invariants_test,graph_edges_test,graph_gaps_test}.dart` | the report's fields and pins; helpers compute directly above the new limit; titles |
+| `docs/graph-layout.md` | dated amendments of §4.3, §4.8, §7.2, §9, §12 and §14 (§14.2, §14.3, §14.6 rewritten) |
+| `spikes/graph-layout-lab/{README.md,bin/lab_check.dart,bin/lab_metrics.dart,lib/scene.dart}` | the lab's rules and metrics run on the product's lines |
+| `spikes/graph-layout-ab/{README.md,tools/router-oracle.mjs}` | the oracle retired, history notes |
+| `_bmad-output/planning-artifacts/epics.md`, `_bmad-output/implementation-artifacts/{decisions-review-4-10-to-4-13.md,epic-4-context.md,sprint-status.yaml}` | dated notes, the `### 4.18` decisions, tracking |
+
+**Review findings.** 41 findings: high 0, medium 7, low 27, false 7, maybe-false 0.
+
+- **Patched (30 rows, 21 entries):**
+  - The line gate could not fail on a line behind a card; it now asserts `behindCards == 0` (medium).
+  - A straight non-owner of a shared slot split a hidden merge over two x's; the slot now stays on that line (medium).
+  - The gate's inputs held no gutter, detour or 8-point line; the fuzz test now pins ceilings for shared stretches, lines behind a card, column-order and crossing failures (medium).
+  - Every bending line of a shared slot now takes part in the tie-break (low).
+  - New hand cases: the 6-point fork, a merge's and a detour's run moving off a card, the zigzag guard, gutter slot reuse, monotone levels, the 8-point crossing count (low).
+  - The gate runs all densities; the fuzz test asserts that the corpus holds the adjacent same-column merge; the app report's overlaps are pinned (low).
+  - Dead guards in `_belowRun` and `_band` removed; `atChild` renamed; GLD and comments that overclaimed or were stale corrected (low).
+- **Deferred:** none.
+- **Rejected (11 rows):**
+  - The new limit moves 7k–20k views off the UI isolate (`low`): it is the story's rule; a cost-based decision is more than a direct correction; see the residual risks.
+  - "Always" does not hold on dense random graphs (`low`, three rows): the reference breaks it too, README step 12 states the limit, no real repository in the lab's data shows it, and a fix would be a new rule; §14.3's Limits states it and the fuzz test pins how many.
+  - The `deferred-work.md` bullet stays open (`false`): the dispatch forbids editing it.
+  - Real repositories are checked only by hand-run lab tools (`false`): the story places `lab_check` outside the gate.
+  - "A line bends at its card" has no gate check (`false`): the story's gate lists none, and a hand case pins it.
+  - The one-port exemption is wider than the spec's words (`false`): two lines of one card edge share a port only on the fan's overflow or in one slot.
+  - No 8-point line reaches a painter test (`false`): they read the CSR with no fixed count.
+  - README step 13's numbers (`false`): the difference is explained in the spec, as the story allows.
+  - Status and result missing (`false`): written at finalize.
+
+**Follow-up review recommendation:** `false`. Patched entries by verdict: high 0, medium 3, low 18. Three medium entries would ask for another pass, but no unverified risk can be named: the two router changes among them have hand cases that fail without the fix, and the patched router gives byte-identical lines on 672 geometries (recordings, fuzz cases and the lab's repositories at three card sizes).
+
+**Items handed to this story:**
+
+- **I1:** fixed (commit `e2284b7a0d9fddc81b63fd09af5ff12704b1aa2c`). A same-column line with no card between its ends is now straight (2 points), so the shape no longer exists; the fuzz test runs the polyline checks of the line gate on all 100 cases, which hold 4 such edges in Compact, asserts that they are there, and asserts that every polyline climbs without retracing.
+
+**Verification.** See § Verification notes and § Verification after the review patches: both Dart suites, analyze and format for every touched package, `lab_check`, `lab_metrics`, the recordings, the bench and the AC greps, on the finished tree; the catalogue and the real app on lab replicas through Marionette. `cargo make test`, `test-full`, `coverage` and `codegen` did not run, by the gate rule of this run.
+
+**Residual risks:**
+
+- Between 7,000 and 20,000 visible nodes the lines now appear when the isolate answers, a moment after the cards (jj's `all()`, 16k nodes, costs 4 ms and would fit a frame). The limit comes from the slowest series, as GLD §14.5 orders.
+- A fan of thousands of lines of one card costs more than the limit allows (1,000 children 48 ms, 3,000 children 431 ms under the JIT): the work inside a cluster is quadratic.
+- The column order and "two lines of one card do not cross" can break on dense random graphs where a line has no detour (152 and 403 failure messages on the fuzz cases, pinned as ceilings); the lab's repositories have none.
+- The tight fan is a literal port, under Ralph's watch.
+- The matrix row "A fan too tight for 2 px" says "levels 1.9166… px apart": 22 of 23 gaps are, and the first is 1.83 px because of the lab's 2 px band clamp, as the reference prints.
+- The full gate and the coverage ratchet have not run on this change; the story loop runs them at its end.
