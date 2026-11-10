@@ -1,0 +1,3 @@
+# Without this `dart format` breaks the lab's lines at 80 columns.
+formatter:
+  page_width: 120

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Graph-Labor</title>
+  <link rel="stylesheet" href="lab.css">
+</head>
+<body>
+  <header id="bar">
+    <select id="data" aria-label="Repository"></select>
+    <span class="seg" id="engine" role="group" aria-label="Algorithmus">
+      <button data-v="lab">Labor</button><button data-v="app">App heute</button>
+    </span>
+    <span class="seg" id="mode" role="group" aria-label="Zeilen">
+      <button data-v="free">Free</button><button data-v="compact">Compact</button>
+    </span>
+    <label><input type="checkbox" id="stacks"> Stacks</label>
+    <span id="rules"></span>
+    <span class="seg" role="group" aria-label="Zoom">
+      <button id="zoomOut" aria-label="Verkleinern">−</button><button id="zoomReset"></button><button id="zoomIn" aria-label="Vergrößern">+</button>
+    </span>
+    <span id="metrics"></span>
+    <span id="status" role="status"></span>
+  </header>
+  <main id="view" tabindex="0"><svg id="plane" xmlns="http://www.w3.org/2000/svg"></svg></main>
+  <div id="toast" role="status"></div>
+  <script src="lab.js"></script>
+</body>
+</html>

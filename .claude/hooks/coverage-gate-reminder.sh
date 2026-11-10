@@ -8,7 +8,8 @@
 # Logic:
 #   * skip if jq is missing or this Stop is already a hook-triggered continuation
 #     (stop_hook_active) — prevents loops, incl. when the gate genuinely fails;
-#   * skip if no uncommitted .rs/.dart source (generated files excluded);
+#   * skip if no uncommitted .rs/.dart source (generated files excluded, and
+#     spikes/, for which the gate plans no step);
 #   * skip if every changed source file is OLDER than target/gate/last-green
 #     (the stamp a green `cargo make test` run writes last; the run only executes
 #     the steps the change needs) — gate already ran;
@@ -27,7 +28,7 @@ changed="$( { git diff --name-only -- '*.rs' '*.dart'; \
               git diff --cached --name-only -- '*.rs' '*.dart'; \
               git ls-files --others --exclude-standard -- '*.rs' '*.dart'; } 2>/dev/null \
             | sort -u \
-            | grep -vE '(_generated\.rs|bindings\.dart|\.ffi_generated\.dart)$' || true )"
+            | grep -vE '^spikes/|(_generated\.rs|bindings\.dart|\.ffi_generated\.dart)$' || true )"
 [ -z "$changed" ] && exit 0
 
 marker="target/gate/last-green"

@@ -18,6 +18,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8766", "--bind", "127.0.0.1", "--directory", "spikes/graph-layout-ab/viewer"],
       "port": 8766
+    },
+    {
+      "name": "graph-layout-lab",
+      "runtimeExecutable": "dart",
+      "runtimeArgs": ["run", "spikes/graph-layout-lab/bin/lab_server.dart", "8768"],
+      "port": 8768
     }
   ]
 }
