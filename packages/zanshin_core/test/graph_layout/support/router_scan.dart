@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-// Story 4.15: checks over a router geometry for the tests and the router CLI — the polyline
-// segments that pass through a card that is neither of their ends (GL's `throughCards`,
-// graph-layout.jsx:303-310 at e74ced3), with the reported cases they belong to.
-
-import 'dart:typed_data';
+// Checks over a router geometry for the tests and the router CLI: the polyline segments that pass
+// through a card that is neither of their ends, and the line gate (the `line gate` group of router_test.dart).
 
 import 'package:zanshin_core/src/graph_layout/router.dart';
 
@@ -64,19 +61,173 @@ List<CardHit> cardHits(RouteGeometry g) {
   return hits;
 }
 
-/// Per edge, whether it sits on a gutter with more than 9 lines (reported as `overfullGutters`).
-Uint8List overfullGutterEdges(RouteClasses c) {
-  final lines = <int, int>{};
+/// Tolerance for comparing computed coordinates.
+const _eps = 1e-9;
+
+/// The gate's checks that hold on every input: right angles, the ends on their card edges, and a y
+/// that never rises along a line. One message per failure.
+List<String> polylineFailures(RouteGeometry g) {
+  final RouteClasses c = g.classes;
+  final RouteMetrics m = g.metrics;
+  final double colW = m.width + m.gapX;
+  final double pitch = m.height + m.gapY;
+  double left(int node) => m.pad + c.nodeCols[node] * colW;
+  double top(int node) => m.pad + (c.maxRow - c.nodeRows[node]) / c.unit * pitch;
+  final fails = <String>[];
   for (var k = 0; k < c.edgeCount; k++) {
-    if (c.kinds[k] == RouteClasses.kindGutter) {
-      lines[c.gutters[k]] = (lines[c.gutters[k]] ?? 0) + 1;
+    final int start = g.pointStarts[k];
+    final int end = g.pointStarts[k + 1];
+    final int count = end - start;
+    if (count != 2 && count != 4 && count != 6 && count != 8) {
+      fails.add('line $k has $count points');
+    }
+    for (int q = start + 1; q < end; q++) {
+      final double dx = g.points[2 * q] - g.points[2 * q - 2];
+      final double dy = g.points[2 * q + 1] - g.points[2 * q - 1];
+      if (dx.abs() > _eps && dy.abs() > _eps) {
+        fails.add('line $k has a slanted run at point ${q - start}');
+      }
+      if (dy > _eps) {
+        fails.add('line $k climbs back down at point ${q - start}');
+      }
+    }
+    final int p = c.edgeFroms[k];
+    final int ch = c.edgeTos[k];
+    bool onEdge(int node, double x) => left(node) + 18 - _eps <= x && x <= left(node) + m.width - 18 + _eps;
+    if (!onEdge(p, g.points[2 * start]) || (g.points[2 * start + 1] - top(p)).abs() > _eps) {
+      fails.add('line $k does not start on its parent\'s top edge');
+    }
+    if (!onEdge(ch, g.points[2 * end - 2]) || (g.points[2 * end - 1] - top(ch) - m.height).abs() > _eps) {
+      fails.add('line $k does not end on its child\'s bottom edge');
     }
   }
-  final out = Uint8List(c.edgeCount);
-  for (var k = 0; k < c.edgeCount; k++) {
-    if (c.kinds[k] == RouteClasses.kindGutter && lines[c.gutters[k]]! > 9) {
-      out[k] = 1;
+  return fails;
+}
+
+/// Every pair of runs of two lines that share a stretch of more than 1 px on one x or one y, not
+/// counting two lines of one slot or two lines on one port of one card edge. The all-pairs oracle of
+/// `RouteGeometry.sharedStretches`.
+int sharedStretchOracle(RouteGeometry g) {
+  final RouteClasses c = g.classes;
+  double exitOf(int k) => g.points[2 * g.pointStarts[k]];
+  double entryOf(int k) => g.points[2 * g.pointStarts[k + 1] - 2];
+  bool exempt(int a, int b) =>
+      c.slots[a] == c.slots[b] ||
+      (c.edgeFroms[a] == c.edgeFroms[b] && exitOf(a) == exitOf(b)) ||
+      (c.edgeTos[a] == c.edgeTos[b] && entryOf(a) == entryOf(b));
+  var count = 0;
+  void scan(List<double> at, List<double> from, List<double> to, List<int> edges) {
+    for (var i = 0; i < at.length; i++) {
+      for (int j = i + 1; j < at.length; j++) {
+        if (at[i] == at[j] &&
+            edges[i] != edges[j] &&
+            (to[i] < to[j] ? to[i] : to[j]) - (from[i] > from[j] ? from[i] : from[j]) > 1 &&
+            !exempt(edges[i], edges[j])) {
+          count++;
+        }
+      }
     }
   }
-  return out;
+
+  scan(g.verticalXs, g.verticalTops, g.verticalBottoms, g.verticalEdges);
+  scan(g.horizontalYs, g.horizontalLefts, g.horizontalRights, g.horizontalEdges);
+  return count;
+}
+
+/// Whether a vertical run of [p] crosses a horizontal run of [q] (flat x, y pairs), not just touches it.
+bool _crosses(List<double> p, List<double> q) {
+  for (var i = 0; i + 3 < p.length; i += 2) {
+    if (p[i] != p[i + 2]) {
+      continue;
+    }
+    final double top = p[i + 1] < p[i + 3] ? p[i + 1] : p[i + 3];
+    final double bottom = p[i + 1] < p[i + 3] ? p[i + 3] : p[i + 1];
+    for (var j = 0; j + 3 < q.length; j += 2) {
+      final double left = q[j] < q[j + 2] ? q[j] : q[j + 2];
+      final double right = q[j] < q[j + 2] ? q[j + 2] : q[j];
+      if (q[j + 1] == q[j + 3] && left < p[i] && p[i] < right && top < q[j + 1] && q[j + 1] < bottom) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// The line gate on [g], one message per failure: [polylineFailures];
+/// every card hit on a line the router reports; at one card edge two lines on one port only on the
+/// fan's overflow or as one shared entry; two lines that both turn within gapY of one card edge never
+/// cross; the ports of a card edge other than the centre go, in x order, to non-decreasing columns;
+/// and the report of shared stretches equals the all-pairs oracle.
+List<String> lineFailures(RouteGeometry g) {
+  final RouteClasses c = g.classes;
+  final RouteMetrics m = g.metrics;
+  final double colW = m.width + m.gapX;
+  double centre(int node) => m.pad + c.nodeCols[node] * colW + m.width / 2;
+  List<double> pts(int k) => g.points.sublist(2 * g.pointStarts[k], 2 * g.pointStarts[k + 1]);
+
+  final List<String> fails = polylineFailures(g);
+  for (final CardHit hit in cardHits(g)) {
+    if (g.behindEdges[hit.edge] == 0) {
+      fails.add('line ${hit.edge} runs behind card ${hit.node} and is not reported');
+    }
+  }
+
+  // Per card edge (node, exit or entry) its lines.
+  final atEdge = <(int, bool), List<int>>{};
+  for (var k = 0; k < c.edgeCount; k++) {
+    (atEdge[(c.edgeFroms[k], true)] ??= []).add(k);
+    (atEdge[(c.edgeTos[k], false)] ??= []).add(k);
+  }
+  // The outermost fan slot, where the overflow of a fan lands.
+  final double outermost = 24 + ((m.width / 2 - 18 - 24) / 8).floor() * 8;
+  for (final MapEntry(key: (int node, bool exit), value: List<int> lines) in atEdge.entries) {
+    double portOf(int k) => exit ? g.points[2 * g.pointStarts[k]] : g.points[2 * g.pointStarts[k + 1] - 2];
+    for (var a = 0; a < lines.length; a++) {
+      for (int b = a + 1; b < lines.length; b++) {
+        if (portOf(lines[a]) != portOf(lines[b])) {
+          continue;
+        }
+        final bool overflow = ((portOf(lines[a]) - centre(node)).abs() - outermost).abs() < _eps;
+        if (!overflow && (exit || c.slots[lines[a]] != c.slots[lines[b]])) {
+          fails.add('lines ${lines[a]} and ${lines[b]} share a port of card $node');
+        }
+      }
+    }
+
+    // Two lines that both turn within a row gap of this card edge do not cross.
+    double reach(int k) {
+      final List<double> p = pts(k);
+      return exit ? p[1] - p[3] : p[p.length - 3] - p.last;
+    }
+
+    final List<int> turning = [
+      for (final int k in lines)
+        if (g.pointStarts[k + 1] - g.pointStarts[k] > 2 && reach(k) < m.gapY) k,
+    ];
+    for (final a in turning) {
+      for (final b in turning) {
+        if (a != b && _crosses(pts(a), pts(b))) {
+          fails.add('lines $a and $b of card $node cross');
+        }
+      }
+    }
+
+    // The ports other than the centre, in x order, go to non-decreasing columns.
+    final ports = <(double, int)>[
+      for (final int k in lines)
+        if ((portOf(k) - centre(node)).abs() > _eps) (portOf(k), c.nodeCols[exit ? c.edgeTos[k] : c.edgeFroms[k]]),
+    ]..sort((a, b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2));
+    for (var i = 1; i < ports.length; i++) {
+      if (ports[i - 1].$2 > ports[i].$2) {
+        fails.add('the ports of card $node (${exit ? 'top' : 'bottom'}) are not in column order: $ports');
+        break;
+      }
+    }
+  }
+
+  final int oracle = sharedStretchOracle(g);
+  if (oracle != g.sharedStretches) {
+    fails.add('sharedStretches is ${g.sharedStretches}, the all-pairs count $oracle');
+  }
+  return fails;
 }

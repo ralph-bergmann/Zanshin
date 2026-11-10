@@ -1,23 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-// Story 4.15: line router B (docs/graph-layout.md §14) from the command line — the oracle's Dart
-// side (spikes/graph-layout-ab/tools/router-oracle.mjs), a route check on a §2 input and a
+// The line router (docs/graph-layout.md §14) from the command line: a route check on a §2 input and a
 // benchmark. Not part of the test gate; it imports nothing that reaches `dart:ffi`.
 //
 // ```text
-// router_cli oracle <cases.json> <out.json>
 // router_cli check --mode compact|free --width W --height H <input.json>
 // router_cli bench --mode compact|free --width W --height H [--runs N] [--warmup W] <input.json>
 // ```
 //
-// `oracle` routes GL's own grids (the cases the oracle tool writes) and writes per case the kinds,
-// polylines, ports, bridges and reports. `check` lays the input out with the product engine
-// (`computeGraphGrid`, no stacks), routes it and prints one JSON line of counts: kinds, reports,
-// the segments inside a non-endpoint card (split into explained = on a reported edge and not, and
-// into those on the engine's blocked merges). `bench` prints one JSON line with the class stage,
-// the geometry stage and one 1200 × 800 bridge window (at the plane's left edge, vertically
-// centred, where the trunk's lines run) medians; parsing and
-// the layout are untimed. Exit code 2 on a usage error or an invalid input. Run from
+// `check` lays the input out with the product engine (`computeGraphGrid`, no stacks), routes it and
+// prints one JSON line of counts: the lines per number of points, the reports and the segments inside
+// a non-endpoint card (split into reported = on a line the router reports, and not). `bench` prints
+// one JSON line with the per-layout stage (`class`), the geometry stage and one 1200 × 800 bridge
+// window (at the plane's left edge, vertically centred, where the trunk's lines run) medians; parsing
+// and the layout are untimed. Exit code 2 on a usage error or an invalid input. Run from
 // `packages/zanshin_core`:
 //
 // ```sh
@@ -39,7 +35,6 @@ import '../test/graph_layout/support/spec_json.dart';
 
 const _usage = '''
 usage:
-  router_cli oracle <cases.json> <out.json>
   router_cli check --mode compact|free --width W --height H <input.json>
   router_cli bench --mode compact|free --width W --height H [--runs N] [--warmup W] <input.json>''';
 
@@ -50,15 +45,12 @@ final class _Exit2 implements Exception {
   final String message;
 }
 
-const _kindNames = <String>['straight', 'fork', 'merge-adjacent', 'merge-up', 'gutter'];
-
 void main(List<String> args) {
   try {
     if (args.isEmpty) {
       throw _Exit2('missing command');
     }
     final void Function(List<String>) run = switch (args.first) {
-      'oracle' => _oracle,
       'check' => _check,
       'bench' => _bench,
       _ => throw _Exit2('unknown command "${args.first}"'),
@@ -75,84 +67,6 @@ void main(List<String> args) {
   } on LayoutContractException catch (e) {
     stderr.writeln('router_cli: invalid input: ${e.rule}: ${e.message}');
     exitCode = 2;
-  }
-}
-
-/// The oracle cases: `{"cases": [{"name", "width", "height", "free", "unit", "rows", "cols",
-/// "parent_counts", "edges": [[from, to, kind], …]}]}` (kind 0 direct, 1 indirect).
-void _oracle(List<String> args) {
-  if (args.length != 2) {
-    throw _Exit2('oracle takes <cases.json> <out.json>');
-  }
-  final Object? doc = jsonDecode(utf8.decode(_read(args[0])));
-  if (doc is! Map<String, Object?> || doc['cases'] is! List<Object?>) {
-    throw _Exit2('oracle: expected {"cases": [...]}');
-  }
-  final out = <Object?>[];
-  for (final raw in doc['cases']! as List<Object?>) {
-    final spec = raw! as Map<String, Object?>;
-    Int32List ints(String key) => Int32List.fromList([for (final Object? v in spec[key]! as List<Object?>) v! as int]);
-    final edges = spec['edges']! as List<Object?>;
-    final froms = Int32List(edges.length);
-    final tos = Int32List(edges.length);
-    final kinds = Uint8List(edges.length);
-    for (var k = 0; k < edges.length; k++) {
-      final triple = edges[k]! as List<Object?>;
-      froms[k] = triple[0]! as int;
-      tos[k] = triple[1]! as int;
-      kinds[k] = triple[2]! as int;
-    }
-    final classes = RouteClasses.compute(
-      nodeRows: ints('rows'),
-      nodeCols: ints('cols'),
-      unit: spec['unit']! as int,
-      free: spec['free']! as bool,
-      edgeFroms: froms,
-      edgeTos: tos,
-      edgeKinds: kinds,
-      parentCounts: ints('parent_counts'),
-    );
-    final g = RouteGeometry.compute(
-      classes,
-      RouteMetrics(width: (spec['width']! as num).toDouble(), height: (spec['height']! as num).toDouble()),
-    );
-    final RouteBridges all = g.bridges(
-      double.negativeInfinity,
-      double.negativeInfinity,
-      double.infinity,
-      double.infinity,
-    );
-    out.add({
-      'name': spec['name'],
-      'kinds': [for (var k = 0; k < classes.edgeCount; k++) _kindNames[classes.kinds[k]]],
-      'gutters': [
-        for (var k = 0; k < classes.edgeCount; k++)
-          if (classes.kinds[k] == RouteClasses.kindGutter) classes.gutters[k] else null,
-      ],
-      'slots': classes.slots,
-      'points': [
-        for (var k = 0; k < classes.edgeCount; k++)
-          [for (int q = 2 * g.pointStarts[k]; q < 2 * g.pointStarts[k + 1]; q++) g.points[q]],
-      ],
-      'ports': [
-        for (var i = 0; i < classes.nodeRows.length; i++)
-          [for (int q = g.portStarts[i]; q < g.portStarts[i + 1]; q++) g.portXs[q]],
-      ],
-      'bridges': [
-        for (var q = 0; q < all.length; q++)
-          [all.xs[q], all.ys[q], all.horizontalEdges[q], all.verticalEdges[q], all.verticalBreaks[q]],
-      ],
-      'direct_fallbacks': classes.directFallbacks,
-      'overfull_gutters': classes.overfullGutters,
-      'overfull_clusters': g.overfullClusters,
-      'unavoidable_crossings': g.unavoidableCrossings,
-      'unsettled_ports': g.unsettledPorts,
-    });
-  }
-  try {
-    File(args[1]).writeAsStringSync('${jsonEncode({'cases': out})}\n');
-  } on FileSystemException catch (e) {
-    throw _Exit2('cannot write ${args[1]}: ${e.message}');
   }
 }
 
@@ -177,7 +91,6 @@ RouteClasses _classes(_Laid laid) => RouteClasses.compute(
   nodeRows: laid.grid.nodeRows,
   nodeCols: laid.grid.nodeCols,
   unit: laid.grid.unit,
-  free: laid.grid.mode == LayoutMode.free,
   edgeFroms: laid.grid.edgeFroms,
   edgeTos: laid.grid.edgeTos,
   edgeKinds: laid.grid.edgeKinds,
@@ -189,30 +102,13 @@ void _check(List<String> args) {
   final _Laid laid = _layOut(cli, _read(cli.input));
   final RouteClasses classes = _classes(laid);
   final g = RouteGeometry.compute(classes, RouteMetrics(width: cli.width, height: cli.height));
-  final kinds = Int32List(5);
+  final pointCounts = <String, int>{'2': 0, '4': 0, '6': 0, '8': 0};
   for (var k = 0; k < classes.edgeCount; k++) {
-    kinds[classes.kinds[k]]++;
+    pointCounts.update('${g.pointStarts[k + 1] - g.pointStarts[k]}', (count) => count + 1);
   }
-  // The engine's blocked merges (a non-first parent in another lane with `blocked`): defect 2.
-  final GraphGridView grid = laid.grid;
-  final blockedMerge = Uint8List(classes.edgeCount);
-  var blockedMerges = 0;
-  var blockedMergeGutters = 0;
-  for (var k = 0; k < classes.edgeCount; k++) {
-    if (grid.edgeBlocked[k] != 0 && classes.firstParents[k] == 0) {
-      blockedMerge[k] = 1;
-      blockedMerges++;
-      if (classes.kinds[k] == RouteClasses.kindGutter) {
-        blockedMergeGutters++;
-      }
-    }
-  }
-  final Uint8List overfullGutter = overfullGutterEdges(classes);
   var vertical = 0;
   var horizontal = 0;
-  var explained = 0;
-  var onBlockedMerges = 0;
-  var onBlockedMergesVertical = 0;
+  var reported = 0;
   final List<CardHit> hits = cardHits(g);
   for (final hit in hits) {
     if (hit.vertical) {
@@ -220,15 +116,8 @@ void _check(List<String> args) {
     } else {
       horizontal++;
     }
-    final int k = hit.edge;
-    if (classes.fallbackEdges[k] != 0 || g.overfullEdges[k] != 0 || overfullGutter[k] != 0) {
-      explained++;
-    }
-    if (blockedMerge[k] != 0) {
-      onBlockedMerges++;
-      if (hit.vertical) {
-        onBlockedMergesVertical++;
-      }
+    if (g.behindEdges[hit.edge] != 0) {
+      reported++;
     }
   }
   stdout.writeln(
@@ -239,22 +128,18 @@ void _check(List<String> args) {
       'height': cli.height,
       'nodes': laid.n,
       'edges': classes.edgeCount,
-      'kinds': {for (var q = 0; q < 5; q++) _kindNames[q]: kinds[q]},
-      'direct_fallbacks': classes.directFallbacks,
-      'overfull_gutters': classes.overfullGutters,
-      'overfull_clusters': g.overfullClusters,
+      'points': pointCounts,
+      'behind_cards': g.behindCards,
+      'shared_stretches': g.sharedStretches,
+      'tight_fans': g.tightFans,
       'unavoidable_crossings': g.unavoidableCrossings,
       'unsettled_ports': g.unsettledPorts,
-      'blocked_merges': blockedMerges,
-      'blocked_merges_on_gutters': blockedMergeGutters,
       'card_hits': {
         'total': hits.length,
         'vertical': vertical,
         'horizontal': horizontal,
-        'explained': explained,
-        'unexplained': hits.length - explained,
-        'blocked_merges': onBlockedMerges,
-        'blocked_merges_vertical': onBlockedMergesVertical,
+        'reported': reported,
+        'unreported': hits.length - reported,
       },
     }),
   );

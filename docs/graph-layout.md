@@ -27,6 +27,11 @@ lane orders and the closing pass in the product. The dated amendments of Story 4
 §4.3, §4.6, §4.7, §4.8, §5, §6, §7.2, §7.3, §8.2, §9 (new D15), §12 and §13. Ungrouped rows do not
 change. Grouped rows can, because §4.8's constraint (C) is restated for branch columns.)*
 
+*(Amended 2026-11-10, Story 4.18: lines by the lab's rules — the graph layout lab's line rules
+(`spikes/graph-layout-lab/lib/lines.dart`, Ralph 2026-11-10) replace router B's classes, gutter budget,
+unit rule and hooks. The dated amendments of Story 4.18 are §4.3, §4.8, §7.2, §9, §12 and §14 (§14.2
+and §14.3 rewritten). No layout output changes.)*
+
 The contract for both implementations (`rust/`, `dart/`). Each one is written from this
 document alone and MUST produce **byte-identical output** for every input × mode × order.
 Where this spec and the design differ, the spec wins; every deliberate difference is listed
@@ -535,7 +540,9 @@ for every node (§4.6). `cont` is the continuation child defined above.
 - A merge child can share its merge parent's column: the reservation ends one pitch below the child,
   so a branch starting at that child may take the column. Such an edge is `straight` in §4.5, because
   lane(p) = lane(i). Router B does not read `route` (§14) and classes it `gutter` by its column-free
-  test (§14.2, s = 0, not the first parent).
+  test (§14.2, s = 0, not the first parent). *(Amended 2026-11-10, Story 4.18: the router of §14 no
+  longer classes such an edge. A same-column line with no card between its ends is straight, also
+  for a non-first parent; with a card in between it takes the gutter, §14.3.)*
 - `straight` now means only lane(p) = lane(i). Cards of the parent's branch can lie between p and i
   in that column, because the branch's reservation ends one pitch below the child, not at p.
 - A merge with lane(p) ≠ lane(i) is `blocked` (§4.4) when a card sits in the parent's column at
@@ -1054,6 +1061,9 @@ the router's reported fallback (`fallbackEdges`) and may still pass behind a car
 
 *Amended 2026-11-10, Story 4.17:* D11 no longer applies: no run is split (step 4, amended).
 
+*Amended 2026-11-10, Story 4.18:* the kinds, `overfullGutters` and `fallbackEdges` named above went
+with router B. §14.3 lists what the router reports now.
+
 **The design sample, by hand.** `e243dd2` (52 commits, §7.2), `compact`, greedy, the default
 request: no run lies in A (the onboarding chain under `@` has no run), so every run collapses.
 - `all` (7 runs): `rows` 19 → 15. The longest chain, root → … → vruxwmqv → the qmsvtlkr run →
@@ -1285,6 +1295,12 @@ overfull clusters), with no run that the unit rule and GL's pixel test judge dif
 shared-entry grouping difference. GL's grids hold no `gutter` line (its optimizer avoids them), so
 gutter routes are witnessed by the product's hand-built tests and the scale checks, not by GL.
 
+*Amended 2026-11-10, Story 4.18: the router oracle retires, with router B.* The `oracle` command of
+`benchmark/router_cli.dart` is gone, and `tools/router-oracle.mjs` stays in the spike as history. The
+reference for the lines is the lab: `bin/lab_check.dart` runs its line rules on the product's lines,
+and `bin/lab_metrics.dart` prints the product's metrics next to the lab's
+(`spikes/graph-layout-lab`). The two paragraphs on the oracle here and below describe what it was.
+
 *Amended 2026-10-27, closing run of Story 4.15: gutter routes in the router oracle.* The oracle gains
 a third category, `gutter`, so GL itself routes gutter lines. The bases are the sample revsets
 `default` and `all` (GL's own columns, `computeLayout(GRAPH_COMMITS, rev, 240, 62, "compact",
@@ -1502,6 +1518,9 @@ last phase. `lanes` is the branch column choice of §4.3.
   may still pass behind a card.
 
   *Amended 2026-11-10, Story 4.17: D11 no longer applies; no run is split (§4.8 step 4, amended).*
+
+  *Amended 2026-11-10, Story 4.18: the kinds, `overfullGutters` and `fallbackEdges` named above went
+  with router B (§14.3 lists what the router reports now).*
 - **D12 — `free`'s day band** *(added 2026-10-31, Story 4.16)*. The design places y by time
   alone, so two commits on either side of local midnight less than ~25 min apart in different
   columns overlap vertically, and the painter's day divider (Story 10.2, midway between the older
@@ -1633,6 +1652,9 @@ Story 4.11's SPEC amendments, wherever SPEC lives (4.11 open question 5):
 *Amended 2026-10-27, Story 4.15:* the planned top-centre exit above is replaced by §14's exits:
 a `straight` line leaves at the centre, every other line at its own port on the parent's top edge
 (§14.3). The T-junction and the shared stub no longer exist.
+
+*Amended 2026-11-10, Story 4.18:* §14's exits are now the lab's: the ports stay as §14.3 has them,
+and a line's first bend decides how it leaves.
 
 *Amended 2026-11-10, Story 4.17:* the product has one column rule and no lane orders: §4.3's Branch
 columns. `greedy`, `compact` and the budget are gone from the product, and each mode chooses its own
@@ -1779,6 +1801,13 @@ column is taken climbs a gutter between columns. It supersedes §4.5's symbolic 
 §12's planned exit. It is no layout output: the engine's `route`, `blocked`, grid and goldens are
 unchanged, and the router does not read `route` or `blocked`.
 
+*Amended 2026-11-10, Story 4.18: lines by the lab's rules.* The rules below are the graph layout
+lab's (`labLines` in `spikes/graph-layout-lab/lib/lines.dart`, every switch on, Ralph 2026-11-10), with
+the differences §14.6 lists. A line runs in its branch's column, turns into a gutter before a card in
+its way, and sits on a level that passes no card. Router B's classes, gutter budget, unit rule and
+hooks are gone. §14.2 and §14.3 are rewritten; the previous text is in git history. §14.4 is
+unchanged. Where a sentence of §14 still names GL, the export is that sentence's origin.
+
 ### 14.1 Home and input
 
 `packages/zanshin_core/lib/src/graph_layout/router.dart`, engine core (§13's import rule: only
@@ -1786,146 +1815,196 @@ unchanged, and the router does not read `route` or `blocked`.
 `lib/zanshin_core.dart` (`RouteClasses`, `RouteMetrics`, `RouteGeometry`, `RouteBridges`,
 `routeSyncNodeLimit`; no other engine type).
 
-Input = raw typed arrays as `GraphGridView` exposes them: per node row and col, U, the mode (free
-or not), per layout edge from, to and kind (§3's order: by child, then the parent's position; a
-child's first edge is its first parent, i = 0), plus the topology's `parentCount` per topology node
-(Story 4.10). A node with row −1 (a hidden stack member) is skipped; an edge touching one is bad
-input. A node index ≥ `parentCount`'s length (a stack node) counts as not single-parent. Bad
-input — array lengths that disagree, U ≤ 0, an edge index out of range or at a hidden node, a
-visible node with a negative column — throws `ArgumentError`.
+Input = raw typed arrays as `GraphGridView` exposes them: per node row and col, U, per layout edge
+from, to and kind (§3's order: by child, then the parent's position; a child's first edge is its
+first parent, i = 0), plus the topology's `parentCount` per topology node (Story 4.10). A node with
+row −1 (a hidden stack member) is skipped; an edge touching one is bad input. A node index ≥
+`parentCount`'s length (a stack node) counts as not single-parent. Bad input — array lengths that
+disagree, U ≤ 0, an edge index out of range or at a hidden node, a visible node with a negative
+column — throws `ArgumentError`.
 
-Notation: y(i) = row(i) in units (U per pitch; `free` U = 16, `compact` U = 1); a column is
-**free** between rows a < b iff no visible node of that column has a < y < b (GL:160). Doubled
-column positions: column c's centre is 2c, the gutter between c and c + 1 is 2c + 1.
+*Amended 2026-11-10, Story 4.18:* the input no longer names the mode (`free` is gone; the rules are
+the same in both modes, in pixels). Doubled column positions are §14.3's.
 
-### 14.2 Class stage (per layout; units only)
+### 14.2 Per-layout stage (per layout; units only)
 
-Per edge (p, i) with side s = sign(col(i) − col(p)) (GL:178-192):
-- s = 0: `straight` iff i is the first parent and the column is free between y(p) and y(i), else
-  `gutter`; s becomes 1 (the gutter on the right).
-- first parent: `fork` iff col(i) is free between them, else `gutter`;
-- non-first: `merge-adjacent` iff y(i) = y(p) + U, else `merge-up` iff col(p) is free, else
-  `fork` iff col(i) is free, else `gutter`. *(The `fork` step added 2026-11-03, Ralph's review: GL
-  sends such a line through a gutter, two extra bends where the child's column was free.)*
+*Rewritten 2026-11-10, Story 4.18: router B's kinds, gutter steps, unit rule and hooks are gone.*
 
-**Two bends before a gutter** *(added 2026-11-09, Ralph: an S-bend around a stack card)*. For s ≠ 0
-and a kind other than `merge-adjacent`, an edge tries its usual two-bend shape (first parent:
-`fork`; others: `merge-up`), then the other one. A shape fits iff its column is free between them
-and, in `free`, the unit rule below does not block its run. With neither, the kind stays as
-classified above.
+`RouteClasses` keeps its name: a card-size change must not redo this stage, which a measurement
+confirms (§14.5). It checks the input (§14.1) and holds:
 
-**Gutters.** Edge gutter j (j = 0 nearest the child) of an edge with k = |col(i) − col(p)| ≥ 1 is
-2·col(i) − s·(2j + 1), j < k; with k = 0 the one gutter is 2·col(i) + 1. Its two runs: from the
-parent to the gutter in the band above the parent, and from the gutter to the child in the band
-below the child.
-
-**Free detours, the unit rule** (`free` only; GL's pixel test GL:162-177, :186-190 replaced). A run
-between doubled positions A and B is blocked iff a visible node in a column c with 2c strictly
-between A and B sits 1–12 units above the parent (a run in the band above the parent: 1 ≤ y(o) −
-y(p) ≤ 12) or 1–12 units below the child (a run in the band below the child: 1 ≤ y(i) − y(o) ≤ 12).
-`fork` and `merge-adjacent` check their run above the parent, `merge-up` its run below the child.
-If that run is blocked, or for every `gutter`, the edge takes the first gutter (from j = 0) whose
-two runs are free. With none it takes a **hook** where it can: a `gutter` on j = 0 whose run above
-the parent is raised to the band above a hook row h — from y(p), h becomes the highest row of a
-visible node 1–12 units above h in a column the run crosses (2c strictly between the parent and the
-gutter), until there is none — if the parent's column is free between y(p) and h + 13, where the
-line climbs (`hookRows`, −1 for every other edge). The raised run is free by construction and the run
-below the child crosses no column, so the line passes no card. *(Added 2026-11-07, Ralph: a line
-behind a card on `jj`.)* Without a hook a `gutter` takes j = 0 and a blocked direct kind stays
-direct and is **reported** (`directFallbacks`). Both cases may pass behind a card and are flagged
-per edge (`fallbackEdges`; the count covers the direct kinds only). In `compact` nothing is blocked and a `gutter` takes j = 0.
-The end columns need no check: nodes of one column are ≥ one pitch apart (I2), and `fork` /
-`merge-up` need their column free.
-
-*Derivation (why 12).* GL blocks a run when the band's inner part [band + 12, band − 12] has no room
-left after removing each card's [y − 10, y + H + 10] over the run's x-range. A card d units above
-the parent (pitch P = H + 48) leaves room below it iff d·P/16 ≥ H + 22 and above it iff
-d·P/16 ≤ 26, so GL blocks d ∈ 4 … 12 at H 62 and d ∈ 5 … 11 at H 40. The unit rule blocks 1 … 12:
-it detours more for d ∈ 1 … 3 (H 62) and d ∈ 1 … 4 and 12 (H 40), and never runs direct where GL
-blocks: cards at d ≤ 0 reach no higher than the band's inner bottom, and cards at d ≥ 13 leave
-GL's room just above it, so GL can only block when some card sits at 1 … 12. That last step holds
-while a card 13 units off clears the band, 13·(H + gapY)/16 ≥ H + 22, i.e. H ≤ (13·gapY − 352)/3
-(≈ 90 px at gapY 48); with taller cards a direct run may pass a card 13 units off.
-
-**Gutter steps.** Lines on one gutter, counted in edge order, step 0, +6, −6, +12, −12, … px
-(k-th line: (k odd ? +6 : −6)·⌈k/2⌉; GL:193-197). A gutter with more than 9 lines is **reported**
-(`overfullGutters`): its outer lines may reach into the neighbouring cards.
+- per column its visible nodes by row (`columnStarts`, `columnNodes`), so a column's card tops
+  descend; per node its place in that list (`columnPos`), so a card's neighbours in its column are one
+  step away;
+- per node `goesOn`: a first-parent child sits in the node's column, so the node's branch goes on;
+- per layout edge its entry slot, its `deep` flag and whether it is its child's first parent;
+- the in- and out-edges per node.
 
 **Shared entries.** An Indirect edge into a node with `parentCount` = 1 that has ≥ 2 Indirect
-edges shares that node's one entry slot and is **deep** (its cluster sits as far from the child
-as it can, GL:117): all those edges go through the one hidden parent. Every other edge has its own
-slot. (GL groups dashed edges by its own gap walk's `via`, GL:212; jj reports no `via`.)
-
-Output, per edge: kind, side, gutter (doubled position) and step, hook row, slot (the slot's first
-edge), deep, first parent; per column its visible nodes by row; the two reports (counts, and per edge
-whether the unit rule left it no free route).
+edges shares that node's one entry slot and is **deep**: all those edges go through the one hidden
+parent. Every other edge has its own slot. (GL groups dashed edges by its own gap walk's `via`,
+GL:212; jj reports no `via`.)
 
 ### 14.3 Geometry stage (per metrics)
 
-Metrics: W, H, gapX 56, gapY 48, pad 56; pitch = H + gapY, colW = W + gapX. Doubles, the same
-formulas and evaluation order as GL. x(i) = pad + col(i)·colW, y(i) = pad + (maxRow − row(i)) / U ·
-pitch, cx = x + W / 2. Gutter x: n.cx − s·colW·(j + 0.5) (k ≥ 1) or n.cx + colW / 2 (k = 0), plus
-its step.
+*Rewritten 2026-11-10, Story 4.18, from `labLines` with every switch on.*
+
+Metrics: W, H, gapX 56, gapY 48, pad 56; pitch = H + gapY, colW = W + gapX. y(i) = pad + (maxRow −
+row(i)) / U · pitch, cx = pad + col(i)·colW + W / 2. Constants: lift = 0.4·gapY (how far a run sits
+from the card it belongs to), clear = 8 (how far a run stays from any card), track = 6 (the distance
+of runs of one fan and of lines in one gutter).
+
+A **doubled column position** q is 2c for column c's centre and 2c + 1 for the gutter right of column
+c. Until the ports are placed every x is such a position, and the rules compare positions as
+integers. A gutter's x is pad + W/2 + q·colW/2, plus its slot's offset.
+
+**Phases, in order.**
+1. Positions: y and cx per node.
+2. Shapes: per edge its shape and levels, and for some merge lines a detour.
+3. Detours: taken where they save crossings, then for the column order.
+4. Tracks: the runs of the final shapes get their levels.
+5. Monotone levels.
+6. Ports, from the final levels.
+7. Gutter slots, from the final levels.
+8. Polylines, run indexes, reports.
+
+**Searches.** For one line, with ay the parent's top and by the child's bottom; its own two cards
+never count.
+- *blocker*(c, from, to): the first card of column c that a line climbing from y `from` meets; none if
+  that card's bottom is at or above `to`.
+- *under*: the next card below the child in the child's column.
+- *seek*(c0…c1, wish, upper, lower, direction): a level between upper + clear and lower − clear at
+  least clear from every card of the columns c0…c1, nearest to wish in `direction`, else nearest on
+  the other side; none if neither has one.
+- *band*(c0…c1, level, lo, hi): from the nearest card edge above the level to the nearest card edge
+  below it over the columns c0…c1, no further than lo and hi.
+
+Columns are read through `columnNodes` with a binary search (a column's tops descend), and own cards
+are skipped by stepping to the neighbour.
+
+**Shapes.** A line runs in its branch's column. above = ay − lift, below = by + lift.
+- *Same column.* blocker(col, ay, by): none → 2 points. A card → 6 points through the gutter right of
+  the column, the first run on T = card bottom + lift.
+- *First parent, another column (fork).* The horizontal run sits right above the parent; it turns
+  right above the parent and climbs the child's column. upper = the bottom of the parent column's
+  next card if that lies below by, else by. The columns c0…c1 reach from next to the parent up to
+  the child's column. L = seek(c0…c1, above, upper, ay, up), or above if there is none. card =
+  blocker(col(child), L, by): none → 4 points; card bottom + lift > L → 6 points (the line cannot
+  enter the child's column: gutter next to it, parent side); else 8 points (the line enters the child's
+  column and dodges the card through that gutter).
+- *Not the first parent, another column (merge).* card = blocker(col(parent), ay, below). upper = card
+  bottom, or by without a card. lower = the smallest of under's top and ay. The columns c0…c1 lie
+  strictly between the two columns. The line bends **at its parent** where `goesOn`(parent) holds and
+  under is none or below the parent: L = seek(c0…c1, lower − lift, upper, lower, up); else at its
+  child: L = seek(c0…c1, upper + lift, upper, lower, down). If L < below and blocker(col(parent), ay,
+  L) exists, the line has no L. With L → 4 points. Without L and without card → 4 points on below.
+  Without L and with card → 6 points through the gutter next to the parent's column, on the child's
+  side.
+- *Its detour.* A merge line whose parent's branch goes on and which does not bend at its parent:
+  at = seek(c0…c1, ay − lift, upper, ay, up). If at exists and at − below ≥ H + gapY the line has a
+  detour: it bends at the parent and climbs the gutter next to the child's column.
+
+**Runs of a shape.** ax, bx the two columns, gx the gutter, xo, xi the ports. Every run takes part in
+the tracks; `merge` decides where it wishes to sit.
+
+| Points | Polyline | Runs from the parent's end: band | merge | down → up |
+|---|---|---|---|---|
+| 2 | (xo,ay)(xo,by) | none | — | — |
+| 4, fork | (xo,ay)(xo,L)(xi,L)(xi,by) | L: band(c0…c1, L, upper, ay) | false | ax → bx |
+| 4, merge at child | same | L: band(c0…c1, L, upper, lower) | true | ax → bx |
+| 4, merge at parent | same | L: band(c0…c1, L, upper, lower) | false | ax → bx |
+| 4, merge fallback | same | L = below: band(c0…c1, below, by, lower) | true | ax → bx |
+| 6, same column or a card in the parent's column | (xo,ay)(xo,T)(gx,T)(gx,B)(xi,B)(xi,by) | T: [card bottom, ay]; B | true, true | ax → gx; gx → bx |
+| 6, fork that cannot enter | (xo,ay)(xo,L)(gx,L)(gx,B)(xi,B)(xi,by) | L: as the fork's; B | false, true | ax → gx; gx → bx |
+| 6, detour | (xo,ay)(xo,at)(gx,at)(gx,B)(xi,B)(xi,by) | at: band(c0…c1, at, upper, ay), its top at least below + clear; B | false, true | ax → gx; gx → bx |
+| 8, fork that dodges | (xo,ay)(xo,L)(bx,L)(bx,T)(gx,T)(gx,B)(xi,B)(xi,by) | L: as the fork's; T: [card bottom, ay]; B | false, true, true | ax → bx; bx → gx; gx → bx |
+
+B is the run below the child: level below, band(the columns strictly between the gutter and the child,
+below, by, hi), with hi the smallest of under's top, the card's bottom when the shape has a blocking
+card, and ay. T is card bottom + lift. A run's *wish* is lo + min(lift, (hi − lo)/2) for `merge`, hi −
+min(lift, (hi − lo)/2) otherwise. A **deep** edge's `merge` run that ends at the child wishes max(lo +
+(hi − lo)/2, min(hi, lo + gapY) − 12), so a shared stem keeps its length.
+
+**Detours.** Two passes over the detours, in edge order, on the shapes before tracks and ports. First
+a detour is taken if the line then crosses fewer other lines; on a tie the line keeps its usual
+shape, which has two bends less. Then a detour is taken wherever a line of its parent's top edge to
+the same side goes to a nearer column but turns nearer to the card, whatever the detour crosses;
+that changes where it turns, so this pass repeats until nothing moves. Crossings are counted with an
+index built once from the first shapes: per doubled position the sorted y's of the horizontal runs
+that strictly pass it and the sorted tops and bottoms of the vertical runs on it. A query counts by
+binary search, subtracts the line's own first shape and applies the taken detours (few) as an overlay.
+
+**Tracks.** Two runs are one cluster, transitively, when their x-ranges overlap and the band of one
+holds the level of the other (a sweep by band top with an active list). Within a cluster:
+- *above*(a, b) for two runs of different lines: a spans b's parent end, or b spans a's child end, or
+  a.up = b.down at a column centre (an even position; gutters are separated by slots, not by levels).
+  Two runs of one line: the run nearer to the child lies above. Pairs with above in both directions
+  are counted, `unavoidableCrossings`.
+- *Order*: by wish, then edge and run order; repeatedly the first run that no other remaining run must
+  lie above (of a pair that crosses either way, neither counts); in a cycle the first remaining run.
+- *Siblings*: two runs in one direction of one parent or one child. *Meet*: x-ranges and bands
+  overlap. *Share*: a run's band over the runs it meets that are not siblings, plus two, at most
+  lift. *Tight*: track, or for a fan that does not fit (share + 6 px per earlier sibling exceeds the
+  room from the lowest band top of the fan to the run's band bottom, less 2 px) room / members. Then
+  share = min(tight, share), so two runs that are not of one fan keep at most 6 px.
+- *Levels*: every run sits at max(wish, lo + share) or pushed below the earlier runs it meets; then,
+  from the last run back, at most hi − share or pushed above the later runs it meets. A run never
+  leaves its band (it stays 2 px inside a band wider than 4 px). Siblings keep min(tight), others
+  min(share).
+
+`tightFans` counts the fans with tight < 2, once per fan per cluster.
+
+**Monotone levels.** Each line's levels are walked from the parent's end (level = min(level,
+previous), starting at ay) and from the child's end (level = max(level, next), starting at by), so the
+line climbs without retracing, whatever pushes did.
 
 **Ports** (Story 10.30, top and bottom alike, by local direction since its follow-up of 2026-11-02):
-only the stretch right at a card edge decides, whatever the line's kind. A line's *reach* at an edge is
-the distance from the edge to the near side of the band it first turns in (`straight`: infinite); it is
-*vertical* there when reach ≥ gapY, else it *turns* there. Turn bands: at a parent's top a `merge-up`
-turns in the band right below its child, a hook in the band above its hook row, `fork` /
-`merge-adjacent` / `gutter` in the band right above the parent; at a child's bottom a `fork` turns in
-the band right above its parent, `merge-adjacent` / `merge-up` / `gutter` in the band right below the
-child. A line's *side* is the x it turns toward (the
-gutter x for a `gutter`, else the entry at the top and the parent's cx at the bottom; equal to cx counts
-as the right side). One line sits at the centre; of several, the vertical line that stays straight
-longest does; with none vertical the centre stays free. The rest fan to their side: vertical lines
-innermost (longest first), then the turning lines by |side − cx| (entries: then the parent's row). At
-an entry the lines are the slot owners.
+only the stretch right at a card edge decides, whatever the line's shape. A line's *reach* at an edge is
+the exact distance from the edge to the line's first bend there (2 points: infinite); it is *vertical*
+there when reach ≥ gapY, else it *turns* there. A line's *side* is the x it turns toward: at the exit
+the x of its third point (a 4-point line's usual target is its entry), at the entry the x of the point
+before its last vertical (a gutter, or a 4-point line's parent's cx). Equal to cx counts as the right
+side. One line sits at the centre; of several, the vertical line that stays straight longest does; with
+none vertical the centre stays free. The rest fan to their side: vertical lines innermost (longest
+first), then the turning lines by |side − cx| (entries: then the parent's row). At an entry the lines
+are the slot owners.
 
-*Column tie-break.* Two vertical lines never share an x, also across the card edges of one column: where
-the straight stretches (card edge through its first turn band) of lines of different card edges overlap
-on one x — a `merge-up` climbing its parent's column past a card whose fork entry runs down the same
-centre — the line that stays straight longer keeps its port (tie: the lower edge index), the other leaves
-the centre or sits one fan slot further out; two lines that both turn at their edges are left to the
-tracks. The ports are placed again until stable (at most 8 passes, `_settlePasses`); the pairs still
-sharing an x after the last pass are counted, `unsettledPorts` (0 on every recorded layout). On the 10k
-synthetic free layout the per-edge rule alone gives 342 collinear overlaps, a centre-only tie-break 19,
-the tie-break over all slots 0; a tie-break loser is the one case where a card edge's only line is not
-centred (20 of 8710 lone exits).
+*Column tie-break.* Two lines of different card edges never share an upright stretch at their card edges:
+where the straight stretches (card edge to first bend, exactly) of two lines overlap on one x, the line that
+stays straight longer keeps its port (tie: the lower edge index), the other leaves the centre or sits one
+fan slot further out. Every line of a shared slot claims its own stretch and a loss moves the slot's owner,
+so the slot moves as one; a slot with a 2-point line claims nothing at its entry, because that line's x is
+the slot's port. Bans and extra slots only accumulate. The ports are placed again until stable (at most 8
+passes, `_settlePasses`); the pairs still sharing an x after the last pass are counted,
+`unsettledPorts`. A tie-break loser is the one case where a card edge's only line is not centred.
 
-**Entries** (GL:206-221). Slots as under Ports, at cx ± fan(m, 24, 16, 8, W/2 − 18), where
-fan(m, first, step, min, max) = first + k·st with st = min(step, max(0, max − first)/(m − 1)) while
-st ≥ min, else first + min(k, ⌊span/min⌋)·min (the overflow shares the outermost port). A node's ports
-are its distinct entry x's, in edge order.
+**Fans.** Slots as under Ports, at cx ± fan(m, 24, 16, 8, W/2 − 18), where fan(m, first, step, min, max)
+= first + k·st with st = min(step, max(0, max − first)/(m − 1)) while st ≥ min, else first + min(k,
+⌊span/min⌋)·min (the overflow shares the outermost port). Nine lines: 16 px apart at W 400, 9.75 at 240, 8
+at 160 with the outer five on one exit. A node's ports are its distinct entry x's, in edge order.
 
-**Exits** (GL:222-250; variant B only; Story 10.30). Slots as under Ports, at
-cx ± fan(m, 24, 16, 8, W/2 − 18), the entries' fan. Nine lines: 16 px apart at W 400, 9.75 at 240, 8
-at 160 with the outer five on one exit. (Before Story 10.30: an exit fan of its own, 12 px apart
-centred on 0.28·W; before its follow-up: centre by `straight` kind, a `merge-up` never centred.)
+**Gutter slots.** Per line through a gutter the interval between its two levels there. Sorted by
+gutter, then top, then edge: a line takes the first slot free over its interval; slot s sits (s odd ?
++6 : −6)·⌈s/2⌉ px from the gutter's centre.
 
-**Runs and tracks** (GL:251-290). Bands: above the parent [y(p) − gapY, y(p)] (a hook's: above its
-hook row h, [y(h) − gapY, y(h)] with y(h) the top of a card in row h), below the child
-[y(i) + H, y(i) + H + gapY]. Runs: `merge-up` one below the child (exit → entry); `gutter` one above
-the parent (exit → gutter) and one below the child (gutter → entry, deep if the edge is); `fork` /
-`merge-adjacent` one above the parent (exit → entry; deep only for a deep `merge-adjacent`). A run's
-room is its band's inner part [band + 12, band − 12], in `free` minus every card [y − 10, y + H + 10]
-whose x-range [x, x + W] comes within 4 px of the run's; the run's free part is the room's interval
-nearest the band's middle (the middle itself if none). Runs whose bands overlap and whose x-ranges
-come within 10 px are one cluster (transitively). Per cluster GL's `assignTracks` (a run must lie
-above another if it spans that one's down-x, or that one spans its up-x; mutual pairs are dropped
-and **counted**, `unavoidableCrossings`; a topological order by open predecessors then length;
-first free track) and `placeTracks` (3.5–6 px apart, 24/(count − 1) clamped, retried at 3.5, each
-track inside its free part, the block at the free part's middle, or as far from the child as it can
-when the cluster holds a deep run). An overfull cluster keeps its order and spacing, centred on the
-mean middle of its runs' free parts, and is **reported** (`overfullClusters`).
-
-**Polylines** (GL:291-297). `straight`: 2 points; `gutter`: 6 points (exit, track above the parent,
-gutter, track below the child, entry; a hook's gutter stretch may run down); the other kinds: 4
-points. Each starts on the parent's top edge and ends on the child's bottom edge.
+**Polylines.** 2, 4, 6 or 8 points, from the parent's top edge to the child's bottom edge; y never
+rises along a line.
 
 **Output** (typed arrays only): the polylines as a CSR (`pointStarts`, `points` as x, y pairs; the
 points are the bends); per node its entry ports as a CSR (`portStarts`, `portXs`); the vertical
 runs sorted by x and the horizontal runs sorted by y (zero-length segments dropped, ties in
-polyline order); the reports (`overfullClusters` with a per-edge flag, `unavoidableCrossings`, `unsettledPorts`).
+polyline order); the reports:
+- `behindCards` and `behindEdges`: the lines that still pass behind a card: a vertical run inside a
+  card's x-range or a horizontal run across a card's y-range (inset 0.5 px), the card being neither end
+  of the line.
+- `sharedStretches` and `sharedEdges`: two lines that share a stretch of more than 1 px on one x or
+  one y, not counting two lines of one slot or two lines on one port of one card edge.
+- `tightFans`, `unavoidableCrossings` and `unsettledPorts`, as above.
+
+*Limits.* The reports count only what they name. The order of a card edge's ports and "two lines of one
+card do not cross" are checked, not counted: the gate holds them on every recording and `bin/lab_check.dart`
+on the lab's repositories. On dense random graphs a line without a detour can break them (lab README, step
+12); the fuzz test of `router_test.dart` pins how many.
 
 ### 14.4 Bridges (a per-window query)
 
@@ -1946,28 +2025,49 @@ all (`shortcut:` in the code; the upgrade is per-x runs sorted by y).
 
 ### 14.5 Where it runs (item 4)
 
-Both stages run on the UI side, never as a worker request: the class stage once per layout (the
+Both stages run on the UI side, never as a worker request: the per-layout stage once per layout (the
 grid), the geometry stage per metrics (a card-size change re-runs only the geometry). The library
 has no isolate dependency. The caller (Story 10.4) runs both synchronously for a layout of at most
 `routeSyncNodeLimit` visible nodes and in `Isolate.run` above it. The limit is the largest n whose
-measured class + geometry time (AOT, warm) stays ≤ 8 ms, linear between the measured sizes, rounded
-down to a thousand (spec-4-15 § Measurements). Measured 2026-10-27 (M4 Pro, W 240): the slowest
-series is `free` on the synth inputs — 3.8 ms at 9,890 nodes, 19.5 ms at 49,442, 40.7 ms at 98,842
-(`compact`: 2.4, 15.3, 27.9 ms; fixture-large-all 1.5 ms) — so **`routeSyncNodeLimit` = 20,000**.
-A 1200 × 800 bridge window at the plane's left edge, vertically centred, measured ≤ 20 µs on these
-inputs (fixture-medium/large `all()`, synth-10k / 50k / 100k); it is not bounded in general (§14.4).
+measured per-layout + geometry time (AOT, warm) stays ≤ 8 ms, linear between the measured sizes (and
+through the origin below the smallest one), rounded down to a thousand.
 
-### 14.6 Differences from GL
+*Amended 2026-11-10, Story 4.18: new measurements and a new limit.* Measured 2026-11-10 (M4 Pro, W 240,
+H 62): the slowest series is `free` on the synth inputs — 10.8 ms at 9,890 nodes, 54.2 ms at 49,442,
+120.1 ms at 98,842 (`compact`: 9.9, 50.5, 108.0 ms; fixture-large-all 2.8 ms) — so
+**`routeSyncNodeLimit` = 7,000** (it was 20,000 with router B, spec-4-15 § Measurements; spec-4-18 §
+Measurements has every series). The geometry stage is the rule stage now, and the per-layout stage is
+7–8 % of the sum on the synth inputs and 24 % on fixture-large-all: a card-size change keeps that share
+and costs no layout request. The rules work on pixels (W scales x, H changes the room), so the stage split
+stays by measurement. The limit counts nodes and assumes small clusters of runs (at most 17 on synth-100k):
+the work inside a cluster is quadratic, so a fan of thousands of lines of one card takes longer than the
+limit allows (the `shortcut:` of `_placeCluster` names the upgrade).
 
-- Free detours use the unit rule (§14.2), not GL's pixel test.
-- An edge tries both two-bend shapes before a `gutter` (§14.2). GL goes through a gutter.
-- A free line with no free gutter takes a hook over the blocking cards where its parent's column lets
-  it (§14.2); GL keeps it on its blocked route, behind the card.
-- Crossings of two edges that share a node bridge too (§14.4); GL skips them.
-- Shared entries group by `parentCount` = 1, not by GL's `via`.
-- Variant B only: no bus (variant C), no `routeLegacy` (A), no gap markers or end stubs (Story
-  10.19), no rounded corners, dashes or styles (Story 10.4).
-- An entry approach exactly at the child's centre (GL: on neither side, no port) counts as the
-  right side.
-- Clusters, room and bridges are computed with indexes instead of GL's all-pairs loops; the results
-  are GL's.
+A 1200 × 800 bridge window at the plane's left edge, vertically centred, measured ≤ 42 µs on these
+inputs (fixture-large-all, synth-10k / 50k / 100k); it is not bounded in general (§14.4).
+
+### 14.6 Differences from the lab
+
+*Rewritten 2026-11-10, Story 4.18: the router no longer follows GL (the list of differences from GL went
+with router B and is in git history). The reference is `labLines`, every switch on.*
+
+- Every run takes part in the tracks, also a turn into a gutter and a run right below a child; the lab
+  keeps those on fixed levels. That removes the lab's last shared stretch (TWMS, Compact, without
+  stacks; the two lines cross instead).
+- *above*(a, b) counts a.up = b.down only at a column centre: gutters are separated by slots, not by
+  levels. Two runs of one line: the run nearer to the child lies above.
+- Deep runs of shared entries; the lab has no shared entries.
+- Ports are the engine's rules (§14.3, Ports) fed by the final levels, with the full column tie-break:
+  a loser at a fan slot moves one slot further out (the lab only moves a line off the centre). A
+  2-point line's reach is infinite, so it never gives up its port to a line that bends.
+- Gutter slots are chosen after the tracks, from the final levels.
+- Monotone levels: the lab's pushes can leave a run below the previous one of its line.
+- Reports: the lab's metrics live in the lab; the router reports `behindCards`, `sharedStretches`,
+  `tightFans`, `unavoidableCrossings` and `unsettledPorts` (§14.3).
+- Indexes replace the lab's scans (a column's cards, run clusters, detour crossings); the results are
+  the lab's. Within a cluster the lab's all-pairs loops stay (`shortcut:` in the code; clusters are
+  small).
+- Crossings of two edges that share a node bridge too (§14.4), as before.
+- A polyline has at most 8 points (a fork that dodges a card in its child's column). Consumers read
+  the CSR, no fixed count.
+

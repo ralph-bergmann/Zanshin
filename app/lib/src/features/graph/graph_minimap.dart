@@ -96,7 +96,7 @@ class GraphMinimapFrame {
   /// The card size.
   final GraphMetrics metrics;
 
-  /// Router B's geometry, null while it is being routed.
+  /// The router's geometry, null while it is being routed.
   final RouteGeometry? geometry;
 
   /// The plane's live margins.

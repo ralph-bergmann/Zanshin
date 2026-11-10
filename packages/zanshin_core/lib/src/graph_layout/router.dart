@@ -5,73 +5,52 @@ import 'dart:typed_data';
 import 'graph_grid_view.dart';
 import 'sort.dart';
 
-// Line router B (Story 4.15, docs/graph-layout.md §14): one line per parent → child layout edge,
-// ported from the floating-client export `e74ced3`'s graph-layout.jsx (GL; `routeLines` GL:148-299,
-// the bridges GL:57-82). The class stage runs once per layout in grid units; the geometry stage runs
-// per card size in pixels, with GL's formulas and evaluation order in doubles. GL's all-pairs loops
-// (clusters, a run's room, bridges) are replaced by indexes with the same results.
+// The line router (docs/graph-layout.md §14): one line per parent → child layout edge, by the graph layout lab's
+// rules (`labLines` in spikes/graph-layout-lab/lib/lines.dart, every switch on). The per-layout stage runs once in
+// grid units; the geometry stage runs per card size in pixels. Indexes replace the lab's scans; §14.6 lists every
+// other difference from the lab.
 
 /// The largest number of visible nodes for which the caller runs both stages synchronously on the
 /// UI isolate; above it, in `Isolate.run` (docs/graph-layout.md §14.5: the largest n whose measured
-/// class + geometry time stays within one 8 ms frame, AOT, spec-4-15 § Measurements).
-const routeSyncNodeLimit = 20000;
+/// per-layout + geometry time stays within one 8 ms frame, AOT).
+const routeSyncNodeLimit = 7000;
 
-/// A run's band keeps this far off the cards; also the least room a bridge leaves (GL's CUT_CLEAR).
+/// The least room a bridge leaves, and how far a deep run keeps from the far side of its row gap.
 const double _clear = 12;
 
-/// A card blocks a run's band within this distance of its edges (GL:167).
-const double _cardMargin = 10;
-
-/// A card counts for a run within this distance of the run's x-range (GL:166).
-const double _cardReach = 4;
-
-/// The port fan-out at both card edges (GL:13; since Story 10.30 the exits' too): offsets from the centre of the
-/// lines that do not take it.
+/// The port fan-out at both card edges: offsets from the centre of the lines that do not take it.
 const double _entryFirst = 24;
 const double _entryStep = 16;
 const double _entryMin = 8;
 const double _entryInset = 18;
 
-/// Lines on one gutter step this many pixels apart (GL:196).
-const _gutterStep = 6;
-
-/// The most placements of the ports while vertical lines on one x are separated ([_GeometryBuilder._banCollisions]).
+/// The most placements of the ports while lines on one x are separated ([_GeometryBuilder._banCollisions]).
 const _settlePasses = 8;
 
-/// A gutter with more lines than this is reported (its outer lines reach into the cards).
-const _gutterBudget = 9;
+/// How far a horizontal run sits from the card it belongs to, as a share of the row gap.
+const _lift = 0.4;
 
-/// Free detours (§14.2): a card this many units or fewer off a run's band blocks it.
-const _detourUnits = 12;
+/// How far a horizontal run stays from any card.
+const double _cardClear = 8;
 
-/// Runs whose x-ranges come within this distance share a cluster (GL:282).
-const double _nearGap = 10;
+/// The distance of runs of one fan and of lines in one gutter.
+const double _track = 6;
 
-/// assignTracks' "inside" margin (GL:88).
-const _inside = 0.5;
-
-/// placeTracks' spacing bounds (GL:124).
-const _trackMin = 3.5;
-const double _trackMax = 6;
-const double _trackSpread = 24;
-
-/// assignTracks' order key weight per open predecessor (GL:99).
-const _openWeight = 100000;
-
-/// A crossing must lie this far inside both runs (GL:58, E = 1).
+/// A crossing must lie this far inside both runs.
 const double _crossMargin = 1;
 
-/// A bridge's half width along its run, and the room a run keeps to its ends (GL:77-79).
+/// A bridge's half width along its run, and the room a run keeps to its ends.
 const double _cutHalf = 6;
 
 double _min(double a, double b) => a < b ? a : b;
 
 double _max(double a, double b) => a > b ? a : b;
 
-/// The class stage of line router B (docs/graph-layout.md §14.2): per layout, in grid units, with no
-/// card size. Per layout edge its kind, side, gutter and gutter step, entry slot, `deep` flag and
-/// whether it is its child's first parent; per column its visible nodes by row. [RouteGeometry]
-/// turns it into pixels for one [RouteMetrics]; a card-size change re-runs only that stage.
+/// The per-layout stage of the line router (docs/graph-layout.md §14.2), in grid units with no card
+/// size: per column its visible nodes by row, per node its place in that list and whether its branch
+/// goes on, per layout edge its entry slot, its `deep` flag and whether it is its child's first
+/// parent. [RouteGeometry] turns it into pixels for one [RouteMetrics]; a card-size change re-runs
+/// only that stage.
 ///
 /// The input arrays are kept by reference and must not change while this object is used.
 final class RouteClasses {
@@ -79,37 +58,30 @@ final class RouteClasses {
     required this.nodeRows,
     required this.nodeCols,
     required this.unit,
-    required this.free,
     required this.edgeFroms,
     required this.edgeTos,
     required this.maxRow,
     required this.columns,
-    required this.kinds,
-    required this.sides,
-    required this.gutters,
-    required this.gutterSteps,
-    required this.hookRows,
     required this.slots,
     required this.deep,
     required this.firstParents,
+    required this.goesOn,
     required this.columnStarts,
     required this.columnNodes,
-    required this.directFallbacks,
-    required this.fallbackEdges,
-    required this.overfullGutters,
+    required this.columnPos,
     required this._inStarts,
     required this._inEdges,
     required this._outStarts,
     required this._outEdges,
   });
 
-  /// Classifies the layout edges of a grid, as `GraphGridView` exposes it: per node its row
+  /// Prepares the layout edges of a grid, as `GraphGridView` exposes it: per node its row
   /// ([nodeRows], −1 for a hidden stack member, which is skipped) and column ([nodeCols]), [unit]
-  /// rows per pitch (16 in `free`, 1 in `compact`), whether the grid is `free`, and per layout edge
-  /// its parent ([edgeFroms]), child ([edgeTos]) and kind ([edgeKinds]; `GraphGridView`'s codes),
-  /// in docs/graph-layout.md §3's order (a child's first edge is its first parent). [parentCounts]
-  /// is the topology's real parent count per topology node (Story 4.10); a node index at or past its
-  /// length (a stack node) counts as not single-parent.
+  /// rows per pitch (16 in `free`, 1 in `compact`), and per layout edge its parent ([edgeFroms]),
+  /// child ([edgeTos]) and kind ([edgeKinds]; `GraphGridView`'s codes), in docs/graph-layout.md §3's
+  /// order (a child's first edge is its first parent). [parentCounts] is the topology's real parent
+  /// count per topology node; a node index at or past its length (a stack node) counts as not
+  /// single-parent.
   ///
   /// Throws [ArgumentError] when the node arrays or the edge arrays differ in length, [unit] ≤ 0, a
   /// visible node has a negative column, or an edge names a node out of range or a hidden one.
@@ -117,7 +89,6 @@ final class RouteClasses {
     required Int32List nodeRows,
     required Int32List nodeCols,
     required int unit,
-    required bool free,
     required Int32List edgeFroms,
     required Int32List edgeTos,
     required Uint8List edgeKinds,
@@ -186,6 +157,10 @@ final class RouteClasses {
       }
     }
     sortIndicesStable(columnNodes, colKey, second: nodeRows);
+    final columnPos = Int32List(n);
+    for (var q = 0; q < visible; q++) {
+      columnPos[columnNodes[q]] = q;
+    }
 
     // In- and out-edges per node, in edge order (CSR).
     final inStarts = Int32List(n + 1);
@@ -207,114 +182,14 @@ final class RouteClasses {
       outEdges[outFill[edgeFroms[k]]++] = k;
     }
 
-    final classifier = _Classifier(nodeRows, nodeCols, columnStarts, columnNodes, unit);
-    final kinds = Uint8List(e);
-    final sides = Int8List(e);
-    final gutters = Int32List(e);
     final firstParents = Uint8List(e);
-    final fallbackEdges = Uint8List(e);
-    final hookRows = Int32List(e)..fillRange(0, e, -1);
-    var directFallbacks = 0;
+    final goesOn = Uint8List(n);
     for (var k = 0; k < e; k++) {
-      final int p = edgeFroms[k];
-      final int c = edgeTos[k];
-      final first = inEdges[inStarts[c]] == k;
-      firstParents[k] = first ? 1 : 0;
-      final int cp = nodeCols[p];
-      final int cc = nodeCols[c];
-      final int rp = nodeRows[p];
-      final int rc = nodeRows[c];
-      var side = cc > cp ? 1 : (cc < cp ? -1 : 0);
-      int kind;
-      if (side == 0) {
-        kind = first && classifier.columnFree(cp, rp, rc) ? kindStraight : kindGutter;
-        side = 1;
-      } else if (first) {
-        kind = classifier.columnFree(cc, rp, rc) ? kindFork : kindGutter;
-      } else if (rc == rp + unit) {
-        kind = kindMergeAdjacent;
-      } else if (classifier.columnFree(cp, rp, rc)) {
-        kind = kindMergeUp;
-      } else {
-        // The parent's column is taken: climb the child's column like a first parent before a gutter.
-        kind = classifier.columnFree(cc, rp, rc) ? kindFork : kindGutter;
-      }
-      if (cc != cp && kind != kindMergeAdjacent) {
-        // Two bends before a gutter's four: where the parent's usual shape does not fit, try the other one.
-        final int span = cc > cp ? cc - cp : cp - cc;
-        final bool forkFits =
-            classifier.columnFree(cc, rp, rc) && (!free || classifier.lastAbove(cc, side, span, rp) == 0);
-        final bool upFits =
-            classifier.columnFree(cp, rp, rc) && (!free || classifier.firstBelow(cc, side, span, rc) == span);
-        if (first ? forkFits : upFits) {
-          kind = first ? kindFork : kindMergeUp;
-        } else if (first ? upFits : forkFits) {
-          kind = first ? kindMergeUp : kindFork;
+      if (inEdges[inStarts[edgeTos[k]]] == k) {
+        firstParents[k] = 1;
+        if (nodeCols[edgeFroms[k]] == nodeCols[edgeTos[k]]) {
+          goesOn[edgeFroms[k]] = 1;
         }
-      }
-      var j = 0;
-      if (free && kind != kindStraight && cc != cp) {
-        final int span = cc > cp ? cc - cp : cp - cc;
-        // above: the farthest column (distance t from the child, 1 ≤ t < span) with a card 1–12
-        // units above the parent, 0 if none; below: the nearest with a card 1–12 units below the
-        // child, span if none. Gutter j is free iff above ≤ j < below.
-        int? above;
-        int? below;
-        final bool blocked;
-        if (kind == kindMergeUp) {
-          below = classifier.firstBelow(cc, side, span, rc);
-          blocked = below < span;
-        } else if (kind == kindGutter) {
-          blocked = false;
-        } else {
-          above = classifier.lastAbove(cc, side, span, rp);
-          blocked = above > 0;
-        }
-        if (kind == kindGutter || blocked) {
-          above ??= classifier.lastAbove(cc, side, span, rp);
-          below ??= classifier.firstBelow(cc, side, span, rc);
-          if (above < below) {
-            kind = kindGutter;
-            j = above;
-          } else {
-            // No free gutter: a hook over the blocking cards through gutter j = 0 where the parent's
-            // column lets it climb (Ralph 2026-11-07); else a direct kind stays direct (counted), a
-            // `gutter` takes j = 0; both may pass behind a card, so both are flagged.
-            final int hook = classifier.hookRow(cp, cc, side, span, rp);
-            if (hook >= 0) {
-              kind = kindGutter;
-              hookRows[k] = hook;
-            } else {
-              if (kind != kindGutter) {
-                directFallbacks++;
-              }
-              fallbackEdges[k] = 1;
-            }
-          }
-        }
-      }
-      kinds[k] = kind;
-      sides[k] = side;
-      if (kind == kindGutter) {
-        gutters[k] = cc == cp ? 2 * cc + 1 : 2 * cc - side * (2 * j + 1);
-      }
-    }
-
-    // Gutter steps, counted in edge order per gutter (GL:193-197).
-    final gutterSteps = Int32List(e);
-    final perGutter = Int32List(2 * columns + 2);
-    var overfullGutters = 0;
-    for (var k = 0; k < e; k++) {
-      if (kinds[k] != kindGutter) {
-        continue;
-      }
-      final int at = gutters[k] + 1;
-      final int count = perGutter[at];
-      final int half = (count + 1) ~/ 2;
-      gutterSteps[k] = count.isOdd ? half : -half;
-      perGutter[at] = count + 1;
-      if (count == _gutterBudget) {
-        overfullGutters++;
       }
     }
 
@@ -356,46 +231,23 @@ final class RouteClasses {
       nodeRows: nodeRows,
       nodeCols: nodeCols,
       unit: unit,
-      free: free,
       edgeFroms: edgeFroms,
       edgeTos: edgeTos,
       maxRow: maxRow,
       columns: columns,
-      kinds: kinds,
-      sides: sides,
-      gutters: gutters,
-      gutterSteps: gutterSteps,
-      hookRows: hookRows,
       slots: slots,
       deep: deep,
       firstParents: firstParents,
+      goesOn: goesOn,
       columnStarts: columnStarts,
       columnNodes: columnNodes,
-      directFallbacks: directFallbacks,
-      fallbackEdges: fallbackEdges,
-      overfullGutters: overfullGutters,
+      columnPos: columnPos,
       inStarts: inStarts,
       inEdges: inEdges,
       outStarts: outStarts,
       outEdges: outEdges,
     );
   }
-
-  /// A kind: same column, the first parent, and the column is free between the two rows.
-  static const kindStraight = 0;
-
-  /// A kind: the first parent in another column, or a non-first one whose own column is taken; turns above the
-  /// parent, climbs the child's column.
-  static const kindFork = 1;
-
-  /// A kind: a non-first parent exactly one pitch below the child.
-  static const kindMergeAdjacent = 2;
-
-  /// A kind: a non-first parent whose column is free; climbs it and turns below the child.
-  static const kindMergeUp = 3;
-
-  /// A kind: turns above the parent, climbs a gutter between columns, turns below the child.
-  static const kindGutter = 4;
 
   /// Each node's row (the input), −1 for a hidden node.
   final Int32List nodeRows;
@@ -405,9 +257,6 @@ final class RouteClasses {
 
   /// U, the rows per pitch (the input).
   final int unit;
-
-  /// Whether the grid is `free` (the unit rule applies only there).
-  final bool free;
 
   /// Each layout edge's parent (the input).
   final Int32List edgeFroms;
@@ -421,35 +270,19 @@ final class RouteClasses {
   /// The number of columns: the largest visible column plus 1.
   final int columns;
 
-  /// Each edge's kind ([kindStraight], [kindFork], [kindMergeAdjacent], [kindMergeUp] or
-  /// [kindGutter]).
-  final Uint8List kinds;
-
-  /// Each edge's side: the sign of the child's column minus the parent's; 1 within one column.
-  final Int8List sides;
-
-  /// Each [kindGutter] edge's gutter in doubled column positions (column c's centre is 2c, the gutter
-  /// between c and c + 1 is 2c + 1); 0 for the other kinds.
-  final Int32List gutters;
-
-  /// Each [kindGutter] edge's step on its gutter in multiples of 6 px (0, +1, −1, +2, …, in edge
-  /// order per gutter); 0 for the other kinds.
-  final Int32List gutterSteps;
-
-  /// Each hook's row (docs/graph-layout.md §14.2), −1 for every other edge: a `free` line the unit
-  /// rule left no free gutter climbs its parent's column into the band above this row, over the
-  /// cards that blocked it, then takes gutter j = 0 like any [kindGutter] line.
-  final Int32List hookRows;
-
   /// Each edge's entry slot: the index of the slot's first edge (its own index unless it shares).
   final Int32List slots;
 
-  /// Each edge's `deep` flag (1 for the Indirect edges of a shared slot): its cluster sits as far
-  /// from the child as it can.
+  /// Each edge's `deep` flag (1 for the Indirect edges of a shared slot): the run that ends at its
+  /// child sits farther from the child, so the shared stem keeps its length.
   final Uint8List deep;
 
   /// Whether each edge is its child's first parent (1) or not (0).
   final Uint8List firstParents;
+
+  /// Per node, 1 where a first-parent child sits in its column: its branch goes on, so a merge line
+  /// from it can bend at it (docs/graph-layout.md §14.3).
+  final Uint8List goesOn;
 
   /// The column CSR offsets ([columns] + 1): column c's visible nodes are
   /// `columnNodes[columnStarts[c] ..< columnStarts[c + 1]]`.
@@ -458,17 +291,8 @@ final class RouteClasses {
   /// Every visible node, by column, then by row ascending.
   final Int32List columnNodes;
 
-  /// Reported: edges whose direct run is blocked (unit rule) while every gutter is blocked too and no
-  /// hook ([hookRows]) fits; they stay direct and may pass behind a card.
-  final int directFallbacks;
-
-  /// Per edge, 1 where the unit rule left it no free route and no hook: one of the
-  /// [directFallbacks], or a `free` [kindGutter] line whose every gutter is blocked (it takes the
-  /// gutter nearest the child); either may pass behind a card. 0 otherwise.
-  final Uint8List fallbackEdges;
-
-  /// Reported: gutters with more than 9 lines, whose outer lines may reach into the cards.
-  final int overfullGutters;
+  /// Per visible node, its index in [columnNodes].
+  final Int32List columnPos;
 
   final Int32List _inStarts;
   final Int32List _inEdges;
@@ -476,100 +300,12 @@ final class RouteClasses {
   final Int32List _outEdges;
 
   /// The number of layout edges.
-  int get edgeCount => kinds.length;
-}
-
-/// Column queries of the class stage.
-final class _Classifier {
-  _Classifier(this.rows, this.cols, this.starts, this.nodes, this.unit);
-
-  final Int32List rows;
-  final Int32List cols;
-  final Int32List starts;
-  final Int32List nodes;
-  final int unit;
-
-  /// The first index in column [col]'s node list whose row is ≥ [row].
-  int _lowerBound(int col, int row) {
-    int lo = starts[col];
-    int hi = starts[col + 1];
-    while (lo < hi) {
-      final int mid = (lo + hi) >> 1;
-      if (rows[nodes[mid]] < row) {
-        lo = mid + 1;
-      } else {
-        hi = mid;
-      }
-    }
-    return lo;
-  }
-
-  /// Whether column [col] holds no visible node with a row strictly between [r0] and [r1].
-  bool columnFree(int col, int r0, int r1) {
-    final int k = _lowerBound(col, r0 + 1);
-    return k == starts[col + 1] || rows[nodes[k]] >= r1;
-  }
-
-  /// Whether column [col] holds a visible node with a row in [lo, hi].
-  bool _any(int col, int lo, int hi) {
-    final int k = _lowerBound(col, lo);
-    return k < starts[col + 1] && rows[nodes[k]] <= hi;
-  }
-
-  /// The largest t in [1, span) such that column `child − side·t` has a card 1–12 units above the
-  /// parent row [rp]; 0 if none.
-  int lastAbove(int child, int side, int span, int rp) {
-    for (int t = span - 1; t >= 1; t--) {
-      if (_any(child - side * t, rp + 1, rp + _detourUnits)) {
-        return t;
-      }
-    }
-    return 0;
-  }
-
-  /// The least t in [1, span) such that column `child − side·t` has a card 1–12 units below the
-  /// child row [rc]; [span] if none.
-  int firstBelow(int child, int side, int span, int rc) {
-    for (var t = 1; t < span; t++) {
-      if (_any(child - side * t, rc - _detourUnits, rc - 1)) {
-        return t;
-      }
-    }
-    return span;
-  }
-
-  /// A hook's row (docs/graph-layout.md §14.2): from the parent row [rp] up to the highest card 1–12
-  /// units above the row reached, in the columns `child − side·t` (1 ≤ t < [span]) the hook's first
-  /// run crosses, until no card is that close; −1 unless column [parent] is free from [rp] up to 12
-  /// units above that row, where the line climbs.
-  int hookRow(int parent, int child, int side, int span, int rp) {
-    var row = rp;
-    for (;;) {
-      var highest = -1;
-      for (var t = 1; t < span; t++) {
-        final int col = child - side * t;
-        final int k = _lowerBound(col, row + _detourUnits + 1) - 1;
-        if (k >= starts[col] && rows[nodes[k]] > row && rows[nodes[k]] > highest) {
-          highest = rows[nodes[k]];
-        }
-      }
-      if (highest < 0) {
-        break;
-      }
-      row = highest;
-    }
-    return columnFree(parent, rp, row + _detourUnits + 1) ? row : -1;
-  }
+  int get edgeCount => edgeFroms.length;
 }
 
 /// The card size and spacing the geometry stage lays lines out for (docs/graph-layout.md §14.3), in
 /// logical pixels: card [width] W and [height] H, column gap [gapX], row gap [gapY], plane padding
 /// [pad].
-///
-/// The class stage's unit rule (docs/graph-layout.md §14.2) never routes a line directly where the
-/// export's pixel test would detour only while a card 13 units off a band clears it:
-/// 13·(H + gapY)/16 ≥ H + 22, i.e. H ≤ (13·gapY − 352)/3 (≈ 90 px at gapY 48). Taller cards keep
-/// working, but a direct run may then pass a card 13 units off.
 final class RouteMetrics {
   /// Metrics for cards of [width] × [height] with the design's gaps and padding.
   const RouteMetrics({required this.width, required this.height, this.gapX = 56, this.gapY = 48, this.pad = 56});
@@ -590,8 +326,8 @@ final class RouteMetrics {
   final double pad;
 }
 
-/// The geometry stage of line router B (docs/graph-layout.md §14.3): one [RouteClasses] laid out
-/// for one [RouteMetrics]. Every edge's polyline (2, 4 or 6 points, from the parent's top edge to
+/// The geometry stage of the line router (docs/graph-layout.md §14.3): one [RouteClasses] laid out
+/// for one [RouteMetrics]. Every edge's polyline (2, 4, 6 or 8 points, from the parent's top edge to
 /// the child's bottom edge), every node's entry ports, and the run indexes [bridges] queries — all
 /// in typed arrays. Deterministic: the same classes and metrics give the same arrays.
 final class RouteGeometry {
@@ -610,8 +346,11 @@ final class RouteGeometry {
     required this.horizontalLefts,
     required this.horizontalRights,
     required this.horizontalEdges,
-    required this.overfullClusters,
-    required this.overfullEdges,
+    required this.behindCards,
+    required this.behindEdges,
+    required this.sharedStretches,
+    required this.sharedEdges,
+    required this.tightFans,
     required this.unavoidableCrossings,
     required this.unsettledPorts,
   });
@@ -620,7 +359,7 @@ final class RouteGeometry {
   factory RouteGeometry.compute(RouteClasses classes, RouteMetrics metrics) =>
       _GeometryBuilder(classes, metrics).build();
 
-  /// The class stage this geometry was computed from.
+  /// The per-layout stage this geometry was computed from.
   final RouteClasses classes;
 
   /// The metrics this geometry was computed for.
@@ -665,18 +404,27 @@ final class RouteGeometry {
   /// The horizontal runs' edges.
   final Int32List horizontalEdges;
 
-  /// Reported: clusters of runs with more tracks than their bands' free parts hold; they keep their
-  /// spacing, centred, and may reach into a card.
-  final int overfullClusters;
+  /// Reported: the number of lines that still pass behind a card that is neither of their ends.
+  final int behindCards;
 
-  /// Per edge, whether one of its runs lies in one of the [overfullClusters] (1) or not (0).
-  final Uint8List overfullEdges;
+  /// Per edge, 1 where it is one of the [behindCards] lines.
+  final Uint8List behindEdges;
+
+  /// Reported: the pairs of runs of two lines that share a stretch of more than 1 px on one x or one
+  /// y, not counting two lines of one slot or two lines on one port of one card edge.
+  final int sharedStretches;
+
+  /// Per edge, 1 where it takes part in one of the [sharedStretches].
+  final Uint8List sharedEdges;
+
+  /// Reported: the fans (runs of one card edge to one side) whose runs come closer than 2 px.
+  final int tightFans;
 
   /// Reported: pairs of runs in one cluster that each must lie above the other; they cross.
   final int unavoidableCrossings;
 
-  /// Reported: pairs of vertical lines still sharing an x after the last of the port passes (0 when the
-  /// passes settled); the longer-straight tie-break would move one of each pair.
+  /// Reported: pairs of lines still sharing an upright stretch at their card edges after the last of
+  /// the port passes (0 when the passes settled); the longer-straight tie-break would move one of each pair.
   final int unsettledPorts;
 
   /// The bridges whose crossing point lies in [x0, x1) × [y0, y1) (docs/graph-layout.md §14.4), by
@@ -810,7 +558,234 @@ final class _BridgeBuffer {
   );
 }
 
-/// The geometry stage's working state (GL:151-299 for one W and H).
+/// The runs the shape phase records, in edge order; the runs of one shape are consecutive, from the
+/// parent's end. A taken detour points its edge at its own two runs, so nothing is moved.
+final class _RunBuffer {
+  _RunBuffer(int capacity)
+    : edge = Int32List(capacity),
+      down = Int32List(capacity),
+      up = Int32List(capacity),
+      level = Float64List(capacity),
+      lo = Float64List(capacity),
+      hi = Float64List(capacity),
+      wish = Float64List(capacity);
+
+  Int32List edge;
+  Int32List down;
+  Int32List up;
+  Float64List level;
+  Float64List lo;
+  Float64List hi;
+  Float64List wish;
+  var count = 0;
+
+  void add(int k, int d, int u, double l, double bandLo, double bandHi, double w) {
+    if (count == edge.length) {
+      final int size = 2 * count;
+      edge = Int32List(size)..setAll(0, edge);
+      down = Int32List(size)..setAll(0, down);
+      up = Int32List(size)..setAll(0, up);
+      level = Float64List(size)..setAll(0, level);
+      lo = Float64List(size)..setAll(0, lo);
+      hi = Float64List(size)..setAll(0, hi);
+      wish = Float64List(size)..setAll(0, wish);
+    }
+    edge[count] = k;
+    down[count] = d;
+    up[count] = u;
+    level[count] = l;
+    lo[count] = bandLo;
+    hi[count] = bandHi;
+    wish[count] = w;
+    count++;
+  }
+}
+
+/// One shape's stretches before tracks and ports: verticals (doubled position, top, bottom) and
+/// horizontals (y, left, right position). At most 4 and 3.
+final class _ShapeRuns {
+  final vq = Int32List(4);
+  final vTop = Float64List(4);
+  final vBottom = Float64List(4);
+  var verticals = 0;
+  final hy = Float64List(3);
+  final hLeft = Int32List(3);
+  final hRight = Int32List(3);
+  var horizontals = 0;
+
+  void clear() {
+    verticals = 0;
+    horizontals = 0;
+  }
+
+  void vertical(int q, double top, double bottom) {
+    if (top < bottom) {
+      vq[verticals] = q;
+      vTop[verticals] = top;
+      vBottom[verticals++] = bottom;
+    }
+  }
+
+  void horizontal(double y, int a, int b) {
+    if (a != b) {
+      hy[horizontals] = y;
+      hLeft[horizontals] = a < b ? a : b;
+      hRight[horizontals++] = a < b ? b : a;
+    }
+  }
+
+  /// How many of this shape's stretches strictly cross a stretch of [o].
+  int crossings(_ShapeRuns o) {
+    var count = 0;
+    for (var v = 0; v < verticals; v++) {
+      for (var h = 0; h < o.horizontals; h++) {
+        if (_crosses(vq[v], vTop[v], vBottom[v], o.hy[h], o.hLeft[h], o.hRight[h])) {
+          count++;
+        }
+      }
+    }
+    for (var h = 0; h < horizontals; h++) {
+      for (var v = 0; v < o.verticals; v++) {
+        if (_crosses(o.vq[v], o.vTop[v], o.vBottom[v], hy[h], hLeft[h], hRight[h])) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  static bool _crosses(int q, double top, double bottom, double y, int left, int right) =>
+      left < q && q < right && top < y && y < bottom;
+}
+
+/// How many stretches a shape crosses: per doubled position the sorted y's of the horizontal runs
+/// that strictly pass it and the sorted tops and bottoms of the vertical runs on it, built once from
+/// the first shapes (docs/graph-layout.md §14.3, Detours).
+final class _CrossingIndex {
+  _CrossingIndex(_GeometryBuilder g)
+    : hStarts = Int32List(2 * g.c.columns + 1),
+      vStarts = Int32List(2 * g.c.columns + 1) {
+    final int size = 2 * g.c.columns;
+    final int e = g.e;
+    var maxV = 0;
+    var maxH = 0;
+    for (var k = 0; k < e; k++) {
+      final int half = g.shapePoints[k] >> 1;
+      maxV += half;
+      maxH += half - 1;
+    }
+    final vq = Int32List(maxV);
+    final vt = Float64List(maxV);
+    final vb = Float64List(maxV);
+    final hy = Float64List(maxH);
+    final hl = Int32List(maxH);
+    final hr = Int32List(maxH);
+    var nv = 0;
+    var nh = 0;
+    final shape = _ShapeRuns();
+    for (var k = 0; k < e; k++) {
+      g.shapeRuns(k, g.shapePoints[k], g.shapeRun[k], g.shapeGutter[k], shape);
+      for (var v = 0; v < shape.verticals; v++) {
+        vq[nv] = shape.vq[v];
+        vt[nv] = shape.vTop[v];
+        vb[nv++] = shape.vBottom[v];
+      }
+      for (var h = 0; h < shape.horizontals; h++) {
+        hy[nh] = shape.hy[h];
+        hl[nh] = shape.hLeft[h];
+        hr[nh++] = shape.hRight[h];
+      }
+    }
+    // Filling a position's list in ascending order of the whole set leaves it sorted.
+    final hOrder = Int32List(nh);
+    for (var r = 0; r < nh; r++) {
+      hOrder[r] = r;
+    }
+    sortIndicesStableByDouble(hOrder, hy);
+    for (var r = 0; r < nh; r++) {
+      for (int q = hl[r] + 1; q < hr[r]; q++) {
+        hStarts[q + 1]++;
+      }
+    }
+    for (var q = 0; q < size; q++) {
+      hStarts[q + 1] += hStarts[q];
+    }
+    hYs = Float64List(hStarts[size]);
+    final hFill = Int32List.fromList(hStarts);
+    for (var o = 0; o < nh; o++) {
+      final int r = hOrder[o];
+      for (int q = hl[r] + 1; q < hr[r]; q++) {
+        hYs[hFill[q]++] = hy[r];
+      }
+    }
+    for (var r = 0; r < nv; r++) {
+      vStarts[vq[r] + 1]++;
+    }
+    for (var q = 0; q < size; q++) {
+      vStarts[q + 1] += vStarts[q];
+    }
+    vTops = Float64List(nv);
+    vBottoms = Float64List(nv);
+    void fill(Float64List keys, Float64List out) {
+      final order = Int32List(nv);
+      for (var r = 0; r < nv; r++) {
+        order[r] = r;
+      }
+      sortIndicesStableByDouble(order, keys);
+      final at = Int32List.fromList(vStarts);
+      for (var o = 0; o < nv; o++) {
+        out[at[vq[order[o]]]++] = keys[order[o]];
+      }
+    }
+
+    fill(vt, vTops);
+    fill(vb, vBottoms);
+  }
+
+  final Int32List hStarts;
+  late final Float64List hYs;
+  final Int32List vStarts;
+  late final Float64List vTops;
+  late final Float64List vBottoms;
+
+  /// How many runs of the first shapes strictly cross a run of [s].
+  int count(_ShapeRuns s) {
+    var total = 0;
+    for (var v = 0; v < s.verticals; v++) {
+      final int q = s.vq[v];
+      total +=
+          _bound(hYs, hStarts[q], hStarts[q + 1], s.vBottom[v], orEqual: false) -
+          _bound(hYs, hStarts[q], hStarts[q + 1], s.vTop[v], orEqual: true);
+    }
+    for (var h = 0; h < s.horizontals; h++) {
+      final double y = s.hy[h];
+      for (int q = s.hLeft[h] + 1; q < s.hRight[h]; q++) {
+        // Verticals with top < y, minus those that also end at or above y.
+        total +=
+            _bound(vTops, vStarts[q], vStarts[q + 1], y, orEqual: false) -
+            _bound(vBottoms, vStarts[q], vStarts[q + 1], y, orEqual: true);
+      }
+    }
+    return total;
+  }
+
+  /// The first index in [from, to) of the ascending [list] whose value is ≥ [x] (> [x] with [orEqual]).
+  static int _bound(Float64List list, int from, int to, double x, {required bool orEqual}) {
+    var lo = from;
+    var hi = to;
+    while (lo < hi) {
+      final int mid = (lo + hi) >> 1;
+      if (orEqual ? list[mid] <= x : list[mid] < x) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
+  }
+}
+
+/// The geometry stage's working state: the phases of docs/graph-layout.md §14.3 for one W and H.
 final class _GeometryBuilder {
   _GeometryBuilder(this.c, this.m)
     : w = m.width,
@@ -818,8 +793,9 @@ final class _GeometryBuilder {
       gy = m.gapY,
       pitch = m.height + m.gapY,
       colW = m.width + m.gapX,
+      lift = _lift * m.gapY,
       n = c.nodeRows.length,
-      e = c.kinds.length;
+      e = c.edgeFroms.length;
 
   final RouteClasses c;
   final RouteMetrics m;
@@ -828,14 +804,59 @@ final class _GeometryBuilder {
   final double gy;
   final double pitch;
   final double colW;
+  final double lift;
   final int n;
   final int e;
 
-  late final x = Float64List(n);
   late final y = Float64List(n);
   late final cx = Float64List(n);
 
-  /// Per edge: exit x, entry x, gutter x (with its step).
+  /// Per entry of the column CSR its card's top: descending within a column.
+  late final tops = Float64List(c.columnNodes.length);
+
+  /// Per edge its current shape: points (2, 4, 6 or 8), first run in [runs], gutter position.
+  late final shapePoints = Uint8List(e);
+  late final shapeRun = Int32List(e);
+  late final shapeGutter = Int32List(e);
+
+  late final runs = _RunBuffer(e + 16);
+
+  /// The detours recorded by the shape phase, in edge order: edge, first run, gutter position.
+  final _detourEdges = <int>[];
+  final _detourRuns = <int>[];
+  final _detourGutters = <int>[];
+
+  /// The two ends of the band [_band] found last.
+  double _bandLo = 0;
+  double _bandHi = 0;
+
+  /// The runs of the final shapes (a CSR by edge, from the parent's end) and their final levels.
+  late final Int32List edgeRun;
+  late final Int32List runEdge;
+  late final Int32List runDown;
+  late final Int32List runUp;
+  late final Int32List runLeft;
+  late final Int32List runRight;
+  late final Float64List runLevel;
+  late final Float64List runLo;
+  late final Float64List runHi;
+  late final Float64List runWish;
+  late final Float64List runY;
+
+  var unavoidableCrossings = 0;
+  var tightFans = 0;
+
+  /// Scratch of the cluster placement, grown to the largest cluster.
+  var _rest = Int32List(16);
+  var _order = Int32List(16);
+  var _blocked = Int32List(16);
+  var _done = Uint8List(16);
+  var _share = Float64List(16);
+  var _tight = Float64List(16);
+  var _levels = Float64List(16);
+  var _members = Int32List(16);
+
+  /// Per edge: exit x, entry x, gutter x (with its slot).
   late final xo = Float64List(e);
   late final xi = Float64List(e);
   late final xg = Float64List(e);
@@ -846,9 +867,8 @@ final class _GeometryBuilder {
   late final sideScratch = Int32List(e);
 
   /// Per edge at its child's bottom ([reachIn], [towardIn]) and its parent's top ([reachOut], [towardOut]): how far
-  /// it runs straight from that card edge to the near side of the band it first turns in (infinite for a straight
-  /// line), and the x it turns toward (its side); [tieIn] (the parent's row) orders equal entries, the exits keep
-  /// their edge order ([tieOut] stays 0).
+  /// it runs straight from that card edge to its first bend there (infinite for 2 points), and the x it turns toward;
+  /// [tieIn] (the parent's row) orders equal entries, the exits keep their edge order ([tieOut] stays 0).
   late final reachIn = Float64List(e);
   late final towardIn = Float64List(e);
   late final tieIn = Float64List(e);
@@ -857,7 +877,7 @@ final class _GeometryBuilder {
   late final tieOut = Float64List(e);
 
   /// Per edge at its child's bottom (…In) and its parent's top (…Out), set by [_banCollisions]: 1 where it lost the
-  /// centre, and how many fan slots further out it sits, to a vertical line that stays straight longer on its x.
+  /// centre, and how many fan slots further out it sits, to a line that stays straight longer on its x.
   late final noCentreIn = Uint8List(e);
   late final noCentreOut = Uint8List(e);
   late final extraIn = Uint8List(e);
@@ -865,7 +885,11 @@ final class _GeometryBuilder {
 
   RouteGeometry build() {
     _positions();
-    _gutterXs();
+    _shapes();
+    _takeDetours();
+    _finalRuns();
+    _tracks();
+    _monotoneLevels();
     _reaches();
     var passes = 0;
     do {
@@ -874,8 +898,8 @@ final class _GeometryBuilder {
     } while (++passes < _settlePasses && _banCollisions() > 0);
     final int unsettled = passes == _settlePasses ? _banCollisions(apply: false) : 0;
     final (Int32List portStarts, Float64List portXs) = _ports();
-    final runs = _Runs(this)..place();
-    return _finish(runs, portStarts, portXs, unsettled);
+    _gutterSlots();
+    return _finish(portStarts, portXs, unsettled);
   }
 
   void _positions() {
@@ -888,32 +912,771 @@ final class _GeometryBuilder {
         continue;
       }
       y[i] = m.pad + (maxRow - rows[i]) / unit * pitch;
-      x[i] = m.pad + cols[i] * colW;
-      cx[i] = x[i] + w / 2;
+      cx[i] = m.pad + cols[i] * colW + w / 2;
+    }
+    final Int32List nodes = c.columnNodes;
+    for (var q = 0; q < nodes.length; q++) {
+      tops[q] = y[nodes[q]];
     }
   }
 
-  void _gutterXs() {
-    for (var k = 0; k < e; k++) {
-      if (c.kinds[k] != RouteClasses.kindGutter) {
-        continue;
-      }
-      final int child = c.edgeTos[k];
-      final int cc = c.nodeCols[child];
-      final int side = c.sides[k];
-      final double gx;
-      if (cc == c.nodeCols[c.edgeFroms[k]]) {
-        gx = cx[child] + side * colW / 2;
+  /// The first position of column [col] whose `top + offset` is above [limit] (tops descend with the position).
+  int _firstAbove(int col, double offset, double limit) {
+    int lo = c.columnStarts[col];
+    int hi = c.columnStarts[col + 1];
+    while (lo < hi) {
+      final int mid = (lo + hi) >> 1;
+      if (tops[mid] + offset < limit) {
+        hi = mid;
       } else {
-        final int j = (side * (2 * cc - c.gutters[k]) - 1) ~/ 2;
-        gx = cx[child] - side * colW * (j + 0.5);
+        lo = mid + 1;
       }
-      xg[k] = gx + _gutterStep * c.gutterSteps[k];
+    }
+    return lo;
+  }
+
+  /// The first position of column [col] whose `top + offset` is above or at [limit].
+  int _firstAtOrAbove(int col, double offset, double limit) {
+    int lo = c.columnStarts[col];
+    int hi = c.columnStarts[col + 1];
+    while (lo < hi) {
+      final int mid = (lo + hi) >> 1;
+      if (tops[mid] + offset <= limit) {
+        hi = mid;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return lo;
+  }
+
+  /// The first card of column [col] from position [from] upward other than the line's own cards [p] and [ch]: its
+  /// position, or −1 when there is none or its bottom edge lies at or above [to] (the line ends before it).
+  int _blocker(int col, int from, double to, int p, int ch) {
+    final Int32List nodes = c.columnNodes;
+    final int end = c.columnStarts[col + 1];
+    var q = from;
+    while (q < end && (nodes[q] == p || nodes[q] == ch)) {
+      q++;
+    }
+    return q < end && tops[q] + h > to ? q : -1;
+  }
+
+  /// The level nearest to [start], between [start] and [end] (either order), at which a run over the columns
+  /// [c0] … [c1] keeps [_cardClear] from every card but [p] and [ch]; NaN without one.
+  double _freeLevel(int c0, int c1, double start, double end, int p, int ch) {
+    final Int32List nodes = c.columnNodes;
+    final bool down = end > start;
+    var level = start;
+    for (var moved = true; moved;) {
+      moved = false;
+      for (var col = c0; col <= c1; col++) {
+        int q = _firstAbove(col, -_cardClear, level);
+        final int to = c.columnStarts[col + 1];
+        // The same two expressions as the jump below: a level on a card's edge must count as free of it.
+        while (q < to && tops[q] + h + _cardClear > level) {
+          if (nodes[q] != p && nodes[q] != ch) {
+            level = down ? tops[q] + h + _cardClear : tops[q] - _cardClear;
+            moved = true;
+            break;
+          }
+          q++;
+        }
+      }
+      if (down ? level > end : level < end) {
+        return double.nan;
+      }
+    }
+    return level;
+  }
+
+  /// A level for a run over the columns [c0] … [c1] in the room between [upper] and [lower], keeping [_cardClear]
+  /// from both: the one nearest to [wish] on its way [up] or down, else the nearest on the other side; NaN without one.
+  double _seek(int c0, int c1, double wish, double upper, double lower, int p, int ch, {required bool up}) {
+    final double first = upper + _cardClear;
+    final double last = lower - _cardClear;
+    if (first > last) {
+      return double.nan;
+    }
+    final start = wish < first ? first : (wish > last ? last : wish);
+    final double found = _freeLevel(c0, c1, start, up ? first : last, p, ch);
+    return found.isNaN ? _freeLevel(c0, c1, start, up ? last : first, p, ch) : found;
+  }
+
+  /// The free room around [level] for a run over the columns [c0] … [c1], no further than [lo] and [hi]: from the
+  /// nearest card above it to the nearest card below it. Sets [_bandLo] and [_bandHi].
+  void _band(int c0, int c1, double level, double lo, double hi, int p, int ch) {
+    final Int32List nodes = c.columnNodes;
+    var top = lo;
+    var bottom = hi;
+    for (var col = c0; col <= c1; col++) {
+      final int begin = c.columnStarts[col];
+      final int end = c.columnStarts[col + 1];
+      int q = _firstAtOrAbove(col, h, level);
+      while (q < end && (nodes[q] == p || nodes[q] == ch)) {
+        q++;
+      }
+      if (q < end && tops[q] + h > top) {
+        top = tops[q] + h;
+      }
+      q = _firstAbove(col, 0, level) - 1;
+      if (q >= begin && tops[q] < bottom) {
+        bottom = tops[q];
+      }
+    }
+    _bandLo = top;
+    _bandHi = bottom;
+  }
+
+  void _addRun(
+    int k,
+    int down,
+    int up,
+    double level,
+    double lo,
+    double hi, {
+    required bool merge,
+    bool endsAtChild = false,
+  }) {
+    final double half = (hi - lo) / 2;
+    final double near = lift < half ? lift : half;
+    double wish = merge ? lo + near : hi - near;
+    if (merge && endsAtChild && c.deep[k] != 0) {
+      // The lines of a hidden merge share their last stretch: keep it long enough to read as one stem.
+      final double limit = (hi < lo + gy ? hi : lo + gy) - _clear;
+      final double mid = lo + half;
+      wish = mid > limit ? mid : limit;
+    }
+    runs.add(k, down, up, level, lo, hi, wish);
+  }
+
+  /// The run every line through a gutter ends with: from the gutter at [gutter] to the child, right below it. Its
+  /// band spans the columns [c0] … [c1] strictly between the gutter and the child, up to the next card under the
+  /// child, the parent and [cardBottom] (infinity for none).
+  void _belowRun(int k, int p, int ch, int gutter, int c0, int c1, double cardBottom) {
+    final int cc = c.nodeCols[ch];
+    final int begin = c.columnStarts[cc];
+    final double by = y[ch] + h;
+    double hi = y[p];
+    final int q = c.columnPos[ch] - 1;
+    if (q >= begin && tops[q] < hi) {
+      hi = tops[q];
+    }
+    if (cardBottom < hi) {
+      hi = cardBottom;
+    }
+    final double below = by + lift;
+    _band(c0, c1, below, by, hi, p, ch);
+    _addRun(k, gutter, 2 * cc, below, _bandLo, _bandHi, merge: true, endsAtChild: true);
+  }
+
+  /// Phase 2: per edge its shape and levels (docs/graph-layout.md §14.3, Shapes).
+  void _shapes() {
+    final Int32List froms = c.edgeFroms;
+    final Int32List tos = c.edgeTos;
+    final Int32List cols = c.nodeCols;
+    for (var k = 0; k < e; k++) {
+      final int p = froms[k];
+      final int ch = tos[k];
+      shapeRun[k] = runs.count;
+      if (cols[p] == cols[ch]) {
+        _sameColumnShape(k, p, ch);
+      } else if (c.firstParents[k] != 0) {
+        _forkShape(k, p, ch);
+      } else {
+        _mergeShape(k, p, ch);
+      }
     }
   }
 
-  /// m ports inner → outer (GL:199-205): [step] apart while they fit, squeezed to [min], then the
-  /// overflow shares the outermost port. Port [k] of [count].
+  void _sameColumnShape(int k, int p, int ch) {
+    final int col = c.nodeCols[p];
+    final int card = _blocker(col, c.columnPos[p] + 1, y[ch] + h, p, ch);
+    if (card < 0) {
+      shapePoints[k] = 2;
+      return;
+    }
+    final double cardBottom = tops[card] + h;
+    final int q = 2 * col;
+    final int gutter = q + 1;
+    shapePoints[k] = 6;
+    shapeGutter[k] = gutter;
+    _addRun(k, q, gutter, cardBottom + lift, cardBottom, y[p], merge: true);
+    _belowRun(k, p, ch, gutter, 1, 0, cardBottom);
+  }
+
+  void _forkShape(int k, int p, int ch) {
+    final int pc = c.nodeCols[p];
+    final int cc = c.nodeCols[ch];
+    final int pq = 2 * pc;
+    final int cq = 2 * cc;
+    final double ay = y[p];
+    final double by = y[ch] + h;
+    final double above = ay - lift;
+    // The run may climb the parent's column up to that column's next card, and no higher than the child.
+    final int next = _blocker(pc, c.columnPos[p] + 1, double.negativeInfinity, p, ch);
+    final double upper = next < 0 || tops[next] + h < by ? by : tops[next] + h;
+    final int c0 = cc > pc ? pc + 1 : cc;
+    final int c1 = cc > pc ? cc : pc - 1;
+    final double found = _seek(c0, c1, above, upper, ay, p, ch, up: true);
+    final level = found.isNaN ? above : found;
+    _band(c0, c1, level, upper, ay, p, ch);
+    final double lo = _bandLo;
+    final double hi = _bandHi;
+    final int card = _blocker(cc, _firstAbove(cc, 0, level), by, p, ch);
+    if (card < 0) {
+      shapePoints[k] = 4;
+      _addRun(k, pq, cq, level, lo, hi, merge: false);
+      return;
+    }
+    final double cardBottom = tops[card] + h;
+    final int gutter = cq + (pc > cc ? 1 : -1);
+    shapeGutter[k] = gutter;
+    if (cardBottom + lift > level) {
+      shapePoints[k] = 6;
+      _addRun(k, pq, gutter, level, lo, hi, merge: false);
+    } else {
+      shapePoints[k] = 8;
+      _addRun(k, pq, cq, level, lo, hi, merge: false);
+      _addRun(k, cq, gutter, cardBottom + lift, cardBottom, ay, merge: true);
+    }
+    _belowRun(k, p, ch, gutter, 1, 0, cardBottom);
+  }
+
+  void _mergeShape(int k, int p, int ch) {
+    final int pc = c.nodeCols[p];
+    final int cc = c.nodeCols[ch];
+    final int pq = 2 * pc;
+    final int cq = 2 * cc;
+    final double ay = y[p];
+    final double by = y[ch] + h;
+    final double below = by + lift;
+    final side = cc > pc ? 1 : -1;
+    final int nextUp = c.columnPos[p] + 1;
+    final int card = _blocker(pc, nextUp, below, p, ch);
+    final int underPos = c.columnPos[ch] - 1;
+    final double under = underPos >= c.columnStarts[cc] ? tops[underPos] : double.infinity;
+    final double upper = card < 0 ? by : tops[card] + h;
+    final lower = under > ay ? ay : under;
+    final int c0 = (cc > pc ? pc : cc) + 1;
+    final int c1 = (cc > pc ? cc : pc) - 1;
+    final goesOn = c.goesOn[p] != 0;
+    // Where the parent's branch goes on and the child's column is free down to the parent, every line of the
+    // parent's top edge bends at the card, so their tracks and ports follow the order of their children.
+    final bool atParent = goesOn && under > ay;
+    double level = atParent
+        ? _seek(c0, c1, lower - lift, upper, lower, p, ch, up: true)
+        : _seek(c0, c1, upper + lift, upper, lower, p, ch, up: false);
+    // Above `below` the line climbs further up the parent's column than `card` was looked for.
+    if (!level.isNaN && level < below && _blocker(pc, nextUp, level, p, ch) >= 0) {
+      level = double.nan;
+    }
+    if (!level.isNaN) {
+      _band(c0, c1, level, upper, lower, p, ch);
+      shapePoints[k] = 4;
+      _addRun(k, pq, cq, level, _bandLo, _bandHi, merge: !atParent, endsAtChild: true);
+    } else if (card < 0) {
+      _band(c0, c1, below, by, lower, p, ch);
+      shapePoints[k] = 4;
+      _addRun(k, pq, cq, below, _bandLo, _bandHi, merge: true, endsAtChild: true);
+    } else {
+      final double cardBottom = tops[card] + h;
+      final int gutter = pq + side;
+      shapePoints[k] = 6;
+      shapeGutter[k] = gutter;
+      _addRun(k, pq, gutter, cardBottom + lift, cardBottom, ay, merge: true);
+      _belowRun(k, p, ch, gutter, c0, c1, cardBottom);
+    }
+    // Where the child's column is taken, the line can bend at the parent all the same and climb the gutter next to
+    // the child's column. Whether it does is decided in phase 3, once every line has its usual shape.
+    if (goesOn && !atParent) {
+      final double at = _seek(c0, c1, ay - lift, upper, ay, p, ch, up: true);
+      // Between two neighbouring rows the detour would be a zigzag.
+      if (!at.isNaN && at - below >= h + gy) {
+        _band(c0, c1, at, upper, ay, p, ch);
+        final double floor = below + _cardClear;
+        final double lo = _bandLo > floor ? _bandLo : floor;
+        final int gutter = cq - side;
+        _detourEdges.add(k);
+        _detourRuns.add(runs.count);
+        _detourGutters.add(gutter);
+        _addRun(k, pq, gutter, at, lo, _bandHi, merge: false);
+        _belowRun(k, p, ch, gutter, 1, 0, double.infinity);
+      }
+    }
+  }
+
+  /// The stretches of the shape ([points], first run [run], gutter position [gutter]) of edge [k], into [out].
+  void shapeRuns(int k, int points, int run, int gutter, _ShapeRuns out) {
+    final int p = c.edgeFroms[k];
+    final int ch = c.edgeTos[k];
+    final int q0 = 2 * c.nodeCols[p];
+    final int q1 = 2 * c.nodeCols[ch];
+    final double ay = y[p];
+    final double by = y[ch] + h;
+    final Float64List levels = runs.level;
+    out.clear();
+    switch (points) {
+      case 2:
+        out.vertical(q0, by, ay);
+      case 4:
+        final double l = levels[run];
+        out
+          ..vertical(q0, l, ay)
+          ..horizontal(l, q0, q1)
+          ..vertical(q1, by, l);
+      case 6:
+        final double t = levels[run];
+        final double b = levels[run + 1];
+        out
+          ..vertical(q0, t, ay)
+          ..horizontal(t, q0, gutter)
+          ..vertical(gutter, b, t)
+          ..horizontal(b, gutter, q1)
+          ..vertical(q1, by, b);
+      default:
+        final double l = levels[run];
+        final double t = levels[run + 1];
+        final double b = levels[run + 2];
+        out
+          ..vertical(q0, l, ay)
+          ..horizontal(l, q0, q1)
+          ..vertical(q1, t, l)
+          ..horizontal(t, q1, gutter)
+          ..vertical(gutter, b, t)
+          ..horizontal(b, gutter, q1)
+          ..vertical(q1, by, b);
+    }
+  }
+
+  /// Phase 3: a detour is taken if the line then crosses fewer lines; on a tie the line keeps its usual shape, which
+  /// has two bends less. Then for the column order, whatever it crosses.
+  void _takeDetours() {
+    final int detours = _detourEdges.length;
+    if (detours == 0) {
+      return;
+    }
+    final index = _CrossingIndex(this);
+    final firstPoints = Uint8List(detours);
+    final firstRuns = Int32List(detours);
+    final firstGutters = Int32List(detours);
+    for (var d = 0; d < detours; d++) {
+      final int k = _detourEdges[d];
+      firstPoints[d] = shapePoints[k];
+      firstRuns[d] = shapeRun[k];
+      firstGutters[d] = shapeGutter[k];
+    }
+    final taken = <int>[];
+    final shape = _ShapeRuns();
+    final other = _ShapeRuns();
+    // Crossings of [shape] with every other line, in the first shapes plus the detours taken so far.
+    int crossings(int d) {
+      final int k = _detourEdges[d];
+      int total = index.count(shape);
+      shapeRuns(k, firstPoints[d], firstRuns[d], firstGutters[d], other);
+      total -= shape.crossings(other);
+      for (final t in taken) {
+        final int edge = _detourEdges[t];
+        shapeRuns(edge, 6, _detourRuns[t], _detourGutters[t], other);
+        total += shape.crossings(other);
+        shapeRuns(edge, firstPoints[t], firstRuns[t], firstGutters[t], other);
+        total -= shape.crossings(other);
+      }
+      return total;
+    }
+
+    void take(int d) {
+      final int k = _detourEdges[d];
+      shapePoints[k] = 6;
+      shapeRun[k] = _detourRuns[d];
+      shapeGutter[k] = _detourGutters[d];
+    }
+
+    final open = <int>[];
+    for (var d = 0; d < detours; d++) {
+      final int k = _detourEdges[d];
+      shapeRuns(k, 6, _detourRuns[d], _detourGutters[d], shape);
+      final int withDetour = crossings(d);
+      shapeRuns(k, firstPoints[d], firstRuns[d], firstGutters[d], shape);
+      if (withDetour < crossings(d)) {
+        take(d);
+        taken.add(d);
+      } else {
+        open.add(d);
+      }
+    }
+
+    // The ports of a card edge follow how far each line runs straight: the longest innermost. So a line is out of
+    // column order if a line of its card to the same side goes to a nearer column but turns nearer to the card.
+    double firstBend(int k) => shapePoints[k] == 2 ? y[c.edgeTos[k]] + h : runs.level[shapeRun[k]];
+    bool outOfOrder(int k) {
+      final int p = c.edgeFroms[k];
+      final int pc = c.nodeCols[p];
+      final int far = c.nodeCols[c.edgeTos[k]] - pc;
+      for (int q = c._outStarts[p]; q < c._outStarts[p + 1]; q++) {
+        final int j = c._outEdges[q];
+        final int near = c.nodeCols[c.edgeTos[j]] - pc;
+        if (near.sign == far.sign && near.abs() < far.abs() && firstBend(j) > firstBend(k)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Taking a detour changes where its line turns, so the pass repeats until nothing moves.
+    for (var moved = true; moved;) {
+      moved = false;
+      for (var o = 0; o < open.length; o++) {
+        final int d = open[o];
+        if (d >= 0 && outOfOrder(_detourEdges[d])) {
+          take(d);
+          open[o] = -1;
+          moved = true;
+        }
+      }
+    }
+  }
+
+  /// The runs of the final shapes, in edge order, as flat arrays.
+  void _finalRuns() {
+    edgeRun = Int32List(e + 1);
+    for (var k = 0; k < e; k++) {
+      edgeRun[k + 1] = edgeRun[k] + (shapePoints[k] >> 1) - 1;
+    }
+    final int count = edgeRun[e];
+    runEdge = Int32List(count);
+    runDown = Int32List(count);
+    runUp = Int32List(count);
+    runLeft = Int32List(count);
+    runRight = Int32List(count);
+    runLevel = Float64List(count);
+    runLo = Float64List(count);
+    runHi = Float64List(count);
+    runWish = Float64List(count);
+    runY = Float64List(count);
+    for (var k = 0; k < e; k++) {
+      int from = shapeRun[k];
+      for (int r = edgeRun[k]; r < edgeRun[k + 1]; r++, from++) {
+        runEdge[r] = k;
+        final int down = runs.down[from];
+        final int up = runs.up[from];
+        runDown[r] = down;
+        runUp[r] = up;
+        runLeft[r] = down < up ? down : up;
+        runRight[r] = down < up ? up : down;
+        runLevel[r] = runs.level[from];
+        runLo[r] = runs.lo[from];
+        runHi[r] = runs.hi[from];
+        runWish[r] = runs.wish[from];
+        runY[r] = runs.level[from];
+      }
+    }
+  }
+
+  /// Phase 4: the runs that pass side by side through each other's band form clusters; each cluster takes the order
+  /// in which it does not cross and shares its room.
+  void _tracks() {
+    final int count = runEdge.length;
+    if (count == 0) {
+      return;
+    }
+    final root = Int32List(count);
+    final order = Int32List(count);
+    for (var r = 0; r < count; r++) {
+      root[r] = r;
+      order[r] = r;
+    }
+    int find(int r) {
+      var x = r;
+      while (root[x] != x) {
+        x = root[x];
+      }
+      final top = x;
+      x = r;
+      while (root[x] != top) {
+        final int next = root[x];
+        root[x] = top;
+        x = next;
+      }
+      return top;
+    }
+
+    sortIndicesStableByDouble(order, runLo);
+    var active = Int32List(16);
+    var live = 0;
+    for (var o = 0; o < count; o++) {
+      final int s = order[o];
+      final double top = runLo[s];
+      final double level = runLevel[s];
+      final int left = runLeft[s];
+      final int right = runRight[s];
+      var kept = 0;
+      for (var t = 0; t < live; t++) {
+        final int other = active[t];
+        if (runHi[other] <= top) {
+          continue;
+        }
+        active[kept++] = other;
+        if (left < runRight[other] &&
+            runLeft[other] < right &&
+            ((runLo[other] < level && level < runHi[other]) || (top < runLevel[other] && runLevel[other] < runHi[s]))) {
+          final int rs = find(s);
+          final int ro = find(other);
+          if (rs != ro) {
+            root[rs] = ro;
+          }
+        }
+      }
+      live = kept;
+      if (live == active.length) {
+        active = Int32List(2 * live)..setAll(0, active);
+      }
+      active[live++] = s;
+    }
+    // Members per cluster, ascending (a CSR over the roots): by edge, then from the parent's end.
+    final starts = Int32List(count + 1);
+    final rootOf = Int32List(count);
+    for (var r = 0; r < count; r++) {
+      rootOf[r] = find(r);
+      starts[rootOf[r] + 1]++;
+    }
+    for (var r = 0; r < count; r++) {
+      starts[r + 1] += starts[r];
+    }
+    final members = Int32List(count);
+    final fill = Int32List.fromList(starts);
+    for (var r = 0; r < count; r++) {
+      members[fill[rootOf[r]]++] = r;
+    }
+    for (var r = 0; r < count; r++) {
+      if (starts[r + 1] > starts[r]) {
+        _placeCluster(members, starts[r], starts[r + 1]);
+      }
+    }
+  }
+
+  void _ensureScratch(int size) {
+    if (_rest.length >= size) {
+      return;
+    }
+    final int grown = 2 * size;
+    _rest = Int32List(grown);
+    _order = Int32List(grown);
+    _blocked = Int32List(grown);
+    _done = Uint8List(grown);
+    _share = Float64List(grown);
+    _tight = Float64List(grown);
+    _levels = Float64List(grown);
+    _members = Int32List(grown);
+  }
+
+  /// Run [a] must lie above run [b]: else the two cross (a line goes down at its parent's end and up at its child's).
+  bool _above(int a, int b) {
+    if (runEdge[a] == runEdge[b]) {
+      return a > b; // Two runs of one line: the one nearer to the child.
+    }
+    final int upA = runUp[a];
+    final int downB = runDown[b];
+    return (runLeft[a] < downB && downB < runRight[a]) ||
+        (runLeft[b] < upA && upA < runRight[b]) ||
+        // A run that enters a column where another leaves it: else the two share a stretch of that column. Gutters
+        // are separated by slots, not by levels.
+        (upA == downB && upA.isEven);
+  }
+
+  /// Two runs keep a distance only where they pass side by side through bands that overlap.
+  bool _meet(int a, int b) =>
+      runLeft[a] < runRight[b] && runLeft[b] < runRight[a] && runLo[a] < runHi[b] && runLo[b] < runHi[a];
+
+  /// Two runs that leave one card, or reach one card, in one direction.
+  bool _siblings(int a, int b) =>
+      (runUp[a] > runDown[a]) == (runUp[b] > runDown[b]) &&
+      (c.edgeFroms[runEdge[a]] == c.edgeFroms[runEdge[b]] || c.edgeTos[runEdge[a]] == c.edgeTos[runEdge[b]]);
+
+  /// Orders and places one cluster ([members] `from ..< to`, ascending by edge and run order): the lab's `spread`.
+  ///
+  /// shortcut: compares every pair of the cluster, O(size²); the measured clusters are small (≤ 17 on synth-100k), and
+  /// [routeSyncNodeLimit] counts on that. Index the runs by level and x if a real layout shows clusters of thousands.
+  void _placeCluster(Int32List members, int from, int to) {
+    final int size = to - from;
+    _ensureScratch(size);
+    final Int32List rest = _rest;
+    final Int32List order = _order;
+    final Int32List blocked = _blocked;
+    final Uint8List done = _done;
+    final Float64List share = _share;
+    final Float64List tight = _tight;
+    final Float64List levels = _levels;
+    final Int32List fan = _members;
+    for (var i = 0; i < size; i++) {
+      rest[i] = members[from + i];
+      blocked[i] = 0;
+      done[i] = 0;
+    }
+    if (size > 1) {
+      // Stable, so runs of equal wish stay by edge and run order.
+      sortIndicesStableByDouble(Int32List.sublistView(rest, 0, size), runWish);
+    }
+    for (var i = 0; i < size; i++) {
+      for (int j = i + 1; j < size; j++) {
+        final bool ij = _above(rest[i], rest[j]);
+        final bool ji = _above(rest[j], rest[i]);
+        if (ij && ji) {
+          unavoidableCrossings++;
+        } else if (ij) {
+          blocked[j]++;
+        } else if (ji) {
+          blocked[i]++;
+        }
+      }
+    }
+    // Always the first run that no other remaining run must lie above; in a cycle the run that wants to sit highest.
+    for (var step = 0; step < size; step++) {
+      var pick = -1;
+      var fallback = -1;
+      for (var i = 0; i < size; i++) {
+        if (done[i] != 0) {
+          continue;
+        }
+        if (fallback < 0) {
+          fallback = i;
+        }
+        if (blocked[i] == 0) {
+          pick = i;
+          break;
+        }
+      }
+      if (pick < 0) {
+        pick = fallback;
+      }
+      done[pick] = 1;
+      final int run = rest[pick];
+      order[step] = run;
+      for (var j = 0; j < size; j++) {
+        if (done[j] == 0 && _above(run, rest[j]) && !_above(rest[j], run)) {
+          blocked[j]--;
+        }
+      }
+    }
+
+    // A run's even share of its band: the band over the runs it meets, plus one. At most `lift`.
+    for (var k = 0; k < size; k++) {
+      final int a = order[k];
+      var others = 0;
+      for (var j = 0; j < size; j++) {
+        if (j != k && _meet(a, order[j]) && !_siblings(a, order[j])) {
+          others++;
+        }
+      }
+      final double even = (runHi[a] - runLo[a]) / (others + 2);
+      share[k] = even < lift ? even : lift;
+      tight[k] = _track;
+    }
+    // A fan with more lines than its room holds at 6 px shares that room evenly instead of lying on one level. The
+    // room of a line and the lines of its fan above it ends at the lowest of their band tops.
+    for (var k = 0; k < size; k++) {
+      final int run = order[k];
+      var count = 0;
+      for (var j = 0; j < k; j++) {
+        if (_siblings(order[j], run) && _meet(order[j], run)) {
+          fan[count++] = j;
+        }
+      }
+      fan[count++] = k;
+      double top = runLo[run];
+      for (var i = 0; i < count; i++) {
+        final double lo = runLo[order[fan[i]]];
+        top = lo > top ? lo : top;
+      }
+      final double room = runHi[run] - top - 2;
+      if (room > 0 && (count - 1) * _track + share[k] > room) {
+        final double fair = room / count;
+        for (var i = 0; i < count; i++) {
+          final int j = fan[i];
+          tight[j] = fair < tight[j] ? fair : tight[j];
+        }
+      }
+    }
+    for (var k = 0; k < size; k++) {
+      share[k] = tight[k] < share[k] ? tight[k] : share[k];
+      if (tight[k] < 2) {
+        var counted = false;
+        for (var j = 0; j < k && !counted; j++) {
+          counted = tight[j] < 2 && _siblings(order[j], order[k]);
+        }
+        if (!counted) {
+          tightFans++;
+        }
+      }
+    }
+
+    // Every run sits where it wants to, unless the order pushes it: first down, then back up.
+    for (var k = 0; k < size; k++) {
+      final int run = order[k];
+      final double floor = runLo[run] + share[k];
+      double yy = runWish[run] > floor ? runWish[run] : floor;
+      for (var j = 0; j < k; j++) {
+        if (_meet(order[j], run)) {
+          final double pushed = levels[j] + _sep(order, j, k);
+          if (pushed > yy) {
+            yy = pushed;
+          }
+        }
+      }
+      levels[k] = yy;
+    }
+    for (int k = size - 1; k >= 0; k--) {
+      final int run = order[k];
+      final double ceiling = runHi[run] - share[k];
+      double yy = levels[k] < ceiling ? levels[k] : ceiling;
+      for (int j = k + 1; j < size; j++) {
+        if (_meet(run, order[j])) {
+          final double pushed = levels[j] - _sep(order, k, j);
+          if (pushed < yy) {
+            yy = pushed;
+          }
+        }
+      }
+      // Whatever the pushes did, a run never leaves its band: there it passes no card.
+      if (runHi[run] - runLo[run] > 4) {
+        yy = yy < runLo[run] + 2 ? runLo[run] + 2 : (yy > runHi[run] - 2 ? runHi[run] - 2 : yy);
+      }
+      levels[k] = yy;
+      runY[run] = yy;
+    }
+  }
+
+  double _sep(Int32List order, int j, int k) {
+    if (_siblings(order[j], order[k])) {
+      return _tight[j] < _tight[k] ? _tight[j] : _tight[k];
+    }
+    return _share[j] < _share[k] ? _share[j] : _share[k];
+  }
+
+  /// Phase 5: each line climbs without retracing, whatever pushes did.
+  void _monotoneLevels() {
+    for (var k = 0; k < e; k++) {
+      final int from = edgeRun[k];
+      final int to = edgeRun[k + 1];
+      double previous = y[c.edgeFroms[k]];
+      for (var r = from; r < to; r++) {
+        if (runY[r] > previous) {
+          runY[r] = previous;
+        }
+        previous = runY[r];
+      }
+      double next = y[c.edgeTos[k]] + h;
+      for (int r = to - 1; r >= from; r--) {
+        if (runY[r] < next) {
+          runY[r] = next;
+        }
+        next = runY[r];
+      }
+    }
+  }
+
+  /// m ports inner → outer: [step] apart while they fit, squeezed to [min], then the overflow shares the outermost
+  /// port. Port [k] of [count].
   static double _fan(int count, double first, double step, double min, double max, int k) {
     if (count <= 1) {
       return first;
@@ -927,50 +1690,40 @@ final class _GeometryBuilder {
     return first + (k < own ? k : own) * min;
   }
 
-  /// Port [k] of [count] on one side of a card edge, top or bottom (Story 10.30: the entry fan at both ends).
+  /// Port [k] of [count] on one side of a card edge, top or bottom.
   double _portFan(int count, int k) => _fan(count, _entryFirst, _entryStep, _entryMin, w / 2 - _entryInset, k);
 
-  /// The bottom of the band a line's run above its parent lies in: the parent's top, or for a hook the top of a
-  /// card in its hook row (docs/graph-layout.md §14.3).
-  double _aboveY(int k) {
-    final int row = c.hookRows[k];
-    return row < 0 ? y[c.edgeFroms[k]] : m.pad + (c.maxRow - row) / c.unit * pitch;
-  }
-
-  /// Each line's reach at both card edges: at the child's bottom a fork climbs the child's column from the band
-  /// above its parent, the other bending kinds turn in the band right below the child; at the parent's top a
-  /// merge-up climbs the parent's column to the band right below its child, a hook to the band above its hook row,
-  /// the other bending kinds turn in the band right above the parent.
+  /// Each line's reach and turning side at both card edges, from the final levels (phase 6).
   void _reaches() {
     final Int32List froms = c.edgeFroms;
     final Int32List tos = c.edgeTos;
-    final Uint8List kinds = c.kinds;
+    final double centre = m.pad + w / 2;
     for (var k = 0; k < e; k++) {
-      final int kind = kinds[k];
-      final double top = y[froms[k]];
-      final double bottom = y[tos[k]] + h;
-      reachIn[k] = kind == RouteClasses.kindStraight
-          ? double.infinity
-          : kind == RouteClasses.kindFork
-          ? top - gy - bottom
-          : 0;
-      reachOut[k] = kind == RouteClasses.kindStraight
-          ? double.infinity
-          : kind == RouteClasses.kindMergeUp
-          ? top - gy - bottom
-          : top - _aboveY(k);
-      towardIn[k] = kind == RouteClasses.kindGutter ? xg[k] : cx[froms[k]];
-      tieIn[k] = c.nodeRows[froms[k]].toDouble();
+      final int p = froms[k];
+      final int ch = tos[k];
+      final int from = edgeRun[k];
+      final int to = edgeRun[k + 1];
+      if (shapePoints[k] >= 6) {
+        xg[k] = centre + shapeGutter[k] * colW / 2;
+      }
+      if (from == to) {
+        reachIn[k] = reachOut[k] = double.infinity;
+      } else {
+        reachOut[k] = y[p] - runY[from];
+        reachIn[k] = runY[to - 1] - (y[ch] + h);
+      }
+      towardIn[k] = shapePoints[k] >= 6 ? xg[k] : cx[p];
+      tieIn[k] = c.nodeRows[p].toDouble();
     }
   }
 
-  /// The port rules at one card edge with centre [mid] (Story 10.30, by local direction since the follow-up of
-  /// 2026-11-02): the lines are `scratch[from ..< from + count]` with their [reach] and [toward]; [tie] breaks
-  /// ties; a line [banned] from the centre never takes it, a line with [extra] slots sits that many fan slots
-  /// further out ([_banCollisions]). A line is vertical at the edge when it runs straight through the band next to
-  /// it (reach ≥ gapY), else it turns there. One line takes the centre; of several, the vertical one that stays
-  /// straight longest does, with none vertical the centre stays free. The rest fan to the side they turn to:
-  /// vertical lines innermost (longest first), then the lines that turn at the edge, nearest turn first.
+  /// The port rules at one card edge with centre [mid]: the lines are `scratch[from ..< from + count]` with their
+  /// [reach] and [toward]; [tie] breaks ties; a line [banned] from the centre never takes it, a line with [extra]
+  /// slots sits that many fan slots further out ([_banCollisions]). A line is vertical at the edge when it runs
+  /// straight through the band next to it (reach ≥ gapY), else it turns there. One line takes the centre; of several,
+  /// the vertical one that stays straight longest does, with none vertical the centre stays free. The rest fan to the
+  /// side they turn to: vertical lines innermost (longest first), then the lines that turn at the edge, nearest turn
+  /// first.
   void _place(
     int from,
     int count,
@@ -1017,8 +1770,8 @@ final class _GeometryBuilder {
     }
   }
 
-  /// Entries on each child's bottom edge (GL:206-221; [_place]'s rules). The lines are the slot owners; the other
-  /// lines of a shared slot take its owner's x.
+  /// Entries on each child's bottom edge ([_place]'s rules). The lines are the slot owners; the other lines of a
+  /// shared slot take its owner's x.
   void _entries() {
     final Int32List inStarts = c._inStarts;
     final Int32List inEdges = c._inEdges;
@@ -1041,34 +1794,39 @@ final class _GeometryBuilder {
     }
   }
 
-  /// Exits on each parent's top edge (GL:222-250; variant B; [_place]'s rules, as the entries').
+  /// Exits on each parent's top edge ([_place]'s rules, as the entries').
   void _exits() {
     final Int32List outStarts = c._outStarts;
     final Int32List outEdges = c._outEdges;
-    final Uint8List kinds = c.kinds;
     for (var node = 0; node < n; node++) {
       final int from = outStarts[node];
       final int to = outStarts[node + 1];
       for (var q = from; q < to; q++) {
         final int k = outEdges[q];
-        towardOut[k] = kinds[k] == RouteClasses.kindGutter ? xg[k] : xi[k];
+        // Its third point: the gutter, the child's column on an 8-point line, else its entry.
+        towardOut[k] = shapePoints[k] == 6 ? xg[k] : (shapePoints[k] == 8 ? cx[c.edgeTos[k]] : xi[k]);
         scratch[q] = k;
       }
       _place(from, to - from, cx[node], xo, reachOut, towardOut, tieOut, noCentreOut, extraOut);
     }
   }
 
-  /// Two vertical lines never share an x — the port rule's tie-break, carried from one card edge to the column:
-  /// where the straight stretches (from the card edge through the band the line first turns in) of two lines of
-  /// different card edges overlap on one x (a line climbing its column past another card's port), the one that
-  /// stays straight longer keeps its port (tie: the lower edge index); the other leaves the centre, or sits one fan
-  /// slot further out; two lines that both turn at their edges (reach < gapY) are left to the tracks. Bans and extra
+  /// Two lines of different card edges never share an upright stretch at their card edges: where the stretches (from
+  /// the card edge to the line's first bend, exactly) of two lines overlap on one x, the one that stays straight
+  /// longer keeps its port (tie: the lower edge index); the other leaves the centre, or sits one fan slot further out.
+  /// Every line of a shared slot claims its own stretch and a loss moves the slot's owner, so the slot moves as one;
+  /// a slot with a 2-point line claims nothing at its entry, because that line's x is the slot's port. Bans and extra
   /// slots only accumulate across passes, never reset, so the passes terminate. Returns how many lines moved (the
   /// ports are then placed again); with [apply] false it only counts the collisions and moves nothing.
   int _banCollisions({bool apply = true}) {
     final Int32List froms = c.edgeFroms;
     final Int32List tos = c.edgeTos;
-    final Uint8List kinds = c.kinds;
+    final slotStraight = Uint8List(e);
+    for (var k = 0; k < e; k++) {
+      if (shapePoints[k] == 2) {
+        slotStraight[c.slots[k]] = 1;
+      }
+    }
     final claimEdge = Int32List(2 * e);
     final claimIn = Uint8List(2 * e);
     final at = Float64List(2 * e);
@@ -1077,24 +1835,20 @@ final class _GeometryBuilder {
     final len = Float64List(2 * e);
     var count = 0;
     for (var k = 0; k < e; k++) {
-      final int p = froms[k];
-      final int ch = tos[k];
-      final double top = y[p];
-      final double bottom = y[ch] + h;
-      // Every line's stretch at both card edges; one that turns at the edge has its band (reach 0).
-      {
-        claimEdge[count] = k;
-        at[count] = xo[k];
-        lo[count] = kinds[k] == RouteClasses.kindStraight ? bottom : top - reachOut[k] - gy;
-        hi[count] = top;
-        len[count++] = reachOut[k];
-      }
-      if (kinds[k] != RouteClasses.kindStraight && c.slots[k] == k) {
-        claimEdge[count] = k;
+      final double top = y[froms[k]];
+      final double bottom = y[tos[k]] + h;
+      final straight = shapePoints[k] == 2;
+      claimEdge[count] = k;
+      at[count] = xo[k];
+      lo[count] = straight ? bottom : top - reachOut[k];
+      hi[count] = top;
+      len[count++] = reachOut[k];
+      if (!straight && slotStraight[c.slots[k]] == 0) {
+        claimEdge[count] = c.slots[k];
         claimIn[count] = 1;
         at[count] = xi[k];
         lo[count] = bottom;
-        hi[count] = bottom + reachIn[k] + gy;
+        hi[count] = bottom + reachIn[k];
         len[count++] = reachIn[k];
       }
     }
@@ -1115,7 +1869,6 @@ final class _GeometryBuilder {
         final bool sameEdge =
             claimIn[a] == claimIn[b] && (claimIn[a] == 1 ? tos : froms)[ka] == (claimIn[a] == 1 ? tos : froms)[kb];
         if (ka == kb ||
-            len[a] < gy && len[b] < gy || // two lines turning at their edges: the tracks keep them apart
             sameEdge || // one card edge's own lines (a shared outermost port)
             (claimIn[a] == 1 ? movedIn : movedOut)[ka] != 0 ||
             (claimIn[b] == 1 ? movedIn : movedOut)[kb] != 0) {
@@ -1165,51 +1918,98 @@ final class _GeometryBuilder {
     return (portStarts, Float64List.fromList(Float64List.sublistView(ports, 0, portCount)));
   }
 
-  RouteGeometry _finish(_Runs runs, Int32List portStarts, Float64List portXs, int unsettledPorts) {
-    final Uint8List kinds = c.kinds;
+  /// Phase 7: lines that share a gutter over one stretch sit 6 px apart. After the tracks, so the intervals are the
+  /// final ones; sorted by top, only the last interval of a slot can overlap.
+  void _gutterSlots() {
+    var count = 0;
+    for (var k = 0; k < e; k++) {
+      if (shapePoints[k] >= 6) {
+        count++;
+      }
+    }
+    if (count == 0) {
+      return;
+    }
+    final list = Int32List(count);
+    final gutter = Float64List(e);
+    final top = Float64List(e);
+    final bottom = Float64List(e);
+    var q = 0;
+    for (var k = 0; k < e; k++) {
+      if (shapePoints[k] >= 6) {
+        list[q++] = k;
+        final int last = edgeRun[k + 1] - 1;
+        gutter[k] = shapeGutter[k].toDouble();
+        top[k] = runY[last];
+        bottom[k] = runY[last - 1];
+      }
+    }
+    sortIndicesStableByDouble(list, gutter, second: top);
+    var slotBottoms = Float64List(16);
+    var slots = 0;
+    var current = -1;
+    for (var o = 0; o < count; o++) {
+      final int k = list[o];
+      if (shapeGutter[k] != current) {
+        current = shapeGutter[k];
+        slots = 0;
+      }
+      var slot = 0;
+      while (slot < slots && top[k] < slotBottoms[slot]) {
+        slot++;
+      }
+      if (slot == slots) {
+        if (slots == slotBottoms.length) {
+          slotBottoms = Float64List(2 * slots)..setAll(0, slotBottoms);
+        }
+        slots++;
+      }
+      slotBottoms[slot] = bottom[k];
+      xg[k] += (slot.isOdd ? _track : -_track) * ((slot + 1) ~/ 2);
+    }
+  }
+
+  RouteGeometry _finish(Int32List portStarts, Float64List portXs, int unsettledPorts) {
     final pointStarts = Int32List(e + 1);
     for (var k = 0; k < e; k++) {
-      final int kind = kinds[k];
-      pointStarts[k + 1] =
-          pointStarts[k] +
-          (kind == RouteClasses.kindStraight
-              ? 2
-              : kind == RouteClasses.kindGutter
-              ? 6
-              : 4);
+      pointStarts[k + 1] = pointStarts[k] + shapePoints[k];
     }
     final points = Float64List(2 * pointStarts[e]);
+    var q = 0;
+    void put(double px, double py) {
+      points[q++] = px;
+      points[q++] = py;
+    }
+
     for (var k = 0; k < e; k++) {
       final double top = y[c.edgeFroms[k]];
       final double bot = y[c.edgeTos[k]] + h;
-      int q = 2 * pointStarts[k];
-      void put(double px, double py) {
-        points[q++] = px;
-        points[q++] = py;
-      }
-
-      final int kind = kinds[k];
-      if (kind == RouteClasses.kindStraight) {
-        put(xo[k], top);
+      final int count = shapePoints[k];
+      put(xo[k], top);
+      if (count == 2) {
         put(xo[k], bot);
         continue;
       }
-      final int seg = runs.edgeSeg[k];
-      final double y0 = runs.segY[seg];
-      put(xo[k], top);
-      put(xo[k], y0);
-      if (kind == RouteClasses.kindGutter) {
-        final double y1 = runs.segY[seg + 1];
-        put(xg[k], y0);
-        put(xg[k], y1);
-        put(xi[k], y1);
+      final int r = edgeRun[k];
+      put(xo[k], runY[r]);
+      if (count == 4) {
+        put(xi[k], runY[r]);
         put(xi[k], bot);
-      } else {
-        put(xi[k], y0);
-        put(xi[k], bot);
+        continue;
       }
+      var g = r;
+      if (count == 8) {
+        final double bx = cx[c.edgeTos[k]];
+        put(bx, runY[r]);
+        put(bx, runY[r + 1]);
+        g = r + 1;
+      }
+      put(xg[k], runY[g]);
+      put(xg[k], runY[g + 1]);
+      put(xi[k], runY[g + 1]);
+      put(xi[k], bot);
     }
-    return _runIndexes(pointStarts, points, portStarts, portXs, runs, unsettledPorts);
+    return _runIndexes(pointStarts, points, portStarts, portXs, unsettledPorts);
   }
 
   RouteGeometry _runIndexes(
@@ -1217,7 +2017,6 @@ final class _GeometryBuilder {
     Float64List points,
     Int32List portStarts,
     Float64List portXs,
-    _Runs runs,
     int unsettledPorts,
   ) {
     var verticals = 0;
@@ -1296,6 +2095,22 @@ final class _GeometryBuilder {
       return out;
     }
 
+    final Float64List verticalXs = byOrder(vx, vOrder);
+    final Float64List verticalTops = byOrder(vTop, vOrder);
+    final Float64List verticalBottoms = byOrder(vBottom, vOrder);
+    final Int32List verticalEdges = edgesByOrder(vEdge, vOrder);
+    final Float64List horizontalYs = byOrder(hy, hOrder);
+    final Float64List horizontalLefts = byOrder(hLeft, hOrder);
+    final Float64List horizontalRights = byOrder(hRight, hOrder);
+    final Int32List horizontalEdges = edgesByOrder(hEdge, hOrder);
+
+    final behindEdges = Uint8List(e);
+    final int behindCards = _behind(pointStarts, points, behindEdges);
+    final sharedEdges = Uint8List(e);
+    final int sharedStretches =
+        _shared(verticalXs, verticalTops, verticalBottoms, verticalEdges, sharedEdges) +
+        _shared(horizontalYs, horizontalLefts, horizontalRights, horizontalEdges, sharedEdges);
+
     return RouteGeometry._(
       classes: c,
       metrics: m,
@@ -1303,478 +2118,129 @@ final class _GeometryBuilder {
       points: points,
       portStarts: portStarts,
       portXs: portXs,
-      verticalXs: byOrder(vx, vOrder),
-      verticalTops: byOrder(vTop, vOrder),
-      verticalBottoms: byOrder(vBottom, vOrder),
-      verticalEdges: edgesByOrder(vEdge, vOrder),
-      horizontalYs: byOrder(hy, hOrder),
-      horizontalLefts: byOrder(hLeft, hOrder),
-      horizontalRights: byOrder(hRight, hOrder),
-      horizontalEdges: edgesByOrder(hEdge, hOrder),
-      overfullClusters: runs.overfullClusters,
-      overfullEdges: runs.overfullEdges,
-      unavoidableCrossings: runs.unavoidableCrossings,
+      verticalXs: verticalXs,
+      verticalTops: verticalTops,
+      verticalBottoms: verticalBottoms,
+      verticalEdges: verticalEdges,
+      horizontalYs: horizontalYs,
+      horizontalLefts: horizontalLefts,
+      horizontalRights: horizontalRights,
+      horizontalEdges: horizontalEdges,
+      behindCards: behindCards,
+      behindEdges: behindEdges,
+      sharedStretches: sharedStretches,
+      sharedEdges: sharedEdges,
+      tightFans: tightFans,
+      unavoidableCrossings: unavoidableCrossings,
       unsettledPorts: unsettledPorts,
     );
   }
-}
 
-/// The horizontal runs of one geometry, their room, clusters and tracks (GL:251-290, :84-132).
-final class _Runs {
-  _Runs(this.g) : edgeSeg = Int32List(g.e), overfullEdges = Uint8List(g.e);
-
-  final _GeometryBuilder g;
-
-  /// Each edge's first run (gutter edges have two, consecutive); unused for `straight`.
-  final Int32List edgeSeg;
-
-  /// Per edge, whether a run of it lies in an overfull cluster.
-  final Uint8List overfullEdges;
-
-  late final Int32List segEdge;
-
-  late final int count;
-  late final Float64List band0;
-  late final Float64List band1;
-  late final Float64List down;
-  late final Float64List up;
-  late final Float64List a;
-  late final Float64List b;
-  late final Uint8List deep;
-  late final Float64List lo;
-  late final Float64List hi;
-  late final Float64List segY;
-
-  var overfullClusters = 0;
-  var unavoidableCrossings = 0;
-
-  void place() {
-    _collect();
-    _rooms();
-    _clusters();
-  }
-
-  void _collect() {
-    final RouteClasses c = g.c;
-    final Uint8List kinds = c.kinds;
-    var total = 0;
-    for (var k = 0; k < g.e; k++) {
-      final int kind = kinds[k];
-      edgeSeg[k] = total;
-      total += kind == RouteClasses.kindStraight ? 0 : (kind == RouteClasses.kindGutter ? 2 : 1);
-    }
-    count = total;
-    segEdge = Int32List(total);
-    band0 = Float64List(total);
-    band1 = Float64List(total);
-    down = Float64List(total);
-    up = Float64List(total);
-    a = Float64List(total);
-    b = Float64List(total);
-    deep = Uint8List(total);
-    lo = Float64List(total);
-    hi = Float64List(total);
-    segY = Float64List(total);
-    final double gy = g.gy;
-    final double h = g.h;
-    for (var k = 0; k < g.e; k++) {
-      final int kind = kinds[k];
-      if (kind == RouteClasses.kindStraight) {
-        continue;
+  /// Flags the lines that still pass behind a card and returns how many there are.
+  int _behind(Int32List pointStarts, Float64List points, Uint8List flags) {
+    var count = 0;
+    for (var k = 0; k < e; k++) {
+      final int p = c.edgeFroms[k];
+      final int ch = c.edgeTos[k];
+      var hit = false;
+      for (int q = pointStarts[k] + 1; q < pointStarts[k + 1] && !hit; q++) {
+        final double x1 = points[2 * q - 2];
+        final double y1 = points[2 * q - 1];
+        final double x2 = points[2 * q];
+        final double y2 = points[2 * q + 1];
+        if (y1 != y2) {
+          hit = x1 == x2 && _verticalBehind(x1, _min(y1, y2), _max(y1, y2), p, ch);
+        } else if (x1 != x2) {
+          hit = _horizontalBehind(y1, _min(x1, x2), _max(x1, x2), p, ch);
+        }
       }
-      final int s = edgeSeg[k];
-      final double py = g._aboveY(k);
-      final double ny = g.y[c.edgeTos[k]];
-      final isDeep = c.deep[k] != 0;
-      void run(int q, double top, double bottom, double d, double u, {required bool deepRun}) {
-        segEdge[q] = k;
-        band0[q] = top;
-        band1[q] = bottom;
-        down[q] = d;
-        up[q] = u;
-        a[q] = _min(d, u);
-        b[q] = _max(d, u);
-        deep[q] = deepRun ? 1 : 0;
-      }
-
-      switch (kind) {
-        case RouteClasses.kindMergeUp:
-          run(s, ny + h, ny + h + gy, g.xo[k], g.xi[k], deepRun: isDeep);
-        case RouteClasses.kindGutter:
-          run(s, py - gy, py, g.xo[k], g.xg[k], deepRun: false);
-          run(s + 1, ny + h, ny + h + gy, g.xg[k], g.xi[k], deepRun: isDeep);
-        case _:
-          run(s, py - gy, py, g.xo[k], g.xi[k], deepRun: isDeep && kind == RouteClasses.kindMergeAdjacent);
+      if (hit) {
+        flags[k] = 1;
+        count++;
       }
     }
+    return count;
   }
 
-  /// Each run's free part (GL:163-171, :274-280): its band's inner part, in `free` minus the cards
-  /// near its x-range; the interval nearest the band's middle.
-  void _rooms() {
-    final RouteClasses c = g.c;
-    final bool free = c.free;
-    final double w = g.w;
-    final double h = g.h;
-    final double pad = g.m.pad;
-    final double colW = g.colW;
-    final int columns = c.columns;
-    final Int32List starts = c.columnStarts;
+  static const _inset = 0.5;
+
+  bool _verticalBehind(double x, double top, double bottom, int p, int ch) {
+    final int col = ((x - m.pad) / colW).floor();
+    if (col < 0 || col >= c.columns) {
+      return false;
+    }
+    final double left = m.pad + col * colW;
+    if (x <= left + _inset || x >= left + w - _inset) {
+      return false;
+    }
     final Int32List nodes = c.columnNodes;
-    final Float64List y = g.y;
-    var c0s = Float64List(16);
-    var c1s = Float64List(16);
-    for (var q = 0; q < count; q++) {
-      final double l = band0[q] + _clear;
-      final double top = band1[q] - _clear;
-      final double mid = (band0[q] + band1[q]) / 2;
-      var cards = 0;
-      if (free && columns > 0) {
-        final double ra = a[q];
-        final double rb = b[q];
-        int colLo = ((ra - _cardReach - w - pad) / colW).floor();
-        int colHi = ((rb + _cardReach - pad) / colW).ceil();
-        if (colLo < 0) {
-          colLo = 0;
-        }
-        if (colHi > columns - 1) {
-          colHi = columns - 1;
-        }
-        for (var col = colLo; col <= colHi; col++) {
-          final double ox = pad + col * colW;
-          if (ox >= rb + _cardReach || ox + w <= ra - _cardReach) {
-            continue;
-          }
-          // Rows ascend, so y descends: the cards with c0 < top form a suffix, those with c1 > l a
-          // prefix.
-          int from = starts[col];
-          int to = starts[col + 1];
-          while (from < to) {
-            final int midIndex = (from + to) >> 1;
-            if (y[nodes[midIndex]] - _cardMargin < top) {
-              to = midIndex;
-            } else {
-              from = midIndex + 1;
-            }
-          }
-          for (var k = from; k < starts[col + 1]; k++) {
-            final double oy = y[nodes[k]];
-            final double c1 = oy + h + _cardMargin;
-            if (c1 <= l) {
-              break;
-            }
-            if (cards == c0s.length) {
-              c0s = Float64List(2 * cards)..setAll(0, c0s);
-              c1s = Float64List(2 * cards)..setAll(0, c1s);
-            }
-            c0s[cards] = oy - _cardMargin;
-            c1s[cards++] = c1;
-          }
-        }
+    final int end = c.columnStarts[col + 1];
+    for (int q = _firstAbove(col, 0, bottom - _inset); q < end && tops[q] + h - _inset > top; q++) {
+      if (nodes[q] != p && nodes[q] != ch) {
+        return true;
       }
-      if (cards == 0) {
-        lo[q] = l;
-        hi[q] = top;
+    }
+    return false;
+  }
+
+  bool _horizontalBehind(double level, double left, double right, int p, int ch) {
+    final int first = ((left - m.pad - w) / colW).floor();
+    final int last = ((right - m.pad) / colW).ceil();
+    final Int32List nodes = c.columnNodes;
+    for (var col = first < 0 ? 0 : first; col <= last && col < c.columns; col++) {
+      final double cardLeft = m.pad + col * colW;
+      if (left >= cardLeft + w - _inset || right <= cardLeft + _inset) {
         continue;
       }
-      // Ascending by c0 (few cards: insertion sort), then sweep the closed intervals left over.
-      for (var i = 1; i < cards; i++) {
-        final double k0 = c0s[i];
-        final double k1 = c1s[i];
-        int j = i - 1;
-        while (j >= 0 && c0s[j] > k0) {
-          c0s[j + 1] = c0s[j];
-          c1s[j + 1] = c1s[j];
-          j--;
-        }
-        c0s[j + 1] = k0;
-        c1s[j + 1] = k1;
-      }
-      double bestD = double.infinity;
-      var bestL = mid;
-      var bestH = mid;
-      void consider(double il, double ih) {
-        final double d = mid < il ? il - mid : (mid > ih ? mid - ih : 0);
-        if (d < bestD) {
-          bestD = d;
-          bestL = il;
-          bestH = ih;
+      final int end = c.columnStarts[col + 1];
+      for (int q = _firstAbove(col, 0, level - _inset); q < end && tops[q] + h - _inset > level; q++) {
+        if (nodes[q] != p && nodes[q] != ch) {
+          return true;
         }
       }
-
-      var cur = l;
-      for (var i = 0; i < cards; i++) {
-        if (c0s[i] >= cur) {
-          consider(cur, c0s[i]);
-        }
-        if (c1s[i] > cur) {
-          cur = c1s[i];
-        }
-      }
-      if (top >= cur) {
-        consider(cur, top);
-      }
-      lo[q] = bestL;
-      hi[q] = bestH;
     }
+    return false;
   }
 
-  bool _near(int i, int j) => a[i] < b[j] + _nearGap && a[j] < b[i] + _nearGap;
+  /// Two lines are exempt from the report when they share a slot or one port of one card edge.
+  bool _sharesPort(int a, int b) =>
+      c.slots[a] == c.slots[b] ||
+      (c.edgeFroms[a] == c.edgeFroms[b] && xo[a] == xo[b]) ||
+      (c.edgeTos[a] == c.edgeTos[b] && xi[a] == xi[b]);
 
-  /// Clusters (GL:281-290): runs whose bands overlap and whose x-ranges come within 10 px, joined
-  /// transitively; each placed by [_placeTracks] with its runs in index order.
-  void _clusters() {
-    final root = Int32List(count);
-    for (var q = 0; q < count; q++) {
-      root[q] = q;
+  /// Counts the runs (sorted by [at]) of two lines that overlap by more than 1 px on one [at], and flags those lines.
+  /// Within one [at] the runs are ordered by their start, so a run meets only the following runs that start before it
+  /// ends: every overlapping pair is seen once.
+  int _shared(Float64List at, Float64List from, Float64List to, Int32List edges, Uint8List flags) {
+    final int runCount = at.length;
+    final order = Int32List(runCount);
+    for (var r = 0; r < runCount; r++) {
+      order[r] = r;
     }
-    int find(int q) {
-      var r = q;
-      while (root[r] != r) {
-        r = root[r];
+    var count = 0;
+    var i = 0;
+    while (i < runCount) {
+      int end = i + 1;
+      while (end < runCount && at[end] == at[i]) {
+        end++;
       }
-      var x = q;
-      while (root[x] != r) {
-        final int next = root[x];
-        root[x] = r;
-        x = next;
-      }
-      return r;
-    }
-
-    final order = Int32List(count);
-    for (var q = 0; q < count; q++) {
-      order[q] = q;
-    }
-    sortIndicesStableByDouble(order, band0);
-    var active = Int32List(16);
-    var live = 0;
-    for (var o = 0; o < count; o++) {
-      final int s = order[o];
-      final double s0 = band0[s];
-      var kept = 0;
-      for (var t = 0; t < live; t++) {
-        final int other = active[t];
-        if (band1[other] <= s0) {
-          continue;
-        }
-        active[kept++] = other;
-        if (_near(s, other)) {
-          final int rs = find(s);
-          final int ro = find(other);
-          if (rs != ro) {
-            root[rs] = ro;
+      if (end - i > 1) {
+        sortIndicesStableByDouble(Int32List.sublistView(order, i, end), from);
+        for (var a = i; a < end; a++) {
+          final int ra = order[a];
+          for (int b = a + 1; b < end && from[order[b]] < to[ra] - 1; b++) {
+            final int rb = order[b];
+            final double overlap = (to[ra] < to[rb] ? to[ra] : to[rb]) - from[rb];
+            if (overlap > 1 && edges[ra] != edges[rb] && !_sharesPort(edges[ra], edges[rb])) {
+              count++;
+              flags[edges[ra]] = 1;
+              flags[edges[rb]] = 1;
+            }
           }
         }
       }
-      live = kept;
-      if (live == active.length) {
-        active = Int32List(2 * live)..setAll(0, active);
-      }
-      active[live++] = s;
+      i = end;
     }
-    // Members per cluster, in run index order (a CSR over the roots).
-    final starts = Int32List(count + 1);
-    final rootOf = Int32List(count);
-    for (var q = 0; q < count; q++) {
-      rootOf[q] = find(q);
-      starts[rootOf[q] + 1]++;
-    }
-    for (var q = 0; q < count; q++) {
-      starts[q + 1] += starts[q];
-    }
-    final members = Int32List(count);
-    final fill = Int32List.fromList(starts);
-    for (var q = 0; q < count; q++) {
-      members[fill[rootOf[q]]++] = q;
-    }
-    for (var r = 0; r < count; r++) {
-      if (starts[r + 1] > starts[r]) {
-        _placeTracks(Int32List.sublistView(members, starts[r], starts[r + 1]));
-      }
-    }
-  }
-
-  /// GL's `assignTracks` + `placeTracks` (GL:87-132) for one cluster, [segs] in run index order.
-  void _placeTracks(Int32List segs) {
-    final int size = segs.length;
-    if (size == 1 && lo[segs[0]] <= hi[segs[0]] + 0.01) {
-      // One run, one track: what the general path computes with spacing 0.
-      final int q = segs[0];
-      final double lam = deep[q] != 0 ? 1 : 0.5;
-      segY[q] = lo[q] + lam * (hi[q] - lo[q]);
-      return;
-    }
-    // pred[j] ∋ i (i must run above j): row j, bit i.
-    // shortcut: O(size²) time and size²/8 bytes per cluster, as GL's assignTracks; the measured
-    // layouts (up to synth-100k) keep clusters small. Index the relation if a real layout shows a
-    // cluster of thousands of runs.
-    final int words = (size + 31) >> 5;
-    final pred = Uint32List(size * words);
-    bool has(int j, int i) => (pred[j * words + (i >> 5)] >> (i & 31)) & 1 != 0;
-    void set(int j, int i) => pred[j * words + (i >> 5)] |= 1 << (i & 31);
-    void clear(int j, int i) => pred[j * words + (i >> 5)] &= ~(1 << (i & 31));
-    bool inside(int s, double xv) => xv > a[s] + _inside && xv < b[s] - _inside;
-    for (var i = 0; i < size; i++) {
-      final int si = segs[i];
-      for (var j = 0; j < size; j++) {
-        if (i == j) {
-          continue;
-        }
-        final int sj = segs[j];
-        if (inside(si, down[sj]) || inside(sj, up[si])) {
-          set(j, i);
-        }
-      }
-    }
-    for (var i = 0; i < size; i++) {
-      for (var j = 0; j < size; j++) {
-        if (j != i && has(i, j) && has(j, i)) {
-          clear(i, j);
-          clear(j, i);
-          unavoidableCrossings++;
-        }
-      }
-    }
-    // Order: fewest open predecessors, then the longest run, then the index (GL:94-103).
-    final open = Int32List(size);
-    for (var j = 0; j < size; j++) {
-      for (var i = 0; i < size; i++) {
-        if (has(j, i)) {
-          open[j]++;
-        }
-      }
-    }
-    final done = Uint8List(size);
-    final pos = Int32List(size);
-    final order = Int32List(size);
-    for (var step = 0; step < size; step++) {
-      var pick = -1;
-      double best = double.infinity;
-      for (var i = 0; i < size; i++) {
-        if (done[i] != 0) {
-          continue;
-        }
-        final double key = open[i] * _openWeight - (b[segs[i]] - a[segs[i]]);
-        if (key < best) {
-          best = key;
-          pick = i;
-        }
-      }
-      done[pick] = 1;
-      pos[pick] = step;
-      order[step] = pick;
-      for (var j = 0; j < size; j++) {
-        if (done[j] == 0 && has(j, pick)) {
-          open[j]--;
-        }
-      }
-    }
-    // Tracks: after every placed predecessor, then the first track with no near run (GL:104-111).
-    final track = Int32List(size);
-    var tracks = 0;
-    for (var step = 0; step < size; step++) {
-      final int i = order[step];
-      var t = 0;
-      for (var k = 0; k < size; k++) {
-        if (has(i, k) && pos[k] < pos[i] && track[k] + 1 > t) {
-          t = track[k] + 1;
-        }
-      }
-      final int si = segs[i];
-      var clash = true;
-      while (clash) {
-        clash = false;
-        for (var q = 0; q < step; q++) {
-          final int other = order[q];
-          if (track[other] == t && a[segs[other]] < b[si] + _nearGap && a[si] < b[segs[other]] + _nearGap) {
-            clash = true;
-            t++;
-            break;
-          }
-        }
-      }
-      track[i] = t;
-      if (t + 1 > tracks) {
-        tracks = t + 1;
-      }
-    }
-    // `ord`: by track, then index (GL:117).
-    final byTrack = Int32List(size);
-    final trackKey = Int64List(size);
-    for (var i = 0; i < size; i++) {
-      byTrack[i] = i;
-      trackKey[i] = track[i];
-    }
-    sortIndicesStable(byTrack, trackKey);
-    final count = tracks < 1 ? 1 : tracks;
-    var lam = 0.5;
-    for (var i = 0; i < size; i++) {
-      if (deep[segs[i]] != 0) {
-        lam = 1;
-      }
-    }
-    final top = Float64List(size);
-    final bot = Float64List(size);
-    bool pack(double sp) {
-      for (var o = 0; o < size; o++) {
-        final int i = byTrack[o];
-        double t = lo[segs[i]];
-        for (var p = 0; p < size; p++) {
-          final int j = byTrack[p];
-          if (track[j] < track[i] && _near(segs[i], segs[j])) {
-            t = _max(t, top[j] + sp);
-          }
-        }
-        top[i] = t;
-      }
-      for (int o = size - 1; o >= 0; o--) {
-        final int i = byTrack[o];
-        double t = hi[segs[i]];
-        for (var p = 0; p < size; p++) {
-          final int j = byTrack[p];
-          if (track[j] > track[i] && _near(segs[i], segs[j])) {
-            t = _min(t, bot[j] - sp);
-          }
-        }
-        bot[i] = t;
-      }
-      for (var i = 0; i < size; i++) {
-        if (!(top[i] <= bot[i] + 0.01)) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    final double sp0 = count > 1 ? _max(_trackMin, _min(_trackMax, _trackSpread / (count - 1))) : 0;
-    bool ok = pack(sp0);
-    if (!ok && sp0 > _trackMin) {
-      ok = pack(_trackMin);
-    }
-    if (ok) {
-      for (var i = 0; i < size; i++) {
-        segY[segs[i]] = top[i] + lam * (bot[i] - top[i]);
-      }
-      return;
-    }
-    // More lines than room: keep order and spacing, centre the block on the bands (GL:128-131).
-    overfullClusters++;
-    var sum = 0.0;
-    for (var i = 0; i < size; i++) {
-      sum = sum + (lo[segs[i]] + hi[segs[i]]) / 2;
-    }
-    final double mid = sum / size;
-    double least = top[0];
-    double most = top[0];
-    for (var i = 1; i < size; i++) {
-      least = _min(least, top[i]);
-      most = _max(most, top[i]);
-    }
-    final double shift = mid - (least + most) / 2;
-    for (var i = 0; i < size; i++) {
-      segY[segs[i]] = top[i] + shift;
-      overfullEdges[segEdge[segs[i]]] = 1;
-    }
+    return count;
   }
 }

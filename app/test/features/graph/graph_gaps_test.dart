@@ -33,7 +33,7 @@ typedef _Placed = ({GraphLayout layout, RouteGeometry geometry, VerticalLayout r
 _Placed _place(GraphLayout layout, {GraphMetrics? metrics, double clearance = 12}) {
   final GraphMetrics m = metrics ?? GraphMetrics();
   final rows = UniformRows(layout, m, bottomExtra: graphGapsBottomExtraOf(layout));
-  final geometry = routeGraph(layout, m) as RouteGeometry;
+  final geometry = RouteGeometry.compute(graphRouteClasses(layout), graphRouteMetrics(m));
   return (
     layout: layout,
     geometry: geometry,

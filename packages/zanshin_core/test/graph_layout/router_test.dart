@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-// Story 4.15: line router B (docs/graph-layout.md §14) — the class stage's kinds, gutters, the
-// unit rule, shared entries and reports; the geometry stage's exits, entries, tracks and bridges;
-// stability across card sizes; and the route gate over the recording inputs (no line behind a card
-// in Compact; in Free only reported cases).
+// The line router (docs/graph-layout.md §14): the per-layout stage, the shapes, levels, ports and
+// bridges of the geometry stage on hand-built grids (W 240, H 62, gapX 56, gapY 48, pad 56 unless a
+// test says otherwise; column centre 176 + 296·c, the gutter right of column c at 324 + 296·c), and
+// the line gate over the recording inputs and the fuzz cases.
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -28,14 +29,13 @@ RouteClasses _grid(
   List<int> rows,
   List<int> cols,
   List<(int, int)> edges, {
-  bool free = false,
+  int unit = 1,
   Set<int> indirect = const {},
   List<int>? parentCounts,
 }) => RouteClasses.compute(
   nodeRows: Int32List.fromList(rows),
   nodeCols: Int32List.fromList(cols),
-  unit: free ? 16 : 1,
-  free: free,
+  unit: unit,
   edgeFroms: Int32List.fromList([for (final (int p, _) in edges) p]),
   edgeTos: Int32List.fromList([for (final (_, int c) in edges) c]),
   edgeKinds: Uint8List.fromList([
@@ -45,8 +45,8 @@ RouteClasses _grid(
   parentCounts: Int32List.fromList(parentCounts ?? [for (var i = 0; i < rows.length; i++) 1]),
 );
 
-RouteGeometry _geometry(RouteClasses c, {double width = 240, double height = 62}) =>
-    RouteGeometry.compute(c, RouteMetrics(width: width, height: height));
+RouteGeometry _geometry(RouteClasses c, {double width = 240, double height = 62, double gapX = 56, double gapY = 48}) =>
+    RouteGeometry.compute(c, RouteMetrics(width: width, height: height, gapX: gapX, gapY: gapY));
 
 /// Column [col]'s card centre x at [width].
 double _cx(int col, {double width = 240}) => 56 + col * (width + 56) + width / 2;
@@ -56,8 +56,17 @@ List<(double, double)> _points(RouteGeometry g, int k) => [
   for (int q = g.pointStarts[k]; q < g.pointStarts[k + 1]; q++) (g.points[2 * q], g.points[2 * q + 1]),
 ];
 
-/// The run y of a 4- or 6-point polyline: its second point's y (the track above the parent, or below
-/// the child for `merge-up`).
+/// Expects edge [k]'s polyline to be [expected], within rounding.
+void _expectLine(RouteGeometry g, int k, List<(double, double)> expected) {
+  final List<(double, double)> actual = _points(g, k);
+  expect(actual, hasLength(expected.length), reason: 'edge $k: $actual');
+  for (var q = 0; q < expected.length; q++) {
+    expect(actual[q].$1, closeTo(expected[q].$1, 1e-6), reason: 'edge $k point $q x: $actual');
+    expect(actual[q].$2, closeTo(expected[q].$2, 1e-6), reason: 'edge $k point $q y: $actual');
+  }
+}
+
+/// The run y of a polyline with bends: its second point's y (the first level from the parent).
 double _trackY(RouteGeometry g, int k) => g.points[2 * (g.pointStarts[k] + 1) + 1];
 
 /// One bridge as a comparable tuple.
@@ -217,20 +226,27 @@ List<_Recording> _recordings(LayoutMode mode) {
   }
   for (final name in ['design/design-default.json', 'fixtures/medium-narrow.input.json']) {
     final LayoutInput input = parseSpecInput(File('$_goldens/$name').readAsBytesSync()).input;
-    final counts = Int32List(input.n);
-    for (var i = 0; i < input.n; i++) {
-      counts[i] = input.parStart[i + 1] - input.parStart[i];
-    }
-    out.add((name: name, grid: GraphGridView.fromBytes(computeGraphGrid(input, mode: mode)), parentCounts: counts));
+    out.add((
+      name: name,
+      grid: GraphGridView.fromBytes(computeGraphGrid(input, mode: mode)),
+      parentCounts: _parentCounts(input),
+    ));
   }
   return out;
+}
+
+Int32List _parentCounts(LayoutInput input) {
+  final counts = Int32List(input.n);
+  for (var i = 0; i < input.n; i++) {
+    counts[i] = input.parStart[i + 1] - input.parStart[i];
+  }
+  return counts;
 }
 
 RouteClasses _route(GraphGridView grid, Int32List parentCounts) => RouteClasses.compute(
   nodeRows: grid.nodeRows,
   nodeCols: grid.nodeCols,
   unit: grid.unit,
-  free: grid.mode == LayoutMode.free,
   edgeFroms: grid.edgeFroms,
   edgeTos: grid.edgeTos,
   edgeKinds: grid.edgeKinds,
@@ -238,215 +254,19 @@ RouteClasses _route(GraphGridView grid, Int32List parentCounts) => RouteClasses.
 );
 
 void main() {
-  group('class stage', () {
-    test('each_kind_routes_with_its_number_of_points', () {
-      // Each grid's last edge is the one under test.
-      final cases = <(String, RouteClasses, int, int)>[
-        ('straight', _grid([1, 0], [0, 0], [(1, 0)]), RouteClasses.kindStraight, 2),
-        ('fork', _grid([1, 0], [1, 0], [(1, 0)]), RouteClasses.kindFork, 4),
-        ('merge-adjacent', _grid([1, 0, 0], [0, 0, 1], [(1, 0), (2, 0)]), RouteClasses.kindMergeAdjacent, 4),
-        ('merge-up', _grid([2, 1, 0], [0, 0, 1], [(1, 0), (2, 0)]), RouteClasses.kindMergeUp, 4),
-      ];
-      for (final (String name, RouteClasses c, int kind, int points) in cases) {
-        final int k = c.edgeCount - 1;
-        expect(c.kinds[k], kind, reason: name);
-        final RouteGeometry g = _geometry(c);
-        expect(g.pointStarts[k + 1] - g.pointStarts[k], points, reason: name);
-      }
+  group('per-layout stage', () {
+    test('goes_on_marks_a_parent_with_a_first_parent_child_in_its_column', () {
+      // Parent 2 (col 0): a first-parent child 0 in its column. Parent 3 (col 1): its child 1 is a first-parent child
+      // in column 2, and child 0 is its second-parent child in column 0, so its branch does not go on.
+      final RouteClasses c = _grid([1, 1, 0, 0], [0, 2, 0, 1], [(2, 0), (3, 0), (3, 1)]);
+      expect(c.goesOn, [0, 0, 1, 0]);
+      expect(c.firstParents, [1, 0, 1]);
     });
 
-    test('a_lane_blocked_merge_climbs_the_gutter_nearest_the_child_behind_no_card', () {
-      // Child 0 (col 0, row 2), first parent 1 (col 0, row 1), second parent 2 (col 1, row 0), and node 3
-      // in col 1 at row 1 between them: defect 2's case.
-      final RouteClasses c = _grid([2, 1, 0, 1], [0, 0, 1, 1], [(1, 0), (2, 0)]);
-      expect(c.kinds[1], RouteClasses.kindGutter);
-      expect(c.gutters[1], 1); // between col 0 and col 1
-      final RouteGeometry g = _geometry(c);
-      final List<(double, double)> pts = _points(g, 1);
-      expect(pts, hasLength(6));
-      expect(pts[2].$1, _cx(0) + 296 / 2);
-      expect(cardHits(g), isEmpty);
-    });
-
-    test('a_lane_blocked_merge_whose_child_column_is_free_climbs_it_as_a_fork', () {
-      // Child 0 (col 0, row 3), first parent 1 (col 0, row 0), second parent 2 (col 1, row 1), and node 3 in
-      // col 1 at row 2 between them; col 0 is free between rows 1 and 3.
-      final RouteClasses c = _grid([3, 0, 1, 2], [0, 0, 1, 1], [(1, 0), (2, 0), (2, 3)]);
-      expect(c.kinds[1], RouteClasses.kindFork);
-      final RouteGeometry g = _geometry(c);
-      expect(_points(g, 1), hasLength(4));
-      expect(cardHits(g), isEmpty);
-    });
-
-    test('a_same_column_line_with_a_node_between_takes_the_gutter_on_its_right', () {
-      final RouteClasses c = _grid([2, 0, 1], [0, 0, 0], [(1, 0)]);
-      expect(c.kinds[0], RouteClasses.kindGutter);
-      expect(c.sides[0], 1);
-      expect(c.gutters[0], 1);
-      expect(_points(_geometry(c), 0)[2].$1, _cx(0) + 296 / 2);
-    });
-
-    test('free_unit_rule_detours_for_a_card_12_units_above_the_parent_not_13_or_0', () {
-      // Parent 1 (col 0, row 0) forks to child 0 (col 2, row 32); card 2 sits in col 1, d units above; card 3 in the
-      // parent's column rules out the two-bend merge-up.
-      for (final (int d, int kind, int gutter) in [
-        (12, RouteClasses.kindGutter, 1),
-        (13, RouteClasses.kindFork, 0),
-        (0, RouteClasses.kindFork, 0),
-      ]) {
-        final RouteClasses c = _grid([32, 0, d, 16], [2, 0, 1, 0], [(1, 0)], free: true);
-        expect(c.kinds[0], kind, reason: 'd = $d');
-        expect(c.gutters[0], gutter, reason: 'd = $d');
-        expect(c.directFallbacks, 0);
-      }
-      // Compact has no detours: the same grid one pitch apart stays a fork.
-      expect(_grid([2, 0, 1], [2, 0, 1], [(1, 0)]).kinds[0], RouteClasses.kindFork);
-    });
-
-    test('a_blocked_direct_run_with_every_gutter_blocked_hooks_over_the_card', () {
-      // Card 2 (col 1, row 5) is 5 units above the parent and 11 below the child: both gutters are blocked. The
-      // parent's column is free, so the line climbs it over the card, crosses above it, comes down the gutter next to
-      // the child and enters from below (Ralph 2026-11-07).
-      final RouteClasses c = _grid([16, 0, 5], [2, 0, 1], [(1, 0)], free: true);
-      expect(c.kinds[0], RouteClasses.kindGutter);
-      expect(c.gutters[0], 3); // between col 1 and col 2
-      expect(c.hookRows, [5]);
-      expect(c.directFallbacks, 0);
-      expect(c.fallbackEdges, [0]);
-      final RouteGeometry g = _geometry(c);
-      final List<(double, double)> pts = _points(g, 0);
-      expect(pts, hasLength(6));
-      // y(row) = 56 + (16 − row) / 16 · 110: the card's top at 131.625, the child's bottom at 56 + 62.
-      expect(pts[1].$2, inInclusiveRange(131.625 - 36, 131.625 - 12), reason: 'the first run above the card');
-      expect(pts[2].$1, _cx(1) + 296 / 2, reason: 'the gutter next to the child');
-      expect(pts[3].$2, inInclusiveRange(118 + 12, 118 + 36), reason: 'the second run below the child');
-      expect(cardHits(g), isEmpty);
-    });
-
-    test('a_hook_needs_the_parents_column_free_up_to_its_band_else_the_line_stays_direct_and_is_reported', () {
-      // As above, with node 3 in the parent's column one pitch above it, where the hook would climb.
-      final RouteClasses c = _grid([16, 0, 5, 16], [2, 0, 1, 0], [(1, 0)], free: true);
-      expect(c.kinds[0], RouteClasses.kindFork);
-      expect(c.hookRows, [-1]);
-      expect(c.directFallbacks, 1);
-      expect(c.fallbackEdges, [1]);
-      expect(cardHits(_geometry(c)).every((h) => h.edge == 0), isTrue);
-    });
-
-    test('a_hook_crossing_a_sibling_lines_climb_bridges_it', () {
-      // jj's case (Ralph 2026-11-07): parent 1 (col 0, row 0) has child 0 (col 3, row 16) behind card 2 (col 2,
-      // row 10) and child 3 (col 1, row 40), whose line climbs col 1 through the hook's band. The two lines share
-      // the parent and still bridge where they cross.
-      final RouteClasses c = _grid([16, 0, 10, 40], [3, 0, 2, 1], [(1, 0), (1, 3)], free: true);
-      expect(c.hookRows, [10, -1]);
-      final RouteGeometry g = _geometry(c);
-      expect(cardHits(g), isEmpty);
-      final List<_Bridge> bridges = _bridgeList(g.bridges(0, 0, 1000000, 1000000));
-      expect(bridges, hasLength(1));
-      final (double x, double y, int h, int v, int vertical) = bridges.single;
-      expect((h, v, vertical), (0, 1, 0), reason: 'the hook\'s run breaks over the sibling\'s climb');
-      expect(x, _points(g, 1)[2].$1);
-      expect(y, _points(g, 0)[1].$2);
-    });
-
-    test('a_hook_climbs_past_every_card_within_12_units_above_its_band', () {
-      // Parent 1 (col 0, row 0) forks to child 0 (col 3, row 20). Card 2 (col 1, row 5) blocks the run above the
-      // parent, card 3 (col 2, row 14) the runs below the child and, 9 units above card 2, the hook's first band.
-      final RouteClasses c = _grid([20, 0, 5, 14], [3, 0, 1, 2], [(1, 0)], free: true);
-      expect(c.kinds[0], RouteClasses.kindGutter);
-      expect(c.gutters[0], 5); // between col 2 and col 3
-      expect(c.hookRows, [14]);
-      expect(c.fallbackEdges, [0]);
-      expect(cardHits(_geometry(c)), isEmpty);
-    });
-
-    test('a_free_gutter_line_with_every_gutter_blocked_takes_the_nearest_and_is_flagged', () {
-      // Child 0 (col 0, row 32), first parent 1 (col 0, row 16), second parent 2 (col 2, row 0) with node
-      // 3 (col 2, row 8) between: a gutter line. Cards 4 (col 1, row 5: 5 units above the parent) and 5
-      // (col 1, row 27: 5 units below the child) block both gutters.
-      final RouteClasses c = _grid([32, 16, 0, 8, 5, 27], [0, 0, 2, 2, 1, 1], [(1, 0), (2, 0)], free: true);
-      expect(c.kinds[1], RouteClasses.kindGutter);
-      expect(c.gutters[1], 1);
-      expect(c.fallbackEdges, [0, 1]);
-      expect(c.directFallbacks, 0);
-    });
-
-    test('free_merge_up_detours_for_a_card_12_units_below_the_child_not_13_or_0', () {
-      // Child 0 (col 0, row 32), first parent 1 (col 0, row 16), second parent 2 (col 2, row 0): a
-      // merge-up; card 3 sits in col 1, d units below the child.
-      for (final (int d, int kind, int gutter) in [
-        (12, RouteClasses.kindGutter, 1),
-        (13, RouteClasses.kindMergeUp, 0),
-        (0, RouteClasses.kindMergeUp, 0),
-      ]) {
-        final RouteClasses c = _grid([32, 16, 0, 32 - d], [0, 0, 2, 1], [(1, 0), (2, 0)], free: true);
-        expect(c.kinds[1], kind, reason: 'd = $d');
-        expect(c.gutters[1], gutter, reason: 'd = $d');
-        expect(c.fallbackEdges[1], 0, reason: 'd = $d');
-      }
-    });
-
-    test('a_free_merge_up_blocked_below_the_child_climbs_the_free_child_column_as_a_fork', () {
-      // Child 0 (col 0, row 48), first parent 1 (col 0, row 0), second parent 2 (col 2, row 16), card 3 in col 1
-      // 6 units below the child: the run below the child is blocked, col 0 is free between rows 16 and 48.
-      final RouteClasses c = _grid([48, 0, 16, 42], [0, 0, 2, 1], [(1, 0), (2, 0)], free: true);
-      expect(c.kinds[1], RouteClasses.kindFork);
-      expect(c.fallbackEdges[1], 0);
-      final RouteGeometry g = _geometry(c);
-      expect(_points(g, 1), hasLength(4));
-      expect(cardHits(g), isEmpty);
-    });
-
-    test('a_free_merge_up_blocked_below_the_child_keeps_the_gutter_when_the_forks_run_is_blocked_too', () {
-      // As above, plus card 4 in col 1 6 units above the parent: the fork's run above the parent is blocked. Column 1
-      // blocks gutter 0 and gutter 1 alike, so the line hooks over the card instead of forking.
-      final RouteClasses c = _grid([48, 0, 16, 42, 22], [0, 0, 2, 1, 1], [(1, 0), (2, 0)], free: true);
-      expect(c.kinds[1], RouteClasses.kindGutter);
-      expect(c.hookRows[1], 22);
-    });
-
-    test('a_free_first_parent_whose_fork_is_blocked_climbs_its_own_free_column_as_a_merge_up', () {
-      // Child 0 (col 0, row 32), first parent 1 (col 2, row 0), card 2 in col 1 6 units above the parent: the fork's
-      // run above the parent is blocked, col 2 is free up to the child and the run below the child is not.
-      final RouteClasses c = _grid([32, 0, 6], [0, 2, 1], [(1, 0)], free: true);
-      expect(c.kinds[0], RouteClasses.kindMergeUp);
-      expect(c.fallbackEdges[0], 0);
-      final RouteGeometry g = _geometry(c);
-      expect(_points(g, 0), hasLength(4));
-      expect(cardHits(g), isEmpty);
-    });
-
-    test('a_first_parent_whose_child_column_is_taken_climbs_its_own_free_column_as_a_merge_up', () {
-      // Child 0 (col 0, row 2), first parent 1 (col 1, row 0), card 2 in col 0 at row 1 between them: compact.
-      final RouteClasses c = _grid([2, 0, 1], [0, 1, 0], [(1, 0)]);
-      expect(c.kinds[0], RouteClasses.kindMergeUp);
-      expect(_points(_geometry(c), 0), hasLength(4));
-    });
-
-    test('nine_lines_on_one_gutter_are_not_overfull', () {
-      final RouteClasses c = _grid(
-        [20, for (var r = 9; r >= 0; r--) r],
-        List.filled(11, 0),
-        [for (var p = 1; p <= 10; p++) (p, 0)],
-      );
-      expect([for (var k = 1; k <= 9; k++) c.kinds[k]], everyElement(RouteClasses.kindGutter));
-      expect(c.overfullGutters, 0);
-    });
-
-    test('ten_lines_on_one_gutter_step_by_six_px_and_report_the_overflow', () {
-      // Child 0 (col 0, row 20), parents 1 … 11 (col 0, rows 10 … 0): the first is straight, the other
-      // ten are same-column non-first lines on gutter 1.
-      final RouteClasses c = _grid(
-        [20, for (var r = 10; r >= 0; r--) r],
-        List.filled(12, 0),
-        [for (var p = 1; p <= 11; p++) (p, 0)],
-      );
-      expect(c.kinds[0], RouteClasses.kindStraight);
-      expect([for (var k = 1; k <= 10; k++) c.gutterSteps[k]], [0, 1, -1, 2, -2, 3, -3, 4, -4, 5]);
-      expect(c.overfullGutters, 1);
-      final RouteGeometry g = _geometry(c);
-      final double base = _cx(0) + 296 / 2;
-      expect([for (var k = 1; k <= 10; k++) _points(g, k)[2].$1 - base], [0, 6, -6, 12, -12, 18, -18, 24, -24, 30]);
+    test('column_pos_is_each_visible_nodes_place_in_the_column_list', () {
+      final RouteClasses c = _grid([2, -1, 0, 1], [0, -1, 0, 1], []);
+      expect(c.columnNodes, [2, 0, 3]);
+      expect([c.columnPos[2], c.columnPos[0], c.columnPos[3]], [0, 1, 2]);
     });
 
     test('two_indirect_edges_into_a_single_parent_node_share_one_deep_entry', () {
@@ -460,13 +280,9 @@ void main() {
       );
       expect(shared.slots, [0, 0]);
       expect(shared.deep, [1, 1]);
-      final RouteGeometry g = _geometry(shared);
-      expect(g.portStarts[1] - g.portStarts[0], 1);
       final RouteClasses own = _grid([2, 0, 1], [0, 1, 2], [(1, 0), (2, 0)], indirect: {0, 1}, parentCounts: [2, 0, 0]);
       expect(own.slots, [0, 1]);
       expect(own.deep, [0, 0]);
-      final RouteGeometry h = _geometry(own);
-      expect(h.portStarts[1] - h.portStarts[0], 2);
     });
 
     test('rejects_bad_input', () {
@@ -476,7 +292,6 @@ void main() {
           nodeRows: Int32List(1),
           nodeCols: Int32List(1),
           unit: 0,
-          free: false,
           edgeFroms: Int32List(0),
           edgeTos: Int32List(0),
           edgeKinds: Uint8List(0),
@@ -492,7 +307,6 @@ void main() {
           nodeRows: Int32List(2),
           nodeCols: Int32List(2),
           unit: 1,
-          free: false,
           edgeFroms: Int32List(1),
           edgeTos: Int32List(2),
           edgeKinds: Uint8List(1),
@@ -503,342 +317,292 @@ void main() {
     });
   });
 
-  group('geometry stage', () {
-    test('nine_exits_on_one_side_fan_as_the_entries_16_9_75_and_8_px_apart_at_w_400_240_160', () {
-      // Parent 9 (col 0, row 0) forks to children 0 … 8 (cols 1 … 9, row 1). Story 10.30: the entry fan
-      // (24 out, 16 apart, squeezed to 8, the overflow on the outermost; at most W/2 − 18).
-      final RouteClasses c = _grid(
-        [for (var k = 0; k < 9; k++) 1, 0],
-        [for (var k = 0; k < 9; k++) k + 1, 0],
-        [for (var k = 0; k < 9; k++) (9, k)],
-      );
-      for (final (double width, List<double> steps) in [
-        (400.0, List.filled(8, 16)),
-        (240.0, List.filled(8, 9.75)),
-        (160.0, <double>[8, 8, 8, 8, 0, 0, 0, 0]),
-      ]) {
-        final RouteGeometry g = _geometry(c, width: width);
-        final List<double> exits = [for (var k = 0; k < 9; k++) _points(g, k)[0].$1 - _cx(0, width: width)]..sort();
-        expect([for (var k = 1; k < 9; k++) exits[k] - exits[k - 1]], steps, reason: 'W $width');
-        expect(exits.first, 24, reason: 'W $width');
+  group('geometry stage: the rules', () {
+    test('a_line_in_a_free_column_is_straight_also_for_a_non_first_parent_one_row_below_its_child', () {
+      final RouteGeometry g = _geometry(_grid([1, 0, 0], [0, 1, 0], [(1, 0), (2, 0)]));
+      _expectLine(g, 1, [(176, 166), (176, 118)]);
+      _expectLine(g, 0, [(472, 166), (472, 146.8), (200, 146.8), (200, 118)]);
+    });
+
+    test('a_card_in_the_way_turns_the_line_into_the_gutter_at_the_lifted_level', () {
+      final RouteGeometry g = _geometry(_grid([2, 0, 1], [0, 0, 0], [(1, 0)]));
+      _expectLine(g, 0, [(176, 276), (176, 247.2), (324, 247.2), (324, 137.2), (176, 137.2), (176, 118)]);
+    });
+
+    test('a_level_on_a_card_moves_off_it_as_little_as_it_can_at_unit_16', () {
+      final RouteGeometry g = _geometry(_grid([32, 0, 3], [2, 0, 1], [(1, 0)], unit: 16));
+      _expectLine(g, 0, [(176, 276), (176, 236.175), (768, 236.175), (768, 118)]);
+    });
+
+    test('three_runs_of_one_parent_nest_6_px_apart_without_crossing', () {
+      final RouteClasses c = _grid([1, 1, 1, 0], [1, 2, 3, 0], [(3, 0), (3, 1), (3, 2)]);
+      final RouteGeometry g = _geometry(c);
+      expect([for (var k = 0; k < 3; k++) _points(g, k).first.$1], [200, 216, 232]);
+      for (final (int k, double level) in [(0, 146.8), (1, 152.8), (2, 158.8)]) {
+        expect(_trackY(g, k), closeTo(level, 1e-6));
       }
+      expect([for (var k = 0; k < 3; k++) _points(g, k).last.$1], [472, 768, 1064]);
+      expect(_strictCrossings(g, [0, 1, 2]), 0);
+      expect(g.unavoidableCrossings, 0);
     });
 
-    test('story_10_30_ports_a_lone_line_at_the_centre_a_straight_one_at_the_centre_else_the_centre_free', () {
-      double exit(RouteGeometry g, int k, int col) => _points(g, k).first.$1 - _cx(col);
-      double entry(RouteGeometry g, int k, int col) => _points(g, k).last.$1 - _cx(col);
-
-      // A lone bending exit: fork 1 (col 0, row 0) → 0 (col 1, row 1).
-      final RouteGeometry lone = _geometry(_grid([1, 0], [1, 0], [(1, 0)]));
-      expect((exit(lone, 0, 0), entry(lone, 0, 1)), (0, 0));
-
-      // A lone merge-up to a child up-right leaves at the centre (Ralph's nuwmzrpz card, 2026-11-02; it was at
-      // +28): parent 2 (col 0, row 0) is child 0's (col 1, row 2) second parent; 1 (col 1, row 1) is the first.
-      final RouteClasses up = _grid([2, 1, 0], [1, 1, 0], [(1, 0), (2, 0)]);
-      expect(up.kinds[1], RouteClasses.kindMergeUp);
-      expect(exit(_geometry(up), 1, 0), 0);
-
-      // Straight + bending: parent 2 (col 0, row 0) → 0 (col 0, row 1) and → 1 (col 1, row 1).
-      final RouteClasses both = _grid([1, 1, 0], [0, 1, 0], [(2, 0), (2, 1)]);
-      expect(both.kinds[0], RouteClasses.kindStraight);
-      final RouteGeometry g = _geometry(both);
-      expect((exit(g, 0, 0), exit(g, 1, 0)), (0, 24));
-
-      // Left + right, none straight: parent 2 (col 1, row 0) → 0 (col 0, row 1) and → 1 (col 2, row 1).
-      final RouteGeometry sides = _geometry(_grid([1, 1, 0], [0, 2, 1], [(2, 0), (2, 1)]));
-      expect((exit(sides, 0, 1), exit(sides, 1, 1)), (-24, 24), reason: 'the centre stays free');
-
-      // Entries alike: child 0 (col 1, row 1) with parents 1 (col 0, row 0) and 2 (col 2, row 0), none straight.
-      final RouteGeometry merge = _geometry(_grid([1, 0, 0], [1, 0, 2], [(1, 0), (2, 0)]));
-      expect((entry(merge, 0, 1), entry(merge, 1, 1)), (-24, 24), reason: 'top and bottom alike');
+    test('a_merge_line_bends_at_its_parent_where_its_branch_goes_on_and_the_childs_column_is_free', () {
+      final RouteGeometry g = _geometry(_grid([3, 2, 1, 0], [0, 1, 2, 0], [(3, 0), (2, 1), (3, 1)]));
+      _expectLine(g, 2, [(200, 386), (200, 366.8), (472, 366.8), (472, 228)]);
+      _expectLine(g, 1, [(768, 276), (768, 256.8), (496, 256.8), (496, 228)]);
+      _expectLine(g, 0, [(176, 386), (176, 118)]);
     });
 
-    test('ports_by_local_direction_a_vertical_entry_takes_the_centre_whatever_its_kind', () {
-      // Child 0 (col 1, row 2): first parent 1 (col 0, row 0), a fork climbing child 0's column from the band
-      // above row 0; second parent 2 (col 2, row 1), a merge-adjacent line turning right below the child. The fork
-      // is vertical at the child's bottom, so it takes the centre; the merge line fans to its side, right.
-      final RouteClasses c = _grid([2, 0, 1], [1, 0, 2], [(1, 0), (2, 0)]);
-      expect([c.kinds[0], c.kinds[1]], [RouteClasses.kindFork, RouteClasses.kindMergeAdjacent]);
-      final RouteGeometry g = _geometry(c);
-      expect([_points(g, 0).last.$1 - _cx(1), _points(g, 1).last.$1 - _cx(1)], [0, 24]);
-
-      // A same-column second parent turns right below its child (a gutter line), and it blocks the first parent's
-      // fork, so that line climbs its own column and turns below the child: no line is vertical at the child, the
-      // centre stays free. Child 0 (col 0, row 2), parents 1 (col 1, row 0) and 2 (col 0, row 1).
-      final RouteClasses same = _grid([2, 0, 1], [0, 1, 0], [(1, 0), (2, 0)]);
-      expect([same.kinds[0], same.kinds[1]], [RouteClasses.kindMergeUp, RouteClasses.kindGutter]);
-      final RouteGeometry gs = _geometry(same);
-      expect([_points(gs, 0).last.$1, _points(gs, 1).last.$1], everyElement(isNot(_cx(0))));
-
-      // A single fork entering a child's bottom: at the centre. Fork 1 (col 0, row 0) → 0 (col 1, row 2).
-      final RouteGeometry lone = _geometry(_grid([2, 0], [1, 0], [(1, 0)]));
-      expect(_points(lone, 0).last.$1, _cx(1));
-
-      // An adjacent fork turns right below its child too, so with a merge-adjacent line beside it the centre stays
-      // free: child 0 (col 1, row 1), parents 1 (col 0, row 0) and 2 (col 2, row 0).
-      final RouteGeometry adjacent = _geometry(_grid([1, 0, 0], [1, 0, 2], [(1, 0), (2, 0)]));
-      expect([_points(adjacent, 0).last.$1 - _cx(1), _points(adjacent, 1).last.$1 - _cx(1)], [-24, 24]);
-    });
-
-    test('ports_by_local_direction_a_straight_line_and_a_merge_up_both_vertical_never_share_an_x', () {
-      // Parent 3 (col 0, row 0): straight into 0 (col 0, row 3) and a merge-up into 1 (col 1, row 2), whose first
-      // parent is 2 (col 1, row 1). The straight line stays vertical longest and takes the centre; the merge-up
-      // fans to the side it later turns to.
-      final RouteClasses c = _grid([3, 2, 1, 0], [0, 1, 1, 0], [(3, 0), (2, 1), (3, 1)]);
-      expect([c.kinds[0], c.kinds[2]], [RouteClasses.kindStraight, RouteClasses.kindMergeUp]);
-      final RouteGeometry g = _geometry(c);
-      expect([_points(g, 0).first.$1 - _cx(0), _points(g, 2).first.$1 - _cx(0)], [0, 24]);
-    });
-
-    test('ports_by_local_direction_merge_ups_leave_on_the_side_they_turn_to', () {
-      // Ralph's rtvlvrzr card (2026-11-02: two merge lines left of centre that then ran right). Parent 5 (col 1,
-      // row 0): merge-ups into 0 (col 2, row 2) and 1 (col 3, row 3), a fork left into 2 (col 0, row 1); 3 and 4
-      // are the merge children's first parents. The longer merge-up takes the centre, the other fans right, the
-      // fork left.
-      final RouteClasses c = _grid(
-        [2, 3, 1, 1, 2, 0],
-        [2, 3, 0, 2, 3, 1],
-        [(3, 0), (5, 0), (4, 1), (5, 1), (5, 2)],
-      );
-      expect(
-        [c.kinds[1], c.kinds[3], c.kinds[4]],
-        [RouteClasses.kindMergeUp, RouteClasses.kindMergeUp, RouteClasses.kindFork],
-      );
-      final RouteGeometry g = _geometry(c);
-      double exit(int k) => _points(g, k)[0].$1 - _cx(1);
-      expect([exit(3), exit(1), exit(4)], [0, 24, -24]);
-    });
-
-    test('ports_by_local_direction_a_line_climbing_past_a_port_on_its_x_keeps_it_only_if_longer', () {
-      // Column 0: parent 4 (row 0) merges up into 1 (col 1, row 3; first parent 2, col 1, row 2) and climbs to
-      // row 3; above it child 0 (row 4) takes its lone fork from 3 (col 2, row 2), which climbs column 0 down to
-      // row 2. Both are vertical on column 0's centre over rows 2 … 3: the merge-up stays straight longer (two
-      // pitches less a gap against one), keeps the centre, and the fork enters toward its parent.
-      final RouteClasses c = _grid([4, 3, 2, 2, 0], [0, 1, 1, 2, 0], [(2, 1), (4, 1), (3, 0)]);
-      expect([c.kinds[1], c.kinds[2]], [RouteClasses.kindMergeUp, RouteClasses.kindFork]);
-      final RouteGeometry g = _geometry(c);
-      expect([_points(g, 1).first.$1 - _cx(0), _points(g, 2).last.$1 - _cx(0)], [0, 24]);
-    });
-
-    test('ports_by_local_direction_a_fan_port_losing_the_tie_break_sits_one_slot_further_out', () {
-      // Column 0: B (node 3, row 2) runs straight into A (node 0, row 5) at the centre and merges up into Q (node 1,
-      // col 1, row 5), climbing column 0 at +24 to the band below row 5. M (node 2, col 1, row 4) is A's second
-      // parent: its merge-adjacent line turns right in that band, also at +24. The merge-up stays straight longer
-      // and keeps +24; the entry moves one fan slot out, to +40.
-      final RouteClasses c = _grid([5, 5, 4, 2], [0, 1, 1, 0], [(3, 0), (2, 0), (2, 1), (3, 1)]);
-      expect(
-        [c.kinds[0], c.kinds[1], c.kinds[3]],
-        [RouteClasses.kindStraight, RouteClasses.kindMergeAdjacent, RouteClasses.kindMergeUp],
-      );
-      final RouteGeometry g = _geometry(c);
-      expect([_points(g, 3).first.$1 - _cx(0), _points(g, 1).last.$1 - _cx(0)], [24, 40]);
+    test('an_x_between_two_neighbouring_rows_crosses_once_and_moves_a_lone_line_off_the_centre', () {
+      final RouteGeometry g = _geometry(_grid([1, 1, 0, 0], [0, 1, 1, 0], [(2, 0), (3, 1)]));
+      _expectLine(g, 0, [(448, 166), (448, 146.8), (176, 146.8), (176, 118)]);
+      _expectLine(g, 1, [(176, 166), (176, 152.8), (472, 152.8), (472, 118)]);
+      expect(_strictCrossings(g, [0, 1]), 1);
+      expect(g.sharedStretches, 0);
+      expect(g.unavoidableCrossings, 1);
       expect(g.unsettledPorts, 0);
     });
 
-    test('entries_sit_24_plus_16_k_px_out_and_squeeze_to_8', () {
-      // Child 0 (col 0, row 1), first parent 1 (col 0, row 0), m more parents in cols 1 … m, row 0.
-      for (final (int m, List<double> expected) in [
-        (3, <double>[24, 40, 56]),
-        (12, <double>[24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 96, 96]),
-      ]) {
-        final RouteClasses c = _grid(
-          [1, 0, for (var k = 0; k < m; k++) 0],
-          [0, 0, for (var k = 0; k < m; k++) k + 1],
-          [(1, 0), for (var k = 0; k < m; k++) (k + 2, 0)],
-        );
-        final RouteGeometry g = _geometry(c);
-        final List<double> entries = [for (var k = 1; k <= m; k++) _points(g, k).last.$1 - _cx(0)]..sort();
-        expect(entries, expected, reason: 'm = $m');
-        expect(_points(g, 0).last.$1, _cx(0));
+    test('a_detour_is_taken_where_it_saves_a_crossing', () {
+      final RouteGeometry g = _geometry(
+        _grid([5, 4, 2, 0, 2, 3], [1, 3, 3, 1, 2, 0], [(3, 0), (2, 1), (3, 1), (4, 5)]),
+      );
+      _expectLine(g, 2, [(496, 606), (496, 586.8), (916, 586.8), (916, 247.2), (1040, 247.2), (1040, 228)]);
+    });
+
+    test('a_detour_that_saves_nothing_is_left_alone', () {
+      final RouteGeometry g = _geometry(_grid([5, 4, 2, 0], [1, 3, 3, 1], [(3, 0), (2, 1), (3, 1)]));
+      _expectLine(g, 2, [(496, 606), (496, 247.2), (1040, 247.2), (1040, 228)]);
+    });
+
+    test('a_detour_is_taken_for_the_column_order_whatever_it_crosses', () {
+      final RouteGeometry g = _geometry(_grid([5, 4, 2, 0, 1], [1, 3, 3, 1, 2], [(3, 0), (2, 1), (3, 1), (3, 4)]));
+      _expectLine(g, 2, [(512, 606), (512, 592.8), (916, 592.8), (916, 247.2), (1040, 247.2), (1040, 228)]);
+      _expectLine(g, 3, [(496, 606), (496, 586.8), (768, 586.8), (768, 558)]);
+    });
+
+    test('a_fan_of_ten_lines_shares_one_row_gap_without_getting_too_tight', () {
+      final RouteGeometry g = _geometry(
+        _grid(
+          [for (var k = 0; k < 10; k++) 1, 0],
+          [for (var k = 0; k < 10; k++) k + 1, 0],
+          [for (var k = 0; k < 10; k++) (10, k)],
+        ),
+      );
+      for (var k = 0; k < 10; k++) {
+        expect(_trackY(g, k), closeTo(120 + 4.6 * k, 1e-6), reason: 'level $k');
+        expect(_points(g, k).first.$1, closeTo(200 + 26 / 3 * k, 1e-6), reason: 'exit $k');
       }
+      expect(g.tightFans, 0);
     });
 
-    test('a_mixed_side_exits_the_longest_merge_up_at_the_centre_the_other_innermost_then_the_fork', () {
-      // Parent 5 (col 0, row 0): merge-ups into 0 (col 1, row 2) and 1 (col 2, row 3), a fork into 2
-      // (col 3, row 1); 3 and 4 are the merge children's first parents.
-      final RouteClasses c = _grid(
-        [2, 3, 1, 1, 2, 0],
-        [1, 2, 3, 1, 2, 0],
-        [(3, 0), (5, 0), (4, 1), (5, 1), (5, 2)],
+    test('a_fan_too_tight_for_2_px_is_reported_and_its_exits_overflow', () {
+      final RouteGeometry g = _geometry(
+        _grid(
+          [for (var k = 0; k < 24; k++) 1, 0],
+          [for (var k = 0; k < 24; k++) k + 1, 0],
+          [for (var k = 0; k < 24; k++) (24, k)],
+        ),
       );
-      expect(
-        [c.kinds[1], c.kinds[3], c.kinds[4]],
-        [
-          RouteClasses.kindMergeUp,
-          RouteClasses.kindMergeUp,
-          RouteClasses.kindFork,
-        ],
-      );
+      expect(g.tightFans, 1);
+      // A run never comes nearer than 2 px to its band's edges, so the outermost run gives up its share of 46 / 24.
+      expect(_trackY(g, 0), closeTo(120, 1e-6));
+      expect(_trackY(g, 23), closeTo(164, 1e-6));
+      for (var k = 2; k < 24; k++) {
+        expect(_trackY(g, k) - _trackY(g, k - 1), closeTo(46 / 24, 1e-6));
+      }
+      final List<double> exits = [for (var k = 0; k < 24; k++) _points(g, k).first.$1]..sort();
+      expect(exits.last, 272);
+      expect(exits.first, 200);
+    });
+
+    test('a_hidden_merges_lines_share_one_entry_and_the_deep_run_keeps_a_long_stem', () {
+      final RouteClasses c = _grid([2, 0, 1], [0, 1, 2], [(1, 0), (2, 0)], indirect: {0, 1}, parentCounts: [1, 0, 0]);
       final RouteGeometry g = _geometry(c);
-      double exit(int k) => _points(g, k)[0].$1 - _cx(0);
-      // Both merge-ups are vertical at the parent's top: the one into row 3 stays straight longest and takes the
-      // centre, the other is the fan's innermost (24), the fork turning at the top the next (40).
-      expect(exit(3), 0); // merge-up into row 3
-      expect(exit(1), 24); // merge-up into row 2
-      expect(exit(4), 40); // the fork
+      expect(c.slots, [0, 0]);
+      expect(c.deep, [1, 1]);
+      expect(g.portStarts[1] - g.portStarts[0], 1);
+      expect(g.portXs[g.portStarts[0]], 176);
+      _expectLine(g, 1, [(768, 166), (768, 154), (176, 154), (176, 118)]);
+      _expectLine(g, 0, [(472, 276), (472, 256.8), (176, 256.8), (176, 118)]);
     });
 
-    test('a_shared_entrys_deep_run_sits_at_its_free_parts_far_end', () {
-      // As the shared-entry case: the second Indirect edge (2 → 0) is a merge-adjacent line whose run
-      // lies alone in the band above node 2 (row 1, card top at 56 + 110).
-      const double top = 56 + 110;
-      final RouteClasses shared = _grid(
-        [2, 0, 1],
-        [0, 1, 2],
-        [(1, 0), (2, 0)],
+    test('the_same_lines_without_sharing_take_two_entries_and_keep_their_usual_levels', () {
+      final RouteClasses c = _grid([2, 0, 1], [0, 1, 2], [(1, 0), (2, 0)], indirect: {0, 1}, parentCounts: [2, 0, 0]);
+      final RouteGeometry g = _geometry(c);
+      expect(c.slots, [0, 1]);
+      expect(c.deep, [0, 0]);
+      expect(g.portStarts[1] - g.portStarts[0], 2);
+      _expectLine(g, 1, [(768, 166), (768, 137.2), (200, 137.2), (200, 118)]);
+    });
+
+    test('a_loser_of_the_tie_break_at_a_fan_slot_moves_one_slot_further_out', () {
+      final RouteGeometry g = _geometry(_grid([5, 5, 4, 2], [0, 1, 1, 0], [(3, 0), (2, 0), (2, 1), (3, 1)]));
+      _expectLine(g, 1, [(448, 166), (448, 146.8), (216, 146.8), (216, 118)]);
+      _expectLine(g, 3, [(200, 386), (200, 137.2), (448, 137.2), (448, 118)]);
+      expect(g.unsettledPorts, 0);
+    });
+
+    test('a_fork_dodges_a_card_inside_its_childs_column_through_the_gutter_with_8_points', () {
+      final RouteGeometry g = _geometry(_grid([3, 0, 1], [1, 0, 1], [(1, 0)]));
+      _expectLine(g, 0, [
+        (176, 386),
+        (176, 366.8),
+        (472, 366.8),
+        (472, 357.2),
+        (324, 357.2),
+        (324, 137.2),
+        (472, 137.2),
+        (472, 118),
+      ]);
+    });
+
+    test('a_fork_that_cannot_enter_its_childs_column_goes_through_the_gutter_with_6_points', () {
+      // Card 2 (col 1, row 14) reaches down to the run above the parent, so the line cannot enter column 1 at all.
+      final RouteGeometry g = _geometry(_grid([32, 0, 14], [1, 0, 1], [(1, 0)], unit: 16));
+      _expectLine(g, 0, [(176, 276), (176, 258.875), (324, 258.875), (324, 137.2), (472, 137.2), (472, 118)]);
+    });
+
+    test('a_merge_lines_run_at_its_parent_moves_off_a_card_at_unit_16', () {
+      // Parent 2 (col 0, row 0) goes on in node 3 and merges into 0 (col 2, row 48), whose first parent is 1 (col 3,
+      // row 16). Card 4 (col 1, row 3) stands on the usual level 696.8, so the run moves above that card.
+      final RouteGeometry g = _geometry(
+        _grid([48, 16, 0, 96, 3], [2, 3, 0, 0, 1], [(1, 0), (2, 0), (2, 3)], unit: 16),
+      );
+      _expectLine(g, 1, [(200, 716), (200, 676.175), (768, 676.175), (768, 448)]);
+    });
+
+    test('a_detour_between_neighbouring_rows_is_not_taken_even_for_the_column_order', () {
+      // Parent 4 (col 0, row 0) goes on in node 2 and forks to 1 (col 1, row 1). The fork to the nearer column turns nearer
+      // to the card than the merge line to 0 (col 2, row 1), which asks for a detour; one row apart it would be a zigzag.
+      final RouteGeometry g = _geometry(_grid([1, 1, 2, 0, 0], [2, 1, 0, 2, 0], [(3, 0), (4, 0), (4, 1), (4, 2)]));
+      _expectLine(g, 1, [(216, 276), (216, 262.8), (744, 262.8), (744, 228)]);
+    });
+
+    test('a_detours_run_moves_off_a_card_at_unit_16', () {
+      // The detour that saves a crossing, at unit 16, with card 6 (col 2, row 3) on its usual level 586.8.
+      final RouteGeometry g = _geometry(
+        _grid([80, 64, 32, 0, 32, 48, 3], [1, 3, 3, 1, 2, 0, 2], [(3, 0), (2, 1), (3, 1), (4, 5)], unit: 16),
+      );
+      _expectLine(g, 2, [(496, 606), (496, 566.175), (916, 566.175), (916, 247.2), (1040, 247.2), (1040, 228)]);
+    });
+
+    test('a_detour_counts_the_crossings_of_an_8_point_line', () {
+      // Line 4 → 5 dodges card 6 in its child's column with 8 points, and its first run crosses the merge line's usual
+      // climb in column 1: the detour saves that crossing.
+      final RouteGeometry g = _geometry(
+        _grid([5, 4, 2, 0, 1, 3, 2], [1, 3, 3, 1, 2, 0, 0], [(3, 0), (2, 1), (3, 1), (4, 5)]),
+      );
+      expect(_points(g, 3), hasLength(8));
+      _expectLine(g, 2, [(496, 606), (496, 586.8), (916, 586.8), (916, 247.2), (1040, 247.2), (1040, 228)]);
+    });
+
+    test('a_line_reuses_a_gutter_slot_once_the_earlier_line_has_ended', () {
+      // Column 0, rows 6 … 12: A 9 → 12, B 6 → 11, C 7 → 9. B overlaps A (slot 1, +6 px); C starts where A has ended and
+      // overlaps B, so it takes A's slot 0 again.
+      final RouteGeometry g = _geometry(_grid([12, 11, 10, 9, 8, 7, 6], List.filled(7, 0), [(3, 0), (6, 1), (5, 3)]));
+      _expectLine(g, 0, [(176, 386), (176, 357.2), (324, 357.2), (324, 137.2), (176, 137.2), (176, 118)]);
+      _expectLine(g, 1, [(176, 716), (176, 687.2), (330, 687.2), (330, 247.2), (176, 247.2), (176, 228)]);
+      _expectLine(g, 2, [(176, 606), (176, 577.2), (324, 577.2), (324, 467.2), (176, 467.2), (176, 448)]);
+    });
+
+    test('a_line_the_tracks_leave_out_of_order_still_climbs', () {
+      // A seeded graph, reduced: the tracks leave line 3's two levels out of order; monotone levels repair them.
+      final RouteGeometry g = _geometry(
+        _grid(
+          [2, 1, 9, 7, 1, 2, 6, 1, 2, 7, 6, 1, 0, 5, 5, 6, 3, 4, 3],
+          [9, 7, 10, 13, 11, 3, 8, 3, 1, 6, 0, 13, 4, 12, 8, 6, 2, 0, 5],
+          [(1, 0), (4, 2), (10, 3), (7, 3), (7, 5), (12, 6), (11, 8), (16, 9), (12, 11), (17, 13), (18, 15)],
+        ),
+      );
+      expect(polylineFailures(g), isEmpty);
+    });
+
+    test('a_hidden_merge_with_a_straight_line_keeps_one_port_on_that_lines_x', () {
+      // Child 0 (col 1, row 1) has Indirect parents 1 (col 0, row 0) and 2 (col 1, row 0). The owner of the shared slot must
+      // not leave the centre to the straight line, or the two would enter at two x's.
+      final RouteClasses c = _grid([1, 0, 0], [1, 0, 1], [(1, 0), (2, 0)], indirect: {0, 1}, parentCounts: [1, 0, 0]);
+      final RouteGeometry g = _geometry(c);
+      expect(c.slots, [0, 0]);
+      expect(g.portStarts[1] - g.portStarts[0], 1);
+      expect(g.portXs[g.portStarts[0]], 472);
+      _expectLine(g, 0, [(176, 166), (176, 146.8), (472, 146.8), (472, 118)]);
+      _expectLine(g, 1, [(472, 166), (472, 118)]);
+    });
+
+    test('every_line_of_a_shared_slot_takes_part_in_the_tie_break', () {
+      // Child 0 (col 1, row 5) has Indirect parents 1 (col 2, row 4) and 2 (col 3, row 1); line 2 → 0 is the slot's longest
+      // and climbs column 1 from row 1. Line 4 → 5 climbs column 1 past that stretch. Both stay straight 358.8 px, so the
+      // edge with the higher index gives up its port.
+      final RouteClasses c = _grid(
+        [5, 4, 1, 3, 0, 4, 3],
+        [1, 2, 3, 3, 1, 0, 0],
+        [(1, 0), (2, 0), (2, 3), (6, 5), (4, 5)],
         indirect: {0, 1},
-        parentCounts: [1, 0, 0],
-      );
-      expect(shared.kinds[1], RouteClasses.kindMergeAdjacent);
-      expect(_trackY(_geometry(shared), 1), top - 12); // far from the child: the free part's lower end
-      final RouteClasses own = _grid([2, 0, 1], [0, 1, 2], [(1, 0), (2, 0)], indirect: {0, 1}, parentCounts: [2, 0, 0]);
-      expect(_trackY(_geometry(own), 1), top - 24); // the band's middle
-    });
-
-    test('a_free_run_takes_the_room_interval_nearest_the_band_middle', () {
-      // Fork 1 (col 0, row 0) → 0 (col 1, row 32); card 2 in the parent's own column, 6 units up (the
-      // unit rule ignores end columns), splits the band. H 2, gapY 80: band [140, 220], inner
-      // [152, 208], card [179.25, 201.25] → intervals [152, 179.25] (0.75 from the middle 180) and
-      // [201.25, 208] (21.25).
-      final RouteClasses c = _grid([32, 0, 6], [1, 0, 0], [(1, 0)], free: true);
-      expect(c.kinds[0], RouteClasses.kindFork);
-      final g = RouteGeometry.compute(c, const RouteMetrics(width: 240, height: 2, gapY: 80));
-      expect(_trackY(g, 0), 152 + 0.5 * (179.25 - 152));
-    });
-
-    test('a_cyclic_run_pair_counts_one_unavoidable_crossing_and_still_gets_two_tracks', () {
-      // Forks 2 (col 0) → 0 (col 2) and 3 (col 3) → 1 (col 1) in one band: each spans the other's entry.
-      final RouteClasses c = _grid([1, 1, 0, 0], [2, 1, 0, 3], [(2, 0), (3, 1)]);
-      final RouteGeometry g = _geometry(c);
-      expect(g.unavoidableCrossings, 1);
-      expect((_trackY(g, 0) - _trackY(g, 1)).abs(), 6);
-    });
-
-    test('nested_runs_share_a_band_6_px_apart_without_crossing', () {
-      final RouteClasses c = _grid([1, 1, 1, 0], [1, 2, 3, 0], [(3, 0), (3, 1), (3, 2)]);
-      final RouteGeometry g = _geometry(c);
-      expect(g.overfullClusters, 0);
-      expect(g.unavoidableCrossings, 0);
-      final List<double> ys = [for (var k = 0; k < 3; k++) _trackY(g, k)]..sort();
-      expect([ys[1] - ys[0], ys[2] - ys[1]], [6, 6]);
-      // The band above the parent (row 0's card top at pad + pitch): its inner part.
-      const double parentTop = 56 + 110;
-      expect(ys.first, greaterThanOrEqualTo(parentTop - 48 + 12));
-      expect(ys.last, lessThanOrEqualTo(parentTop - 12));
-      expect(_strictCrossings(g, [0, 1, 2]), 0);
-    });
-
-    test('an_overfull_band_keeps_3_5_px_spacing_centred_and_is_reported', () {
-      final RouteClasses c = _grid(
-        [for (var k = 0; k < 10; k++) 1, 0],
-        [for (var k = 0; k < 10; k++) k + 1, 0],
-        [for (var k = 0; k < 10; k++) (10, k)],
       );
       final RouteGeometry g = _geometry(c);
-      expect(g.overfullClusters, 1);
-      expect(g.overfullEdges, everyElement(1));
-      final List<double> ys = [for (var k = 0; k < 10; k++) _trackY(g, k)]..sort();
-      for (var k = 1; k < 10; k++) {
-        expect(ys[k] - ys[k - 1], closeTo(3.5, 1e-9));
-      }
-      const double parentTop = 56 + 110;
-      expect((ys.first + ys.last) / 2, closeTo(parentTop - 24, 1e-9));
+      expect(c.slots[1], 0);
+      _expectLine(g, 4, [(448, 606), (448, 247.2), (200, 247.2), (200, 228)]);
+      expect(g.sharedStretches, 0);
+      expect(g.unsettledPorts, 0);
     });
 
-    test('a_crossing_breaks_the_horizontal_12_by_10', () {
-      // B: straight 1 → 0 in col 1 (rows 0 … 3); A: fork 3 (col 2, row 1) → 2 (col 0, row 2) crosses it.
-      final RouteClasses c = _grid([3, 0, 2, 1], [1, 1, 0, 2], [(1, 0), (3, 2)]);
+    test('a_stretch_the_rules_cannot_avoid_is_reported_for_both_lines', () {
+      final RouteGeometry g = _geometry(_grid([3, 0, 1, 0], [1, 0, 1, 1], [(1, 0), (3, 2)]));
+      _expectLine(g, 0, [
+        (176, 386),
+        (176, 366.8),
+        (472, 366.8),
+        (472, 357.2),
+        (324, 357.2),
+        (324, 137.2),
+        (472, 137.2),
+        (472, 118),
+      ]);
+      expect(g.sharedStretches, 1);
+      expect(g.sharedEdges, [1, 1]);
+      expect(sharedStretchOracle(g), 1);
+    });
+
+    test('a_line_behind_a_card_is_reported_at_unit_16', () {
+      final RouteClasses c = _grid([16, 0, 9], [2, 0, 1], [(1, 0)], unit: 16);
       final RouteGeometry g = _geometry(c);
-      final RouteBridges all = g.bridges(
-        double.negativeInfinity,
-        double.negativeInfinity,
-        double.infinity,
-        double.infinity,
-      );
-      expect(_bridgeList(all), [(_cx(1), _trackY(g, 1), 1, 0, 0)]);
-      final double x = all.xs[0];
-      final double y = all.ys[0];
-      expect(g.bridges(x, y, x + 1, y + 1).length, 1);
-      expect(g.bridges(x + 1, y, x + 2, y + 1).length, 0); // half-open: x0 is in, x1 is out
-      expect(g.bridges(x - 1, y - 1, x, y).length, 0);
+      _expectLine(g, 0, [(176, 166), (176, 146.8), (768, 146.8), (768, 118)]);
+      expect(g.behindCards, 1);
+      expect(g.behindEdges, [1]);
+      expect(cardHits(g).every((h) => g.behindEdges[h.edge] == 1), isTrue);
     });
 
-    test('a_crossing_near_the_horizontals_end_breaks_the_longer_vertical_10_by_12', () {
-      // Two lane-blocked merges on gutter 1: B (6 → 0, rows 0 … 6) first at the gutter's x, A (5 → 2,
-      // rows 1 … 3) second, 6 px to its right; A's run into the gutter ends 6 px past B's vertical.
-      final RouteClasses c = _grid(
-        [6, 5, 3, 2, 2, 1, 0],
-        [1, 1, 1, 1, 0, 0, 0],
-        [(1, 0), (6, 0), (3, 2), (5, 2)],
+    test('an_empty_layout_has_empty_arrays_and_zero_reports', () {
+      final RouteGeometry g = _geometry(_grid([], [], []));
+      expect(g.points, isEmpty);
+      expect(g.pointStarts, [0]);
+      expect(g.portXs, isEmpty);
+      expect(g.verticalXs, isEmpty);
+      expect(g.horizontalYs, isEmpty);
+      expect(
+        [g.behindCards, g.sharedStretches, g.tightFans, g.unavoidableCrossings, g.unsettledPorts],
+        [0, 0, 0, 0, 0],
       );
-      expect(c.kinds[1], RouteClasses.kindGutter);
-      expect(c.kinds[3], RouteClasses.kindGutter);
-      expect([c.gutterSteps[1], c.gutterSteps[3]], [0, 1]);
-      final RouteGeometry g = _geometry(c);
-      final List<_Bridge> all = _bridgeList(
-        g.bridges(double.negativeInfinity, double.negativeInfinity, double.infinity, double.infinity),
-      );
-      final double gutter = _cx(0) + 296 / 2;
-      expect(all, contains((gutter, _trackY(g, 3), 3, 1, 1)));
-      expect(all, unorderedEquals(_allPairs(g)));
-    });
-
-    test('per_window_bridges_equal_the_all_pairs_oracle_on_random_grids_and_windows', () {
-      final rnd = Random(4150);
-      var compared = 0;
-      for (var round = 0; round < 40; round++) {
-        final LayoutInput input = randomGraph(rnd, 40 + rnd.nextInt(60), branchy: round.isOdd);
-        final LayoutMode mode = round % 4 < 2 ? LayoutMode.compact : LayoutMode.free;
-        final grid = GraphGridView.fromBytes(computeGraphGrid(input, mode: mode));
-        final counts = Int32List(input.n);
-        for (var i = 0; i < input.n; i++) {
-          counts[i] = input.parStart[i + 1] - input.parStart[i];
-        }
-        final RouteGeometry g = _geometry(
-          _route(grid, counts),
-          width: const [160.0, 240.0, 400.0][rnd.nextInt(3)],
-          height: rnd.nextBool() ? 40 : 62,
-        );
-        final List<_Bridge> oracle = _allPairs(g)..sort(_compareBridges);
-        final List<_Bridge> whole = _bridgeList(
-          g.bridges(double.negativeInfinity, double.negativeInfinity, double.infinity, double.infinity),
-        )..sort(_compareBridges);
-        expect(whole, oracle, reason: 'round $round');
-        for (var w = 0; w < 20; w++) {
-          final double x0 = rnd.nextDouble() * 3000 - 200;
-          final double y0 = rnd.nextDouble() * 20000 - 200;
-          final double x1 = x0 + rnd.nextDouble() * 1500;
-          final double y1 = y0 + rnd.nextDouble() * 1500;
-          final List<_Bridge> unsorted = _bridgeList(g.bridges(x0, y0, x1, y1));
-          expect(unsorted, _byRunOrder(g, x0, y0, x1, y1), reason: 'round $round window $w: the documented order');
-          final window = <_Bridge>[...unsorted]..sort(_compareBridges);
-          expect(
-            window,
-            oracle.where((b) => b.$1 >= x0 && b.$1 < x1 && b.$2 >= y0 && b.$2 < y1).toList(),
-            reason: 'round $round window $w',
-          );
-          compared += window.length;
-        }
-      }
-      expect(compared, greaterThan(0));
     });
 
     test('a_card_size_change_recomputes_only_the_geometry_deterministically', () {
-      final ({String name, GraphGridView grid, Int32List parentCounts}) rec = _recordings(LayoutMode.free).first;
+      final _Recording rec = _recordings(LayoutMode.free).first;
       final RouteClasses c = _route(rec.grid, rec.parentCounts);
       final List<Object> snapshot = [
-        Uint8List.fromList(c.kinds),
-        Int8List.fromList(c.sides),
-        Int32List.fromList(c.gutters),
-        Int32List.fromList(c.gutterSteps),
+        Int32List.fromList(c.columnNodes),
         Int32List.fromList(c.slots),
         Uint8List.fromList(c.deep),
+        Uint8List.fromList(c.firstParents),
+        Uint8List.fromList(c.goesOn),
       ];
       final RouteGeometry narrow = _geometry(c, width: 160);
       final RouteGeometry wide = _geometry(c, width: 400);
-      expect([c.kinds, c.sides, c.gutters, c.gutterSteps, c.slots, c.deep], snapshot);
+      expect(identical(narrow.classes, c) && identical(wide.classes, c), isTrue);
+      expect([c.columnNodes, c.slots, c.deep, c.firstParents, c.goesOn], snapshot);
       expect(narrow.points, isNot(wide.points));
       final RouteGeometry again = _geometry(c, width: 400);
+      expect(again.pointStarts, wide.pointStarts);
       expect(again.points, wide.points);
       expect(again.portXs, wide.portXs);
       expect(again.horizontalYs, wide.horizontalYs);
@@ -867,43 +631,281 @@ void main() {
     });
   });
 
-  group('route gate', () {
-    test('compact_lines_pass_behind_no_card_except_on_an_overfull_gutter', () {
-      for (final _Recording rec in _recordings(LayoutMode.compact)) {
-        final RouteClasses c = _route(rec.grid, rec.parentCounts);
-        final Uint8List overfull = overfullGutterEdges(c);
-        for (final (double width, double height) in [
-          for (final double w in [160, 240, 400])
-            for (final double h in [40, 62]) (w, h),
-        ]) {
-          final RouteGeometry g = _geometry(c, width: width, height: height);
-          final List<CardHit> hits = [
-            for (final CardHit hit in cardHits(g))
-              if (overfull[hit.edge] == 0) hit,
-          ];
-          expect(hits, isEmpty, reason: '${rec.name} W $width H $height');
-          expect(g.unsettledPorts, 0, reason: '${rec.name} W $width H $height: the port passes settle');
+  group('geometry stage: ports', () {
+    test('nine_exits_on_one_side_fan_as_the_entries_16_9_75_and_8_px_apart_at_w_400_240_160', () {
+      // Parent 9 (col 0, row 0) forks to children 0 … 8 (cols 1 … 9, row 1). The entry fan: 24 out, 16 apart, squeezed
+      // to 8, the overflow on the outermost; at most W/2 − 18.
+      final RouteClasses c = _grid(
+        [for (var k = 0; k < 9; k++) 1, 0],
+        [for (var k = 0; k < 9; k++) k + 1, 0],
+        [for (var k = 0; k < 9; k++) (9, k)],
+      );
+      for (final (double width, List<double> steps) in [
+        (400.0, List.filled(8, 16)),
+        (240.0, List.filled(8, 9.75)),
+        (160.0, <double>[8, 8, 8, 8, 0, 0, 0, 0]),
+      ]) {
+        final RouteGeometry g = _geometry(c, width: width);
+        final List<double> exits = [for (var k = 0; k < 9; k++) _points(g, k)[0].$1 - _cx(0, width: width)]..sort();
+        expect([for (var k = 1; k < 9; k++) exits[k] - exits[k - 1]], steps, reason: 'W $width');
+        expect(exits.first, 24, reason: 'W $width');
+      }
+    });
+
+    test('a_lone_line_sits_at_the_centre_a_straight_one_at_the_centre_else_the_centre_stays_free', () {
+      double exit(RouteGeometry g, int k, int col) => _points(g, k).first.$1 - _cx(col);
+      double entry(RouteGeometry g, int k, int col) => _points(g, k).last.$1 - _cx(col);
+
+      // A lone bending exit: fork 1 (col 0, row 0) → 0 (col 1, row 1).
+      final RouteGeometry lone = _geometry(_grid([1, 0], [1, 0], [(1, 0)]));
+      expect((exit(lone, 0, 0), entry(lone, 0, 1)), (0, 0));
+
+      // A lone merge to a child up-right leaves at the centre (Ralph's nuwmzrpz card, 2026-11-02; it was at +28):
+      // parent 2 (col 0, row 0) is child 0's (col 1, row 2) second parent; 1 (col 1, row 1) is the first.
+      final RouteGeometry up = _geometry(_grid([2, 1, 0], [1, 1, 0], [(1, 0), (2, 0)]));
+      expect(exit(up, 1, 0), 0);
+
+      // Straight + bending: parent 2 (col 0, row 0) → 0 (col 0, row 1) and → 1 (col 1, row 1).
+      final RouteGeometry g = _geometry(_grid([1, 1, 0], [0, 1, 0], [(2, 0), (2, 1)]));
+      expect((exit(g, 0, 0), exit(g, 1, 0)), (0, 24));
+
+      // Left + right, none straight: parent 2 (col 1, row 0) → 0 (col 0, row 1) and → 1 (col 2, row 1).
+      final RouteGeometry sides = _geometry(_grid([1, 1, 0], [0, 2, 1], [(2, 0), (2, 1)]));
+      expect((exit(sides, 0, 1), exit(sides, 1, 1)), (-24, 24), reason: 'the centre stays free');
+
+      // Entries alike: child 0 (col 1, row 1) with parents 1 (col 0, row 0) and 2 (col 2, row 0), none straight.
+      final RouteGeometry merge = _geometry(_grid([1, 0, 0], [1, 0, 2], [(1, 0), (2, 0)]));
+      expect((entry(merge, 0, 1), entry(merge, 1, 1)), (-24, 24), reason: 'top and bottom alike');
+    });
+
+    test('a_line_that_is_vertical_at_the_entry_takes_the_centre_whatever_its_shape', () {
+      // Child 0 (col 1, row 2): first parent 1 (col 0, row 0), climbing child 0's column from the band above row 0;
+      // second parent 2 (col 2, row 1), a merge line that turns right below the child. The fork is vertical at the
+      // child's bottom, so it takes the centre; the merge line fans to its side, right.
+      final RouteGeometry g = _geometry(_grid([2, 0, 1], [1, 0, 2], [(1, 0), (2, 0)]));
+      expect([_points(g, 0).last.$1 - _cx(1), _points(g, 1).last.$1 - _cx(1)], [0, 24]);
+
+      // A same-column second parent right below its child is straight and keeps the centre; the first parent's fork
+      // meets that card in the child's column and goes through the gutter next to it, so it fans right.
+      final RouteGeometry same = _geometry(_grid([2, 0, 1], [0, 1, 0], [(1, 0), (2, 0)]));
+      expect(_points(same, 1), hasLength(2));
+      expect(_points(same, 0), hasLength(8));
+      expect([_points(same, 1).last.$1 - _cx(0), _points(same, 0).last.$1 - _cx(0)], [0, 24]);
+
+      // A single fork entering a child's bottom: at the centre. Fork 1 (col 0, row 0) → 0 (col 1, row 2).
+      final RouteGeometry lone = _geometry(_grid([2, 0], [1, 0], [(1, 0)]));
+      expect(_points(lone, 0).last.$1, _cx(1));
+
+      // An adjacent fork turns right below its child too, so with a merge line beside it the centre stays free:
+      // child 0 (col 1, row 1), parents 1 (col 0, row 0) and 2 (col 2, row 0).
+      final RouteGeometry adjacent = _geometry(_grid([1, 0, 0], [1, 0, 2], [(1, 0), (2, 0)]));
+      expect([_points(adjacent, 0).last.$1 - _cx(1), _points(adjacent, 1).last.$1 - _cx(1)], [-24, 24]);
+    });
+
+    test('a_straight_line_and_a_merge_line_both_vertical_never_share_an_x', () {
+      // Parent 3 (col 0, row 0): straight into 0 (col 0, row 3) and a merge line into 1 (col 1, row 2), whose first
+      // parent is 2 (col 1, row 1). The straight line stays vertical longest and takes the centre; the merge line fans
+      // to the side it later turns to.
+      final RouteGeometry g = _geometry(_grid([3, 2, 1, 0], [0, 1, 1, 0], [(3, 0), (2, 1), (3, 1)]));
+      expect(_points(g, 0), hasLength(2));
+      expect([_points(g, 0).first.$1 - _cx(0), _points(g, 2).first.$1 - _cx(0)], [0, 24]);
+    });
+
+    test('merge_lines_leave_on_the_side_they_turn_to', () {
+      // Ralph's rtvlvrzr card (2026-11-02: two merge lines left of centre that then ran right). Parent 5 (col 1,
+      // row 0): merge lines into 0 (col 2, row 2) and 1 (col 3, row 3), a fork left into 2 (col 0, row 1); 3 and 4 are
+      // the merge children's first parents. The longer merge line takes the centre, the other fans right, the fork
+      // left.
+      final RouteGeometry g = _geometry(
+        _grid([2, 3, 1, 1, 2, 0], [2, 3, 0, 2, 3, 1], [(3, 0), (5, 0), (4, 1), (5, 1), (5, 2)]),
+      );
+      double exit(int k) => _points(g, k)[0].$1 - _cx(1);
+      expect([exit(3), exit(1), exit(4)], [0, 24, -24]);
+    });
+
+    test('a_line_climbing_past_a_port_on_its_x_keeps_it_only_if_longer', () {
+      // Column 0: parent 4 (row 0) merges into 1 (col 1, row 3; first parent 2, col 1, row 2) and climbs to row 3; above
+      // it child 0 (row 4) takes its lone fork from 3 (col 2, row 2), which climbs column 0 down to row 2. Both are
+      // vertical on column 0's centre over rows 2 … 3: the merge line stays straight longer, keeps the centre, and the
+      // fork enters toward its parent.
+      final RouteGeometry g = _geometry(_grid([4, 3, 2, 2, 0], [0, 1, 1, 2, 0], [(2, 1), (4, 1), (3, 0)]));
+      expect([_points(g, 1).first.$1 - _cx(0), _points(g, 2).last.$1 - _cx(0)], [0, 24]);
+    });
+
+    test('entries_sit_24_plus_16_k_px_out_and_squeeze_to_8', () {
+      // Child 0 (col 0, row 1), first parent 1 (col 0, row 0), m more parents in cols 1 … m, row 0.
+      for (final (int m, List<double> expected) in [
+        (3, <double>[24, 40, 56]),
+        (12, <double>[24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 96, 96]),
+      ]) {
+        final RouteClasses c = _grid(
+          [1, 0, for (var k = 0; k < m; k++) 0],
+          [0, 0, for (var k = 0; k < m; k++) k + 1],
+          [(1, 0), for (var k = 0; k < m; k++) (k + 2, 0)],
+        );
+        final RouteGeometry g = _geometry(c);
+        final List<double> entries = [for (var k = 1; k <= m; k++) _points(g, k).last.$1 - _cx(0)]..sort();
+        expect(entries, expected, reason: 'm = $m');
+        expect(_points(g, 0).last.$1, _cx(0));
+      }
+    });
+
+    test('a_mixed_side_exits_the_longest_merge_line_at_the_centre_the_other_innermost_then_the_fork', () {
+      // Parent 5 (col 0, row 0): merge lines into 0 (col 1, row 2) and 1 (col 2, row 3), a fork into 2 (col 3, row 1);
+      // 3 and 4 are the merge children's first parents. Both merge lines are vertical at the parent's top: the one into
+      // row 3 stays straight longest and takes the centre, the other is the fan's innermost (24), the fork turning at
+      // the top the next (40).
+      final RouteGeometry g = _geometry(
+        _grid([2, 3, 1, 1, 2, 0], [1, 2, 3, 1, 2, 0], [(3, 0), (5, 0), (4, 1), (5, 1), (5, 2)]),
+      );
+      double exit(int k) => _points(g, k)[0].$1 - _cx(0);
+      expect(exit(3), 0);
+      expect(exit(1), 24);
+      expect(exit(4), 40);
+    });
+
+    test('a_cyclic_run_pair_counts_one_unavoidable_crossing_and_still_gets_two_tracks', () {
+      // Forks 2 (col 0) → 0 (col 2) and 3 (col 3) → 1 (col 1) in one band: each spans the other's entry.
+      final RouteGeometry g = _geometry(_grid([1, 1, 0, 0], [2, 1, 0, 3], [(2, 0), (3, 1)]));
+      expect(g.unavoidableCrossings, 1);
+      expect((_trackY(g, 0) - _trackY(g, 1)).abs(), closeTo(6, 1e-9));
+    });
+  });
+
+  group('geometry stage: bridges', () {
+    test('a_crossing_breaks_the_horizontal_12_by_10', () {
+      // B: straight 1 → 0 in col 1 (rows 0 … 3); A: fork 3 (col 2, row 1) → 2 (col 0, row 2) crosses it.
+      final RouteGeometry g = _geometry(_grid([3, 0, 2, 1], [1, 1, 0, 2], [(1, 0), (3, 2)]));
+      final RouteBridges all = g.bridges(
+        double.negativeInfinity,
+        double.negativeInfinity,
+        double.infinity,
+        double.infinity,
+      );
+      expect(_bridgeList(all), [(_cx(1), _trackY(g, 1), 1, 0, 0)]);
+      final double x = all.xs[0];
+      final double y = all.ys[0];
+      expect(g.bridges(x, y, x + 1, y + 1).length, 1);
+      expect(g.bridges(x + 1, y, x + 2, y + 1).length, 0); // half-open: x0 is in, x1 is out
+      expect(g.bridges(x - 1, y - 1, x, y).length, 0);
+    });
+
+    test('a_crossing_near_the_horizontals_end_breaks_the_longer_vertical_10_by_12', () {
+      // Two merge lines with cards in their parents' column, on gutter 1: B (6 → 0, rows 0 … 6) has the first slot, A
+      // (5 → 2, rows 1 … 3) the second, 6 px to its right; A's run into the gutter ends 6 px past B's vertical.
+      final RouteGeometry g = _geometry(
+        _grid([6, 5, 3, 2, 2, 1, 0], [1, 1, 1, 1, 0, 0, 0], [(1, 0), (6, 0), (3, 2), (5, 2)]),
+      );
+      expect(_points(g, 1), hasLength(6));
+      expect(_points(g, 3), hasLength(6));
+      final List<_Bridge> all = _bridgeList(
+        g.bridges(double.negativeInfinity, double.negativeInfinity, double.infinity, double.infinity),
+      );
+      final double gutter = _cx(0) + 296 / 2;
+      expect(all, contains((gutter, _trackY(g, 3), 3, 1, 1)));
+      expect(all, unorderedEquals(_allPairs(g)));
+    });
+
+    test('per_window_bridges_equal_the_all_pairs_oracle_on_random_grids_and_windows', () {
+      final rnd = Random(4150);
+      var compared = 0;
+      for (var round = 0; round < 40; round++) {
+        final LayoutInput input = randomGraph(rnd, 40 + rnd.nextInt(60), branchy: round.isOdd);
+        final LayoutMode mode = round % 4 < 2 ? LayoutMode.compact : LayoutMode.free;
+        final grid = GraphGridView.fromBytes(computeGraphGrid(input, mode: mode));
+        final RouteGeometry g = _geometry(
+          _route(grid, _parentCounts(input)),
+          width: const [160.0, 240.0, 400.0][rnd.nextInt(3)],
+          height: rnd.nextBool() ? 40 : 62,
+        );
+        final List<_Bridge> oracle = _allPairs(g)..sort(_compareBridges);
+        final List<_Bridge> whole = _bridgeList(
+          g.bridges(double.negativeInfinity, double.negativeInfinity, double.infinity, double.infinity),
+        )..sort(_compareBridges);
+        expect(whole, oracle, reason: 'round $round');
+        for (var w = 0; w < 20; w++) {
+          final double x0 = rnd.nextDouble() * 3000 - 200;
+          final double y0 = rnd.nextDouble() * 20000 - 200;
+          final double x1 = x0 + rnd.nextDouble() * 1500;
+          final double y1 = y0 + rnd.nextDouble() * 1500;
+          final List<_Bridge> unsorted = _bridgeList(g.bridges(x0, y0, x1, y1));
+          expect(unsorted, _byRunOrder(g, x0, y0, x1, y1), reason: 'round $round window $w: the documented order');
+          final window = <_Bridge>[...unsorted]..sort(_compareBridges);
+          expect(
+            window,
+            oracle.where((b) => b.$1 >= x0 && b.$1 < x1 && b.$2 >= y0 && b.$2 < y1).toList(),
+            reason: 'round $round window $w',
+          );
+          compared += window.length;
+        }
+      }
+      expect(compared, greaterThan(0));
+    });
+  });
+
+  group('line gate', () {
+    test('every_recording_passes_the_line_gate_at_every_card_size_in_both_modes', () {
+      for (final LayoutMode mode in LayoutMode.values) {
+        for (final _Recording rec in _recordings(mode)) {
+          final RouteClasses c = _route(rec.grid, rec.parentCounts);
+          for (final double width in [160, 240, 400]) {
+            // Every card height and gap the densities give: compact (the default), balanced, comfy.
+            for (final (double height, double gapX, double gapY) in const [
+              (40.0, 56.0, 48.0),
+              (62.0, 56.0, 48.0),
+              (44.0, 62.0, 54.0),
+              (68.0, 62.0, 54.0),
+              (48.0, 68.0, 60.0),
+              (74.0, 68.0, 60.0),
+            ]) {
+              final RouteGeometry g = _geometry(c, width: width, height: height, gapX: gapX, gapY: gapY);
+              final what = '${rec.name} ${mode.name} W $width H $height gapY $gapY';
+              expect(lineFailures(g), isEmpty, reason: what);
+              expect(g.behindCards, 0, reason: '$what: no line behind a card');
+              expect(g.sharedStretches, 0, reason: '$what: no shared stretch');
+              expect(g.unsettledPorts, 0, reason: '$what: the port passes settle');
+            }
+          }
         }
       }
     });
 
-    test('free_lines_pass_behind_a_card_only_where_it_is_reported', () {
-      for (final _Recording rec in _recordings(LayoutMode.free)) {
-        final RouteClasses c = _route(rec.grid, rec.parentCounts);
-        final Uint8List overfull = overfullGutterEdges(c);
-        for (final (double width, double height) in [
-          for (final double w in [160, 240, 400])
-            for (final double h in [40, 62]) (w, h),
-        ]) {
-          final RouteGeometry g = _geometry(c, width: width, height: height);
-          final List<CardHit> hits = [
-            for (final CardHit hit in cardHits(g))
-              if (c.fallbackEdges[hit.edge] == 0 && g.overfullEdges[hit.edge] == 0 && overfull[hit.edge] == 0) hit,
-          ];
-          expect(hits, isEmpty, reason: '${rec.name} W $width H $height');
-          expect(g.unsettledPorts, 0, reason: '${rec.name} W $width H $height: the port passes settle');
+    test('every_fuzz_case_has_right_angles_ends_on_their_card_edges_and_lines_that_climb', () {
+      final List<String> cases = File('$_goldens/fuzz/cases.jsonl').readAsLinesSync();
+      expect(cases, hasLength(100));
+      var adjacentMerges = 0;
+      var shared = 0;
+      var behind = 0;
+      final failures = <String>[];
+      for (var i = 0; i < cases.length; i++) {
+        final LayoutInput input = parseSpecInput(utf8.encode(cases[i])).input;
+        for (final LayoutMode mode in LayoutMode.values) {
+          final grid = GraphGridView.fromBytes(computeGraphGrid(input, mode: mode));
+          final RouteClasses c = _route(grid, _parentCounts(input));
+          final RouteGeometry g = _geometry(c);
+          expect(polylineFailures(g), isEmpty, reason: 'case $i ${mode.name}');
+          for (var k = 0; k < c.edgeCount; k++) {
+            if (c.firstParents[k] == 0 &&
+                c.nodeCols[c.edgeFroms[k]] == c.nodeCols[c.edgeTos[k]] &&
+                c.nodeRows[c.edgeTos[k]] == c.nodeRows[c.edgeFroms[k]] + grid.unit) {
+              adjacentMerges++;
+            }
+          }
+          shared += g.sharedStretches;
+          behind += g.behindCards;
+          failures.addAll(lineFailures(g));
         }
       }
+      // These inputs hold the shapes real histories rarely show: gutter lines, detours and a non-first parent one row
+      // below its child in its own column.
+      expect(adjacentMerges, greaterThan(0), reason: 'a merge between adjacent rows of one column');
+      // Dense random merges break the rules more often than real histories, and the rules have known limits
+      // (spikes/graph-layout-lab/README.md, step 12): the counts may fall, never rise.
+      expect(shared, lessThanOrEqualTo(134));
+      expect(behind, lessThanOrEqualTo(30));
+      expect(failures.where((f) => f.contains('column order')).length, lessThanOrEqualTo(152));
+      expect(failures.where((f) => f.contains(' cross')).length, lessThanOrEqualTo(403));
+      expect(failures.where((f) => !f.contains('column order') && !f.contains(' cross')), isEmpty);
     });
 
     test('the_barrel_exports_the_router', () {

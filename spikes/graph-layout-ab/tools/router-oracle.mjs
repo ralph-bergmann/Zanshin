@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: MIT
 //
+// History since 2026-11-10: the oracle retired with router B; `router_cli oracle` is gone
+// and this tool no longer runs. The reference for the lines is spikes/graph-layout-lab.
+//
 // Story 4.15 — the router oracle (docs/graph-layout.md §7.2, amended 2026-10-27; §14): the
 // product's line router B (packages/zanshin_core/lib/src/graph_layout/router.dart) against the
 // export's own routeAll (graph-layout.jsx = GL at e74ced3) on GL's own grids, so differences in lane

@@ -542,9 +542,25 @@ below a card and a merge run sit on one level for 124 px.
 Ralph on 2026-11-10, after looking: a line that leaves the centre for the tie-break is an accepted
 exception. The tight fan stays under watch; it may need another idea.
 
+## Step 14: the rules live in the product
+
+Ralph on 2026-11-10: the lab's line rules move into the engine (Story 4.18, docs/graph-layout.md
+§14). `packages/zanshin_core/lib/src/graph_layout/router.dart` is now a port of `labLines` with every
+switch on, and `App today` on the page is that router.
+
+- `bin/lab_check.dart` runs its line rules on the product's lines too (`appLines` in `lib/scene.dart`);
+  lines of one slot may share a port, as the product's shared entries do.
+- `bin/lab_metrics.dart` prints the product's metrics next to the lab's.
+- The product equals the lab on all three data sets in both modes, with and without stacks, but for
+  the leftover of step 13: every run takes part in the tracks in the product, so TWMS in Compact
+  without stacks has 159 crossings and 0 overlaps where the lab has 158 + 1 (a shared stretch hides a
+  crossing, step 7). docs/graph-layout.md §14.6 lists every difference.
+
+The lab stays the place to try the next rule: change `lib/`, look at the page, then amend the GLD.
+
 ## What the engine has and the lab does not
 
-To carry over when the lab's rules move into the engine (docs/graph-layout.md §14):
+Carried over when the lab's rules moved into the engine (docs/graph-layout.md §14):
 
 - shared entries: several dashed lines into one card with one parent share one port (a hidden
   merge);

@@ -14,7 +14,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import 'graph_layout.dart';
 import 'graph_metrics.dart';
 
-// The graph's edge layer (Story 10.4): 4.15's router B polylines (docs/graph-layout.md §14) stroked with rounded
+// The graph's edge layer (Story 10.4): the line router's polylines (docs/graph-layout.md §14) stroked with rounded
 // corners, dashed Indirect edges, bridges, the @ lineage, hover and dim. The view computes no route.
 //
 // Edge identity: an edge is its index within one layout; across layouts it is (child key, parent key).
@@ -33,7 +33,6 @@ typedef _RouteInput = ({
   Int32List rows,
   Int32List cols,
   int unit,
-  bool free,
   Int32List froms,
   Int32List tos,
   Uint8List kinds,
@@ -64,7 +63,6 @@ _RouteInput _routeInput(GraphLayout layout) {
     rows: rows,
     cols: cols,
     unit: layout.unit,
-    free: layout.mode == GraphMode.free,
     froms: froms,
     tos: tos,
     kinds: kinds,
@@ -76,7 +74,6 @@ RouteClasses _classesOf(_RouteInput input) => RouteClasses.compute(
   nodeRows: input.rows,
   nodeCols: input.cols,
   unit: input.unit,
-  free: input.free,
   edgeFroms: input.froms,
   edgeTos: input.tos,
   edgeKinds: input.kinds,
@@ -85,10 +82,10 @@ RouteClasses _classesOf(_RouteInput input) => RouteClasses.compute(
 
 RouteGeometry _geometryOf(_RouteInput input, RouteMetrics metrics) => RouteGeometry.compute(_classesOf(input), metrics);
 
-/// Router B's class stage for [layout] (once per layout; a card-size change keeps it).
+/// The router's per-layout stage for [layout] (once per layout; a card-size change keeps it).
 RouteClasses graphRouteClasses(GraphLayout layout) => _classesOf(_routeInput(layout));
 
-/// Router B's geometry for [layout] at [metrics], reusing [classes] (from this layout) when given. Synchronous up to
+/// The router's geometry for [layout] at [metrics], reusing [classes] (from this layout) when given. Synchronous up to
 /// [routeSyncNodeLimit] nodes; above it both stages run in `Isolate.run` over typed arrays (docs/graph-layout.md
 /// §14.5), and the result's `classes` is a copy of [classes].
 FutureOr<RouteGeometry> routeGraph(GraphLayout layout, GraphMetrics metrics, {RouteClasses? classes}) {
@@ -103,7 +100,7 @@ FutureOr<RouteGeometry> routeGraph(GraphLayout layout, GraphMetrics metrics, {Ro
   return Isolate.run(() => _geometryOf(input, route));
 }
 
-/// One view's current route (Story 10.4): the class stage kept per layout, the geometry per metrics. [geometryFor]
+/// One view's current route (Story 10.4): the per-layout stage kept per layout, the geometry per metrics. [geometryFor]
 /// answers at once up to [routeSyncNodeLimit] nodes; above it it starts [routeGraph] on another isolate, answers null
 /// until that completes, then calls [onRouted]. A result superseded by a newer request, or arriving after [dispose],
 /// is dropped.
@@ -283,7 +280,7 @@ class GraphEdgeHighlight {
 /// issues one `drawPath` per non-empty group (the lineage two: its glow and its stroke). New inputs need a new
 /// painter, a repaint, never a layout.
 class GraphEdgePainter {
-  /// A painter of [geometry] (router B's output for [layout]) in [theme]'s edge roles.
+  /// A painter of [geometry] (the router's output for [layout]) in [theme]'s edge roles.
   GraphEdgePainter({
     required this.layout,
     required this.geometry,
@@ -344,7 +341,7 @@ class GraphEdgePainter {
   /// The layout painted.
   final GraphLayout layout;
 
-  /// Router B's output for [layout].
+  /// The router's output for [layout].
   final RouteGeometry geometry;
 
   /// The colours.

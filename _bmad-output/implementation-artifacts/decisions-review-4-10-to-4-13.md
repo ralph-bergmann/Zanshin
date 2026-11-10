@@ -172,3 +172,17 @@ answer — with the option taken and its basis, under its story's heading.)*
 | (C) with a source above its target | `_rows` sweeps until every (C) constraint holds; `StackLayout.sweeps` records the count (one on the lab's repositories, at most five on seeded graphs of up to 3,600 nodes; a value above Y throws). | the spec (Design Notes) | A fixed second pass, or a worklist. |
 | The goldens' producer | The product CLI over the committed inputs, `tools/goldens.mjs` rewritten; the A/B spike's references stay as history. | the spec (Design Notes) | A reference implementation of the lab's rule. |
 | The status of `sprint-status.yaml`'s 4-17 | `done`; epic-4 stays `in-progress` for 4.18. | the spec (Repo conventions and Tasks) | `in-review` until a review run closes it. |
+
+### 4.18
+
+| Question | Answer taken | Basis | If overruled |
+|---|---|---|---|
+| Which run is `deep` | Only a `merge` run that ends at the child: a fork's run or a merge at its parent sits near the parent anyway, so its stem is long already. | the spec's matrix (a hidden merge's shared entry keeps its fork on 256.8) | Every last run of a deep edge. |
+| What a 4-point line turns toward at its entry | Its parent's centre: at the entry the exit port is not known yet, and the side and the order come out the same. | taken during this run (the spec: "its usual target") | The exit port (two passes over the ports). |
+| A 2-point line in the tie-break | Reach is infinite, so it never gives up its port to a line that bends; the lab compares real lengths but moves only bending lines. | the spec (Deviations, ports) | Compare real lengths; a short straight line would then keep sharing its x. |
+| A shared slot and the tie-break | Every bending line of the slot claims its own entry stretch and a loss moves the owner; a slot with a 2-point line claims nothing at its entry, so the hidden merge stays on that line's x. | the review (a straight non-owner entered at another x than the slot) | Only the owner claims (router B's rule). |
+| `behindCards` | Counts lines, as the spec's words say; `behindEdges` flags them. | the spec | Count hits (segment × card). |
+| `sharedStretches` exemptions | Line level: one slot, one exit port of one parent, or one entry port of one child. | the spec (§ Always), the app's `shared` test | Only the two port stretches themselves. |
+| The order inside a cluster | The lab's loop with a count per run of who must lie above it: the same order in O(size²) instead of O(size³). | taken during this run | The lab's literal loops. |
+| The status of `sprint-status.yaml`'s 4-18 and epic-4 | `done` and `done` (both stories of the re-open landed). | the spec (Repo conventions and Tasks) | `in-review` until a review run closes it. |
+| `routeSyncNodeLimit` | 7,000: the rule of GLD §14.5 on the slowest series (Free on the synth inputs, 10.8 ms at 9,890 nodes). | measured (spec § Measurements) | Another frame budget, or always `Isolate.run`. |

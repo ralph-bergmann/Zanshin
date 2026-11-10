@@ -10,7 +10,7 @@ import 'package:zanshin/src/features/graph/graph_metrics.dart';
 import 'package:zanshin/src/features/graph/layout_invariants.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/vertical_layout.dart';
-import 'package:zanshin_core/zanshin_core.dart' show RouteClasses, RouteGeometry;
+import 'package:zanshin_core/zanshin_core.dart' show RouteGeometry;
 
 import '../../../widgetbook/graph/graph_recordings.g.dart';
 import '../../../widgetbook/graph/synthetic_layout.dart';
@@ -141,7 +141,8 @@ void main() {
   });
 
   group('route report (Story 10.4)', () {
-    RouteGeometry routed(GraphLayout layout) => routeGraph(layout, GraphMetrics()) as RouteGeometry;
+    RouteGeometry routed(GraphLayout layout) =>
+        RouteGeometry.compute(graphRouteClasses(layout), graphRouteMetrics(GraphMetrics()));
 
     for (final String name in graphRecordingNames) {
       final compact = name.split(' ')[1] == 'compact';
@@ -156,51 +157,73 @@ void main() {
       });
     }
 
-    test('a synthetic free layout reports its router fallbacks without failing', () {
+    test('a synthetic free layout reports what the router reports without failing', () {
       final RouteGeometry g = routed(syntheticLayout(10000, free: true));
       final RouteReport report = checkRoutes(g, gate: false);
       expect(report.passes, isTrue, reason: '$report');
-      expect(report.directFallbacks, g.classes.directFallbacks);
-      expect(report.overfullGutters, g.classes.overfullGutters);
-      expect(report.overfullClusters, g.overfullClusters);
-      expect(report.directFallbacks + report.overfullGutters + report.overfullClusters, greaterThan(0));
+      expect(report.behindLines, g.behindCards);
+      expect(report.sharedStretches, g.sharedStretches);
+      expect(report.tightFans, g.tightFans);
+      expect(report.behindCard, 0, reason: 'every hit is on a line the router reports');
+      // The synthetic columns pack tighter than a branch column would: the count may fall, never rise.
+      expect(report.sharedStretches, lessThanOrEqualTo(435));
     });
 
-    test('a gutter with more than 9 lines in Compact fails, its hits explained', () {
-      // c (row 11) has 11 parents in its own column: the first enters straight, the other 10 share gutter 1, whose
-      // outermost line (step +5, +30 px) runs 2 px inside column 1, behind y. At W 400 the 10 entries fit their side.
+    test('a line pushed behind a card in Compact fails, its hits explained', () {
+      // c (row 11) has 11 parents in its own column: the first enters straight, the other 10 share the gutter on its
+      // right over one stretch, so slot 9 (+30 px) runs 2 px inside column 1, behind y. At W 400 the 10 entries fit
+      // their side.
       final RecordedGraphLayout layout = handLayout(
         <(String, int, int)>[for (var i = 0; i < 11; i++) ('p$i', i, 0), ('y', 10, 1), ('c', 11, 0)],
         edges: <(int, int)>[(12, 10), for (var i = 0; i < 10; i++) (12, i)],
         parentCounts: <int>[for (var i = 0; i < 12; i++) 0, 11],
       );
       final g = routeGraph(layout, GraphMetrics(cardWidth: 400)) as RouteGeometry;
-      expect(g.classes.overfullGutters, 1);
       final RouteReport report = checkRoutes(g, gate: true);
       expect(report.passes, isFalse);
       expect(report.behindCard, 0, reason: '$report');
       expect(report.behindCardExplained, greaterThan(0));
+      expect(report.behindLines, g.behindCards);
       expect(report.collinear, 0);
     });
 
+    RouteReport twoLines(Int32List slots, Int32List froms, Uint8List reported) => checkRouteLines(
+      pointStarts: Int32List.fromList(<int>[0, 4, 8]),
+      points: Float64List.fromList(<double>[0, 0, 0, -50, 100, -50, 100, -100, 50, 0, 50, -50, 150, -50, 150, -100]),
+      edgeFroms: froms,
+      edgeTos: Int32List.fromList(<int>[2, 3]),
+      slots: slots,
+      cardLefts: Float64List(4)..fillRange(0, 4, double.nan),
+      cardTops: Float64List(4)..fillRange(0, 4, double.nan),
+      cardWidth: 240,
+      cardHeight: 62,
+      explained: Uint8List(2),
+      reportedOverlaps: reported,
+      gate: true,
+    );
+
     test('a collinear overlap of unshared lines fails; shared lines may overlap', () {
-      RouteReport check(Int32List slots, Int32List froms) => checkRouteLines(
-        pointStarts: Int32List.fromList(<int>[0, 4, 8]),
-        points: Float64List.fromList(<double>[0, 0, 0, -50, 100, -50, 100, -100, 50, 0, 50, -50, 150, -50, 150, -100]),
-        edgeFroms: froms,
-        edgeTos: Int32List.fromList(<int>[2, 3]),
-        slots: slots,
-        cardLefts: Float64List(4)..fillRange(0, 4, double.nan),
-        cardTops: Float64List(4)..fillRange(0, 4, double.nan),
-        cardWidth: 240,
-        cardHeight: 62,
-        explained: Uint8List(2),
-        gate: true,
+      final RouteReport unshared = twoLines(
+        Int32List.fromList(<int>[0, 1]),
+        Int32List.fromList(<int>[0, 1]),
+        Uint8List(2),
       );
-      final RouteReport unshared = check(Int32List.fromList(<int>[0, 1]), Int32List.fromList(<int>[0, 1]));
       expect((unshared.collinear, unshared.passes), (1, false));
-      final RouteReport sameSlot = check(Int32List.fromList(<int>[0, 0]), Int32List.fromList(<int>[0, 1]));
+      final RouteReport sameSlot = twoLines(
+        Int32List.fromList(<int>[0, 0]),
+        Int32List.fromList(<int>[0, 1]),
+        Uint8List(2),
+      );
       expect((sameSlot.collinear, sameSlot.passes), (0, true));
+    });
+
+    test('an overlap the router reports for both lines does not count; reported for one line it does', () {
+      final slots = Int32List.fromList(<int>[0, 1]);
+      final froms = Int32List.fromList(<int>[0, 1]);
+      final RouteReport both = twoLines(slots, froms, Uint8List.fromList(<int>[1, 1]));
+      expect((both.collinear, both.passes), (0, true));
+      final RouteReport one = twoLines(slots, froms, Uint8List.fromList(<int>[1, 0]));
+      expect((one.collinear, one.passes), (1, false));
     });
 
     test('two lines of one parent leaving one exit point may overlap on the exit stub', () {
@@ -216,12 +239,32 @@ void main() {
         cardWidth: 240,
         cardHeight: 62,
         explained: Uint8List(2),
+        reportedOverlaps: Uint8List(2),
         gate: true,
       );
       expect((report.collinear, report.passes), (0, true));
     });
 
-    test('D11 (I2): a fork over a lower card in the child column climbs its own free column, no behind-card hit', () {
+    test('two lines reaching one child at one entry point may overlap on the entry stub', () {
+      // Both climb from different parents to (0, −100) over their last 50 px together.
+      final RouteReport report = checkRouteLines(
+        pointStarts: Int32List.fromList(<int>[0, 4, 8]),
+        points: Float64List.fromList(<double>[-100, 0, -100, -50, 0, -50, 0, -100, 100, 0, 100, -50, 0, -50, 0, -100]),
+        edgeFroms: Int32List.fromList(<int>[1, 2]),
+        edgeTos: Int32List.fromList(<int>[0, 0]),
+        slots: Int32List.fromList(<int>[0, 1]),
+        cardLefts: Float64List(3)..fillRange(0, 3, double.nan),
+        cardTops: Float64List(3)..fillRange(0, 3, double.nan),
+        cardWidth: 240,
+        cardHeight: 62,
+        explained: Uint8List(2),
+        reportedOverlaps: Uint8List(2),
+        gate: true,
+      );
+      expect((report.collinear, report.passes), (0, true));
+    });
+
+    test('a fork over a lower card in the child column passes behind no card', () {
       // p ← x in column 1 at row 1 sits between p (row 0) and its child c (row 2, column 1).
       final RecordedGraphLayout layout = handLayout(
         const <(String, int, int)>[('p', 0, 0), ('x', 1, 1), ('c', 2, 1)],
@@ -229,10 +272,11 @@ void main() {
         parentCounts: const <int>[0, 1, 1],
       );
       final RouteGeometry g = routed(layout);
-      expect(g.classes.kinds[1], RouteClasses.kindMergeUp);
       final RouteReport report = checkRoutes(g, gate: true);
       expect(report.behindCard + report.behindCardExplained, 0);
       expect(report.passes, isTrue);
+      // The fork climbs x's column for a few pixels beside the line into x: reported, and only that one.
+      expect(report.sharedStretches, 1);
     });
 
     test('an empty layout passes', () {

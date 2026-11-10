@@ -226,11 +226,27 @@ bool _crosses(List<double> p, List<double> q) {
   return false;
 }
 
-/// The line rules: every line is drawn with right angles, from its parent's top to its child's
-/// bottom; no run passes behind a card; the lines of one card do not cross each other and turn in
-/// the order of their columns.
+/// The cards of [grid] in pixels, by node; null for a member of a collapsed stack.
+List<LabCard?> _cardsOf(GraphGridView grid, RouteMetrics m) {
+  var maxRow = 0;
+  for (final int row in grid.nodeRows) {
+    maxRow = row > maxRow ? row : maxRow;
+  }
+  return [
+    for (var i = 0; i < grid.nodeRows.length; i++)
+      grid.nodeRows[i] < 0
+          ? null
+          : LabCard(
+              node: i,
+              col: grid.nodeCols[i],
+              x: m.pad + grid.nodeCols[i] * (m.width + m.gapX),
+              y: m.pad + (maxRow - grid.nodeRows[i]) / grid.unit * (m.height + m.gapY),
+            ),
+  ];
+}
+
+/// The line rules on the lab's lines and on the product's.
 List<String> _lineFails(LabData d, LayoutMode mode, {required bool stacks}) {
-  final fails = <String>[];
   const m = RouteMetrics(width: 240, height: 62);
   final GraphGridView grid = labGrid(
     d,
@@ -243,21 +259,7 @@ List<String> _lineFails(LabData d, LayoutMode mode, {required bool stacks}) {
     fewestSkipped: false,
     dockToParent: true,
   );
-  var maxRow = 0;
-  for (final int row in grid.nodeRows) {
-    maxRow = row > maxRow ? row : maxRow;
-  }
-  final cardOf = [
-    for (var i = 0; i < grid.nodeRows.length; i++)
-      grid.nodeRows[i] < 0
-          ? null
-          : LabCard(
-              node: i,
-              col: grid.nodeCols[i],
-              x: m.pad + grid.nodeCols[i] * (m.width + m.gapX),
-              y: m.pad + (maxRow - grid.nodeRows[i]) / grid.unit * (m.height + m.gapY),
-            ),
-  ];
+  final List<LabCard?> cardOf = _cardsOf(grid, m);
   final List<LabLine> lines = labLines(
     grid,
     cardOf,
@@ -273,6 +275,18 @@ List<String> _lineFails(LabData d, LayoutMode mode, {required bool stacks}) {
     tightFans: true,
     tieBreak: true,
   );
+  final GraphGridView product = appGrid(d, mode, stacks: stacks);
+  return [
+    ..._ruleFails(cardOf, lines, m),
+    for (final String fail in _ruleFails(_cardsOf(product, m), appLines(d, product, m), m)) 'product: $fail',
+  ];
+}
+
+/// The line rules on [lines] over [cardOf]: every line is drawn with right angles, from its parent's
+/// top to its child's bottom; no run passes behind a card; the lines of one card do not cross each
+/// other and turn in the order of their columns.
+List<String> _ruleFails(List<LabCard?> cardOf, List<LabLine> lines, RouteMetrics m) {
+  final fails = <String>[];
   // No line passes behind a card, with a vertical or a horizontal run (the page's metric).
   if (measure(cardOf.nonNulls.toList(), lines, m)['behind']! > 0) {
     fails.add(
@@ -327,8 +341,9 @@ List<String> _lineFails(LabData d, LayoutMode mode, {required bool stacks}) {
       }
     }
   }
-  // Two lines of one card edge never share a port.
+  // Two lines of one card edge never share a port, except the lines of one slot (the product's shared entries).
   final ports = <(int, bool, double)>{};
+  final entrySlots = <(int, double), int>{};
   for (final LabLine line in lines) {
     final List<double> p = line.pts;
     final LabCard from = cardOf[line.from]!;
@@ -338,8 +353,13 @@ List<String> _lineFails(LabData d, LayoutMode mode, {required bool stacks}) {
     if (!on(from, p[0]) || p[1] != from.y || !on(to, p[p.length - 2]) || p.last != to.y + m.height) {
       fails.add('line ${line.edge} misses a card edge');
     }
-    if (!ports.add((line.from, true, p[0])) || !ports.add((line.to, false, p[p.length - 2]))) {
+    final int? slot = line.slot;
+    final bool sharedEntry = slot != null && entrySlots[(line.to, p[p.length - 2])] == slot;
+    if (!ports.add((line.from, true, p[0])) || (!ports.add((line.to, false, p[p.length - 2])) && !sharedEntry)) {
       fails.add('line ${line.edge} shares a port');
+    }
+    if (slot != null) {
+      entrySlots[(line.to, p[p.length - 2])] = slot;
     }
     for (var q = 0; q + 3 < p.length; q += 2) {
       if (p[q] != p[q + 2] && p[q + 1] != p[q + 3]) {

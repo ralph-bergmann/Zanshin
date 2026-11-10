@@ -125,7 +125,7 @@ List<LayoutViolation> checkLayoutInvariants(GraphLayout layout, {VerticalLayout?
   return violations;
 }
 
-/// What router B's lines do against the cards and each other (Story 10.4): the route report of this checker.
+/// What the router's lines do against the cards and each other (Story 10.4): the route report of this checker.
 @immutable
 class RouteReport {
   /// Creates a report.
@@ -133,30 +133,29 @@ class RouteReport {
     required this.behindCard,
     required this.behindCardExplained,
     required this.collinear,
-    required this.directFallbacks,
-    required this.overfullGutters,
-    required this.overfullClusters,
+    required this.behindLines,
+    required this.sharedStretches,
+    required this.tightFans,
     required this.gate,
   });
 
   /// Segments behind a card that is not one of their edge's endpoints, on edges the router does not report.
   final int behindCard;
 
-  /// Such segments on edges the router reports: a fallback, a run in an overfull cluster, or an outer line of a gutter
-  /// with > 9 lines.
+  /// Such segments on edges the router reports (`behindEdges`).
   final int behindCardExplained;
 
-  /// Collinear overlaps (> 1 px) between segments of two lines router B does not share.
+  /// Collinear overlaps (> 1 px) between segments of two lines the router neither shares nor reports.
   final int collinear;
 
-  /// The router's `directFallbacks`.
-  final int directFallbacks;
+  /// The router's `behindCards`.
+  final int behindLines;
 
-  /// The router's `overfullGutters`.
-  final int overfullGutters;
+  /// The router's `sharedStretches`.
+  final int sharedStretches;
 
-  /// The router's `overfullClusters`.
-  final int overfullClusters;
+  /// The router's `tightFans`.
+  final int tightFans;
 
   /// Whether a behind-card hit fails the report (Compact); otherwise hits are only counted (Free).
   final bool gate;
@@ -167,8 +166,7 @@ class RouteReport {
   @override
   String toString() =>
       'RouteReport(behindCard: $behindCard, explained: $behindCardExplained, collinear: $collinear, '
-      'directFallbacks: $directFallbacks, overfullGutters: $overfullGutters, overfullClusters: $overfullClusters, '
-      'gate: $gate)';
+      'behindLines: $behindLines, sharedStretches: $sharedStretches, tightFans: $tightFans, gate: $gate)';
 }
 
 /// One axis-parallel segment of an edge's polyline: the fixed coordinate `at` and the range `from`–`to` it covers.
@@ -176,9 +174,11 @@ typedef _Segment = ({int edge, double at, double from, double to});
 
 /// The route report of raw polylines (test/debug only): per edge its points (`pointStarts`, `points` as x, y pairs,
 /// from the parent), its parent, child and entry slot; per node its card's left and top (NaN for a hidden node) at
-/// [cardWidth] × [cardHeight]; per edge whether the router reports it ([explained]). A segment is behind a card when
-/// it overlaps the card's interior by more than 0.5 px and the card is not one of its edge's endpoints. Two lines are
-/// shared (router B overlaps them) when they enter by one slot, or leave one parent at one exit point.
+/// [cardWidth] × [cardHeight]; per edge whether the router reports it behind a card ([explained]) and in an overlap
+/// ([reportedOverlaps]). A segment is behind a card when it overlaps the card's interior by more than 0.5 px and the
+/// card is not one of its edge's endpoints. Two lines are shared (the router overlaps them) when they enter by one
+/// slot, reach one child at one entry point, or leave one parent at one exit point; an overlap of two lines the router
+/// reports does not count either.
 RouteReport checkRouteLines({
   required Int32List pointStarts,
   required Float64List points,
@@ -190,10 +190,11 @@ RouteReport checkRouteLines({
   required double cardWidth,
   required double cardHeight,
   required Uint8List explained,
+  required Uint8List reportedOverlaps,
   required bool gate,
-  int directFallbacks = 0,
-  int overfullGutters = 0,
-  int overfullClusters = 0,
+  int behindLines = 0,
+  int sharedStretches = 0,
+  int tightFans = 0,
 }) {
   const inset = .5;
   // Cards per column (by left edge), each column by top.
@@ -271,7 +272,11 @@ RouteReport checkRouteLines({
       slots[a] == slots[b] ||
       edgeFroms[a] == edgeFroms[b] &&
           points[2 * pointStarts[a]] == points[2 * pointStarts[b]] &&
-          points[2 * pointStarts[a] + 1] == points[2 * pointStarts[b] + 1];
+          points[2 * pointStarts[a] + 1] == points[2 * pointStarts[b] + 1] ||
+      edgeTos[a] == edgeTos[b] &&
+          points[2 * pointStarts[a + 1] - 2] == points[2 * pointStarts[b + 1] - 2] &&
+          points[2 * pointStarts[a + 1] - 1] == points[2 * pointStarts[b + 1] - 1] ||
+      reportedOverlaps[a] != 0 && reportedOverlaps[b] != 0;
 
   // Collinear overlaps: segments on one line (to 1e-6 px), swept by their start.
   int overlaps(List<_Segment> segments) {
@@ -298,20 +303,18 @@ RouteReport checkRouteLines({
     behindCard: hits,
     behindCardExplained: explainedHits,
     collinear: overlaps(horizontals) + overlaps(verticals),
-    directFallbacks: directFallbacks,
-    overfullGutters: overfullGutters,
-    overfullClusters: overfullClusters,
+    behindLines: behindLines,
+    sharedStretches: sharedStretches,
+    tightFans: tightFans,
     gate: gate,
   );
 }
 
 /// The route report of [geometry] (test/debug only): the cards at the router's own positions, an edge explained when
-/// the router reports it (`fallbackEdges`, `overfullEdges`, or an outer line of a gutter holding more than 9 lines:
-/// one offset at least gapX / 2 from the gutter's centre). [gate] is Compact.
+/// the router reports it (`behindEdges`), an overlap reported when both lines carry `sharedEdges`. [gate] is Compact.
 RouteReport checkRoutes(RouteGeometry geometry, {required bool gate}) {
   final RouteClasses classes = geometry.classes;
   final int n = classes.nodeRows.length;
-  final int e = classes.edgeCount;
   final double pitch = geometry.metrics.height + geometry.metrics.gapY;
   final double colW = geometry.metrics.width + geometry.metrics.gapX;
   final double pad = geometry.metrics.pad;
@@ -321,23 +324,6 @@ RouteReport checkRoutes(RouteGeometry geometry, {required bool gate}) {
     final int row = classes.nodeRows[i];
     lefts[i] = row < 0 ? double.nan : pad + classes.nodeCols[i] * colW;
     tops[i] = row < 0 ? double.nan : pad + (classes.maxRow - row) / classes.unit * pitch;
-  }
-  // The router's gutter budget (router.dart `_gutterBudget`).
-  const gutterBudget = 9;
-  final perGutter = <int, int>{};
-  for (var k = 0; k < e; k++) {
-    if (classes.kinds[k] == RouteClasses.kindGutter) {
-      perGutter.update(classes.gutters[k], (count) => count + 1, ifAbsent: () => 1);
-    }
-  }
-  final explained = Uint8List(e);
-  for (var k = 0; k < e; k++) {
-    // Only a line of an overfull gutter whose offset (6 px per step) reaches the neighbouring cards.
-    final bool overfullGutter =
-        classes.kinds[k] == RouteClasses.kindGutter &&
-        perGutter[classes.gutters[k]]! > gutterBudget &&
-        classes.gutterSteps[k].abs() * 6 >= geometry.metrics.gapX / 2;
-    explained[k] = classes.fallbackEdges[k] != 0 || geometry.overfullEdges[k] != 0 || overfullGutter ? 1 : 0;
   }
   return checkRouteLines(
     pointStarts: geometry.pointStarts,
@@ -349,10 +335,11 @@ RouteReport checkRoutes(RouteGeometry geometry, {required bool gate}) {
     cardTops: tops,
     cardWidth: geometry.metrics.width,
     cardHeight: geometry.metrics.height,
-    explained: explained,
+    explained: geometry.behindEdges,
+    reportedOverlaps: geometry.sharedEdges,
     gate: gate,
-    directFallbacks: classes.directFallbacks,
-    overfullGutters: classes.overfullGutters,
-    overfullClusters: geometry.overfullClusters,
+    behindLines: geometry.behindCards,
+    sharedStretches: geometry.sharedStretches,
+    tightFans: geometry.tightFans,
   );
 }

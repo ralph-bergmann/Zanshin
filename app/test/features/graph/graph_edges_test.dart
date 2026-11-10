@@ -19,9 +19,9 @@ import '../../../widgetbook/graph/graph_recordings.g.dart';
 import '../../../widgetbook/graph/synthetic_layout.dart';
 import 'graph_harness.dart';
 
-/// [layout]'s geometry, synchronously (≤ the sync limit).
+/// [layout]'s geometry, synchronously whatever its size: these tests look at the lines, not at where they are computed.
 RouteGeometry routed(GraphLayout layout, GraphMetrics metrics, {RouteClasses? classes}) =>
-    routeGraph(layout, metrics, classes: classes) as RouteGeometry;
+    RouteGeometry.compute(classes ?? graphRouteClasses(layout), graphRouteMetrics(metrics));
 
 GraphEdgePainter painterOf(GraphLayout layout, {GraphMetrics? metrics}) =>
     GraphEdgePainter(layout: layout, geometry: routed(layout, metrics ?? GraphMetrics()), theme: GraphTheme.night);
@@ -630,7 +630,7 @@ void main() {
   });
 
   test(
-    '> 20k nodes: GraphRouteCache routes on another isolate and drops a result superseded by a metrics change',
+    'above the sync limit: GraphRouteCache routes on another isolate and drops a result superseded by a metrics change',
     () async {
       final RecordedGraphLayout layout = syntheticLayout(30000);
       var routed = 0;
@@ -652,7 +652,7 @@ void main() {
     },
   );
 
-  test('≤ 20k nodes: GraphRouteCache answers at once and a W change reuses the classes', () {
+  test('within the sync limit: GraphRouteCache answers at once and a W change reuses the classes', () {
     final RecordedGraphLayout layout = recording('design-all compact');
     var routed = 0;
     final cache = GraphRouteCache(onRouted: () => routed++);

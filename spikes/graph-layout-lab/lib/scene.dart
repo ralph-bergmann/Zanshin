@@ -52,15 +52,24 @@ final class LabCard {
   bool nearer = false;
 }
 
-/// One line on the page: [pts] are x, y pairs from the parent's top edge to the child's bottom edge.
+/// One line on the page: [pts] are x, y pairs from the parent's top edge to the child's bottom edge. [slot] is the
+/// product router's entry slot: lines of one slot share their entry port. The lab's own lines have none.
 final class LabLine {
-  LabLine({required this.edge, required this.from, required this.to, required this.pts, required this.dashed});
+  LabLine({
+    required this.edge,
+    required this.from,
+    required this.to,
+    required this.pts,
+    required this.dashed,
+    this.slot,
+  });
 
   final int edge;
   final int from;
   final int to;
   final List<double> pts;
   final bool dashed;
+  final int? slot;
 
   /// Whether the line passes behind a card; set by [measure].
   bool behind = false;
@@ -133,7 +142,7 @@ Map<String, Object?> buildScene(
           tightFans: rules.contains('tight-fan'),
           tieBreak: rules.contains('tie-break'),
         )
-      : _appLines(d, grid, m);
+      : appLines(d, grid, m);
   final Map<String, int> metrics = measure(cards, lines, m);
 
   // The members of every stack node, oldest first.
@@ -200,13 +209,12 @@ Map<String, Object?> buildScene(
 }
 
 /// The app's lines: the product router on [grid].
-List<LabLine> _appLines(LabData d, GraphGridView grid, RouteMetrics m) {
+List<LabLine> appLines(LabData d, GraphGridView grid, RouteMetrics m) {
   final int n = d.input.n;
   final classes = RouteClasses.compute(
     nodeRows: grid.nodeRows,
     nodeCols: grid.nodeCols,
     unit: grid.unit,
-    free: grid.mode == LayoutMode.free,
     edgeFroms: grid.edgeFroms,
     edgeTos: grid.edgeTos,
     edgeKinds: grid.edgeKinds,
@@ -221,6 +229,7 @@ List<LabLine> _appLines(LabData d, GraphGridView grid, RouteMetrics m) {
         to: grid.edgeTos[k],
         pts: geometry.points.sublist(2 * geometry.pointStarts[k], 2 * geometry.pointStarts[k + 1]),
         dashed: grid.edgeKinds[k] == GraphGridView.edgeKindIndirect,
+        slot: classes.slots[k],
       ),
   ];
 }

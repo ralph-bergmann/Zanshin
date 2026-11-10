@@ -25,7 +25,7 @@ Supply the commit graph's data and layout from jj. The commit-graph view (Epic 1
 - Story 4.15: Line router B (done; superseded in part by 4.18)
 - Story 4.16: Free: no card in the day-divider band (done)
 - Story 4.17: Columns by branch, per mode (done)
-- Story 4.18: Lines by the lab's rules (open)
+- Story 4.18: Lines by the lab's rules (done)
 
 ## Requirements & Constraints
 
@@ -46,7 +46,7 @@ Supply the commit graph's data and layout from jj. The commit-graph view (Epic 1
 - **References (from 4.17).** The reference is the lab, `spikes/graph-layout-lab`: `lib/columns.dart` for columns, `lib/lines.dart` for lines. Goldens are recorded with the product CLI `packages/zanshin_core/benchmark/graph_layout_cli.dart`. The A/B spike's references (`spikes/graph-layout-ab`) no longer match and stay as history.
 - **Standing rules.** No type named `GraphLayout` or `GraphRef` in `packages/`. Engine types stay out of the `lib/zanshin_core.dart` barrel, except the router's. A run that decides something new appends it to `decisions-review-4-10-to-4-13.md` under its own `### 4.x` heading.
 - **Engine guardrails:** flat typed arrays and CSR offsets; no per-node objects or maps on hot paths; hand-written monomorphic sorts with total keys, never `List.sort`; tunables `const` or request parameters; the core imports only `dart:typed_data`, `package:meta` and itself; the worker stays `Isolate.spawn`ed. Contract violations throw `LayoutContractException`, never a repaired layout.
-- **Router (`router.dart`).** 4.18 replaces router B's classes and tracks. Its output arrays, ports, shared entries, bridges and reports stay. A polyline can have up to 8 points, so consumers must assume no fixed count. It runs on the UI side: synchronous up to `routeSyncNodeLimit`, `Isolate.run` above, never a worker request.
+- **Router (`router.dart`).** 4.18 replaced router B's classes and tracks with the lab's line rules. Its output arrays, ports, shared entries, bridges and reports stay. A polyline can have up to 8 points, so consumers must assume no fixed count. It runs on the UI side: synchronous up to `routeSyncNodeLimit` (7,000 visible nodes), `Isolate.run` above, never a worker request.
 - **Worker.** `RepoHandle.graphLayout(...)` re-runs the topology per request, keeps no state and loads timestamps for every request, because every day key needs them. One worker serves every repository, so a layout delays whatever is queued behind it.
 - **Rust (stable).** Only `zanshin-jj` imports `jj_lib`; externs live only in `zanshin-ffi`. The jj reference pin is `v0.47.0`.
 - **Tests.** Coverage is Rust-only, so Dart tests are the safety net: unit tests, goldens, invariants on at least 1,000 seeded DAGs, real-cdylib worker tests. Fixtures are committed and never regenerated.
@@ -57,6 +57,6 @@ The view never decides rows, columns, line shapes, buckets or a free y. It maps 
 
 ## Cross-Story Dependencies
 
-- 4.17 needs 4.11, 4.13, 4.14 and 4.16 (done). 4.18 needs 4.17, because its rules count on a branch's reserved column, and 4.15, 10.4, 10.19 and 10.30 (done). Until 4.18 lands, router B draws on the new columns.
+- 4.17 needs 4.11, 4.13, 4.14 and 4.16 (done). 4.18 needs 4.17, because its rules count on a branch's reserved column, and 4.15, 10.4, 10.19 and 10.30 (done).
 - Witnesses that retire: I8, the joint design oracle and byte identity with the A/B spike (4.17); the router oracle (4.18). I1, I5, I6 and I7 stay; I2–I4 are restated for branch columns.
 - Epic 10 consumers: 10.1, 10.2, 10.4, 10.12, 10.16, 10.17, 10.19.

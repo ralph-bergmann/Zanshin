@@ -90,6 +90,8 @@ viewer/       throwaway HTML viewer (index.html, viewer.js, viewer.css); viewer/
    compares the product CLI with that binary and checks I8.
 12. **Done (2026-10-27, Story 4.15):** line router B, [`docs/graph-layout.md`](../../docs/graph-layout.md)
    §14 — product-only (`packages/zanshin_core/lib/src/graph_layout/router.dart`), no spike reference.
+   *(History since 2026-11-10, Story 4.18: the oracle retired with router B; the reference for the
+   lines is `spikes/graph-layout-lab`.)*
    `tools/router-oracle.mjs` checks it against the export's own `routeAll` on GL's own grids (the
    sample and the Lines Study's PRESETS × FAN at three widths, two heights, both modes: 132 cases);
    `loadLayout` gained `kinds` (GL's routed edges carry their kind) and `study` (the Study's
@@ -154,6 +156,8 @@ node tools/goldens.mjs              # → packages/zanshin_core/test/graph_layou
 
 # line router B (Story 4.15, docs/graph-layout.md §14): the router oracle against GL's routeAll,
 # and route checks / timings on the scale inputs
+# (history since 2026-11-10, Story 4.18: the oracle retired with router B, `router_cli oracle` is gone;
+# the `check` and `bench` commands stay)
 (cd ../../packages/zanshin_core && dart compile exe benchmark/router_cli.dart -o ../../spikes/graph-layout-ab/outputs/bin/router_cli)
 node tools/router-oracle.mjs        # ≈ 45 s: sample, study and gutter cases → outputs/oracle/router-{cases,dart,report}.json
                                     # (exit 1 on an unexplained difference, an empty gutter-coverage count

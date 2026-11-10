@@ -76,10 +76,10 @@ Duration graphTransitionDuration(ZsMotion motion) => <Duration>[
   if (motion.durFlip > Duration.zero) graphBornEdgeDelay + graphBornEdgeDraw,
 ].reduce((a, b) => a > b ? a : b);
 
-/// A viewport over [layout] with commit cards (Story 10.3), router B's edges (Story 10.4) and Free's day axis (Story
+/// A viewport over [layout] with commit cards (Story 10.3), the router's edges (Story 10.4) and Free's day axis (Story
 /// 10.2): the composition the catalogue and `GraphView` share (Story 10.5). It owns its scroll controllers, its rows
 /// (once per layout, remapped per metrics change), its day-axis painter (rebuilt when the rows, the theme or the local
-/// day of [cards]' "now" change) and its edge painter; its [GraphRouteCache] runs the route's class stage once per
+/// day of [cards]' "now" change) and its edge painter; its [GraphRouteCache] runs the route's per-layout stage once per
 /// layout and its geometry once per card size (in `Isolate.run` above `routeSyncNodeLimit` nodes; edges appear when it
 /// completes). @'s lineage is on, the selection is the anchor while it is on screen.
 ///

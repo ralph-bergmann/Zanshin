@@ -12,7 +12,7 @@ import 'graph_layout.dart';
 import 'vertical_layout.dart';
 
 // Hidden history (Story 10.19): the `//` markers on dashed (Indirect) edges, the end stubs of Missing edges, their
-// placement over router B's geometry and their painting in the edge layer. Placement follows the export's scan
+// placement over the router's geometry and their painting in the edge layer. Placement follows the export's scan
 // (design/graph-gaps.jsx:10-75) against whole-layout indexes; it runs once per layout, card size and clearance.
 
 /// What a gap is.
@@ -187,10 +187,10 @@ double graphGapsBottomExtraOf(GraphLayout layout) {
 ///   0, ±.28, ±.14·W) ≥ 14 px from every entry port of the node and from its stubs before; else the slot farthest
 ///   from them. Its label goes right of the glyph where that box is free, else left, else nowhere.
 ///
-/// Cost: O(D · k log E) for D dashed edges and k runs, cards and marks near each run (binary searches over router
-/// B's sorted run indexes and the y-sorted card index), never a scan of every edge per dashed edge.
+/// Cost: O(D · k log E) for D dashed edges and k runs, cards and marks near each run (binary searches over the
+/// router's sorted run indexes and the y-sorted card index), never a scan of every edge per dashed edge.
 class GraphGaps {
-  /// Places [layout]'s gaps over [geometry] (router B's output for it) with [rows]' card rects.
+  /// Places [layout]'s gaps over [geometry] (the router's output for it) with [rows]' card rects.
   factory GraphGaps.compute({
     required GraphLayout layout,
     required RouteGeometry geometry,
@@ -389,7 +389,7 @@ final class _Placer {
   final _gaps = <GraphGap>[];
   final _cuts = <int, List<GraphEdgeCut>>{};
 
-  // Router B's vertical runs per x, by top: a run lookup costs its strip's hits, not its whole plane height.
+  // The router's vertical runs per x, by top: a run lookup costs its strip's hits, not its whole plane height.
   late final _verticals = GraphVerticalRuns(geometry);
 
   // The marks placed so far, hashed into 64 px cells.
@@ -734,7 +734,7 @@ final class _Placer {
   }
 }
 
-/// Router B's vertical runs ([RouteGeometry.verticalXs], sorted by x) grouped by x, each group ordered by top with
+/// The router's vertical runs ([RouteGeometry.verticalXs], sorted by x) grouped by x, each group ordered by top with
 /// the running maximum of its bottoms, so the runs of an x range that overlap a y range are found without scanning
 /// the group's other runs. The marker placement's lookup; public for its test only.
 // shortcut: one long run early in a group keeps the running maximum high and the walk scans down to it; runs of one

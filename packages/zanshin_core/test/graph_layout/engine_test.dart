@@ -674,18 +674,18 @@ void main() {
         const e = 2; // the edges by child: M1→M2, M1→i, F1→i, R→M1, R→F1
         expect([r.edgeFroms[e], r.edgeTos[e]], [3, 1], reason: mode.name);
         expect([_routeNames[r.edgeRoutes[e]], r.edgeBlocked[e] != 0], ['straight', false], reason: mode.name);
-        // Position 1: the second parent of i, so router B has no straight column line for it.
+        // Position 1: the second parent of i. A straight line, since no card lies between the two in that column.
         final classes = RouteClasses.compute(
           nodeRows: r.nodeRows,
           nodeCols: r.nodeCols,
           unit: r.unit,
-          free: mode == LayoutMode.free,
           edgeFroms: r.edgeFroms,
           edgeTos: r.edgeTos,
           edgeKinds: r.edgeKinds,
           parentCounts: Int32List.fromList([1, 2, 1, 1, 0]),
         );
-        expect(classes.kinds[e], RouteClasses.kindGutter, reason: mode.name);
+        final geometry = RouteGeometry.compute(classes, const RouteMetrics(width: 240, height: 62));
+        expect(geometry.pointStarts[e + 1] - geometry.pointStarts[e], 2, reason: mode.name);
       }
     });
 
