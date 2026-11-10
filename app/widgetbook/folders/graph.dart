@@ -124,8 +124,7 @@ final graphFolder = WidgetbookFolder(
               options: syntheticSizes,
               labelBuilder: (value) => '${value ~/ 1000}k',
             );
-            // No lane-order knob: the synthetic generator writes columns directly and has no lane order.
-            final GraphViewOptions options = _options(context, laneOrder: false);
+            final GraphViewOptions options = _options(context);
             final RecordedGraphLayout layout = _fixture(
               'synthetic $size ${options.layout.name}',
               () => syntheticLayout(size, free: options.layout == GraphMode.free),
@@ -164,7 +163,7 @@ final graphFolder = WidgetbookFolder(
           builder: (context) {
             final String pair = context.knobs.object.dropdown(label: 'pair', options: _operationPairs);
             final synthetic = pair == _operationPairs.last;
-            final GraphViewOptions options = _options(context, laneOrder: !synthetic);
+            final GraphViewOptions options = _options(context);
             final free = options.layout == GraphMode.free;
             final String sample = pair.split(' ').first;
             final (GraphLayout from, GraphLayout to) = synthetic
@@ -216,7 +215,7 @@ final graphFolder = WidgetbookFolder(
             return _MinimapDemo(
               key: ValueKey<int>(lanes),
               revset: 'jj log',
-              options: _options(context, laneOrder: false),
+              options: _options(context),
               layoutOf: (request) => _fixture(
                 'long history $lanes ${request.mode.name}',
                 () => syntheticLayout(1500, free: request.mode == GraphMode.free, lanes: lanes, longGapEvery: 75),
@@ -304,19 +303,12 @@ final graphFolder = WidgetbookFolder(
   ],
 );
 
-GraphViewOptions _options(BuildContext context, {bool laneOrder = true}) => GraphViewOptions(
+GraphViewOptions _options(BuildContext context) => GraphViewOptions(
   layout: context.knobs.object.dropdown(
     label: 'layout',
     options: GraphMode.values,
     labelBuilder: (value) => value.name,
   ),
-  laneOrder: laneOrder
-      ? context.knobs.object.dropdown(
-          label: 'lane order',
-          options: GraphLaneOrder.values,
-          labelBuilder: (value) => value.name,
-        )
-      : GraphLaneOrder.compact,
   detailedCards: context.knobs.boolean(label: 'detailed cards', initialValue: true),
   cardWidth: context.knobs.double.slider(
     label: 'card width',
@@ -335,7 +327,7 @@ EdgeInsets _insets(BuildContext context) => EdgeInsets.only(
 /// The recording of [sample] that [options] ask for, with fake refs and — unless [inlineContent] is false (the content
 /// is paged, Story 10.11) — fake content.
 RecordedGraphLayout recordedLayout(String sample, GraphViewOptions options, {bool inlineContent = true}) {
-  final recording = '$sample ${options.layout.name} ${options.laneOrder.name}';
+  final recording = '$sample ${options.layout.name}';
   return _fixture(inlineContent ? recording : '$recording paged', () {
     final (String input, String output) = graphRecordings[recording]!;
     return RecordedGraphLayout.fromSpec(
@@ -377,11 +369,7 @@ const catalogueOperationId = 'catalogue';
 RecordedGraphLayout requestedLayout(String sample, GraphRequest request) {
   final String? stacks = stackRecordingFor(sample, request);
   if (stacks == null) {
-    return recordedLayout(
-      sample,
-      GraphViewOptions(layout: request.mode, laneOrder: request.order),
-      inlineContent: false,
-    );
+    return recordedLayout(sample, GraphViewOptions(layout: request.mode), inlineContent: false);
   }
   return _fixture('$stacks paged', () {
     final (String input, String output, _) = graphStackRecordings[stacks]!;
@@ -409,7 +397,7 @@ final _nowMs = <String, int>{};
 
 /// The recording input's `now_ms` for [sample] (every mode of a sample shares one input).
 int recordedNowMs(String sample) => _nowMs.putIfAbsent(sample, () {
-  final (String input, _) = graphRecordings['$sample free compact']!;
+  final (String input, _) = graphRecordings['$sample free']!;
   return (jsonDecode(input) as Map<String, Object?>)['now_ms']! as int;
 });
 
@@ -579,7 +567,7 @@ class _OperationDemoState extends State<_OperationDemo> {
 
 /// "Viewport / View model" (Story 10.5): a [GraphViewModel] on a [FakeGraphSource] over the recordings (`jj log` →
 /// design-default, `all()` → design-all), bound by [GraphView]; their content is paged with the fake's latency, so
-/// the cards show skeletons first (Story 10.11). The knobs switch the revset, mode and lane order
+/// the cards show skeletons first (Story 10.11). The knobs switch the revset and the mode
 /// through the model (each re-centres on @), and a stale cause makes every layout refuse, so the notice stands over
 /// the last layout (or, picked before the first, over the empty canvas).
 ///
@@ -637,7 +625,6 @@ class _ViewModelDemoState extends State<_ViewModelDemo> {
   void _apply(_ViewModelDemo? old) {
     _model
       ..setMode(widget.options.layout)
-      ..setLaneOrder(widget.options.laneOrder)
       ..setStacks(widget.stacks);
     if (old == null ? widget.revset == 'all()' : old.revset != widget.revset) {
       _model.setRevset(_revset);
@@ -736,9 +723,7 @@ class _MinimapDemoState extends State<_MinimapDemo> {
   }
 
   void _apply(_MinimapDemo? old) {
-    _model
-      ..setMode(widget.options.layout)
-      ..setLaneOrder(widget.options.laneOrder);
+    _model.setMode(widget.options.layout);
     if (old == null ? widget.revset == 'all()' : old.revset != widget.revset) {
       _model.setRevset(widget.revset == 'all()' ? 'all()' : FakeGraphSource.defaults.log);
     }

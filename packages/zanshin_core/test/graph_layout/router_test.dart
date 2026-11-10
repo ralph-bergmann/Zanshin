@@ -191,50 +191,37 @@ typedef _Recording = ({String name, GraphGridView grid, Int32List parentCounts})
 
 List<_Recording> _recordings(LayoutMode mode) {
   final out = <_Recording>[];
-  for (final LaneOrder order in LaneOrder.values) {
-    for (final name in ['stacks/design-default.json', 'stacks/design-all.json']) {
-      final ({LayoutInput input, int nowMs, SpecStackFacts? facts}) parsed = parseSpecInput(
-        File('$_goldens/$name').readAsBytesSync(),
-        stacks: true,
-      );
-      final Int32List counts = parsed.facts!.parentCount;
-      out
-        ..add((
-          name: '$name ${order.name}',
-          grid: GraphGridView.fromBytes(
-            computeGraphGrid(parsed.input, mode: mode, order: order, budget: defaultLayoutBudget),
+  for (final name in ['stacks/design-default.json', 'stacks/design-all.json']) {
+    final ({LayoutInput input, int nowMs, SpecStackFacts? facts}) parsed = parseSpecInput(
+      File('$_goldens/$name').readAsBytesSync(),
+      stacks: true,
+    );
+    final Int32List counts = parsed.facts!.parentCount;
+    out
+      ..add((
+        name: name,
+        grid: GraphGridView.fromBytes(computeGraphGrid(parsed.input, mode: mode)),
+        parentCounts: counts,
+      ))
+      ..add((
+        name: '$name stacks-mixed',
+        grid: GraphGridView.fromBytes(
+          computeGraphGrid(
+            parsed.input,
+            mode: mode,
+            stacks: parseSpecStackRequest(File('$_goldens/stacks/request-mixed.json').readAsBytesSync(), parsed.facts!),
           ),
-          parentCounts: counts,
-        ))
-        ..add((
-          name: '$name ${order.name} stacks-mixed',
-          grid: GraphGridView.fromBytes(
-            computeGraphGrid(
-              parsed.input,
-              mode: mode,
-              order: order,
-              budget: defaultLayoutBudget,
-              stacks: parseSpecStackRequest(
-                File('$_goldens/stacks/request-mixed.json').readAsBytesSync(),
-                parsed.facts!,
-              ),
-            ),
-          ),
-          parentCounts: counts,
-        ));
-    }
-    for (final name in ['design/design-default.json', 'fixtures/medium-narrow.input.json']) {
-      final LayoutInput input = parseSpecInput(File('$_goldens/$name').readAsBytesSync()).input;
-      final counts = Int32List(input.n);
-      for (var i = 0; i < input.n; i++) {
-        counts[i] = input.parStart[i + 1] - input.parStart[i];
-      }
-      out.add((
-        name: '$name ${order.name}',
-        grid: GraphGridView.fromBytes(computeGraphGrid(input, mode: mode, order: order, budget: defaultLayoutBudget)),
+        ),
         parentCounts: counts,
       ));
+  }
+  for (final name in ['design/design-default.json', 'fixtures/medium-narrow.input.json']) {
+    final LayoutInput input = parseSpecInput(File('$_goldens/$name').readAsBytesSync()).input;
+    final counts = Int32List(input.n);
+    for (var i = 0; i < input.n; i++) {
+      counts[i] = input.parStart[i + 1] - input.parStart[i];
     }
+    out.add((name: name, grid: GraphGridView.fromBytes(computeGraphGrid(input, mode: mode)), parentCounts: counts));
   }
   return out;
 }
@@ -802,9 +789,7 @@ void main() {
       for (var round = 0; round < 40; round++) {
         final LayoutInput input = randomGraph(rnd, 40 + rnd.nextInt(60), branchy: round.isOdd);
         final LayoutMode mode = round % 4 < 2 ? LayoutMode.compact : LayoutMode.free;
-        final grid = GraphGridView.fromBytes(
-          computeGraphGrid(input, mode: mode, order: LaneOrder.greedy, budget: defaultLayoutBudget),
-        );
+        final grid = GraphGridView.fromBytes(computeGraphGrid(input, mode: mode));
         final counts = Int32List(input.n);
         for (var i = 0; i < input.n; i++) {
           counts[i] = input.parStart[i + 1] - input.parStart[i];

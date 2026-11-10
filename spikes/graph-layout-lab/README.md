@@ -77,6 +77,8 @@ Check the rules on every data set (seconds, no gate):
 dart --packages=.dart_tool/package_config.json run spikes/graph-layout-lab/bin/lab_check.dart spikes/graph-layout-lab/data
 ```
 
+It also checks that the product's columns equal `lib/columns.dart`; a goldens directory as a second argument runs that check on every golden input.
+
 Print the metrics of every data set, to compare before and after a rule change:
 
 ```bash

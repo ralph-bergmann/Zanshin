@@ -195,7 +195,7 @@ String targetName(GraphViewModel model, String id) {
 ///   request a queued one superseded is dropped.
 /// - **Scroll precedence**, resolved as one [reveal] that lands with its layout: an explicit reveal ([revealKey],
 ///   [setRevset]'s `reveal`, [scrollToWorkingCopy], [scrollToSelection]) beats the re-centre on @ of the first layout
-///   and after a revset, mode or lane-order switch, which beats the viewport's anchor. Pending ones survive a
+///   and after a revset or mode switch, which beats the viewport's anchor. Pending ones survive a
 ///   superseded request and are cleared when a layout lands; an explicit reveal with no request pending applies at
 ///   once (animated).
 /// - **States**: [loading], [empty], [revsetError] and [error] (the last layout kept), [stale], [degraded].
@@ -207,8 +207,8 @@ String targetName(GraphViewModel model, String id) {
 ///   the reload after a success holds [anchorHint] and sets the selection and the reveal per verb from the
 ///   `MutationResult`. Every outcome, refusals included, is published as [outcome]; [undoLast] / [redoLast] take back
 ///   Zanshin's own latest operation only while it is the op-log head ([undoable], [redoable]).
-/// - **Story 10.20**: a landed layout whose operation differs from the shown one's (both known) and that no revset,
-///   mode or lane-order switch asked for is a [transition] when a node's key, column or row changed or a change was
+/// - **Story 10.20**: a landed layout whose operation differs from the shown one's (both known) and that no revset or
+///   mode switch asked for is a [transition] when a node's key, column or row changed or a change was
 ///   born — Zanshin's verbs, an external `jj`, undo, redo and op restore alike. Every new operation takes the anchor,
 ///   the born change and the flash of the last own operation's outcome not yet landed; without a transition its flash
 ///   goes out as [flash]. The born change is revealed by the canvas after the glide, not with the layout. A later
@@ -253,7 +253,6 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   LogDefaults? _defaults;
   String? _revset;
   GraphMode _mode = GraphMode.free;
-  GraphLaneOrder _order = GraphLaneOrder.compact;
   var _stacks = false;
   String? _selected;
 
@@ -358,9 +357,6 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
 
   /// The layout mode.
   GraphMode get mode => _mode;
-
-  /// The lane order.
-  GraphLaneOrder get laneOrder => _order;
 
   /// Whether linear runs group into stacks (Story 10.7's Group stacks).
   bool get stacks => _stacks;
@@ -637,16 +633,6 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       return;
     }
     _mode = mode;
-    _recentre = true;
-    _requestLayout();
-  }
-
-  /// Switches the lane order and re-centres on @.
-  void setLaneOrder(GraphLaneOrder order) {
-    if (order == _order) {
-      return;
-    }
-    _order = order;
     _recentre = true;
     _requestLayout();
   }
@@ -1093,7 +1079,6 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   GraphRequest _build(LogDefaults defaults) => GraphRequest(
     revset: _revset ?? defaults.log,
     mode: _mode,
-    order: _order,
     stacks: _stacks,
     expandedKeys: <String>{..._expanded},
     collapsedKeys: <String>{..._collapsed},

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 // The public vocabulary of a layout request (Story 4.11, docs/graph-layout.md §12–§13): the
-// shipped modes and lane orders, their editable pre-fills, and the contract-violation error.
+// shipped modes, their editable pre-fill, and the contract-violation error.
 
 /// The vertical model of a layout (docs/graph-layout.md §0, §4.2). The names are the SPEC's wire
 /// strings; [Enum.index] is the grid buffer's mode code.
@@ -14,26 +14,8 @@ enum LayoutMode {
   free,
 }
 
-/// The lane → column order of a layout (docs/graph-layout.md §4.6, §4.7). The names are the SPEC's
-/// wire strings; [Enum.index] is the grid buffer's order code.
-enum LaneOrder {
-  /// Greedy lane packing, column = lane.
-  greedy,
-
-  /// Greedy packing, then column exchanges inside time windows: fewer crossings, never wider than
-  /// greedy. The default ([defaultLaneOrder]).
-  compact,
-}
-
 /// The editable pre-fill for a layout request's mode (Ralph, 2026-09-27: `free`).
 const LayoutMode defaultLayoutMode = LayoutMode.free;
-
-/// The editable pre-fill for a layout request's lane order (Ralph, 2026-09-27: `compact`).
-const LaneOrder defaultLaneOrder = LaneOrder.compact;
-
-/// The editable pre-fill for a layout request's ordering budget (docs/graph-layout.md §4.7,
-/// BUDGET): the work units the `compact` lane order may spend before it stops its search.
-const defaultLayoutBudget = 2000000;
 
 /// The layout engine's input broke a contract rule of docs/graph-layout.md §2 (V1–V4, and V5 for a
 /// stack request).

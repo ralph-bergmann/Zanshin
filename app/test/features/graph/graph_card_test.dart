@@ -461,11 +461,11 @@ void main() {
     });
 
     test('fromSpec reads immutable into the flags (the root included) and takes content and refs', () {
-      final RecordedGraphLayout layout = recording('design-all compact greedy');
+      final RecordedGraphLayout layout = recording('design-all compact');
       expect(layout.isImmutable(layout.rootIndex!), isTrue);
       expect(<bool>[for (var i = 0; i < layout.nodeCount; i++) layout.isImmutable(i)], contains(isTrue));
       expect(<bool>[for (var i = 0; i < layout.nodeCount; i++) layout.isImmutable(i)], contains(isFalse));
-      final (String input, String output) = graphRecordings['design-default compact greedy']!;
+      final (String input, String output) = graphRecordings['design-default compact']!;
       final withContent = RecordedGraphLayout.fromSpec(
         input,
         output,

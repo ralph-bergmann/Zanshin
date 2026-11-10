@@ -161,3 +161,14 @@ answer — with the option taken and its basis, under its story's heading.)*
 | Where the day band lives | In the free walk's step (GLD §4.2 free.3): max(gap, U) when dk changes between consecutive walk nodes, the root included (T = tmin); §4.8's (F) sums the same steps. | the spec (Approach, Design Notes) | A separate pass after the walk (shifting every later node). |
 | The spike reference | Gated on `--columns joint`, so `--columns mode`, Rust ≡ Dart and `fuzz.mjs` stay untouched; the product always applies it. | the spec (Boundaries) | Ungated in the spike (the Rust reference would need the rule too). |
 | The app checker | `LayoutInvariant.dayBandClear`, checked in the row model (not `PerNodeTops`) for free layouts only. | the spec (Code Map) | Also over pixel tops. |
+
+### 4.17
+
+| Question | Answer taken | Basis | If overruled |
+|---|---|---|---|
+| Keep both vertical models in `layering` | Yes: a `compact` request still needs the free model for the day keys, and the lab's `same-columns` variant reads `modelY`. One extra pass, a few ms at 100k. | the spec (Design Notes) | A `free` request could skip the `compact` rows; the lab would lose that variant. |
+| The grid's old lane-order slot | Kept as header slot 2, always 0; `fromBytes` refuses another value. Format versions 3 / 4 stay. | the spec (Boundaries) | A format version 5 without the slot. |
+| A merge child in its merge parent's column | Allowed: the reservation ends one pitch below the child. The edge is `straight` (I3 restated), router B classes it `gutter`. | the rule (GLD §4.3 Branch columns), lab | Reserve up to the child's row (a column less reused). |
+| (C) with a source above its target | `_rows` sweeps until every (C) constraint holds; `StackLayout.sweeps` records the count (one on the lab's repositories, at most five on seeded graphs of up to 3,600 nodes; a value above Y throws). | the spec (Design Notes) | A fixed second pass, or a worklist. |
+| The goldens' producer | The product CLI over the committed inputs, `tools/goldens.mjs` rewritten; the A/B spike's references stay as history. | the spec (Design Notes) | A reference implementation of the lab's rule. |
+| The status of `sprint-status.yaml`'s 4-17 | `done`; epic-4 stays `in-progress` for 4.18. | the spec (Repo conventions and Tasks) | `in-review` until a review run closes it. |

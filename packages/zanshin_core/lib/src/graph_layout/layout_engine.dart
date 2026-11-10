@@ -2,29 +2,18 @@
 
 import 'dart:typed_data';
 
-import 'compact_order.dart';
 import 'graph_grid_view.dart';
 import 'layout_input.dart';
 import 'layout_request.dart';
 import 'sort.dart';
 import 'stacks.dart';
 
-// The product layout engine (Story 4.11): docs/graph-layout.md §4 for the shipped scope — the
-// modes compact | free and the lane orders greedy | compact — ported from the spike's Dart
-// reference (spikes/graph-layout-ab/dart/lib/src/layout.dart) and byte-identical to it. Flat
-// typed arrays and CSR adjacency, no per-node objects, monomorphic sorts (sort.dart). Since Story
-// 4.14 it always lays out joint columns (§4.3 / §4.7, amended 2026-10-27): the reference's
-// `--columns joint`.
+// The product layout engine: docs/graph-layout.md §4 for the shipped scope. The rows are §4.2's,
+// and the columns are §4.3's branch columns (amended 2026-11-10): the graph layout lab's rule
+// (spikes/graph-layout-lab/lib/columns.dart) on the requested mode's rows. Flat typed arrays and CSR
+// adjacency, no per-node objects, monomorphic sorts (sort.dart).
 
-/// Stands in for −∞ in the lane packing (every real value is ≥ 0).
-const _negInf = -0x4000000000000000;
-
-/// The longest chain piece that returns to its parent's lane after the packing (§4.3, amended 2026-11-09). Without
-/// a limit long pieces leave the left columns empty and wide histories stay wide.
-const _maxReturnedPiece = 8;
-
-/// U of each vertical model of the joint columns (§4.3, amended 2026-10-27): model 0 is `compact`,
-/// model 1 is `free`.
+/// U of each vertical model (§4.2): model 0 is `compact`, model 1 is `free`.
 const modelUnits = <int>[1, 16];
 
 const _minute = 60000;
@@ -77,12 +66,12 @@ int freeStep(int tPrev, int t, int utcOffsetMin) {
   return pitch;
 }
 
-/// Lays out [input] (docs/graph-layout.md §4) in [mode] with the lane [order], whose `compact`
-/// search may spend [budget] work units, and returns the grid buffer [GraphGridView] reads.
+/// Lays out [input] (docs/graph-layout.md §4) in [mode] and returns the grid buffer [GraphGridView]
+/// reads.
 ///
-/// Lanes and columns are joint (Story 4.14, §4.3 / §4.7 amended 2026-10-27): the same for both
-/// modes, so a `compact` and a `free` grid of one input differ only in rows, routes, `blocked` and
-/// buckets. Every grid carries each node's local day key ([GraphGridView.nodeDays]).
+/// The columns are the branch columns of §4.3 (amended 2026-11-10), chosen on [mode]'s rows, so a
+/// `compact` and a `free` grid of one input may differ in lanes and columns. Every grid carries each
+/// node's local day key ([GraphGridView.nodeDays]).
 ///
 /// With [stacks] (Story 4.13) the finished layout's linear runs are grouped by §4.8 — the columns
 /// stay, only rows move — and the grid has format version [GraphGridView.stackFormatVersion];
@@ -90,13 +79,11 @@ int freeStep(int tPrev, int t, int utcOffsetMin) {
 ///
 /// Validates first ([validateLayoutInput], then [validateStackInput]): a contract violation
 /// throws [LayoutContractException] and lays out nothing. [onPhaseEnd] runs after each of the
-/// five timed phases (layering, lanes, blocked, routing, ordering; §8.2) and, with [stacks], after
-/// the sixth (stacks); writing the grid is not timed.
+/// four timed phases (layering, lanes, blocked, routing; §8.2) and, with [stacks], after the fifth
+/// (stacks); writing the grid is not timed.
 Uint8List computeGraphGrid(
   LayoutInput input, {
   required LayoutMode mode,
-  required LaneOrder order,
-  required int budget,
   StackInput? stacks,
   void Function()? onPhaseEnd,
 }) {
@@ -106,25 +93,23 @@ Uint8List computeGraphGrid(
   }
   final engine = LayoutEngine(input, mode)..layering();
   onPhaseEnd?.call();
-  engine.packLanes();
+  engine.chooseColumns();
   onPhaseEnd?.call();
   engine.markBlocked();
   onPhaseEnd?.call();
   engine.route();
   onPhaseEnd?.call();
-  engine.orderLanes(order, budget: budget);
-  onPhaseEnd?.call();
   if (stacks == null) {
-    return engine.toGrid(order);
+    return engine.toGrid();
   }
   final grouped = StackLayout(engine, stacks)..run();
   onPhaseEnd?.call();
-  return grouped.toGrid(order);
+  return grouped.toGrid();
 }
 
 /// The layout state of docs/graph-layout.md §4, one phase per method; the phases run in order:
-/// [layering], [packLanes], [markBlocked], [route], [orderLanes]. Public for the engine's tests;
-/// callers use [computeGraphGrid].
+/// [layering], [chooseColumns], [markBlocked], [route]. Public for the engine's tests and the
+/// graph layout lab; callers use [computeGraphGrid].
 final class LayoutEngine {
   /// The state for laying out [input] — which must be valid ([validateLayoutInput]) — in [mode].
   LayoutEngine(this.input, this.mode) : n = input.n, unit = unitOf(mode);
@@ -144,12 +129,10 @@ final class LayoutEngine {
   /// The model index of [mode] (0 `compact`, 1 `free`; [modelUnits]).
   int get requestedModel => mode == LayoutMode.compact ? 0 : 1;
 
-  /// Per model its y — the requested one is [y] itself — set by [layering] (§4.3, amended
-  /// 2026-10-27: both models are laid out for the joint packing).
+  /// Per model its y — the requested one is [y] itself — set by [layering]. [chooseColumns] reads only
+  /// the requested model's; the free model also gives a `compact` request its day keys (§4.2 free step
+  /// 4), and the graph layout lab reads both.
   late final List<Int64List> modelY;
-
-  /// Per model its visit order (y, priority, i) ascending, set by [packLanes].
-  late final List<Int32List> modelVisit;
 
   /// §4.2 free's clamped T(i) of every node, in both modes: the day key's time (Story 4.14).
   late final Int64List clampedT;
@@ -180,9 +163,6 @@ final class LayoutEngine {
   /// The children of every node, ascending per node.
   late final Int32List chIdx;
 
-  /// pos(j, child) per entry of [chIdx].
-  late final Int32List chPos;
-
   // ---- §4.2
 
   /// y(i), in rows (`compact`) or 1/U pitch units (`free`).
@@ -204,7 +184,7 @@ final class LayoutEngine {
   /// `free`'s clamped T(i) (§4.2 free, step 2); `null` in `compact`.
   Int64List? freeT;
 
-  // ---- §4.3 (re-assigned by the `compact` order, §4.7)
+  // ---- §4.3
 
   /// lane(i).
   late Int32List lane;
@@ -221,7 +201,7 @@ final class LayoutEngine {
   /// The requested model's visit order: (y, priority, i) ascending.
   late final Int32List visitOrder;
 
-  // ---- §4.4 / §4.5 (recomputed by the `compact` order)
+  // ---- §4.4 / §4.5
 
   /// `blocked` per layout edge (0 or 1).
   late Uint8List blocked;
@@ -231,11 +211,11 @@ final class LayoutEngine {
 
   // ---- §4.6
 
-  /// col(i).
-  late final Int32List col;
+  /// col(i), which equals lane(i) (§4.3, amended 2026-11-10). The graph layout lab replaces it.
+  late Int32List col;
 
   /// §4.1 + §4.2, bench phase `layering`: the requested mode's rows (and `free`'s buckets), then
-  /// the other model's rows for the joint packing.
+  /// the other model's rows.
   void layering() {
     _prep();
     y = Int64List(n);
@@ -315,13 +295,8 @@ final class LayoutEngine {
     chStart[n] = sum;
     final cursor = Int32List.fromList(chStart);
     final chIdx = Int32List(edgeCount);
-    final chPos = Int32List(edgeCount);
     for (var e = 0; e < edgeCount; e++) {
-      final int p = edgeParent[e];
-      final int c = edgeChild[e];
-      final int slot = cursor[p]++;
-      chIdx[slot] = c;
-      chPos[slot] = e - lpStart[c];
+      chIdx[cursor[edgeParent[e]]++] = edgeChild[e];
     }
     this.edgeCount = edgeCount;
     this.lpStart = lpStart;
@@ -331,7 +306,6 @@ final class LayoutEngine {
     this.fp = fp;
     this.chStart = chStart;
     this.chIdx = chIdx;
-    this.chPos = chPos;
   }
 
   /// §4.2 compact into [y].
@@ -453,105 +427,128 @@ final class LayoutEngine {
     this.bucketEnd = bucketEnd;
   }
 
-  /// §4.3, bench phase `lanes` — the joint packing (amended 2026-10-27, Story 4.14): a node fits a
-  /// lane iff, in BOTH models, its interval is disjoint from every interval there except the
-  /// excluded owner's. Packs once in each model's visit order and keeps the packing with fewer
-  /// lanes, `compact`'s on a tie, so the lanes do not depend on [mode].
-  void packLanes() {
+  /// §4.3 (Branch columns, amended 2026-11-10), bench phase `lanes`: every branch's column on the
+  /// requested mode's rows, which sets lane and col. The graph layout lab's `chooseColumns` at its
+  /// defaults, in typed arrays.
+  void chooseColumns() {
+    final Int64List y = this.y;
+    final int u = unit;
+    final Int32List fp = this.fp;
+    final Int32List priority = input.priority;
     final Int32List cont = continuations();
-    final ia = <Int64List>[];
-    final ib = <Int64List>[];
-    final visits = <Int32List>[];
-    for (var k = 0; k < 2; k++) {
-      final (Int64List a, Int64List b) = _intervals(modelY[k], modelUnits[k], cont);
-      ia.add(a);
-      ib.add(b);
-      visits.add(_visitOrder(modelY[k]));
-    }
-    final (Int32List lane0, int count0) = _packVisit(0, visits[0], cont, ia, ib);
-    final (Int32List lane1, int count1) = _packVisit(1, visits[1], cont, ia, ib);
-    modelVisit = visits;
-    visitOrder = visits[requestedModel];
-    final bool compactVisit = count0 <= count1;
-    final lane = compactVisit ? lane0 : lane1;
-    _adoptLanes(
-      lane,
-      _returnShortPieces(lane, compactVisit ? count0 : count1, cont, ia, ib, visits[compactVisit ? 0 : 1]),
-    );
-  }
 
-  /// §4.3, amended 2026-11-09: a chain piece of at most [_maxReturnedPiece] cards that lost its parent's lane moves
-  /// back there, unless a card of another chain or one of its merge parents is in the way. Every other card stays, so
-  /// nothing cascades. Returns the lane count, empty lanes dropped.
-  ///
-  /// shortcut: scans the target lane per returned piece, O(breaks · lane size); a per-lane index would help if a
-  /// measurement ever shows it.
-  int _returnShortPieces(
-    Int32List lane,
-    int count,
-    Int32List cont,
-    List<Int64List> ia,
-    List<Int64List> ib,
-    Int32List order,
-  ) {
-    final lanes = List<List<int>>.generate(count, (_) => <int>[]);
-    final chain = Int32List(n);
-    for (var k = 0; k < n; k++) {
-      final int i = order[k];
+    // Parents have larger indices, so this descending scan numbers a branch at its bottom card: the
+    // branch a branch forks from has the smaller number.
+    final branchOf = Int32List(n);
+    final bottom = Int32List(n);
+    var branches = 0;
+    for (int i = n - 1; i >= 0; i--) {
       final int f = fp[i];
-      chain[i] = f >= 0 && cont[f] == i && lane[f] == lane[i] ? chain[f] : i;
-      lanes[lane[i]].add(i);
-    }
-    bool overlaps(int p, int q) =>
-        (ia[0][p] < ib[0][q] && ia[0][q] < ib[0][p]) || (ia[1][p] < ib[1][q] && ia[1][q] < ib[1][p]);
-    final piece = <int>[];
-    for (var k = 0; k < n; k++) {
-      final int i = order[k];
-      final int f = fp[i];
-      if (f < 0 || cont[f] != i || lane[f] == lane[i]) {
-        continue;
-      }
-      final int from = lane[i];
-      final int to = lane[f];
-      piece.clear();
-      for (var s = i; s >= 0 && lane[s] == from && piece.length <= _maxReturnedPiece; s = cont[s]) {
-        piece.add(s);
-      }
-      if (piece.length > _maxReturnedPiece ||
-          piece.any(
-            (s) => _mergeParentIn(lane, to, s) || lanes[to].any((o) => chain[o] != chain[f] && overlaps(s, o)),
-          )) {
-        continue;
-      }
-      for (final s in piece) {
-        lane[s] = to;
-        chain[s] = chain[f];
-        lanes[from].remove(s);
-        lanes[to].add(s);
+      if (f >= 0 && cont[f] == i) {
+        branchOf[i] = branchOf[f];
+      } else {
+        bottom[branches] = i;
+        branchOf[i] = branches++;
       }
     }
-    final renumbered = Int32List(count);
-    var kept = 0;
-    for (var l = 0; l < count; l++) {
-      renumbered[l] = kept;
-      if (lanes[l].isNotEmpty) {
-        kept++;
+
+    // The node with the least (priority, y); of several, the highest index.
+    var best = 0;
+    for (var i = 1; i < n; i++) {
+      if (priority[i] < priority[best] || (priority[i] == priority[best] && y[i] <= y[best])) {
+        best = i;
       }
+    }
+    final int main = n == 0 ? -1 : branchOf[best];
+
+    final lo = Int64List(branches);
+    final hi = Int64List(branches);
+    final from = Int32List(branches);
+    for (var b = 0; b < branches; b++) {
+      final int bot = bottom[b];
+      final int f = fp[bot];
+      lo[b] = f >= 0 ? y[f] + u : y[bot];
+      hi[b] = y[bot];
+      from[b] = f >= 0 ? branchOf[f] : main;
     }
     for (var i = 0; i < n; i++) {
-      lane[i] = renumbered[lane[i]];
-    }
-    return kept;
-  }
-
-  /// Whether a non-first parent of [i] sits in lane [l]: a same-lane edge must be a first parent (I3).
-  bool _mergeParentIn(Int32List lane, int l, int i) {
-    for (int e = lpStart[i] + 1; e < lpStart[i + 1]; e++) {
-      if (lane[edgeParent[e]] == l) {
-        return true;
+      final int b = branchOf[i];
+      if (y[i] > hi[b]) {
+        hi[b] = y[i];
       }
     }
-    return false;
+    final elsewhere = Uint8List(branches);
+    for (var e = 0; e < edgeCount; e++) {
+      final int child = edgeChild[e];
+      if (e == lpStart[child]) {
+        continue;
+      }
+      final int b = branchOf[edgeParent[e]];
+      if (y[child] - u > hi[b]) {
+        hi[b] = y[child] - u;
+      }
+      if (branchOf[child] != from[b]) {
+        elsewhere[b] = 1;
+      }
+    }
+
+    final depth = Int64List(branches);
+    final length = Int64List(branches);
+    final bottomY = Int64List(branches);
+    final bottomPriority = Int32List(branches);
+    final order = Int32List(branches);
+    for (var b = 0; b < branches; b++) {
+      if (b != main) {
+        depth[b] = from[b] == main || elsewhere[b] != 0 ? 1 : depth[from[b]] + 1;
+      }
+      length[b] = hi[b] - lo[b];
+      bottomY[b] = y[bottom[b]];
+      bottomPriority[b] = priority[bottom[b]];
+      order[b] = branches - 1 - b; // ascending bottom card index, the sorts' last tie-break
+    }
+    // Only the main branch has depth 0, so it comes first with no special key.
+    sortIndicesStable(order, bottomY, second: bottomPriority);
+    sortIndicesStable(order, length);
+    sortIndicesStable(order, hi);
+    sortIndicesStable(order, depth);
+
+    // Column 0 is the main branch's: the scan never returns it for another branch.
+    final intervals = LaneIntervals(branches + 1);
+    final columnOf = Int32List(branches);
+    for (var k = 0; k < branches; k++) {
+      final int b = order[k];
+      if (b == main) {
+        continue;
+      }
+      final int start = lo[b];
+      final int end = hi[b] + u;
+      final int dock = elsewhere[b] != 0 ? 0 : columnOf[from[b]];
+      var column = -1;
+      // shortcut: the scan walks outward over the occupied columns, so C branches over K columns cost O(C·K) probes;
+      // a skip structure over the columns would help if a wide real history ever shows it (§5, amended 2026-11-10).
+      for (var d = 0; column < 0; d++) {
+        if (dock - d >= 1 && !intervals.overlaps(dock - d, start, end)) {
+          column = dock - d;
+        } else if (d > 0 && !intervals.overlaps(dock + d, start, end)) {
+          column = dock + d;
+        }
+      }
+      intervals.insert(column, start, end);
+      columnOf[b] = column;
+    }
+
+    final lane = Int32List(n);
+    var laneCount = 0;
+    for (var i = 0; i < n; i++) {
+      final int column = columnOf[branchOf[i]];
+      lane[i] = column;
+      if (column >= laneCount) {
+        laneCount = column + 1;
+      }
+    }
+    visitOrder = _visitOrder(y);
+    _adoptLanes(lane, laneCount);
+    col = lane;
   }
 
   /// cont(j) of §4.3: the child with fp = j and the least key (priority, index), or −1.
@@ -571,31 +568,6 @@ final class LayoutEngine {
     return cont;
   }
 
-  /// Every node's §4.3 interval [a, b) over the rows [y] in units of [u].
-  (Int64List, Int64List) _intervals(Int64List y, int u, Int32List cont) {
-    final Int32List chStart = this.chStart;
-    final Int32List chIdx = this.chIdx;
-    final Int32List chPos = this.chPos;
-    final a = Int64List(n);
-    final b = Int64List(n);
-    for (var i = 0; i < n; i++) {
-      int end = y[i];
-      final int c = cont[i];
-      if (c >= 0 && y[c] - u > end) {
-        end = y[c] - u;
-      }
-      for (int s = chStart[i]; s < chStart[i + 1]; s++) {
-        if (chPos[s] >= 1 && y[chIdx[s]] - u > end) {
-          end = y[chIdx[s]] - u;
-        }
-      }
-      final int f = fp[i];
-      a[i] = f >= 0 ? y[f] + u : y[i];
-      b[i] = end + 2 * u;
-    }
-    return (a, b);
-  }
-
   /// The nodes by (y, priority, i) ascending.
   Int32List _visitOrder(Int64List y) {
     final order = Int32List(n);
@@ -604,77 +576,6 @@ final class LayoutEngine {
     }
     sortIndicesStable(order, y, second: input.priority);
     return order;
-  }
-
-  /// One joint packing (§4.3, amended 2026-10-27), visiting [order] (model [v]'s). In model v every
-  /// stored interval starts at or below the visited node's y, so the per-lane top-two b′ and the
-  /// segment tree answer the overlap; the other model w needs [LaneIntervals]' general test. First
-  /// fit walks "the least lane ≥ s whose largest b′ ≤ a" and moves past a lane w rejects.
-  (Int32List, int) _packVisit(int v, Int32List order, Int32List cont, List<Int64List> ia, List<Int64List> ib) {
-    final int w = 1 - v;
-    final Int64List av = ia[v];
-    final Int64List bv = ib[v];
-    final Int64List aw = ia[w];
-    final Int64List bw = ib[w];
-    final max1 = Int64List(n)..fillRange(0, n, _negInf);
-    final max2 = Int64List(n)..fillRange(0, n, _negInf);
-    final own1 = Int32List(n)..fillRange(0, n, -1);
-    var size = 1;
-    while (size < n) {
-      size <<= 1;
-    }
-    final tree = Int64List(2 * size)..fillRange(0, 2 * size, _negInf);
-    final other = LaneIntervals(n);
-
-    final lane = Int32List(n);
-    var laneCount = 0;
-    for (var k = 0; k < n; k++) {
-      final int i = order[k];
-      final int a = av[i];
-      final int b = bv[i];
-      var l = -1;
-      final int f = fp[i];
-      if (f >= 0 && cont[f] == i) {
-        final int lf = lane[f];
-        final int others = own1[lf] == f ? max2[lf] : max1[lf];
-        if (others <= a && !other.overlaps(lf, aw[i], bw[i], f)) {
-          l = lf;
-        }
-      }
-      if (l < 0) {
-        var s = 0;
-        while (true) {
-          l = leastLaneFrom(tree, size, s, a);
-          if (!other.overlaps(l, aw[i], bw[i], -1)) {
-            break;
-          }
-          s = l + 1;
-        }
-      }
-
-      if (b > max1[l]) {
-        max2[l] = max1[l];
-        max1[l] = b;
-        own1[l] = i;
-        int node = size + l;
-        tree[node] = b;
-        node >>= 1;
-        while (node >= 1) {
-          final int left = tree[2 * node];
-          final int right = tree[2 * node + 1];
-          tree[node] = left < right ? left : right;
-          node >>= 1;
-        }
-      } else if (b > max2[l]) {
-        max2[l] = b;
-      }
-      other.insert(l, aw[i], bw[i], i);
-      lane[i] = l;
-      if (l >= laneCount) {
-        laneCount = l + 1;
-      }
-    }
-    return (lane, laneCount);
   }
 
   /// Sets [lane] and builds the per-lane y-lists; the visit order is ascending in y, so each list
@@ -703,16 +604,6 @@ final class LayoutEngine {
       laneYs[cursor[lane[i]]++] = y[i];
     }
     return (laneYStart, laneYs);
-  }
-
-  /// The routes of model [k] (§4.4 + §4.5 over that model's y) on the current lanes; the requested
-  /// model's are [routes]. The `compact` order reads both (§4.7, amended 2026-10-27).
-  Uint8List routesOf(int k) {
-    if (k == requestedModel) {
-      return routes;
-    }
-    final (Int32List start, Int64List ys) = _laneYLists(lane, laneCount, modelVisit[k], modelY[k]);
-    return _routesFrom(_blockedFrom(modelY[k], start, ys));
   }
 
   /// §4.4, bench phase `blocked`.
@@ -772,28 +663,8 @@ final class LayoutEngine {
     return routes;
   }
 
-  /// §4.6 / §4.7, bench phase `ordering`; the `compact` order's search may spend [budget] work units.
-  void orderLanes(LaneOrder order, {required int budget}) {
-    switch (order) {
-      case LaneOrder.greedy:
-        col = Int32List.fromList(lane);
-      case LaneOrder.compact:
-        final Int32List newLane = compactColumns(this, budget: budget);
-        var count = 0;
-        for (var i = 0; i < n; i++) {
-          if (newLane[i] >= count) {
-            count = newLane[i] + 1;
-          }
-        }
-        _adoptLanes(newLane, count);
-        markBlocked();
-        route();
-        col = Int32List.fromList(lane);
-    }
-  }
-
-  /// The grid buffer of the finished layout, laid out with [order] (the header echoes it).
-  Uint8List toGrid(LaneOrder order) {
+  /// The grid buffer of the finished layout.
+  Uint8List toGrid() {
     var maxRow = 0;
     var maxLane = 0;
     for (var i = 0; i < n; i++) {
@@ -806,7 +677,6 @@ final class LayoutEngine {
     }
     return writeGraphGrid(
       mode: mode,
-      order: order,
       unit: unit,
       rows: n == 0 ? 0 : maxRow + unit,
       lanes: n == 0 ? 0 : maxLane + 1,
@@ -826,57 +696,34 @@ final class LayoutEngine {
   }
 }
 
-/// The least leaf ≥ [s] of the min-segment-tree [tree] (leaves from index [size]) whose value is
-/// ≤ [a]. The caller guarantees one exists: an unused lane, value −∞, at or after [s].
-int leastLaneFrom(Int64List tree, int size, int s, int a) {
-  int node = size + s;
-  while (tree[node] > a) {
-    // The next subtree to the right: climb while a right child, then step to the right sibling.
-    while (node & 1 == 1) {
-      node >>= 1;
-    }
-    node++;
-  }
-  while (node < size) {
-    node = tree[2 * node] <= a ? 2 * node : 2 * node + 1;
-  }
-  return node - size;
-}
-
-/// Per lane, its intervals [a, b) in the model the joint packing does not visit (§4.3, amended
-/// 2026-10-27), ascending by start, each with the prefix's largest b (and its owner) and
-/// second-largest b. [a, b) overlaps an interval of the lane other than x's iff, among the ones
-/// starting before b, the largest end other than x's exceeds a. Intervals of one lane overlap only
-/// for a node and its continuation child, so the prefix maximum (not the last end) is needed.
+/// Per column, its reservations as disjoint half-open intervals [a, b), ascending by start (§4.3,
+/// Branch columns). Because they are disjoint, [a, b) overlaps one of them iff the last one starting
+/// before b ends after a.
 ///
-/// shortcut: an insert shifts the lane's tail, O(lane size); an array-backed balanced tree would
-/// make it O(log n) if a measurement ever shows the shift (spec-4-14 § Measurements).
+/// shortcut: an insert shifts the column's tail, O(column size); an array-backed balanced tree would
+/// make it O(log n) if a measurement ever shows the shift (spec-4-17 § Measurements).
 final class LaneIntervals {
-  /// Empty lists for up to [n] lanes.
+  /// Empty lists for up to [n] columns.
   LaneIntervals(int n) : _rec = List<Int64List?>.filled(n, null), _len = Int32List(n);
 
-  /// Record layout: a, b, owner, prefix max b, its owner, prefix second-largest b.
-  static const _w = 6;
+  /// Record layout: a, b.
+  static const _w = 2;
 
   final List<Int64List?> _rec;
   final Int32List _len;
 
-  /// Whether [a, b) overlaps an interval of [lane] not owned by [except].
-  bool overlaps(int lane, int a, int b, int except) {
+  /// Whether [a, b) overlaps an interval of [lane].
+  bool overlaps(int lane, int a, int b) {
     final Int64List? r = _rec[lane];
     if (r == null) {
       return false;
     }
     final int before = _countBefore(r, _len[lane], b);
-    if (before == 0) {
-      return false;
-    }
-    final int base = (before - 1) * _w;
-    return (r[base + 4] == except ? r[base + 5] : r[base + 3]) > a;
+    return before > 0 && r[(before - 1) * _w + 1] > a;
   }
 
-  /// Stores [a, b), owned by [owner], in [lane].
-  void insert(int lane, int a, int b, int owner) {
+  /// Stores [a, b) in [lane]; it must overlap no stored interval.
+  void insert(int lane, int a, int b) {
     final int len = _len[lane];
     Int64List? r = _rec[lane];
     if (r == null || (len + 1) * _w > r.length) {
@@ -890,24 +737,6 @@ final class LaneIntervals {
     r.setRange((pos + 1) * _w, (len + 1) * _w, r, pos * _w);
     r[pos * _w] = a;
     r[pos * _w + 1] = b;
-    r[pos * _w + 2] = owner;
-    int m1 = pos == 0 ? _negInf : r[(pos - 1) * _w + 3];
-    int o1 = pos == 0 ? -1 : r[(pos - 1) * _w + 4];
-    int m2 = pos == 0 ? _negInf : r[(pos - 1) * _w + 5];
-    for (var k = pos; k <= len; k++) {
-      final int base = k * _w;
-      final int bk = r[base + 1];
-      if (bk > m1) {
-        m2 = m1;
-        m1 = bk;
-        o1 = r[base + 2];
-      } else if (bk > m2) {
-        m2 = bk;
-      }
-      r[base + 3] = m1;
-      r[base + 4] = o1;
-      r[base + 5] = m2;
-    }
     _len[lane] = len + 1;
   }
 

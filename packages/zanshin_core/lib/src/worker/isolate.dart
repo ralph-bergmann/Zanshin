@@ -61,7 +61,7 @@ import '../ffi/workspace.dart' as repo_ffi_workspace;
 import '../graph_layout/graph_grid_view.dart' show GraphGridView;
 import '../graph_layout/layout_input.dart' show maxUtcOffsetMin;
 import '../graph_layout/layout_reply.dart' show decodeGraphLayoutReplyInternal, layOutTopology;
-import '../graph_layout/layout_request.dart' show LaneOrder, LayoutContractException, LayoutMode;
+import '../graph_layout/layout_request.dart' show LayoutContractException, LayoutMode;
 
 import 'commands.dart';
 import 'correlation.dart';
@@ -844,8 +844,8 @@ class ZanshinWorker {
 
   /// Lay out the whole revset's graph in the repo identified by [handleId] (Story 4.11): the
   /// topology of [graphTopology] — re-derived from head on every call, with timestamps in every
-  /// mode (Story 4.14: joint columns and the node day keys need them) — laid out by the Dart layout
-  /// engine on the worker isolate (docs/graph-layout.md).
+  /// mode (the node day keys need them) — laid out by the Dart layout engine on the worker isolate
+  /// (docs/graph-layout.md).
   ///
   /// Every argument is a caller pass-through (FR-JJ-17; `RepoHandle.graphLayout` pre-fills all
   /// but [revset], [anchors] and [utcOffsetMin]). The call runs the topology call's pre-verb
@@ -859,8 +859,8 @@ class ZanshinWorker {
   /// worker, and the grid has format version 2. With [stacks] false the key lists are ignored.
   ///
   /// Throws [ArgumentError] — before anything is sent — if [revset], [prioritize],
-  /// [shortPrefixes] or an anchor contains an interior NUL (U+0000), if [utcOffsetMin] is not
-  /// within ±1440 or if [budget] is negative. Throws [ZanshinFfiException] on the topology call's
+  /// [shortPrefixes] or an anchor contains an interior NUL (U+0000) or if [utcOffsetMin] is not
+  /// within ±1440. Throws [ZanshinFfiException] on the topology call's
   /// errors (e.g. `ffi.invalid_handle`, `jj.revset_parse_error`; full list: `docs/ffi-abi.md`
   /// § `zanshin_graph_topology`) and [LayoutContractException] when the topology's values break
   /// a contract rule of docs/graph-layout.md §2. Completes with a [StateError] after [close]; the
@@ -872,9 +872,7 @@ class ZanshinWorker {
     required String shortPrefixes,
     required List<String> anchors,
     required LayoutMode mode,
-    required LaneOrder order,
     required int utcOffsetMin,
-    required int budget,
     required bool stacks,
     required List<String> expandedKeys,
     required List<String> collapsedKeys,
@@ -887,7 +885,6 @@ class ZanshinWorker {
     rejectInteriorNul(shortPrefixes, 'shortPrefixes');
     rejectInteriorNuls(anchors, 'anchors');
     RangeError.checkValueInInterval(utcOffsetMin, -maxUtcOffsetMin, maxUtcOffsetMin, 'utcOffsetMin');
-    RangeError.checkNotNegative(budget, 'budget');
     final cmd = GraphLayoutCommand(
       commandId: _correlator.allocateId(),
       handleId: handleId,
@@ -896,9 +893,7 @@ class ZanshinWorker {
       shortPrefixes: shortPrefixes,
       anchors: anchors,
       mode: mode,
-      order: order,
       utcOffsetMin: utcOffsetMin,
-      budget: budget,
       stacks: stacks,
       expandedKeys: expandedKeys,
       collapsedKeys: collapsedKeys,
@@ -3857,9 +3852,7 @@ void _workerEntry(_WorkerInit init) {
           :final String shortPrefixes,
           :final List<String> anchors,
           :final LayoutMode mode,
-          :final LaneOrder order,
           :final int utcOffsetMin,
-          :final int budget,
           :final bool stacks,
           :final List<String> expandedKeys,
           :final List<String> collapsedKeys,
@@ -3877,8 +3870,7 @@ void _workerEntry(_WorkerInit init) {
               prioritize: prioritize,
               shortPrefixes: shortPrefixes,
               anchors: anchors,
-              // Every request: the joint columns lay out both vertical models, and every node's day
-              // key needs its time (Story 4.14).
+              // Every request: every node's day key needs its time, in both modes.
               withTimestamps: true,
             );
             final TransferableTypedData topology;
@@ -3890,9 +3882,7 @@ void _workerEntry(_WorkerInit init) {
               layout = layOutTopology(
                 buf.bytes,
                 mode: mode,
-                order: order,
                 utcOffsetMin: utcOffsetMin,
-                budget: budget,
                 stacks: stacks,
                 expandedKeys: expandedKeys,
                 collapsedKeys: collapsedKeys,

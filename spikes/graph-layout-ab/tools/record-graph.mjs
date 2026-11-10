@@ -11,16 +11,16 @@
 // Recordings:
 //   - the design sample at e243dd2 (packages/zanshin_core/test/graph_layout/goldens/stacks/
 //     design-{default,all}.json, which carry the view facts; laid out without --stacks) in
-//     {free, compact} × {compact, greedy};
+//     {free, compact};
 //   - design-cli-default: the CLI-faithful variant of the older design sample (epics.md Story 10.1
 //     item 13(a), prototype defect 15), derived here from goldens/design/design-default.json —
 //     `wqnwkozp` dropped, `vruxwmqv`'s parent Missing, the other parent indices re-indexed — in
-//     {free, compact} × {compact, greedy};
+//     {free, compact};
 //   - goldens/fixtures/medium-narrow.input.json (the switched dumper's output, with indirect and
-//     Missing edges) in {free, compact} × {compact, greedy}.
+//     Missing edges) in {free, compact}.
 // Story 10.17 also writes app/widgetbook/graph/graph_stack_recordings.g.dart: the design sample
-// (design-default, design-all) laid out with --stacks in {free, compact} × compact, in its default
-// stack state, all expanded, and each run flipped alone from the default.
+// (design-default, design-all) laid out with --stacks in {free, compact}, in its default stack
+// state, all expanded, and each run flipped alone from the default.
 // Needs: dart on PATH. Deterministic: a second run leaves `git status` clean. Exit code 1 on any
 // failure. The large 10k–100k spike outputs are never committed; the catalogue and the tests
 // generate scale fixtures with app/widgetbook/graph/synthetic_layout.dart instead.
@@ -38,11 +38,11 @@ const goldens = path.join(core, "test/graph_layout/goldens");
 const target = path.join(repo, "app/widgetbook/graph/graph_recordings.g.dart");
 const stackTarget = path.join(repo, "app/widgetbook/graph/graph_stack_recordings.g.dart");
 
-/** Story 10.17: the samples and modes recorded with `--stacks` (lane order `compact`). */
+/** Story 10.17: the samples and modes recorded with `--stacks`. */
 const STACK_SAMPLES = ["design-default", "design-all"];
 const STACK_MODES = ["free", "compact"];
 
-const COMBOS = [["free", "compact"], ["free", "greedy"], ["compact", "compact"], ["compact", "greedy"]];
+const MODES = ["free", "compact"];
 
 /** The CLI-faithful variant: `wqnwkozp` gone, `vruxwmqv`'s parent Missing, the rest re-indexed. */
 function cliFaithful(json) {
@@ -61,12 +61,12 @@ function cliFaithful(json) {
   return JSON.stringify(input);
 }
 
-/** [name, input file, derive (or null), combinations [mode, order]]. */
+/** [name, input file, derive (or null)]. */
 const SOURCES = [
-  ["design-default", "stacks/design-default.json", null, COMBOS],
-  ["design-all", "stacks/design-all.json", null, COMBOS],
-  ["design-cli-default", "design/design-default.json", cliFaithful, COMBOS],
-  ["medium-narrow", "fixtures/medium-narrow.input.json", null, COMBOS],
+  ["design-default", "stacks/design-default.json", null],
+  ["design-all", "stacks/design-all.json", null],
+  ["design-cli-default", "design/design-default.json", cliFaithful],
+  ["medium-narrow", "fixtures/medium-narrow.input.json", null],
 ];
 
 function fail(message) {
@@ -74,7 +74,7 @@ function fail(message) {
   process.exit(1);
 }
 
-/** `designDefault`, `designDefaultFreeCompact`, … */
+/** `designDefault`, `designDefaultFree`, … */
 function identifier(...parts) {
   const words = parts.join("-").split("-");
   return words.map((w, k) => (k === 0 ? w : w[0].toUpperCase() + w.slice(1))).join("");
@@ -90,11 +90,11 @@ function rawString(json) {
 }
 
 /** Runs the engine CLI on `inFile` (with the stack request `stacksFile`, or without) and returns its output. */
-function layoutOf(label, inFile, mode, order, outFile, stacksFile = null) {
+function layoutOf(label, inFile, mode, outFile, stacksFile = null) {
   const stacks = stacksFile === null ? [] : ["--stacks", stacksFile];
   const run = spawnSync(
     "dart",
-    ["run", "benchmark/graph_layout_cli.dart", "layout", "--mode", mode, "--order", order, ...stacks, inFile, outFile],
+    ["run", "benchmark/graph_layout_cli.dart", "layout", "--mode", mode, ...stacks, inFile, outFile],
     { cwd: core, encoding: "utf8" },
   );
   if (run.status !== 0) {
@@ -113,7 +113,7 @@ const stackOutputs = [];
 const stackRecordings = [];
 const stackDefaults = [];
 try {
-  for (const [name, file, derive, combos] of SOURCES) {
+  for (const [name, file, derive] of SOURCES) {
     let inFile = path.join(goldens, file);
     if (derive !== null) {
       const derived = path.join(work, `${name}.input.json`);
@@ -122,11 +122,11 @@ try {
     }
     const inputId = `_${identifier(name)}`;
     inputs.push(`const ${inputId} = ${rawString(fs.readFileSync(inFile, "utf8"))};`);
-    for (const [mode, order] of combos) {
-      const outFile = path.join(work, `${name}.${mode}.${order}.json`);
-      const outputId = `_${identifier(name, mode, order)}`;
-      outputs.push(`const ${outputId} = ${rawString(layoutOf(`${name} ${mode} ${order}`, inFile, mode, order, outFile))};`);
-      recordings.push([`${name} ${mode} ${order}`, inputId, outputId]);
+    for (const mode of MODES) {
+      const outFile = path.join(work, `${name}.${mode}.json`);
+      const outputId = `_${identifier(name, mode)}`;
+      outputs.push(`const ${outputId} = ${rawString(layoutOf(`${name} ${mode}`, inFile, mode, outFile))};`);
+      recordings.push([`${name} ${mode}`, inputId, outputId]);
     }
   }
 
@@ -145,7 +145,7 @@ try {
         const requestJson = JSON.stringify({ expanded: request.expanded ?? [], collapsed: request.collapsed ?? [], keep_open: [] });
         fs.writeFileSync(reqFile, requestJson);
         const label = `${name} ${mode} ${state}`;
-        const output = layoutOf(label, inFile, mode, "compact", path.join(work, `${name}.${mode}.${state}.json`), reqFile);
+        const output = layoutOf(label, inFile, mode, path.join(work, `${name}.${mode}.${state}.json`), reqFile);
         const id = `_${identifier(name, mode, ...state.split(" "))}`;
         stackOutputs.push(`const ${id} = ${rawString(output)};`);
         stackOutputs.push(`const ${id}Request = ${rawString(requestJson)};`);
@@ -169,8 +169,8 @@ const dart = `// GENERATED by spikes/graph-layout-ab/tools/record-graph.mjs (Sto
 // Inputs: packages/zanshin_core/test/graph_layout/goldens/{stacks/design-default,stacks/design-all,design/design-default (CLI-faithful variant),fixtures/medium-narrow.input}.json;
 // outputs: the product engine CLI (packages/zanshin_core/benchmark/graph_layout_cli.dart).
 
-/// The recordings by name (\`<input> <mode> <order>\`): a docs/graph-layout.md §2 input and the engine's §3 output for
-/// it, joined by \`RecordedGraphLayout.fromSpec\`.
+/// The recordings by name (\`<input> <mode>\`): a docs/graph-layout.md §2 input and the engine's §3 output for it,
+/// joined by \`RecordedGraphLayout.fromSpec\`.
 const graphRecordings = <String, (String, String)>{
 ${recordings.map(([name, input, output]) => `  '${name}': (${input}, ${output}),`).join("\n")}
 };
@@ -187,7 +187,7 @@ ${outputs.join("\n\n")}
 
 const stackDart = `// GENERATED by spikes/graph-layout-ab/tools/record-graph.mjs (Story 10.17) — do not edit; re-run the tool.
 // Inputs: packages/zanshin_core/test/graph_layout/goldens/stacks/{design-default,design-all}.json;
-// outputs: the product engine CLI with --stacks (packages/zanshin_core/benchmark/graph_layout_cli.dart), lane order compact.
+// outputs: the product engine CLI with --stacks (packages/zanshin_core/benchmark/graph_layout_cli.dart).
 
 /// The stack recordings by name (\`<input> <mode> <state>\`, state \`default\`, \`expanded\` or \`flip <oldest key>\`): a
 /// docs/graph-layout.md §2 input, the engine's grouped §3 output for it and the §4.8 stack request it was laid out with.

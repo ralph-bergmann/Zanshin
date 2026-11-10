@@ -79,7 +79,7 @@ void main() {
   });
 
   test('two layouts never share a version', () {
-    expect(recording('design-default free compact').version, isNot(recording('design-default free compact').version));
+    expect(recording('design-default free').version, isNot(recording('design-default free').version));
   });
 
   test('every recording joins: counts, the working copy of the design sample, CSR ranges over every edge', () {
@@ -139,7 +139,7 @@ void main() {
   });
 
   test("the CLI-faithful design variant drops wq and makes vr's parent Missing", () {
-    final RecordedGraphLayout layout = recording('design-cli-default compact greedy');
+    final RecordedGraphLayout layout = recording('design-cli-default compact');
     expect(layout.nodeCount, 13);
     expect(layout.indexOfKey('wqnwkozp'), isNull);
     expect(layout.elidedOf(layout.indexOfKey('vruxwmqv')!), isTrue);
@@ -196,7 +196,7 @@ void main() {
     });
 
     test('an ungrouped layout has no runs', () {
-      final RecordedGraphLayout layout = recording('design-default free compact');
+      final RecordedGraphLayout layout = recording('design-default free');
       expect(layout.runCount, 0);
       expect(layout.runOf(0), isNull);
       expect(layout.isStackNode(0), isFalse);
@@ -240,7 +240,7 @@ void main() {
         final RecordedGraphLayout layout = stackRecording(name, inlineContent: false);
         expect(checkLayoutInvariants(layout), isEmpty, reason: name);
         final List<String> parts = name.split(' ');
-        final RecordedGraphLayout ungrouped = recording('${parts[0]} ${parts[1]} compact');
+        final RecordedGraphLayout ungrouped = recording('${parts[0]} ${parts[1]}');
         for (var i = 0; i < layout.nodeCount; i++) {
           if (layout.isFolded(i)) {
             continue;
@@ -256,7 +256,7 @@ void main() {
   });
 
   test('the medium-narrow recordings carry indirect edges and Missing stubs', () {
-    final RecordedGraphLayout layout = recording('medium-narrow compact compact');
+    final RecordedGraphLayout layout = recording('medium-narrow compact');
     expect(<GraphEdgeKind>{
       for (var e = 0; e < layout.edgeCount; e++) layout.kindOf(e),
     }, contains(GraphEdgeKind.indirect));

@@ -280,13 +280,13 @@ void main() {
   });
 
   group('the gap legend (Story 10.19)', () {
-    GraphLayout design(GraphRequest request) => recording('design-default free compact');
+    GraphLayout design(GraphRequest request) => recording('design-default free');
     final Finder chip = find.byType(GraphGapLegend);
 
     _testWidgets('the design-default recording: the chip shows its gap count; hidden at 1040 px, shown at 1041', (
       tester,
     ) async {
-      final ({int dashed, int ends}) counts = graphGapCounts(recording('design-default free compact'));
+      final ({int dashed, int ends}) counts = graphGapCounts(recording('design-default free'));
       final int n = counts.dashed + counts.ends;
       expect(n, greaterThan(1));
       await _start(tester, window: const Size(1040, 900), respond: design);
@@ -354,7 +354,7 @@ void main() {
     _testWidgets('its popover opens 90 ms after hover, lists the rows, closes 200 ms after leaving; Show all() '
         'switches to all() and re-centres on @', (tester) async {
       final _Rig rig = await _start(tester, respond: design);
-      final ({int dashed, int ends}) counts = graphGapCounts(recording('design-default free compact'));
+      final ({int dashed, int ends}) counts = graphGapCounts(recording('design-default free'));
       final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: const Offset(5, 895));
       addTearDown(mouse.removePointer);

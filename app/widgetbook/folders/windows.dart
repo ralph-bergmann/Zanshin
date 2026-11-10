@@ -873,8 +873,7 @@ class _DemoRevsetConfigsWindowState extends State<_DemoRevsetConfigsWindow> {
     );
     // The window shows no graph; the preview's "of M" is the layout's `|all()|`, which the recordings do not carry.
     const options = GraphViewOptions();
-    final (String input, String output) =
-        graphRecordings['design-default ${options.layout.name} ${options.laneOrder.name}']!;
+    final (String input, String output) = graphRecordings['design-default ${options.layout.name}']!;
     final layout = RecordedGraphLayout.fromSpec(
       input,
       output,

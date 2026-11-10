@@ -49,7 +49,7 @@ void expectQueryMatchesScan(VerticalLayout vertical, {int seed = 7}) {
 void main() {
   group('UniformRows', () {
     test('maps rows with the design formulas at U = 1', () {
-      final RecordedGraphLayout layout = recording('design-default compact greedy');
+      final RecordedGraphLayout layout = recording('design-default compact');
       final metrics = GraphMetrics();
       final rows = UniformRows(layout, metrics, bottomExtra: 30);
       for (var i = 0; i < layout.nodeCount; i++) {
@@ -59,7 +59,7 @@ void main() {
     });
 
     test('maps the free output (U = 16) with the same formula, in 1/16 pitch', () {
-      final RecordedGraphLayout layout = recording('design-default free compact');
+      final RecordedGraphLayout layout = recording('design-default free');
       expect(layout.unit, 16);
       final metrics = GraphMetrics(detailedCards: false);
       final rows = UniformRows(layout, metrics);
@@ -70,7 +70,7 @@ void main() {
     });
 
     test('withMetrics remaps in place: the same tops as a fresh index', () {
-      final RecordedGraphLayout layout = recording('design-all compact compact');
+      final RecordedGraphLayout layout = recording('design-all compact');
       final rows = UniformRows(layout, GraphMetrics());
       final UniformRows remapped = rows.withMetrics(GraphMetrics(cardWidth: 300, detailedCards: false));
       final fresh = UniformRows(layout, GraphMetrics(cardWidth: 300, detailedCards: false));
@@ -88,13 +88,13 @@ void main() {
     });
 
     test('(k) the visible query equals a brute-force scan over a compact recording', () {
-      expectQueryMatchesScan(UniformRows(recording('medium-narrow compact compact'), GraphMetrics()));
-      expectQueryMatchesScan(UniformRows(recording('design-all compact greedy'), GraphMetrics()));
+      expectQueryMatchesScan(UniformRows(recording('medium-narrow compact'), GraphMetrics()));
+      expectQueryMatchesScan(UniformRows(recording('design-all compact'), GraphMetrics()));
     });
 
     test('(k) the visible query equals a brute-force scan over a free (U = 16) recording', () {
-      expectQueryMatchesScan(UniformRows(recording('medium-narrow free compact'), GraphMetrics()));
-      expectQueryMatchesScan(UniformRows(recording('design-all free compact'), GraphMetrics(detailedCards: false)));
+      expectQueryMatchesScan(UniformRows(recording('medium-narrow free'), GraphMetrics()));
+      expectQueryMatchesScan(UniformRows(recording('design-all free'), GraphMetrics(detailedCards: false)));
     });
   });
 
@@ -118,7 +118,7 @@ void main() {
     test('(k) the visible query equals a brute-force scan', () {
       expectQueryMatchesScan(PerNodeTops(layout, GraphMetrics(), tops));
       final rng = math.Random(3);
-      final RecordedGraphLayout big = recording('medium-narrow compact compact');
+      final RecordedGraphLayout big = recording('medium-narrow compact');
       final scattered = Float64List.fromList(<double>[
         for (var i = 0; i < big.nodeCount; i++) rng.nextDouble() * 20000,
       ]);

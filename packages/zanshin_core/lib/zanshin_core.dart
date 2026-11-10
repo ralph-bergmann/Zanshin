@@ -125,8 +125,7 @@ export 'src/ffi/workspace.dart'
         WorkspaceRootResult;
 export 'src/ffi/zanshin_version.dart' show zanshinFfiVersion;
 export 'src/graph_layout/graph_grid_view.dart' show GraphGridView;
-export 'src/graph_layout/layout_request.dart'
-    show LaneOrder, LayoutContractException, LayoutMode, defaultLaneOrder, defaultLayoutBudget, defaultLayoutMode;
+export 'src/graph_layout/layout_request.dart' show LayoutContractException, LayoutMode, defaultLayoutMode;
 export 'src/graph_layout/router.dart' show RouteBridges, RouteClasses, RouteGeometry, RouteMetrics, routeSyncNodeLimit;
 export 'src/revset_text.dart'
     show

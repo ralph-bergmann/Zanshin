@@ -94,17 +94,18 @@ const _stackArrayNames = <String>['node run', 'run state', 'run node', 'run star
 /// **Format** (format version [formatVersion]; little-endian; the contract of docs/graph-layout.md
 /// §13):
 /// - **Header:** 35 int32 slots at byte 0 — [0] the format version, [1] the mode
-///   ([LayoutMode.index]: 0 compact, 1 free), [2] the lane order ([LaneOrder.index]: 0 greedy,
-///   1 compact), [3] U (1 in `compact`, 16 in `free`), [4] rows, [5] lanes, [6] n, [7] E (the
-///   layout edges), [8] B (the buckets), then for each of the thirteen arrays below its byte offset
-///   and its element count (slots 9 + 2k and 10 + 2k).
+///   ([LayoutMode.index]: 0 compact, 1 free), [2] always 0 (it held the retired lane order; §13,
+///   amended 2026-11-10), [3] U (1 in `compact`, 16 in `free`), [4] rows, [5] lanes, [6] n, [7] E
+///   (the layout edges), [8] B (the buckets), then for each of the thirteen arrays below its byte
+///   offset and its element count (slots 9 + 2k and 10 + 2k).
 /// - **Arrays,** in this order, each starting at the next multiple of 8 after the previous one (the
 ///   first at byte 144): node row, node lane, node col (int32 × n); edge from, edge to
 ///   (int32 × E); edge kind, edge route, edge blocked (uint8 × E); bucket kind (uint8 × B); bucket
 ///   value (int64 × B); bucket start, bucket end (int32 × B); node day (int64 × n).
 /// - **Values:** a node's row is y (§4.2; in `free` in 1/U pitch units, y ≤ 48·(n − 1), so it
-///   fits an int32). Lanes and columns are joint (§4.3 / §4.7, amended 2026-10-27): the same in a
-///   `compact` and a `free` grid of one input. Edges are in §3's order — by child ascending, then
+///   fits an int32). Lanes and columns are the branch columns of §4.3 (amended 2026-11-10): lane =
+///   column, chosen per mode, so a `compact` and a `free` grid of one input may differ in them.
+///   Edges are in §3's order — by child ascending, then
 ///   by the parent's position among the child's layout parents; `from` is the parent, `to` the
 ///   child, and Missing parents are no layout edges. Edge kinds are [edgeKindDirect] /
 ///   [edgeKindIndirect], routes [routeStraight] / [routeMerge] / [routeBranchOff] (§8.4's r),
@@ -138,7 +139,6 @@ final class GraphGridView {
     required this.bytes,
     required this.copied,
     required this.mode,
-    required this.order,
     required this.unit,
     required this.rows,
     required this.lanes,
@@ -170,8 +170,8 @@ final class GraphGridView {
   /// Reads a grid buffer of format version [formatVersion] or [stackFormatVersion]. A [bytes]
   /// view whose start is not 8-aligned in its buffer is copied once (see [copied]); otherwise
   /// every view reads [bytes] in place. Throws [FormatException] for a buffer shorter than its
-  /// header, another format version, an unknown mode or order code, a unit that is not the
-  /// mode's, a negative count, an array count that differs from its header count, or an array
+  /// header, another format version, an unknown mode code, a slot 2 that is not 0, a unit that is
+  /// not the mode's, a negative count, an array count that differs from its header count, or an array
   /// offset that is not 8-aligned, lies inside the header or runs past the buffer. Little-endian
   /// host assumed (macOS).
   factory GraphGridView.fromBytes(Uint8List bytes) {
@@ -199,9 +199,9 @@ final class GraphGridView {
       throw FormatException('unknown grid mode code $modeCode');
     }
     final LayoutMode mode = LayoutMode.values[modeCode];
-    final int orderCode = slot(_slotOrder);
-    if (orderCode < 0 || orderCode >= LaneOrder.values.length) {
-      throw FormatException('unknown grid lane order code $orderCode');
+    final int retired = slot(_slotOrder);
+    if (retired != 0) {
+      throw FormatException('grid header slot $_slotOrder is $retired, expected 0');
     }
     final int unit = slot(_slotUnit);
     if (unit != (mode == LayoutMode.free ? 16 : 1)) {
@@ -266,7 +266,6 @@ final class GraphGridView {
       bytes: data.asUnmodifiableView(),
       copied: copy,
       mode: mode,
-      order: LaneOrder.values[orderCode],
       unit: unit,
       rows: rows,
       lanes: lanes,
@@ -340,9 +339,6 @@ final class GraphGridView {
 
   /// The vertical model the grid was laid out in.
   final LayoutMode mode;
-
-  /// The lane order the grid was laid out with.
-  final LaneOrder order;
 
   /// U, the y units per row pitch: 1 in `compact`, 16 in `free`.
   final int unit;
@@ -457,7 +453,6 @@ final class GraphGridView {
 @internal
 Uint8List writeGraphGrid({
   required LayoutMode mode,
-  required LaneOrder order,
   required int unit,
   required int rows,
   required int lanes,
@@ -490,7 +485,7 @@ Uint8List writeGraphGrid({
   final header = ByteData.sublistView(bytes, 0, _headerBytes)
     ..setInt32(4 * _slotVersion, GraphGridView.formatVersion, Endian.little)
     ..setInt32(4 * _slotMode, mode.index, Endian.little)
-    ..setInt32(4 * _slotOrder, order.index, Endian.little)
+    ..setInt32(4 * _slotOrder, 0, Endian.little)
     ..setInt32(4 * _slotUnit, unit, Endian.little)
     ..setInt32(4 * _slotRows, rows, Endian.little)
     ..setInt32(4 * _slotLanes, lanes, Endian.little)
@@ -537,7 +532,6 @@ Uint8List writeGraphGrid({
 @internal
 Uint8List writeStackGrid({
   required LayoutMode mode,
-  required LaneOrder order,
   required int unit,
   required int rows,
   required int lanes,
@@ -585,7 +579,7 @@ Uint8List writeStackGrid({
   final header = ByteData.sublistView(bytes, 0, _stackHeaderBytes)
     ..setInt32(4 * _slotVersion, GraphGridView.stackFormatVersion, Endian.little)
     ..setInt32(4 * _slotMode, mode.index, Endian.little)
-    ..setInt32(4 * _slotOrder, order.index, Endian.little)
+    ..setInt32(4 * _slotOrder, 0, Endian.little)
     ..setInt32(4 * _slotUnit, unit, Endian.little)
     ..setInt32(4 * _slotRows, rows, Endian.little)
     ..setInt32(4 * _slotLanes, lanes, Endian.little)

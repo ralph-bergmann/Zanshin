@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-// docs/graph-layout.md §7.3's invariants I1–I6 (I5 as amended on 2026-10-01), I8 (Story 4.14:
-// joint columns, the same lanes and columns in both modes) and §4.7's claims for the `compact`
-// order against greedy (Story 4.11), over seeded random DAGs and over every committed golden
-// input, in every shipped mode and order.
+// docs/graph-layout.md §7.3's invariants I1–I6 (I5 as amended on 2026-10-01, I2–I4 restated on
+// 2026-11-10) and the branch columns read literally (§4.3), over seeded random DAGs and over every
+// committed golden input, in both modes.
 
 import 'dart:convert';
 import 'dart:io';
@@ -23,36 +22,25 @@ import 'invariants.dart';
 import 'support/spec_json.dart';
 import 'support/topology_envelope.dart';
 
-/// Lays [g] out in [mode] × [order].
-GraphGridView run(LayoutInput g, LayoutMode mode, LaneOrder order) =>
-    GraphGridView.fromBytes(computeGraphGrid(g, mode: mode, order: order, budget: defaultLayoutBudget));
+/// Lays [g] out in [mode].
+GraphGridView run(LayoutInput g, LayoutMode mode) => GraphGridView.fromBytes(computeGraphGrid(g, mode: mode));
 
-/// Every invariant and every compact-vs-greedy claim of [g], per mode, and I8 per order.
+/// Every invariant of [g] and the literal branch columns, in both modes.
 void checkAll(LayoutInput g, String what) {
-  final grids = <LayoutMode, Map<LaneOrder, GraphGridView>>{};
+  final List<int> cont = naiveContinuations(g, layoutParents(g));
   for (final LayoutMode mode in LayoutMode.values) {
-    final GraphGridView greedy = run(g, mode, LaneOrder.greedy);
-    final GraphGridView compact = run(g, mode, LaneOrder.compact);
-    grids[mode] = {LaneOrder.greedy: greedy, LaneOrder.compact: compact};
-    expect(invariantFailures(g, greedy), isEmpty, reason: '$what ${mode.name} greedy');
-    expect(invariantFailures(g, compact), isEmpty, reason: '$what ${mode.name} compact');
-    expect(compactAgainstGreedy(g, greedy, compact), isEmpty, reason: '$what ${mode.name} compact vs greedy');
-  }
-  for (final LaneOrder order in LaneOrder.values) {
-    expect(
-      i8Failures(grids[LayoutMode.compact]![order]!, grids[LayoutMode.free]![order]!),
-      isEmpty,
-      reason: '$what ${order.name}: I8',
-    );
+    final GraphGridView r = run(g, mode);
+    expect(invariantFailures(g, r), isEmpty, reason: '$what ${mode.name}');
+    expect(branchFailures(g, r), isEmpty, reason: '$what ${mode.name}: branches');
+    expect(r.nodeCols, naiveBranchColumns(g, r.nodeRows, r.unit, cont), reason: '$what ${mode.name}: columns');
   }
 }
 
 void main() {
-  test('invariants_hold_on_1000_seeded_random_dags_in_every_mode_and_order', () {
+  test('invariants_and_branch_columns_hold_on_1000_seeded_random_dags_in_both_modes', () {
     final rnd = Random(4011);
     for (var t = 0; t < 1000; t++) {
-      // Every third graph is branchy (more lanes, so the compact order's search has work); a few
-      // are larger.
+      // Every third graph is branchy (more branches, so the column choice has work); a few are larger.
       final int n = t % 50 == 0 ? 200 + rnd.nextInt(200) : rnd.nextInt(120);
       checkAll(randomGraph(rnd, n, branchy: t % 3 == 0), 'case $t');
     }
@@ -84,7 +72,7 @@ void main() {
     expect(repeated, greaterThan(200), reason: 'too few nodes with repeated targets');
   });
 
-  test('invariants_hold_on_every_golden_input', () {
+  test('invariants_and_branch_columns_hold_on_every_golden_input', () {
     const goldens = 'test/graph_layout/goldens';
     for (final path in [
       'design/design-default.json',

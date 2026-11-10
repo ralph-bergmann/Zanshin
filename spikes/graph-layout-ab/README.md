@@ -106,6 +106,14 @@ viewer/       throwaway HTML viewer (index.html, viewer.js, viewer.css); viewer/
    max(gap, U), so no card sits in the band around a day divider (I5 amended, D12). The default
    `--columns mode` keeps the old walk (Rust ≡ Dart, `fuzz.mjs` unchanged); `goldens.mjs` rewrote the
    fuzz hashes whose day boundaries were closer than a pitch.
+14. **Done (2026-11-10, Story 4.17):** the product's columns no longer match this spike. The product
+   chooses branch columns per mode, the rule of the graph layout lab
+   ([`docs/graph-layout.md`](../../docs/graph-layout.md) §4.3, amended, and `spikes/graph-layout-lab`,
+   which is now the reference for columns). `tools/goldens.mjs` was rewritten and now writes the
+   product's goldens from the product CLI (`packages/zanshin_core/benchmark/graph_layout_cli.dart`)
+   over the committed inputs, one file per mode; `tools/record-graph.mjs` records the view's fixtures
+   per mode. `compare.mjs --core`, the joint packing and the `--columns joint` goldens flow are history:
+   this spike keeps its Rust and Dart references as they were.
 
 ## Run
 
@@ -137,18 +145,12 @@ node tools/friction.mjs             # ≈ 1 min; copies rust/ + dart/ to $TMPDIR
 node tools/loc.mjs
 /usr/bin/time -l rust/target/release/graph-layout layout --mode time --order optimized inputs/synth-100k.json /tmp/o.json
 
-# the product engine's goldens (Story 4.11; after js_oracle.mjs, which writes outputs/oracle/,
-# — Story 4.13 — stacks.mjs, which checks the run-rule oracle and writes the stack inputs, and
-# — Story 4.14 — design-layout.mjs, the joint design oracle on the e243dd2 inputs)
-node tools/stacks.mjs               # → inputs/stacks-design-*.json, outputs/oracle/stacks-design-*.runs.json
-node tools/design-input.mjs --rev e243dd2
-node tools/design-layout.mjs        # → outputs/oracle/joint-design-*.lanes.json (exit 1 on a mismatch)
-node tools/goldens.mjs              # → packages/zanshin_core/test/graph_layout/goldens/ (all --columns joint)
+# the product engine's goldens (docs/graph-layout.md §13, amended 2026-11-10): the product CLI, which
+# the tool compiles, over the committed inputs
+node tools/goldens.mjs              # → packages/zanshin_core/test/graph_layout/goldens/
 
-# the product engine as a third implementation (Story 4.11; since Story 4.14 against the Dart
-# binary's --columns joint output for both orders)
-(cd ../../packages/zanshin_core && dart compile exe benchmark/graph_layout_cli.dart -o ../../spikes/graph-layout-ab/outputs/bin/graph_layout_core)
-node tools/compare.mjs --core outputs/bin/graph_layout_core
+# history since Story 4.17: the product's columns are the lab's (spikes/graph-layout-lab), so
+# `compare.mjs --core` and design-layout.mjs no longer describe the product
 
 # line router B (Story 4.15, docs/graph-layout.md §14): the router oracle against GL's routeAll,
 # and route checks / timings on the scale inputs
@@ -156,8 +158,8 @@ node tools/compare.mjs --core outputs/bin/graph_layout_core
 node tools/router-oracle.mjs        # ≈ 45 s: sample, study and gutter cases → outputs/oracle/router-{cases,dart,report}.json
                                     # (exit 1 on an unexplained difference, an empty gutter-coverage count
                                     # or a changed generation count)
-outputs/bin/router_cli check --mode compact --order greedy --width 240 --height 62 inputs/synth-10k.json
-outputs/bin/router_cli bench --mode free --order compact --width 240 --height 62 inputs/synth-100k.json
+outputs/bin/router_cli check --mode compact --width 240 --height 62 inputs/synth-10k.json
+outputs/bin/router_cli bench --mode free --width 240 --height 62 inputs/synth-100k.json
 
 # lane orders (`compact` is Dart-only, SPEC §4.7) and their quality
 dart/build/graph_layout layout --mode free --order compact inputs/synth-10k.json outputs/o.json

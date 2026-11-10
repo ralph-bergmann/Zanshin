@@ -165,7 +165,7 @@ void main() {
     }
 
     test('the design-default recording: one marker per Indirect edge, one shared marker per hidden merge', () {
-      final RecordedGraphLayout layout = recording('design-default free compact');
+      final RecordedGraphLayout layout = recording('design-default free');
       final _Placed p = _place(layout);
       for (var k = 0; k < layout.edgeCount; k++) {
         if (layout.kindOf(k) == GraphEdgeKind.indirect) {
@@ -356,7 +356,7 @@ void main() {
 
   group('painting', () {
     test('every Indirect edge carries its `//` and cut, every Missing edge a stub with "~ elided"', () {
-      final RecordedGraphLayout layout = recording('design-default free compact');
+      final RecordedGraphLayout layout = recording('design-default free');
       final _Placed p = _place(layout);
       final edges = GraphEdgePainter(
         layout: layout,

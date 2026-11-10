@@ -36,8 +36,8 @@ final class Placement {
 /// Reads the engine's rows ([LayoutEngine.layering] must have run). Plain code on purpose: every
 /// placement scans its candidate columns.
 ///
-/// With [sameColumns] the result is the same in both modes, as the product engine guarantees
-/// today: a column is free for a branch only if it is free in Compact's rows and in Free's, and
+/// With [sameColumns] the result is the same in both modes, as the product engine guaranteed
+/// before columns per mode: a column is free for a branch only if it is free in Compact's rows and in Free's, and
 /// Free's rows decide the order and the main branch. (With Compact's rows deciding, Free gets
 /// many more crossings: README, step 8.)
 ///

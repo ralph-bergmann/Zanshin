@@ -2,24 +2,18 @@ import 'dart:typed_data';
 
 import 'package:zanshin_core/src/graph_layout/graph_grid_view.dart';
 import 'package:zanshin_core/src/graph_layout/layout_engine.dart';
+import 'package:zanshin_core/src/graph_layout/layout_input.dart';
 import 'package:zanshin_core/src/graph_layout/layout_request.dart';
 import 'package:zanshin_core/src/graph_layout/stacks.dart';
 
 import 'columns.dart';
 import 'data.dart';
 
-/// The grid as the app computes it today: the product engine, lane order `compact`.
-GraphGridView appGrid(LabData d, LayoutMode mode, {required bool stacks}) => GraphGridView.fromBytes(
-  computeGraphGrid(
-    d.input,
-    mode: mode,
-    order: LaneOrder.compact,
-    budget: defaultLayoutBudget,
-    stacks: stacks ? d.stackInput() : null,
-  ),
-);
+/// The grid as the app computes it today: the product engine.
+GraphGridView appGrid(LabData d, LayoutMode mode, {required bool stacks}) =>
+    GraphGridView.fromBytes(computeGraphGrid(d.input, mode: mode, stacks: stacks ? d.stackInput() : null));
 
-/// The lab's grid: rows and stacks from the product engine, columns from [chooseColumns].
+/// [labGridOf] for the data set [d], with its default stack request when [stacks] is set.
 GraphGridView labGrid(
   LabData d,
   LayoutMode mode, {
@@ -30,11 +24,34 @@ GraphGridView labGrid(
   required bool endsFirst,
   required bool fewestSkipped,
   required bool dockToParent,
+}) => labGridOf(
+  d.input,
+  stacks ? d.stackInput() : null,
+  mode,
+  reserveToMerge: reserveToMerge,
+  shortFirst: shortFirst,
+  sameColumns: sameColumns,
+  endsFirst: endsFirst,
+  fewestSkipped: fewestSkipped,
+  dockToParent: dockToParent,
+);
+
+/// The lab's grid of [input]: rows and stacks from the product engine, columns from [chooseColumns].
+GraphGridView labGridOf(
+  LayoutInput input,
+  StackInput? stacks,
+  LayoutMode mode, {
+  required bool reserveToMerge,
+  required bool shortFirst,
+  required bool sameColumns,
+  required bool endsFirst,
+  required bool fewestSkipped,
+  required bool dockToParent,
 }) {
-  // packLanes sets the visit order the later phases read; its lanes are replaced below.
-  final engine = LayoutEngine(d.input, mode)
+  // The product's chooseColumns sets the visit order the later phases read; its lanes are replaced below.
+  final engine = LayoutEngine(input, mode)
     ..layering()
-    ..packLanes();
+    ..chooseColumns();
   final Int32List lane = chooseColumns(
     engine,
     reserveToMerge: reserveToMerge,
@@ -71,9 +88,9 @@ GraphGridView labGrid(
     ..markBlocked()
     ..route()
     ..col = Int32List.fromList(lane);
-  if (!stacks) {
-    return GraphGridView.fromBytes(engine.toGrid(LaneOrder.greedy));
+  if (stacks == null) {
+    return GraphGridView.fromBytes(engine.toGrid());
   }
-  final grouped = StackLayout(engine, d.stackInput())..run();
-  return GraphGridView.fromBytes(grouped.toGrid(LaneOrder.greedy));
+  final grouped = StackLayout(engine, stacks)..run();
+  return GraphGridView.fromBytes(grouped.toGrid());
 }

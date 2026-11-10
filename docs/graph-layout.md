@@ -21,6 +21,12 @@ of Story 4.14 are §2, §3, §4.2, §4.3, §4.7, §4.8, §6, §7.2, §7.3 and §
 *(Amended 2026-10-31, Story 4.16: free's day band — with joint columns no card sits in the band
 around a day divider. The dated amendments of Story 4.16 are §4.2, §4.8, §6, §7.3, §9 (new D12) and §13.)*
 
+*(Amended 2026-11-10, Story 4.17: columns by branch, per mode — the graph layout lab's column rule
+(`spikes/graph-layout-lab`, Ralph 2026-11-10) replaces the joint packing, the short-piece return, the
+lane orders and the closing pass in the product. The dated amendments of Story 4.17 are §2, §3, §4.2,
+§4.3, §4.6, §4.7, §4.8, §5, §6, §7.2, §7.3, §8.2, §9 (new D15), §12 and §13. Ungrouped rows do not
+change. Grouped rows can, because §4.8's constraint (C) is restated for branch columns.)*
+
 The contract for both implementations (`rust/`, `dart/`). Each one is written from this
 document alone and MUST produce **byte-identical output** for every input × mode × order.
 Where this spec and the design differ, the spec wins; every deliberate difference is listed
@@ -106,6 +112,12 @@ elapsed time) is a painter-side prefix sum over `buckets`, O(#buckets). It needs
 §13) every layout computes both vertical models (§4.3), so `ts_ms` is read in `compact` too (by the
 `free` model the packing uses), and the product reads `utc_offset_min` in both modes (every node's
 day key, §4.2 free step 4). Without joint columns nothing changes.
+
+*Amended 2026-11-10, Story 4.17:* a product layout request has a mode and, optionally, a stack
+request; it has neither a lane order nor a budget. The product still reads `ts_ms` and
+`utc_offset_min` in both modes, because every node's day key needs the clamped T (§4.2 free step 4).
+`layering()` also keeps computing both vertical models, because the lab's `same-columns` variant
+reads them. The product's columns use only the requested mode's rows (§4.3, Branch columns).
 
 **Validation.** A violation exits with code 2, prints a message on stderr and writes no output
 file.
@@ -247,6 +259,12 @@ differ only in `mode`, `unit`, `rows`, the nodes' `row`, the edges' `route` and 
 `buckets` (I8, §7.3). The per-node day key of §4.2 free step 4 is a field of the product's grid
 (§13), not of this JSON, so no golden carries it.
 
+*Amended 2026-11-10, Story 4.17: columns per mode.* The note above no longer holds for the product:
+each mode chooses its own columns (§4.3, Branch columns), so `lane`, `col` and `lanes` may differ
+between a `compact` and a `free` output of one input. `lane` = `col` for every node. The product's
+§3 output has no `order` key: the object starts `{"mode":…,"unit":…`. The examples above and below
+keep the key as history.
+
 *Amended 2026-10-01, Story 4.13: the output with stacks (§4.8).* Without a stack request nothing
 changes: there is no `runs` key. With one:
 - `rows` is the grouped rows′ (§4.8 step 7); `lanes` stays the ungrouped value.
@@ -352,6 +370,10 @@ on head-first input.)
    a boundary already a pitch apart, by its gap or by a parent edge, is unchanged. The free model
    is laid out with the step in both request modes (it feeds the joint packing, §4.3), so I8 holds.
    Without joint columns (`--columns mode`, the Rust reference) step = gap, as before.
+
+   *Amended 2026-11-10, Story 4.17:* the step stays in every product layout, in both request modes.
+   The reason "it feeds the joint packing, so I8 holds" no longer applies: the free model no longer
+   feeds any column of a `compact` request (§4.3, Branch columns) and I8 is gone (§7.3).
 4. **Day buckets.** *(Added 2026-10-01, Story 4.11.)* After the walk, every node i with
    `is_root` false belongs to the calendar day of its clamped T(i) at the fixed offset (D7); a
    non-root node with a null ts counts by its T(i) too. With off = utc_offset_min·60000:
@@ -474,6 +496,62 @@ runs in that packing's visit order over every node i with cont(fp(i)) = i and la
   143 → 142 crossings, 716 → 712 bends, 11 columns before and after. The 5 left are longer than 8
   cards or blocked by another chain's card.
 
+**Branch columns** *(amended 2026-11-10, Story 4.17; the rule of the graph layout lab, which Ralph
+approved that day: `spikes/graph-layout-lab/README.md`, rule log, and `lib/columns.dart`)*. This
+supersedes the lane packing above, the joint packing and "Short pieces return"; they stay as history.
+The product has no other column rule and no request parameter that chooses one.
+
+All rows below are the requested mode's y, and U is one pitch in that mode's units. Free and Compact
+each run the rule on their own rows, so a card may change its column on a mode switch. `lane` = `col`
+for every node (§4.6). `cont` is the continuation child defined above.
+
+- **Branch.** A first-parent chain. A node continues its first parent's branch iff it is that
+  parent's continuation child (cont(fp(i)) = i); else it starts a branch.
+- **Main branch.** The branch of the node with the least (priority, y); of several such nodes, the
+  one with the highest index. It is in column 0, and no other branch is.
+- **Reserved rows.** A branch takes the rows [lo, hi] of its column, from its bottom card to its top
+  card, with two extensions:
+  - lo reaches down to one pitch above its fork, the bottom card's first parent: lo = y(fp(bottom)) +
+    U. A branch whose bottom card has no first parent has lo = y(bottom).
+  - hi reaches up to one pitch below the child of each of its merge edges, an edge from one of its
+    cards that is not the child's first-parent edge: hi = max(y(top), y(c) − U over those children c).
+- **Free.** A column is free for a branch iff every branch o in it keeps one pitch from it:
+  lo(o) ≥ hi + U or lo ≥ hi(o) + U.
+- **Dock.** A branch docks to the main branch (column 0) if it forks from the main branch (a branch
+  with no first parent counts as forking from it), or if it merges into a branch other than the one
+  it forks from; its depth is then 1. Every other branch docks to the column of the branch it forks
+  from; its depth is that branch's depth + 1. The main branch has depth 0.
+- **Order.** The main branch first; then by depth; then the branch that ends first (the lower hi),
+  then the shorter one (the lower hi − lo), then the one with the older bottom card (the lower
+  (y(bottom), priority(bottom), bottom)).
+- **Place.** A branch takes the free column nearest to its dock: for d = 0, 1, 2, … first dock − d
+  (never below column 1), then dock + d (d > 0). A new column index never exceeds the highest used
+  so far + 1, so no column is empty and nothing is renumbered.
+
+**Consequences.**
+- A branch has one column for its whole life; lane(fp(i)) = lane(i) along a branch.
+- A branch never shares a column with the branch it forks from: the fork's continuation child keeps
+  that branch's reservation at or above the new branch's lo.
+- A merge child can share its merge parent's column: the reservation ends one pitch below the child,
+  so a branch starting at that child may take the column. Such an edge is `straight` in §4.5, because
+  lane(p) = lane(i). Router B does not read `route` (§14) and classes it `gutter` by its column-free
+  test (§14.2, s = 0, not the first parent).
+- `straight` now means only lane(p) = lane(i). Cards of the parent's branch can lie between p and i
+  in that column, because the branch's reservation ends one pitch below the child, not at p.
+- A merge with lane(p) ≠ lane(i) is `blocked` (§4.4) when a card sits in the parent's column at
+  y(p) < y(o) ≤ y(i): a card of the parent's own branch above p, or the first card of a branch that
+  starts on the child's row.
+
+**I2, restated** (§7.3). In one column, consecutive cards keep at least U, and two branches keep one
+pitch between their reserved rows.
+
+**Bound.** O(n + E) for the branches and their spans, O(C log C) for the order of the C branches, and
+per branch at most K + 1 binary-searched probes of the K columns used so far, plus one insert that
+shifts the tail of its column's interval list. Each column keeps its reservations as disjoint
+half-open intervals [lo, hi + U) ordered by start, so a branch overlaps a column iff the last
+interval starting before hi + U ends after lo. The insert is O(column size): an array-backed balanced
+tree would make it O(log n) if a measurement ever shows the shift (spec-4-17 § Measurements).
+
 ### 4.4 Blocked [blocked]
 
 For each layout edge (p, i):
@@ -522,6 +600,10 @@ columns instead of the child's lane. `route` and `blocked` stay as output: they 
 invariants (§7.3) and the goldens, and the router does not read them.
 
 ### 4.6 Lane order → col(i) [ordering]
+
+*(Amended 2026-11-10, Story 4.17: the product has no lane order and no `ordering` phase. Every
+product layout has col(i) = lane(i), as §4.3's Branch columns give it. §4.6 and §4.7 stay as the
+spike's history.)*
 
 π maps lane → column. It is a permutation with π(0) = 0: lane 0, the trunk, never moves.
 col(i) = π(lane(i)).
@@ -609,6 +691,9 @@ O((L−1)!·E²) up to 8 lanes and O(passes·L²·E²) beyond.) The phase should
 at 10k commits in a compiled language.
 
 ### 4.7 Lane order `compact` [ordering] — Dart-only (not in the Rust A/B reference), 2026-09-26
+
+*(Amended 2026-11-10, Story 4.17: §4.7, its joint form and its closing pass are removed from the
+product, and `compact_order` is gone. The text stays as history. D5 and D14 are superseded.)*
 
 Added after Ralph's review of the viewer on the real 1.4k-commit repo (2026-09-26): `optimized`
 sprawls, greedy is more compact. The cause (measured in README, "Lane order review"):
@@ -826,6 +911,10 @@ unless it is longer than 8 cards or another chain's card is in the way (§4.3, "
 With joint columns a member can also lose its lane to another chain in the model the packing does not
 visit. A split run's members then lie in more than one lane; the stack node stays in m_k's.
 
+*Amended 2026-11-10, Story 4.17:* no run is split. The columns come from the requested mode's
+ungrouped layout (§4.3, Branch columns). A run's links are node → its only child, which continues it
+(cont), so a run lies on one branch and its members share a column. "Split" and D11 no longer apply.
+
 **5. The grouped graph G′.** Its nodes are the visible nodes and the stack nodes. Its edges, in
 §3's order (by child ascending — the input nodes, then the stack nodes — then by position):
 - a visible child v keeps every layout edge (p, v) as (img(p), v), with its kind and its pos;
@@ -862,6 +951,16 @@ are the **least** solution with y′ ≥ 0 of these constraints, each y′(targe
   split run's stack node, the start one pitch above its parent: it reserves its column from its
   own card (D11).
 
+  *Amended 2026-11-10, Story 4.17: (C) restated for branch columns.* A segment is a branch's grouped
+  nodes in that column. Branch columns give lo(T) ≥ hi(S) + U, with lo(T) = y(fp(h)) + U (or y(h) if
+  h has no first parent) and hi(S) = max(y(u), y(c) − U over S's merge edges to c). On the grouped
+  rows that is, for u and h as above and every grouped edge (x, c) with x in S and pos ≥ 1:
+  - h has a grouped first parent t = fp′(h): y′(t) ≥ y′(u) (δ₁ = 0) and y′(t) ≥ y′(c) − U (δ₂ = −U);
+  - h has none: y′(h) ≥ y′(u) + U (δ₁ = U) and y′(h) ≥ y′(c) (δ₂ = 0).
+
+  These values are one pitch less than the old 2U / U and U / 0. No case depends on a split run any
+  more. A constraint may have a negative δ, and its source may lie above its target.
+
 **Procedure.** Visit the grouped nodes in the ungrouped visit order (y, priority, i) — hidden nodes
 dropped, each m_k replaced by its stack node, so ascending in Y — in groups of equal Y. Every y′
 starts unset. For one group, repeat a pass over its nodes, y′(v) = the maximum of 0 and of
@@ -891,6 +990,30 @@ loop ends after at most |group| + 1 passes. Values only rise from below, so the 
 solution; and since Y is a solution, **y′ ≤ Y** for every grouped node. Collapsing never raises a
 node's y, and `rows` never grows. With nothing collapsed, G′ is the ungrouped graph, whose y is the
 least solution of (E) and (F) (§4.2) and satisfies (C), so y′ = y exactly.
+
+*Amended 2026-11-10, Story 4.17: the procedure and the termination for the restated (C).*
+- **Procedure.** One sweep is the level-by-level loop above; its first run ignores unset sources, as
+  before. δ₂ = −U can have a source above its target (Y(c) ≤ Y(t) + U), and a sweep has already
+  passed t when c is set. So the sweeps repeat until every (C) constraint holds, each starting from
+  the last sweep's values. (E) and (F) hold after every sweep: their sources lie in the same or an
+  earlier group.
+- **Y satisfies every constraint.** (E) and (F) as above. (C): let S be below T in one column, u the
+  top node of S and h the lowest of T. In the ungrouped layout their branches keep one pitch:
+  lo(T) ≥ hi(S) + U. With t = fp′(h), lo(T) = Y(t) + U, so Y(t) ≥ hi(S) ≥ Y(u) and
+  Y(t) ≥ Y(c) − U. Without a first parent lo(T) = Y(h), so Y(h) ≥ hi(S) + U ≥ Y(u) + U and
+  Y(h) ≥ Y(c).
+- **Termination and least solution.** Every value is a lower bound of the least solution, because it
+  is the maximum of constraints over values that are; so values only rise, stay ≤ Y and the loop
+  ends. It ends at a solution, hence at the least solution, and **y′ ≤ Y**. With every run expanded
+  y′ = y, as before. A pass of one group still needs at most |group| + 1 passes: constraints inside
+  a group have δ ≤ 0, and Y rules out a cycle with a positive sum.
+- **Bound.** The constraints have no cycle with a positive sum, so the sweeps work like Bellman–Ford
+  passes: at most n + 1 of them run. A value above Y means the columns are not branch columns, and
+  the sweeps might not end; the product throws `StateError` instead of sweeping on.
+- **Measured.** One sweep on each of the lab's three repositories. A mean of 1.0004 sweeps, at most
+  2, on 24,012 layouts of small seeded stack graphs (the lab's columns × states × modes). On seeded
+  stack graphs of 600–3,600 nodes with every run collapsed (14,318 layouts): 85 % one sweep, 12 %
+  two, at most five.
 
 **7. Then.** §4.4 and §4.5 run on G′ with the fixed lanes: `blocked` over per-lane y′ lists (built in
 the visit order above, which is ascending in y′ within a lane), routes with the grouped pos. In
@@ -929,6 +1052,8 @@ Compact no line passes behind the lower card (unless the gutter holds more than 
 `overfullGutters`, whose outer lines may reach into cards); in Free a gutter route whose every gutter is blocked is
 the router's reported fallback (`fallbackEdges`) and may still pass behind a card.
 
+*Amended 2026-11-10, Story 4.17:* D11 no longer applies: no run is split (step 4, amended).
+
 **The design sample, by hand.** `e243dd2` (52 commits, §7.2), `compact`, greedy, the default
 request: no run lies in A (the onboarding chain under `@` has no run), so every run collapses.
 - `all` (7 runs): `rows` 19 → 15. The longest chain, root → … → vruxwmqv → the qmsvtlkr run →
@@ -966,6 +1091,10 @@ re-derived by hand with joint columns (compact, greedy, every run collapsed):
 
 With the joint `compact` order: `all` 19 → 15, `default` 9 → 7 (measured).
 
+*Amended 2026-11-10, Story 4.17:* the columns of this sample are now branch columns, and the hand
+counts above stay: `all` 19 → 15, `default` 9 → 7 (`golden_test.dart` re-checks them, in `compact`).
+If the engine disagrees, re-derive by hand before changing a number.
+
 ## 5. Complexity: design step → spike
 
 | step (GV) | design | spike | spike cost |
@@ -983,6 +1112,11 @@ With the joint `compact` order: `all` 19 → 15, `default` 9 → 7 (measured).
 | positions, paths, extents (:198-224) | O(n+E) | painter | — |
 
 Every phase is O((n + E) log n), except the ordering search, which the budget bounds.
+
+*Amended 2026-11-10, Story 4.17:* the ordering search and its budget are gone. The column phase is
+the exception now: O(C·K·log C) for C branches over K columns (§4.3, Branch columns, Bound). Measured
+6 ms at synth-100k (202 columns) and about 2.5 s (JIT) on an artificial star of 40,000 parallel
+branches.
 
 ## 6. CLI (both implementations)
 
@@ -1032,6 +1166,11 @@ bench  --mode compact|time|free --order greedy|optimized --runs N [--warmup W] <
   always lays out joint columns and has no flag for it.
   *Amended 2026-10-31, Story 4.16:* `joint` also turns on `free`'s day step (§4.2 free.3, amended),
   so `mode`'s rows stay the Rust reference's.
+- **Product CLI (2026-11-10, Story 4.17):** `packages/zanshin_core/benchmark/graph_layout_cli.dart`
+  has neither `--order` nor `--budget`: both are unknown flags (exit 2). It takes
+  `layout --mode compact|free [--stacks R] <input.json> <output.json>` and
+  `bench --mode compact|free [--stacks R] [--runs N] [--warmup W] <input.json>`; `bench` has no
+  `"order"` field. `router_cli.dart` has no `--order` either.
 
 ## 7. Verification
 
@@ -1120,6 +1259,11 @@ writes `outputs/oracle/joint-design-<rev>.lanes.json` and exits 1 on a mismatch.
 compared: GL's whole-lane optimizer, router-judged packing choice and W/H-dependent rows are not
 ported (spec-4-14, Design Notes: exact colouring returns only past a measured threshold, which it
 did not meet). On a mismatch, re-derive by hand before changing code.
+
+*Amended 2026-11-10, Story 4.17:* the joint oracle retires, with the joint packing. Its
+`joint-design-*.lanes.json` goldens are deleted, and the product is no longer compared with GL's lane
+counts. The reference for the product's columns is the lab: `bin/lab_check.dart` compares them with
+`chooseColumns` (`spikes/graph-layout-lab/lib/columns.dart`).
 
 *Amended 2026-10-27, Story 4.15: the router oracle.* `node tools/router-oracle.mjs` (from the spike
 root) checks §14's router against GL's own `routeAll` on GL's own grids, so differences in lane
@@ -1218,6 +1362,21 @@ difference at H 40 (d = 12, Story 4.15's derivation). The router was not changed
   packing; the joint `compact` order's joint cost (16·cost_c + cost_f) is never above joint
   greedy's before the closing pass (§4.7), which only lowers the crossings and runs.
 
+*Amended 2026-11-10, Story 4.17: branch columns (§4.3).* For every product layout, per mode, without
+stacks and over the grouped rows with stacks (each stack state):
+- I1, I5, I6 and I7 hold as before.
+- **I2 (restated).** In one column, consecutive cards keep at least U, and two branches keep one
+  pitch between their reserved rows.
+- **I3 (restated).** `straight` ⇔ lane(p) = lane(i) (a merge child may sit in its merge parent's
+  column, so `straight` no longer implies a first parent). `merge` ⇒ pos ≥ 1 and not blocked.
+  Blocked ⇒ lanes differ.
+- **I4 (restated).** col = lane. The main branch is alone in column 0, and a branch has one column.
+- **I8 is removed.** A `compact` and a `free` grid of one input may differ in `lane`, `col` and
+  `lanes`. The day keys stay equal in both.
+- The columns equal the rule read literally (`naiveBranchColumns`, `invariants.dart`) on every golden
+  input and on ≥ 1,000 seeded DAGs × both modes, and the stack checks hold on the stack states
+  collapsed, expanded, default and random.
+
 ## 8. Benchmark protocol
 
 ### 8.1 Inputs
@@ -1253,6 +1412,10 @@ W = 10 and N = 31 (the defaults).
 
 **Conditions.** One machine, on AC power and otherwise idle, with all runs in one session.
 Record the CPU, the OS, and the rustc and Dart versions.
+
+*Amended 2026-11-10, Story 4.17:* the product CLI times `layering`, `lanes`, `blocked` and `routing`
+(and `stacks` with a stack request); it has no `ordering` phase, and `total` spans layering … the
+last phase. `lanes` is the branch column choice of §4.3.
 
 ### 8.3 Fairness
 
@@ -1311,6 +1474,8 @@ Record the CPU, the OS, and the rustc and Dart versions.
   - the W term is dropped (it is the same for every permutation).
 
   Only `greedy` is checked against the oracle.
+
+  *Amended 2026-11-10, Story 4.17: superseded by D15; the product has no lane order.*
 - **D6 — no pixels.** x/y, paths, rounded corners, gaps, extents, `offX` and `botExtra` are the
   painter's. The output is free of W and H by construction.
 - **D7 — time zone.** Calendar days use a fixed `utc_offset_min` instead of the viewer's
@@ -1335,6 +1500,8 @@ Record the CPU, the OS, and the rustc and Dart versions.
   may reach into cards); the route report's Compact gate and a D11 hand case witness it. In Free a
   gutter route whose every gutter is blocked is the router's reported fallback (`fallbackEdges`) and
   may still pass behind a card.
+
+  *Amended 2026-11-10, Story 4.17: D11 no longer applies; no run is split (§4.8 step 4, amended).*
 - **D12 — `free`'s day band** *(added 2026-10-31, Story 4.16)*. The design places y by time
   alone, so two commits on either side of local midnight less than ~25 min apart in different
   columns overlap vertically, and the painter's day divider (Story 10.2, midway between the older
@@ -1347,10 +1514,17 @@ Record the CPU, the OS, and the rustc and Dart versions.
   excepts only the first parent's interval, so a merge child above the continuation pushes the
   chain's next node into another column, and the design leaves it there. After the joint packing a
   piece of at most 8 cards returns (§4.3). The non-joint Rust and Dart reference paths keep the
-  design's result.
+  design's result. *Amended 2026-11-10, Story 4.17: superseded by D15.*
 - **D14 — a closing pass without gravity** *(added 2026-11-09, Ralph)*. The design has no `compact`
   order at all, and §4.7's gravity leaves a branch far from a trunk that sits right of it. A closing
   pass lets a segment alone in its window move toward its lines, out of column 0 too (§4.7).
+  *Amended 2026-11-10, Story 4.17: superseded by D15.*
+- **D15 — columns by branch, per mode, from the lab** *(added 2026-11-10, Story 4.17; Ralph approved
+  the lab's rules that day)*. The product's columns come from the graph layout lab
+  (`spikes/graph-layout-lab/lib/columns.dart`), not from the design: the main branch is alone in
+  column 0, a branch keeps one column, and Free and Compact each choose their own columns. The design's
+  shared columns (`DESIGN-SYSTEM-SYNC.md` #8, §13's joint columns) are no longer followed. This
+  supersedes D5, D13 and D14; D11 no longer applies, because no run is split.
 
 ## 10. Project layout and detaching
 
@@ -1459,6 +1633,10 @@ Story 4.11's SPEC amendments, wherever SPEC lives (4.11 open question 5):
 *Amended 2026-10-27, Story 4.15:* the planned top-centre exit above is replaced by §14's exits:
 a `straight` line leaves at the centre, every other line at its own port on the parent's top edge
 (§14.3). The T-junction and the shared stub no longer exist.
+
+*Amended 2026-11-10, Story 4.17:* the product has one column rule and no lane orders: §4.3's Branch
+columns. `greedy`, `compact` and the budget are gone from the product, and each mode chooses its own
+columns (Ralph, 2026-11-10). §11.6 no longer applies.
 
 ## 13. Product engine (Story 4.11)
 
@@ -1572,6 +1750,24 @@ topology, whose own errors (and its precondition and warnings) reach the caller 
 applies `free`'s day step (§4.2 free.3, amended; `freeStep` in `layout_engine.dart`, used by the
 walk and by §4.8's (F)), in both request modes, byte for byte with the spike's `--columns joint`.
 I5 (amended) holds on every product grid; D12.
+
+*Amended 2026-11-10, Story 4.17: branch columns, per mode.*
+- **Scope.** The modes `compact` and `free` (default `free`). There are no lane orders and no budget.
+  The engine core no longer has `compact_order`. Rows are unchanged (§4.2, both models, the day keys
+  in both modes, Story 4.16's day band), and timestamps are loaded for every request.
+- **Columns.** `chooseColumns` (§4.3, Branch columns) runs on the requested mode's rows; `lane` =
+  `col`. A stack toggle and "Group stacks" never move a column (I7).
+- **Reference.** The reference for the columns is the lab (`spikes/graph-layout-lab`); the product's
+  columns equal `chooseColumns` there, which `bin/lab_check.dart` checks. The spike's Rust and Dart
+  references no longer match the product and stay as history; `tools/compare.mjs --core` no longer
+  applies.
+- **Goldens.** Written by `tools/goldens.mjs` from the product CLI
+  (`packages/zanshin_core/benchmark/graph_layout_cli.dart`) over the committed inputs, one file per
+  mode, `<input>.<mode>.json`. §3's canonical JSON has no `order` key.
+- **Grid format.** Versions 3 and 4 stay. Header slot 2 holds 0 (`greedy`'s value), and
+  `GraphGridView.fromBytes` refuses any other value; `GraphGridView.order` is gone.
+- **Worker command.** `RepoHandle.graphLayout` has neither `order` nor `budget`.
+- **CLI.** See §6 (amended 2026-11-10).
 
 ## 14. Routing (Story 4.15)
 

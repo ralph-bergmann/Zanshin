@@ -46,8 +46,7 @@ import '../ffi/workspace.dart'
         WorkspaceRemoveResult,
         WorkspaceRootResult;
 import '../graph_layout/graph_grid_view.dart' show GraphGridView;
-import '../graph_layout/layout_request.dart'
-    show LaneOrder, LayoutContractException, LayoutMode, defaultLaneOrder, defaultLayoutBudget, defaultLayoutMode;
+import '../graph_layout/layout_request.dart' show LayoutContractException, LayoutMode, defaultLayoutMode;
 import 'isolate.dart';
 import 'network_operation.dart';
 import 'responses.dart';
@@ -210,8 +209,8 @@ final class RepoHandle {
 
   /// Lay out the whole revset's graph (Story 4.11): the [graphTopology] of [revset] — with the
   /// committer timestamps in every mode (Story 4.14) — laid out on the worker isolate by the Dart
-  /// layout engine (docs/graph-layout.md), returned as the topology and the grid. Lanes and
-  /// columns are joint: the same for `compact` and `free`, so switching [mode] only moves rows.
+  /// layout engine (docs/graph-layout.md), returned as the topology and the grid. Each mode chooses
+  /// its own columns, so switching [mode] can move a card sideways as well as up or down.
   ///
   /// Every parameter is a CLI or layout pass-through (FR-JJ-17); the defaults are editable
   /// pre-fills:
@@ -223,9 +222,7 @@ final class RepoHandle {
   ///   key ([GraphGridView.nodeDays], both modes); it must lie within ±1440.
   /// - [prioritize], [shortPrefixes] — as in [graphTopology], pre-filled [defaultGraphPrioritize]
   ///   and [defaultShortPrefixes]; prefer [logDefaults]' effective values.
-  /// - [mode], [order] — pre-filled [defaultLayoutMode] (`free`) and [defaultLaneOrder]
-  ///   (`compact`).
-  /// - [budget] — the `compact` order's work units, pre-filled [defaultLayoutBudget].
+  /// - [mode] — pre-filled [defaultLayoutMode] (`free`). Each mode chooses its own columns.
   /// - [stacks] — Story 4.13's commit stacks (docs/graph-layout.md §4.8): linear runs grouped into
   ///   stack nodes, the columns kept, only rows compacted; the grid then has format version
   ///   [GraphGridView.stackFormatVersion] and carries the runs. The "Group stacks" switch (Story
@@ -248,7 +245,7 @@ final class RepoHandle {
   /// topology's `operationId`.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed]. Throws [ArgumentError]
-  /// on an interior NUL in any expression, an offset beyond ±1440 or a negative budget. Throws
+  /// on an interior NUL in any expression or an offset beyond ±1440. Throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`, `jj.revset_parse_error`,
   /// `jj.revset_resolution_error`, `jj.jj_lib_error`; full list: `docs/ffi-abi.md`
   /// § `zanshin_graph_topology`) and [LayoutContractException] when the topology breaks a
@@ -260,8 +257,6 @@ final class RepoHandle {
     String prioritize = defaultGraphPrioritize,
     String shortPrefixes = defaultShortPrefixes,
     LayoutMode mode = defaultLayoutMode,
-    LaneOrder order = defaultLaneOrder,
-    int budget = defaultLayoutBudget,
     bool stacks = false,
     List<String> expandedKeys = const [],
     List<String> collapsedKeys = const [],
@@ -277,9 +272,7 @@ final class RepoHandle {
       shortPrefixes: shortPrefixes,
       anchors: anchors,
       mode: mode,
-      order: order,
       utcOffsetMin: utcOffsetMin,
-      budget: budget,
       stacks: stacks,
       expandedKeys: expandedKeys,
       collapsedKeys: collapsedKeys,

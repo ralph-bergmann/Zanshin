@@ -37,7 +37,7 @@ import '../../helpers/shell_host.dart';
 import 'graph_harness.dart';
 
 /// The design sample's "now" (its input's `now_ms`).
-final _now = (jsonDecode(graphRecordings['design-default free compact']!.$1) as Map<String, Object?>)['now_ms']! as int;
+final _now = (jsonDecode(graphRecordings['design-default free']!.$1) as Map<String, Object?>)['now_ms']! as int;
 
 /// The fakes' answer: the stack recording matching the request, else the ungrouped one, with fake content inline.
 GraphLayout _respond(GraphRequest request) {
@@ -45,7 +45,7 @@ GraphLayout _respond(GraphRequest request) {
   if (name != null) {
     return stackRecording(name);
   }
-  final (String input, String output) = graphRecordings['design-default ${request.mode.name} compact']!;
+  final (String input, String output) = graphRecordings['design-default ${request.mode.name}']!;
   return RecordedGraphLayout.fromSpec(input, output, content: fakeContent);
 }
 
@@ -485,7 +485,7 @@ void main() {
 
     testWidgets('the counter counts collapsed members as shown', (tester) async {
       await create(tester);
-      final GraphLayout ungrouped = recording('design-default free compact');
+      final GraphLayout ungrouped = recording('design-default free');
       expect(model.layout!.runCount, greaterThan(0));
       expect(model.shown, ungrouped.nodeCount);
       model.dispose();

@@ -10,9 +10,9 @@ import 'graph_layout.dart';
 
 final _log = Logger('zanshin.graph');
 
-/// One layout request (Story 10.5 item 2): the revset and the view's mode and lane order, plus the jj parameters
-/// passed through explicitly (FR-JJ-17) — `prioritize` and `shortPrefixes` pre-filled from `logDefaults()`, `anchors`
-/// from zanshin_core's [defaultGraphAnchors] — and the stack state (10.17). It carries no card size and no "now".
+/// One layout request (Story 10.5 item 2): the revset and the view's mode, plus the jj parameters passed through
+/// explicitly (FR-JJ-17) — `prioritize` and `shortPrefixes` pre-filled from `logDefaults()`, `anchors` from
+/// zanshin_core's [defaultGraphAnchors] — and the stack state (10.17). It carries no card size and no "now".
 @immutable
 class GraphRequest {
   /// A request for [revset].
@@ -23,7 +23,6 @@ class GraphRequest {
     required this.anchors,
     required this.utcOffsetMin,
     this.mode = GraphMode.free,
-    this.order = GraphLaneOrder.compact,
     this.stacks = false,
     this.expandedKeys = const <String>{},
     this.collapsedKeys = const <String>{},
@@ -35,9 +34,6 @@ class GraphRequest {
 
   /// The layout mode.
   final GraphMode mode;
-
-  /// The lane order.
-  final GraphLaneOrder order;
 
   /// `revsets.log-graph-prioritize`.
   final String prioritize;
@@ -69,7 +65,6 @@ class GraphRequest {
       other is GraphRequest &&
           other.revset == revset &&
           other.mode == mode &&
-          other.order == order &&
           other.prioritize == prioritize &&
           other.shortPrefixes == shortPrefixes &&
           listEquals(other.anchors, anchors) &&
@@ -83,7 +78,6 @@ class GraphRequest {
   int get hashCode => Object.hash(
     revset,
     mode,
-    order,
     prioritize,
     shortPrefixes,
     Object.hashAll(anchors),
@@ -95,7 +89,7 @@ class GraphRequest {
   );
 
   @override
-  String toString() => 'GraphRequest($revset, ${mode.name}, ${order.name}, keepOpen: $keepOpenKeys)';
+  String toString() => 'GraphRequest($revset, ${mode.name}, keepOpen: $keepOpenKeys)';
 }
 
 /// The user's stack toggles of one repository (Story 10.17): the runs expanded and collapsed, each by its oldest
@@ -1075,10 +1069,6 @@ class RepoGraphSource implements GraphSource {
         mode: switch (request.mode) {
           GraphMode.free => LayoutMode.free,
           GraphMode.compact => LayoutMode.compact,
-        },
-        order: switch (request.order) {
-          GraphLaneOrder.compact => LaneOrder.compact,
-          GraphLaneOrder.greedy => LaneOrder.greedy,
         },
         stacks: request.stacks,
         expandedKeys: request.expandedKeys.toList(),

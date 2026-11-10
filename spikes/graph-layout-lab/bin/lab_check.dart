@@ -1,11 +1,14 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:zanshin_core/src/graph_layout/graph_grid_view.dart';
 import 'package:zanshin_core/src/graph_layout/layout_engine.dart';
+import 'package:zanshin_core/src/graph_layout/layout_input.dart';
 import 'package:zanshin_core/src/graph_layout/layout_request.dart';
 import 'package:zanshin_core/src/graph_layout/router.dart';
 
+import '../../../packages/zanshin_core/test/graph_layout/support/spec_json.dart';
 import '../lib/columns.dart';
 import '../lib/data.dart';
 import '../lib/engine.dart';
@@ -14,9 +17,11 @@ import '../lib/metrics.dart';
 import '../lib/scene.dart';
 
 /// Checks the lab's rules on every data set under `<data dir>`, in both modes: what must hold
-/// whatever the next rule changes. Exits 1 on the first data set that breaks one.
+/// whatever the next rule changes, and that the product's columns equal the lab's. With the goldens
+/// directory as a second argument it runs the product check on every golden input too, with and
+/// without its stack requests. Sets exit code 1 if any check fails, and always runs them all.
 ///
-/// usage: dart --packages=<repo>/.dart_tool/package_config.json run bin/lab_check.dart <data dir>
+/// usage: dart --packages=<repo>/.dart_tool/package_config.json run bin/lab_check.dart <data dir> [<goldens dir>]
 void main(List<String> a) {
   final names = [
     for (final FileSystemEntity f in Directory(a[0]).listSync())
@@ -27,6 +32,8 @@ void main(List<String> a) {
     for (final LayoutMode mode in LayoutMode.values) {
       final List<String> fails = [
         ..._columnFails(d, mode),
+        ..._productFails(d.input, d.stackInput(), mode),
+        for (final String fail in _productFails(d.input, null, mode)) 'no stacks: $fail',
         ..._lineFails(d, mode, stacks: true),
         for (final String fail in _lineFails(d, mode, stacks: false)) 'no stacks: $fail',
       ];
@@ -36,6 +43,84 @@ void main(List<String> a) {
       }
     }
   }
+  if (a.length > 1) {
+    _checkGoldens(a[1]);
+  }
+}
+
+/// The failures of "the product's columns are the lab's" on [input] in [mode] with [stacks].
+List<String> _productFails(LayoutInput input, StackInput? stacks, LayoutMode mode) {
+  final product = GraphGridView.fromBytes(computeGraphGrid(input, mode: mode, stacks: stacks));
+  final GraphGridView lab = labGridOf(
+    input,
+    stacks,
+    mode,
+    reserveToMerge: true,
+    shortFirst: true,
+    sameColumns: false,
+    endsFirst: true,
+    fewestSkipped: false,
+    dockToParent: true,
+  );
+  if (product.lanes != lab.lanes) {
+    return ['product ${product.lanes} columns, lab ${lab.lanes}'];
+  }
+  for (var i = 0; i < product.nodeCols.length; i++) {
+    if (product.nodeCols[i] != lab.nodeCols[i] || product.nodeRows[i] != lab.nodeRows[i]) {
+      return [
+        'node $i: product row ${product.nodeRows[i]} col ${product.nodeCols[i]}, '
+            'lab row ${lab.nodeRows[i]} col ${lab.nodeCols[i]}',
+      ];
+    }
+  }
+  return const [];
+}
+
+/// Runs [_productFails] on every golden input under [goldens], in both modes.
+void _checkGoldens(String goldens) {
+  var checked = 0;
+  void check(Uint8List bytes, List<Uint8List> requests, String what) {
+    final bool stacked = requests.isNotEmpty;
+    final ({LayoutInput input, int nowMs, SpecStackFacts? facts}) parsed = parseSpecInput(bytes, stacks: stacked);
+    for (final LayoutMode mode in LayoutMode.values) {
+      final List<String> fails = [
+        ..._productFails(parsed.input, null, mode),
+        for (final Uint8List request in requests)
+          ..._productFails(parsed.input, parseSpecStackRequest(request, parsed.facts!), mode),
+      ];
+      checked += 1 + requests.length;
+      if (fails.isNotEmpty) {
+        stdout.writeln('$what ${mode.name}: ${fails.take(5).join('; ')}');
+        exitCode = 1;
+      }
+    }
+  }
+
+  Uint8List file(String path) => File('$goldens/$path').readAsBytesSync();
+  for (final String path in const [
+    'design/design-default.json',
+    'design/design-all.json',
+    'fixtures/tiny-all.input.json',
+    'fixtures/medium-narrow.input.json',
+  ]) {
+    check(file(path), const [], path);
+  }
+  for (final String rev in const ['default', 'all']) {
+    final requests = [
+      for (final String state in const ['default', 'expanded', 'mixed']) file('stacks/request-$state.json'),
+    ];
+    check(file('stacks/design-$rev.json'), requests, 'stacks/design-$rev.json');
+  }
+  final List<String> cases = File('$goldens/fuzz/cases.jsonl').readAsLinesSync();
+  for (var c = 0; c < cases.length; c++) {
+    check(utf8.encode(cases[c]), const [], 'fuzz case $c');
+  }
+  final List<String> stackCases = File('$goldens/stacks/fuzz/cases.jsonl').readAsLinesSync();
+  for (var c = 0; c < stackCases.length; c++) {
+    final line = jsonDecode(stackCases[c]) as Map<String, Object?>;
+    check(utf8.encode(jsonEncode(line['input'])), [utf8.encode(jsonEncode(line['request']))], 'stack fuzz case $c');
+  }
+  stdout.writeln('goldens: $checked layouts${exitCode == 0 ? ': ok' : ''}');
 }
 
 /// The column rules, with every combination of the two column switches: the main branch alone in

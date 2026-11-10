@@ -51,7 +51,8 @@ final class LayoutInput {
   /// 1 for the repository's root commit.
   final Uint8List isRoot;
 
-  /// Each node's ordering class (§11.2), 0 ≤ priority < 2^31; lower packs further left.
+  /// Each node's ordering class (§11.2), 0 ≤ priority < 2^31; lower wins a branch's continuation and
+  /// the main branch (§4.3).
   final Int32List priority;
 
   /// Node i's parents are `parStart[i] ..< parStart[i + 1]`, in jj's stream order (n + 1 entries).

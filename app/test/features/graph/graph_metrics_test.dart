@@ -37,7 +37,6 @@ void main() {
     expect(metrics.hashCode, GraphMetrics(cardWidth: 320, detailedCards: false).hashCode);
     expect(metrics == GraphMetrics(), isFalse);
     expect(const GraphViewOptions().layout, GraphMode.free);
-    expect(const GraphViewOptions().laneOrder, GraphLaneOrder.compact);
     expect(options.copyWith(cardWidth: 240, detailedCards: true), const GraphViewOptions());
   });
 }

@@ -20,7 +20,7 @@ void main() {
 
   testWidgets('the cards and the gaps between rows follow the density, live (Story 11.20)', (tester) async {
     useShellWindow(tester, const Size(4000, 2800));
-    final (String input, String output) = graphRecordings['design-default compact compact']!;
+    final (String input, String output) = graphRecordings['design-default compact']!;
     final layout = RecordedGraphLayout.fromSpec(input, output, content: fakeContent);
     final cards = GraphCardController(now: 0);
     addTearDown(cards.dispose);

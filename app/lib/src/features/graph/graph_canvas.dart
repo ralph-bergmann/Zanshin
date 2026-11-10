@@ -174,7 +174,7 @@ class GraphCanvas extends StatefulWidget {
   /// The cards' shared state, "now" included; its owner disposes it.
   final GraphCardController cards;
 
-  /// The card width and detail (mode and lane order belong to the layout).
+  /// The card width and detail (the mode belongs to the layout).
   final GraphViewOptions options;
 
   /// The plane's live margins: the visible rect is the viewport inside them.

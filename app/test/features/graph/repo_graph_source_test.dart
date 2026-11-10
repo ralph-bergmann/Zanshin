@@ -54,7 +54,6 @@ void main() {
   Future<GraphRequest> request({
     String revset = 'all()',
     GraphMode mode = GraphMode.free,
-    GraphLaneOrder order = GraphLaneOrder.compact,
     bool stacks = false,
     Set<String> expanded = const <String>{},
     Set<String> collapsed = const <String>{},
@@ -68,7 +67,6 @@ void main() {
       anchors: defaultGraphAnchors,
       utcOffsetMin: 60,
       mode: mode,
-      order: order,
       stacks: stacks,
       expandedKeys: expanded,
       collapsedKeys: collapsed,
@@ -79,20 +77,16 @@ void main() {
   Future<BackendGraphLayout> layoutOf(GraphRequest request) async =>
       (await source.layout(request)).layout as BackendGraphLayout;
 
-  test('the request reaches the worker: mode, order, offset and the stack keys', () async {
+  test('the request reaches the worker: mode, offset and the stack keys', () async {
     final BackendGraphLayout free = await layoutOf(await request());
     expect(free.mode, GraphMode.free);
     expect(free.unit, 16);
     expect(free.utcOffsetMinutes, 60);
-    expect(free.grid.order, LaneOrder.compact);
     expect(free.runCount, 0, reason: 'no stack request');
 
-    final BackendGraphLayout compact = await layoutOf(
-      await request(mode: GraphMode.compact, order: GraphLaneOrder.greedy),
-    );
+    final BackendGraphLayout compact = await layoutOf(await request(mode: GraphMode.compact));
     expect(compact.mode, GraphMode.compact);
     expect(compact.unit, 1);
-    expect(compact.grid.order, LaneOrder.greedy);
 
     final BackendGraphLayout stacked = await layoutOf(await request(stacks: true));
     final int run = stacked.runOf(stacked.indexOfKey(second)!)!;

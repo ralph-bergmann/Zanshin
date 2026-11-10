@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 // The stack invariants (Story 4.13, docs/graph-layout.md §4.8 and §7.3 as amended) over at least
-// 1,000 seeded stack-shaped DAGs × both modes × both orders × the stack states all collapsed, all
-// expanded, the default and random subsets — and over every stack golden input with its requests.
-// Story 4.14: I8 across the two modes for each order and stack state, and the day keys.
+// 1,000 seeded stack-shaped DAGs × both modes × the stack states all collapsed, all expanded, the
+// default and random subsets — and over every stack golden input with its requests.
 
 import 'dart:convert';
 import 'dart:io';
@@ -16,35 +15,31 @@ import 'package:zanshin_core/src/graph_layout/layout_engine.dart';
 import 'package:zanshin_core/src/graph_layout/layout_input.dart';
 import 'package:zanshin_core/src/graph_layout/layout_request.dart';
 
-import 'invariants.dart' show i8Failures;
+import 'invariants.dart' show layoutParents, naiveBranchColumns, naiveContinuations;
 import 'stack_invariants.dart';
 import 'support/spec_json.dart';
 
 const _goldens = 'test/graph_layout/goldens/stacks';
 
-GraphGridView _grid(LayoutInput g, LayoutMode mode, LaneOrder order, [StackInput? stacks]) => GraphGridView.fromBytes(
-  computeGraphGrid(g, mode: mode, order: order, budget: defaultLayoutBudget, stacks: stacks),
-);
+GraphGridView _grid(LayoutInput g, LayoutMode mode, [StackInput? stacks]) =>
+    GraphGridView.fromBytes(computeGraphGrid(g, mode: mode, stacks: stacks));
 
-/// Checks [g] with every request of [requests] in every mode and order, and I8 (Story 4.14: the
-/// same lanes and columns in both modes) per order and request; returns the failures.
+/// Checks [g] with every request of [requests] in both modes; returns the failures. The ungrouped
+/// columns must equal §4.3's rule read literally.
 List<String> _checkAll(LayoutInput g, Map<String, StackInput> requests, String what) {
   final fails = <String>[];
-  for (final LaneOrder order in LaneOrder.values) {
-    final grouped = <LayoutMode, Map<String, GraphGridView>>{};
-    for (final LayoutMode mode in LayoutMode.values) {
-      final GraphGridView off = _grid(g, mode, order);
-      for (final MapEntry(key: String state, value: StackInput s) in requests.entries) {
-        final GraphGridView r = _grid(g, mode, order, s);
-        (grouped[mode] ??= {})[state] = r;
-        for (final String f in stackInvariantFailures(g, s, off, r)) {
-          fails.add('$what ${mode.name} ${order.name} $state: $f');
-        }
+  for (final LayoutMode mode in LayoutMode.values) {
+    final GraphGridView off = _grid(g, mode);
+    final List<int> literal = naiveBranchColumns(g, off.nodeRows, off.unit, naiveContinuations(g, layoutParents(g)));
+    for (var i = 0; i < g.n; i++) {
+      if (off.nodeCols[i] != literal[i]) {
+        fails.add('$what ${mode.name}: node $i in column ${off.nodeCols[i]}, the literal rule says ${literal[i]}');
+        break;
       }
     }
-    for (final String state in requests.keys) {
-      for (final String f in i8Failures(grouped[LayoutMode.compact]![state]!, grouped[LayoutMode.free]![state]!)) {
-        fails.add('$what ${order.name} $state: $f');
+    for (final MapEntry(key: String state, value: StackInput s) in requests.entries) {
+      for (final String f in stackInvariantFailures(g, s, off, _grid(g, mode, s))) {
+        fails.add('$what ${mode.name} $state: $f');
       }
     }
   }
@@ -52,7 +47,7 @@ List<String> _checkAll(LayoutInput g, Map<String, StackInput> requests, String w
 }
 
 void main() {
-  test('stack_invariants_hold_on_1000_seeded_dags_in_every_state_mode_and_order', () {
+  test('stack_invariants_hold_on_1000_seeded_dags_in_every_state_and_mode', () {
     final rnd = Random(413);
     final fails = <String>[];
     var splits = 0;
@@ -78,14 +73,16 @@ void main() {
       fails.addAll(_checkAll(g.input, requests, 'case $t'));
       final StackInput s = requests['default']!;
       runs += naiveRuns(g.input, s).length;
-      splits += splitRuns(g.input, s, _grid(g.input, LayoutMode.compact, LaneOrder.greedy));
+      for (final LayoutMode mode in LayoutMode.values) {
+        splits += splitRuns(g.input, s, _grid(g.input, mode));
+      }
       if (fails.length >= 10) {
         break;
       }
     }
     expect(fails, isEmpty);
     expect(runs, greaterThan(1000), reason: 'the generator makes runs');
-    expect(splits, greaterThanOrEqualTo(20), reason: 'the split-run shape occurs (compact, greedy)');
+    expect(splits, 0, reason: 'a run is a piece of one branch');
   });
 
   test('every_stack_golden_input_keeps_the_stack_invariants_under_its_requests', () {

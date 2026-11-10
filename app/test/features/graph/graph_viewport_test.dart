@@ -417,7 +417,7 @@ void main() {
 
   testWidgets('(m) a cache-extent card is hidden to VoiceOver, a visible one is not', (tester) async {
     final SemanticsHandle semantics = tester.ensureSemantics();
-    final g = GraphHarness(recording('design-all compact compact'));
+    final g = GraphHarness(recording('design-all compact'));
     await pumpGraph(tester, g);
     final Set<String> visible = g.expectedMounted(cache: 0);
     final String cached = g.mounted(tester).firstWhere((k) => !visible.contains(k));
@@ -453,7 +453,7 @@ void main() {
       g.v.jumpTo(g.v.position.maxScrollExtent);
       g.h.jumpTo(g.h.position.maxScrollExtent);
       await tester.pump();
-      g.layout = recording('design-default compact compact');
+      g.layout = recording('design-default compact');
       await tester.pumpWidget(g.build());
       expect(tester.takeException(), isNull);
       expect(g.v.offset, inInclusiveRange(0, g.v.position.maxScrollExtent));
@@ -463,7 +463,7 @@ void main() {
     });
 
     testWidgets('macOS overscroll past both ends on both axes keeps the children consistent', (tester) async {
-      final g = GraphHarness(recording('design-all compact compact'));
+      final g = GraphHarness(recording('design-all compact'));
       await pumpGraph(tester, g);
       Future<void> overscroll(Offset by) async {
         final TestGesture drag = await tester.startGesture(const Offset(400, 300));

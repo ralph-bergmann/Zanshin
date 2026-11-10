@@ -271,7 +271,7 @@ void main() {
     testWidgets('a free recording paints clip, one guide call, edges, cards, then the pills; compact paints none', (
       tester,
     ) async {
-      final g = GraphHarness(recording('design-default free compact'))
+      final g = GraphHarness(recording('design-default free'))
         ..edges = ((context, origin, visible) => context.canvas.drawPath(Path(), Paint()));
       final GraphDayAxisPainter axis = wireAxis(g, nowMs: 1790344800000);
       await pumpGraph(tester, g);
@@ -287,7 +287,7 @@ void main() {
       expect(calls.lastIndexOf(#drawRect), lessThan(calls.indexOf(#drawRRect)));
 
       g
-        ..layout = recording('design-default compact compact')
+        ..layout = recording('design-default compact')
         ..verticalLayout = null;
       wireAxis(g, nowMs: 1790344800000);
       await tester.pumpWidget(g.build());
@@ -296,21 +296,14 @@ void main() {
       expect(compact.calls, isNot(contains(#drawRRect)));
     });
 
-    testWidgets('Free and Compact share the width and the columns; only Free paints the axis', (tester) async {
-      final RecordedGraphLayout free = recording('design-all free compact');
-      final RecordedGraphLayout compact = recording('design-all compact compact');
-      expect(
-        <int>[for (var i = 0; i < free.nodeCount; i++) free.colOf(i)],
-        <int>[
-          for (var i = 0; i < compact.nodeCount; i++) compact.colOf(i),
-        ],
-      );
+    testWidgets('only Free paints the axis', (tester) async {
+      final RecordedGraphLayout free = recording('design-all free');
+      final RecordedGraphLayout compact = recording('design-all compact');
       final g = GraphHarness(free);
       final GraphDayAxisPainter axis = wireAxis(g, nowMs: 1790344800000);
       await pumpGraph(tester, g);
       g.v.jumpTo(axis.axis.guideYs.last - surface.height / 2);
       await tester.pump();
-      final double width = g.h.position.maxScrollExtent;
       final Painted inFree = painted(tester, g);
       expect(inFree.calls, contains(#drawRawPoints));
       expect(inFree.pills, isNotEmpty);
@@ -319,7 +312,6 @@ void main() {
         ..verticalLayout = null;
       wireAxis(g, nowMs: 1790344800000);
       await tester.pumpWidget(g.build());
-      expect(g.h.position.maxScrollExtent, width);
       final Painted inCompact = painted(tester, g);
       expect(inCompact.calls, isNot(contains(#drawRawPoints)));
       expect(inCompact.pills, isEmpty);

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 // Story 4.13's invariant checks (docs/graph-layout.md §4.8, §7.3 as amended): a naive, literal
-// reading of the run rule and the state, every grouped edge, I1–I7, y′ ≤ y, and the rows as the
-// least solution of the constraints — rebuilt from scratch with library sorts and a plain
-// fixed-point iteration, independent of the engine's level sweep — plus the seeded stack-shaped
-// DAGs they run on.
+// reading of the run rule and the state, every grouped edge, I1–I7, y′ ≤ y, the rows as the least
+// solution of the constraints — rebuilt from scratch with library sorts and a plain fixed-point
+// iteration, independent of the engine's level sweep — the branch checks over the grouped rows, and
+// the seeded stack-shaped DAGs they run on.
 
 import 'dart:math';
 import 'dart:typed_data';
@@ -14,7 +14,7 @@ import 'package:zanshin_core/src/graph_layout/layout_engine.dart';
 import 'package:zanshin_core/src/graph_layout/layout_input.dart';
 import 'package:zanshin_core/src/graph_layout/layout_request.dart';
 
-import 'invariants.dart' show clampedT, layoutParents;
+import 'invariants.dart' show clampedT, layoutParents, naiveBranches, naiveContinuations;
 import 'support/spec_json.dart';
 
 /// A run of §4.8 read literally: its members, oldest first, and whether it is collapsed.
@@ -91,7 +91,7 @@ List<NaiveRun> naiveRuns(LayoutInput g, StackInput s) {
 }
 
 /// The failures of §4.8 and the amended §7.3 for the grouped grid [r] laid out from [g] with [s],
-/// against the ungrouped grid [off] of the same mode and order; empty when every check holds.
+/// against the ungrouped grid [off] of the same mode; empty when every check holds.
 List<String> stackInvariantFailures(LayoutInput g, StackInput s, GraphGridView off, GraphGridView r) {
   final fails = <String>[];
   void check(bool ok, String message) {
@@ -109,7 +109,7 @@ List<String> stackInvariantFailures(LayoutInput g, StackInput s, GraphGridView o
   ];
   final int total = n + stacks.length;
   check(r.hasStacks, 'no stack arrays');
-  check(r.mode == off.mode && r.order == off.order && r.unit == off.unit, 'header echo');
+  check(r.mode == off.mode && r.unit == off.unit, 'header echo');
   check(
     r.nodeCount == n && r.stackCount == stacks.length && r.runCount == runs.length && r.nodeRows.length == total,
     'counts: n ${r.nodeCount}/$n, S ${r.stackCount}/${stacks.length}, R ${r.runCount}/${runs.length}',
@@ -168,16 +168,12 @@ List<String> stackInvariantFailures(LayoutInput g, StackInput s, GraphGridView o
     check(r.nodeLanes[i] == off.nodeLanes[i] && r.nodeCols[i] == off.nodeCols[i], 'I7 node $i');
     check(y[i] <= off.nodeRows[i], 'y′ ≤ y at $i: ${y[i]} > ${off.nodeRows[i]}');
   }
-  final splitStack = <int>{};
   for (final MapEntry(key: int sNode, value: NaiveRun run) in stackOf.entries) {
     final int mk = run.members.last;
     big[sNode] = off.nodeRows[mk];
     check(r.nodeLanes[sNode] == off.nodeLanes[mk] && r.nodeCols[sNode] == off.nodeCols[mk], 'I7 stack $sNode');
     check(y[sNode] <= off.nodeRows[mk], 'y′ ≤ y(m_k) at stack $sNode');
     check(r.nodeDays[sNode] == off.nodeDays[mk], 'day key of stack $sNode = its newest member\'s');
-    if (off.nodeCols[run.members.first] != off.nodeCols[mk]) {
-      splitStack.add(sNode);
-    }
   }
   check(r.rows <= off.rows, 'rows ${r.rows} > ${off.rows}');
   final Iterable<int> live = Iterable<int>.generate(total).where((v) => visible[v]);
@@ -238,13 +234,15 @@ List<String> stackInvariantFailures(LayoutInput g, StackInput s, GraphGridView o
       if (fp[h] == col[j - 1]) {
         continue;
       }
-      final bool fromCard = fp[h] < 0 || splitStack.contains(h);
-      final int t = fromCard ? h : fp[h];
-      constraints.add((col[j - 1], t, fromCard ? 2 * u : u));
+      // (C), amended 2026-11-10: S's top node and merge children against T's fork, or T's lowest
+      // card when T has no first parent.
+      final bool hasParent = fp[h] >= 0;
+      final int t = hasParent ? fp[h] : h;
+      constraints.add((col[j - 1], t, hasParent ? 0 : u));
       for (var k = segment; k < j; k++) {
         for (final (int p, int c, _, int pos) in edges) {
           if (p == col[k] && pos >= 1) {
-            constraints.add((c, t, fromCard ? u : 0));
+            constraints.add((c, t, hasParent ? -u : 0));
           }
         }
       }
@@ -276,7 +274,6 @@ List<String> stackInvariantFailures(LayoutInput g, StackInput s, GraphGridView o
   for (final v in live) {
     (byLane[r.nodeLanes[v]] ??= []).add(v);
   }
-  final straight = <(int, int)>{};
   for (var e = 0; e < edges.length; e++) {
     final (int p, int c, _, int pos) = edges[e];
     check(y[c] >= y[p] + u, 'I1 $p→$c');
@@ -286,23 +283,19 @@ List<String> stackInvariantFailures(LayoutInput g, StackInput s, GraphGridView o
     final bool naiveBlocked = !same && byLane[r.nodeLanes[p]]!.any((o) => y[p] < y[o] && y[o] <= y[c]);
     check(blocked == naiveBlocked, 'blocked $p→$c');
     check((route == routeStraight) == same, 'I3 straight ⇔ same lane $p→$c');
-    check(!same || pos == 0, 'I3 straight ⇒ first parent $p→$c');
     check(route != routeMerge || (pos >= 1 && !blocked), 'I3 merge $p→$c');
     check(route != routeBranchOff || !same, 'I3 branch-off $p→$c');
-    if (same) {
-      straight.add((p, c));
-    }
   }
   for (final List<int> lane in byLane.values) {
     lane.sort((a, b) => y[a].compareTo(y[b]));
     for (var k = 1; k < lane.length; k++) {
-      final int need = straight.contains((lane[k - 1], lane[k])) ? u : 2 * u;
-      check(y[lane[k]] - y[lane[k - 1]] >= need, 'I2 ${lane[k - 1]}, ${lane[k]}');
+      check(y[lane[k]] - y[lane[k - 1]] >= u, 'I2 ${lane[k - 1]}, ${lane[k]}');
     }
   }
   for (final v in live) {
     check(r.nodeCols[v] == r.nodeLanes[v], 'I4 col = lane at $v');
   }
+  fails.addAll(_groupedBranchFailures(g, off, r, y, live, edges, fp, stackOf));
 
   // I5 / I6 over W′.
   if (walk == null) {
@@ -351,11 +344,72 @@ List<String> stackInvariantFailures(LayoutInput g, StackInput s, GraphGridView o
   return fails;
 }
 
-/// How many runs of [g] (any state) are split in [off]: col(m_1) ≠ col(m_k).
-int splitRuns(LayoutInput g, StackInput s, GraphGridView off) => naiveRuns(
-  g,
-  s,
-).where((run) => off.nodeCols[run.members.first] != off.nodeCols[run.members.last]).length;
+/// How many runs of [g] (any state) are split in [off]: their members do not share a column. It is
+/// always 0 (§4.8 step 4, amended 2026-11-10: a run is a piece of one branch).
+int splitRuns(LayoutInput g, StackInput s, GraphGridView off) => naiveRuns(g, s).where((run) {
+  final int col = off.nodeCols[run.members.first];
+  return run.members.any((m) => off.nodeCols[m] != col);
+}).length;
+
+/// The branch checks of §7.3 (restated 2026-11-10) over the grouped rows [y] of [r]: the main branch
+/// alone in column 0, one column per branch, and two branches of one column keeping one pitch between
+/// their reserved rows, which [live] nodes and the grouped [edges] (with fp′ [fp]) give.
+List<String> _groupedBranchFailures(
+  LayoutInput g,
+  GraphGridView off,
+  GraphGridView r,
+  Int32List y,
+  Iterable<int> live,
+  List<(int, int, int, int)> edges,
+  List<int> fp,
+  Map<int, NaiveRun> stackOf,
+) {
+  final int u = r.unit;
+  final int n = g.n;
+  final (:List<int> branchOf, :List<int> bottom, lo: _, hi: _, :int main) = naiveBranches(
+    g,
+    off.nodeRows,
+    u,
+    naiveContinuations(g, layoutParents(g)),
+  );
+  int branchAt(int v) => branchOf[v < n ? v : stackOf[v]!.members.last];
+  final int count = bottom.length;
+  final List<int> columnOf = List.filled(count, -1);
+  final List<int> lowest = List.filled(count, -1);
+  final List<int> hi = List.filled(count, -(1 << 60));
+  final fails = <String>[];
+  for (final v in live) {
+    final int b = branchAt(v);
+    if (columnOf[b] >= 0 && columnOf[b] != r.nodeCols[v] && fails.length < 8) {
+      fails.add('branch $b has columns ${columnOf[b]} and ${r.nodeCols[v]}');
+    }
+    columnOf[b] = r.nodeCols[v];
+    hi[b] = max(hi[b], y[v]);
+    if (lowest[b] < 0 || y[v] < y[lowest[b]]) {
+      lowest[b] = v;
+    }
+  }
+  for (final (int p, int c, _, int pos) in edges) {
+    if (pos >= 1) {
+      hi[branchAt(p)] = max(hi[branchAt(p)], y[c] - u);
+    }
+  }
+  final List<int> lo = [
+    for (final int h in lowest)
+      if (fp[h] >= 0) y[fp[h]] + u else y[h],
+  ];
+  for (var b = 0; b < count && fails.length < 8; b++) {
+    if ((columnOf[b] == 0) != (b == main)) {
+      fails.add('branch $b ${b == main ? 'is the main branch but not in' : 'shares'} column 0');
+    }
+    for (var o = 0; o < b; o++) {
+      if (columnOf[o] == columnOf[b] && !(lo[o] >= hi[b] + u || lo[b] >= hi[o] + u)) {
+        fails.add('branches $o and $b of column ${columnOf[b]} keep no pitch on the grouped rows');
+      }
+    }
+  }
+  return fails;
+}
 
 /// W′ (§4.8 step 6): §4.2's walk by (T ascending, i descending), hidden nodes dropped and each
 /// newest member replaced by its stack node.
@@ -391,8 +445,8 @@ bool _same(List<int> a, List<int> b) =>
 /// A random stack-shaped graph (the last node the root): mostly chains, broken by refs, working
 /// copies, the immutable boundary, merges, forks and Indirect child edges, with Indirect,
 /// multi-Indirect and Missing parent gaps, non-monotonic timestamps now and then, and, with
-/// [split] true, a run rewired in beside its parent's merge reservation, the shape of §4.8 step 4 (since
-/// 2026-11-09 its split-off piece returns when it is short and nothing blocks it, §4.3).
+/// [split] true, a run rewired in beside its parent's merge reservation, the shape that could split a
+/// run before §4.8 step 4 was amended on 2026-11-10; [splitRuns] asserts no run is split any more.
 ({LayoutInput input, SpecStackFacts facts}) randomStackGraph(Random rnd, int n, {bool split = false}) {
   final double pFork = [0.0, 0.08, 0.2][rnd.nextInt(3)];
   final double pMerge = [0.0, 0.06, 0.15][rnd.nextInt(3)];

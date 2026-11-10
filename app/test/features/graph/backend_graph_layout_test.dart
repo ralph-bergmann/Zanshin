@@ -161,8 +161,7 @@ void main() {
       for (final all in <bool>[false, true]) {
         final name = all ? 'all()' : 'revsets.log';
         for (final stacks in every ? <bool>[false, true] : <bool>[false]) {
-          test('$name, stacks ${stacks ? 'on' : 'off'}: both modes hold the invariants, mirror the view and keep '
-              'every column', () async {
+          test('$name, stacks ${stacks ? 'on' : 'off'}: both modes hold the invariants and mirror the view', () async {
             final revset = all ? 'all()' : log;
             final BackendGraphLayout free = await _layout(handle, revset, mode: LayoutMode.free, stacks: stacks);
             final BackendGraphLayout? compact = every
@@ -180,7 +179,6 @@ void main() {
               expect(compact.nodeCount, free.nodeCount);
               for (var i = 0; i < free.nodeCount; i++) {
                 expect(compact.keyOf(i), free.keyOf(i));
-                expect(compact.colOf(i), free.colOf(i), reason: 'Free ↔ Compact keeps every column (4.14 I8)');
               }
               expect(compact.version, isNot(free.version));
             }

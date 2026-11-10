@@ -5,13 +5,11 @@ import 'dart:typed_data';
 import 'graph_grid_view.dart';
 import 'layout_engine.dart';
 import 'layout_input.dart';
-import 'layout_request.dart';
 
 // Commit stacks (Story 4.13): docs/graph-layout.md §4.8 over a finished ungrouped layout — linear
-// runs grouped into stack nodes, the columns kept, only the rows recomputed. The same code as the
-// spike's Dart reference (spikes/graph-layout-ab/dart/lib/src/stacks.dart) and byte-identical to
-// it. Flat typed arrays and CSR, no per-node objects, and no sort: every order comes from the
-// ungrouped visit order or the free walk.
+// runs grouped into stack nodes, the columns kept, only the rows recomputed. Flat typed arrays and
+// CSR, no per-node objects, and no sort: every order comes from the ungrouped visit order or the
+// free walk.
 
 /// Request bits per node: named in `expanded`, `collapsed` or `keep_open`.
 const _markExpanded = 1;
@@ -103,9 +101,6 @@ final class StackLayout {
   /// Each grouped node's column (a stack node: its newest member's); −1 for a hidden node.
   late final Int32List colOf;
 
-  /// 1 for the stack node of a split run (col(m_1) ≠ col(m_k)), per stack node (S entries).
-  late final Uint8List split;
-
   // ---- steps 6–7: rows, routes, buckets.
 
   /// The grouped nodes in the ungrouped visit order through img: ascending in Y.
@@ -113,6 +108,9 @@ final class StackLayout {
 
   /// y′, the grouped rows; −1 for a hidden node.
   late final Int64List rowOf;
+
+  /// How many sweeps step 6 took until every (C) constraint held.
+  late final int sweeps;
 
   /// `blocked` per grouped edge (0 or 1).
   late final Uint8List blocked;
@@ -393,15 +391,10 @@ final class StackLayout {
       laneOf[v] = hidden[v] != 0 ? -1 : lane[v];
       colOf[v] = hidden[v] != 0 ? -1 : col[v];
     }
-    final split = Uint8List(stackCount);
     for (var s = 0; s < stackCount; s++) {
-      final int r = stackRun[s];
-      final int newest = _newest(r);
+      final int newest = _newest(stackRun[s]);
       laneOf[n + s] = lane[newest];
       colOf[n + s] = col[newest];
-      if (col[runMembers[runStart[r]]] != col[newest]) {
-        split[s] = 1;
-      }
     }
     nodeTotal = total;
     this.edgeStart = edgeStart;
@@ -413,7 +406,6 @@ final class StackLayout {
     this.childPos = childPos;
     this.laneOf = laneOf;
     this.colOf = colOf;
-    this.split = split;
   }
 
   /// Step 6: the least rows y′ under (E), (F) and (C), level by level in Y.
@@ -502,33 +494,46 @@ final class StackLayout {
 
     // The least solution, one group of equal Y at a time; within a group, passes until nothing
     // changes (the direction alternates: it changes only the number of passes, never the result).
+    // A (C) constraint with δ = −U can have its source above its target, which one sweep cannot
+    // honour, so the sweeps repeat until (C) holds; values only rise and stay ≤ Y (§4.8, amended
+    // 2026-11-10).
     final rowOf = Int64List(total)..fillRange(0, total, -1);
-    var start = 0;
-    while (start < count) {
-      final int y0 = level[order[start]];
-      int end = start + 1;
-      while (end < count && level[order[end]] == y0) {
-        end++;
-      }
-      var forward = true;
-      var changed = true;
-      var passes = 0;
-      while (changed) {
-        // §4.8 step 6: at most |group| + 1 passes (only δ = 0 constraints inside a group).
-        assert(++passes <= end - start + 1, 'a group of equal Y did not settle');
-        changed = false;
-        for (var j = 0; j < end - start; j++) {
-          final int v = order[forward ? start + j : end - 1 - j];
-          final int value = _least(v, rowOf, walkPrev, walkDelta);
-          if (value != rowOf[v]) {
-            rowOf[v] = value;
-            changed = true;
-          }
+    var sweeps = 0;
+    do {
+      sweeps++;
+      var start = 0;
+      while (start < count) {
+        final int y0 = level[order[start]];
+        int end = start + 1;
+        while (end < count && level[order[end]] == y0) {
+          end++;
         }
-        forward = !forward;
+        var forward = true;
+        var changed = true;
+        var passes = 0;
+        while (changed) {
+          // §4.8 step 6: at most |group| + 1 passes (only constraints with δ ≤ 0 inside a group).
+          assert(++passes <= end - start + 1, 'a group of equal Y did not settle');
+          changed = false;
+          for (var j = 0; j < end - start; j++) {
+            final int v = order[forward ? start + j : end - 1 - j];
+            final int value = _least(v, rowOf, walkPrev, walkDelta);
+            if (value != rowOf[v]) {
+              // Y solves every constraint on branch columns, so y′ never exceeds Y. A larger value means the
+              // columns were built some other way, and these sweeps would never end.
+              if (value > level[v]) {
+                throw StateError('§4.8 (C) has no solution: node $v exceeds Y, so the columns are not branch columns');
+              }
+              rowOf[v] = value;
+              changed = true;
+            }
+          }
+          forward = !forward;
+        }
+        start = end;
       }
-      start = end;
-    }
+    } while (_unmetColumnConstraint(rowOf));
+    this.sweeps = sweeps;
     var maxRow = 0;
     for (var v = 0; v < total; v++) {
       if (rowOf[v] > maxRow) {
@@ -569,10 +574,23 @@ final class StackLayout {
     return value;
   }
 
-  /// (C) of step 6 over the per-column lists [colNodes] (CSR [colStart]): for each two adjacent
-  /// segments, S below (top u) and T above (lowest h), y′(t) ≥ y′(u) + δ₁ and y′(t) ≥ y′(c) + δ₂
-  /// for every grouped edge (x, c) with x in S and pos ≥ 1. Counts per target while [_cCursor] is
-  /// null, fills afterwards.
+  /// Whether a (C) constraint is unmet in [rowOf], where every node is set after a sweep.
+  bool _unmetColumnConstraint(Int64List rowOf) {
+    for (var v = 0; v < nodeTotal; v++) {
+      for (int c = _cStart[v]; c < _cStart[v + 1]; c++) {
+        if (rowOf[_cSource[c]] + _cDelta[c] > rowOf[v]) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// (C) of step 6 (amended 2026-11-10) over the per-column lists [colNodes] (CSR [colStart]): for
+  /// each two adjacent segments, S below (top u) and T above (lowest h), with t = fp′(h):
+  /// y′(t) ≥ y′(u) and y′(t) ≥ y′(c) − U, or without t, y′(h) ≥ y′(u) + U and y′(h) ≥ y′(c), for every
+  /// grouped edge (x, c) with x in S and pos ≥ 1. Counts per target while [_cCursor] is null, fills
+  /// afterwards.
   void _segmentConstraints(Int32List colStart, Int32List colNodes) {
     final int columns = colStart.length - 1;
     for (var c = 0; c < columns; c++) {
@@ -583,10 +601,9 @@ final class StackLayout {
         if (parent == colNodes[j - 1]) {
           continue;
         }
-        final bool fromCard = parent < 0 || (h >= n && split[h - n] != 0);
-        final target = fromCard ? h : parent;
-        final int below = fromCard ? 2 * unit : unit;
-        final int merges = fromCard ? unit : 0;
+        final target = parent < 0 ? h : parent;
+        final int below = parent < 0 ? unit : 0;
+        final int merges = parent < 0 ? 0 : -unit;
         _addConstraint(target, colNodes[j - 1], below);
         for (var x = segment; x < j; x++) {
           final int node = colNodes[x];
@@ -716,11 +733,9 @@ final class StackLayout {
     this.bucketEnd = bucketEnd;
   }
 
-  /// The grid buffer of the grouped layout (format version [GraphGridView.stackFormatVersion]),
-  /// laid out with [order] (the header echoes it).
-  Uint8List toGrid(LaneOrder order) => writeStackGrid(
+  /// The grid buffer of the grouped layout (format version [GraphGridView.stackFormatVersion]).
+  Uint8List toGrid() => writeStackGrid(
     mode: engine.mode,
-    order: order,
     unit: unit,
     rows: rows,
     lanes: lanes,

@@ -392,7 +392,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 **Reopened (2026-09-26, Ralph — console session on the commit-graph view; re-planned the same day after the layout A/B):** three stories form the backend/bridge half of the commit-graph view (Epic 10, UI). The view draws the HTML design's layered layout, not `jj log`'s one-commit-per-row lanes:
 - several commits per row: Compact = generation depth, Time = time buckets, and an experimental Free mode with time-proportional y *(decided 2026-09-27, Ralph, via the spike viewer: the product ships Free, the default, and Compact; Time is dropped. The lane order is `compact`, the default, or greedy; `optimized` is dropped. See Epic 10's "Product decisions 2026-09-27")*;
-- greedy interval lane packing and a lane-order optimisation;
+- greedy interval lane packing and a lane-order optimisation *(2026-11-10, Story 4.17: the packing and the lane orders, the decided ones above included, are gone; each mode chooses its columns by branch)*;
 - orthogonal edge routing.
 
 The stories:
@@ -557,7 +557,7 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
 
 **Product decisions 2026-09-27** (Ralph, console session, after using the spike viewer on a real 1.4k-commit repo; details in the Epic 10 header below):
 - **Layout modes:** Free is the default, Compact the only other mode. Time and Time+gaps are dropped, so the experiment above is decided: free y. Free keeps the day axis in the gutter. Every default layout therefore needs every timestamp.
-- **Lane order:** `compact` is the default, greedy the alternative. `optimized` (the design's "Min. crossings", its default) is dropped.
+- **Lane order:** `compact` is the default, greedy the alternative. `optimized` (the design's "Min. crossings", its default) is dropped. *(2026-11-10, Story 4.17: the lane orders are gone; each mode chooses its columns by branch.)*
 - **Intended deviations from the design:** crossing gaps are always on (no Plain, no toggle); content fades as it scrolls under the gutter; the current date stays pinned in the gutter; every edge leaves a card's top at the centre, branch-offs included; a commit found by go-to-change pulses (added 2026-09-27, 10.6 item 12).
 - **Label language:** the localisable labels stay for now, English by default as in the design. Whether the app is English-only or translated is open.
 - 10.13's outcome is these decisions. *(Not Ralph's decision: the story is closed as done on that outcome, Claude's call; its item 6 leaves a Flutter confirmation to Ralph.)*
@@ -580,7 +580,7 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
 - **What changed:** the reference is now `JJ Desktop Client Floating.html`, and a separate design-system project (tokens, components, a UI kit) is exported next to it. The graph owns the window and every control floats above it: a top bar (Place · View · Action), a rail with pinnable panels, the @ pill, the minimap and calm scrolling. The search field replaces the revset dropdown and comes with a jj log Configurations dialog. The inspector replaces the detail panel, with describe in place, hunks and a commit/split composer. Cards get a ••• and right-click menu instead of the fan and the "+" chips. Drag-and-drop moves changes, bookmarks, files and hunks. Free and Compact share their columns, and line router B draws one line per parent → child pair.
 - **Decided (Ralph):**
   - the export wins where it explicitly changed a recorded decision: router B instead of the top-centre exit, the day axis on dividers without a gutter, gap markers with 12 px of line to cards, and the drag-and-drop interaction (a dwell menu, a plain drop runs the default row, ⌥ = "Move only this change", cards only);
-  - kept: the `compact` lane order without a control, 4.13's stack columns, expanded runs under @, bridges, the go-to pulse (now moon);
+  - kept: the `compact` lane order without a control *(2026-11-10, Story 4.17: no lane order any more)*, 4.13's stack columns, expanded runs under @, bridges, the go-to pulse (now moon);
   - motion is the client's FLIP model, not the Animation Show Case's;
   - the inspector, the card menu, the Bookmarks rail content, the search field and the Configurations dialog are built to the design; only the bookmark popover stays thin;
   - **scope change:** Claude now builds the whole Flutter UI, and Ralph accompanies and reviews. The app shell becomes Epic 11.
@@ -4207,6 +4207,7 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 
 ### Story 4.14: Shared columns — one lane packing and column order for Free and Compact [bridge]
 *(2026-11-10, Ralph: superseded by Story 4.17 — columns per mode. I8, the joint packing and the lane orders go when 4.17 lands.)*
+*(2026-11-10, Story 4.17 delivered: I8, the joint packing and the lane orders are gone from the product; each mode chooses its own columns.)*
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3` (SYNC #8; the Epic 10 header's design update 2026-10-14, decision (g): planned). Bridge scope: pure Dart in `packages/zanshin_core`, SPEC first in the spike's Dart, like 4.13. Refined enough to build from; ACs to be written when scheduled.)*
 
 **Motivation.**
@@ -4410,6 +4411,8 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 
 ### Story 4.17: Columns by branch, per mode — the lab's column rules replace the lane packing and the lane order [bridge/UI]
 *(Added 2026-11-10, Ralph — console session with the graph layout lab (`spikes/graph-layout-lab`; its README is the step log, and steps 1, 2, 8, 9, 11 and 13 are the column steps). Ralph approved the rule set that day. Claude builds it. Refined enough to build from; ACs to be written when scheduled.)*
+
+> **Delivered 2026-11-10** (`spec-4-17-branch-columns-per-mode.md`): the rule is GLD §4.3's Branch columns (`chooseColumns` in `layout_engine.dart`, the lab's `lib/columns.dart` at its defaults, in typed arrays); the joint packing, the short-piece return, `compact_order.dart`, `LaneOrder` / `order` / `budget` and I8 are gone, from `GraphViewModel` to `computeGraphGrid`. Each mode chooses its own columns; stacks keep their columns (I7), and no run is split any more (D11 gone). §4.8's (C) is restated and swept until it holds (`StackLayout.sweeps`). The grid format stays 3 / 4 with slot 2 = 0. Goldens and recordings are the product CLI's, per mode; `lab_check` confirms the product's columns equal the lab's on its data sets and every golden input. GLD §2, §3, §4.2, §4.3, §4.6, §4.7, §4.8, §6, §7.2, §7.3, §8.2, §9 (D15), §12, §13 amended.
 
 **Motivation.**
 - The engine's columns grew rule by rule: the joint packing (4.14), the `compact` order (4.11), the short-piece return (GLD D13) and the closing pass (D14). Real repositories still show outliers (lab README "Intent"):
@@ -8005,7 +8008,7 @@ Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `
 >
 > **Product decisions 2026-09-27 (Ralph, console session, after using the spike viewer on a real 1.4k-commit repo).** They supersede every mention below of Time, Time+gaps (M1, the view-side gap variant), `optimized` / "Min. crossings", Plain crossings and the branch-off's ±0.28·W exit, including mentions without a dated note of their own (e.g. 10.1's motivation and items 2–3, 10.2 item 5 and its Non-goals, 10.4 item 8). The affected stories carry dated notes.
 > 1. **Layout modes:** Free is the default, Compact the only other mode. Time and Time+gaps are dropped ("the rest can go"). Free keeps its day axis in the gutter (10.2 item 9). The design has no Free mode, and its default is Compact (GV:507).
-> 2. **Lane order:** `compact` (SPEC §4.7) is the default, greedy the alternative. `optimized` is dropped. This deviates from the design's default, Min. crossings (APP:13). `compact`'s known limits stay recorded (4.11 item 11): in Free it is wider than greedy in about 8 % of the real repo's history, and its work budget binds from about 10k commits. Greedy is the fallback.
+> 2. **Lane order:** `compact` (SPEC §4.7) is the default, greedy the alternative. `optimized` is dropped. This deviates from the design's default, Min. crossings (APP:13). `compact`'s known limits stay recorded (4.11 item 11): in Free it is wider than greedy in about 8 % of the real repo's history, and its work budget binds from about 10k commits. Greedy is the fallback. *(2026-11-10, Story 4.17: the lane orders are gone; each mode chooses its columns by branch.)*
 > 3. **Label language:** keep what exists for now: labels formatted per locale, English by default as in the design (the viewer's `?lang=de` gives "Heute", "Gestern", …). Whether the app is English-only or translated is open and app-wide; some terms may sound odd in German (deferred-work).
 > 4. **Intended deviations from the design.** Ralph wants these viewer decisions kept:
 >    - (a) crossing gaps (line hops) are the only option: always on, no Plain, no toggle (10.4 items 4 and 11);
@@ -8238,6 +8241,8 @@ Status of the design:
 - **Edges:** every parent edge is routed as one orthogonal polyline (straight, merge or branch-off), with rounded corners and crossing hops.
 
 *(2026-10-14: the floating export moved this algorithm into `graph-layout.jsx` (GL). It has Free (the default; rows follow commit time, 16 units per pitch) and Compact, and Time is gone. Both layouts share one set of columns, so a switch changes only heights (SYNC #8; Story 4.14). Edges follow router B, one line per parent → child pair (decision (a1); Story 4.15).)*
+
+*(2026-11-10, Story 4.17: the product no longer shares columns between the modes. Free and Compact each choose their own branch columns (GLD §4.3, D15), so a switch can move a card sideways, the two layouts can differ in width, and the view re-centres on @ with no transition.)*
 
 That algorithm belongs to the backend:
 - **The A/B spike** `spikes/graph-layout-ab` (`SPEC.md`):
@@ -8610,8 +8615,8 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
 >   Keys already survive rewrites (item 2's change-id rule).
 
 > **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** the floating client is the reference now.
-> - **Item 3:** offX is 0 in both modes. Free reserves no gutter, so both layouts have the same width: 2·pad + colCount·(W + gapX) − gapX (GL:606-607). The gutter (88) leaves `GraphMetrics`; only 10.2's label column keeps that width (DS components/graph/graph.css:96).
-> - **Items 2 and 14:** once 4.14 lands, the checker gains a hard invariant I8: every node has the same column in Free and Compact. Rows, lanes and columns stay independent of W and H; the export's columns are not (GL:570; prototype defect 41), and that is not copied.
+> - **Item 3:** offX is 0 in both modes. Free reserves no gutter, so both layouts have the same width: 2·pad + colCount·(W + gapX) − gapX (GL:606-607). The gutter (88) leaves `GraphMetrics`; only 10.2's label column keeps that width (DS components/graph/graph.css:96). *(2026-11-10, Story 4.17: the two modes can now have different widths, because each chooses its own columns.)*
+> - **Items 2 and 14:** once 4.14 lands, the checker gains a hard invariant I8: every node has the same column in Free and Compact. Rows, lanes and columns stay independent of W and H; the export's columns are not (GL:570; prototype defect 41), and that is not copied. *(2026-11-10, Story 4.17: I8 is gone; each mode chooses its own columns.)*
 > - **Edges:** 10.4 paints 4.15's polylines. A change of W or H re-runs 4.15's geometry stage, still without a layout request. Witness (l) gains "and only the router's geometry stage re-runs".
 > - **Item 6:**
 >   - the background hook paints 10.2's day guides only. There is no grid; the canvas is the window's, static behind the viewport (FC:12, :20);
@@ -8621,7 +8626,7 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
 > - **Item 8's cursors are replaced** (FC:144-152; DNC:5): the arrow everywhere (cards, affordances, gap markers, the minimap, item drags); `grabbing` only while a pan is held; an I-beam in text fields; `col-resize` on resize handles. The grab cursor and the card's click cursor (GC:45-46) are the docked client's. The FINAL item "pan-by-drag with the grab cursor" keeps the pan and loses the cursor.
 > - **Item 12 is replaced** by 11.1's token layer; tokens come from the design system (decision (f)). See the house rule "Theme".
 > - **Item 1 and design question (b):** the demo host's file and the `main*.dart` that hosts it become Claude's proposals, which Ralph reviews (decision (e)).
-> - **Item 10:** after 4.14 a Free ↔ Compact switch changes rows only. The re-centre on @ after a layout switch stays (GV:964).
+> - **Item 10:** after 4.14 a Free ↔ Compact switch changes rows only. The re-centre on @ after a layout switch stays (GV:964). *(2026-11-10, Story 4.17: a switch can move a card sideways too; the re-centre stays.)*
 > - **Item 13 (recordings):**
 >   - GD is unchanged at `e74ced3` (52 commits), so `inputs/design-e243dd2-{default,all}.json` stay the sample. `tools/design-input.mjs --rev e74ced3` fails (it extracts by name from `graph-view.jsx`; GV:6-7) and is not needed: the gap walk is identical (GL:435-460 = GV@e243dd2:145-170);
 >   - the export's own behaviour (shared columns, router B, the day dividers) is read by 4.14's and 4.15's loader, which evaluates `graph-layout.jsx` whole;
@@ -8865,7 +8870,7 @@ If Ralph wants smaller reviews, this story splits cleanly into two:
 > - **Canvas** (replaces item 1 and its FINAL point): the canvas is the window-fixed `--canvas` gradient (DS tokens/colors.css:19, paper :59; AC:6-9, :42-45). It sits static behind the viewport and never scrolls (FC:12). The dot grid is gone, and the plane is transparent (FC:20; DS readme.md:84); only the docked client keeps it (GC:50).
 >   - Tokens (decision (f)). Night: a radial lift, 115 % × 85 % at 10 % −12 %, rgba(96,120,178,.24) fading to 0 at 62 %, over a linear 165° gradient #1a2038 → #12162a (68 %) → #0e1224. Paper: a gold lift, rgba(220,168,91,.20), over #f7f4f0 → #f0ece7 → #e8e3dd. `--canvas-base` is the flat fallback (10.1 item 12).
 >   - (Claude's proposal) The graph view paints the canvas behind everything; a transparent mode lets 11.4 paint the window instead.
-> - **No gutter** (replaces item 2): no reserved width and no gradient (GC:57; SYNC #8). offX is 0 in both modes, so Free and Compact have the same width (GL:606-607; 10.1's note).
+> - **No gutter** (replaces item 2): no reserved width and no gradient (GC:57; SYNC #8). offX is 0 in both modes, so Free and Compact have the same width (GL:606-607; 10.1's note). *(2026-11-10, Story 4.17: the two modes can now have different widths, because each chooses its own columns.)*
 > - **Day labels in Free** (replaces item 9's placement):
 >   - each day's label sits on the dashed divider below that day's first (oldest) commit, at the left edge. Reading upward, a label means "this day starts here";
 >   - the divider runs midway between the top of the older day's newest card and the bottom of this day's oldest card (GL:599);
@@ -8887,7 +8892,7 @@ If Ralph wants smaller reviews, this story splits cleanly into two:
 >   - (f) and (g) stay engine questions (4.11 open question 6; GLD §11.3).
 > - **Witnesses:**
 >   - the dot-grid witness and "The gutter stays fixed horizontally, and column 0 is visible beside it at h = 0" go;
->   - "Switching Compact ↔ Time or Free adds or removes the gutter and the 88 px offset" becomes: switching Free ↔ Compact keeps the width and every column, and only Free shows labels and guides;
+>   - "Switching Compact ↔ Time or Free adds or removes the gutter and the 88 px offset" becomes: switching Free ↔ Compact keeps the width and every column, and only Free shows labels and guides; *(2026-11-10, Story 4.17: the width and the columns can change on a switch; only Free shows labels and guides.)*
 >   - the Free witness checks the divider placement, the oldest day's label below its first commit, the 22 px push-up and the year;
 >   - "The pinned label changes exactly where the next label reaches it" goes; the minimap's pill is 10.16's;
 >   - passing midnight still re-formats the labels without a layout request.
@@ -10441,9 +10446,9 @@ The design needs content only on visible cards (subject, author, date, empty, co
 
 > **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):**
 > - **Item 3 gains two backend stories:**
->   - 4.14 (shared columns): every request loads timestamps, and a hard invariant I8 (the same column in Free and Compact) gates every real layout, like I7;
+>   - 4.14 (shared columns): every request loads timestamps, and a hard invariant I8 (the same column in Free and Compact) gates every real layout, like I7; *(2026-11-10, Story 4.17: I8 is gone, and every request still loads timestamps for the day keys.)*
 >   - 4.15 (router B): the edges' geometry comes from `zanshin_core`'s router, per layout and card size, not from the layout result's `route` field. "A W-independent result" stays: a card-size change re-runs only the router's geometry stage.
-> - **"The Lane order knob"** has no control in the UI (decision (b)). 10.5 passes the order as a request parameter, `compact` by default; greedy stays a demo-host option.
+> - **"The Lane order knob"** has no control in the UI (decision (b)). 10.5 passes the order as a request parameter, `compact` by default; greedy stays a demo-host option. *(2026-11-10, Story 4.17: the request has no lane order any more, and the catalogue's knob is gone.)*
 > - **The route report** (item 3's invariants) becomes a gate in Compact once 4.15 lands: router B's gutter routes answer SPEC §11.4. Free stays reported.
 > - **Item 4 (bridge part)** also exports 4.15's router and its result types.
 > - **Decision (e):** "how the dev host receives its path" and "where the graph mounts in the shell" become Claude's proposals, which Ralph reviews. Proposed: the graph mounts in 11.3's floating overlay host, and a dev entry point takes the path through `--dart-define` until 11.5's project switching lands.

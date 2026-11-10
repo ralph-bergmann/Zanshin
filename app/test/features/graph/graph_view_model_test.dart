@@ -45,7 +45,6 @@ void main() {
       expect(request.anchors, <String>['trunk()', 'present(@)']);
       expect(request.anchors, defaultGraphAnchors);
       expect(request.mode, GraphMode.free);
-      expect(request.order, GraphLaneOrder.compact);
       expect(request.utcOffsetMin, 0);
       expect(model.revset, 'L');
       expect(model.layout, isNotNull);
@@ -342,12 +341,12 @@ void main() {
         expect(source.requests.last.mode, GraphMode.compact);
         expect(model.reveal?.key, 'a');
         source.respond = (_) => keysLayout(<String>['x', 'y']);
-        model.setLaneOrder(GraphLaneOrder.greedy);
+        model.setMode(GraphMode.free);
         async.flushMicrotasks();
-        expect(source.requests.last.order, GraphLaneOrder.greedy);
+        expect(source.requests.last.mode, GraphMode.free);
         expect(model.reveal, isNull);
         final int count = source.requests.length;
-        model.setMode(GraphMode.compact);
+        model.setMode(GraphMode.free);
         async.flushMicrotasks();
         expect(source.requests, hasLength(count), reason: 'no switch, no request');
         model.dispose();
@@ -1498,9 +1497,9 @@ void main() {
         async.flushMicrotasks();
         expect(model.transition, isNull, reason: 'a mode switch');
         source.respond = (_) => opLayout(<String>['b', 'a', 'c'], 'switch${op++}');
-        model.setLaneOrder(GraphLaneOrder.greedy);
+        model.setMode(GraphMode.free);
         async.flushMicrotasks();
-        expect(model.transition, isNull, reason: 'a lane-order switch, even when cards move');
+        expect(model.transition, isNull, reason: 'a mode switch, even when cards move');
 
         source.respond = (_) => opLayout(<String>['a', 'b', 'c'], 'same');
         model.reload();

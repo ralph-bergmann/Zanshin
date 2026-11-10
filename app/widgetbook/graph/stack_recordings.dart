@@ -35,8 +35,8 @@ List<_Run> _runsOf(String name) => _runs.putIfAbsent(name, () {
 /// expanded; else its oldest member's key in `expandedKeys` expands it and in `collapsedKeys` collapses it; else it
 /// keeps the default recording's state. Without an exact match, the recording with the fewest mismatching runs. Null
 /// when [request] groups no stacks or [sample] has no stack recordings: the ungrouped recording answers.
-// shortcut: recorded states only (the default, all expanded, each run flipped alone), lane order compact whatever
-// the request asks; deeper combinations take the nearest state until 10.12 brings the engine.
+// shortcut: recorded states only (the default, all expanded, each run flipped alone); deeper combinations take the
+// nearest state until 10.12 brings the engine.
 String? stackRecordingFor(String sample, GraphRequest request) {
   final String? defaults = graphStackDefaults['$sample ${request.mode.name}'];
   if (!request.stacks || defaults == null) {

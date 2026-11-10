@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-// The product engine's invariant checks (Story 4.11): docs/graph-layout.md §7.3 I1–I6 with the
-// amended `free` I5, the `compact` order against greedy, literal model-cost references, and the
-// seeded random DAGs they run on. Ported from the spike's Dart tests
-// (spikes/graph-layout-ab/dart/test/layout_test.dart), minus `time` and `optimized`. Story 4.14:
-// joint columns — I8 across modes, the joint model cost, every node's day key.
+// The product engine's invariant checks: docs/graph-layout.md §7.3 I1–I6 with the amended `free` I5
+// and I2–I4 as restated on 2026-11-10, the branch columns read literally, every node's day key, and
+// the seeded random DAGs they run on.
 
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
-import 'package:zanshin_core/src/graph_layout/compact_order.dart';
 import 'package:zanshin_core/src/graph_layout/graph_grid_view.dart';
 import 'package:zanshin_core/src/graph_layout/layout_engine.dart';
 import 'package:zanshin_core/src/graph_layout/layout_input.dart';
@@ -159,10 +156,10 @@ List<int> clampedT(LayoutInput g, List<List<int>> lp) {
   return tt;
 }
 
-/// The failures of docs/graph-layout.md §7.3 I1–I6 — I5 as amended on 2026-10-01 — plus the
-/// header fields, the edge order and kinds of §3, col = lane (both shipped orders keep π the
-/// identity) and every node's day key (Story 4.14: dk of its clamped T, [GraphGridView.noDay] for a
-/// root, in both modes), for the grid [r] laid out from [g]; empty when every check holds.
+/// The failures of docs/graph-layout.md §7.3 I1–I6 — I5 as amended on 2026-10-01, I2 and I3 as
+/// restated on 2026-11-10 — plus the header fields, the edge order and kinds of §3, col = lane (I4), no
+/// empty column and every node's day key (dk of its clamped T, [GraphGridView.noDay] for a root, in
+/// both modes), for the grid [r] laid out from [g]; empty when every check holds.
 List<String> invariantFailures(LayoutInput g, GraphGridView r) {
   final fails = <String>[];
   void check(bool ok, String message) {
@@ -181,7 +178,6 @@ List<String> invariantFailures(LayoutInput g, GraphGridView r) {
   check(u == unitOf(r.mode), 'unit');
   final List<List<int>> lp = layoutParents(g);
   var e = 0;
-  final straight = <int>{};
   for (var i = 0; i < n; i++) {
     var pos = 0;
     for (int k = g.parStart[i]; k < g.parStart[i + 1]; k++) {
@@ -200,18 +196,14 @@ List<String> invariantFailures(LayoutInput g, GraphGridView r) {
       final blocked = r.edgeBlocked[e] != 0;
       final same = r.nodeLanes[p] == r.nodeLanes[i];
       check((route == routeStraight) == same, 'I3 straight ⇔ same lane, $p→$i');
-      check(!same || pos == 0, 'I3 straight ⇒ first parent, $p→$i');
       check(route != routeMerge || (pos >= 1 && !blocked), 'I3 merge, $p→$i');
       check(!blocked || !same, 'I3 blocked ⇒ lanes differ, $p→$i');
-      if (route == routeStraight) {
-        straight.add(p * n + i);
-      }
       pos++;
       e++;
     }
   }
   check(e == r.edgeCount, 'edge count');
-  // I2: per lane, consecutive cards by y keep 2U, or U along a straight edge.
+  // I2: in one column, consecutive cards by y keep at least U.
   final byLane = <int, List<int>>{};
   for (var i = 0; i < n; i++) {
     (byLane[r.nodeLanes[i]] ??= []).add(i);
@@ -221,16 +213,16 @@ List<String> invariantFailures(LayoutInput g, GraphGridView r) {
     for (var k = 1; k < nodes.length; k++) {
       final int lo = nodes[k - 1];
       final int hi = nodes[k];
-      final int need = straight.contains(lo * n + hi) ? u : 2 * u;
-      check(y[hi] - y[lo] >= need, 'I2 lane ${r.nodeLanes[lo]}: nodes $lo, $hi');
+      check(y[hi] - y[lo] >= u, 'I2 column ${r.nodeLanes[lo]}: nodes $lo, $hi');
     }
   }
-  // I4: both shipped orders keep π the identity.
+  // I4: col = lane.
   for (var i = 0; i < n; i++) {
     check(r.nodeCols[i] == r.nodeLanes[i], 'I4 col = lane, node $i');
   }
   check(r.rows == (n == 0 ? 0 : y.reduce(max) + u), 'rows');
   check(r.lanes == (n == 0 ? 0 : r.nodeLanes.reduce(max) + 1), 'lanes');
+  check(byLane.length == r.lanes, 'no column is empty');
   final List<int> days = clampedT(g, lp);
   for (var i = 0; i < n; i++) {
     final int want = g.isRoot[i] != 0 ? GraphGridView.noDay : dayKey(days[i], g.utcOffsetMin);
@@ -288,250 +280,160 @@ void _freeDayBuckets(LayoutInput g, GraphGridView r, List<int> tt, void Function
   }
 }
 
-/// A greedy layout of [g] in [mode], through routing (the state the `compact` order starts from).
-LayoutEngine greedyEngine(LayoutInput g, LayoutMode mode) => LayoutEngine(g, mode)
-  ..layering()
-  ..packLanes()
-  ..markBlocked()
-  ..route();
-
-/// The failures of §4.7's claims for the `compact` order's grid [compact] against greedy's
-/// [greedy], both laid out from [g] in one mode: the same rows, buckets, edge order and routes,
-/// `blocked` unchanged on every merge (pos ≥ 1), col = lane, lane 0's nodes fixed before the closing
-/// pass, no empty column, no more lanes than greedy, and a model cost (§4.7) no higher than greedy's.
-List<String> compactAgainstGreedy(LayoutInput g, GraphGridView greedy, GraphGridView compact) {
-  final fails = <String>[];
-  void check(bool ok, String message) {
-    if (!ok && fails.length < 8) {
-      fails.add(message);
+/// cont(j) of §4.3, read literally over the layout parents [lp]: the child with fp = j and the least
+/// (priority, index), or −1.
+List<int> naiveContinuations(LayoutInput g, List<List<int>> lp) {
+  final List<int> cont = List.filled(g.n, -1);
+  for (var i = 0; i < g.n; i++) {
+    if (lp[i].isNotEmpty) {
+      final int f = lp[i].first;
+      if (cont[f] < 0 || g.priority[i] < g.priority[cont[f]]) {
+        cont[f] = i;
+      }
     }
   }
-
-  bool same(List<int> a, List<int> b) =>
-      a.length == b.length && Iterable<int>.generate(a.length).every((k) => a[k] == b[k]);
-  check(same(compact.nodeRows, greedy.nodeRows), 'rows differ');
-  check(
-    same(compact.bucketValues, greedy.bucketValues) &&
-        same(compact.bucketStarts, greedy.bucketStarts) &&
-        same(compact.bucketEnds, greedy.bucketEnds),
-    'buckets differ',
-  );
-  check(same(compact.edgeFroms, greedy.edgeFroms) && same(compact.edgeTos, greedy.edgeTos), 'edge order differs');
-  check(same(compact.edgeRoutes, greedy.edgeRoutes), 'routes differ');
-  check(compact.rows == greedy.rows, 'header rows differ');
-  final LayoutEngine l = greedyEngine(g, compact.mode);
-  for (var e = 0; e < compact.edgeCount; e++) {
-    if (e - l.lpStart[compact.edgeTos[e]] >= 1) {
-      check(compact.edgeBlocked[e] == greedy.edgeBlocked[e], 'blocked differs on merge $e');
-    }
-  }
-  for (var i = 0; i < g.n; i++) {
-    check(compact.nodeCols[i] == compact.nodeLanes[i], 'col ≠ lane at node $i');
-  }
-  check(compact.lanes <= greedy.lanes, 'more lanes than greedy');
-  check(compact.nodeLanes.toSet().length == compact.lanes, 'an empty column');
-  final int greedyCost = naiveCompactCost(g, l.lane);
-  final Int32List searched = CompactOrder(l, budget: defaultLayoutBudget, closing: false).run();
-  // Lane 0 stays through the search; the closing pass may move its segments next to their lines.
-  for (var i = 0; i < g.n; i++) {
-    check((searched[i] == 0) == (greedy.nodeLanes[i] == 0), 'lane 0 changed at node $i');
-  }
-  final int searchedCost = naiveCompactCost(g, searched);
-  check(searchedCost <= greedyCost, 'joint model cost $searchedCost > greedy $greedyCost');
-  // The closing pass may raise the gravity on purpose, but never the crossings and runs.
-  final int closedLines = naiveCompactCost(g, compact.nodeLanes, gravity: 0);
-  final int searchedLines = naiveCompactCost(g, searched, gravity: 0);
-  check(closedLines <= searchedLines, 'closing pass: line cost $closedLines > $searchedLines');
-  return fails;
+  return cont;
 }
 
-/// The failures of §7.3 I8 (Story 4.14) for a `compact` grid [c] and a `free` grid [f] of one
-/// input, order and stack request: the same `lanes`, and every node — stack nodes included — the
-/// same lane and col, hidden ones −1 in both; the same day keys too. Empty when it holds.
-List<String> i8Failures(GraphGridView c, GraphGridView f) {
-  final fails = <String>[];
-  if (c.mode != LayoutMode.compact || f.mode != LayoutMode.free) {
-    fails.add('I8 needs a compact and a free grid');
-  }
-  if (c.lanes != f.lanes) {
-    fails.add('I8 lanes ${c.lanes} ≠ ${f.lanes}');
-  }
-  if (c.nodeLanes.length != f.nodeLanes.length) {
-    fails.add('I8 node count ${c.nodeLanes.length} ≠ ${f.nodeLanes.length}');
-    return fails;
-  }
-  for (var i = 0; i < c.nodeLanes.length && fails.length < 8; i++) {
-    if (c.nodeLanes[i] != f.nodeLanes[i] || c.nodeCols[i] != f.nodeCols[i]) {
-      fails.add('I8 node $i: lane/col ${c.nodeLanes[i]}/${c.nodeCols[i]} ≠ ${f.nodeLanes[i]}/${f.nodeCols[i]}');
-    }
-    if (c.nodeDays[i] != f.nodeDays[i]) {
-      fails.add('node $i: day key differs between the modes');
-    }
-  }
-  return fails;
-}
-
-/// Naive segments of a greedy layout: chains of straight edges, with their §4.3 reservations
-/// [a, b) re-derived literally. Returns (segment per node, a per segment, b per segment).
-(List<int>, List<int>, List<int>) naiveSegments(LayoutEngine l) {
-  final int n = l.n;
-  final int u = l.unit;
-  final Int64List y = l.y;
-  final Int32List fp = l.fp;
-  final Int32List prio = l.input.priority;
-  final List<int> cont = List.filled(n, -1);
-  for (var i = 0; i < n; i++) {
-    final int f = fp[i];
-    if (f >= 0 && (cont[f] < 0 || prio[i] < prio[cont[f]])) {
-      cont[f] = i;
-    }
-  }
-  final List<int> seg = List.filled(n, -1);
-  final a = <int>[];
-  final b = <int>[];
+/// The branches of §4.3 (Branch columns, amended 2026-11-10), read literally on the rows [y] in units
+/// of [u]: per node its branch, and per branch its bottom card and reserved rows [lo, hi]; the main
+/// branch is `main`, −1 without a node.
+({List<int> branchOf, List<int> bottom, List<int> lo, List<int> hi, int main}) naiveBranches(
+  LayoutInput g,
+  List<int> y,
+  int u,
+  List<int> cont,
+) {
+  final int n = g.n;
+  final List<List<int>> lp = layoutParents(g);
+  final List<int> branchOf = List.filled(n, -1);
+  final bottom = <int>[];
   for (int i = n - 1; i >= 0; i--) {
-    final int f = fp[i];
-    if (f >= 0 && l.routes[l.lpStart[i]] == routeStraight) {
-      seg[i] = seg[f];
+    final int? f = lp[i].firstOrNull;
+    if (f != null && cont[f] == i) {
+      branchOf[i] = branchOf[f];
     } else {
-      seg[i] = a.length;
-      a.add(1 << 60);
-      b.add(-(1 << 60));
+      branchOf[i] = bottom.length;
+      bottom.add(i);
     }
   }
+  final List<int> lo = [
+    for (final int b in bottom)
+      if (lp[b].isNotEmpty) y[lp[b].first] + u else y[b],
+  ];
+  final List<int> hi = [for (final int b in bottom) y[b]];
   for (var i = 0; i < n; i++) {
-    final List<int> ends = [
-      y[i],
-      if (cont[i] >= 0) y[cont[i]] - u,
-      for (int s = l.chStart[i]; s < l.chStart[i + 1]; s++)
-        if (l.chPos[s] >= 1) y[l.chIdx[s]] - u,
-    ];
-    final int ai = fp[i] >= 0 ? y[fp[i]] + u : y[i];
-    final int bi = ends.reduce(max) + 2 * u;
-    a[seg[i]] = min(a[seg[i]], ai);
-    b[seg[i]] = max(b[seg[i]], bi);
+    hi[branchOf[i]] = max(hi[branchOf[i]], y[i]);
+    for (final int p in lp[i].skip(1)) {
+      hi[branchOf[p]] = max(hi[branchOf[p]], y[i] - u);
+    }
   }
-  return (seg, a, b);
+  var best = -1;
+  for (var i = 0; i < n; i++) {
+    final bool better =
+        best < 0 || g.priority[i] < g.priority[best] || (g.priority[i] == g.priority[best] && y[i] <= y[best]);
+    if (better) {
+      best = i;
+    }
+  }
+  return (branchOf: branchOf, bottom: bottom, lo: lo, hi: hi, main: best < 0 ? -1 : branchOf[best]);
 }
 
-/// §4.7's joint model cost (amended 2026-10-27) of [lanes] (per node) over [g]'s joint greedy
-/// layout, from scratch: 16·cost_compact + cost_free, each [naiveModelCost] in its model's greedy
-/// engine (the lanes are joint, so both engines share them; y, U and routes are the model's).
-int naiveCompactCost(LayoutInput g, List<int> lanes, {int gravity = compactGravity}) =>
-    16 * naiveModelCost(greedyEngine(g, LayoutMode.compact), lanes, gravity: gravity) +
-    naiveModelCost(greedyEngine(g, LayoutMode.free), lanes, gravity: gravity);
-
-/// §4.7's model cost of [lanes] (per node) in the vertical model of the greedy layout [l], from
-/// scratch: U·(400·X + 4·Len) + κ·Σ column·(b − a), with blocked-merge verticals clipped to
-/// 10·a − 3U.
-int naiveModelCost(LayoutEngine l, List<int> lanes, {int gravity = compactGravity}) {
-  final int u = l.unit;
-  final Int64List y = l.y;
-  final (List<int> seg, List<int> a, List<int> b) = naiveSegments(l);
-  final verticals = <List<int>>[]; // [col, lo, hi]
-  final horizontals = <List<int>>[]; // [colA, colB, level]
-  for (var e = 0; e < l.edgeCount; e++) {
-    final int p = l.edgeParent[e];
-    final int i = l.edgeChild[e];
-    final int botP = 10 * y[p];
-    final int botI = 10 * y[i];
-    final int top = botP + 5 * u;
-    final int up = botP + 7 * u;
-    final int dn = botI - 2 * u;
-    switch (l.routes[e]) {
-      case routeStraight:
-        verticals.add([lanes[p], top, botI]);
-      case routeMerge:
-        verticals
-          ..add([lanes[p], top, dn])
-          ..add([lanes[i], dn, botI]);
-        horizontals.add([lanes[p], lanes[i], dn]);
-      case _:
-        verticals.add([lanes[i], max(up, 10 * a[seg[i]] - 3 * u), botI]);
-        horizontals.add([lanes[p], lanes[i], up]);
-    }
-  }
-  var x = 0;
-  var len = 0;
-  var grav = 0;
-  for (final [int ca, int cb, int level] in horizontals) {
-    len += (ca - cb).abs();
-    for (final [int c, int lo, int hi] in verticals) {
-      if (min(ca, cb) < c && c < max(ca, cb) && lo < level && level < hi) {
-        x++;
+/// §4.3's branch columns of [g], read literally on the rows [y] in units of [u] with cont [cont]: plain
+/// lists, a library sort, every candidate column scanned. Returns every node's column.
+List<int> naiveBranchColumns(LayoutInput g, List<int> y, int u, List<int> cont) {
+  final List<List<int>> lp = layoutParents(g);
+  final (:List<int> branchOf, :List<int> bottom, :List<int> lo, :List<int> hi, :int main) = naiveBranches(
+    g,
+    y,
+    u,
+    cont,
+  );
+  final int count = bottom.length;
+  final List<int> from = [
+    for (final int b in bottom)
+      if (lp[b].isNotEmpty) branchOf[lp[b].first] else main,
+  ];
+  // A branch merges elsewhere if a card of it is a non-first parent of a card outside the branch it
+  // forks from (the lab's `elsewhere`).
+  final List<bool> elsewhere = List.filled(count, false);
+  for (var i = 0; i < g.n; i++) {
+    for (final int p in lp[i].skip(1)) {
+      if (branchOf[i] != from[branchOf[p]]) {
+        elsewhere[branchOf[p]] = true;
       }
     }
   }
-  final List<int> col = List.filled(a.length, -1);
-  for (var i = 0; i < l.n; i++) {
-    col[seg[i]] = lanes[i];
+  int depth(int b) => b == main ? 0 : (from[b] == main || elsewhere[b] ? 1 : depth(from[b]) + 1);
+  final List<int> order = List.generate(count, (b) => b)
+    ..sort((a, b) {
+      for (final (int x, int z) in [
+        (depth(a), depth(b)),
+        (hi[a], hi[b]),
+        (hi[a] - lo[a], hi[b] - lo[b]),
+        (y[bottom[a]], y[bottom[b]]),
+        (g.priority[bottom[a]], g.priority[bottom[b]]),
+        (bottom[a], bottom[b]),
+      ]) {
+        if (x != z) {
+          return x.compareTo(z);
+        }
+      }
+      return 0;
+    });
+  final List<int> columnOf = List.filled(count, -1);
+  final columns = <int, List<int>>{};
+  bool free(int column, int b) =>
+      (columns[column] ?? const <int>[]).every((o) => lo[o] >= hi[b] + u || lo[b] >= hi[o] + u);
+  for (final b in order) {
+    var column = 0;
+    if (b != main) {
+      final int dock = from[b] == main || elsewhere[b] ? 0 : columnOf[from[b]];
+      column = -1;
+      for (var d = 0; column < 0; d++) {
+        if (dock - d >= 1 && free(dock - d, b)) {
+          column = dock - d;
+        } else if (d > 0 && free(dock + d, b)) {
+          column = dock + d;
+        }
+      }
+    }
+    columnOf[b] = column;
+    (columns[column] ??= []).add(b);
   }
-  for (var s = 0; s < a.length; s++) {
-    grav += gravity * col[s] * (b[s] - a[s]);
-  }
-  return u * (400 * x + 4 * len) + grav;
+  return [for (var i = 0; i < g.n; i++) columnOf[branchOf[i]]];
 }
 
-/// The segments [lanes] puts into one column overlap nowhere, and no segment is split over
-/// columns; the failures, empty when both hold.
-List<String> reservationFailures(LayoutEngine l, List<int> lanes) {
-  final (List<int> seg, List<int> a, List<int> b) = naiveSegments(l);
+/// The failures of §7.3's branch invariants (I2's second half and I4, restated 2026-11-10) for the
+/// ungrouped grid [r] of [g]: the main branch alone in column 0, one column per branch, and two
+/// branches of one column keeping one pitch between their reserved rows; empty when they hold.
+List<String> branchFailures(LayoutInput g, GraphGridView r) {
+  final int u = r.unit;
+  final List<int> cont = naiveContinuations(g, layoutParents(g));
+  final (:List<int> branchOf, :List<int> bottom, :List<int> lo, :List<int> hi, :int main) = naiveBranches(
+    g,
+    r.nodeRows,
+    u,
+    cont,
+  );
   final fails = <String>[];
-  final List<int> colOf = List.filled(a.length, -1);
-  for (var i = 0; i < l.n; i++) {
-    if (colOf[seg[i]] >= 0 && colOf[seg[i]] != lanes[i]) {
-      fails.add('segment ${seg[i]} split over columns');
+  final List<int> columnOf = List.filled(bottom.length, -1);
+  for (var i = 0; i < g.n; i++) {
+    final int b = branchOf[i];
+    if (columnOf[b] >= 0 && columnOf[b] != r.nodeCols[i] && fails.length < 8) {
+      fails.add('branch $b has columns ${columnOf[b]} and ${r.nodeCols[i]}');
     }
-    colOf[seg[i]] = lanes[i];
+    columnOf[b] = r.nodeCols[i];
   }
-  final byCol = <int, List<int>>{};
-  for (var s = 0; s < a.length; s++) {
-    (byCol[colOf[s]] ??= []).add(s);
-  }
-  for (final MapEntry(key: int c, value: List<int> segs) in byCol.entries) {
-    segs.sort((s, t) => a[s] - a[t]);
-    for (var k = 1; k < segs.length; k++) {
-      if (b[segs[k - 1]] > a[segs[k]]) {
-        fails.add('reservations overlap in column $c');
+  for (var b = 0; b < bottom.length && fails.length < 8; b++) {
+    if ((columnOf[b] == 0) != (b == main)) {
+      fails.add('branch $b ${b == main ? 'is the main branch but not in' : 'shares'} column 0');
+    }
+    for (var o = 0; o < b; o++) {
+      if (columnOf[o] == columnOf[b] && !(lo[o] >= hi[b] + u || lo[b] >= hi[o] + u)) {
+        fails.add('branches $o and $b of column ${columnOf[b]} keep no pitch');
       }
     }
   }
   return fails;
-}
-
-/// §4.6 tick-model crossings of a grid by column, every horizontal × vertical pair.
-int tickCrossings(GraphGridView r) {
-  final int u = r.unit;
-  final verticals = <List<int>>[]; // [col, lo, hi]
-  final horizontals = <List<int>>[]; // [colA, colB, level]
-  for (var e = 0; e < r.edgeCount; e++) {
-    final int p = r.edgeFroms[e];
-    final int i = r.edgeTos[e];
-    final int botP = 10 * r.nodeRows[p];
-    final int botI = 10 * r.nodeRows[i];
-    final int top = botP + 5 * u;
-    final int up = botP + 7 * u;
-    final int dn = botI - 2 * u;
-    switch (r.edgeRoutes[e]) {
-      case routeStraight:
-        verticals.add([r.nodeCols[p], top, botI]);
-      case routeMerge:
-        verticals
-          ..add([r.nodeCols[p], top, dn])
-          ..add([r.nodeCols[i], dn, botI]);
-        horizontals.add([r.nodeCols[p], r.nodeCols[i], dn]);
-      case _:
-        verticals.add([r.nodeCols[i], up, botI]);
-        horizontals.add([r.nodeCols[p], r.nodeCols[i], up]);
-    }
-  }
-  var x = 0;
-  for (final [int a, int b, int level] in horizontals) {
-    for (final [int c, int lo, int hi] in verticals) {
-      if (min(a, b) < c && c < max(a, b) && lo < level && level < hi) {
-        x++;
-      }
-    }
-  }
-  return x;
 }

@@ -16,7 +16,6 @@ const _day = 86400000;
 /// A grid of 3 nodes, 2 edges and 2 buckets with distinct values per slot.
 Uint8List grid() => writeGraphGrid(
   mode: LayoutMode.free,
-  order: LaneOrder.compact,
   unit: 16,
   rows: 48,
   lanes: 2,
@@ -39,7 +38,6 @@ Uint8List grid() => writeGraphGrid(
 /// node has its newest member's (1) day, the hidden members keep their own.
 Uint8List stackGrid() => writeStackGrid(
   mode: LayoutMode.compact,
-  order: LaneOrder.greedy,
   unit: 1,
   rows: 4,
   lanes: 1,
@@ -75,9 +73,9 @@ Uint8List withSlot(Uint8List bytes, int k, int value) {
 Matcher get refused => throwsA(isA<FormatException>());
 
 void main() {
-  test('the_header_carries_version_mode_order_unit_and_counts', () {
+  test('the_header_carries_version_mode_a_zero_slot_unit_and_counts', () {
     final Uint8List bytes = grid();
-    expect([for (var k = 0; k < 9; k++) slot(bytes, k)], [3, 1, 1, 16, 48, 2, 3, 2, 2]);
+    expect([for (var k = 0; k < 9; k++) slot(bytes, k)], [3, 1, 0, 16, 48, 2, 3, 2, 2]);
     expect([GraphGridView.formatVersion, GraphGridView.stackFormatVersion], [3, 4]);
   });
 
@@ -98,7 +96,7 @@ void main() {
 
   test('the_views_read_every_value_the_node_days_and_the_enum_codes', () {
     final view = GraphGridView.fromBytes(grid());
-    expect([view.mode, view.order, view.unit, view.rows, view.lanes], [LayoutMode.free, LaneOrder.compact, 16, 48, 2]);
+    expect([view.mode, view.unit, view.rows, view.lanes], [LayoutMode.free, 16, 48, 2]);
     expect([view.nodeCount, view.edgeCount, view.bucketCount], [3, 2, 2]);
     expect(
       [view.nodeRows, view.nodeLanes, view.nodeCols, view.nodeDays],
@@ -148,7 +146,6 @@ void main() {
     final view = GraphGridView.fromBytes(
       writeGraphGrid(
         mode: LayoutMode.compact,
-        order: LaneOrder.greedy,
         unit: 1,
         rows: 0,
         lanes: 0,
@@ -167,8 +164,8 @@ void main() {
       ),
     );
     expect(
-      [view.mode, view.order, view.unit, view.nodeCount, view.edgeCount, view.bucketCount, view.nodeDays.length],
-      [LayoutMode.compact, LaneOrder.greedy, 1, 0, 0, 0, 0],
+      [view.mode, view.unit, view.nodeCount, view.edgeCount, view.bucketCount, view.nodeDays.length],
+      [LayoutMode.compact, 1, 0, 0, 0, 0],
     );
   });
 
@@ -193,7 +190,9 @@ void main() {
     }
     expect(() => GraphGridView.fromBytes(withSlot(bytes, 1, 2)), refused, reason: 'mode code');
     expect(() => GraphGridView.fromBytes(withSlot(bytes, 1, -1)), refused, reason: 'mode code');
-    expect(() => GraphGridView.fromBytes(withSlot(bytes, 2, 3)), refused, reason: 'order code');
+    expect(GraphGridView.fromBytes(withSlot(bytes, 2, 0)).nodeCount, 3, reason: 'slot 2 is 0');
+    expect(() => GraphGridView.fromBytes(withSlot(bytes, 2, 1)), refused, reason: 'slot 2 must be 0');
+    expect(() => GraphGridView.fromBytes(withSlot(stackGrid(), 2, 1)), refused, reason: 'version 4 too');
     expect(() => GraphGridView.fromBytes(withSlot(bytes, 3, 1)), refused, reason: 'a unit not the mode\'s');
     expect(() => GraphGridView.fromBytes(withSlot(bytes, 6, -1)), refused, reason: 'negative n');
     expect(() => GraphGridView.fromBytes(withSlot(bytes, 6, 4)), refused, reason: 'node count ≠ array counts');

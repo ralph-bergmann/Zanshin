@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-// The product engine against the committed goldens (Story 4.11), which tools/goldens.mjs writes
-// from the spike's Dart reference with `--columns joint` (Story 4.14: the product always lays out
-// joint columns) and from the design's own computeLayout: every output byte for byte in
-// docs/graph-layout.md §3's canonical form, the fuzz cases by FNV-1a 64 hash and byte length.
-// Story 4.13 adds the stacks (§4.8): the spike Dart's outputs, the design's own groupStacks runs,
-// the hand-derived compaction. Story 4.14 adds the joint-columns design oracle (export e74ced3).
+// The product engine against the committed goldens, which tools/goldens.mjs writes with the product
+// CLI (packages/zanshin_core/benchmark/graph_layout_cli.dart; docs/graph-layout.md §13, amended
+// 2026-11-10): every output byte for byte in §3's canonical form, the fuzz cases by FNV-1a 64 hash
+// and byte length. Also the stacks (§4.8): the outputs with stacks, the design's own groupStacks
+// runs, and the hand-derived compaction.
 
 import 'dart:convert';
 import 'dart:io';
@@ -24,116 +23,79 @@ const _goldens = 'test/graph_layout/goldens';
 /// The golden file at [path] (relative to the goldens directory), as bytes.
 Uint8List golden(String path) => File('$_goldens/$path').readAsBytesSync();
 
-/// The engine's §3 canonical output for the §2 input [bytes], with [budget] as the `compact` order's
-/// search budget.
-String layOut(Uint8List bytes, LayoutMode mode, LaneOrder order, {int budget = defaultLayoutBudget}) {
+/// The engine's §3 canonical output for the §2 input [bytes].
+String layOut(Uint8List bytes, LayoutMode mode) {
   final LayoutInput input = parseSpecInput(bytes).input;
-  return canonicalOutput(GraphGridView.fromBytes(computeGraphGrid(input, mode: mode, order: order, budget: budget)));
+  return canonicalOutput(GraphGridView.fromBytes(computeGraphGrid(input, mode: mode)));
 }
 
 /// The grouped grid (Story 4.13) of [input] with the stack request [stacks].
-GraphGridView stackGrid(LayoutInput input, StackInput stacks, LayoutMode mode, LaneOrder order) =>
-    GraphGridView.fromBytes(
-      computeGraphGrid(input, mode: mode, order: order, budget: defaultLayoutBudget, stacks: stacks),
-    );
+GraphGridView stackGrid(LayoutInput input, StackInput stacks, LayoutMode mode) =>
+    GraphGridView.fromBytes(computeGraphGrid(input, mode: mode, stacks: stacks));
 
 /// The engine's §3 canonical output with stacks for the §2 input [bytes] (with stack facts) and the
 /// stack request file [request].
-String layOutStacks(Uint8List bytes, Uint8List request, LayoutMode mode, LaneOrder order) {
+String layOutStacks(Uint8List bytes, Uint8List request, LayoutMode mode) {
   final ({LayoutInput input, int nowMs, SpecStackFacts? facts}) parsed = parseSpecInput(bytes, stacks: true);
-  return canonicalOutput(stackGrid(parsed.input, parseSpecStackRequest(request, parsed.facts!), mode, order));
+  return canonicalOutput(stackGrid(parsed.input, parseSpecStackRequest(request, parsed.facts!), mode));
 }
 
 void main() {
   group('design sample', () {
     for (final rev in ['default', 'all']) {
-      // The 57f259c design packs lanes per mode; the product's lanes are joint (Story 4.14), so this
-      // oracle compares rows and edges but no lane or col — the joint oracle below checks the lanes.
-      // An edge's route and `blocked` do depend on the lanes; on this sample they are expected to
-      // match the per-mode oracle all the same.
-      test('design_${rev}_compact_greedy_rows_and_edges_incl_routes_match_the_per_mode_design_oracle', () {
+      // The 57f259c design packs its lanes by its own rules; the columns here are the lab's (§4.3,
+      // amended 2026-11-10), so this oracle compares rows, edge endpoints and edge kinds only.
+      test('design_${rev}_compact_rows_and_edge_endpoints_match_the_design_oracle', () {
         Map<String, Object?> parse(String json) => jsonDecode(json) as Map<String, Object?>;
-        final Map<String, Object?> got = parse(
-          layOut(golden('design/design-$rev.json'), LayoutMode.compact, LaneOrder.greedy),
-        );
+        final Map<String, Object?> got = parse(layOut(golden('design/design-$rev.json'), LayoutMode.compact));
         final Map<String, Object?> want = parse(utf8.decode(golden('design/oracle/design-$rev.compact.greedy.json')));
         List<Object?> rows(Map<String, Object?> o) => [
           for (final node in o['nodes']! as List<Object?>) (node! as Map<String, Object?>)['row'],
         ];
-        expect([got['rows'], rows(got), got['edges']], [want['rows'], rows(want), want['edges']]);
+        List<Object?> endpoints(Map<String, Object?> o) => [
+          for (final edge in o['edges']! as List<Object?>)
+            [
+              (edge! as Map<String, Object?>)['from'],
+              (edge as Map<String, Object?>)['to'],
+              edge['kind'],
+            ],
+        ];
+        expect([got['rows'], rows(got), endpoints(got)], [want['rows'], rows(want), endpoints(want)]);
       });
 
       for (final LayoutMode mode in LayoutMode.values) {
-        for (final LaneOrder order in LaneOrder.values) {
-          test('design_${rev}_${mode.name}_${order.name}_equals_the_reference', () {
-            expect(
-              layOut(golden('design/design-$rev.json'), mode, order),
-              utf8.decode(golden('design/design-$rev.${mode.name}.${order.name}.json')),
-            );
-          });
-        }
+        test('design_${rev}_${mode.name}_equals_the_golden', () {
+          expect(
+            layOut(golden('design/design-$rev.json'), mode),
+            utf8.decode(golden('design/design-$rev.${mode.name}.json')),
+          );
+        });
       }
     }
 
-    test('design_free_greedy_has_spec_7_2s_rows_and_4_lanes', () {
+    test('design_free_has_spec_7_2s_rows', () {
       for (final (String rev, int rows) in const [('default', 209), ('all', 377)]) {
         final LayoutInput input = parseSpecInput(golden('design/design-$rev.json')).input;
-        final grid = GraphGridView.fromBytes(
-          computeGraphGrid(input, mode: LayoutMode.free, order: LaneOrder.greedy, budget: defaultLayoutBudget),
-        );
-        expect([grid.rows, grid.lanes], [rows, 4], reason: rev);
+        final grid = GraphGridView.fromBytes(computeGraphGrid(input, mode: LayoutMode.free));
+        expect(grid.rows, rows, reason: rev);
       }
     });
-
-    // Story 4.14, docs/graph-layout.md §7.2 (amended 2026-10-27): on the e243dd2 sample (52
-    // commits, unchanged at e74ced3), the joint greedy lane count equals the fewer of the two
-    // greedy packings of the export e74ced3's graph-layout.jsx (exact colouring off), which
-    // tools/design-layout.mjs recorded. On a mismatch, re-derive by hand before changing code.
-    for (final rev in ['default', 'all']) {
-      test('design_e243dd2_${rev}_joint_greedy_lanes_equal_the_e74ced3_designs_fewer_greedy_packing', () {
-        final oracle =
-            jsonDecode(utf8.decode(golden('design/oracle/joint-design-$rev.lanes.json'))) as Map<String, Object?>;
-        final LayoutInput input = parseSpecInput(golden('stacks/design-$rev.json')).input;
-        for (final LayoutMode mode in LayoutMode.values) {
-          final grid = GraphGridView.fromBytes(
-            computeGraphGrid(input, mode: mode, order: LaneOrder.greedy, budget: defaultLayoutBudget),
-          );
-          expect(grid.lanes, oracle['gl_greedy_lanes'], reason: '$rev ${mode.name}');
-        }
-        expect([oracle['gl_greedy_lanes'], oracle['gl_exact_lanes']], rev == 'default' ? [8, 8] : [9, 9]);
-      });
-    }
-
-    // The `compact` order at a budget that stops its search mid-way (goldens README): the cut
-    // output is the reference's at the same budget, and differs from the default budget's.
-    for (final (String name, LayoutMode mode, int budget) in const [
-      ('design-default', LayoutMode.compact, 20),
-      ('design-default', LayoutMode.free, 10),
-    ]) {
-      test('${name}_${mode.name}_compact_at_budget_${budget}_equals_the_cut_reference', () {
-        final String cut = layOut(golden('design/$name.json'), mode, LaneOrder.compact, budget: budget);
-        expect(cut, utf8.decode(golden('design/$name.${mode.name}.compact.budget-$budget.json')));
-        expect(cut, isNot(utf8.decode(golden('design/$name.${mode.name}.compact.json'))), reason: 'the budget cut');
-      });
-    }
   });
 
   group('fixture dumps', () {
     for (final name in ['tiny-all', 'medium-narrow']) {
       for (final LayoutMode mode in LayoutMode.values) {
-        for (final LaneOrder order in LaneOrder.values) {
-          test('${name}_${mode.name}_${order.name}_equals_the_reference', () {
-            expect(
-              layOut(golden('fixtures/$name.input.json'), mode, order),
-              utf8.decode(golden('fixtures/$name.${mode.name}.${order.name}.json')),
-            );
-          });
-        }
+        test('${name}_${mode.name}_equals_the_golden', () {
+          expect(
+            layOut(golden('fixtures/$name.input.json'), mode),
+            utf8.decode(golden('fixtures/$name.${mode.name}.json')),
+          );
+        });
       }
     }
   });
 
-  test('every_seeded_fuzz_case_hashes_to_its_golden_in_every_mode_and_order', () {
+  test('every_seeded_fuzz_case_hashes_to_its_golden_in_every_mode', () {
     final List<String> cases = const LineSplitter().convert(utf8.decode(golden('fuzz/cases.jsonl')));
     final expected =
         (jsonDecode(utf8.decode(golden('fuzz/expected.json'))) as Map<String, Object?>)['cases']! as List<Object?>;
@@ -143,32 +105,24 @@ void main() {
       final Uint8List input = utf8.encode('${cases[c]}\n');
       final want = expected[c]! as Map<String, Object?>;
       for (final LayoutMode mode in LayoutMode.values) {
-        for (final LaneOrder order in LaneOrder.values) {
-          final Uint8List out = utf8.encode(layOut(input, mode, order));
-          final digest = want['${mode.name}.${order.name}']! as Map<String, Object?>;
-          expect(
-            [fnv1a64Hex(out), out.length],
-            [digest['fnv1a64'], digest['bytes']],
-            reason: 'case $c ${mode.name} ${order.name}',
-          );
-        }
+        final Uint8List out = utf8.encode(layOut(input, mode));
+        final digest = want[mode.name]! as Map<String, Object?>;
+        expect([fnv1a64Hex(out), out.length], [digest['fnv1a64'], digest['bytes']], reason: 'case $c ${mode.name}');
       }
     }
   });
 
-  // Story 4.13, docs/graph-layout.md §4.8: every stack golden comes from the spike's Dart binary.
+  // Story 4.13, docs/graph-layout.md §4.8.
   group('stacks', () {
     for (final rev in ['default', 'all']) {
       for (final state in ['default', 'expanded', 'mixed']) {
         for (final LayoutMode mode in LayoutMode.values) {
-          for (final LaneOrder order in LaneOrder.values) {
-            test('stacks_design_${rev}_${state}_${mode.name}_${order.name}_equals_the_spike_reference', () {
-              expect(
-                layOutStacks(golden('stacks/design-$rev.json'), golden('stacks/request-$state.json'), mode, order),
-                utf8.decode(golden('stacks/design-$rev.$state.${mode.name}.${order.name}.json')),
-              );
-            });
-          }
+          test('stacks_design_${rev}_${state}_${mode.name}_equals_the_golden', () {
+            expect(
+              layOutStacks(golden('stacks/design-$rev.json'), golden('stacks/request-$state.json'), mode),
+              utf8.decode(golden('stacks/design-$rev.$state.${mode.name}.json')),
+            );
+          });
         }
       }
 
@@ -182,7 +136,6 @@ void main() {
           parsed.input,
           parseSpecStackRequest(golden('stacks/request-default.json'), parsed.facts!),
           LayoutMode.compact,
-          LaneOrder.greedy,
         );
         final List<Map<String, Object>> runs = [
           for (var k = 0; k < grid.runCount; k++)
@@ -196,34 +149,26 @@ void main() {
       });
     }
 
-    // docs/graph-layout.md §4.8 "The design sample, by hand" (amended 2026-10-27 for the joint
-    // columns): compact, greedy, every run collapsed.
-    test('stacks_design_compact_greedy_rows_shrink_by_the_hand_derived_counts', () {
+    // docs/graph-layout.md §4.8 "The design sample, by hand" (amended 2026-10-27 and 2026-11-10):
+    // compact, every run collapsed.
+    test('stacks_design_compact_rows_shrink_by_the_hand_derived_counts', () {
       for (final (String rev, int before, int after) in const [('all', 19, 15), ('default', 9, 7)]) {
         final ({LayoutInput input, int nowMs, SpecStackFacts? facts}) parsed = parseSpecInput(
           golden('stacks/design-$rev.json'),
           stacks: true,
         );
-        final off = GraphGridView.fromBytes(
-          computeGraphGrid(
-            parsed.input,
-            mode: LayoutMode.compact,
-            order: LaneOrder.greedy,
-            budget: defaultLayoutBudget,
-          ),
-        );
+        final off = GraphGridView.fromBytes(computeGraphGrid(parsed.input, mode: LayoutMode.compact));
         final GraphGridView grouped = stackGrid(
           parsed.input,
           parseSpecStackRequest(golden('stacks/request-default.json'), parsed.facts!),
           LayoutMode.compact,
-          LaneOrder.greedy,
         );
         expect([off.rows, grouped.rows], [before, after], reason: rev);
         expect(grouped.stackCount, grouped.runCount, reason: '$rev: every run collapsed');
       }
     });
 
-    test('every_seeded_stack_fuzz_case_hashes_to_its_golden_in_every_mode_and_order', () {
+    test('every_seeded_stack_fuzz_case_hashes_to_its_golden_in_every_mode', () {
       final List<String> cases = const LineSplitter().convert(utf8.decode(golden('stacks/fuzz/cases.jsonl')));
       final expected =
           (jsonDecode(utf8.decode(golden('stacks/fuzz/expected.json'))) as Map<String, Object?>)['cases']!
@@ -236,15 +181,13 @@ void main() {
         final Uint8List request = utf8.encode('${jsonEncode(line['request'])}\n');
         final want = expected[c]! as Map<String, Object?>;
         for (final LayoutMode mode in LayoutMode.values) {
-          for (final LaneOrder order in LaneOrder.values) {
-            final Uint8List out = utf8.encode(layOutStacks(input, request, mode, order));
-            final digest = want['${mode.name}.${order.name}']! as Map<String, Object?>;
-            expect(
-              [fnv1a64Hex(out), out.length],
-              [digest['fnv1a64'], digest['bytes']],
-              reason: 'stack case $c ${mode.name} ${order.name}',
-            );
-          }
+          final Uint8List out = utf8.encode(layOutStacks(input, request, mode));
+          final digest = want[mode.name]! as Map<String, Object?>;
+          expect(
+            [fnv1a64Hex(out), out.length],
+            [digest['fnv1a64'], digest['bytes']],
+            reason: 'stack case $c ${mode.name}',
+          );
         }
       }
     });

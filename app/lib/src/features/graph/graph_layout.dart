@@ -13,15 +13,6 @@ enum GraphMode {
   compact,
 }
 
-/// The lane order (docs/graph-layout.md §4.6): a request knob, not a user control.
-enum GraphLaneOrder {
-  /// The bounded crossing heuristic, the default.
-  compact,
-
-  /// Lanes as assigned.
-  greedy,
-}
-
 /// jj's edge kinds that the layout keeps; Missing parents are not layout edges ([GraphLayout.elidedOf]).
 enum GraphEdgeKind {
   /// The parent is the commit's real parent.
@@ -412,16 +403,12 @@ class GraphViewOptions {
   /// Creates options; the defaults are the design's.
   const GraphViewOptions({
     this.layout = GraphMode.free,
-    this.laneOrder = GraphLaneOrder.compact,
     this.detailedCards = true,
     this.cardWidth = 240,
   });
 
   /// The layout mode.
   final GraphMode layout;
-
-  /// The lane order.
-  final GraphLaneOrder laneOrder;
 
   /// Detailed (62 px) or compact (40 px) cards.
   final bool detailedCards;
@@ -430,23 +417,20 @@ class GraphViewOptions {
   final double cardWidth;
 
   /// These options with the given fields replaced.
-  GraphViewOptions copyWith({GraphMode? layout, GraphLaneOrder? laneOrder, bool? detailedCards, double? cardWidth}) =>
-      GraphViewOptions(
-        layout: layout ?? this.layout,
-        laneOrder: laneOrder ?? this.laneOrder,
-        detailedCards: detailedCards ?? this.detailedCards,
-        cardWidth: cardWidth ?? this.cardWidth,
-      );
+  GraphViewOptions copyWith({GraphMode? layout, bool? detailedCards, double? cardWidth}) => GraphViewOptions(
+    layout: layout ?? this.layout,
+    detailedCards: detailedCards ?? this.detailedCards,
+    cardWidth: cardWidth ?? this.cardWidth,
+  );
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is GraphViewOptions &&
           other.layout == layout &&
-          other.laneOrder == laneOrder &&
           other.detailedCards == detailedCards &&
           other.cardWidth == cardWidth;
 
   @override
-  int get hashCode => Object.hash(layout, laneOrder, detailedCards, cardWidth);
+  int get hashCode => Object.hash(layout, detailedCards, cardWidth);
 }

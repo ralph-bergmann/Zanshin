@@ -272,7 +272,17 @@ void main() {
                       (b.xs[i] - math.min(a.dx, c.dx)) >= 16 &&
                       (math.max(a.dx, c.dx) - b.xs[i]) >= 16;
           });
-          if (straight) {
+          // Both edges are solid, and the other one has no cut of its own within 12 px, so it is whole at this
+          // crossing.
+          final bool otherWhole =
+              layout.kindOf(broken) == GraphEdgeKind.direct &&
+              layout.kindOf(other) == GraphEdgeKind.direct &&
+              !List<int>.generate(b.length, (j) => j).any(
+                (j) =>
+                    (b.verticalBreaks[j] != 0 ? b.verticalEdges[j] : b.horizontalEdges[j]) == other &&
+                    (Offset(b.xs[j], b.ys[j]) - Offset(b.xs[i], b.ys[i])).distance < 12,
+              );
+          if (straight && otherWhole) {
             return (painter: painter, cut: (x: b.xs[i], y: b.ys[i], vertical: vertical), broken: broken, other: other);
           }
         }
@@ -643,7 +653,7 @@ void main() {
   );
 
   test('≤ 20k nodes: GraphRouteCache answers at once and a W change reuses the classes', () {
-    final RecordedGraphLayout layout = recording('design-all compact compact');
+    final RecordedGraphLayout layout = recording('design-all compact');
     var routed = 0;
     final cache = GraphRouteCache(onRouted: () => routed++);
     final RouteGeometry? a = cache.geometryFor(layout, GraphMetrics());
@@ -657,8 +667,8 @@ void main() {
   test('GraphRouteCache keeps the classes per layout: another layout at the same metrics gets its own', () {
     final cache = GraphRouteCache(onRouted: () {});
     final metrics = GraphMetrics();
-    final RecordedGraphLayout a = recording('design-all compact compact');
-    final RecordedGraphLayout b = recording('medium-narrow compact compact');
+    final RecordedGraphLayout a = recording('design-all compact');
+    final RecordedGraphLayout b = recording('medium-narrow compact');
     final RouteGeometry ga = cache.geometryFor(a, metrics)!;
     final RouteGeometry gb = cache.geometryFor(b, metrics)!;
     expect(identical(gb.classes, ga.classes), isFalse);

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 // Commit stacks in the layout engine (Story 4.13, docs/graph-layout.md §4.8), on hand-built inputs:
-// the run rule at gaps and breaks, the state rules, the fixed columns of a split run, the rows in
+// the run rule at gaps and breaks, the state rules, the fixed columns of a run, the rows in
 // `compact` and `free`, `free`'s buckets, the output's shape, V5, and `stacks` off as 4.11's grid.
 // The graphs list nodes children-first (jj log order), the last node is the root; every
-// expectation was derived by hand from §4.8.
+// expectation was derived by hand from §4.8, except the second-sweep case, which a search found and
+// the plain fixed-point checker confirms.
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -14,7 +15,9 @@ import 'package:zanshin_core/src/graph_layout/graph_grid_view.dart';
 import 'package:zanshin_core/src/graph_layout/layout_engine.dart';
 import 'package:zanshin_core/src/graph_layout/layout_input.dart';
 import 'package:zanshin_core/src/graph_layout/layout_request.dart';
+import 'package:zanshin_core/src/graph_layout/stacks.dart';
 
+import 'stack_invariants.dart';
 import 'support/spec_json.dart';
 
 const _day = 86400000;
@@ -23,24 +26,12 @@ const _minute = 60000;
 typedef Graph = ({LayoutInput input, SpecStackFacts facts});
 
 /// [g] laid out with [stacks] (default: the empty request).
-GraphGridView grouped(
-  Graph g, {
-  StackInput? stacks,
-  LayoutMode mode = LayoutMode.compact,
-  LaneOrder order = LaneOrder.greedy,
-}) => GraphGridView.fromBytes(
-  computeGraphGrid(
-    g.input,
-    mode: mode,
-    order: order,
-    budget: defaultLayoutBudget,
-    stacks: stacks ?? specStackRequest(g.facts),
-  ),
-);
+GraphGridView grouped(Graph g, {StackInput? stacks, LayoutMode mode = LayoutMode.compact}) =>
+    GraphGridView.fromBytes(computeGraphGrid(g.input, mode: mode, stacks: stacks ?? specStackRequest(g.facts)));
 
 /// [g] laid out without stacks.
-GraphGridView ungrouped(Graph g, {LayoutMode mode = LayoutMode.compact, LaneOrder order = LaneOrder.greedy}) =>
-    GraphGridView.fromBytes(computeGraphGrid(g.input, mode: mode, order: order, budget: defaultLayoutBudget));
+GraphGridView ungrouped(Graph g, {LayoutMode mode = LayoutMode.compact}) =>
+    GraphGridView.fromBytes(computeGraphGrid(g.input, mode: mode));
 
 /// The runs of [r]: per run `[members (oldest first), collapsed]`.
 List<List<Object>> runs(GraphGridView r) => [
@@ -274,9 +265,9 @@ void main() {
   });
 
   group('columns', () {
-    // The run m1 = 2 ← m2 = 1 with the child c0 = 0 and the parent p = 3 (a ref). In `compact`, z = 6
-    // sits below p in p's lane; in `free`, z is a day younger and sits right above m2, so m2 cannot
-    // continue m1's lane in both models (§4.8 step 4). w = 4 takes q's lane from p (priority).
+    // The run m1 = 2 ← m2 = 1 with the child c0 = 0 and the parent p = 3 (a ref): a piece of one
+    // branch, so it shares its column in both modes (§4.8 step 4, amended 2026-11-10). z = 6 and q
+    // are other branches and w = 4 takes q's lane from p (priority).
     final Graph g = specStackGraph(
       [
         [1],
@@ -302,11 +293,11 @@ void main() {
       ],
     );
 
-    test('a_split_run_stacks_in_its_newest_members_column_and_every_other_node_keeps_its_own', () {
-      for (final LaneOrder order in LaneOrder.values) {
-        final GraphGridView off = ungrouped(g, order: order);
-        expect(off.nodeCols[2], isNot(off.nodeCols[1]), reason: 'the run is split (${order.name})');
-        final GraphGridView r = grouped(g, order: order);
+    test('a_runs_members_share_a_column_the_stack_sits_there_and_every_other_node_keeps_its_own', () {
+      for (final LayoutMode mode in LayoutMode.values) {
+        final GraphGridView off = ungrouped(g, mode: mode);
+        expect(off.nodeCols[2], off.nodeCols[1], reason: 'the run is one piece of a branch (${mode.name})');
+        final GraphGridView r = grouped(g, mode: mode);
         expect(runs(r), [
           [
             [2, 1],
@@ -318,8 +309,6 @@ void main() {
           expect([r.nodeLanes[i], r.nodeCols[i]], [off.nodeLanes[i], off.nodeCols[i]], reason: 'node $i');
         }
         expect(r.lanes, off.lanes, reason: 'lanes is the ungrouped value');
-        // The stack stays in m2's row: w in its column, two rows below, keeps it from sinking. c0 one above it.
-        expect([r.nodeRows[8], r.nodeRows[0], r.rows], [4, 5, 6]);
       }
     });
 
@@ -342,8 +331,8 @@ void main() {
   group('rows', () {
     test('compact_a_stack_sits_one_row_above_its_parent_unless_a_column_constraint_pushes_it', () {
       // Column 0: R ← m1 ← m2 ← m3 ← t ← h0; column 1: R ← u1 ← u2 (a ref) ← u3, and h, t's second
-      // child (priority 1), first-fit above u3. Collapsing the run would put t at 2, but h's
-      // reservation must start above u3's end: y′(t) ≥ y′(u3) + 1 = 4.
+      // child (priority 1), a branch of its own above u3. Collapsing the run would put t at 2, but
+      // h's reservation must start one pitch above u3: y′(t) + 1 ≥ y′(u3) + 1, so y′(t) ≥ 3.
       final Graph g = specStackGraph(
         [
           [2],
@@ -369,7 +358,7 @@ void main() {
           true,
         ],
       ]);
-      expect([r.nodeRows[10], r.nodeRows[2], r.nodeRows[0], r.nodeRows[1], r.rows], [1, 4, 5, 5, 6]);
+      expect([r.nodeRows[10], r.nodeRows[2], r.nodeRows[0], r.nodeRows[1], r.rows], [1, 3, 4, 4, 5]);
 
       // Without the u-chain nothing holds t: it drops to 2.
       final Graph free = specStackGraph(
@@ -386,6 +375,81 @@ void main() {
       );
       final GraphGridView loose = grouped(free);
       expect([loose.nodeRows[7], loose.nodeRows[2], loose.rows], [1, 2, 4]);
+    });
+
+    test('a_merge_column_constraint_with_its_source_above_its_target_needs_a_second_sweep', () {
+      // Found by a search: a (C) constraint with δ = −U can have its source above its target, which
+      // one level-by-level sweep cannot honour (§4.8, amended 2026-11-10).
+      final Graph g = specStackGraph(
+        [
+          [const Ind(1)],
+          [const Ind(2)],
+          [null],
+          [4],
+          [7],
+          [6, 9],
+          [9],
+          [8],
+          [9],
+          [10],
+          [11],
+          [17],
+          [13],
+          [const Ind(14), const Ind(17), 18],
+          [15, 18],
+          [16],
+          [17],
+          [null],
+          [19],
+          [const Ind(20)],
+          [],
+        ],
+        counts: {13: 2},
+        refs: {0, 16},
+        self: 4,
+        immutable: {15, 16, 17, 18, 19, 20},
+        priority: [1, 1, 2, 0, 0, 1, 2, 0, 0, 2, 2, 2, 0, 0, 2, 1, 1, 0, 1, 2, 1],
+        ts: [
+          1790490087000,
+          1790490086000,
+          1790490086000,
+          1790490026000,
+          1790418026000,
+          1790418025000,
+          1790346025000,
+          1790346024000,
+          1790259624000,
+          1790014824000,
+          1790187204000,
+          1790187203000,
+          1790183603000,
+          1790097203000,
+          1790093603000,
+          1790090003000,
+          1790090002000,
+          1790090001000,
+          1790003601000,
+          1790003600000,
+          null,
+        ],
+        offset: 120,
+      );
+      final StackInput request = specStackRequest(g.facts, collapsed: List.generate(21, (i) => i));
+      final engine = LayoutEngine(g.input, LayoutMode.compact)
+        ..layering()
+        ..chooseColumns()
+        ..markBlocked()
+        ..route();
+      expect(engine.y, [2, 1, 0, 7, 6, 5, 4, 5, 4, 3, 2, 1, 5, 4, 3, 2, 1, 0, 2, 1, 0]);
+      expect(engine.col, [1, 1, 1, 3, 3, 2, 2, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 2, 2, 2]);
+      final stacks = StackLayout(engine, request)..run();
+      expect(stacks.sweeps, 2);
+      expect(stacks.rowOf, [2, 1, 0, 6, 5, 5, 4, -1, -1, 3, -1, -1, 5, 4, 3, 2, 1, 0, 2, 1, 0, 4, 1]);
+      expect(
+        stackInvariantFailures(g.input, request, ungrouped(g), grouped(g, stacks: request)),
+        isEmpty,
+        reason: "y′ is the checker's least solution",
+      );
     });
 
     test('free_a_stretched_run_compacts_and_an_unstretched_one_keeps_every_other_y', () {
@@ -504,13 +568,12 @@ void main() {
     });
 
     test('a_run_whose_newest_member_is_its_childs_second_parent_reserves_the_merge_column', () {
-      // Lane 0: R ← q1 ← q2 (a ref) ← q3 ← c ← d, c = merge(q3, m2); lane 1: R ← m1 ← m2 (the run,
-      // stack 16), then h, t's second child, first-fit above m2 (a = y(t) + 1 = 6 ≥ m2's end 5);
-      // lane 2: R ← u1 ← … ← u4 (the run, stack 15) ← t ← h0.
-      // Grouped: in lane 1 the stack (1) and h are two segments, h's first parent is t, so (C)
-      // gives y′(t) ≥ y′(16) + 1 = 2 and, for the merge 16 → c (pos 1), y′(t) ≥ y′(c) = 4. So t
-      // stays at 4 (the stack below would put it at 2) and h, h0 at 5: the merge's vertical up
-      // lane 1 to c keeps clear of h.
+      // Column 0: R ← q1 ← q2 (a ref) ← q3 ← c ← d, c = merge(q3, m2); column 1: R ← m1 ← m2 (the run,
+      // stack 16), then h0, t's other child; column 2: R ← u1 ← … ← u4 (the run, stack 15) ← t ← h.
+      // Grouped: in column 1 the stack (1) and h0 are two branches, h0's first parent is t, so (C)
+      // gives y′(t) ≥ y′(16) = 1 and, for the merge 16 → c (pos 1), y′(t) ≥ y′(c) − 1 = 3. So t
+      // stays at 3 (the stack below would put it at 2) and h, h0 at 4: the merge's vertical up
+      // column 1 ends one pitch below c, clear of h0, which sits on c's row.
       final Graph g = specStackGraph(
         [
           [2],
@@ -545,14 +608,14 @@ void main() {
           true,
         ],
       ]);
-      expect(r.nodeRows, [5, 5, 4, -1, -1, -1, -1, 5, 4, 3, 2, 1, -1, -1, 0, 1, 1]);
+      expect(r.nodeRows, [4, 4, 3, -1, -1, -1, -1, 5, 4, 3, 2, 1, -1, -1, 0, 1, 1]);
       expect(routed(r), [
         (2, 0, 0, 2, true),
         (2, 1, 0, 0, false),
         (15, 2, 0, 0, false),
         (8, 7, 0, 0, false),
         (9, 8, 0, 0, false),
-        (16, 8, 0, 1, false),
+        (16, 8, 0, 2, true), // h0 sits on c's row, one pitch above the reservation: blocked (§4.4)
         (10, 9, 0, 0, false),
         (11, 10, 0, 0, false),
         (14, 11, 0, 0, false),
@@ -609,7 +672,7 @@ void main() {
       final Graph g = specStackGraph(chain(3));
       expect(
         canonicalOutput(grouped(g)),
-        '{"mode":"compact","order":"greedy","unit":1,"rows":3,"lanes":1,"nodes":[{"row":2,"lane":0,"col":0},null,null,'
+        '{"mode":"compact","unit":1,"rows":3,"lanes":1,"nodes":[{"row":2,"lane":0,"col":0},null,null,'
         '{"row":0,"lane":0,"col":0},{"row":1,"lane":0,"col":0}],"edges":[{"from":4,"to":0,"kind":"direct",'
         '"route":"straight","blocked":false},{"from":3,"to":4,"kind":"direct","route":"straight","blocked":false}],'
         '"buckets":[],"runs":[{"members":[2,1],"state":"collapsed","node":4}]}\n',
@@ -627,12 +690,10 @@ void main() {
       final Graph g = specStackGraph(chain(6), self: 0);
       final LayoutInput plain = specGraph(chain(6), roots: {6});
       for (final LayoutMode mode in LayoutMode.values) {
-        for (final LaneOrder order in LaneOrder.values) {
-          final Uint8List off = computeGraphGrid(g.input, mode: mode, order: order, budget: defaultLayoutBudget);
-          expect(ByteData.sublistView(off).getInt32(0, Endian.little), GraphGridView.formatVersion);
-          expect(off, computeGraphGrid(plain, mode: mode, order: order, budget: defaultLayoutBudget));
-          expect(GraphGridView.fromBytes(off).hasStacks, isFalse);
-        }
+        final Uint8List off = computeGraphGrid(g.input, mode: mode);
+        expect(ByteData.sublistView(off).getInt32(0, Endian.little), GraphGridView.formatVersion);
+        expect(off, computeGraphGrid(plain, mode: mode));
+        expect(GraphGridView.fromBytes(off).hasStacks, isFalse);
       }
     });
   });
@@ -655,8 +716,7 @@ void main() {
       collapsedNodes: ok.collapsedNodes,
       keepOpenNodes: ok.keepOpenNodes,
     );
-    Uint8List layOut(StackInput s) =>
-        computeGraphGrid(g.input, mode: LayoutMode.compact, order: LaneOrder.greedy, budget: 0, stacks: s);
+    Uint8List layOut(StackInput s) => computeGraphGrid(g.input, mode: LayoutMode.compact, stacks: s);
 
     test('fact_arrays_of_the_wrong_length_violate_v5', () {
       expect(() => layOut(altered(immutable: Uint8List(3))), violates('V5'));
@@ -695,8 +755,6 @@ void main() {
         () => computeGraphGrid(
           bad,
           mode: LayoutMode.compact,
-          order: LaneOrder.greedy,
-          budget: 0,
           stacks: altered(immutable: Uint8List(1)),
         ),
         violates('V4'),

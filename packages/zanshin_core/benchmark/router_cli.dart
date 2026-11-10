@@ -6,8 +6,8 @@
 //
 // ```text
 // router_cli oracle <cases.json> <out.json>
-// router_cli check --mode compact|free --order greedy|compact --width W --height H <input.json>
-// router_cli bench --mode compact|free --order greedy|compact --width W --height H [--runs N] [--warmup W] <input.json>
+// router_cli check --mode compact|free --width W --height H <input.json>
+// router_cli bench --mode compact|free --width W --height H [--runs N] [--warmup W] <input.json>
 // ```
 //
 // `oracle` routes GL's own grids (the cases the oracle tool writes) and writes per case the kinds,
@@ -40,8 +40,8 @@ import '../test/graph_layout/support/spec_json.dart';
 const _usage = '''
 usage:
   router_cli oracle <cases.json> <out.json>
-  router_cli check --mode compact|free --order greedy|compact --width W --height H <input.json>
-  router_cli bench --mode compact|free --order greedy|compact --width W --height H [--runs N] [--warmup W] <input.json>''';
+  router_cli check --mode compact|free --width W --height H <input.json>
+  router_cli bench --mode compact|free --width W --height H [--runs N] [--warmup W] <input.json>''';
 
 /// A usage error or an invalid input: exit code 2.
 final class _Exit2 implements Exception {
@@ -161,9 +161,7 @@ typedef _Laid = ({GraphGridView grid, Int32List parentCounts, int n});
 
 _Laid _layOut(_Cli cli, Uint8List bytes) {
   final LayoutInput input = parseSpecInput(bytes).input;
-  final grid = GraphGridView.fromBytes(
-    computeGraphGrid(input, mode: cli.mode, order: cli.order, budget: defaultLayoutBudget),
-  );
+  final grid = GraphGridView.fromBytes(computeGraphGrid(input, mode: cli.mode));
   // shortcut: parentCount = the input's parent entries (Missing and repeated Indirect edges
   // included), not jj's real parent count, so a hidden merge reached through two Indirect entries
   // never shares an entry here; read the input's stack facts (`parent_count`) when a measured input
@@ -237,7 +235,6 @@ void _check(List<String> args) {
     jsonEncode({
       'input': File(cli.input).uri.pathSegments.last,
       'mode': cli.mode.name,
-      'order': cli.order.name,
       'width': cli.width,
       'height': cli.height,
       'nodes': laid.n,
@@ -318,7 +315,6 @@ void _bench(List<String> args) {
       'impl': const bool.fromEnvironment('dart.vm.product') ? 'dart-core-aot' : 'dart-core-jit',
       'input': File(cli.input).uri.pathSegments.last,
       'mode': cli.mode.name,
-      'order': cli.order.name,
       'width': cli.width,
       'height': cli.height,
       'nodes': laid.n,
@@ -345,7 +341,7 @@ Uint8List _read(String path) {
 }
 
 final class _Cli {
-  _Cli(this.mode, this.order, this.width, this.height, this.runs, this.warmup, this.input);
+  _Cli(this.mode, this.width, this.height, this.runs, this.warmup, this.input);
 
   factory _Cli.parse(List<String> args, {required bool bench}) {
     final flags = <String, String>{};
@@ -360,7 +356,7 @@ final class _Cli {
         throw _Exit2('$arg needs a value');
       }
       final String name = arg.substring(2);
-      final allowed = {'mode', 'order', 'width', 'height', if (bench) 'runs', if (bench) 'warmup'};
+      final allowed = {'mode', 'width', 'height', if (bench) 'runs', if (bench) 'warmup'};
       if (!allowed.contains(name)) {
         throw _Exit2('unknown flag --$name');
       }
@@ -375,9 +371,6 @@ final class _Cli {
     final LayoutMode mode =
         LayoutMode.values.where((m) => m.name == flags['mode']).firstOrNull ??
         (throw _Exit2('--mode must be compact or free'));
-    final LaneOrder order =
-        LaneOrder.values.where((o) => o.name == flags['order']).firstOrNull ??
-        (throw _Exit2('--order must be greedy or compact'));
     double size(String name) {
       final double? value = double.tryParse(flags[name] ?? '');
       if (value == null || value <= 0) {
@@ -391,11 +384,10 @@ final class _Cli {
       return value == null ? null : (int.tryParse(value) ?? (throw _Exit2('--$name must be an integer')));
     }
 
-    return _Cli(mode, order, size('width'), size('height'), count('runs'), count('warmup'), positional.single);
+    return _Cli(mode, size('width'), size('height'), count('runs'), count('warmup'), positional.single);
   }
 
   final LayoutMode mode;
-  final LaneOrder order;
   final double width;
   final double height;
   final int? runs;

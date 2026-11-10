@@ -1,28 +1,26 @@
 // SPDX-License-Identifier: MIT
 
-// Unit tests of the product layout engine (Story 4.11): the spike's hand-traced tests
-// (spikes/graph-layout-ab/dart/test/layout_test.dart) for the shipped scope — modes compact and
-// free, orders greedy and compact — ported to package:test, plus `free`'s day buckets. The graphs
-// list nodes children-first (jj log order); every expectation was derived by hand from
-// docs/graph-layout.md §4.
+// Unit tests of the product layout engine: hand-traced cases for the modes compact and
+// free, `free`'s day buckets, and the branch columns of docs/graph-layout.md §4.3 (amended
+// 2026-11-10). The graphs list nodes children-first (jj log order); every expectation was derived
+// by hand from §4.
 
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:zanshin_core/src/graph_layout/compact_order.dart';
 import 'package:zanshin_core/src/graph_layout/graph_grid_view.dart';
 import 'package:zanshin_core/src/graph_layout/layout_engine.dart';
 import 'package:zanshin_core/src/graph_layout/layout_input.dart';
 import 'package:zanshin_core/src/graph_layout/layout_request.dart';
+import 'package:zanshin_core/src/graph_layout/router.dart';
 
 import 'invariants.dart';
 import 'support/spec_json.dart';
 
 /// Lays [g] out and reads the grid.
-GraphGridView run(LayoutInput g, LayoutMode mode, [LaneOrder order = LaneOrder.greedy]) =>
-    GraphGridView.fromBytes(computeGraphGrid(g, mode: mode, order: order, budget: defaultLayoutBudget));
+GraphGridView run(LayoutInput g, LayoutMode mode) => GraphGridView.fromBytes(computeGraphGrid(g, mode: mode));
 
 const _routeNames = <String>['straight', 'merge', 'branch_off'];
 
@@ -31,108 +29,6 @@ List<List<Object>> edges(GraphGridView r) => [
   for (var e = 0; e < r.edgeCount; e++)
     [r.edgeFroms[e], r.edgeTos[e], _routeNames[r.edgeRoutes[e]], r.edgeBlocked[e] != 0],
 ];
-
-/// The joint packing (docs/graph-layout.md §4.3, amended 2026-10-27) read literally: both models'
-/// intervals (half-open [a, b)), a node fits a lane iff no interval there except the excluded
-/// owner's overlaps it in either model; packed once in each model's visit order, the fewer lanes
-/// kept, `compact`'s on a tie. Returns the lanes and both visit orders' lane counts.
-(List<int>, int, int) naiveJointLanes(LayoutInput g) {
-  final ls = [LayoutEngine(g, LayoutMode.compact)..layering(), LayoutEngine(g, LayoutMode.free)..layering()];
-  final int n = g.n;
-  final Int32List fp = ls[0].fp;
-  final Int32List prio = g.priority;
-  final List<int> cont = List.filled(n, -1);
-  for (var i = 0; i < n; i++) {
-    final int f = fp[i];
-    if (f >= 0 && (cont[f] < 0 || prio[i] < prio[cont[f]])) {
-      cont[f] = i;
-    }
-  }
-  List<int> interval(int k, int i) {
-    final LayoutEngine l = ls[k];
-    final Int64List y = l.y;
-    final int u = l.unit;
-    final ey = <int>[
-      if (cont[i] >= 0) y[cont[i]],
-      for (int s = l.chStart[i]; s < l.chStart[i + 1]; s++)
-        if (l.chPos[s] >= 1) y[l.chIdx[s]],
-    ];
-    final int end = ey.isEmpty ? y[i] : max(y[i], ey.reduce(max) - u);
-    return [if (fp[i] >= 0) y[fp[i]] + u else y[i], end + 2 * u];
-  }
-
-  final List<List<List<int>>> ivs = [for (var k = 0; k < 2; k++) List.generate(n, (i) => interval(k, i))];
-  bool overlap(int k, int x, int i) => ivs[k][x][0] < ivs[k][i][1] && ivs[k][i][0] < ivs[k][x][1];
-  (List<int>, int, List<int>) pack(int v) {
-    final Int64List y = ls[v].y;
-    final List<int> order = List.generate(n, (i) => i)
-      ..sort((a, b) => y[a] != y[b] ? y[a].compareTo(y[b]) : (prio[a] != prio[b] ? prio[a] - prio[b] : a - b));
-    final lanes = <List<int>>[]; // the owners per lane
-    bool fits(int lane, int i, int except) =>
-        lane >= lanes.length || !lanes[lane].any((x) => x != except && (overlap(0, x, i) || overlap(1, x, i)));
-    final List<int> lane = List.filled(n, -1);
-    for (final i in order) {
-      var chosen = -1;
-      if (fp[i] >= 0 && cont[fp[i]] == i && fits(lane[fp[i]], i, fp[i])) {
-        chosen = lane[fp[i]];
-      }
-      if (chosen < 0) {
-        chosen = 0;
-        while (!fits(chosen, i, -1)) {
-          chosen++;
-        }
-      }
-      while (lanes.length <= chosen) {
-        lanes.add([]);
-      }
-      lanes[chosen].add(i);
-      lane[i] = chosen;
-    }
-    return (lane, lanes.length, order);
-  }
-
-  // §4.3, amended 2026-11-09, read literally: chain pieces of at most 8 cards return to their parent's lane.
-  List<int> returned(List<int> lane, List<int> order) {
-    final List<int> chain = List.filled(n, -1);
-    for (final i in order) {
-      chain[i] = fp[i] >= 0 && cont[fp[i]] == i && lane[fp[i]] == lane[i] ? chain[fp[i]] : i;
-    }
-    bool mergeParentIn(int l, int i) => [
-      for (int e = ls[0].lpStart[i] + 1; e < ls[0].lpStart[i + 1]; e++) lane[ls[0].edgeParent[e]],
-    ].contains(l);
-    bool blockedBy(int o, int s, int to, int f) =>
-        lane[o] == to && chain[o] != chain[f] && (overlap(0, o, s) || overlap(1, o, s));
-    for (final i in order) {
-      final int f = fp[i];
-      if (f < 0 || cont[f] != i || lane[f] == lane[i]) {
-        continue;
-      }
-      final int from = lane[i];
-      final int to = lane[f];
-      final piece = <int>[];
-      for (var s = i; s >= 0 && lane[s] == from; s = cont[s]) {
-        piece.add(s);
-      }
-      if (piece.length <= 8 &&
-          !piece.any((s) => mergeParentIn(to, s) || List.generate(n, (o) => o).any((o) => blockedBy(o, s, to, f)))) {
-        for (final s in piece) {
-          lane[s] = to;
-          chain[s] = chain[f];
-        }
-      }
-    }
-    final List<int> used = lane.toSet().toList()..sort();
-    return [for (final l in lane) used.indexOf(l)];
-  }
-
-  final (List<int> compactLanes, int compactCount, List<int> compactOrder) = pack(0);
-  final (List<int> freeLanes, int freeCount, List<int> freeOrder) = pack(1);
-  return (
-    compactCount <= freeCount ? returned(compactLanes, compactOrder) : returned(freeLanes, freeOrder),
-    compactCount,
-    freeCount,
-  );
-}
 
 /// The design's blocked formula, O(E·n), with D4.
 List<int> naiveBlocked(LayoutEngine l) => [
@@ -317,7 +213,7 @@ void main() {
         ts: [midnight + 10 * minute, midnight - 10 * minute, null],
         roots: {2},
       );
-      final GraphGridView r = run(g, LayoutMode.free, LaneOrder.compact);
+      final GraphGridView r = run(g, LayoutMode.free);
       expect(r.nodeRows, [32, 16, 0]);
       expect(r.rows, 48);
       expect(
@@ -330,14 +226,11 @@ void main() {
       );
       expect(r.nodeCols[0], isNot(r.nodeCols[1]));
       expect(invariantFailures(g, r), isEmpty);
-      final GraphGridView c = run(g, LayoutMode.compact, LaneOrder.compact);
-      expect([c.nodeLanes, c.nodeCols], [r.nodeLanes, r.nodeCols], reason: 'I8');
 
       // The pre-4.16 walk (B at A's 16, the buckets meet) fails the strengthened I5.
       final meet = GraphGridView.fromBytes(
         writeGraphGrid(
           mode: r.mode,
-          order: r.order,
           unit: r.unit,
           rows: 32,
           lanes: r.lanes,
@@ -454,9 +347,54 @@ void main() {
       final GraphGridView r = run(specGraph([[], []], ts: [now, now - day]), LayoutMode.compact);
       expect(r.bucketCount, 0);
     });
+
+    test('every_node_has_its_clamped_ts_day_in_both_modes_and_the_root_none', () {
+      const t1 = 1700000000000;
+      // 0 has no ts and counts by its clamped T (1's); 1 a day key of its own; 2 is the root.
+      final LayoutInput g = specGraph(
+        [
+          [1],
+          [2],
+          [],
+        ],
+        ts: [null, t1, null],
+        roots: {2},
+        offset: 120,
+      );
+      for (final LayoutMode mode in LayoutMode.values) {
+        final GraphGridView r = run(g, mode);
+        expect(r.nodeDays, [dayKey(t1, 120), dayKey(t1, 120), GraphGridView.noDay], reason: mode.name);
+      }
+      expect(dayKey(t1, 120), floorDiv(t1 + 120 * minute, day) * day - 120 * minute);
+    });
+
+    test('without_timestamps_every_non_root_node_has_the_epochs_day_in_both_modes', () {
+      final rnd = Random(29);
+      for (var t = 0; t < 60; t++) {
+        final LayoutInput base = randomGraph(rnd, rnd.nextInt(80), branchy: t.isOdd);
+        final noTs = LayoutInput(
+          utcOffsetMin: base.utcOffsetMin,
+          ts: Int64List(base.n),
+          hasTs: Uint8List(base.n),
+          isRoot: base.isRoot,
+          priority: base.priority,
+          parStart: base.parStart,
+          parIdx: base.parIdx,
+          parKind: base.parKind,
+        );
+        for (final LayoutMode mode in LayoutMode.values) {
+          final GraphGridView r = run(noTs, mode);
+          expect(invariantFailures(noTs, r), isEmpty, reason: 'case $t $mode');
+          // tmin = 0: every non-root node is in the epoch's day, the root in none.
+          for (var i = 0; i < noTs.n; i++) {
+            expect(r.nodeDays[i], noTs.isRoot[i] != 0 ? GraphGridView.noDay : dayKey(0, noTs.utcOffsetMin));
+          }
+        }
+      }
+    });
   });
 
-  group('lane packing', () {
+  group('lanes and routes', () {
     test('a_chain_keeps_one_lane_all_straight', () {
       final GraphGridView r = run(
         specGraph([
@@ -512,9 +450,10 @@ void main() {
       ]);
     });
 
-    test('one_row_buffer_an_adjacent_interval_does_not_fit_a_buffered_one_does', () {
+    test('one_pitch_between_two_branches_is_enough_to_share_a_column', () {
       // 0:C→3:B, 1:F→3:B, 2:E→5:A, 3:B→5:A, 4:D→6:R, 5:A→6:R, 6:R.
-      // D takes lane 1 as [1,3); E would start at row 2 → lane 2; F starts at row 3 → lane 1.
+      // D reserves [1, 1], E [2, 2] and F [3, 3]: each starts one pitch above the last, so all three
+      // share column 1.
       final GraphGridView r = run(
         specGraph(
           [
@@ -531,8 +470,8 @@ void main() {
         LayoutMode.compact,
       );
       expect(r.nodeRows, [3, 3, 2, 2, 1, 1, 0]);
-      expect(r.nodeLanes, [0, 1, 2, 0, 1, 0, 0]);
-      expect(r.lanes, 3);
+      expect(r.nodeLanes, [0, 1, 1, 0, 1, 0, 0]);
+      expect(r.lanes, 2);
       expect(edges(r), [
         [3, 0, 'straight', false],
         [3, 1, 'branch_off', true],
@@ -543,101 +482,24 @@ void main() {
       ]);
     });
 
-    test('a_short_piece_returns_to_its_parents_lane_past_a_merge_reservation_of_its_chain', () {
-      // 0:I→2:F, 1:M→[3:X, 4:G], 2:F→4:G, 3:X→4:G, 4:G. G reserves lane 0 up to M's row;
-      // F continues G (G's own interval excepted), I cannot continue F (G's interval is not F's), so
-      // the packing puts I into a third lane. The piece [I] then returns, and that lane is dropped.
-      final GraphGridView r = run(
-        specGraph(
-          [
-            [2],
-            [3, 4],
-            [4],
-            [4],
-            [],
-          ],
-          priority: [0, 1, 0, 1, 0],
-        ),
-        LayoutMode.compact,
-      );
-      expect(r.nodeRows, [2, 2, 1, 1, 0]);
-      expect(r.nodeLanes, [0, 1, 0, 1, 0]);
-      expect(r.lanes, 2);
-      expect(edges(r), [
-        [2, 0, 'straight', false],
-        [3, 1, 'straight', false],
-        [4, 1, 'branch_off', true], // blocked merge → branch_off (D9)
-        [4, 2, 'straight', false],
-        [4, 3, 'branch_off', true],
-      ]);
-    });
-
-    test('a_chain_piece_of_8_cards_returns_to_its_parents_lane_one_of_9_stays', () {
-      // The shape above with the piece I_1 … I_k on top of F: nodes 0 … k − 1, then M, F, X, G.
-      for (final (int k, bool back) in [(8, true), (9, false)]) {
-        final LayoutInput g = specGraph(
-          [
-            for (var i = 0; i < k - 1; i++) [i + 1],
-            [k + 1],
-            [k + 2, k + 3],
-            [k + 3],
-            [k + 3],
-            [],
-          ],
-          priority: [...List.filled(k, 0), 1, 0, 1, 0],
-        );
-        final GraphGridView r = run(g, LayoutMode.compact);
-        expect(r.nodeLanes[k - 1] == r.nodeLanes[k + 1], back, reason: 'k = $k');
-        expect(r.lanes, back ? 2 : 3, reason: 'k = $k');
-      }
-    });
-
-    test('a_piece_does_not_return_to_a_lane_holding_one_of_its_merge_parents', () {
-      // 0:M→[N, P] 1:N→P 2:P: M continues N but also merges P, so a same-lane edge would be no first parent.
-      final LayoutInput g = specGraph([
-        [1, 2],
-        [2],
-        [],
-      ]);
-      for (final LayoutMode mode in LayoutMode.values) {
-        final GraphGridView r = run(g, mode);
-        expect(r.nodeLanes[1], r.nodeLanes[2], reason: 'N in P\'s lane, $mode');
-        expect(r.nodeLanes[0], isNot(r.nodeLanes[2]), reason: 'M not in P\'s lane, $mode');
-      }
-    });
-
-    test('lane_packing_equals_the_literal_two_model_interval_scan_on_random_graphs', () {
+    test('blocked_equals_the_designs_formula_on_random_graphs_in_both_modes', () {
       final rnd = Random(7);
-      var freeFewer = 0;
-      var compactFewer = 0;
-      var tie = 0;
       for (var t = 0; t < 300; t++) {
         final LayoutInput g = randomGraph(rnd, 1 + rnd.nextInt(70), branchy: t.isOdd);
-        final (List<int> want, int compactCount, int freeCount) = naiveJointLanes(g);
-        if (freeCount < compactCount) {
-          freeFewer++;
-        } else if (compactCount < freeCount) {
-          compactFewer++;
-        } else {
-          tie++;
-        }
         for (final LayoutMode mode in LayoutMode.values) {
           final l = LayoutEngine(g, mode)
             ..layering()
-            ..packLanes()
+            ..chooseColumns()
             ..markBlocked();
-          expect(l.lane, want, reason: 'lanes, case $t $mode');
           expect(l.blocked, naiveBlocked(l), reason: 'blocked, case $t $mode');
         }
       }
-      expect([freeFewer, compactFewer, tie], everyElement(greaterThan(0)), reason: 'each visit-order outcome');
     });
   });
 
-  group('compact lane order', () {
-    // Trunk R-A1-…-A8 (lane 0). L = L1…L4 branches off A1 and merges into A5; S = S1 branches off
-    // A2 and merges into A4, nested inside L; X = X1 branches off A6 and merges into A8, after L.
-    // Greedy: L and X share lane 1, S takes lane 2, and S's two horizontals cross L (X = 2).
+  group('branch columns', () {
+    // Trunk R-A1-…-A8. L = L1…L4 forks from A1 and merges into A5; S = S1 forks from A2 and merges
+    // into A4, nested inside L; X = X1 forks from A6 and merges into A8, after L.
     //   0:A8→[A7, X1] 1:X1→A6 2:A7→A6 3:A6→A5 4:A5→[A4, L4] 5:L4→L3 6:A4→[A3, S1] 7:L3→L2
     //   8:S1→A2 9:A3→A2 10:L2→L1 11:A2→A1 12:L1→A1 13:A1→R 14:R
     final LayoutInput nested = specGraph(
@@ -661,181 +523,9 @@ void main() {
       priority: [0, 2, 0, 0, 0, 2, 0, 2, 2, 0, 2, 0, 2, 0, 0],
     );
 
-    test('a_window_swap_puts_s_inside_l_and_leaves_x_in_column_1', () {
-      final GraphGridView greedy = run(nested, LayoutMode.compact);
-      expect(greedy.nodeRows, [9, 8, 8, 7, 6, 5, 4, 4, 3, 3, 3, 2, 2, 1, 0]);
-      expect(greedy.nodeLanes, [0, 1, 0, 0, 0, 1, 0, 1, 2, 0, 1, 0, 1, 0, 0]);
-      expect(tickCrossings(greedy), 2);
-      // compact: only the window of L and S is swapped; X stays in column 1.
-      final GraphGridView compact = run(nested, LayoutMode.compact, LaneOrder.compact);
-      expect(compact.nodeLanes, [0, 1, 0, 0, 0, 2, 0, 2, 1, 0, 2, 0, 2, 0, 0]);
-      expect(compact.nodeCols, compact.nodeLanes);
-      expect(tickCrossings(compact), 0);
-      expect(edges(compact), edges(greedy));
-    });
-
-    test('the_joint_model_cost_of_the_hand_trace_falls_from_35072_to_11776', () {
-      // No timestamps: every T is tmin, so free's walk (index descending) gives each node one pitch
-      // above its parents and nothing more — free y = 16·compact y here, every free interval is 16×
-      // its compact one, and the joint packing is compact's.
-      expect(greedyEngine(nested, LayoutMode.free).y, [
-        for (final y in greedyEngine(nested, LayoutMode.compact).y) 16 * y,
-      ]);
-      final LayoutEngine l = greedyEngine(nested, LayoutMode.compact);
-      final co = CompactOrder(l, budget: defaultLayoutBudget, closing: false);
-      // Compact: segments trunk (col 0), L [2, 7) col 1, S [3, 5) col 2, X [8, 10) col 1. X = 2,
-      // Len = 8, gravity 24·(1·5 + 2·2 + 1·2) = 264: 400·2 + 4·8 + 264 = 1096. Free: the same X and
-      // Len times U = 16, every reservation 16× as long: 16·1096. Joint: 16·1096 + 16·1096 = 35072.
-      expect(co.totalCost(), 35072);
-      co.run();
-      // L col 2, S col 1: X = 0, Len = 8, gravity 24·(2·5 + 1·2 + 1·2) = 336, so 368 per model:
-      // 32·368 = 11776.
-      expect(co.totalCost(), 11776);
-    });
-
-    test('the_closing_pass_moves_a_lone_short_branch_next_to_its_parent', () {
-      // Found by a random search. Node 0 is a one-card branch of node 3 (column 3). The search leaves it in column 1,
-      // because gravity outweighs the shorter lines; column 2 is free at its rows, and the pass moves it there.
-      final LayoutInput g = specGraph(
-        [
-          [3],
-          [3],
-          [],
-          [6, 4],
-          [6, 5],
-          [6],
-          [],
-        ],
-        priority: [1, 0, 0, 2, 1, 2, 0],
-        ts: [999999149482, 999998039467, 999947111457, 999896048025, 999859646116, 999790076913, null],
-        roots: {6},
-      );
-      final LayoutEngine l = greedyEngine(g, LayoutMode.compact);
-      expect(CompactOrder(l, budget: defaultLayoutBudget, closing: false).run(), [1, 3, 0, 3, 1, 2, 1]);
-      expect(CompactOrder(l, budget: defaultLayoutBudget).run(), [2, 3, 0, 3, 1, 2, 1]);
-    });
-
-    test('the_closing_pass_moves_a_branch_of_any_length_out_of_column_0_next_to_its_parents', () {
-      // The one-card case was found by a random search. The branch (the first `cards` nodes) has its parents in
-      // column 2. The packing puts it in lane 0, which the search never exchanges; column 1 is free at its rows, and
-      // the pass moves it there. With more than 8 cards it moves because its lines get shorter.
-      for (final int cards in [1, compactClosingMax + 1]) {
-        final int b = cards - 1; // the branch's first card; the nodes below it follow
-        final LayoutInput g = specGraph(
-          [
-            for (var i = 0; i < b; i++) [i + 1],
-            [b + 2, b + 1, null],
-            [b + 2],
-            [b + 5, b + 3],
-            [b + 4, b + 5],
-            [b + 5],
-            [],
-          ],
-          priority: [for (var i = 0; i < cards; i++) 2, 1, 2, 1, 1, 2],
-          ts: [
-            for (var i = 0; i < b; i++) 999998918873 + (b - i) * 60000,
-            ...[999998918873, 999998063568, 999909705303, 999819091424, 999778389575, null],
-          ],
-          roots: {b + 5},
-        );
-        final LayoutEngine l = greedyEngine(g, LayoutMode.compact);
-        final below = [2, 2, 1, 0, 0];
-        expect(
-          CompactOrder(l, budget: defaultLayoutBudget, closing: false).run(),
-          [for (var i = 0; i < cards; i++) 0, ...below],
-          reason: '$cards cards, search',
-        );
-        expect(
-          CompactOrder(l, budget: defaultLayoutBudget).run(),
-          [for (var i = 0; i < cards; i++) 1, ...below],
-          reason: '$cards cards, closing pass',
-        );
-      }
-    });
-
-    test('the_joint_search_cost_is_exact_never_above_greedy_mode_independent_and_keeps_chains_routes_and_lane_0', () {
-      final rnd = Random(17);
-      var swapped = 0;
-      for (var t = 0; t < 150; t++) {
-        final LayoutInput g = randomGraph(rnd, 1 + rnd.nextInt(90), branchy: t.isOdd);
-        final Int32List fromFree = CompactOrder(greedyEngine(g, LayoutMode.free), budget: defaultLayoutBudget).run();
-        for (final LayoutMode mode in LayoutMode.values) {
-          final what = 'case $t $mode';
-          final LayoutEngine l = greedyEngine(g, mode);
-          final int start = naiveCompactCost(g, l.lane);
-          final co = CompactOrder(l, budget: defaultLayoutBudget, closing: false);
-          expect(co.totalCost(), start, reason: '$what: start cost');
-          expect(
-            CompactOrder(l, budget: defaultLayoutBudget, rounds: 0).run(),
-            l.lane,
-            reason: '$what: no rounds = greedy',
-          );
-          final Int32List lanes = co.run();
-          final Int32List closed = CompactOrder(l, budget: defaultLayoutBudget).run();
-          expect(closed, fromFree, reason: '$what: the search does not depend on the mode');
-          final beforeDrop = Int32List.fromList([for (var i = 0; i < g.n; i++) co.colOf[co.seg[i]]]);
-          final int searched = naiveCompactCost(g, beforeDrop);
-          expect(co.totalCost(), searched, reason: '$what: searched cost');
-          expect(searched, lessThanOrEqualTo(start), reason: '$what: above greedy');
-          expect(naiveCompactCost(g, lanes), lessThanOrEqualTo(searched), reason: '$what: dropping columns raised it');
-          if (searched < start) {
-            swapped++;
-          }
-          expect(reservationFailures(greedyEngine(g, LayoutMode.compact), closed), isEmpty, reason: '$what compact');
-          expect(reservationFailures(greedyEngine(g, LayoutMode.free), closed), isEmpty, reason: '$what free');
-
-          final GraphGridView greedy = run(g, mode);
-          final GraphGridView compact = run(g, mode, LaneOrder.compact);
-          expect(compact.nodeLanes, closed, reason: '$what: computeGraphGrid lanes');
-          expect(compactAgainstGreedy(g, greedy, compact), isEmpty, reason: what);
-          expect(
-            canonicalOutput(run(g, mode, LaneOrder.compact)),
-            canonicalOutput(compact),
-            reason: '$what: deterministic',
-          );
-        }
-      }
-      expect(swapped, greaterThan(50), reason: 'too few improving searches');
-    });
-
-    test('a_budget_cut_joint_search_gives_the_same_lanes_and_cols_in_both_modes', () {
-      final rnd = Random(31);
-      for (var t = 0; t < 40; t++) {
-        final LayoutInput g = randomGraph(rnd, 1 + rnd.nextInt(90), branchy: t.isOdd);
-        for (final budget in [0, 10, 40, 200, 1000]) {
-          GraphGridView lay(LayoutMode mode) =>
-              GraphGridView.fromBytes(computeGraphGrid(g, mode: mode, order: LaneOrder.compact, budget: budget));
-          final GraphGridView c = lay(LayoutMode.compact);
-          final GraphGridView f = lay(LayoutMode.free);
-          expect(
-            [c.lanes, c.nodeLanes, c.nodeCols],
-            [f.lanes, f.nodeLanes, f.nodeCols],
-            reason: 'case $t budget $budget',
-          );
-        }
-      }
-    });
-
-    test('skipping_unchanged_windows_ends_where_the_unskipped_search_ends', () {
-      // The spike found the blocked-merge case of the skip rule this way (docs/graph-layout.md
-      // §4.7, "Corrected in review"): a window's span must reach down to its horizontals.
-      final rnd = Random(1);
-      for (var t = 0; t < 201; t++) {
-        final LayoutInput g = randomGraph(rnd, 1 + rnd.nextInt(150), branchy: t.isOdd);
-        for (final LayoutMode mode in LayoutMode.values) {
-          Int32List search({required bool skip}) =>
-              CompactOrder(greedyEngine(g, mode), budget: 1 << 60, rounds: 1 << 20, skip: skip).run();
-
-          expect(search(skip: true), search(skip: false), reason: 'case $t $mode');
-        }
-      }
-    });
-  });
-
-  group('joint columns', () {
-    // Trunk R-T1-T2-T3-T4 (lane 0); X branches off T1, Y off T3. In compact rows X's interval is
-    // [2, 4) and Y's [4, 6): disjoint, one lane would hold both. X is committed six days after Y,
-    // so in free units X [36, 154) and Y [76, 108) overlap: the joint packing splits them.
+    // Trunk R-T1-T2-T3-T4; X forks from T1 and Y from T3. In compact rows X reserves [2, 2] and Y
+    // [4, 4]: one pitch apart, so they share a column. X is committed six days after Y, so in free
+    // units X reserves [36, 122] and Y [76, 76]: Y lies inside X and takes the nearer column.
     //   0:X→T1 1:T4→T3 2:Y→T3 3:T3→T2 4:T2→T1 5:T1→R 6:R
     const int t0 = now - 30 * day;
     final LayoutInput xy = specGraph(
@@ -852,144 +542,176 @@ void main() {
       ts: [t0 + 10 * day, t0 + 4 * day, t0 + 3 * day + hour, t0 + 3 * day, t0 + 2 * day, t0 + day, t0],
     );
 
-    test('two_chains_disjoint_in_compact_but_overlapping_in_free_get_different_lanes_in_both_modes', () {
-      final LayoutEngine l = greedyEngine(xy, LayoutMode.compact);
+    /// The columns of [g] in `compact` (without timestamps also `free`'s).
+    List<int> columns(LayoutInput g) {
+      final GraphGridView r = run(g, LayoutMode.compact);
+      expect(run(g, LayoutMode.free).nodeCols, r.nodeCols, reason: 'free has the same columns here');
+      expect(invariantFailures(g, r), isEmpty);
+      expect(branchFailures(g, r), isEmpty);
+      return r.nodeCols;
+    }
+
+    test('a_nested_branch_sits_nearer_and_a_later_one_reuses_its_column', () {
+      expect(columns(nested), [0, 1, 0, 0, 0, 2, 0, 2, 1, 0, 2, 0, 2, 0, 0]);
+    });
+
+    test('of_two_branches_that_overlap_in_part_the_one_that_ends_first_sits_nearer', () {
+      // A = 3 forks from R and merges into T4; B = 1 forks from T2 and merges into T5. A is longer
+      // but ends first.
+      final LayoutInput g = specGraph(
+        [
+          [2, 1],
+          [5],
+          [4, 3],
+          [7],
+          [5],
+          [6],
+          [7],
+          [],
+        ],
+        priority: [0, 2, 0, 2, 0, 0, 0, 0],
+      );
+      expect(columns(g), [0, 2, 0, 1, 0, 0, 0, 0]);
+    });
+
+    test('a_side_branch_that_merges_back_into_its_branch_docks_to_that_branch_and_is_placed_after_it', () {
+      final LayoutInput g = specGraph(
+        [
+          [1, 2],
+          [3],
+          [4, 5],
+          [6],
+          [7],
+          [7],
+          [8],
+          [8],
+          [9],
+          [],
+        ],
+        priority: [0, 0, 2, 0, 2, 2, 0, 2, 0, 0],
+      );
+      expect(columns(g), [0, 0, 1, 0, 1, 2, 0, 1, 0, 0]);
+    });
+
+    test('a_side_branch_that_merges_into_the_main_branch_docks_to_it_and_ends_first', () {
+      final LayoutInput g = specGraph(
+        [
+          [1, 2],
+          [3, 5],
+          [4],
+          [6],
+          [7],
+          [7],
+          [8],
+          [8],
+          [9],
+          [],
+        ],
+        priority: [0, 0, 2, 0, 2, 2, 0, 2, 0, 0],
+      );
+      expect(columns(g), [0, 0, 2, 0, 2, 1, 0, 2, 0, 0]);
+    });
+
+    test('a_column_is_used_again_one_pitch_after_a_merge', () {
+      List<List<Object?>> parents(int t1Parent) => [
+        [2, 1],
+        [t1Parent],
+        [3],
+        [4, 5],
+        [6],
+        [7],
+        [7],
+        [],
+      ];
+      const priority = [0, 2, 0, 0, 0, 2, 0, 0];
+      expect(columns(specGraph(parents(4), priority: priority)), [0, 1, 0, 0, 0, 1, 0, 0]);
+      expect(columns(specGraph(parents(6), priority: priority)), [0, 2, 0, 0, 0, 1, 0, 0]);
+    });
+
+    test('each_mode_chooses_its_own_columns_on_its_own_rows', () {
+      final l = LayoutEngine(xy, LayoutMode.compact)..layering();
       expect(l.modelY[0], [2, 4, 4, 3, 2, 1, 0], reason: 'compact rows');
       // Free walk: R 0; T1, T2, T3 a day apart (gap 20 each); Y one hour after T3 (gap 11, but one
       // pitch above T3: 76); T4 23 h later (gap 20: 96); X six days later (gap 26: 122).
       expect(l.modelY[1], [122, 96, 76, 60, 40, 20, 0], reason: 'free y');
-      // Compact order: R, T1, T2 continue lane 0; X (row 2) finds lane 0 reserved to 4 and takes
-      // lane 1; T3, T4 continue; Y [4, 6) fits lane 1 in compact (X ends at 4) but overlaps X in
-      // free, so it takes lane 2. Free order: Y (76) takes lane 1, X (122) lane 2. Both need 3
-      // lanes; the tie keeps compact's order.
-      final (List<int> lanes, int compactCount, int freeCount) = naiveJointLanes(xy);
+      final GraphGridView c = run(xy, LayoutMode.compact);
+      final GraphGridView f = run(xy, LayoutMode.free);
       expect(
-        [compactCount, freeCount, lanes],
+        [c.lanes, c.nodeCols, c.nodeLanes],
+        [
+          2,
+          [1, 0, 1, 0, 0, 0, 0],
+          [1, 0, 1, 0, 0, 0, 0],
+        ],
+      );
+      expect(
+        [f.lanes, f.nodeCols, f.nodeLanes],
         [
           3,
-          3,
-          [1, 0, 2, 0, 0, 0, 0],
+          [2, 0, 1, 0, 0, 0, 0],
+          [2, 0, 1, 0, 0, 0, 0],
         ],
       );
-      for (final LayoutMode mode in LayoutMode.values) {
-        final GraphGridView r = run(xy, mode);
-        expect(
-          [r.lanes, r.nodeLanes, r.nodeCols],
-          [
-            3,
-            [1, 0, 2, 0, 0, 0, 0],
-            [1, 0, 2, 0, 0, 0, 0],
-          ],
-          reason: mode.name,
-        );
-      }
+      expect(c.nodeDays, f.nodeDays, reason: 'the day keys do not depend on the mode');
     });
 
-    test('the_free_visit_order_needs_fewer_lanes_here_so_the_joint_packing_is_its', () {
-      // Found by a random search (spike); the expected values are the literal two-model scan's.
+    test('a_merge_child_can_sit_in_its_merge_parents_column_and_the_edge_is_straight', () {
+      // 0:M2→M1 1:i→[M1, F1] 2:M1→R 3:F1→R 4:R: F1's reservation ends one pitch below i, so i's
+      // branch may take F1's column.
       final LayoutInput g = specGraph(
         [
-          [1],
-          [6],
-          [5],
-          [8],
-          [5, 6],
-          [8, 6],
-          [8],
-          [8],
-          [],
-        ],
-        priority: [0, 0, 1, 1, 0, 0, 0, 0, 1],
-        ts: [
-          1000000000000,
-          1000342000000,
-          1000082800000,
-          999910000000,
-          999902800000,
-          999816400000,
-          999816400000,
-          999730000000,
-          999730000000,
-        ],
-      );
-      final (List<int> lanes, int compactCount, int freeCount) = naiveJointLanes(g);
-      expect([compactCount, freeCount], [5, 4]);
-      expect(lanes, [2, 2, 1, 3, 0, 0, 2, 1, 0]);
-      for (final LayoutMode mode in LayoutMode.values) {
-        expect(run(g, mode).nodeLanes, lanes, reason: mode.name);
-      }
-    });
-
-    test('one_chain_reduces_to_the_single_model_packing_one_lane', () {
-      final LayoutInput chain = specGraph(
-        [
-          [1],
           [2],
-          [3],
+          [2, 3],
+          [4],
+          [4],
           [],
         ],
-        ts: [now, now - day, now - 2 * day, null],
-        roots: {3},
+        priority: [0, 2, 0, 2, 0],
       );
-      for (final LayoutMode mode in LayoutMode.values) {
-        final GraphGridView r = run(chain, mode, LaneOrder.compact);
-        expect(
-          [r.lanes, r.nodeLanes],
-          [
-            1,
-            [0, 0, 0, 0],
-          ],
-          reason: mode.name,
-        );
-      }
-    });
-
-    test('without_timestamps_the_free_model_is_the_tmin_clamp_and_i8_still_holds', () {
-      final rnd = Random(29);
-      for (var t = 0; t < 60; t++) {
-        final LayoutInput base = randomGraph(rnd, rnd.nextInt(80), branchy: t.isOdd);
-        final noTs = LayoutInput(
-          utcOffsetMin: base.utcOffsetMin,
-          ts: Int64List(base.n),
-          hasTs: Uint8List(base.n),
-          isRoot: base.isRoot,
-          priority: base.priority,
-          parStart: base.parStart,
-          parIdx: base.parIdx,
-          parKind: base.parKind,
-        );
-        for (final LaneOrder order in LaneOrder.values) {
-          final GraphGridView c = run(noTs, LayoutMode.compact, order);
-          final GraphGridView f = run(noTs, LayoutMode.free, order);
-          expect(invariantFailures(noTs, c), isEmpty, reason: 'case $t $order compact');
-          expect(invariantFailures(noTs, f), isEmpty, reason: 'case $t $order free');
-          expect(i8Failures(c, f), isEmpty, reason: 'case $t $order');
-          // tmin = 0: every non-root node is in the epoch's day, the root in none.
-          for (var i = 0; i < noTs.n; i++) {
-            expect(c.nodeDays[i], noTs.isRoot[i] != 0 ? GraphGridView.noDay : dayKey(0, noTs.utcOffsetMin));
-          }
-        }
-      }
-    });
-
-    test('every_node_has_its_clamped_ts_day_in_both_modes_and_the_root_none', () {
-      const t1 = 1700000000000;
-      // 0 has no ts and counts by its clamped T (1's); 1 a day key of its own; 2 is the root.
-      final LayoutInput g = specGraph(
-        [
-          [1],
-          [2],
-          [],
-        ],
-        ts: [null, t1, null],
-        roots: {2},
-        offset: 120,
-      );
+      expect(columns(g), [0, 1, 0, 1, 0]);
       for (final LayoutMode mode in LayoutMode.values) {
         final GraphGridView r = run(g, mode);
-        expect(r.nodeDays, [dayKey(t1, 120), dayKey(t1, 120), GraphGridView.noDay], reason: mode.name);
+        const e = 2; // the edges by child: M1→M2, M1→i, F1→i, R→M1, R→F1
+        expect([r.edgeFroms[e], r.edgeTos[e]], [3, 1], reason: mode.name);
+        expect([_routeNames[r.edgeRoutes[e]], r.edgeBlocked[e] != 0], ['straight', false], reason: mode.name);
+        // Position 1: the second parent of i, so router B has no straight column line for it.
+        final classes = RouteClasses.compute(
+          nodeRows: r.nodeRows,
+          nodeCols: r.nodeCols,
+          unit: r.unit,
+          free: mode == LayoutMode.free,
+          edgeFroms: r.edgeFroms,
+          edgeTos: r.edgeTos,
+          edgeKinds: r.edgeKinds,
+          parentCounts: Int32List.fromList([1, 2, 1, 1, 0]),
+        );
+        expect(classes.kinds[e], RouteClasses.kindGutter, reason: mode.name);
       }
-      expect(dayKey(t1, 120), floorDiv(t1 + 120 * minute, day) * day - 120 * minute);
+    });
+
+    test('of_two_parentless_nodes_of_equal_priority_and_row_the_higher_index_is_the_main_branch', () {
+      expect(columns(specGraph([[], []])), [1, 0]);
+    });
+
+    test('an_empty_input_has_no_rows_and_no_lanes_in_both_modes', () {
+      for (final LayoutMode mode in LayoutMode.values) {
+        final GraphGridView r = run(specGraph([]), mode);
+        expect([r.rows, r.lanes, r.nodeCount], [0, 0, 0], reason: mode.name);
+      }
+    });
+
+    test('the_same_input_twice_gives_identical_bytes_in_both_modes', () {
+      final rnd = Random(17);
+      for (var t = 0; t < 150; t++) {
+        final LayoutInput g = randomGraph(rnd, 1 + rnd.nextInt(90), branchy: t.isOdd);
+        for (final LayoutMode mode in LayoutMode.values) {
+          expect(
+            computeGraphGrid(g, mode: mode),
+            computeGraphGrid(g, mode: mode),
+            reason: 'case $t $mode',
+          );
+        }
+      }
     });
   });
 
@@ -1006,10 +728,9 @@ void main() {
         ),
         LayoutMode.free,
       );
-      // The amended spike Dart reference's output for this input (free, greedy).
       expect(
         canonicalOutput(r),
-        '{"mode":"free","order":"greedy","unit":16,"rows":32,"lanes":1,'
+        '{"mode":"free","unit":16,"rows":32,"lanes":1,'
         '"nodes":[{"row":16,"lane":0,"col":0},{"row":0,"lane":0,"col":0}],'
         '"edges":[{"from":1,"to":0,"kind":"direct","route":"straight","blocked":false}],'
         '"buckets":[{"kind":"day","value":999993600000,"start":16,"end":16}]}\n',
@@ -1019,15 +740,13 @@ void main() {
       expect(specDigest(r), 3336656);
     });
 
-    test('an_empty_graph_has_zero_rows_and_lanes_in_every_mode_and_order', () {
+    test('an_empty_graph_has_zero_rows_and_lanes_in_every_mode', () {
       for (final LayoutMode mode in LayoutMode.values) {
-        for (final LaneOrder order in LaneOrder.values) {
-          expect(
-            canonicalOutput(run(specGraph([]), mode, order)),
-            '{"mode":"${mode.name}","order":"${order.name}","unit":${mode == LayoutMode.free ? 16 : 1},'
-            '"rows":0,"lanes":0,"nodes":[],"edges":[],"buckets":[]}\n',
-          );
-        }
+        expect(
+          canonicalOutput(run(specGraph([]), mode)),
+          '{"mode":"${mode.name}","unit":${mode == LayoutMode.free ? 16 : 1},'
+          '"rows":0,"lanes":0,"nodes":[],"edges":[],"buckets":[]}\n',
+        );
       }
     });
 
@@ -1050,8 +769,7 @@ void main() {
         parKind: Uint8List.fromList(kind),
       );
       Matcher violates(String rule) => throwsA(isA<LayoutContractException>().having((e) => e.rule, 'rule', rule));
-      Uint8List lay(LayoutInput g) =>
-          computeGraphGrid(g, mode: LayoutMode.free, order: LaneOrder.compact, budget: defaultLayoutBudget);
+      Uint8List lay(LayoutInput g) => computeGraphGrid(g, mode: LayoutMode.free);
 
       lay(input());
       expect(() => lay(input(idx: [-1])), violates('V1'), reason: 'a direct parent without a target');
@@ -1085,7 +803,7 @@ void main() {
           parKind: Uint8List(0),
         );
         expect(
-          () => computeGraphGrid(g, mode: LayoutMode.free, order: LaneOrder.greedy, budget: 0),
+          () => computeGraphGrid(g, mode: LayoutMode.free),
           throwsA(isA<LayoutContractException>().having((e) => e.rule, 'rule', 'V4')),
           reason: 'offset $offset',
         );
@@ -1111,14 +829,12 @@ void main() {
   });
 
   group('invariants', () {
-    test('i1_to_i6_hold_on_random_graphs_in_every_mode_and_order', () {
+    test('i1_to_i6_hold_on_random_graphs_in_every_mode', () {
       final rnd = Random(3);
       for (var t = 0; t < 120; t++) {
         final LayoutInput g = randomGraph(rnd, rnd.nextInt(120), branchy: t.isOdd);
         for (final LayoutMode mode in LayoutMode.values) {
-          for (final LaneOrder order in LaneOrder.values) {
-            expect(invariantFailures(g, run(g, mode, order)), isEmpty, reason: 'case $t $mode $order');
-          }
+          expect(invariantFailures(g, run(g, mode)), isEmpty, reason: 'case $t $mode');
         }
       }
     });

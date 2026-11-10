@@ -20,21 +20,13 @@
       "fnv1a64": "9f8c3833ab12e06f",
       "bytes": 141254
     },
-    "compact.greedy": {
-      "fnv1a64": "4e093f4f9088fb18",
-      "bytes": 102049
+    "compact": {
+      "fnv1a64": "b8cf6ad69c863fd2",
+      "bytes": 102032
     },
-    "compact.compact": {
-      "fnv1a64": "1589b8c88cbb5369",
-      "bytes": 102050
-    },
-    "free.greedy": {
-      "fnv1a64": "774fbba86dab9a5e",
-      "bytes": 103591
-    },
-    "free.compact": {
-      "fnv1a64": "26b99bde564b513b",
-      "bytes": 103592
+    "free": {
+      "fnv1a64": "d96091eee1aa558a",
+      "bytes": 103574
     }
   },
   "large-all": {
@@ -46,21 +38,13 @@
       "fnv1a64": "bb40097e89ff9e9a",
       "bytes": 1419259
     },
-    "compact.greedy": {
-      "fnv1a64": "cdd286506710ea06",
-      "bytes": 1047059
+    "compact": {
+      "fnv1a64": "e867e9a0a8c14cc0",
+      "bytes": 1047042
     },
-    "compact.compact": {
-      "fnv1a64": "4fdd55030bd9d6bf",
-      "bytes": 1047060
-    },
-    "free.greedy": {
-      "fnv1a64": "03d9e6c039713335",
-      "bytes": 1061802
-    },
-    "free.compact": {
-      "fnv1a64": "92f14fb2524b4892",
-      "bytes": 1061803
+    "free": {
+      "fnv1a64": "a9b97495c14e3bf9",
+      "bytes": 1061785
     }
   }
 }

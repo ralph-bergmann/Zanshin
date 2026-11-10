@@ -16,7 +16,7 @@ import '../ffi/repo.dart' show ObjectHash;
 import '../ffi/resolve.dart' show ResolveFiles, ResolveTool;
 import '../ffi/select_tree.dart' show FileSelection, SelectTreeVerb, SourceTree, TreeSelection;
 import '../ffi/workspace.dart' show SparseInheritance;
-import '../graph_layout/layout_request.dart' show LaneOrder, LayoutMode;
+import '../graph_layout/layout_request.dart' show LayoutMode;
 
 /// Typed command hierarchy for the Zanshin worker isolate (AR-AD-4).
 ///
@@ -352,9 +352,7 @@ final class GraphLayoutCommand extends WorkerCommand implements HandleScopedComm
     required this.shortPrefixes,
     required this.anchors,
     required this.mode,
-    required this.order,
     required this.utcOffsetMin,
-    required this.budget,
     required this.stacks,
     required this.expandedKeys,
     required this.collapsedKeys,
@@ -378,17 +376,11 @@ final class GraphLayoutCommand extends WorkerCommand implements HandleScopedComm
   /// Ordered revsets whose selected nodes the layout's priority rule reads (caller pass-through).
   final List<String> anchors;
 
-  /// The layout's vertical model (rows, routes and buckets; lanes and columns are joint).
+  /// The layout's vertical model: its rows, routes and buckets, and the branch columns chosen on them.
   final LayoutMode mode;
-
-  /// The layout's lane order.
-  final LaneOrder order;
 
   /// The fixed UTC offset in minutes for `free`'s day buckets and the node day keys, within ±1440.
   final int utcOffsetMin;
-
-  /// The work units the `compact` lane order may spend, ≥ 0.
-  final int budget;
 
   /// Whether the layout groups linear runs into stacks (Story 4.13, docs/graph-layout.md §4.8);
   /// `false` is 4.11's layout and ignores the key lists.

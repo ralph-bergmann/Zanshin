@@ -29,9 +29,7 @@ import 'layout_request.dart';
 ({Uint8List? grid, LayoutContractException? violation}) layOutTopology(
   Uint8List topologyEnvelope, {
   required LayoutMode mode,
-  required LaneOrder order,
   required int utcOffsetMin,
-  required int budget,
   required bool stacks,
   required List<String> expandedKeys,
   required List<String> collapsedKeys,
@@ -48,10 +46,7 @@ import 'layout_request.dart';
             keepOpenKeys: keepOpenKeys,
           )
         : null;
-    return (
-      grid: computeGraphGrid(input, mode: mode, order: order, budget: budget, stacks: stackInput),
-      violation: null,
-    );
+    return (grid: computeGraphGrid(input, mode: mode, stacks: stackInput), violation: null);
   } on LayoutContractException catch (e) {
     return (grid: null, violation: e);
   } on ZanshinFfiException {

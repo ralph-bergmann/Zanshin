@@ -39,8 +39,7 @@ List<List<(int, fbs.GraphEdgeKind)>> get tiny => [
 
 Matcher violates(String rule) => throwsA(isA<LayoutContractException>().having((e) => e.rule, 'rule', rule));
 
-Uint8List layOut(LayoutInput input) =>
-    computeGraphGrid(input, mode: LayoutMode.free, order: LaneOrder.compact, budget: defaultLayoutBudget);
+Uint8List layOut(LayoutInput input) => computeGraphGrid(input, mode: LayoutMode.free);
 
 void main() {
   group('repeated targets', () {
@@ -383,9 +382,7 @@ void main() {
         layOutTopology(
           chain,
           mode: LayoutMode.compact,
-          order: LaneOrder.greedy,
           utcOffsetMin: 0,
-          budget: defaultLayoutBudget,
           stacks: stacks,
           expandedKeys: const [],
           collapsedKeys: collapsed,
@@ -421,9 +418,7 @@ void main() {
         layOutTopology(
           bytes,
           mode: LayoutMode.free,
-          order: LaneOrder.compact,
           utcOffsetMin: 120,
-          budget: 0,
           stacks: stacks,
           expandedKeys: const [],
           collapsedKeys: const [],
@@ -439,7 +434,7 @@ void main() {
         reply(bytes, layout),
       );
       expect(decoded.topology.nodeCount, 5);
-      expect([decoded.grid.mode, decoded.grid.order, decoded.grid.nodeCount], [LayoutMode.free, LaneOrder.compact, 5]);
+      expect([decoded.grid.mode, decoded.grid.nodeCount], [LayoutMode.free, 5]);
       expect(decoded.grid.bytes, layout.grid);
     });
 

@@ -5,8 +5,8 @@
 //
 // These tests boot the REAL Isolate.spawn flow against the REAL compiled cdylib (no mocked
 // isolates, no mocked FFI; project-context "Worker / isolate testing"). On the committed fixtures
-// the grid equals the goldens tools/goldens.mjs wrote from the spike's references, and the input
-// the builder makes of the topology equals the spike dumper's input — the same jj facts through
+// the grid equals the goldens tools/goldens.mjs wrote with the product CLI, and the input the
+// builder makes of the topology equals the spike dumper's input — the same jj facts through
 // Repo::graph_topology on both sides. The engine itself is tested in test/graph_layout/.
 //
 // JJ_CONFIG / GIT_CONFIG_GLOBAL are pinned externally by [tasks.test-core] in Makefile.toml
@@ -78,7 +78,7 @@ void main() {
       final GraphGridView grid = layout.grid;
       expect(topology.nodeCount, 2, reason: 'fresh init = @ + root');
       expect(topology.hasTimestamps, isTrue, reason: 'free, the default, needs the timestamps');
-      expect([grid.mode, grid.order, grid.nodeCount, grid.lanes], [LayoutMode.free, LaneOrder.compact, 2, 1]);
+      expect([grid.mode, grid.nodeCount, grid.lanes], [LayoutMode.free, 2, 1]);
       expect(grid.bucketCount, 1);
       expect(grid.bucketKinds[0], GraphGridView.bucketKindDay);
       final int at = grid.nodeRows[0];
@@ -90,25 +90,22 @@ void main() {
       await handle.close();
     });
 
-    test('an_empty_revset_lays_out_nothing_in_every_mode_and_order', () async {
+    test('an_empty_revset_lays_out_nothing_in_every_mode', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
 
       for (final LayoutMode mode in LayoutMode.values) {
-        for (final LaneOrder order in LaneOrder.values) {
-          final Layout layout = await handle.graphLayout(
-            revset: 'none()',
-            anchors: defaultGraphAnchors,
-            utcOffsetMin: 0,
-            mode: mode,
-            order: order,
-          );
-          final GraphGridView grid = layout.grid;
-          expect(
-            [grid.nodeCount, grid.rows, grid.lanes, grid.edgeCount, grid.bucketCount],
-            [0, 0, 0, 0, 0],
-            reason: '${mode.name} ${order.name}',
-          );
-        }
+        final Layout layout = await handle.graphLayout(
+          revset: 'none()',
+          anchors: defaultGraphAnchors,
+          utcOffsetMin: 0,
+          mode: mode,
+        );
+        final GraphGridView grid = layout.grid;
+        expect(
+          [grid.nodeCount, grid.rows, grid.lanes, grid.edgeCount, grid.bucketCount],
+          [0, 0, 0, 0, 0],
+          reason: mode.name,
+        );
       }
 
       await handle.close();
@@ -126,9 +123,7 @@ void main() {
           shortPrefixes: defaultShortPrefixes,
           anchors: defaultGraphAnchors,
           mode: LayoutMode.free,
-          order: LaneOrder.compact,
           utcOffsetMin: 60,
-          budget: defaultLayoutBudget,
           stacks: false,
           expandedKeys: const [],
           collapsedKeys: const [],
@@ -220,55 +215,6 @@ void main() {
 
       expect(layout.topology.warnings.map((w) => w.code), [ZanshinWarningCode.shortPrefixesFailed]);
       expect(layout.grid.nodeCount, layout.topology.nodeCount);
-      await handle.close();
-    });
-
-    test('a_non_default_budget_reaches_the_engine_and_cuts_the_compact_search', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
-      // Two copies of engine_test's nested pattern on one trunk (a branch L merging back, a short
-      // branch S nested inside it): the `compact` order improves both windows, but with budget 0
-      // its search stops after the first one (docs/graph-layout.md §4.7, "stop the search").
-      await buildDag(handle, const [
-        ('A1', ['root']),
-        ('L1', ['A1']),
-        ('A2', ['A1']),
-        ('L2', ['L1']),
-        ('S1', ['A2']),
-        ('A3', ['A2']),
-        ('L3', ['L2']),
-        ('A4', ['A3', 'S1']),
-        ('L4', ['L3']),
-        ('A5', ['A4', 'L4']),
-        ('A6', ['A5']),
-        ('M1', ['A6']),
-        ('A7', ['A6']),
-        ('M2', ['M1']),
-        ('T1', ['A7']),
-        ('A8', ['A7']),
-        ('M3', ['M2']),
-        ('A9', ['A8', 'T1']),
-        ('M4', ['M3']),
-        ('A10', ['A9', 'M4']),
-      ]);
-
-      Future<Layout> layOut(int budget) => handle.graphLayout(
-        revset: 'all()',
-        anchors: defaultGraphAnchors,
-        utcOffsetMin: 0,
-        mode: LayoutMode.compact,
-        budget: budget,
-      );
-      final Layout cut = await layOut(0);
-      final Layout full = await layOut(defaultLayoutBudget);
-
-      expect(cut.grid.bytes, isNot(full.grid.bytes), reason: 'the budget changed the layout');
-      final Uint8List local = computeGraphGrid(
-        buildLayoutInput(cut.topology, utcOffsetMin: 0),
-        mode: LayoutMode.compact,
-        order: LaneOrder.compact,
-        budget: 0,
-      );
-      expect(cut.grid.bytes, local, reason: "the worker's grid is the engine's at budget 0");
       await handle.close();
     });
 
@@ -366,7 +312,6 @@ void main() {
         String shortPrefixes = defaultShortPrefixes,
         List<String> anchors = defaultGraphAnchors,
         int utcOffsetMin = 0,
-        int budget = defaultLayoutBudget,
       }) => worker.graphLayout(
         handle.handleId,
         revset: revset,
@@ -374,9 +319,7 @@ void main() {
         shortPrefixes: shortPrefixes,
         anchors: anchors,
         mode: LayoutMode.free,
-        order: LaneOrder.compact,
         utcOffsetMin: utcOffsetMin,
-        budget: budget,
         stacks: false,
         expandedKeys: const [],
         collapsedKeys: const [],
@@ -389,7 +332,6 @@ void main() {
       await expectLater(call(anchors: ['trunk()', 'a${_nul}b']), throwsArgumentError);
       await expectLater(call(utcOffsetMin: 1441), throwsArgumentError);
       await expectLater(call(utcOffsetMin: -1441), throwsArgumentError);
-      await expectLater(call(budget: -1), throwsArgumentError);
       expect(handle.lastPrecondition, isNull, reason: 'nothing reached the worker');
 
       await handle.close();
@@ -404,9 +346,7 @@ void main() {
           shortPrefixes: defaultShortPrefixes,
           anchors: defaultGraphAnchors,
           mode: defaultLayoutMode,
-          order: defaultLaneOrder,
           utcOffsetMin: 0,
-          budget: defaultLayoutBudget,
           stacks: false,
           expandedKeys: const [],
           collapsedKeys: const [],
@@ -434,9 +374,7 @@ void main() {
           shortPrefixes: defaultShortPrefixes,
           anchors: defaultGraphAnchors,
           mode: defaultLayoutMode,
-          order: defaultLaneOrder,
           utcOffsetMin: 0,
-          budget: defaultLayoutBudget,
           stacks: false,
           expandedKeys: const [],
           collapsedKeys: const [],
@@ -456,7 +394,7 @@ void main() {
     ('medium-all', 'medium-1k-commits', 'all()', false),
     ('large-all', 'large-10k-commits', 'all()', false),
   ]) {
-    group('$name equals the spike references', () {
+    group('$name equals the goldens', () {
       late ZanshinWorker worker;
       late Directory tempDir;
       late RepoHandle handle;
@@ -500,61 +438,35 @@ void main() {
       });
 
       for (final LayoutMode mode in LayoutMode.values) {
-        for (final LaneOrder order in LaneOrder.values) {
-          test(
-            '${name}_${mode.name}_${order.name}_grid_equals_the_golden',
-            () async {
-              final Layout layout = await handle.graphLayout(
-                revset: revset,
-                anchors: defaultGraphAnchors,
-                utcOffsetMin: 120,
-                shortPrefixes: '',
-                mode: mode,
-                order: order,
-              );
-              expect(layout.topology.hasTimestamps, isTrue, reason: 'timestamps for every request (Story 4.14)');
-              final key = '${mode.name}.${order.name}';
-              expectGolden(canonicalOutput(layout.grid), key, '$key.json');
-              if (mode == LayoutMode.free) {
-                // The builder's input is the dumper's: same jj facts, rules and canonical form.
-                final GraphTopologyView topology = layout.topology;
-                final String input = canonicalInput(
-                  buildLayoutInput(topology, utcOffsetMin: 120),
-                  nowMs: record['now_ms']! as int,
-                  ids: [for (var i = 0; i < topology.nodeCount; i++) topology.commitId(i)],
-                );
-                expectGolden(input, 'input', 'input.json');
-              }
-            },
-            // WHY 10 minutes: the large fixture's loose store loads ~10k commit objects for the
-            // timestamps, slower under the coverage instrumentation.
-            timeout: const Timeout(Duration(minutes: 10)),
-          );
-        }
-      }
-
-      if (full) {
-        test('${name}_compact_and_free_share_lanes_columns_and_day_keys', () async {
-          // Story 4.14 (I8): a Free ↔ Compact switch only moves rows.
-          for (final LaneOrder order in LaneOrder.values) {
-            Future<Layout> lay(LayoutMode mode) => handle.graphLayout(
+        test(
+          '${name}_${mode.name}_grid_equals_the_engines_and_the_golden',
+          () async {
+            final Layout layout = await handle.graphLayout(
               revset: revset,
               anchors: defaultGraphAnchors,
               utcOffsetMin: 120,
               shortPrefixes: '',
               mode: mode,
-              order: order,
             );
-            final Layout compact = await lay(LayoutMode.compact);
-            final Layout free = await lay(LayoutMode.free);
-            expect([compact.topology.hasTimestamps, free.topology.hasTimestamps], [true, true], reason: order.name);
-            expect(
-              [compact.grid.lanes, compact.grid.nodeLanes, compact.grid.nodeCols, compact.grid.nodeDays],
-              [free.grid.lanes, free.grid.nodeLanes, free.grid.nodeCols, free.grid.nodeDays],
-              reason: order.name,
-            );
-          }
-        });
+            expect(layout.topology.hasTimestamps, isTrue, reason: 'timestamps for every request (Story 4.14)');
+            final GraphTopologyView topology = layout.topology;
+            final Uint8List local = computeGraphGrid(buildLayoutInput(topology, utcOffsetMin: 120), mode: mode);
+            expect(layout.grid.bytes, local, reason: "the worker's grid is the engine's for this mode");
+            expectGolden(canonicalOutput(layout.grid), mode.name, '${mode.name}.json');
+            if (mode == LayoutMode.free) {
+              // The builder's input is the dumper's: same jj facts, rules and canonical form.
+              final String input = canonicalInput(
+                buildLayoutInput(topology, utcOffsetMin: 120),
+                nowMs: record['now_ms']! as int,
+                ids: [for (var i = 0; i < topology.nodeCount; i++) topology.commitId(i)],
+              );
+              expectGolden(input, 'input', 'input.json');
+            }
+          },
+          // WHY 10 minutes: the large fixture's loose store loads ~10k commit objects for the
+          // timestamps, slower under the coverage instrumentation.
+          timeout: const Timeout(Duration(minutes: 10)),
+        );
       }
     });
   }

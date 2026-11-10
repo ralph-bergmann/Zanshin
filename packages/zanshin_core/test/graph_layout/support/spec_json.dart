@@ -318,8 +318,6 @@ String canonicalOutput(GraphGridView grid) {
   final out = StringBuffer()
     ..write('{"mode":"')
     ..write(grid.mode.name)
-    ..write('","order":"')
-    ..write(grid.order.name)
     ..write('","unit":')
     ..write(grid.unit)
     ..write(',"rows":')
