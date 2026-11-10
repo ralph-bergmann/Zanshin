@@ -410,6 +410,10 @@ Why:
 
 FR-GR-4 / NFR-P-2 were amended on 2026-09-26: no windowing, but complete geometry plus lazy content. FR-GR-1 / FR-GR-2 / FR-GR-5 carry dated amendment notes that point here. Research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Spike: `spikes/graph-layout-ab` (`README.md`, `SPEC.md`).
 
+**Reopened (2026-11-10, Ralph — console session with the graph layout lab).** The lab (`spikes/graph-layout-lab`) is a browser page that tries column and line rules on real repositories in seconds; its README is the step log with every measurement. Ralph approved its rule set on 2026-11-10. Two stories move it into the product:
+- **4.17 — columns by branch, per mode.** The main branch stays in column 0, a branch keeps one column for its whole life, and Free and Compact each choose their own columns. It supersedes 4.14's shared columns (I8) and removes the lane orders.
+- **4.18 — lines by the lab's rules.** A line bends at its card, the lines of a card keep the order of their columns, and no two lines lie on top of each other. It supersedes router B's rules (4.15) where they differ; the router's outputs stay.
+
 ---
 
 ### Epic 5: `zanshin-diff` — Word-Diff + Syntax Highlight
@@ -4202,6 +4206,7 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 > - **Measured** (spec § Measurements): the `stacks` phase costs 0.3–0.45 ms at large-10k and ~9–11 ms at synth-100k (AOT warm).
 
 ### Story 4.14: Shared columns — one lane packing and column order for Free and Compact [bridge]
+*(2026-11-10, Ralph: superseded by Story 4.17 — columns per mode. I8, the joint packing and the lane orders go when 4.17 lands.)*
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3` (SYNC #8; the Epic 10 header's design update 2026-10-14, decision (g): planned). Bridge scope: pure Dart in `packages/zanshin_core`, SPEC first in the spike's Dart, like 4.13. Refined enough to build from; ACs to be written when scheduled.)*
 
 **Motivation.**
@@ -4272,6 +4277,7 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 > - **Measured** (spec § Measurements, I2): the joint packing widens some inputs (fixture-medium/large `all()`: 3 → 4 lanes, Compact mean width 2.77 → 3.54: +28 % vs per-mode compact, +18–20 % vs the larger per-mode width) and narrows others in Free (synth-100k: mean width 98.6 → 42.9 vs per-mode free); the joint layout costs ~2–3× the per-mode lanes phase (synth-100k 43 ms vs 10–15 ms, AOT). Exact colouring is not ported (it applies only to the design samples, where it saves nothing).
 
 ### Story 4.15: Line router B — one line per parent → child pair, as a `zanshin_core` library [bridge]
+*(2026-11-10, Ralph: superseded in part by Story 4.18 — the lab's line rules replace router B's classes and tracks when 4.18 lands. The output arrays, the ports, shared entries and bridges stay.)*
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3` (the Lines Study's variant B, SYNC #7; the Epic 10 header's design update 2026-10-14, decisions (a1) and (g)). Bridge scope: pure Dart in `packages/zanshin_core`, exported for the view. Refined enough to build from; ACs to be written when scheduled.)*
 
 **Motivation.**
@@ -4399,6 +4405,192 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 **Witnesses.** A hand case of the demo (23:50 in one column, 00:10 in another): the divider's band holds no card; a day boundary between same-column cards already a pitch apart changes nothing; the invariant fails on a layout without the gap; the recorded goldens pass.
 
 **Depends on.** 4.11, 4.13, 10.2 (all done). **Related:** 10.2, 10.12, 10.13.
+
+---
+
+### Story 4.17: Columns by branch, per mode — the lab's column rules replace the lane packing and the lane order [bridge/UI]
+*(Added 2026-11-10, Ralph — console session with the graph layout lab (`spikes/graph-layout-lab`; its README is the step log, and steps 1, 2, 8, 9, 11 and 13 are the column steps). Ralph approved the rule set that day. Claude builds it. Refined enough to build from; ACs to be written when scheduled.)*
+
+**Motivation.**
+- The engine's columns grew rule by rule: the joint packing (4.14), the `compact` order (4.11), the short-piece return (GLD D13) and the closing pass (D14). Real repositories still show outliers (lab README "Intent"):
+  - the main branch drifts to the right and does not come back. On a 1,622-commit repository it has 8 of its 158 cards in column 0;
+  - a card sits far from the lines it connects to;
+  - a branch changes its column along its life.
+- The lab started again from one simple rule and added one rule per step. Ralph looked at every step on three repositories: dart-intellij-third-party (4,672 commits), jj (15,988) and a content-free copy of that 1,622-commit repository ("TWMS" in the README).
+- **Decisions (Ralph, 2026-11-10):**
+  - The lab's column rules move into the engine. They replace the packing and the lane order; they are not a third order beside them.
+  - **Columns per mode.** Free and Compact each choose their own columns, and I8 (4.14) goes. With the same columns a mode showed gaps whose reason was only visible in the other mode, and Ralph read them as errors (jj at `mnxzqvtl`: seven branches of one card in columns 1, 4, 5, 8, 9, 11 and 12).
+- **Measured with the lab's metrics, 4.17 and 4.18 together** (without stacks, Free / Compact; "today" is the engine with router B):
+
+  | | dart-intellij | jj | TWMS |
+  |---|---|---|---|
+  | crossings, today | 127 / 97 | 327 / 146 | 128 / 95 |
+  | crossings, lab | 112 / 113 | 22 / 10 | 166 / 158 |
+  | lines on top of each other, today | 9 / 35 | 0 / 0 | 0 / 10 |
+  | lines on top of each other, lab | 0 / 0 | 0 / 0 | 0 / 1 |
+  | crossings of two lines of one card, today | 6 / 0 | 27 / 0 | 3 / 0 |
+  | lines behind a card, today | 3 / 0 | 8 / 0 | 0 / 0 |
+  | columns, today | 11 / 11 | 14 / 14 | 11 / 11 |
+  | columns, lab | 11 / 11 | 11 / 12 | 11 / 10 |
+
+  The lab has no crossing of two lines of one card and no line behind a card.
+- **What it costs.**
+  - TWMS has more crossings than today, and its lines run further sideways (826 / 770 columns between parent and child, summed over all lines, against 597). That is the price of the main branch in column 0 and of one column per branch. Ralph judged every step by eye and took it.
+  - A card can change its column when the mode changes: 21 % of the cards on jj, 30 % on TWMS, 1 % on dart-intellij (README step 8).
+
+**Scope.**
+1. **SPEC first.** Dated GLD amendments:
+   - §2 and §3: the request loses `order` and `budget`;
+   - §4.3: branch columns replace the packing and the short-piece return;
+   - §4.7: removed;
+   - §4.8: stacks on the requested mode's columns;
+   - §7.2: the joint oracle retires;
+   - §7.3: I2–I4 are restated for branch columns, I8 is removed;
+   - §9: D5, D13 and D14 are superseded, and a new deviation records that columns by branch and per mode come from the lab, not from the design;
+   - §12 and §13.
+
+   The reference implementation is the lab's `lib/columns.dart`: `chooseColumns` with `reserveToMerge`, `shortFirst`, `endsFirst` and `dockToParent` on, `sameColumns` and `fewestSkipped` off. It is plain on purpose and reads the product's `LayoutEngine`.
+2. **The rule.** All rows are the requested mode's; U is one pitch in that mode's units.
+   - **Branch.** A first-parent chain. A node continues its first parent's branch iff it is that parent's continuation child (`continuations()`); else it starts a branch.
+   - **Main branch.** The branch of the node with the least (priority, row); of several such nodes, the one with the highest index. It is in column 0, and no other branch is.
+   - **Reserved rows.** A branch takes the rows [lo, hi] of its column, from its bottom card to its top card. lo reaches down to one pitch above its fork (the bottom card's first parent). hi reaches up to one pitch below the child of each of its merge edges (an edge from one of its cards that is not the child's first-parent edge). So its fork line and its merge lines run in its own column.
+   - **Free.** A column is free for a branch iff every branch o in it keeps one pitch from it: lo(o) ≥ hi + U or lo ≥ hi(o) + U.
+   - **Dock.** A branch docks to the main branch (column 0) if it forks from the main branch, or if it merges into a branch other than the one it forks from. Its depth is 1. Every other branch docks to the column of the branch it forks from: a side branch that merges back only into its branch, or not at all. Its depth is that branch's depth + 1.
+   - **Order.** The main branch first. Then by depth, so the branch a branch docks to is placed before it. Then the branch that ends first (the lower hi), then the shorter one (hi − lo), then the one with the older bottom card (row, priority, index).
+   - **Place.** A branch takes the free column nearest to its dock: for d = 0, 1, 2, … first dock − d (never below column 1), then dock + d.
+3. **What goes.**
+   - `compact_order.dart` (`CompactOrder`, `CompactModel`, the closing pass) and its tests.
+   - In `layout_engine.dart`: the joint packing (`_packVisit` per model and the choice by lane count), `_returnShortPieces` and `orderLanes`.
+   - `LaneOrder`, `defaultLaneOrder`, `defaultLayoutBudget`, and the `order` and `budget` parameters all the way: `computeGraphGrid`, `layOutTopology`, `GraphLayoutCommand`, `ZanshinWorker.graphLayout`, `RepoHandle.graphLayout`, `RepoGraphSource.layout`, `GraphRequest.order`, `GraphViewOptions.laneOrder`, `GraphViewModel.setLaneOrder`, `GraphLaneOrder`, the widgetbook knob and the benchmark CLI's flag.
+   - The grid format stays (v3 / v4). col = lane still holds, and the header's order slot holds `greedy`'s value.
+4. **What stays.** The rows (§4.2: both models' rules, the day keys in both modes, 4.16's day band); `markBlocked`, `route` and the grid's `route` / `blocked` outputs, now on the new lanes; the worker's contract apart from item 3. Timestamps are still loaded for every request: every node's day key needs its time.
+5. **Stacks (§4.8).** The columns come from the ungrouped layout of the requested mode. A stack toggle and "Group stacks" still never move a column (I7).
+6. **Engine guardrails** (epic-4-context "Engine guardrails"): typed arrays, hand-written sorts with total keys, no maps on the hot path. The lab scans every candidate column and every branch in it; the engine uses an interval structure per column (`LaneIntervals` exists) and states its bound in the SPEC.
+7. **Goldens and recordings.**
+   - The A/B spike's Dart reference no longer matches the product. Goldens are recorded with the product CLI (`packages/zanshin_core/benchmark/graph_layout_cli.dart`), and `goldens/README.md` gets the new steps. The spike's references stay as history, like its Rust reference since 4.14.
+   - Every changed golden is listed with its reason in the spec. The joint design oracle (`design/oracle/joint-design-*.lanes.json` and its test in `golden_test.dart`) goes: the design's lane counts are not the target any more.
+   - The app's recordings (`graph_recordings.g.dart`, `graph_stack_recordings.g.dart`) are recorded again with `record-graph.mjs`. Tests that pin a column follow (`graph_anchor_test.dart`, `graph_viewport_test.dart`, `recorded_graph_layout_test.dart`).
+8. **App.** No code under `app/lib` relies on I8: a mode switch already re-centres on @ and plays no transition (`GraphViewModel.setMode`). Two tests assert the old guarantee and change: `backend_graph_layout_test.dart` ("Free ↔ Compact keeps every column") and `day_axis_test.dart` ("Free and Compact share the width and the columns").
+9. **The lab keeps working.** `lib/engine.dart` builds against the changed engine. `bin/lab_check.dart` gains one check: on every data set, in both modes, with and without stacks, the product's columns equal `chooseColumns`'.
+10. **Docs.** Dated notes where planning text states the old guarantee: Story 4.14 (I8), the Epic 10 header ("Both layouts share one set of columns", "a Free ↔ Compact switch changes rows only", "both layouts have the same width") and the I8 notes of 10.1 and 10.12. `decisions-review-4-10-to-4-13.md` gets `### 4.17`.
+
+**Non-goals.**
+- Lines (4.18). Until it lands, router B draws on the new columns.
+- The lab's switched-off variants, `same-columns` and `fewest-skipped`.
+- A switch or a request parameter that chooses between column rules.
+- Branches on both sides of the main branch (lab README "Later steps").
+- An animation for a mode switch.
+- A port of the rule into the A/B spike's Dart or Rust reference.
+
+**Depends on.** 4.11, 4.13, 4.14 and 4.16 (all done). 4.18 follows it.
+
+**Design status.** FINAL (Ralph, 2026-11-10): item 2's rule and columns per mode. Nothing is NEEDS DESIGN. The design export's shared columns (SYNC #8) are no longer followed; that is a recorded deviation.
+
+**Witnesses.**
+- **The lab agrees.** Item 9's check passes on the lab's three data sets and on every golden input. The run is recorded in the spec, because the lab is outside the gate.
+- **Invariants** on every golden input and on at least 1,000 seeded DAGs × both modes × random stack states:
+  - the main branch is in column 0, and no other branch is;
+  - a branch has one column;
+  - two branches of one column keep one pitch between their reserved rows;
+  - I1, I5, I6 and I7 hold as before.
+- **Hand cases.**
+  - A branch nested in another sits nearer to the main branch.
+  - Of two branches that overlap in part, the one that ends first sits nearer.
+  - A side branch that merges back into its branch sits next to it; one that merges into the main branch docks to the main branch.
+  - A column is used again one pitch after a merge.
+  - The jj case in small: a branch takes a column that is free in its mode, although the other mode's rows would take it.
+- **I8 is gone on purpose:** a hand case whose Free and Compact columns differ.
+- **Determinism.** The same input gives the same bytes. Neither W nor H is in the request.
+- **Worker.** `graphLayout` takes no `order` and no `budget`; the real-cdylib worker test passes.
+- **Measured** (spec § Measurements): the columns per input, and the time of the columns phase at large-10k and synth-100k against 4.14's 43 ms.
+- **Seen.** The catalogue through Marionette in both modes. The real app on a lab replica of jj, through a temporary home, shows the lab's columns at `mnxzqvtl`.
+
+**Related:** 4.11, 4.13, 4.14 (superseded), 4.16, 4.18; 10.1, 10.12; GLD §4.3, §4.7, §4.8, §7.3, §9; lab README steps 1, 2, 8, 9, 11, 13 and "Rule log".
+
+---
+
+### Story 4.18: Lines by the lab's rules — a line bends at its card, the lines of a card keep the order of their columns, no two lines lie on top of each other [bridge/UI]
+*(Added 2026-11-10, Ralph — the same console session; the lab's line steps are README steps 1, 3–7 and 10–13. Claude builds it. Refined enough to build from; ACs to be written when scheduled.)*
+
+**Motivation.**
+- Router B (4.15) follows the design export, with later fixes: the uniform ports of 10.30, hooks over blocking cards, two bends before a gutter. On real repositories it still shows (4.17's table):
+  - lines on top of each other. A shared stretch hides a crossing and reads as a wrong connection;
+  - two lines of one card that cross each other;
+  - lines behind a card, in Free;
+  - lines that leave a card in another order than the columns they go to. Ralph: that looks unsorted.
+- The lab's lines show none of the first three on the three repositories but for one stretch (item 6), and the lines of a card turn in the order of their columns.
+- **Decisions (Ralph, 2026-11-10):**
+  - The lab's line rules move into the router.
+  - The lines of a card turn in the order of their columns always, not only where that saves crossings.
+  - A line that leaves the centre for the column tie-break is an accepted exception.
+  - The tight fan stays under watch; it may need another idea.
+
+**Scope.**
+1. **SPEC first.** Dated amendments of GLD §14: 14.2 and 14.3 are rewritten, 14.5 gets new measurements, 14.6 states that the router no longer follows GL. §7.2: the router oracle retires. The reference implementation is the lab's `lib/lines.dart` (`labLines`, every switch on).
+2. **The rules** (README "Rule log", lines). Constants: lift = 0.4·gapY, clear = 8 px, track = 6 px.
+   - **A line runs in its branch's column.** A fork line (to a first parent) turns right above its parent and climbs the child's column. A merge line climbs its parent's column and turns right below its child.
+   - **No line behind a card.** Before a card in its way, a line turns into the gutter next to that column and stays there up to its child. Lines that share a gutter over the same stretch sit 6 px apart (0, +6, −6, …).
+   - **A free level.** A horizontal run sits on a level that passes no card, as near to its usual place as it can, at least `clear` from every card.
+   - **Shared room.** Runs that pass side by side between the same cards are put in the order in which they do not cross: a run lies above another if it spans the other's parent end, or the other spans its child end. They share that room evenly, at most `lift` apart.
+   - **Bend at the parent.** A merge line whose parent's branch goes on bends at the parent like a fork line and climbs the child's column, if that column is free down to the parent.
+   - **No lines on top of each other.** A run that enters a column where another leaves it lies above that one. The two lines cross once instead of sharing a stretch.
+   - **Fewer crossings.** Where the child's column is taken, such a merge line can bend at its parent all the same, run to the gutter next to the child's column and climb there. It does so if it then crosses fewer lines, and only if it climbs past at least one row of cards (H + gapY).
+   - **Column order, always.** The lines that turn at one card edge leave and arrive in the order of the columns they connect to. A merge line takes the detour above wherever it would else break that order, whatever it crosses. Of lines that turn on one level, the one to the nearer column gets the inner port. The line at the centre runs straight on and is no part of the order.
+   - **A tight fan.** The lines of one card to one side keep `track` between them. Where the room does not hold them all, they share it evenly and come closer.
+   - **Ports** stay as §14.3 has them since 10.30: one line at the centre, the one that stays straight longest; the others fan out; the column tie-break. The lab copies that rule in a simpler form; the engine's form stays.
+3. **What stays from router B.**
+   - `RouteMetrics`, `RouteGeometry.compute` and its arrays: the polylines (`pointStarts`, `points`), the entry ports (`portStarts`, `portXs`) and the run indexes (`vertical…`, `horizontal…`).
+   - `bridges()` and `RouteBridges` (§14.4); `routeSyncNodeLimit` and where the router runs (§14.5).
+   - Shared entries for hidden merges (§14.2). The lab does not have them.
+   - The reports. A line that still passes behind a card, a fan with less than 2 px between its lines and a pair of ports the tie-break could not settle are counted, never hidden.
+4. **What changes for the callers.**
+   - A polyline can have up to 8 points: a fork line that dodges a card inside its child's column. Router B's had at most 6. `graph_edges.dart`, `graph_gaps.dart` and `graph_minimap.dart` read the CSR and must hold no fixed count.
+   - Router B's classes go as far as nothing reads them: the kinds, the gutter choice with its budget of 9, the unit rule for Free detours, hooks and deep gutters. `checkRoutes` in the app's `layout_invariants.dart` reads them today and follows.
+5. **Stages and speed.**
+   - The epic's rule stays: a card-size change never costs a layout request. The lab's rules work on pixels: W only scales x, H changes the room between cards. Whether a per-layout stage remains is decided by measurement and recorded.
+   - The lab compares every pair of runs, scans every card of a column and counts a detour's crossings against every line. The router uses indexes: its per-column CSR and its run indexes.
+   - `routeSyncNodeLimit` is derived again by 14.5's rule (≤ 8 ms, AOT, warm).
+6. **One leftover of the lab is fixed here.** A line's turn into a gutter below a card takes part in the tracks, so it shares its level with no other run (TWMS in Compact at `a96a9da`, README step 13).
+7. **App.** The painter's rules do not change: the yellow line of @, dashes, gap markers and end stubs, bridges, hover and dim read the polylines and the runs. The recordings are recorded again; tests that pin a route follow.
+8. **The lab keeps working.** Its "App today" is then the product's router. `bin/lab_check.dart` runs its line rules on the product's lines too.
+9. **Docs.** GLD as in item 1; dated notes at Story 4.15 and at Epic 10's decision (a1) ("Lines: router B"); `decisions-review-4-10-to-4-13.md` gets `### 4.18`.
+
+**Non-goals.**
+- Painting (10.4), gap markers and end stubs (10.19), the bridge rule (§14.4).
+- Columns and rows (4.17, 4.11).
+- Another idea for the tight fan. Ralph watches it first.
+- Lines on both sides of the main branch, and bundles of lines in a gutter (lab README "Later steps").
+- Parity with GL's router. `router-oracle.mjs` stays in the spike as history.
+
+**Depends on.** 4.17: the rules count on a branch's reserved column. 4.15, 10.4, 10.19 and 10.30 (all done).
+
+**Design status.** FINAL (Ralph, 2026-11-10): item 2's rules. Accepted exception: a lone line off the centre after the tie-break. Under watch: the tight fan. Where the two differ, this supersedes decision (a1) ("Lines: router B").
+
+**Witnesses.**
+- **The gate,** on every recording × W 160 / 240 / 400 × H 40 / 62 × both modes (router B's gate, extended):
+  - every line has right angles and runs from its parent's top edge to its child's bottom edge, and a port lies at least 18 px from the card's corners;
+  - no line passes behind a card, unless reported;
+  - two lines of one card edge share no port (but for the fan's overflow), and two that both turn at the card never cross each other;
+  - the lines that turn at one card edge are in the order of their columns;
+  - no two lines share a stretch, unless reported.
+- **The lab's numbers.** On the lab's three data sets the product's router has no more crossings than README step 13 states, no lines on top of each other, none behind a card and no crossing of two lines of one card. `lab_check`'s line rules pass on it. A difference is explained in the spec.
+- **Hand cases,** one per rule:
+  - a card in the way (the gutter);
+  - a level that moves off a card;
+  - three runs that nest;
+  - a merge line that bends at its parent;
+  - an X between two neighbouring rows: the lines cross once and share no stretch;
+  - the detour that saves crossings, and the one that does not;
+  - the detour for the column order (README step 11 in small);
+  - a fan of ten lines in one row gap;
+  - a hidden merge's shared entry;
+  - a line off the centre after the tie-break.
+- **Bridges** per window still equal the all-pairs oracle.
+- **Stability.** The result is deterministic and independent of the window. A card-width change issues no layout request.
+- **Timings** at fixture-large, synth-10k and synth-100k (AOT, warm) set `routeSyncNodeLimit`.
+- **Seen.** The catalogue through Marionette at W 160 / 240 / 400 in both modes. The real app on lab replicas through a temporary home, compared with the lab's page at jj's `pznposwy` and `mnxzqvtl` and at dart-intellij's `regexp: fix tests`.
+
+**Related:** 4.15 (superseded in part), 4.17, 10.4, 10.16, 10.19, 10.30; GLD §14; lab README steps 1, 3–7, 10–13 and "Rule log".
 
 ---
 
