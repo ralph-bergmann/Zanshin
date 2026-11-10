@@ -2916,6 +2916,6 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 
 ## Surfaced in Story 4.17 (bmad-build-auto, 2026-11-10)
 
-- **Router B can draw a merge between adjacent rows of one column as a line that steps back over itself, and no check looks at that shape.** Low.
+- ~~**Router B can draw a merge between adjacent rows of one column as a line that steps back over itself, and no check looks at that shape.**~~ — RESOLVED 2026-11-10 (spec-4-18-lab-line-rules-in-the-router, commit e2284b7a): a same-column line with no card between its ends is now straight, and the fuzz test asserts that the shape is in its cases and that every polyline climbs without retracing. Low.
   - `_placeTracks` sets no order between the two runs when `xo == xi` (`packages/zanshin_core/lib/src/graph_layout/router.dart:1625`). 13 of 1,737 same-column merge polylines on seeded graphs step downward; the lab repositories, fixtures and recordings have 0 such edges.
   - **Follow-up:** Story 4.18's line gate must run on an input with this shape (a `goldens/fuzz` case has it) and assert that the polyline climbs without retracing.

@@ -21,6 +21,8 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/graph_layout/router.dart:1625
     severity: low
+    resolved: >-
+      2026-11-10 — fixed (spec-4-18-lab-line-rules-in-the-router, commit e2284b7a): a same-column line with no card between its ends is now straight, and the fuzz test asserts that the shape is in its cases and that every polyline climbs without retracing.
 ---
 
 <intent-contract>
