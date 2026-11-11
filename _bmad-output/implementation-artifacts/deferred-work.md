@@ -1075,6 +1075,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **Word-level and syntax marks have no consumer story.** Low.
   - With line-level first (decision (g)), 5.2–5.4 come later, and no Epic 10 story renders segments.
   - **Follow-up:** a follow-up story to 10.24 when 5.2–5.4 are scheduled.
+  - **2026-11-11, Story 5.2:** every diff line carries its word-level segments, on the wire (`HunkLine.segments`, from `zanshin_diff::line_segments`) and in Dart (`HunkLine.segments`, `Segment`, `SegmentKind`, exported from `zanshin_core.dart`); left: a UI story that renders them (10.24's diff view still shows whole lines), and 5.3 / 5.4's syntax classes.
 - **No commit affordance on an empty @.** Low.
   - The composer needs files on @ (IN:177). `jj commit -m` on an empty @ is `describe` plus `new` in one operation (`cli/src/commands/commit.rs:35-36`).
   - **Follow-up:** Ralph decides whether 10.25 shows the composer on an empty @ (Claude's proposal: no; describe and "New change" cover it, in two operations).
@@ -2919,3 +2920,12 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - ~~**Router B can draw a merge between adjacent rows of one column as a line that steps back over itself, and no check looks at that shape.**~~ — RESOLVED 2026-11-10 (spec-4-18-lab-line-rules-in-the-router, commit e2284b7a): a same-column line with no card between its ends is now straight, and the fuzz test asserts that the shape is in its cases and that every polyline climbs without retracing. Low.
   - `_placeTracks` sets no order between the two runs when `xo == xi` (`packages/zanshin_core/lib/src/graph_layout/router.dart:1625`). 13 of 1,737 same-column merge polylines on seeded graphs step downward; the lab repositories, fixtures and recordings have 0 such edges.
   - **Follow-up:** Story 4.18's line gate must run on an input with this shape (a `goldens/fuzz` case has it) and assert that the polyline climbs without retracing.
+
+## Surfaced in Story 5.2 (bmad-build-auto, 2026-11-11)
+
+- **Zanshin's word-level segments differ from the words `jj diff --git` marks.** Low.
+  - jj word-diffs each changed region as one text, with no line pairing (jj-lib 0.47.0 `src/diff_presentation/unified.rs:230`; `crates/zanshin-jj/src/hunks.rs:709` `hunk_line` drops its `DiffTokenType`): on `fn foo(x: i32) -> i32` → `fn foo(y: i32) -> u32` it marks `x`, both `i32` and `y`, `i32`, `u32`; Zanshin's imara-diff line pairs mark `x`, the second `i32` and `y`, `u32`.
+  - **Follow-up:** a product decision for Ralph. Claude's proposal: leave it — FR-DF-1 names imara-diff, and jj's underlines are terminal presentation that Zanshin replaces.
+- **project-context.md's stack list still names imara-diff `=*` and does not list unicode-segmentation.** Low.
+  - `_bmad-output/project-context.md:43` says "`imara-diff` `=*`"; the root `Cargo.toml` now pins `imara-diff = "=0.2.0"` and adds `unicode-segmentation = "=1.13.3"`, and `zanshin-diff` now depends on `zanshin-jj`.
+  - **Follow-up:** Ralph updates the stack lines in project-context.md (an agent-context file, which the run does not edit).

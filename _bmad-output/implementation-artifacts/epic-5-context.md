@@ -4,44 +4,47 @@
 
 ## Goal
 
-Give the GUI (the inspector's diff view, hunk selection and the GUI diff-editor contract) and other callers a structured diff between any two revisions: files → hunks → lines, later enriched with word-level segments and tree-sitter syntax classes, delivered across the FFI as a FlatBuffers payload. The diff must match what the jj CLI shows, so a hunk selection names exactly what the user saw. Delivery is line-level first: hunks, the payload, the revision API and the FFI extern + worker command are done; word diff and highlighting come next.
+Epic 5 gives Zanshin a structured diff between any two revisions: files → hunks → lines → segments, computed in Rust and sent to Dart as a FlatBuffers payload. It feeds the inspector's diff view, hunk selection and the selection-to-tree path, so its line level matches the jj CLI. The line-level path is delivered (hunks, payload, revision API, FFI extern and worker command), and so are the word-level segments inside changed lines (`imara-diff` Histogram, 5.2). What remains of the Delta-class enrichment is tree-sitter syntax classes for a first set of three grammars.
 
 ## Stories
 
 - Story 5.1: Line-level hunks via jj-lib (done)
-- Story 5.2: Word-level diff via `imara-diff` Histogram
+- Story 5.2: Word-level diff via `imara-diff` Histogram (done)
 - Story 5.3: tree-sitter-highlight integration
 - Story 5.4: Bundle initial 3 grammars — Rust / Dart / Markdown
-- Story 5.5: Diff FlatBuffers payload (done, line-level)
+- Story 5.5: Diff FlatBuffers payload (done, line-level only)
 - Story 5.6: Diff between two revisions API (done)
-- Story 5.7: 5k-line performance test — deleted
-- Story 5.8: FFI wrapper (`zanshin-ffi/src/diff.rs`) (done)
+- Story 5.7: 5k-line performance test (deleted)
+- Story 5.8: FFI wrapper `zanshin-ffi/src/diff.rs` (done)
 
 ## Requirements & Constraints
 
-- Line-level hunks come from jj-lib (never shell out to `jj`); word-level diff inside changed lines uses `imara-diff` with the Histogram algorithm.
-- Syntax classes come from `tree-sitter-highlight`; language detection is by file name/extension (case-insensitive, final extension wins, a small known-filename registry), unknown → plain text with no classes. The initial grammar set is shrunk to Rust, Dart, Markdown; more languages are added on demand. No multi-parser fallback, no incremental highlighting. Per-line highlighting is best-effort and must never error on invalid syntax.
-- Segments carry `kind` (Equal / Added / Removed) and an optional `syntax_class`; segments are split at token boundaries. Context lines get one Equal segment. Pairing: contiguous Removed lines pair with the following Added lines in order; unpaired lines get no word diff.
-- Binary files carry no line data. A conflicted file is diffed with its conflict materialized, as `jj diff` does. A line keeps its trailing `\n`, so a missing one shows the EOF state.
-- Performance: a 5k-line changed file in < 500 ms is a soft design target only; no perf test or CI gate in the WIP phase.
-- Behave like the CLI: context lines (`--context`, default 3) and whitespace modes (`-w` / `-b`) pass through; `-r` semantics diff against the merged parents (root diff is empty); copy records yield renamed/copied files with `from_path`; unmatched paths produce the `jj.paths_unmatched` warning on the envelope's warning channel.
+- **Word diff (5.2).** Only inside changed lines, with `imara-diff`'s Histogram algorithm. Do not swap in `similar`: it is far slower on large diffs. Tokens follow Unicode word boundaries. A run of removed lines pairs in order with the run of added lines after it; leftover lines get no word diff and become one whole-line segment, and so does a pair with a line longer than 128 KiB. Context lines are never word-diffed. Whitespace-only and trailing-whitespace changes show as small segments.
+- **Highlighting (5.3).** `tree-sitter-highlight`, one line at a time, by the file's language. Best effort: invalid syntax yields partial classes, never an error. Plain text yields no classes. No fallback parsers, no retries, no incremental highlighting.
+- **Grammars (5.4).** Bundle only Rust, Dart and Markdown. Detect the language from the final extension, case-insensitive, plus a small documented registry of known file names. Everything else is plain text. More languages come later, one small additive change each. The nine-language lists in 5.3's and 5.4's ACs (TypeScript, Python, TOML, YAML, JSON, HTML, …) predate this shrink.
+- **Output shape.** A segment has its text, a `kind` (Equal / Added / Removed) and an optional `syntax_class`. Segments split at syntax-token boundaries, so each has one class. Classes come from one fixed set of standard categories (keyword, string, comment, function, type, variable, number, operator, punctuation, …); a tree-sitter capture outside the set is mapped to an existing class or added to the set. Each file carries its language. Binary files carry no lines.
+- **Robustness.** Very long lines (minified code, 100k characters) must finish in reasonable time. NUL bytes, emoji and accented text must not panic.
+- **Rust computes, Dart decodes.** The UI computes nothing about the diff.
+- **Performance.** A 5k-line changed file in under 500 ms is a soft target. There is no perf test and no CI gate.
+- **Non-goal:** AST-level structural diffs (difftastic class).
 
 ## Technical Decisions
 
-- **Placement (reconciled):** the diff read lives in `zanshin-jj` (`crates/zanshin-jj/src/hunks.rs`: `Repo::compute_hunks` over two trees, `Repo::diff(&DiffOptions) -> RevisionDiff`), because only `zanshin-jj` imports jj-lib and section keys must come from `select_tree::sections`. The payload builder and accessors live in `zanshin-ffi` (`zanshin_ffi::diff::diff_to_envelope`). `crates/zanshin-diff` is an empty stub; the epic's `crates/zanshin-diff/...` file paths are stale — decide placement per story (pure text algorithms like word diff/highlight need no jj-lib).
-- **Sections and hunks:** jj's own sections (`ContentDiff::by_line`, as the CLI's builtin diff editor cuts them), grouped into hunks with context like `jj diff --git`. Each hunk has before/after ranges, removed/added counts, the sections it shows (Story 9.50's `HunkKey`), and the ported jj 0.46 source symbol (cut at 80 bytes; none for languages without a pattern, Dart included).
-- **RevisionDiff:** `DiffRevisions::Revision` (default `@`) or `FromTo` (absent side = `@`); prefix paths (no fileset DSL); per file `kind`, `from_path`, counts, a blake2b `fingerprint` over changed lines; a summary mode that drops only the hunks; results pinned to `operation_id`, `commit_id`, `from_commit_id`. Copied/renamed files have no sections. Single revisions only.
-- **Transport:** FlatBuffers per ADR-0001, not JSON/JSON Schema. `schemas/envelope.fbs` has `Diff` → `FileDiff` → `Hunk` → `HunkLine` (+ `HunkLineKind`) as the last `Payload` member; ranges are four scalars, absent `symbol` = none, vectors always present. New fields (language, segments, syntax_class) are appended to these tables. No `schema_version`, no serde. Dart models + decoder: `packages/zanshin_core/lib/src/ffi/diff.dart`.
-- **FFI extern (5.8, done):** `zanshin_diff(handle, data, len)` takes a `DiffRequest` request buffer (ids as plain strings inside it, not JSON-wrapped; the full `Repo::diff` option set); the result is the `Diff` payload in a `ZanshinBuf` (buffer+len); wrapped in the envelope catch. Adds the worker command, the `RepoHandle` method, the `zanshin_core.dart` export, and puts `ShowEntry.parent_tree_labels` / `tree_labels` on the wire. No caching at this layer.
-- **Pins:** load-bearing pre-1.0 deps (`imara-diff`, tree-sitter crates) pinned `=x.y.z`, with `# WHY:` comments for feature opt-outs. jj reference is `../jj` at `v0.46.0`.
-- **Tests:** `zanshin-jj` / `zanshin-ffi` integration tests go in the single `tests/it/` binary (diff tests: `tests/it/hunks.rs`); each new extern needs a `packages/zanshin_core` cdylib test for the coverage ratchet.
+- **Delivered code.** Only `zanshin-jj` imports jj-lib, so the line-level read lives there: `crates/zanshin-jj/src/hunks.rs` with `Repo::compute_hunks` (two trees in) and `Repo::diff(&DiffOptions) -> RevisionDiff`. The payload builder is `zanshin_ffi::diff::diff_to_envelope` in `crates/zanshin-ffi/src/diff.rs`. The epic's older names (`crates/zanshin-diff/src/{hunks,output}.rs`, `compute_diff`, `DiffOutput`, `DiffError`, change-id inputs) are superseded.
+- **Enrichment home.** Word diff and highlighting are pure text algorithms. The plan homes them in the plain `lib` crate `zanshin-diff`: no jj-lib, no `extern "C"` (externs live only in `zanshin-ffi`). Decided in 5.2: `zanshin-diff` depends on `zanshin-jj` (for `HunkLine` only), and `zanshin-ffi` on `zanshin-diff`. The segments are built in `zanshin_ffi::diff::hunk_offset` through `zanshin_diff::line_segments` and cross as `HunkLine.segments`; `Repo::diff`'s data stays line-level. `hunk_offset` receives only the `Hunk`, not the file path that 5.3's highlighting will need.
+- **Line facts to build on.** A hunk line is `Context`, `Removed` or `Added` and keeps its trailing `\n`; a missing one marks the end-of-file state. A conflicted file is diffed with its conflict materialized, as `jj diff` does. Summary mode returns files without hunks.
+- **Transport.** FlatBuffers (ADR-0001), not JSON: no serde, no JSON Schema, no `schema_version`. `schemas/envelope.fbs` holds `Diff` → `FileDiff` → `Hunk` → `HunkLine` (+ `HunkLineKind`) → `Segment` (+ `SegmentKind`, 5.2). Add `language` and `syntax_class` the way 5.6 and 5.2 added their fields: append them to the tables, extend `diff_to_envelope`, and update the Dart models and decoder in `packages/zanshin_core/lib/src/ffi/diff.dart`. Tests read through the typed accessors and the `Verifier`. Dart calls `RepoHandle.diff` → `Future<Diff>` (extern `zanshin_diff`, a `DiffRequest` buffer in). No caching.
+- **Dependencies.** Pin `imara-diff` and the pre-1.0 tree-sitter crates exactly (`=x.y.z`). `default-features = false` needs a `# WHY:` comment. Licences must be permissive (MIT project; no GPL, AGPL, LGPL or SSPL).
+- **Grammar queries.** Each bundled grammar's highlight query is embedded and loaded once, on first use. Plain text has no grammar; the highlighter checks for it before it builds one.
+- **Existing language table.** 5.1's source-symbol port already maps file names to languages, as the CLI does; Dart has no symbol pattern there.
 
 ## UX & Interaction Patterns
 
-- The inspector's hunk header shows the per-hunk counts and the source symbol as hunk context; the file list sums files and counts ("N files +a −r") from the summary mode and loads hunks only for the focused file. The design shows no word-level or syntax marks yet.
+- The design shows no word-level or syntax marks yet. The inspector's diff view renders line-level only. Drawing word and syntax marks there is deferred UI work, not part of the diff view story (10.24).
+- The inspector's side-by-side layout pairs runs of removed and added lines row by row and leaves unpaired cells empty. This is the same pairing 5.2 uses.
 
 ## Cross-Story Dependencies
 
-- 5.1 → 5.5 → 5.6 → 5.8 (done); 5.8 unblocks the inspector diff view (Story 10.24) and hunk selection (Story 10.26).
-- Story 9.50 (hunk selection → selected tree) consumes the section keys; pinned results let 10.26 / 9.50 detect stale selections. Story 9.32 provides the warning channel.
-- 5.4 (grammars/language detection) precedes 5.3 (highlighting); 5.2 and 5.3 then plug into the line output and extend the `Diff` tables.
+- 5.3 builds on 5.2: it lays token classes over 5.2's segments.
+- 5.3 and 5.4 need each other. The highlighter needs 5.4's grammars, queries and detection, and its tests need real grammars.
+- The delivered line-level path (5.1 → 5.5 → 5.6 → 5.8) feeds the inspector diff view (10.24), hunk selection (10.26), hunk drags (10.27) and selection-to-tree (9.50, keyed by 5.1's sections; results pinned to an operation and commit id expose stale selections).

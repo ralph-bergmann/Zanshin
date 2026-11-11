@@ -27,24 +27,23 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-# Nächster Schritt: die offenen Stories der Epics 4, 5, 9, 10 und 11 in Reihenfolge (Stand 2026-11-10)
+# Nächster Schritt: die offenen Stories der Epics 4, 5, 9, 10 und 11 in Reihenfolge (Stand 2026-11-11)
 #
 #   So ist die Liste zu lesen: Eine Story kann starten, sobald die Stories fertig sind, die hinter
 #   "Braucht" stehen. Diese stehen immer in einer früheren Stufe. Innerhalb einer Stufe ist die
 #   Reihenfolge frei. Gestrichen ist keine Story: Keine offene Story der fünf Epics ist überholt.
-#   Fertige Stories stehen nicht mehr in der Liste (zuletzt 2026-11-10: 11.24, 11.25);
+#   Fertige Stories stehen nicht mehr in der Liste (zuletzt 2026-11-11: 5.2);
 #   "Braucht" nennt sie trotzdem weiter.
 #
 #   Stufe 5:
 #     10.27  Dateien und Hunks ziehen. Braucht 10.10, 10.26, 9.15, 9.31 und 9.50.
 #
 #   Später aus Epic 5, weil noch keine UI-Story sie braucht (der Diff kommt zuerst Zeile für Zeile):
-#     5.2    Wort-Diff innerhalb geänderter Zeilen. Braucht 5.1.
 #     5.3    Syntax-Hervorhebung mit tree-sitter. Gehört mit 5.4 zusammen.
 #     5.4    Die ersten drei Grammatiken: Rust, Dart und Markdown. Gehört mit 5.3 zusammen.
 
 generated: 2026-05-15
-last_updated: 2026-11-10
+last_updated: 2026-11-11
 project: Zanshin
 project_key: NOKEY
 tracking_system: file-system
@@ -66,7 +65,7 @@ development_status:
 
   # Epic 5: zanshin-diff — Word-Diff + Syntax Highlight
   epic-5: in-progress
-  5-2-word-level-diff-via-imara-diff-histogram: backlog
+  5-2-word-level-diff-via-imara-diff-histogram: done  # every diff line carries word-level segments (zanshin_diff::line_segments; HunkLine.segments on the wire and in Dart); no UI renders them yet
   5-3-tree-sitter-highlight-integration-highlight-rs: backlog  # SHRINK: no fallback strategies, no incremental
   5-4-bundle-initial-3-grammars-rust-dart-markdown: backlog  # renamed (SHRINK from Kern-Set 9 to 3)
   epic-5-retrospective: optional
