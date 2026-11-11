@@ -16,7 +16,8 @@ import 'warning.dart';
 // This file owns the Dart half of Story 5.5's line-level `Diff` payload: the
 // models mirroring `zanshin_jj::RevisionDiff` / `FileDiff` / `Hunk` /
 // `HunkLine` and their decoder (Story 5.6 adds kinds, counts, fingerprints and
-// pins; Story 5.2 the lines' word-level segments, `zanshin_diff::Segment`),
+// pins; Story 5.2 the lines' word-level segments, `zanshin_diff::Segment`;
+// Stories 5.3 / 5.4 the segments' syntax classes and the files' languages),
 // plus Story 5.8's `zanshinDiff` adapter. `dart:ffi` stays inside `ffi/` —
 // only the worker isolate calls the adapter.
 
@@ -67,16 +68,99 @@ enum SegmentKind {
   removed,
 }
 
-/// A run of a [HunkLine]'s text with one [kind] (mirrors
-/// `zanshin_diff::Segment`): whole Unicode word-bound tokens, never empty.
+/// The kind of syntax token a [Segment] is part of (mirrors
+/// `zanshin_diff::SyntaxClass`, Story 5.3): one fixed set of standard
+/// categories. Text with no class has a null [Segment.syntaxClass].
+enum SyntaxClass {
+  /// A keyword: `fn`, `class`, `final`, Dart's `this`, `is` and `as`.
+  keyword,
+
+  /// A string or character literal.
+  string,
+
+  /// An escape sequence: `\n` in a string, a Markdown backslash escape.
+  escape,
+
+  /// A comment, doc comments included.
+  comment,
+
+  /// A function or method name where it is defined or called; a Rust macro's
+  /// name.
+  function,
+
+  /// A type or a constructor; Rust's upper-case names (its constants too) and
+  /// a lifetime's name.
+  type,
+
+  /// A variable or a parameter; Rust's `self`.
+  variable,
+
+  /// A field or a property.
+  property,
+
+  /// A number literal; Rust's are [SyntaxClass.constant].
+  number,
+
+  /// A constant: `true`, `false`, `null`, a Dart enum value where it is
+  /// declared, a Rust number literal.
+  constant,
+
+  /// An operator.
+  operator,
+
+  /// Punctuation: brackets, delimiters, Markdown's markers.
+  punctuation,
+
+  /// An attribute or an annotation.
+  attribute,
+
+  /// A Markdown heading's text.
+  heading,
+
+  /// Markdown emphasis.
+  emphasis,
+
+  /// Markdown strong emphasis.
+  strong,
+
+  /// A Markdown link's text, label or destination.
+  link,
+
+  /// Markdown code: a code span, a code block, a link title.
+  code,
+}
+
+/// The language a [FileDiff]'s lines are highlighted in (mirrors
+/// `zanshin_diff::Language`, Story 5.4): its path's final extension, ASCII
+/// case-insensitive.
+enum DiffLanguage {
+  /// Every other path: no syntax classes.
+  plainText,
+
+  /// `.rs`
+  rust,
+
+  /// `.dart`
+  dart,
+
+  /// `.md`, `.markdown`
+  markdown,
+}
+
+/// A run of a [HunkLine]'s text with one [kind] and one [syntaxClass]
+/// (mirrors `zanshin_diff::HighlightedSegment`), never empty.
 final class Segment {
-  const Segment({required this.kind, required this.text});
+  const Segment({required this.kind, required this.text, this.syntaxClass});
 
   /// Whether the run is on both lines of a pair, or only on one side.
   final SegmentKind kind;
 
   /// The run's text.
   final String text;
+
+  /// The class of the syntax token the run is part of (Story 5.3); null for
+  /// no class — plain text, whitespace, a token no query captures.
+  final SyntaxClass? syntaxClass;
 }
 
 /// One line of a [Hunk]: its [kind] and [text], which includes its `\n` (a last
@@ -91,14 +175,18 @@ final class HunkLine {
   /// right side's text.
   final String text;
 
-  /// The line's word-level runs (Story 5.2): their texts concatenate exactly
-  /// to [text], and adjacent runs differ in kind. The i-th line of a run of
-  /// removed lines directly followed by a run of added lines is word-diffed
-  /// with the i-th added line, unless one of the two is longer than 131,072
-  /// characters: equal and removed runs on the removed line, equal and added
-  /// runs on the added one. Every other line, a pair over that cap included, is
-  /// one run of its own kind ([SegmentKind.equal] for a context line). Empty
-  /// only for a payload written without segments.
+  /// The line's word-level runs (Story 5.2), split at its syntax tokens (Story
+  /// 5.3): their texts concatenate exactly to [text], and adjacent runs differ
+  /// in kind or class. The i-th line of a run of removed lines directly
+  /// followed by a run of added lines is word-diffed with the i-th added line,
+  /// unless one of the two is longer than 131,072 characters: equal and
+  /// removed runs on the removed line, equal and added runs on the added one.
+  /// Every other line, a pair over that cap included, is one run of its own
+  /// kind ([SegmentKind.equal] for a context line). The highlighter sees this
+  /// one line in its file's [FileDiff.language], out of context, so its
+  /// classes can be missing or wrong (docs/ffi-abi.md lists the cases); a
+  /// plain-text line, a line over 131,072 characters and the description block
+  /// carry no class. Empty only for a payload written without segments.
   final List<Segment> segments;
 }
 
@@ -153,11 +241,17 @@ final class FileDiff {
     required this.removed,
     required this.added,
     required this.fingerprint,
+    this.language = DiffLanguage.plainText,
   });
 
   /// The repo-relative path, in jj's internal `/`-separated form — a copy's or
   /// rename's target.
   final String path;
+
+  /// The language its lines are highlighted in (Story 5.4): [path]'s final
+  /// extension decides — a binary file's too; the description block is
+  /// [DiffLanguage.plainText].
+  final DiffLanguage language;
 
   /// How the path changed: a copy record's source first, then presence.
   final FileChangeKind kind;
@@ -294,9 +388,10 @@ Uint8List zanshinDiff(
 /// Decode a `Diff` `Envelope` buffer into a [Diff].
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls
-/// go through `ZanshinWorker.diff`. An out-of-range `HunkLineKind` or
-/// `SegmentKind` byte surfaces as the generated accessor's `StateError` (by
-/// design: a corrupt buffer, not a refusal).
+/// go through `ZanshinWorker.diff`. An out-of-range `HunkLineKind`,
+/// `SegmentKind`, `SyntaxClass` or `DiffLanguage` byte surfaces as the
+/// generated accessor's `StateError` (by design: a corrupt buffer, not a
+/// refusal).
 @visibleForTesting
 Diff decodeDiffEnvelope(Uint8List bytes) => decodeDiffEnvelopeInternal(bytes);
 
@@ -334,6 +429,12 @@ FileDiff _file(fbs.FileDiff file) => FileDiff(
   removed: file.removed,
   added: file.added,
   fingerprint: file.fingerprint ?? '',
+  language: switch (file.language) {
+    fbs.DiffLanguage.PlainText => DiffLanguage.plainText,
+    fbs.DiffLanguage.Rust => DiffLanguage.rust,
+    fbs.DiffLanguage.Dart => DiffLanguage.dart,
+    fbs.DiffLanguage.Markdown => DiffLanguage.markdown,
+  },
 );
 
 Hunk _hunk(fbs.Hunk hunk) => Hunk(
@@ -366,10 +467,33 @@ HunkLine _line(fbs.HunkLine line) {
           },
           // A lone segment's text is the line's text, so it is not decoded a second time.
           text: segments.length == 1 ? text : segment.text ?? '',
+          syntaxClass: _syntaxClass(segment.syntaxClass),
         ),
     ],
   );
 }
+
+SyntaxClass? _syntaxClass(fbs.SyntaxClass syntaxClass) => switch (syntaxClass) {
+  fbs.SyntaxClass.Unclassified => null,
+  fbs.SyntaxClass.Keyword => SyntaxClass.keyword,
+  fbs.SyntaxClass.String => SyntaxClass.string,
+  fbs.SyntaxClass.Escape => SyntaxClass.escape,
+  fbs.SyntaxClass.Comment => SyntaxClass.comment,
+  fbs.SyntaxClass.$Function => SyntaxClass.function,
+  fbs.SyntaxClass.Type => SyntaxClass.type,
+  fbs.SyntaxClass.Variable => SyntaxClass.variable,
+  fbs.SyntaxClass.Property => SyntaxClass.property,
+  fbs.SyntaxClass.Number => SyntaxClass.number,
+  fbs.SyntaxClass.Constant => SyntaxClass.constant,
+  fbs.SyntaxClass.Operator => SyntaxClass.operator,
+  fbs.SyntaxClass.Punctuation => SyntaxClass.punctuation,
+  fbs.SyntaxClass.Attribute => SyntaxClass.attribute,
+  fbs.SyntaxClass.Heading => SyntaxClass.heading,
+  fbs.SyntaxClass.Emphasis => SyntaxClass.emphasis,
+  fbs.SyntaxClass.Strong => SyntaxClass.strong,
+  fbs.SyntaxClass.Link => SyntaxClass.link,
+  fbs.SyntaxClass.Code => SyntaxClass.code,
+};
 
 List<HunkKey> _keys(List<fbs.HunkKey>? keys) => [
   for (final fbs.HunkKey key in keys ?? const [])

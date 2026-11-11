@@ -1134,7 +1134,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_diagnostics();
 /// `jj diff` as data in the repo identified by `handle` (Story 5.8) — `zanshin_jj::Repo::diff`:
 /// per changed file its kind, flags, section keys (the `HunkKey`s `zanshin_select_tree` takes),
 /// hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at. Every hunk
-/// line carries its word-level segments (Story 5.2), so the call word-diffs each paired line.
+/// line carries its word-level segments (Story 5.2), split at its syntax tokens with their classes
+/// in its file's language (Stories 5.3 / 5.4), so the call word-diffs each paired line and
+/// highlights every line.
 ///
 /// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, a set
 /// diffed as one — its roots' merged parents against its merged heads, a set with gaps refused;

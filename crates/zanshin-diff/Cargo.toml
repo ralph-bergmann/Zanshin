@@ -11,6 +11,11 @@ rust-version.workspace = true
 
 [dependencies]
 imara-diff = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-dart = { workspace = true }
+tree-sitter-highlight = { workspace = true }
+tree-sitter-md = { workspace = true }
+tree-sitter-rust = { workspace = true }
 unicode-segmentation = { workspace = true }
 # WHY: for `HunkLine` only, the lines `line_segments` pairs. Never jj-lib itself: only zanshin-jj
 # imports it (project-context.md § zanshin-jj).

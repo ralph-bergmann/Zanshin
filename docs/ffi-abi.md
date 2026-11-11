@@ -2461,11 +2461,12 @@ operation's description names the target). Dart: `RepoHandle.opRestore(operation
 
 ---
 
-## `Diff` payload (Story 5.5; kinds, counts, fingerprints and pins: Story 5.6; segments: Story 5.2)
+## `Diff` payload (Story 5.5; kinds, counts, fingerprints and pins: Story 5.6; segments: Story 5.2; syntax classes and languages: Stories 5.3 / 5.4)
 
 The line-level diff between two revisions — `zanshin_jj::Repo::diff`'s `RevisionDiff` (Story 5.6),
 field for field and in its order (its files are `compute_hunks`' for the same trees, plus copy
-records), each line enriched with its word-level segments (Story 5.2). Built by
+records), each line enriched with its word-level segments (Story 5.2), split at its syntax tokens
+with their classes (Story 5.3) in its file's language (Story 5.4). Built by
 `zanshin_ffi::diff::diff_to_envelope(&RevisionDiff, &CallReport)` (an infallible builder: the
 call's `CallReport` rides as `warnings` / `precondition` as on every envelope). Returned by
 `zanshin_diff` (Story 5.8, below).
@@ -2473,12 +2474,16 @@ call's `CallReport` rides as `warnings` / `precondition` as on every envelope). 
 ```
 Diff     { files: [FileDiff], operation_id, commit_ids: [string], from_commit_id } // pins: Story 5.6
 FileDiff { path, binary, mode_change, sections: [HunkKey], hunks: [Hunk],
-           kind: ChangeKind, from_path, removed, added, fingerprint }        // 5.6 appended
+           kind: ChangeKind, from_path, removed, added, fingerprint,         // 5.6 appended
+           language: DiffLanguage (PlainText | Rust | Dart | Markdown) }     // 5.4 appended
 Hunk     { before_start, before_end, after_start, after_end, symbol,
            sections: [HunkKey], removed, added, lines: [HunkLine] }
 HunkLine { kind: HunkLineKind (Context | Removed | Added), text,
            segments: [Segment] }                                           // 5.2 appended
-Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // Story 5.2
+Segment  { kind: SegmentKind (Equal | Added | Removed), text,               // Story 5.2
+           syntax_class: SyntaxClass (Unclassified | Keyword | String | Escape | Comment |
+             Function | Type | Variable | Property | Number | Constant | Operator |
+             Punctuation | Attribute | Heading | Emphasis | Strong | Link | Code) } // 5.3 appended
 ```
 
 - **Keys.** `FileDiff.sections` and `Hunk.sections` are the `HunkKey` table `SelectTreeRequest`
@@ -2508,7 +2513,8 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   form (Dart `null`).
 - **Segments (5.2)** — `zanshin_diff::line_segments` over each hunk's lines, always written on
   every line (the description block's too). Their texts concatenate exactly to the line's `text`
-  (`\n` included), none is empty, and adjacent segments differ in kind. Pairing (the default
+  (`\n` included), none is empty, and adjacent segments differ in kind (on the wire, since Story
+  5.3 splits them at syntax tokens: in kind or class, below). Pairing (the default
   Delta-class behaviour): a run of `Removed` lines directly followed by a run of `Added` lines
   pairs in order, the i-th removed line with the i-th added line, and each pair is word-diffed —
   imara-diff Histogram over Unicode word-bound tokens (UAX #29: a run of spaces (`WSegSpace`) is
@@ -2522,14 +2528,51 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   (`a\n` → `a`, `\r\n` → `\n`). In summary mode no file carries hunks, so only the description
   block's lines (an inter-diff's) are word-diffed. `SegmentKind`'s member order is the wire value
   — append only.
+- **Languages (5.4).** `language` = `zanshin_diff::detect_language` of `path` (a copy's target):
+  the final extension, ASCII case-insensitive — `rs` Rust, `dart` Dart, `md` / `markdown`
+  Markdown — and `PlainText` for every other path (no extension, a dotfile, `a.rs.bak`,
+  `Cargo.toml`, `Dockerfile`, `README`; no registry of file names). A binary file carries its
+  path's language too; the description block's `JJ-COMMIT-DESCRIPTION` is `PlainText`. Absent =
+  `PlainText` (the default).
+- **Syntax classes (5.3).** Each line is highlighted on its own (`zanshin_diff::highlight_line`:
+  tree-sitter-highlight over the line's `text`, `\n` included, in its file's language), and its
+  Story 5.2 segments are split at the token boundaries (`merge_highlight`): every segment has one
+  kind and one `syntax_class`, the texts still concatenate to `text`, and adjacent segments differ
+  in kind or class. Dropping the classes and joining adjacent same-kind segments gives Story 5.2's
+  segments back. Best effort, one line at a time, so a line out of context can get wrong classes
+  as well as missing ones: `fn main() {` leaves `main` unclassified; a Dart statement from a method
+  body is not valid on its own (`widget.onTap();` makes both names `Type`); a Markdown line
+  indented by four spaces is a code block; a line inside a block comment or a fenced code block
+  is read as code or Markdown of its own; a Markdown heading that begins with inline markup
+  (`` # `code` ``) gets wrong classes, because tree-sitter-highlight opens the inline layer's
+  highlights there before the heading's; a rename or copy that changes the extension highlights
+  its removed lines in the new path's language. Invalid syntax gets whatever tree-sitter's error
+  recovery gives, never an error. `Unclassified` (0, the default) = no class: whitespace, text
+  no capture covers, every segment of a `PlainText` line (the description block's included), of
+  a line over 131,072 characters, and of a line the highlighter fails on — those lines keep Story
+  5.2's segments exactly. Captures map to the fixed class set by the most matching name parts
+  (`keyword.operator` is `Keyword`; constructors, Rust's upper-case names — its constants too —
+  and a Rust lifetime's name are `Type`; Rust's number literals are `Constant`). Queries: each
+  grammar's embedded highlight query; Rust's macro bodies are highlighted as Rust (its shipped
+  injection), at most 16 injected layers per line, because each nesting level parses its content
+  again; Markdown's inline content through Zanshin's own injection of the inline grammar (with
+  `injection.include-children`, so emphasis, code spans and links are seen). A highlighted line
+  costs roughly two segments per token, each with its own string; plain-text lines keep Story
+  5.2's size. `SyntaxClass`'s and `DiffLanguage`'s member order is the wire value — append only.
+  The cdylib also exports tree-sitter-highlight's own C API (`ts_highlighter_*`,
+  `ts_highlight_buffer_*`, 12 functions from its `c_lib` module, which the crate always
+  compiles): not part of Zanshin's ABI, not in `zanshin_ffi.h`, and nothing calls them.
 
 Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart`) → `Diff`
 (with `operationId` / `commitId` / `fromCommitId`), `FileDiff` (`kind` as `status.dart`'s
-`FileChangeKind`, `fromPath`, `removed`, `added`, `fingerprint`), `Hunk` (ranges as
-`({int start, int end})` records), `HunkLine` (`segments`, Story 5.2; an absent vector decodes
-as `[]`), `HunkLineKind`, `Segment`, `SegmentKind`; keys are `select_tree.dart`'s `HunkKey`.
-Exported from `zanshin_core.dart` since Story 5.8 (`Diff`, `DiffWhitespace`, `FileDiff`, `Hunk`,
-`HunkLine`, `HunkLineKind`; `Segment` and `SegmentKind` since Story 5.2).
+`FileChangeKind`, `fromPath`, `removed`, `added`, `fingerprint`, `language` — Story 5.4, default
+`DiffLanguage.plainText`), `Hunk` (ranges as `({int start, int end})` records), `HunkLine`
+(`segments`, Story 5.2; an absent vector decodes as `[]`), `HunkLineKind`, `Segment`
+(`syntaxClass`, Story 5.3: `SyntaxClass?`, `Unclassified` decodes as `null`), `SegmentKind`,
+`SyntaxClass`, `DiffLanguage`; keys are `select_tree.dart`'s `HunkKey`. Exported from
+`zanshin_core.dart` since Story 5.8 (`Diff`, `DiffWhitespace`, `FileDiff`, `Hunk`, `HunkLine`,
+`HunkLineKind`; `Segment` and `SegmentKind` since Story 5.2; `SyntaxClass` and `DiffLanguage`
+since Story 5.3).
 
 ### `zanshin_diff` (Story 5.8)
 
