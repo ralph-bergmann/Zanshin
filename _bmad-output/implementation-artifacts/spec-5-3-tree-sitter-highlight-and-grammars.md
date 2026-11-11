@@ -2,10 +2,10 @@
 title: 'Story 5.3 (with 5.4) — tree-sitter syntax classes on every diff segment; Rust, Dart and Markdown grammars'
 type: 'feature'
 created: '2026-11-11'
-status: 'done'
+status: 'blocked'
 baseline_revision: 'd8502832f4feabba67dffd2898371cccc1c03e50'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
@@ -136,6 +136,35 @@ Notation: `text:Class`; a bare `text` is unclassified; `=`/`-`/`+` prefix a segm
   - `[false]` `reject` (blind) The description block is plain text only because of its pseudo-path. — `detect_language("JJ-COMMIT-DESCRIPTION")` is `PlainText`, and two tests pin that name (`every_file_carries_its_language`, `every_other_path_is_plain_text`), so a registry entry that changed it would fail them first.
   - `[low]` `patch` (blind) The payload and decode cost of the split segments is not measured, and `create_shared_string` is not considered. — Same entry as the intent cost row; deduplicating strings would trim the text bytes but not the per-segment tables, so it is left to the cost decision.
 
+### 2026-11-11 — Review pass (follow-up)
+- verdicts: 25 findings — high 0, medium 4, low 14, false 7, maybe-false 0
+- findings:
+  - `[low]` `patch` (intent) The cdylib exports 12 tree-sitter-highlight C functions, and no test covers its export table. — carried: same claim as the first pass's blind row on the 12 exported `ts_*` functions; `docs/ffi-abi.md:2562-2564` still documents them as outside Zanshin's ABI. Not patched again.
+  - `[low]` `patch` (intent) The injection budget counts every injection on a line, sibling macros included, but the docs describe a nesting-depth limit. — Verified: tree-sitter-highlight 0.27.1 calls the injection callback once per injection match in every layer (`src/highlight.rs:972`), and `classify` spends one unit per call (`highlight.rs:162-165`); a probe line of 17 or 20 sibling `a!(f(x));` calls classes `f` as Function in the first 16 macros only. `highlight.rs:15-16`, `docs/ffi-abi.md:2557` and `epic-5-context.md:35` speak of nesting. Fix: reword those texts ("at most 16 injections per line, nested or not") and add a sibling case to `a_line_gets_at_most_16_injected_layers`. Moot: not applied, because this pass halts on the intent gap.
+  - `[low]` `reject` (intent) Dart's shipped `LOCALS_QUERY` is not loaded, so a local defined and used on one line can get Type instead of Variable (`Foo foo = Foo(); foo.bar(foo);`). — Real (`tree-sitter-dart-0.3.0/bindings/rust/lib.rs:37`; `grammars.rs:104-111` passes none), but nothing renders classes yet, the intent-contract's capture rule exempts only `injection.*` and `none`, so it describes highlight queries without locals, and loading them would change Dart's classes broadly through tree-sitter-highlight's local-reference rule — more than a direct correction.
+  - `[false]` `reject` (intent) FR-DF-2 is closed at the data surface only: no consumer renders the classes, yet 5.3, 5.4 and epic-5 are done. — carried: same claim as the first pass's intent row "No consumer renders the classes".
+  - `[false]` `reject` (intent) The `zanshin_diff` extern's classified path is tested only in Dart; the Rust extern tests use plain-text files. — The extern only wraps `diff_to_envelope`, whose classified output the Rust suite checks on a real repo with `lib.rs` (`diff_ffi.rs`), and the Dart worker test checks the classified path through the real cdylib's extern, the outermost surface; no surface goes unverified.
+  - `[medium]` `patch` (intent) `assert_wire_is` recomputes the classes with the builder's own `merge_highlight(line_segments, highlight_line)`, so it proves the wiring, not the classes. — carried: same claim as the first pass's intent row on the recomputing wire tests; the literal `lib.rs` witnesses and the exact-token rows still pin the classes. Not patched again.
+  - `[false]` `reject` (intent) The long-line cap is tested only at the library surface, and the highlighter-error and failed-build fallbacks have no test. — The cap sits inside `highlight_line`, which the FFI builder calls for every line, and `tests/highlight.rs` pins its boundary; the two fallbacks guard states the bundled grammars cannot reach (no cancellation flag is passed, so tree-sitter-highlight can fail only on an ABI mismatch, and a unit test pins that every configuration builds).
+  - `[false]` `reject` (intent) The description block is plain text through the extension rule, not an explicit rule. — carried: same claim as the first pass's blind row on the description's pseudo-path; two tests pin `JJ-COMMIT-DESCRIPTION` as plain text.
+  - `[low]` `patch` (verification-gap) 14 of the 18 classes and 2 of the 4 languages never cross from the Rust writer to the Dart reader in a test, so a drift between the two generated accessors' numbering would pass. — Gap finding, filed evidence: the Dart unit test round-trips its own accessor (`test/ffi/diff_test.dart:227-263`), Rust checks its own (`diff.rs:801-817`), the worker test crosses classes 0, 1, 5, 12 and languages 0, 1 (`test/worker/diff_test.dart:122-151`), and `verify-codegen` is not in the gate. Low: both accessors come from one schema through `cargo make codegen`, and nothing renders classes yet. Fix as filed: a worker test with `.rs`, `.dart` and `.md` files holding the three lines of `every_capture_class_is_reached_by_a_bundled_grammar`, asserting each file's language and each line's exact (text, class) pairs. Moot: not applied (intent gap).
+  - `[low]` `patch` (verification-gap, other) The injection budget limits macro bodies per line, not nesting depth, while the docs describe depth. — Same entry as the intent row on the injection budget. Moot.
+  - `[medium]` `intent_gap` (edge-case) A Markdown line of about 48,000 characters of unclosed links (`[a](` repeated) overflows the worker thread's stack inside tree-sitter-md's inline parser, and the app aborts. — Verified: a release probe aborts ("has overflowed its stack", exit 134) at 48,000 characters on a 1 MiB thread and passes at 40,000; the inline grammar's parser alone overflows; a Dart isolate's thread has a 1,060,864-byte stack (`pthread_get_stacksize_np` from a spawned isolate). 18 other Markdown patterns pass at 131,000 characters and 7 more at 48,000 on 1 MiB, and deep Rust and Dart nesting passes at 131,000. It breaks "No panic on any input" below the intent-contract's 131,072-character cap; the fix — a lower highlight cap (changes the cap rule and the ~100k-character row), a larger-stack thread per call, or accepting it — is not settled by the spec. No patch file: this pass changed no code; the reviewed change is commits `0dcbe1ab` and `a3237a24`, so nothing was saved or reverted.
+  - `[medium]` `intent_gap` (edge-case) Nothing bounds one line's highlighting time: lines under the cap take seconds, and the cost grows with the square of the length. — Verified with release probes: Dart's parser alone takes 23 s on 131,000 characters of `[` or `1+`; nested Dart `{` or `[x]` take 0.37 s at 16,000 characters and 5.4 s at 64,000; Rust's `(` and `&` runs take 8–9 s (in the highlight query; parsing takes 11 ms) and an `a::` chain 26 s. Realistic long lines in a `.dart` file: 109,000 characters of comma-separated numbers 6.9 s, minified CSS 3.3 s, minified JS 1.8 s; realistic Rust lines stay below 0.5 s and Markdown below 0.2 s. tree-sitter 0.27.1 has no parse timeout; cancelling needs another thread to set tree-sitter-highlight's flag. The intent-contract fixes the cap at 131,072 and asks a ~100k-character line to be classified, so bounding the cost (a lower cap or a deadline) is an intent decision. No patch file (as above).
+  - `[low]` `patch` (edge-case) A Rust line with more than 16 sibling macro calls loses Rust classes after the 16th, while the docs promise a depth limit. — Same entry as the intent row on the injection budget. Moot.
+  - `[medium]` `intent_gap` (blind) Lines under the cap can hold the worker for seconds through tree-sitter's error recovery, and one such line crosses the wire as about 100,000 segments. — Same entry as the edge-case row on unbounded highlighting time (verified there); the 100k-character test line gives 100,205 tokens, and the per-line payload growth already sits on the open 5.2 cost decision.
+  - `[low]` `patch` (blind) The 16-injection cap counts every macro on the line, not nesting depth, but three texts describe depth. — Same entry as the intent row on the injection budget (the probe's `vec![vec![f(0)], …]` line of 20 inner macros keeps Function for 15). Moot.
+  - `[low]` `reject` (blind) Rust's all-caps constants are Type because tree-sitter-rust's constant pattern has a stray `'`, and the docs present that as intended; append a corrected pattern. — carried: same claim and fix as the first pass's blind row on Rust's constants (the intent-contract keeps the crates' highlight queries as shipped).
+  - `[low]` `patch` (blind) Every Rust function whose body opens on its signature line (rustfmt's layout) leaves its name unclassified, but the docs give `fn main() {` as one example among others. — Verified: the probe leaves `diff_to_envelope` and `file_offset` unclassified on their signature lines and classes both Function with `{}`; Dart's `void main() {` classes `main`. Fix: say it in the module doc and `docs/ffi-abi.md`. Moot.
+  - `[low]` `patch` (blind) Wrong Dart classes are common (240 of 2,927 lines of `handle.dart` give a lower-case identifier Type); record the rates for the renderer decision. — carried: same claim as the first pass's blind row on common wrong classes in Dart method-body statements; the docs and the renderer note list the cases. Not patched again.
+  - `[low]` `patch` (blind) Two out-of-context cases are missing from the documented list: jj's conflict-marker lines get grammar classes, and a tab-indented Markdown line is a code block. — Verified: diffs materialize conflicts (`zanshin-jj/src/hunks.rs:524-527`), and the probe classes `Conflict` as Type and `1` as Constant in `<<<<<<< Conflict 1 of 1` (Rust) and `<<<<<<` as Operator (Dart). Fix: add both to the module doc, `docs/ffi-abi.md` and the renderer note. Moot.
+  - `[false]` `reject` (blind) FR-DF-5 still lists nine grammars, and nothing tracks the six Epic 5 closes without. — carried: same claim as the first pass's blind row; `prd.md:395`, the epics.md 5.4 note and epic-5-context record them.
+  - `[low]` `defer` (blind) The pin reason cites `.cargo/config.toml`'s `global-min-publish-age`, which cargo ignores. — Verified: cargo 1.99.1 prints "ignoring `registry.global-min-publish-age` without `-Zmin-publish-age`" on every run, so the 7-day rule is checked by hand for every dependency; the WHY states the rule correctly. Pre-existing: the setting predates this story. Moot: not deferred (intent gap); the first pass's residual risks already name it.
+  - `[false]` `reject` (blind) The cdylib's growth (29.8 to 33.7 MB) is not recorded. — No requirement on the cdylib's size exists (prd.md, architecture.md and project-context.md name none), and this spec's verification notes record the release dylib's 34 MB.
+  - `[low]` `patch` (blind) `grammars.rs` says a new grammar is "one dependency, one variant, its extensions and its configuration", and two tests list the languages by hand. — Verified (`grammars.rs:11-12`): a new grammar also needs a `DiffLanguage` member in `envelope.fbs` and codegen, `diff_language` in `zanshin-ffi/src/diff.rs:297`, the Dart enum and switch, `docs/ffi-abi.md`, and entries in `every_bundled_configuration_builds_and_every_capture_maps` and `tests/highlight.rs`'s `LANGUAGES`, which otherwise skip it silently. Fix: list those steps in the sentence. Moot.
+  - `[false]` `reject` (blind) `coverage-baseline.txt` has no zanshin-diff lines, so the ratchet does not guard the new files. — The story loop runs the coverage ratchet once at its end (this run's gate rule); `cargo llvm-cov --workspace` (`Makefile.toml:786`) measures zanshin-diff, holds each new file to the 80% floor and writes its baseline line. The last baseline raise (`cb3fc88a`) predates Story 5.2, so no zanshin-diff line exists yet by design.
+  - `[low]` `patch` (blind) The docs disagree on which lines carry no class and on which story added the enums. — Verified: `envelope.fbs:3217-3218` and `diff.dart:187-189` leave out a line the highlighter fails on, which `docs/ffi-abi.md:2552` names; `docs/ffi-abi.md:2574-2575` dates both enums to Story 5.3, while `:2568` credits `language` to Story 5.4. Fix: align the three texts. Moot.
+
 ## Design Notes
 
 **Why 5.3 and 5.4 in one run.** 5.3's ACs test Dart and Markdown lines and name 5.4's detection; 5.4's queries only matter to 5.3; the outermost surface (`FileDiff.language`, classed segments) needs both. Ralph's sprint-status note pairs them, and epic-5-context.md says they need each other.
@@ -185,6 +214,16 @@ Notation: `text:Class`; a bare `text` is unclassified; `=`/`-`/`+` prefix a segm
 - `cargo make --allow-private test-core` -- 1188 passed; `dart analyze` / `dart format` in `packages/zanshin_core` -- clean; `dart analyze app` -- no issues.
 - Not re-run after the patches, because nothing they touch reaches them: `cargo test -p zanshin-jj` (it does not depend on `zanshin-diff`), `cargo make codegen` (no schema or extern change), `cargo deny` (no manifest change), the release dylib load (only `classify`'s injection callback changed).
 - Not run, by the run's gate rule: `cargo make test` / `test-full` / `coverage` (the story loop's end gate measures the two new files' coverage), and the parity oracle (no jj verb changed).
+
+**Results of the follow-up review pass (2026-11-11):**
+- No code, schema, manifest or Dart file changed, so no targeted check (`cargo test`, clippy, fmt, codegen, `flutter test`, `dart analyze`, `dart format`) had anything to verify; none was run. The full gate stays with the story loop's end.
+- Triage probes, outside the repo, as release builds of copies of `classify` with the same pins, queries, cap and budget:
+  - Stack: `[a](` repeated to 48,000 characters aborts on a 1 MiB thread ("has overflowed its stack", exit 134), also when the inline grammar's parser runs alone; 40,000 passes. 18 other Markdown patterns pass at 131,000 characters and 7 at 48,000; `(`, `[`, balanced `(x)` and `[x]` nesting in Rust and Dart pass at 131,000.
+  - Dart isolate thread: 1,060,864 bytes of stack (`pthread_get_stacksize_np` from `Isolate.run` under the Flutter SDK's `dart`).
+  - Time at 131,000 characters: Dart `[` 23.3 s and `1+` 23.2 s in the parser alone; Rust `(` 9.1 s (parse 11 ms). Realistic lines: Dart comma-separated numbers (108,890 characters) 6.9 s, minified CSS 3.3 s, minified JS 1.8 s; Rust at most 0.42 s; Markdown at most 0.12 s. Dart comma-separated numbers: 10,000 characters 67 ms, 20,000 244 ms, 40,000 973 ms.
+  - Injection budget: 16, 17 and 20 sibling `a!(f(x));` calls each class `f` as Function in the first 16 macros only.
+  - Out-of-context lines: Rust signature lines that open a body leave the function name unclassified; jj's conflict-marker lines get Type, Constant and Operator classes.
+- `cargo tree -p zanshin-diff` printed "warning: ignoring `registry.global-min-publish-age` without `-Zmin-publish-age`" (cargo 1.99.1).
 
 ## Auto Run Result
 
@@ -256,3 +295,40 @@ Rejected, with reasons in the Review Triage Log:
 - The cdylib exports tree-sitter-highlight's 12 C functions. Hiding them needs linker flags.
 - project-context.md's stack list does not show the tree-sitter pins (annotated on the open 5.2 item).
 - No UI renders word or syntax marks yet ("Word-level and syntax marks have no consumer story").
+
+### Follow-up review pass (2026-11-11)
+
+Status: blocked. Blocking condition: intent gap.
+
+**What the pass found.** 25 findings: 0 high, 4 medium, 14 low, 7 false. Two medium entries raise one question about the intent-contract's long-line cap:
+- A Markdown line of about 48,000 characters of unclosed links (`[a](` repeated) overflows the 1 MiB stack of the worker isolate's thread inside tree-sitter-md's inline parser, and the app aborts.
+- Nothing bounds one line's highlighting time. tree-sitter's error recovery makes the cost grow with the square of the line's length: in a `.dart` file, a 109,000-character line of comma-separated numbers takes 6.9 s and minified CSS 3.3 s; pathological lines take up to 26 s.
+
+Both happen below the 131,072-character cap that the intent-contract shares with Story 5.2, and the contract asks a ~100k-character line to be classified. Every fix changes that contract or adds machinery the spec does not settle, so the pass halts for Ralph.
+
+**Question for Ralph: how long may a highlighted line be?**
+- (a) Give highlighting a cap of its own, below the word diff's. Longer lines keep Story 5.2's segments, with no classes. Proposal: 10,000 characters. The worst measured line then costs about 0.15 s, with a 4x margin to the stack overflow. 20,000 characters (VS Code's default tokenization limit) costs about 0.6 s, with a 2x margin. Either value changes the intent-contract's cap rule and its "~100k-character line is classified" row.
+- (b) Keep 131,072 and guard each failure: run `zanshin_diff`'s work on a thread with a larger stack (one thread per call), and stop a line's highlighting at a deadline through tree-sitter-highlight's cancellation flag. A watchdog thread must set that flag, because tree-sitter 0.27 has no parse timeout.
+- (c) Leave it: the lines are rare or pathological. The crash and the stalls stay; record them on the open 5.2 cost decision.
+
+**Saved patch.** None. This pass changed no code. The reviewed change is already committed (`0dcbe1ab` code, `a3237a24` docs), so nothing was saved or reverted.
+
+**Not applied, because the intent gap makes them moot.** Apply them together with the gap's fix; the triage log has the evidence.
+- Injection budget docs: `highlight.rs`'s module doc and `MAX_INJECTIONS` comment, `docs/ffi-abi.md` and `epic-5-context.md` say macro bodies "nested deeper" lose their classes. The budget counts every injection on a line, sibling macros included. Reword them, and add a sibling case to `a_line_gets_at_most_16_injected_layers`.
+- A worker test in `packages/zanshin_core/test/worker/diff_test.dart` that sends all 18 classes and all 4 languages from Rust to Dart through the real cdylib.
+- Docs: a Rust function's name is unclassified on a signature line that opens its body (rustfmt's layout).
+- Docs: jj's conflict-marker lines get grammar classes, and a tab-indented Markdown line is a code block.
+- `grammars.rs`'s "a new grammar is …" sentence: add the wire, FFI, Dart, doc and test-list steps.
+- Docs: `envelope.fbs`'s `HunkLine` comment and Dart's `HunkLine.segments` add a line the highlighter fails on; `docs/ffi-abi.md` dates `DiffLanguage` to Story 5.4.
+- Pre-existing, for Ralph: cargo ignores `global-min-publish-age` without `-Zmin-publish-age`, so the 7-day rule is checked by hand for every dependency.
+
+**Rejected,** with reasons in the Review Triage Log:
+- Dart's locals query is not loaded (low): loading it changes Dart's classes broadly, and nothing renders classes yet.
+- Carried from the first pass: the exported tree-sitter-highlight functions, the renderer surface, the recomputing wire tests, the description block's pseudo-path, Rust's constants, the common wrong Dart classes and FR-DF-5's other grammars.
+- False: the extern's Dart-only classified test, the untested unreachable fallbacks, the cdylib's size, and the coverage baseline (the loop's end gate writes it).
+
+**Verification.** No code changed, so no targeted check ran. The triage probes and their outcomes are under "Results of the follow-up review pass" in Verification.
+
+**Follow-up review recommended: false.** This pass patched nothing. The next step is Ralph's answer to the question above, then a run that applies it and the moot items.
+
+**Residual risk.** Until the question is answered, a Markdown file with such a line crashes the app when its diff is shown, and a long `.dart` line can hold the worker for seconds.
