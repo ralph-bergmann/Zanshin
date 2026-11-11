@@ -18,8 +18,8 @@ fbs.HunkKeyObjectBuilder _key(int oldStart, int oldCount, int newStart, int newC
 fbs.HunkLineObjectBuilder _line(fbs.HunkLineKind kind, String text) =>
     fbs.HunkLineObjectBuilder(kind: kind, text: text);
 
-fbs.SegmentObjectBuilder _segment(fbs.SegmentKind kind, String text, [fbs.SyntaxClass? syntaxClass]) =>
-    fbs.SegmentObjectBuilder(kind: kind, text: text, syntaxClass: syntaxClass);
+fbs.SegmentObjectBuilder _segment(fbs.SegmentKind kind, String text) =>
+    fbs.SegmentObjectBuilder(kind: kind, text: text);
 
 void main() {
   test('a diff decodes field by field', () {
@@ -175,91 +175,6 @@ void main() {
     expect(lines[1].segments.map((s) => (s.kind, s.text)), [(SegmentKind.added, 'n\n')]);
     expect(identical(lines[1].segments.single.text, lines[1].text), isTrue, reason: 'reuses the line text');
     expect(lines[2].segments, isEmpty, reason: 'no segments vector');
-    // Stories 5.3 / 5.4: an absent class is none, an absent language plain text.
-    expect(lines.expand((l) => l.segments).map((s) => s.syntaxClass), everyElement(isNull));
-    expect(diff.files.single.language, DiffLanguage.plainText);
-  });
-
-  test('a segment decodes its syntax class and a file its language', () {
-    final Diff diff = decodeDiffEnvelope(
-      fbs.EnvelopeObjectBuilder(
-        ok: true,
-        dataType: fbs.PayloadTypeId.Diff,
-        data: fbs.DiffObjectBuilder(
-          files: [
-            fbs.FileDiffObjectBuilder(
-              path: 'lib.rs',
-              language: fbs.DiffLanguage.Rust,
-              hunks: [
-                fbs.HunkObjectBuilder(
-                  lines: [
-                    fbs.HunkLineObjectBuilder(
-                      kind: fbs.HunkLineKind.Removed,
-                      text: 'fn a()\n',
-                      segments: [
-                        _segment(fbs.SegmentKind.Equal, 'fn', fbs.SyntaxClass.Keyword),
-                        _segment(fbs.SegmentKind.Equal, ' '),
-                        _segment(fbs.SegmentKind.Removed, 'a', fbs.SyntaxClass.$Function),
-                        _segment(fbs.SegmentKind.Equal, '()', fbs.SyntaxClass.Punctuation),
-                        _segment(fbs.SegmentKind.Equal, '\n', fbs.SyntaxClass.Unclassified),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-      ).toBytes(),
-    );
-
-    final FileDiff file = diff.files.single;
-    expect(file.language, DiffLanguage.rust);
-    expect(file.hunks.single.lines.single.segments.map((s) => (s.kind, s.text, s.syntaxClass)), [
-      (SegmentKind.equal, 'fn', SyntaxClass.keyword),
-      (SegmentKind.equal, ' ', null),
-      (SegmentKind.removed, 'a', SyntaxClass.function),
-      (SegmentKind.equal, '()', SyntaxClass.punctuation),
-      (SegmentKind.equal, '\n', null),
-    ]);
-  });
-
-  test('every wire syntax class and language decodes as its Dart value', () {
-    // Both Dart enums list their members in wire order; `Unclassified` (0) is no class.
-    final Diff diff = decodeDiffEnvelope(
-      fbs.EnvelopeObjectBuilder(
-        ok: true,
-        dataType: fbs.PayloadTypeId.Diff,
-        data: fbs.DiffObjectBuilder(
-          files: [
-            for (final fbs.DiffLanguage language in fbs.DiffLanguage.values)
-              fbs.FileDiffObjectBuilder(
-                path: language.name,
-                language: language,
-                hunks: [
-                  fbs.HunkObjectBuilder(
-                    lines: [
-                      fbs.HunkLineObjectBuilder(
-                        kind: fbs.HunkLineKind.Context,
-                        text: fbs.SyntaxClass.values.map((c) => c.name).join(),
-                        segments: [
-                          for (final fbs.SyntaxClass c in fbs.SyntaxClass.values)
-                            _segment(fbs.SegmentKind.Equal, c.name, c),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-          ],
-        ),
-      ).toBytes(),
-    );
-
-    expect(diff.files.map((f) => f.language), DiffLanguage.values);
-    for (final FileDiff file in diff.files) {
-      expect(file.hunks.single.lines.single.segments.map((s) => s.syntaxClass), [null, ...SyntaxClass.values]);
-    }
   });
 
   test('absent files decode as an empty diff', () {

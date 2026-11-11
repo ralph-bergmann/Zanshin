@@ -61,16 +61,6 @@ thiserror = "2"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-# WHY (the five tree-sitter crates): `zanshin-diff/src/grammars.rs` and `highlight.rs` give every
-# diff segment a syntax class (Stories 5.3 / 5.4, FR-DF-2, FR-DF-5). All MIT. Pre-1.0, so
-# exact-pinned (project-context.md § "Version pinning rules"), each published at least 7 days ago
-# (`.cargo/config.toml`'s `global-min-publish-age`): tree-sitter and tree-sitter-highlight stay at
-# 0.27.1, because 0.27.2 is younger than that.
-tree-sitter = "=0.27.1"  # WHY: the parser runtime the grammars and tree-sitter-highlight share; pinned here because tree-sitter-highlight asks for it by a caret range
-tree-sitter-dart = "=0.3.0"  # WHY: the Dart grammar and its highlight query
-tree-sitter-highlight = "=0.27.1"  # WHY: runs a grammar's highlight query over one diff line
-tree-sitter-md = "=0.5.4"  # WHY: the Markdown block and inline grammars and their highlight queries
-tree-sitter-rust = "=0.24.2"  # WHY: the Rust grammar, its highlight query and its macro-body injection
 unicode-segmentation = "=1.13.3"  # WHY: `zanshin-diff/src/word_diff.rs` cuts a line into Unicode word-bound tokens (UAX #29, `split_word_bounds`) for the word diff (Story 5.2). Exact-pinned to the version already in Cargo.lock as a jj-cli transitive. MIT OR Apache-2.0
 whoami = "2.1.2"  # WHY: the jj CLI's own source of `operation.hostname`/`operation.username` and of the `--when.hostnames` context (jj's workspace `Cargo.toml` @ v0.46.0 pins `whoami = "2.1.2"`) — same crate, same values in `jj op log`
 zanshin-diff = { path = "crates/zanshin-diff", version = "0.1.0" }  # WHY: the version next to the path, because deny.toml's `wildcards = "deny"` flags a path dependency without one

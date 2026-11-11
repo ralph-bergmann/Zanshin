@@ -13,6 +13,8 @@ warnings: ['oversized']
 deferred: []
 ---
 
+> **Reverted 2026-11-12 (Ralph).** Diffs get no syntax highlighting: its colors hide the red/green marks of the change. Code commit `0dcbe1ab` is reverted, Stories 5.3 and 5.4 are deleted, and the blocked question below is moot. This spec stays as a record.
+
 <intent-contract>
 
 ## Intent

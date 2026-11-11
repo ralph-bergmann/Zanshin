@@ -3173,28 +3173,11 @@ table GitColocationResult {
 /// line, or only on the removed line. Member order IS the wire value — APPEND only.
 enum SegmentKind : ubyte { Equal, Added, Removed }
 
-/// The kind of token a `Segment` is part of (Story 5.3, `zanshin_diff::SyntaxClass`). `Unclassified`
-/// (0, the default) is no class: plain text, whitespace, a token no query captures. Member order
-/// IS the wire value — APPEND only.
-enum SyntaxClass : ubyte {
-  Unclassified, Keyword, String, Escape, Comment, Function, Type, Variable, Property, Number,
-  Constant, Operator, Punctuation, Attribute, Heading, Emphasis, Strong, Link, Code
-}
-
-/// The language a `FileDiff` is highlighted in (Story 5.4, `zanshin_diff::Language`): its path's
-/// final extension, ASCII case-insensitive — `rs`, `dart`, `md` / `markdown` — and `PlainText`
-/// (0, the default) for every other path. Member order IS the wire value — APPEND only.
-enum DiffLanguage : ubyte { PlainText, Rust, Dart, Markdown }
-
-/// A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_diff::Segment`), never empty.
-///
-/// Story 5.3 appends `syntax_class`: the class of the syntax token the run is part of
-/// (`zanshin_diff::HighlightedSegment`). A run never crosses a token boundary, so one word-level
-/// run can be several segments of one kind.
+/// A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_diff::Segment`): whole Unicode
+/// word-bound tokens, never empty.
 table Segment {
   kind: SegmentKind;
   text: string;
-  syntax_class: SyntaxClass;
 }
 
 /// What a `HunkLine` is (Story 5.5): on both sides, the left side only, or the right side only.
@@ -3206,16 +3189,11 @@ enum HunkLineKind : ubyte { Context, Removed, Added }
 ///
 /// Story 5.2 appends `segments`, the line's word-level runs (`zanshin_diff::line_segments`), always
 /// written: their texts concatenate exactly to `text`, none is empty, and adjacent runs differ in
-/// kind or class. The i-th line of a run of `Removed` lines directly followed by a run of `Added`
-/// lines pairs with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over
-/// Unicode word bounds) unless one of its lines is longer than 131,072 characters: `Equal` and
-/// `Removed` runs on the removed line, `Equal` and `Added` runs on the added one. Every other line,
-/// a pair over that cap included, is one run of its own kind (`Equal` for a `Context` line).
-///
-/// Story 5.3 splits those runs at the boundaries of the line's syntax tokens
-/// (`zanshin_diff::merge_highlight` over `highlight_line`, tree-sitter-highlight over this one line
-/// in its file's `language`), each with its token's `syntax_class`. A `PlainText` line, a line over
-/// 131,072 characters and the description block keep Story 5.2's runs, all `Unclassified`.
+/// kind. The i-th line of a run of `Removed` lines directly followed by a run of `Added` lines pairs
+/// with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over Unicode word
+/// bounds) unless one of its lines is longer than 131,072 characters: `Equal` and `Removed` runs on
+/// the removed line, `Equal` and `Added` runs on the added one. Every other line, a pair over that
+/// cap included, is one run of its own kind (`Equal` for a `Context` line).
 table HunkLine {
   kind: HunkLineKind;
   text: string;
@@ -3259,10 +3237,6 @@ table Hunk {
 /// `ui.conflict-marker-style`. It covers content only (no path, no kind): every content-less
 /// change (a pure rename, an empty file added) shares one value, so a Viewed key combines it with
 /// the path.
-///
-/// Story 5.4 appends `language`: the language its lines are highlighted in,
-/// `zanshin_diff::detect_language` of `path` (a copy's target) — a binary file too, and the
-/// description block's `JJ-COMMIT-DESCRIPTION` is `PlainText`.
 table FileDiff {
   path: string;
   binary: bool;
@@ -3274,7 +3248,6 @@ table FileDiff {
   removed: uint;
   added: uint;
   fingerprint: string;
-  language: DiffLanguage;
 }
 
 /// A line-level diff (Story 5.5) — `zanshin_jj::Repo::diff`'s files, in its order. `files` is

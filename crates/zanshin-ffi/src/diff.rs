@@ -6,18 +6,11 @@
 //! composite-input pattern); the handle is borrowed, never consumed; the call runs the pre-verb
 //! snapshot (Story 9.26), so every envelope carries the precondition report and the call's
 //! warnings. Story 5.2 gives every line its word-level segments, `zanshin_diff::line_segments`
-//! over its hunk's lines. Story 5.3 splits them at the line's syntax tokens with their classes
-//! (`zanshin_diff::merge_highlight` over `highlight_line`), in its file's language (Story 5.4,
-//! `zanshin_diff::detect_language` of its path).
-
-use std::path::Path;
+//! over its hunk's lines.
 
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, VerifierOptions, WIPOffset};
 use tracing::debug;
-use zanshin_diff::{
-    detect_language, highlight_line, line_segments, merge_highlight, HighlightedSegment, Language, Segment,
-    SegmentKind, SyntaxClass,
-};
+use zanshin_diff::{line_segments, Segment, SegmentKind};
 use zanshin_jj::{
     DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, MutateError, RevisionDiff, Whitespace,
 };
@@ -97,9 +90,7 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// `jj diff` as data in the repo identified by `handle` (Story 5.8) — `zanshin_jj::Repo::diff`:
 /// per changed file its kind, flags, section keys (the `HunkKey`s `zanshin_select_tree` takes),
 /// hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at. Every hunk
-/// line carries its word-level segments (Story 5.2), split at its syntax tokens with their classes
-/// in its file's language (Stories 5.3 / 5.4), so the call word-diffs each paired line and
-/// highlights every line.
+/// line carries its word-level segments (Story 5.2), so the call word-diffs each paired line.
 ///
 /// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, a set
 /// diffed as one — its roots' merged parents against its merged heads, a set with gaps refused;
@@ -159,11 +150,9 @@ pub unsafe extern "C" fn zanshin_diff(handle: u64, data: *const u8, len: usize) 
 
 /// Build a success `Envelope` with a `Diff` payload and return the finished buffer: the files
 /// exactly as `diff` returned them, in order, every vector written (empty, not absent), a `None`
-/// symbol, `from_path` or `from_commit_id` absent. Every file carries its `language`,
-/// `zanshin_diff::detect_language` of its path (Story 5.4), and every line its `segments`:
-/// `zanshin_diff::line_segments` over its hunk's lines (Story 5.2), split by `merge_highlight` at
-/// the tokens `highlight_line` gives the line in that language, each with its `syntax_class`
-/// (Story 5.3). `report` rides as on every envelope.
+/// symbol, `from_path` or `from_commit_id` absent. Every line carries its word-level `segments`,
+/// `zanshin_diff::line_segments` over its hunk's lines (Story 5.2). `report` rides as on every
+/// envelope.
 #[must_use]
 pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
@@ -188,10 +177,9 @@ pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
 }
 
 fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs::FileDiff<'b>> {
-    let language = detect_language(Path::new(&f.path));
     let path = b.create_string(&f.path);
     let sections = keys_vector(b, &f.sections);
-    let hunks: Vec<_> = f.hunks.iter().map(|h| hunk_offset(b, h, language)).collect();
+    let hunks: Vec<_> = f.hunks.iter().map(|h| hunk_offset(b, h)).collect();
     let hunks = b.create_vector(&hunks);
     let (kind, from_path) = change_kind_offset(b, &f.kind);
     let fingerprint = b.create_string(&f.fingerprint);
@@ -208,12 +196,11 @@ fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs
             removed: f.removed,
             added: f.added,
             fingerprint: Some(fingerprint),
-            language: diff_language(language),
         },
     )
 }
 
-fn hunk_offset<'b>(b: &mut FlatBufferBuilder<'b>, h: &Hunk, language: Language) -> WIPOffset<fbs::Hunk<'b>> {
+fn hunk_offset<'b>(b: &mut FlatBufferBuilder<'b>, h: &Hunk) -> WIPOffset<fbs::Hunk<'b>> {
     let symbol = h.symbol.as_deref().map(|s| b.create_string(s));
     let sections = keys_vector(b, &h.sections);
     let segments = line_segments(&h.lines);
@@ -221,7 +208,7 @@ fn hunk_offset<'b>(b: &mut FlatBufferBuilder<'b>, h: &Hunk, language: Language) 
         .lines
         .iter()
         .zip(&segments)
-        .map(|(l, s)| line_offset(b, l, s, language))
+        .map(|(l, s)| line_offset(b, l, s))
         .collect();
     let lines = b.create_vector(&lines);
     fbs::Hunk::create(
@@ -244,14 +231,12 @@ fn line_offset<'b>(
     b: &mut FlatBufferBuilder<'b>,
     line: &HunkLine,
     segments: &[Segment],
-    language: Language,
 ) -> WIPOffset<fbs::HunkLine<'b>> {
     let (kind, text) = match line {
         HunkLine::Context(text) => (fbs::HunkLineKind::Context, text),
         HunkLine::Removed(text) => (fbs::HunkLineKind::Removed, text),
         HunkLine::Added(text) => (fbs::HunkLineKind::Added, text),
     };
-    let segments = merge_highlight(segments, &highlight_line(text, language));
     let text = b.create_string(text);
     // A lone segment's text is the line's text: it shares the string instead of a second copy.
     let shared = segments.len() == 1;
@@ -259,7 +244,7 @@ fn line_offset<'b>(
         .iter()
         .map(|s| {
             let segment_text = if shared { text } else { b.create_string(&s.text) };
-            segment_offset(b, s, segment_text)
+            segment_offset(b, s.kind, segment_text)
         })
         .collect();
     let segments = b.create_vector(&segments);
@@ -275,57 +260,15 @@ fn line_offset<'b>(
 
 fn segment_offset<'b>(
     b: &mut FlatBufferBuilder<'b>,
-    segment: &HighlightedSegment,
+    kind: SegmentKind,
     text: WIPOffset<&'b str>,
 ) -> WIPOffset<fbs::Segment<'b>> {
-    let kind = match segment.kind {
+    let kind = match kind {
         SegmentKind::Equal => fbs::SegmentKind::Equal,
         SegmentKind::Added => fbs::SegmentKind::Added,
         SegmentKind::Removed => fbs::SegmentKind::Removed,
     };
-    fbs::Segment::create(
-        b,
-        &fbs::SegmentArgs {
-            kind,
-            text: Some(text),
-            syntax_class: syntax_class(segment.syntax_class),
-        },
-    )
-}
-
-/// A file's language on the wire.
-fn diff_language(language: Language) -> fbs::DiffLanguage {
-    match language {
-        Language::PlainText => fbs::DiffLanguage::PlainText,
-        Language::Rust => fbs::DiffLanguage::Rust,
-        Language::Dart => fbs::DiffLanguage::Dart,
-        Language::Markdown => fbs::DiffLanguage::Markdown,
-    }
-}
-
-/// A segment's class on the wire: `Unclassified` for none.
-fn syntax_class(class: Option<SyntaxClass>) -> fbs::SyntaxClass {
-    match class {
-        None => fbs::SyntaxClass::Unclassified,
-        Some(SyntaxClass::Keyword) => fbs::SyntaxClass::Keyword,
-        Some(SyntaxClass::String) => fbs::SyntaxClass::String,
-        Some(SyntaxClass::Escape) => fbs::SyntaxClass::Escape,
-        Some(SyntaxClass::Comment) => fbs::SyntaxClass::Comment,
-        Some(SyntaxClass::Function) => fbs::SyntaxClass::Function,
-        Some(SyntaxClass::Type) => fbs::SyntaxClass::Type,
-        Some(SyntaxClass::Variable) => fbs::SyntaxClass::Variable,
-        Some(SyntaxClass::Property) => fbs::SyntaxClass::Property,
-        Some(SyntaxClass::Number) => fbs::SyntaxClass::Number,
-        Some(SyntaxClass::Constant) => fbs::SyntaxClass::Constant,
-        Some(SyntaxClass::Operator) => fbs::SyntaxClass::Operator,
-        Some(SyntaxClass::Punctuation) => fbs::SyntaxClass::Punctuation,
-        Some(SyntaxClass::Attribute) => fbs::SyntaxClass::Attribute,
-        Some(SyntaxClass::Heading) => fbs::SyntaxClass::Heading,
-        Some(SyntaxClass::Emphasis) => fbs::SyntaxClass::Emphasis,
-        Some(SyntaxClass::Strong) => fbs::SyntaxClass::Strong,
-        Some(SyntaxClass::Link) => fbs::SyntaxClass::Link,
-        Some(SyntaxClass::Code) => fbs::SyntaxClass::Code,
-    }
+    fbs::Segment::create(b, &fbs::SegmentArgs { kind, text: Some(text) })
 }
 
 fn keys_vector<'b>(
@@ -351,13 +294,10 @@ fn keys_vector<'b>(
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     use flatbuffers::VerifierOptions;
-    use zanshin_diff::{
-        detect_language, highlight_line, line_segments, merge_highlight, HighlightedSegment, Language, SegmentKind,
-        SyntaxClass,
-    };
+    use zanshin_diff::{line_segments, Segment, SegmentKind};
     use zanshin_jj::{ChangeKind, CommitId, FileDiff, Hunk, HunkKey, HunkLine, OperationId, RevisionDiff};
 
     use super::diff_to_envelope;
@@ -623,47 +563,21 @@ mod tests {
         assert_eq!(diff_from_wire(&bytes), sample());
     }
 
-    /// Every `SyntaxClass` in wire order: wire value `i + 1` is `CLASSES[i]`, 0 is no class.
-    const CLASSES: [SyntaxClass; 18] = [
-        SyntaxClass::Keyword,
-        SyntaxClass::String,
-        SyntaxClass::Escape,
-        SyntaxClass::Comment,
-        SyntaxClass::Function,
-        SyntaxClass::Type,
-        SyntaxClass::Variable,
-        SyntaxClass::Property,
-        SyntaxClass::Number,
-        SyntaxClass::Constant,
-        SyntaxClass::Operator,
-        SyntaxClass::Punctuation,
-        SyntaxClass::Attribute,
-        SyntaxClass::Heading,
-        SyntaxClass::Emphasis,
-        SyntaxClass::Strong,
-        SyntaxClass::Link,
-        SyntaxClass::Code,
-    ];
-
-    fn seg(kind: SegmentKind, text: &str, syntax_class: Option<SyntaxClass>) -> HighlightedSegment {
-        HighlightedSegment {
+    fn seg(kind: SegmentKind, text: &str) -> Segment {
+        Segment {
             text: text.into(),
             kind,
-            syntax_class,
         }
     }
 
     /// One wire hunk's segments, line by line.
-    fn segments_from_wire(h: fbs::Hunk<'_>) -> Vec<Vec<HighlightedSegment>> {
+    fn segments_from_wire(h: fbs::Hunk<'_>) -> Vec<Vec<Segment>> {
         let kinds = [SegmentKind::Equal, SegmentKind::Added, SegmentKind::Removed];
         let segments_of = |line: fbs::HunkLine<'_>| {
             line.segments()
                 .expect("segments always present")
                 .iter()
-                .map(|s| {
-                    let class = usize::from(s.syntax_class().0).checked_sub(1).map(|i| CLASSES[i]);
-                    seg(kinds[usize::from(s.kind().0)], s.text().expect("text present"), class)
-                })
+                .map(|s| seg(kinds[usize::from(s.kind().0)], s.text().expect("text present")))
                 .collect()
         };
         h.lines()
@@ -673,32 +587,14 @@ mod tests {
             .collect()
     }
 
-    /// What every line of `lines`, in a file at `path`, must carry: its hunk's `line_segments`
-    /// split at `highlight_line`'s tokens in `detect_language(path)`.
-    fn expected_segments(path: &str, lines: &[HunkLine]) -> Vec<Vec<HighlightedSegment>> {
-        let language = detect_language(Path::new(path));
-        lines
-            .iter()
-            .zip(line_segments(lines))
-            .map(|(line, segments)| {
-                let (HunkLine::Context(text) | HunkLine::Removed(text) | HunkLine::Added(text)) = line;
-                merge_highlight(&segments, &highlight_line(text, language))
-            })
-            .collect()
-    }
-
-    /// Stories 5.2 / 5.3: every wire line, the description block's too, carries `line_segments` of
-    /// its hunk split at its syntax tokens — a removed line word-diffed with the added line it
-    /// pairs with, an unpaired line and a context line whole. The description block is plain text,
-    /// so its segments carry no class even where its text is Rust.
+    /// Story 5.2: every wire line, the description block's too, carries `line_segments` of its
+    /// hunk — a removed line word-diffed with the added line it pairs with, an unpaired line and a
+    /// context line whole.
     #[test]
-    fn every_line_carries_its_word_level_segments_split_at_its_syntax_tokens() {
+    fn every_line_carries_its_word_level_segments() {
         use SegmentKind::{Added, Equal, Removed};
         let diff = RevisionDiff {
-            description: Some(FileDiff {
-                path: "JJ-COMMIT-DESCRIPTION".into(),
-                ..sample().files.remove(0)
-            }),
+            description: Some(sample().files.remove(0)),
             ..sample()
         };
         let bytes = diff_to_envelope(&diff, &CallReport::default());
@@ -711,7 +607,7 @@ mod tests {
             let wire_hunks = wire.hunks().expect("hunks always present");
             assert_eq!(wire_hunks.len(), file.hunks.len());
             for (wire, hunk) in wire_hunks.iter().zip(&file.hunks) {
-                assert_eq!(segments_from_wire(wire), expected_segments(&file.path, &hunk.lines));
+                assert_eq!(segments_from_wire(wire), line_segments(&hunk.lines));
                 for line in wire.lines().expect("lines always present") {
                     let segments = line.segments().expect("segments always present");
                     if segments.len() == 1 {
@@ -723,97 +619,11 @@ mod tests {
                 }
             }
         }
-        let (function, punctuation) = (Some(SyntaxClass::Function), Some(SyntaxClass::Punctuation));
         let first = segments_from_wire(wire_files.get(0).hunks().expect("hunks present").get(0));
-        let removed = [
-            seg(Equal, "    ", None),
-            seg(Removed, "a", function),
-            seg(Equal, "();", punctuation),
-            seg(Equal, "\n", None),
-        ];
-        assert_eq!(first[1], removed);
-        let added = [
-            seg(Equal, "    ", None),
-            seg(Added, "c", function),
-            seg(Equal, "();", punctuation),
-            seg(Equal, "\n", None),
-        ];
-        assert_eq!(first[3], added);
-        let unpaired = [
-            seg(Added, "    ", None),
-            seg(Added, "e", function),
-            seg(Added, "();", punctuation),
-            seg(Added, "\n", None),
-        ];
-        assert_eq!(first[5], unpaired);
-        let description = payload.description().expect("description present");
-        assert_eq!(description.language(), fbs::DiffLanguage::PlainText);
-        let plain = segments_from_wire(description.hunks().expect("hunks present").get(0));
-        assert_eq!(
-            plain[1],
-            [
-                seg(Equal, "    ", None),
-                seg(Removed, "a", None),
-                seg(Equal, "();\n", None)
-            ]
-        );
-    }
-
-    /// Story 5.4: every file, the description block too, carries `detect_language` of its path —
-    /// a binary file and a copy's target included.
-    #[test]
-    fn every_file_carries_its_language() {
-        use fbs::DiffLanguage as L;
-        let diff = RevisionDiff {
-            description: Some(file("JJ-COMMIT-DESCRIPTION", ChangeKind::Modified)),
-            ..pinned(vec![
-                file("src/a.rs", ChangeKind::Modified),
-                file("lib/main.DART", ChangeKind::Added),
-                FileDiff {
-                    binary: true,
-                    ..file("docs/logo.md", ChangeKind::Added)
-                },
-                file(
-                    "guide.markdown",
-                    ChangeKind::Copied {
-                        from: PathBuf::from("src.rs"),
-                    },
-                ),
-                file("Cargo.toml", ChangeKind::Modified),
-            ])
-        };
-        let bytes = diff_to_envelope(&diff, &CallReport::default());
-        let payload = verified_envelope(&bytes).data_as_diff().expect("Diff payload");
-        let files = payload.files().expect("files present");
-        let languages: Vec<_> = files
-            .iter()
-            .chain(payload.description())
-            .map(|f| f.language())
-            .collect();
-        assert_eq!(
-            languages,
-            [L::Rust, L::Dart, L::Markdown, L::Markdown, L::PlainText, L::PlainText]
-        );
-    }
-
-    /// Every `SyntaxClass` and `Language` crosses as the wire member of its name; no class is
-    /// `Unclassified`.
-    #[test]
-    fn every_class_and_language_crosses_as_its_wire_member() {
-        assert_eq!(super::syntax_class(None), fbs::SyntaxClass::Unclassified);
-        for (value, class) in (1..).zip(CLASSES) {
-            let wire = super::syntax_class(Some(class));
-            assert_eq!(wire, fbs::SyntaxClass(value));
-            assert_eq!(wire.variant_name(), Some(format!("{class:?}").as_str()));
-        }
-        assert_eq!(fbs::SyntaxClass::ENUM_VALUES.len(), CLASSES.len() + 1);
-        let languages = [Language::PlainText, Language::Rust, Language::Dart, Language::Markdown];
-        for (value, language) in (0..).zip(languages) {
-            let wire = super::diff_language(language);
-            assert_eq!(wire, fbs::DiffLanguage(value));
-            assert_eq!(wire.variant_name(), Some(format!("{language:?}").as_str()));
-        }
-        assert_eq!(fbs::DiffLanguage::ENUM_VALUES.len(), languages.len());
+        assert_eq!(first[0], [seg(Equal, "fn main() {\n")]);
+        assert_eq!(first[1], [seg(Equal, "    "), seg(Removed, "a"), seg(Equal, "();\n")]);
+        assert_eq!(first[3], [seg(Equal, "    "), seg(Added, "c"), seg(Equal, "();\n")]);
+        assert_eq!(first[5], [seg(Added, "    e();\n")]);
     }
 
     /// One `DiffRequest`: `kind`, `revision`, `from`, `to`, `paths`, `context`, `whitespace`,

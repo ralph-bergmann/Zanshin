@@ -119,35 +119,6 @@ void main() {
         (SegmentKind.added, '  '),
         (SegmentKind.equal, 'y\n'),
       ]);
-      // Stories 5.3 / 5.4: `.txt` files are plain text, so no segment carries a class.
-      expect(diff.files.map((f) => f.language), everyElement(DiffLanguage.plainText));
-      expect(lines.expand((l) => l.segments).map((s) => s.syntaxClass), everyElement(isNull));
-    });
-
-    test('a_rust_file_carries_its_language_and_its_lines_their_syntax_classes', () async {
-      // Its own file and change: the setUp files are listed by other tests.
-      File('${tempDir.path}/lib.rs').writeAsStringSync('fn a() {}\n');
-      await repo.newChange([at]);
-      File('${tempDir.path}/lib.rs').writeAsStringSync('fn b() {}\n');
-      final FileDiff file = fileOf(await repo.diff(), 'lib.rs');
-      expect(file.language, DiffLanguage.rust);
-      final List<HunkLine> lines = file.hunks.expand((h) => h.lines).toList();
-      expect(lines.map((l) => (l.kind, l.text)), [
-        (HunkLineKind.removed, 'fn a() {}\n'),
-        (HunkLineKind.added, 'fn b() {}\n'),
-      ]);
-      expect(
-        [for (final Segment s in lines.first.segments) (s.kind, s.text, s.syntaxClass)],
-        [
-          (SegmentKind.equal, 'fn', SyntaxClass.keyword),
-          (SegmentKind.equal, ' ', null),
-          (SegmentKind.removed, 'a', SyntaxClass.function),
-          (SegmentKind.equal, '()', SyntaxClass.punctuation),
-          (SegmentKind.equal, ' ', null),
-          (SegmentKind.equal, '{}', SyntaxClass.punctuation),
-          (SegmentKind.equal, '\n', null),
-        ],
-      );
     });
 
     test('a_range_diffs_as_one_and_pins_its_heads', () async {

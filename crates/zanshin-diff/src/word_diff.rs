@@ -21,10 +21,9 @@ use imara_diff::{Algorithm, Diff, InternedInput, Token};
 use unicode_segmentation::UnicodeSegmentation as _;
 use zanshin_jj::HunkLine;
 
-// shortcut: a line over 131,072 characters gets no word diff (in a pair) and no syntax classes
-// (`highlight_line`), raise once both are time-bounded. Characters, not bytes, so a 100k-character
-// line of any script is still diffed and highlighted.
-pub(crate) const MAX_LINE_CHARS: usize = 128 * 1024;
+// shortcut: pairs with a line over 131,072 characters get no word diff, raise once the diff is
+// time-bounded. Characters, not bytes, so a 100k-character line of any script is still diffed.
+const MAX_PAIRED_LINE_CHARS: usize = 128 * 1024;
 
 /// A run of a line's text with one kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,7 +83,7 @@ pub fn line_segments(lines: &[HunkLine]) -> Vec<Vec<Segment>> {
             let (removed_index, added_index) = (start + offset, start + removed + offset);
             let removed_text = kind_and_text(&lines[removed_index]).1;
             let added_text = kind_and_text(&lines[added_index]).1;
-            if removed_text.chars().count().max(added_text.chars().count()) > MAX_LINE_CHARS {
+            if removed_text.chars().count().max(added_text.chars().count()) > MAX_PAIRED_LINE_CHARS {
                 continue;
             }
             let (removed_segments, added_segments) = compute_word_diff(removed_text, added_text);

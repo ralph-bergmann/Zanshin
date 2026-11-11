@@ -4,27 +4,22 @@
 //! 5.6), serialised by `zanshin_ffi::diff::diff_to_envelope` and read back through the generated
 //! accessors and the Verifier, carries exactly its section keys, flags, lines, kinds, counts,
 //! fingerprints and pins — and its keys are `compute_hunks`' for the same trees (the wire half of
-//! deferred items I1/I2). The repo is built in-test: `A` holds `f.txt` = `a b c d e` and `lib.rs` =
-//! `fn a() {}`, `@` on it `A b C d E` (three sections) and `fn b() {}`, an added `new.txt`, `run.sh`
-//! made executable (mode only) and `bin.dat` changed binary content.
+//! deferred items I1/I2). The repo is built in-test: `A` holds `f.txt` = `a b c d e`, `@` on it
+//! `A b C d E` (three sections), an added `new.txt`, `run.sh` made executable (mode only) and
+//! `bin.dat` changed binary content.
 //!
 //! Story 5.8: `zanshin_diff` on a real handle carries exactly what `Repo::diff` returns for the
 //! same options, every request field reaching its option, and refuses what the CLI refuses.
 //!
-//! Story 5.2: every wire line carries `zanshin_diff::line_segments` of its hunk's lines. Stories
-//! 5.3 / 5.4: every file carries `detect_language` of its path, and those segments are split at the
-//! line's syntax tokens in that language (`merge_highlight` over `highlight_line`).
+//! Story 5.2: every wire line carries `zanshin_diff::line_segments` of its hunk's lines.
 
 use std::ffi::CString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use flatbuffers::root as fb_root;
-use zanshin_diff::{
-    detect_language, highlight_line, line_segments, merge_highlight, HighlightedSegment, Language, SegmentKind,
-    SyntaxClass,
-};
+use zanshin_diff::{line_segments, Segment, SegmentKind};
 use zanshin_ffi::diff::{diff_to_envelope, zanshin_diff};
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
@@ -56,14 +51,12 @@ fn computed() -> (RevisionDiff, Vec<FileDiff>) {
     .to_owned();
     let mut repo = Repo::open(&root).expect("open");
     fs::write(root.join("f.txt"), "a\nb\nc\nd\ne\n").expect("write");
-    fs::write(root.join("lib.rs"), "fn a() {}\n").expect("write");
     fs::write(root.join("run.sh"), "echo\n").expect("write");
     fs::write(root.join("bin.dat"), b"a\0b").expect("write");
     let a = repo.status().expect("status").working_copy_change_id.expect("@");
     repo.describe(a.clone(), "A\n").expect("describe");
     repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new");
     fs::write(root.join("f.txt"), "A\nb\nC\nd\nE\n").expect("write");
-    fs::write(root.join("lib.rs"), "fn b() {}\n").expect("write");
     fs::write(root.join("new.txt"), "n\n").expect("write");
     fs::set_permissions(root.join("run.sh"), fs::Permissions::from_mode(0o755)).expect("chmod");
     fs::write(root.join("bin.dat"), b"a\0c").expect("write");
@@ -106,57 +99,25 @@ fn kind_and_text(line: &HunkLine) -> (fbs::HunkLineKind, Option<&str>) {
     }
 }
 
-fn seg(kind: SegmentKind, text: &str, syntax_class: Option<SyntaxClass>) -> HighlightedSegment {
-    HighlightedSegment {
+fn seg(kind: SegmentKind, text: &str) -> Segment {
+    Segment {
         text: text.to_owned(),
         kind,
-        syntax_class,
     }
 }
 
-/// A wire file's language.
-fn language_of(file: fbs::FileDiff<'_>) -> Language {
-    let languages = [Language::PlainText, Language::Rust, Language::Dart, Language::Markdown];
-    languages[usize::from(file.language().0)]
-}
-
-/// A wire line's segments with their classes.
-fn segments_of(line: fbs::HunkLine<'_>) -> Vec<HighlightedSegment> {
-    use SyntaxClass as C;
+/// A wire line's segments.
+fn segments_of(line: fbs::HunkLine<'_>) -> Vec<Segment> {
     let kinds = [SegmentKind::Equal, SegmentKind::Added, SegmentKind::Removed];
-    // In wire order: wire value `i + 1` is `classes[i]`, 0 is no class.
-    let classes = [
-        C::Keyword,
-        C::String,
-        C::Escape,
-        C::Comment,
-        C::Function,
-        C::Type,
-        C::Variable,
-        C::Property,
-        C::Number,
-        C::Constant,
-        C::Operator,
-        C::Punctuation,
-        C::Attribute,
-        C::Heading,
-        C::Emphasis,
-        C::Strong,
-        C::Link,
-        C::Code,
-    ];
     line.segments()
         .expect("segments always present")
         .iter()
-        .map(|s| {
-            let class = usize::from(s.syntax_class().0).checked_sub(1).map(|i| classes[i]);
-            seg(kinds[usize::from(s.kind().0)], s.text().expect("text present"), class)
-        })
+        .map(|s| seg(kinds[usize::from(s.kind().0)], s.text().expect("text present")))
         .collect()
 }
 
 /// The segments of the wire line of `path` whose text is `text`.
-fn wire_segments(payload: fbs::Diff<'_>, path: &str, text: &str) -> Vec<HighlightedSegment> {
+fn wire_segments(payload: fbs::Diff<'_>, path: &str, text: &str) -> Vec<Segment> {
     let file = payload
         .files()
         .expect("files present")
@@ -194,56 +155,9 @@ fn the_wire_carries_the_diff_keys_flags_lines_and_pins() {
     let (equal, removed) = (SegmentKind::Equal, SegmentKind::Removed);
     assert_eq!(
         wire_segments(payload, "f.txt", "a\n"),
-        [seg(removed, "a", None), seg(equal, "\n", None)]
+        [seg(removed, "a"), seg(equal, "\n")]
     );
-    assert_eq!(wire_segments(payload, "f.txt", "b\n"), [seg(equal, "b\n", None)]);
-    // Stories 5.3 / 5.4: `lib.rs` is Rust, its word-diffed line split at its tokens; `f.txt` is
-    // plain text.
-    let wire_file = |path: &str| {
-        let files = payload.files().expect("files present");
-        files
-            .iter()
-            .find(|f| f.path() == Some(path))
-            .expect("the file is on the wire")
-    };
-    assert_eq!(language_of(wire_file("lib.rs")), Language::Rust);
-    assert_eq!(language_of(wire_file("f.txt")), Language::PlainText);
-    let (keyword, function, punctuation) = (
-        Some(SyntaxClass::Keyword),
-        Some(SyntaxClass::Function),
-        Some(SyntaxClass::Punctuation),
-    );
-    assert_eq!(
-        wire_segments(payload, "lib.rs", "fn a() {}\n"),
-        [
-            seg(equal, "fn", keyword),
-            seg(equal, " ", None),
-            seg(removed, "a", function),
-            seg(equal, "()", punctuation),
-            seg(equal, " ", None),
-            seg(equal, "{}", punctuation),
-            seg(equal, "\n", None),
-        ]
-    );
-}
-
-/// What every line of `lines`, in a file at `path`, must carry: its hunk's `line_segments` split
-/// at `highlight_line`'s tokens in `detect_language(path)`.
-fn expected_segments(path: &str, lines: &[HunkLine]) -> Vec<Vec<HighlightedSegment>> {
-    let language = detect_language(Path::new(path));
-    lines
-        .iter()
-        .zip(line_segments(lines))
-        .map(|(line, segments)| {
-            let (HunkLine::Context(text) | HunkLine::Removed(text) | HunkLine::Added(text)) = line;
-            merge_highlight(&segments, &highlight_line(text, language))
-        })
-        .collect()
-}
-
-/// The segments of a wire hunk's lines.
-fn hunk_segments(hunk: fbs::Hunk<'_>) -> Vec<Vec<HighlightedSegment>> {
-    hunk.lines().expect("lines present").iter().map(segments_of).collect()
+    assert_eq!(wire_segments(payload, "f.txt", "b\n"), [seg(equal, "b\n")]);
 }
 
 /// The wire `payload` carries exactly `diff`'s pins and files (kinds Added / Modified only).
@@ -265,17 +179,7 @@ fn assert_wire_is(payload: fbs::Diff<'_>, diff: &RevisionDiff) {
             assert_eq!((w.kind(), w.from_path()), (fbs::ChangeKind::Modified, None));
             assert_eq!((w.removed(), w.added()), (d.removed, d.added));
             assert_eq!(w.fingerprint(), Some(d.fingerprint.as_str()));
-            let hunks = w.hunks().expect("hunks present");
-            assert_eq!(hunks.len(), d.hunks.len());
-            // Stories 5.3 / 5.4: the description block is plain text, Story 5.2's segments.
-            assert_eq!(language_of(w), Language::PlainText);
-            for (wh, h) in hunks.iter().zip(&d.hunks) {
-                let unclassified: Vec<Vec<_>> = line_segments(&h.lines)
-                    .into_iter()
-                    .map(|line| line.into_iter().map(|s| seg(s.kind, &s.text, None)).collect())
-                    .collect();
-                assert_eq!(hunk_segments(wh), unclassified);
-            }
+            assert_eq!(w.hunks().expect("hunks present").len(), d.hunks.len());
         }
         (wire, expected) => unreachable!("description {wire:?} vs {expected:?}"),
     }
@@ -283,7 +187,6 @@ fn assert_wire_is(payload: fbs::Diff<'_>, diff: &RevisionDiff) {
     assert_eq!(wire.len(), files.len());
     for (w, f) in wire.iter().zip(files) {
         assert_eq!(w.path(), Some(f.path.as_str()));
-        assert_eq!(language_of(w), detect_language(Path::new(&f.path)));
         assert_eq!((w.binary(), w.mode_change()), (f.binary, f.mode_change));
         assert_eq!(keys(w.sections()), f.sections);
         let kind = if f.kind == ChangeKind::Added {
@@ -310,7 +213,8 @@ fn assert_wire_is(payload: fbs::Diff<'_>, diff: &RevisionDiff) {
                 .collect();
             let expected: Vec<_> = h.lines.iter().map(kind_and_text).collect();
             assert_eq!(lines, expected);
-            assert_eq!(hunk_segments(wh), expected_segments(&f.path, &h.lines), "{}", f.path);
+            let segments: Vec<_> = wh.lines().expect("lines present").iter().map(segments_of).collect();
+            assert_eq!(segments, line_segments(&h.lines), "{}", f.path);
         }
     }
 }

@@ -2144,139 +2144,6 @@ class _SegmentKindReader extends fb.Reader<SegmentKind> {
   SegmentKind read(fb.BufferContext bc, int offset) => SegmentKind.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
-///  The kind of token a `Segment` is part of (Story 5.3, `zanshin_diff::SyntaxClass`). `Unclassified`
-///  (0, the default) is no class: plain text, whitespace, a token no query captures. Member order
-///  IS the wire value — APPEND only.
-enum SyntaxClass {
-  Unclassified(0),
-  Keyword(1),
-  String(2),
-  Escape(3),
-  Comment(4),
-  $Function(5),
-  Type(6),
-  Variable(7),
-  Property(8),
-  Number(9),
-  Constant(10),
-  Operator(11),
-  Punctuation(12),
-  Attribute(13),
-  Heading(14),
-  Emphasis(15),
-  Strong(16),
-  Link(17),
-  Code(18);
-
-  final int value;
-  const SyntaxClass(this.value);
-
-  factory SyntaxClass.fromValue(int value) {
-    switch (value) {
-      case 0:
-        return SyntaxClass.Unclassified;
-      case 1:
-        return SyntaxClass.Keyword;
-      case 2:
-        return SyntaxClass.String;
-      case 3:
-        return SyntaxClass.Escape;
-      case 4:
-        return SyntaxClass.Comment;
-      case 5:
-        return SyntaxClass.$Function;
-      case 6:
-        return SyntaxClass.Type;
-      case 7:
-        return SyntaxClass.Variable;
-      case 8:
-        return SyntaxClass.Property;
-      case 9:
-        return SyntaxClass.Number;
-      case 10:
-        return SyntaxClass.Constant;
-      case 11:
-        return SyntaxClass.Operator;
-      case 12:
-        return SyntaxClass.Punctuation;
-      case 13:
-        return SyntaxClass.Attribute;
-      case 14:
-        return SyntaxClass.Heading;
-      case 15:
-        return SyntaxClass.Emphasis;
-      case 16:
-        return SyntaxClass.Strong;
-      case 17:
-        return SyntaxClass.Link;
-      case 18:
-        return SyntaxClass.Code;
-      default:
-        throw StateError('Invalid value $value for bit flag enum');
-    }
-  }
-
-  static SyntaxClass? _createOrNull(int? value) => value == null ? null : SyntaxClass.fromValue(value);
-
-  static const int minValue = 0;
-  static const int maxValue = 18;
-  static const fb.Reader<SyntaxClass> reader = _SyntaxClassReader();
-}
-
-class _SyntaxClassReader extends fb.Reader<SyntaxClass> {
-  const _SyntaxClassReader();
-
-  @override
-  int get size => 1;
-
-  @override
-  SyntaxClass read(fb.BufferContext bc, int offset) => SyntaxClass.fromValue(const fb.Uint8Reader().read(bc, offset));
-}
-
-///  The language a `FileDiff` is highlighted in (Story 5.4, `zanshin_diff::Language`): its path's
-///  final extension, ASCII case-insensitive — `rs`, `dart`, `md` / `markdown` — and `PlainText`
-///  (0, the default) for every other path. Member order IS the wire value — APPEND only.
-enum DiffLanguage {
-  PlainText(0),
-  Rust(1),
-  Dart(2),
-  Markdown(3);
-
-  final int value;
-  const DiffLanguage(this.value);
-
-  factory DiffLanguage.fromValue(int value) {
-    switch (value) {
-      case 0:
-        return DiffLanguage.PlainText;
-      case 1:
-        return DiffLanguage.Rust;
-      case 2:
-        return DiffLanguage.Dart;
-      case 3:
-        return DiffLanguage.Markdown;
-      default:
-        throw StateError('Invalid value $value for bit flag enum');
-    }
-  }
-
-  static DiffLanguage? _createOrNull(int? value) => value == null ? null : DiffLanguage.fromValue(value);
-
-  static const int minValue = 0;
-  static const int maxValue = 3;
-  static const fb.Reader<DiffLanguage> reader = _DiffLanguageReader();
-}
-
-class _DiffLanguageReader extends fb.Reader<DiffLanguage> {
-  const _DiffLanguageReader();
-
-  @override
-  int get size => 1;
-
-  @override
-  DiffLanguage read(fb.BufferContext bc, int offset) => DiffLanguage.fromValue(const fb.Uint8Reader().read(bc, offset));
-}
-
 ///  What a `HunkLine` is (Story 5.5): on both sides, the left side only, or the right side only.
 ///  Member order IS the wire value — APPEND only.
 enum HunkLineKind {
@@ -24882,11 +24749,8 @@ class GitColocationResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_diff::Segment`), never empty.
-///
-///  Story 5.3 appends `syntax_class`: the class of the syntax token the run is part of
-///  (`zanshin_diff::HighlightedSegment`). A run never crosses a token boundary, so one word-level
-///  run can be several segments of one kind.
+///  A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_diff::Segment`): whole Unicode
+///  word-bound tokens, never empty.
 class Segment {
   Segment._(this._bc, this._bcOffset);
   factory Segment(List<int> bytes) {
@@ -24901,11 +24765,10 @@ class Segment {
 
   SegmentKind get kind => SegmentKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
   String? get text => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  SyntaxClass get syntaxClass => SyntaxClass.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 8, 0));
 
   @override
   String toString() {
-    return 'Segment{kind: ${kind}, text: ${text}, syntaxClass: ${syntaxClass}}';
+    return 'Segment{kind: ${kind}, text: ${text}}';
   }
 }
 
@@ -24922,7 +24785,7 @@ class SegmentBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(2);
   }
 
   int addKind(SegmentKind? kind) {
@@ -24935,11 +24798,6 @@ class SegmentBuilder {
     return fbBuilder.offset;
   }
 
-  int addSyntaxClass(SyntaxClass? syntaxClass) {
-    fbBuilder.addUint8(2, syntaxClass?.value);
-    return fbBuilder.offset;
-  }
-
   int finish() {
     return fbBuilder.endTable();
   }
@@ -24948,24 +24806,20 @@ class SegmentBuilder {
 class SegmentObjectBuilder extends fb.ObjectBuilder {
   final SegmentKind? _kind;
   final String? _text;
-  final SyntaxClass? _syntaxClass;
 
   SegmentObjectBuilder({
     SegmentKind? kind,
     String? text,
-    SyntaxClass? syntaxClass,
   }) : _kind = kind,
-       _text = text,
-       _syntaxClass = syntaxClass;
+       _text = text;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? textOffset = _text == null ? null : fbBuilder.writeString(_text!);
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(2);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, textOffset);
-    fbBuilder.addUint8(2, _syntaxClass?.value);
     return fbBuilder.endTable();
   }
 
@@ -24983,16 +24837,11 @@ class SegmentObjectBuilder extends fb.ObjectBuilder {
 ///
 ///  Story 5.2 appends `segments`, the line's word-level runs (`zanshin_diff::line_segments`), always
 ///  written: their texts concatenate exactly to `text`, none is empty, and adjacent runs differ in
-///  kind or class. The i-th line of a run of `Removed` lines directly followed by a run of `Added`
-///  lines pairs with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over
-///  Unicode word bounds) unless one of its lines is longer than 131,072 characters: `Equal` and
-///  `Removed` runs on the removed line, `Equal` and `Added` runs on the added one. Every other line,
-///  a pair over that cap included, is one run of its own kind (`Equal` for a `Context` line).
-///
-///  Story 5.3 splits those runs at the boundaries of the line's syntax tokens
-///  (`zanshin_diff::merge_highlight` over `highlight_line`, tree-sitter-highlight over this one line
-///  in its file's `language`), each with its token's `syntax_class`. A `PlainText` line, a line over
-///  131,072 characters and the description block keep Story 5.2's runs, all `Unclassified`.
+///  kind. The i-th line of a run of `Removed` lines directly followed by a run of `Added` lines pairs
+///  with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over Unicode word
+///  bounds) unless one of its lines is longer than 131,072 characters: `Equal` and `Removed` runs on
+///  the removed line, `Equal` and `Added` runs on the added one. Every other line, a pair over that
+///  cap included, is one run of its own kind (`Equal` for a `Context` line).
 class HunkLine {
   HunkLine._(this._bc, this._bcOffset);
   factory HunkLine(List<int> bytes) {
@@ -25269,10 +25118,6 @@ class HunkObjectBuilder extends fb.ObjectBuilder {
 ///  `ui.conflict-marker-style`. It covers content only (no path, no kind): every content-less
 ///  change (a pure rename, an empty file added) shares one value, so a Viewed key combines it with
 ///  the path.
-///
-///  Story 5.4 appends `language`: the language its lines are highlighted in,
-///  `zanshin_diff::detect_language` of `path` (a copy's target) — a binary file too, and the
-///  description block's `JJ-COMMIT-DESCRIPTION` is `PlainText`.
 class FileDiff {
   FileDiff._(this._bc, this._bcOffset);
   factory FileDiff(List<int> bytes) {
@@ -25295,11 +25140,10 @@ class FileDiff {
   int get removed => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 18, 0);
   int get added => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 20, 0);
   String? get fingerprint => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 22);
-  DiffLanguage get language => DiffLanguage.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 24, 0));
 
   @override
   String toString() {
-    return 'FileDiff{path: ${path}, binary: ${binary}, modeChange: ${modeChange}, sections: ${sections}, hunks: ${hunks}, kind: ${kind}, fromPath: ${fromPath}, removed: ${removed}, added: ${added}, fingerprint: ${fingerprint}, language: ${language}}';
+    return 'FileDiff{path: ${path}, binary: ${binary}, modeChange: ${modeChange}, sections: ${sections}, hunks: ${hunks}, kind: ${kind}, fromPath: ${fromPath}, removed: ${removed}, added: ${added}, fingerprint: ${fingerprint}}';
   }
 }
 
@@ -25316,7 +25160,7 @@ class FileDiffBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(11);
+    fbBuilder.startTable(10);
   }
 
   int addPathOffset(int? offset) {
@@ -25369,11 +25213,6 @@ class FileDiffBuilder {
     return fbBuilder.offset;
   }
 
-  int addLanguage(DiffLanguage? language) {
-    fbBuilder.addUint8(10, language?.value);
-    return fbBuilder.offset;
-  }
-
   int finish() {
     return fbBuilder.endTable();
   }
@@ -25390,7 +25229,6 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
   final int? _removed;
   final int? _added;
   final String? _fingerprint;
-  final DiffLanguage? _language;
 
   FileDiffObjectBuilder({
     String? path,
@@ -25403,7 +25241,6 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
     int? removed,
     int? added,
     String? fingerprint,
-    DiffLanguage? language,
   }) : _path = path,
        _binary = binary,
        _modeChange = modeChange,
@@ -25413,8 +25250,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
        _fromPath = fromPath,
        _removed = removed,
        _added = added,
-       _fingerprint = fingerprint,
-       _language = language;
+       _fingerprint = fingerprint;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -25428,7 +25264,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
         : fbBuilder.writeList(_hunks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
     final int? fromPathOffset = _fromPath == null ? null : fbBuilder.writeString(_fromPath!);
     final int? fingerprintOffset = _fingerprint == null ? null : fbBuilder.writeString(_fingerprint!);
-    fbBuilder.startTable(11);
+    fbBuilder.startTable(10);
     fbBuilder.addOffset(0, pathOffset);
     fbBuilder.addBool(1, _binary);
     fbBuilder.addBool(2, _modeChange);
@@ -25439,7 +25275,6 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint32(7, _removed);
     fbBuilder.addUint32(8, _added);
     fbBuilder.addOffset(9, fingerprintOffset);
-    fbBuilder.addUint8(10, _language?.value);
     return fbBuilder.endTable();
   }
 

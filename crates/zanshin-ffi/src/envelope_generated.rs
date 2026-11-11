@@ -4595,271 +4595,6 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_SYNTAX_CLASS: u8 = 0;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        pub const ENUM_MAX_SYNTAX_CLASS: u8 = 18;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_SYNTAX_CLASS: [SyntaxClass; 19] = [
-            SyntaxClass::Unclassified,
-            SyntaxClass::Keyword,
-            SyntaxClass::String,
-            SyntaxClass::Escape,
-            SyntaxClass::Comment,
-            SyntaxClass::Function,
-            SyntaxClass::Type,
-            SyntaxClass::Variable,
-            SyntaxClass::Property,
-            SyntaxClass::Number,
-            SyntaxClass::Constant,
-            SyntaxClass::Operator,
-            SyntaxClass::Punctuation,
-            SyntaxClass::Attribute,
-            SyntaxClass::Heading,
-            SyntaxClass::Emphasis,
-            SyntaxClass::Strong,
-            SyntaxClass::Link,
-            SyntaxClass::Code,
-        ];
-
-        /// The kind of token a `Segment` is part of (Story 5.3, `zanshin_diff::SyntaxClass`). `Unclassified`
-        /// (0, the default) is no class: plain text, whitespace, a token no query captures. Member order
-        /// IS the wire value — APPEND only.
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-        #[repr(transparent)]
-        pub struct SyntaxClass(pub u8);
-        #[allow(non_upper_case_globals)]
-        impl SyntaxClass {
-            pub const Unclassified: Self = Self(0);
-            pub const Keyword: Self = Self(1);
-            pub const String: Self = Self(2);
-            pub const Escape: Self = Self(3);
-            pub const Comment: Self = Self(4);
-            pub const Function: Self = Self(5);
-            pub const Type: Self = Self(6);
-            pub const Variable: Self = Self(7);
-            pub const Property: Self = Self(8);
-            pub const Number: Self = Self(9);
-            pub const Constant: Self = Self(10);
-            pub const Operator: Self = Self(11);
-            pub const Punctuation: Self = Self(12);
-            pub const Attribute: Self = Self(13);
-            pub const Heading: Self = Self(14);
-            pub const Emphasis: Self = Self(15);
-            pub const Strong: Self = Self(16);
-            pub const Link: Self = Self(17);
-            pub const Code: Self = Self(18);
-
-            pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 18;
-            pub const ENUM_VALUES: &'static [Self] = &[
-                Self::Unclassified,
-                Self::Keyword,
-                Self::String,
-                Self::Escape,
-                Self::Comment,
-                Self::Function,
-                Self::Type,
-                Self::Variable,
-                Self::Property,
-                Self::Number,
-                Self::Constant,
-                Self::Operator,
-                Self::Punctuation,
-                Self::Attribute,
-                Self::Heading,
-                Self::Emphasis,
-                Self::Strong,
-                Self::Link,
-                Self::Code,
-            ];
-            /// Returns the variant's name or "" if unknown.
-            pub fn variant_name(self) -> Option<&'static str> {
-                match self {
-                    Self::Unclassified => Some("Unclassified"),
-                    Self::Keyword => Some("Keyword"),
-                    Self::String => Some("String"),
-                    Self::Escape => Some("Escape"),
-                    Self::Comment => Some("Comment"),
-                    Self::Function => Some("Function"),
-                    Self::Type => Some("Type"),
-                    Self::Variable => Some("Variable"),
-                    Self::Property => Some("Property"),
-                    Self::Number => Some("Number"),
-                    Self::Constant => Some("Constant"),
-                    Self::Operator => Some("Operator"),
-                    Self::Punctuation => Some("Punctuation"),
-                    Self::Attribute => Some("Attribute"),
-                    Self::Heading => Some("Heading"),
-                    Self::Emphasis => Some("Emphasis"),
-                    Self::Strong => Some("Strong"),
-                    Self::Link => Some("Link"),
-                    Self::Code => Some("Code"),
-                    _ => None,
-                }
-            }
-        }
-        impl ::core::fmt::Debug for SyntaxClass {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                if let Some(name) = self.variant_name() {
-                    f.write_str(name)
-                } else {
-                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-                }
-            }
-        }
-        impl<'a> ::flatbuffers::Follow<'a> for SyntaxClass {
-            type Inner = Self;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
-                Self(b)
-            }
-        }
-
-        impl ::flatbuffers::Push for SyntaxClass {
-            type Output = SyntaxClass;
-            #[inline]
-            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
-            }
-        }
-
-        impl ::flatbuffers::EndianScalar for SyntaxClass {
-            type Scalar = u8;
-            #[inline]
-            fn to_little_endian(self) -> u8 {
-                self.0.to_le()
-            }
-            #[inline]
-            #[allow(clippy::wrong_self_convention)]
-            fn from_little_endian(v: u8) -> Self {
-                let b = u8::from_le(v);
-                Self(b)
-            }
-        }
-
-        impl<'a> ::flatbuffers::Verifiable for SyntaxClass {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                u8::run_verifier(v, pos)
-            }
-        }
-
-        impl ::flatbuffers::SimpleToVerifyInSlice for SyntaxClass {}
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        pub const ENUM_MIN_DIFF_LANGUAGE: u8 = 0;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        pub const ENUM_MAX_DIFF_LANGUAGE: u8 = 3;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_DIFF_LANGUAGE: [DiffLanguage; 4] = [
-            DiffLanguage::PlainText,
-            DiffLanguage::Rust,
-            DiffLanguage::Dart,
-            DiffLanguage::Markdown,
-        ];
-
-        /// The language a `FileDiff` is highlighted in (Story 5.4, `zanshin_diff::Language`): its path's
-        /// final extension, ASCII case-insensitive — `rs`, `dart`, `md` / `markdown` — and `PlainText`
-        /// (0, the default) for every other path. Member order IS the wire value — APPEND only.
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-        #[repr(transparent)]
-        pub struct DiffLanguage(pub u8);
-        #[allow(non_upper_case_globals)]
-        impl DiffLanguage {
-            pub const PlainText: Self = Self(0);
-            pub const Rust: Self = Self(1);
-            pub const Dart: Self = Self(2);
-            pub const Markdown: Self = Self(3);
-
-            pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 3;
-            pub const ENUM_VALUES: &'static [Self] = &[Self::PlainText, Self::Rust, Self::Dart, Self::Markdown];
-            /// Returns the variant's name or "" if unknown.
-            pub fn variant_name(self) -> Option<&'static str> {
-                match self {
-                    Self::PlainText => Some("PlainText"),
-                    Self::Rust => Some("Rust"),
-                    Self::Dart => Some("Dart"),
-                    Self::Markdown => Some("Markdown"),
-                    _ => None,
-                }
-            }
-        }
-        impl ::core::fmt::Debug for DiffLanguage {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                if let Some(name) = self.variant_name() {
-                    f.write_str(name)
-                } else {
-                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-                }
-            }
-        }
-        impl<'a> ::flatbuffers::Follow<'a> for DiffLanguage {
-            type Inner = Self;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
-                Self(b)
-            }
-        }
-
-        impl ::flatbuffers::Push for DiffLanguage {
-            type Output = DiffLanguage;
-            #[inline]
-            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
-            }
-        }
-
-        impl ::flatbuffers::EndianScalar for DiffLanguage {
-            type Scalar = u8;
-            #[inline]
-            fn to_little_endian(self) -> u8 {
-                self.0.to_le()
-            }
-            #[inline]
-            #[allow(clippy::wrong_self_convention)]
-            fn from_little_endian(v: u8) -> Self {
-                let b = u8::from_le(v);
-                Self(b)
-            }
-        }
-
-        impl<'a> ::flatbuffers::Verifiable for DiffLanguage {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                u8::run_verifier(v, pos)
-            }
-        }
-
-        impl ::flatbuffers::SimpleToVerifyInSlice for DiffLanguage {}
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
         pub const ENUM_MIN_HUNK_LINE_KIND: u8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -42816,11 +42551,8 @@ pub mod zanshin {
         pub enum SegmentOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_diff::Segment`), never empty.
-        ///
-        /// Story 5.3 appends `syntax_class`: the class of the syntax token the run is part of
-        /// (`zanshin_diff::HighlightedSegment`). A run never crosses a token boundary, so one word-level
-        /// run can be several segments of one kind.
+        /// A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_diff::Segment`): whole Unicode
+        /// word-bound tokens, never empty.
         pub struct Segment<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -42838,7 +42570,6 @@ pub mod zanshin {
         impl<'a> Segment<'a> {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
             pub const VT_TEXT: ::flatbuffers::VOffsetT = 6;
-            pub const VT_SYNTAX_CLASS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -42853,7 +42584,6 @@ pub mod zanshin {
                 if let Some(x) = args.text {
                     builder.add_text(x);
                 }
-                builder.add_syntax_class(args.syntax_class);
                 builder.add_kind(args.kind);
                 builder.finish()
             }
@@ -42879,17 +42609,6 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(Segment::VT_TEXT, None)
                 }
             }
-            #[inline]
-            pub fn syntax_class(&self) -> SyntaxClass {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<SyntaxClass>(Segment::VT_SYNTAX_CLASS, Some(SyntaxClass::Unclassified))
-                        .unwrap()
-                }
-            }
         }
 
         impl ::flatbuffers::Verifiable for Segment<'_> {
@@ -42901,7 +42620,6 @@ pub mod zanshin {
                 v.visit_table(pos)?
                     .visit_field::<SegmentKind>("kind", Self::VT_KIND, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("text", Self::VT_TEXT, false)?
-                    .visit_field::<SyntaxClass>("syntax_class", Self::VT_SYNTAX_CLASS, false)?
                     .finish();
                 Ok(())
             }
@@ -42909,7 +42627,6 @@ pub mod zanshin {
         pub struct SegmentArgs<'a> {
             pub kind: SegmentKind,
             pub text: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub syntax_class: SyntaxClass,
         }
         impl<'a> Default for SegmentArgs<'a> {
             #[inline]
@@ -42917,7 +42634,6 @@ pub mod zanshin {
                 SegmentArgs {
                     kind: SegmentKind::Equal,
                     text: None,
-                    syntax_class: SyntaxClass::Unclassified,
                 }
             }
         }
@@ -42936,11 +42652,6 @@ pub mod zanshin {
             pub fn add_text(&mut self, text: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(Segment::VT_TEXT, text);
-            }
-            #[inline]
-            pub fn add_syntax_class(&mut self, syntax_class: SyntaxClass) {
-                self.fbb_
-                    .push_slot::<SyntaxClass>(Segment::VT_SYNTAX_CLASS, syntax_class, SyntaxClass::Unclassified);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SegmentBuilder<'a, 'b, A> {
@@ -42962,7 +42673,6 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("Segment");
                 ds.field("kind", &self.kind());
                 ds.field("text", &self.text());
-                ds.field("syntax_class", &self.syntax_class());
                 ds.finish()
             }
         }
@@ -42974,16 +42684,11 @@ pub mod zanshin {
         ///
         /// Story 5.2 appends `segments`, the line's word-level runs (`zanshin_diff::line_segments`), always
         /// written: their texts concatenate exactly to `text`, none is empty, and adjacent runs differ in
-        /// kind or class. The i-th line of a run of `Removed` lines directly followed by a run of `Added`
-        /// lines pairs with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over
-        /// Unicode word bounds) unless one of its lines is longer than 131,072 characters: `Equal` and
-        /// `Removed` runs on the removed line, `Equal` and `Added` runs on the added one. Every other line,
-        /// a pair over that cap included, is one run of its own kind (`Equal` for a `Context` line).
-        ///
-        /// Story 5.3 splits those runs at the boundaries of the line's syntax tokens
-        /// (`zanshin_diff::merge_highlight` over `highlight_line`, tree-sitter-highlight over this one line
-        /// in its file's `language`), each with its token's `syntax_class`. A `PlainText` line, a line over
-        /// 131,072 characters and the description block keep Story 5.2's runs, all `Unclassified`.
+        /// kind. The i-th line of a run of `Removed` lines directly followed by a run of `Added` lines pairs
+        /// with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over Unicode word
+        /// bounds) unless one of its lines is longer than 131,072 characters: `Equal` and `Removed` runs on
+        /// the removed line, `Equal` and `Added` runs on the added one. Every other line, a pair over that
+        /// cap included, is one run of its own kind (`Equal` for a `Context` line).
         pub struct HunkLine<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -43434,10 +43139,6 @@ pub mod zanshin {
         /// `ui.conflict-marker-style`. It covers content only (no path, no kind): every content-less
         /// change (a pure rename, an empty file added) shares one value, so a Viewed key combines it with
         /// the path.
-        ///
-        /// Story 5.4 appends `language`: the language its lines are highlighted in,
-        /// `zanshin_diff::detect_language` of `path` (a copy's target) — a binary file too, and the
-        /// description block's `JJ-COMMIT-DESCRIPTION` is `PlainText`.
         pub struct FileDiff<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -43463,7 +43164,6 @@ pub mod zanshin {
             pub const VT_REMOVED: ::flatbuffers::VOffsetT = 18;
             pub const VT_ADDED: ::flatbuffers::VOffsetT = 20;
             pub const VT_FINGERPRINT: ::flatbuffers::VOffsetT = 22;
-            pub const VT_LANGUAGE: ::flatbuffers::VOffsetT = 24;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -43492,7 +43192,6 @@ pub mod zanshin {
                 if let Some(x) = args.path {
                     builder.add_path(x);
                 }
-                builder.add_language(args.language);
                 builder.add_kind(args.kind);
                 builder.add_mode_change(args.mode_change);
                 builder.add_binary(args.binary);
@@ -43590,17 +43289,6 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(FileDiff::VT_FINGERPRINT, None)
                 }
             }
-            #[inline]
-            pub fn language(&self) -> DiffLanguage {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<DiffLanguage>(FileDiff::VT_LANGUAGE, Some(DiffLanguage::PlainText))
-                        .unwrap()
-                }
-            }
         }
 
         impl ::flatbuffers::Verifiable for FileDiff<'_> {
@@ -43620,7 +43308,6 @@ pub mod zanshin {
      .visit_field::<u32>("removed", Self::VT_REMOVED, false)?
      .visit_field::<u32>("added", Self::VT_ADDED, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("fingerprint", Self::VT_FINGERPRINT, false)?
-     .visit_field::<DiffLanguage>("language", Self::VT_LANGUAGE, false)?
      .finish();
                 Ok(())
             }
@@ -43639,7 +43326,6 @@ pub mod zanshin {
             pub removed: u32,
             pub added: u32,
             pub fingerprint: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub language: DiffLanguage,
         }
         impl<'a> Default for FileDiffArgs<'a> {
             #[inline]
@@ -43655,7 +43341,6 @@ pub mod zanshin {
                     removed: 0,
                     added: 0,
                     fingerprint: None,
-                    language: DiffLanguage::PlainText,
                 }
             }
         }
@@ -43721,11 +43406,6 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDiff::VT_FINGERPRINT, fingerprint);
             }
             #[inline]
-            pub fn add_language(&mut self, language: DiffLanguage) {
-                self.fbb_
-                    .push_slot::<DiffLanguage>(FileDiff::VT_LANGUAGE, language, DiffLanguage::PlainText);
-            }
-            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileDiffBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 FileDiffBuilder {
@@ -43753,7 +43433,6 @@ pub mod zanshin {
                 ds.field("removed", &self.removed());
                 ds.field("added", &self.added());
                 ds.field("fingerprint", &self.fingerprint());
-                ds.field("language", &self.language());
                 ds.finish()
             }
         }
