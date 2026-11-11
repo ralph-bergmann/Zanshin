@@ -32,15 +32,11 @@
 #   So ist die Liste zu lesen: Eine Story kann starten, sobald die Stories fertig sind, die hinter
 #   "Braucht" stehen. Diese stehen immer in einer früheren Stufe. Innerhalb einer Stufe ist die
 #   Reihenfolge frei. Gestrichen ist keine Story: Keine offene Story der fünf Epics ist überholt.
-#   Fertige Stories stehen nicht mehr in der Liste (zuletzt 2026-11-11: 5.2);
+#   Fertige Stories stehen nicht mehr in der Liste (zuletzt 2026-11-11: 5.3, 5.4);
 #   "Braucht" nennt sie trotzdem weiter.
 #
 #   Stufe 5:
 #     10.27  Dateien und Hunks ziehen. Braucht 10.10, 10.26, 9.15, 9.31 und 9.50.
-#
-#   Später aus Epic 5, weil noch keine UI-Story sie braucht (der Diff kommt zuerst Zeile für Zeile):
-#     5.3    Syntax-Hervorhebung mit tree-sitter. Gehört mit 5.4 zusammen.
-#     5.4    Die ersten drei Grammatiken: Rust, Dart und Markdown. Gehört mit 5.3 zusammen.
 
 generated: 2026-05-15
 last_updated: 2026-11-11
@@ -64,10 +60,10 @@ development_status:
   epic-4: done
 
   # Epic 5: zanshin-diff — Word-Diff + Syntax Highlight
-  epic-5: in-progress
+  epic-5: done
   5-2-word-level-diff-via-imara-diff-histogram: done  # every diff line carries word-level segments (zanshin_diff::line_segments; HunkLine.segments on the wire and in Dart); no UI renders them yet
-  5-3-tree-sitter-highlight-integration-highlight-rs: backlog  # SHRINK: no fallback strategies, no incremental
-  5-4-bundle-initial-3-grammars-rust-dart-markdown: backlog  # renamed (SHRINK from Kern-Set 9 to 3)
+  5-3-tree-sitter-highlight-integration-highlight-rs: done  # built with 5-4 (spec-5-3-tree-sitter-highlight-and-grammars): every segment is split at its line's syntax tokens and carries their class (zanshin_diff::highlight_line + merge_highlight; Segment.syntax_class on the wire, Segment.syntaxClass in Dart), one line at a time, best effort; no UI renders the classes yet
+  5-4-bundle-initial-3-grammars-rust-dart-markdown: done  # built with 5-3: Rust, Dart and Markdown grammars (tree-sitter crates exact-pinned) + zanshin_diff::detect_language by final extension, no file-name registry; FileDiff.language on the wire and in Dart
   epic-5-retrospective: optional
 
   # Epic 6: Write Path & extern "C" Mutation Exposure
