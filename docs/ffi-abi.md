@@ -2512,14 +2512,16 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   Delta-class behaviour): a run of `Removed` lines directly followed by a run of `Added` lines
   pairs in order, the i-th removed line with the i-th added line, and each pair is word-diffed —
   imara-diff Histogram over Unicode word-bound tokens (UAX #29: a run of spaces (`WSegSpace`) is
-  one token, but each tab and each no-break space is a token of its own; a line ending (`\n` or
+  one token, but each tab and each no-break space (U+00A0, U+2007) is a token of its own, while a
+  narrow no-break space (U+202F) joins the letters or digits around it; a line ending (`\n` or
   `\r\n`), an emoji, or a base with its combining marks is one token): `Equal` and `Removed`
   segments on the removed line, `Equal` and `Added` on the added one. A pair with a line longer
-  than 128 KiB is not word-diffed. A line without a word diff is one segment of its own kind, a
-  `Context` line one `Equal` segment. A changed line can carry no changed segment (a removed blank
-  line paired with `foo`: `[=\n]`), and a changed segment can be only a line ending (`a\n` → `a`,
-  `\r\n` → `\n`). Summary mode writes no hunks, so no word diff runs. `SegmentKind`'s member order
-  is the wire value — append only.
+  than 131,072 characters is not word-diffed. A line without a word diff is one segment of its own
+  kind, a `Context` line one `Equal` segment. A changed line can carry no changed segment (a
+  removed blank line paired with `foo`: `[=\n]`), and a changed segment can be only a line ending
+  (`a\n` → `a`, `\r\n` → `\n`). In summary mode no file carries hunks, so only the description
+  block's lines (an inter-diff's) are word-diffed. `SegmentKind`'s member order is the wire value
+  — append only.
 
 Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart`) → `Diff`
 (with `operationId` / `commitId` / `fromCommitId`), `FileDiff` (`kind` as `status.dart`'s

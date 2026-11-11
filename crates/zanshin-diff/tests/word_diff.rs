@@ -131,6 +131,28 @@ fn whitespace_changes_are_small_segments() {
 }
 
 #[test]
+fn tabs_and_no_break_spaces_are_tokens_of_their_own() {
+    // Unlike a run of spaces, a run of tabs or of no-break spaces is one token per character.
+    for space in ["\t", "\u{a0}", "\u{2007}"] {
+        let (removed, added) = (format!("a{space}b"), format!("a{space}{space}b"));
+        let (equal, head, plus) = (format!("={removed}"), format!("=a{space}"), format!("+{space}"));
+        assert_eq!(
+            word_diff(&removed, &added),
+            (
+                segments(&[equal.as_str()]),
+                segments(&[head.as_str(), plus.as_str(), "=b"])
+            ),
+            "{space:?}"
+        );
+    }
+    // A narrow no-break space joins the digits around it into one token.
+    assert_eq!(
+        word_diff("1\u{202f}000", "1\u{202f}500"),
+        (segments(&["-1\u{202f}000"]), segments(&["+1\u{202f}500"]))
+    );
+}
+
+#[test]
 fn a_nul_byte_is_part_of_the_text() {
     assert_eq!(
         word_diff("a\0b", "a\0c"),
@@ -181,15 +203,15 @@ fn a_100k_character_line_with_one_changed_token_completes() {
         segments(&[head.as_str(), "+omega", tail.as_str()]),
     );
     assert_eq!(word_diff(&removed, &added), expected);
-    // Under the 128 KiB cap, `line_segments` word-diffs the pair too.
+    // Under the cap, `line_segments` word-diffs the pair too.
     let lines = [HunkLine::Removed(removed), HunkLine::Added(added)];
     assert_eq!(checked_line_segments(&lines), [expected.0, expected.1]);
 }
 
 #[test]
-fn a_pair_with_a_line_over_128_kib_gets_whole_line_segments() {
+fn a_pair_with_a_line_over_the_cap_gets_whole_line_segments() {
     let long = format!("{}alpha\n", "lorem ".repeat(22_000));
-    assert!(long.len() > 128 * 1024);
+    assert!(long.chars().count() > 131_072);
     // Each pair shares `lorem `, so a word diff would show `Equal` segments.
     let lines = [
         HunkLine::Removed(long.clone()),
@@ -208,6 +230,24 @@ fn a_pair_with_a_line_over_128_kib_gets_whole_line_segments() {
             segments(&["-lorem alpha\n"]),
             segments(&[added.as_str()])
         ]
+    );
+}
+
+#[test]
+fn the_cap_counts_characters_not_bytes() {
+    // `é` is two bytes: a line of 131,072 characters here is twice the cap in bytes.
+    let line = |word: &str, length: usize| format!("{word} {}\n", "é".repeat(length - 3));
+    let pair = |length: usize| [HunkLine::Removed(line("x", length)), HunkLine::Added(line("y", length))];
+    let tail = format!("= {}\n", "é".repeat(131_072 - 3));
+    assert_eq!(
+        checked_line_segments(&pair(131_072)),
+        [segments(&["-x", tail.as_str()]), segments(&["+y", tail.as_str()])]
+    );
+    // One character more, and the pair is not word-diffed.
+    let (removed, added) = (format!("-{}", line("x", 131_073)), format!("+{}", line("y", 131_073)));
+    assert_eq!(
+        checked_line_segments(&pair(131_073)),
+        [segments(&[removed.as_str()]), segments(&[added.as_str()])]
     );
 }
 

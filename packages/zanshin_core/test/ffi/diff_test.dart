@@ -173,6 +173,7 @@ void main() {
       (SegmentKind.equal, 'y\n'),
     ]);
     expect(lines[1].segments.map((s) => (s.kind, s.text)), [(SegmentKind.added, 'n\n')]);
+    expect(identical(lines[1].segments.single.text, lines[1].text), isTrue, reason: 'reuses the line text');
     expect(lines[2].segments, isEmpty, reason: 'no segments vector');
   });
 

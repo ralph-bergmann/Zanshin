@@ -35148,7 +35148,8 @@ pub mod zanshin {
         /// (the CLI's `show_patch`), so `Renamed`/`Copied` CAN appear here — unlike in `InterdiffView`.
         ///
         /// There is no textual patch: the line- and word-level diff is the separate `Diff` payload
-        /// (`zanshin_diff`, Epic 5), whose lines carry their word-level segments (`HunkLine.segments`).
+        /// (the `zanshin_diff` extern, Epic 5), whose lines carry their word-level segments
+        /// (`HunkLine.segments`).
         ///
         /// `parent_tree_ids` (Story 9.50) is the tree `file_changes` diff against — the commit's merged
         /// parent tree, what split/squash/commit diff against — as hex tree ids in order (one for a
@@ -42685,9 +42686,9 @@ pub mod zanshin {
         /// written: their texts concatenate exactly to `text`, none is empty, and adjacent runs differ in
         /// kind. The i-th line of a run of `Removed` lines directly followed by a run of `Added` lines pairs
         /// with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over Unicode word
-        /// bounds) unless one of its lines is longer than 128 KiB: `Equal` and `Removed` runs on the removed
-        /// line, `Equal` and `Added` runs on the added one. Every other line, a pair over that cap included,
-        /// is one run of its own kind (`Equal` for a `Context` line).
+        /// bounds) unless one of its lines is longer than 131,072 characters: `Equal` and `Removed` runs on
+        /// the removed line, `Equal` and `Added` runs on the added one. Every other line, a pair over that
+        /// cap included, is one run of its own kind (`Equal` for a `Context` line).
         pub struct HunkLine<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

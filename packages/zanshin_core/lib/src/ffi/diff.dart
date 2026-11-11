@@ -94,11 +94,11 @@ final class HunkLine {
   /// The line's word-level runs (Story 5.2): their texts concatenate exactly
   /// to [text], and adjacent runs differ in kind. The i-th line of a run of
   /// removed lines directly followed by a run of added lines is word-diffed
-  /// with the i-th added line, unless one of the two is longer than 128 KiB:
-  /// equal and removed runs on the removed line, equal and added runs on the
-  /// added one. Every other line, a pair over that cap included, is one run of
-  /// its own kind ([SegmentKind.equal] for a context line). Empty only for a
-  /// payload written without segments.
+  /// with the i-th added line, unless one of the two is longer than 131,072
+  /// characters: equal and removed runs on the removed line, equal and added
+  /// runs on the added one. Every other line, a pair over that cap included, is
+  /// one run of its own kind ([SegmentKind.equal] for a context line). Empty
+  /// only for a payload written without segments.
   final List<Segment> segments;
 }
 
@@ -343,29 +343,33 @@ Hunk _hunk(fbs.Hunk hunk) => Hunk(
   sections: _keys(hunk.sections),
   removed: hunk.removed,
   added: hunk.added,
-  lines: [
-    for (final fbs.HunkLine line in hunk.lines ?? const [])
-      HunkLine(
-        kind: switch (line.kind) {
-          fbs.HunkLineKind.Context => HunkLineKind.context,
-          fbs.HunkLineKind.Removed => HunkLineKind.removed,
-          fbs.HunkLineKind.Added => HunkLineKind.added,
-        },
-        text: line.text ?? '',
-        segments: [
-          for (final fbs.Segment segment in line.segments ?? const [])
-            Segment(
-              kind: switch (segment.kind) {
-                fbs.SegmentKind.Equal => SegmentKind.equal,
-                fbs.SegmentKind.Added => SegmentKind.added,
-                fbs.SegmentKind.Removed => SegmentKind.removed,
-              },
-              text: segment.text ?? '',
-            ),
-        ],
-      ),
-  ],
+  lines: [for (final fbs.HunkLine line in hunk.lines ?? const []) _line(line)],
 );
+
+HunkLine _line(fbs.HunkLine line) {
+  final String text = line.text ?? '';
+  final List<fbs.Segment> segments = line.segments ?? const [];
+  return HunkLine(
+    kind: switch (line.kind) {
+      fbs.HunkLineKind.Context => HunkLineKind.context,
+      fbs.HunkLineKind.Removed => HunkLineKind.removed,
+      fbs.HunkLineKind.Added => HunkLineKind.added,
+    },
+    text: text,
+    segments: [
+      for (final fbs.Segment segment in segments)
+        Segment(
+          kind: switch (segment.kind) {
+            fbs.SegmentKind.Equal => SegmentKind.equal,
+            fbs.SegmentKind.Added => SegmentKind.added,
+            fbs.SegmentKind.Removed => SegmentKind.removed,
+          },
+          // A lone segment's text is the line's text, so it is not decoded a second time.
+          text: segments.length == 1 ? text : segment.text ?? '',
+        ),
+    ],
+  );
+}
 
 List<HunkKey> _keys(List<fbs.HunkKey>? keys) => [
   for (final fbs.HunkKey key in keys ?? const [])

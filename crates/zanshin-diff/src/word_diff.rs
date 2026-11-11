@@ -4,14 +4,15 @@
 //!
 //! **Pairing — the default Delta-class behaviour.** A run of removed lines directly followed by a
 //! run of added lines pairs in order: the i-th removed line with the i-th added line. Each pair is
-//! word-diffed ([`compute_word_diff`]), unless one of its lines is longer than 128 KiB. A line
-//! without a word diff is one segment of its own kind (`Removed` / `Added`), and a context line is
-//! one `Equal` segment.
+//! word-diffed ([`compute_word_diff`]), unless one of its lines is longer than 131,072
+//! characters. A line without a word diff is one segment of its own kind (`Removed` / `Added`),
+//! and a context line is one `Equal` segment.
 //!
 //! **Word diff.** `imara-diff`'s Histogram algorithm over the line's Unicode word-bound tokens
-//! (UAX #29): a run of spaces (`WSegSpace`) is one token, but each tab and each no-break space is
-//! a token of its own; a line ending (`\n` or `\r\n`) is one token; and an emoji or a base
-//! character with its combining marks is one token.
+//! (UAX #29): a run of spaces (`WSegSpace`) is one token, but each tab and each no-break space
+//! (U+00A0, U+2007) is a token of its own, while a narrow no-break space (U+202F) joins the
+//! letters or digits around it; a line ending (`\n` or `\r\n`) is one token; and an emoji or a
+//! base character with its combining marks is one token.
 //!
 //! A line's segments concatenate exactly to its text, `\n` included. No segment is empty, and
 //! adjacent tokens of one kind form one segment.
@@ -20,8 +21,9 @@ use imara_diff::{Algorithm, Diff, InternedInput, Token};
 use unicode_segmentation::UnicodeSegmentation as _;
 use zanshin_jj::HunkLine;
 
-// shortcut: pairs with a line over 128 KiB get no word diff, raise once the diff is time-bounded.
-const MAX_PAIRED_LINE_BYTES: usize = 128 * 1024;
+// shortcut: pairs with a line over 131,072 characters get no word diff, raise once the diff is
+// time-bounded. Characters, not bytes, so a 100k-character line of any script is still diffed.
+const MAX_PAIRED_LINE_CHARS: usize = 128 * 1024;
 
 /// A run of a line's text with one kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,7 +83,7 @@ pub fn line_segments(lines: &[HunkLine]) -> Vec<Vec<Segment>> {
             let (removed_index, added_index) = (start + offset, start + removed + offset);
             let removed_text = kind_and_text(&lines[removed_index]).1;
             let added_text = kind_and_text(&lines[added_index]).1;
-            if removed_text.len().max(added_text.len()) > MAX_PAIRED_LINE_BYTES {
+            if removed_text.chars().count().max(added_text.chars().count()) > MAX_PAIRED_LINE_CHARS {
                 continue;
             }
             let (removed_segments, added_segments) = compute_word_diff(removed_text, added_text);
