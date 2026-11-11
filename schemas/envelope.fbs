@@ -2648,8 +2648,8 @@ table GitExportResult {
 /// changed; for the ROOT commit it is empty. Copy records are accumulated over EVERY parent
 /// (the CLI's `show_patch`), so `Renamed`/`Copied` CAN appear here — unlike in `InterdiffView`.
 ///
-/// There is no textual patch: line/word-level diffing is Epic 5 (`zanshin-diff`), which will
-/// EXTEND this payload rather than replace it.
+/// There is no textual patch: the line- and word-level diff is the separate `Diff` payload
+/// (`zanshin_diff`, Epic 5), whose lines carry their word-level segments (`HunkLine.segments`).
 ///
 /// `parent_tree_ids` (Story 9.50) is the tree `file_changes` diff against — the commit's merged
 /// parent tree, what split/squash/commit diff against — as hex tree ids in order (one for a
@@ -3168,15 +3168,35 @@ table GitColocationResult {
   git_worktree_removed: bool;
 }
 
+/// What a `Segment` is (Story 5.2): on both lines of a pair or a context line, only on the added
+/// line, or only on the removed line. Member order IS the wire value — APPEND only.
+enum SegmentKind : ubyte { Equal, Added, Removed }
+
+/// A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_diff::Segment`): whole Unicode
+/// word-bound tokens, never empty.
+table Segment {
+  kind: SegmentKind;
+  text: string;
+}
+
 /// What a `HunkLine` is (Story 5.5): on both sides, the left side only, or the right side only.
 /// Member order IS the wire value — APPEND only.
 enum HunkLineKind : ubyte { Context, Removed, Added }
 
 /// One line of a `Hunk` (Story 5.5). `text` includes its `\n` (a last line without one keeps that
 /// state), decoded lossily as UTF-8; a `Context` line carries the right side's text.
+///
+/// Story 5.2 appends `segments`, the line's word-level runs (`zanshin_diff::line_segments`), always
+/// written: their texts concatenate exactly to `text`, none is empty, and adjacent runs differ in
+/// kind. The i-th line of a run of `Removed` lines directly followed by a run of `Added` lines pairs
+/// with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over Unicode word
+/// bounds) unless one of its lines is longer than 128 KiB: `Equal` and `Removed` runs on the removed
+/// line, `Equal` and `Added` runs on the added one. Every other line, a pair over that cap included,
+/// is one run of its own kind (`Equal` for a `Context` line).
 table HunkLine {
   kind: HunkLineKind;
   text: string;
+  segments: [Segment];
 }
 
 /// One hunk of a `FileDiff` — what `jj diff --git` prints under one `@@` header (Story 5.5).

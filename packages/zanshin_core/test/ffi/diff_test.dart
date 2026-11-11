@@ -18,6 +18,9 @@ fbs.HunkKeyObjectBuilder _key(int oldStart, int oldCount, int newStart, int newC
 fbs.HunkLineObjectBuilder _line(fbs.HunkLineKind kind, String text) =>
     fbs.HunkLineObjectBuilder(kind: kind, text: text);
 
+fbs.SegmentObjectBuilder _segment(fbs.SegmentKind kind, String text) =>
+    fbs.SegmentObjectBuilder(kind: kind, text: text);
+
 void main() {
   test('a diff decodes field by field', () {
     final Diff diff = decodeDiffEnvelope(
@@ -125,6 +128,52 @@ void main() {
     expect(mode.hunks, isEmpty);
 
     expect(diff.warnings.single.code, ZanshinWarningCode.commitPathsUnmatched);
+  });
+
+  test('a line decodes its word-level segments, an absent vector as none', () {
+    final Diff diff = decodeDiffEnvelope(
+      fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Diff,
+        data: fbs.DiffObjectBuilder(
+          files: [
+            fbs.FileDiffObjectBuilder(
+              path: 'w.txt',
+              hunks: [
+                fbs.HunkObjectBuilder(
+                  lines: [
+                    fbs.HunkLineObjectBuilder(
+                      kind: fbs.HunkLineKind.Removed,
+                      text: 'x y\n',
+                      segments: [
+                        _segment(fbs.SegmentKind.Equal, 'x'),
+                        _segment(fbs.SegmentKind.Removed, ' '),
+                        _segment(fbs.SegmentKind.Equal, 'y\n'),
+                      ],
+                    ),
+                    fbs.HunkLineObjectBuilder(
+                      kind: fbs.HunkLineKind.Added,
+                      text: 'n\n',
+                      segments: [_segment(fbs.SegmentKind.Added, 'n\n')],
+                    ),
+                    _line(fbs.HunkLineKind.Context, 'c\n'),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ).toBytes(),
+    );
+
+    final List<HunkLine> lines = diff.files.single.hunks.single.lines;
+    expect(lines[0].segments.map((s) => (s.kind, s.text)), [
+      (SegmentKind.equal, 'x'),
+      (SegmentKind.removed, ' '),
+      (SegmentKind.equal, 'y\n'),
+    ]);
+    expect(lines[1].segments.map((s) => (s.kind, s.text)), [(SegmentKind.added, 'n\n')]);
+    expect(lines[2].segments, isEmpty, reason: 'no segments vector');
   });
 
   test('absent files decode as an empty diff', () {

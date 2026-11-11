@@ -10,6 +10,11 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+imara-diff = { workspace = true }
+unicode-segmentation = { workspace = true }
+# WHY: for `HunkLine` only, the lines `line_segments` pairs. Never jj-lib itself: only zanshin-jj
+# imports it (project-context.md § zanshin-jj).
+zanshin-jj = { workspace = true }
 
 [lints]
 workspace = true

@@ -30,6 +30,7 @@ etcetera = "=0.11.0"  # WHY: `zanshin-jj/src/wc_ops.rs`'s port of the CLI's `bas
 flatbuffers = "=25.12.19"
 futures = "0.3" # WHY: jj-lib exposes Stream-based APIs — consumed in production by zanshin-jj (status.rs, revset.rs, graph.rs) and by the zanshin-jj graph_blueprint bench
 getrandom = "=0.4.2"  # WHY: seeds the `ChaCha20Rng` that `SecureConfig::load_config` requires — the single call site is `zanshin-jj/src/config.rs::SecureLayer::create_path`. `rand::make_rng()` (what the CLI uses) `expect`s on OS-RNG failure and no FFI-reachable path may panic, so the seed is drawn by hand. Exact-pinned to the version already in Cargo.lock as a jj-lib transitive
+imara-diff = "=0.2.0"  # WHY: `zanshin-diff/src/word_diff.rs`'s word diff inside changed lines (Story 5.2, FR-DF-1) — the Histogram algorithm the architecture names, far faster than `similar` on large inputs. Pre-1.0, so exact-pinned (project-context.md § "Version pinning rules"). Apache-2.0
 # WHY features = ["watchman"]: the jj CLI builds jj-lib with its default features
 # `["watchman", "git"]` (`cli/Cargo.toml:140` @ v0.46.0). Without the feature a user's
 # `fsmonitor.backend = "watchman"` makes every working-copy snapshot fail with jj-lib's "not
@@ -60,7 +61,9 @@ thiserror = "2"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unicode-segmentation = "=1.13.3"  # WHY: `zanshin-diff/src/word_diff.rs` cuts a line into Unicode word-bound tokens (UAX #29, `split_word_bounds`) for the word diff (Story 5.2). Exact-pinned to the version already in Cargo.lock as a jj-cli transitive. MIT OR Apache-2.0
 whoami = "2.1.2"  # WHY: the jj CLI's own source of `operation.hostname`/`operation.username` and of the `--when.hostnames` context (jj's workspace `Cargo.toml` @ v0.46.0 pins `whoami = "2.1.2"`) — same crate, same values in `jj op log`
+zanshin-diff = { path = "crates/zanshin-diff", version = "0.1.0" }  # WHY: the version next to the path, because deny.toml's `wildcards = "deny"` flags a path dependency without one
 zanshin-jj = { path = "crates/zanshin-jj", version = "0.1.0" }
 zstd = "0.14.3"  # WHY >=0.14.3: RUSTSEC-2026-0391 / -0398 / -0403 / -0410 (zstd, zstd-safe, zstd-sys)
 

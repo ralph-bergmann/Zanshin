@@ -16,8 +16,9 @@ import 'warning.dart';
 // This file owns the Dart half of Story 5.5's line-level `Diff` payload: the
 // models mirroring `zanshin_jj::RevisionDiff` / `FileDiff` / `Hunk` /
 // `HunkLine` and their decoder (Story 5.6 adds kinds, counts, fingerprints and
-// pins), plus Story 5.8's `zanshinDiff` adapter. `dart:ffi` stays inside
-// `ffi/` — only the worker isolate calls the adapter.
+// pins; Story 5.2 the lines' word-level segments, `zanshin_diff::Segment`),
+// plus Story 5.8's `zanshinDiff` adapter. `dart:ffi` stays inside `ffi/` —
+// only the worker isolate calls the adapter.
 
 // ── Models ───────────────────────────────────────────────────────────────────
 
@@ -54,10 +55,34 @@ enum HunkLineKind {
   added,
 }
 
+/// What a [Segment] is (mirrors `zanshin_diff::SegmentKind`).
+enum SegmentKind {
+  /// On both lines of a pair, or a context line.
+  equal,
+
+  /// Only on the added line.
+  added,
+
+  /// Only on the removed line.
+  removed,
+}
+
+/// A run of a [HunkLine]'s text with one [kind] (mirrors
+/// `zanshin_diff::Segment`): whole Unicode word-bound tokens, never empty.
+final class Segment {
+  const Segment({required this.kind, required this.text});
+
+  /// Whether the run is on both lines of a pair, or only on one side.
+  final SegmentKind kind;
+
+  /// The run's text.
+  final String text;
+}
+
 /// One line of a [Hunk]: its [kind] and [text], which includes its `\n` (a last
-/// line without one keeps that state).
+/// line without one keeps that state), and its word-level [segments].
 final class HunkLine {
-  const HunkLine({required this.kind, required this.text});
+  const HunkLine({required this.kind, required this.text, this.segments = const []});
 
   /// Whether the line is context, removed or added.
   final HunkLineKind kind;
@@ -65,6 +90,16 @@ final class HunkLine {
   /// The line's text, decoded lossily as UTF-8; a context line carries the
   /// right side's text.
   final String text;
+
+  /// The line's word-level runs (Story 5.2): their texts concatenate exactly
+  /// to [text], and adjacent runs differ in kind. The i-th line of a run of
+  /// removed lines directly followed by a run of added lines is word-diffed
+  /// with the i-th added line, unless one of the two is longer than 128 KiB:
+  /// equal and removed runs on the removed line, equal and added runs on the
+  /// added one. Every other line, a pair over that cap included, is one run of
+  /// its own kind ([SegmentKind.equal] for a context line). Empty only for a
+  /// payload written without segments.
+  final List<Segment> segments;
 }
 
 /// One hunk of a [FileDiff] — what `jj diff --git` prints under one `@@`
@@ -259,9 +294,9 @@ Uint8List zanshinDiff(
 /// Decode a `Diff` `Envelope` buffer into a [Diff].
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls
-/// go through `ZanshinWorker.diff`. An out-of-range `HunkLineKind` byte
-/// surfaces as the generated accessor's `StateError` (by design: a corrupt
-/// buffer, not a refusal).
+/// go through `ZanshinWorker.diff`. An out-of-range `HunkLineKind` or
+/// `SegmentKind` byte surfaces as the generated accessor's `StateError` (by
+/// design: a corrupt buffer, not a refusal).
 @visibleForTesting
 Diff decodeDiffEnvelope(Uint8List bytes) => decodeDiffEnvelopeInternal(bytes);
 
@@ -317,6 +352,17 @@ Hunk _hunk(fbs.Hunk hunk) => Hunk(
           fbs.HunkLineKind.Added => HunkLineKind.added,
         },
         text: line.text ?? '',
+        segments: [
+          for (final fbs.Segment segment in line.segments ?? const [])
+            Segment(
+              kind: switch (segment.kind) {
+                fbs.SegmentKind.Equal => SegmentKind.equal,
+                fbs.SegmentKind.Added => SegmentKind.added,
+                fbs.SegmentKind.Removed => SegmentKind.removed,
+              },
+              text: segment.text ?? '',
+            ),
+        ],
       ),
   ],
 );

@@ -4502,6 +4502,99 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
+        pub const ENUM_MIN_SEGMENT_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_SEGMENT_KIND: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_SEGMENT_KIND: [SegmentKind; 3] =
+            [SegmentKind::Equal, SegmentKind::Added, SegmentKind::Removed];
+
+        /// What a `Segment` is (Story 5.2): on both lines of a pair or a context line, only on the added
+        /// line, or only on the removed line. Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct SegmentKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl SegmentKind {
+            pub const Equal: Self = Self(0);
+            pub const Added: Self = Self(1);
+            pub const Removed: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Equal, Self::Added, Self::Removed];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Equal => Some("Equal"),
+                    Self::Added => Some("Added"),
+                    Self::Removed => Some("Removed"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for SegmentKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for SegmentKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for SegmentKind {
+            type Output = SegmentKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for SegmentKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for SegmentKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for SegmentKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
         pub const ENUM_MIN_HUNK_LINE_KIND: u8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -35054,8 +35147,8 @@ pub mod zanshin {
         /// changed; for the ROOT commit it is empty. Copy records are accumulated over EVERY parent
         /// (the CLI's `show_patch`), so `Renamed`/`Copied` CAN appear here — unlike in `InterdiffView`.
         ///
-        /// There is no textual patch: line/word-level diffing is Epic 5 (`zanshin-diff`), which will
-        /// EXTEND this payload rather than replace it.
+        /// There is no textual patch: the line- and word-level diff is the separate `Diff` payload
+        /// (`zanshin_diff`, Epic 5), whose lines carry their word-level segments (`HunkLine.segments`).
         ///
         /// `parent_tree_ids` (Story 9.50) is the tree `file_changes` diff against — the commit's merged
         /// parent tree, what split/squash/commit diff against — as hex tree ids in order (one for a
@@ -42454,11 +42547,147 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum SegmentOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_diff::Segment`): whole Unicode
+        /// word-bound tokens, never empty.
+        pub struct Segment<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Segment<'a> {
+            type Inner = Segment<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Segment<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TEXT: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Segment { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SegmentArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Segment<'bldr>> {
+                let mut builder = SegmentBuilder::new(_fbb);
+                if let Some(x) = args.text {
+                    builder.add_text(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> SegmentKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<SegmentKind>(Segment::VT_KIND, Some(SegmentKind::Equal))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn text(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Segment::VT_TEXT, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Segment<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<SegmentKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("text", Self::VT_TEXT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct SegmentArgs<'a> {
+            pub kind: SegmentKind,
+            pub text: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for SegmentArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SegmentArgs {
+                    kind: SegmentKind::Equal,
+                    text: None,
+                }
+            }
+        }
+
+        pub struct SegmentBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SegmentBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: SegmentKind) {
+                self.fbb_
+                    .push_slot::<SegmentKind>(Segment::VT_KIND, kind, SegmentKind::Equal);
+            }
+            #[inline]
+            pub fn add_text(&mut self, text: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Segment::VT_TEXT, text);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SegmentBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SegmentBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Segment<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Segment<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Segment");
+                ds.field("kind", &self.kind());
+                ds.field("text", &self.text());
+                ds.finish()
+            }
+        }
         pub enum HunkLineOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
         /// One line of a `Hunk` (Story 5.5). `text` includes its `\n` (a last line without one keeps that
         /// state), decoded lossily as UTF-8; a `Context` line carries the right side's text.
+        ///
+        /// Story 5.2 appends `segments`, the line's word-level runs (`zanshin_diff::line_segments`), always
+        /// written: their texts concatenate exactly to `text`, none is empty, and adjacent runs differ in
+        /// kind. The i-th line of a run of `Removed` lines directly followed by a run of `Added` lines pairs
+        /// with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over Unicode word
+        /// bounds) unless one of its lines is longer than 128 KiB: `Equal` and `Removed` runs on the removed
+        /// line, `Equal` and `Added` runs on the added one. Every other line, a pair over that cap included,
+        /// is one run of its own kind (`Equal` for a `Context` line).
         pub struct HunkLine<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -42476,6 +42705,7 @@ pub mod zanshin {
         impl<'a> HunkLine<'a> {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
             pub const VT_TEXT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SEGMENTS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -42487,6 +42717,9 @@ pub mod zanshin {
                 args: &'args HunkLineArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<HunkLine<'bldr>> {
                 let mut builder = HunkLineBuilder::new(_fbb);
+                if let Some(x) = args.segments {
+                    builder.add_segments(x);
+                }
                 if let Some(x) = args.text {
                     builder.add_text(x);
                 }
@@ -42515,6 +42748,17 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(HunkLine::VT_TEXT, None)
                 }
             }
+            #[inline]
+            pub fn segments(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Segment<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Segment>>,
+                    >>(HunkLine::VT_SEGMENTS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for HunkLine<'_> {
@@ -42524,15 +42768,19 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
-                    .visit_field::<HunkLineKind>("kind", Self::VT_KIND, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("text", Self::VT_TEXT, false)?
-                    .finish();
+     .visit_field::<HunkLineKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("text", Self::VT_TEXT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<Segment>>>>("segments", Self::VT_SEGMENTS, false)?
+     .finish();
                 Ok(())
             }
         }
         pub struct HunkLineArgs<'a> {
             pub kind: HunkLineKind,
             pub text: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub segments: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Segment<'a>>>>,
+            >,
         }
         impl<'a> Default for HunkLineArgs<'a> {
             #[inline]
@@ -42540,6 +42788,7 @@ pub mod zanshin {
                 HunkLineArgs {
                     kind: HunkLineKind::Context,
                     text: None,
+                    segments: None,
                 }
             }
         }
@@ -42558,6 +42807,16 @@ pub mod zanshin {
             pub fn add_text(&mut self, text: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(HunkLine::VT_TEXT, text);
+            }
+            #[inline]
+            pub fn add_segments(
+                &mut self,
+                segments: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<Segment<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(HunkLine::VT_SEGMENTS, segments);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> HunkLineBuilder<'a, 'b, A> {
@@ -42579,6 +42838,7 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("HunkLine");
                 ds.field("kind", &self.kind());
                 ds.field("text", &self.text());
+                ds.field("segments", &self.segments());
                 ds.finish()
             }
         }

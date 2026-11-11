@@ -2104,6 +2104,46 @@ class _ConfigGcKindReader extends fb.Reader<ConfigGcKind> {
   ConfigGcKind read(fb.BufferContext bc, int offset) => ConfigGcKind.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
+///  What a `Segment` is (Story 5.2): on both lines of a pair or a context line, only on the added
+///  line, or only on the removed line. Member order IS the wire value — APPEND only.
+enum SegmentKind {
+  Equal(0),
+  Added(1),
+  Removed(2);
+
+  final int value;
+  const SegmentKind(this.value);
+
+  factory SegmentKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return SegmentKind.Equal;
+      case 1:
+        return SegmentKind.Added;
+      case 2:
+        return SegmentKind.Removed;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static SegmentKind? _createOrNull(int? value) => value == null ? null : SegmentKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<SegmentKind> reader = _SegmentKindReader();
+}
+
+class _SegmentKindReader extends fb.Reader<SegmentKind> {
+  const _SegmentKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  SegmentKind read(fb.BufferContext bc, int offset) => SegmentKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 ///  What a `HunkLine` is (Story 5.5): on both sides, the left side only, or the right side only.
 ///  Member order IS the wire value — APPEND only.
 enum HunkLineKind {
@@ -20175,8 +20215,8 @@ class GitExportResultObjectBuilder extends fb.ObjectBuilder {
 ///  changed; for the ROOT commit it is empty. Copy records are accumulated over EVERY parent
 ///  (the CLI's `show_patch`), so `Renamed`/`Copied` CAN appear here — unlike in `InterdiffView`.
 ///
-///  There is no textual patch: line/word-level diffing is Epic 5 (`zanshin-diff`), which will
-///  EXTEND this payload rather than replace it.
+///  There is no textual patch: the line- and word-level diff is the separate `Diff` payload
+///  (`zanshin_diff`, Epic 5), whose lines carry their word-level segments (`HunkLine.segments`).
 ///
 ///  `parent_tree_ids` (Story 9.50) is the tree `file_changes` diff against — the commit's merged
 ///  parent tree, what split/squash/commit diff against — as hex tree ids in order (one for a
@@ -24708,8 +24748,99 @@ class GitColocationResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_diff::Segment`): whole Unicode
+///  word-bound tokens, never empty.
+class Segment {
+  Segment._(this._bc, this._bcOffset);
+  factory Segment(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Segment> reader = _SegmentReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  SegmentKind get kind => SegmentKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get text => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'Segment{kind: ${kind}, text: ${text}}';
+  }
+}
+
+class _SegmentReader extends fb.TableReader<Segment> {
+  const _SegmentReader();
+
+  @override
+  Segment createObject(fb.BufferContext bc, int offset) => Segment._(bc, offset);
+}
+
+class SegmentBuilder {
+  SegmentBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(SegmentKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addTextOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SegmentObjectBuilder extends fb.ObjectBuilder {
+  final SegmentKind? _kind;
+  final String? _text;
+
+  SegmentObjectBuilder({
+    SegmentKind? kind,
+    String? text,
+  }) : _kind = kind,
+       _text = text;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? textOffset = _text == null ? null : fbBuilder.writeString(_text!);
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, textOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One line of a `Hunk` (Story 5.5). `text` includes its `\n` (a last line without one keeps that
 ///  state), decoded lossily as UTF-8; a `Context` line carries the right side's text.
+///
+///  Story 5.2 appends `segments`, the line's word-level runs (`zanshin_diff::line_segments`), always
+///  written: their texts concatenate exactly to `text`, none is empty, and adjacent runs differ in
+///  kind. The i-th line of a run of `Removed` lines directly followed by a run of `Added` lines pairs
+///  with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over Unicode word
+///  bounds) unless one of its lines is longer than 128 KiB: `Equal` and `Removed` runs on the removed
+///  line, `Equal` and `Added` runs on the added one. Every other line, a pair over that cap included,
+///  is one run of its own kind (`Equal` for a `Context` line).
 class HunkLine {
   HunkLine._(this._bc, this._bcOffset);
   factory HunkLine(List<int> bytes) {
@@ -24724,10 +24855,11 @@ class HunkLine {
 
   HunkLineKind get kind => HunkLineKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
   String? get text => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<Segment>? get segments => const fb.ListReader<Segment>(Segment.reader).vTableGetNullable(_bc, _bcOffset, 8);
 
   @override
   String toString() {
-    return 'HunkLine{kind: ${kind}, text: ${text}}';
+    return 'HunkLine{kind: ${kind}, text: ${text}, segments: ${segments}}';
   }
 }
 
@@ -24744,7 +24876,7 @@ class HunkLineBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
   }
 
   int addKind(HunkLineKind? kind) {
@@ -24757,6 +24889,11 @@ class HunkLineBuilder {
     return fbBuilder.offset;
   }
 
+  int addSegmentsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -24765,20 +24902,27 @@ class HunkLineBuilder {
 class HunkLineObjectBuilder extends fb.ObjectBuilder {
   final HunkLineKind? _kind;
   final String? _text;
+  final List<SegmentObjectBuilder>? _segments;
 
   HunkLineObjectBuilder({
     HunkLineKind? kind,
     String? text,
+    List<SegmentObjectBuilder>? segments,
   }) : _kind = kind,
-       _text = text;
+       _text = text,
+       _segments = segments;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? textOffset = _text == null ? null : fbBuilder.writeString(_text!);
-    fbBuilder.startTable(2);
+    final int? segmentsOffset = _segments == null
+        ? null
+        : fbBuilder.writeList(_segments!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(3);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, textOffset);
+    fbBuilder.addOffset(2, segmentsOffset);
     return fbBuilder.endTable();
   }
 

@@ -89,6 +89,38 @@ void main() {
       expect(defaulted.commitIds, diff.commitIds, reason: 'no revision = @');
     });
 
+    test('every_line_carries_its_word_level_segments', () async {
+      final Diff diff = await repo.diff(revision: at);
+      final List<HunkLine> lines = [
+        for (final FileDiff file in diff.files)
+          for (final Hunk hunk in file.hunks) ...hunk.lines,
+      ];
+      expect(lines, isNotEmpty);
+      for (final line in lines) {
+        expect(line.segments, isNotEmpty, reason: line.text);
+        expect(line.segments.map((s) => s.text).join(), line.text);
+      }
+
+      List<(SegmentKind, String)> segmentsOf(String path, String text) {
+        final HunkLine line = fileOf(diff, path).hunks.expand((h) => h.lines).singleWhere((l) => l.text == text);
+        return [for (final Segment s in line.segments) (s.kind, s.text)];
+      }
+
+      expect(segmentsOf('f.txt', 'a\n'), [(SegmentKind.removed, 'a'), (SegmentKind.equal, '\n')]);
+      expect(segmentsOf('f.txt', 'A\n'), [(SegmentKind.added, 'A'), (SegmentKind.equal, '\n')]);
+      expect(segmentsOf('f.txt', 'b\n'), [(SegmentKind.equal, 'b\n')]);
+      expect(segmentsOf('w.txt', 'x y\n'), [
+        (SegmentKind.equal, 'x'),
+        (SegmentKind.removed, ' '),
+        (SegmentKind.equal, 'y\n'),
+      ]);
+      expect(segmentsOf('w.txt', 'x  y\n'), [
+        (SegmentKind.equal, 'x'),
+        (SegmentKind.added, '  '),
+        (SegmentKind.equal, 'y\n'),
+      ]);
+    });
+
     test('a_range_diffs_as_one_and_pins_its_heads', () async {
       final Diff range = await repo.diff(revision: '$a::$at');
       expect(range.commitIds, (await repo.diff(revision: at)).commitIds, reason: 'one head: @');

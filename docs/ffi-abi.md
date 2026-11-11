@@ -2461,13 +2461,14 @@ operation's description names the target). Dart: `RepoHandle.opRestore(operation
 
 ---
 
-## `Diff` payload (Story 5.5; kinds, counts, fingerprints and pins: Story 5.6)
+## `Diff` payload (Story 5.5; kinds, counts, fingerprints and pins: Story 5.6; segments: Story 5.2)
 
 The line-level diff between two revisions — `zanshin_jj::Repo::diff`'s `RevisionDiff` (Story 5.6),
 field for field and in its order (its files are `compute_hunks`' for the same trees, plus copy
-records). Built by `zanshin_ffi::diff::diff_to_envelope(&RevisionDiff, &CallReport)` (an
-infallible builder: the call's `CallReport` rides as `warnings` / `precondition` as on every
-envelope). Returned by `zanshin_diff` (Story 5.8, below).
+records), each line enriched with its word-level segments (Story 5.2). Built by
+`zanshin_ffi::diff::diff_to_envelope(&RevisionDiff, &CallReport)` (an infallible builder: the
+call's `CallReport` rides as `warnings` / `precondition` as on every envelope). Returned by
+`zanshin_diff` (Story 5.8, below).
 
 ```
 Diff     { files: [FileDiff], operation_id, commit_ids: [string], from_commit_id } // pins: Story 5.6
@@ -2475,7 +2476,9 @@ FileDiff { path, binary, mode_change, sections: [HunkKey], hunks: [Hunk],
            kind: ChangeKind, from_path, removed, added, fingerprint }        // 5.6 appended
 Hunk     { before_start, before_end, after_start, after_end, symbol,
            sections: [HunkKey], removed, added, lines: [HunkLine] }
-HunkLine { kind: HunkLineKind (Context | Removed | Added), text }
+HunkLine { kind: HunkLineKind (Context | Removed | Added), text,
+           segments: [Segment] }                                           // 5.2 appended
+Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // Story 5.2
 ```
 
 - **Keys.** `FileDiff.sections` and `Hunk.sections` are the `HunkKey` table `SelectTreeRequest`
@@ -2503,13 +2506,28 @@ HunkLine { kind: HunkLineKind (Context | Removed | Added), text }
 - **Pins (5.6),** full hex: `operation_id` = the operation read at (after the pre-verb snapshot);
   `commit_id` = the revision (`-r`) or `to`; `from_commit_id` = `from`, ABSENT for the revision
   form (Dart `null`).
+- **Segments (5.2)** — `zanshin_diff::line_segments` over each hunk's lines, always written on
+  every line (the description block's too). Their texts concatenate exactly to the line's `text`
+  (`\n` included), none is empty, and adjacent segments differ in kind. Pairing (the default
+  Delta-class behaviour): a run of `Removed` lines directly followed by a run of `Added` lines
+  pairs in order, the i-th removed line with the i-th added line, and each pair is word-diffed —
+  imara-diff Histogram over Unicode word-bound tokens (UAX #29: a run of spaces (`WSegSpace`) is
+  one token, but each tab and each no-break space is a token of its own; a line ending (`\n` or
+  `\r\n`), an emoji, or a base with its combining marks is one token): `Equal` and `Removed`
+  segments on the removed line, `Equal` and `Added` on the added one. A pair with a line longer
+  than 128 KiB is not word-diffed. A line without a word diff is one segment of its own kind, a
+  `Context` line one `Equal` segment. A changed line can carry no changed segment (a removed blank
+  line paired with `foo`: `[=\n]`), and a changed segment can be only a line ending (`a\n` → `a`,
+  `\r\n` → `\n`). Summary mode writes no hunks, so no word diff runs. `SegmentKind`'s member order
+  is the wire value — append only.
 
 Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart`) → `Diff`
 (with `operationId` / `commitId` / `fromCommitId`), `FileDiff` (`kind` as `status.dart`'s
 `FileChangeKind`, `fromPath`, `removed`, `added`, `fingerprint`), `Hunk` (ranges as
-`({int start, int end})` records), `HunkLine`, `HunkLineKind`; keys are `select_tree.dart`'s
-`HunkKey`. Exported from `zanshin_core.dart` since Story 5.8 (`Diff`, `DiffWhitespace`, `FileDiff`,
-`Hunk`, `HunkLine`, `HunkLineKind`).
+`({int start, int end})` records), `HunkLine` (`segments`, Story 5.2; an absent vector decodes
+as `[]`), `HunkLineKind`, `Segment`, `SegmentKind`; keys are `select_tree.dart`'s `HunkKey`.
+Exported from `zanshin_core.dart` since Story 5.8 (`Diff`, `DiffWhitespace`, `FileDiff`, `Hunk`,
+`HunkLine`, `HunkLineKind`; `Segment` and `SegmentKind` since Story 5.2).
 
 ### `zanshin_diff` (Story 5.8)
 

@@ -4,10 +4,12 @@
 //! section keys and pins (Story 5.6) on the FFI wire, and `zanshin_diff` (Story 5.8), `jj diff` as
 //! data. Its arguments cross as a `DiffRequest` request BUFFER (ADR-0001 composite-input pattern);
 //! the handle is borrowed, never consumed; the call runs the pre-verb snapshot (Story 9.26), so
-//! every envelope carries the precondition report and the call's warnings.
+//! every envelope carries the precondition report and the call's warnings. Story 5.2 gives every
+//! line its word-level segments, `zanshin_diff::line_segments` over its hunk's lines.
 
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, VerifierOptions, WIPOffset};
 use tracing::debug;
+use zanshin_diff::{line_segments, Segment, SegmentKind};
 use zanshin_jj::{
     DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, MutateError, RevisionDiff, Whitespace,
 };
@@ -146,7 +148,9 @@ pub unsafe extern "C" fn zanshin_diff(handle: u64, data: *const u8, len: usize) 
 
 /// Build a success `Envelope` with a `Diff` payload and return the finished buffer: the files
 /// exactly as `diff` returned them, in order, every vector written (empty, not absent), a `None`
-/// symbol, `from_path` or `from_commit_id` absent. `report` rides as on every envelope.
+/// symbol, `from_path` or `from_commit_id` absent. Every line carries its word-level `segments`,
+/// `zanshin_diff::line_segments` over its hunk's lines (Story 5.2). `report` rides as on every
+/// envelope.
 #[must_use]
 pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
@@ -197,7 +201,13 @@ fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs
 fn hunk_offset<'b>(b: &mut FlatBufferBuilder<'b>, h: &Hunk) -> WIPOffset<fbs::Hunk<'b>> {
     let symbol = h.symbol.as_deref().map(|s| b.create_string(s));
     let sections = keys_vector(b, &h.sections);
-    let lines: Vec<_> = h.lines.iter().map(|l| line_offset(b, l)).collect();
+    let segments = line_segments(&h.lines);
+    let lines: Vec<_> = h
+        .lines
+        .iter()
+        .zip(&segments)
+        .map(|(l, s)| line_offset(b, l, s))
+        .collect();
     let lines = b.create_vector(&lines);
     fbs::Hunk::create(
         b,
@@ -215,14 +225,48 @@ fn hunk_offset<'b>(b: &mut FlatBufferBuilder<'b>, h: &Hunk) -> WIPOffset<fbs::Hu
     )
 }
 
-fn line_offset<'b>(b: &mut FlatBufferBuilder<'b>, line: &HunkLine) -> WIPOffset<fbs::HunkLine<'b>> {
+fn line_offset<'b>(
+    b: &mut FlatBufferBuilder<'b>,
+    line: &HunkLine,
+    segments: &[Segment],
+) -> WIPOffset<fbs::HunkLine<'b>> {
     let (kind, text) = match line {
         HunkLine::Context(text) => (fbs::HunkLineKind::Context, text),
         HunkLine::Removed(text) => (fbs::HunkLineKind::Removed, text),
         HunkLine::Added(text) => (fbs::HunkLineKind::Added, text),
     };
     let text = b.create_string(text);
-    fbs::HunkLine::create(b, &fbs::HunkLineArgs { kind, text: Some(text) })
+    // A lone segment's text is the line's text: it shares the string instead of a second copy.
+    let shared = segments.len() == 1;
+    let segments: Vec<_> = segments
+        .iter()
+        .map(|s| {
+            let segment_text = if shared { text } else { b.create_string(&s.text) };
+            segment_offset(b, s.kind, segment_text)
+        })
+        .collect();
+    let segments = b.create_vector(&segments);
+    fbs::HunkLine::create(
+        b,
+        &fbs::HunkLineArgs {
+            kind,
+            text: Some(text),
+            segments: Some(segments),
+        },
+    )
+}
+
+fn segment_offset<'b>(
+    b: &mut FlatBufferBuilder<'b>,
+    kind: SegmentKind,
+    text: WIPOffset<&'b str>,
+) -> WIPOffset<fbs::Segment<'b>> {
+    let kind = match kind {
+        SegmentKind::Equal => fbs::SegmentKind::Equal,
+        SegmentKind::Added => fbs::SegmentKind::Added,
+        SegmentKind::Removed => fbs::SegmentKind::Removed,
+    };
+    fbs::Segment::create(b, &fbs::SegmentArgs { kind, text: Some(text) })
 }
 
 fn keys_vector<'b>(
@@ -251,6 +295,7 @@ mod tests {
     use std::path::PathBuf;
 
     use flatbuffers::VerifierOptions;
+    use zanshin_diff::{line_segments, Segment, SegmentKind};
     use zanshin_jj::{ChangeKind, CommitId, FileDiff, Hunk, HunkKey, HunkLine, OperationId, RevisionDiff};
 
     use super::diff_to_envelope;
@@ -514,6 +559,69 @@ mod tests {
             (Some("jj.config_deprecated"), Some("Deprecated user-level config: d"))
         );
         assert_eq!(diff_from_wire(&bytes), sample());
+    }
+
+    fn seg(kind: SegmentKind, text: &str) -> Segment {
+        Segment {
+            text: text.into(),
+            kind,
+        }
+    }
+
+    /// One wire hunk's segments, line by line.
+    fn segments_from_wire(h: fbs::Hunk<'_>) -> Vec<Vec<Segment>> {
+        let kinds = [SegmentKind::Equal, SegmentKind::Added, SegmentKind::Removed];
+        let segments_of = |line: fbs::HunkLine<'_>| {
+            line.segments()
+                .expect("segments always present")
+                .iter()
+                .map(|s| seg(kinds[usize::from(s.kind().0)], s.text().expect("text present")))
+                .collect()
+        };
+        h.lines()
+            .expect("lines always present")
+            .iter()
+            .map(segments_of)
+            .collect()
+    }
+
+    /// Story 5.2: every wire line, the description block's too, carries `line_segments` of its
+    /// hunk — a removed line word-diffed with the added line it pairs with, an unpaired line and a
+    /// context line whole.
+    #[test]
+    fn every_line_carries_its_word_level_segments() {
+        use SegmentKind::{Added, Equal, Removed};
+        let diff = RevisionDiff {
+            description: Some(sample().files.remove(0)),
+            ..sample()
+        };
+        let bytes = diff_to_envelope(&diff, &CallReport::default());
+        let payload = verified_envelope(&bytes).data_as_diff().expect("Diff payload");
+        let wire_files = payload.files().expect("files present");
+        let wire: Vec<_> = wire_files.iter().chain(payload.description()).collect();
+        let files: Vec<_> = diff.files.iter().chain(&diff.description).collect();
+        assert_eq!(wire.len(), files.len());
+        for (wire, file) in wire.into_iter().zip(files) {
+            let wire_hunks = wire.hunks().expect("hunks always present");
+            assert_eq!(wire_hunks.len(), file.hunks.len());
+            for (wire, hunk) in wire_hunks.iter().zip(&file.hunks) {
+                assert_eq!(segments_from_wire(wire), line_segments(&hunk.lines));
+                for line in wire.lines().expect("lines always present") {
+                    let segments = line.segments().expect("segments always present");
+                    if segments.len() == 1 {
+                        // A lone segment decodes as the line's text, from the line's own string.
+                        let segment = segments.get(0).text().expect("text present");
+                        let text = line.text().expect("text present");
+                        assert_eq!((segment, segment.as_ptr()), (text, text.as_ptr()));
+                    }
+                }
+            }
+        }
+        let first = segments_from_wire(wire_files.get(0).hunks().expect("hunks present").get(0));
+        assert_eq!(first[0], [seg(Equal, "fn main() {\n")]);
+        assert_eq!(first[1], [seg(Equal, "    "), seg(Removed, "a"), seg(Equal, "();\n")]);
+        assert_eq!(first[3], [seg(Equal, "    "), seg(Added, "c"), seg(Equal, "();\n")]);
+        assert_eq!(first[5], [seg(Added, "    e();\n")]);
     }
 
     /// One `DiffRequest`: `kind`, `revision`, `from`, `to`, `paths`, `context`, `whitespace`,

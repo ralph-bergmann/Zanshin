@@ -10,6 +10,8 @@
 //!
 //! Story 5.8: `zanshin_diff` on a real handle carries exactly what `Repo::diff` returns for the
 //! same options, every request field reaching its option, and refuses what the CLI refuses.
+//!
+//! Story 5.2: every wire line carries `zanshin_diff::line_segments` of its hunk's lines.
 
 use std::ffi::CString;
 use std::fs;
@@ -17,6 +19,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 
 use flatbuffers::root as fb_root;
+use zanshin_diff::{line_segments, Segment, SegmentKind};
 use zanshin_ffi::diff::{diff_to_envelope, zanshin_diff};
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
@@ -96,6 +99,41 @@ fn kind_and_text(line: &HunkLine) -> (fbs::HunkLineKind, Option<&str>) {
     }
 }
 
+fn seg(kind: SegmentKind, text: &str) -> Segment {
+    Segment {
+        text: text.to_owned(),
+        kind,
+    }
+}
+
+/// A wire line's segments.
+fn segments_of(line: fbs::HunkLine<'_>) -> Vec<Segment> {
+    let kinds = [SegmentKind::Equal, SegmentKind::Added, SegmentKind::Removed];
+    line.segments()
+        .expect("segments always present")
+        .iter()
+        .map(|s| seg(kinds[usize::from(s.kind().0)], s.text().expect("text present")))
+        .collect()
+}
+
+/// The segments of the wire line of `path` whose text is `text`.
+fn wire_segments(payload: fbs::Diff<'_>, path: &str, text: &str) -> Vec<Segment> {
+    let file = payload
+        .files()
+        .expect("files present")
+        .iter()
+        .find(|f| f.path() == Some(path))
+        .expect("the file is on the wire");
+    let line = file
+        .hunks()
+        .expect("hunks present")
+        .iter()
+        .flat_map(|h| h.lines().expect("lines present"))
+        .find(|l| l.text() == Some(text))
+        .expect("the line is on the wire");
+    segments_of(line)
+}
+
 #[test]
 fn the_wire_carries_the_diff_keys_flags_lines_and_pins() {
     let (diff, hunks) = computed();
@@ -111,7 +149,15 @@ fn the_wire_carries_the_diff_keys_flags_lines_and_pins() {
     let bytes = diff_to_envelope(&diff, &CallReport::default());
     let env = fb_root::<fbs::Envelope>(&bytes).expect("FlatBuffers Verifier must pass");
     assert!(env.ok());
-    assert_wire_is(env.data_as_diff().expect("Diff payload"), &diff);
+    let payload = env.data_as_diff().expect("Diff payload");
+    assert_wire_is(payload, &diff);
+    // Story 5.2: `a` → `A` is word-diffed, a context line is one `Equal` segment.
+    let (equal, removed) = (SegmentKind::Equal, SegmentKind::Removed);
+    assert_eq!(
+        wire_segments(payload, "f.txt", "a\n"),
+        [seg(removed, "a"), seg(equal, "\n")]
+    );
+    assert_eq!(wire_segments(payload, "f.txt", "b\n"), [seg(equal, "b\n")]);
 }
 
 /// The wire `payload` carries exactly `diff`'s pins and files (kinds Added / Modified only).
@@ -167,6 +213,8 @@ fn assert_wire_is(payload: fbs::Diff<'_>, diff: &RevisionDiff) {
                 .collect();
             let expected: Vec<_> = h.lines.iter().map(kind_and_text).collect();
             assert_eq!(lines, expected);
+            let segments: Vec<_> = wh.lines().expect("lines present").iter().map(segments_of).collect();
+            assert_eq!(segments, line_segments(&h.lines), "{}", f.path);
         }
     }
 }
