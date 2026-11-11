@@ -1076,6 +1076,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - With line-level first (decision (g)), 5.2–5.4 come later, and no Epic 10 story renders segments.
   - **Follow-up:** a follow-up story to 10.24 when 5.2–5.4 are scheduled.
   - **2026-11-11, Story 5.2:** every diff line carries its word-level segments, on the wire (`HunkLine.segments`, from `zanshin_diff::line_segments`) and in Dart (`HunkLine.segments`, `Segment`, `SegmentKind`, exported from `zanshin_core.dart`); left: a UI story that renders them (10.24's diff view still shows whole lines), and 5.3 / 5.4's syntax classes.
+  - **For the renderer story (Story 5.2's open questions, follow-up review 2026-11-11):** a rewritten line keeps the whitespace, punctuation and `\n` both lines share `Equal` (epics.md, Story 5.2 reconciliation (2)); UAX #29 keeps `self.foo`, `x:y` and `it's` as one token, so marks on code are coarser than Delta's; a pair with a line over 131,072 characters gets no word diff, and how far to bound the word diff's work is open ("Surfaced in the follow-up review of Story 5.2").
 - **No commit affordance on an empty @.** Low.
   - The composer needs files on @ (IN:177). `jj commit -m` on an empty @ is `describe` plus `new` in one operation (`cli/src/commands/commit.rs:35-36`).
   - **Follow-up:** Ralph decides whether 10.25 shows the composer on an empty @ (Claude's proposal: no; describe and "New change" cover it, in two operations).
@@ -2929,3 +2930,9 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - **project-context.md's stack list still names imara-diff `=*` and does not list unicode-segmentation.** Low.
   - `_bmad-output/project-context.md:43` says "`imara-diff` `=*`"; the root `Cargo.toml` now pins `imara-diff = "=0.2.0"` and adds `unicode-segmentation = "=1.13.3"`, and `zanshin-diff` now depends on `zanshin-jj`.
   - **Follow-up:** Ralph updates the stack lines in project-context.md (an agent-context file, which the run does not edit).
+
+## Surfaced in the follow-up review of Story 5.2 (bmad-build-auto, 2026-11-11)
+
+- **The word diff can hold the worker isolate for seconds on lines made of a few repeated tokens, and nothing bounds one call.** Medium.
+  - Release, `compute_word_diff`'s calls on space-separated `0`/`1` digits: an 8 KiB pair 29 ms, 32 KiB 0.25 s, 100 kB 2.3 s, 128 KiB 3.9 s; 1,000 changed 8 KiB lines about 29 s, where the stock `jj diff --git` takes 0.04 s and 0.56 s on the same files. imara-diff's Histogram falls back to Myers when no token occurs at most 63 times (`imara-diff-0.2.0/src/histogram.rs:94-99`), so the cost grows with the square of the token count; the cap skips only single lines over 131,072 characters (`crates/zanshin-diff/src/word_diff.rs:24-26`), and `line_segments` runs per hunk (`crates/zanshin-ffi/src/diff.rs:206`).
+  - **Follow-up:** a decision for Ralph; the intent asks only that long lines complete (Story 5.7's perf test is deleted). Options: (a) a per-call work budget, e.g. word-diff pairs until the sum of their token-count products reaches about 2^30 (about 0.3 s), the rest as whole lines; (b) segments only when a caller asks for them (today the inspector and the undo timeline pay for segments they ignore); (c) leave it. Claude's proposal: (a).

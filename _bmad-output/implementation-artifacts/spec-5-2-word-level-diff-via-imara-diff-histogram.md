@@ -5,7 +5,7 @@ created: '2026-11-11'
 status: 'done'
 baseline_revision: '8cd7d12c1daecef4a6d699ca76adb5cffa1a2b03'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
@@ -25,6 +25,13 @@ deferred:
     location: >-
       _bmad-output/project-context.md:43
     severity: low
+  - summary: >-
+      The word diff can hold the worker isolate for seconds on lines made of a few repeated tokens, and nothing bounds one call.
+    evidence: |-
+      Follow-up review, release build, a replica of compute_word_diff's calls on space-separated `0`/`1` digits: an 8 KiB pair 29 ms, 32 KiB 0.25 s, 100 kB 2.3 s, 128 KiB 3.9 s, whatever the edit density (minified-like lines stay at 15 ms); 1,000 changed 8 KiB lines about 29 s. The stock `jj diff --git` takes 0.04 s and 0.56 s on the same files. imara-diff's Histogram falls back to Myers when no token occurs at most 63 times (imara-diff 0.2.0 src/histogram.rs:94-99), so the cost grows with the square of the token count; the cap skips only single lines over 131,072 characters, and line_segments runs per hunk. Out of scope by the intent (long lines need only complete; Story 5.7's perf test is deleted), so a decision for Ralph: (a) a per-call work budget (word-diff pairs until their token-count products reach about 2^30, about 0.3 s; the rest as whole lines), (b) segments only when a caller asks (today the inspector and the undo timeline pay for segments they ignore), (c) leave it. Claude's proposal: (a). Mirrored into deferred-work.md "Surfaced in the follow-up review of Story 5.2".
+    location: >-
+      crates/zanshin-diff/src/word_diff.rs:24-26,86; crates/zanshin-ffi/src/diff.rs:206
+    severity: medium
 ---
 
 <intent-contract>
@@ -141,6 +148,36 @@ Notation: `=` Equal, `-` Removed, `+` Added segment, followed by its exact text.
   - `[low]` `patch` (edge-case) Tab and no-break-space runs are not one token, so the docs mispredict. — Patched (same entry as the verification-gap whitespace row).
   - `[low]` `patch` (edge-case) The segment test's `zip` of wire files against `diff.files` truncates silently. — Patched: the two counts are asserted equal before the zip.
 
+### 2026-11-11 — Review pass
+Follow-up pass over the whole diff since `baseline_revision` (the spec left out of the reviewers' diff).
+- verdicts: 25 findings — high 0, medium 3, low 16, false 6, maybe-false 0
+- findings:
+  - `[low]` `patch` (intent) The 128 KiB cap counted bytes while the long-line row counts characters, so a 100k-character line of multibyte text went unpaired, and nothing tested the boundary. — Verified (`removed_text.len()` in `line_segments`): a 100k-character CJK line is about 300 KB. Patched: the cap counts characters (`MAX_PAIRED_LINE_CHARS`, 131,072); `the_cap_counts_characters_not_bytes` pins both sides with a two-byte `é` line (262 KB at the cap is word-diffed, one character more gives whole lines); the module doc, shortcut comment, ffi-abi.md, the `HunkLine` schema comment (regenerated), the Dart doc, the epics.md note and epic-5-context.md say "131,072 characters". The cap's departure from the literal pairing bullet is the first pass's recorded refinement; its cost bound is the deferred entry below.
+  - `[low]` `patch` (intent) The token rule for tabs and no-break spaces, which departs from the intent's "a run of horizontal whitespace is one token", is pinned by no test. — Verified: tests/word_diff.rs had no tab or U+00A0. Patched with the blind edge-case-tests row: `tabs_and_no_break_spaces_are_tokens_of_their_own` (`a\tb` → `a\t\tb` gives `[=a\tb]` / `[=a\t, +\t, =b]`, the same for U+00A0 and U+2007; U+202F joins `1 000` into one token).
+  - `[false]` `reject` (intent) The NUL matrix row cannot reach the wire. — The row asks that `compute_word_diff` not panic (`a_nul_byte_is_part_of_the_text`); a NUL in a file's first 8000 bytes makes it binary with no lines (5.1's CLI rule, `FileDiff::binary`), so no wire case exists that could fail.
+  - `[false]` `reject` (intent) The real-repo row is split across layers; the Rust FFI fixture with literal checks has no `w.txt`. — The row is pinned literally at its outermost surface (the Dart worker test through the real cdylib, all three lines), and the Rust wire equals `line_segments`, whose whitespace row is pinned literally.
+  - `[false]` `reject` (intent) A changed line can carry no change mark, which a reading of the Problem would forbid. — The intent's rules (pairing, Histogram) produce `[=\n]` for a blank line paired with `foo\n`; the other reading needs a pairing heuristic the Never list excludes, and the shape is tested and documented.
+  - `[false]` `reject` (intent) The recompiled epic-5-context.md drops the CLI pass-through, the per-extern cdylib-test rule and the `v0.46.0` jj reference. — The first two concern the done line-level stories (5.1, 5.5, 5.6, 5.8); 5.3 and 5.4 extend the existing `Diff` payload and add no extern; the `v0.46.0` reference was stale (the pin is 0.47.0).
+  - `[low]` `patch` (verification-gap, other) "Each no-break space is a token of its own" is wrong for U+202F, which UAX #29 joins to the word around it. — Verified: U+202F is `WC_ExtendNumLet` (unicode-segmentation 1.13.3 `tables.rs:1653`); a probe gives `1\u{202f}000` as one token. Patched: the module doc and ffi-abi.md name U+00A0 and U+2007 as tokens of their own and U+202F as joining; the new token test pins it.
+  - `[low]` `patch` (blind) Dart decodes a single-segment line's text twice, though the wire shares the string. — Verified: `_hunk` read `line.text` and `segment.text`, each a UTF-8 decode, on the caller's isolate (`isolate.dart:1843`). Patched: the new `_line` reuses the decoded line text when a line has exactly one segment; `diff_test.dart` asserts the lone segment's text is `identical` to the line's.
+  - `[low]` `reject` (blind) Every call computes segments that nothing reads, against project-context.md's "don't pre-compute" rule. — The intent writes segments on every line ("always written"); for ordinary content the cost goes unnoticed, and the pathological cost is the deferred medium entry. A request flag adds a parameter the intent rules out.
+  - `[medium]` `defer` (blind) The 128 KiB cap bounds one pair, not one call; nothing budgets or times a whole call or warns of the cost on `compute_word_diff`. — Same root cause as the two edge-case cost rows below (one entry, deferred). The second word diff next to jj-lib's `by_word` is by the intent (no jj-lib word tokens).
+  - `[low]` `reject` (blind) The pairing is not on the wire, so `pairSideBySide` re-derives it, and a renderer cannot tell an unpaired line from a capped or fully rewritten one. — `pairSideBySide` predates the story (DS DiffHunk.jsx) and uses the same run rule; nothing renders segments yet; a partner index adds wire surface the intent does not define.
+  - `[false]` `reject` (blind) The cdylib crate list in gate_plan.rs is kept by hand, the drift that left zanshin-diff misclassified. — zanshin-diff was outside the cdylib until this change made zanshin-ffi depend on it; the change moved it and pinned it (`gate_plan.rs:196-200`, `:933-938`), so nothing is misclassified; the hand-kept list predates the story.
+  - `[low]` `patch` (blind) ffi-abi.md says summary mode runs no word diff, but summary keeps the description block's hunks. — Verified: `RevisionDiff::description` (`hunks.rs:208`) and ffi-abi.md's own `Diff.description` bullet. Patched: "In summary mode no file carries hunks, so only the description block's lines (an inter-diff's) are word-diffed."
+  - `[false]` `reject` (blind) "Adjacent segments differ in kind" is published as permanent, but 5.3 splits segments at syntax tokens. — The sentence is true for every payload written today; nothing renders segments before 5.3 (deferred-work.md, "Word-level and syntax marks have no consumer story"), and 5.3, which builds on 5.2, must restate the invariant it changes.
+  - `[low]` `patch` (blind) The spec's open questions for Ralph never reached deferred-work.md, where a renderer story would look. — Verified: the 5.2 line under "Word-level and syntax marks have no consumer story" named none. Patched: a sub-bullet for the renderer story with the complete-rewrite reading, UAX #29's coarse code tokens and the cap.
+  - `[low]` `patch` (blind) No test covers the cap boundary, the tab and no-break-space tokens, or a heavily edited pair just under the cap. — Patched: `the_cap_counts_characters_not_bytes` (131,072 against 131,073 characters) and `tabs_and_no_break_spaces_are_tokens_of_their_own`. The heavily edited near-cap pair is the deferred cost entry's case; a completion test there would run for seconds.
+  - `[low]` `patch` (blind) imara-diff's default `unified_diff` feature is compiled in and unused. — Verified: `default = ["unified_diff"]` gates only the patch printer (imara-diff 0.2.0 `Cargo.toml`, `lib.rs:150-160`), and only zanshin-diff depends on imara-diff. Patched: `default-features = false` with its `# WHY:`.
+  - `[low]` `patch` (blind) The `zanshin_diff` extern's rustdoc and `RepoHandle.diff`'s dartdoc do not mention the segments. — Patched both ("every hunk line carries its word-level segments, so the call word-diffs each paired line"); `cargo make codegen` carried the rustdoc into `zanshin_ffi.h` and `bindings.dart`.
+  - `[low]` `reject` (blind) `line_segments` copies text that the FFI writer then drops for single-segment lines. — One linear copy of text the FlatBuffer copies anyway goes unnoticed; avoiding it changes `Segment.text` (an AC-specified `String`) or duplicates the pairing in the FFI.
+  - `[low]` `patch` (blind) `zanshin_diff` names both the crate and the extern, sometimes in one doc. — Patched where the extern is meant: the `ShowEntry` schema comment (regenerated) and diff.rs's module doc say "the `zanshin_diff` extern"; crate paths keep `zanshin_diff::`.
+  - `[medium]` `defer` (edge-case) A pair under the cap made of a few repeated tokens takes seconds. — Verified with a replica of `compute_word_diff`'s calls (release): space-separated `0`/`1` digits 8 KiB 29 ms, 32 KiB 0.25 s, 100 kB 2.3 s, 128 KiB 3.9 s, whatever the edit density; minified-like lines stay at 15 ms; the stock `jj diff --git` takes 0.04 s on the 128 KiB file. Cause: imara-diff's Histogram falls back to Myers when no token occurs at most 63 times (`histogram.rs:94-99`). Deferred as out of scope by the intent itself: the intent-contract keeps every pair word-diffed and asks long lines only to complete ("no perf gate", Story 5.7 deleted), so bounding the work trades word marks for latency, Ralph's decision. Added to `deferred:` and deferred-work.md with three options.
+  - `[medium]` `defer` (edge-case) Many medium pairs in one call add up, because the cap is per line. — Verified: 1,000 changed 8 KiB digit lines take about 29 s of word diff, against 0.56 s for the stock `jj diff --git` of the same file. Same entry as the row above.
+  - `[low]` `reject` (edge-case) Densely edited pairs grow the payload up to about 6x the text, so the 2 GiB FlatBuffers limit comes sooner. — Verified (about 5.9x at half the tokens renamed), but reaching it needs hundreds of MB of densely edited paired lines in one diff, and the call then returns an error envelope; a fix changes the wire shape the intent fixes or adds a segment cap.
+  - `[low]` `reject` (edge-case) An empty-text `HunkLine` gives one empty segment unpaired and none paired. — carried: first pass, same location and claim (jj never emits an empty hunk line; only a synthetic caller reaches it).
+  - `[low]` `reject` (edge-case) UAX #29 joins `.`, `:`, `,` and `'` between letters or digits, so `self.x` → `self.y` marks the whole run. — carried: first pass (out of scope: the intent names Unicode word boundaries).
+
 ## Design Notes
 
 **Why imara-diff and not jj's own tokens.** jj-lib's `unified_diff_hunks` (which `hunks.rs` already calls) word-diffs each changed region itself (`ContentDiff::by_word`, `DiffTokenType`); `jj diff --git` underlines those tokens. They differ from this story's: on the AC example jj marks both `i32` of the removed line, because its histogram only matches words that occur equally often on both sides. Story 5.2, FR-DF-1, the architecture and project-context all name imara-diff Histogram, and the CLI-parity rule binds behaviour, not the terminal presentation it replaces. So 5.2 follows the documents; the divergence goes to Ralph as a deferred item.
@@ -186,6 +223,17 @@ Notation: `=` Equal, `-` Removed, `+` Added segment, followed by its exact text.
 - `cargo make --allow-private test-core` -- 1185 passed, both segment tests among them; `dart analyze --fatal-infos --fatal-warnings` and `dart format --set-exit-if-changed` in `packages/zanshin_core` -- clean; `dart analyze app` -- no issues.
 - Not run, by the run's gate rule: `cargo make test` / `test-full` / `coverage` (the story loop's end gate), and the parity oracle (no jj verb changed).
 
+**Results of the follow-up review (2026-11-11; supersede the counts above):**
+- `cargo test -p zanshin-diff` -- 19 passed (adds `tabs_and_no_break_spaces_are_tokens_of_their_own` and `the_cap_counts_characters_not_bytes`); re-run after the `default-features = false` change and the rustfmt fix, same result.
+- `cargo test -p zanshin-ffi --lib diff` -- 11 passed; `--test it -- diff_ffi:: ffi_abi_doc_sync::` -- 24 passed.
+- `cargo test -p xtask gate_plan` -- 16 passed.
+- `cargo clippy -p zanshin-diff -p zanshin-ffi -p xtask --all-targets -- -D warnings` -- clean; `cargo fmt --all --check` -- clean (exit 0, after reformatting one new assertion).
+- `cargo make codegen` -- changed doc comments only (`zanshin_ffi.h`, `bindings.dart`, both FlatBuffers accessor files); a re-run changed nothing (`shasum -c` on all four).
+- `cargo deny --workspace check advisories bans` -- advisories ok, bans ok.
+- `cargo make --allow-private test-core` -- 1185 passed, both segment tests among them; in `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` -- no issues (after replacing one unresolvable doc reference), `dart format --output=none --set-exit-if-changed` -- 0 changed; `dart analyze app` -- no issues.
+- Measurements behind the deferred entry: a release-build replica of `compute_word_diff`'s calls (scratch probe) and the stock `jj` 0.47.1 CLI on throwaway repositories in the session's scratch directory.
+- Not run, by the run's gate rule: `cargo make test` / `test-full` / `coverage`, and the parity oracle (no jj verb changed).
+
 ## Auto Run Result
 
 Status: done. Code commit `11750c7975a2f4f39e07bc37f3b6860af7142102`.
@@ -230,3 +278,38 @@ Status: done. Code commit `11750c7975a2f4f39e07bc37f3b6860af7142102`.
 - UAX #29 keeps member access such as `self.foo` as one token, so code marks are coarser than Delta's (`\w+`).
 - No UI renders the segments yet (deferred-work.md, "Word-level and syntax marks have no consumer story").
 - project-context.md's stack list is stale (deferred).
+
+### Follow-up review (2026-11-11)
+
+**Summary.** A second review pass over the whole Story 5.2 diff; code commit `285d3961dc47379b2d870bdd60cd9292a3267854`. Two behavior fixes, both small:
+- The pair cap counts characters (131,072), not bytes. A 100k-character line of any script is now word-diffed, as the long-line row asks; the worst-case cost is unchanged, because tokens never outnumber characters.
+- The Dart decoder no longer decodes a single-segment line's text twice; the lone segment reuses the line's String, as the wire already shares it.
+
+The other patches are docs, tests, a dependency feature and ledger notes. One medium finding goes to Ralph: on lines made of a few repeated tokens the word diff takes seconds (3.9 s for a 128 KiB pair, about 29 s for 1,000 changed 8 KiB lines), where the stock `jj diff --git` of the same files takes under a second.
+
+**Files changed.**
+- `crates/zanshin-diff/src/word_diff.rs`: the cap counts characters (`MAX_PAIRED_LINE_CHARS`); the module doc names U+00A0 and U+2007 as tokens of their own and U+202F as joining.
+- `crates/zanshin-diff/tests/word_diff.rs`: `tabs_and_no_break_spaces_are_tokens_of_their_own`, `the_cap_counts_characters_not_bytes`; the over-cap test is renamed and counts characters.
+- `packages/zanshin_core/lib/src/ffi/diff.dart`: `_line` reuses the decoded line text for a lone segment; the `segments` doc names the character cap. `test/ffi/diff_test.dart` asserts the shared String.
+- `crates/zanshin-ffi/src/diff.rs`, `packages/zanshin_core/lib/src/worker/handle.dart`: the call docs mention the segments; the module doc says "the `zanshin_diff` extern".
+- `schemas/envelope.fbs`, `crates/zanshin-ffi/src/envelope_generated.rs`, `packages/zanshin_core/lib/src/ffi/envelope_zanshin.ffi_generated.dart`, `crates/zanshin-ffi/include/zanshin_ffi.h`, `packages/zanshin_core/lib/src/ffi/bindings.dart`: the character cap and "the `zanshin_diff` extern" in the schema comments, the extern's doc; regenerated by `cargo make codegen`, doc comments only.
+- `docs/ffi-abi.md`: the no-break-space token rule, the character cap and the summary-mode sentence (only an inter-diff's description block is word-diffed in summary mode).
+- `Cargo.toml`: imara-diff with `default-features = false` (its only default feature, the `unified_diff` printer, is unused).
+- Ledgers: `deferred-work.md` (renderer notes under "Word-level and syntax marks have no consumer story"; the new section "Surfaced in the follow-up review of Story 5.2" with the cost entry), `epics.md` (the Story 5.2 note: the character cap), `epic-5-context.md` (the cap).
+
+**Review.** 25 findings: 0 high, 3 medium, 16 low, 6 false. Patched entries: 9, all low — the character cap; the token and boundary tests; the U+202F wording; the Dart double decode; the summary-mode sentence; the renderer notes in deferred-work.md; imara-diff's default feature; the call docs; the extern naming. Deferred: 1 medium entry (three findings: the cost per pair and per call on few-token lines), out of scope by the intent, which asks long lines only to complete; mirrored into deferred-work.md. Rejected, with reasons in the Review Triage Log:
+- segments computed although nothing reads them: the intent writes them always, and their cost on ordinary content goes unnoticed;
+- the pairing not on the wire: `pairSideBySide` predates the story, nothing renders segments yet, and a partner index adds wire surface;
+- the text copy in `line_segments`: unnoticed, and avoiding it changes the AC's `Segment.text`;
+- payload growth on densely edited pairs: needs hundreds of MB in one diff;
+- carried from the first pass: the empty-text line, UAX #29's joined tokens;
+- false: the NUL row and the real-repo row (both pinned at their surfaces), a changed line with no change mark (the intent's own rules), the epic context's dropped lines (stale or done stories), the gate's cdylib list (nothing misclassified), "adjacent segments differ in kind" (true until 5.3 rewrites it).
+
+**Follow-up review recommended: false.** This follow-up pass patched no high entry (9 low, 0 medium), so the work has converged.
+
+**Verification.** See "Results of the follow-up review" above; every targeted command passed.
+
+**Residual risks.**
+- The word diff's cost on few-token lines is unbounded per call (deferred, medium). Ralph's decision: (a) a per-call work budget (Claude's proposal), (b) segments only when a caller asks, or (c) leave it.
+- The first pass's open questions stand: jj's word marks differ, a complete rewrite keeps shared tokens `Equal`, UAX #29's tokens are coarse for code, no UI renders segments, and project-context.md's stack list is stale.
+- The per-file coverage of `crates/zanshin-diff/src/word_diff.rs` is measured only by the story loop's end gate.
