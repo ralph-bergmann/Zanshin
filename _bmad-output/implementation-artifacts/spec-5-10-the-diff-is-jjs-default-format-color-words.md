@@ -215,8 +215,8 @@ Status: done
 **Design system / Marionette.** The implementation run republished the DS artifact (version 1794513640-0c5d) and updated the Zanshin canvas. The Marionette check of the running catalogue was not done (no running app can be held in this run).
 
 **Open items handed to this run:**
-- I1 (E2 vs difftastic on real diffs; Ralph decided "go back"): fixed — `line_pairs.rs` is removed and the word marks are jj's color-words marks (commit COMMIT_HASH).
-- I2 (E2 unmeasured on reflowed prose): fixed — no longer applies; the line pairing it concerns is removed, prose gets the CLI's own marks (commit COMMIT_HASH).
-- I3 (`true,` → `false,` loses its word marks under E2): fixed — with jj's color-words the one-line block is one Changed line marking only `true` / `false` (commit COMMIT_HASH).
+- I1 (E2 vs difftastic on real diffs; Ralph decided "go back"): fixed — `line_pairs.rs` is removed and the word marks are jj's color-words marks (commit ab40178370cc7a91d03e56d3ac02747497063373).
+- I2 (E2 unmeasured on reflowed prose): fixed — no longer applies; the line pairing it concerns is removed, prose gets the CLI's own marks (commit ab40178370cc7a91d03e56d3ac02747497063373).
+- I3 (`true,` → `false,` loses its word marks under E2): fixed — with jj's color-words the one-line block is one Changed line marking only `true` / `false` (commit ab40178370cc7a91d03e56d3ac02747497063373).
 
 **Residual risks.** Coverage was not measured (`hunks.rs`, `source_symbol.rs`, `zanshin-ffi/src/diff.rs` sit at 100 % in the baseline); the loop's final gate checks it. Behaviour changes that follow the CLI: a gap one line longer than the context is shown whole, a first hunk without a skipped range has no symbol.
