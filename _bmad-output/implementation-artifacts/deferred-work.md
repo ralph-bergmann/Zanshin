@@ -2956,3 +2956,9 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - **The DS word-mark parser and its hand-copied bundle blocks have no automated check.** Low.
   - `zsDiffLine` / `zsDiffText` (`design_system/components/content/DiffView.jsx`) and their copies in `_ds_bundle.js` were checked once with a scratch node script; the repo has no JavaScript test harness, and the parity tests cover tokens and component names only.
   - **Follow-up:** none until the DS gets a script check; the Content card shows the marks at each republish.
+
+## Surfaced in Story 5.9 (bmad-build-auto, 2026-11-12)
+
+- **Story 5.9's build (item 2) waits for Ralph's choice between the research report's options.** Low.
+  - Report `_bmad-output/planning-artifacts/research/technical-structural-diff-difftastic-class-research-2026-11-12.md` §7–8, probe `spikes/structural-diff-probe/`. Options: A leave it (jj's word marks only), B `difft` as an opt-in external program with a time budget, C difftastic's code vendored as a library, D an own diff over tree-sitter. Claude's recommendation: A — on the witnesses difftastic sets the same word marks as jj (it detects no moves); on the modified `.rs` / `.dart` files of the last 200 commits it falls back on 16.6 % of the changed lines and draws different strong marks on 11.2 % of the rest (whitespace fills counted), at a median of 60–63 ms per file as a process (jj 0.2–0.3 ms).
+  - **Follow-up:** a decision for Ralph. A closes Story 5.9 without a build; any build lifts 5.2's rule (segments = what `jj diff --git` underlines), and B, C or D gets a build run Ralph scopes (time budget, graph limit, `difft` installed by the user or bundled — bundled needs an x86_64 or universal binary too —, the licences of difft's bundled parsers and difftastic's crates, languages). The witness "`f(a, b)` → `f(b, a)` marks the move" is dropped or bound to a diff that detects moves.
