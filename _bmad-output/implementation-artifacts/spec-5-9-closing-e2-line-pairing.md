@@ -5,7 +5,7 @@ created: '2026-11-12'
 status: 'done'
 baseline_revision: 'c7587fa3dbd2f17d0e2bd810f186bff70e0983ae'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
@@ -178,6 +178,47 @@ deferred:
   - `[low]` `[patch]` (edge-case 3) The wire-contract docs say "a huge block" / "over the pairing cap" — grouped with intent-alignment 1, same fix.
   - `[low]` `[reject]` (edge-case 4) The spec's Tasks line names `ink` while the code counts tokens — the fix edits this build's spec; the Design Notes and the Spec Change Log ("Similarity by tokens, not bytes") already state tokens.
 
+### 2026-11-12 — Review pass (second follow-up)
+- verdicts: 37 findings — high 0, medium 3, low 26, false 7, maybe-false 1
+- findings:
+  - `[low]` `[patch]` (intent-alignment 1) carried — the work cap is a per-file budget, not per block; `project-context.md` says "pairing cap" (intent-alignment 1 of the first follow-up: docs unified then, `project-context.md` left as agent context). `e2-reformatted-calls` pairing nothing is the budget-size question, see blind 3 below.
+  - `[medium]` `[defer]` (intent-alignment 2) carried — in a 1×1 block E2 can only lose marks (blind 5 of the first follow-up; deferred item 3).
+  - `[medium]` `[defer]` (intent-alignment 3) carried — E2's word marks end up further from difft than today's (deferred item 1).
+  - `[maybe-false]` `[defer]` (intent-alignment 4) carried — `.md` files and the description block are not measured (deferred item 2).
+  - `[false]` `[reject]` (intent-alignment 5) carried — Ralph's example is checked below the paint surface: `pair_lines` runs inside `hunks_of`, the one producer of `Hunk::segments`; the wire copies them; a whole-line segment draws through `diffWordMarks`' existing early return.
+  - `[false]` `[reject]` (intent-alignment 6) No new test covers "whitespace-only hunks still drop" — `pair_lines` only rewrites the tokens of blocks with removed and added lines (`line_pairs.rs:79-117`) and never adds or drops a line or hunk; `hunks.rs` `ignoring_whitespace_drops_a_whitespace_only_hunk` runs with pairing on (passed).
+  - `[false]` `[reject]` (intent-alignment 7) Similarity is a function, not a named constant — its tunable parts are the named constants (`MIN_SIMILARITY_PERCENT`, `MAX_RUN_LINES`, `MAX_PAIRING_WORK`), and `group_value`'s doc says why it counts tokens; no caller or rule is harmed.
+  - `[false]` `[reject]` (intent-alignment 8) `tokens()` / `shared_tokens` are an own tokenizer — they cut with jj-lib's `find_word_ranges` / `find_nonword_ranges` and only score and prune candidates; every mark comes from `ContentDiff::by_word`.
+  - `[false]` `[reject]` (intent-alignment 9) carried — commit `30714877` edits Story 5.9's spec and ledger bullet: it is the story loop's ledger close, not this build.
+  - `[low]` `[patch]` (intent-alignment 10) `design_system/readme.md:46` and `DiffView.prompt.md:12` still say the app's runs are "jj's own (what `jj diff --git` underlines)" — grouped with edge-case 4: `DiffView.prompt.md` now states the paired-line rule; the readme's dated 10.32 entry stays history and a new 2026-11-12 entry records the change (no component, token or bundle change; the DS artifact is not republished in this run).
+  - `[medium]` `[patch]` (verification-gap) The per-file budget is never tested across hunk boundaries; a budget reset per hunk would pass every test — added `the_budget_spans_the_hunks_of_a_file` (the blocks of `a_spent_budget_…` 7 lines apart: 2 hunks; at 58 both pair, at 57 the second hunk's block keeps jj-lib's tokens and the flag is set). It fails when `pair_lines_within` resets the budget per hunk (mutation run, then reverted).
+  - `[low]` `[patch]` (verification-gap, other 1) `pair_lines_within`'s doc says the budget is "for the word diffs that score the candidates" — grouped with blind 11a: now "bytes for the search of the file (see `MAX_PAIRING_WORK`)".
+  - `[low]` `[reject]` (verification-gap, other 2) `marked`'s concatenation check cannot fail, since `hunk_line` builds the line text from the segments; paired tokens are checked only by literal strings — true of the helper (it predates this change), but the rebuilt text cannot drift: each group's tokens come from `by_word` over slices of the block's own text and an unpaired line is its own slice, and the parity oracle compares the line texts with the jj CLI with pairing on. The proposed fix adds a guard.
+  - `[low]` `[patch]` (blind 1) Report §9 leads with the run that was replaced; the README calls the budget files "fallback files"; §8 is not marked superseded — the §9 tables stay as the labelled record of blob `15ddbd39` (the re-run follows in the same section; the README names the 3 new files of 12 because 9 were named before); patched: README "three more files where the budget left a block to jj", §8 marked superseded by E2.
+  - `[low]` `[patch]` (blind 2) No measurement backs the time bound for the shipped code; docs contradict; per-block fixed costs uncharged (~11,000 tiny blocks, ~100 ms) — the bound claim is false: `21d507ba` was measured (`limits`, `history`), searched blocks are at most `budget / 2` and each one's table and search are bounded by its charged `block_work`, and the uncharged fixed cost per block matches jj's own word diff per block (`scattered-changes`, 2,000 blocks: 23.5 ms against jj's 15.9 ms). The README's "about 20 ms" names the earlier figure. Patched the one misleading doc: `epic-5-context.md` "at most about 10 ms per file" now says "on those diffs" and gives the 2,000-block file's 23.5 / 15.9 ms.
+  - `[low]` `[reject]` (blind 3) A search that runs out zeroes the rest of the budget, and a search that cannot finish still starts (`e2-reformatted-calls` pairs nothing) — real, and the bound does not need the zeroing; but the affected files (12 of 2,536) keep exactly today's marks, the zeroing is the recorded design ("once the budget runs out that block and every later block keep today's tokens"), and the fix changes the budget policy, adds a pre-check and needs a new probe run. Part of the open budget-size question (Auto Run Result).
+  - `[low]` `[reject]` (blind 4) Each chosen group is word-diffed twice; the backtrack diff is uncharged — real; the backtrack diffs only groups whose scoring diff was charged, so E2's diff work stays under twice the budget, and on a 1×1 block of long lines E2 costs about three of jj's word diffs, inside the Design Notes' "within a few times jj's". Keeping the scoring diffs adds storage per cell.
+  - `[low]` `[reject]` (blind 5) carried — the budget fallback is silent (`hunks_of` drops the flag): logging is more than a direct correction; the probe reads the flag.
+  - `[low]` `[patch]` (blind 6) "E2 = difft on 19 of 19" is partly E2 compared with itself inside comments and strings — verified (the probe's mapping, Spec Change Log "Probe mapping against E2"); the summaries now say the comparison is on code tokens and that the Rust test pins the witness inside comments and strings: report §9, `deferred-work.md`, `sprint-status.yaml`.
+  - `[low]` `[patch]` (blind 7) The sign of "net change of today's gap" reads backwards (`(today − E2) / today`, so −8.3 % means the gap grew) — relabelled "net share of today's gap closed" in `history.rs` (label only, no rebuild), the README's mode table (with a note that the pasted outputs print the old label), report §9 (table, definition, re-run line), and `deferred-work.md` now says "word marks net 8.3 % further from difft, drawn marks net 4.4 % closer".
+  - `[low]` `[reject]` (blind 8) Ralph is asked to decide before the probe splits the differing lines by block shape and by unpaired vs kept-nothing — the missing count is already recorded in deferred item 3 ("how many … is not counted"); adding the split is new probe work.
+  - `[low]` `[reject]` (blind 9) carried — the 10.32 comment example lost its indentation fill while the records say "keep their marks" (intent-alignment 10 of the first follow-up: the word marks are unchanged); epics.md Story 5.9 is excluded by the intent's "Never".
+  - `[false]` `[reject]` (blind 10) carried — the coverage baseline has no row for `line_pairs.rs`: the gate has not run (loop gate rule); the ratchet adds and checks the new file at the loop's final gate.
+  - `[low]` `[patch]` (blind 11a) `pair_lines_within`'s doc is stale — same fix as verification-gap other 1.
+  - `[low]` `[patch]` (blind 11b) carried — `project-context.md` says "pairing cap" (intent-alignment 1 of the first follow-up; left as is, agent context).
+  - `[low]` `[reject]` (blind 11c) carried — the one-line API summaries omit the unpaired line (blind 10 of the first pass): the full rule sits in the schema doc, `docs/ffi-abi.md` and `HunkLine.segments`.
+  - `[low]` `[patch]` (blind 11d) `hunks.rs`' module doc says word segments are not the CLI's, yet budget-fallback blocks are — now "except in a block the file's pairing budget cannot pay for".
+  - `[low]` `[patch]` (blind 11e) Broken wraps ("Words are runs of", "A `Removed` line has" on their own lines) — rewrapped in `hunks.rs` (`Segment`), `schemas/envelope.fbs` (then `cargo make codegen`: `envelope_generated.rs` and the Dart flatc file, comment only) and `diff.dart` (`HunkLine.segments`).
+  - `[low]` `[patch]` (blind 12a) `a_block_over_the_budget_keeps_jj_libs_tokens` never asserts the flag — it now runs `paired_with` and asserts `ran_out`.
+  - `[false]` `[reject]` (blind 12b) carried — no test for a last line without `\n` or CRLF (blind 7 of the first follow-up): `a_last_line_without_a_newline_keeps_it` drives it through `pair_lines`; `\r` is whitespace in scoring.
+  - `[low]` `[patch]` (blind 12c) `a_tie_keeps_the_shorter_group` does not exercise the shape order (the 1:2 group was pruned; the tie fell to the unpaired step) — verified by hand; new input `zed foo(a)` → `p q r zed` / `foo(a)` puts both tied groups in one cell; the test fails when `group_shapes` tries runs first (mutation run, then reverted).
+  - `[low]` `[reject]` (blind 12d) `a_context_line_is_one_equal_segment` repeats `a_dissimilar_line_is_one_whole_changed_segment` — its first assertions check context lines, which the other does not; the overlap costs nothing.
+  - `[low]` `[reject]` (blind 13) Summaries omit E2's summed overhead (86 % / 72 % of jj); `find_line_ranges` scans both whole texts (~1 ms on 1.1 MB) — the summed times are in the probe outputs; deriving offsets from the hunk tokens is new code for about 10 % of jj's own time on that file.
+  - `[low]` `[reject]` (edge-case 1) carried — the fallback is silent (blind 4 of the first follow-up).
+  - `[low]` `[patch]` (edge-case 2) carried — readers expect a per-block cap while the budget is per file (intent-alignment 1 of the first follow-up; docs unified then).
+  - `[low]` `[reject]` (edge-case 3) carried — the spec's Tasks line says `ink` (edge-case 4 of the first follow-up: the fix edits this build's spec).
+  - `[low]` `[patch]` (edge-case 4) `DiffView.prompt.md:12` still says "jj's own" — same fix as intent-alignment 10.
+
 ## Design Notes
 
 **Similarity** of a group (removed line(s) vs added line(s)): `2·kept / total`, counted in tokens. A token is one of jj-lib's word-diff tokens — a word from `find_word_ranges` or one non-word byte — that is not ASCII whitespace; each counts 1, whatever its length. `total` = the tokens of both sides; `kept` = the tokens inside the `Matching` hunks of `ContentDiff::by_word` on the group's texts (matching hunks are token-aligned, so their text is tokenized). Whitespace is left out so shared indentation and spaces do not make unrelated lines look alike; the measure is jj's own word diff, so it scores exactly what the marks will show. Tokens, not bytes: a changed identifier is one change whatever its length — `a.functionWizard_save,` → `a.functionWizard_next,` keeps 3 of 4 tokens a side (75 %) and pairs; by bytes it kept 14 % and stayed unpaired.
@@ -221,6 +262,17 @@ deferred:
 - app: `cargo make test-app test/features/graph/graph_real_repo_test.dart` 2 passed (no app file changed).
 - Not rerun: the parity oracle — no jj verb changed and the line-level hunks are untouched (the loop's gate rule runs it only when a verb changes).
 - Probe (release, then `cargo clean`): measured file `git hash-object crates/zanshin-jj/src/line_pairs.rs` = `21d507ba73adb17d9836ca9f668ce416090f32ca`; the old file was measured from a copy of `15ddbd39` with the probe's `#[path]` pointed at it for one build (restored afterwards). `limits` `e2-pruned-blocks` (280,690 bytes a side): E2 371.8 ms before, 1.6 ms after (jj 14.0–14.5 ms); `e2-at-cap` (44 lines) 9.9 → 9.1 ms; `e2-reformatted-calls` 22.6 → 0.5 ms (its first block's table nearly fills the budget, so every block keeps jj's marks); slowest file `scattered-changes` 23.5 ms (jj 15.9 ms). `history --jobs 8`: today's figures unchanged (4,755 / 10,812 of 96,295); E2 against difft 5,150 word / 10,325 drawn, net change −8.3 % / +4.5 %, 3,199 whole-line; E2 against today same word marks on 92.4 %; the budget left a block to jj in 12 of 2,536 files (was 9); E2 per file p99 3.2 / 3.3 ms, max 7.2 / 10.1 ms (Dart / Rust). `witness`: every E2 mark equal to the E2 run's (only timing lines differ). Outputs in the probe README, "Re-run after the follow-up review".
+- No full gate (`cargo make test` / `test-full` / `coverage`), per the loop's gate rule.
+
+**Results (2026-11-12, second follow-up review, after its patches):**
+- `cargo test -p zanshin-jj --lib -- line_pairs:: hunks::` 27 passed (new `the_budget_spans_the_hunks_of_a_file`, reworked `a_tie_keeps_the_shorter_group`, `a_block_over_the_budget_keeps_jj_libs_tokens` with the flag).
+- Mutation checks, each reverted: `pair_lines_within` resetting the budget per hunk fails only `the_budget_spans_the_hunks_of_a_file`; `group_shapes` trying runs before one-to-one fails only `a_tie_keeps_the_shorter_group`.
+- `cargo test -p zanshin-jj --test it hunks::` 15 passed; `cargo test -p zanshin-ffi --test it diff_ffi::` 7 passed.
+- `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings` clean; `cargo fmt --all --check` clean (after `cargo fmt -p zanshin-jj` on the new test); probe `cargo fmt --check` clean.
+- `cargo make codegen`: `envelope_generated.rs` and `envelope_zanshin.ffi_generated.dart` changed in the `HunkLine` doc comment only (a rewrap); `zanshin_ffi.h` / `bindings.dart` unchanged.
+- zanshin_core: `dart analyze --fatal-infos --fatal-warnings` no issues; `dart format --set-exit-if-changed` on `diff.dart` and the flatc file clean; `dart test test/worker/diff_test.dart` (`[tasks.test-core]` env) 13 passed.
+- Not run: the app's tests (no app file changed); the parity oracle (no jj verb changed, line-level hunks untouched); the probe (not built: its `history.rs` changed one output label, and `line_pairs.rs` changed only in tests and one doc comment).
+- `git hash-object crates/zanshin-jj/src/line_pairs.rs` = `d1f3c87331d4a66107d1b9359ade56992c7b3b23`; against the measured `21d507ba` its non-test code differs only in `pair_lines_within`'s doc comment, so the probe figures still hold.
 - No full gate (`cargo make test` / `test-full` / `coverage`), per the loop's gate rule.
 
 ## Auto Run Result
@@ -277,3 +329,33 @@ Status: done. Blocking condition: none.
 **Residual risks:**
 - Coverage of `line_pairs.rs` is still unmeasured here; the loop's final gate checks the 80 % floor (the reworked budget test covers the new charge).
 - Disk space ran out once during this pass (another project's build); the loop's final gate needs room for a full build.
+
+### Second follow-up review pass (2026-11-12)
+
+Status: done. Blocking condition: none.
+
+**Summary:** The named risk holds up. The budget charge is sound in the code: one budget spans the file's hunks, each searched block pays for its table before its search, and the work left uncharged (tokenizing, allocations and the final word diff of each chosen group) stays within a constant factor of jj's own per-block word diff. No reviewer found an input that breaks the bound. What was missing was a test that the budget spans hunks; a budget reset per hunk passed every test. That test is added. The rest of this pass is small: two tests that did not check what they name, a stale doc comment, broken wraps, a backwards-reading label in the probe, and two stale doc places (the design system's `DiffView` prompt, `epic-5-context.md`). The 256 KiB size stays open (see below).
+
+**Files changed:**
+- `crates/zanshin-jj/src/line_pairs.rs` — new `the_budget_spans_the_hunks_of_a_file`; `a_tie_keeps_the_shorter_group` puts both tied groups in one cell; `a_block_over_the_budget_keeps_jj_libs_tokens` asserts the flag; `pair_lines_within`'s doc. No change to the pairing code.
+- `crates/zanshin-jj/src/hunks.rs` — module doc names the budget fallback; `Segment` doc rewrapped.
+- `schemas/envelope.fbs` (+ `cargo make codegen`: `envelope_generated.rs`, `envelope_zanshin.ffi_generated.dart`, comment only), `packages/zanshin_core/lib/src/ffi/diff.dart` — `HunkLine` / `HunkLine.segments` docs rewrapped.
+- `spikes/structural-diff-probe/src/history.rs` — the label reads "net share of today's gap closed". `README.md`: mode table defines it (the old label stays in the pasted outputs); "fallback files" in the re-run section now says "files where the budget left a block to jj".
+- Research report — §8 marked superseded; §9 relabels the net figure and says the witness compares code tokens.
+- `deferred-work.md` (E2 bullet: direction of the net figures, code tokens), `sprint-status.yaml` (5-9: code tokens), `epic-5-context.md` (the 10 ms figure is the corpus's; 2,000-block file 23.5 / 15.9 ms).
+- `design_system/components/content/DiffView.prompt.md` — the app's runs are jj-lib's word diff over paired lines; `design_system/readme.md` — new change-log entry. The Design System artifact is not republished in this run.
+
+**Review findings** (37; high 0, medium 3, low 26, false 7, maybe-false 1):
+- Patched: 1 medium entry (verification-gap: budget across hunks); 10 low entries (`pair_lines_within` doc — verification-gap other 1 and blind 11a; the design-system docs — intent-alignment 10 and edge-case 4; README budget wording and §8 — blind 1; `epic-5-context.md` cost wording — blind 2; code-token qualifier — blind 6; net label — blind 7; module doc — blind 11d; wraps — blind 11e; the flag assertion — blind 12a; the tie input — blind 12c). Carried patch rows: intent-alignment 1, blind 11b, edge-case 2 (patched in the first follow-up, not again).
+- Deferred: none new. Carried: intent-alignment 2 (item 3), 3 (item 1), 4 (item 2).
+- Rejected: verification-gap other 2 (low: `marked`'s check is a tautology from before this change, the text rebuild cannot drift and the parity oracle checks it; the fix adds a guard); blind 3 (low: zeroing the budget on a run-out and starting doomed searches leave 12 of 2,536 files at today's marks; changing it changes the recorded policy and needs a new probe run); blind 4 (low: the double diff stays within twice the budget and "a few times jj's"); blind 5, edge-case 1 (low, carried: silent fallback); blind 8 (low: the missing split is already recorded in deferred item 3); blind 9 (low, carried; epics.md excluded by the intent); blind 11c (low, carried); blind 12d (low: harmless overlap); blind 13 (low: new code for ~10 % of jj's time on a 1.1 MB file); edge-case 3 (low, carried: the fix edits the spec); intent-alignment 5, 6, 7, 8, 9, blind 10, blind 12b (false: see the triage log).
+
+**Follow-up review recommended: false** — this is a follow-up pass and it patched no high entry (patched by verdict: medium 1 entry, low 10).
+
+**Verification:** see `## Verification`, "Results (2026-11-12, second follow-up review, after its patches)": every targeted check passes; two mutation runs show the new and reworked tests fail on the defects they target. No full gate, per the loop's gate rule.
+
+**Residual risks:**
+- The budget size (256 KiB) is still not settled. One block whose table nearly fills it starts a search that cannot finish, and the run-out then leaves every later block of the file at jj-lib's marks (`e2-reformatted-calls` pairs nothing; 12 of 2,536 corpus files keep today's marks in some block). Both stay at today's marks, never worse. Changing this (keep the rest of the budget after a run-out, or check `2 · block_work` before a search) is a change to the budget policy and needs a new probe run (blind 3, rejected here).
+- The time bound is shown by argument and by the probe's inputs (`e2-pruned-blocks`, `e2-at-cap`, `e2-reformatted-calls`, `scattered-changes`, the `history` corpus), not by a measured worst case of many tiny blocks; the argument puts it at a constant factor of jj's own per-block word diff.
+- Coverage of `line_pairs.rs` is still unmeasured; the loop's final gate checks the 80 % floor.
+- The Design System artifact on claude.ai still shows the old `DiffView` wording until it is republished (skill `design-artifacts`).
