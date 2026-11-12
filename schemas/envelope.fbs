@@ -3188,10 +3188,13 @@ enum HunkLineKind : ubyte { Context, Removed, Added }
 ///
 /// Story 5.2 appends `segments`, the line's word-level runs (`zanshin_jj::Hunk::segments`), always
 /// written: their texts concatenate exactly to `text`, none is empty, and adjacent runs differ in
-/// kind. The changed runs are what `jj diff --git` underlines: jj-lib word-diffs each changed
-/// region as one text (no line pairing), words being runs of `A-Z a-z 0-9 _` and non-ASCII bytes
-/// and every other byte a token of its own. A `Removed` line has `Equal` and `Removed` runs, an
-/// `Added` line `Equal` and `Added` runs, a `Context` line one `Equal` run.
+/// kind. Each changed block pairs its removed and added lines by similarity, in order (one line
+/// with one line, or with a run of consecutive lines on the other side), and a pair takes jj-lib's
+/// word diff over its text, words being runs of `A-Z a-z 0-9 _` and non-ASCII bytes and every
+/// other byte a token of its own. A line without a partner is one changed run; a huge block keeps
+/// jj-lib's word diff over the whole block (what `jj diff --git` underlines). A `Removed` line has
+/// `Equal` and `Removed` runs, an `Added` line `Equal` and `Added` runs, a `Context` line one
+/// `Equal` run.
 table HunkLine {
   kind: HunkLineKind;
   text: string;

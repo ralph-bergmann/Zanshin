@@ -124,8 +124,8 @@ void main() {
     });
   });
 
-  // Story 10.32: jj-lib's word segments for Ralph's three examples and a new file, read as the inspector reads them,
-  // reach the paint surface exactly as the I/O matrix says.
+  // Story 10.32: the word segments for Ralph's three examples and a new file, read as the inspector reads them, reach
+  // the paint surface exactly as the I/O matrix says. The lines of a changed block are word-diffed in pairs.
   testWidgets('a rewrite read through RepoGraphDetails.diff paints jj\'s changed words; an inserted line none', (
     tester,
   ) async {
@@ -185,10 +185,10 @@ void main() {
         '      child: _Line(color: isFirst ? null : lineColor),': <String>['      ', ','],
         '    ),': <String>['    '],
       },
-      // The inserted comment line keeps none.
+      // The inserted comment line keeps none; the changed line pairs with its new version, so only the word changes.
       'comment.dart': <String, List<String>>{
         '  padding: Spacing.spacing8,': <String>['spacing8'],
-        '  padding: Spacing.spacing2,': <String>['  ', 'spacing2'],
+        '  padding: Spacing.spacing2,': <String>['spacing2'],
       },
       'fresh.dart': <String, List<String>>{},
     };

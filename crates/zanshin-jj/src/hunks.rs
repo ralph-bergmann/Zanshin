@@ -12,6 +12,9 @@
 //!   (default `diff.git.context`) and whitespace mode — the CLI's `show_unified_diff_hunks`
 //!   (`diff_util.rs:1767-1847`). Equal texts (a mode-only change) and differing binary content
 //!   (a NUL byte in either side's first 8000 bytes) get none.
+//! - **Word segments** are not the CLI's: jj-lib word-diffs a changed block as one text, so
+//!   unrelated lines share marks. [`crate::line_pairs`] word-diffs the block's lines in pairs
+//!   instead ([`Segment`]); the line-level hunks stay jj-lib's.
 //! - **Source symbols** are the CLI's ([`crate::source_symbol`]): the new side's, unless the hunk
 //!   adds no line, cut at 80 bytes.
 //! - **Sections** are [`crate::select_tree::sections`] over the same texts. They are the keys
@@ -54,6 +57,7 @@ use jj_lib::rewrite::merge_commit_trees;
 use jj_lib::store::Store;
 use jj_lib::workspace::Workspace;
 
+use crate::line_pairs;
 use crate::mutate::{be, cfg, res, MutateError};
 use crate::op_support::SelectedTree;
 use crate::select_tree::{is_text, sections, HunkKey, Piece, SelectedTreeId};
@@ -239,11 +243,16 @@ pub struct Hunk {
     pub segments: Vec<Vec<Segment>>,
 }
 
-/// A run of a [`HunkLine`]'s text with one kind — what `jj diff --git` underlines (Story 5.2).
-/// jj-lib word-diffs each changed region as one text, so a moved line break or an inserted line
-/// is only one more token. Words are runs of `A-Z a-z 0-9 _` and non-ASCII bytes; every other
-/// byte is a token of its own. A line's segments concatenate to its text, none is empty, and
-/// adjacent segments differ in kind.
+/// A run of a [`HunkLine`]'s text with one kind: its changed and unchanged words.
+///
+/// Each changed block (removed lines, then added lines) pairs its lines by similarity, keeping
+/// their order: one line with one line, or one line with a run of consecutive lines on the other
+/// side (a call split over lines, lines joined into one). A pair takes jj-lib's own word diff
+/// over its text, so a moved line break is only one more token; a line without a partner (an
+/// inserted line, a rewritten comment) is one changed run. A huge block keeps jj-lib's word diff
+/// over the whole block, which is what `jj diff --git` underlines. Words are runs of
+/// `A-Z a-z 0-9 _` and non-ASCII bytes; every other byte is a token of its own. A line's segments
+/// concatenate to its text, none is empty, and adjacent segments differ in kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Segment {
     /// The run's text.
@@ -708,7 +717,9 @@ fn hunks_of(
     file_sections: &[HunkKey],
 ) -> Vec<Hunk> {
     let scanners = texts.map(|text| language.map(|language| SourceSymbolScanner::new(language, text)));
-    unified_diff_hunks(texts.map(Into::into), context, mode)
+    let mut hunks = unified_diff_hunks(texts.map(Into::into), context, mode);
+    line_pairs::pair_lines(&mut hunks, texts);
+    hunks
         .iter()
         .map(|hunk| {
             let (lines, segments): (Vec<HunkLine>, Vec<Vec<Segment>>) =
@@ -828,7 +839,7 @@ mod tests {
     use jj_lib::diff_presentation::LineCompareMode;
     use jj_lib::merge::Diff;
 
-    use super::{fingerprint, hunks_of, section_keys, totals, Hunk, HunkKey, HunkLine, SegmentKind};
+    use super::{fingerprint, hunks_of, section_keys, totals, Hunk, HunkKey, HunkLine, Segment, SegmentKind};
     use crate::source_symbol::SourceLanguage;
 
     /// The fingerprint keys the changed lines only: shifted line numbers keep it, a different
@@ -934,9 +945,9 @@ mod tests {
         assert_eq!(hunks[0].sections, [key(1, 1, 1, 1)]);
     }
 
-    /// Each line with its segments as `jj diff --git` underlines them: `[-…-]` on a removed line,
-    /// `{+…+}` on an added one. Checks that the segments concatenate to the line, none is empty
-    /// and adjacent ones differ in kind.
+    /// Each line with its changed segments in `[-…-]` on a removed line, `{+…+}` on an added one.
+    /// Checks that the segments concatenate to the line, none is empty and adjacent ones differ in
+    /// kind.
     fn marked(hunk: &Hunk) -> Vec<String> {
         assert_eq!(hunk.segments.len(), hunk.lines.len());
         hunk.lines
@@ -965,11 +976,11 @@ mod tests {
             .collect()
     }
 
-    /// jj's words: `s.functionWizard_save` → `saveLabel` changes the whole expression, `a.x` →
-    /// `a.y` only the name, and a non-ASCII word stays whole — as `jj diff --git` 0.47.0 underlines
-    /// them.
+    /// Paired lines take jj's words: `s.functionWizard_save` → `saveLabel` changes the whole
+    /// expression, `a.x` → `a.y` only the name (3 of 4 tokens kept, so the lines pair however long
+    /// the name is), and a non-ASCII word stays whole.
     #[test]
-    fn segments_are_the_words_jj_underlines() {
+    fn paired_lines_take_jjs_words() {
         let hunks = diff(
             "    child: Text(isLastStep ? s.functionWizard_save : s.functionWizard_next),\n    \
              a.functionWizard_save,\n    final größe = 1;\n",
@@ -991,8 +1002,9 @@ mod tests {
         );
     }
 
-    /// A call split over three lines changes only its line breaks, indentation and one comma: the
-    /// removed line has no changed segment.
+    /// A call split over three lines pairs its removed line with all three added lines, so it
+    /// changes only its line breaks, indentation and one comma: the removed line has no changed
+    /// segment.
     #[test]
     fn a_moved_line_break_is_only_one_more_token() {
         let hunks = diff(
@@ -1013,8 +1025,8 @@ mod tests {
         );
     }
 
-    /// An inserted comment line does not take a changed line's place: the change is the comment
-    /// and `spacing8` → `spacing2`.
+    /// An inserted comment line does not take a changed line's place: it is one changed segment,
+    /// and the changed line pairs with its new version, so only `spacing8` → `spacing2` is marked.
     #[test]
     fn an_inserted_line_does_not_pair_with_a_changed_one() {
         let hunks = diff(
@@ -1023,20 +1035,133 @@ mod tests {
             None,
             3,
         );
-        let marked = marked(&hunks[0]);
-        assert_eq!(marked[0], "-  padding: Spacing.[-spacing8-],\n");
-        assert!(marked[1].starts_with("+  {+// Small side padding."), "{marked:?}");
-        assert!(marked[2].ends_with("padding: Spacing.{+spacing2+},\n"), "{marked:?}");
-        assert_eq!(marked[3], "   child: label,\n");
+        assert_eq!(
+            marked(&hunks[0]),
+            [
+                "-  padding: Spacing.[-spacing8-],\n",
+                "+{+  // Small side padding.\n+}",
+                "+  padding: Spacing.{+spacing2+},\n",
+                "   child: label,\n",
+            ]
+        );
     }
 
-    /// A context line is one equal segment.
+    /// A context line is one equal segment; a changed line without a similar partner is one
+    /// changed segment.
     #[test]
     fn a_context_line_is_one_equal_segment() {
         let hunks = diff("a\nb\n", "a\nc\n", None, 3);
         assert_eq!(hunks[0].segments[0].len(), 1);
         assert_eq!(hunks[0].segments[0][0].kind, SegmentKind::Equal);
-        assert_eq!(marked(&hunks[0]), [" a\n", "-[-b-]\n", "+{+c+}\n"]);
+        assert_eq!(marked(&hunks[0]), [" a\n", "-[-b\n-]", "+{+c\n+}"]);
+    }
+
+    /// A one-to-one change that keeps nothing (`a` → `A`) pairs with nothing: each line is one
+    /// whole changed segment, line break included.
+    #[test]
+    fn a_dissimilar_line_is_one_whole_changed_segment() {
+        let hunks = diff("a\n", "A\n", None, 3);
+        assert_eq!(
+            hunks[0].segments,
+            [
+                vec![Segment {
+                    text: "a\n".to_owned(),
+                    kind: SegmentKind::Removed,
+                }],
+                vec![Segment {
+                    text: "A\n".to_owned(),
+                    kind: SegmentKind::Added,
+                }],
+            ]
+        );
+    }
+
+    /// Ralph's widget-test example: two comments and a test become a new comment, a new phone test
+    /// and the old test renamed. The comments pair with nothing, the old test pairs with its
+    /// renamed self rather than the phone test, so only ` on a tablet` is marked; every other added
+    /// line is one changed segment.
+    #[test]
+    fn rewritten_comments_and_a_renamed_test_mark_only_the_rename() {
+        let left = [
+            "    });\n",
+            "  }\n",
+            "\n",
+            "  // Tablet only: the wide test font overflows the compact app bar, which holds the buttons on a phone.\n",
+            "  // The phone layout is checked on a device.\n",
+            "  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {\n",
+            "    await openWizard(tester, size: tablet);\n",
+            "    await fillGeneralStep(tester);\n",
+        ]
+        .concat();
+        let right = [
+            "    });\n",
+            "  }\n",
+            "\n",
+            "  // The tablet shows the long label. The phone app bar has little room and shows the short one.\n",
+            "  testWidgets('shows Speichern instead of Weiter on the last step on a phone', (tester) async {\n",
+            "    await openWizard(tester, size: phone);\n",
+            "    await fillGeneralStep(tester);\n",
+            "\n",
+            "    for (var i = 0; i < 3; i++) {\n",
+            "      await tester.tap(withIdentifier(SemanticsIdentifiers.functionWizard_next));\n",
+            "      await tester.pumpAndSettle();\n",
+            "    }\n",
+            "\n",
+            "    expect(find.text('Speichern'), findsWidgets);\n",
+            "    expect(find.text('Funktion speichern'), findsNothing);\n",
+            "    expect(find.text('Weiter'), findsNothing);\n",
+            "  });\n",
+            "\n",
+            "  testWidgets('shows Funktion speichern instead of Weiter on the last step on a tablet', (tester) async {\n",
+            "    await openWizard(tester, size: tablet);\n",
+            "    await fillGeneralStep(tester);\n",
+        ]
+        .concat();
+        let hunks = diff(&left, &right, None, 3);
+        assert_eq!(hunks.len(), 1);
+        let hunk = &hunks[0];
+        assert_eq!((hunk.removed, hunk.added), (3, 16));
+        let marked = marked(hunk);
+        assert_eq!(
+            marked[3..6],
+            [
+                "-[-  // Tablet only: the wide test font overflows the compact app bar, which holds the buttons on a phone.\n-]",
+                "-[-  // The phone layout is checked on a device.\n-]",
+                "-  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {\n",
+            ]
+        );
+        assert_eq!(
+            marked[21],
+            "+  testWidgets('shows Funktion speichern instead of Weiter on the last step{+ on a tablet+}', \
+             (tester) async {\n"
+        );
+        for segments in &hunk.segments[6..21] {
+            let kinds: Vec<SegmentKind> = segments.iter().map(|segment| segment.kind).collect();
+            assert_eq!(kinds, [SegmentKind::Added], "{marked:?}");
+        }
+    }
+
+    /// At `-b` a line whose whitespace amount changed is context; the changed line after it still
+    /// pairs with its new version.
+    #[test]
+    fn ignoring_space_changes_pairs_the_lines_that_remain() {
+        let hunks = diff_mode(
+            "fn f() {\n  let a = 1;\n  let total = add(1, 2);\n}\n",
+            "fn f() {\n    let a = 1;\n  let total = add(1, 3);\n}\n",
+            None,
+            3,
+            LineCompareMode::IgnoreSpaceChange,
+        );
+        assert_eq!(
+            marked(&hunks[0]),
+            [
+                " fn f() {\n",
+                "     let a = 1;\n",
+                "-  let total = add(1, [-2-]);\n",
+                "+  let total = add(1, {+3+});\n",
+                " }\n",
+            ]
+        );
     }
 
     /// An insertion lists its section through its added lines, a deletion through its removed.

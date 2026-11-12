@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! `limits`: inputs that trip each difft fallback, with wall time and peak memory for jj and for
-//! difft. The inputs are generated into `out/limits/<name>/`.
+//! `limits`: inputs that trip each difft fallback, plus two that fill E2's per-file budget, with
+//! wall time and peak memory for jj (with E2) and for difft. The inputs are generated into
+//! `out/limits/<name>/`.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -28,8 +29,8 @@ pub fn run(_args: &[String]) -> Result<(), String> {
     println!("difft: {}\n", marks::require_difft()?);
     let out = out_dir("limits")?;
     let probe = std::env::current_exe().map_err(|error| format!("current_exe: {error}"))?;
-    println!("| input | bytes before / after | difft args | difft `language` | difft wall | difft peak RSS | jj changed lines | jj in-process | jj process peak RSS |");
-    println!("|---|---:|---|---|---:|---:|---:|---:|---:|");
+    println!("| input | bytes before / after | difft args | difft `language` | difft wall | difft peak RSS | jj changed lines | jj in-process | E2 in-process (more) | E2 budget ran out | jj + E2 process peak RSS |");
+    println!("|---|---:|---|---|---:|---:|---:|---:|---:|---|---:|");
     let mut details = String::new();
     let (mut mismatches, mut cr_shifted) = (0, 0);
     for input in inputs() {
@@ -40,20 +41,23 @@ pub fn run(_args: &[String]) -> Result<(), String> {
         // jj in a process of its own, so its peak memory is its own; the medians of three runs.
         let mut jj_command = Command::new(&probe);
         jj_command.arg("jj-marks").arg(&paths[0]).arg(&paths[1]);
-        let (mut jj_times, mut jj_peaks, mut changed_lines) = (Vec::new(), Vec::new(), String::new());
+        let (mut jj_times, mut e2_times, mut jj_peaks, mut changed_lines, mut ran_out) =
+            (Vec::new(), Vec::new(), Vec::new(), String::new(), String::new());
         for _ in 0..RUNS {
             let run = measure(&jj_command)?;
             let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
             let mut fields = stdout.split_whitespace();
             changed_lines = fields.next().unwrap_or("?").to_owned();
-            jj_times.push(Duration::from_micros(
-                fields.next().and_then(|us| us.parse().ok()).unwrap_or(0),
-            ));
+            let mut micros = || Duration::from_micros(fields.next().and_then(|us| us.parse().ok()).unwrap_or(0));
+            jj_times.push(micros());
+            e2_times.push(micros());
+            ran_out = fields.next().unwrap_or("?").to_owned();
             jj_peaks.push(run.peak_rss);
         }
         jj_times.sort();
+        e2_times.sort();
         jj_peaks.sort_unstable();
-        let (jj_time, jj_peak) = (jj_times[RUNS / 2], jj_peaks[RUNS / 2]);
+        let (jj_time, e2_time, jj_peak) = (jj_times[RUNS / 2], e2_times[RUNS / 2], jj_peaks[RUNS / 2]);
 
         let runs: Vec<&[&str]> = std::iter::once(&[][..])
             .chain(input.extra_runs.iter().copied())
@@ -72,9 +76,14 @@ pub fn run(_args: &[String]) -> Result<(), String> {
             mismatches += difft.content_mismatches;
             cr_shifted += difft.cr_shifted_spans;
             let jj_cells = if index == 0 {
-                format!("{changed_lines} | {} ms | {} MB", ms(jj_time), mb(jj_peak))
+                format!(
+                    "{changed_lines} | {} ms | {} ms | {ran_out} | {} MB",
+                    ms(jj_time),
+                    ms(e2_time),
+                    mb(jj_peak)
+                )
             } else {
-                " | | ".to_owned()
+                " | | | | ".to_owned()
             };
             println!(
                 "| {} | {} / {} | {} | `{}` | {} ms | {} MB | {jj_cells} |",
@@ -96,7 +105,8 @@ pub fn run(_args: &[String]) -> Result<(), String> {
         }
     }
     println!(
-        "\nMedian of {RUNS} runs. Peak RSS is `/usr/bin/time -l`'s maximum resident set size; jj's is a process of its own that reads both files and computes the marks.\n"
+        "\nMedian of {RUNS} runs. Peak RSS is `/usr/bin/time -l`'s maximum resident set size; jj's is a process of its own that reads both files and computes today's marks and E2's. E2's time is its line pairing alone, on top of jj's; E2's per-file budget is {} bytes (`MAX_PAIRING_WORK`).\n",
+        crate::line_pairs::MAX_PAIRING_WORK
     );
     println!(
         "Over all difft runs above: span content mismatches {mismatches}, spans moved by a carriage return {cr_shifted}.\n"
@@ -129,11 +139,17 @@ fn write_details(details: &mut String, input: &Input, difft: &marks::DifftDiff) 
             marks::render(&line.text, &build, line.kind),
             class.label()
         );
+        let _ = writeln!(
+            details,
+            "{sign} e2    |{}",
+            marks::render(&line.text, &line.e2, line.kind)
+        );
     }
     let _ = writeln!(details, "```\n");
 }
 
-/// `jj-marks <before> <after>`: prints the changed-line count and jj's in-process time in µs.
+/// `jj-marks <before> <after>`: prints the changed-line count, jj's in-process time and E2's in
+/// µs, and whether E2's budget ran out.
 pub fn jj_marks_child(args: &[String]) -> Result<(), String> {
     let [before, after] = args else {
         return Err("usage: structural-diff-probe jj-marks <before> <after>".to_owned());
@@ -141,7 +157,13 @@ pub fn jj_marks_child(args: &[String]) -> Result<(), String> {
     let read = |path: &str| std::fs::read(Path::new(path)).map_err(|error| format!("{path}: {error}"));
     let (before, after) = (read(before)?, read(after)?);
     let jj = marks::jj_diff(&before, &after);
-    println!("{} {}", jj.changed_lines().count(), jj.elapsed.as_micros());
+    println!(
+        "{} {} {} {}",
+        jj.changed_lines().count(),
+        jj.elapsed.as_micros(),
+        jj.e2_elapsed.as_micros(),
+        if jj.e2_budget_ran_out { "yes" } else { "no" }
+    );
     Ok(())
 }
 
@@ -178,6 +200,22 @@ fn inputs() -> Vec<Input> {
             before: array(60_000, |_| false),
             after: array(60_000, |index| index % 3 == 0),
             extra_runs: &[&["--graph-limit", "300000"], &["--graph-limit", "6000000"]],
+        },
+        Input {
+            name: "e2-at-cap",
+            what: "One changed block whose one-to-one candidates fill E2's per-file budget: copies of `values.push(first * second);` become copies of `values.push(second * first);`. Every line pair shares all its tokens, so no bound skips a pair.",
+            extension: "rs",
+            before: at_cap(E2_BEFORE),
+            after: at_cap(E2_AFTER),
+            extra_runs: &[],
+        },
+        Input {
+            name: "e2-reformatted-calls",
+            what: "20 changed blocks of 28 one-line calls `f(a0, a1, a2, a3, a4, a5);` each, reformatted to one argument per line (a reviewer's case): every call line shares all its tokens with every run of argument lines, so the runs are searched too.",
+            extension: "rs",
+            before: calls(20, 28, false),
+            after: calls(20, 28, true),
+            extra_runs: &[],
         },
         Input {
             name: "parse-error-rust",
@@ -281,6 +319,44 @@ fn statements(count: usize, changed: impl Fn(usize) -> bool) -> String {
     }
     text.push_str("    values\n}\n");
     text
+}
+
+/// The two lines of the `e2-at-cap` input; both have the same length and the same tokens.
+const E2_BEFORE: &str = "    values.push(first * second);\n";
+const E2_AFTER: &str = "    values.push(second * first);\n";
+
+/// `blocks` blocks of `calls` calls `f(a0, a1, a2, a3, a4, a5);` each, split by a comment line;
+/// `split` writes each call with one argument per line.
+fn calls(blocks: usize, calls: usize, split: bool) -> String {
+    let mut text = String::from("fn main() {\n");
+    for block in 0..blocks {
+        let _ = writeln!(text, "    // block {block}");
+        for _ in 0..calls {
+            if split {
+                text.push_str("    f(\n");
+                for argument in 0..6 {
+                    let _ = writeln!(text, "        a{argument},");
+                }
+                text.push_str("    );\n");
+            } else {
+                text.push_str("    f(a0, a1, a2, a3, a4, a5);\n");
+            }
+        }
+    }
+    text.push_str("}\n");
+    text
+}
+
+/// One function body of as many copies of `line` as one changed block of `n` lines against `n`
+/// lines may hold within E2's per-file budget: the one-to-one candidates read
+/// `2 · n · n · line length` bytes.
+fn at_cap(line: &str) -> String {
+    let fits = |count: usize| 2 * count * count * line.len() <= crate::line_pairs::MAX_PAIRING_WORK;
+    let count = (1..).take_while(|&count| fits(count)).last().unwrap_or(1);
+    format!(
+        "pub fn table() {{\n    let mut values = Vec::new();\n{}    values\n}}\n",
+        line.repeat(count)
+    )
 }
 
 /// One Rust array literal of `count` small numbers, ten per line; `changed` picks the ones that differ.

@@ -3,7 +3,7 @@
 **Datum:** 2026-11-12 · **Anlass:** Story 5.9, Punkt 1 (Recherche), unbeaufsichtigter bmad-build-auto-Lauf; Spec `_bmad-output/implementation-artifacts/spec-5-9-structural-diff-difftastic-class-research.md`
 **Fragen:** (1) Lässt sich difftastic (`difft`, MIT) als Bibliothek einbinden oder nur als Programm aufrufen? Was taugen diffsitter und ein eigener Baum-Diff über tree-sitter? (2) Was kostet es auf großen Dateien, und wie greifen seine Fallbacks `DFT_BYTE_LIMIT`, `DFT_GRAPH_LIMIT` und `DFT_PARSE_ERROR_LIMIT`? (3) Welche Grammatiken braucht es, zuerst für Rust, Dart und Markdown? (4) Wie passen seine Marken auf `HunkLine.segments`?
 **Methode:** Quellen in fester Version gelesen: difftastic 0.72.0 (Tag `0.72.0`: `Cargo.toml`, `src/main.rs`, `src/options.rs`, `src/display/json.rs`, `src/parse/syntax.rs`, `src/parse/tree_sitter_parser.rs`, `src/diff/shortest_path.rs`; README und CHANGELOG der installierten Homebrew-Formel), diffsitter v0.9.0, jj-lib 0.47.0 (vendored), die jj-Doku @ v0.47.0 und die zurückgenommenen Stories 5.3 / 5.4 (Commit `e8e8297f`, Spec 5.3). Gemessen mit der Wegwerf-Probe `spikes/structural-diff-probe/`: eine eigenständige Crate, offline gebaut, mit allen Befehlen und Ausgaben im README. Sie legt jj-libs Wortmarken und die Marken des installierten `difft` 0.72.0 auf dieselben Hunk-Zeilen; meldet `difft --version` etwas anderes, bricht sie ab. Eingaben: Zeugenfälle, die in den 200 neuesten Commits dieses Repos geänderten `.rs`- und `.dart`-Dateien, synthetische Eingaben für jeden Fallback und ein Parse-Test aller Dateien des Repos bei `5ba5f5d4`. Zeit als Wanduhrzeit, Speicher als Spitzen-RSS laut `/usr/bin/time -l`. Rechner: Apple M4 Pro, 24 GB, macOS 27.2.1.
-**Status:** Recherche fertig. Keine Bauentscheidung: Ralph wählt zwischen den Optionen in Abschnitt 7. Story 5.9 bleibt `backlog`, ihr Design-Status bleibt offen.
+**Status:** Recherche fertig. Ralph entschied am 2026-11-12 für Option E2: Zeilen paaren vor jj's Wortdiff. Gebaut und gemessen im Abschlusslauf der Story 5.9, siehe Abschnitt 9. Die Optionen A–D in Abschnitt 7 sind damit überholt.
 
 ---
 
@@ -292,6 +292,55 @@ Das sind 11,2 % der strukturell verglichenen Zeilen, in 1.454 von 2.536 Dateien.
 4. Falls D: welche Sprachen, und welche Grenzen gegen tree-sitters Worst Cases? D2 ist die einzige Option, die Verschiebungen markieren könnte. Wie oft verschobener Code oder vertauschte Argumente in echten Diffs vorkommen, misst die Probe nicht.
 5. Der Zeuge „`f(a, b)` → `f(b, a)` markiert die Verschiebung“: streichen, oder an einen Diff mit Verschiebungen (D2) binden. difftastic erfüllt ihn nicht. Ebenso der Zeuge „Ralphs `stepper.dart`-Beispiele behalten ihre Marken“: Er gilt für die Wortmarken; gezeichnet verlöre ein Bau auf 3 der 9 Zeilen die gefüllte Einrückung (Abschnitt 5).
 
+## 9. E2: Zeilen paaren vor jj's Wortdiff (gebaut 2026-11-12)
+
+**Entscheidung:** Ralph wählte am 2026-11-12 Option E2 (epics.md, Story 5.9, Entscheidungsnotiz). Gebaut im Abschlusslauf der Story 5.9 (`crates/zanshin-jj/src/line_pairs.rs`), gemessen mit derselben Probe. Die Probe übersetzt diese Datei selbst, misst also den Produktcode. Gemessen wurde `line_pairs.rs` mit `git hash-object` `15ddbd3902b9068efce3d7e4deee3a6e264183fa`; ändert sich die Datei, gelten die Zahlen nicht mehr ohne neuen Lauf. Alle Ausgaben stehen wörtlich im README der Probe, Abschnitt „Results of the E2 run“.
+
+**Was E2 tut:**
+- jj's Zeilen-Hunks bleiben, wie `unified_diff_hunks` sie liefert. Nur die Wortmarken eines geänderten Blocks (entfernte Zeilen, dann hinzugefügte) ändern sich.
+- Die Zeilen eines Blocks werden nach Ähnlichkeit gepaart, in ihrer Reihenfolge: eine Zeile mit einer, oder eine Zeile mit bis zu 8 aufeinanderfolgenden Zeilen der anderen Seite (ein umgebrochener Aufruf, zusammengezogene Zeilen).
+- Ähnlichkeit = 2 · behaltene Tokens / Tokens beider Seiten. Ein Token ist ein Wort oder ein einzelnes Nicht-Wort-Zeichen ohne Leerraum, so wie jj-libs Wortdiff zerlegt; jedes zählt 1, gleich wie lang. „Behalten“ ist, was `ContentDiff::by_word` auf der Gruppe gleich lässt. Gepaart wird nur über 50 %. Ein geänderter Bezeichner ist so eine Änderung, egal wie lang: `a.functionWizard_save,` → `a.functionWizard_next,` behält 3 von 4 Tokens je Seite (75 %) und paart.
+- Jedes Paar bekommt jj-libs Wortdiff. Eine Zeile ohne Partner wird ein einziges geändertes Segment, also nur die schwache Füllung (10.32).
+- Die Suche einer Datei darf höchstens `MAX_PAIRING_WORK` (262.144) Bytes durch die bewertenden Wortdiffs lesen. Ist das Budget aufgebraucht, behalten der Block und alle späteren jj's Wortmarken über den ganzen Block; ein Block, dessen 1:1-Kandidaten allein mehr lesen würden, als übrig ist, wird gar nicht erst durchsucht.
+
+**Zeugen** (Probe `witness`, Rust-Tests in `hunks.rs`):
+- Ralphs Beispiel, sein Hunk wörtlich (`widget-test-rename`; in der Probe in einen kleinen Dart-Rahmen gesetzt, damit difft ihn parst): 3 entfernte gegen 16 hinzugefügte Zeilen. Beide Kommentare sind nur schwach gefüllt. Der alte Test paart mit seinem umbenannten Gegenstück (93 %, mit dem Phone-Test wären es 86 %), also markiert dieser nur ` on a tablet`; der neue Phone-Test ist eine Folge neuer Zeilen. Heute markiert jj fast jedes Wort beider Kommentare und beider Testnamen. Gegen difft: dieselben Wortmarken auf allen 19 Zeilen (heute 16), gezeichnet gleich auf 18 (heute 15).
+- stepper.dart: dieselben Wortmarken wie heute und wie difft. Der Aufruf über drei Zeilen paart als eine Gruppe aus einer und drei Zeilen und bleibt wie heute. Beim Kommentarbeispiel füllt E2 die Einrückung vor `padding:` nicht mehr; gezeichnet gleich mit difft auf 7 statt 6 der 9 Zeilen.
+- Die E/A-Matrix der Spec gilt: `s.functionWizard_save` → `saveLabel`, `a.functionWizard_save` → `a.functionWizard_next` (nur der Name) und `1` → `2` sind gepaart und genau so markiert. Der erste Bau maß die Ähnlichkeit in Zeichen; damit blieb die mittlere Zeile bei 14 % ungepaart. Deshalb zählt die Ähnlichkeit Tokens.
+
+**Echte Diffs** (dieselben 2.536 Dateien und 96.295 Zeilen ohne difft-Fallback; difft lief auf 8 Threads, seine Marken sind dieselben). Die heutigen Zahlen gegen difft reproduzieren Abschnitt 6 genau.
+
+| | Wortmarken | gezeichnet |
+|---|---:|---:|
+| heute anders als difft | 4.755 (4,9 %) | 10.812 (11,2 %) |
+| E2 anders als difft | 5.148 (5,3 %) | 10.332 (10,7 %) |
+| heute anders, E2 gleich | 1.124 | 1.903 |
+| heute gleich, E2 anders | 1.517 | 1.423 |
+| Netto-Änderung der heutigen Lücke | −8,3 % | 4,4 % |
+
+- **Methode:** Gegen E2 nimmt difft in Kommentaren und Strings E2's Wortmarken, nicht die heutigen (Abschnitt 4, Regel 3, mit E2 an jj's Stelle). Sonst trüge der Vergleichswert genau die Streuung, die E2 entfernt.
+- Die Netto-Änderung ist (heute − E2) / heute: Zeilen, die E2 zu difft's Marken bringt, minus Zeilen, die es davon wegnimmt. Gezeichnet verkleinert E2 die heutige Lücke zu difft netto um 4,4 %; bei den Wortmarken liegt es netto 8,3 % weiter weg als heute. 3.189 der 5.148 abweichenden Zeilen markiert E2 ganz: Zeilen ohne Partner, die difft als unverändert oder nur teilweise geändert sieht, weil es Tokens über Zeilengrenzen hinweg zuordnet. Beispiele im README: umbrochene Listen von `JJ_*`-Codes; auf `=>` umgestellte Funktionen (`void showDefault() => show(…);`: E2 die ganze Zeile, difft nur `=>` und `show`).
+- Wo E2 die Lücke schließt: Zeilen, in die jj's Blockdiff Wörter anderer Zeilen zog, etwa `return _worker.selectTree(…, files: files{+, from: from+});` statt der ganzen Zeile.
+
+**E2 gegen heute** (alle 115.515 geänderten Zeilen): dieselben Wortmarken auf 92,2 %. E2 markiert mehr auf 5,0 % (meist ganze Zeilen ohne Partner), weniger auf 1,8 %, anders auf 1,0 %. Gezeichnet füllt E2 auf 5,4 % weniger (keine Streuung, weniger gefüllte Einrückung) und auf 1,5 % mehr.
+
+**Kosten pro Datei** (in-process; bei E2 nur die Paarung, zusätzlich zu jj):
+
+| | jj Dart | E2 Dart | jj Rust | E2 Rust |
+|---|---:|---:|---:|---:|
+| Median | 0,1 ms | 0,0 ms | 0,2 ms | 0,1 ms |
+| p90 | 0,5 ms | 0,5 ms | 0,7 ms | 0,5 ms |
+| p99 | 1,3 ms | 3,0 ms | 1,5 ms | 3,4 ms |
+| Maximum | 3,4 ms | 15,0 ms | 2,9 ms | 13,1 ms |
+
+- Das Budget lief in 9 von 2.536 Dateien aus; dort behalten die übrigen Blöcke jj's Wortmarken.
+- `limits`: Zwei Eingaben, die das Budget ausschöpfen, brauchen 18,0 ms (ein Block, dessen Zeilenpaare alle dieselben Tokens haben) und 21,2 ms (20 Blöcke aus je 28 einzeiligen Aufrufen, auf ein Argument je Zeile umgebrochen; mit der früheren Grenze je Block 3,15 s). Die langsamste gemessene Datei ist eine andere: 20.000 Anweisungen, jede 10. geändert (2.000 kleine Blöcke, die je wenig lesen) brauchen 23,7 ms bei jj's 16,5 ms; ihre Kosten wachsen mit der Datei, wie jj's eigener Diff. Blöcke, die nicht ins Budget passen: unter 1 ms. Der ganze jj-Prozess mit E2 belegt höchstens 41 MB.
+- **So wurde die Grenze gesetzt:** Der erste Bau maß die Ähnlichkeit in Zeichen und begrenzte jeden Block für sich (seine 1:1-Lesezugriffe). Mit der Schranke der Spec (`200 · min(links, rechts) − 50 · beide Seiten`) lag E2's p99 dort bei 12–13 ms, und eine kleinere Grenze half kaum (64 KiB: 10–12 ms). Die langsamen Dateien enthalten gewöhnliche Blöcke aus einigen Dutzend unähnlicher Zeilen; dort schließt diese Schranke nichts aus, fast jeder Kandidat lief durch den Wortdiff. Eine zweite Schranke begrenzt die behaltenen Tokens auf die Tokens, die die Zeilen einer Gruppe teilen (Wörter und einzelne Nicht-Wort-Zeichen, jedes Vorkommen einmal). jj-libs Wortdiff behält nur ganze gleiche Wörter und gleiche Einzelzeichen, also ist sie eine obere Schranke, und das Überspringen ändert kein Ergebnis. Geprüft auf allen 2.536 Dateien mit Debug-Assertions (`behalten ≤ Schranke`), mit Zeichen und erneut mit Tokens; die Zählungen blieben gleich. Ein Review fand dann die Grenze je Block über mehrere Blöcke hinweg unbegrenzt und blind für Läufe (eine Datei aus 20 umgebrochenen Aufrufblöcken: 3,15 s). Seitdem ist sie ein Budget je Datei auf die Bytes, die die bewertenden Wortdiffs lesen; 256 KiB halten eine Suche, die es ganz nutzt, bei etwa 20 ms.
+
+**Offene Punkte für Ralph:**
+1. E2 erfüllt die Zeugen. Auf echten Diffs verkleinert es gezeichnet die Lücke zu difft netto um 4,4 % und liegt bei den Wortmarken netto 8,3 % weiter weg als heute. Behalten, oder die Regel weiter ändern? Jede Änderung braucht einen neuen Lauf der Probe.
+2. Mit `-w` / `-b` paart E2 in den Blöcken, die der Modus übrig lässt; die Wortmarken selbst ignorieren Leerraum nicht (Story 10.33 prüft das).
+
 ## Anhang: Belege
 
 **difftastic 0.72.0** (Tag `0.72.0`, github.com/Wilfred/difftastic; installiert: `/opt/homebrew/Cellar/difftastic/0.72.0`, gebaut aus `archive/refs/tags/0.72.0.tar.gz`)
@@ -309,4 +358,4 @@ Das sind 11,2 % der strukturell verglichenen Zeilen, in 1.454 von 2.536 Dateien.
 
 **jj:** jj-lib 0.47.0 `src/diff_presentation/unified.rs` (`unified_diff_hunks`), jj-core 0.47.0 `src/diff.rs` (`ContentDiff::for_tokenizer`), `docs/config.md` @ v0.47.0 (`ui.diff-formatter`), `docs/conflicts.md` @ v0.47.0 (Marker-Stile). **Zanshin:** `crates/zanshin-jj/src/hunks.rs` (`Hunk`, `Segment`, `hunk_line`, `DiffReader::file`, `DiffOptions.whitespace`), `schemas/envelope.fbs` (`HunkLine.segments`), `app/lib/src/features/graph/inspector_diff.dart` (`diffWordMarks`), `app/lib/src/features/graph/graph_inspector.dart` (Zusammenfassung, dann eine Datei), `app/lib/src/features/undo_timeline/operation_changes.dart` (`_diffOf`), `packages/zanshin_core/lib/src/worker/handle.dart` (`diff(whitespace:)`), `app/widgetbook/folders/graph.dart` (`_DemoDetails`), `rust-toolchain.toml` (beide macOS-Ziele), Commit `e8e8297f`, Spec 5.3.
 
-**Probe:** `spikes/structural-diff-probe/` (README: Methode, Befehle, alle Ausgaben wörtlich). Läufe vom 2026-11-12: `witness`, `history --rev 5ba5f5d43b21d45c24c099092384f9d9610fe009`, `limits`, `parse-check --rev 5ba5f5d43b21d45c24c099092384f9d9610fe009`.
+**Probe:** `spikes/structural-diff-probe/` (README: Methode, Befehle, alle Ausgaben wörtlich). Läufe vom 2026-11-12: `witness`, `history --rev 5ba5f5d43b21d45c24c099092384f9d9610fe009`, `limits`, `parse-check --rev 5ba5f5d43b21d45c24c099092384f9d9610fe009`. E2-Läufe (Abschnitt 9) vom selben Tag: `witness`, `history --rev 5ba5f5d43b21d45c24c099092384f9d9610fe009 --jobs 8`, `limits`.

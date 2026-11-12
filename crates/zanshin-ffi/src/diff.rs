@@ -6,7 +6,7 @@
 //! composite-input pattern); the handle is borrowed, never consumed; the call runs the pre-verb
 //! snapshot (Story 9.26), so every envelope carries the precondition report and the call's
 //! warnings. Story 5.2 gives every line its word-level segments, `zanshin_jj::Hunk::segments`:
-//! what `jj diff --git` underlines.
+//! jj-lib's word diff over each pair of similar lines of a changed block.
 
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, VerifierOptions, WIPOffset};
 use tracing::debug;
@@ -90,7 +90,8 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// `jj diff` as data in the repo identified by `handle` (Story 5.8) — `zanshin_jj::Repo::diff`:
 /// per changed file its kind, flags, section keys (the `HunkKey`s `zanshin_select_tree` takes),
 /// hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at. Every hunk
-/// line carries its word-level segments (Story 5.2): what `jj diff --git` underlines.
+/// line carries its word-level segments (Story 5.2): jj-lib's word diff over each pair of similar
+/// lines of a changed block.
 ///
 /// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, a set
 /// diffed as one — its roots' merged parents against its merged heads, a set with gaps refused;

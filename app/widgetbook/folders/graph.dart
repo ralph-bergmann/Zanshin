@@ -1032,8 +1032,8 @@ class _DemoDetails implements GraphDetails {
 
   static HunkLine _line(HunkLineKind kind, String text) => HunkLine(kind: kind, text: '$text\n');
 
-  /// A changed line with jj-lib's segments (Story 10.32), written as `jj diff --git` underlines them: `[-…-]` around a
-  /// removed run, `{+…+}` around an added one.
+  /// A changed line with its word segments (Story 10.32) as the backend sends them (each changed block's lines
+  /// word-diffed in pairs): `[-…-]` around a removed run, `{+…+}` around an added one.
   static HunkLine _words(HunkLineKind kind, String marked) {
     final added = kind == HunkLineKind.added;
     final List<String> parts = marked.split(added ? RegExp(r'\{\+|\+\}') : RegExp(r'\[-|-\]'));
@@ -1126,8 +1126,8 @@ class _DemoDetails implements GraphDetails {
                 added: 2,
                 lines: <HunkLine>[
                   _words(HunkLineKind.removed, '  padding: Spacing.[-spacing8-],\n'),
-                  _words(HunkLineKind.added, '  {+// Small side padding.\n+}'),
-                  _words(HunkLineKind.added, '{+  +}padding: Spacing.{+spacing2+},\n'),
+                  _words(HunkLineKind.added, '{+  // Small side padding.\n+}'),
+                  _words(HunkLineKind.added, '  padding: Spacing.{+spacing2+},\n'),
                   _line(HunkLineKind.context, '  child: label,'),
                 ],
               ),

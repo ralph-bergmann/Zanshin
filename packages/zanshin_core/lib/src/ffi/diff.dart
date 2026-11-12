@@ -68,7 +68,8 @@ enum SegmentKind {
 }
 
 /// A run of a [HunkLine]'s text with one [kind] (mirrors `zanshin_jj::Segment`),
-/// never empty. The changed runs are what `jj diff --git` underlines.
+/// never empty. The changed runs are jj-lib's word diff over a pair of similar
+/// lines.
 final class Segment {
   const Segment({required this.kind, required this.text});
 
@@ -91,9 +92,12 @@ final class HunkLine {
   /// right side's text.
   final String text;
 
-  /// The line's word-level runs (Story 5.2), jj-lib's own word diff: the
-  /// changed runs are what `jj diff --git` underlines. jj-lib word-diffs each
-  /// changed region as one text, with no line pairing; words are runs of
+  /// The line's word-level runs (Story 5.2). Each changed block pairs its
+  /// removed and added lines by similarity, in order (one line with one line,
+  /// or with a run of consecutive lines on the other side), and a pair takes
+  /// jj-lib's own word diff over its text; a line without a partner is one
+  /// changed run, and a huge block keeps jj-lib's word diff over the whole
+  /// block (what `jj diff --git` underlines). Words are runs of
   /// `A-Z a-z 0-9 _` and non-ASCII bytes, every other byte is a token of its
   /// own. A removed line has [SegmentKind.equal] and [SegmentKind.removed]
   /// runs, an added line [SegmentKind.equal] and [SegmentKind.added] runs, a

@@ -106,8 +106,9 @@ void main() {
         return [for (final Segment s in line.segments) (s.kind, s.text)];
       }
 
-      expect(segmentsOf('f.txt', 'a\n'), [(SegmentKind.removed, 'a'), (SegmentKind.equal, '\n')]);
-      expect(segmentsOf('f.txt', 'A\n'), [(SegmentKind.added, 'A'), (SegmentKind.equal, '\n')]);
+      // `a` → `A` keeps nothing, so the lines stay unpaired: one whole changed segment each.
+      expect(segmentsOf('f.txt', 'a\n'), [(SegmentKind.removed, 'a\n')]);
+      expect(segmentsOf('f.txt', 'A\n'), [(SegmentKind.added, 'A\n')]);
       expect(segmentsOf('f.txt', 'b\n'), [(SegmentKind.equal, 'b\n')]);
       // jj compares spaces one by one: the removed line keeps its space, one space is added.
       expect(segmentsOf('w.txt', 'x y\n'), [(SegmentKind.equal, 'x y\n')]);

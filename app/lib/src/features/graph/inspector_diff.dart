@@ -54,9 +54,9 @@ String _text(HunkLine line) {
 }
 
 /// The word marks of [line] (Story 10.32): its [SegmentKind.removed] / [SegmentKind.added] segments (jj-lib's changed
-/// runs, what `jj diff --git` underlines) as ranges of its shown text, each cut at that text's end, so a line break is
-/// never marked. None when the line's equal segments hold no visible character (an inserted line, a new or deleted
-/// file): the line's fill already says it all.
+/// runs over the line's pair of similar lines) as ranges of its shown text, each cut at that text's end, so a line
+/// break is never marked. None when the line's equal segments hold no visible character (an inserted line, a line
+/// without a partner, a new or deleted file): the line's fill already says it all.
 List<TextRange> diffWordMarks(HunkLine line) {
   if (!line.segments.any((s) => s.kind == SegmentKind.equal && s.text.trim().isNotEmpty)) {
     return const <TextRange>[];

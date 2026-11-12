@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! `witness`: jj's and difft's marks side by side on the witness cases — `inputs/witness/<case>/`
+//! `witness`: jj's, difft's and E2's marks side by side on the witness cases — `inputs/witness/<case>/`
 //! holds `before.<ext>` and `after.<ext>`; one more case, with carriage returns and a tab, is built
 //! here because its bytes are hard to keep in a text file.
 
@@ -82,16 +82,18 @@ fn print_case(case: &Case, work: &Path) -> Result<(), String> {
     )?;
     println!("#### {} (.{})\n", case.name, case.extension);
     println!(
-        "jj: {} hunk(s), {} changed line(s), {} ms in-process · difft: language `{}`, status `{}`, {} ms wall",
+        "jj: {} hunk(s), {} changed line(s), {} ms in-process, E2 {} ms more · difft: language `{}`, status `{}`, {} ms wall",
         jj.hunks.len(),
         jj.changed_lines().count(),
         ms(jj.elapsed),
+        ms(jj.e2_elapsed),
         difft.language,
         difft.status,
         ms(difft.elapsed),
     );
     println!("\n```text");
     let (mut jj_ink, mut difft_ink, mut same, mut drawn_same) = (0, 0, 0, 0);
+    let (mut e2_ink, mut e2_same, mut e2_drawn_same) = (0, 0, 0);
     for (index, hunk) in jj.hunks.iter().enumerate() {
         println!("@@ hunk {} @@", index + 1);
         for line in hunk {
@@ -132,6 +134,33 @@ fn print_case(case: &Case, work: &Path) -> Result<(), String> {
                             marks::classify(&line.text, &line.jj, &raw).label()
                         );
                     }
+                    // E2 against difft: the same classes, with E2 in jj's place (also inside
+                    // comments and strings).
+                    let e2_structural = difft.e2_marks_for(line);
+                    let (e2_class, e2_drawn) = if difft.fell_back() {
+                        (Class::Fallback, Class::Fallback)
+                    } else {
+                        let drawn = marks::classify_drawn(
+                            &marks::drawn(&line.text, &line.e2),
+                            &marks::drawn(&line.text, &e2_structural),
+                        );
+                        (marks::classify(&line.text, &line.e2, &e2_structural), drawn)
+                    };
+                    if !difft.fell_back() && e2_structural != structural {
+                        println!(
+                            "{sign} d(e2) |{}   <- difft with E2's marks inside comments and strings",
+                            marks::render(&line.text, &e2_structural, line.kind)
+                        );
+                    }
+                    e2_ink += marks::ink(&line.text, &line.e2).len();
+                    e2_same += usize::from(e2_class == Class::Same);
+                    e2_drawn_same += usize::from(matches!(e2_drawn, Class::Same | Class::Fallback));
+                    println!(
+                        "{sign} e2    |{}   <- against difft: {}; drawn: {}",
+                        marks::render(&line.text, &line.e2, line.kind),
+                        e2_class.label(),
+                        e2_drawn.label()
+                    );
                 }
             }
         }
@@ -149,6 +178,10 @@ fn print_case(case: &Case, work: &Path) -> Result<(), String> {
     let dropped = marks::dropped(&jj, &difft);
     println!(
         "Marked non-whitespace bytes on changed lines: jj {jj_ink}, difft {difft_ink} — {verdict}; same marks on {same} of {changed} changed line(s); drawn the same by 10.32 (whitespace fills counted) on {drawn_same} of {changed}.",
+        changed = jj.changed_lines().count()
+    );
+    println!(
+        "E2: {e2_ink} marked non-whitespace bytes; the same marks as difft on {e2_same} of {changed} changed line(s), drawn the same on {e2_drawn_same} of {changed}.",
         changed = jj.changed_lines().count()
     );
     println!(

@@ -860,10 +860,15 @@ diffs are jj-lib's, through `zanshin-jj`, and diffs get no syntax highlighting)*
   `zanshin_graph_topology`: the whole revset's index-only topology per call (Story 4.10),
   scalar vectors + CSR on the wire, laid out in Dart (Story 4.11); still re-derived per
   operation, still no held cache.)*
-- **Word diffs are jj-lib's** (`zanshin_jj::Hunk::segments`: what `jj diff --git`
-  underlines). Don't add a second word-diff algorithm: it drifts from the CLI (2026-11-12,
-  Story 5.2 rework — the earlier imara-diff line pairing marked whole lines where the CLI marks
-  one word).
+- **Word diffs are jj-lib's, on paired lines** (`zanshin_jj::Hunk::segments`; Story 5.9's E2,
+  Ralph 2026-11-12). The line-level hunks stay the CLI's. Inside each changed block,
+  `crates/zanshin-jj/src/line_pairs.rs` pairs removed and added lines by similarity (order kept,
+  above 50 %, one line with a run of up to 8 on the other side) and word-diffs each pair with
+  jj-lib's `ContentDiff::by_word`; a line without a partner is one changed segment, and a block
+  over the pairing cap keeps jj-lib's block-wide tokens (what `jj diff --git` underlines). Word
+  marks are presentation, so they may differ from the CLI's underlines. Don't add a second word
+  tokenizer or word-diff algorithm (2026-11-12, Story 5.2 rework — the earlier imara-diff word
+  diff marked whole lines where jj marks one word).
 - **Don't pre-compute things "in case the UI needs them".** Compute on
   callback dispatch, not speculatively. The UI is out of scope; designing for
   hypothetical UI demands is over-engineering.

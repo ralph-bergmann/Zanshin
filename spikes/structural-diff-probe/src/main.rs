@@ -4,6 +4,9 @@
 
 mod history;
 mod limits;
+// E2's line pairing exactly as Zanshin builds it: the same file, compiled here.
+#[path = "../../../crates/zanshin-jj/src/line_pairs.rs"]
+mod line_pairs;
 mod marks;
 mod parse_check;
 mod witness;
@@ -13,10 +16,11 @@ use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
 
 const USAGE: &str = "usage: structural-diff-probe <witness | history | limits | parse-check> [options]
-  witness      [--inputs DIR]                              jj's and difft's marks on the witness cases
-  history      [--repo DIR] [--rev REV] [--commits N] [--tsv FILE]
-                                                           the same over real diffs of the repository
-  limits                                                   inputs that trip difft's fallbacks: time, peak memory
+  witness      [--inputs DIR]                              jj's, E2's and difft's marks on the witness cases
+  history      [--repo DIR] [--rev REV] [--commits N] [--tsv FILE] [--jobs N]
+                                                           the same over real diffs of the repository;
+                                                           --jobs runs difft on N threads (its times are then not reported)
+  limits                                                   inputs that trip difft's fallbacks and E2's cap: time, peak memory
   parse-check  [--repo DIR] [--rev REV]                    the 5.4 grammars and difft's over the repository's files
 All modes need difft 0.72.0 on PATH.";
 

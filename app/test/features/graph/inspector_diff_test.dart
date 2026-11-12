@@ -42,8 +42,8 @@ HunkLine _marked(String line) {
   );
 }
 
-// Story 10.32's I/O matrix: jj-lib's segments for Ralph's three examples (crates/zanshin-jj/src/hunks.rs's witnesses;
-// the comment's second line as `jj diff --git` 0.47.0 underlines it).
+// Story 10.32's I/O matrix: the segments jj-lib gave Ralph's three examples before lines were paired (the comment's
+// second line as `jj diff --git` 0.47.0 underlines it). They test the drawing rule, not what the backend sends today.
 const _expression = <String>[
   '-    child: Text(isLastStep ? [-s.functionWizard_save-] : s.functionWizard_next),\n',
   '+    child: Text(isLastStep ? {+saveLabel+} : s.functionWizard_next),\n',

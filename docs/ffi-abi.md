@@ -2508,16 +2508,22 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   form (Dart `null`).
 - **Segments (5.2)** — `zanshin_jj::Hunk::segments`, always written on every line (the
   description block's too). Their texts concatenate exactly to the line's `text` (`\n` included),
-  none is empty, and adjacent segments differ in kind. The changed segments are exactly what
-  `jj diff --git` underlines: jj-lib's `unified_diff_hunks` word-diffs each changed region as one
-  text, with no line pairing, so a moved line break or an inserted line is only one more token.
-  Words are runs of `A-Z a-z 0-9 _` and non-ASCII bytes; every other byte (`.`, `(`, a space, a
-  line break) is a token of its own. `Equal` and `Removed` segments on a removed line, `Equal` and
-  `Added` on an added one, one `Equal` segment on a `Context` line. A changed line can carry no
-  changed segment (a call split over lines: its removed line), and a changed segment can be only
-  a line break. In summary mode no file carries hunks, so only the description block's lines (an
-  inter-diff's) carry changed segments. `SegmentKind`'s member order is the wire value — append
-  only.
+  none is empty, and adjacent segments differ in kind. Each changed block (removed lines, then
+  added lines) pairs its lines by similarity, keeping their order: one line with one line, or one
+  line with a run of up to 8 consecutive lines on the other side (a call split over lines, lines
+  joined into one). A group pairs only when its similarity — twice the tokens jj-lib's word diff
+  keeps, over the tokens of both sides, each word or non-whitespace byte counting 1 — is above
+  50 %. A pair takes jj-lib's word diff (`ContentDiff::by_word`) over its text, so a moved line
+  break is only one more token; a line without a partner (an inserted line, a rewritten comment)
+  is one changed segment. Once the file's pairing budget (`crates/zanshin-jj/src/line_pairs.rs`)
+  runs out, a block keeps jj-lib's word diff over the whole block, which is what `jj diff --git`
+  underlines. Words are runs of `A-Z a-z 0-9 _` and non-ASCII bytes; every other byte (`.`, `(`,
+  a space, a line break) is a token of its own. `Equal` and `Removed` segments on a removed line,
+  `Equal` and `Added` on an added one, one `Equal` segment on a `Context` line. A changed line can
+  carry no changed segment (a call split over lines: its removed line), and a changed segment can
+  be only a line break. In summary mode no file carries hunks, so only the description block's
+  lines (an inter-diff's) carry changed segments. `SegmentKind`'s member order is the wire value —
+  append only.
 
 Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart`) → `Diff`
 (with `operationId` / `commitId` / `fromCommitId`), `FileDiff` (`kind` as `status.dart`'s

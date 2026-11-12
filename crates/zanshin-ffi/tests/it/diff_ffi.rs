@@ -150,12 +150,10 @@ fn the_wire_carries_the_diff_keys_flags_lines_and_pins() {
     assert!(env.ok());
     let payload = env.data_as_diff().expect("Diff payload");
     assert_wire_is(payload, &diff);
-    // Story 5.2: `a` → `A` is word-diffed, a context line is one `Equal` segment.
+    // `a` → `A` keeps nothing, so the lines stay unpaired: one whole changed segment each. A
+    // context line is one `Equal` segment.
     let (equal, removed) = (SegmentKind::Equal, SegmentKind::Removed);
-    assert_eq!(
-        wire_segments(payload, "f.txt", "a\n"),
-        [seg(removed, "a"), seg(equal, "\n")]
-    );
+    assert_eq!(wire_segments(payload, "f.txt", "a\n"), [seg(removed, "a\n")]);
     assert_eq!(wire_segments(payload, "f.txt", "b\n"), [seg(equal, "b\n")]);
 }
 

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 //! jj-lib's word marks and difftastic's structural marks on the same hunk lines.
 //!
-//! - **jj marks** are what the inspector draws (Story 10.32): the `Different` tokens of jj-lib's
-//!   `unified_diff_hunks` (context 3, `LineCompareMode::Exact`), merged into runs by the rule of
-//!   `crates/zanshin-jj/src/hunks.rs`'s `hunk_line`.
+//! - **jj marks** are what the inspector drew before E2 (Story 10.32): the `Different` tokens of
+//!   jj-lib's `unified_diff_hunks` (context 3, `LineCompareMode::Exact`), merged into runs by the
+//!   rule of `crates/zanshin-jj/src/hunks.rs`'s `hunk_line`.
+//! - **E2 marks** are what the inspector draws since Story 5.9's build: the same hunks after
+//!   `crates/zanshin-jj/src/line_pairs.rs`'s `pair_lines` (this crate compiles that file).
 //! - **difft marks** come from `DFT_UNSTABLE=yes difft --display json`: each side's novel spans,
 //!   moved onto jj's hunk lines by the mapping Story 5.9's report proposes: a `Removed` line takes
 //!   the left side's spans on its line, an `Added` line the right side's, a `Context` line none.
@@ -40,12 +42,19 @@ pub struct Line {
     pub text: Vec<u8>,
     /// jj-lib's changed runs, as byte ranges of `text`.
     pub jj: Vec<Range<usize>>,
+    /// E2's changed runs (jj-lib's tokens per line pair), as byte ranges of `text`.
+    pub e2: Vec<Range<usize>>,
 }
 
 /// jj's hunks for one file pair, and the time they took.
 pub struct JjDiff {
     pub hunks: Vec<Vec<Line>>,
+    /// jj-lib's hunks and today's marks.
     pub elapsed: Duration,
+    /// E2's line pairing alone (`pair_lines`), on top of `elapsed`.
+    pub e2_elapsed: Duration,
+    /// E2's per-file budget (`MAX_PAIRING_WORK`) ran out, so some block kept jj's marks.
+    pub e2_budget_ran_out: bool,
 }
 
 impl JjDiff {
@@ -53,12 +62,35 @@ impl JjDiff {
     pub fn changed_lines(&self) -> impl Iterator<Item = &Line> {
         self.hunks.iter().flatten().filter(|line| line.kind != Kind::Context)
     }
+
+    /// The changed blocks with removed and added lines: the ones E2 pairs.
+    pub fn paired_blocks(&self) -> usize {
+        let mut blocks = 0;
+        for hunk in &self.hunks {
+            let mut at = 0;
+            while at < hunk.len() {
+                let removed = hunk[at..].iter().take_while(|line| line.kind == Kind::Removed).count();
+                let added = hunk[at + removed..]
+                    .iter()
+                    .take_while(|line| line.kind == Kind::Added)
+                    .count();
+                if removed + added == 0 {
+                    at += 1;
+                    continue;
+                }
+                blocks += usize::from(removed > 0 && added > 0);
+                at += removed + added;
+            }
+        }
+        blocks
+    }
 }
 
-/// jj's line hunks with their word marks, as `hunks.rs` computes them.
+/// jj's line hunks with today's word marks and E2's, as `hunks.rs` computes them.
 pub fn jj_diff(left: &[u8], right: &[u8]) -> JjDiff {
+    let texts = Diff::new(left, right);
     let start = Instant::now();
-    let hunks = unified_diff_hunks(Diff::new(left, right).map(Into::into), 3, LineCompareMode::Exact);
+    let mut hunks = unified_diff_hunks(texts.map(Into::into), 3, LineCompareMode::Exact);
     let mut result = Vec::with_capacity(hunks.len());
     for hunk in &hunks {
         let mut left_line = hunk.left_line_range.start;
@@ -73,29 +105,48 @@ pub fn jj_diff(left: &[u8], right: &[u8]) -> JjDiff {
             left_line += usize::from(left.is_some());
             right_line += usize::from(right.is_some());
             let mut text = Vec::new();
-            let mut jj = Vec::new();
-            for (token_type, token) in tokens {
-                let at = text.len();
+            for (_, token) in tokens {
                 text.extend_from_slice(token);
-                // `hunk_line`: a `Different` token is the line's change, except on a context line.
-                if *token_type == DiffTokenType::Different && kind != Kind::Context {
-                    push_range(&mut jj, at..text.len());
-                }
             }
             lines.push(Line {
                 kind,
                 left,
                 right,
                 text,
-                jj,
+                jj: changed_runs(kind, tokens),
+                e2: Vec::new(),
             });
         }
         result.push(lines);
     }
+    let elapsed = start.elapsed();
+    let start = Instant::now();
+    let e2_budget_ran_out = crate::line_pairs::pair_lines(&mut hunks, texts);
+    let e2_elapsed = start.elapsed();
+    for (lines, hunk) in result.iter_mut().zip(&hunks) {
+        for (line, (_, tokens)) in lines.iter_mut().zip(&hunk.lines) {
+            line.e2 = changed_runs(line.kind, tokens);
+        }
+    }
     JjDiff {
         hunks: result,
-        elapsed: start.elapsed(),
+        elapsed,
+        e2_elapsed,
+        e2_budget_ran_out,
     }
+}
+
+/// `hunk_line`'s rule: a `Different` token is the line's change, except on a context line.
+fn changed_runs(kind: Kind, tokens: &[(DiffTokenType, &[u8])]) -> Vec<Range<usize>> {
+    let mut runs = Vec::new();
+    let mut at = 0;
+    for (token_type, token) in tokens {
+        if *token_type == DiffTokenType::Different && kind != Kind::Context {
+            push_range(&mut runs, at..at + token.len());
+        }
+        at += token.len();
+    }
+    runs
 }
 
 /// One novel span of difft's JSON.
@@ -149,14 +200,25 @@ impl DifftDiff {
     /// The corrected mapping rule: difft's code spans, and inside a novel comment or string only
     /// what jj's word diff marks there.
     pub fn marks_for(&self, line: &Line) -> Vec<Range<usize>> {
+        self.marks_with(line, &line.jj)
+    }
+
+    /// The corrected mapping rule against E2: inside a novel comment or string, E2's word marks.
+    /// Each side is compared with difft on code tokens only, as the corrected rule does for today.
+    pub fn e2_marks_for(&self, line: &Line) -> Vec<Range<usize>> {
+        self.marks_with(line, &line.e2)
+    }
+
+    /// difft's code spans, and inside a novel comment or string the `words` marks there.
+    fn marks_with(&self, line: &Line, words: &[Range<usize>]) -> Vec<Range<usize>> {
         let spans = self.spans_for(line);
         let code = spans
             .iter()
             .filter(|span| !span.text_like)
             .map(|span| span.range.clone());
         let text = spans.iter().filter(|span| span.text_like).flat_map(|span| {
-            line.jj.iter().filter_map(move |jj| {
-                let range = jj.start.max(span.range.start)..jj.end.min(span.range.end);
+            words.iter().filter_map(move |word| {
+                let range = word.start.max(span.range.start)..word.end.min(span.range.end);
                 (range.start < range.end).then_some(range)
             })
         });

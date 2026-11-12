@@ -52,6 +52,7 @@ pub(crate) mod fix;
 pub(crate) mod git;
 pub(crate) mod graph;
 pub(crate) mod hunks;
+pub(crate) mod line_pairs;
 pub(crate) mod metaedit;
 pub(crate) mod movement;
 pub(crate) mod mutate;
