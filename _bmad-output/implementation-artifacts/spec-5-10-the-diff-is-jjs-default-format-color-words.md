@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/inspector_diff.dart (_lineText)
     severity: medium
+    resolved: >-
+      2026-11-12 — fixed (spec-10-34-word-marks-differ-in-lightness, commit 362ff81a): Ralph decided on a lightness step; the removed word fill is darker and the added one lighter in night and paper, and a test pins the rules.
   - summary: >-
       Each file side is still read the way jj diff --git does (git_diff_part), not the way color-words does (diff_content_as_merge).
     evidence: |-

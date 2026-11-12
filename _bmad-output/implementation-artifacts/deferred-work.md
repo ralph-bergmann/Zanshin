@@ -2991,7 +2991,7 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 
 ## Surfaced in Story 5.10 (bmad-build-auto, 2026-11-12)
 
-- **On a changed line the removed and added word marks differ by hue only; the DS checklist asks colours that must be told apart to differ in lightness.** Medium.
+- ~~**On a changed line the removed and added word marks differ by hue only; the DS checklist asks colours that must be told apart to differ in lightness.**~~ — RESOLVED 2026-11-12 (spec-10-34-word-marks-differ-in-lightness, commit 362ff81a): the removed word fill is darker and the added one lighter in night and paper (15.2 / 13.6 in CIE L* on a changed line); a test pins the rules. Medium.
   - `--rem-word-bg` / `--add-word-bg` under `--text` glyphs (`app/lib/src/features/graph/inspector_diff.dart` `_lineText`; DS `design_system/readme.md` checklist "differ in lightness, not hue alone"). No extra cue was added (Ralph: no underline, no strikethrough). Spec `spec-5-10-the-diff-is-jjs-default-format-color-words.md`.
   - **Follow-up:** a decision for Ralph: leave it, give the two word tints a lightness step, or add a cue beyond colour. Decided 2026-11-12 (Ralph): a lightness step; Story 10.34 builds it.
 - ~~**The diff still reads each file side the way `jj diff --git` does (`git_diff_part`), not the way color-words does (`diff_content_as_merge`).**~~ — RESOLVED 2026-11-12 (spec-5-10-closing-diff-side-reading, commit 8ed9991e): a Git submodule side reads as the CLI's text and a binary file with equal contents is binary, both with oracle witnesses; the access-denied part is rejected, because only jj's test-only `SecretBackend` raises that error. Medium.
