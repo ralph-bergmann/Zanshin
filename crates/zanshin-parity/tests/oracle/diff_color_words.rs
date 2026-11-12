@@ -12,7 +12,7 @@ use std::path::Path;
 
 use zanshin_jj::{DiffOptions, DiffRevisions, HunkLine, HunkLineKind, Repo, SegmentKind, Whitespace};
 
-use crate::driver::{fresh_repo, jj};
+use crate::driver::{fresh_repo, git, jj};
 
 /// One printed line: kind (` ` context, `-` removed, `+` added, `~` changed, `#` conflict header),
 /// left and right numbers, and runs (`=` equal, `-` removed, `+` added) without the line break.
@@ -412,6 +412,49 @@ fn assert_conflict(conflict: Option<&str>) -> Vec<Hunk> {
 fn a_materialized_conflict_matches_the_cli() {
     let hunks = assert_conflict(None);
     assert!(hunks.iter().flat_map(|hunk| &hunk.1).all(|line| line.0 != '#'));
+}
+
+/// A Git commit adding the gitlink `sub`: the CLI diffs its text `Git submodule checked out at
+/// <commit id>`.
+#[test]
+fn a_submodule_side_matches_the_cli() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = fresh_repo(&["git", "init", "--colocate"], &[]);
+    let id = "0123456789abcdef0123456789abcdef01234567";
+    git(
+        &root,
+        &["update-index", "--add", "--cacheinfo", &format!("160000,{id},sub")],
+    );
+    git(&root, &["commit", "-m", "sub"]);
+    let witness = Witness {
+        args: &["-r", "@-"],
+        options: DiffOptions {
+            revisions: DiffRevisions::Revision(Some("@-".to_owned())),
+            ..DiffOptions::default()
+        },
+        ..Witness::default()
+    };
+    let hunks = assert_same(&root, &witness);
+    let text = format!("Git submodule checked out at {id}");
+    assert_eq!(hunks, [(None, vec![('+', None, Some(1), vec![('+', text)])])]);
+}
+
+/// A mode-only change of a binary file: the CLI prints `(binary)`, Zanshin's file is binary.
+#[test]
+fn a_binary_mode_change_is_binary_like_the_cli() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = fresh_repo(&["git", "init"], &[]);
+    fs::write(root.join("bin.dat"), "x\0y").expect("write");
+    jj(&root, &["new"]).ok();
+    jj(&root, &["file", "chmod", "x", "bin.dat"]).ok();
+    assert!(jj(&root, &["diff"]).ok().stdout.contains("(binary)"));
+    let diff = Repo::open(&root)
+        .expect("open")
+        .diff(&DiffOptions::default())
+        .expect("diff");
+    assert_eq!(diff.files.len(), 1, "one changed file");
+    let file = &diff.files[0];
+    assert!(file.binary && file.mode_change && file.hunks.is_empty());
 }
 
 #[test]

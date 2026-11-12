@@ -10,7 +10,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use jj_lib::object_id::ObjectId as _;
+use jj_lib::object_id::ObjectId;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::Repo as _;
 use tempfile::TempDir;
@@ -381,14 +381,60 @@ fn a_mode_only_change_has_the_toggle_and_no_hunks() {
     assert_sections_round_trip(&mut fx, &[mode.clone(), both.clone()]);
 }
 
-/// A mode-only change of a binary file is not binary: the CLI skips equal contents first.
+/// A mode-only change of a binary file is binary: the CLI checks binary before it compares the
+/// contents and prints `(binary)`.
 #[test]
-fn a_mode_only_change_of_a_binary_file_is_not_binary() {
+fn a_mode_only_change_of_a_binary_file_is_binary() {
     let mut fx = base();
     let diffs = diff(&mut fx, None, Whitespace::Exact);
     let binmode = file(&diffs, "binmode.dat");
-    assert!(!binmode.binary && binmode.mode_change);
+    assert!(binmode.binary && binmode.mode_change);
     assert!(binmode.hunks.is_empty() && binmode.sections.is_empty());
+}
+
+/// An added Git submodule reads as the CLI's text `Git submodule checked out at <commit id>`.
+#[test]
+fn a_git_submodule_side_is_the_clis_text() {
+    let mut fx = init();
+    let store = load_head(&fx.root).store().clone();
+    let mut builder = jj_lib::merged_tree_builder::MergedTreeBuilder::new(store.empty_merged_tree());
+    let id = "0123456789abcdef0123456789abcdef01234567";
+    builder.set_or_remove(
+        jj_lib::repo_path::RepoPathBuf::from_internal_string("sub").expect("path"),
+        Some(jj_lib::backend::TreeValue::GitSubmodule(
+            jj_lib::backend::CommitId::try_from_hex(id).expect("hex"),
+        )),
+    );
+    let tree = pollster::block_on(builder.write_tree()).expect("write tree");
+    let ids = |tree: &jj_lib::merged_tree::MergedTree| SelectedTreeId {
+        tree_ids: tree.tree_ids().iter().map(ObjectId::hex).collect(),
+        labels: Vec::new(),
+    };
+    let diffs = fx
+        .repo
+        .compute_hunks(&HunksOptions {
+            from: ids(&store.empty_merged_tree()),
+            to: ids(&tree),
+            context: None,
+            whitespace: Whitespace::Exact,
+        })
+        .expect("compute_hunks");
+    let sub = file(&diffs, "sub");
+    assert!(!sub.binary && !sub.mode_change && sub.sections.is_empty());
+    let lines: Vec<_> = only_hunk(sub)
+        .lines
+        .iter()
+        .map(|line| (line.kind, line.left, line.right, line.text()))
+        .collect();
+    assert_eq!(
+        lines,
+        [(
+            HunkLineKind::Added,
+            None,
+            Some(1),
+            format!("Git submodule checked out at {id}")
+        )]
+    );
 }
 
 /// Binary content is marked and has no hunks.

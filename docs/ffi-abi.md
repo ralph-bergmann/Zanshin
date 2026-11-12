@@ -2507,6 +2507,10 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   the wire value — append only.
 - **Vectors** are always written (empty, not absent); files, hunks, lines and sections keep
   their input order. `binary` and mode-only files carry no hunks; in summary mode no file does.
+  `binary` = either side's content is binary (a NUL byte in its first 8000 bytes), checked before
+  the contents are compared, as the CLI does: a mode-only change or rename of a binary file is
+  binary (the CLI prints `(binary)`). A Git submodule side reads as the CLI's text
+  `Git submodule checked out at <commit id>`.
 - **Kinds (5.6).** `kind` is the `ChangeKind` `FileChange` uses: a copy record's source first
   (`Renamed` / `Copied`, `path` = the target, `from_path` = the source), then presence.
   `from_path` is ABSENT for every other kind (Dart `null`). A copied or renamed file has empty

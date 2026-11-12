@@ -189,7 +189,9 @@ final class FileDiff {
   /// null for all other kinds.
   final String? fromPath;
 
-  /// The contents differ and either side's is binary: no hunks.
+  /// Either side's content is binary, checked before the contents are
+  /// compared (a mode-only change or rename of a binary file is binary, as
+  /// the CLI's `(binary)`): no hunks.
   final bool binary;
 
   /// Both sides are file-like and differ in the executable bit — the builtin

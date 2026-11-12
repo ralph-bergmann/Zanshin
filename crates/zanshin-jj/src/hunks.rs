@@ -4,10 +4,11 @@
 //! (Story 5.10), with the builtin diff editor's sections each hunk shows.
 //!
 //! - **Files** are the paths of `from.diff_stream(to)` in jj-lib's order, each side materialized
-//!   with its tree's conflict labels and read as jj-lib's `git_diff_part` reads it: a conflict as
-//!   its markers (`ui.conflict-marker-style`), a symlink as its target. A side that cannot be
-//!   read is an error. Equal texts (a mode-only change) and differing binary content (a NUL byte
-//!   in either side's first 8000 bytes) get no hunks.
+//!   with its tree's conflict labels and read as the CLI's color-words format reads it: a conflict
+//!   as its markers (`ui.conflict-marker-style`), a symlink as its target, a Git submodule as
+//!   `Git submodule checked out at <commit id>`. A side that cannot be read is an error. A binary
+//!   file (a NUL byte in either side's first 8000 bytes, checked before the contents are
+//!   compared) and equal texts (a mode-only change) get no hunks.
 //! - **Lines** are the CLI's color-words walk (`show_color_words_diff_hunks` and below,
 //!   `cli/src/diff_util.rs:822-1377` @ v0.47.0) as data: jj-lib's line diff (`diff_by_line`,
 //!   with the whitespace mode), the context rule of `diff.color-words.context` (or the caller's
@@ -49,7 +50,7 @@ use jj_lib::content_hash::blake2b_hash;
 use jj_lib::copies::{CopiesTreeDiffEntryPath, CopyOperation, CopyRecords};
 use jj_lib::diff::{ContentDiff, DiffHunk, DiffHunkKind};
 use jj_lib::diff_presentation::unified::git_diff_part;
-use jj_lib::diff_presentation::{diff_by_line, unzip_diff_hunks_to_lines, DiffTokenType, LineCompareMode};
+use jj_lib::diff_presentation::{diff_by_line, unzip_diff_hunks_to_lines, DiffTokenType, FileContent, LineCompareMode};
 use jj_lib::files::{self, ConflictDiffHunk, DiffLineHunkSide, DiffLineIterator, DiffLineNumber, MergeOptions};
 use jj_lib::hex_util::encode_hex;
 use jj_lib::id_prefix::IdPrefixContext;
@@ -58,6 +59,7 @@ use jj_lib::merge::{Diff, Merge};
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
+use jj_lib::repo_path::RepoPath;
 use jj_lib::revset::UserRevsetExpression;
 use jj_lib::rewrite::merge_commit_trees;
 use jj_lib::store::Store;
@@ -110,8 +112,8 @@ pub struct FileDiff {
     /// presence. [`crate::Repo::compute_hunks`] uses no copy records, so its kinds are presence
     /// only.
     pub kind: ChangeKind,
-    /// The contents differ and either side's is binary (a NUL byte in its first 8000 bytes): no
-    /// hunks. A mode-only change of a binary file is not binary, as in the CLI.
+    /// Either side's content is binary (a NUL byte in its first 8000 bytes): no hunks. A mode-only
+    /// change or rename of a binary file is binary too, as the CLI prints `(binary)` for it.
     pub binary: bool,
     /// Both sides are file-like (a regular file or a file conflict) and differ in the executable
     /// bit — the builtin diff editor's mode toggle ([`crate::FileChoice::ModeAndHunks`]).
@@ -649,13 +651,9 @@ impl<'a> DiffReader<'a> {
     ) -> Result<FileDiff, MutateError> {
         let executable = sides.as_ref().map(file_like_executable);
         let conflicts = sides.as_ref().map(conflict_terms);
-        let left = git_diff_part(path.source(), sides.before, &self.materialize)
-            .await
-            .map_err(be)?;
-        let right = git_diff_part(path.target(), sides.after, &self.materialize)
-            .await
-            .map_err(be)?;
-        let texts = Diff::new(&left.content.contents[..], &right.content.contents[..]);
+        let left = diff_content(path.source(), sides.before, &self.materialize).await?;
+        let right = diff_content(path.target(), sides.after, &self.materialize).await?;
+        let texts = Diff::new(&left.contents[..], &right.contents[..]);
         let file_like = executable.before.is_some() && executable.after.is_some();
         // A copy's source→target keys are none the builtin diff editor (no copy records) accepts.
         let file_sections =
@@ -664,9 +662,10 @@ impl<'a> DiffReader<'a> {
             } else {
                 Vec::new()
             };
-        // The CLI skips equal contents before its binary check (`show_git_diff`).
-        let binary = texts.before != texts.after && (left.content.is_binary || right.content.is_binary);
-        let changed = !binary && texts.before != texts.after;
+        // `show_color_words_diff` checks binary before it compares the contents.
+        let binary = left.is_binary || right.is_binary;
+        let differ = texts.before != texts.after;
+        let changed = !binary && differ;
         let hunks = if changed {
             // `show_color_words_diff`: the target's language, the generic one as the fallback.
             let language = path
@@ -697,7 +696,7 @@ impl<'a> DiffReader<'a> {
             fingerprint: fingerprint(
                 changed.then_some(texts),
                 self.options.mode,
-                binary.then_some(texts),
+                (binary && differ).then_some(texts),
                 mode_change,
             ),
             hunks,
@@ -705,6 +704,29 @@ impl<'a> DiffReader<'a> {
             added,
         })
     }
+}
+
+/// One side's content as `jj diff`'s color-words format reads it (`diff_content_with`,
+/// `cli/src/diff_util.rs:1428-1468` @ v0.47.0): a Git submodule is the text `Git submodule
+/// checked out at <commit id>`; every other kind reads as jj-lib's `git_diff_part` reads it.
+/// An access-denied side stays an error: only jj's test-only `SecretBackend` denies a read, so
+/// neither backend Zanshin opens produces one.
+async fn diff_content(
+    path: &RepoPath,
+    value: MaterializedTreeValue,
+    options: &ConflictMaterializeOptions,
+) -> Result<FileContent<Vec<u8>>, MutateError> {
+    if let MaterializedTreeValue::GitSubmodule(id) = &value {
+        return Ok(FileContent {
+            is_binary: false,
+            contents: format!("Git submodule checked out at {}", id.hex()).into_bytes(),
+        });
+    }
+    let content = git_diff_part(path, value, options).await.map_err(be)?.content;
+    Ok(FileContent {
+        is_binary: content.is_binary,
+        contents: content.contents.into(),
+    })
 }
 
 /// `tree_file_changes`' classification ([`crate::commit_views`]): a copy source first, then

@@ -3231,11 +3231,13 @@ table Hunk {
 }
 
 /// One changed path of a `Diff` (Story 5.5). `path`: repo-relative, jj's internal `/`-separated
-/// form. `binary`: the contents differ and either side's is binary — no hunks. `mode_change`: both
-/// sides are file-like and differ in the executable bit (the builtin diff editor's mode toggle,
-/// `FileSelection.mode`). `sections`: every `HunkKey` `SelectTreeRequest` accepts for the file;
-/// empty when it can only be selected whole, or by its mode when `mode_change`. `hunks`: in file
-/// order; empty in summary mode. Vectors are always present.
+/// form. `binary`: either side's content is binary, checked before the contents are compared (a
+/// mode-only change or rename of a binary file is binary, as the CLI's `(binary)`) — no hunks. A
+/// Git submodule side reads as the text `Git submodule checked out at <commit id>`.
+/// `mode_change`: both sides are file-like and differ in the executable bit (the builtin diff
+/// editor's mode toggle, `FileSelection.mode`). `sections`: every `HunkKey` `SelectTreeRequest`
+/// accepts for the file; empty when it can only be selected whole, or by its mode when
+/// `mode_change`. `hunks`: in file order; empty in summary mode. Vectors are always present.
 ///
 /// Story 5.6 appends: `kind` (a copy record's source first, then presence; `path` is the copy's
 /// TARGET) and `from_path` (the source, set ONLY for Renamed/Copied, as in `FileChange`; a copied
