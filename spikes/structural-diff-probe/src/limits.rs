@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 //! `limits`: inputs that trip each difft fallback, with wall time and peak memory for jj and for
 //! difft. The inputs are generated into `out/limits/<name>/`.
 

@@ -5,7 +5,7 @@ created: '2026-11-12'
 status: 'done'
 baseline_revision: '5ba5f5d43b21d45c24c099092384f9d9610fe009'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
 warnings: ['oversized']
@@ -160,6 +160,49 @@ deferred:
   - `[low]` `patch` (edge) The recompiled `epic-5-context.md` dropped 10.32's no-strong-marks exception. — Restored in its UX section (`inspector_diff.dart:58-63`).
   - `[low]` `patch` (edge) Option C lists difftastic's other crates and B2 ships ~60 parsers without a licence check. — Same root cause as the blind licence row; same patch.
 
+### 2026-11-12 — Review pass
+Follow-up pass. Its focus was the probe code from the first review: the drawn view (`drawn()`, `classify_drawn()`) and the per-file memory measurement (`measure()` under `/usr/bin/time -l`). Checked by reading and recounting, not only by rerunning:
+- `drawn()` matches `diffWordMarks` (`inspector_diff.dart:60-75`). Both skip strong marks when no unmarked character outside Unicode whitespace is visible, and both cut each mark at the text shown without `\n` / `\r`. The byte offsets give the same sets as Dart's UTF-16 offsets, because every range starts and ends on a character boundary.
+- 10,812 / 96,295 = 11.2 % and 4,755 / 96,295 = 4.9 %.
+- The memory figures recount exactly from `out/history.tsv`, independently of the probe's own aggregation: median 20.8 MB, p90 130 MB, p99 946 MB, max 986 MB, and 56 fallback files at 870-986 MB.
+- `/usr/bin/time -l` reports the child's `ru_maxrss` in bytes: 4.2 MB for `difft --version`.
+- verdicts: 34 findings — high 0, medium 0, low 20, false 14, maybe-false 0 (verification-gap layer: no gaps, no other findings)
+- findings:
+  - `[false]` `reject` (intent) Fidelity to the product: the probe re-implements jj's rule and 10.32's rule, has no unit tests, and nothing runs zanshin-jj's `hunk_line` or Dart's `diffWordMarks` on the same input. — carried for zanshin-jj and the tests: rows "never calls zanshin-jj" (false) and "no clippy run and no tests" (low, rejected). The Dart part is new and false: `drawn()` equals `diffWordMarks` in behaviour (see above), so the probe's drawn marks do not diverge from the app's.
+  - `[false]` `reject` (intent) Rule 9's segment invariants are stated but never exercised. — carried: the `Segment` contract, met by `merged()` / `push_range` by construction.
+  - `[false]` `reject` (intent) The mapping mixes structural and jj marks inside one line, and a changed line without spans becomes one `Equal` segment, which departs from "structural where available, jj's otherwise". — Inside a novel comment or string, structural word marks are not available: the JSON lists every word as novel (`src/display/json.rs`). So taking jj's there is the intent's "jj's otherwise". A changed line without spans is difft's structural answer, "unchanged".
+  - `[false]` `reject` (intent) Cost: the per-file headline, the unmeasured in-process cost of C and D, and the literal "every 10th statement" input not tripping the default graph limit. — The per-file headline and the unmeasured C cost are carried rows (per-file cost; the 200-320 ratio). The matrix row asks for an input that trips the graph limit. `graph-limit-statements` and `graph-limit-array` trip it, and §2.2 reports the every-10th input as "kein Fallback".
+  - `[low]` `patch` (intent) "Reformatting is quiet only in Rust" sits under the "Real diffs" bullet in `epics.md` and `sprint-status.yaml`, though the history run does not classify reformatting. — The sentence moved to the witnesses bullet in both ledgers and now names its source: the `reformat` witness, and the Dart commas `dart format` adds. The Rust-only witnesses part is carried: the Dart reformat is stepper hunk 2.
+  - `[low]` `patch` (intent) The licences of B2's bundled parsers and C's other crates are unknown. — carried: open decision 3; not patched again.
+  - `[low]` `patch` (intent) Ledger edits beyond the three named entries: the 5-2 note, the rewritten `epic-5-context.md`, its title, and the dropped "Non-goal for now" line. — carried: the "changes reach beyond 5.9" and stale-title rows; not patched again. The dropped non-goal is false: Story 5.9's header lifts that non-goal for planning (`epics.md:5183`), and the context says Ralph decides on the build (lines 7, 19, 37).
+  - `[false]` `reject` (intent) The `f(a, b)` → `f(b, a)` witness is unreachable with difftastic and is not reworded. — carried: Ralph's call, open decision 5.
+  - `[low]` `patch` (blind) The Kurz says "Auf den Zeugen" difftastic sets jj's word marks, but `nesting` (7 of 8), `reformat` (difft `unchanged`) and `edge-context-novel` differ. — The Kurz now reads "Auf den drei Zeugen der Story". The spec's deferred build item and its `deferred-work.md` mirror carry the same wording; the dispatch says to leave them as they are.
+  - `[false]` `reject` (blind) The corrected rule makes part of "same marks" true by construction, so the headline partly compares jj with itself. — The headlines state what a build would draw under the proposed mapping: Kurz "würde ein Bau … zeichnen", and §6 table titled "korrigierte Regel". That rule keeps jj's marks in comments and strings by design, and §4 rule 3 reports the first rule's figures (8,801 against 1,211 "more" lines). Nothing claims raw agreement with difftastic.
+  - `[low]` `patch` (blind) "Den Rest machen Leerzeichen aus" derives the whitespace share by subtracting 4.9 % from 11.2 %, but the two views do not nest. — Verified: when 10.32 draws no strong marks on either side, a line with different word marks is drawn the same, so the subtraction gives only a lower bound. Lines with the same word marks that are drawn differently differ in whitespace only: equal ink means equal unmarked visible text, so both sides get the same visibility verdict. §6 now says "mindestens 6,3 % … mehr als die Hälfte der anders gezeichneten" and that the exact share is not counted. §8's "mehr als die Hälfte" stays true (6,057 of 10,812).
+  - `[low]` `patch` (blind) §7 says "23 s pro Zeile in Dart", but Spec 5.3 measured 23 s for one input of 131,000 `[` characters. — Now "23 s für 131.000 Zeichen `[` in Dart".
+  - `[low]` `reject` (blind) The `-w` / `-b` mitigation is claimed but never measured. — Its behaviour claim is right per jj-lib 0.47.0 (`diff_presentation/unified.rs`): the mode reaches only `diff_by_line`, and changed regions are word-diffed exactly by `ContentDiff::by_word`. So `-w` / `-b` turn lines that differ only in whitespace into context and leave the fills on changed lines. A measurement needs a new probe mode and a full history rerun, which is more than a direct correction, and Ralph's build decision is already taken.
+  - `[low]` `patch` (blind) The corpus limits sit apart from "Der Gewinn ist klein", and "2.536 Dateien aus 200 Commits" is really 198 commits. — The corpus scope is carried (§6 states it). The commit count is verified (`cut -f1` of the TSV: 198) and is now in §2.1 ("aus 198 der 200 Commits") and §6.
+  - `[low]` `reject` (blind) The probe measures where the marks differ, not which side is better; the examples skew to the largest differences. — The README labels them "the lines where the two differ most". A hand-rated random sample is new research, more than a direct correction, and Ralph's decision is taken.
+  - `[low]` `reject` (blind) Process overhead is not separated, `history` measures each file once while `limits` takes a median, and the README claims "a few percent" though runs under load took 25 minutes. — The per-file medians held across the loaded story runs (60-63 ms) and the idle final run (63.4 / 60.4 ms). The `/usr/bin/time` wrapper is disclosed (§2.1), and §8 attributes the ratio to the process (26-47 ms for a tiny file). A median of three per file would triple a 7-minute run for no change in the cited medians.
+  - `[low]` `patch` (blind) §2.2 attributes the array's 3.8 s at a 300,000 limit to "Parsen und Vorbereitung" without measuring it, though the every-10th input that stayed structural did run its searches. — Verified: that input completed its searches, so its 1.1 s is not "ohne Suche". This pass's `limits` rerun even gave 5.4 s at 300,000 against 4.5 s at the default for the array. §2.2 now says the probe does not measure how much of the time is the search. The memory claims stand.
+  - `[low]` `patch` (blind) Option B's open decision misses the practical points: how the app finds `difft`, the accepted versions, a `ui.diff-formatter` naming another tool or terminal flags, and whether the view waits for the budget or swaps marks later. — Added to open decision 2 as questions; the recommendation is unchanged.
+  - `[low]` `patch` (blind) The stepper witness ("keep their marks") has no open decision, though a build draws 3 of 9 lines differently. — Added to open decision 5: the witness holds for the word marks, and the drawn view loses the indentation fill on 3 of 9 lines.
+  - `[low]` `patch` (blind) Stale planning prose: annotations instead of rewrites in `epics.md` and sprint-status, and "It must answer" in `epic-5-context.md`. — carried: the "ledgers still say difftastic sees moves" row (annotated, Ralph's text kept) and the "still lists 5.9's research as open" row (line 30 marks it done); not patched again.
+  - `[low]` `patch` (blind) `epic-5-context.md`'s title went back to the stale epics heading. — carried: the title is the epics file's Epic 5 heading, which the compile format requires; not patched again.
+  - `[low]` `patch` (blind) The probe's six source files lack the `// SPDX-License-Identifier: MIT` first line. — Verified against project-context.md § Documentation ("Every source file … starts with an SPDX license identifier"); `spikes/ffi-payload-bench` follows it. Added to `src/{main,marks,history,limits,parse_check,witness}.rs`. The witness fixtures are test input bytes and stay as they are.
+  - `[false]` `reject` (blind) `ink` uses ASCII whitespace and `drawn` uses Unicode whitespace. — Each view mirrors its reference. jj-lib's word tokens treat every non-ASCII byte as a word byte, so a marked NBSP is a marked word byte. Dart's `trim()` decides visibility for 10.32. Both views count a marked-NBSP difference as a difference, so no class is wrong.
+  - `[false]` `reject` (edge) `diff-tree` C-quotes a special path, which aborts `history`. — carried: a loud failure, and no such path is in the corpus.
+  - `[false]` `reject` (edge) difft calls a file `Binary`, which then counts as "fewer", not as a fallback. — carried. Rechecked: the TSV's `difft_language` values are only `Dart` (1,460), `Rust` (1,020) and `Text (exceeded DFT_GRAPH_LIMIT)` (56).
+  - `[false]` `reject` (edge) A span whose content mismatches is still pushed and feeds the classes. — Every run reports 0 content mismatches (history, limits, witness, and this pass's reruns), so no mismatched range fed a count.
+  - `[false]` `reject` (edge) A change entry without `start` / `end` turns into 0..0 and vanishes silently. — difftastic 0.72.0's `Change` serializes `start` and `end` as plain integers (`src/display/json.rs`), and the probe accepts only 0.72.0 (`require_difft`), so the keys are always present.
+  - `[false]` `reject` (edge) `ink` (ASCII) and `drawn` (Unicode) treat non-ASCII whitespace differently. — Same claim as the blind `ink` / `drawn` row, with the same refutation.
+  - `[low]` `reject` (edge) Neither `difft` nor tree-sitter has a deadline in the probe. — carried: rejected in the first pass.
+  - `[false]` `reject` (edge) A symlink or gitlink among the tracked `.rs` / `.dart` / `.md` paths breaks `parse-check`. — `git ls-tree -r 5ba5f5d4` has no entry outside mode `100*` among those files and no `160000` entry at all.
+  - `[low]` `patch` (edge) `parse-check`'s `difft --dump-ts` keeps the caller's `DFT_*` variables, unlike the JSON runs. — Verified in `parse_check.rs`. The recorded results are unaffected, because no `DFT_*` variable is set in this environment. Now `marks::difft()` builds a `difft` command without `DFT_*`, and `difft_command()` and `difft_first_error()` both use it. The `parse-check` rerun is identical except three parse-time cells.
+  - `[false]` `reject` (edge) `witness` prints dropped marks for fallback cases, unlike `history`. — No witness case falls back: the `language` values are only `Rust` and `Dart`, so no output is affected.
+  - `[low]` `reject` (edge) A flag without a value silently uses the default. — carried: rejected in the first pass.
+  - `[low]` `patch` (edge) The recompiled `epic-5-context.md` dropped two facts: `Hunk::segments` is index-aligned with `lines`, and `hunk_offset` writes `HunkLine.segments`. — Both are still true (`hunks.rs:238`, `zanshin-ffi/src/diff.rs:202`) and are restored in "Where the code lives".
+
 ## Design Notes
 
 Starting hypothesis for the mapping, which the probe tests and the report confirms or corrects: per file, one structural diff over both full sides gives novel byte ranges per side. A Removed line takes the left side's ranges and an Added line the right side's; the line splits at the range bounds — inside is Removed / Added, outside Equal. Context lines keep one Equal segment, because jj's line hunks stay the CLI's. A Removed or Added line with no novel range becomes all Equal, which 10.32 draws as the faint line fill only. Every fallback (difft missing, a limit, a parse error, an unsupported language, a time budget) keeps jj's segments unchanged. difft's `start` / `end` units (bytes or characters) and its CR stripping must be checked before the columns are trusted.
@@ -213,6 +256,21 @@ Starting hypothesis for the mapping, which the probe tests and the report confir
 - Outside facts spot-checked against the sources: difftastic 0.72.0 `Cargo.toml` (no `[lib]`, tree-sitter 0.26.10, the two orchard grammars, jemalloc, MIT), `CHANGELOG.md` (0.69 trailing punctuation, 0.72 removed Verilog and F# for size, release months), `README.md` (order always matters; vendored parsers MIT or Apache), `src/diff/shortest_path.rs`, `src/display/json.rs`, `src/parse/syntax.rs`; issue #12 (closed 2021-07-18), PR #231 (open since 2022-04-03); diffsitter v0.9.0 `Cargo.toml` and README (no Dart or Markdown); crates.io for `mergiraf` 0.20.0 (GPL-3.0-only), `difftastic-lib` 0.0.2 (MIT, 2023-02-17), `baz-difftastic` 0.53.4 (GPL-2.0); `difft` is 90,371,936 bytes; jj-core 0.47.0 `src/diff.rs:165,620`. Two corrections applied: the report's appendix attributed "program only" to the README (it comes from `Cargo.toml`), and the probe README said `history` takes 25 minutes (about 7 on an idle machine).
 - Matrix audit: every row is covered by a probe mode that ran and passed above — witness marks and mapping edges by `witness`, real history by `history`, byte limit, graph limit and parse errors (now also conflict markers and lowered limits) by `limits`, the grammar's error nodes by `parse-check`.
 
+**Results (follow-up review, 2026-11-12; targeted checks only, by the gate rule):**
+- Drawn-view code read against the app:
+  - `marks::drawn()` equals `diffWordMarks` (`app/lib/src/features/graph/inspector_diff.dart:60-75`): the visibility test on the unmarked text uses Unicode whitespace (Dart `trim()`), and marks are cut at the text shown without `\n` / `\r`.
+  - `classify_drawn()` compares the drawn byte sets, whitespace included.
+  - The headline arithmetic holds: 10,812 / 96,295 = 11.2 %, and 4,755 / 96,295 = 4.9 %.
+  - The "more than half is whitespace" claim holds as a lower bound (at least 6,057 of 10,812 lines) and is not an exact count. §6 now says so.
+- Memory figures recounted from `out/history.tsv` with `sort`, independently of the probe's aggregation. The median 20,824,064, p90 129,662,976, p99 946,208,768 and max 986,005,504 bytes, and the 56 fallback files at 869,564,416-986,005,504 bytes, equal the report's 20.8 / 130 / 946 / 986 MB and 870-986 MB. `/usr/bin/time -l difft --version` prints 4,210,688 for `maximum resident set size`, so the unit is bytes. The TSV has 198 distinct commits.
+- `cargo build --release --offline` in the probe: finished, no download, no warning. `cargo fmt --check` in the probe: clean. `cargo fmt --all --check` at the root: clean.
+- `witness` rerun: exit 0, identical to the previous run's `out/witness.md` except the per-case timing lines.
+- `parse-check --rev 5ba5f5d43b21d45c24c099092384f9d9610fe009` rerun, after the `DFT_*` change: exit 0, identical except the three parse-time cells (281 / 628 / 420 files, 0 ERROR nodes, both positive controls report errors).
+- `limits` rerun: exit 0. Every non-table line is identical. The table's input, bytes, arguments and `language` columns are identical. Times moved more than before (array at `--graph-limit 300000`: 5.4 s against 3.8 s), which supports the reworded §2.2 sentence.
+- `history --rev 5ba5f5d4… --commits 20 --tsv <scratch>`: exit 0. Its 280 rows equal the full run's first 280 rows in every column but the two timings and the peak memory. The full 7-minute run was not repeated: `history.rs` changed only by its SPDX line, and `difft_command()` builds the same command as before.
+- `cargo clean` in the probe: 463 MiB removed.
+- Not run, by the gate rule: `cargo make test`, `test-full`, `coverage`. No workspace crate, schema, generated file, Dart package or app file changed, so no crate test applies. No clippy run on the probe, because the build had no warnings and the disk is nearly full. No `dart analyze`, because no Dart file changed. No jj command ran.
+
 ## Auto Run Result
 
 Status: done.
@@ -248,3 +306,54 @@ Status: done.
 - The corpus is this repository only (Ralph's client repositories are off-limits); timings and memory are this M4 Pro's, with `difft` 0.72.0 (version-gated).
 - The licences of the parsers bundled in `difft` and of difftastic's other crates are unchecked (open decision 3 in the report).
 - The disk ran full once during the run (143 MiB free); the probe's `target/` (about 470 MB) is cleaned after the commit, and `cargo build --release --offline` rebuilds it.
+
+### Follow-up review pass (2026-11-12)
+
+Status: done.
+
+**Summary.** This pass reviewed the probe code that the first review added: the drawn view and the per-file memory measurement.
+- The code matches the app's `diffWordMarks`.
+- The memory figures recount exactly from the TSV.
+- The 11.2 % stands. Its "more than half is whitespace" reading is a lower bound, not an exact count, and §6 now says so.
+- Report wording was tightened and two ledger facts were moved or restored. The probe's `parse-check` now ignores the caller's `DFT_*` settings, and its source files carry the SPDX line.
+- The recommendation and the spec's deferred build item are unchanged, as the dispatch asked. Ralph's build decision is recorded by the loop after this pass.
+
+**Files changed.**
+- `_bmad-output/planning-artifacts/research/technical-structural-diff-difftastic-class-research-2026-11-12.md` -- the Kurz names "the story's three witnesses"; §2.1 and §6 say 198 of the 200 commits; §2.2 no longer attributes the remaining time to parsing; §6 states the whitespace share as a lower bound; §7 gives tree-sitter's worst case correctly; open decisions 2 and 5 gain B's practical questions and the stepper witness's drawn change.
+- `_bmad-output/planning-artifacts/epics.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml` -- "Reformatting is quiet only in Rust" moved from the real-diff numbers to the witnesses, with its source.
+- `_bmad-output/implementation-artifacts/epic-5-context.md` -- restored: segments are index-aligned with `lines`, and `hunk_offset` writes them.
+- `spikes/structural-diff-probe/src/marks.rs`, `parse_check.rs` -- the new `marks::difft()` drops the caller's `DFT_*` variables for `--dump-ts` too.
+- `spikes/structural-diff-probe/src/{main,marks,history,limits,parse_check,witness}.rs` -- the SPDX first line.
+- This spec -- the triage log, verification notes and this section.
+
+**Review.** 34 findings: 0 high, 0 medium, 20 low, 14 false, 0 maybe-false (the verification-gap layer found no gaps).
+- Patched (11 entries, all low): the Kurz witness wording; the whitespace share as a lower bound; the "23 s" phrasing; 198 commits; the unsupported "Parsen und Vorbereitung" attribution; open decision 2's B questions; open decision 5's stepper note; the reformat sentence in the ledgers; `DFT_*` in `parse-check`; the SPDX lines; the two restored `epic-5-context.md` facts.
+- Carried from the first pass, not patched again: licences, the ledger edits beyond 5.9, the stale planning prose, the context title, timeouts and flag validation.
+- Deferred: none, so no `deferred-work.md` entry was added.
+- Rejected:
+  - False, refuted by the code or the recorded inputs:
+    - The probe's fidelity to the product.
+    - Rule 9 left unexercised.
+    - Mixed segments in one line.
+    - The cost reading.
+    - The `f(a, b)` witness.
+    - "Same by construction".
+    - `ink` against `drawn` whitespace (two rows).
+    - C-quoted paths.
+    - `Binary` files.
+    - Mismatched spans still pushed.
+    - Missing `start` / `end`.
+    - Symlinks and gitlinks.
+    - Witness fallbacks.
+  - Low, each needs new research or a full rerun beyond a direct correction, for a decision Ralph has already taken:
+    - The `-w` / `-b` effect unmeasured.
+    - No hand-rated sample of the differences.
+    - Process overhead and a single run per file in `history`.
+
+**Follow-up review recommended: false.** This is a follow-up pass and it patched no high entry (patched: 0 high, 0 medium, 11 low).
+
+**Verification.** See "Results (follow-up review, 2026-11-12)" above. It covers the code read against `diffWordMarks`, the memory recount from the TSV, the offline build, `cargo fmt` at the root and in the probe, reruns of `witness`, `parse-check` and `limits` against the previous outputs, a 20-commit `history` rerun against the full run's TSV, and `cargo clean`. The full gate was not run, by the gate rule.
+
+**Residual risks.**
+- The exact whitespace-only share of the drawn differences is not counted; only its lower bound (6.3 % of the lines) is.
+- The per-file times are single measurements, and this pass's `limits` rerun moved by up to 44 % on one input. The cited medians held across loaded and idle runs.

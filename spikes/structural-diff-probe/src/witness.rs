@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 //! `witness`: jj's and difft's marks side by side on the witness cases — `inputs/witness/<case>/`
 //! holds `before.<ext>` and `after.<ext>`; one more case, with carriage returns and a tab, is built
 //! here because its bytes are hard to keep in a text file.

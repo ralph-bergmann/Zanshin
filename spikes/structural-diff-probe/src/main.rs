@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 //! Story 5.9's probe: jj-lib's word marks next to difftastic's structural marks on the same hunk
 //! lines, plus the cost and fallback measurements the research report cites. See README.md.
 

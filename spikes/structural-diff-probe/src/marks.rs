@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 //! jj-lib's word marks and difftastic's structural marks on the same hunk lines.
 //!
 //! - **jj marks** are what the inspector draws (Story 10.32): the `Different` tokens of jj-lib's
@@ -199,14 +200,20 @@ pub fn require_difft() -> Result<String, String> {
     }
 }
 
-/// A `difft` command that prints JSON and ignores the caller's `DFT_*` settings.
-pub fn difft_command() -> Command {
+/// A `difft` command that ignores the caller's `DFT_*` settings.
+pub fn difft() -> Command {
     let mut command = Command::new("difft");
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("DFT_") {
             command.env_remove(key);
         }
     }
+    command
+}
+
+/// A `difft` command that prints JSON and ignores the caller's `DFT_*` settings.
+pub fn difft_command() -> Command {
+    let mut command = difft();
     command
         .env("DFT_UNSTABLE", "yes")
         .args(["--display", "json", "--color", "never"]);

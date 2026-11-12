@@ -1,10 +1,10 @@
+// SPDX-License-Identifier: MIT
 //! `parse-check`: how the grammars of the reverted Stories 5.3 / 5.4 (tree-sitter 0.27.1 with
 //! tree-sitter-rust 0.24.2, tree-sitter-dart 0.3.0, tree-sitter-md 0.5.4) and difft's own grammars
 //! (`difft --dump-ts`) parse the `.rs`, `.dart` and `.md` files of the repository at `--rev`, two
 //! known-bad samples (positive controls) and a set of newer Dart syntax samples.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 use tree_sitter::{Parser, Point, Tree};
@@ -270,7 +270,7 @@ fn markdown_errors(text: &[u8]) -> Result<Errors, String> {
 /// The position of the first ERROR node in `difft --dump-ts`, which prints each node as
 /// `<kind> (row, column) - (row, column)`.
 fn difft_first_error(path: &Path) -> Result<Option<Point>, String> {
-    let output = Command::new("difft")
+    let output = marks::difft()
         .arg("--dump-ts")
         .arg(path)
         .output()

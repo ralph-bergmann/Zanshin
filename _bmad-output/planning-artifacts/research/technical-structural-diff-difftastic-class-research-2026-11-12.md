@@ -7,7 +7,7 @@
 
 ---
 
-**Kurz:** difftastic lässt sich nur als Programm nutzen, und seine maschinenlesbare Ausgabe ist ausdrücklich instabil. Auf den Zeugen setzt es dieselben Wortmarken wie jj:
+**Kurz:** difftastic lässt sich nur als Programm nutzen, und seine maschinenlesbare Ausgabe ist ausdrücklich instabil. Auf den drei Zeugen der Story setzt es dieselben Wortmarken wie jj:
 - Ralphs drei stepper.dart-Beispiele: dieselben Wortmarken. Nur die neue Einrückung füllt jj, difft nicht.
 - `f(a, b)` → `f(b, a)`: dieselben Wortmarken. difftastic erkennt keine Verschiebungen; für es zählt die Reihenfolge immer.
 - Jeder Fallback, auch eine Datei mit Konfliktmarkern: jj's Marken.
@@ -57,7 +57,7 @@ Dafür kostet `difft` pro Datei im Median 60–63 ms statt 0,2–0,3 ms, und 66 
 
 Was der Nutzer abwartet, ist eine Datei. Der Inspector liest erst eine Zusammenfassung ohne Hunks, dann nur den Diff der fokussierten Datei (`app/lib/src/features/graph/graph_inspector.dart:281` und `:259`); die Undo Timeline ebenso (`app/lib/src/features/undo_timeline/operation_changes.dart:268-275`).
 
-2.536 Dateien aus 200 Commits (Abschnitt 6). jj: in-process, Eingaben im Speicher. difft: der ganze Prozess mit Start, Lesen der Dateien und JSON, unter `/usr/bin/time -l`.
+2.536 Dateien aus 198 der 200 Commits (Abschnitt 6). jj: in-process, Eingaben im Speicher. difft: der ganze Prozess mit Start, Lesen der Dateien und JSON, unter `/usr/bin/time -l`.
 
 | | jj Dart | difft Dart | jj Rust | difft Rust |
 |---|---:|---:|---:|---:|
@@ -96,7 +96,7 @@ Synthetische Eingaben, die jeden Fallback auslösen (Median aus drei Läufen, Sp
 | Konflikt, Stil `git` | 254 | Standard | `Text (1 Rust parse error, …)` | 37 ms | 13 MB | 0,0 ms | 2 MB |
 
 - **`DFT_BYTE_LIMIT`** (1.000.000 Bytes je Seite) wird vor dem Parsen geprüft (`to_tree_with_limit`), der Fallback ist schnell. Mit hohem Limit vergleicht `difft` dieselbe Datei strukturell: knapp 0,9 s und 386 MB.
-- **`DFT_GRAPH_LIMIT`** (3.000.000 Knoten) begrenzt die Dijkstra-Suche: Sie bricht ab, sobald sie mehr Knoten gesehen hat als das Limit (`shortest_vertex_path` in `src/diff/shortest_path.rs`). Zeit und Speicher bis zum Fallback wachsen deshalb mit dem Limit, der Speicher stärker als die Zeit: auf den beiden Eingaben bei 300.000 Knoten 0,9 s und 328 MB bzw. 3,8 s und 199 MB, bei 3.000.000 1,6 s und 1,07 GB bzw. 4,1 s und 620 MB, bei 6.000.000 (nur das Array) 4,7 s und 1,1 GB. Parsen und Vorbereitung kosten auch ohne Suche: Die Eingabe mit jeder 10. Anweisung blieb selbst bei 300.000 Knoten strukturell und brauchte 1,1 s. Auf echten Diffs (Abschnitt 6) traf das Limit 56 gewöhnliche Quelldateien von 13 bis 293 KB; jede kostete 0,93–3,47 s und 870–986 MB, zusammen 82 s oder gut ein Viertel der ganzen difft-Zeit.
+- **`DFT_GRAPH_LIMIT`** (3.000.000 Knoten) begrenzt die Dijkstra-Suche: Sie bricht ab, sobald sie mehr Knoten gesehen hat als das Limit (`shortest_vertex_path` in `src/diff/shortest_path.rs`). Zeit und Speicher bis zum Fallback wachsen deshalb mit dem Limit, der Speicher stärker als die Zeit: auf den beiden Eingaben bei 300.000 Knoten 0,9 s und 328 MB bzw. 3,8 s und 199 MB, bei 3.000.000 1,6 s und 1,07 GB bzw. 4,1 s und 620 MB, bei 6.000.000 (nur das Array) 4,7 s und 1,1 GB. Wie viel der Zeit die Suche selbst kostet, misst die Probe nicht: Das Array braucht auch bei 300.000 Knoten 3,8 s, und die Eingabe mit jeder 10. Anweisung blieb selbst bei 300.000 Knoten strukturell und brauchte 1,1 s. Auf echten Diffs (Abschnitt 6) traf das Limit 56 gewöhnliche Quelldateien von 13 bis 293 KB; jede kostete 0,93–3,47 s und 870–986 MB, zusammen 82 s oder gut ein Viertel der ganzen difft-Zeit.
 - **`DFT_PARSE_ERROR_LIMIT`** (0): Ein einziger ERROR-Knoten reicht für den Fallback. Mit `--parse-error-limit 10` vergleicht `difft` die Dart-Datei mit Primärkonstruktor strukturell. MISSING-Knoten zählen nicht, `difft` prüft nur `is_error()` (`src/parse/tree_sitter_parser.rs`). `f(b, a;` vergleicht es deshalb strukturell, mit merkwürdigen Marken: `f[-(-]a[-,-] [-b)-]` → `f{+(b,+} a`.
 - **Konfliktmarker:** Zanshin vergleicht eine Datei mit Konflikt so, wie jj sie materialisiert, also mit Markern. Mit Markern in jj's Standardstil `diff` und im Stil `git` (beide nach `docs/conflicts.md` @ v0.47.0) fällt `difft` auf Parse-Fehler zurück; es gelten jj's Marken.
 - **Keine Zeitgrenze:** `difft` kennt weder Timeout noch Abbruch. Ein Bau muss den Prozess nach einem eigenen Zeitbudget beenden und jj's Marken nehmen.
@@ -231,7 +231,7 @@ difftastic markiert keine Verschiebung, sondern wie jj ein entferntes und ein hi
 
 ## 6. Echte Diffs: die letzten 200 Commits
 
-**Korpus:** Revision `5ba5f5d4`, die 200 neuesten Commits ohne Merge, die eine `.rs`- oder `.dart`-Datei ändern (2026-10-23 bis 2026-11-12), nur dieses Repo. Verglichen werden nur Dateien, die ein Commit ändert (Status `M`, ohne Erkennung von Umbenennungen); neue, gelöschte und umbenannte Dateien nicht. 2.706 geänderte Dateien, davon 170 generiert (übersprungen), 2.536 verglichen (Dart 1.510, Rust 1.026), 115.515 geänderte Zeilen. Inhaltsabweichungen der Spannen: 0.
+**Korpus:** Revision `5ba5f5d4`, die 200 neuesten Commits ohne Merge, die eine `.rs`- oder `.dart`-Datei ändern (2026-10-23 bis 2026-11-12), nur dieses Repo. Verglichen werden nur Dateien, die ein Commit ändert (Status `M`, ohne Erkennung von Umbenennungen); neue, gelöschte und umbenannte Dateien nicht. 2.706 geänderte Dateien, davon 170 generiert (übersprungen), 2.536 verglichen (Dart 1.510, Rust 1.026) aus 198 Commits (die übrigen zwei ändern keine vergleichbare Datei), 115.515 geänderte Zeilen. Inhaltsabweichungen der Spannen: 0.
 
 **Wortmarken pro geänderter Zeile** (korrigierte Regel; verglichen werden markierte Zeichen ohne Leerraum):
 
@@ -253,7 +253,7 @@ difftastic markiert keine Verschiebung, sondern wie jj ein entferntes und ein hi
 | andere Zeichen | 511 | 592 | 1.103 | 1,0 % | 1,1 % |
 | difft fiel zurück | 16.738 | 2.482 | 19.220 | 16,6 % | |
 
-Das sind 11,2 % der strukturell verglichenen Zeilen, in 1.454 von 2.536 Dateien. Ohne Leerraum unterscheiden sich nur 4,9 % (Tabelle oben); den Rest machen Leerzeichen aus: jj füllt neue Einrückung und Leerzeichen zwischen geänderten Wörtern, difft markiert nur Tokens.
+Das sind 11,2 % der strukturell verglichenen Zeilen, in 1.454 von 2.536 Dateien. Ohne Leerraum unterscheiden sich nur 4,9 % (Tabelle oben). Eine Zeile mit gleichen Wortmarken, die anders gezeichnet wird, unterscheidet sich nur in Leerzeichen; das sind mindestens 6,3 % der Zeilen (11,2 − 4,9), also mehr als die Hälfte der anders gezeichneten. Genau gezählt ist es nicht: Eine Zeile mit anderen Wortmarken kann gleich gezeichnet werden, wenn 10.32 auf beiden Seiten keine starken Marken zeichnet. Die Leerzeichen kommen daher, dass jj neue Einrückung und Leerzeichen zwischen geänderten Wörtern füllt; difft markiert nur Tokens.
 
 **Fallbacks:** 56 Dateien (2,2 %), alle wegen des Graph-Limits. Sie tragen 16,6 % der geänderten Zeilen: große Änderungen fallen am ehesten zurück, also gerade dort, wo man Hilfe bräuchte.
 
@@ -272,7 +272,7 @@ Das sind 11,2 % der strukturell verglichenen Zeilen, in 1.454 von 2.536 Dateien.
 | **Neue Abhängigkeiten** (Lizenz) | keine | `serde_json` direkt in zanshin-jj (MIT oder Apache-2.0; steht schon als Transitive in `Cargo.lock`); zur Laufzeit `difft` (MIT; die mitgelieferten Parser laut README MIT oder Apache, nicht einzeln geprüft) | difftastic-Code (MIT), tree-sitter 0.26.x (MIT), `tree-sitter-rust-orchard` und `tree-sitter-dart-orchard` (MIT), weitere difftastic-Crates (nicht einzeln geprüft) | tree-sitter 0.27.1, tree-sitter-rust 0.24.2, tree-sitter-dart 0.3.0, tree-sitter-md 0.5.4 (alle MIT) |
 | **Build und Größe** | — | B1, vom Nutzer installiert: 0. B2, im App-Bundle: +90 MB, nur arm64; ein universelles oder auf Rust und Dart gekürztes Programm: nicht gemessen | nicht gemessen; schon 5.4s drei Grammatiken brachten +3,9 MB | +3,9 MB für drei Grammatiken (Spec 5.3) |
 | **Fallback** | — | `Text (…)` in `language`, Prozessfehler oder Zeitbudget: jj's Marken. `difft` nur für Sprachen mit Parser starten (nicht für Markdown usw.), sonst kostet jede solche Datei 26–47 ms für nichts. Ein kleineres `--graph-limit` (`DFT_GRAPH_LIMIT`) senkt den Speicher bis zum Fallback | wie B, aber ohne Abbruch: Das Graph-Limit läuft im App-Prozess bis zum Ende | eigene Grenzen nötig (Länge, Zeit); sonst jj |
-| **Risiken** | Umformatieren bleibt laut. Abmildern lässt es sich schon heute mit `-w` / `-b` (`DiffOptions.whitespace`, Dart `RepoHandle.diff(whitespace:)`): Sie machen nur eingerückte Zeilen zu Kontext. Das ist auch die Messlatte für D1 | instabiles JSON-Format; Versionsdrift beim Nutzer; Kosten pro Datei (Median 60–63 ms, 66 Dateien über 1 s, bis 3,5 s; Speicher bis 986 MB auf echten, 1,1 GB auf synthetischen Diffs); 16,6 % der Zeilen fallen ohnehin zurück; MISSING-Knoten ergeben seltsame Marken ohne Hinweis im JSON; neue Dart-Syntax (Primärkonstruktor) → Fallback | alle Risiken von B ohne den Prozess als Schutz: Speicher bis knapp 1 GB im App-Prozess (jeder Graph-Limit-Fallback auf echten Diffs), kein Abbruch, Stack-Tiefe; Fork-Pflege | tree-sitters Worst Cases aus Spec 5.3 (23 s pro Zeile in Dart, Stack-Überlauf in Markdown); D2 erbt die Graph-Kosten |
+| **Risiken** | Umformatieren bleibt laut. Abmildern lässt es sich schon heute mit `-w` / `-b` (`DiffOptions.whitespace`, Dart `RepoHandle.diff(whitespace:)`): Sie machen nur eingerückte Zeilen zu Kontext. Das ist auch die Messlatte für D1 | instabiles JSON-Format; Versionsdrift beim Nutzer; Kosten pro Datei (Median 60–63 ms, 66 Dateien über 1 s, bis 3,5 s; Speicher bis 986 MB auf echten, 1,1 GB auf synthetischen Diffs); 16,6 % der Zeilen fallen ohnehin zurück; MISSING-Knoten ergeben seltsame Marken ohne Hinweis im JSON; neue Dart-Syntax (Primärkonstruktor) → Fallback | alle Risiken von B ohne den Prozess als Schutz: Speicher bis knapp 1 GB im App-Prozess (jeder Graph-Limit-Fallback auf echten Diffs), kein Abbruch, Stack-Tiefe; Fork-Pflege | tree-sitters Worst Cases aus Spec 5.3 (23 s für 131.000 Zeichen `[` in Dart, Stack-Überlauf in Markdown); D2 erbt die Graph-Kosten |
 
 ## 8. Empfehlung und offene Entscheidungen für Ralph
 
@@ -287,10 +287,10 @@ Das sind 11,2 % der strukturell verglichenen Zeilen, in 1.454 von 2.536 Dateien.
 
 **Offene Entscheidungen:**
 1. Bauen oder nicht? A schließt Story 5.9 ohne Bau. Jeder Bau hebt die Regel aus 5.2 auf (Segmente = was `jj diff --git` unterstreicht).
-2. Falls B: vom Nutzer installiert (B1) oder mitgeliefert (B2, +90 MB)? B2 braucht ein universelles oder zusätzlich ein x86_64-`difft`, weil `rust-toolchain.toml` für `aarch64-apple-darwin` und `x86_64-apple-darwin` baut; das Homebrew-Programm ist nur arm64. Welches Zeitbudget, welches Graph-Limit? Einschalten über jj's `ui.diff-formatter` oder eine eigene App-Einstellung?
+2. Falls B: vom Nutzer installiert (B1) oder mitgeliefert (B2, +90 MB)? B2 braucht ein universelles oder zusätzlich ein x86_64-`difft`, weil `rust-toolchain.toml` für `aarch64-apple-darwin` und `x86_64-apple-darwin` baut; das Homebrew-Programm ist nur arm64. Welches Zeitbudget, welches Graph-Limit? Einschalten über jj's `ui.diff-formatter` oder eine eigene App-Einstellung? Dazu: Wie findet die App `difft`, wenn sie nicht aus einer Shell startet? Welche `difft`-Versionen nimmt sie an, wenn sich das JSON ändern kann (die Probe nimmt nur 0.72.0)? Was gilt, wenn `ui.diff-formatter` ein anderes Programm oder Terminal-Argumente wie `--color=always` nennt? Wartet die Ansicht das Zeitbudget ab, oder zeigt sie erst jj's Marken und tauscht sie danach?
 3. Lizenzen: Die in `difft` mitgelieferten Parser (B2) und difftastics übrige Crates (C) sind nicht einzeln geprüft. Vor einem Bau prüfen.
 4. Falls D: welche Sprachen, und welche Grenzen gegen tree-sitters Worst Cases? D2 ist die einzige Option, die Verschiebungen markieren könnte. Wie oft verschobener Code oder vertauschte Argumente in echten Diffs vorkommen, misst die Probe nicht.
-5. Der Zeuge „`f(a, b)` → `f(b, a)` markiert die Verschiebung“: streichen, oder an einen Diff mit Verschiebungen (D2) binden. difftastic erfüllt ihn nicht.
+5. Der Zeuge „`f(a, b)` → `f(b, a)` markiert die Verschiebung“: streichen, oder an einen Diff mit Verschiebungen (D2) binden. difftastic erfüllt ihn nicht. Ebenso der Zeuge „Ralphs `stepper.dart`-Beispiele behalten ihre Marken“: Er gilt für die Wortmarken; gezeichnet verlöre ein Bau auf 3 der 9 Zeilen die gefüllte Einrückung (Abschnitt 5).
 
 ## Anhang: Belege
 

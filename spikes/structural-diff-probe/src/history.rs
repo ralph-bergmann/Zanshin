@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 //! `history`: jj's and difft's marks over real diffs — every `.rs` and `.dart` file modified in the
 //! newest `--commits` non-merge commits of `--rev` that modify one, generated files excluded. Writes
 //! one row per file to `out/history.tsv` and prints the summary tables.
