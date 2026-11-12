@@ -5198,9 +5198,9 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 
 **Depends on.** 10.32 (the decision is made on real diffs), 5.2.
 
-**Design status.** Open: a product decision for Ralph after the research.
+**Design status.** DECIDED (Ralph, 2026-11-12): build option E2, line pairing before jj's word diff (see the note below). Tree-sitter stays open for later.
 
-**Witnesses** (for the build part).
+**Witnesses** (for the build part, as first planned; the decision note below replaces them for E2).
 - Ralph's `stepper.dart` examples keep their marks.
 - `f(a, b)` → `f(b, a)` marks the move, not two replacements.
 - Every fallback case gives jj's word marks.
@@ -5216,7 +5216,13 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 > - **Real diffs** (modified `.rs` / `.dart` files of the last 200 commits of this repository, 115,515 changed lines; added, deleted and renamed files not compared): `difft` fell back on 16.6 % of the lines; on the rest a build would draw different strong marks on 11.2 % (whitespace fills counted) or different word marks on 4.9 %.
 > - **Options:** A leave it (Claude's recommendation; keeps the CLI's own marks), B `difft` as an opt-in external program with a time budget, C difftastic's code as a library (fork), D an own diff over tree-sitter. Any build lifts 5.2's rule that the segments are what `jj diff --git` underlines.
 >
-> **Design status stays open:** the build decision is Ralph's (deferred-work.md "Surfaced in Story 5.9").
+> **Decided 2026-11-12 (Ralph): build option E2, pair lines before the word diff; tree-sitter later only if clear gaps remain.** This replaces the "A, leave it" relayed earlier that day. Ralph then found an example where difftastic draws better than Zanshin, and "like difftastic" means rebuilding its look, not embedding difftastic.
+> - **Why the marks scatter:** jj-lib's `unified_diff_hunks` (`jj-lib-0.47.0/src/diff_presentation/unified.rs:230`) word-diffs all removed lines of a changed block against all its added lines as one text. When a block rewrites several lines, common words ("the", "on a", "phone") match across unrelated lines. `jj diff --git` underlines the same scatter. jj's color-words view guards against it with `diff.color-words.max-inline-alternation`; the git format has no guard.
+> - **Ralph's example** (a widget test file): 3 removed lines (two comment lines, `testWidgets('shows Funktion speichern instead of Weiter on the last step', …`) against 16 added lines (a new comment, a new phone test, then the old test renamed `… on the last step on a tablet'`). Today almost every word of both comments and of both test names is marked. difftastic marks the comments as whole lines and only a few words of one test name.
+> - **E2:** in each changed block, pair removed and added lines by similarity, keeping their order, with a minimum similarity. Word-diff each pair with jj-lib's own tokens. A line without a partner gets no word marks, only 10.32's faint fill. Line-level hunks stay the CLI's. This lifts 5.2's rule that the segments are what `jj diff --git` underlines (word marks are presentation).
+> - **Measurement:** the 5.9 probe compares E2 with `difft` and with today's marks on the same 200 commits, plus E2's cost per file.
+> - **Witnesses for the build:** Ralph's example (the comments keep only the faint fill; the renamed test marks only ` on a tablet`); Ralph's stepper.dart examples and 10.32's witnesses keep their marks, including the call split over three lines (only the new indentation and the comma); the move witness `f(a, b)` → `f(b, a)` is dropped (E2 detects no moves, nor does difftastic).
+> - **Built in:** Story 5.9's closing run.
 
 ---
 
@@ -12275,6 +12281,40 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 - Marionette screenshots in the catalogue and the app, compared with the DS card.
 
 **Related:** 10.24, 5.2, 5.9; deferred-work.md, "Word-level and syntax marks have no consumer story".
+
+### Story 10.33: Ignore whitespace in the inspector diff [UI]
+*(Added 2026-11-12, Ralph — console session. Sourcetree can ignore whitespace in its diff, and Ralph wants the same.)*
+
+**Motivation.** Flutter UI work re-indents a lot: wrapping a widget in `Padding` shifts its whole subtree, and every shifted line shows as changed. jj can ignore that: `jj diff -b` (`--ignore-space-change`) and `-w` (`--ignore-all-space`). With either, lines that changed only in whitespace drop out of the diff.
+
+**Backend: done, CLI parity.** `zanshin-jj`'s `Whitespace` (`crates/zanshin-jj/src/hunks.rs`) passes `-w` / `-b` to jj-lib's `LineCompareMode`. The FFI and `zanshin_core` carry it: `zanshinDiff`'s `whitespace` parameter takes a `DiffWhitespace` (`packages/zanshin_core/lib/src/ffi/diff.dart`), default `exact`. The app never sets it. No Rust work.
+
+**Scope.**
+1. **A switch in the inspector diff header**, next to Unified / Side by side (`app/lib/src/features/graph/inspector_diff.dart`). The Undo Timeline's operation view reuses this widget, so it gets the switch too.
+2. **Modes** — NEEDS DESIGN, Claude's proposal: three, like the CLI. Show all whitespace (the CLI's default), ignore changes in the amount of whitespace (`-b`), ignore all whitespace (`-w`).
+3. **Remembered as a setting**, like the diff layout (`GeneralSettings.diffLayout` in `packages/zanshin_settings`), and also offered in Settings › General.
+4. **A change of mode reloads the diff** with the new `whitespace`.
+
+**To check in the story.**
+- What Sourcetree's option does: `-b`, `-w`, or both.
+- Whether the word marks (5.2, 5.9) also ignore whitespace under `-b` / `-w`, or still fill changed spaces on a line that stays.
+- A file whose every change is whitespace keeps its section with no hunks (`hunks.rs` test `ignoring_whitespace_drops_a_whitespace_only_hunk`). The diff view needs a note for it.
+
+**Non-goals.**
+- Backend changes.
+- A mode per file.
+
+**Depends on.** 10.24 (done), 10.32 (done).
+
+**Design status.** NEEDS DESIGN. The modes and the control's look are Claude's proposal, not decided by Ralph. The control comes from the DS; a DS change goes through the `design-artifacts` skill.
+
+**Witnesses.**
+- A subtree wrapped in `Padding`: under `-b` only the new `Padding(` lines and the closing brackets stay.
+- `a b` → `a  b` drops out under `-b` and `-w`; `a b` → `ab` drops out only under `-w`.
+- The mode survives an app restart.
+- The operation view shows the same switch.
+
+**Related:** 10.24, 10.32, 5.9; Story 5.9's line pairing.
 
 ---
 
