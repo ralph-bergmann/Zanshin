@@ -1824,6 +1824,20 @@ fn compute_hunks_surface_resolves() {
                 zanshin_jj::HunkLine::Removed(String::new()),
                 zanshin_jj::HunkLine::Added(String::new()),
             ],
+            segments: vec![
+                vec![zanshin_jj::Segment {
+                    text: String::new(),
+                    kind: zanshin_jj::SegmentKind::Equal,
+                }],
+                vec![zanshin_jj::Segment {
+                    text: String::new(),
+                    kind: zanshin_jj::SegmentKind::Removed,
+                }],
+                vec![zanshin_jj::Segment {
+                    text: String::new(),
+                    kind: zanshin_jj::SegmentKind::Added,
+                }],
+            ],
         }],
     };
     assert_eq!(file.clone(), file);

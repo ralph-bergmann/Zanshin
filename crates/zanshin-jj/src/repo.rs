@@ -2564,7 +2564,7 @@ impl Repo {
     /// `Added`+`Removed` pair).
     ///
     /// There is no path argument and no textual patch: the CLI hardcodes `EverythingMatcher`,
-    /// and line/word-level diffing is Epic 5's (`zanshin-diff`).
+    /// and line/word-level diffing is Epic 5's ([`Repo::diff`]).
     ///
     /// `limit` is a ZANSHIN-SIDE addition — the CLI has no such flag here, because `jj show`
     /// streams to a pager where this materialises one owned list, each entry paying a

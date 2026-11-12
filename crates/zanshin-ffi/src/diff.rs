@@ -5,14 +5,14 @@
 //! `jj diff` as data. Its arguments cross as a `DiffRequest` request BUFFER (ADR-0001
 //! composite-input pattern); the handle is borrowed, never consumed; the call runs the pre-verb
 //! snapshot (Story 9.26), so every envelope carries the precondition report and the call's
-//! warnings. Story 5.2 gives every line its word-level segments, `zanshin_diff::line_segments`
-//! over its hunk's lines.
+//! warnings. Story 5.2 gives every line its word-level segments, `zanshin_jj::Hunk::segments`:
+//! what `jj diff --git` underlines.
 
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, VerifierOptions, WIPOffset};
 use tracing::debug;
-use zanshin_diff::{line_segments, Segment, SegmentKind};
 use zanshin_jj::{
-    DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, MutateError, RevisionDiff, Whitespace,
+    DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, MutateError, RevisionDiff, Segment, SegmentKind,
+    Whitespace,
 };
 
 use crate::envelope::{
@@ -90,7 +90,7 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// `jj diff` as data in the repo identified by `handle` (Story 5.8) — `zanshin_jj::Repo::diff`:
 /// per changed file its kind, flags, section keys (the `HunkKey`s `zanshin_select_tree` takes),
 /// hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at. Every hunk
-/// line carries its word-level segments (Story 5.2), so the call word-diffs each paired line.
+/// line carries its word-level segments (Story 5.2): what `jj diff --git` underlines.
 ///
 /// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, a set
 /// diffed as one — its roots' merged parents against its merged heads, a set with gaps refused;
@@ -151,8 +151,7 @@ pub unsafe extern "C" fn zanshin_diff(handle: u64, data: *const u8, len: usize) 
 /// Build a success `Envelope` with a `Diff` payload and return the finished buffer: the files
 /// exactly as `diff` returned them, in order, every vector written (empty, not absent), a `None`
 /// symbol, `from_path` or `from_commit_id` absent. Every line carries its word-level `segments`,
-/// `zanshin_diff::line_segments` over its hunk's lines (Story 5.2). `report` rides as on every
-/// envelope.
+/// its hunk's `segments` (Story 5.2). `report` rides as on every envelope.
 #[must_use]
 pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
@@ -203,11 +202,10 @@ fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs
 fn hunk_offset<'b>(b: &mut FlatBufferBuilder<'b>, h: &Hunk) -> WIPOffset<fbs::Hunk<'b>> {
     let symbol = h.symbol.as_deref().map(|s| b.create_string(s));
     let sections = keys_vector(b, &h.sections);
-    let segments = line_segments(&h.lines);
     let lines: Vec<_> = h
         .lines
         .iter()
-        .zip(&segments)
+        .zip(&h.segments)
         .map(|(l, s)| line_offset(b, l, s))
         .collect();
     let lines = b.create_vector(&lines);
@@ -297,8 +295,9 @@ mod tests {
     use std::path::PathBuf;
 
     use flatbuffers::VerifierOptions;
-    use zanshin_diff::{line_segments, Segment, SegmentKind};
-    use zanshin_jj::{ChangeKind, CommitId, FileDiff, Hunk, HunkKey, HunkLine, OperationId, RevisionDiff};
+    use zanshin_jj::{
+        ChangeKind, CommitId, FileDiff, Hunk, HunkKey, HunkLine, OperationId, RevisionDiff, Segment, SegmentKind,
+    };
 
     use super::diff_to_envelope;
     use crate::envelope::CallReport;
@@ -346,6 +345,7 @@ mod tests {
                 .iter()
                 .map(line_from_wire)
                 .collect(),
+            segments: segments_from_wire(h),
         }
     }
 
@@ -460,6 +460,15 @@ mod tests {
                             HunkLine::Added("    e();\n".into()),
                             HunkLine::Context("}\n".into()),
                         ],
+                        segments: vec![
+                            whole(SegmentKind::Equal, "fn main() {\n"),
+                            word(SegmentKind::Removed, "a"),
+                            word(SegmentKind::Removed, "b"),
+                            word(SegmentKind::Added, "c"),
+                            word(SegmentKind::Added, "d"),
+                            whole(SegmentKind::Added, "    e();\n"),
+                            whole(SegmentKind::Equal, "}\n"),
+                        ],
                     },
                     Hunk {
                         before_range: 7..12,
@@ -475,6 +484,14 @@ mod tests {
                             HunkLine::Added("z2\n".into()),
                             HunkLine::Added("z3\n".into()),
                             HunkLine::Added("no newline".into()),
+                        ],
+                        segments: vec![
+                            whole(SegmentKind::Equal, "x\n"),
+                            whole(SegmentKind::Removed, "y\n"),
+                            whole(SegmentKind::Added, "z1\n"),
+                            whole(SegmentKind::Added, "z2\n"),
+                            whole(SegmentKind::Added, "z3\n"),
+                            whole(SegmentKind::Added, "no newline"),
                         ],
                     },
                 ],
@@ -570,6 +587,20 @@ mod tests {
         }
     }
 
+    /// A line that is one segment.
+    fn whole(kind: SegmentKind, text: &str) -> Vec<Segment> {
+        vec![seg(kind, text)]
+    }
+
+    /// `    <name>();\n` with `name` changed.
+    fn word(kind: SegmentKind, name: &str) -> Vec<Segment> {
+        vec![
+            seg(SegmentKind::Equal, "    "),
+            seg(kind, name),
+            seg(SegmentKind::Equal, "();\n"),
+        ]
+    }
+
     /// One wire hunk's segments, line by line.
     fn segments_from_wire(h: fbs::Hunk<'_>) -> Vec<Vec<Segment>> {
         let kinds = [SegmentKind::Equal, SegmentKind::Added, SegmentKind::Removed];
@@ -587,9 +618,8 @@ mod tests {
             .collect()
     }
 
-    /// Story 5.2: every wire line, the description block's too, carries `line_segments` of its
-    /// hunk — a removed line word-diffed with the added line it pairs with, an unpaired line and a
-    /// context line whole.
+    /// Story 5.2: every wire line, the description block's too, carries its hunk's segments for
+    /// it, a lone segment sharing the line's string.
     #[test]
     fn every_line_carries_its_word_level_segments() {
         use SegmentKind::{Added, Equal, Removed};
@@ -607,7 +637,7 @@ mod tests {
             let wire_hunks = wire.hunks().expect("hunks always present");
             assert_eq!(wire_hunks.len(), file.hunks.len());
             for (wire, hunk) in wire_hunks.iter().zip(&file.hunks) {
-                assert_eq!(segments_from_wire(wire), line_segments(&hunk.lines));
+                assert_eq!(segments_from_wire(wire), hunk.segments);
                 for line in wire.lines().expect("lines always present") {
                     let segments = line.segments().expect("segments always present");
                     if segments.len() == 1 {

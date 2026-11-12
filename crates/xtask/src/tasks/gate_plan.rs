@@ -194,11 +194,6 @@ const RULES: &[(Pattern, &str, Need)] = &[
         Need::Groups(&[RUST, APP]),
     ),
     (
-        Pattern::Prefix("crates/zanshin-diff/"),
-        "Rust in the cdylib",
-        Need::Groups(&[RUST, APP]),
-    ),
-    (
         Pattern::Exact("cbindgen.toml"),
         "FFI codegen",
         Need::Groups(&[RUST, APP]),
@@ -933,9 +928,6 @@ mod tests {
     fn rust_in_the_cdylib_reaches_the_app_and_rust_outside_does_not() {
         let jj = steps(classify("crates/zanshin-jj/src/repo.rs").1);
         assert!(jj.contains(&"coverage") && jj.contains(&"test-flutter"), "{jj:?}");
-        // zanshin-ffi links it since Story 5.2.
-        let diff = steps(classify("crates/zanshin-diff/src/word_diff.rs").1);
-        assert!(diff.contains(&"coverage") && diff.contains(&"test-flutter"), "{diff:?}");
         let mcp = steps(classify("crates/zanshin-mcp/src/main.rs").1);
         assert!(mcp.contains(&"coverage") && !mcp.contains(&"test-flutter"), "{mcp:?}");
     }

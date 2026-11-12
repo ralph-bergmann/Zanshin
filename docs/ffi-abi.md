@@ -2506,22 +2506,18 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
 - **Pins (5.6),** full hex: `operation_id` = the operation read at (after the pre-verb snapshot);
   `commit_id` = the revision (`-r`) or `to`; `from_commit_id` = `from`, ABSENT for the revision
   form (Dart `null`).
-- **Segments (5.2)** — `zanshin_diff::line_segments` over each hunk's lines, always written on
-  every line (the description block's too). Their texts concatenate exactly to the line's `text`
-  (`\n` included), none is empty, and adjacent segments differ in kind. Pairing (the default
-  Delta-class behaviour): a run of `Removed` lines directly followed by a run of `Added` lines
-  pairs in order, the i-th removed line with the i-th added line, and each pair is word-diffed —
-  imara-diff Histogram over Unicode word-bound tokens (UAX #29: a run of spaces (`WSegSpace`) is
-  one token, but each tab and each no-break space (U+00A0, U+2007) is a token of its own, while a
-  narrow no-break space (U+202F) joins the letters or digits around it; a line ending (`\n` or
-  `\r\n`), an emoji, or a base with its combining marks is one token): `Equal` and `Removed`
-  segments on the removed line, `Equal` and `Added` on the added one. A pair with a line longer
-  than 131,072 characters is not word-diffed. A line without a word diff is one segment of its own
-  kind, a `Context` line one `Equal` segment. A changed line can carry no changed segment (a
-  removed blank line paired with `foo`: `[=\n]`), and a changed segment can be only a line ending
-  (`a\n` → `a`, `\r\n` → `\n`). In summary mode no file carries hunks, so only the description
-  block's lines (an inter-diff's) are word-diffed. `SegmentKind`'s member order is the wire value
-  — append only.
+- **Segments (5.2)** — `zanshin_jj::Hunk::segments`, always written on every line (the
+  description block's too). Their texts concatenate exactly to the line's `text` (`\n` included),
+  none is empty, and adjacent segments differ in kind. The changed segments are exactly what
+  `jj diff --git` underlines: jj-lib's `unified_diff_hunks` word-diffs each changed region as one
+  text, with no line pairing, so a moved line break or an inserted line is only one more token.
+  Words are runs of `A-Z a-z 0-9 _` and non-ASCII bytes; every other byte (`.`, `(`, a space, a
+  line break) is a token of its own. `Equal` and `Removed` segments on a removed line, `Equal` and
+  `Added` on an added one, one `Equal` segment on a `Context` line. A changed line can carry no
+  changed segment (a call split over lines: its removed line), and a changed segment can be only
+  a line break. In summary mode no file carries hunks, so only the description block's lines (an
+  inter-diff's) carry changed segments. `SegmentKind`'s member order is the wire value — append
+  only.
 
 Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart`) → `Diff`
 (with `operationId` / `commitId` / `fromCommitId`), `FileDiff` (`kind` as `status.dart`'s

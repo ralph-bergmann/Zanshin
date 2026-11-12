@@ -7,7 +7,6 @@ This directory contains all five Rust crates that make up the Zanshin backend.
 | Crate | Type | Purpose |
 |---|---|---|
 | `zanshin-jj` | lib | Anti-corruption layer over `jj-lib` (Epic 2) |
-| `zanshin-diff` | lib | Word-level diff + syntax highlight (Epic 5) |
 | `zanshin-ffi` | cdylib | FFI boundary exposed to Dart via `libzanshin_ffi.dylib` (Epic 3) |
 | `zanshin-mcp` | bin | MCP server binary (Epic 7) |
 | `xtask` | bin | Build helper tasks invoked via `cargo xtask` (Story 1.4+) |
@@ -30,7 +29,7 @@ block — it defeats the single-source guarantee and causes drift.
 
 ### Version-pinning rules
 
-- **Load-bearing pre-1.0 deps** (`jj-lib`, `rmcp`, `imara-diff`): use exact pins `=x.y.z`.
+- **Load-bearing pre-1.0 deps** (`jj-lib`, `rmcp`): use exact pins `=x.y.z`.
   These crates make breaking changes between minor versions; absorbing upgrades is
   an explicit, reviewed decision — not a silent `cargo update`.
 - **Stable deps** (1.0+): caret pins (`^x.y.z` or bare `x.y.z`), matching standard

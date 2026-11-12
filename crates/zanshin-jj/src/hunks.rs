@@ -235,6 +235,32 @@ pub struct Hunk {
     pub added: u32,
     /// Its lines in order.
     pub lines: Vec<HunkLine>,
+    /// Each line's [`Segment`]s, index-aligned with `lines`.
+    pub segments: Vec<Vec<Segment>>,
+}
+
+/// A run of a [`HunkLine`]'s text with one kind — what `jj diff --git` underlines (Story 5.2).
+/// jj-lib word-diffs each changed region as one text, so a moved line break or an inserted line
+/// is only one more token. Words are runs of `A-Z a-z 0-9 _` and non-ASCII bytes; every other
+/// byte is a token of its own. A line's segments concatenate to its text, none is empty, and
+/// adjacent segments differ in kind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Segment {
+    /// The run's text.
+    pub text: String,
+    /// Whether the run changed.
+    pub kind: SegmentKind,
+}
+
+/// What a [`Segment`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SegmentKind {
+    /// Unchanged: on both sides, or on a context line.
+    Equal,
+    /// Changed on an added line.
+    Added,
+    /// Changed on a removed line.
+    Removed,
 }
 
 /// One line of a [`Hunk`]: its text including `\n` (a last line without one keeps that state),
@@ -685,11 +711,8 @@ fn hunks_of(
     unified_diff_hunks(texts.map(Into::into), context, mode)
         .iter()
         .map(|hunk| {
-            let lines: Vec<HunkLine> = hunk
-                .lines
-                .iter()
-                .map(|(kind, tokens)| hunk_line(*kind, tokens))
-                .collect();
+            let (lines, segments): (Vec<HunkLine>, Vec<Vec<Segment>>) =
+                hunk.lines.iter().map(|(kind, tokens)| hunk_line(*kind, tokens)).unzip();
             let removed = count(&lines, |line| matches!(line, HunkLine::Removed(_)));
             let added = count(&lines, |line| matches!(line, HunkLine::Added(_)));
             Hunk {
@@ -700,20 +723,47 @@ fn hunks_of(
                 removed,
                 added,
                 lines,
+                segments,
             }
         })
         .collect()
 }
 
-/// One hunk line from its tokens.
-fn hunk_line(kind: DiffLineType, tokens: &[(DiffTokenType, &[u8])]) -> HunkLine {
-    let bytes: Vec<u8> = tokens.iter().flat_map(|(_, token)| token.iter().copied()).collect();
-    let text = String::from_utf8_lossy(&bytes).into_owned();
-    match kind {
+/// One hunk line and its segments from its tokens: a `Different` token is the line's change, a
+/// `Matching` one is equal.
+fn hunk_line(kind: DiffLineType, tokens: &[(DiffTokenType, &[u8])]) -> (HunkLine, Vec<Segment>) {
+    let changed = match kind {
+        DiffLineType::Context => SegmentKind::Equal,
+        DiffLineType::Removed => SegmentKind::Removed,
+        DiffLineType::Added => SegmentKind::Added,
+    };
+    let mut runs: Vec<(SegmentKind, Vec<u8>)> = vec![];
+    for (token_type, token) in tokens {
+        let segment_kind = match token_type {
+            DiffTokenType::Matching => SegmentKind::Equal,
+            DiffTokenType::Different => changed,
+        };
+        match runs.last_mut() {
+            Some((last, bytes)) if *last == segment_kind => bytes.extend_from_slice(token),
+            _ => runs.push((segment_kind, token.to_vec())),
+        }
+    }
+    // A run boundary never splits a UTF-8 sequence (jj-lib's words keep every non-ASCII byte), so
+    // decoding each run gives the same text as decoding the line.
+    let segments: Vec<Segment> = runs
+        .into_iter()
+        .map(|(kind, bytes)| Segment {
+            text: String::from_utf8_lossy(&bytes).into_owned(),
+            kind,
+        })
+        .collect();
+    let text: String = segments.iter().map(|segment| segment.text.as_str()).collect();
+    let line = match kind {
         DiffLineType::Context => HunkLine::Context(text),
         DiffLineType::Removed => HunkLine::Removed(text),
         DiffLineType::Added => HunkLine::Added(text),
-    }
+    };
+    (line, segments)
 }
 
 /// The CLI's symbol choice: the new side, unless the hunk adds no line (context lines make the
@@ -778,7 +828,7 @@ mod tests {
     use jj_lib::diff_presentation::LineCompareMode;
     use jj_lib::merge::Diff;
 
-    use super::{fingerprint, hunks_of, section_keys, totals, Hunk, HunkKey, HunkLine};
+    use super::{fingerprint, hunks_of, section_keys, totals, Hunk, HunkKey, HunkLine, SegmentKind};
     use crate::source_symbol::SourceLanguage;
 
     /// The fingerprint keys the changed lines only: shifted line numbers keep it, a different
@@ -882,6 +932,111 @@ mod tests {
         assert_eq!(lines[1], HunkLine::Removed("b".to_owned()));
         assert_eq!(lines[2], HunkLine::Added("c".to_owned()));
         assert_eq!(hunks[0].sections, [key(1, 1, 1, 1)]);
+    }
+
+    /// Each line with its segments as `jj diff --git` underlines them: `[-…-]` on a removed line,
+    /// `{+…+}` on an added one. Checks that the segments concatenate to the line, none is empty
+    /// and adjacent ones differ in kind.
+    fn marked(hunk: &Hunk) -> Vec<String> {
+        assert_eq!(hunk.segments.len(), hunk.lines.len());
+        hunk.lines
+            .iter()
+            .zip(&hunk.segments)
+            .map(|(line, segments)| {
+                let (sign, text) = match line {
+                    HunkLine::Context(text) => (' ', text),
+                    HunkLine::Removed(text) => ('-', text),
+                    HunkLine::Added(text) => ('+', text),
+                };
+                let joined: String = segments.iter().map(|segment| segment.text.as_str()).collect();
+                assert_eq!(&joined, text);
+                assert!(segments.iter().all(|segment| !segment.text.is_empty()));
+                assert!(segments.windows(2).all(|pair| pair[0].kind != pair[1].kind));
+                let body: String = segments
+                    .iter()
+                    .map(|segment| match segment.kind {
+                        SegmentKind::Equal => segment.text.clone(),
+                        SegmentKind::Removed => format!("[-{}-]", segment.text),
+                        SegmentKind::Added => format!("{{+{}+}}", segment.text),
+                    })
+                    .collect();
+                format!("{sign}{body}")
+            })
+            .collect()
+    }
+
+    /// jj's words: `s.functionWizard_save` → `saveLabel` changes the whole expression, `a.x` →
+    /// `a.y` only the name, and a non-ASCII word stays whole — as `jj diff --git` 0.47.0 underlines
+    /// them.
+    #[test]
+    fn segments_are_the_words_jj_underlines() {
+        let hunks = diff(
+            "    child: Text(isLastStep ? s.functionWizard_save : s.functionWizard_next),\n    \
+             a.functionWizard_save,\n    final größe = 1;\n",
+            "    child: Text(isLastStep ? saveLabel : s.functionWizard_next),\n    \
+             a.functionWizard_next,\n    final größe = 2;\n",
+            None,
+            3,
+        );
+        assert_eq!(
+            marked(&hunks[0]),
+            [
+                "-    child: Text(isLastStep ? [-s.functionWizard_save-] : s.functionWizard_next),\n",
+                "-    a.[-functionWizard_save-],\n",
+                "-    final größe = [-1-];\n",
+                "+    child: Text(isLastStep ? {+saveLabel+} : s.functionWizard_next),\n",
+                "+    a.{+functionWizard_next+},\n",
+                "+    final größe = {+2+};\n",
+            ]
+        );
+    }
+
+    /// A call split over three lines changes only its line breaks, indentation and one comma: the
+    /// removed line has no changed segment.
+    #[test]
+    fn a_moved_line_break_is_only_one_more_token() {
+        let hunks = diff(
+            "    Expanded(child: _Line(color: isFirst ? null : lineColor)),\n    DecoratedBox(\n",
+            "    Expanded(\n      child: _Line(color: isFirst ? null : lineColor),\n    ),\n    DecoratedBox(\n",
+            None,
+            3,
+        );
+        assert_eq!(
+            marked(&hunks[0]),
+            [
+                "-    Expanded(child: _Line(color: isFirst ? null : lineColor)),\n",
+                "+    Expanded({+\n+}",
+                "+{+      +}child: _Line(color: isFirst ? null : lineColor){+,\n+}",
+                "+{+    +}),\n",
+                "     DecoratedBox(\n",
+            ]
+        );
+    }
+
+    /// An inserted comment line does not take a changed line's place: the change is the comment
+    /// and `spacing8` → `spacing2`.
+    #[test]
+    fn an_inserted_line_does_not_pair_with_a_changed_one() {
+        let hunks = diff(
+            "  padding: Spacing.spacing8,\n  child: label,\n",
+            "  // Small side padding.\n  padding: Spacing.spacing2,\n  child: label,\n",
+            None,
+            3,
+        );
+        let marked = marked(&hunks[0]);
+        assert_eq!(marked[0], "-  padding: Spacing.[-spacing8-],\n");
+        assert!(marked[1].starts_with("+  {+// Small side padding."), "{marked:?}");
+        assert!(marked[2].ends_with("padding: Spacing.{+spacing2+},\n"), "{marked:?}");
+        assert_eq!(marked[3], "   child: label,\n");
+    }
+
+    /// A context line is one equal segment.
+    #[test]
+    fn a_context_line_is_one_equal_segment() {
+        let hunks = diff("a\nb\n", "a\nc\n", None, 3);
+        assert_eq!(hunks[0].segments[0].len(), 1);
+        assert_eq!(hunks[0].segments[0][0].kind, SegmentKind::Equal);
+        assert_eq!(marked(&hunks[0]), [" a\n", "-[-b-]\n", "+{+c+}\n"]);
     }
 
     /// An insertion lists its section through its added lines, a deletion through its removed.

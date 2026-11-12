@@ -16,7 +16,7 @@ import 'warning.dart';
 // This file owns the Dart half of Story 5.5's line-level `Diff` payload: the
 // models mirroring `zanshin_jj::RevisionDiff` / `FileDiff` / `Hunk` /
 // `HunkLine` and their decoder (Story 5.6 adds kinds, counts, fingerprints and
-// pins; Story 5.2 the lines' word-level segments, `zanshin_diff::Segment`),
+// pins; Story 5.2 the lines' word-level segments, `zanshin_jj::Segment`),
 // plus Story 5.8's `zanshinDiff` adapter. `dart:ffi` stays inside `ffi/` —
 // only the worker isolate calls the adapter.
 
@@ -55,24 +55,24 @@ enum HunkLineKind {
   added,
 }
 
-/// What a [Segment] is (mirrors `zanshin_diff::SegmentKind`).
+/// What a [Segment] is (mirrors `zanshin_jj::SegmentKind`).
 enum SegmentKind {
-  /// On both lines of a pair, or a context line.
+  /// Unchanged: on both sides, or on a context line.
   equal,
 
-  /// Only on the added line.
+  /// Changed on an added line.
   added,
 
-  /// Only on the removed line.
+  /// Changed on a removed line.
   removed,
 }
 
-/// A run of a [HunkLine]'s text with one [kind] (mirrors
-/// `zanshin_diff::Segment`): whole Unicode word-bound tokens, never empty.
+/// A run of a [HunkLine]'s text with one [kind] (mirrors `zanshin_jj::Segment`),
+/// never empty. The changed runs are what `jj diff --git` underlines.
 final class Segment {
   const Segment({required this.kind, required this.text});
 
-  /// Whether the run is on both lines of a pair, or only on one side.
+  /// Whether the run changed.
   final SegmentKind kind;
 
   /// The run's text.

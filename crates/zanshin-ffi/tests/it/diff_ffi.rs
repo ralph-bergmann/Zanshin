@@ -11,7 +11,7 @@
 //! Story 5.8: `zanshin_diff` on a real handle carries exactly what `Repo::diff` returns for the
 //! same options, every request field reaching its option, and refuses what the CLI refuses.
 //!
-//! Story 5.2: every wire line carries `zanshin_diff::line_segments` of its hunk's lines.
+//! Story 5.2: every wire line carries its hunk's `segments` for it.
 
 use std::ffi::CString;
 use std::fs;
@@ -19,7 +19,6 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 
 use flatbuffers::root as fb_root;
-use zanshin_diff::{line_segments, Segment, SegmentKind};
 use zanshin_ffi::diff::{diff_to_envelope, zanshin_diff};
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
@@ -29,7 +28,7 @@ use zanshin_ffi::{
 };
 use zanshin_jj::{
     Backend, ChangeKind, DiffOptions, DiffRevisions, FileDiff, HunkKey, HunkLine, HunksOptions, Repo, RevisionDiff,
-    SelectedTreeId, Whitespace,
+    Segment, SegmentKind, SelectedTreeId, Whitespace,
 };
 
 /// `Repo::diff` of `@` and `compute_hunks` between `@`'s parent tree and its own tree, in a fresh
@@ -214,7 +213,7 @@ fn assert_wire_is(payload: fbs::Diff<'_>, diff: &RevisionDiff) {
             let expected: Vec<_> = h.lines.iter().map(kind_and_text).collect();
             assert_eq!(lines, expected);
             let segments: Vec<_> = wh.lines().expect("lines present").iter().map(segments_of).collect();
-            assert_eq!(segments, line_segments(&h.lines), "{}", f.path);
+            assert_eq!(segments, h.segments, "{}", f.path);
         }
     }
 }

@@ -109,16 +109,9 @@ void main() {
       expect(segmentsOf('f.txt', 'a\n'), [(SegmentKind.removed, 'a'), (SegmentKind.equal, '\n')]);
       expect(segmentsOf('f.txt', 'A\n'), [(SegmentKind.added, 'A'), (SegmentKind.equal, '\n')]);
       expect(segmentsOf('f.txt', 'b\n'), [(SegmentKind.equal, 'b\n')]);
-      expect(segmentsOf('w.txt', 'x y\n'), [
-        (SegmentKind.equal, 'x'),
-        (SegmentKind.removed, ' '),
-        (SegmentKind.equal, 'y\n'),
-      ]);
-      expect(segmentsOf('w.txt', 'x  y\n'), [
-        (SegmentKind.equal, 'x'),
-        (SegmentKind.added, '  '),
-        (SegmentKind.equal, 'y\n'),
-      ]);
+      // jj compares spaces one by one: the removed line keeps its space, one space is added.
+      expect(segmentsOf('w.txt', 'x y\n'), [(SegmentKind.equal, 'x y\n')]);
+      expect(segmentsOf('w.txt', 'x  y\n').where((s) => s.$1 != SegmentKind.equal), [(SegmentKind.added, ' ')]);
     });
 
     test('a_range_diffs_as_one_and_pins_its_heads', () async {

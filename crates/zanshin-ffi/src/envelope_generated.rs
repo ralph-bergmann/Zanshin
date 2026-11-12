@@ -4516,8 +4516,8 @@ pub mod zanshin {
         pub const ENUM_VALUES_SEGMENT_KIND: [SegmentKind; 3] =
             [SegmentKind::Equal, SegmentKind::Added, SegmentKind::Removed];
 
-        /// What a `Segment` is (Story 5.2): on both lines of a pair or a context line, only on the added
-        /// line, or only on the removed line. Member order IS the wire value — APPEND only.
+        /// What a `Segment` is (Story 5.2): unchanged (on both sides, or a context line), changed on an
+        /// added line, or changed on a removed line. Member order IS the wire value — APPEND only.
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct SegmentKind(pub u8);
@@ -42551,8 +42551,7 @@ pub mod zanshin {
         pub enum SegmentOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_diff::Segment`): whole Unicode
-        /// word-bound tokens, never empty.
+        /// A run of a `HunkLine`'s text with one kind (Story 5.2, `zanshin_jj::Segment`), never empty.
         pub struct Segment<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -42682,13 +42681,12 @@ pub mod zanshin {
         /// One line of a `Hunk` (Story 5.5). `text` includes its `\n` (a last line without one keeps that
         /// state), decoded lossily as UTF-8; a `Context` line carries the right side's text.
         ///
-        /// Story 5.2 appends `segments`, the line's word-level runs (`zanshin_diff::line_segments`), always
+        /// Story 5.2 appends `segments`, the line's word-level runs (`zanshin_jj::Hunk::segments`), always
         /// written: their texts concatenate exactly to `text`, none is empty, and adjacent runs differ in
-        /// kind. The i-th line of a run of `Removed` lines directly followed by a run of `Added` lines pairs
-        /// with the i-th `Added` line, and the pair is word-diffed (imara-diff Histogram over Unicode word
-        /// bounds) unless one of its lines is longer than 131,072 characters: `Equal` and `Removed` runs on
-        /// the removed line, `Equal` and `Added` runs on the added one. Every other line, a pair over that
-        /// cap included, is one run of its own kind (`Equal` for a `Context` line).
+        /// kind. The changed runs are what `jj diff --git` underlines: jj-lib word-diffs each changed
+        /// region as one text (no line pairing), words being runs of `A-Z a-z 0-9 _` and non-ASCII bytes
+        /// and every other byte a token of its own. A `Removed` line has `Equal` and `Removed` runs, an
+        /// `Added` line `Equal` and `Added` runs, a `Context` line one `Equal` run.
         pub struct HunkLine<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

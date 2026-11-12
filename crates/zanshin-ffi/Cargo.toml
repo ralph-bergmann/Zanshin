@@ -28,8 +28,6 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
-# WHY: `diff.rs` writes `line_segments`' word-level segments on every diff line (Story 5.2).
-zanshin-diff = { workspace = true }
 zanshin-jj = { workspace = true }
 
 [dev-dependencies]

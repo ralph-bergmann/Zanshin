@@ -2071,16 +2071,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
-name = "imara-diff"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f01d462f766df78ab820dd06f5eb700233c51f0f4c2e846520eaf4ba6aa5c5c"
-dependencies = [
- "hashbrown 0.15.5",
- "memchr",
-]
-
-[[package]]
 name = "indexmap"
 version = "2.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5001,15 +4991,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zanshin-diff"
-version = "0.1.0"
-dependencies = [
- "imara-diff",
- "unicode-segmentation",
- "zanshin-jj",
-]
-
-[[package]]
 name = "zanshin-ffi"
 version = "0.1.0"
 dependencies = [
@@ -5021,7 +5002,6 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "zanshin-diff",
  "zanshin-jj",
 ]
 

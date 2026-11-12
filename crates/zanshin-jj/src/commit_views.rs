@@ -16,7 +16,7 @@
 //!
 //! - **No textual diff.** The CLI renders hunks through `DiffRenderer` in a format the user
 //!   picks (`--git`, `--color-words`, `--stat`, `--summary`). Line- and word-level diffing is
-//!   Epic 5 (`zanshin-diff`); the two mechanisms this story is built on —
+//!   Epic 5 ([`crate::Repo::diff`]); the two mechanisms this story is built on —
 //!   `Commit::parent_tree` and `MergedTree::diff_stream*` — produce `(path, before, after)`,
 //!   which the CLI classifies into A/M/D/C/R. That per-path change list is what travels here,
 //!   reusing the shipped [`crate::FileChange`] / [`crate::ChangeKind`] vocabulary so `status`,

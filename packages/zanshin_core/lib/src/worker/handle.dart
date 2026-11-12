@@ -1626,8 +1626,8 @@ final class RepoHandle {
   /// `jj diff` as data (Story 5.8): per changed file its kind, flags, the
   /// section keys [selectTree] takes, hunks, counts and fingerprint, pinned to
   /// the operation and commit(s) it was read at. Every hunk line carries its
-  /// word-level segments (`HunkLine.segments`, Story 5.2), so the call
-  /// word-diffs each paired line.
+  /// word-level segments (`HunkLine.segments`, Story 5.2): what
+  /// `jj diff --git` underlines.
   ///
   /// [revision] is `-r` (`null`: `@`), a revset diffed as one set — the merged
   /// parents of its roots against its merged heads ([Diff.commitIds]); a set

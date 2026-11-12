@@ -12,7 +12,6 @@ exclude_prefix = crates/test-helpers/
 exclude_prefix = crates/zanshin-parity/
 #
 # path = pct
-crates/zanshin-diff/src/word_diff.rs = 100.00
 crates/zanshin-ffi/src/bookmark_ops.rs = 100.00
 crates/zanshin-ffi/src/bookmarks.rs = 100.00
 crates/zanshin-ffi/src/change.rs = 100.00

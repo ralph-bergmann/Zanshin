@@ -24,7 +24,7 @@ Error codes follow the dotted `<domain>.<reason>` format, e.g. `jj.repo_not_foun
 | `internal` | `zanshin-ffi` — infrastructure-level panics and serialisation failures |
 | `ffi`      | `zanshin-ffi` — FFI contract violations (null pointers, invalid handles, UTF-8) |
 | `jj`       | `zanshin-jj` — jj-lib operation errors |
-| `diff`     | `zanshin-diff` — diff computation errors |
+| `diff`     | no code *(2026-11-12: until then `zanshin-diff` — diff computation errors; that crate was removed, word diffs come from `zanshin-jj`)* |
 | `graph`    | the graph topology call (`zanshin-ffi`'s `graph.rs`, `zanshin_graph_topology`) *(2026-10-01, Story 4.12: until then `zanshin-graph` — DAG lane-assignment errors; that crate was removed)* |
 | `watcher`  | `zanshin-ffi` watcher subsystem — filesystem-watch errors |
 | `mcp`      | `zanshin-mcp` — MCP server errors |
