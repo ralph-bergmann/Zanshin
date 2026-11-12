@@ -12317,6 +12317,8 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 > - The Undo Timeline's operation view (10.29) reuses the inspector's diff view, so it shows the marks too.
 >
 > **Decided 2026-11-12 (Ralph, after the catalogue screenshots): keep the tokens and the `--text` glyphs; no underline.** Colour stays the only cue for a changed word.
+>
+> **Changed 2026-11-12 (Ralph, after Story 5.10): Story 10.34 changes the two tokens' values** so that the removed and the added fill differ in lightness; the tokens, the `--text` glyphs and "no underline" stay.
 
 **Motivation.** 10.24 draws whole lines. Story 5.2 gives every line its word segments, since 2026-11-12 exactly what `jj diff --git` underlines. Ralph wants to see which words changed: the line in a faint red or green, the changed words in a strong one (Ralph's JayJay and difftastic screenshots, 2026-11-12). No syntax colors: they hide the red and green (Ralph, 2026-11-12; Stories 5.3 and 5.4 are deleted).
 
@@ -12381,6 +12383,42 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 - The operation view shows the same switch.
 
 **Related:** 10.24, 10.32, 5.9; Story 5.9's line pairing.
+
+### Story 10.34: Word marks differ in lightness — removed darker, added lighter [UI]
+*(Added 2026-11-12, Ralph — console session, after Story 5.10. Takes over the deferred-work entry "On a changed line the removed and added word marks differ by hue only" and changes 10.32's token values.)*
+
+**Motivation.** Since Story 5.10 one line can hold removed and added words side by side (jj's color-words format). Their fills, `--rem-word-bg` and `--add-word-bg`, then differ by hue only: in paper both have the same lightness (CIE L* 88.2 and 88.1 on the code well), in night nearly the same (25.6 and 31.4). The design system's checklist asks that colours which must be told apart differ in lightness, not hue alone. A reader who sees red and green alike cannot tell a removed word from an added one.
+
+**Decided (Ralph, 2026-11-12).** A lightness step between the two fills. No underline, no strikethrough, no other cue (10.32's decision stays for those).
+
+**Scope.**
+1. **Token values.** Change the values of `--rem-word-bg` and `--add-word-bg` in night and paper so that the added fill is the lighter one and the removed fill the darker one in both themes. No new token, no renamed token.
+   - Starting values, measured to meet the rules below: night `--rem-word-bg: rgba(248,113,113,.24)`, `--add-word-bg: rgba(74,222,128,.38)`; paper `--rem-word-bg: rgba(194,58,58,.40)`, `--add-word-bg: rgba(26,127,69,.18)`. The story may tune them inside the rules.
+2. **Rules the values must meet**, in night and in paper, with every fill composited the way the inspector draws it (the word fill over the code well `--code-bg` on `--fl-bg-solid`; on a removed or added line also over that line's `--rem-bg` / `--add-bg`):
+   - On a changed line (no line fill) the two word fills differ by at least 12 in CIE L*.
+   - `--text` on a word fill keeps at least 4.5:1 (WCAG 2) wherever the fill is drawn: on a changed line and on its own removed or added line.
+   - Each word fill differs from the surface under it by at least 8 in CIE L*, so a mark stays visible on a changed line and on its own line.
+3. **Where the values live.** DS `tokens/colors.css` (both themes; update the comment that names the measured contrasts), `zanshin_ui`'s `ZsColors` (night and paper), and whatever pins the two in step (token tests, the DS bundle). The DS is republished with the `design-artifacts` skill.
+4. **A check that pins the rules.** One test computes the three rules from `ZsColors` for both themes, so a later token change cannot bring the fills back to one lightness.
+5. **Docs.** DS `components/content/DiffHunk.prompt.md` / `DiffView.prompt.md` and the readme say that the two word fills differ in lightness and why.
+
+**Non-goals.**
+- Underline, strikethrough, icons or any cue beyond the fill.
+- Line fills (`--rem-bg`, `--add-bg`), inks (`--rem`, `--add`), line-number colours.
+- The rule that a wholly removed or added line shows no word marks (10.32).
+- Colour-vision simulation in the test: the lightness rule is the check.
+
+**Depends on.** 10.32 (done), 5.10 (done).
+
+**Design status.** DECIDED (Ralph, 2026-11-12) for the lightness step and its direction. The exact values are Claude's, inside the rules; Ralph reviews them in the catalogue.
+
+**Witnesses.**
+- The check of item 4 fails on the old values (paper: the two fills differ by 0.1 in L*) and passes on the new ones.
+- Catalogue, "Floating shell / Controls", the changed line `child: Text(isLastStep ? s.functionWizard_save → saveLabel …)`: the removed word is visibly darker than the added one, in night and in paper; the text on both stays readable.
+- A removed line and an added line with word marks keep visible marks (night and paper).
+- Marionette screenshots in the catalogue, compared with the DS Content card.
+
+**Related:** 10.32, 5.10; deferred-work.md, "Surfaced in Story 5.10".
 
 ---
 
