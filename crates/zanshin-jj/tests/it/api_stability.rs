@@ -1823,12 +1823,16 @@ fn compute_hunks_surface_resolves() {
         to: zanshin_jj::SelectedTreeId::default(),
         context: Some(3),
         whitespace: zanshin_jj::Whitespace::IgnoreAllSpace,
+        // Story 5.11: the word-mark style.
+        marks: zanshin_jj::DiffMarks::Words,
     };
     assert_eq!(options.clone(), options);
     assert_eq!(
         zanshin_jj::HunksOptions::default().whitespace,
         zanshin_jj::Whitespace::Exact
     );
+    assert_eq!(zanshin_jj::HunksOptions::default().marks, zanshin_jj::DiffMarks::Jj);
+    assert_ne!(zanshin_jj::DiffMarks::Words, zanshin_jj::DiffMarks::Jj);
     assert_ne!(zanshin_jj::Whitespace::IgnoreSpaceChange, zanshin_jj::Whitespace::Exact);
     let file = zanshin_jj::FileDiff {
         path: "a".to_owned(),
@@ -1867,6 +1871,7 @@ fn compute_hunks_surface_resolves() {
         paths: vec!["a".to_owned()],
         context: Some(3),
         whitespace: zanshin_jj::Whitespace::Exact,
+        marks: zanshin_jj::DiffMarks::Jj,
         summary: true,
     };
     assert_eq!(options.clone(), options);
@@ -1874,6 +1879,7 @@ fn compute_hunks_surface_resolves() {
         zanshin_jj::DiffOptions::default().revisions,
         zanshin_jj::DiffRevisions::Revision(None)
     );
+    assert_eq!(zanshin_jj::DiffOptions::default().marks, zanshin_jj::DiffMarks::Jj);
     let result = zanshin_jj::RevisionDiff {
         operation_id: zanshin_jj::OperationId("0".to_owned()),
         commit_ids: vec![zanshin_jj::CommitId("1".to_owned())],
@@ -1881,6 +1887,7 @@ fn compute_hunks_surface_resolves() {
         files: vec![file.clone()],
         // Story 10.29 closing run: the inter-diff description block.
         description: Some(file),
+        marks: zanshin_jj::DiffMarks::Words,
     };
     assert_eq!(result.clone(), result);
     assert_ne!(

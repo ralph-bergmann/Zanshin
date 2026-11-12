@@ -11,7 +11,7 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::Repo as _;
 use tempfile::TempDir;
 use zanshin_jj::{
-    Backend, ChangeId, ChangeKind, CommitId, DiffOptions, DiffRevisions, FileDiff, HunkLine, HunkLineKind,
+    Backend, ChangeId, ChangeKind, CommitId, DiffMarks, DiffOptions, DiffRevisions, FileDiff, HunkLine, HunkLineKind,
     HunksOptions, MutateError, OperationId, Repo, RevisionDiff, SegmentKind, SelectedTreeId, WarningKind, Whitespace,
 };
 
@@ -194,6 +194,49 @@ fn summary_mode_drops_only_the_hunks() {
         (summary.operation_id, summary.commit_ids),
         (full.operation_id, full.commit_ids)
     );
+}
+
+/// Story 5.11: the `Words` style reports itself and keeps everything but the lines' marks — the
+/// same fingerprints, sections and counts as the jj style; a changed line becomes its old line,
+/// then its new one.
+#[test]
+fn the_words_style_keeps_the_files_and_reports_itself() {
+    let (mut fx, _, (c, _)) = plain();
+    let jj = run(&mut fx, &revision(&c));
+    assert_eq!(jj.marks, DiffMarks::Jj);
+    let words = run(
+        &mut fx,
+        &DiffOptions {
+            marks: DiffMarks::Words,
+            ..revision(&c)
+        },
+    );
+    assert_eq!(words.marks, DiffMarks::Words);
+    assert_eq!(words.files.len(), jj.files.len());
+    for (jj, words) in jj.files.iter().zip(&words.files) {
+        assert_eq!(
+            (&jj.path, &jj.fingerprint, &jj.sections, jj.removed, jj.added),
+            (
+                &words.path,
+                &words.fingerprint,
+                &words.sections,
+                words.removed,
+                words.added
+            )
+        );
+    }
+    let lines = &words.files[0].hunks[0].lines;
+    assert_eq!(
+        lines.iter().map(sides).collect::<Vec<_>>(),
+        [
+            (HunkLineKind::Context, "a\n".to_owned(), "a\n".to_owned()),
+            (HunkLineKind::Removed, "b\n".to_owned(), "\n".to_owned()),
+            (HunkLineKind::Added, "\n".to_owned(), "B\n".to_owned()),
+            (HunkLineKind::Context, "c\n".to_owned(), "c\n".to_owned()),
+        ]
+    );
+    assert_eq!(lines[1].segments[0].kind, SegmentKind::Removed);
+    assert_eq!(lines[2].segments[0].kind, SegmentKind::Added);
 }
 
 /// A merge diffs against its merged parents: only what it adds itself.

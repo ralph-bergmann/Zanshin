@@ -20,7 +20,7 @@ void main() {
     expect(settings.toJson(), {
       'appearance': {'themeMode': 'dark', 'accentSource': 'followMacOS', 'density': 'compact', 'zoom': 100},
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
-      'general': {'hideControls': true, 'diffLayout': 'unified'},
+      'general': {'hideControls': true, 'diffLayout': 'unified', 'diffMarks': 'words'},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
         'layout': 'free',
@@ -63,7 +63,7 @@ void main() {
     expect(settings.toJson(), {
       'appearance': {'themeMode': 'system', 'accentSource': 'zanshin', 'density': 'compact', 'zoom': 100},
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
-      'general': {'hideControls': true, 'diffLayout': 'unified'},
+      'general': {'hideControls': true, 'diffLayout': 'unified', 'diffMarks': 'words'},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
         'layout': 'free',
@@ -102,7 +102,7 @@ void main() {
       general: GeneralSettings(hideControls: false),
     );
     expect(settings.toJson()['layout'], {'inspectorWidth': 512.0, 'panelWidth': 255.5});
-    expect(settings.toJson()['general'], {'hideControls': false, 'diffLayout': 'unified'});
+    expect(settings.toJson()['general'], {'hideControls': false, 'diffLayout': 'unified', 'diffMarks': 'words'});
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
 
@@ -111,7 +111,16 @@ void main() {
     expect(GeneralSettings.fromJson({'hideControls': false}).diffLayout, DiffLayoutSetting.unified);
     expect(GeneralSettings.fromJson({'diffLayout': 'stacked'}).diffLayout, DiffLayoutSetting.unified);
     const settings = AppSettings(general: GeneralSettings(diffLayout: DiffLayoutSetting.sideBySide));
-    expect(settings.toJson()['general'], {'hideControls': true, 'diffLayout': 'sideBySide'});
+    expect(settings.toJson()['general'], {'hideControls': true, 'diffLayout': 'sideBySide', 'diffMarks': 'words'});
+    expect(AppSettings.fromJson(settings.toJson()), settings);
+  });
+
+  test('the diff marks default to Zanshin words, read an unknown or absent value as words, and jj survives', () {
+    expect(const GeneralSettings().diffMarks, DiffMarksSetting.words);
+    expect(GeneralSettings.fromJson({'hideControls': false}).diffMarks, DiffMarksSetting.words);
+    expect(GeneralSettings.fromJson({'diffMarks': 'letters'}).diffMarks, DiffMarksSetting.words);
+    const settings = AppSettings(general: GeneralSettings(diffMarks: DiffMarksSetting.jj));
+    expect(settings.toJson()['general'], {'hideControls': true, 'diffLayout': 'unified', 'diffMarks': 'jj'});
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
 

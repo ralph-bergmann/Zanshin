@@ -290,4 +290,20 @@ void main() {
       },
     );
   });
+
+  test('every DiffMarks crosses as its wire value and decodes back', () {
+    expect(
+      {for (final DiffMarks marks in DiffMarks.values) marks: marks.wire},
+      {DiffMarks.jj: fbs.DiffMarks.Jj, DiffMarks.words: fbs.DiffMarks.Words},
+    );
+    Diff decoded(fbs.DiffMarks? marks) => decodeDiffEnvelope(
+      fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Diff,
+        data: fbs.DiffObjectBuilder(files: const [], operationId: 'op', commitIds: const [], marks: marks),
+      ).toBytes(),
+    );
+    expect(decoded(null).marks, DiffMarks.jj, reason: 'an absent field is the default');
+    expect(decoded(fbs.DiffMarks.Words).marks, DiffMarks.words);
+  });
 }

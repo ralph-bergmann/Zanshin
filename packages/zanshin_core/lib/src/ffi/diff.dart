@@ -43,6 +43,27 @@ enum DiffWhitespace {
   };
 }
 
+/// Which word marks a changed block gets (Story 5.11, mirrors
+/// `zanshin_jj::DiffMarks`). Both styles give the same files, sections, hunk
+/// ranges, counts, fingerprints and numbered line texts.
+enum DiffMarks {
+  /// `jj diff`'s color-words marks — the CLI's.
+  jj,
+
+  /// Whole words by the longest common run (the `similar` crate): each
+  /// changed block is its removed lines, then its added lines (never a
+  /// [HunkLineKind.changed] line), a mark exactly where a segment is not
+  /// [SegmentKind.equal].
+  words;
+
+  /// The value this crosses the wire as.
+  @visibleForTesting
+  fbs.DiffMarks get wire => switch (this) {
+    DiffMarks.jj => fbs.DiffMarks.Jj,
+    DiffMarks.words => fbs.DiffMarks.Words,
+  };
+}
+
 /// What a [HunkLine] is (mirrors `zanshin_jj::HunkLineKind`): `jj diff`'s
 /// default color-words lines (Story 5.10).
 enum HunkLineKind {
@@ -232,6 +253,7 @@ final class Diff {
     required this.commitIds,
     this.fromCommitId,
     this.description,
+    this.marks = DiffMarks.jj,
     this.warnings = const [],
   });
 
@@ -254,6 +276,10 @@ final class Diff {
   /// Never path-filtered; keeps its hunks in summary mode. Null when the
   /// descriptions are equal and for `jj diff`'s forms.
   final FileDiff? description;
+
+  /// The word-mark style the lines were computed in (Story 5.11): the
+  /// request's. A view draws by this, not by the current setting.
+  final DiffMarks marks;
 
   /// The call's warnings; empty when there were none.
   final List<ZanshinWarning> warnings;
@@ -279,7 +305,8 @@ final class Diff {
 /// [interdiff] reads [from] / [to] as `jj interdiff` does (Story 10.29); with
 /// [revision] alone it is `show_inter_diff` with no predecessors — `jj op show
 /// --patch`'s created commit: [revision] (exactly one commit) against its
-/// parent tree, no copy records. Both fill [Diff.description].
+/// parent tree, no copy records. Both fill [Diff.description]. [marks] picks
+/// the word-mark style (Story 5.11) and comes back as [Diff.marks].
 Uint8List zanshinDiff(
   int rawHandle, {
   String? revision,
@@ -290,6 +317,7 @@ Uint8List zanshinDiff(
   DiffWhitespace whitespace = DiffWhitespace.exact,
   bool summary = false,
   bool interdiff = false,
+  DiffMarks marks = DiffMarks.jj,
 }) {
   rejectInteriorNul(revision, 'revision');
   rejectInteriorNul(from, 'from');
@@ -311,6 +339,7 @@ Uint8List zanshinDiff(
     whitespace: whitespace.wire,
     summary: summary,
     interdiff: interdiff,
+    marks: marks.wire,
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_diff(rawHandle, ptr, len));
 }
@@ -344,6 +373,10 @@ Diff decodeDiffEnvelopeInternal(Uint8List bytes) {
     description: switch (payload.description) {
       final fbs.FileDiff description => _file(description),
       null => null,
+    },
+    marks: switch (payload.marks) {
+      fbs.DiffMarks.Jj => DiffMarks.jj,
+      fbs.DiffMarks.Words => DiffMarks.words,
     },
     warnings: decodeEnvelopeWarningsInternal(env),
   );

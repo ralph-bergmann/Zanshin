@@ -17,7 +17,7 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/immutable_reasons.dart';
-import 'package:zanshin/src/features/graph/inspector_diff.dart' show DiffWordMarks;
+import 'package:zanshin/src/features/graph/inspector_diff.dart' show DiffWordMarks, InspectorDiffView;
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
@@ -215,11 +215,20 @@ class _Details implements GraphDetails {
     );
   }
 
+  /// Every `diff` call's word-mark style (Story 5.11), in call order.
+  final marks = <DiffMarks>[];
+
   @override
-  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) async {
+  Future<Diff> diff(
+    String commitId, {
+    List<String> paths = const [],
+    bool summary = false,
+    DiffMarks marks = DiffMarks.jj,
+  }) async {
     // Keyed by commit id as [show]: `c<key>`.
     final String changeId = commitId.substring(1);
     diffs.add((changeId, paths, summary));
+    this.marks.add(marks);
     if ((summary ? refuseSummary : refuseDiff) case final error?) {
       throw error;
     }
@@ -228,7 +237,7 @@ class _Details implements GraphDetails {
       heldDiffs.add((changeId, paths, completer));
       return completer.future;
     }
-    return diffOf(changeId, paths: paths, summary: summary);
+    return diffOf(changeId, paths: paths, summary: summary, marks: marks);
   }
 
   /// Every `squashPlan` call's change id; [combined] is its answer, [refusePlan] its refusal.
@@ -246,7 +255,12 @@ class _Details implements GraphDetails {
   }
 
   /// What [diff] answers for [changeId].
-  Diff diffOf(String changeId, {List<String> paths = const [], bool summary = false}) {
+  Diff diffOf(
+    String changeId, {
+    List<String> paths = const [],
+    bool summary = false,
+    DiffMarks marks = DiffMarks.jj,
+  }) {
     final List<FileDiff> files = fileDiffs[changeId] ?? const <FileDiff>[];
     return Diff(
       files: <FileDiff>[
@@ -267,6 +281,7 @@ class _Details implements GraphDetails {
       ],
       operationId: 'op',
       commitIds: <String>['c$changeId'],
+      marks: marks,
     );
   }
 }
@@ -1193,6 +1208,10 @@ void main() {
         ),
         details.fileDiffs[_mutable]![1],
       ];
+      // These are jj's color-words lines: load and draw them in the jj style (Story 5.11).
+      await tester.runAsync(
+        () => settings.update((s) => s.copyWith(general: s.general.copyWith(diffMarks: DiffMarksSetting.jj))),
+      );
       await pump(tester);
       await settle(tester);
       expect(inspector.focusedPath, 'src/a.dart');
@@ -1373,6 +1392,29 @@ void main() {
       await tester.pump();
       expect(inspector.layout, DiffLayoutSetting.unified);
       expect(find.byKey(const ValueKey<String>('inspector-diff-split')), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('Changed words: the focused diff loads in the setting\'s style, a change reloads it', (tester) async {
+      await pump(tester);
+      await settle(tester);
+      // The app default: Zanshin's words; the view draws by the loaded diff's style.
+      expect(details.focusReads, hasLength(1));
+      expect(details.marks.last, DiffMarks.words);
+      expect(inspector.diffMarks, DiffMarks.words);
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).marks, DiffMarks.words);
+      unawaited(
+        settings
+            .update((s) => s.copyWith(general: s.general.copyWith(diffMarks: DiffMarksSetting.jj)))
+            .onError<FileSystemException>((_, _) {}),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(details.focusReads, hasLength(2), reason: 'the open diff reloads');
+      expect(details.focusReads.last.$2, <String>['src/a.dart'], reason: 'the focused path stays');
+      expect(details.marks.last, DiffMarks.jj);
+      expect(inspector.diffMarks, DiffMarks.jj);
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).marks, DiffMarks.jj);
       await unmount(tester);
     });
 

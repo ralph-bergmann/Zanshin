@@ -1017,7 +1017,9 @@ ZanshinBuf *zanshin_diagnostics(void);
  * onto `to`'s parents in memory against `to`, no copy records; `interdiff` with `revision` alone
  * (Story 10.29 closing run) is `show_inter_diff` with no predecessors — the revision's parent
  * tree against its tree, no copy records. Both fill `Diff.description`, the CLI's
- * `JJ-COMMIT-DESCRIPTION` block (absent when the descriptions are equal). No caching. Writes NO operation
+ * `JJ-COMMIT-DESCRIPTION` block (absent when the descriptions are equal). `marks` (Story 5.11)
+ * picks the word-mark style — absent: `Jj`, the CLI's; `Words`: whole words by the longest common
+ * run, the same lines — and comes back as `Diff.marks`. No caching. Writes NO operation
  * beyond the pre-verb snapshot's (Story 9.26).
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `Diff` payload on success.
@@ -1026,7 +1028,7 @@ ZanshinBuf *zanshin_diagnostics(void);
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `DiffRequest` buffer, its `kind` is not
- *   `Diff`, or its `whitespace` is outside the enum.
+ *   `Diff`, or its `whitespace` or `marks` is outside the enum.
  * - `jj.invalid_input` — `revision` together with `from` or `to`, or `interdiff` with none of
  *   `revision`, `from` and `to` (both before the snapshot: nothing written, no
  *   `precondition`), or a `paths` entry that is not a valid repo path or leaves the
@@ -1050,9 +1052,7 @@ ZanshinBuf *zanshin_diagnostics(void);
  * the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_diff(uint64_t handle,
-                         const uint8_t *data,
-                         uintptr_t len);
+ZanshinBuf *zanshin_diff(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 /**
  * Touch up a revision's content with a GUI-selected tree, in the repo identified by `handle` —

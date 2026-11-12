@@ -27,8 +27,8 @@ use zanshin_ffi::{
     JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
 use zanshin_jj::{
-    Backend, ChangeKind, DiffOptions, DiffRevisions, FileDiff, HunkKey, HunkLine, HunkLineKind, HunksOptions, Repo,
-    RevisionDiff, Segment, SegmentKind, SelectedTreeId, Whitespace,
+    Backend, ChangeKind, DiffMarks, DiffOptions, DiffRevisions, FileDiff, HunkKey, HunkLine, HunkLineKind,
+    HunksOptions, Repo, RevisionDiff, Segment, SegmentKind, SelectedTreeId, Whitespace,
 };
 
 /// `Repo::diff` of `@` and `compute_hunks` between `@`'s parent tree and its own tree, in a fresh
@@ -73,6 +73,7 @@ fn computed() -> (RevisionDiff, Vec<FileDiff>) {
             },
             context: None,
             whitespace: Whitespace::Exact,
+            ..HunksOptions::default()
         })
         .expect("compute_hunks");
     (diff, hunks)
@@ -174,6 +175,12 @@ fn assert_wire_is(payload: fbs::Diff<'_>, diff: &RevisionDiff) {
         payload.from_commit_id(),
         diff.from_commit_id.as_ref().map(|id| id.0.as_str())
     );
+    // Story 5.11: the word-mark style.
+    let marks = match diff.marks {
+        DiffMarks::Jj => fbs::DiffMarks::Jj,
+        DiffMarks::Words => fbs::DiffMarks::Words,
+    };
+    assert_eq!(payload.marks(), marks);
     // Story 10.29 closing run: the inter-diff description block.
     match (payload.description(), &diff.description) {
         (None, None) => {}
@@ -322,6 +329,7 @@ struct Req<'a> {
     whitespace: fbs::DiffWhitespace,
     summary: bool,
     interdiff: bool,
+    marks: fbs::DiffMarks,
 }
 
 impl Default for Req<'_> {
@@ -336,6 +344,7 @@ impl Default for Req<'_> {
             whitespace: fbs::DiffWhitespace::Exact,
             summary: false,
             interdiff: false,
+            marks: fbs::DiffMarks::Jj,
         }
     }
 }
@@ -360,6 +369,7 @@ fn request(r: Req<'_>) -> Vec<u8> {
             whitespace: r.whitespace,
             summary: r.summary,
             interdiff: r.interdiff,
+            marks: r.marks,
         },
     );
     b.finish(req, None);
@@ -572,6 +582,51 @@ fn paths_context_whitespace_and_summary_reach_the_diff() {
         }),
     );
     assert!(!summary.files.is_empty() && summary.files.iter().all(|f| f.hunks.is_empty()));
+}
+
+/// Story 5.11: `marks` reaches the diff and comes back on the payload; the `Words` style keeps
+/// the files' fingerprints, sections and counts.
+#[test]
+fn marks_reach_the_diff_and_come_back() {
+    let fx = fixture();
+    let rev = |options: DiffOptions| DiffOptions {
+        revisions: DiffRevisions::Revision(Some(id(&fx.c))),
+        ..options
+    };
+    let base = Req {
+        revision: Some(&fx.c),
+        ..Req::default()
+    };
+    let jj = assert_matches_repo_diff(&fx, base, &rev(DiffOptions::default()));
+    assert_eq!(jj.marks, DiffMarks::Jj);
+    let words = assert_matches_repo_diff(
+        &fx,
+        Req {
+            marks: fbs::DiffMarks::Words,
+            ..base
+        },
+        &rev(DiffOptions {
+            marks: DiffMarks::Words,
+            ..DiffOptions::default()
+        }),
+    );
+    assert_eq!(words.marks, DiffMarks::Words);
+    for (jj, words) in jj.files.iter().zip(&words.files) {
+        assert_eq!(
+            (&jj.fingerprint, &jj.sections, jj.removed, jj.added),
+            (&words.fingerprint, &words.sections, words.removed, words.added)
+        );
+    }
+    let f = words.files.iter().find(|f| f.path == "f.txt").expect("f.txt");
+    assert!(f.hunks[0].lines.iter().all(|line| line.kind != HunkLineKind::Changed));
+    let bytes = call(
+        fx.handle,
+        Req {
+            marks: fbs::DiffMarks(9),
+            ..base
+        },
+    );
+    assert_eq!(error_code(&bytes), Some(FFI_INVALID_ARGUMENT));
 }
 
 #[test]

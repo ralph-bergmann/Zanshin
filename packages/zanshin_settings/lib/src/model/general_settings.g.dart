@@ -24,6 +24,16 @@ _GeneralSettings _$GeneralSettingsFromJson(Map<String, dynamic> json) =>
               ) ??
               DiffLayoutSetting.unified,
         ),
+        diffMarks: $checkedConvert(
+          'diffMarks',
+          (v) =>
+              $enumDecodeNullable(
+                _$DiffMarksSettingEnumMap,
+                v,
+                unknownValue: DiffMarksSetting.words,
+              ) ??
+              DiffMarksSetting.words,
+        ),
       );
       return val;
     });
@@ -32,9 +42,15 @@ Map<String, dynamic> _$GeneralSettingsToJson(_GeneralSettings instance) =>
     <String, dynamic>{
       'hideControls': instance.hideControls,
       'diffLayout': _$DiffLayoutSettingEnumMap[instance.diffLayout]!,
+      'diffMarks': _$DiffMarksSettingEnumMap[instance.diffMarks]!,
     };
 
 const _$DiffLayoutSettingEnumMap = {
   DiffLayoutSetting.unified: 'unified',
   DiffLayoutSetting.sideBySide: 'sideBySide',
+};
+
+const _$DiffMarksSettingEnumMap = {
+  DiffMarksSetting.words: 'words',
+  DiffMarksSetting.jj: 'jj',
 };

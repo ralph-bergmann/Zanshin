@@ -356,6 +356,12 @@ table TreeSelection {
 /// only; an unknown value is `ffi.invalid_argument`.
 enum DiffWhitespace : ubyte { Exact, IgnoreAllSpace, IgnoreSpaceChange }
 
+/// Which word marks a changed block gets (Story 5.11): `Jj` (0, the default) is `jj diff`'s
+/// color-words marks; `Words` marks whole words by the longest common run (the `similar` crate) —
+/// the block's removed lines, then its added lines, the same lines and numbers as `Jj`. Member
+/// order IS the wire value — APPEND only; an unknown value is `ffi.invalid_argument`.
+enum DiffMarks : ubyte { Jj, Words }
+
 /// `DiffRequest.context`'s value. WHY a struct: an optional scalar is not supported by
 /// `flatc --dart` (see `MovementOffset`); an absent struct field is null.
 struct DiffContext {
@@ -385,6 +391,7 @@ struct DiffContext {
 ///               records, `from_commit_id` absent; with `revision` AND `from`/`to` refused as
 ///               above; with none of the three refused ("at least one of `from` or `to` is
 ///               required"). Both inter-diff forms fill `Diff.description`
+///   marks       the word-mark style (Story 5.11); absent → `Jj`, the CLI's
 table DiffRequest {
   kind: RequestKind;
   revision: string;
@@ -395,6 +402,7 @@ table DiffRequest {
   whitespace: DiffWhitespace;
   summary: bool;
   interdiff: bool;
+  marks: DiffMarks;
 }
 
 /// One squash source's selected tree (Story 9.50): `source` a jj reverse-hex change id.
@@ -3270,13 +3278,15 @@ table FileDiff {
 /// `description`: the inter-diff forms' (`interdiff`) `JJ-COMMIT-DESCRIPTION` block — the from
 /// description (`""` for a created commit) against the commit's, as a `FileDiff` with that path,
 /// kind Modified, no sections; never path-filtered, hunks kept in summary mode; ABSENT when the
-/// descriptions are equal and for `jj diff`'s forms.
+/// descriptions are equal and for `jj diff`'s forms. Story 5.11 appends `marks`: the word-mark
+/// style the lines were computed in (the request's).
 table Diff {
   files: [FileDiff];
   operation_id: string;
   commit_ids: [string];
   from_commit_id: string;
   description: FileDiff;
+  marks: DiffMarks;
 }
 
 union Payload {

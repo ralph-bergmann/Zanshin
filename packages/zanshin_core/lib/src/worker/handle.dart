@@ -6,7 +6,7 @@ import '../ffi/bookmarks.dart' show Bookmark, BookmarkSortKey;
 import '../ffi/change.dart' show Change;
 import '../ffi/commit_contents.dart' show CommitContent;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, EvologEntry, InterdiffView, RevisionRef, ShowEntry;
-import '../ffi/diff.dart' show Diff, DiffWhitespace;
+import '../ffi/diff.dart' show Diff, DiffMarks, DiffWhitespace;
 import '../ffi/drop_actions.dart'
     show
         BookmarkDropSource,
@@ -1646,8 +1646,9 @@ final class RepoHandle {
   /// prints for a rewritten commit; with [revision] alone (Story 10.29 closing
   /// run) [revision]'s parent tree against its tree, no copy records — what it
   /// prints for a created commit. Both fill [Diff.description], the CLI's
-  /// `JJ-COMMIT-DESCRIPTION` block. Writes no operation beyond the pre-verb
-  /// snapshot's.
+  /// `JJ-COMMIT-DESCRIPTION` block. [marks] picks the word-mark style (Story
+  /// 5.11) and comes back as [Diff.marks]. Writes no operation beyond the
+  /// pre-verb snapshot's.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
@@ -1666,6 +1667,7 @@ final class RepoHandle {
     DiffWhitespace whitespace = DiffWhitespace.exact,
     bool summary = false,
     bool interdiff = false,
+    DiffMarks marks = DiffMarks.jj,
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -1680,6 +1682,7 @@ final class RepoHandle {
       whitespace: whitespace,
       summary: summary,
       interdiff: interdiff,
+      marks: marks,
     );
   }
 

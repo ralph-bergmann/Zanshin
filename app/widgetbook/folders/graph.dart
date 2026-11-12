@@ -47,6 +47,7 @@ import 'package:zanshin_core/zanshin_core.dart'
         ChangeActions,
         ConflictState,
         Diff,
+        DiffMarks,
         FileChange,
         FileChangeKind,
         FileDiff,
@@ -275,6 +276,7 @@ final graphFolder = WidgetbookFolder(
       name: 'Inspector diff',
       useCases: <WidgetbookUseCase>[
         WidgetbookUseCase(name: 'Hunk selection', builder: (context) => const _HunkSelection()),
+        WidgetbookUseCase(name: 'Word marks', builder: (context) => const _WordMarks()),
       ],
     ),
     WidgetbookComponent(
@@ -1042,7 +1044,13 @@ class _DemoDetails implements GraphDetails {
   /// Story 10.24: a modified file gets four hunks (in Rust under `fn main()`), the first three with word marks (Story
   /// 10.32), an added or removed one a single hunk of its lines, a `.png` is binary.
   @override
-  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) async {
+  Future<Diff> diff(
+    String commitId, {
+    List<String> paths = const [],
+    bool summary = false,
+    // The demo's lines are jj's color-words lines whatever the setting asks; the "Word marks" use case shows both.
+    DiffMarks marks = DiffMarks.jj,
+  }) async {
     final ShowEntry entry = await show(commitId);
     return Diff(
       files: <FileDiff>[
@@ -1723,6 +1731,148 @@ class _HunkSelection extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Story 5.11: the two word-mark styles side by side — Ralph's jj example block and the widget-test block, each as jj
+/// prints it ([DiffMarks.jj]) and in Zanshin's whole-word style ([DiffMarks.words]), the lines `hunks.rs`' tests pin.
+class _WordMarks extends StatelessWidget {
+  const _WordMarks();
+
+  static const _jjExample = <String>[
+    ' 2453 2453|        .into_inner()',
+    '~2454 2454|        .map_err(|err| {+{\n+}',
+    '+     2455|{+            let (source, out) = err.into_parts();+}',
+    '+     2456|{+            let path = out.get_ref().lock_path().to_owned();+}',
+    '+     2457|{+            PathError { path, source }+}',
+    '+     2458|{+        })+}',
+    '~2454 2459|{+        .map_err(+}GitResetHeadError::from_git[-(err.into_error())-])?;',
+    ' 2455 2460|    lock.commit()',
+    '~2456 2461|        .map_err(|err| {+err.error)\n+}',
+    '+     2462|{+        .context(index.path())+}',
+    '~2456 2463|{+        .map_err(+}GitResetHeadError::from_git[-(err.error)-])?;',
+    ' 2457 2464|    Ok(())',
+  ];
+
+  static const _wordsExample = <String>[
+    ' 2453 2453|        .into_inner()',
+    '-2454     |        .map_err(|err| [-GitResetHeadError::from_git(err.into_error()))?;-]',
+    '+     2454|        .map_err(|err| {+{+}',
+    '+     2455|            {+let (source, out) = err.into_parts();+}',
+    '+     2456|            {+let path = out.get_ref().lock_path().to_owned();+}',
+    '+     2457|            {+PathError { path, source }+}',
+    '+     2458|        {+})+}',
+    '+     2459|        {+.map_err(GitResetHeadError::from_git)?;+}',
+    ' 2455 2460|    lock.commit()',
+    '-2456     |        .map_err(|err| [-GitResetHeadError::from_git(err.error))?;-]',
+    '+     2461|        .map_err(|err| {+err.error)+}',
+    '+     2462|        {+.context(index.path())+}',
+    '+     2463|        {+.map_err(GitResetHeadError::from_git)?;+}',
+    ' 2457 2464|    Ok(())',
+  ];
+
+  static const _jjWidget = <String>[
+    '    7    7|',
+    ('-   8     |  // [-Tablet-] [-only: the wide test font overflows-] [-the-] [-compact-] app bar[-,-] '
+        '[-which-] [-holds-] [-the-] [-buttons-] on a phone[-.-]'),
+    '-   9     |  [-// The-] phone [-layout-] [-is-] [-checked-] on a [-device.-]',
+    "-  10     |[-  testWidgets('shows Funktion speichern instead of Weiter on the last step-]', (tester) async {",
+    ('+        8|  // {+The+} {+tablet shows the long label.+} {+The+} {+phone+} '
+        'app bar{+ has little room and shows the short one.+}'),
+    ("+        9|{+  testWidgets('shows Speichern instead of Weiter+} {+on+} {+the+} {+last+} {+step+} "
+        "on a phone{+', (tester) async {+}"),
+    '+       10|  {+  await openWizard(tester, size:+} phone{+);+}',
+    '+       11|{+    await fillGeneralStep(tester);+}',
+    '+       12|',
+    '+       13|{+    for (var i = 0; i < 3; i++) {+}',
+    '+       14|{+      await tester.tap(withIdentifier(SemanticsIdentifiers.functionWizard_next));+}',
+    '+       15|{+      await tester.pumpAndSettle();+}',
+    '+       16|{+    }+}',
+    '+       17|',
+    "+       18|{+    expect(find.text('Speichern'), findsWidgets);+}",
+    "+       19|{+    expect(find.text('Funktion speichern'), findsNothing);+}",
+    "+       20|{+    expect(find.text('Weiter'), findsNothing);+}",
+    '+       21|{+  });+}',
+    '+       22|',
+    ("+       23|{+  testWidgets('shows Funktion speichern instead of Weiter on+} {+the+} {+last+} {+step+} "
+        "on a {+tablet+}', (tester) async {"),
+    '   11   24|    await openWizard(tester, size: tablet);',
+  ];
+
+  static const _wordsWidget = <String>[
+    '    7    7|',
+    ('-   8     |  // [-Tablet only:-] the [-wide test font overflows-] the [-compact app bar, which holds-] '
+        'the [-buttons-] on a [-phone.-]'),
+    '-   9     |  [-// The phone layout is checked on a device.-]',
+    "-  10     |  testWidgets('shows Funktion speichern instead of Weiter on the last [-step',-] (tester) async {",
+    ('+        8|  // {+The tablet shows+} the {+long label. The phone app bar has little room and shows+} '
+        'the {+short one.+}'),
+    "+        9|  {+testWidgets('shows Speichern instead of Weiter on+} the {+last step+} on a {+phone', (tester) async {+}",
+    '+       10|    {+await openWizard(tester, size: phone);+}',
+    '+       11|    {+await fillGeneralStep(tester);+}',
+    '+       12|',
+    '+       13|    {+for (var i = 0; i < 3; i++) {+}',
+    '+       14|      {+await tester.tap(withIdentifier(SemanticsIdentifiers.functionWizard_next));+}',
+    '+       15|      {+await tester.pumpAndSettle();+}',
+    '+       16|    {+}+}',
+    '+       17|',
+    "+       18|    {+expect(find.text('Speichern'), findsWidgets);+}",
+    "+       19|    {+expect(find.text('Funktion speichern'), findsNothing);+}",
+    "+       20|    {+expect(find.text('Weiter'), findsNothing);+}",
+    '+       21|  {+});+}',
+    '+       22|',
+    "+       23|  testWidgets('shows Funktion speichern instead of Weiter on the last {+step on a tablet',+} (tester) async {",
+    '   11   24|    await openWizard(tester, size: tablet);',
+  ];
+
+  static Widget _view(String path, List<String> specs, String? symbol, DiffMarks marks) {
+    final Hunk hunk = _DemoDetails._hunk(specs, symbol: symbol);
+    return InspectorDiffView(
+      path: '$path · ${marks == DiffMarks.jj ? 'jj' : 'Zanshin'}', // l10n-ignore: catalogue label
+      diff: FileDiff(
+        path: path,
+        kind: FileChangeKind.modified,
+        fromPath: null,
+        binary: false,
+        modeChange: false,
+        sections: const [],
+        hunks: <Hunk>[hunk],
+        removed: hunk.removed,
+        added: hunk.added,
+        fingerprint: 'f',
+      ),
+      marks: marks,
+      error: null,
+      layout: DiffLayoutSetting.unified,
+      onLayoutChanged: (_) {},
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: <Widget>[
+      const ZsCanvas(),
+      SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 760,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 16,
+              children: <Widget>[
+                _view('lib/src/git.rs', _jjExample, 'fn write_locked_index(', DiffMarks.jj),
+                _view('lib/src/git.rs', _wordsExample, 'fn write_locked_index(', DiffMarks.words),
+                _view('test/function_wizard_test.dart', _jjWidget, 'void main() {', DiffMarks.jj),
+                _view('test/function_wizard_test.dart', _wordsWidget, 'void main() {', DiffMarks.words),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 class _StaleNotices extends StatelessWidget {

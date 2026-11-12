@@ -2170,6 +2170,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDiffSideBySide => 'Side by side';
 
   @override
+  String get settingsDiffMarks => 'Changed words';
+
+  @override
+  String get settingsDiffMarksLabel => 'Changed words';
+
+  @override
+  String get settingsDiffMarksZanshin => 'Zanshin';
+
+  @override
+  String get settingsDiffMarksJj => 'jj';
+
+  @override
+  String get settingsDiffMarksZanshinHint =>
+      'Whole words: the longest common run per changed block, removed lines first.';
+
+  @override
+  String get settingsDiffMarksJjHint => 'As jj diff prints them, following your jj config.';
+
+  @override
   String get settingsIdentity => 'Identity';
 
   @override

@@ -171,6 +171,22 @@ void main() {
       expect((f.sections.length, f.removed, f.added), (3, 3, 3));
     });
 
+    test('marks_cross_the_buffer_and_come_back', () async {
+      final Diff jj = await repo.diff(revision: at, paths: const ['f.txt']);
+      expect(jj.marks, DiffMarks.jj);
+      final Diff words = await repo.diff(revision: at, paths: const ['f.txt'], marks: DiffMarks.words);
+      expect(words.marks, DiffMarks.words);
+      final (FileDiff jjFile, FileDiff wordsFile) = (fileOf(jj, 'f.txt'), fileOf(words, 'f.txt'));
+      expect(
+        (wordsFile.fingerprint, wordsFile.removed, wordsFile.added, wordsFile.sections.length),
+        (jjFile.fingerprint, jjFile.removed, jjFile.added, jjFile.sections.length),
+      );
+      final List<HunkLine> lines = [for (final Hunk hunk in wordsFile.hunks) ...hunk.lines];
+      expect(lines.map((l) => l.kind), isNot(contains(HunkLineKind.changed)));
+      final HunkLine removed = lines.firstWhere((l) => l.kind == HunkLineKind.removed);
+      expect(removed.segments.map((s) => s.kind), contains(SegmentKind.removed));
+    });
+
     test('an_unmatched_path_is_a_warning', () async {
       final Diff diff = await repo.diff(revision: at, paths: const ['nope']);
       expect(diff.files, isEmpty);

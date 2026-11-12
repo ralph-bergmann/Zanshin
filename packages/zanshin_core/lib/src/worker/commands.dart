@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import '../ffi/bookmarks.dart' show BookmarkSortKey;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
-import '../ffi/diff.dart' show DiffWhitespace;
+import '../ffi/diff.dart' show DiffMarks, DiffWhitespace;
 import '../ffi/drop_actions.dart' show DropLocation, DropSource;
 import '../ffi/fetch.dart' show FetchRefs, FetchRemotes;
 import '../ffi/file.dart' show FileSearchBinary;
@@ -2329,11 +2329,15 @@ final class DiffCommand extends WorkerCommand implements HandleScopedCommand {
     this.whitespace = DiffWhitespace.exact,
     this.summary = false,
     this.interdiff = false,
+    this.marks = DiffMarks.jj,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   @override
   final int handleId;
+
+  /// The word-mark style (Story 5.11).
+  final DiffMarks marks;
 
   /// `-r`; `null` = `@` (unless [from] or [to] is set).
   final String? revision;

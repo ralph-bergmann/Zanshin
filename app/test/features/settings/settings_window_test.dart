@@ -57,7 +57,8 @@ void main() {
       expect(rig.store.value.appearance.themeMode, ThemeMode.dark);
 
       await tester.tap(find.text('Comfy'));
-      await tester.tap(find.text('Zanshin'));
+      // The accent's Zanshin; the Changed words row below has one too.
+      await tester.tap(find.text('Zanshin').first);
       await tester.tap(find.text('Side by side'));
       await rig.tap('settings-hide-controls');
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
@@ -66,6 +67,25 @@ void main() {
       expect(rig.store.value.general.diffLayout, DiffLayoutSetting.sideBySide);
       expect(rig.store.value.general.hideControls, isFalse);
       expect(rig.calls, isEmpty, reason: 'app preferences are not jj config');
+    });
+
+    testWidgets('Changed words: Zanshin by default, jj writes general.diffMarks; the hint follows (Story 5.11)', (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      await rig.pump(project: false);
+      expect(rig.store.value.general.diffMarks, DiffMarksSetting.words);
+      expect(find.text('Changed words'), findsOneWidget);
+      expect(
+        find.text('Whole words: the longest common run per changed block, removed lines first.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('jj'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await rig.settle();
+      expect(rig.store.value.general.diffMarks, DiffMarksSetting.jj);
+      expect(find.text('As jj diff prints them, following your jj config.'), findsOneWidget);
+      expect(rig.calls, isEmpty, reason: 'an app preference, not jj config');
     });
 
     testWidgets(

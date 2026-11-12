@@ -203,6 +203,29 @@ void main() {
       );
     });
 
+    test('Words (Story 5.11): a mark exactly where a segment is not equal, the fill-only rule off', () {
+      List<(String, SegmentKind)> words(String spec) {
+        final HunkLine line = _line(spec);
+        return <(String, SegmentKind)>[
+          for (final m in diffWordMarks(line, marks: DiffMarks.words)) (m.range.textInside(line.text), m.kind),
+        ];
+      }
+
+      // An added line with only indentation unchanged: marked, not fill-only.
+      expect(words('+       10|    {+await openWizard(tester, size: phone);+}'), <(String, SegmentKind)>[
+        ('await openWizard(tester, size: phone);', SegmentKind.added),
+      ]);
+      expect(marks('+       10|    {+await openWizard(tester, size: phone);+}'), isEmpty, reason: 'jj: fill only');
+      expect(words("-  10     |  testWidgets('a step', (tester) async {"), isEmpty);
+      expect(words('-   9     |  [-// The phone layout is checked on a device.-]'), <(String, SegmentKind)>[
+        ('// The phone layout is checked on a device.', SegmentKind.removed),
+      ]);
+      // A blank line, and a line whose only unchanged text is blank, keep exactly their segments' marks.
+      expect(words('+       12|'), isEmpty);
+      expect(words('+        1|  {+x+}  '), <(String, SegmentKind)>[('x', SegmentKind.added)]);
+      expect(words('#         |<<<<<<< Created conflict'), isEmpty);
+    });
+
     test('CRLF: the mark stops before \\r and \\n; trailing blanks are marked like any run', () {
       final HunkLine crlf = _line('+        1|a{+b\r+}');
       expect(diffWordMarks(crlf).single.range, const TextRange(start: 1, end: 2));
@@ -215,12 +238,14 @@ void main() {
     DiffLayoutSetting layout = DiffLayoutSetting.unified,
     ZsAppearance appearance = const ZsAppearance(),
     bool? Function(Hunk hunk)? hunkPicked,
+    DiffMarks marks = DiffMarks.jj,
   }) => shellHost(
     SizedBox(
       width: 420,
       child: InspectorDiffView(
         path: 'src/main.rs',
         diff: diff,
+        marks: marks,
         error: null,
         onViewedChanged: (_) {},
         layout: layout,
@@ -292,6 +317,50 @@ void main() {
       expect(find.text('+'), findsNothing);
     });
   }
+
+  testWidgets('Words (Story 5.11): the widget-test block draws one mark on the old and new testWidgets lines, whole '
+      'new lines, no underline', (tester) async {
+    const block = <String>[
+      "-  10     |  testWidgets('shows Funktion speichern instead of Weiter on the last [-step',-] (tester) async {",
+      '+       10|    {+await openWizard(tester, size: phone);+}',
+      '+       12|',
+      '+       13|    {+for (var i = 0; i < 3; i++) {+}',
+      ("+       23|  testWidgets('shows Funktion speichern instead of Weiter on the last {+step on a tablet',+} (tester) "
+          'async {'),
+    ];
+    final FileDiff file = _file(
+      hunks: <Hunk>[
+        _hunk(<HunkLine>[for (final s in block) _line(s)]),
+      ],
+    );
+    await tester.pumpWidget(view(file, marks: DiffMarks.words));
+    expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())), <String, List<String>>{
+      "  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {": <String>[
+        "-step',",
+      ],
+      '    await openWizard(tester, size: phone);': <String>['+await openWizard(tester, size: phone);'],
+      '    for (var i = 0; i < 3; i++) {': <String>['+for (var i = 0; i < 3; i++) {'],
+      "  testWidgets('shows Funktion speichern instead of Weiter on the last step on a tablet', (tester) async {":
+          <String>["+step on a tablet',"],
+    });
+    for (final RichText text in tester.widgetList<RichText>(find.byType(RichText))) {
+      expect(text.text.toStringDeep(), isNot(contains('underline')));
+    }
+    // Side by side draws the same marks from the same lines.
+    await tester.pumpWidget(view(file, marks: DiffMarks.words, layout: DiffLayoutSetting.sideBySide));
+    expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())), <String, List<String>>{
+      "  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {": <String>[
+        "-step',",
+      ],
+      '    await openWizard(tester, size: phone);': <String>['+await openWizard(tester, size: phone);'],
+      '    for (var i = 0; i < 3; i++) {': <String>['+for (var i = 0; i < 3; i++) {'],
+      "  testWidgets('shows Funktion speichern instead of Weiter on the last step on a tablet', (tester) async {":
+          <String>["+step on a tablet',"],
+    });
+    // The jj style draws the same added lines fill-only.
+    await tester.pumpWidget(view(file));
+    expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())).keys, hasLength(2));
+  });
 
   testWidgets('a number column is as wide as the hunk\'s largest number', (tester) async {
     await tester.pumpWidget(

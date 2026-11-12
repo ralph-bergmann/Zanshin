@@ -158,6 +158,7 @@ fn diff(fx: &mut Fx, context: Option<usize>, whitespace: Whitespace) -> Vec<File
             to,
             context,
             whitespace,
+            ..HunksOptions::default()
         })
         .expect("compute_hunks");
     assert_counts(&diffs);
@@ -417,6 +418,7 @@ fn a_git_submodule_side_is_the_clis_text() {
             to: ids(&tree),
             context: None,
             whitespace: Whitespace::Exact,
+            ..HunksOptions::default()
         })
         .expect("compute_hunks");
     let sub = file(&diffs, "sub");
@@ -688,6 +690,7 @@ fn a_malformed_color_words_key_is_a_config_error() {
                     to,
                     context,
                     whitespace: Whitespace::Exact,
+                    ..HunksOptions::default()
                 })
                 .expect_err("refused");
             assert!(
@@ -742,6 +745,7 @@ fn conflict_diff(conflict: Option<&str>) -> FileDiff {
             to,
             context: None,
             whitespace: Whitespace::Exact,
+            ..HunksOptions::default()
         })
         .expect("compute_hunks");
     assert_counts(&diffs);

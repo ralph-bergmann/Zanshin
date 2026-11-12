@@ -15,7 +15,7 @@ import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_view.dart';
 import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffMarksSetting, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_undo_timeline.dart';
@@ -149,6 +149,7 @@ void main() {
       expect(view.diff, isNotNull);
       expect(view.onViewedChanged, isNull);
       expect(view.layout, settings.value.general.diffLayout);
+      expect(view.marks, DiffMarks.words, reason: 'the default setting, drawn by the loaded Diff.marks');
       expect(_id('inspector-viewed'), findsNothing, reason: 'no Viewed');
       expect(find.byType(InspectorDiffHunk), findsOneWidget);
 
@@ -302,6 +303,7 @@ void main() {
         find.descendant(of: block, matching: find.byType(InspectorDiffView)),
       );
       expect(view.path, 'JJ-COMMIT-DESCRIPTION');
+      expect(view.marks, DiffMarks.words, reason: 'the summary read\'s Diff.marks');
     });
   });
 
@@ -449,6 +451,23 @@ void main() {
     expect(model.layout, DiffLayoutSetting.sideBySide);
     await settings.update((s) => s.copyWith(general: s.general.copyWith(diffLayout: DiffLayoutSetting.unified)));
     expect(model.layout, DiffLayoutSetting.unified);
+    model.dispose();
+  });
+
+  test('the diffs load in general.diffMarks; a change reads them again, keeping the focused file', () async {
+    final FakeOperationChangesSource changes = rewriteSource();
+    final model = OperationChangesModel(changes, operation: opId(1), settings: settings);
+    await pumpEventQueue();
+    expect(changes.marks, <DiffMarks>[DiffMarks.words, DiffMarks.words], reason: 'the summary and the focused file');
+    expect((model.files?.marks, model.focusedMarks), (DiffMarks.words, DiffMarks.words));
+    model.focus('b.txt');
+    await pumpEventQueue();
+    await settings.update((s) => s.copyWith(general: s.general.copyWith(diffMarks: DiffMarksSetting.jj)));
+    await pumpEventQueue();
+    expect(changes.marks.skip(3), <DiffMarks>[DiffMarks.jj, DiffMarks.jj]);
+    expect(changes.diffs.last.paths, <String>['b.txt'], reason: 'the focused file stays');
+    expect(model.focusedPath, 'b.txt');
+    expect((model.files?.marks, model.focusedMarks), (DiffMarks.jj, DiffMarks.jj));
     model.dispose();
   });
 }

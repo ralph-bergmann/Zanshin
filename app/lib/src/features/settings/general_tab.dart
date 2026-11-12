@@ -177,6 +177,24 @@ class SettingsGeneralTab extends StatelessWidget {
                     vm.updatePreferences((settings) => settings.copyWith.general(diffLayout: layout)),
               ),
             ),
+            SettingsRow(
+              label: s.settingsDiffMarks,
+              hint: switch (prefs.general.diffMarks) {
+                DiffMarksSetting.words => s.settingsDiffMarksZanshinHint,
+                DiffMarksSetting.jj => s.settingsDiffMarksJjHint,
+              },
+              child: ZsSegmented<DiffMarksSetting>(
+                variant: ZsSegmentedVariant.inset,
+                label: s.settingsDiffMarksLabel,
+                identifier: 'settings-diff-marks',
+                segments: <ZsSegment<DiffMarksSetting>>[
+                  ZsSegment<DiffMarksSetting>(value: DiffMarksSetting.words, label: s.settingsDiffMarksZanshin),
+                  ZsSegment<DiffMarksSetting>(value: DiffMarksSetting.jj, label: s.settingsDiffMarksJj),
+                ],
+                value: prefs.general.diffMarks,
+                onChanged: (marks) => vm.updatePreferences((settings) => settings.copyWith.general(diffMarks: marks)),
+              ),
+            ),
           ],
         ),
         SettingsGroup(

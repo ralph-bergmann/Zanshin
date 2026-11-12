@@ -3434,6 +3434,42 @@ abstract class AppLocalizations {
   /// **'Side by side'**
   String get settingsDiffSideBySide;
 
+  /// Settings › General › Diffs row: which word marks a changed block gets.
+  ///
+  /// In en, this message translates to:
+  /// **'Changed words'**
+  String get settingsDiffMarks;
+
+  /// VoiceOver name of the changed-words choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Changed words'**
+  String get settingsDiffMarksLabel;
+
+  /// Changed-words choice: Zanshin's whole-word marks.
+  ///
+  /// In en, this message translates to:
+  /// **'Zanshin'**
+  String get settingsDiffMarksZanshin;
+
+  /// Changed-words choice: jj diff's own marks. jj is the tool's name, lowercase.
+  ///
+  /// In en, this message translates to:
+  /// **'jj'**
+  String get settingsDiffMarksJj;
+
+  /// The Changed words row's hint while Zanshin is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Whole words: the longest common run per changed block, removed lines first.'**
+  String get settingsDiffMarksZanshinHint;
+
+  /// The Changed words row's hint while jj is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'As jj diff prints them, following your jj config.'**
+  String get settingsDiffMarksJjHint;
+
   /// Settings group heading (General and Project).
   ///
   /// In en, this message translates to:

@@ -1013,8 +1013,14 @@ abstract interface class GraphDetails {
   Future<ChangeActions> changeActions(String changeId);
 
   /// `jj diff -r <commitId>` as data (Story 10.24): [paths] limits it to those prefixes (empty: every path), [summary]
-  /// drops the hunks but keeps the counts and fingerprints. A commit id reaches a hidden or divergent commit too.
-  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false});
+  /// drops the hunks but keeps the counts and fingerprints, [marks] picks the word-mark style (Story 5.11). A commit id
+  /// reaches a hidden or divergent commit too.
+  Future<Diff> diff(
+    String commitId, {
+    List<String> paths = const [],
+    bool summary = false,
+    DiffMarks marks = DiffMarks.jj,
+  });
 
   /// What `jj squash -r <changeId>` would ask its editor for (Story 9.15): the combined description, or null.
   Future<SquashPlan> squashPlan(String changeId);
@@ -1034,8 +1040,12 @@ class RepoGraphDetails implements GraphDetails {
   Future<ChangeActions> changeActions(String changeId) => _repo.handle.changeActions(changeId);
 
   @override
-  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) =>
-      _repo.handle.diff(revision: commitId, paths: paths, summary: summary);
+  Future<Diff> diff(
+    String commitId, {
+    List<String> paths = const [],
+    bool summary = false,
+    DiffMarks marks = DiffMarks.jj,
+  }) => _repo.handle.diff(revision: commitId, paths: paths, summary: summary, marks: marks);
 
   @override
   Future<SquashPlan> squashPlan(String changeId) => _repo.handle.squashPlan(revision: changeId);

@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x600" name="Content" subtitle="FileRow, DiffView + DiffHunk, ProjectRow (incl. moving rows), Kbd" -->
+<!-- @dsCard group="Components" viewport="700x600" name="Content" subtitle="FileRow, DiffView + DiffHunk (both word-mark styles), ProjectRow (incl. moving rows), Kbd" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -64,6 +64,16 @@
             "+:48|{+    await openWizard(tester, size: phone);+}",
             "+:49|{+  });+}",
             " 43:50|  });",
+          ]}/>
+          {/* Zanshin's whole-word style (Story 5.11): removed lines, then added lines, a mark exactly where a run says so. */}
+          <DiffHunk context="fn write_locked_index(" mode={mode} marks="words" lines={[
+            " 2453:2453|        .into_inner()",
+            "-2454:|        .map_err(|err| [-GitResetHeadError::from_git(err.into_error()))?;-]",
+            "+:2454|        .map_err(|err| {+{+}",
+            "+:2455|            {+let (source, out) = err.into_parts();+}",
+            "+:2456|        {+})+}",
+            "+:2457|        {+.map_err(GitResetHeadError::from_git)?;+}",
+            " 2455:2458|    lock.commit()",
           ]}/>
         </DiffView>
       </div>

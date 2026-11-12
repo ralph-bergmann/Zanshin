@@ -10,8 +10,9 @@ import { Checkbox } from "../forms/Checkbox.jsx";
 // run, "{+…+}" around a right-side one, on any line. They become runs ([text, "rem" | "add" | null]); a removed or
 // added line whose unchanged text is only blanks keeps none (its fill says it all); a changed line always keeps them.
 // Older git strings ("+…", "-…", " …", "@@…") still parse, without numbers. A string has no escape: code holding "[-",
-// "-]", "{+" or "+}" goes in the object form.
-export function zsDiffLine(l) {
+// "-]", "{+" or "+}" goes in the object form. marks "words" (Zanshin's whole-word style, Story 5.11): every marked run
+// stays — no fill-only rule; the lines have no "~" rows there.
+export function zsDiffLine(l, marks = "jj") {
   if (typeof l !== "string") {
     // The object form of before Story 5.10 had boolean runs: true is the line's own side.
     return l.runs ? { ...l, runs: l.runs.map(([s, k]) => [s, k === true ? l.t : k || null]) } : l;
@@ -33,7 +34,7 @@ export function zsDiffLine(l) {
     if (cw[2]) line.l = Number(cw[2]);
     if (cw[3]) line.r = Number(cw[3]);
   }
-  const marked = runs.some(([, k]) => k) && (t === "chg" || runs.some(([x, k]) => !k && x.trim()));
+  const marked = runs.some(([, k]) => k) && (marks === "words" || t === "chg" || runs.some(([x, k]) => !k && x.trim()));
   return marked ? { ...line, runs } : line;
 }
 
@@ -59,14 +60,14 @@ export function zsDiffDigits(ls) {
   return Math.max(1, ...ls.map((l) => String(Math.max(l.l || 0, l.r || 0)).length));
 }
 
-export function DiffView({ file, tools, lines = [], maxHeight, viewed, onViewedChange, children, className = "" }) {
+export function DiffView({ file, tools, lines = [], marks = "jj", maxHeight, viewed, onViewedChange, children, className = "" }) {
   const toggle = onViewedChange && (
     <button type="button" role="checkbox" aria-checked={!!viewed} className={"zs-viewed" + (viewed ? " is-on" : "")} onClick={() => onViewedChange(!viewed)} title={viewed ? "Mark as not viewed" : "Mark as viewed"}>
       <Checkbox presentational size="sm" tone="add" checked={!!viewed} />
       <span>Viewed</span>
     </button>
   );
-  const ls = lines.map(zsDiffLine);
+  const ls = lines.map((l) => zsDiffLine(l, marks));
   return (
     <div className={["zs-diff", viewed && "is-viewed", className].filter(Boolean).join(" ")}>
       {(file || tools || toggle) && (
