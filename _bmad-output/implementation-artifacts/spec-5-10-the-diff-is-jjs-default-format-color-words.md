@@ -25,6 +25,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/hunks.rs (DiffReader::file)
     severity: medium
+    resolved: >-
+      2026-11-12 — fixed (spec-5-10-closing-diff-side-reading, commit 8ed9991e): a Git submodule side reads as the CLI's text and a binary file with equal contents is binary; the access-denied part is rejected, because only jj's test-only SecretBackend raises that error.
   - summary: >-
       Decision for Ralph: a removed or added line whose unchanged text is only whitespace shows the line fill without word marks, where jj diff colours its changed words.
     evidence: |-
