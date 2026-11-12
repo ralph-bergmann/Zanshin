@@ -36,6 +36,7 @@ import '../../helpers/fake_projects.dart';
 import '../../helpers/fake_remote_sync.dart';
 import '../../helpers/fake_windows.dart';
 import '../../helpers/scripted_graph_source.dart';
+import '../../helpers/settle_settings.dart';
 
 const _wc = 'wwwwwwwwyyyyyyyy';
 const _mid = 'kmnvxoqpzzzzzzzz';
@@ -223,6 +224,7 @@ class _Rig {
       await store.update((s) => s.copyWith(projects: ProjectsSettings(projects: projects)));
       return store;
     }))!;
+    addTearDown(() => settleSettingsWrites(tester, store));
     session = _Session(ProjectRegistry(store));
     addTearDown(session.dispose);
     windows = AppWindows(createController: factory.call, exitProcess: () async {});

@@ -72,6 +72,10 @@ class SettingsStore implements ValueListenable<AppSettings> {
   @override
   void removeListener(VoidCallback listener) => _notifier.removeListener(listener);
 
+  /// Completes when every write queued so far has finished, failed ones included; it never completes with an error.
+  @visibleForTesting
+  Future<void> get settled => _queue;
+
   /// Applies [change] to [value], notifies listeners synchronously and
   /// persists immediately.
   ///

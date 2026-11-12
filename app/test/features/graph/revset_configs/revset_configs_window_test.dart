@@ -21,6 +21,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../../helpers/fake_graph_search_source.dart';
 import '../../../helpers/icon_registry.dart';
 import '../../../helpers/scripted_graph_source.dart';
+import '../../../helpers/settle_settings.dart';
 import '../../../helpers/shell_host.dart';
 import '../graph_harness.dart';
 
@@ -100,6 +101,8 @@ class _Rig {
       );
       return store;
     }))!;
+    final SettingsStore loaded = store;
+    addTearDown(() => settleSettingsWrites(tester, loaded));
     search = GraphSearchController(
       model: model,
       source: searchSource,

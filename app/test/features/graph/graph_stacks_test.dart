@@ -33,6 +33,7 @@ import '../../../widgetbook/graph/graph_recordings.g.dart';
 import '../../../widgetbook/graph/stack_recordings.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
+import '../../helpers/settle_settings.dart';
 import '../../helpers/shell_host.dart';
 import 'graph_harness.dart';
 
@@ -530,6 +531,7 @@ void main() {
       testWidgets("a model for A sends A's toggles first; one for B none; a toggle persists on A's entry", (
         tester,
       ) async {
+        addTearDown(() => settleSettingsWrites(tester, store));
         await create(tester, store: ProjectStackStore(store, '/r/a'));
         expect(source.requests.first.expandedKeys, <String>{'tqwmlnxz'});
         expect(source.requests.first.collapsedKeys, <String>{'gone0000'});

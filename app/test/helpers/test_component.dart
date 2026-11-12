@@ -32,6 +32,7 @@ import 'fake_projects.dart';
 import 'fake_projects_environment.dart';
 import 'fake_windows.dart';
 import 'icon_registry.dart';
+import 'settle_settings.dart';
 import 'test_component.inject.dart' as g;
 
 /// The test bindings that win over the app's: the repositories and the Projects environment, fakes unless given, and
@@ -187,6 +188,7 @@ Future<TestComponent> testComponent(
     }
     return SettingsStore.load(file);
   }))!;
+  addTearDown(() => settleSettingsWrites(tester, settings));
   final BootValues boot = (settings: settings, icons: testIconRegistry, worker: testWorker);
   return TestComponent.create(
     bootModule: BootModule(

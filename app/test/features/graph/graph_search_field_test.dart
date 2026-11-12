@@ -920,6 +920,7 @@ void main() {
     final Directory dir = Directory.systemTemp.createTempSync('zanshin_graph_search');
     addTearDown(() => dir.deleteSync(recursive: true));
     final SettingsStore settings = await SettingsStore.load(File('${dir.path}/settings.json'));
+    addTearDown(() => settings.settled);
     await settings.update(
       (s) => s.copyWith(
         projects: const ProjectsSettings(

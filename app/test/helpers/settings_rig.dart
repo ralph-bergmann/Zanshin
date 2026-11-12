@@ -24,6 +24,7 @@ import 'fake_projects_environment.dart';
 import 'fake_settings_reads.dart';
 import 'fake_windows.dart';
 import 'recording_shell.dart';
+import 'settle_settings.dart';
 import 'shell_host.dart';
 
 /// The project the rig opens.
@@ -68,6 +69,8 @@ class SettingsRig {
     final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('settings_window_test')))!;
     addTearDown(() => dir.deleteSync(recursive: true));
     store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
+    final SettingsStore loaded = store;
+    addTearDown(() => settleSettingsWrites(tester, loaded));
     session = ProjectSession(registry: ProjectRegistry(store), repos: FakeProjectRepos());
     addTearDown(session.dispose);
     addTearDown(state.dispose);

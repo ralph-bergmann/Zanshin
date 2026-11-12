@@ -16,6 +16,7 @@ import 'package:zanshin/src/features/window/window_zoom.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 import '../../helpers/fake_windows.dart';
+import '../../helpers/settle_settings.dart';
 
 void main() {
   test('the steps, the snap (a tie goes to the lower step) and the moves, which stop at the ends', () {
@@ -139,6 +140,7 @@ void main() {
       final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('window_zoom_test')))!;
       addTearDown(() => dir.deleteSync(recursive: true));
       final SettingsStore store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/s.json'))))!;
+      addTearDown(() => settleSettingsWrites(tester, store));
       final windows = AppWindows(createController: FakeWindowFactory().call, exitProcess: () async {})
         ..attach(WindowRegistry());
       final VoidCallback dispose = bindWindowZoom(store, windows);

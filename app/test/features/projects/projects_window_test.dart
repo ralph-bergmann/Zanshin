@@ -30,6 +30,7 @@ import '../../helpers/fake_projects_environment.dart';
 import '../../helpers/fake_window_actions.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/recording_shell.dart';
+import '../../helpers/settle_settings.dart';
 import '../../helpers/shell_host.dart';
 import '../../helpers/test_component.dart';
 
@@ -116,6 +117,8 @@ class _Rig {
     addTearDown(() => created.deleteSync(recursive: true));
     env.home = dir.resolveSymbolicLinksSync();
     store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
+    final SettingsStore loaded = store;
+    addTearDown(() => settleSettingsWrites(tester, loaded));
     if (demo) {
       await tester.runAsync(() => store.update((settings) => settings.copyWith(projects: _demo(home))));
     }

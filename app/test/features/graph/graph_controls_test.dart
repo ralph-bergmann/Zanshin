@@ -29,6 +29,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../helpers/fake_window_actions.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
+import '../../helpers/settle_settings.dart';
 import '../../helpers/shell_host.dart';
 import 'graph_harness.dart';
 
@@ -166,13 +167,14 @@ Future<_Rig> _start(
 final _rigs = <_Rig>[];
 
 /// A widget test that unmounts the tree and disposes its rigs at the end of its body: a model's minute timer must not
-/// outlive the test.
+/// outlive the test. Each rig's settings writes then reach the disk before the teardown deletes the store's folder.
 void _testWidgets(String description, Future<void> Function(WidgetTester tester) body) =>
     testWidgets(description, (tester) async {
       await body(tester);
       await tester.pumpWidget(const SizedBox());
       for (final _Rig rig in _rigs) {
         rig.dispose();
+        await settleSettingsWrites(tester, rig.store);
       }
       _rigs.clear();
     });
@@ -723,6 +725,7 @@ void main() {
 
     test('a stored width out of range is clamped in the options', () async {
       final SettingsStore store = await _store(const GraphSettings(cardWidth: 900));
+      addTearDown(() => store.settled);
       final preferences = GraphPreferences(store);
       addTearDown(preferences.dispose);
       expect(preferences.options.cardWidth, 400);
@@ -730,6 +733,7 @@ void main() {
 
     test('another writer of the store reaches the bound model and notifies', () async {
       final SettingsStore store = await _store();
+      addTearDown(() => store.settled);
       final preferences = GraphPreferences(store);
       final source = ScriptedGraphSource();
       final model = GraphViewModel();

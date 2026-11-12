@@ -26,6 +26,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
+import '../../helpers/settle_settings.dart';
 import '../../helpers/shell_host.dart';
 import '../../helpers/word_marks.dart';
 import 'graph_harness.dart';
@@ -408,6 +409,8 @@ void main() {
     ZsAppearance appearance = const ZsAppearance(),
     ImmutableReasons? reasons,
   }) async {
+    // The group's tearDown deletes the folder after postTest; the writes must be done before then.
+    addTearDown(() => settleSettingsWrites(tester, settings));
     useShellWindow(tester);
     graph = GraphViewModel()..init(source, actions: actions, clock: () => DateTime.utc(2026, 10, 30, 12));
     inspector = InspectorViewModel(
@@ -2414,6 +2417,7 @@ void main() {
   });
 
   test('ProjectViewedStore: a path outside the registry keeps its marks in memory; the newest 2000 stay', () {
+    addTearDown(() => settings.settled);
     final memory = ProjectViewedStore(settings, '/r/none');
     final AppSettings before = settings.value;
     memory.save(<String>{'k1'});

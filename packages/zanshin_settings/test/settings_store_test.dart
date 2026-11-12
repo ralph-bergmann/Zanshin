@@ -158,6 +158,30 @@ void main() {
       await store.update((s) => s.copyWith.appearance(themeMode: ThemeMode.light));
       expect(jsonDecode(file.readAsStringSync()), _light.toJson());
     });
+
+    test('settled completes after every queued write', () async {
+      final SettingsStore store = await SettingsStore.load(file);
+
+      unawaited(store.update((s) => s.copyWith.appearance(themeMode: ThemeMode.light)));
+      unawaited(store.update((s) => s.copyWith.appearance(themeMode: ThemeMode.dark)));
+      await store.settled;
+
+      expect(file.readAsStringSync(), _darkJson);
+      expect(File('${file.path}.tmp').existsSync(), isFalse);
+    });
+
+    test('settled completes without the error when a queued write failed', () async {
+      // A directory in the file's place makes the final rename fail.
+      await Directory(file.path).create();
+      final SettingsStore store = await SettingsStore.load(file);
+
+      unawaited(
+        store.update((s) => s.copyWith.appearance(themeMode: ThemeMode.dark)).onError<FileSystemException>((_, _) {}),
+      );
+
+      await expectLater(store.settled, completes);
+      expect(warnings, hasLength(1), reason: 'the failed write ran first');
+    });
   });
 
   test('open() loads from the application support directory', () async {
