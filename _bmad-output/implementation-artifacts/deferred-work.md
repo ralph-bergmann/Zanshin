@@ -2969,16 +2969,16 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - **E2 does not bring the word marks closer to difftastic on real diffs: keep it as built, change its similarity rule, or go back to jj-lib's block-wide marks?** Medium.
   - Probe `history` at `5ba5f5d4` (96,295 lines without a difft fallback; `crates/zanshin-jj/src/line_pairs.rs` blob `15ddbd39`): lines whose marks differ from difft's, today 4,755 word / 10,812 drawn, E2 5,148 / 10,332 — word marks net 8.3 % further from difft than today, drawn marks net 4.4 % closer (the probe's "net share of today's gap closed": −8.3 % / 4.4 %); 3,189 of E2's differing lines are whole-line marks (lines without a partner, or lines of a group that kept none of their ink; the probe counts both together). The witnesses hold (Ralph's example: E2 = difft on 19 of 19 lines, today 16; compared on code tokens — inside comments and strings each variant is compared with its own marks, and the Rust test in `hunks.rs` pins the witness there). Report §9, open point 1; spec `spec-5-9-closing-e2-line-pairing.md`.
   - Re-measured after the follow-up review's budget fix (blob `21d507ba`; the budget now also pays for each search's table): E2 5,150 / 10,325, word marks net 8.3 % further from difft, drawn marks net 4.5 % closer, 3,199 whole-line; the budget leaves a block to jj in 12 of 2,536 files (was 9). Probe README, "Re-run after the follow-up review".
-  - **Follow-up:** a decision for Ralph. Keeping E2 needs nothing; a change of `MIN_SIMILARITY_PERCENT` or of the similarity measure needs a new probe run.
+  - **Follow-up:** a decision for Ralph. Keeping E2 needs nothing; a change of `MIN_SIMILARITY_PERCENT` or of the similarity measure needs a new probe run. Decided 2026-11-12 (Ralph): go back; Story 5.10 removes the line pairing and shows jj's default format.
 - **E2 is not measured on reflowed prose (doc comments, Markdown, commit descriptions).** Medium, unverified.
   - The probe corpus is `.rs` / `.dart` only, but `pair_lines` also runs on `.md` files and on the inter-diff description block. With 1:1, 1:k and k:1 groups only (`group_shapes`, `crates/zanshin-jj/src/line_pairs.rs`), a paragraph rewrapped over a different number of lines may mark moved words or whole lines where jj's block-wide diff marked only the line breaks.
-  - **Follow-up:** run the probe on `.md` files and commit descriptions; if prose gets worse, add many-to-many groups or keep jj-lib's tokens for prose.
+  - **Follow-up:** run the probe on `.md` files and commit descriptions; if prose gets worse, add many-to-many groups or keep jj-lib's tokens for prose. Ends with Story 5.10, which removes the line pairing.
 
 ## Surfaced in the follow-up review of Story 5.9 (bmad-build-auto, 2026-11-12)
 
 - **In a block of one removed and one added line, E2 can only lose word marks: jj's block-wide diff cannot scatter there, yet a pair at or below 50 % similarity becomes two whole-line marks (`true,` → `false,` is exactly 50 %).** Medium.
   - `crates/zanshin-jj/src/line_pairs.rs` `pair_block` / `group_value` (`MIN_SIMILARITY_PERCENT`); pinned by `a_group_pairs_only_above_half` and the intent's `a` → `A` row (spec `spec-5-9-closing-e2-line-pairing.md`). jj and difft mark only `true` / `false` there; how many of E2's differing lines come from such blocks is not counted.
-  - **Follow-up:** part of Ralph's decision on the E2 bullet above. One option: keep jj-lib's tokens in one-to-one blocks (changes the intent's `a` → `A` row); the probe could first split the differing lines by block shape.
+  - **Follow-up:** part of Ralph's decision on the E2 bullet above. One option: keep jj-lib's tokens in one-to-one blocks (changes the intent's `a` → `A` row); the probe could first split the differing lines by block shape. Ends with Story 5.10, which removes the line pairing.
 
 ## Surfaced in the fix-up run after the story loop 5.9 (bmad-build-auto, 2026-11-12)
 

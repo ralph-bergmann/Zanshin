@@ -5223,6 +5223,72 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 > - **Measurement:** the 5.9 probe compares E2 with `difft` and with today's marks on the same 200 commits, plus E2's cost per file.
 > - **Witnesses for the build:** Ralph's example (the comments keep only the faint fill; the renamed test marks only ` on a tablet`); Ralph's stepper.dart examples and 10.32's witnesses keep their marks, including the call split over three lines (only the new indentation and the comma); the move witness `f(a, b)` → `f(b, a)` is dropped (E2 detects no moves, nor does difftastic).
 > - **Built in:** Story 5.9's closing run.
+>
+> **Replaced 2026-11-12 (Ralph): Story 5.10 removes E2.** The terminal pictures Ralph compared Zanshin with were delta's (his `ui.diff-formatter`), not difftastic's. After trying `:git`, difftastic and delta on one commit he chose the output of `jj diff` without a formatter.
+
+### Story 5.10: The diff is jj's default format (color-words) [Rust + UI]
+*(Added 2026-11-12, Ralph — console session. Replaces Story 5.9's line pairing (E2).)*
+
+**Motivation.** Ralph compared `jj diff` under `:git`, difftastic and delta on one commit: each has its own quirks. He chose what `jj diff` prints without a `ui.diff-formatter`, the `:color-words` format: changed words inside one line while a block stays simple, removed and added lines otherwise. Zanshin's diff then equals the CLI's default again, and no rule of our own decides which words are marked.
+
+**What `jj diff` does** (`cli/src/diff_util.rs` @ v0.47.0, `show_color_words_diff_hunks` and the functions below it, lines 822–1400):
+- **Line diff:** jj-lib's `diff_by_line` with the whitespace mode.
+- **Context:** `diff.color-words.context` lines (default 3, `--context` overrides) after a change and before the next one. A longer unchanged range is skipped (`...`); a range with exactly one line more than the shown ones is shown whole. The skipped range's label is a source-symbol line (`show_color_words_context_lines`).
+- **Changed block:** `ContentDiff::by_word` over the block's two texts.
+  - Inline, when no group of changed lines switches between removed and added more often than `diff.color-words.max-inline-alternation` (default 3; `-1` = always, `0` = never; `count_diff_alternation`, `split_diff_hunks_by_matching_newline`): jj-lib's `DiffLineIterator` lines. A line has a left number when it holds left content, a right number when it holds right content; one old line can spread over several lines.
+  - Otherwise: jj-lib's `unzip_diff_hunks_to_lines` — the removed lines, then the added lines, each with its changed words.
+  - Without colour the CLI never inlines. Zanshin draws colour, so it follows the coloured path.
+- **Context lines under `-w` / `-b`:** lines whose two sides differ go through the changed-block path, labelled context.
+- **Conflicts:** `diff.color-words.conflict`. `materialize` (default) compares the sides' materialized texts. `pair` compares conflict terms in pairs (`show_color_words_conflict_hunks`): header lines `<<<<<<< Created conflict` / `Resolved conflict` / `Modified conflict`, `+++++++` / `-------` `left … to right …`, `>>>>>>> Conflict ends`; under a `-------` term the removed and added roles are swapped.
+
+**Scope.**
+1. **Rust** (`crates/zanshin-jj/src/hunks.rs`): a file's lines are the lines above, as data.
+   - A `HunkLine` has a kind (context, removed, added, changed, conflict header), its left and right line number as the CLI prints them (each optional) and its segments (equal, removed, added). A changed line holds content of both sides.
+   - A `Hunk` is the run of lines between two skipped ranges. Its ranges, symbol (the label of the skipped range before it), sections and counts keep their meaning; `removed` / `added` count the left and right lines of its changed blocks.
+   - `context: None` is the effective `diff.color-words.context` (was `diff.git.context`). `diff.color-words.max-inline-alternation` and `diff.color-words.conflict` come from the same effective config.
+   - Unchanged in meaning: file kinds, binary and mode-only rules, copy and rename reading, sections, fingerprints, the description block, summary mode, `compute_hunks` (it gets the same lines).
+   - `crates/zanshin-jj/src/line_pairs.rs` is deleted with everything only it uses, its `coverage-baseline.txt` line included. The module and `Segment` docs describe the CLI's rule.
+2. **FFI and bridge:** `schemas/envelope.fbs`, `cargo make codegen`, `crates/zanshin-ffi/src/diff.rs`, the `packages/zanshin_core` model, `docs/ffi-abi.md`.
+3. **UI** (`app/lib/src/features/graph/inspector_diff.dart`; the Undo Timeline's operation view uses the same widget):
+   - **Unified layout:** one row per line with the left number, the right number and the text. The numbers replace the sigil column and stay outside the selection.
+   - **Looks** (tokens as today, no underline): a context line has faint numbers and muted text. A removed line has its left number in `--rem`, the `--rem-bg` fill and its changed words on `--rem-word-bg`. An added line is the same in green. A changed line has both numbers in colour, no fill, `--text` ink, its removed words on `--rem-word-bg` and its added words on `--add-word-bg`.
+   - **Word marks:** a removed or added line whose unchanged text holds no visible character keeps only its fill (Story 10.32's rule). A changed line always draws its marks.
+   - **Side by side:** whole lines per side, rebuilt from the same lines: the left cell joins the equal and removed segments of the lines that share a left number, the right cell the equal and added segments of the lines that share a right number. Inside a run of changed lines the cells pair row by row; each cell shows its number.
+   - **Hunk header:** stays (range, symbol, counts, the picking checkbox of Story 10.26).
+   - **Conflict header lines:** mono text in `--text-dim`, no numbers.
+   - The `\ No newline at end of file` marker stays where a shown line lacks its line break.
+4. **Design system:** `design_system/components/content/` (DiffHunk, DiffView, their CSS, prompt and type files, the Content card, the bundle copies) show the numbers and the changed line. Republished with the `design-artifacts` skill; if the run cannot publish, its result says so.
+5. **Catalogue:** the inspector demo (`app/widgetbook/folders/graph.dart`) shows a simple block, a block over the limit and context lines.
+6. **Parity oracle** (`crates/zanshin-parity/tests/oracle/`): the pinned `jj diff --color=debug` against Zanshin's lines on the witnesses — the same lines, numbers, token sides and texts; also with `diff.color-words.max-inline-alternation` at `0` and `-1`, `--context 1` and `-w`.
+7. **Docs:** every place that says the diff is `jj diff --git`'s (`_bmad-output/project-context.md`, code docs).
+
+**Non-goals.**
+- Reading `ui.diff-formatter`. An external formatter (delta, difft) is terminal output. The `:git` layout goes away; `diff.color-words.max-inline-alternation = 0` gives removed and added lines only.
+- Word-mark rules of our own, move detection, syntax colours.
+- Underlines or strikethrough (Ralph, 2026-11-12: colours as today).
+- The ignore-whitespace switch (Story 10.33) and a settings UI for jj's `diff.color-words.*` keys.
+
+**Depends on.** 5.9 (replaced), 10.24, 10.26, 10.32.
+
+**Design status.** DECIDED (Ralph, 2026-11-12, on a mock-up of a simple block and a block over the limit in Zanshin's colours).
+
+**Witnesses** (the expected lines are what the pinned CLI prints).
+- **Ralph's jj example** — jj commit `671e4eaca` ("git: wrap index I/O errors in PathError"), `lib/src/git.rs`, `fn write_locked_index`, embedded as fixture text. Inline:
+  - `2454 2454`: `        .map_err(|err| ` equal, `{` added.
+  - `2455`–`2458` (right only): the four new lines.
+  - `2454 2459`: `        .map_err(` added, `GitResetHeadError::from_git` equal, `(err.into_error())` removed, `)?;` equal.
+  - `2456 2461`: `        .map_err(|err| ` equal, `err.error)` added.
+  - `2462` (right only): `        .context(index.path())`.
+  - `2456 2463`: `        .map_err(` added, `GitResetHeadError::from_git` equal, `(err.error)` removed, `)?;` equal.
+- **Three small edits** (Ralph's `stepper.dart` examples, as Story 10.32's demo data): `isLastStep ? s.functionWizard_save` → `saveLabel` is one changed line with the removed and the added word. A call split over three lines is one old line over three lines. An inserted comment line shares its old line's left number with the changed line below it.
+- **A block over the limit** (Ralph's widget-test example, Story 5.9's decision note): 3 removed lines, then 16 added lines, the word marks as the CLI spreads them over the block.
+- `max-inline-alternation = 0`: the jj example comes as 2 removed and 9 added lines with word marks. `-1`: the widget-test block is inlined.
+- With context 3, two changes 7 unchanged lines apart share one hunk that shows all 7; 8 lines apart they are two hunks.
+- Under `-b`, a context line whose indentation changed is the CLI's.
+- A conflicted side: `materialize` diffs the marker text; `pair` gives the header lines and the swapped roles.
+- **UI:** a changed line has no fill and both numbers in colour. Side by side shows old line 2454 of the jj example once, whole. A picked hunk keeps its look. Night and paper.
+
+**Related:** 5.2, 5.9, 10.32, 10.33.
 
 ---
 
