@@ -420,8 +420,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     addBgHi: Color.fromRGBO(74, 222, 128, .18),
     addEdge: Color.fromRGBO(74, 222, 128, .24),
     addRing: Color.fromRGBO(74, 222, 128, .35),
-    addWordBg: Color.fromRGBO(74, 222, 128, .30),
-    remWordBg: Color.fromRGBO(248, 113, 113, .30),
+    addWordBg: Color.fromRGBO(74, 222, 128, .38),
+    remWordBg: Color.fromRGBO(248, 113, 113, .24),
     conflict: Color(0xFFFBBF24),
     warn: Color(0xFFF7C243),
     warnBg: Color.fromRGBO(234, 181, 50, .16),
@@ -606,8 +606,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     addBgHi: Color.fromRGBO(26, 127, 69, .14),
     addEdge: Color.fromRGBO(26, 127, 69, .28),
     addRing: Color.fromRGBO(26, 127, 69, .35),
-    addWordBg: Color.fromRGBO(26, 127, 69, .22),
-    remWordBg: Color.fromRGBO(194, 58, 58, .20),
+    addWordBg: Color.fromRGBO(26, 127, 69, .18),
+    remWordBg: Color.fromRGBO(194, 58, 58, .40),
     conflict: Color(0xFF915C05),
     warn: Color(0xFF895604),
     warnBg: Color.fromRGBO(234, 181, 50, .16),
@@ -998,11 +998,11 @@ class ZsColors extends ThemeExtension<ZsColors> {
   final Color addRing;
 
   /// `--add-word-bg` (DS tokens/colors.css:71; paper :107): the fill under an added line's changed words, over
-  /// [addBg]; their glyphs are [text].
+  /// [addBg]; their glyphs are [text]. Lighter than [remWordBg], so the two differ without hue.
   final Color addWordBg;
 
   /// `--rem-word-bg` (DS tokens/colors.css:71; paper :107): the fill under a removed line's changed words, over
-  /// [remBg]; their glyphs are [text].
+  /// [remBg]; their glyphs are [text]. Darker than [addWordBg], so the two differ without hue.
   final Color remWordBg;
 
   /// `--conflict` (DS tokens/colors.css:70; paper :106).

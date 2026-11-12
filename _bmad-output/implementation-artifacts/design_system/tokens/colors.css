@@ -68,7 +68,7 @@
   --proj-clean:#9ca3af;--proj-dirty:#facc15;--proj-ahead:#4ade80;--proj-behind:#60a5fa;--proj-diverged:#fb923c;--proj-conflict:#f87171;--proj-missing:#71717a;--proj-syncing:#a78bfa;--proj-stale:#22d3ee;/* oklch(79.7% .134 211.5) — working copy is stale: ΔE ≥ .11 to every status, data colour and accent (dirty .30) */
 
   /* ---- semantic ---- */
-  --add:#4ade80;--add-bg:rgba(74,222,128,.13);--rem:#f87171;--rem-bg:rgba(248,113,113,.13);--add-word-bg:rgba(74,222,128,.30);--rem-word-bg:rgba(248,113,113,.30);/* changed words: a stronger tint over the line's fill, glyphs in --text — 5.7:1 (add) · 7.5:1 (rem) on --code-bg + the line fill over --fl-bg-solid */
+  --add:#4ade80;--add-bg:rgba(74,222,128,.13);--rem:#f87171;--rem-bg:rgba(248,113,113,.13);--add-word-bg:rgba(74,222,128,.38);--rem-word-bg:rgba(248,113,113,.24);/* changed words: a stronger tint, glyphs in --text; removed darker, added lighter (ΔL* 15 on a changed line) so they differ without hue — on --code-bg over --fl-bg-solid: 5.9:1 (add) · 10.2:1 (rem); plus the line fill: 4.8:1 · 8.3:1 */
   --add-bg-hi:rgba(74,222,128,.18);--add-edge:rgba(74,222,128,.24);--add-ring:rgba(74,222,128,.35);/* viewed: folded-diff hover · diff border · chip border */
   --conflict:#fbbf24;--warn:#f7c243;/* oklch(84.0% .150 85.2) */--warn-bg:rgba(234,181,50,.16);/* #eab532 oklch(80.1% .150 84.9) / .16 */
 
@@ -104,7 +104,7 @@
   /* paper status dots: the night values fall to 1.5–2.4:1 on paper; these are ≥ 3.5:1 on #fffdfa */
   --proj-clean:#84868c;--proj-dirty:#a38207;--proj-ahead:#218a45;--proj-behind:#0f74c5;--proj-diverged:#c75d04;--proj-conflict:#c23a3a;--proj-missing:#6f7178;--proj-syncing:#795bbf;--proj-stale:#0e7490;/* oklch(52.0% .094 223.1) 5.3:1 — ΔE ≥ .085 to every status (dirty .25) */
   /* diff colours darkened for paper: the night greens/reds fall below 2:1 here */
-  --add:#1a7f45;--add-bg:rgba(26,127,69,.10);--rem:#c23a3a;--rem-bg:rgba(194,58,58,.09);--add-word-bg:rgba(26,127,69,.22);--rem-word-bg:rgba(194,58,58,.20);/* --text on them, stacked as in night: 10.1:1 (add) · 10.1:1 (rem) */
+  --add:#1a7f45;--add-bg:rgba(26,127,69,.10);--rem:#c23a3a;--rem-bg:rgba(194,58,58,.09);--add-word-bg:rgba(26,127,69,.18);--rem-word-bg:rgba(194,58,58,.40);/* stacked as in night; removed darker (ΔL* 13.6): 11.9:1 (add) · 8.2:1 (rem); plus the line fill: 10.6:1 · 7.4:1 */
   --add-bg-hi:rgba(26,127,69,.14);--add-edge:rgba(26,127,69,.28);--add-ring:rgba(26,127,69,.35);
   /* sRGB-safe: conflict oklch(52.1% .111 70.3) 5.5:1 · warn oklch(49.9% .107 69.7) 6.1:1 on the card */
   --conflict:#915c05;--warn:#895604;--warn-bg:rgba(234,181,50,.16);

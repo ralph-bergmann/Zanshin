@@ -108,11 +108,18 @@ void main() {
       expect(ZsColors.paper.toCss()['--proj-stale'], const Color(0xFF0E7490));
     });
 
-    test('the word fills (Story 10.32) are data colours: the theme\'s in every appearance, --text on them ≥ 4.5:1', () {
+    test('the word fills are data colours: the theme\'s in every appearance, removed darker than added by ≥ 12 L*, '
+        '--text on them ≥ 4.5:1, each ≥ 8 L* off the surface under it', () {
       double contrast(Color a, Color b) {
         final double la = a.computeLuminance();
         final double lb = b.computeLuminance();
         return (math.max(la, lb) + .05) / (math.min(la, lb) + .05);
+      }
+
+      // CIE L* from the relative luminance Y (white point Y = 1).
+      double lightness(Color c) {
+        final double y = c.computeLuminance();
+        return y > 216 / 24389 ? 116 * math.pow(y, 1 / 3) - 16 : y * 24389 / 27;
       }
 
       final appearances = <ZsAppearance>[
@@ -135,17 +142,26 @@ void main() {
         final ZsColors theme = appearance.theme == ZsTheme.paper ? ZsColors.paper : ZsColors.night;
         final String label = appearanceLabel(appearance);
         expect((colors.addWordBg, colors.remWordBg), (theme.addWordBg, theme.remWordBg), reason: label);
+        Color stack(List<Color> layers) =>
+            layers.fold(colors.flBgSolid, (under, over) => Color.alphaBlend(over, under));
+        // The diff well on the inspector's solid glass; a changed line has no line fill of its own.
+        final Color well = stack(<Color>[colors.codeBg]);
+        final Color remOnChanged = stack(<Color>[colors.codeBg, colors.remWordBg]);
+        final Color addOnChanged = stack(<Color>[colors.codeBg, colors.addWordBg]);
+        // R1: the removed fill is darker, the added fill lighter, so a reader who sees red and green alike can
+        // still tell them apart.
+        expect(lightness(addOnChanged) - lightness(remOnChanged), greaterThanOrEqualTo(12), reason: 'R1 $label');
         for (final (Color line, Color word) in <(Color, Color)>[
           (colors.addBg, colors.addWordBg),
           (colors.remBg, colors.remWordBg),
         ]) {
-          // The diff well on the inspector's solid glass, the line's faint fill, then the word's.
-          final Color ground = <Color>[
-            colors.codeBg,
-            line,
-            word,
-          ].fold(colors.flBgSolid, (under, over) => Color.alphaBlend(over, under));
-          expect(contrast(colors.text, ground), greaterThanOrEqualTo(4.5), reason: label);
+          for (final (Color under, Color ground) in <(Color, Color)>[
+            (well, stack(<Color>[colors.codeBg, word])),
+            (stack(<Color>[colors.codeBg, line]), stack(<Color>[colors.codeBg, line, word])),
+          ]) {
+            expect(contrast(colors.text, ground), greaterThanOrEqualTo(4.5), reason: 'R2 $label');
+            expect((lightness(ground) - lightness(under)).abs(), greaterThanOrEqualTo(8), reason: 'R3 $label');
+          }
         }
       }
     });
