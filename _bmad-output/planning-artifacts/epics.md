@@ -5229,6 +5229,8 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 ### Story 5.10: The diff is jj's default format (color-words) [Rust + UI]
 *(Added 2026-11-12, Ralph — console session. Replaces Story 5.9's line pairing (E2).)*
 
+> **Added to 2026-11-12 (Ralph): Story 5.11 adds a second diff style** (whole-word marks by the longest common run, the `similar` crate), switchable in Settings. What this story built stays as the jj style.
+
 **Motivation.** Ralph compared `jj diff` under `:git`, difftastic and delta on one commit: each has its own quirks. He chose what `jj diff` prints without a `ui.diff-formatter`, the `:color-words` format: changed words inside one line while a block stays simple, removed and added lines otherwise. Zanshin's diff then equals the CLI's default again, and no rule of our own decides which words are marked.
 
 **What `jj diff` does** (`cli/src/diff_util.rs` @ v0.47.0, `show_color_words_diff_hunks` and the functions below it, lines 822–1400):
@@ -5289,6 +5291,78 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 - **UI:** a changed line has no fill and both numbers in colour. Side by side shows old line 2454 of the jj example once, whole. A picked hunk keeps its look. Night and paper.
 
 **Related:** 5.2, 5.9, 10.32, 10.33.
+
+### Story 5.11: A second diff style — whole-word marks by the longest common run (`similar`), switchable in Settings [Rust + UI]
+*(Added 2026-11-12, Ralph — console session, after Stories 5.10 and 10.34. It adds to 5.10; nothing of 5.10 is removed.)*
+
+**Motivation.** jj's color-words marks are hard to read on some real changes. Two of Ralph's examples:
+- **jj `lib/src/git.rs`** (jj commit `671e4eaca`): inline, jj shows `GitResetHeadError::from_git` of old line 2454 as kept text of new line 2459, although the old call was rewritten.
+- **A widget test** (Ralph's example of Story 5.9): jj marks the old `testWidgets('shows Funktion speichern …` line as removed and both new `testWidgets(` lines as new. In fact the old line became the second new one, with ` on a tablet` added. jj's word diff anchors on rare words; here words of the comments above take the anchors (`on a` of an old comment pairs with `on a tablet`), and the old test line finds no partner. The diff is valid, but not the shortest one.
+
+Ralph tried the `similar` crate (its `terminal-inline` example, changed by him): per changed block the longest common run of whitespace-separated words, the removed lines first, then the added lines. Both examples and his `stepper.dart` edits read well with it. jj's own marks stay available: they are what the CLI shows.
+
+**Decided (Ralph, 2026-11-12).** Two diff styles, switchable in Zanshin's Settings: **jj** (Story 5.10, follows jj's config) and a second one built on `similar` with the logic of his changed example. `similar` is a plain crates.io dependency (3.2.1, Apache-2.0). His change sits in the example file only, so there is no fork.
+
+**Claude's defaults (open to Ralph's change).**
+- **The lines come from jj in both styles:** the line diff, hunks, line numbers, context, sections, conflicts. `similar` decides only the word marks inside one changed block. (His example also takes the lines from `similar`; hunk picking, the context setting and `-w` / `-b` hang on jj's line diff.)
+- **The second style is the app's default.** The Rust and FFI default is jj: a caller that says nothing gets the CLI's lines.
+- **Names:** `DiffMarks` with `Jj` and `Words` in Rust, on the wire and in `zanshin_core`; the setting `GeneralSettings.diffMarks`; the labels "jj" and "Zanshin".
+
+**The second style's rule**, per changed block of jj's line diff (the block the CLI hands to `show_color_words_diff_lines`):
+1. A block with lines on one side only (a pure insertion or deletion): its lines carry no word marks.
+2. Otherwise the block's removed lines, joined, and its added lines, joined, are compared with `similar`'s word diff (`TextDiff::from_words`, its default algorithm Myers). A token is a run of non-blank characters or a run of blanks.
+3. The block's lines are all its removed lines (left numbers), then all its added lines (right numbers). No line holds both sides; the kind `changed` does not occur.
+4. On a removed line the deleted words are `Removed` segments, on an added line the inserted words are `Added` segments; everything else is `Equal`.
+5. Blanks (Claude's default): a deleted or inserted run of blanks is marked only where it stands between two marked words of the same line. Indentation, trailing blanks and line breaks are never marked. (His example never underlines blanks. With fills instead of underlines, unmarked blanks between marked words would cut a new line into chips.)
+6. A size limit per block, fixed and independent of the machine: above it the block's lines carry no word marks. The run picks the limit by measuring the worst case (two sides without a common word) so that one block stays within about 50 ms, and records the measurement in the spec. No time-based cut-off.
+
+**Scope.**
+1. **Rust** (`crates/zanshin-jj`):
+   - `similar` as a dependency, pinned like the others; `cargo deny` stays green.
+   - `DiffOptions` and `HunksOptions` gain the marks option (default `Jj`). In `hunks.rs` the step that turns one changed block into lines and segments gets a second implementation. Everything around it is shared: the line diff, the whitespace mode, the context rule, hunks, symbols, sections, counts, conflict handling (`materialize` and `pair`; under `pair` the roles swap as in the jj style), the description block, summary mode.
+   - `diff.color-words.max-inline-alternation` has no effect in the second style. `diff.color-words.context` and `diff.color-words.conflict` apply to both.
+   - A file's fingerprint, sections, hunk ranges, counts, line numbers and line texts are the same in both styles, so a Viewed mark and a hunk selection survive the switch.
+2. **FFI and bridge:** `schemas/envelope.fbs` (an enum and a request field, absent = jj), `cargo make codegen`, `crates/zanshin-ffi/src/diff.rs`, `packages/zanshin_core` (`ffi/diff.dart` and the worker's command, handle and isolate), `docs/ffi-abi.md`. The diff result says which style its lines have.
+3. **Settings** (`packages/zanshin_settings`): `GeneralSettings.diffMarks`, default the second style; an unknown stored value falls back to the default.
+4. **App:**
+   - Every diff load passes the setting: the inspector (`app/lib/src/features/graph/graph_ports.dart`, `graph_inspector.dart`) and the Undo Timeline's operation view (`app/lib/src/features/undo_timeline/operation_changes.dart`). A change of the setting reloads the open diff.
+   - **Settings › General** (`app/lib/src/features/settings/general_tab.dart`): a row below the diff layout, titled "Changed words", with the segments "Zanshin" and "jj" and one line that explains the chosen one ("Whole words: the longest common run per changed block, removed lines first." / "As `jj diff` prints them, following your jj config."). Strings where the neighbours' strings live.
+   - **Drawing** (`app/lib/src/features/graph/inspector_diff.dart`): the view draws by the style its lines were loaded with, not by the setting's current value. In the second style a mark is drawn exactly where a segment says so; Story 10.32's rule "a line whose unchanged text holds no visible character keeps only its fill" does not apply there (Rust already leaves pure blocks unmarked). In the jj style nothing changes. Colours and tokens as today (10.32, 10.34); no underline.
+5. **Design system:** `DiffHunk.prompt.md`, `DiffView.prompt.md` and the readme name the two styles and the second one's rule; the Content card shows one hunk in the second style. Republished with the `design-artifacts` skill; if the run cannot publish, its result says so.
+6. **Catalogue:** a use case "Inspector diff / Word marks" with the jj example's block and the widget-test block, each in both styles, from lines the Rust tests pin.
+7. **Docs:** `_bmad-output/project-context.md` (the diff has two styles; jj parity holds for the jj style and for the lines of both), the code docs in `hunks.rs`.
+8. **Parity oracle:** unchanged. It checks the jj style.
+
+**Non-goals.**
+- `similar`'s line diff, a fork of `similar`, its `inline` and `unicode` features (finer word boundaries).
+- A switch in the diff header, per file or per hunk.
+- Any change to the jj style, including 10.32's fill-only rule there (deferred-work.md, "Surfaced in the follow-up review of Story 5.10").
+- Move detection, syntax colours, underline or strikethrough.
+
+**Depends on.** 5.10, 10.24, 10.26, 10.32, 10.34 (all done).
+
+**Design status.** DECIDED (Ralph, 2026-11-12): two styles, a Settings switch, `similar` with his example's logic. Claude's defaults are listed above; Ralph reviews them in the catalogue and the app.
+
+**Witnesses** (fixture text embedded in the tests; the tests never read from `spikes/`).
+- **jj example**, second style (jj commit `671e4eaca`, `lib/src/git.rs`):
+  - removed `2454`: `.map_err(|err|` kept, `GitResetHeadError::from_git(err.into_error()))?;` marked.
+  - added `2454`: `.map_err(|err|` kept, `{` marked. Added `2455`–`2458`: marked from the first to the last visible character, the indentation not. Added `2459`: `.map_err(GitResetHeadError::from_git)?;` marked.
+  - removed `2456`: `GitResetHeadError::from_git(err.error))?;` marked. Added `2461`: `err.error)` marked. Added `2462` and `2463`: marked whole.
+  - the hunk that only adds `impl GitFetchError`: no marks.
+- **Widget test**, second style (`spikes/structural-diff-probe/inputs/witness/widget-test-rename`, lines 8–23):
+  - removed `10`: only `step',` marked.
+  - added `23`: only `step on a tablet',` marked, as one mark. So the old `testWidgets(` line pairs with the second new one.
+  - added `10`–`21`: marked whole; the blank lines carry no mark.
+  - the comment lines and added `9`: the marks `similar` gives (pinned from the real output).
+- **Stepper** (`…/witness/stepper`): line 12 marks only `s.functionWizard_save` and `saveLabel`. The call split over three lines keeps `_Line(color: isFirst ? null :`; marked are `Expanded(child:` and `lineColor)),` on the old line and `Expanded(`, `child:`, `lineColor),`, `),` on the new ones. `Spacing.spacing8,` and `Spacing.spacing2,` are marked whole; the inserted comment line is marked whole.
+- **Both styles on one file:** equal fingerprint, sections, hunk ranges, counts, line numbers and line texts.
+- A block over the size limit: lines without marks.
+- **jj style:** the parity oracle and Story 5.10's tests stay green with their expectations untouched.
+- A conflicted side under `pair`: the header lines as in the jj style, the marks by the rule above.
+- **App:** the setting survives a restart; switching it reloads the open diff; the operation view follows it.
+- **UI** (catalogue and Marionette, night and paper, compared with the DS card): in the widget-test block the old `testWidgets(` line and new line `23` show their kept text in the line's colour and one mark each; lines `10`–`21` are marked whole.
+
+**Related:** 5.10, 5.9, 10.32, 10.34.
 
 ---
 

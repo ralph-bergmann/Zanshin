@@ -3002,7 +3002,7 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 
 - **Decision for Ralph: a removed or added line whose unchanged text is only whitespace shows the line fill without word marks, where `jj diff` colours its changed words.** Medium.
   - `app/lib/src/features/graph/inspector_diff.dart:119` `diffWordMarks` keeps Story 10.32's rule ("no visible unchanged text → fill only") for non-changed lines; it hits every new file and every block over the inline limit. The rule predates 5.10 and Ralph's look rule says colours stay; the intent's "no rule of Zanshin's own marks words" can be read to cover it.
-  - **Follow-up:** Ralph decides: keep 10.32's fill-only look, or draw the CLI's token marks on those lines too (drop the rule in `diffWordMarks` and its tests).
+  - **Follow-up:** Ralph decides: keep 10.32's fill-only look, or draw the CLI's token marks on those lines too (drop the rule in `diffWordMarks` and its tests). 2026-11-12: Story 5.11's second style does not use the rule (Rust leaves pure blocks unmarked there); the decision stays open for the jj style.
 
 ## Surfaced after the story loop 5.10 (console session, 2026-11-12)
 
