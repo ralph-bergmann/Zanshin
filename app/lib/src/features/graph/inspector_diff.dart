@@ -2,7 +2,8 @@
 
 import 'dart:math' as math;
 
-import 'package:flutter/rendering.dart' show SemanticsProperties;
+import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/rendering.dart' show RenderParagraph, RenderProxyBox, SemanticsProperties, TextSelection;
 import 'package:flutter/widgets.dart';
 import 'package:material_ui/material_ui.dart' show SelectionArea;
 import 'package:zanshin_core/zanshin_core.dart';
@@ -52,6 +53,104 @@ String _text(HunkLine line) {
   return text.endsWith('\r') ? text.substring(0, text.length - 1) : text;
 }
 
+/// The word marks of [line] (Story 10.32): its [SegmentKind.removed] / [SegmentKind.added] segments (jj-lib's changed
+/// runs, what `jj diff --git` underlines) as ranges of its shown text, each cut at that text's end, so a line break is
+/// never marked. None when the line's equal segments hold no visible character (an inserted line, a new or deleted
+/// file): the line's fill already says it all.
+List<TextRange> diffWordMarks(HunkLine line) {
+  if (!line.segments.any((s) => s.kind == SegmentKind.equal && s.text.trim().isNotEmpty)) {
+    return const <TextRange>[];
+  }
+  final int shown = _text(line).length;
+  final marks = <TextRange>[];
+  var start = 0;
+  for (final Segment segment in line.segments) {
+    final int end = start + segment.text.length;
+    if (segment.kind != SegmentKind.equal && start < shown) {
+      marks.add(TextRange(start: start, end: math.min(end, shown)));
+    }
+    start = end;
+  }
+  return marks;
+}
+
+/// Paints [marks], ranges of the text of the paragraph below it (a [Text], behind the proxies a `SelectionArea` adds),
+/// as blocks of [color] the paragraph's full height under its glyphs' boxes, clipped to itself — then the paragraph.
+/// Painted under it, the paragraph's selection highlight lies over a mark (Story 10.32; DS content.css `.w`).
+class DiffWordMarks extends SingleChildRenderObjectWidget {
+  /// [marks] in [color] under [child].
+  const DiffWordMarks({required this.marks, required this.color, required Widget super.child, super.key});
+
+  /// The marked ranges of the paragraph's text.
+  final List<TextRange> marks;
+
+  /// The fill.
+  final Color color;
+
+  @override
+  RenderDiffWordMarks createRenderObject(BuildContext context) => RenderDiffWordMarks(marks: marks, color: color);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderDiffWordMarks renderObject) => renderObject
+    ..marks = marks
+    ..color = color;
+}
+
+/// [DiffWordMarks]'s render box.
+class RenderDiffWordMarks extends RenderProxyBox {
+  /// A box painting [marks] in [color] under its paragraph.
+  RenderDiffWordMarks({required this._marks, required this._color});
+
+  /// The marked ranges of the paragraph's text.
+  List<TextRange> get marks => _marks;
+  List<TextRange> _marks;
+  set marks(List<TextRange> value) {
+    if (!listEquals(value, _marks)) {
+      _marks = value;
+      markNeedsPaint();
+    }
+  }
+
+  /// The fill.
+  Color get color => _color;
+  Color _color;
+  set color(Color value) {
+    if (value != _color) {
+      _color = value;
+      markNeedsPaint();
+    }
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    RenderObject? node = child;
+    while (node is RenderProxyBox) {
+      node = node.child;
+    }
+    if (node is RenderParagraph) {
+      // A proxy lays its child out at its own origin, so the paragraph's boxes are this box's coordinates.
+      final Rect bounds = offset & size;
+      final paint = Paint()..color = _color;
+      for (final TextRange mark in _marks) {
+        for (final TextBox box in node.getBoxesForSelection(
+          TextSelection(baseOffset: mark.start, extentOffset: mark.end),
+        )) {
+          final Rect block = Rect.fromLTRB(
+            offset.dx + box.left,
+            bounds.top,
+            offset.dx + box.right,
+            bounds.bottom,
+          ).intersect(bounds);
+          if (block.width > 0) {
+            context.canvas.drawRect(block, paint);
+          }
+        }
+      }
+    }
+    super.paint(context, offset);
+  }
+}
+
 /// jj's marker after a last line without its newline (`jj diff --git`).
 const noNewlineMarker = r'\ No newline at end of file'; // l10n-ignore: jj's own words
 
@@ -62,6 +161,44 @@ Widget _noNewline(ZsColors colors, EdgeInsets padding) => Padding(
     child: Text(noNewlineMarker, softWrap: false, style: ZsType.code.copyWith(color: colors.textFaint)),
   ),
 );
+
+/// [line]'s shown text in [ink], both layouts' one builder: its [diffWordMarks], if any, on the stronger fill of its
+/// hue with [ZsColors.text] glyphs (coloured text on a stronger tint falls under 4.5:1, DS states.css). A side-by-side
+/// [cell] keeps one line, clipped.
+Widget _lineText(ZsColors colors, HunkLine line, Color ink, {bool cell = false}) {
+  final String text = _text(line);
+  final TextStyle style = ZsType.code.copyWith(color: ink);
+  final int? maxLines = cell ? 1 : null;
+  final TextOverflow? overflow = cell ? TextOverflow.clip : null;
+  final List<TextRange> marks = diffWordMarks(line);
+  if (marks.isEmpty) {
+    return Text(text, maxLines: maxLines, softWrap: false, overflow: overflow, style: style);
+  }
+  final strong = TextStyle(color: colors.text);
+  final spans = <TextSpan>[];
+  var at = 0;
+  for (final mark in marks) {
+    if (mark.start > at) {
+      spans.add(TextSpan(text: text.substring(at, mark.start)));
+    }
+    spans.add(TextSpan(text: mark.textInside(text), style: strong));
+    at = mark.end;
+  }
+  if (at < text.length) {
+    spans.add(TextSpan(text: text.substring(at)));
+  }
+  return DiffWordMarks(
+    marks: marks,
+    color: line.kind == HunkLineKind.added ? colors.addWordBg : colors.remWordBg,
+    child: Text.rich(
+      TextSpan(children: spans),
+      maxLines: maxLines,
+      softWrap: false,
+      overflow: overflow,
+      style: style,
+    ),
+  );
+}
 
 /// The focused file's diff block (Story 10.24; DS components/content/DiffView, content.css:22-46): the code well with
 /// a bar (the path, the layout toggle, Viewed) over its hunks, the refusal text or a one-line placeholder; a viewed
@@ -407,7 +544,7 @@ class InspectorTextButton extends StatelessWidget {
 /// shows a cut line while scrolling or hovered, ←/→ scroll it when focused. Story 10.26 (DS DiffHunk.prompt.md:8-11,
 /// content.css:58-59): a [selectable] hunk leads its header with a tristate checkbox (its Tab stop, Space toggles);
 /// a picked one (all or mixed) has its header on `--accent-soft-hi` with `--text` and a 2 px `--accent-line` edge
-/// along its lines.
+/// along its lines. Story 10.32: a line's changed words carry [DiffWordMarks] in both layouts.
 class InspectorDiffHunk extends StatefulWidget {
   /// [hunk] in [layout].
   const InspectorDiffHunk({
@@ -560,7 +697,7 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
                                 ),
                               ),
                             ),
-                            Text(_text(line), softWrap: false, style: ZsType.code.copyWith(color: ink)),
+                            _lineText(colors, line, ink),
                           ],
                         ),
                       );
@@ -599,13 +736,7 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              _text(line),
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.clip,
-              style: ZsType.code.copyWith(color: ink),
-            ),
+            _lineText(colors, line, ink, cell: true),
             if (!line.text.endsWith('\n')) _noNewline(colors, EdgeInsets.zero),
           ],
         ),

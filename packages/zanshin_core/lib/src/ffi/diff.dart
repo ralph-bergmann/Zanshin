@@ -91,14 +91,17 @@ final class HunkLine {
   /// right side's text.
   final String text;
 
-  /// The line's word-level runs (Story 5.2): their texts concatenate exactly
-  /// to [text], and adjacent runs differ in kind. The i-th line of a run of
-  /// removed lines directly followed by a run of added lines is word-diffed
-  /// with the i-th added line, unless one of the two is longer than 131,072
-  /// characters: equal and removed runs on the removed line, equal and added
-  /// runs on the added one. Every other line, a pair over that cap included, is
-  /// one run of its own kind ([SegmentKind.equal] for a context line). Empty
-  /// only for a payload written without segments.
+  /// The line's word-level runs (Story 5.2), jj-lib's own word diff: the
+  /// changed runs are what `jj diff --git` underlines. jj-lib word-diffs each
+  /// changed region as one text, with no line pairing; words are runs of
+  /// `A-Z a-z 0-9 _` and non-ASCII bytes, every other byte is a token of its
+  /// own. A removed line has [SegmentKind.equal] and [SegmentKind.removed]
+  /// runs, an added line [SegmentKind.equal] and [SegmentKind.added] runs, a
+  /// context line one [SegmentKind.equal] run. A changed line can carry no
+  /// changed run (a call split over lines: its removed line), and a changed
+  /// run can be only a line break. Their texts concatenate exactly to [text],
+  /// none is empty, and adjacent runs differ in kind. Empty only for a payload
+  /// written without segments.
   final List<Segment> segments;
 }
 

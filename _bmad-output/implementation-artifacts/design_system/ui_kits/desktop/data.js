@@ -15,8 +15,8 @@
       bookmarks: [{ name: "feature/ZAN-412_onboarding-swipe-gestures", state: "ahead", ahead: 1 }, { name: "review/ZAN-412-v2", state: "local" }],
       files: [
         { path: "lib/features/onboarding/swipe_controller.dart", status: "M", hunks: [
-          { oldStart: 12, newStart: 12, ctx: "class SwipeController", lines: ["   final double threshold;", "   final Duration settle;", "-  void onEnd() {", "-    _reset();", "+  void onEnd(DragEndDetails d) {", "+    final v = d.primaryVelocity ?? 0;", "+    if (v.abs() > threshold) {", "+      _commit(v < 0);", "+      Haptics.light();", "+      return;", "+    }", "+    _reset();", "   }"] },
-          { oldStart: 40, newStart: 46, ctx: "class SwipeController", lines: ["-  static const _kSettle = 220;", "+  static const _kSettle = 260;", "   static const _kCurve = Curves.easeOutCubic;"] },
+          { oldStart: 12, newStart: 12, ctx: "class SwipeController", lines: ["   final double threshold;", "   final Duration settle;", "-  void onEnd() {", "-    _reset();", "+  void onEnd({+DragEndDetails d+}) {", "+    final v = d.primaryVelocity ?? 0;", "+    if (v.abs() > threshold) {", "+      _commit(v < 0);", "+      Haptics.light();", "+      return;", "+    }", "+    _reset();", "   }"] },
+          { oldStart: 40, newStart: 46, ctx: "class SwipeController", lines: ["-  static const _kSettle = [-220-];", "+  static const _kSettle = {+260+};", "   static const _kCurve = Curves.easeOutCubic;"] },
         ] },
         { path: "lib/features/onboarding/onboarding_page.dart", status: "M", hunks: [
           { oldStart: 22, newStart: 22, ctx: "Widget build(BuildContext context)", lines: ["     return GestureDetector(", "-      onTap: _next,", "+      onHorizontalDragUpdate: _swipe.onUpdate,", "+      onHorizontalDragEnd: _swipe.onEnd,", "       child: PageView(", "-        physics: const NeverScrollableScrollPhysics(),", "+        controller: _swipe.pages,"] },

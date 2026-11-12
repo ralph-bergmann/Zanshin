@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data' show ByteData;
 
 import 'package:flutter/services.dart' show FontLoader;
@@ -16,6 +17,8 @@ import 'package:zanshin_ui/src/design/zs_metrics.dart';
 import 'package:zanshin_ui/src/design/zs_motion.dart';
 import 'package:zanshin_ui/src/design/zs_type.dart';
 import 'package:zanshin_ui/src/design/zs_values.dart';
+
+import 'css_token_reader.dart' show appearanceLabel;
 
 const _accentNames = <String>[
   '--accent',
@@ -103,6 +106,48 @@ void main() {
     test('--proj-stale exists in night and paper', () {
       expect(ZsColors.night.toCss()['--proj-stale'], const Color(0xFF22D3EE));
       expect(ZsColors.paper.toCss()['--proj-stale'], const Color(0xFF0E7490));
+    });
+
+    test('the word fills (Story 10.32) are data colours: the theme\'s in every appearance, --text on them ≥ 4.5:1', () {
+      double contrast(Color a, Color b) {
+        final double la = a.computeLuminance();
+        final double lb = b.computeLuminance();
+        return (math.max(la, lb) + .05) / (math.min(la, lb) + .05);
+      }
+
+      final appearances = <ZsAppearance>[
+        for (final ZsTheme theme in ZsTheme.values)
+          for (final ZsAccentFamily family in ZsAccentFamily.values)
+            for (final increasedContrast in const <bool>[false, true])
+              for (final reduceTransparency in const <bool>[false, true])
+                for (final inactive in const <bool>[false, true])
+                  ZsAppearance(
+                    theme: theme,
+                    family: family,
+                    increasedContrast: increasedContrast,
+                    reduceTransparency: reduceTransparency,
+                    inactive: inactive,
+                  ),
+      ];
+      expect(appearances, hasLength(144));
+      for (final appearance in appearances) {
+        final colors = ZsColors.resolve(appearance);
+        final ZsColors theme = appearance.theme == ZsTheme.paper ? ZsColors.paper : ZsColors.night;
+        final String label = appearanceLabel(appearance);
+        expect((colors.addWordBg, colors.remWordBg), (theme.addWordBg, theme.remWordBg), reason: label);
+        for (final (Color line, Color word) in <(Color, Color)>[
+          (colors.addBg, colors.addWordBg),
+          (colors.remBg, colors.remWordBg),
+        ]) {
+          // The diff well on the inspector's solid glass, the line's faint fill, then the word's.
+          final Color ground = <Color>[
+            colors.codeBg,
+            line,
+            word,
+          ].fold(colors.flBgSolid, (under, over) => Color.alphaBlend(over, under));
+          expect(contrast(colors.text, ground), greaterThanOrEqualTo(4.5), reason: label);
+        }
+      }
     });
 
     test('the I/O matrix picks the family', () {

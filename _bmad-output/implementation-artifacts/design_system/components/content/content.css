@@ -37,6 +37,11 @@
 .zs-diff-side.add{background:var(--add-bg)}.zs-diff-side.add .tx{color:var(--add)}
 .zs-diff-side.rem{background:var(--rem-bg)}.zs-diff-side.rem .tx{color:var(--rem)}
 .zs-diff-side.empty{background:var(--fl-hover);opacity:.4}
+/* word marks — a changed run ("[-…-]" / "{+…+}"): the line keeps its fill, the run takes the stronger tint of its hue the line's full
+   height (inline-block) and --text glyphs (red or green text on a stronger tint falls under 4.5:1); a side cell clips them */
+.zs-diff-line .w,.zs-diff-side .w{display:inline-block;color:var(--text)}
+.zs-diff-line.add .w,.zs-diff-side.add .w{background:var(--add-word-bg)}
+.zs-diff-line.rem .w,.zs-diff-side.rem .w{background:var(--rem-word-bg)}
 .zs-viewed{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:3px 8px 3px 6px;border-radius:var(--radius-tag);border:1px solid var(--border);background:transparent;color:var(--text-muted);font:inherit;font-size:var(--fs-xs);cursor:default;transition:background var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
 .zs-viewed:hover{color:var(--text);border-color:var(--border-strong);background:var(--fl-hover)}
 .zs-viewed:active{background:var(--fl-on)}

@@ -1,7 +1,11 @@
 import * as React from "react";
 
-export type DiffLine = string | { t: "add" | "rem" | "hunk" | "ctx"; s: string };
-/** Diff block: toolbar (path · tools · Viewed) over hunks or plain unified lines. States: unified · split · viewed (folded, green edge; the folded row has hover and focus). */
+/** A line with its git sigil, one line per side; changed words in git's delimiters, "[-…-]" only on a removed line ("-a [-old-] b"), "{+…+}" only on an added one ("+a {+new+} b") — or the parsed form: on an added or removed line, `runs` are [text, changed] pairs. A string has no escape: code holding "[-", "-]", "{+" or "+}" goes in the parsed form. */
+export type DiffLine =
+  | string
+  | { t: "add" | "rem"; s: string; runs?: Array<[string, boolean]> }
+  | { t: "hunk" | "ctx"; s: string };
+/** Diff block: toolbar (path · tools · Viewed) over hunks or plain unified lines. States: unified · split · viewed (folded, green edge; the folded row has hover and focus) · word marks (a changed run on --add-word-bg / --rem-word-bg, --text glyphs). */
 export interface DiffViewProps {
   /** path shown in the toolbar */
   file?: string;

@@ -17,6 +17,7 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/immutable_reasons.dart';
+import 'package:zanshin/src/features/graph/inspector_diff.dart' show DiffWordMarks;
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
@@ -26,6 +27,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
 import '../../helpers/shell_host.dart';
+import '../../helpers/word_marks.dart';
 import 'graph_harness.dart';
 
 const _at = 'wwwwwwwwwwww';
@@ -1150,6 +1152,55 @@ void main() {
       expect(find.text('@@ −2,2 +2,4 @@'), findsOneWidget);
       expect(find.text('old a'), findsOneWidget, reason: 'the text without its newline');
       expect(find.byType(SelectionArea), findsOneWidget, reason: 'the diff text is selectable');
+      await unmount(tester);
+    });
+
+    testWidgets("Story 10.32: the focused file's word segments, read through the diff port, paint their marks", (
+      tester,
+    ) async {
+      HunkLine line(HunkLineKind kind, List<(SegmentKind, String)> runs) => HunkLine(
+        kind: kind,
+        text: runs.map((run) => run.$2).join(),
+        segments: <Segment>[for (final (SegmentKind run, String text) in runs) Segment(kind: run, text: text)],
+      );
+      details.fileDiffs[_mutable] = <FileDiff>[
+        fileDiff(
+          'src/a.dart',
+          added: 2,
+          removed: 1,
+          fingerprint: 'fa',
+          hunks: <Hunk>[
+            hunk(
+              before: (start: 1, end: 3),
+              after: (start: 1, end: 4),
+              lines: <HunkLine>[
+                line(HunkLineKind.context, <(SegmentKind, String)>[(SegmentKind.equal, 'keep\n')]),
+                line(HunkLineKind.removed, <(SegmentKind, String)>[
+                  (SegmentKind.removed, 'old'),
+                  (SegmentKind.equal, ' a\n'),
+                ]),
+                line(HunkLineKind.added, <(SegmentKind, String)>[
+                  (SegmentKind.added, 'new'),
+                  (SegmentKind.equal, ' a\n'),
+                ]),
+                line(HunkLineKind.added, <(SegmentKind, String)>[(SegmentKind.added, 'new b\n')]),
+              ],
+            ),
+          ],
+        ),
+        details.fileDiffs[_mutable]![1],
+      ];
+      await pump(tester);
+      await settle(tester);
+      expect(inspector.focusedPath, 'src/a.dart');
+      expect(find.text('new b'), findsOneWidget, reason: 'an inserted line, unmarked');
+      expect(
+        paintedWordMarks(tester, ZsColors.of(tester.element(find.byType(DiffWordMarks).first))),
+        <String, List<String>>{
+          'old a': <String>['old'],
+          'new a': <String>['new'],
+        },
+      );
       await unmount(tester);
     });
 

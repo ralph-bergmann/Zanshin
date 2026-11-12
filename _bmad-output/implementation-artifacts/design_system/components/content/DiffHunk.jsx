@@ -1,10 +1,11 @@
 import React from "react";
 import { Icon } from "../brand/Icon.jsx";
 import { Checkbox } from "../forms/Checkbox.jsx";
-import { zsDiffLine } from "./DiffView.jsx";
+import { zsDiffLine, zsDiffText } from "./DiffView.jsx";
 
 // DiffHunk — one hunk: a header (checkbox · @@ range · enclosing context · +/− · grip) over its lines, unified or side by side.
 // Selected hunks get the moon header and a 2px moon edge; they are what Commit / Split take. Mutable hunks can be dragged onto another change.
+// Changed words ("[-old-]", "{+new+}") are marked as in DiffView, in both layouts; a side-by-side cell clips its marks.
 export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [], mode = "unified", selectable = false, selected = false, lifted = false, onToggle, onGrab, className = "" }) {
   const ls = lines.map(zsDiffLine).filter((l) => l.t !== "hunk");
   const a = ls.filter((l) => l.t === "add").length, r = ls.filter((l) => l.t === "rem").length;
@@ -12,7 +13,7 @@ export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [
   let body;
   if (mode !== "split") {
     body = ls.map((l, i) => (
-      <div key={i} className={"zs-diff-line " + l.t}><span className="sg">{l.t === "add" ? "+" : l.t === "rem" ? "−" : " "}</span><span className="tx">{l.s}</span></div>
+      <div key={i} className={"zs-diff-line " + l.t}><span className="sg">{l.t === "add" ? "+" : l.t === "rem" ? "−" : " "}</span><span className="tx">{zsDiffText(l)}</span></div>
     ));
   } else {
     const rows = [];
@@ -25,8 +26,8 @@ export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [
     }
     body = rows.map(([x, y], k) => (
       <div key={k} className="zs-diff-row">
-        <div className={"zs-diff-side " + (x ? x.t : "empty")}><span className="tx">{x ? x.s : ""}</span></div>
-        <div className={"zs-diff-side " + (y ? y.t : "empty")}><span className="tx">{y ? y.s : ""}</span></div>
+        <div className={"zs-diff-side " + (x ? x.t : "empty")}><span className="tx">{x ? zsDiffText(x) : ""}</span></div>
+        <div className={"zs-diff-side " + (y ? y.t : "empty")}><span className="tx">{y ? zsDiffText(y) : ""}</span></div>
       </div>
     ));
   }

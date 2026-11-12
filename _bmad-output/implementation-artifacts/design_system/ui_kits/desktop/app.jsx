@@ -54,11 +54,12 @@ const O = {
   mergeFiles(a, b) { const out = a.map((f) => ({ ...f, hunks: f.hunks.slice() })); b.forEach((f) => { const t = out.find((x) => x.path === f.path); if (t) t.hunks = [...t.hunks, ...f.hunks]; else out.push({ ...f, hunks: f.hunks.slice() }); }); return out; },
 };
 
-// the inverse of a diff (jj revert): + and − swap, added and deleted files swap; within a run removals stay ahead of additions
+// the inverse of a diff (jj revert): + and − swap, added and deleted files swap; within a run removals stay ahead of additions;
+// a changed word's delimiters follow its line ({+…+} ↔ [-…-])
 const zkInvLines = (lines) => {
   const out = []; let run = [];
   const flush = () => { out.push(...run.filter((l) => l[0] === "-"), ...run.filter((l) => l[0] === "+")); run = []; };
-  lines.forEach((l) => { const s = l[0] === "+" ? "-" + l.slice(1) : l[0] === "-" ? "+" + l.slice(1) : l; if (s[0] === "+" || s[0] === "-") run.push(s); else { flush(); out.push(s); } });
+  lines.forEach((l) => { const s = l[0] === "+" ? "-" + l.slice(1).replace(/\{\+/g, "[-").replace(/\+\}/g, "-]") : l[0] === "-" ? "+" + l.slice(1).replace(/\[-/g, "{+").replace(/-\]/g, "+}") : l; if (s[0] === "+" || s[0] === "-") run.push(s); else { flush(); out.push(s); } });
   flush(); return out;
 };
 const zkInvert = (files, tag) => files.map((f) => ({ ...f, status: f.status === "A" ? "D" : f.status === "D" ? "A" : f.status,

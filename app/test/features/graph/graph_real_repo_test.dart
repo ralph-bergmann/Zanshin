@@ -2,7 +2,8 @@
 
 // The story's witnesses (Story 10.12): GraphView and GraphViewModel over RepoGraphSource on the REAL worker isolate and
 // cdylib, an in-test native-backend repository in a temp folder. Worker I/O runs in `tester.runAsync`; what the view
-// starts in the fake zone settles by alternating real time and pumps.
+// starts in the fake zone settles by alternating real time and pumps. Story 10.32 adds the inspector diff's word marks
+// over the same real data path.
 
 import 'dart:io';
 
@@ -15,13 +16,16 @@ import 'package:zanshin/src/features/graph/graph_metrics.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin/src/features/graph/inspector_diff.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin/src/features/projects/worker_project_repos.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/shell_host.dart';
+import '../../helpers/word_marks.dart';
 
 Finder _cardOf(String key) =>
     find.byWidgetPredicate((w) => w is GraphCard && w.layout.keyOf(w.node) == key, skipOffstage: false);
@@ -113,6 +117,100 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     model.dispose();
+    await tester.runAsync(() async {
+      await repo.close();
+      await worker.close();
+      dir.deleteSync(recursive: true);
+    });
+  });
+
+  // Story 10.32: jj-lib's word segments for Ralph's three examples and a new file, read as the inspector reads them,
+  // reach the paint surface exactly as the I/O matrix says.
+  testWidgets('a rewrite read through RepoGraphDetails.diff paints jj\'s changed words; an inserted line none', (
+    tester,
+  ) async {
+    final (ZanshinWorker worker, Directory dir, ProjectRepo repo) = (await tester.runAsync(() async {
+      final ZanshinWorker worker = await ZanshinWorker.start();
+      final Directory dir = Directory.systemTemp.createTempSync('zanshin_word_marks_');
+      final String path = dir.resolveSymbolicLinksSync();
+      await (await worker.initRepo(path, backend: 0)).close();
+      return (worker, dir, await WorkerProjectRepos(worker).open(path));
+    }))!;
+    final Map<String, FileDiff> files = (await tester.runAsync(() async {
+      final String path = dir.resolveSymbolicLinksSync();
+      void write(String name, String text) => File('$path/$name').writeAsStringSync(text);
+      write(
+        'expression.dart',
+        '    child: Text(isLastStep ? s.functionWizard_save : s.functionWizard_next),\n'
+            '    a.functionWizard_save,\n'
+            '    final größe = 1;\n',
+      );
+      write('split.dart', '    Expanded(child: _Line(color: isFirst ? null : lineColor)),\n    DecoratedBox(\n');
+      write('comment.dart', '  padding: Spacing.spacing8,\n  child: label,\n');
+      final RepoHandle handle = repo.handle;
+      // `status` snapshots the three files into @; `new` puts an empty @ on top of them.
+      await handle.newChange(<String>[(await handle.status()).workingCopyChangeId!]);
+      write(
+        'expression.dart',
+        '    child: Text(isLastStep ? saveLabel : s.functionWizard_next),\n'
+            '    a.functionWizard_next,\n'
+            '    final größe = 2;\n',
+      );
+      write(
+        'split.dart',
+        '    Expanded(\n      child: _Line(color: isFirst ? null : lineColor),\n    ),\n    DecoratedBox(\n',
+      );
+      write('comment.dart', '  // Small side padding.\n  padding: Spacing.spacing2,\n  child: label,\n');
+      write('fresh.dart', '// A new file.\nconst fresh = true;\n');
+      final details = RepoGraphDetails(repo);
+      // A commit id, as the inspector passes it (`show` snapshots the rewrite first).
+      final String commitId = (await details.show('@')).change.commitId;
+      return <String, FileDiff>{for (final FileDiff file in (await details.diff(commitId)).files) file.path: file};
+    }))!;
+    expect(files.keys, unorderedEquals(<String>['comment.dart', 'expression.dart', 'fresh.dart', 'split.dart']));
+
+    const expected = <String, Map<String, List<String>>>{
+      'expression.dart': <String, List<String>>{
+        '    child: Text(isLastStep ? s.functionWizard_save : s.functionWizard_next),': <String>[
+          's.functionWizard_save',
+        ],
+        '    a.functionWizard_save,': <String>['functionWizard_save'],
+        '    final größe = 1;': <String>['1'],
+        '    child: Text(isLastStep ? saveLabel : s.functionWizard_next),': <String>['saveLabel'],
+        '    a.functionWizard_next,': <String>['functionWizard_next'],
+        '    final größe = 2;': <String>['2'],
+      },
+      // The removed line and `    Expanded(` keep none: their changed runs are line breaks.
+      'split.dart': <String, List<String>>{
+        '      child: _Line(color: isFirst ? null : lineColor),': <String>['      ', ','],
+        '    ),': <String>['    '],
+      },
+      // The inserted comment line keeps none.
+      'comment.dart': <String, List<String>>{
+        '  padding: Spacing.spacing8,': <String>['spacing8'],
+        '  padding: Spacing.spacing2,': <String>['  ', 'spacing2'],
+      },
+      'fresh.dart': <String, List<String>>{},
+    };
+    for (final MapEntry<String, Map<String, List<String>>>(key: path, value: marks) in expected.entries) {
+      await tester.pumpWidget(
+        shellHost(
+          SizedBox(
+            width: 700,
+            child: InspectorDiffView(
+              path: path,
+              diff: files[path],
+              error: null,
+              layout: DiffLayoutSetting.unified,
+              onLayoutChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+      expect(paintedWordMarks(tester, ZsColors.night), marks, reason: path);
+    }
+
+    await tester.pumpWidget(const SizedBox.shrink());
     await tester.runAsync(() async {
       await repo.close();
       await worker.close();

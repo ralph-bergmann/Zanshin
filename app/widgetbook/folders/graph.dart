@@ -54,6 +54,8 @@ import 'package:zanshin_core/zanshin_core.dart'
         HunkLine,
         HunkLineKind,
         MutationResult,
+        Segment,
+        SegmentKind,
         ShowEntry,
         Signature,
         SquashPlan,
@@ -998,8 +1000,8 @@ class _DemoDetails implements GraphDetails {
     abandon: _available,
   );
 
-  /// Story 10.24: a modified file gets two hunks (in Rust the first under `fn main()`), an added or removed one a
-  /// single hunk of its lines, a `.png` is binary.
+  /// Story 10.24: a modified file gets four hunks (in Rust under `fn main()`), the first three with word marks (Story
+  /// 10.32), an added or removed one a single hunk of its lines, a `.png` is binary.
   @override
   Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) async {
     final ShowEntry entry = await show(commitId);
@@ -1029,6 +1031,22 @@ class _DemoDetails implements GraphDetails {
   }
 
   static HunkLine _line(HunkLineKind kind, String text) => HunkLine(kind: kind, text: '$text\n');
+
+  /// A changed line with jj-lib's segments (Story 10.32), written as `jj diff --git` underlines them: `[-…-]` around a
+  /// removed run, `{+…+}` around an added one.
+  static HunkLine _words(HunkLineKind kind, String marked) {
+    final added = kind == HunkLineKind.added;
+    final List<String> parts = marked.split(added ? RegExp(r'\{\+|\+\}') : RegExp(r'\[-|-\]'));
+    final SegmentKind changed = added ? SegmentKind.added : SegmentKind.removed;
+    return HunkLine(
+      kind: kind,
+      text: parts.join(),
+      segments: <Segment>[
+        for (var i = 0; i < parts.length; i++)
+          if (parts[i].isNotEmpty) Segment(kind: i.isOdd ? changed : SegmentKind.equal, text: parts[i]),
+      ],
+    );
+  }
 
   static FileDiff _diffOf(FileChange file, {required bool summary}) {
     final bool binary = file.path.endsWith('.png');
@@ -1065,30 +1083,57 @@ class _DemoDetails implements GraphDetails {
                 ],
               ),
             ],
+            // Story 10.32: Ralph's three examples carry jj-lib's word segments, so the catalogue shows the marks.
             _ => <Hunk>[
               Hunk(
-                before: (start: 11, end: 16),
-                after: (start: 11, end: 15),
+                before: (start: 11, end: 14),
+                after: (start: 11, end: 14),
                 symbol: rust ? 'fn main()' : null,
                 sections: const [],
-                removed: 3,
-                added: 2,
+                removed: 1,
+                added: 1,
                 lines: <HunkLine>[
-                  _line(HunkLineKind.context, '  final Duration ttl;'),
-                  _line(HunkLineKind.removed, '  Session refresh() {'),
-                  _line(HunkLineKind.removed, '    return Session(token: token, ttl: ttl);'),
-                  _line(HunkLineKind.removed, '  }'),
-                  _line(
-                    HunkLineKind.added,
-                    '  Future<Session> refresh() async => Session(token: await renew(token), ttl: ttl);',
+                  _line(HunkLineKind.context, '  Widget build(BuildContext context) => FilledButton('),
+                  _words(
+                    HunkLineKind.removed,
+                    '    child: Text(isLastStep ? [-s.functionWizard_save-] : s.functionWizard_next),\n',
                   ),
-                  _line(HunkLineKind.added, '  bool get expired => DateTime.now().isAfter(issued.add(ttl));'),
-                  _line(HunkLineKind.context, '}'),
+                  _words(HunkLineKind.added, '    child: Text(isLastStep ? {+saveLabel+} : s.functionWizard_next),\n'),
+                  _line(HunkLineKind.context, '  );'),
+                ],
+              ),
+              Hunk(
+                before: (start: 30, end: 32),
+                after: (start: 30, end: 34),
+                symbol: rust ? 'fn main()' : null,
+                sections: const [],
+                removed: 1,
+                added: 3,
+                lines: <HunkLine>[
+                  _words(HunkLineKind.removed, '    Expanded(child: _Line(color: isFirst ? null : lineColor)),\n'),
+                  _words(HunkLineKind.added, '    Expanded({+\n+}'),
+                  _words(HunkLineKind.added, '{+      +}child: _Line(color: isFirst ? null : lineColor){+,\n+}'),
+                  _words(HunkLineKind.added, '{+    +}),\n'),
+                  _line(HunkLineKind.context, '    DecoratedBox('),
                 ],
               ),
               Hunk(
                 before: (start: 40, end: 42),
-                after: (start: 39, end: 42),
+                after: (start: 42, end: 45),
+                symbol: rust ? 'fn main()' : null,
+                sections: const [],
+                removed: 1,
+                added: 2,
+                lines: <HunkLine>[
+                  _words(HunkLineKind.removed, '  padding: Spacing.[-spacing8-],\n'),
+                  _words(HunkLineKind.added, '  {+// Small side padding.\n+}'),
+                  _words(HunkLineKind.added, '{+  +}padding: Spacing.{+spacing2+},\n'),
+                  _line(HunkLineKind.context, '  child: label,'),
+                ],
+              ),
+              Hunk(
+                before: (start: 60, end: 62),
+                after: (start: 63, end: 66),
                 symbol: rust ? 'fn main()' : null,
                 sections: const [],
                 removed: 0,

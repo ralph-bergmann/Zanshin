@@ -47,7 +47,7 @@
             "   final double threshold;",
             "-  void onEnd() {",
             "-    _reset();",
-            "+  void onEnd(DragEndDetails d) {",
+            "+  void onEnd({+DragEndDetails d+}) {",
             "+    if (d.primaryVelocity!.abs() > threshold) {",
             "+      _commit(d.primaryVelocity! < 0);",
             "+      return;",
@@ -55,7 +55,7 @@
             "+    _reset();",
             "   }",
           ]}/>
-          <DiffHunk oldStart={40} newStart={45} mode={mode} selectable selected={hs.b} onToggle={(v) => setHs({ ...hs, b: v })} lines={["-  static const _kSettle = 220;", "+  static const _kSettle = 260;"]}/>
+          <DiffHunk oldStart={40} newStart={45} mode={mode} selectable selected={hs.b} onToggle={(v) => setHs({ ...hs, b: v })} lines={["-  static const _kSettle = [-220-];", "+  static const _kSettle = {+260+};"]}/>
         </DiffView>
       </div>
     );

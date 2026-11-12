@@ -120,6 +120,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     required this.addBgHi,
     required this.addEdge,
     required this.addRing,
+    required this.addWordBg,
+    required this.remWordBg,
     required this.conflict,
     required this.warn,
     required this.warnBg,
@@ -418,6 +420,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     addBgHi: Color.fromRGBO(74, 222, 128, .18),
     addEdge: Color.fromRGBO(74, 222, 128, .24),
     addRing: Color.fromRGBO(74, 222, 128, .35),
+    addWordBg: Color.fromRGBO(74, 222, 128, .30),
+    remWordBg: Color.fromRGBO(248, 113, 113, .30),
     conflict: Color(0xFFFBBF24),
     warn: Color(0xFFF7C243),
     warnBg: Color.fromRGBO(234, 181, 50, .16),
@@ -602,6 +606,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     addBgHi: Color.fromRGBO(26, 127, 69, .14),
     addEdge: Color.fromRGBO(26, 127, 69, .28),
     addRing: Color.fromRGBO(26, 127, 69, .35),
+    addWordBg: Color.fromRGBO(26, 127, 69, .22),
+    remWordBg: Color.fromRGBO(194, 58, 58, .20),
     conflict: Color(0xFF915C05),
     warn: Color(0xFF895604),
     warnBg: Color.fromRGBO(234, 181, 50, .16),
@@ -991,6 +997,14 @@ class ZsColors extends ThemeExtension<ZsColors> {
   /// `--add-ring` (DS tokens/colors.css:69; paper :104).
   final Color addRing;
 
+  /// `--add-word-bg` (DS tokens/colors.css:71; paper :107): the fill under an added line's changed words, over
+  /// [addBg]; their glyphs are [text].
+  final Color addWordBg;
+
+  /// `--rem-word-bg` (DS tokens/colors.css:71; paper :107): the fill under a removed line's changed words, over
+  /// [remBg]; their glyphs are [text].
+  final Color remWordBg;
+
   /// `--conflict` (DS tokens/colors.css:70; paper :106).
   final Color conflict;
 
@@ -1353,6 +1367,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     Color? addBgHi,
     Color? addEdge,
     Color? addRing,
+    Color? addWordBg,
+    Color? remWordBg,
     Color? conflict,
     Color? warn,
     Color? warnBg,
@@ -1508,6 +1524,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     addBgHi: addBgHi ?? this.addBgHi,
     addEdge: addEdge ?? this.addEdge,
     addRing: addRing ?? this.addRing,
+    addWordBg: addWordBg ?? this.addWordBg,
+    remWordBg: remWordBg ?? this.remWordBg,
     conflict: conflict ?? this.conflict,
     warn: warn ?? this.warn,
     warnBg: warnBg ?? this.warnBg,
@@ -1671,6 +1689,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
       addBgHi: Color.lerp(addBgHi, other.addBgHi, t)!,
       addEdge: Color.lerp(addEdge, other.addEdge, t)!,
       addRing: Color.lerp(addRing, other.addRing, t)!,
+      addWordBg: Color.lerp(addWordBg, other.addWordBg, t)!,
+      remWordBg: Color.lerp(remWordBg, other.remWordBg, t)!,
       conflict: Color.lerp(conflict, other.conflict, t)!,
       warn: Color.lerp(warn, other.warn, t)!,
       warnBg: Color.lerp(warnBg, other.warnBg, t)!,
@@ -1830,6 +1850,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     '--add-bg-hi': addBgHi,
     '--add-edge': addEdge,
     '--add-ring': addRing,
+    '--add-word-bg': addWordBg,
+    '--rem-word-bg': remWordBg,
     '--conflict': conflict,
     '--warn': warn,
     '--warn-bg': warnBg,
@@ -2013,6 +2035,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
           other.addBgHi == addBgHi &&
           other.addEdge == addEdge &&
           other.addRing == addRing &&
+          other.addWordBg == addWordBg &&
+          other.remWordBg == remWordBg &&
           other.conflict == conflict &&
           other.warn == warn &&
           other.warnBg == warnBg &&
@@ -2170,6 +2194,8 @@ class ZsColors extends ThemeExtension<ZsColors> {
     addBgHi,
     addEdge,
     addRing,
+    addWordBg,
+    remWordBg,
     conflict,
     warn,
     warnBg,
