@@ -17,6 +17,8 @@ deferred:
     location: >-
       _bmad-output/planning-artifacts/epics.md Story 5.9; _bmad-output/implementation-artifacts/sprint-status.yaml 5-9-structural-diff-difftastic-class
     severity: low
+    resolved: >-
+      2026-11-12 — fixed (spec-5-9-closing-e2-line-pairing, commit a91fbddd): Ralph chose E2; line pairing before jj-lib's word diff is built in crates/zanshin-jj/src/line_pairs.rs and measured against difft (report §9).
 ---
 
 <intent-contract>
