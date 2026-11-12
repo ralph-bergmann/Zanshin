@@ -2950,7 +2950,7 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 
 ## Surfaced in Story 10.32 (bmad-build-auto, 2026-11-12)
 
-- **The word marks were not checked in the running catalogue or app against the DS Content card.** Low.
+- ~~**The word marks were not checked in the running catalogue or app against the DS Content card.**~~ — RESOLVED 2026-11-12 (console session, Marionette): the catalogue's "Graph / Floating shell / Controls" inspector shows the marks in Unified and Side by side, night and paper, and they match the DS Content card (faint line fill, full-height word fill, light glyphs on a mark); the app on a temp repo was not run — `graph_real_repo_test.dart` covers the real cdylib path. Low.
   - The unattended run could not hold a long-lived `flutter run` for Marionette; widget tests check the paint calls only (`app/test/helpers/word_marks.dart`). The catalogue's inspector demo (`app/widgetbook/folders/graph.dart`, `_DemoDetails._diffOf`) carries Ralph's three examples.
   - **Follow-up:** a Marionette pass of the catalogue's inspector diff (Unified and Side by side, night and paper) and of the app on a temp repo, compared with `design_system/components/content/content.card.html`.
 - **The DS word-mark parser and its hand-copied bundle blocks have no automated check.** Low.

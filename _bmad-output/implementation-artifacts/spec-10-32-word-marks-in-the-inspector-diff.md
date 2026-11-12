@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/widgetbook/folders/graph.dart; _bmad-output/implementation-artifacts/design_system/components/content/content.card.html
     severity: low
+    resolved: >-
+      2026-11-12 — checked (console session, Marionette): the catalogue's inspector shows the marks in Unified and Side by side, night and paper, matching the DS Content card; the app on a temp repo was not run (graph_real_repo_test.dart covers the cdylib path).
   - summary: >-
       The DS word-mark parser and its hand-copied bundle blocks have no automated check.
     evidence: |-
