@@ -5,7 +5,7 @@ created: '2026-11-12'
 status: 'done'
 baseline_revision: 'd14faaffb132c49c1bfc05abafaeb9f611fd28a7'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
@@ -24,6 +24,13 @@ deferred:
       Review pass 2026-11-12 (blind hunter, edge-case hunter): an unreadable side fails the whole Repo::diff (the CLI prints "Access denied to <path>: ..." and goes on); a Git submodule side is empty (the CLI diffs "Git submodule checked out at <id>"); a mode-only change of a binary file is not binary (the CLI prints "(binary)"). Pre-existing reading code the story kept ("binary and mode-only rules unchanged"); the access-denied case needs a wire marker for a skipped file.
     location: >-
       crates/zanshin-jj/src/hunks.rs (DiffReader::file)
+    severity: medium
+  - summary: >-
+      Decision for Ralph: a removed or added line whose unchanged text is only whitespace shows the line fill without word marks, where jj diff colours its changed words.
+    evidence: |-
+      Follow-up review 2026-11-12 (intent auditor): diffWordMarks keeps Story 10.32's "no visible unchanged text: fill only" rule for non-changed lines; it hits every new file and every block over the inline limit. Pre-existing rule the spec's tasks kept; the intent's "no rule of Zanshin's own marks words" can be read to cover it.
+    location: >-
+      app/lib/src/features/graph/inspector_diff.dart:119 (diffWordMarks)
     severity: medium
 ---
 
@@ -154,6 +161,38 @@ Expected lines are what the pinned CLI prints; `L R` = left / right number (blan
   - `[false]` `[reject]` (intent) The oracle's Changed kind is a parser convention — the CLI marks a changed line by printing both numbers outside the `context` label; that is what the parser reads, and numbers, token sides and texts are compared directly.
   - `[false]` `[reject]` (intent) No Marionette check or DS republish stated — the DS was republished; the Marionette check is stated as not done under the Auto Run Result (allowed by the intent).
 
+### 2026-11-12 — Review pass (follow-up)
+- verdicts: 28 findings — high 0, medium 6, low 14, false 8, maybe-false 0
+- findings:
+  - `[low]` `[patch]` (blind) Under `pair` a conflicted file lists sections but no hunk carries any, and the docs give no `pair` exception — real, opt-in only; patched: `Hunk::sections` doc in `hunks.rs` says it is always empty under `pair` on a conflicted side.
+  - `[low]` `[reject]` (blind) Under `pair` counts and ranges are not real line numbers — carried: same as the earlier `pair` counts row; opt-in `pair` only.
+  - `[low]` `[reject]` (blind) Side by side paints a `-------` term's left cells red with green marks — carried: earlier row, opt-in `pair` only.
+  - `[false]` `[reject]` (blind) The hunk symbol has no 80-byte cut and keeps indentation — carried: CLI parity (the CLI prints the whole raw line).
+  - `[false]` `[reject]` (blind) The `\ No newline at end of file` marker is not color-words output — carried: the story keeps the marker.
+  - `[low]` `[reject]` (blind) Unified conflict header rows skip the number columns, so their text sits left of the code — real but only with the opt-in `pair` method, and the spec says headers carry no numbers; padding them needs a new branch.
+  - `[low]` `[patch]` (blind) `epic-5-context.md` still calls 5.10 open / backlog — real; patched both lines to done.
+  - `[low]` `[reject]` (blind) The sprint-status 5-2 entry still says `jj diff --git` underlines — it records what Story 5.2 built; history, not a live rule (project-context.md carries the rule and was updated).
+  - `[false]` `[reject]` (blind) The story is done with the Marionette check open and untracked — the dispatch assigns the catalogue check to the console session after this run.
+  - `[false]` `[reject]` (blind) The oracle lacks a `max-inline-alternation = -1` witness and other cases — the `-1` witness exists (`diff_color_words.rs:267`); the rest is carried from the earlier "witnesses missing" row.
+  - `[low]` `[reject]` (blind) The fingerprint runs a second line diff per file — carried: cheap, no measured cost.
+  - `[false]` `[reject]` (blind) Side by side no longer pairs an old line with the new line it became — the intent asks for exactly this ("each old line once, whole"; the jj example shows 2454 once).
+  - `[low]` `[reject]` (edge-case) A `pair` hunk starting mid `-------` term loses the swap — carried.
+  - `[medium]` `[defer]` (edge-case) A binary file's mode-only change is not `(binary)` — carried: already deferred with the reading-rules entry.
+  - `[medium]` `[defer]` (edge-case) A Git submodule side is empty — carried: same deferred entry.
+  - `[medium]` `[defer]` (edge-case) Access denied fails the whole diff — carried: same deferred entry.
+  - `[low]` `[reject]` (edge-case) `-w` / `-b` context lines get their own side-by-side rows — carried: the app never sets `-w` / `-b` yet.
+  - `[low]` `[patch]` (edge-case) `pair` file lists sections that no hunk carries — same root as the blind `pair` sections row; patched there (doc).
+  - `[low]` `[reject]` (edge-case) Claim: side by side shows each old line once only outside `-w` / `pair` — same roots as the carried `-w` / `pair` rejects.
+  - `[medium]` `[defer]` (edge-case) Claim: parity holds only for the witness repos (submodule, binary, access denied) — carried: the deferred reading-rules entry.
+  - `[medium]` `[defer]` (intent) `diffWordMarks` keeps 10.32's fill-only rule, so lines with only-whitespace unchanged text show no word marks where `jj diff` colours tokens — real and met often (new files, blocks over the limit); pre-existing rule the spec's tasks kept; deferred as a decision for Ralph (new `deferred:` item, mirrored to deferred-work.md).
+  - `[low]` `[reject]` (intent) The inspector keeps a git-style `@@` hunk header the CLI does not print — it carries the hunk-picking checkbox, and the story keeps it unchanged in behaviour.
+  - `[low]` `[reject]` (intent) The oracle checks only the "Created conflict" header — Resolved / Modified are unit-tested; already named as a residual risk; opt-in `pair` only.
+  - `[low]` `[patch]` (intent) The symbol strips a trailing `\r` — carried: patched in the first pass, not patched again.
+  - `[false]` `[reject]` (intent) `removed` / `added` count distinct numbers — documented by design (Design Notes, "One old line over several rows").
+  - `[medium]` `[defer]` (intent) File sides read through `git_diff_part` — carried: the deferred reading-rules entry.
+  - `[false]` `[reject]` (intent) The diff edits the 5.9 spec and existing deferred-work bullets — those edits are the story loop's ledger-close commit (847a4752), not the story's implementation.
+  - `[false]` `[reject]` (intent) The pinned fingerprint test was rewritten — its pinned value is unchanged; the signature change needed the new call.
+
 ## Design Notes
 
 - **One old line over several rows.** `DiffLineIterator` gives every row that holds left content the current left number, so a split call repeats its left number (`2454 2454`, `2454 2459` in the jj example). That is why `removed` counts distinct numbers and why side by side joins rows by number.
@@ -190,6 +229,12 @@ Expected lines are what the pinned CLI prints; `L R` = left / right number (blan
 - Stale-mention search: one historical wording mention only (the no-newline marker's "jj's own words").
 - Marionette check of the catalogue: not done — this unattended run cannot hold a running app.
 
+**Verification notes (2026-11-12, follow-up review; doc-only Rust patch):**
+- `cargo fmt --all --check` — clean.
+- `cargo clippy -p zanshin-jj --all-targets -- -D warnings` — clean.
+- `cargo test -p zanshin-jj --lib -- hunks::` — 17 passed.
+- Not rerun: FFI, parity oracle, Dart suites — the patch changes a Rust doc comment and `epic-5-context.md` only.
+
 ## Auto Run Result
 
 Status: done
@@ -218,5 +263,7 @@ Status: done
 - I1 (E2 vs difftastic on real diffs; Ralph decided "go back"): fixed — `line_pairs.rs` is removed and the word marks are jj's color-words marks (commit ab40178370cc7a91d03e56d3ac02747497063373).
 - I2 (E2 unmeasured on reflowed prose): fixed — no longer applies; the line pairing it concerns is removed, prose gets the CLI's own marks (commit ab40178370cc7a91d03e56d3ac02747497063373).
 - I3 (`true,` → `false,` loses its word marks under E2): fixed — with jj's color-words the one-line block is one Changed line marking only `true` / `false` (commit ab40178370cc7a91d03e56d3ac02747497063373).
+
+**Follow-up review (2026-11-12).** 28 findings (medium 6, low 14, false 8). Patched (2 low): the `Hunk::sections` doc names the `pair` exception; `epic-5-context.md` marks 5.10 done. Deferred (1 new, medium): 10.32's fill-only rule hides word marks on lines whose unchanged text is only whitespace — a decision for Ralph, mirrored to deferred-work.md "Surfaced in the follow-up review of Story 5.10". The other deferrals are carried from the first pass. Rejected: conflict-header alignment, git-style `@@` header, 5-2 history entry, oracle conflict-header breadth, and the carried and false rows — reasons in the triage log. Follow-up review recommended: `false` (no high patched; 0 high, 0 medium, 2 low patched).
 
 **Residual risks.** Coverage was not measured (`hunks.rs`, `source_symbol.rs`, `zanshin-ffi/src/diff.rs` sit at 100 % in the baseline); the loop's final gate checks it. Behaviour changes that follow the CLI: a gap one line longer than the context is shown whole, a first hunk without a skipped range has no symbol.

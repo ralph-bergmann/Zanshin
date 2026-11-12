@@ -2997,3 +2997,9 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - **The diff still reads each file side the way `jj diff --git` does (`git_diff_part`), not the way color-words does (`diff_content_as_merge`).** Medium.
   - `crates/zanshin-jj/src/hunks.rs` `DiffReader::file`. Three visible differences from `jj diff`: an unreadable side fails the whole call (the CLI prints `Access denied to <path>: …` and goes on); a Git submodule side is empty (the CLI diffs `Git submodule checked out at <id>`); a mode-only change of a binary file is not binary (the CLI prints `(binary)`). The story kept the binary and reading rules; the access-denied case needs a way to report a skipped file on the wire.
   - **Follow-up:** read sides like `diff_content_as_merge` (`cli/src/diff_util.rs` @ v0.47.0) and add an access-denied marker to `FileDiff` (schema, bridge, inspector note).
+
+## Surfaced in the follow-up review of Story 5.10 (bmad-build-auto, 2026-11-12)
+
+- **Decision for Ralph: a removed or added line whose unchanged text is only whitespace shows the line fill without word marks, where `jj diff` colours its changed words.** Medium.
+  - `app/lib/src/features/graph/inspector_diff.dart:119` `diffWordMarks` keeps Story 10.32's rule ("no visible unchanged text → fill only") for non-changed lines; it hits every new file and every block over the inline limit. The rule predates 5.10 and Ralph's look rule says colours stay; the intent's "no rule of Zanshin's own marks words" can be read to cover it.
+  - **Follow-up:** Ralph decides: keep 10.32's fill-only look, or draw the CLI's token marks on those lines too (drop the rule in `diffWordMarks` and its tests).

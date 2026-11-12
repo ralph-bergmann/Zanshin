@@ -4,7 +4,7 @@
 
 ## Goal
 
-Epic 5 gives Zanshin a structured diff between any two revisions: files → hunks → lines → segments, computed in Rust and sent to Dart as a FlatBuffers payload. It feeds the inspector diff view, hunk selection and selection-to-tree, so it must match the jj CLI. The title is historical: the `zanshin-diff` crate and syntax highlighting were removed on 2026-11-12. The open story is 5.10 (Ralph, 2026-11-12): the diff becomes what `jj diff` prints with no `ui.diff-formatter`, the `:color-words` format. It replaces both the `jj diff --git`-style layout and Story 5.9's line pairing (E2), so no rule of Zanshin's own decides which words are marked.
+Epic 5 gives Zanshin a structured diff between any two revisions: files → hunks → lines → segments, computed in Rust and sent to Dart as a FlatBuffers payload. It feeds the inspector diff view, hunk selection and selection-to-tree, so it must match the jj CLI. The title is historical: the `zanshin-diff` crate and syntax highlighting were removed on 2026-11-12. Story 5.10 (Ralph, 2026-11-12, done): the diff becomes what `jj diff` prints with no `ui.diff-formatter`, the `:color-words` format. It replaces both the `jj diff --git`-style layout and Story 5.9's line pairing (E2), so no rule of Zanshin's own decides which words are marked.
 
 ## Stories
 
@@ -17,7 +17,7 @@ Epic 5 gives Zanshin a structured diff between any two revisions: files → hunk
 - Story 5.7: 5k-line performance test (deleted)
 - Story 5.8: FFI wrapper `zanshin-ffi/src/diff.rs` (done)
 - Story 5.9: Structural diff, difftastic class (done; its line pairing E2 is replaced by 5.10)
-- Story 5.10: The diff is jj's default format, color-words (backlog, next)
+- Story 5.10: The diff is jj's default format, color-words (done)
 
 ## Requirements & Constraints
 

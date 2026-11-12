@@ -241,7 +241,9 @@ pub struct Hunk {
     pub symbol: Option<String>,
     /// The file's sections one of its changed lines falls in (a left number in a section's old
     /// range or a right number in its new range). At `-w` / `-b` this can be a whole section the
-    /// hunk shows only part of, or empty (a hunk whose lines lie in no exact section).
+    /// hunk shows only part of, or empty (a hunk whose lines lie in no exact section). Always
+    /// empty under `diff.color-words.conflict = "pair"` on a conflicted side: its numbers count
+    /// conflict-term lines, not the materialized text the file's sections cut.
     pub sections: Vec<HunkKey>,
     /// The number of distinct left numbers on its changed lines (every kind but
     /// [`HunkLineKind::Context`] and [`HunkLineKind::ConflictHeader`]): one old line spread over
