@@ -170,7 +170,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut gap = Gap::default();
     // E2's marks against today's, on every changed line: word marks, then drawn.
     let mut e2_vs_today: [BTreeMap<Class, usize>; 2] = Default::default();
-    // Changed blocks E2 pairs, and the files where E2's per-file budget ran out.
+    // Changed blocks E2 pairs, and the files where E2's per-file budget left a block to jj.
     let (mut blocks, mut budget_files) = (0, Vec::new());
     let mut slowest: Vec<(Duration, String, usize)> = Vec::new();
     // Per commit: jj's and difft's summed time over its diffed files. A side note only: the
@@ -498,7 +498,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         );
     }
     println!(
-        "\nChanged blocks with removed and added lines: {blocks}. Files where E2's per-file budget ({} bytes) ran out, so some block keeps today's marks: {} of {}{}.\n",
+        "\nChanged blocks with removed and added lines: {blocks}. Files where E2's per-file budget ({} bytes) could not pay for some block, so it keeps today's marks: {} of {}{}.\n",
         crate::line_pairs::MAX_PAIRING_WORK,
         budget_files.len(),
         files,

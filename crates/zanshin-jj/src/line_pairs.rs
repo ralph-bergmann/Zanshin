@@ -15,8 +15,8 @@
 //! - A group's lines take the tokens of jj-lib's own `ContentDiff::by_word` over the group's
 //!   text, split into lines as jj-lib splits them.
 //! - A line in no group gets one changed token for the whole line.
-//! - The search of a file reads at most [`MAX_PAIRING_WORK`] bytes; once that runs out, the
-//!   remaining blocks keep jj-lib's block-wide tokens.
+//! - The search of a file may read at most [`MAX_PAIRING_WORK`] bytes; a block it cannot pay for
+//!   keeps jj-lib's block-wide tokens.
 //!
 //! The module imports only `jj_lib` and `std`, so the structural-diff probe
 //! (`spikes/structural-diff-probe/`) compiles this same file and measures the real code.
@@ -38,12 +38,14 @@ pub(crate) const MIN_SIMILARITY_PERCENT: i64 = 50;
 /// over more lines is rare, and every longer run adds two candidates to each cell of the search.
 pub(crate) const MAX_RUN_LINES: usize = 8;
 
-/// The bytes the word diffs that score candidates may read in one file. A block whose one-to-one
-/// candidates alone (`added lines · removed bytes + removed lines · added bytes`) would read more
-/// than is left is not searched, and a search that runs out stops; such blocks keep jj-lib's
-/// block-wide tokens. It bounds the pairing's time and memory per file, whatever its blocks.
-/// Measured with the structural-diff probe (its README, "Results of the E2 run"): a search that
-/// uses all of it takes about 20 ms.
+/// The bytes the search of one file may read. Each searched block first pays for its one-to-one
+/// candidates (`added lines · removed bytes + removed lines · added bytes`): its table of shared
+/// tokens reads them, and they bound the table's size even when every candidate is pruned. Then
+/// each word diff that scores a candidate pays for its input. A block that cannot pay for its
+/// one-to-one candidates is not searched, and a search that runs out stops; such blocks keep
+/// jj-lib's block-wide tokens. So the pairing's time and memory per file stay bounded, whatever
+/// its blocks. Measured with the structural-diff probe (its README, "Re-run after the follow-up
+/// review").
 pub(crate) const MAX_PAIRING_WORK: usize = 1 << 18;
 
 /// One line's word tokens, as `unified_diff_hunks` keeps them.
@@ -52,8 +54,8 @@ type Tokens<'a> = Vec<(DiffTokenType, &'a [u8])>;
 /// Replaces the word tokens of each changed block of `hunks` — `unified_diff_hunks` over `texts` —
 /// with the tokens of its line pairs (see the module doc). Lines, kinds and ranges stay as they
 /// are, and so does a block with only removed or only added lines: its lines are already one
-/// changed token each. Returns whether [`MAX_PAIRING_WORK`] ran out, so that a block kept
-/// jj-lib's tokens.
+/// changed token each. Returns whether a block kept jj-lib's tokens because [`MAX_PAIRING_WORK`]
+/// could not pay for its search.
 pub(crate) fn pair_lines<'a>(hunks: &mut [UnifiedDiffHunk<'a>], texts: Diff<&'a [u8]>) -> bool {
     pair_lines_within(hunks, texts, MAX_PAIRING_WORK)
 }
@@ -91,13 +93,12 @@ fn pair_lines_within<'a>(hunks: &mut [UnifiedDiffHunk<'a>], texts: Diff<&'a [u8]
                             lines: after,
                         },
                     );
-                    // A block too big for the rest of the budget is not searched at all, which
-                    // also bounds the size of the search's table.
-                    let paired = if block_work(block) <= budget {
+                    // The search pays for its table first, so blocks whose candidates are all
+                    // pruned still spend the budget; a block that cannot pay is not searched.
+                    let paired = budget.checked_sub(block_work(block)).and_then(|rest| {
+                        budget = rest;
                         pair_block(block, &mut budget)
-                    } else {
-                        None
-                    };
+                    });
                     if let Some(paired) = paired {
                         debug_assert!(
                             lines
@@ -506,17 +507,19 @@ mod tests {
         assert!(!exact.1 && !all_space.1);
     }
 
-    /// The budget is the file's. The first block's one-to-one candidates would read 24 bytes; its
-    /// search reads 30 (a 1:1 diff of 12 bytes, a 1:2 run of 18). The second block reads nothing,
-    /// but its one-to-one candidates need 4 more to be searched at all. With less than 30 the first
-    /// search runs out, and that block and every later one keep jj-lib's tokens; with less than 24
-    /// the first block is not searched, and the second one still pairs.
+    /// The budget is the file's, and a search pays for its block's one-to-one candidates before its
+    /// word diffs. The first block's candidates cost 24 bytes and its word diffs 30 (a 1:1 diff of
+    /// 12 bytes, a 1:2 run of 18). The second block runs no word diff (every candidate is pruned),
+    /// but its candidates still cost 4. With less than 58 the second block keeps jj-lib's tokens;
+    /// with less than 54 the first search runs out, and that block and every later one keep
+    /// jj-lib's tokens; with less than 24 the first block is not searched, and the second one still
+    /// pairs.
     #[test]
     fn a_spent_budget_leaves_later_blocks_to_jj_lib() {
         let (left, right) = ("a b c\nkeep\nx\n", "a b d\na b e\nkeep\ny\n");
         let jj = both(left, right).0;
         let run = |budget| paired_with(left, right, LineCompareMode::Exact, budget);
-        let (full, ran_out) = run(34);
+        let (full, ran_out) = run(58);
         assert!(!ran_out);
         assert_eq!(
             full,
@@ -529,9 +532,9 @@ mod tests {
                 "+{+y\n+}"
             ]
         );
-        assert_eq!(run(33).0[..4], full[..4]);
-        assert_eq!(run(33).0[4..], jj[4..]);
-        assert_eq!(run(29), (jj.clone(), true));
+        assert_eq!(run(57).0[..4], full[..4]);
+        assert_eq!(run(57).0[4..], jj[4..]);
+        assert_eq!(run(53), (jj.clone(), true));
         let (marked, ran_out) = run(23);
         assert_eq!((&marked[..4], &marked[4..]), (&jj[..4], &full[4..]));
         assert!(ran_out);
@@ -540,7 +543,7 @@ mod tests {
     /// A block too big for the budget keeps jj-lib's block-wide tokens; within it the same lines
     /// would be unpaired whole lines.
     #[test]
-    fn a_block_over_the_cap_keeps_jj_libs_tokens() {
+    fn a_block_over_the_budget_keeps_jj_libs_tokens() {
         // Two-byte lines: the work is `n · 2n + n · 2n`.
         let lines = (MAX_PAIRING_WORK / 4).isqrt() + 1;
         let (jj, kept) = both(&"x\n".repeat(lines), &"y\n".repeat(lines));

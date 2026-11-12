@@ -249,8 +249,9 @@ pub struct Hunk {
 /// their order: one line with one line, or one line with a run of consecutive lines on the other
 /// side (a call split over lines, lines joined into one). A pair takes jj-lib's own word diff
 /// over its text, so a moved line break is only one more token; a line without a partner (an
-/// inserted line, a rewritten comment) is one changed run. A huge block keeps jj-lib's word diff
-/// over the whole block, which is what `jj diff --git` underlines. Words are runs of
+/// inserted line, a rewritten comment) is one changed run. A block the file's pairing budget cannot
+/// pay for keeps jj-lib's word diff over the whole block, which is what `jj diff --git` underlines.
+/// Words are runs of
 /// `A-Z a-z 0-9 _` and non-ASCII bytes; every other byte is a token of its own. A line's segments
 /// concatenate to its text, none is empty, and adjacent segments differ in kind.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -53,7 +53,8 @@ pub struct JjDiff {
     pub elapsed: Duration,
     /// E2's line pairing alone (`pair_lines`), on top of `elapsed`.
     pub e2_elapsed: Duration,
-    /// E2's per-file budget (`MAX_PAIRING_WORK`) ran out, so some block kept jj's marks.
+    /// E2's per-file budget (`MAX_PAIRING_WORK`) could not pay for some block, so it kept jj's
+    /// marks.
     pub e2_budget_ran_out: bool,
 }
 

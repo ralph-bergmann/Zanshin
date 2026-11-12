@@ -2515,8 +2515,8 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   keeps, over the tokens of both sides, each word or non-whitespace byte counting 1 — is above
   50 %. A pair takes jj-lib's word diff (`ContentDiff::by_word`) over its text, so a moved line
   break is only one more token; a line without a partner (an inserted line, a rewritten comment)
-  is one changed segment. Once the file's pairing budget (`crates/zanshin-jj/src/line_pairs.rs`)
-  runs out, a block keeps jj-lib's word diff over the whole block, which is what `jj diff --git`
+  is one changed segment. A block the file's pairing budget (`crates/zanshin-jj/src/line_pairs.rs`)
+  cannot pay for keeps jj-lib's word diff over the whole block, which is what `jj diff --git`
   underlines. Words are runs of `A-Z a-z 0-9 _` and non-ASCII bytes; every other byte (`.`, `(`,
   a space, a line break) is a token of its own. `Equal` and `Removed` segments on a removed line,
   `Equal` and `Added` on an added one, one `Equal` segment on a `Context` line. A changed line can

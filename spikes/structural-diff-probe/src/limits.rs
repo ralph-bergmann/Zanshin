@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! `limits`: inputs that trip each difft fallback, plus two that fill E2's per-file budget, with
+//! `limits`: inputs that trip each difft fallback, plus three that fill E2's per-file budget, with
 //! wall time and peak memory for jj (with E2) and for difft. The inputs are generated into
 //! `out/limits/<name>/`.
 
@@ -29,7 +29,7 @@ pub fn run(_args: &[String]) -> Result<(), String> {
     println!("difft: {}\n", marks::require_difft()?);
     let out = out_dir("limits")?;
     let probe = std::env::current_exe().map_err(|error| format!("current_exe: {error}"))?;
-    println!("| input | bytes before / after | difft args | difft `language` | difft wall | difft peak RSS | jj changed lines | jj in-process | E2 in-process (more) | E2 budget ran out | jj + E2 process peak RSS |");
+    println!("| input | bytes before / after | difft args | difft `language` | difft wall | difft peak RSS | jj changed lines | jj in-process | E2 in-process (more) | E2 budget left a block to jj | jj + E2 process peak RSS |");
     println!("|---|---:|---|---|---:|---:|---:|---:|---:|---|---:|");
     let mut details = String::new();
     let (mut mismatches, mut cr_shifted) = (0, 0);
@@ -149,7 +149,7 @@ fn write_details(details: &mut String, input: &Input, difft: &marks::DifftDiff) 
 }
 
 /// `jj-marks <before> <after>`: prints the changed-line count, jj's in-process time and E2's in
-/// µs, and whether E2's budget ran out.
+/// µs, and whether E2's budget left a block to jj's marks.
 pub fn jj_marks_child(args: &[String]) -> Result<(), String> {
     let [before, after] = args else {
         return Err("usage: structural-diff-probe jj-marks <before> <after>".to_owned());
@@ -203,7 +203,7 @@ fn inputs() -> Vec<Input> {
         },
         Input {
             name: "e2-at-cap",
-            what: "One changed block whose one-to-one candidates fill E2's per-file budget: copies of `values.push(first * second);` become copies of `values.push(second * first);`. Every line pair shares all its tokens, so no bound skips a pair.",
+            what: "One changed block whose search fills E2's per-file budget: copies of `values.push(first * second);` become copies of `values.push(second * first);`. Every line pair shares all its tokens, so no bound skips a pair: the one-to-one candidates cost half of the budget for the search's table and the other half for their word diffs.",
             extension: "rs",
             before: at_cap(E2_BEFORE),
             after: at_cap(E2_AFTER),
@@ -215,6 +215,14 @@ fn inputs() -> Vec<Input> {
             extension: "rs",
             before: calls(20, 28, false),
             after: calls(20, 28, true),
+            extra_runs: &[],
+        },
+        Input {
+            name: "e2-pruned-blocks",
+            what: "A word list: 300 changed blocks of 120 one-word lines each, every word replaced by an unrelated one, one unchanged line between blocks (a reviewer's case). No candidate shares a token, so the bounds prune every one and no word diff runs; only the search's table costs.",
+            extension: "txt",
+            before: word_blocks(300, 120, 'a'),
+            after: word_blocks(300, 120, 'z'),
             extra_runs: &[],
         },
         Input {
@@ -347,11 +355,23 @@ fn calls(blocks: usize, calls: usize, split: bool) -> String {
     text
 }
 
+/// `blocks` blocks of `lines` one-word lines `<letter><block>_<line>`, split by a line `block <n>`.
+fn word_blocks(blocks: usize, lines: usize, letter: char) -> String {
+    let mut text = String::new();
+    for block in 0..blocks {
+        let _ = writeln!(text, "block {block}");
+        for line in 0..lines {
+            let _ = writeln!(text, "{letter}{block}_{line}");
+        }
+    }
+    text
+}
+
 /// One function body of as many copies of `line` as one changed block of `n` lines against `n`
-/// lines may hold within E2's per-file budget: the one-to-one candidates read
-/// `2 · n · n · line length` bytes.
+/// lines may hold within E2's per-file budget: its one-to-one candidates cost
+/// `2 · n · n · line length` bytes for the search's table and as many again for their word diffs.
 fn at_cap(line: &str) -> String {
-    let fits = |count: usize| 2 * count * count * line.len() <= crate::line_pairs::MAX_PAIRING_WORK;
+    let fits = |count: usize| 4 * count * count * line.len() <= crate::line_pairs::MAX_PAIRING_WORK;
     let count = (1..).take_while(|&count| fits(count)).last().unwrap_or(1);
     format!(
         "pub fn table() {{\n    let mut values = Vec::new();\n{}    values\n}}\n",

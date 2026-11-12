@@ -80,8 +80,8 @@ cargo build --release --offline
 | mode | input | output |
 |---|---|---|
 | `witness` | `inputs/witness/<case>/before.*` and `after.*`, plus `edge-cr-tab` built in code (carriage returns and a tab); `widget-test-rename` is Ralph's widget-test hunk, its lines unchanged inside a minimal Dart frame so difft parses it | per changed line jj's, difft's and E2's marks in `[-…-]` / `{+…+}` notation, with both comparisons |
-| `history` | every `.rs` / `.dart` file modified (status `M`, no rename detection) in the newest `--commits` (default 200) non-merge commits of `--rev` that modify one; generated files skipped (by name and by generator header) | class counts in both views for today and for E2, the net change of today's gap to difft under E2 (`(today − E2) / today`: lines E2 brings to difft's marks minus lines it takes away), E2 against today, the files where E2's per-file budget ran out, time per file (jj, E2, difft without `--jobs`), peak memory, per-commit sums, the fallback files, examples; one row per file in `out/history.tsv` (or `--tsv FILE`) |
-| `limits` | inputs generated into `out/limits/` that trip each difft fallback, with lowered and raised limits, two conflicted files, and two inputs that fill E2's per-file budget (`e2-at-cap`, `e2-reformatted-calls`) | difft's `language`, wall time and peak memory for difft, jj and E2, and whether E2's budget ran out |
+| `history` | every `.rs` / `.dart` file modified (status `M`, no rename detection) in the newest `--commits` (default 200) non-merge commits of `--rev` that modify one; generated files skipped (by name and by generator header) | class counts in both views for today and for E2, the net change of today's gap to difft under E2 (`(today − E2) / today`: lines E2 brings to difft's marks minus lines it takes away), E2 against today, the files where E2's per-file budget left a block to jj, time per file (jj, E2, difft without `--jobs`), peak memory, per-commit sums, the fallback files, examples; one row per file in `out/history.tsv` (or `--tsv FILE`) |
+| `limits` | inputs generated into `out/limits/` that trip each difft fallback, with lowered and raised limits, two conflicted files, and three inputs that fill E2's per-file budget (`e2-at-cap`, `e2-reformatted-calls`, `e2-pruned-blocks`) | difft's `language`, wall time and peak memory for difft, jj and E2, and whether E2's budget left a block to jj |
 | `parse-check` | the `.rs`, `.dart`, `.md` files at `--rev` (read with `git show`), two known-bad samples, newer Dart syntax samples | ERROR / MISSING nodes per grammar, parse time |
 
 All modes print Markdown to stdout. `out/` (generated inputs, temp files, `history.tsv`) is
@@ -1444,3 +1444,100 @@ match the research run's above with one `e2` row added; E2's marks equal jj's on
 - build |    values.push([-first-] * [-second-]);   <- different bytes
 - e2    |    values.push([-first * -]second);
 ```
+
+## Re-run after the follow-up review (2026-11-12, the budget pays for the search's table)
+
+Same machine, same three commands. The follow-up review of Story 5.9's closing run found that the
+budget paid only for the word diffs that score candidates. A block whose candidates the bounds all
+prune still built its whole table (the shared tokens of every one-to-one pair, then every cell of
+the search) for free, so a file of many such blocks grew without limit. Now each searched block
+first pays for its one-to-one candidates (`added lines · removed bytes + removed lines · added
+bytes`, the same measure that decides whether a block is searched at all), then each scoring word
+diff pays for its input. `MAX_PAIRING_WORK` stays 262,144 bytes. Measured file:
+`crates/zanshin-jj/src/line_pairs.rs` with `git hash-object`
+`21d507ba73adb17d9836ca9f668ce416090f32ca`; the old file was measured from a copy of
+`15ddbd39`. `limits` gained `e2-pruned-blocks` (a reviewer's case: a word list of 300 changed
+blocks of 120 one-word lines, every word replaced by an unrelated one; no candidate shares a token,
+so no word diff runs), and `e2-at-cap` now fills the budget with its table and its word diffs
+together (44 lines a side instead of 63).
+
+| `line_pairs.rs` | `e2-pruned-blocks` | `e2-at-cap` (44 lines) | `e2-reformatted-calls` | files where the budget left a block to jj (`history`) | E2 per file p99 (Dart / Rust) | E2 max |
+|---|---:|---:|---:|---:|---:|---:|
+| `15ddbd39` (the E2 run) | 371.8 ms, budget never short | 9.9 ms | 22.6 ms | 9 of 2,536 | 3.0 / 3.4 ms | 15.0 ms |
+| `21d507ba` (budget pays for the table) | 1.6 ms | 9.1 ms | 0.5 ms | 12 of 2,536 | 3.2 / 3.3 ms | 10.1 ms |
+
+jj's own diff of `e2-pruned-blocks` takes 14.0 ms. Before the fix E2's time on it grew with the
+number of blocks (26 times jj's here); now the first block pays for its table, and every later one
+is too big for what is left. `e2-reformatted-calls` drops to 0.5 ms because its first block's
+one-to-one candidates alone nearly fill the budget, so that search runs out at once and every block
+keeps jj's marks (before, the first blocks paired). The slowest file stays `scattered-changes` at
+23.5 ms (jj 15.9 ms): 2,000 small blocks that pay a little each, so its cost grows with the file,
+as jj's own diff does. A search that uses the whole budget still takes about 20 ms (the earlier
+`e2-reformatted-calls` figure); a table-only search costs less per byte.
+
+`witness`: E2's marks equal the E2 run's on every case (only the timing lines differ). `history`:
+today's classes are unchanged (4,755 word-mark and 10,812 drawn differences of 96,295 lines); the
+three more fallback files (`layout_engine.dart@2459cc42`, `zanshin_bootstrap_test.dart@fcc1b4d9`,
+`projects_tree.dart@8552a563`) keep today's marks in some block, which moves the E2 rows a little.
+Its E2 parts, verbatim:
+
+```text
+#### Today's gap to difft and E2's (96295 changed lines without a difft fallback)
+
+| | word marks | drawn |
+|---|---:|---:|
+| today's marks differ from difft's | 4755 (4.9 %) | 10812 (11.2 %) |
+| E2's marks differ from difft's | 5150 (5.3 %) | 10325 (10.7 %) |
+| today's differ, E2's match difft's | 1130 (1.2 %) | 1914 (2.0 %) |
+| today's match difft's, E2's differ | 1525 (1.6 %) | 1427 (1.5 %) |
+| net change of today's gap | -8.3 % | 4.5 % |
+
+Of the 5150 lines whose E2 word marks differ from difft's, E2 marks 3199 whole (unpaired, or their pair kept none of their ink).
+
+#### E2 against today (115515 changed lines; the class says what E2 marks compared with today)
+
+| class | word marks | share | drawn | share |
+|---|---:|---:|---:|---:|
+| same marks | 106773 | 92.4 % | 106397 | 92.1 % |
+| E2 marks fewer bytes | 1977 | 1.7 % | 6078 | 5.3 % |
+| E2 marks more bytes | 5610 | 4.9 % | 1712 | 1.5 % |
+| different bytes | 1155 | 1.0 % | 1328 | 1.1 % |
+
+#### Time per file
+
+| | jj Dart | E2 Dart | jj Rust | E2 Rust |
+|---|---:|---:|---:|---:|
+| median | 0.2 ms | 0.1 ms | 0.2 ms | 0.1 ms |
+| p90 | 0.6 ms | 0.5 ms | 0.8 ms | 0.6 ms |
+| p99 | 1.3 ms | 3.2 ms | 1.6 ms | 3.3 ms |
+| max | 3.4 ms | 7.2 ms | 3.0 ms | 10.1 ms |
+| sum | 384.9 ms | 331.0 ms | 372.9 ms | 268.8 ms |
+```
+
+`limits`, verbatim (table and notes; the per-input details match the E2 run's):
+
+| input | bytes before / after | difft args | difft `language` | difft wall | difft peak RSS | jj changed lines | jj in-process | E2 in-process (more) | E2 budget left a block to jj | jj + E2 process peak RSS |
+|---|---:|---|---|---:|---:|---:|---:|---:|---|---:|
+| byte-limit | 1108780 / 1108780 | defaults | `Text (1.1 MiB exceeded DFT_BYTE_LIMIT)` | 83.1 ms | 63.3 MB | 2 | 11.2 ms | 1.0 ms | no | 17.3 MB |
+|  | 1108780 / 1108780 | `--byte-limit 100000000` | `Rust` | 932.7 ms | 385.6 MB |  | | | |  |
+| scattered-changes | 548965 / 548965 | defaults | `Rust` | 1131.6 ms | 328.2 MB | 4000 | 15.9 ms | 23.5 ms | no | 16.3 MB |
+|  | 548965 / 548965 | `--graph-limit 300000` | `Rust` | 1150.2 ms | 328.1 MB |  | | | |  |
+| graph-limit-statements | 548965 / 548965 | defaults | `Text (exceeded DFT_GRAPH_LIMIT)` | 1731.6 ms | 1074.2 MB | 40000 | 88.6 ms | 0.4 ms | yes | 40.8 MB |
+|  | 548965 / 548965 | `--graph-limit 300000` | `Text (exceeded DFT_GRAPH_LIMIT)` | 962.8 ms | 328.6 MB |  | | | |  |
+| graph-limit-array | 204032 / 204032 | defaults | `Text (exceeded DFT_GRAPH_LIMIT)` | 4225.1 ms | 620.4 MB | 12000 | 13.0 ms | 0.1 ms | yes | 38.7 MB |
+|  | 204032 / 204032 | `--graph-limit 300000` | `Text (exceeded DFT_GRAPH_LIMIT)` | 4049.8 ms | 203.2 MB |  | | | |  |
+|  | 204032 / 204032 | `--graph-limit 6000000` | `Text (exceeded DFT_GRAPH_LIMIT)` | 4615.9 ms | 1094.1 MB |  | | | |  |
+| e2-at-cap | 1515 / 1515 | defaults | `Rust` | 80.2 ms | 93.9 MB | 88 | 0.2 ms | 9.1 ms | no | 3.3 MB |
+| e2-reformatted-calls | 17684 / 48484 | defaults | `Rust` | 60.2 ms | 26.2 MB | 5040 | 6.1 ms | 0.5 ms | yes | 6.0 MB |
+| e2-pruned-blocks | 280690 / 280690 | defaults | `Text` | 1426.7 ms | 61.4 MB | 72000 | 14.0 ms | 1.6 ms | yes | 44.8 MB |
+| parse-error-rust | 66 / 83 | defaults | `Text (1 Rust parse error, exceeded DFT_PARSE_ERROR_LIMIT, first at 3:8)` | 37.8 ms | 12.8 MB | 3 | 0.0 ms | 0.1 ms | no | 2.7 MB |
+| parse-error-dart | 72 / 76 | defaults | `Text (4 Dart parse errors, exceeded DFT_PARSE_ERROR_LIMIT, first at 1:0)` | 48.4 ms | 10.6 MB | 2 | 0.1 ms | 0.1 ms | no | 2.7 MB |
+|  | 72 / 76 | `--parse-error-limit 10` | `Dart` | 42.9 ms | 10.6 MB |  | | | |  |
+| missing-node-rust | 27 / 26 | defaults | `Rust` | 38.2 ms | 12.7 MB | 2 | 0.0 ms | 0.0 ms | no | 2.6 MB |
+| no-parser-markdown | 32 / 38 | defaults | `Text` | 23.9 ms | 6.0 MB | 2 | 0.0 ms | 0.0 ms | no | 2.6 MB |
+| conflict-jj-diff-style | 91 / 323 | defaults | `Text (2 Rust parse errors, exceeded DFT_PARSE_ERROR_LIMIT, first at 2:0)` | 45.1 ms | 12.9 MB | 9 | 0.1 ms | 0.1 ms | no | 2.7 MB |
+| conflict-git-style | 91 / 254 | defaults | `Text (1 Rust parse error, exceeded DFT_PARSE_ERROR_LIMIT, first at 2:0)` | 36.8 ms | 12.8 MB | 6 | 0.0 ms | 0.0 ms | no | 2.5 MB |
+
+Median of 3 runs. Peak RSS is `/usr/bin/time -l`'s maximum resident set size; jj's is a process of its own that reads both files and computes today's marks and E2's. E2's time is its line pairing alone, on top of jj's; E2's per-file budget is 262144 bytes (`MAX_PAIRING_WORK`).
+
+Over all difft runs above: span content mismatches 0, spans moved by a carriage return 0.
