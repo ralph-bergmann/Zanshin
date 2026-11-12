@@ -3003,3 +3003,9 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - **Decision for Ralph: a removed or added line whose unchanged text is only whitespace shows the line fill without word marks, where `jj diff` colours its changed words.** Medium.
   - `app/lib/src/features/graph/inspector_diff.dart:119` `diffWordMarks` keeps Story 10.32's rule ("no visible unchanged text → fill only") for non-changed lines; it hits every new file and every block over the inline limit. The rule predates 5.10 and Ralph's look rule says colours stay; the intent's "no rule of Zanshin's own marks words" can be read to cover it.
   - **Follow-up:** Ralph decides: keep 10.32's fill-only look, or draw the CLI's token marks on those lines too (drop the rule in `diffWordMarks` and its tests).
+
+## Surfaced after the story loop 5.10 (console session, 2026-11-12)
+
+- **In the unified layout the line numbers scroll away with the text when a hunk is scrolled sideways.** Low.
+  - `app/lib/src/features/graph/inspector_diff.dart` `_unified`: the number cells sit inside the horizontal `ZsScrollArea`. On a changed line the coloured numbers are the only line-level cue (no fill), so it is lost while scrolled. Seen in the catalogue ("Floating shell / Controls") and in the real app on a throwaway repo; the `+` / `−` column behaved the same before Story 5.10.
+  - **Follow-up:** a decision for Ralph: keep it, or pin the two number columns while the text scrolls.
