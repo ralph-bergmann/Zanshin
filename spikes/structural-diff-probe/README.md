@@ -11,6 +11,9 @@ Since Story 5.9's closing run it also measures **E2**, the line pairing Zanshin 
 here are the product's code. The report's section 9 cites those results
 ([Results of the E2 run](#results-of-the-e2-run-2026-11-12-story-59s-closing-run)).
 
+`src/line_pairs.rs` is the frozen Story 5.9 E2 code: Story 5.10 removed it from Zanshin (the diff is
+now jj's color-words format), so the probe keeps its own copy.
+
 The crate is its own workspace (an empty `[workspace]` table and its own `Cargo.lock`), so the
 Zanshin workspace, its gate and its coverage never see it. Nothing in the product uses it. Its
 `analysis_options.yaml` keeps the Dart analyzer off the `.dart` fixtures in `inputs/` and `out/`.

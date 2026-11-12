@@ -197,8 +197,18 @@ FileDiff testFileDiff(String path, {FileChangeKind kind = FileChangeKind.modifie
       removed: 1,
       added: 1,
       lines: <HunkLine>[
-        HunkLine(kind: HunkLineKind.removed, text: 'old\n'),
-        HunkLine(kind: HunkLineKind.added, text: 'new\n'),
+        // Story 5.10: one inlined color-words line.
+        HunkLine(
+          kind: HunkLineKind.changed,
+          text: 'oldnew\n',
+          left: 1,
+          right: 1,
+          segments: <Segment>[
+            Segment(kind: SegmentKind.removed, text: 'old'),
+            Segment(kind: SegmentKind.added, text: 'new'),
+            Segment(kind: SegmentKind.equal, text: '\n'),
+          ],
+        ),
       ],
     ),
   ],

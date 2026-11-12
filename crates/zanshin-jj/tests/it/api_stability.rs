@@ -1779,6 +1779,35 @@ fn select_tree_surface_resolves() {
         ) -> Result<zanshin_jj::SelectedTreeId, zanshin_jj::MutateError>;
 }
 
+/// Story 5.10: one line of every kind, named field by field, each with one segment kind.
+fn color_words_lines() -> Vec<zanshin_jj::HunkLine> {
+    [
+        zanshin_jj::HunkLineKind::Context,
+        zanshin_jj::HunkLineKind::Removed,
+        zanshin_jj::HunkLineKind::Added,
+        zanshin_jj::HunkLineKind::Changed,
+        zanshin_jj::HunkLineKind::ConflictHeader,
+    ]
+    .into_iter()
+    .zip([
+        zanshin_jj::SegmentKind::Equal,
+        zanshin_jj::SegmentKind::Removed,
+        zanshin_jj::SegmentKind::Added,
+        zanshin_jj::SegmentKind::Equal,
+        zanshin_jj::SegmentKind::Equal,
+    ])
+    .map(|(kind, segment)| zanshin_jj::HunkLine {
+        kind,
+        left: Some(1),
+        right: None,
+        segments: vec![zanshin_jj::Segment {
+            text: "x".to_owned(),
+            kind: segment,
+        }],
+    })
+    .collect()
+}
+
 /// The Story 5.1 surface: the diff types named field by field and `Repo::compute_hunks` as a
 /// `fn` pointer.
 #[test]
@@ -1819,28 +1848,11 @@ fn compute_hunks_surface_resolves() {
             sections: vec![key],
             removed: 1,
             added: 1,
-            lines: vec![
-                zanshin_jj::HunkLine::Context(String::new()),
-                zanshin_jj::HunkLine::Removed(String::new()),
-                zanshin_jj::HunkLine::Added(String::new()),
-            ],
-            segments: vec![
-                vec![zanshin_jj::Segment {
-                    text: String::new(),
-                    kind: zanshin_jj::SegmentKind::Equal,
-                }],
-                vec![zanshin_jj::Segment {
-                    text: String::new(),
-                    kind: zanshin_jj::SegmentKind::Removed,
-                }],
-                vec![zanshin_jj::Segment {
-                    text: String::new(),
-                    kind: zanshin_jj::SegmentKind::Added,
-                }],
-            ],
+            lines: color_words_lines(),
         }],
     };
     assert_eq!(file.clone(), file);
+    assert_eq!(file.hunks[0].lines[0].text(), "x");
     _ = zanshin_jj::Repo::compute_hunks
         as fn(
             &mut zanshin_jj::Repo,

@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/brand/Icon.jsx":"df15e6713ebc","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"282be7e95fbe","components/content/DiffView.jsx":"4f07a80311ea","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"cb9ce51e065b","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"7e3ccde5113a","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"f69878a91866","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"21bad2528886","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"b103786c1ee8","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/brand/Icon.jsx":"df15e6713ebc","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"a97fd108633b","components/content/DiffView.jsx":"9d00dad1234a","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"cb9ce51e065b","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"7e3ccde5113a","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"f69878a91866","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"21bad2528886","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"b103786c1ee8","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -1331,41 +1331,85 @@ Object.assign(__ds_scope, { Checkbox });
 // components/content/DiffView.jsx
 try { (() => {
 // DiffView — the diff block on the quiet code surface: a toolbar (path, layout toggle, Viewed) over hunks or plain lines.
-// lines: strings with a git sigil ("+…", "-…", "@@…", " …") or objects { t: "add" | "rem" | "hunk" | "ctx", s, runs? }.
-// children (DiffHunk elements) replace `lines`. viewed folds the body away into one green line.
-// Changed words: one line per side, each with its sigil; git's delimiters mark the changed runs, "[-…-]" only on a removed
-// line, "{+…+}" only on an added one. They become runs ([text, changed]); a line whose unchanged text is only blanks keeps
-// none (its line fill says it all). A string has no escape: code holding "[-", "-]", "{+" or "+}" goes in the object form.
+// The lines are jj diff's default color-words lines: each row shows its left and right line number, then its text.
+// lines: strings "<kind><left>:<right>|<text>" — kind " " context, "-" removed (left only), "+" added (right only),
+// "~" changed (an inlined line holding both sides' words), "#" a conflict header ("#|<<<<<<< Created conflict") —
+// or objects { t: "ctx" | "rem" | "add" | "chg" | "hdr", l?, r?, s, runs? }. Changed words: "[-…-]" around a left-side
+// run, "{+…+}" around a right-side one, on any line. They become runs ([text, "rem" | "add" | null]); a removed or
+// added line whose unchanged text is only blanks keeps none (its fill says it all); a changed line always keeps them.
+// Older git strings ("+…", "-…", " …", "@@…") still parse, without numbers. A string has no escape: code holding "[-",
+// "-]", "{+" or "+}" goes in the object form.
 function zsDiffLine(l) {
-  if (typeof l !== "string") return l;
+  if (typeof l !== "string") {
+    // The object form of before Story 5.10 had boolean runs: true is the line's own side.
+    return l.runs ? {
+      ...l,
+      runs: l.runs.map(([s, k]) => [s, k === true ? l.t : k || null])
+    } : l;
+  }
   if (l.startsWith("@@")) return {
     t: "hunk",
     s: l
   };
-  if (l[0] !== "+" && l[0] !== "-") return {
-    t: "ctx",
-    s: l[0] === " " ? l.slice(1) : l
+  if (l.startsWith("#|")) return {
+    t: "hdr",
+    s: l.slice(2)
   };
-  const t = l[0] === "+" ? "add" : "rem";
-  const runs = l.slice(1).split(t === "add" ? /\{\+|\+\}/ : /\[-|-\]/).map((s, i) => [s, i % 2 === 1]).filter(([s]) => s);
-  const s = runs.map(([x]) => x).join("");
-  return runs.some(([, w]) => w) && runs.some(([x, w]) => !w && x.trim()) ? {
+  const cw = /^([ ~+-])(\d*):(\d*)\|/.exec(l);
+  const t = cw ? {
+    " ": "ctx",
+    "-": "rem",
+    "+": "add",
+    "~": "chg"
+  }[cw[1]] : l[0] === "+" ? "add" : l[0] === "-" ? "rem" : "ctx";
+  const body = cw ? l.slice(cw[0].length) : t === "ctx" && l[0] !== " " ? l : l.slice(1);
+  const runs = [];
+  for (const m of body.matchAll(/\[-([\s\S]*?)-\]|\{\+([\s\S]*?)\+\}|([^[{]+|[[{])/g)) {
+    const [s, k] = m[1] != null ? [m[1], "rem"] : m[2] != null ? [m[2], "add"] : [m[3], null];
+    if (!s) continue;
+    if (runs.length && runs[runs.length - 1][1] === k) runs[runs.length - 1][0] += s;else runs.push([s, k]);
+  }
+  const line = {
     t,
-    s,
+    s: runs.map(([x]) => x).join("")
+  };
+  if (cw) {
+    if (cw[2]) line.l = Number(cw[2]);
+    if (cw[3]) line.r = Number(cw[3]);
+  }
+  const marked = runs.some(([, k]) => k) && (t === "chg" || runs.some(([x, k]) => !k && x.trim()));
+  return marked ? {
+    ...line,
     runs
-  } : {
-    t,
-    s
-  };
+  } : line;
 }
 
-// A line's text: each changed run a .w mark — the stronger tint of the line's hue, the line's full height, --text glyphs.
-// Without runs (or with an empty list) it is the plain text.
+// A line's text: each changed run a .w mark — the stronger tint of its side's hue (.w.rem / .w.add), the line's full
+// height, --text glyphs. Without runs (or with an empty list) it is the plain text.
 function zsDiffText(l) {
-  return l.runs && l.runs.length ? l.runs.map(([s, w], i) => w ? /*#__PURE__*/React.createElement("span", {
+  return l.runs && l.runs.length ? l.runs.map(([s, k], i) => k ? /*#__PURE__*/React.createElement("span", {
     key: i,
-    className: "w"
+    className: "w " + k
   }, s) : s) : l.s;
+}
+
+// One unified row: the left and right number columns (outside the selection), then the text; a header spans the row.
+function zsDiffRow(l, i) {
+  return /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "zs-diff-line " + l.t
+  }, l.t !== "hdr" && /*#__PURE__*/React.createElement("span", {
+    className: "ln l"
+  }, l.l ?? ""), l.t !== "hdr" && /*#__PURE__*/React.createElement("span", {
+    className: "ln r"
+  }, l.r ?? ""), /*#__PURE__*/React.createElement("span", {
+    className: "tx"
+  }, zsDiffText(l)));
+}
+
+// The number columns' width: the largest number's digits.
+function zsDiffDigits(ls) {
+  return Math.max(1, ...ls.map(l => String(Math.max(l.l || 0, l.r || 0)).length));
 }
 function DiffView({
   file,
@@ -1390,6 +1434,7 @@ function DiffView({
     tone: "add",
     checked: !!viewed
   }), /*#__PURE__*/React.createElement("span", null, "Viewed"));
+  const ls = lines.map(zsDiffLine);
   return /*#__PURE__*/React.createElement("div", {
     className: ["zs-diff", viewed && "is-viewed", className].filter(Boolean).join(" ")
   }, (file || tools || toggle) && /*#__PURE__*/React.createElement("div", {
@@ -1409,28 +1454,95 @@ function DiffView({
   }, children) : /*#__PURE__*/React.createElement("div", {
     className: "zs-diff-body",
     style: {
-      maxHeight
+      maxHeight,
+      "--ln": zsDiffDigits(ls) + "ch"
     }
-  }, lines.map(zsDiffLine).map((l, i) => l.t === "hunk" ? /*#__PURE__*/React.createElement("div", {
+  }, ls.map((l, i) => l.t === "hunk" ? /*#__PURE__*/React.createElement("div", {
     key: i,
     className: "zs-diff-hunk"
-  }, l.s) : /*#__PURE__*/React.createElement("div", {
-    key: i,
-    className: "zs-diff-line " + l.t
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "sg"
-  }, l.t === "add" ? "+" : l.t === "rem" ? "−" : " "), /*#__PURE__*/React.createElement("span", {
-    className: "tx"
-  }, zsDiffText(l))))));
+  }, l.s) : zsDiffRow(l, i))));
 }
-Object.assign(__ds_scope, { zsDiffLine, zsDiffText, DiffView });
+Object.assign(__ds_scope, { zsDiffLine, zsDiffText, zsDiffRow, zsDiffDigits, DiffView });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/content/DiffView.jsx", error: String((e && e.message) || e) }); }
 
 // components/content/DiffHunk.jsx
 try { (() => {
-// DiffHunk — one hunk: a header (checkbox · @@ range · enclosing context · +/− · grip) over its lines, unified or side by side.
-// Selected hunks get the moon header and a 2px moon edge; they are what Commit / Split take. Mutable hunks can be dragged onto another change.
-// Changed words ("[-old-]", "{+new+}") are marked as in DiffView, in both layouts; a side-by-side cell clips its marks.
+// Side by side, rebuilt from the color-words lines so each side shows whole lines: a context line is one row (left cell its
+// equal and removed runs with its left number, right cell its equal and added runs with its right number); a run of
+// removed, added and changed lines gives one left cell per distinct left number and one right cell per distinct right
+// number, paired row by row; a header is one full-width row. Under a "-------" conflict term the left side keeps the
+// added runs.
+function zsDiffSides(ls) {
+  const rows = [];
+  let swapped = false;
+  const cell = (group, t, left, n) => {
+    const own = left !== swapped ? "rem" : "add";
+    const runs = [];
+    for (const l of group) {
+      for (const [s, k] of l.runs || [[l.s, l.t === "chg" ? null : l.t === "ctx" ? null : l.t]]) {
+        if (k && k !== own) continue;
+        if (runs.length && runs[runs.length - 1][1] === k) runs[runs.length - 1][0] += s;else runs.push([s, k]);
+      }
+    }
+    const s = runs.map(([x]) => x).join("");
+    return {
+      t,
+      n,
+      s,
+      runs: runs.some(([x, k]) => !k && x.trim()) ? runs : undefined
+    };
+  };
+  const cells = (run, left) => {
+    const groups = new Map();
+    for (const l of run) {
+      const n = left ? l.l : l.r;
+      if (n == null) continue;
+      if (!groups.has(n)) groups.set(n, []);
+      groups.get(n).push(l);
+    }
+    return [...groups].map(([n, group]) => cell(group, left ? "rem" : "add", left, n));
+  };
+  for (let i = 0; i < ls.length;) {
+    const l = ls[i];
+    if (l.t === "hdr") {
+      swapped = l.s.startsWith("-------");
+      rows.push([l]);
+      i++;
+      continue;
+    }
+    if (l.t === "ctx") {
+      rows.push([l.l == null ? null : cell([l], "ctx", true, l.l), l.r == null ? null : cell([l], "ctx", false, l.r)]);
+      i++;
+      continue;
+    }
+    const run = [];
+    while (i < ls.length && ls[i].t !== "ctx" && ls[i].t !== "hdr") run.push(ls[i++]);
+    const lefts = cells(run, true),
+      rights = cells(run, false);
+    for (let k = 0; k < Math.max(lefts.length, rights.length); k++) rows.push([lefts[k] || null, rights[k] || null]);
+  }
+  return rows;
+}
+
+// Numbers for git-sigil lines (no numbers of their own), counted from oldStart / newStart.
+function zsNumbered(ls, oldStart, newStart) {
+  let l = oldStart,
+    r = newStart;
+  return ls.map(x => {
+    if (x.l != null || x.r != null || x.t === "hdr") return x;
+    const n = {
+      ...x
+    };
+    if (x.t !== "add") n.l = l++;
+    if (x.t !== "rem") n.r = r++;
+    return n;
+  });
+}
+
+// DiffHunk — one hunk: a header (checkbox · @@ range · enclosing context · +/− · grip) over its color-words lines, unified
+// (a left and a right number column, then the text) or side by side (whole lines per side, each cell with its number).
+// Selected hunks get the moon header and a 2px moon edge; they are what Commit / Split take. Mutable hunks can be dragged
+// onto another change. Changed words are marked as in DiffView, in both layouts; a side-by-side cell clips its marks.
 function DiffHunk({
   range,
   oldStart = 1,
@@ -1445,47 +1557,28 @@ function DiffHunk({
   onGrab,
   className = ""
 }) {
-  const ls = lines.map(__ds_scope.zsDiffLine).filter(l => l.t !== "hunk");
-  const a = ls.filter(l => l.t === "add").length,
-    r = ls.filter(l => l.t === "rem").length;
-  const head = range || "@@ −" + oldStart + "," + (ls.length - a) + " +" + newStart + "," + (ls.length - r) + " @@";
-  let body;
-  if (mode !== "split") {
-    body = ls.map((l, i) => /*#__PURE__*/React.createElement("div", {
-      key: i,
-      className: "zs-diff-line " + l.t
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "sg"
-    }, l.t === "add" ? "+" : l.t === "rem" ? "−" : " "), /*#__PURE__*/React.createElement("span", {
-      className: "tx"
-    }, __ds_scope.zsDiffText(l))));
-  } else {
-    const rows = [];
-    for (let i = 0; i < ls.length;) {
-      if (ls[i].t === "ctx") {
-        rows.push([ls[i], ls[i]]);
-        i++;
-        continue;
-      }
-      const rem = [],
-        add = [];
-      while (i < ls.length && ls[i].t === "rem") rem.push(ls[i++]);
-      while (i < ls.length && ls[i].t === "add") add.push(ls[i++]);
-      for (let k = 0; k < Math.max(rem.length, add.length); k++) rows.push([rem[k] || null, add[k] || null]);
-    }
-    body = rows.map(([x, y], k) => /*#__PURE__*/React.createElement("div", {
-      key: k,
-      className: "zs-diff-row"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "zs-diff-side " + (x ? x.t : "empty")
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "tx"
-    }, x ? __ds_scope.zsDiffText(x) : "")), /*#__PURE__*/React.createElement("div", {
-      className: "zs-diff-side " + (y ? y.t : "empty")
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "tx"
-    }, y ? __ds_scope.zsDiffText(y) : ""))));
-  }
+  const ls = zsNumbered(lines.map(__ds_scope.zsDiffLine).filter(l => l.t !== "hunk"), oldStart, newStart);
+  const changed = ls.filter(l => l.t !== "ctx" && l.t !== "hdr");
+  const a = new Set(changed.map(l => l.r).filter(n => n != null)).size;
+  const r = new Set(changed.map(l => l.l).filter(n => n != null)).size;
+  const span = (side, start) => {
+    const ns = ls.map(l => l[side]).filter(n => n != null);
+    return ns.length ? [ns[0], Math.max(...ns) - ns[0] + 1] : [start, 0];
+  };
+  const [ol, oc] = span("l", oldStart),
+    [nl, nc] = span("r", newStart);
+  const head = range || "@@ −" + ol + "," + oc + " +" + nl + "," + nc + " @@";
+  const body = mode !== "split" ? ls.map(__ds_scope.zsDiffRow) : zsDiffSides(ls).map((row, k) => /*#__PURE__*/React.createElement("div", {
+    key: k,
+    className: "zs-diff-row" + (row.length === 1 ? " hdr" : "")
+  }, row.map((c, j) => /*#__PURE__*/React.createElement("div", {
+    key: j,
+    className: "zs-diff-side " + (c ? c.t : "empty")
+  }, c && c.t !== "hdr" && /*#__PURE__*/React.createElement("span", {
+    className: "ln"
+  }, c.n), /*#__PURE__*/React.createElement("span", {
+    className: "tx"
+  }, c ? __ds_scope.zsDiffText(c) : "")))));
   return /*#__PURE__*/React.createElement("div", {
     className: ["zs-hunk", selected && "is-sel", lifted && "is-lifted", className].filter(Boolean).join(" ")
   }, /*#__PURE__*/React.createElement("div", {
@@ -1514,10 +1607,13 @@ function DiffHunk({
       height: 12
     }
   })), /*#__PURE__*/React.createElement("div", {
-    className: "zs-diff-body" + (mode === "split" ? " zs-diff-split" : "")
+    className: "zs-diff-body" + (mode === "split" ? " zs-diff-split" : ""),
+    style: {
+      "--ln": __ds_scope.zsDiffDigits(ls) + "ch"
+    }
   }, body));
 }
-Object.assign(__ds_scope, { DiffHunk });
+Object.assign(__ds_scope, { zsDiffSides, DiffHunk });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/content/DiffHunk.jsx", error: String((e && e.message) || e) }); }
 
 // components/content/FileRow.jsx

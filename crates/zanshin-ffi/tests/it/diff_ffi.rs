@@ -11,7 +11,7 @@
 //! Story 5.8: `zanshin_diff` on a real handle carries exactly what `Repo::diff` returns for the
 //! same options, every request field reaching its option, and refuses what the CLI refuses.
 //!
-//! Story 5.2: every wire line carries its hunk's `segments` for it.
+//! Story 5.2: every wire line carries its `segments`; Story 5.10: and its kind and line numbers.
 
 use std::ffi::CString;
 use std::fs;
@@ -27,8 +27,8 @@ use zanshin_ffi::{
     JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
 use zanshin_jj::{
-    Backend, ChangeKind, DiffOptions, DiffRevisions, FileDiff, HunkKey, HunkLine, HunksOptions, Repo, RevisionDiff,
-    Segment, SegmentKind, SelectedTreeId, Whitespace,
+    Backend, ChangeKind, DiffOptions, DiffRevisions, FileDiff, HunkKey, HunkLine, HunkLineKind, HunksOptions, Repo,
+    RevisionDiff, Segment, SegmentKind, SelectedTreeId, Whitespace,
 };
 
 /// `Repo::diff` of `@` and `compute_hunks` between `@`'s parent tree and its own tree, in a fresh
@@ -90,12 +90,16 @@ fn keys(wire: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<fbs::H
         .collect()
 }
 
-fn kind_and_text(line: &HunkLine) -> (fbs::HunkLineKind, Option<&str>) {
-    match line {
-        HunkLine::Context(t) => (fbs::HunkLineKind::Context, Some(t)),
-        HunkLine::Removed(t) => (fbs::HunkLineKind::Removed, Some(t)),
-        HunkLine::Added(t) => (fbs::HunkLineKind::Added, Some(t)),
-    }
+/// A line's wire kind, text and line numbers (0 = none).
+fn kind_and_text(line: &HunkLine) -> (fbs::HunkLineKind, Option<String>, u32, u32) {
+    let kind = match line.kind {
+        HunkLineKind::Context => fbs::HunkLineKind::Context,
+        HunkLineKind::Removed => fbs::HunkLineKind::Removed,
+        HunkLineKind::Added => fbs::HunkLineKind::Added,
+        HunkLineKind::Changed => fbs::HunkLineKind::Changed,
+        HunkLineKind::ConflictHeader => fbs::HunkLineKind::ConflictHeader,
+    };
+    (kind, Some(line.text()), line.left.unwrap_or(0), line.right.unwrap_or(0))
 }
 
 fn seg(kind: SegmentKind, text: &str) -> Segment {
@@ -150,10 +154,12 @@ fn the_wire_carries_the_diff_keys_flags_lines_and_pins() {
     assert!(env.ok());
     let payload = env.data_as_diff().expect("Diff payload");
     assert_wire_is(payload, &diff);
-    // `a` → `A` keeps nothing, so the lines stay unpaired: one whole changed segment each. A
-    // context line is one `Equal` segment.
-    let (equal, removed) = (SegmentKind::Equal, SegmentKind::Removed);
-    assert_eq!(wire_segments(payload, "f.txt", "a\n"), [seg(removed, "a\n")]);
+    // `a` → `A` is one inlined line holding both words; a context line is one `Equal` segment.
+    let (equal, removed, added) = (SegmentKind::Equal, SegmentKind::Removed, SegmentKind::Added);
+    assert_eq!(
+        wire_segments(payload, "f.txt", "aA\n"),
+        [seg(removed, "a"), seg(added, "A"), seg(equal, "\n")]
+    );
     assert_eq!(wire_segments(payload, "f.txt", "b\n"), [seg(equal, "b\n")]);
 }
 
@@ -206,12 +212,13 @@ fn assert_wire_is(payload: fbs::Diff<'_>, diff: &RevisionDiff) {
                 .lines()
                 .expect("lines present")
                 .iter()
-                .map(|l| (l.kind(), l.text()))
+                .map(|l| (l.kind(), l.text().map(str::to_owned), l.left_line(), l.right_line()))
                 .collect();
             let expected: Vec<_> = h.lines.iter().map(kind_and_text).collect();
             assert_eq!(lines, expected);
             let segments: Vec<_> = wh.lines().expect("lines present").iter().map(segments_of).collect();
-            assert_eq!(segments, h.segments, "{}", f.path);
+            let expected: Vec<_> = h.lines.iter().map(|line| line.segments.clone()).collect();
+            assert_eq!(segments, expected, "{}", f.path);
         }
     }
 }
@@ -524,11 +531,8 @@ fn paths_context_whitespace_and_summary_reach_the_diff() {
         }),
     );
     assert_eq!(only_f.files.len(), 1);
-    assert!(only_f.files[0]
-        .hunks
-        .iter()
-        .flat_map(|h| &h.lines)
-        .all(|l| !matches!(l, HunkLine::Context(_))));
+    // At context 0 the one-line gaps between the changes are shown whole, as the CLI does.
+    assert_eq!(only_f.files[0].hunks.len(), 1);
 
     let ignore_space = assert_matches_repo_diff(
         &fx,
@@ -541,10 +545,23 @@ fn paths_context_whitespace_and_summary_reach_the_diff() {
             ..DiffOptions::default()
         }),
     );
-    let w = |diff: &RevisionDiff| diff.files.iter().find(|f| f.path == "w.txt").map(|f| f.hunks.len());
+    // The number of changed (non-context) lines of `w.txt`.
+    let w = |diff: &RevisionDiff| {
+        diff.files.iter().find(|f| f.path == "w.txt").map(|f| {
+            f.hunks
+                .iter()
+                .flat_map(|h| &h.lines)
+                .filter(|l| l.kind != HunkLineKind::Context)
+                .count()
+        })
+    };
     let exact = assert_matches_repo_diff(&fx, base, &rev(DiffOptions::default()));
     assert_eq!(w(&exact), Some(1), "Exact shows the whitespace-only change");
-    assert_eq!(w(&ignore_space), Some(0), "-w hides it; the file stays listed");
+    assert_eq!(
+        w(&ignore_space),
+        Some(0),
+        "-w shows it as context only; the file stays listed"
+    );
 
     let summary = assert_matches_repo_diff(
         &fx,

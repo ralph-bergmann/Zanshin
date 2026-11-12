@@ -78,7 +78,6 @@ crates/zanshin-jj/src/git.rs = 100.00
 crates/zanshin-jj/src/graph.rs = 100.00
 crates/zanshin-jj/src/hunks.rs = 100.00
 crates/zanshin-jj/src/lib.rs = 100.00
-crates/zanshin-jj/src/line_pairs.rs = 99.72
 crates/zanshin-jj/src/metaedit.rs = 100.00
 crates/zanshin-jj/src/movement.rs = 99.56
 crates/zanshin-jj/src/mutate.rs = 99.63

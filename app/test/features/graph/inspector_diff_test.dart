@@ -13,53 +13,70 @@ import '../../helpers/icon_registry.dart';
 import '../../helpers/shell_host.dart';
 import '../../helpers/word_marks.dart';
 
-HunkLine _ctx(String text) => HunkLine(kind: HunkLineKind.context, text: '$text\n');
-HunkLine _rem(String text) => HunkLine(kind: HunkLineKind.removed, text: '$text\n');
-HunkLine _add(String text) => HunkLine(kind: HunkLineKind.added, text: '$text\n');
-
-/// A line in `hunks.rs`'s notation of jj's segments: a sigil (`-`, `+` or ` `), then the text with `[-…-]` around a
-/// removed run and `{+…+}` around an added one; a context line is one equal segment.
-HunkLine _marked(String line) {
-  final HunkLineKind kind = switch (line[0]) {
+/// A line in `hunks.rs`' test notation of the color-words lines: a kind (` ` context, `-` removed, `+` added, `~`
+/// changed, `#` conflict header), the left and the right number right-aligned in four columns (blank for none), `|`,
+/// then the text with `[-…-]` around a removed run and `{+…+}` around an added one. The line's `\n` is an equal run
+/// (it joins a last equal run) unless the text spells its `\n` out; [newline] false leaves it out.
+HunkLine _line(String spec, {bool newline = true}) {
+  final HunkLineKind kind = switch (spec[0]) {
     '-' => HunkLineKind.removed,
     '+' => HunkLineKind.added,
+    '~' => HunkLineKind.changed,
+    '#' => HunkLineKind.conflictHeader,
     _ => HunkLineKind.context,
   };
-  final String body = line.substring(1);
-  final List<String> parts = switch (kind) {
-    HunkLineKind.removed => body.split(RegExp(r'\[-|-\]')),
-    HunkLineKind.added => body.split(RegExp(r'\{\+|\+\}')),
-    HunkLineKind.context => <String>[body],
-  };
-  final SegmentKind changed = kind == HunkLineKind.added ? SegmentKind.added : SegmentKind.removed;
+  int? number(String digits) => digits.trim().isEmpty ? null : int.parse(digits.trim());
+  final String body = spec.substring(spec.indexOf('|') + 1);
+  final segments = <Segment>[];
+  for (final RegExpMatch match in RegExp(r'\[-([\s\S]*?)-\]|\{\+([\s\S]*?)\+\}|([^\[{]+|[\[{])').allMatches(body)) {
+    final (SegmentKind segmentKind, String text) = match[1] != null
+        ? (SegmentKind.removed, match[1]!)
+        : match[2] != null
+        ? (SegmentKind.added, match[2]!)
+        : (SegmentKind.equal, match[3]!);
+    if (segments.isNotEmpty && segments.last.kind == segmentKind) {
+      segments.last = Segment(kind: segmentKind, text: segments.last.text + text);
+    } else {
+      segments.add(Segment(kind: segmentKind, text: text));
+    }
+  }
+  if (newline && !body.contains('\n')) {
+    segments.isEmpty || segments.last.kind != SegmentKind.equal
+        ? segments.add(const Segment(kind: SegmentKind.equal, text: '\n'))
+        : segments.last = Segment(kind: SegmentKind.equal, text: '${segments.last.text}\n');
+  }
   return HunkLine(
     kind: kind,
-    text: parts.join(),
-    segments: <Segment>[
-      for (var i = 0; i < parts.length; i++)
-        if (parts[i].isNotEmpty) Segment(kind: i.isOdd ? changed : SegmentKind.equal, text: parts[i]),
-    ],
+    text: segments.map((s) => s.text).join(),
+    segments: segments,
+    left: kind == HunkLineKind.conflictHeader ? null : number(spec.substring(1, 5)),
+    right: kind == HunkLineKind.conflictHeader ? null : number(spec.substring(6, 10)),
   );
 }
 
-// Story 10.32's I/O matrix: the segments jj-lib gave Ralph's three examples before lines were paired (the comment's
-// second line as `jj diff --git` 0.47.0 underlines it). They test the drawing rule, not what the backend sends today.
-const _expression = <String>[
-  '-    child: Text(isLastStep ? [-s.functionWizard_save-] : s.functionWizard_next),\n',
-  '+    child: Text(isLastStep ? {+saveLabel+} : s.functionWizard_next),\n',
+// Ralph's jj example (commit 671e4eaca, lib/src/git.rs) as the pinned CLI prints it (`hunks.rs`' witness).
+const _jj = <String>[
+  ' 2453 2453|        .into_inner()',
+  '~2454 2454|        .map_err(|err| {+{\n+}',
+  '+     2455|{+            let (source, out) = err.into_parts();+}',
+  '+     2456|{+            let path = out.get_ref().lock_path().to_owned();+}',
+  '+     2457|{+            PathError { path, source }+}',
+  '+     2458|{+        })+}',
+  '~2454 2459|{+        .map_err(+}GitResetHeadError::from_git[-(err.into_error())-])?;',
+  ' 2455 2460|    lock.commit()',
 ];
-const _split = <String>[
-  '-    Expanded(child: _Line(color: isFirst ? null : lineColor)),\n',
-  '+    Expanded({+\n+}',
-  '+{+      +}child: _Line(color: isFirst ? null : lineColor){+,\n+}',
-  '+{+    +}),\n',
-  '     DecoratedBox(\n',
+
+// The stepper.dart edits (10.32's demo data) and Ralph's widget-test block over the inline limit.
+const _stepper = <String>[
+  '~  12   12|    child: Text(isLastStep ? [-s.functionWizard_save-]{+saveLabel+} : s.functionWizard_next),',
+  '~  42   44|  {+// Small side padding.+}',
+  '~  42   45|{+  +}padding: Spacing.[-spacing8-]{+spacing2+},',
 ];
-const _comment = <String>[
-  '-  padding: Spacing.[-spacing8-],\n',
-  '+  {+// Small side padding.\n+}',
-  '+{+  +}padding: Spacing.{+spacing2+},\n',
-  '   child: label,\n',
+const _block = <String>[
+  '-   9     |  [-// The-] phone [-layout-] on a [-device.-]',
+  '-  10     |[-  testWidgets(\'shows Funktion speichern-]\', (tester) async {',
+  '+        8|  // {+The+} {+tablet shows the long label.+}',
+  '+        9|{+    await fillGeneralStep(tester);+}',
 ];
 
 Hunk _hunk(List<HunkLine> lines, {({int start, int end}) before = (start: 4, end: 7), String? symbol}) => Hunk(
@@ -98,70 +115,98 @@ void main() {
     });
   });
 
-  group('pairSideBySide', () {
-    test('3 removed then 2 added: 3 rows, the 3rd right cell empty', () {
-      final List<(HunkLine?, HunkLine?)> rows = pairSideBySide(<HunkLine>[
-        _rem('a'),
-        _rem('b'),
-        _rem('c'),
-        _add('x'),
-        _add('y'),
+  group('pairSideBySide (Story 5.10)', () {
+    (String?, int?) cell(HunkLine? line, {required bool left}) =>
+        (line?.text, line == null ? null : (left ? line.left : line.right));
+
+    test('the jj example shows old line 2454 once, whole, beside its six new lines', () {
+      final List<(HunkLine?, HunkLine?)> rows = pairSideBySide(<HunkLine>[for (final s in _jj) _line(s)]);
+      expect(rows.map((r) => cell(r.$1, left: true)), <(String?, int?)>[
+        ('        .into_inner()\n', 2453),
+        ('        .map_err(|err| GitResetHeadError::from_git(err.into_error()))?;\n', 2454),
+        (null, null),
+        (null, null),
+        (null, null),
+        (null, null),
+        (null, null),
+        ('    lock.commit()\n', 2455),
       ]);
-      expect(rows, hasLength(3));
-      expect(rows.map((r) => (r.$1?.text, r.$2?.text)), <(String?, String?)>[
-        ('a\n', 'x\n'),
-        ('b\n', 'y\n'),
-        ('c\n', null),
+      expect(rows.map((r) => cell(r.$2, left: false).$2), <int>[2453, 2454, 2455, 2456, 2457, 2458, 2459, 2460]);
+      expect(rows[1].$2!.text, '        .map_err(|err| {\n');
+      expect(rows[6].$2!.text, '        .map_err(GitResetHeadError::from_git)?;\n');
+      expect((rows[1].$1!.kind, rows[1].$2!.kind), (HunkLineKind.removed, HunkLineKind.added));
+      expect(rows[0].$1!.kind, HunkLineKind.context);
+      expect(rows[1].$1!.segments.map((s) => s.kind), [SegmentKind.equal, SegmentKind.removed, SegmentKind.equal]);
+    });
+
+    test('a block over the limit pairs its removed and added lines row by row', () {
+      final List<(HunkLine?, HunkLine?)> rows = pairSideBySide(<HunkLine>[
+        for (final s in _block) _line(s),
+        _line('-  11     |[-gone-]'),
+      ]);
+      expect(rows.map((r) => (cell(r.$1, left: true).$2, cell(r.$2, left: false).$2)), <(int?, int?)>[
+        (9, 8),
+        (10, 9),
+        (11, null),
       ]);
     });
 
-    test('a context line fills both cells; an added run without removals has empty left cells', () {
-      final HunkLine context = _ctx('k');
-      final List<(HunkLine?, HunkLine?)> rows = pairSideBySide(<HunkLine>[context, _add('x'), context]);
-      expect(rows, hasLength(3));
-      expect(rows[0], (context, context));
-      expect(rows[1].$1, isNull);
-      expect(rows[1].$2!.text, 'x\n');
+    test('a conflict header is one full-width row; under ------- the left side keeps the added runs', () {
+      final HunkLine header = _line('#         |------- left base #1 to right');
+      final List<(HunkLine?, HunkLine?)> rows = pairSideBySide(<HunkLine>[
+        header,
+        _line('~   1    1|{+b+}[-z-]'),
+        _line('#         |>>>>>>> Conflict ends'),
+        _line('~   2    2|[-x-]{+y+}'),
+      ]);
+      expect(identical(rows[0].$1, header) && identical(rows[0].$2, header), isTrue);
+      expect((rows[1].$1!.text, rows[1].$2!.text), ('b\n', 'z\n'));
+      expect((rows[3].$1!.text, rows[3].$2!.text), ('x\n', 'y\n'));
     });
   });
 
-  group('diffWordMarks (Story 10.32)', () {
-    List<TextRange> marks(String line) => diffWordMarks(_marked(line));
+  group('diffWordMarks', () {
+    List<(String, SegmentKind)> marks(String spec) {
+      final HunkLine line = _line(spec);
+      return <(String, SegmentKind)>[for (final m in diffWordMarks(line)) (m.range.textInside(line.text), m.kind)];
+    }
 
-    test('a rewritten expression marks exactly the changed expression on each side', () {
-      expect(marks(_expression[0]), const <TextRange>[TextRange(start: 29, end: 50)]);
-      expect(marks(_expression[1]), const <TextRange>[TextRange(start: 29, end: 38)]);
-      final HunkLine removed = _marked(_expression[0]);
-      expect(diffWordMarks(removed).single.textInside(removed.text), 's.functionWizard_save');
+    test('a changed line always marks both sides\' runs, even without visible unchanged text', () {
+      expect(marks(_stepper[0]), <(String, SegmentKind)>[
+        ('s.functionWizard_save', SegmentKind.removed),
+        ('saveLabel', SegmentKind.added),
+      ]);
+      expect(marks(_jj[1]), <(String, SegmentKind)>[('{', SegmentKind.added)]);
+      expect(marks('~   1    1|[-a-]{+b+}'), <(String, SegmentKind)>[
+        ('a', SegmentKind.removed),
+        ('b', SegmentKind.added),
+      ]);
     });
 
-    test('a call split over three lines marks only the new indentation and the comma, never a line break', () {
-      expect(marks(_split[0]), isEmpty, reason: 'the removed line has no changed run');
-      expect(marks(_split[1]), isEmpty, reason: 'its changed run is only the line break');
-      expect(marks(_split[2]), const <TextRange>[TextRange(start: 0, end: 6), TextRange(start: 53, end: 54)]);
-      expect(marks(_split[3]), const <TextRange>[TextRange(start: 0, end: 4)]);
-      expect(marks(_split[4]), isEmpty, reason: 'a context line');
+    test('a removed or added line without visible unchanged text keeps only its fill (10.32)', () {
+      expect(marks(_jj[2]), isEmpty);
+      expect(marks(_block[3]), isEmpty);
+      expect(marks(_block[0]), <(String, SegmentKind)>[
+        ('// The', SegmentKind.removed),
+        ('layout', SegmentKind.removed),
+        ('device.', SegmentKind.removed),
+      ]);
     });
 
-    test('an inserted comment line keeps no marks; the line below marks its indentation and the word', () {
-      expect(marks(_comment[0]), const <TextRange>[TextRange(start: 19, end: 27)]);
-      expect(marks(_comment[1]), isEmpty, reason: 'its unchanged text is only blanks');
-      expect(marks(_comment[2]), const <TextRange>[TextRange(start: 0, end: 2), TextRange(start: 19, end: 27)]);
+    test('a context line, a header and a line without segments keep none', () {
+      expect(marks(_jj[0]), isEmpty);
+      expect(marks('#         |<<<<<<< Created conflict'), isEmpty);
+      expect(
+        diffWordMarks(const HunkLine(kind: HunkLineKind.added, text: 'x\n')),
+        isEmpty,
+        reason: 'segments: []',
+      );
     });
 
-    test('a context line, a line without segments and a new or deleted file\'s line keep none', () {
-      expect(marks(' x\n'), isEmpty);
-      expect(diffWordMarks(_add('x')), isEmpty, reason: 'segments: []');
-      expect(marks('+{+fn main() {\n+}'), isEmpty);
-      expect(marks('-[-fn main() {\n-]'), isEmpty);
-    });
-
-    test('CRLF: the mark stops before \\r and \\n', () {
-      expect(marks('+a{+b\r\n+}'), const <TextRange>[TextRange(start: 1, end: 2)]);
-    });
-
-    test('a changed run of trailing blanks is marked like any run', () {
-      expect(marks('+x{+  +}\n'), const <TextRange>[TextRange(start: 1, end: 3)]);
+    test('CRLF: the mark stops before \\r and \\n; trailing blanks are marked like any run', () {
+      final HunkLine crlf = _line('+        1|a{+b\r+}');
+      expect(diffWordMarks(crlf).single.range, const TextRange(start: 1, end: 2));
+      expect(marks('+        1|x{+  +}'), <(String, SegmentKind)>[('  ', SegmentKind.added)]);
     });
   });
 
@@ -169,6 +214,7 @@ void main() {
     FileDiff? diff, {
     DiffLayoutSetting layout = DiffLayoutSetting.unified,
     ZsAppearance appearance = const ZsAppearance(),
+    bool? Function(Hunk hunk)? hunkPicked,
   }) => shellHost(
     SizedBox(
       width: 420,
@@ -179,93 +225,176 @@ void main() {
         onViewedChanged: (_) {},
         layout: layout,
         onLayoutChanged: (_) {},
+        hunkPicked: hunkPicked,
+        onHunkToggled: (_) {},
       ),
     ),
     appearance: appearance,
   );
 
-  // Every matrix row in one file; the context line without segments shows the 10.24 look.
   FileDiff matrix() => _file(
     hunks: <Hunk>[
-      _hunk(<HunkLine>[for (final String line in _expression) _marked(line)]),
-      _hunk(<HunkLine>[for (final String line in _split) _marked(line)]),
-      _hunk(<HunkLine>[
-        for (final String line in _comment) _marked(line),
-        _ctx('no segments'),
-        _marked('+a{+b\r\n+}'),
-        _marked('+x{+  +}\n'),
-      ]),
+      _hunk(<HunkLine>[for (final s in _jj) _line(s)]),
+      _hunk(<HunkLine>[for (final s in _stepper) _line(s)]),
+      _hunk(<HunkLine>[for (final s in _block) _line(s)]),
     ],
   );
 
-  for (final DiffLayoutSetting layout in DiffLayoutSetting.values) {
-    for (final ZsTheme theme in ZsTheme.values) {
-      testWidgets('Story 10.32: $layout on ${theme.name} paints exactly the matrix\'s word marks', (tester) async {
-        final appearance = ZsAppearance(theme: theme);
-        await tester.pumpWidget(view(matrix(), layout: layout, appearance: appearance));
-        expect(paintedWordMarks(tester, ZsColors.resolve(appearance)), <String, List<String>>{
-          '    child: Text(isLastStep ? s.functionWizard_save : s.functionWizard_next),': <String>[
-            's.functionWizard_save',
-          ],
-          '    child: Text(isLastStep ? saveLabel : s.functionWizard_next),': <String>['saveLabel'],
-          '      child: _Line(color: isFirst ? null : lineColor),': <String>['      ', ','],
-          '    ),': <String>['    '],
-          '  padding: Spacing.spacing8,': <String>['spacing8'],
-          '  padding: Spacing.spacing2,': <String>['  ', 'spacing2'],
-          'ab': <String>['b'],
-          'x  ': <String>['  '],
-        });
-        final Finder comment = find.text('  // Small side padding.');
-        expect(comment, findsOneWidget);
-        expect(
-          find.ancestor(of: comment, matching: find.byType(DiffWordMarks)),
-          findsNothing,
-          reason: 'a plain line',
-        );
-        // The trailing blanks lie inside their paragraph, so clipping to it hides none of their mark.
-        final RenderParagraph trailing = tester.renderObject(
-          find.descendant(
-            of: find.ancestor(of: find.text('x  '), matching: find.byType(DiffWordMarks)),
-            matching: find.byType(RichText),
-          ),
-        );
-        expect(
-          trailing.getBoxesForSelection(const TextSelection(baseOffset: 1, extentOffset: 3)).single.right,
-          lessThanOrEqualTo(trailing.size.width),
-        );
+  for (final ZsTheme theme in ZsTheme.values) {
+    testWidgets('unified on ${theme.name}: two number columns, the looks and the matrix\'s marks', (tester) async {
+      final appearance = ZsAppearance(theme: theme);
+      final colors = ZsColors.resolve(appearance);
+      await tester.pumpWidget(view(matrix(), appearance: appearance));
+      expect(paintedWordMarks(tester, colors), <String, List<String>>{
+        '        .map_err(|err| {': <String>['+{'],
+        '        .map_err(GitResetHeadError::from_git(err.into_error()))?;': <String>[
+          '+${' ' * 8}.map_err(',
+          '-(err.into_error())',
+        ],
+        '    child: Text(isLastStep ? s.functionWizard_savesaveLabel : s.functionWizard_next),': <String>[
+          '-s.functionWizard_save',
+          '+saveLabel',
+        ],
+        '  // Small side padding.': <String>['+// Small side padding.'],
+        '  padding: Spacing.spacing8spacing2,': <String>['+  ', '-spacing8', '+spacing2'],
+        '  // The phone layout on a device.': <String>['-// The', '-layout', '-device.'],
+        '  testWidgets(\'shows Funktion speichern\', (tester) async {': <String>[
+          '-  testWidgets(\'shows Funktion speichern',
+        ],
+        '  // The tablet shows the long label.': <String>['+The', '+tablet shows the long label.'],
       });
-    }
+
+      Color fill(String text) =>
+          tester
+              .widget<Container>(
+                find.ancestor(of: find.text(text, findRichText: true), matching: find.byType(Container)).first,
+              )
+              .color ??
+          const Color(0x00000000);
+      Color ink(String number) => tester.widget<Text>(find.text(number).first).style!.color!;
+
+      // A changed line: no fill, both numbers in their hue, `--text` ink.
+      const changed = '        .map_err(GitResetHeadError::from_git(err.into_error()))?;';
+      expect(fill(changed).a, 0);
+      expect(ink('2459'), colors.add);
+      expect(tester.widget<Text>(find.text('2454').last).style!.color, colors.rem);
+      // An added line: the green fill, its number green, the left column blank.
+      expect(fill('            PathError { path, source }'), colors.addBg);
+      expect(ink('2457'), colors.add);
+      // A removed line of the block: the red fill, its number red.
+      expect(fill('  // The phone layout on a device.'), colors.remBg);
+      expect(ink(' 9'), colors.rem, reason: 'two columns: the hunk\'s largest number is 10');
+      // A context line: faint numbers, muted text.
+      expect(ink('2453'), colors.textFaint);
+      expect(tester.widget<Text>(find.text('        .into_inner()')).style!.color, colors.textMuted);
+      // No sigil column.
+      expect(find.text('−'), findsNothing);
+      expect(find.text('+'), findsNothing);
+    });
   }
 
-  testWidgets('Story 10.32: a new fill or new marks repaint the line; equal ones do not', (tester) async {
+  testWidgets('a number column is as wide as the hunk\'s largest number', (tester) async {
     await tester.pumpWidget(
       view(
         _file(
           hunks: <Hunk>[
-            _hunk(<HunkLine>[_marked('+  x = {+42+};\n')]),
+            _hunk(<HunkLine>[_line('    9    9|a'), _line('+      100|b')]),
           ],
         ),
       ),
     );
-    // The pumped line's own fill and marks, set again.
-    final RenderDiffWordMarks box = tester.renderObject<RenderDiffWordMarks>(find.byType(DiffWordMarks))
-      ..color = ZsColors.night.addWordBg
-      ..marks = const <TextRange>[TextRange(start: 6, end: 8)];
-    expect(box.debugNeedsPaint, isFalse, reason: 'the same fill and marks');
-    box.color = ZsColors.night.remWordBg;
-    expect(box.debugNeedsPaint, isTrue, reason: 'a new fill');
-    await tester.pump();
-    expect(box.debugNeedsPaint, isFalse);
-    box.marks = const <TextRange>[TextRange(start: 2, end: 3)];
-    expect(box.debugNeedsPaint, isTrue, reason: 'new marks');
+    expect(find.text('  9'), findsNWidgets(2));
+    expect(find.text('100'), findsOneWidget);
   });
 
-  testWidgets('Story 10.32: a side-by-side cell clips a mark at its edge', (tester) async {
+  testWidgets('side by side shows each old line once, whole, with its number; marks in both layouts', (tester) async {
+    await tester.pumpWidget(view(matrix(), layout: DiffLayoutSetting.sideBySide));
+    expect(find.text('        .map_err(|err| GitResetHeadError::from_git(err.into_error()))?;'), findsOneWidget);
+    expect(find.text('2454'), findsNWidgets(2), reason: 'the old line once on the left, the new line on the right');
+    final Finder split = find.byKey(const ValueKey<String>('inspector-diff-split'));
+    expect(find.descendant(of: split, matching: find.byType(IntrinsicHeight)), findsNWidgets(8 + 3 + 2));
+    expect(
+      paintedWordMarks(
+        tester,
+        ZsColors.night,
+      )['        .map_err(|err| GitResetHeadError::from_git(err.into_error()))?;'],
+      <String>[
+        '-(err.into_error())',
+      ],
+    );
+  });
+
+  testWidgets('a conflict header is a dim full-width row without numbers', (tester) async {
+    for (final DiffLayoutSetting layout in DiffLayoutSetting.values) {
+      await tester.pumpWidget(
+        view(
+          _file(
+            hunks: <Hunk>[
+              _hunk(<HunkLine>[_line('#         |<<<<<<< Created conflict'), _line('+        1|{+x+}')]),
+            ],
+          ),
+          layout: layout,
+        ),
+      );
+      expect(tester.widget<Text>(find.text('<<<<<<< Created conflict')).style!.color, ZsColors.night.textDim);
+    }
+  });
+
+  testWidgets('a picked hunk keeps its checkbox and accent header', (tester) async {
+    await tester.pumpWidget(view(matrix(), hunkPicked: (_) => true));
+    expect(find.bySemanticsIdentifier('inspector-hunk-check'), findsNWidgets(0), reason: 'no sections');
     await tester.pumpWidget(
       view(
         _file(
           hunks: <Hunk>[
-            _hunk(<HunkLine>[_marked('+xxxxx{+${'y' * 60}+}z\n')]),
+            Hunk(
+              before: (start: 0, end: 1),
+              after: (start: 0, end: 1),
+              symbol: null,
+              sections: const [HunkKey(oldStart: 0, oldCount: 1, newStart: 0, newCount: 1)],
+              removed: 1,
+              added: 1,
+              lines: <HunkLine>[_line('~   1    1|[-a-]{+b+}')],
+            ),
+          ],
+        ),
+        hunkPicked: (_) => true,
+      ),
+    );
+    expect(find.bySemanticsIdentifier('inspector-hunk-check'), findsOneWidget);
+    final Container header = tester.widget(find.byKey(const ValueKey<String>('inspector-hunk-header')));
+    expect(header.color, ZsColors.night.accentSoftHi);
+  });
+
+  testWidgets('a new fill or new marks repaint the line; equal ones do not', (tester) async {
+    await tester.pumpWidget(
+      view(
+        _file(
+          hunks: <Hunk>[
+            _hunk(<HunkLine>[_line('+        1|  x = {+42+};')]),
+          ],
+        ),
+      ),
+    );
+    final PaintedWordMark mark = (range: const TextRange(start: 6, end: 8), color: ZsColors.night.addWordBg);
+    // The pumped line's own marks, set again.
+    final RenderDiffWordMarks box = tester.renderObject<RenderDiffWordMarks>(find.byType(DiffWordMarks))
+      ..marks = <PaintedWordMark>[mark];
+    expect(box.debugNeedsPaint, isFalse, reason: 'the same marks');
+    box.marks = <PaintedWordMark>[(range: mark.range, color: ZsColors.night.remWordBg)];
+    expect(box.debugNeedsPaint, isTrue, reason: 'a new fill');
+    await tester.pump();
+    expect(box.debugNeedsPaint, isFalse);
+    box.marks = <PaintedWordMark>[(range: const TextRange(start: 2, end: 3), color: ZsColors.night.remWordBg)];
+    expect(box.debugNeedsPaint, isTrue, reason: 'new marks');
+  });
+
+  testWidgets('a side-by-side cell clips a mark at its edge', (tester) async {
+    await tester.pumpWidget(
+      view(
+        _file(
+          hunks: <Hunk>[
+            _hunk(<HunkLine>[_line('+        1|xxxxx{+${'y' * 60}+}z')]),
           ],
         ),
         layout: DiffLayoutSetting.sideBySide,
@@ -288,15 +417,13 @@ void main() {
     );
   });
 
-  testWidgets('Story 10.32: a selection across a marked line paints over the mark; the glyphs keep their colours', (
-    tester,
-  ) async {
+  testWidgets('a selection across a marked line paints over the mark; the glyphs keep their colours', (tester) async {
     // A line short enough to drag across inside the hunk's width.
     await tester.pumpWidget(
       view(
         _file(
           hunks: <Hunk>[
-            _hunk(<HunkLine>[_marked('+  x = {+42+};\n')]),
+            _hunk(<HunkLine>[_line('+        1|  x = {+42+};')]),
           ],
         ),
       ),
@@ -331,7 +458,7 @@ void main() {
         ..paragraph(),
     );
     expect(paintedWordMarks(tester, ZsColors.night), <String, List<String>>{
-      '  x = 42;': <String>['42'],
+      '  x = 42;': <String>['+42'],
     });
   });
 
@@ -340,8 +467,8 @@ void main() {
       view(
         _file(
           hunks: <Hunk>[
-            _hunk(<HunkLine>[_rem('old'), _add('new')], symbol: 'fn main()'),
-            _hunk(<HunkLine>[_ctx('same')], before: (start: 9, end: 10)),
+            _hunk(<HunkLine>[_line('-   5     |[-old-]'), _line('+        5|{+new+}')], symbol: 'fn main()'),
+            _hunk(<HunkLine>[_line('    6    6|same')], before: (start: 9, end: 10)),
           ],
         ),
       ),
@@ -363,7 +490,9 @@ void main() {
       view(
         _file(
           hunks: <Hunk>[
-            _hunk(<HunkLine>[_add('let message = "a line long enough to leave the inspector on its right edge";')]),
+            _hunk(<HunkLine>[
+              _line('+        1|{+let message = "a line long enough to leave the inspector on its right edge";+}'),
+            ]),
           ],
         ),
       ),
@@ -374,7 +503,7 @@ void main() {
       view(
         _file(
           hunks: <Hunk>[
-            _hunk(<HunkLine>[_add('short')]),
+            _hunk(<HunkLine>[_line('+        1|{+short+}')]),
           ],
         ),
       ),
@@ -382,33 +511,15 @@ void main() {
     expect(extent(), 0);
   });
 
-  testWidgets('side by side draws one row per pair', (tester) async {
-    await tester.pumpWidget(
-      view(
-        _file(
-          hunks: <Hunk>[
-            _hunk(<HunkLine>[_rem('a'), _rem('b'), _rem('c'), _add('x'), _add('y')]),
-          ],
-        ),
-        layout: DiffLayoutSetting.sideBySide,
-      ),
-    );
-    final Finder split = find.byKey(const ValueKey<String>('inspector-diff-split'));
-    expect(find.descendant(of: split, matching: find.byType(IntrinsicHeight)), findsNWidgets(3));
-    expect(find.text('c'), findsOneWidget);
-  });
-
   testWidgets('a CRLF line loses its \\r; a last line without its newline gets jj\'s marker in both layouts', (
     tester,
   ) async {
-    const crlf = HunkLine(kind: HunkLineKind.removed, text: 'dos\r\n');
-    const last = HunkLine(kind: HunkLineKind.added, text: 'end');
     for (final DiffLayoutSetting layout in DiffLayoutSetting.values) {
       await tester.pumpWidget(
         view(
           _file(
             hunks: <Hunk>[
-              _hunk(const <HunkLine>[crlf, last]),
+              _hunk(<HunkLine>[_line('-   1     |[-dos\r-]'), _line('+        1|{+end+}', newline: false)]),
             ],
           ),
           layout: layout,
@@ -417,6 +528,13 @@ void main() {
       expect(find.text('dos'), findsOneWidget, reason: '$layout');
       expect(find.text('end'), findsOneWidget);
       expect(find.text(noNewlineMarker), findsOneWidget, reason: '$layout');
+      if (layout == DiffLayoutSetting.unified) {
+        expect(
+          tester.getTopLeft(find.text(noNewlineMarker)).dx,
+          tester.getTopLeft(find.text('end')).dx,
+          reason: 'the marker starts where the line text starts',
+        );
+      }
     }
   });
 
@@ -426,7 +544,7 @@ void main() {
         _file(
           modeChange: true,
           hunks: <Hunk>[
-            _hunk(<HunkLine>[_add('x')]),
+            _hunk(<HunkLine>[_line('+        1|{+x+}')]),
           ],
         ),
       ),
@@ -461,7 +579,7 @@ void main() {
             path: 'src/main.rs',
             diff: _file(
               hunks: <Hunk>[
-                _hunk(<HunkLine>[_add('x')]),
+                _hunk(<HunkLine>[_line('+        1|{+x+}')]),
               ],
             ),
             error: null,

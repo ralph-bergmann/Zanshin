@@ -12,9 +12,9 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 
-/// [hunk]'s range as `jj diff --git` prints it, `@@ −l,n +r,m @@` with U+2212 for the minus: a line number is the
-/// range's 1-based start, or its 0-based start when it is empty (jj's `to_line_number`, cli/src/diff_util.rs:1780 @
-/// v0.46.0), the count its length.
+/// [hunk]'s range in git's notation, `@@ −l,n +r,m @@` with U+2212 for the minus — the color-words format has no
+/// header of its own, so Zanshin labels each hunk this way: a line number is the range's 1-based start, or its 0-based
+/// start when it is empty (jj's `to_line_number`, cli/src/diff_util.rs @ v0.47.0), the count its length.
 String hunkHeader(Hunk hunk) {
   int line(({int start, int end}) range) => range.end > range.start ? range.start + 1 : range.start;
   final ({int start, int end}) l = hunk.before;
@@ -22,27 +22,85 @@ String hunkHeader(Hunk hunk) {
   return '@@ −${line(l)},${l.end - l.start} +${line(r)},${r.end - r.start} @@'; // l10n-ignore: jj's hunk header
 }
 
-/// The side-by-side rows of [lines] (DS DiffHunk.jsx:17-25): a context line fills both cells; a run of removed lines
-/// followed by a run of added lines pairs row by row, the shorter side's cells null.
+/// The side-by-side rows of [lines] (Story 5.10), rebuilt from the color-words lines so each side shows whole lines:
+/// a context line is one row (left cell its equal and removed runs with its left number, right cell its equal and
+/// added runs with its right number); a run of removed, added and changed lines up to the next context or header line
+/// gives one left cell per distinct left number (the equal and removed runs of the lines carrying it, joined) and one
+/// right cell per distinct right number likewise, paired row by row, the shorter side's cells null; a conflict header
+/// line is one full-width row (the same line in both cells). Cells are [HunkLine]s: a left cell has kind removed (or
+/// context) and only a left number, a right cell kind added (or context) and only a right number. Under a `-------`
+/// conflict term the left side's runs are the added ones.
 List<(HunkLine?, HunkLine?)> pairSideBySide(List<HunkLine> lines) {
   final rows = <(HunkLine?, HunkLine?)>[];
+  var swapped = false;
+  // The cell of [side]'s runs of [group], numbered [number].
+  HunkLine cell(List<HunkLine> group, HunkLineKind kind, {required bool left, required int? number}) {
+    final SegmentKind own = left == !swapped ? SegmentKind.removed : SegmentKind.added;
+    final segments = <Segment>[];
+    for (final line in group) {
+      for (final Segment segment in line.segments) {
+        if (segment.kind != SegmentKind.equal && segment.kind != own) {
+          continue;
+        }
+        if (segments.isNotEmpty && segments.last.kind == segment.kind) {
+          segments.last = Segment(kind: segment.kind, text: segments.last.text + segment.text);
+        } else {
+          segments.add(segment);
+        }
+      }
+    }
+    return HunkLine(
+      kind: kind,
+      text: segments.map((s) => s.text).join(),
+      segments: segments,
+      left: left ? number : null,
+      right: left ? null : number,
+    );
+  }
+
+  // The cells of [run]'s distinct numbers on one side, in order.
+  List<HunkLine> cells(List<HunkLine> run, {required bool left}) {
+    final numbers = <int>[];
+    final groups = <int, List<HunkLine>>{};
+    for (final line in run) {
+      if ((left ? line.left : line.right) case final int number) {
+        if (groups[number] case final List<HunkLine> group) {
+          group.add(line);
+        } else {
+          numbers.add(number);
+          groups[number] = <HunkLine>[line];
+        }
+      }
+    }
+    final HunkLineKind kind = left ? HunkLineKind.removed : HunkLineKind.added;
+    return <HunkLine>[for (final int number in numbers) cell(groups[number]!, kind, left: left, number: number)];
+  }
+
   var i = 0;
   while (i < lines.length) {
-    if (lines[i].kind == HunkLineKind.context) {
-      rows.add((lines[i], lines[i]));
+    final HunkLine line = lines[i];
+    if (line.kind == HunkLineKind.conflictHeader) {
+      swapped = line.text.startsWith('-------'); // l10n-ignore: jj's conflict term marker
+      rows.add((line, line));
       i++;
       continue;
     }
-    final removed = <HunkLine>[];
-    final added = <HunkLine>[];
-    while (i < lines.length && lines[i].kind == HunkLineKind.removed) {
-      removed.add(lines[i++]);
+    if (line.kind == HunkLineKind.context) {
+      rows.add((
+        line.left == null ? null : cell(<HunkLine>[line], HunkLineKind.context, left: true, number: line.left),
+        line.right == null ? null : cell(<HunkLine>[line], HunkLineKind.context, left: false, number: line.right),
+      ));
+      i++;
+      continue;
     }
-    while (i < lines.length && lines[i].kind == HunkLineKind.added) {
-      added.add(lines[i++]);
+    final run = <HunkLine>[];
+    while (i < lines.length && lines[i].kind != HunkLineKind.context && lines[i].kind != HunkLineKind.conflictHeader) {
+      run.add(lines[i++]);
     }
-    for (var k = 0; k < math.max(removed.length, added.length); k++) {
-      rows.add((k < removed.length ? removed[k] : null, k < added.length ? added[k] : null));
+    final List<HunkLine> lefts = cells(run, left: true);
+    final List<HunkLine> rights = cells(run, left: false);
+    for (var k = 0; k < math.max(lefts.length, rights.length); k++) {
+      rows.add((k < lefts.length ? lefts[k] : null, k < rights.length ? rights[k] : null));
     }
   }
   return rows;
@@ -53,70 +111,68 @@ String _text(HunkLine line) {
   return text.endsWith('\r') ? text.substring(0, text.length - 1) : text;
 }
 
-/// The word marks of [line] (Story 10.32): its [SegmentKind.removed] / [SegmentKind.added] segments (jj-lib's changed
-/// runs over the line's pair of similar lines) as ranges of its shown text, each cut at that text's end, so a line
-/// break is never marked. None when the line's equal segments hold no visible character (an inserted line, a line
-/// without a partner, a new or deleted file): the line's fill already says it all.
-List<TextRange> diffWordMarks(HunkLine line) {
-  if (!line.segments.any((s) => s.kind == SegmentKind.equal && s.text.trim().isNotEmpty)) {
-    return const <TextRange>[];
+/// One word mark: a range of a line's shown text and the side its run is on.
+typedef DiffWordMark = ({TextRange range, SegmentKind kind});
+
+/// The word marks of [line] (Story 10.32, Story 5.10): its [SegmentKind.removed] / [SegmentKind.added] segments (the
+/// CLI's coloured tokens) as ranges of its shown text, each cut at that text's end, so a line break is never marked.
+/// A changed line always marks them. Any other line marks none when its equal segments hold no visible character (an
+/// inserted line, a block over the inline limit's own new lines, a new or deleted file): its fill already says it
+/// all. A conflict header line marks none.
+List<DiffWordMark> diffWordMarks(HunkLine line) {
+  if (line.kind == HunkLineKind.conflictHeader ||
+      (line.kind != HunkLineKind.changed &&
+          !line.segments.any((s) => s.kind == SegmentKind.equal && s.text.trim().isNotEmpty))) {
+    return const <DiffWordMark>[];
   }
   final int shown = _text(line).length;
-  final marks = <TextRange>[];
+  final marks = <DiffWordMark>[];
   var start = 0;
   for (final Segment segment in line.segments) {
     final int end = start + segment.text.length;
     if (segment.kind != SegmentKind.equal && start < shown) {
-      marks.add(TextRange(start: start, end: math.min(end, shown)));
+      marks.add((range: TextRange(start: start, end: math.min(end, shown)), kind: segment.kind));
     }
     start = end;
   }
   return marks;
 }
 
+/// A line's look: its fill, its text ink and its left / right number inks.
+typedef _Look = ({Color fill, Color ink, Color left, Color right});
+
+/// One painted word mark: a range of the paragraph's text and its fill.
+typedef PaintedWordMark = ({TextRange range, Color color});
+
 /// Paints [marks], ranges of the text of the paragraph below it (a [Text], behind the proxies a `SelectionArea` adds),
-/// as blocks of [color] the paragraph's full height under its glyphs' boxes, clipped to itself — then the paragraph.
-/// Painted under it, the paragraph's selection highlight lies over a mark (Story 10.32; DS content.css `.w`).
+/// each as blocks of its colour the paragraph's full height under its glyphs' boxes, clipped to itself — then the
+/// paragraph. Painted under it, the paragraph's selection highlight lies over a mark (Story 10.32; DS content.css
+/// `.w`). A changed line carries marks of both colours (Story 5.10).
 class DiffWordMarks extends SingleChildRenderObjectWidget {
-  /// [marks] in [color] under [child].
-  const DiffWordMarks({required this.marks, required this.color, required Widget super.child, super.key});
+  /// [marks] under [child].
+  const DiffWordMarks({required this.marks, required Widget super.child, super.key});
 
-  /// The marked ranges of the paragraph's text.
-  final List<TextRange> marks;
-
-  /// The fill.
-  final Color color;
+  /// The marked ranges of the paragraph's text and their fills.
+  final List<PaintedWordMark> marks;
 
   @override
-  RenderDiffWordMarks createRenderObject(BuildContext context) => RenderDiffWordMarks(marks: marks, color: color);
+  RenderDiffWordMarks createRenderObject(BuildContext context) => RenderDiffWordMarks(marks: marks);
 
   @override
-  void updateRenderObject(BuildContext context, RenderDiffWordMarks renderObject) => renderObject
-    ..marks = marks
-    ..color = color;
+  void updateRenderObject(BuildContext context, RenderDiffWordMarks renderObject) => renderObject.marks = marks;
 }
 
 /// [DiffWordMarks]'s render box.
 class RenderDiffWordMarks extends RenderProxyBox {
-  /// A box painting [marks] in [color] under its paragraph.
-  RenderDiffWordMarks({required this._marks, required this._color});
+  /// A box painting [marks] under its paragraph.
+  RenderDiffWordMarks({required this._marks});
 
-  /// The marked ranges of the paragraph's text.
-  List<TextRange> get marks => _marks;
-  List<TextRange> _marks;
-  set marks(List<TextRange> value) {
+  /// The marked ranges of the paragraph's text and their fills.
+  List<PaintedWordMark> get marks => _marks;
+  List<PaintedWordMark> _marks;
+  set marks(List<PaintedWordMark> value) {
     if (!listEquals(value, _marks)) {
       _marks = value;
-      markNeedsPaint();
-    }
-  }
-
-  /// The fill.
-  Color get color => _color;
-  Color _color;
-  set color(Color value) {
-    if (value != _color) {
-      _color = value;
       markNeedsPaint();
     }
   }
@@ -130,10 +186,10 @@ class RenderDiffWordMarks extends RenderProxyBox {
     if (node is RenderParagraph) {
       // A proxy lays its child out at its own origin, so the paragraph's boxes are this box's coordinates.
       final Rect bounds = offset & size;
-      final paint = Paint()..color = _color;
-      for (final TextRange mark in _marks) {
+      for (final (:TextRange range, :Color color) in _marks) {
+        final paint = Paint()..color = color;
         for (final TextBox box in node.getBoxesForSelection(
-          TextSelection(baseOffset: mark.start, extentOffset: mark.end),
+          TextSelection(baseOffset: range.start, extentOffset: range.end),
         )) {
           final Rect block = Rect.fromLTRB(
             offset.dx + box.left,
@@ -151,7 +207,7 @@ class RenderDiffWordMarks extends RenderProxyBox {
   }
 }
 
-/// jj's marker after a last line without its newline (`jj diff --git`).
+/// jj's marker after a last line without its newline (`jj diff --git`'s words, kept for the color-words lines).
 const noNewlineMarker = r'\ No newline at end of file'; // l10n-ignore: jj's own words
 
 /// The marker line under a line without its newline: faint mono, outside the selection like the sigils.
@@ -162,34 +218,36 @@ Widget _noNewline(ZsColors colors, EdgeInsets padding) => Padding(
   ),
 );
 
-/// [line]'s shown text in [ink], both layouts' one builder: its [diffWordMarks], if any, on the stronger fill of its
-/// hue with [ZsColors.text] glyphs (coloured text on a stronger tint falls under 4.5:1, DS states.css). A side-by-side
-/// [cell] keeps one line, clipped.
+/// [line]'s shown text in [ink], both layouts' one builder: its [diffWordMarks], if any, on the stronger fill of
+/// their side's hue (removed runs `--rem-word-bg`, added runs `--add-word-bg`) with [ZsColors.text] glyphs (coloured
+/// text on a stronger tint falls under 4.5:1, DS states.css). A side-by-side [cell] keeps one line, clipped.
 Widget _lineText(ZsColors colors, HunkLine line, Color ink, {bool cell = false}) {
   final String text = _text(line);
   final TextStyle style = ZsType.code.copyWith(color: ink);
   final int? maxLines = cell ? 1 : null;
   final TextOverflow? overflow = cell ? TextOverflow.clip : null;
-  final List<TextRange> marks = diffWordMarks(line);
+  final List<DiffWordMark> marks = diffWordMarks(line);
   if (marks.isEmpty) {
     return Text(text, maxLines: maxLines, softWrap: false, overflow: overflow, style: style);
   }
   final strong = TextStyle(color: colors.text);
   final spans = <TextSpan>[];
   var at = 0;
-  for (final mark in marks) {
-    if (mark.start > at) {
-      spans.add(TextSpan(text: text.substring(at, mark.start)));
+  for (final (:TextRange range, kind: _) in marks) {
+    if (range.start > at) {
+      spans.add(TextSpan(text: text.substring(at, range.start)));
     }
-    spans.add(TextSpan(text: mark.textInside(text), style: strong));
-    at = mark.end;
+    spans.add(TextSpan(text: range.textInside(text), style: strong));
+    at = range.end;
   }
   if (at < text.length) {
     spans.add(TextSpan(text: text.substring(at)));
   }
   return DiffWordMarks(
-    marks: marks,
-    color: line.kind == HunkLineKind.added ? colors.addWordBg : colors.remWordBg,
+    marks: <PaintedWordMark>[
+      for (final (:TextRange range, :SegmentKind kind) in marks)
+        (range: range, color: kind == SegmentKind.added ? colors.addWordBg : colors.remWordBg),
+    ],
     child: Text.rich(
       TextSpan(children: spans),
       maxLines: maxLines,
@@ -539,8 +597,9 @@ class InspectorTextButton extends StatelessWidget {
 }
 
 /// One hunk (DS components/content/DiffHunk, content.css:48-55): the header band (`--hunk-bg`: the range in
-/// `--hunk`, the symbol, +added / −removed) over its lines, unified (a sigil column, scrolling horizontally on its own)
-/// or side by side (two clipped cells per row). The unified lines sit in a [ZsScrollArea]: its bar along the bottom
+/// `--hunk`, the symbol, +added / −removed) over its color-words lines (Story 5.10), unified (a left and a right
+/// line-number column, scrolling horizontally on its own) or side by side (two clipped cells per row, each with its
+/// number, whole lines rebuilt by [pairSideBySide]). The unified lines sit in a [ZsScrollArea]: its bar along the bottom
 /// shows a cut line while scrolling or hovered, ←/→ scroll it when focused. Story 10.26 (DS DiffHunk.prompt.md:8-11,
 /// content.css:58-59): a [selectable] hunk leads its header with a tristate checkbox (its Tab stop, Space toggles);
 /// a picked one (all or mixed) has its header on `--accent-soft-hi` with `--text` and a 2 px `--accent-line` edge
@@ -652,68 +711,100 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
     );
   }
 
-  (Color, Color) _look(ZsColors colors, HunkLineKind kind) => switch (kind) {
-    HunkLineKind.context => (colors.textMuted.withValues(alpha: 0), colors.textMuted),
-    HunkLineKind.added => (colors.addBg, colors.add),
-    HunkLineKind.removed => (colors.remBg, colors.rem),
-  };
+  /// A line's look (Story 5.10): its fill, its text ink and its left / right number inks. Context: faint numbers,
+  /// muted text. Removed / added: the side's hue for its number and text on the side's fill. Changed: both numbers
+  /// in their hue, no fill, `--text` ink. A conflict header: `--text-dim`, no numbers.
+  _Look _look(ZsColors colors, HunkLineKind kind) {
+    final Color none = colors.textMuted.withValues(alpha: 0);
+    return switch (kind) {
+      HunkLineKind.context => (fill: none, ink: colors.textMuted, left: colors.textFaint, right: colors.textFaint),
+      HunkLineKind.added => (fill: colors.addBg, ink: colors.add, left: colors.add, right: colors.add),
+      HunkLineKind.removed => (fill: colors.remBg, ink: colors.rem, left: colors.rem, right: colors.rem),
+      HunkLineKind.changed => (fill: none, ink: colors.text, left: colors.rem, right: colors.add),
+      HunkLineKind.conflictHeader => (fill: none, ink: colors.textDim, left: none, right: none),
+    };
+  }
 
-  Widget _unified(ZsColors colors) => LayoutBuilder(
-    builder: (context, constraints) => ZsScrollArea(
-      controller: _vertical,
-      horizontalController: _horizontal,
-      child: SingleChildScrollView(
-        controller: _horizontal,
-        scrollDirection: Axis.horizontal,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minWidth: constraints.maxWidth),
-          child: IntrinsicWidth(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                for (final HunkLine line in hunk.lines) ...<Widget>[
-                  Builder(
-                    builder: (context) {
-                      final (Color fill, Color ink) = _look(colors, line.kind);
-                      final String sigil = switch (line.kind) {
-                        HunkLineKind.context => ' ',
-                        HunkLineKind.added => '+',
-                        HunkLineKind.removed => '−',
-                      };
-                      return Container(
-                        color: fill,
+  /// A line number right-aligned in [digits] columns of the mono face, outside the selection; blank for none.
+  Widget _number(int? number, int digits, Color ink) => SelectionContainer.disabled(
+    child: Text(
+      '${number ?? ''}'.padLeft(digits),
+      softWrap: false,
+      style: ZsType.code.copyWith(color: ink),
+    ),
+  );
+
+  /// The number columns' width in digits: the hunk's largest number's.
+  int get _digits {
+    var largest = 0;
+    for (final HunkLine line in hunk.lines) {
+      largest = math.max(largest, math.max(line.left ?? 0, line.right ?? 0));
+    }
+    return '$largest'.length;
+  }
+
+  Widget _unified(ZsColors colors) {
+    final int digits = _digits;
+    return LayoutBuilder(
+      builder: (context, constraints) => ZsScrollArea(
+        controller: _vertical,
+        horizontalController: _horizontal,
+        child: SingleChildScrollView(
+          controller: _horizontal,
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: IntrinsicWidth(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  for (final HunkLine line in hunk.lines) ...<Widget>[
+                    Builder(
+                      builder: (context) {
+                        final _Look look = _look(colors, line.kind);
+                        final header = line.kind == HunkLineKind.conflictHeader;
+                        return Container(
+                          color: look.fill,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            spacing: 8,
+                            children: <Widget>[
+                              if (!header) ...<Widget>[
+                                _number(line.left, digits, look.left),
+                                _number(line.right, digits, look.right),
+                              ],
+                              _lineText(colors, line, look.ink),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    // Blank number columns put the marker where the line's text starts.
+                    if (!line.text.endsWith('\n'))
+                      Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          spacing: 8,
                           children: <Widget>[
-                            SizedBox(
-                              width: 14,
-                              child: SelectionContainer.disabled(
-                                child: Text(
-                                  sigil,
-                                  style: ZsType.code.copyWith(
-                                    color: line.kind == HunkLineKind.context ? colors.textFaint : ink,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            _lineText(colors, line, ink),
+                            _number(null, digits, colors.textFaint),
+                            _number(null, digits, colors.textFaint),
+                            _noNewline(colors, EdgeInsets.zero),
                           ],
                         ),
-                      );
-                    },
-                  ),
-                  if (!line.text.endsWith('\n')) _noNewline(colors, const EdgeInsets.only(left: 24, right: 10)),
+                      ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _sideBySide(ZsColors colors) {
+    final int digits = _digits;
     Widget cell(HunkLine? line, {required bool left}) {
       final BorderSide edge = left ? BorderSide(color: colors.flBorder) : BorderSide.none;
       if (line == null) {
@@ -725,18 +816,25 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
           ),
         );
       }
-      final (Color fill, Color ink) = _look(colors, line.kind);
+      final _Look look = _look(colors, line.kind);
       return Container(
         constraints: const BoxConstraints(minHeight: 17),
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          color: fill,
+          color: look.fill,
           border: Border(right: edge),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            _lineText(colors, line, ink, cell: true),
+            Row(
+              spacing: 8,
+              children: <Widget>[
+                if (line.kind != HunkLineKind.conflictHeader)
+                  _number(left ? line.left : line.right, digits, left ? look.left : look.right),
+                Expanded(child: _lineText(colors, line, look.ink, cell: true)),
+              ],
+            ),
             if (!line.text.endsWith('\n')) _noNewline(colors, EdgeInsets.zero),
           ],
         ),
@@ -749,13 +847,15 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
       children: <Widget>[
         for (final (HunkLine? left, HunkLine? right) in pairSideBySide(hunk.lines))
           IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Expanded(child: cell(left, left: true)),
-                Expanded(child: cell(right, left: false)),
-              ],
-            ),
+            child: left != null && left.kind == HunkLineKind.conflictHeader
+                ? cell(left, left: false)
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      Expanded(child: cell(left, left: true)),
+                      Expanded(child: cell(right, left: false)),
+                    ],
+                  ),
           ),
       ],
     );

@@ -4405,7 +4405,7 @@ impl Repo {
         )
     }
 
-    /// The diff between two trees as `jj diff --git`'s line-level hunks (Story 5.1), each hunk
+    /// The diff between two trees as `jj diff`'s default color-words lines (Story 5.10), each hunk
     /// with the builtin diff editor's sections it shows — `hunks.rs`' module doc has the rules.
     ///
     /// `from` and `to` are tree ids plus conflict labels — for a revision, its
@@ -4415,7 +4415,7 @@ impl Repo {
     /// accepts when the trees are the ones it diffs (the revision's parent tree, or `from`'s tree,
     /// against the revision's own) with the labels `show` reports, and both calls see the same
     /// effective `ui.conflict-marker-style` — each resolves config for its own CLI command, so a
-    /// `--when.commands` scope can differ. `context: None` is the effective `diff.git.context`; `whitespace`
+    /// `--when.commands` scope can differ. `context: None` is the effective `diff.color-words.context`; `whitespace`
     /// is the CLI's `-w` / `-b`. The call resolves its config for the CLI command `diff`
     /// (Story 9.41). Equal trees give an empty result.
     ///
@@ -4425,8 +4425,8 @@ impl Repo {
     ///
     /// - [`crate::MutateError::InvalidInput`] — a tree has an even or zero id count, an id that is
     ///   not hex, or a label count that is neither zero nor its id count.
-    /// - [`crate::MutateError::Config`] — `diff.git.context`, `diff.git.show-path-prefix` or
-    ///   `ui.conflict-marker-style` is malformed.
+    /// - [`crate::MutateError::Config`] — a `diff.color-words.*` key (`context`,
+    ///   `max-inline-alternation`, `conflict`) or `ui.conflict-marker-style` is malformed.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::Backend`] — a tree id names no tree in the store, a side cannot be
     ///   read (access denied, as in the CLI), or another jj-lib failure.
@@ -4457,7 +4457,7 @@ impl Repo {
     /// [`crate::RevisionDiff::description`] — the CLI's `JJ-COMMIT-DESCRIPTION` block, `from`'s
     /// (or `""`'s) description against the commit's, `None` when equal. Records count only
     /// when `paths` matches their target (`get_copy_records`). Each entry is read as
-    /// `show_git_diff` reads it: the left side at the copy SOURCE, the right at the TARGET
+    /// `show_color_words_diff` reads it: the left side at the copy SOURCE, the right at the TARGET
     /// ([`crate::FileDiff::path`]), the source symbol's language from the target. A copied or
     /// renamed file has no sections — the builtin diff editor [`Repo::select_tree`] mirrors
     /// selects it only whole. The root's diff and `from == to` are empty. `paths` are
@@ -4476,7 +4476,7 @@ impl Repo {
     ///   the repository, the `-r` set has gaps ("Cannot diff revsets with gaps in.", hint
     ///   "Revision <12-hex> would need to be in the set."), or an interdiff has neither side ("at
     ///   least one of `from` or `to` is required", before the snapshot).
-    /// - [`crate::MutateError::Config`] — `diff.git.context`, `ui.conflict-marker-style`,
+    /// - [`crate::MutateError::Config`] — a `diff.color-words.*` key, `ui.conflict-marker-style`,
     ///   `templates.commit_summary` or the revset aliases are malformed.
     /// - [`crate::MutateError::RevsetParseError`] — a revision is not a valid revset expression.
     /// - [`crate::MutateError::RevsetResolutionError`] — a symbol does not resolve (an unknown

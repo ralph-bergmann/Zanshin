@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: MIT AND Apache-2.0
 
-//! `source_symbol.rs` — the source symbol a hunk header names (Story 5.1), jj 0.46's hunk-header
-//! "funcname".
+//! `source_symbol.rs` — the source-symbol line the color-words diff shows for a skipped range
+//! (Story 5.10).
 //!
-//! A verbatim port of `cli/src/source_symbol.rs` @ v0.46.0 (the languages, their patterns and the
-//! scanner) plus `trim_source_symbol` from `cli/src/diff_util.rs:1849-1861`. That code is
-//! Copyright 2020-2026 The Jujutsu Authors, licensed under the Apache License, Version 2.0
-//! (<https://www.apache.org/licenses/LICENSE-2.0>; a copy is the repo's `LICENSE-APACHE`); the jj
-//! CLI is not a library dependency for it (`source_symbol` is `pub(crate)` there), so it is ported. Changes: std `&[u8]` helpers
-//! instead of `bstr`, and a pattern that fails to compile matches nothing instead of panicking.
-//! A file whose name has no pattern — Dart among them — gets no symbol.
+//! A verbatim port of `cli/src/source_symbol.rs` @ v0.47.0 (the languages and their patterns).
+//! That code is Copyright 2020-2026 The Jujutsu Authors, licensed under the Apache License,
+//! Version 2.0 (<https://www.apache.org/licenses/LICENSE-2.0>; a copy is the repo's
+//! `LICENSE-APACHE`); the jj CLI is not a library dependency for it (`source_symbol` is
+//! `pub(crate)` there), so it is ported. Changes: std `&[u8]` helpers instead of `bstr`, and a
+//! pattern that fails to compile matches nothing instead of panicking. A file whose name has no
+//! pattern — Dart among them — takes [`SourceLanguage::Generic`], as in the CLI.
 
-use std::ops::Range;
 use std::sync::LazyLock;
 
 use regex::bytes::Regex;
@@ -24,6 +23,8 @@ pub(crate) enum SourceLanguage {
     CSharp,
     Dts,
     Elixir,
+    /// A line starting with an identifier, like GNU diff; the CLI's fallback language.
+    Generic,
     Go,
     Html,
     Ini,
@@ -191,6 +192,9 @@ impl SourceLanguage {
             }
             Self::Dts => !line.contains(&b';') && !line.contains(&b'=') && is_match(&DTS_FUNCTION_RE, line),
             Self::Elixir => is_match(&ELIXIR_FUNCTION_RE, line),
+            Self::Generic => line
+                .first()
+                .is_some_and(|&byte| byte.is_ascii_alphabetic() || matches!(byte, b'_' | b'$')),
             Self::Go => is_match(&GO_FUNCTION_RE, line),
             Self::Html => is_match(&HTML_FUNCTION_RE, line),
             Self::Ini => is_match(&INI_FUNCTION_RE, line),
@@ -283,6 +287,7 @@ fn is_comment_line(language: SourceLanguage, line: &[u8]) -> bool {
         SourceLanguage::Tex => line.starts_with(b"%"),
         SourceLanguage::BibTeX
         | SourceLanguage::Dts
+        | SourceLanguage::Generic
         | SourceLanguage::Html
         | SourceLanguage::Ini
         | SourceLanguage::Markdown
@@ -294,73 +299,30 @@ fn is_comment_line(language: SourceLanguage, line: &[u8]) -> bool {
 
 /// The symbol `line` declares in `language`, if any — the line without its ending and outer
 /// whitespace.
-fn source_symbol_from_line(language: SourceLanguage, line: &[u8]) -> Option<&[u8]> {
+pub(crate) fn source_symbol_from_line(language: SourceLanguage, line: &[u8]) -> Option<&[u8]> {
     let line = strip_line_ending(line);
     let trimmed_line = trim_line(line);
     let line_to_match = match language {
         // Keep leading whitespace so the C-like matcher excludes indented calls/control flow
-        // inside a function (and, deliberately, indented C++ class methods and namespace members).
-        SourceLanguage::CLike | SourceLanguage::CLikeOrObjC => line,
+        // inside a function (and, deliberately, indented C++ class methods and namespace members);
+        // the generic pattern finds a line STARTING with an identifier.
+        SourceLanguage::CLike | SourceLanguage::CLikeOrObjC | SourceLanguage::Generic => line,
         _ => trimmed_line,
     };
     (!is_comment_line(language, trimmed_line) && language.is_source_symbol(line_to_match)).then_some(trimmed_line)
 }
 
-/// Finds source symbols near line ranges in one version of a file.
-pub(crate) struct SourceSymbolScanner<'a> {
-    /// Each symbol's 0-based line and text, in line order.
-    symbols: Vec<(usize, &'a [u8])>,
-}
-
-impl<'a> SourceSymbolScanner<'a> {
-    /// The symbols of `content` in `language`.
-    pub(crate) fn new(language: SourceLanguage, content: &'a [u8]) -> Self {
-        Self {
-            symbols: content
-                .split_inclusive(|byte| *byte == b'\n')
-                .enumerate()
-                .filter_map(|(line_number, line)| Some((line_number, source_symbol_from_line(language, line)?)))
-                .collect(),
-        }
-    }
-
-    /// A symbol on the first line of a nonempty range, or the closest symbol strictly before the
-    /// range; with no preceding symbol, the first symbol in the range (a newly added section).
-    pub(crate) fn find(&self, line_range: &Range<usize>) -> Option<&'a [u8]> {
-        let preceding_end = self.symbols.partition_point(|(line, _)| *line < line_range.start);
-        let first_in_range = self
-            .symbols
-            .get(preceding_end)
-            .filter(|(line, _)| *line < line_range.end);
-        if let Some(&(_, symbol)) = first_in_range.filter(|(line, _)| *line == line_range.start) {
-            return Some(symbol);
-        }
-        self.symbols[..preceding_end]
-            .last()
-            .or(first_in_range)
-            .map(|(_, symbol)| *symbol)
-    }
-}
-
-/// `trim_source_symbol` (`cli/src/diff_util.rs:1849-1861` @ v0.46.0): Git's 80-byte limit; a run of
-/// non-ASCII bytes the limit splits is dropped whole.
-pub(crate) fn trim_source_symbol(source_symbol: &[u8]) -> &[u8] {
-    const MAX_SOURCE_SYMBOL_LEN: usize = 80;
-    let mut end = source_symbol.len().min(MAX_SOURCE_SYMBOL_LEN);
-    if source_symbol.get(end).is_some_and(|byte| *byte >= 0x80) {
-        while end > 0 && source_symbol[end - 1] >= 0x80 {
-            end -= 1;
-        }
-    }
-    &source_symbol[..end]
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{source_symbol_from_line, trim_source_symbol, SourceLanguage, SourceSymbolScanner};
+    use super::{source_symbol_from_line, SourceLanguage};
 
+    /// The symbol lines of `content`, 0-based.
     fn symbols(language: SourceLanguage, content: &[u8]) -> Vec<(usize, &[u8])> {
-        SourceSymbolScanner::new(language, content).symbols
+        content
+            .split_inclusive(|byte| *byte == b'\n')
+            .enumerate()
+            .filter_map(|(line_number, line)| Some((line_number, source_symbol_from_line(language, line)?)))
+            .collect()
     }
 
     /// The CLI's `test_source_symbol_patterns` table, as plain asserts.
@@ -368,8 +330,8 @@ mod tests {
     #[allow(clippy::too_many_lines)] // WHY: the CLI's table, one flat line per sample
     fn source_symbol_patterns_match_the_clis_table() {
         use SourceLanguage::{
-            BibTeX, CLike, CSharp, Dts, Elixir, Go, Html, Ini, Java, JavaScript, Kotlin, Markdown, Matlab, ObjC,
-            Pascal, Perl, Php, Python, Ruby, Scheme, Shell, Tex, R,
+            BibTeX, CLike, CSharp, Dts, Elixir, Generic, Go, Html, Ini, Java, JavaScript, Kotlin, Markdown, Matlab,
+            ObjC, Pascal, Perl, Php, Python, Ruby, Scheme, Shell, Tex, R,
         };
         let samples: &[(SourceLanguage, &str, bool)] = &[
             (BibTeX, "@article{example,", true),
@@ -390,6 +352,12 @@ mod tests {
             (Elixir, "defmodule Example do", true),
             (Elixir, "defp run(value) do", true),
             (Elixir, "if ready do", false),
+            (Generic, "public(arg)", true),
+            (Generic, "_private(arg)", true),
+            (Generic, "$variable = value", true),
+            (Generic, "    indented(arg)", false),
+            (Generic, "", false),
+            (Generic, "42 == value", false),
             (Go, "func Example(value int) int {", true),
             (Go, "type Example struct {", true),
             (Go, "var example = func() {}", false),
@@ -482,54 +450,40 @@ mod tests {
         );
     }
 
-    /// `test_source_symbol_scanner_finds_pointer_returning_c_function`.
+    /// A pointer-returning C function is a symbol on its `*` line.
     #[test]
-    fn the_scanner_finds_a_pointer_returning_c_function() {
+    fn a_pointer_returning_c_function_is_a_symbol() {
         let content = b"int\n*foo(void) {\n    return 0;\n}\n";
         for language in [SourceLanguage::CLike, SourceLanguage::CLikeOrObjC] {
-            let scanner = SourceSymbolScanner::new(language, content);
-            assert_eq!(scanner.find(&(2..3)), Some(&b"*foo(void) {"[..]));
+            assert_eq!(symbols(language, content), [(1, &b"*foo(void) {"[..])]);
         }
     }
 
-    /// `test_source_symbol_scanner_uses_first_symbol_in_range`.
+    /// `.m` files match both Objective-C and Matlab symbols.
     #[test]
-    fn the_scanner_uses_the_first_symbol_in_the_range() {
-        let scanner = SourceSymbolScanner::new(
-            SourceLanguage::Rust,
-            b"preamble\n\nfn first() {\n}\n\nfn second() {\n}\n",
-        );
-        assert_eq!(scanner.find(&(1..7)), Some(&b"fn first() {"[..]));
-        assert_eq!(scanner.find(&(1..2)), None);
-    }
-
-    /// `test_source_symbol_scanner_range_start`.
-    #[test]
-    fn the_scanner_prefers_the_range_start_then_the_preceding_symbol() {
-        let scanner = SourceSymbolScanner::new(SourceLanguage::Rust, b"fn first() {\n}\n\nfn second() {\n}\n");
-        // An exact match takes precedence over the preceding symbol.
-        assert_eq!(scanner.find(&(3..4)), Some(&b"fn second() {"[..]));
-        // Empty ranges exclude the symbol at their start.
-        assert_eq!(scanner.find(&(3..3)), Some(&b"fn first() {"[..]));
-        assert_eq!(scanner.find(&(0..0)), None);
-        // A preceding symbol takes precedence over a later symbol in the range.
-        assert_eq!(scanner.find(&(2..5)), Some(&b"fn first() {"[..]));
-    }
-
-    /// `test_source_symbol_scanner_handles_ambiguous_objc_extension`.
-    #[test]
-    fn the_scanner_handles_the_ambiguous_m_extension() {
-        let objc = SourceSymbolScanner::new(
+    fn the_ambiguous_m_extension_matches_both_languages() {
+        let objc = symbols(
             SourceLanguage::MatlabOrObjC,
             b"@implementation Example\n- (void)method {\n    value++;\n}\n@end\n",
         );
-        assert_eq!(objc.find(&(2..3)), Some(&b"- (void)method {"[..]));
-        let matlab = SourceSymbolScanner::new(
+        assert_eq!(objc[1], (1, &b"- (void)method {"[..]));
+        let matlab = symbols(
             SourceLanguage::MatlabOrObjC,
             b"%% Section\nfunction y = example(x)\ny = x + 1;\nend\n",
         );
-        assert_eq!(matlab.find(&(0..1)), Some(&b"%% Section"[..]));
-        assert_eq!(matlab.find(&(2..3)), Some(&b"function y = example(x)"[..]));
+        assert_eq!(
+            matlab[..2],
+            [(0, &b"%% Section"[..]), (1, &b"function y = example(x)"[..])]
+        );
+    }
+
+    /// The generic language matches an unindented line starting with an identifier, untrimmed.
+    #[test]
+    fn the_generic_language_matches_unindented_identifiers() {
+        assert_eq!(
+            symbols(SourceLanguage::Generic, b"main() {\n  call();\n}\n_x = 1\n"),
+            [(0, &b"main() {"[..]), (3, &b"_x = 1"[..])]
+        );
     }
 
     /// Languages come from the last path component; Dart has none.
@@ -570,20 +524,5 @@ mod tests {
             source_symbol_from_line(SourceLanguage::Markdown, b"# Title\n"),
             Some(&b"# Title"[..])
         );
-    }
-
-    /// Git's 80-byte limit; a non-ASCII run the limit splits is dropped whole.
-    #[test]
-    fn trimming_keeps_80_bytes_and_whole_non_ascii_runs() {
-        assert_eq!(trim_source_symbol(b"fn main() {"), b"fn main() {");
-        let long = [b'a'; 100];
-        assert_eq!(trim_source_symbol(&long), &long[..80]);
-        let mut split = vec![b'a'; 78];
-        split.extend_from_slice("äö".as_bytes());
-        assert_eq!(trim_source_symbol(&split), &split[..78]);
-        let mut exact = vec![b'a'; 79];
-        exact.extend_from_slice(b"\xc3");
-        assert_eq!(trim_source_symbol(&exact), &exact[..80]);
-        assert_eq!(trim_source_symbol("ä".repeat(41).as_bytes()), b"");
     }
 }

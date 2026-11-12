@@ -106,12 +106,16 @@ void main() {
         return [for (final Segment s in line.segments) (s.kind, s.text)];
       }
 
-      // `a` → `A` keeps nothing, so the lines stay unpaired: one whole changed segment each.
-      expect(segmentsOf('f.txt', 'a\n'), [(SegmentKind.removed, 'a\n')]);
-      expect(segmentsOf('f.txt', 'A\n'), [(SegmentKind.added, 'A\n')]);
+      // `a` → `A` is one inlined line holding both words, with both line numbers.
+      expect(segmentsOf('f.txt', 'aA\n'), [
+        (SegmentKind.removed, 'a'),
+        (SegmentKind.added, 'A'),
+        (SegmentKind.equal, '\n'),
+      ]);
+      final HunkLine changed = fileOf(diff, 'f.txt').hunks.first.lines.first;
+      expect((changed.kind, changed.left, changed.right), (HunkLineKind.changed, 1, 1));
       expect(segmentsOf('f.txt', 'b\n'), [(SegmentKind.equal, 'b\n')]);
-      // jj compares spaces one by one: the removed line keeps its space, one space is added.
-      expect(segmentsOf('w.txt', 'x y\n'), [(SegmentKind.equal, 'x y\n')]);
+      // jj compares spaces one by one: one space is added to the line.
       expect(segmentsOf('w.txt', 'x  y\n').where((s) => s.$1 != SegmentKind.equal), [(SegmentKind.added, ' ')]);
     });
 
@@ -147,13 +151,18 @@ void main() {
     test('paths_context_whitespace_and_summary_cross_the_buffer', () async {
       final Diff onlyF = await repo.diff(revision: at, paths: const ['f.txt'], context: 0);
       expect(onlyF.files.map((f) => f.path), ['f.txt']);
-      expect(onlyF.files.single.hunks.expand((h) => h.lines).map((l) => l.kind), isNot(contains(HunkLineKind.context)));
+      // At context 0 the one-line gaps are shown whole, as the CLI does: one hunk.
+      expect(onlyF.files.single.hunks, hasLength(1));
 
       final Diff exact = await repo.diff(revision: at, paths: const ['w.txt']);
-      expect(exact.files.single.hunks, isNotEmpty);
+      expect(exact.files.single.hunks.single.lines.single.kind, HunkLineKind.changed);
       for (final DiffWhitespace ws in [DiffWhitespace.ignoreAllSpace, DiffWhitespace.ignoreSpaceChange]) {
         final Diff ignoring = await repo.diff(revision: at, paths: const ['w.txt'], whitespace: ws);
-        expect(ignoring.files.expand((f) => f.hunks), isEmpty, reason: '$ws hides a whitespace-only change');
+        expect(
+          ignoring.files.expand((f) => f.hunks).expand((h) => h.lines).map((l) => l.kind),
+          everyElement(HunkLineKind.context),
+          reason: '$ws shows a whitespace-only change as context',
+        );
       }
 
       final Diff summary = await repo.diff(revision: at, summary: true);

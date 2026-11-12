@@ -2347,7 +2347,7 @@ final class DiffCommand extends WorkerCommand implements HandleScopedCommand {
   /// Repo-relative path prefixes; empty = every path.
   final List<String> paths;
 
-  /// `--context`; `null` = the effective `diff.git.context`.
+  /// `--context`; `null` = the effective `diff.color-words.context`.
   final int? context;
 
   /// `-w` / `-b`.

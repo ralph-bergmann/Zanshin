@@ -1200,8 +1200,8 @@ void main() {
       expect(
         paintedWordMarks(tester, ZsColors.of(tester.element(find.byType(DiffWordMarks).first))),
         <String, List<String>>{
-          'old a': <String>['old'],
-          'new a': <String>['new'],
+          'old a': <String>['-old'],
+          'new a': <String>['+new'],
         },
       );
       await unmount(tester);

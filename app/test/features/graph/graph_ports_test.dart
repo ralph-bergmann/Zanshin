@@ -363,11 +363,16 @@ void main() {
       return (repo, model, at, sections, entry.parentTreeIds);
     }
 
+    /// The new text of every added or changed (color-words inlined) line.
     Future<List<String>> addedLines(ProjectRepo repo, String id) async => <String>[
       for (final FileDiff file in (await repo.handle.diff(revision: id)).files)
         for (final Hunk hunk in file.hunks)
           for (final HunkLine line in hunk.lines)
-            if (line.kind == HunkLineKind.added) line.text,
+            if (line.kind == HunkLineKind.added || line.kind == HunkLineKind.changed)
+              <String>[
+                for (final Segment segment in line.segments)
+                  if (segment.kind != SegmentKind.removed) segment.text,
+              ].join(),
     ];
 
     test('Story 10.26: commit -i of hunks 1 and 3 of three leaves hunk 2 in the new @', () async {

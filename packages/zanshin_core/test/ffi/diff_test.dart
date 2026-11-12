@@ -177,6 +177,55 @@ void main() {
     expect(lines[2].segments, isEmpty, reason: 'no segments vector');
   });
 
+  test('a line decodes its color-words kind and line numbers, 0 as null', () {
+    final Diff diff = decodeDiffEnvelope(
+      fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Diff,
+        data: fbs.DiffObjectBuilder(
+          files: [
+            fbs.FileDiffObjectBuilder(
+              path: 'git.rs',
+              hunks: [
+                fbs.HunkObjectBuilder(
+                  lines: [
+                    fbs.HunkLineObjectBuilder(
+                      kind: fbs.HunkLineKind.Changed,
+                      text: '  ab\n',
+                      leftLine: 2454,
+                      rightLine: 2459,
+                      segments: [
+                        _segment(fbs.SegmentKind.Equal, '  '),
+                        _segment(fbs.SegmentKind.Removed, 'a'),
+                        _segment(fbs.SegmentKind.Added, 'b'),
+                        _segment(fbs.SegmentKind.Equal, '\n'),
+                      ],
+                    ),
+                    fbs.HunkLineObjectBuilder(kind: fbs.HunkLineKind.Added, text: 'n\n', rightLine: 2460),
+                    fbs.HunkLineObjectBuilder(kind: fbs.HunkLineKind.ConflictHeader, text: '>>>>>>> Conflict ends\n'),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ).toBytes(),
+    );
+
+    final List<HunkLine> lines = diff.files.single.hunks.single.lines;
+    expect(lines.map((l) => (l.kind, l.left, l.right)), [
+      (HunkLineKind.changed, 2454, 2459),
+      (HunkLineKind.added, null, 2460),
+      (HunkLineKind.conflictHeader, null, null),
+    ]);
+    expect(lines[0].segments.map((s) => (s.kind, s.text)), [
+      (SegmentKind.equal, '  '),
+      (SegmentKind.removed, 'a'),
+      (SegmentKind.added, 'b'),
+      (SegmentKind.equal, '\n'),
+    ]);
+  });
+
   test('absent files decode as an empty diff', () {
     final Diff diff = decodeDiffEnvelope(
       fbs.EnvelopeObjectBuilder(

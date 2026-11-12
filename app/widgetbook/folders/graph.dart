@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -918,6 +919,44 @@ class _DemoActions implements GraphActions {
   }
 }
 
+/// One color-words line (Story 5.10) as the backend sends it, in `hunks.rs`' test notation: a kind (` ` context, `-`
+/// removed, `+` added, `~` changed), the left and right numbers in four columns each (blank for none), `|`, then the
+/// text with `[-…-]` around a removed run and `{+…+}` around an added one. The line's `\n` is an equal run unless the
+/// text spells it out.
+HunkLine _colorWords(String spec) {
+  final HunkLineKind kind = switch (spec[0]) {
+    '-' => HunkLineKind.removed,
+    '+' => HunkLineKind.added,
+    '~' => HunkLineKind.changed,
+    _ => HunkLineKind.context,
+  };
+  int? number(String digits) => digits.trim().isEmpty ? null : int.parse(digits.trim());
+  final String body = spec.substring(spec.indexOf('|') + 1);
+  final segments = <Segment>[];
+  void add(SegmentKind segmentKind, String text) => segments.isNotEmpty && segments.last.kind == segmentKind
+      ? segments.last = Segment(kind: segmentKind, text: segments.last.text + text)
+      : segments.add(Segment(kind: segmentKind, text: text));
+  for (final RegExpMatch match in RegExp(r'\[-([\s\S]*?)-\]|\{\+([\s\S]*?)\+\}|([^\[{]+|[\[{])').allMatches(body)) {
+    if (match[1] case final String removed?) {
+      add(SegmentKind.removed, removed);
+    } else if (match[2] case final String added?) {
+      add(SegmentKind.added, added);
+    } else {
+      add(SegmentKind.equal, match[3]!);
+    }
+  }
+  if (!body.contains('\n')) {
+    add(SegmentKind.equal, '\n');
+  }
+  return HunkLine(
+    kind: kind,
+    text: segments.map((s) => s.text).join(),
+    segments: segments,
+    left: number(spec.substring(1, 5)),
+    right: number(spec.substring(6, 10)),
+  );
+}
+
 /// The demo's inspector reads (Story 10.8), derived from the shown layout: the fake content's subject and author, a
 /// body on every third change, the layout's direct parents, and up to four files whose kinds cycle (a rename among
 /// them); a merge and the root change no files. Every verb preview is available.
@@ -1030,24 +1069,34 @@ class _DemoDetails implements GraphDetails {
     return SquashPlan(combinedDescription: own.isEmpty || parent.isEmpty ? null : '$parent\n$own');
   }
 
-  static HunkLine _line(HunkLineKind kind, String text) => HunkLine(kind: kind, text: '$text\n');
+  /// A hunk of color-words lines in [_colorWords]' notation; its ranges and counts follow from the lines.
+  static Hunk _hunk(List<String> specs, {String? symbol}) {
+    final lines = <HunkLine>[for (final String spec in specs) _colorWords(spec)];
+    Set<int> changed(int? Function(HunkLine) side) => <int>{
+      for (final HunkLine line in lines)
+        if (line.kind != HunkLineKind.context && side(line) != null) side(line)!,
+    };
+    ({int start, int end}) range(int? Function(HunkLine) side) {
+      final numbers = <int>[for (final HunkLine line in lines) ?side(line)];
+      final int start = numbers.isEmpty ? 0 : numbers.first - 1;
+      return (start: start, end: numbers.isEmpty ? start : numbers.reduce(math.max));
+    }
 
-  /// A changed line with its word segments (Story 10.32) as the backend sends them (each changed block's lines
-  /// word-diffed in pairs): `[-…-]` around a removed run, `{+…+}` around an added one.
-  static HunkLine _words(HunkLineKind kind, String marked) {
-    final added = kind == HunkLineKind.added;
-    final List<String> parts = marked.split(added ? RegExp(r'\{\+|\+\}') : RegExp(r'\[-|-\]'));
-    final SegmentKind changed = added ? SegmentKind.added : SegmentKind.removed;
-    return HunkLine(
-      kind: kind,
-      text: parts.join(),
-      segments: <Segment>[
-        for (var i = 0; i < parts.length; i++)
-          if (parts[i].isNotEmpty) Segment(kind: i.isOdd ? changed : SegmentKind.equal, text: parts[i]),
-      ],
+    return Hunk(
+      before: range((l) => l.left),
+      after: range((l) => l.right),
+      symbol: symbol,
+      sections: const [],
+      removed: changed((l) => l.left).length,
+      added: changed((l) => l.right).length,
+      lines: lines,
     );
   }
 
+  /// Story 5.10: the catalogue's diffs are jj's color-words lines. A Rust file shows Ralph's jj example (an inlined
+  /// block, one old line spread over six new ones), any other modified file the stepper edits (one changed line,
+  /// an inserted comment) and the widget-test block over the inline limit; an added or removed file a single hunk of
+  /// its lines; a `.png` is binary.
   static FileDiff _diffOf(FileChange file, {required bool summary}) {
     final bool binary = file.path.endsWith('.png');
     final bool rust = file.path.endsWith('.rs');
@@ -1055,95 +1104,61 @@ class _DemoDetails implements GraphDetails {
         ? const <Hunk>[]
         : switch (file.kind) {
             FileChangeKind.added || FileChangeKind.copied => <Hunk>[
-              Hunk(
-                before: (start: 0, end: 0),
-                after: (start: 0, end: 3),
-                symbol: null,
-                sections: const [],
-                removed: 0,
-                added: 3,
-                lines: <HunkLine>[
-                  _line(HunkLineKind.added, "import 'package:flutter/widgets.dart';"),
-                  _line(HunkLineKind.added, ''),
-                  _line(HunkLineKind.added, 'class Onboarding extends StatelessWidget {}'),
-                ],
-              ),
+              _hunk(<String>[
+                "+        1|{+import 'package:flutter/widgets.dart';+}",
+                '+        2|',
+                '+        3|{+class Onboarding extends StatelessWidget {}+}',
+              ]),
             ],
             FileChangeKind.removed => <Hunk>[
-              Hunk(
-                before: (start: 0, end: 2),
-                after: (start: 0, end: 0),
-                symbol: null,
-                sections: const [],
-                removed: 2,
-                added: 0,
-                lines: <HunkLine>[
-                  _line(HunkLineKind.removed, 'fn main() {'),
-                  _line(HunkLineKind.removed, '}'),
-                ],
-              ),
+              _hunk(<String>['-   1     |[-fn main() {-]', '-   2     |[-}-]']),
             ],
-            // Story 10.32: Ralph's three examples carry jj-lib's word segments, so the catalogue shows the marks.
+            _ when rust => <Hunk>[
+              _hunk(symbol: 'fn write_locked_index(', <String>[
+                ' 2451 2451|        .map_err(GitResetHeadError::from_git)?;',
+                ' 2452 2452|    let lock = out',
+                ' 2453 2453|        .into_inner()',
+                '~2454 2454|        .map_err(|err| {+{\n+}',
+                '+     2455|{+            let (source, out) = err.into_parts();+}',
+                '+     2456|{+            let path = out.get_ref().lock_path().to_owned();+}',
+                '+     2457|{+            PathError { path, source }+}',
+                '+     2458|{+        })+}',
+                '~2454 2459|{+        .map_err(+}GitResetHeadError::from_git[-(err.into_error())-])?;',
+                ' 2455 2460|    lock.commit()',
+                '~2456 2461|        .map_err(|err| {+err.error)\n+}',
+                '+     2462|{+        .context(index.path())+}',
+                '~2456 2463|{+        .map_err(+}GitResetHeadError::from_git[-(err.error)-])?;',
+                ' 2457 2464|    Ok(())',
+                ' 2458 2465|}',
+              ]),
+            ],
             _ => <Hunk>[
-              Hunk(
-                before: (start: 11, end: 14),
-                after: (start: 11, end: 14),
-                symbol: rust ? 'fn main()' : null,
-                sections: const [],
-                removed: 1,
-                added: 1,
-                lines: <HunkLine>[
-                  _line(HunkLineKind.context, '  Widget build(BuildContext context) => FilledButton('),
-                  _words(
-                    HunkLineKind.removed,
-                    '    child: Text(isLastStep ? [-s.functionWizard_save-] : s.functionWizard_next),\n',
-                  ),
-                  _words(HunkLineKind.added, '    child: Text(isLastStep ? {+saveLabel+} : s.functionWizard_next),\n'),
-                  _line(HunkLineKind.context, '  );'),
-                ],
-              ),
-              Hunk(
-                before: (start: 30, end: 32),
-                after: (start: 30, end: 34),
-                symbol: rust ? 'fn main()' : null,
-                sections: const [],
-                removed: 1,
-                added: 3,
-                lines: <HunkLine>[
-                  _words(HunkLineKind.removed, '    Expanded(child: _Line(color: isFirst ? null : lineColor)),\n'),
-                  _words(HunkLineKind.added, '    Expanded({+\n+}'),
-                  _words(HunkLineKind.added, '{+      +}child: _Line(color: isFirst ? null : lineColor){+,\n+}'),
-                  _words(HunkLineKind.added, '{+    +}),\n'),
-                  _line(HunkLineKind.context, '    DecoratedBox('),
-                ],
-              ),
-              Hunk(
-                before: (start: 40, end: 42),
-                after: (start: 42, end: 45),
-                symbol: rust ? 'fn main()' : null,
-                sections: const [],
-                removed: 1,
-                added: 2,
-                lines: <HunkLine>[
-                  _words(HunkLineKind.removed, '  padding: Spacing.[-spacing8-],\n'),
-                  _words(HunkLineKind.added, '{+  // Small side padding.\n+}'),
-                  _words(HunkLineKind.added, '  padding: Spacing.{+spacing2+},\n'),
-                  _line(HunkLineKind.context, '  child: label,'),
-                ],
-              ),
-              Hunk(
-                before: (start: 60, end: 62),
-                after: (start: 63, end: 66),
-                symbol: rust ? 'fn main()' : null,
-                sections: const [],
-                removed: 0,
-                added: 1,
-                lines: <HunkLine>[
-                  _line(HunkLineKind.context, '  void dispose() {'),
-                  _line(HunkLineKind.added, '    _timer?.cancel();'),
-                  _line(HunkLineKind.context, '  }'),
-                ],
-              ),
+              _hunk(symbol: 'class StepperButton extends StatelessWidget {', <String>[
+                '   10   10|  @override',
+                '   11   11|  Widget build(BuildContext context) => FilledButton(',
+                '~  12   12|    child: Text(isLastStep ? [-s.functionWizard_save-]{+saveLabel+} : s.functionWizard_next),',
+                '   13   13|  );',
+              ]),
+              _hunk(symbol: 'Widget stepLabel(Widget label) => Padding(', <String>[
+                '~  42   44|  {+// Small side padding.\n+}',
+                '~  42   45|{+  +}padding: Spacing.[-spacing8-]{+spacing2+},',
+                '   43   46|  child: label,',
+              ]),
+              _hunk(symbol: 'void main() {', <String>[
+                '    7    7|',
+                ('-   8     |  // [-Tablet-] [-only: the wide test font overflows-] [-the-] [-compact-] app bar[-,-] '
+                    '[-which-] [-holds-] [-the-] [-buttons-] on a phone[-.-]'),
+                '-   9     |  [-// The-] phone [-layout-] [-is-] [-checked-] on a [-device.-]',
+                ("-  10     |[-  testWidgets('shows Funktion speichern instead of Weiter on the last step-]', "
+                    '(tester) async {'),
+                ('+        8|  // {+The+} {+tablet shows the long label.+} {+The+} {+phone+} '
+                    'app bar{+ has little room and shows the short one.+}'),
+                ("+        9|{+  testWidgets('shows Speichern instead of Weiter+} {+on+} {+the+} {+last+} {+step+} "
+                    "on a phone{+', (tester) async {+}"),
+                '+       10|  {+  await openWizard(tester, size:+} phone{+);+}',
+                '+       11|{+    await fillGeneralStep(tester);+}',
+                '   11   12|    await openWizard(tester, size: tablet);',
+              ]),
             ],
           };
     return FileDiff(
@@ -1655,19 +1670,19 @@ class _HunkSelection extends StatelessWidget {
     lines: lines,
   );
 
-  static List<HunkLine> _lines(String old, String now) => <HunkLine>[
-    const HunkLine(kind: HunkLineKind.context, text: 'fn main() {\n'),
-    HunkLine(kind: HunkLineKind.removed, text: '$old\n'),
-    HunkLine(kind: HunkLineKind.added, text: '$now\n'),
-    const HunkLine(kind: HunkLineKind.context, text: '}\n'),
+  /// Color-words lines (Story 5.10): context, one changed line of [changed] in `[-…-]` / `{+…+}`, context.
+  static List<HunkLine> _lines(int start, String changed) => <HunkLine>[
+    _colorWords('${'$start'.padLeft(5)} ${'$start'.padLeft(4)}|fn main() {'),
+    _colorWords('~${'${start + 1}'.padLeft(4)} ${'${start + 1}'.padLeft(4)}|$changed'),
+    _colorWords('${'${start + 2}'.padLeft(5)} ${'${start + 2}'.padLeft(4)}|}'),
   ];
 
   @override
   Widget build(BuildContext context) {
     final hunks = <Hunk>[
-      _hunk(3, _lines('    let a = 1;', '    let a = 2;'), 'main'),
-      _hunk(20, _lines('    log("x");', '    log("y");'), 'run'),
-      _hunk(40, _lines('    exit(0)', '    exit(1)'), 'stop'),
+      _hunk(3, _lines(4, '    let a = [-1-]{+2+};'), 'main'),
+      _hunk(20, _lines(21, '    log("[-x-]{+y+}");'), 'run'),
+      _hunk(40, _lines(41, '    exit([-0-]{+1+})'), 'stop'),
     ];
     final picked = <Hunk>{hunks[0], hunks[2]};
     final diff = FileDiff(

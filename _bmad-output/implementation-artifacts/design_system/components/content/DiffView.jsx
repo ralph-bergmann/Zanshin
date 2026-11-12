@@ -3,25 +3,60 @@ import { Icon } from "../brand/Icon.jsx";
 import { Checkbox } from "../forms/Checkbox.jsx";
 
 // DiffView — the diff block on the quiet code surface: a toolbar (path, layout toggle, Viewed) over hunks or plain lines.
-// lines: strings with a git sigil ("+…", "-…", "@@…", " …") or objects { t: "add" | "rem" | "hunk" | "ctx", s, runs? }.
-// children (DiffHunk elements) replace `lines`. viewed folds the body away into one green line.
-// Changed words: one line per side, each with its sigil; git's delimiters mark the changed runs, "[-…-]" only on a removed
-// line, "{+…+}" only on an added one. They become runs ([text, changed]); a line whose unchanged text is only blanks keeps
-// none (its line fill says it all). A string has no escape: code holding "[-", "-]", "{+" or "+}" goes in the object form.
+// The lines are jj diff's default color-words lines: each row shows its left and right line number, then its text.
+// lines: strings "<kind><left>:<right>|<text>" — kind " " context, "-" removed (left only), "+" added (right only),
+// "~" changed (an inlined line holding both sides' words), "#" a conflict header ("#|<<<<<<< Created conflict") —
+// or objects { t: "ctx" | "rem" | "add" | "chg" | "hdr", l?, r?, s, runs? }. Changed words: "[-…-]" around a left-side
+// run, "{+…+}" around a right-side one, on any line. They become runs ([text, "rem" | "add" | null]); a removed or
+// added line whose unchanged text is only blanks keeps none (its fill says it all); a changed line always keeps them.
+// Older git strings ("+…", "-…", " …", "@@…") still parse, without numbers. A string has no escape: code holding "[-",
+// "-]", "{+" or "+}" goes in the object form.
 export function zsDiffLine(l) {
-  if (typeof l !== "string") return l;
+  if (typeof l !== "string") {
+    // The object form of before Story 5.10 had boolean runs: true is the line's own side.
+    return l.runs ? { ...l, runs: l.runs.map(([s, k]) => [s, k === true ? l.t : k || null]) } : l;
+  }
   if (l.startsWith("@@")) return { t: "hunk", s: l };
-  if (l[0] !== "+" && l[0] !== "-") return { t: "ctx", s: l[0] === " " ? l.slice(1) : l };
-  const t = l[0] === "+" ? "add" : "rem";
-  const runs = l.slice(1).split(t === "add" ? /\{\+|\+\}/ : /\[-|-\]/).map((s, i) => [s, i % 2 === 1]).filter(([s]) => s);
-  const s = runs.map(([x]) => x).join("");
-  return runs.some(([, w]) => w) && runs.some(([x, w]) => !w && x.trim()) ? { t, s, runs } : { t, s };
+  if (l.startsWith("#|")) return { t: "hdr", s: l.slice(2) };
+  const cw = /^([ ~+-])(\d*):(\d*)\|/.exec(l);
+  const t = cw ? { " ": "ctx", "-": "rem", "+": "add", "~": "chg" }[cw[1]] : l[0] === "+" ? "add" : l[0] === "-" ? "rem" : "ctx";
+  const body = cw ? l.slice(cw[0].length) : t === "ctx" && l[0] !== " " ? l : l.slice(1);
+  const runs = [];
+  for (const m of body.matchAll(/\[-([\s\S]*?)-\]|\{\+([\s\S]*?)\+\}|([^[{]+|[[{])/g)) {
+    const [s, k] = m[1] != null ? [m[1], "rem"] : m[2] != null ? [m[2], "add"] : [m[3], null];
+    if (!s) continue;
+    if (runs.length && runs[runs.length - 1][1] === k) runs[runs.length - 1][0] += s;
+    else runs.push([s, k]);
+  }
+  const line = { t, s: runs.map(([x]) => x).join("") };
+  if (cw) {
+    if (cw[2]) line.l = Number(cw[2]);
+    if (cw[3]) line.r = Number(cw[3]);
+  }
+  const marked = runs.some(([, k]) => k) && (t === "chg" || runs.some(([x, k]) => !k && x.trim()));
+  return marked ? { ...line, runs } : line;
 }
 
-// A line's text: each changed run a .w mark — the stronger tint of the line's hue, the line's full height, --text glyphs.
-// Without runs (or with an empty list) it is the plain text.
+// A line's text: each changed run a .w mark — the stronger tint of its side's hue (.w.rem / .w.add), the line's full
+// height, --text glyphs. Without runs (or with an empty list) it is the plain text.
 export function zsDiffText(l) {
-  return l.runs && l.runs.length ? l.runs.map(([s, w], i) => (w ? <span key={i} className="w">{s}</span> : s)) : l.s;
+  return l.runs && l.runs.length ? l.runs.map(([s, k], i) => (k ? <span key={i} className={"w " + k}>{s}</span> : s)) : l.s;
+}
+
+// One unified row: the left and right number columns (outside the selection), then the text; a header spans the row.
+export function zsDiffRow(l, i) {
+  return (
+    <div key={i} className={"zs-diff-line " + l.t}>
+      {l.t !== "hdr" && <span className="ln l">{l.l ?? ""}</span>}
+      {l.t !== "hdr" && <span className="ln r">{l.r ?? ""}</span>}
+      <span className="tx">{zsDiffText(l)}</span>
+    </div>
+  );
+}
+
+// The number columns' width: the largest number's digits.
+export function zsDiffDigits(ls) {
+  return Math.max(1, ...ls.map((l) => String(Math.max(l.l || 0, l.r || 0)).length));
 }
 
 export function DiffView({ file, tools, lines = [], maxHeight, viewed, onViewedChange, children, className = "" }) {
@@ -31,6 +66,7 @@ export function DiffView({ file, tools, lines = [], maxHeight, viewed, onViewedC
       <span>Viewed</span>
     </button>
   );
+  const ls = lines.map(zsDiffLine);
   return (
     <div className={["zs-diff", viewed && "is-viewed", className].filter(Boolean).join(" ")}>
       {(file || tools || toggle) && (
@@ -45,17 +81,8 @@ export function DiffView({ file, tools, lines = [], maxHeight, viewed, onViewedC
       ) : children ? (
         <div className="zs-diff-hunks">{children}</div>
       ) : (
-        <div className="zs-diff-body" style={{ maxHeight }}>
-          {lines.map(zsDiffLine).map((l, i) =>
-            l.t === "hunk" ? (
-              <div key={i} className="zs-diff-hunk">{l.s}</div>
-            ) : (
-              <div key={i} className={"zs-diff-line " + l.t}>
-                <span className="sg">{l.t === "add" ? "+" : l.t === "rem" ? "−" : " "}</span>
-                <span className="tx">{zsDiffText(l)}</span>
-              </div>
-            )
-          )}
+        <div className="zs-diff-body" style={{ maxHeight, "--ln": zsDiffDigits(ls) + "ch" }}>
+          {ls.map((l, i) => (l.t === "hunk" ? <div key={i} className="zs-diff-hunk">{l.s}</div> : zsDiffRow(l, i)))}
         </div>
       )}
     </div>

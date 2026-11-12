@@ -24,24 +24,30 @@
 .zs-diff-bar{display:flex;align-items:center;gap:8px;padding:7px 8px 7px 12px;border-bottom:1px solid var(--fl-border)}
 .zs-diff-file{flex:1;min-width:0;font:var(--fs-xs) var(--font-mono);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left;unicode-bidi:plaintext}
 .zs-diff-body{padding:4px 0 6px;font:var(--type-code);overflow:auto}
+/* color-words rows (Story 5.10): left number, right number, text. Numbers right-aligned in --ln columns (the largest number's digits),
+   outside the selection; context faint numbers + muted text; removed / added the hue's number + text on its fill; changed both numbers
+   in their hue, no fill, --text ink; a conflict header --text-dim without numbers */
 .zs-diff-line{display:flex;white-space:pre;padding:0 10px}
-.zs-diff-line .sg{width:14px;flex-shrink:0;color:var(--text-faint);user-select:none}
+.zs-diff-line .ln,.zs-diff-side .ln{width:var(--ln,2ch);flex-shrink:0;margin-right:8px;text-align:right;color:var(--text-faint);user-select:none}
 .zs-diff-line .tx{color:var(--text-muted)}
-.zs-diff-line.add{background:var(--add-bg)}.zs-diff-line.add .sg,.zs-diff-line.add .tx{color:var(--add)}
-.zs-diff-line.rem{background:var(--rem-bg)}.zs-diff-line.rem .sg,.zs-diff-line.rem .tx{color:var(--rem)}
+.zs-diff-line.add{background:var(--add-bg)}.zs-diff-line.add .ln,.zs-diff-line.add .tx{color:var(--add)}
+.zs-diff-line.rem{background:var(--rem-bg)}.zs-diff-line.rem .ln,.zs-diff-line.rem .tx{color:var(--rem)}
+.zs-diff-line.chg .ln.l{color:var(--rem)}.zs-diff-line.chg .ln.r{color:var(--add)}.zs-diff-line.chg .tx{color:var(--text)}
+.zs-diff-line.hdr .tx,.zs-diff-side.hdr .tx{color:var(--text-dim)}
 .zs-diff-hunk{margin:4px 0;padding:2px 10px;font-size:var(--fs-xs);color:var(--hunk);background:var(--hunk-bg)}
 .zs-diff-split .zs-diff-row{display:grid;grid-template-columns:1fr 1fr}
+.zs-diff-split .zs-diff-row.hdr{grid-template-columns:1fr}
 .zs-diff-side{display:flex;white-space:pre;padding:0 8px;border-right:1px solid var(--fl-border);min-height:17px;overflow:hidden}
 .zs-diff-side:last-child{border-right:0}
 .zs-diff-side .tx{color:var(--text-muted)}
-.zs-diff-side.add{background:var(--add-bg)}.zs-diff-side.add .tx{color:var(--add)}
-.zs-diff-side.rem{background:var(--rem-bg)}.zs-diff-side.rem .tx{color:var(--rem)}
+.zs-diff-side.add{background:var(--add-bg)}.zs-diff-side.add .ln,.zs-diff-side.add .tx{color:var(--add)}
+.zs-diff-side.rem{background:var(--rem-bg)}.zs-diff-side.rem .ln,.zs-diff-side.rem .tx{color:var(--rem)}
 .zs-diff-side.empty{background:var(--fl-hover);opacity:.4}
-/* word marks — a changed run ("[-…-]" / "{+…+}"): the line keeps its fill, the run takes the stronger tint of its hue the line's full
-   height (inline-block) and --text glyphs (red or green text on a stronger tint falls under 4.5:1); a side cell clips them */
+/* word marks — a changed run ("[-…-]" / "{+…+}"): the line keeps its fill, the run takes the stronger tint of its side's hue the line's
+   full height (inline-block) and --text glyphs (red or green text on a stronger tint falls under 4.5:1); a side cell clips them */
 .zs-diff-line .w,.zs-diff-side .w{display:inline-block;color:var(--text)}
-.zs-diff-line.add .w,.zs-diff-side.add .w{background:var(--add-word-bg)}
-.zs-diff-line.rem .w,.zs-diff-side.rem .w{background:var(--rem-word-bg)}
+.zs-diff-line .w.add,.zs-diff-side .w.add{background:var(--add-word-bg)}
+.zs-diff-line .w.rem,.zs-diff-side .w.rem{background:var(--rem-word-bg)}
 .zs-viewed{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:3px 8px 3px 6px;border-radius:var(--radius-tag);border:1px solid var(--border);background:transparent;color:var(--text-muted);font:inherit;font-size:var(--fs-xs);cursor:default;transition:background var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
 .zs-viewed:hover{color:var(--text);border-color:var(--border-strong);background:var(--fl-hover)}
 .zs-viewed:active{background:var(--fl-on)}

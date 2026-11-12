@@ -1531,25 +1531,57 @@ pub(crate) fn conflict_marker_style(
     config.get("ui.conflict-marker-style").map_err(|e| value_error(&e))
 }
 
-/// Reads the effective `diff.git.context` out of a loaded stack (Story 5.1) — the context lines
-/// of a Git-format diff.
+/// How the color-words diff shows a conflicted side (`diff.color-words.conflict`, Story 5.10) —
+/// the CLI's `ConflictDiffMethod` (`cli/src/diff_util.rs:751-760` @ v0.47.0).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ConflictDiffMethod {
+    /// Diff the conflict's materialized marker text.
+    Materialize,
+    /// Diff each pair of left and right conflict terms.
+    Pair,
+}
+
+/// The effective `diff.color-words.*` options (Story 5.10).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ColorWordsOptions {
+    /// `diff.color-words.context`.
+    pub(crate) context: usize,
+    /// `diff.color-words.max-inline-alternation`; `None` = unlimited (`-1`).
+    pub(crate) max_inline_alternation: Option<usize>,
+    /// `diff.color-words.conflict`.
+    pub(crate) conflict: ConflictDiffMethod,
+}
+
+/// Reads the effective `diff.color-words.*` keys out of a loaded stack (Story 5.10).
 ///
-/// Mirrors `UnifiedDiffOptions::from_settings` (`cli/src/diff_util.rs:1751-1757` @ v0.46.0),
-/// which reads this key and then `diff.git.show-path-prefix` before `--context` overrides the
-/// first, so a malformed value of either fails the diff even when the caller passes its own
-/// context, and with both malformed the error names `diff.git.context`. The defaults (3, `true`)
+/// Mirrors `ColorWordsDiffOptions::from_settings` (`cli/src/diff_util.rs:793-812` @ v0.47.0):
+/// `max-inline-alternation` first (`-1` = unlimited, another negative value a type error), then
+/// `conflict`, then `context`, so a malformed value fails the diff even when the caller passes its
+/// own context, as `--context` overrides only after the read. The defaults (3, 3, `materialize`)
 /// come from jj-cli's own default layers ([`CLI_DEFAULTS`]).
 ///
 /// # Errors
 ///
-/// - [`ConfigError::Load`] — either value has the wrong type, or is missing from every layer
-///   (impossible while the jj-cli default layers are present).
-pub(crate) fn diff_git_context(config: &StackedConfig) -> Result<usize, ConfigError> {
-    let context = config.get("diff.git.context").map_err(|e| value_error(&e))?;
-    config
-        .get::<bool>("diff.git.show-path-prefix")
-        .map_err(|e| value_error(&e))?;
-    Ok(context)
+/// - [`ConfigError::Load`] — a value has the wrong type or is out of range, or is missing from
+///   every layer (impossible while the jj-cli default layers are present).
+pub(crate) fn diff_color_words(config: &StackedConfig) -> Result<ColorWordsOptions, ConfigError> {
+    let name = "diff.color-words.max-inline-alternation";
+    let max_inline_alternation = match config.get::<i64>(name).map_err(|e| value_error(&e))? {
+        -1 => None,
+        n => Some(usize::try_from(n).map_err(|err| {
+            value_error(&ConfigGetError::Type {
+                name: name.to_owned(),
+                error: err.into(),
+                source_path: None,
+            })
+        })?),
+    };
+    Ok(ColorWordsOptions {
+        conflict: config.get("diff.color-words.conflict").map_err(|e| value_error(&e))?,
+        context: config.get("diff.color-words.context").map_err(|e| value_error(&e))?,
+        max_inline_alternation,
+    })
 }
 
 /// Reads the effective `git import` options out of a loaded stack (Story 9.5).
@@ -2620,8 +2652,9 @@ mod tests {
             Some("\"\"")
         );
         assert!(aliases.contains_key("format_signed_off_by_trailer(commit)"));
-        assert_eq!(config.get::<i64>("diff.git.context").expect("an integer"), 3);
+        assert_eq!(config.get::<i64>("diff.color-words.context").expect("an integer"), 3);
         assert!(config.get::<i64>("diff.color-words.max-inline-alternation").is_ok());
+        assert!(config.get::<String>("diff.color-words.conflict").is_ok());
         assert_eq!(config.get::<String>("ui.color").expect("a string"), "auto");
         assert_eq!(
             config
@@ -2708,6 +2741,44 @@ mod tests {
         let mut config = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
         config.add_layer(ConfigLayer::parse(ConfigSource::User, toml).expect("valid test TOML"));
         config
+    }
+
+    /// Story 5.10: the `diff.color-words.*` keys default to the CLI's values, `-1` is unlimited, a
+    /// user layer wins, and another negative limit or an unknown conflict method refuses naming
+    /// the key.
+    #[test]
+    fn color_words_options_default_to_the_cli_and_refuse_bad_values() {
+        use super::{diff_color_words, ColorWordsOptions, ConflictDiffMethod};
+        let config = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
+        assert_eq!(
+            diff_color_words(&config).expect("builtin"),
+            ColorWordsOptions {
+                context: 3,
+                max_inline_alternation: Some(3),
+                conflict: ConflictDiffMethod::Materialize,
+            }
+        );
+        let user = stack_with(
+            "diff.color-words.context = 1\ndiff.color-words.max-inline-alternation = -1\n\
+             diff.color-words.conflict = \"pair\"\n",
+        );
+        assert_eq!(
+            diff_color_words(&user).expect("user"),
+            ColorWordsOptions {
+                context: 1,
+                max_inline_alternation: None,
+                conflict: ConflictDiffMethod::Pair,
+            }
+        );
+        let negative = diff_color_words(&stack_with("diff.color-words.max-inline-alternation = -2\n"))
+            .expect_err("-2 is out of range");
+        assert!(
+            negative.to_string().contains("diff.color-words.max-inline-alternation"),
+            "{negative}"
+        );
+        let method =
+            diff_color_words(&stack_with("diff.color-words.conflict = \"x\"\n")).expect_err("an unknown method");
+        assert!(method.to_string().contains("diff.color-words.conflict"), "{method}");
     }
 
     /// Story 9.19: the two `bookmark advance` revsets and the list's sort keys default to the

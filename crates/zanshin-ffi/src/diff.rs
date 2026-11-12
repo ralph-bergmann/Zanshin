@@ -5,14 +5,14 @@
 //! `jj diff` as data. Its arguments cross as a `DiffRequest` request BUFFER (ADR-0001
 //! composite-input pattern); the handle is borrowed, never consumed; the call runs the pre-verb
 //! snapshot (Story 9.26), so every envelope carries the precondition report and the call's
-//! warnings. Story 5.2 gives every line its word-level segments, `zanshin_jj::Hunk::segments`:
-//! jj-lib's word diff over each pair of similar lines of a changed block.
+//! warnings. Since Story 5.10 the lines are `jj diff`'s default color-words lines: each line
+//! carries its kind, its left and right line numbers and its segments (the CLI's colour labels).
 
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, VerifierOptions, WIPOffset};
 use tracing::debug;
 use zanshin_jj::{
-    DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, MutateError, RevisionDiff, Segment, SegmentKind,
-    Whitespace,
+    DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, HunkLineKind, MutateError, RevisionDiff,
+    SegmentKind, Whitespace,
 };
 
 use crate::envelope::{
@@ -28,7 +28,7 @@ use crate::status::change_kind_offset;
 /// Parse a `DiffRequest` buffer into owned [`DiffOptions`], each revision as its revset text:
 /// `from` or `to` present is the `--from` / `--to` form (an absent side `@`), else the `-r` form
 /// (absent: `@`); absent vectors are empty, an absent `context` is the effective
-/// `diff.git.context`.
+/// `diff.color-words.context`.
 ///
 /// `data`/`len` describe a caller-owned buffer Dart builds and frees itself; Rust borrows it for
 /// the call only. The byte slice lives in this function's scope and the result is OWNED, so the
@@ -89,9 +89,9 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 
 /// `jj diff` as data in the repo identified by `handle` (Story 5.8) — `zanshin_jj::Repo::diff`:
 /// per changed file its kind, flags, section keys (the `HunkKey`s `zanshin_select_tree` takes),
-/// hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at. Every hunk
-/// line carries its word-level segments (Story 5.2): jj-lib's word diff over each pair of similar
-/// lines of a changed block.
+/// hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at. The lines
+/// are `jj diff`'s default color-words lines (Story 5.10): kind, left and right line numbers and
+/// segments, as the pinned CLI prints them.
 ///
 /// The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, a set
 /// diffed as one — its roots' merged parents against its merged heads, a set with gaps refused;
@@ -99,7 +99,7 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// side `@`; each a revset that must resolve to exactly one commit) — a commit id reaches a hidden
 /// commit, parse diagnostics land on the call's warnings — `paths` (repo-relative prefixes;
 /// empty: every path; one that matches nothing is a `jj.paths_unmatched` warning), `context`
-/// (absent: the effective `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no
+/// (absent: the effective `diff.color-words.context`), `whitespace` (`-w` / `-b`) and `summary` (no
 /// hunks). `interdiff` (Story 10.29) reads `from` / `to` as `jj interdiff` does: `from` rebased
 /// onto `to`'s parents in memory against `to`, no copy records; `interdiff` with `revision` alone
 /// (Story 10.29 closing run) is `show_inter_diff` with no predecessors — the revision's parent
@@ -122,8 +122,8 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// - `jj.revset_resolution_error` — a revision resolves to no commit or more than one (an unknown
 ///   symbol, an ambiguous prefix, a divergent change; the CLI's hints in `hints`), a failing
 ///   `revsets.short-prefixes`, or `@` in a workspace with no working-copy commit.
-/// - `jj.config_error` — `diff.git.context`, `ui.conflict-marker-style` or the revset aliases are
-///   malformed.
+/// - `jj.config_error` — a `diff.color-words.*` key, `ui.conflict-marker-style` or the revset
+///   aliases are malformed.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — a side cannot be read, or another jj-lib failure; detail in `context`.
 ///
@@ -151,8 +151,8 @@ pub unsafe extern "C" fn zanshin_diff(handle: u64, data: *const u8, len: usize) 
 
 /// Build a success `Envelope` with a `Diff` payload and return the finished buffer: the files
 /// exactly as `diff` returned them, in order, every vector written (empty, not absent), a `None`
-/// symbol, `from_path` or `from_commit_id` absent. Every line carries its word-level `segments`,
-/// its hunk's `segments` (Story 5.2). `report` rides as on every envelope.
+/// symbol, `from_path` or `from_commit_id` absent. Every line carries its `segments` and its line
+/// numbers, 0 for none (Story 5.10). `report` rides as on every envelope.
 #[must_use]
 pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
@@ -203,12 +203,7 @@ fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs
 fn hunk_offset<'b>(b: &mut FlatBufferBuilder<'b>, h: &Hunk) -> WIPOffset<fbs::Hunk<'b>> {
     let symbol = h.symbol.as_deref().map(|s| b.create_string(s));
     let sections = keys_vector(b, &h.sections);
-    let lines: Vec<_> = h
-        .lines
-        .iter()
-        .zip(&h.segments)
-        .map(|(l, s)| line_offset(b, l, s))
-        .collect();
+    let lines: Vec<_> = h.lines.iter().map(|l| line_offset(b, l)).collect();
     let lines = b.create_vector(&lines);
     fbs::Hunk::create(
         b,
@@ -226,20 +221,19 @@ fn hunk_offset<'b>(b: &mut FlatBufferBuilder<'b>, h: &Hunk) -> WIPOffset<fbs::Hu
     )
 }
 
-fn line_offset<'b>(
-    b: &mut FlatBufferBuilder<'b>,
-    line: &HunkLine,
-    segments: &[Segment],
-) -> WIPOffset<fbs::HunkLine<'b>> {
-    let (kind, text) = match line {
-        HunkLine::Context(text) => (fbs::HunkLineKind::Context, text),
-        HunkLine::Removed(text) => (fbs::HunkLineKind::Removed, text),
-        HunkLine::Added(text) => (fbs::HunkLineKind::Added, text),
+fn line_offset<'b>(b: &mut FlatBufferBuilder<'b>, line: &HunkLine) -> WIPOffset<fbs::HunkLine<'b>> {
+    let kind = match line.kind {
+        HunkLineKind::Context => fbs::HunkLineKind::Context,
+        HunkLineKind::Removed => fbs::HunkLineKind::Removed,
+        HunkLineKind::Added => fbs::HunkLineKind::Added,
+        HunkLineKind::Changed => fbs::HunkLineKind::Changed,
+        HunkLineKind::ConflictHeader => fbs::HunkLineKind::ConflictHeader,
     };
-    let text = b.create_string(text);
+    let text = b.create_string(&line.text());
     // A lone segment's text is the line's text: it shares the string instead of a second copy.
-    let shared = segments.len() == 1;
-    let segments: Vec<_> = segments
+    let shared = line.segments.len() == 1;
+    let segments: Vec<_> = line
+        .segments
         .iter()
         .map(|s| {
             let segment_text = if shared { text } else { b.create_string(&s.text) };
@@ -253,6 +247,8 @@ fn line_offset<'b>(
             kind,
             text: Some(text),
             segments: Some(segments),
+            left_line: line.left.unwrap_or(0),
+            right_line: line.right.unwrap_or(0),
         },
     )
 }
@@ -297,7 +293,8 @@ mod tests {
 
     use flatbuffers::VerifierOptions;
     use zanshin_jj::{
-        ChangeKind, CommitId, FileDiff, Hunk, HunkKey, HunkLine, OperationId, RevisionDiff, Segment, SegmentKind,
+        ChangeKind, CommitId, FileDiff, Hunk, HunkKey, HunkLine, HunkLineKind, OperationId, RevisionDiff, Segment,
+        SegmentKind,
     };
 
     use super::diff_to_envelope;
@@ -327,9 +324,24 @@ mod tests {
             .collect()
     }
 
+    /// A wire line back as a `HunkLine`: its text must be its segments joined; 0 numbers are none.
     fn line_from_wire(line: fbs::HunkLine<'_>) -> HunkLine {
-        let ctors: [fn(String) -> HunkLine; 3] = [HunkLine::Context, HunkLine::Removed, HunkLine::Added];
-        ctors[usize::from(line.kind().0)](line.text().expect("text present").to_owned())
+        let kinds = [
+            HunkLineKind::Context,
+            HunkLineKind::Removed,
+            HunkLineKind::Added,
+            HunkLineKind::Changed,
+            HunkLineKind::ConflictHeader,
+        ];
+        let number = |n: u32| (n != 0).then_some(n);
+        let decoded = HunkLine {
+            kind: kinds[usize::from(line.kind().0)],
+            left: number(line.left_line()),
+            right: number(line.right_line()),
+            segments: segments_from_wire(line),
+        };
+        assert_eq!(line.text(), Some(decoded.text().as_str()));
+        decoded
     }
 
     fn hunk_from_wire(h: fbs::Hunk<'_>) -> Hunk {
@@ -346,7 +358,6 @@ mod tests {
                 .iter()
                 .map(line_from_wire)
                 .collect(),
-            segments: segments_from_wire(h),
         }
     }
 
@@ -453,22 +464,24 @@ mod tests {
                         removed: 2,
                         added: 3,
                         lines: vec![
-                            HunkLine::Context("fn main() {\n".into()),
-                            HunkLine::Removed("    a();\n".into()),
-                            HunkLine::Removed("    b();\n".into()),
-                            HunkLine::Added("    c();\n".into()),
-                            HunkLine::Added("    d();\n".into()),
-                            HunkLine::Added("    e();\n".into()),
-                            HunkLine::Context("}\n".into()),
-                        ],
-                        segments: vec![
-                            whole(SegmentKind::Equal, "fn main() {\n"),
-                            word(SegmentKind::Removed, "a"),
-                            word(SegmentKind::Removed, "b"),
-                            word(SegmentKind::Added, "c"),
-                            word(SegmentKind::Added, "d"),
-                            whole(SegmentKind::Added, "    e();\n"),
-                            whole(SegmentKind::Equal, "}\n"),
+                            line(
+                                HunkLineKind::Context,
+                                (Some(1), Some(1)),
+                                whole(SegmentKind::Equal, "fn main() {\n"),
+                            ),
+                            line(HunkLineKind::Changed, (Some(2), Some(2)), changed("a", "c")),
+                            line(HunkLineKind::Removed, (Some(3), None), word(SegmentKind::Removed, "b")),
+                            line(HunkLineKind::Added, (None, Some(3)), word(SegmentKind::Added, "d")),
+                            line(
+                                HunkLineKind::Added,
+                                (None, Some(4)),
+                                whole(SegmentKind::Added, "    e();\n"),
+                            ),
+                            line(
+                                HunkLineKind::Context,
+                                (Some(4), Some(5)),
+                                whole(SegmentKind::Equal, "}\n"),
+                            ),
                         ],
                     },
                     Hunk {
@@ -479,20 +492,28 @@ mod tests {
                         removed: 1,
                         added: 4,
                         lines: vec![
-                            HunkLine::Context("x\n".into()),
-                            HunkLine::Removed("y\n".into()),
-                            HunkLine::Added("z1\n".into()),
-                            HunkLine::Added("z2\n".into()),
-                            HunkLine::Added("z3\n".into()),
-                            HunkLine::Added("no newline".into()),
-                        ],
-                        segments: vec![
-                            whole(SegmentKind::Equal, "x\n"),
-                            whole(SegmentKind::Removed, "y\n"),
-                            whole(SegmentKind::Added, "z1\n"),
-                            whole(SegmentKind::Added, "z2\n"),
-                            whole(SegmentKind::Added, "z3\n"),
-                            whole(SegmentKind::Added, "no newline"),
+                            line(
+                                HunkLineKind::Context,
+                                (Some(8), Some(9)),
+                                whole(SegmentKind::Equal, "x\n"),
+                            ),
+                            line(
+                                HunkLineKind::Removed,
+                                (Some(9), None),
+                                whole(SegmentKind::Removed, "y\n"),
+                            ),
+                            line(HunkLineKind::Added, (None, Some(10)), whole(SegmentKind::Added, "z1\n")),
+                            line(HunkLineKind::Added, (None, Some(11)), whole(SegmentKind::Added, "z2\n")),
+                            line(
+                                HunkLineKind::ConflictHeader,
+                                (None, None),
+                                whole(SegmentKind::Equal, "<<<<<<< Created conflict\n"),
+                            ),
+                            line(
+                                HunkLineKind::Added,
+                                (None, Some(12)),
+                                whole(SegmentKind::Added, "no newline"),
+                            ),
                         ],
                     },
                 ],
@@ -602,25 +623,46 @@ mod tests {
         ]
     }
 
-    /// One wire hunk's segments, line by line.
-    fn segments_from_wire(h: fbs::Hunk<'_>) -> Vec<Vec<Segment>> {
+    /// `    <removed><added>();\n`, an inlined line.
+    fn changed(removed: &str, added: &str) -> Vec<Segment> {
+        vec![
+            seg(SegmentKind::Equal, "    "),
+            seg(SegmentKind::Removed, removed),
+            seg(SegmentKind::Added, added),
+            seg(SegmentKind::Equal, "();\n"),
+        ]
+    }
+
+    fn line(kind: HunkLineKind, (left, right): (Option<u32>, Option<u32>), segments: Vec<Segment>) -> HunkLine {
+        HunkLine {
+            kind,
+            left,
+            right,
+            segments,
+        }
+    }
+
+    /// One wire line's segments.
+    fn segments_from_wire(line: fbs::HunkLine<'_>) -> Vec<Segment> {
         let kinds = [SegmentKind::Equal, SegmentKind::Added, SegmentKind::Removed];
-        let segments_of = |line: fbs::HunkLine<'_>| {
-            line.segments()
-                .expect("segments always present")
-                .iter()
-                .map(|s| seg(kinds[usize::from(s.kind().0)], s.text().expect("text present")))
-                .collect()
-        };
-        h.lines()
-            .expect("lines always present")
+        line.segments()
+            .expect("segments always present")
             .iter()
-            .map(segments_of)
+            .map(|s| seg(kinds[usize::from(s.kind().0)], s.text().expect("text present")))
             .collect()
     }
 
-    /// Story 5.2: every wire line, the description block's too, carries its hunk's segments for
-    /// it, a lone segment sharing the line's string.
+    /// One wire hunk's segments, line by line.
+    fn hunk_segments_from_wire(h: fbs::Hunk<'_>) -> Vec<Vec<Segment>> {
+        h.lines()
+            .expect("lines always present")
+            .iter()
+            .map(segments_from_wire)
+            .collect()
+    }
+
+    /// Story 5.2: every wire line, the description block's too, carries its segments, a lone
+    /// segment sharing the line's string.
     #[test]
     fn every_line_carries_its_word_level_segments() {
         use SegmentKind::{Added, Equal, Removed};
@@ -638,7 +680,8 @@ mod tests {
             let wire_hunks = wire.hunks().expect("hunks always present");
             assert_eq!(wire_hunks.len(), file.hunks.len());
             for (wire, hunk) in wire_hunks.iter().zip(&file.hunks) {
-                assert_eq!(segments_from_wire(wire), hunk.segments);
+                let segments: Vec<Vec<Segment>> = hunk.lines.iter().map(|line| line.segments.clone()).collect();
+                assert_eq!(hunk_segments_from_wire(wire), segments);
                 for line in wire.lines().expect("lines always present") {
                     let segments = line.segments().expect("segments always present");
                     if segments.len() == 1 {
@@ -650,11 +693,25 @@ mod tests {
                 }
             }
         }
-        let first = segments_from_wire(wire_files.get(0).hunks().expect("hunks present").get(0));
+        let first_hunk = wire_files.get(0).hunks().expect("hunks present").get(0);
+        let first = hunk_segments_from_wire(first_hunk);
         assert_eq!(first[0], [seg(Equal, "fn main() {\n")]);
-        assert_eq!(first[1], [seg(Equal, "    "), seg(Removed, "a"), seg(Equal, "();\n")]);
-        assert_eq!(first[3], [seg(Equal, "    "), seg(Added, "c"), seg(Equal, "();\n")]);
-        assert_eq!(first[5], [seg(Added, "    e();\n")]);
+        assert_eq!(
+            first[1],
+            [
+                seg(Equal, "    "),
+                seg(Removed, "a"),
+                seg(Added, "c"),
+                seg(Equal, "();\n")
+            ]
+        );
+        assert_eq!(first[3], [seg(Equal, "    "), seg(Added, "d"), seg(Equal, "();\n")]);
+        assert_eq!(first[4], [seg(Added, "    e();\n")]);
+        // Story 5.10: the changed line's numbers; 0 is none.
+        let lines = first_hunk.lines().expect("lines present");
+        assert_eq!((lines.get(1).left_line(), lines.get(1).right_line()), (2, 2));
+        assert_eq!((lines.get(2).left_line(), lines.get(2).right_line()), (3, 0));
+        assert_eq!(lines.get(1).kind(), fbs::HunkLineKind::Changed);
     }
 
     /// One `DiffRequest`: `kind`, `revision`, `from`, `to`, `paths`, `context`, `whitespace`,

@@ -4,8 +4,7 @@
 
 mod history;
 mod limits;
-// E2's line pairing exactly as Zanshin builds it: the same file, compiled here.
-#[path = "../../../crates/zanshin-jj/src/line_pairs.rs"]
+// E2's line pairing as Zanshin built it until Story 5.10: a frozen copy of that file.
 mod line_pairs;
 mod marks;
 mod parse_check;

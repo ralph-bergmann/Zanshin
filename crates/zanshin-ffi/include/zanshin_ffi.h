@@ -1002,9 +1002,9 @@ ZanshinBuf *zanshin_diagnostics(void);
 /**
  * `jj diff` as data in the repo identified by `handle` (Story 5.8) — `zanshin_jj::Repo::diff`:
  * per changed file its kind, flags, section keys (the `HunkKey`s `zanshin_select_tree` takes),
- * hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at. Every hunk
- * line carries its word-level segments (Story 5.2): jj-lib's word diff over each pair of similar
- * lines of a changed block.
+ * hunks, counts and fingerprint, pinned to the operation and commit(s) it was read at. The lines
+ * are `jj diff`'s default color-words lines (Story 5.10): kind, left and right line numbers and
+ * segments, as the pinned CLI prints them.
  *
  * The arguments cross as a `DiffRequest` `FlatBuffers` request buffer: `revision` (`-r`, a set
  * diffed as one — its roots' merged parents against its merged heads, a set with gaps refused;
@@ -1012,7 +1012,7 @@ ZanshinBuf *zanshin_diagnostics(void);
  * side `@`; each a revset that must resolve to exactly one commit) — a commit id reaches a hidden
  * commit, parse diagnostics land on the call's warnings — `paths` (repo-relative prefixes;
  * empty: every path; one that matches nothing is a `jj.paths_unmatched` warning), `context`
- * (absent: the effective `diff.git.context`), `whitespace` (`-w` / `-b`) and `summary` (no
+ * (absent: the effective `diff.color-words.context`), `whitespace` (`-w` / `-b`) and `summary` (no
  * hunks). `interdiff` (Story 10.29) reads `from` / `to` as `jj interdiff` does: `from` rebased
  * onto `to`'s parents in memory against `to`, no copy records; `interdiff` with `revision` alone
  * (Story 10.29 closing run) is `show_inter_diff` with no predecessors — the revision's parent
@@ -1035,8 +1035,8 @@ ZanshinBuf *zanshin_diagnostics(void);
  * - `jj.revset_resolution_error` — a revision resolves to no commit or more than one (an unknown
  *   symbol, an ambiguous prefix, a divergent change; the CLI's hints in `hints`), a failing
  *   `revsets.short-prefixes`, or `@` in a workspace with no working-copy commit.
- * - `jj.config_error` — `diff.git.context`, `ui.conflict-marker-style` or the revset aliases are
- *   malformed.
+ * - `jj.config_error` — a `diff.color-words.*` key, `ui.conflict-marker-style` or the revset
+ *   aliases are malformed.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
  * - `jj.jj_lib_error` — a side cannot be read, or another jj-lib failure; detail in `context`.
  *

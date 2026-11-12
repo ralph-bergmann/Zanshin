@@ -125,7 +125,7 @@ void main() {
   });
 
   // Story 10.32: the word segments for Ralph's three examples and a new file, read as the inspector reads them, reach
-  // the paint surface exactly as the I/O matrix says. The lines of a changed block are word-diffed in pairs.
+  // the paint surface exactly as the I/O matrix says, re-derived from the real worker's color-words lines (Story 5.10).
   testWidgets('a rewrite read through RepoGraphDetails.diff paints jj\'s changed words; an inserted line none', (
     tester,
   ) async {
@@ -169,26 +169,25 @@ void main() {
     }))!;
     expect(files.keys, unorderedEquals(<String>['comment.dart', 'expression.dart', 'fresh.dart', 'split.dart']));
 
+    // Story 5.10: the CLI's color-words lines — each block is inlined, so a changed line holds both sides' words.
     const expected = <String, Map<String, List<String>>>{
       'expression.dart': <String, List<String>>{
-        '    child: Text(isLastStep ? s.functionWizard_save : s.functionWizard_next),': <String>[
-          's.functionWizard_save',
+        '    child: Text(isLastStep ? s.functionWizard_savesaveLabel : s.functionWizard_next),': <String>[
+          '-s.functionWizard_save',
+          '+saveLabel',
         ],
-        '    a.functionWizard_save,': <String>['functionWizard_save'],
-        '    final größe = 1;': <String>['1'],
-        '    child: Text(isLastStep ? saveLabel : s.functionWizard_next),': <String>['saveLabel'],
-        '    a.functionWizard_next,': <String>['functionWizard_next'],
-        '    final größe = 2;': <String>['2'],
+        '    a.functionWizard_savefunctionWizard_next,': <String>['-functionWizard_save', '+functionWizard_next'],
+        '    final größe = 12;': <String>['-1', '+2'],
       },
-      // The removed line and `    Expanded(` keep none: their changed runs are line breaks.
+      // `    Expanded(`'s only changed run is its line break: no mark.
       'split.dart': <String, List<String>>{
-        '      child: _Line(color: isFirst ? null : lineColor),': <String>['      ', ','],
-        '    ),': <String>['    '],
+        '      child: _Line(color: isFirst ? null : lineColor),': <String>['+      ', '+,'],
+        '    ),': <String>['+    '],
       },
-      // The inserted comment line keeps none; the changed line pairs with its new version, so only the word changes.
+      // The inserted comment shares old line 1's number, so it is a changed line marking the comment.
       'comment.dart': <String, List<String>>{
-        '  padding: Spacing.spacing8,': <String>['spacing8'],
-        '  padding: Spacing.spacing2,': <String>['spacing2'],
+        '  // Small side padding.': <String>['+// Small side padding.'],
+        '  padding: Spacing.spacing8spacing2,': <String>['+  ', '-spacing8', '+spacing2'],
       },
       'fresh.dart': <String, List<String>>{},
     };

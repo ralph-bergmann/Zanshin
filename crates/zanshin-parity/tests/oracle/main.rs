@@ -13,6 +13,7 @@ use std::path::Path;
 
 mod card_menu_commands;
 mod compare;
+mod diff_color_words;
 mod diff_revisions;
 mod driver;
 mod drop_menu_commands;

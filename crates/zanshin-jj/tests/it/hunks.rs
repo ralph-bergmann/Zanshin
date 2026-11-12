@@ -15,14 +15,15 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::Repo as _;
 use tempfile::TempDir;
 use zanshin_jj::{
-    Backend, ChangeId, ChangeKind, FileChoice, FileDiff, FileSelection, HunkKey, HunkLine, HunksOptions, MutateError,
-    Repo, SelectTreeOptions, SelectedTreeId, Whitespace,
+    Backend, ChangeId, ChangeKind, FileChoice, FileDiff, FileSelection, HunkKey, HunkLine, HunkLineKind, HunksOptions,
+    MutateError, Repo, SegmentKind, SelectTreeOptions, SelectedTreeId, Whitespace,
 };
 
-/// The three sections of `f.txt`.
+/// The three sections of `f.txt`, two unchanged lines apart (a one-line gap is one line longer
+/// than context 0, so color-words would show it whole).
 const S1: HunkKey = key(0, 1, 0, 1);
-const S2: HunkKey = key(2, 1, 2, 1);
-const S3: HunkKey = key(4, 1, 4, 1);
+const S2: HunkKey = key(3, 1, 3, 1);
+const S3: HunkKey = key(6, 1, 6, 1);
 
 const fn key(old_start: u32, old_count: u32, new_start: u32, new_count: u32) -> HunkKey {
     HunkKey {
@@ -96,7 +97,7 @@ fn init() -> Fx {
 fn base() -> Fx {
     let mut fx = init();
     let root = fx.root.clone();
-    write(&root, "f.txt", b"a\nb\nc\nd\ne\n");
+    write(&root, "f.txt", b"a\nb\nb2\nc\nd\nd2\ne\n");
     write(&root, "bin.dat", b"x\0y");
     write(&root, "mode.sh", b"m\n");
     set_executable(&root, "mode.sh", false);
@@ -114,7 +115,7 @@ fn base() -> Fx {
     let a = wc(&root);
     fx.repo.describe(a.clone(), "A\n").expect("describe A");
     fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new");
-    write(&root, "f.txt", b"A\nb\nC\nd\nE\n");
+    write(&root, "f.txt", b"A\nb\nb2\nC\nd\nd2\nE\n");
     write(&root, "bin.dat", b"x\0z");
     set_executable(&root, "mode.sh", true);
     set_executable(&root, "binmode.dat", true);
@@ -176,25 +177,43 @@ fn only_hunk(file: &FileDiff) -> &zanshin_jj::Hunk {
     &file.hunks[0]
 }
 
-/// Every hunk's counts are its lines (the AC).
+/// Every hunk's counts are the distinct numbers on its changed lines, and every number lies in
+/// its range (the AC).
 fn assert_counts(diffs: &[FileDiff]) {
     for hunk in diffs.iter().flat_map(|file| &file.hunks) {
-        let removed = hunk
-            .lines
-            .iter()
-            .filter(|line| matches!(line, HunkLine::Removed(_)))
-            .count();
-        let added = hunk
-            .lines
-            .iter()
-            .filter(|line| matches!(line, HunkLine::Added(_)))
-            .count();
-        let context = hunk.lines.len() - removed - added;
-        assert_eq!(hunk.removed as usize, removed, "{hunk:?}");
-        assert_eq!(hunk.added as usize, added, "{hunk:?}");
-        assert_eq!(hunk.before_range.len(), context + removed, "{hunk:?}");
-        assert_eq!(hunk.after_range.len(), context + added, "{hunk:?}");
+        let distinct = |side: fn(&HunkLine) -> Option<u32>| {
+            let mut numbers: Vec<u32> = hunk
+                .lines
+                .iter()
+                .filter(|line| !matches!(line.kind, HunkLineKind::Context | HunkLineKind::ConflictHeader))
+                .filter_map(side)
+                .collect();
+            numbers.dedup();
+            numbers.len()
+        };
+        assert_eq!(hunk.removed as usize, distinct(|line| line.left), "{hunk:?}");
+        assert_eq!(hunk.added as usize, distinct(|line| line.right), "{hunk:?}");
+        for line in &hunk.lines {
+            assert!(
+                line.left.is_none_or(|n| hunk.before_range.contains(&(n - 1))),
+                "{hunk:?}"
+            );
+            assert!(
+                line.right.is_none_or(|n| hunk.after_range.contains(&(n - 1))),
+                "{hunk:?}"
+            );
+        }
     }
+}
+
+/// A line's text on one side: its equal runs and that side's runs.
+fn side_text(line: &HunkLine, left: bool) -> String {
+    let own = if left { SegmentKind::Removed } else { SegmentKind::Added };
+    line.segments
+        .iter()
+        .filter(|segment| segment.kind == SegmentKind::Equal || segment.kind == own)
+        .map(|segment| segment.text.as_str())
+        .collect()
 }
 
 /// Appends `toml` to the repo-level config.
@@ -259,12 +278,22 @@ fn three_sections_at_context_three_are_one_hunk_and_round_trip() {
     assert_eq!(f.sections, [S1, S2, S3]);
     assert!(!f.binary && !f.mode_change);
     let hunk = only_hunk(f);
-    assert_eq!((hunk.before_range.clone(), hunk.after_range.clone()), (0..5, 0..5));
+    assert_eq!((hunk.before_range.clone(), hunk.after_range.clone()), (0..7, 0..7));
     assert_eq!(hunk.sections, [S1, S2, S3]);
     assert_eq!((hunk.removed, hunk.added), (3, 3));
-    assert_eq!(hunk.lines[0], HunkLine::Removed("a\n".to_owned()));
-    assert_eq!(hunk.lines[1], HunkLine::Added("A\n".to_owned()));
-    assert_eq!(hunk.lines[2], HunkLine::Context("b\n".to_owned()));
+    let changed = &hunk.lines[0];
+    assert_eq!(
+        (changed.kind, changed.left, changed.right),
+        (HunkLineKind::Changed, Some(1), Some(1))
+    );
+    assert_eq!(
+        (side_text(changed, true), side_text(changed, false)),
+        ("a\n".to_owned(), "A\n".to_owned())
+    );
+    assert_eq!(
+        (hunk.lines[1].kind, hunk.lines[1].text()),
+        (HunkLineKind::Context, "b\n".to_owned())
+    );
     // jj-lib's diff order; the unchanged file is not listed.
     let paths: Vec<&str> = diffs.iter().map(|file| file.path.as_str()).collect();
     assert_eq!(
@@ -307,14 +336,24 @@ fn added_and_removed_files_have_no_sections() {
     assert!(new.sections.is_empty() && !new.mode_change && !new.binary);
     let hunk = only_hunk(new);
     assert_eq!((hunk.before_range.clone(), hunk.after_range.clone()), (0..0, 0..1));
-    assert_eq!(hunk.lines, [HunkLine::Added("n\n".to_owned())]);
+    let lines: Vec<_> = hunk
+        .lines
+        .iter()
+        .map(|line| (line.kind, line.left, line.right, line.text()))
+        .collect();
+    assert_eq!(lines, [(HunkLineKind::Added, None, Some(1), "n\n".to_owned())]);
     assert!(hunk.sections.is_empty());
 
     let gone = file(&diffs, "gone.txt");
     assert!(gone.sections.is_empty() && !gone.mode_change);
     let hunk = only_hunk(gone);
     assert_eq!((hunk.before_range.clone(), hunk.after_range.clone()), (0..1, 0..0));
-    assert_eq!(hunk.lines, [HunkLine::Removed("g\n".to_owned())]);
+    let lines: Vec<_> = hunk
+        .lines
+        .iter()
+        .map(|line| (line.kind, line.left, line.right, line.text()))
+        .collect();
+    assert_eq!(lines, [(HunkLineKind::Removed, Some(1), None, "g\n".to_owned())]);
 
     // Story 5.6: kinds from presence (no copy records), counts the hunks' sums.
     assert_eq!(new.kind, ChangeKind::Added);
@@ -371,21 +410,28 @@ fn a_last_line_without_a_newline_keeps_it() {
     let diffs = diff(&mut fx, None, Whitespace::Exact);
     let eof = file(&diffs, "eof.txt");
     let lines = &eof.hunks[0].lines;
-    assert_eq!(lines.last(), Some(&HunkLine::Added("c".to_owned())));
-    assert!(lines.contains(&HunkLine::Removed("b".to_owned())));
+    let last = lines.last().expect("a last line");
+    assert_eq!((last.kind, last.text()), (HunkLineKind::Changed, "bc".to_owned()));
+    assert_eq!(
+        (side_text(last, true), side_text(last, false)),
+        ("b".to_owned(), "c".to_owned())
+    );
     assert_eq!(eof.sections, [key(1, 1, 1, 1)]);
 }
 
-/// The source symbol is the CLI's for Rust and absent for Dart.
+/// A change near the top has no skipped range before it, so no source symbol — for Rust and for
+/// Dart's generic language alike.
 #[test]
-fn rust_has_a_source_symbol_and_dart_none() {
+fn a_change_near_the_top_has_no_source_symbol() {
     let mut fx = base();
     let diffs = diff(&mut fx, None, Whitespace::Exact);
-    assert_eq!(file(&diffs, "lib.rs").hunks[0].symbol.as_deref(), Some("fn main() {"));
+    assert_eq!(file(&diffs, "lib.rs").hunks[0].symbol, None);
     assert_eq!(file(&diffs, "main.dart").hunks[0].symbol, None);
 }
 
-/// At `-w` / `-b` a whitespace-only change shows no hunk, though the file keeps its section.
+/// At `-w` / `-b` a whitespace-only change shows no hunk when its range is skipped, though the
+/// file keeps its section; a whitespace-only file of one line is shown whole as context, as the
+/// CLI does.
 #[test]
 fn ignoring_whitespace_drops_the_hunk_but_keeps_the_section() {
     let mut fx = base();
@@ -398,11 +444,19 @@ fn ignoring_whitespace_drops_the_hunk_but_keeps_the_section() {
         assert_eq!(ws.sections, [key(0, 1, 0, 1)]);
         assert_eq!(file(&diffs, "f.txt").hunks.len(), 1);
     }
-    // `a b` → `ab` removes whitespace: a change at `-b`, none at `-w`.
+    // `a b` → `ab` removes whitespace: a change at `-b`, a context line at `-w`.
     let all = diff(&mut fx, None, Whitespace::IgnoreAllSpace);
-    assert!(file(&all, "space.txt").hunks.is_empty());
+    let space = only_hunk(file(&all, "space.txt"));
+    assert!(
+        space.lines.iter().all(|line| line.kind == HunkLineKind::Context),
+        "{space:?}"
+    );
+    assert_eq!((space.removed, space.added), (0, 0));
     let amount = diff(&mut fx, None, Whitespace::IgnoreSpaceChange);
-    assert_eq!(file(&amount, "space.txt").hunks.len(), 1);
+    assert_eq!(
+        only_hunk(file(&amount, "space.txt")).lines[0].kind,
+        HunkLineKind::Changed
+    );
 }
 
 /// The same tree twice is an empty diff.
@@ -455,14 +509,12 @@ fn conflicted_merge_round_trip(marker_style: Option<&str>) {
     let diffs = diff(&mut fx, None, Whitespace::Exact);
     let c = file(&diffs, "c.txt");
     assert!(!c.sections.is_empty(), "{c:?}");
-    let removed: Vec<&str> = c
+    let removed: Vec<String> = c
         .hunks
         .iter()
         .flat_map(|hunk| &hunk.lines)
-        .filter_map(|line| match line {
-            HunkLine::Removed(text) => Some(text.as_str()),
-            _ => None,
-        })
+        .filter(|line| line.left.is_some() && line.kind != HunkLineKind::Context)
+        .map(|line| side_text(line, true))
         .collect();
     assert!(
         removed.iter().any(|text| text.starts_with("<<<<<<<")),
@@ -512,14 +564,12 @@ fn conflicted_revision_round_trip(marker_style: Option<&str>) {
     let diffs = diff(&mut fx, None, Whitespace::Exact);
     let c = file(&diffs, "c.txt");
     assert!(!c.sections.is_empty(), "{c:?}");
-    let lines: Vec<&str> = c
+    let lines: Vec<String> = c
         .hunks
         .iter()
         .flat_map(|hunk| &hunk.lines)
-        .filter_map(|line| match line {
-            HunkLine::Context(text) | HunkLine::Added(text) => Some(text.as_str()),
-            HunkLine::Removed(_) => None,
-        })
+        .filter(|line| line.right.is_some())
+        .map(|line| side_text(line, false))
         .collect();
     assert!(
         lines
@@ -572,13 +622,17 @@ fn bad_trees_are_refused() {
     assert!(matches!(labels, MutateError::InvalidInput { .. }), "{labels:?}");
 }
 
-/// A malformed `diff.git.context` or `diff.git.show-path-prefix` is a config error — also with an
-/// explicit context, as the CLI reads both keys before `--context` overrides the first.
+/// A malformed `diff.color-words.*` key is a config error — also with an explicit context, as the
+/// CLI reads every key before `--context` overrides the first.
 #[test]
-fn a_malformed_context_is_a_config_error() {
-    for name in ["diff.git.context", "diff.git.show-path-prefix"] {
+fn a_malformed_color_words_key_is_a_config_error() {
+    for (name, value) in [
+        ("diff.color-words.context", "\"x\""),
+        ("diff.color-words.max-inline-alternation", "-2"),
+        ("diff.color-words.conflict", "\"x\""),
+    ] {
         let mut fx = base();
-        add_repo_config(&fx, &format!("{name} = \"x\"\n"));
+        add_repo_config(&fx, &format!("{name} = {value}\n"));
         for context in [None, Some(3)] {
             let (from, to) = trees(&mut fx.repo);
             let err = fx
@@ -598,11 +652,11 @@ fn a_malformed_context_is_a_config_error() {
     }
 }
 
-/// A configured `diff.git.context` is the default context.
+/// A configured `diff.color-words.context` is the default context.
 #[test]
 fn the_configured_context_is_the_default() {
     let mut fx = base();
-    add_repo_config(&fx, "diff.git.context = 0\n");
+    add_repo_config(&fx, "diff.color-words.context = 0\n");
     let diffs = diff(&mut fx, None, Whitespace::Exact);
     let sections: Vec<Vec<HunkKey>> = file(&diffs, "f.txt")
         .hunks
@@ -610,4 +664,97 @@ fn the_configured_context_is_the_default() {
         .map(|hunk| hunk.sections.clone())
         .collect();
     assert_eq!(sections, [vec![S1], vec![S2], vec![S3]]);
+}
+
+/// `X` (`c.txt` = `x`) against the X / Y merge left conflicted, the repo's
+/// `diff.color-words.conflict` set to `conflict` (`None` = the default, `materialize`).
+fn conflict_diff(conflict: Option<&str>) -> FileDiff {
+    let mut fx = init();
+    if let Some(method) = conflict {
+        add_repo_config(&fx, &format!("diff.color-words.conflict = \"{method}\"\n"));
+    }
+    let root = fx.root.clone();
+    write(&root, "c.txt", b"base\n");
+    let a = wc(&root);
+    fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new x");
+    write(&root, "c.txt", b"x\n");
+    let x = wc(&root);
+    fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new y");
+    write(&root, "c.txt", b"y\n");
+    let y = wc(&root);
+    fx.repo.new_change(&[x.clone(), y], &[], &[]).expect("merge");
+    let _ = fx.repo.take_warnings();
+    let x_entry = fx.repo.show(Some(&x.0), None).expect("show x").remove(0);
+    let (_, to) = trees(&mut fx.repo);
+    let mut diffs = fx
+        .repo
+        .compute_hunks(&HunksOptions {
+            from: SelectedTreeId {
+                tree_ids: x_entry.tree_ids,
+                labels: x_entry.tree_labels,
+            },
+            to,
+            context: None,
+            whitespace: Whitespace::Exact,
+        })
+        .expect("compute_hunks");
+    assert_counts(&diffs);
+    diffs.remove(diffs.iter().position(|file| file.path == "c.txt").expect("c.txt"))
+}
+
+/// `materialize` (the default) diffs the conflict's marker text; `pair` diffs each conflict term
+/// under header lines, the roles swapped under the `-------` term.
+#[test]
+fn a_conflicted_side_follows_the_conflict_method() {
+    let materialized = conflict_diff(None);
+    let texts: Vec<String> = materialized
+        .hunks
+        .iter()
+        .flat_map(|hunk| &hunk.lines)
+        .map(HunkLine::text)
+        .collect();
+    assert!(texts.iter().any(|text| text.contains("<<<<<<<")), "{texts:?}");
+    assert!(materialized
+        .hunks
+        .iter()
+        .flat_map(|hunk| &hunk.lines)
+        .all(|line| line.kind != HunkLineKind::ConflictHeader));
+
+    let paired = conflict_diff(Some("pair"));
+    let lines: Vec<&HunkLine> = paired.hunks.iter().flat_map(|hunk| &hunk.lines).collect();
+    let headers: Vec<String> = lines
+        .iter()
+        .filter(|line| line.kind == HunkLineKind::ConflictHeader)
+        .map(|line| line.text())
+        .collect();
+    assert_eq!(headers.len(), 5, "{headers:?}");
+    assert_eq!(headers[0], "<<<<<<< Created conflict\n");
+    assert!(headers[1].starts_with("+++++++ left to right side #1"), "{headers:?}");
+    assert!(headers[2].starts_with("------- left to right base #1"), "{headers:?}");
+    assert!(headers[3].starts_with("+++++++ left to right side #2"), "{headers:?}");
+    assert_eq!(headers[4], ">>>>>>> Conflict ends\n");
+    assert!(lines
+        .iter()
+        .filter(|line| line.kind == HunkLineKind::ConflictHeader)
+        .all(|line| line.left.is_none() && line.right.is_none()));
+    // Under `-------` (left `x` against the base `base`) the left side's word is marked added.
+    let base = lines
+        .iter()
+        .position(|line| line.text().starts_with("-------"))
+        .expect("the base term");
+    let swapped = lines[base + 1];
+    assert_eq!(swapped.kind, HunkLineKind::Changed, "{swapped:?}");
+    let marks: Vec<(SegmentKind, &str)> = swapped
+        .segments
+        .iter()
+        .map(|segment| (segment.kind, segment.text.as_str()))
+        .collect();
+    assert_eq!(
+        marks,
+        [
+            (SegmentKind::Added, "x"),
+            (SegmentKind::Removed, "base"),
+            (SegmentKind::Equal, "\n")
+        ]
+    );
 }

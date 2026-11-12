@@ -2461,11 +2461,11 @@ operation's description names the target). Dart: `RepoHandle.opRestore(operation
 
 ---
 
-## `Diff` payload (Story 5.5; kinds, counts, fingerprints and pins: Story 5.6; segments: Story 5.2)
+## `Diff` payload (Story 5.5; kinds, counts, fingerprints and pins: Story 5.6; segments: Story 5.2; color-words: Story 5.10)
 
-The line-level diff between two revisions — `zanshin_jj::Repo::diff`'s `RevisionDiff` (Story 5.6),
-field for field and in its order (its files are `compute_hunks`' for the same trees, plus copy
-records), each line enriched with its word-level segments (Story 5.2). Built by
+The diff between two revisions as `jj diff`'s default color-words lines (Story 5.10) —
+`zanshin_jj::Repo::diff`'s `RevisionDiff` (Story 5.6), field for field and in its order (its files
+are `compute_hunks`' for the same trees, plus copy records). Built by
 `zanshin_ffi::diff::diff_to_envelope(&RevisionDiff, &CallReport)` (an infallible builder: the
 call's `CallReport` rides as `warnings` / `precondition` as on every envelope). Returned by
 `zanshin_diff` (Story 5.8, below).
@@ -2476,8 +2476,9 @@ FileDiff { path, binary, mode_change, sections: [HunkKey], hunks: [Hunk],
            kind: ChangeKind, from_path, removed, added, fingerprint }        // 5.6 appended
 Hunk     { before_start, before_end, after_start, after_end, symbol,
            sections: [HunkKey], removed, added, lines: [HunkLine] }
-HunkLine { kind: HunkLineKind (Context | Removed | Added), text,
-           segments: [Segment] }                                           // 5.2 appended
+HunkLine { kind: HunkLineKind (Context | Removed | Added | Changed | ConflictHeader), text,
+           segments: [Segment],                                            // 5.2 appended
+           left_line, right_line }                                         // 5.10 appended
 Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // Story 5.2
 ```
 
@@ -2486,19 +2487,36 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   accepts for the same trees. A file's `sections` empty: it can only be selected whole, or by its
   mode when `mode_change`. A hunk's `sections` at `-w` / `-b` can be a whole section the hunk
   shows only part of, or empty.
-- **Ranges** are 0-based half-open lines (`before_end` / `after_end` = `Range::end`).
-- **`symbol`** ABSENT = no source symbol (Dart `null`); `text` keeps its `\n`, so a last line
-  without one shows the EOF state; a `Context` line carries the right side's text.
+- **Hunks** are the color-words lines between two skipped ranges (the CLI's `...` lines). Ranges
+  are 0-based half-open lines: from the line counter at the hunk's first line to past its largest
+  line number on that side.
+- **`symbol`** = the source-symbol line of the skipped range before the hunk, as the CLI prints it
+  after `    ...    ` (the raw line without its line break); ABSENT (Dart `null`) for a first hunk
+  without a skipped range and for a plain `...`. `text` = the line's segments joined: it keeps its
+  `\n`, so a last line without one shows the EOF state.
+- **Lines (5.10).** `kind`: `Context` (both numbers; at `-w` / `-b` also a context line whose
+  sides differ in whitespace, with the CLI's marks), `Removed` / `Added` (left- / right-only
+  content), `Changed` (an inlined line holding content of both sides) or `ConflictHeader`
+  (`diff.color-words.conflict = "pair"`'s `<<<<<<< …`, `+++++++` / `-------` and `>>>>>>> …`
+  lines; no numbers). Under a `-------` conflict term the roles swap: left-only lines are `Added`,
+  left tokens `Added`. `left_line` / `right_line` are the 1-based numbers the CLI prints, 0 =
+  none; one old line spread over several inlined lines repeats its number. A changed block is
+  inlined when no group of its changed lines alternates between left and right words more than
+  `diff.color-words.max-inline-alternation` times (`-1` = always, `0` = never); otherwise it is its
+  left lines, then its right lines, with block-wide word marks. `HunkLineKind`'s member order is
+  the wire value — append only.
 - **Vectors** are always written (empty, not absent); files, hunks, lines and sections keep
   their input order. `binary` and mode-only files carry no hunks; in summary mode no file does.
 - **Kinds (5.6).** `kind` is the `ChangeKind` `FileChange` uses: a copy record's source first
   (`Renamed` / `Copied`, `path` = the target, `from_path` = the source), then presence.
   `from_path` is ABSENT for every other kind (Dart `null`). A copied or renamed file has empty
   `sections` (the builtin diff editor has no copy records, so it is selected whole).
-- **Counts and fingerprint (5.6).** `removed` / `added` are saturating sums of the hunks' counts
-  (0 for binary and mode-only, kept in summary mode). `fingerprint` = 128 lowercase hex chars
-  (blake2b-512, jj-lib's `blake2b_hash`) over the changed lines (removed prefixed `-`, added `+`,
-  no line numbers or context), then a binary change's two contents and a mode change's marker —
+- **Counts and fingerprint (5.6).** A hunk's `removed` / `added` count the distinct left / right
+  numbers on its changed lines (5.10); a file's are saturating sums of its hunks' counts (0 for
+  binary and mode-only, kept in summary mode). `fingerprint` = 128 lowercase hex chars
+  (blake2b-512, jj-lib's `blake2b_hash`) over the changed lines of jj-lib's line diff (per changed
+  block its left lines prefixed `-`, then its right lines `+`, no line numbers or context), then a
+  binary change's two contents and a mode change's marker —
   stable across processes, but dependent on the call's whitespace mode and the effective
   `ui.conflict-marker-style`. It covers content only (no path, no kind): every content-less
   change (a pure rename, an empty file added) shares one value, so 10.24's Viewed key combines it
@@ -2506,30 +2524,22 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
 - **Pins (5.6),** full hex: `operation_id` = the operation read at (after the pre-verb snapshot);
   `commit_id` = the revision (`-r`) or `to`; `from_commit_id` = `from`, ABSENT for the revision
   form (Dart `null`).
-- **Segments (5.2)** — `zanshin_jj::Hunk::segments`, always written on every line (the
-  description block's too). Their texts concatenate exactly to the line's `text` (`\n` included),
-  none is empty, and adjacent segments differ in kind. Each changed block (removed lines, then
-  added lines) pairs its lines by similarity, keeping their order: one line with one line, or one
-  line with a run of up to 8 consecutive lines on the other side (a call split over lines, lines
-  joined into one). A group pairs only when its similarity — twice the tokens jj-lib's word diff
-  keeps, over the tokens of both sides, each word or non-whitespace byte counting 1 — is above
-  50 %. A pair takes jj-lib's word diff (`ContentDiff::by_word`) over its text, so a moved line
-  break is only one more token; a line without a partner (an inserted line, a rewritten comment)
-  is one changed segment. A block the file's pairing budget (`crates/zanshin-jj/src/line_pairs.rs`)
-  cannot pay for keeps jj-lib's word diff over the whole block, which is what `jj diff --git`
-  underlines. Words are runs of `A-Z a-z 0-9 _` and non-ASCII bytes; every other byte (`.`, `(`,
-  a space, a line break) is a token of its own. `Equal` and `Removed` segments on a removed line,
-  `Equal` and `Added` on an added one, one `Equal` segment on a `Context` line. A changed line can
-  carry no changed segment (a call split over lines: its removed line), and a changed segment can
-  be only a line break. In summary mode no file carries hunks, so only the description block's
-  lines (an inter-diff's) carry changed segments. `SegmentKind`'s member order is the wire value —
-  append only.
+- **Segments (5.2, 5.10)** — `zanshin_jj::HunkLine::segments`, always written on every line (the
+  description block's too): the CLI's colour labels as data. A token on both sides is `Equal`, a
+  left-side token `Removed`, a right-side token `Added` (swapped under a `-------` conflict term).
+  Their texts concatenate exactly to the line's `text` (`\n` included), none is empty, and
+  adjacent segments differ in kind. Words are jj-lib's (`ContentDiff::by_word`): runs of
+  `A-Z a-z 0-9 _` and non-ASCII bytes; every other byte (`.`, `(`, a space, a line break) is a
+  token of its own. A changed segment can be only a line break. In summary mode no file carries
+  hunks, so only the description block's lines (an inter-diff's) carry changed segments.
+  `SegmentKind`'s member order is the wire value — append only.
 
 Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart`) → `Diff`
 (with `operationId` / `commitId` / `fromCommitId`), `FileDiff` (`kind` as `status.dart`'s
 `FileChangeKind`, `fromPath`, `removed`, `added`, `fingerprint`), `Hunk` (ranges as
-`({int start, int end})` records), `HunkLine` (`segments`, Story 5.2; an absent vector decodes
-as `[]`), `HunkLineKind`, `Segment`, `SegmentKind`; keys are `select_tree.dart`'s `HunkKey`.
+`({int start, int end})` records), `HunkLine` (`segments`, Story 5.2, an absent vector decoding
+as `[]`; `left` / `right`, Story 5.10, `null` for 0), `HunkLineKind`, `Segment`, `SegmentKind`;
+keys are `select_tree.dart`'s `HunkKey`.
 Exported from `zanshin_core.dart` since Story 5.8 (`Diff`, `DiffWhitespace`, `FileDiff`, `Hunk`,
 `HunkLine`, `HunkLineKind`; `Segment` and `SegmentKind` since Story 5.2).
 
@@ -2555,7 +2565,9 @@ DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffCon
   `jj.revset_parse_error`.
 - `paths`: repo-relative prefixes (no fileset DSL); each one matching nothing is a
   `jj.paths_unmatched` warning on the envelope. `context` absent = the effective
-  `diff.git.context`; a struct because `flatc --dart` has no optional scalars. `whitespace` =
+  `diff.color-words.context`; a struct because `flatc --dart` has no optional scalars. A malformed
+  `diff.color-words.*` key (`context`, `max-inline-alternation`, `conflict`) is
+  `jj.config_error`, also with an explicit `context`. `whitespace` =
   `-w` / `-b`, a value outside the enum `ffi.invalid_argument`. `summary` drops only the hunks.
 - `interdiff` (Story 10.29) reads `from` / `to` as `jj interdiff` does: `from` rebased onto `to`'s
   parents in memory against `to`'s tree, no copy records (`jj op show --patch`'s per-commit diff

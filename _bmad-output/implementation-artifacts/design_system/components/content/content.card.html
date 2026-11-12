@@ -43,19 +43,28 @@
         </div>
         <DiffView file={files[sel][1]} viewed={viewed} onViewedChange={setViewed}
           tools={<Segmented size="sm" label="Diff layout" value={mode} onChange={setMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>}>
-          <DiffHunk oldStart={12} newStart={12} context="class SwipeController" mode={mode} selectable selected={hs.a} onToggle={(v) => setHs({ ...hs, a: v })} onGrab={() => {}} lines={[
-            "   final double threshold;",
-            "-  void onEnd() {",
-            "-    _reset();",
-            "+  void onEnd({+DragEndDetails d+}) {",
-            "+    if (d.primaryVelocity!.abs() > threshold) {",
-            "+      _commit(d.primaryVelocity! < 0);",
-            "+      return;",
-            "+    }",
-            "+    _reset();",
-            "   }",
+          <DiffHunk context="class SwipeController" mode={mode} selectable selected={hs.a} onToggle={(v) => setHs({ ...hs, a: v })} onGrab={() => {}} lines={[
+            " 12:12|  final double threshold;",
+            "~13:13|  void onEnd({+DragEndDetails d+}) {",
+            "+:14|{+    if (d.primaryVelocity!.abs() > threshold) {+}",
+            "+:15|{+      _commit(d.primaryVelocity! < 0);+}",
+            "+:16|{+      return;+}",
+            "+:17|{+    }+}",
+            " 14:18|    _reset();",
+            " 15:19|  }",
+            " 16:20|",
+            "~17:21|  static const _kSettle = [-220-]{+260+};",
           ]}/>
-          <DiffHunk oldStart={40} newStart={45} mode={mode} selectable selected={hs.b} onToggle={(v) => setHs({ ...hs, b: v })} lines={["-  static const _kSettle = [-220-];", "+  static const _kSettle = {+260+};"]}/>
+          <DiffHunk context="void main() {" mode={mode} selectable selected={hs.b} onToggle={(v) => setHs({ ...hs, b: v })} lines={[
+            " 40:45|  }",
+            "-41:|  // [-Tablet only: the wide font overflows-] the app bar[-.-]",
+            "-42:|[-  testWidgets('shows Save on the last step-]', (tester) async {",
+            "+:46|  // {+The phone app bar has little room:+} the app bar{+ shows the short label.+}",
+            "+:47|{+  testWidgets('shows Save on a phone+}', (tester) async {",
+            "+:48|{+    await openWizard(tester, size: phone);+}",
+            "+:49|{+  });+}",
+            " 43:50|  });",
+          ]}/>
         </DiffView>
       </div>
     );

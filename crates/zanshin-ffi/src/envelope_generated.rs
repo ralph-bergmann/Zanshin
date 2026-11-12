@@ -4516,8 +4516,9 @@ pub mod zanshin {
         pub const ENUM_VALUES_SEGMENT_KIND: [SegmentKind; 3] =
             [SegmentKind::Equal, SegmentKind::Added, SegmentKind::Removed];
 
-        /// What a `Segment` is (Story 5.2): unchanged (on both sides, or a context line), changed on an
-        /// added line, or changed on a removed line. Member order IS the wire value — APPEND only.
+        /// What a `Segment` is (Story 5.2, Story 5.10): a token on both sides, a right-side token, or a
+        /// left-side token — the color-words diff's colour labels (swapped under a `-------` conflict
+        /// term). Member order IS the wire value — APPEND only.
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct SegmentKind(pub u8);
@@ -4600,17 +4601,24 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_HUNK_LINE_KIND: u8 = 2;
+        pub const ENUM_MAX_HUNK_LINE_KIND: u8 = 4;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_HUNK_LINE_KIND: [HunkLineKind; 3] =
-            [HunkLineKind::Context, HunkLineKind::Removed, HunkLineKind::Added];
+        pub const ENUM_VALUES_HUNK_LINE_KIND: [HunkLineKind; 5] = [
+            HunkLineKind::Context,
+            HunkLineKind::Removed,
+            HunkLineKind::Added,
+            HunkLineKind::Changed,
+            HunkLineKind::ConflictHeader,
+        ];
 
-        /// What a `HunkLine` is (Story 5.5): on both sides, the left side only, or the right side only.
-        /// Member order IS the wire value — APPEND only.
+        /// What a `HunkLine` is (Story 5.5, Story 5.10): an unchanged line (at `-w` / `-b` also a context
+        /// line whose sides differ in whitespace), a left-only line, a right-only line, an inlined line
+        /// holding content of both sides, or a conflict header line of `diff.color-words.conflict =
+        /// "pair"`. Member order IS the wire value — APPEND only.
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct HunkLineKind(pub u8);
@@ -4619,16 +4627,26 @@ pub mod zanshin {
             pub const Context: Self = Self(0);
             pub const Removed: Self = Self(1);
             pub const Added: Self = Self(2);
+            pub const Changed: Self = Self(3);
+            pub const ConflictHeader: Self = Self(4);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 2;
-            pub const ENUM_VALUES: &'static [Self] = &[Self::Context, Self::Removed, Self::Added];
+            pub const ENUM_MAX: u8 = 4;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::Context,
+                Self::Removed,
+                Self::Added,
+                Self::Changed,
+                Self::ConflictHeader,
+            ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
                 match self {
                     Self::Context => Some("Context"),
                     Self::Removed => Some("Removed"),
                     Self::Added => Some("Added"),
+                    Self::Changed => Some("Changed"),
+                    Self::ConflictHeader => Some("ConflictHeader"),
                     _ => None,
                 }
             }
@@ -7268,7 +7286,8 @@ pub mod zanshin {
         ///               against `to`'s, an absent side `@`. `revision` together with either is refused
         ///               (`jj.invalid_input`, the CLI's `-r` vs `--from`/`--to` conflict)
         ///   paths       repo-relative path PREFIXES; absent / empty = every path
-        ///   context     `--context`; absent → the effective `diff.git.context` (3 in jj's defaults)
+        ///   context     `--context`; absent → the effective `diff.color-words.context` (3 in jj's
+        ///               defaults)
         ///   whitespace  `-w` / `-b`
         ///   summary     leave every file's `hunks` empty (kinds, flags, sections, counts, fingerprints
         ///               kept)
@@ -42678,18 +42697,19 @@ pub mod zanshin {
         pub enum HunkLineOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// One line of a `Hunk` (Story 5.5). `text` includes its `\n` (a last line without one keeps that
-        /// state), decoded lossily as UTF-8; a `Context` line carries the right side's text.
+        /// One line of a `Hunk` (Story 5.5), as `jj diff`'s default color-words format prints it (Story
+        /// 5.10). `text` is all `segments` joined: it includes its `\n` (a last line without one keeps that
+        /// state), decoded lossily as UTF-8.
         ///
-        /// Story 5.2 appends `segments`, the line's word-level runs (`zanshin_jj::Hunk::segments`), always
-        /// written: their texts concatenate exactly to `text`, none is empty, and adjacent runs differ in
-        /// kind. Each changed block pairs its removed and added lines by similarity, in order (one line
-        /// with one line, or with a run of consecutive lines on the other side), and a pair takes jj-lib's
-        /// word diff over its text, words being runs of `A-Z a-z 0-9 _` and non-ASCII bytes and every
-        /// other byte a token of its own. A line without a partner is one changed run; a block the file's
-        /// pairing budget cannot pay for keeps jj-lib's word diff over the whole block (what
-        /// `jj diff --git` underlines). A `Removed` line has `Equal` and `Removed` runs, an `Added` line
-        /// `Equal` and `Added` runs, a `Context` line one `Equal` run.
+        /// `segments` (Story 5.2), always written: the line's runs, their texts concatenating exactly to
+        /// `text`, none empty, adjacent runs differing in kind. Words are jj-lib's (runs of `A-Z a-z 0-9 _`
+        /// and non-ASCII bytes, every other byte a token of its own); a changed block is inlined when its
+        /// words alternate between the sides at most `diff.color-words.max-inline-alternation` times per
+        /// group of changed lines, else it is its left lines, then its right lines, with block-wide marks.
+        ///
+        /// `left_line` / `right_line` (Story 5.10): the 1-based line numbers the CLI prints; 0 = none (no
+        /// content on that side, and on a `ConflictHeader`). One old line spread over several inlined
+        /// lines repeats its number.
         pub struct HunkLine<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -42708,6 +42728,8 @@ pub mod zanshin {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
             pub const VT_TEXT: ::flatbuffers::VOffsetT = 6;
             pub const VT_SEGMENTS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_LEFT_LINE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_RIGHT_LINE: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -42719,6 +42741,8 @@ pub mod zanshin {
                 args: &'args HunkLineArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<HunkLine<'bldr>> {
                 let mut builder = HunkLineBuilder::new(_fbb);
+                builder.add_right_line(args.right_line);
+                builder.add_left_line(args.left_line);
                 if let Some(x) = args.segments {
                     builder.add_segments(x);
                 }
@@ -42761,6 +42785,20 @@ pub mod zanshin {
                     >>(HunkLine::VT_SEGMENTS, None)
                 }
             }
+            #[inline]
+            pub fn left_line(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(HunkLine::VT_LEFT_LINE, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn right_line(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(HunkLine::VT_RIGHT_LINE, Some(0)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for HunkLine<'_> {
@@ -42773,6 +42811,8 @@ pub mod zanshin {
      .visit_field::<HunkLineKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("text", Self::VT_TEXT, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<Segment>>>>("segments", Self::VT_SEGMENTS, false)?
+     .visit_field::<u32>("left_line", Self::VT_LEFT_LINE, false)?
+     .visit_field::<u32>("right_line", Self::VT_RIGHT_LINE, false)?
      .finish();
                 Ok(())
             }
@@ -42783,6 +42823,8 @@ pub mod zanshin {
             pub segments: Option<
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Segment<'a>>>>,
             >,
+            pub left_line: u32,
+            pub right_line: u32,
         }
         impl<'a> Default for HunkLineArgs<'a> {
             #[inline]
@@ -42791,6 +42833,8 @@ pub mod zanshin {
                     kind: HunkLineKind::Context,
                     text: None,
                     segments: None,
+                    left_line: 0,
+                    right_line: 0,
                 }
             }
         }
@@ -42821,6 +42865,14 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(HunkLine::VT_SEGMENTS, segments);
             }
             #[inline]
+            pub fn add_left_line(&mut self, left_line: u32) {
+                self.fbb_.push_slot::<u32>(HunkLine::VT_LEFT_LINE, left_line, 0);
+            }
+            #[inline]
+            pub fn add_right_line(&mut self, right_line: u32) {
+                self.fbb_.push_slot::<u32>(HunkLine::VT_RIGHT_LINE, right_line, 0);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> HunkLineBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 HunkLineBuilder {
@@ -42841,20 +42893,24 @@ pub mod zanshin {
                 ds.field("kind", &self.kind());
                 ds.field("text", &self.text());
                 ds.field("segments", &self.segments());
+                ds.field("left_line", &self.left_line());
+                ds.field("right_line", &self.right_line());
                 ds.finish()
             }
         }
         pub enum HunkOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// One hunk of a `FileDiff` — what `jj diff --git` prints under one `@@` header (Story 5.5).
-        /// `before_start` / `before_end`: its lines on the left side, 0-based half-open; `after_start` /
-        /// `after_end` likewise on the right side. `symbol`: the header's source symbol, cut at 80 bytes;
-        /// ABSENT when the file's language has no pattern or no symbol precedes the hunk. `sections`: the
-        /// file's sections one of its removed or added lines falls in (the `HunkKey` `SelectTreeRequest`
-        /// takes); at `-w` / `-b` it can be a whole section the hunk shows only part of, or empty.
-        /// `removed` / `added`: its `Removed` / `Added` lines. `lines`: in order. Vectors are always
-        /// present (empty, not absent).
+        /// One hunk of a `FileDiff` — the color-words lines between two skipped ranges (Story 5.5, Story
+        /// 5.10). `before_start` / `before_end`: its lines on the left side, 0-based half-open, from the
+        /// left counter at its first line to past its largest left number; `after_start` / `after_end`
+        /// likewise on the right side. `symbol`: the source-symbol line of the skipped range before it, as
+        /// the CLI prints it after `    ...    ` (the raw line without its line break); ABSENT for a first
+        /// hunk without a skipped range before it and for a plain `...`. `sections`: the file's sections
+        /// one of its changed lines falls in (the `HunkKey` `SelectTreeRequest` takes); at `-w` / `-b` it
+        /// can be a whole section the hunk shows only part of, or empty. `removed` / `added`: the distinct
+        /// left / right numbers on its changed lines (every kind but `Context` and `ConflictHeader`).
+        /// `lines`: in order. Vectors are always present (empty, not absent).
         pub struct Hunk<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

@@ -43,74 +43,88 @@ enum DiffWhitespace {
   };
 }
 
-/// What a [HunkLine] is (mirrors `zanshin_jj::HunkLine`'s variants).
+/// What a [HunkLine] is (mirrors `zanshin_jj::HunkLineKind`): `jj diff`'s
+/// default color-words lines (Story 5.10).
 enum HunkLineKind {
-  /// On both sides, as the right side's text.
+  /// An unchanged line with both numbers. At `-w` / `-b` also a context line
+  /// whose sides differ in whitespace, with the CLI's marks.
   context,
 
-  /// On the left side only.
+  /// A line with left content only (right content only under a `-------`
+  /// conflict term).
   removed,
 
-  /// On the right side only.
+  /// A line with right content only (left content only under a `-------`
+  /// conflict term).
   added,
+
+  /// An inlined line holding content of both sides.
+  changed,
+
+  /// A conflict header line of `diff.color-words.conflict = "pair"`: no
+  /// numbers, one equal run.
+  conflictHeader,
 }
 
-/// What a [Segment] is (mirrors `zanshin_jj::SegmentKind`).
+/// What a [Segment] is (mirrors `zanshin_jj::SegmentKind`): the CLI's colour
+/// labels.
 enum SegmentKind {
-  /// Unchanged: on both sides, or on a context line.
+  /// A token on both sides.
   equal,
 
-  /// Changed on an added line.
+  /// A right-side token (left-side under a `-------` conflict term).
   added,
 
-  /// Changed on a removed line.
+  /// A left-side token (right-side under a `-------` conflict term).
   removed,
 }
 
 /// A run of a [HunkLine]'s text with one [kind] (mirrors `zanshin_jj::Segment`),
-/// never empty. The changed runs are jj-lib's word diff over a pair of similar
-/// lines.
+/// never empty.
 final class Segment {
   const Segment({required this.kind, required this.text});
 
-  /// Whether the run changed.
+  /// Which side the run is on.
   final SegmentKind kind;
 
   /// The run's text.
   final String text;
 }
 
-/// One line of a [Hunk]: its [kind] and [text], which includes its `\n` (a last
-/// line without one keeps that state), and its word-level [segments].
+/// One line of a [Hunk] as `jj diff`'s color-words format prints it: its
+/// [kind], its [left] and [right] line numbers, its [text], which includes its
+/// `\n` (a last line without one keeps that state), and its [segments].
 final class HunkLine {
-  const HunkLine({required this.kind, required this.text, this.segments = const []});
+  const HunkLine({required this.kind, required this.text, this.segments = const [], this.left, this.right});
 
-  /// Whether the line is context, removed or added.
+  /// What the line is.
   final HunkLineKind kind;
 
-  /// The line's text, decoded lossily as UTF-8; a context line carries the
-  /// right side's text.
+  /// The line's text — its [segments] joined — decoded lossily as UTF-8.
   final String text;
 
-  /// The line's word-level runs (Story 5.2). Each changed block pairs its
-  /// removed and added lines by similarity, in order (one line with one line,
-  /// or with a run of consecutive lines on the other side), and a pair takes
-  /// jj-lib's own word diff over its text; a line without a partner is one
-  /// changed run, and a block the file's pairing budget cannot pay for keeps
-  /// jj-lib's word diff over the whole block (what `jj diff --git` underlines).
-  /// Words are runs of `A-Z a-z 0-9 _` and non-ASCII bytes, every other byte is
-  /// a token of its own. A removed line has [SegmentKind.equal] and
-  /// [SegmentKind.removed] runs, an added line [SegmentKind.equal] and
-  /// [SegmentKind.added] runs, a context line one [SegmentKind.equal] run. A
-  /// changed line can carry no changed run (a call split over lines: its
-  /// removed line), and a changed run can be only a line break. Their texts
+  /// The line's runs (Story 5.2): jj-lib's words, a token on both sides
+  /// [SegmentKind.equal], a left-side token [SegmentKind.removed], a
+  /// right-side token [SegmentKind.added]. A changed block is inlined when its
+  /// words alternate between the sides at most
+  /// `diff.color-words.max-inline-alternation` times per group of changed
+  /// lines; otherwise it is its left lines, then its right lines, with
+  /// block-wide marks. A changed run can be only a line break. Their texts
   /// concatenate exactly to [text], none is empty, and adjacent runs differ in
   /// kind. Empty only for a payload written without segments.
   final List<Segment> segments;
+
+  /// The 1-based left line number the CLI prints (Story 5.10); null when the
+  /// line holds no left content and on a [HunkLineKind.conflictHeader]. One
+  /// old line spread over several inlined lines repeats its number.
+  final int? left;
+
+  /// The 1-based right line number, like [left].
+  final int? right;
 }
 
-/// One hunk of a [FileDiff] — what `jj diff --git` prints under one `@@`
-/// header (mirrors `zanshin_jj::Hunk`).
+/// One hunk of a [FileDiff] — the color-words lines between two skipped
+/// ranges (mirrors `zanshin_jj::Hunk`).
 final class Hunk {
   const Hunk({
     required this.before,
@@ -122,25 +136,27 @@ final class Hunk {
     required this.lines,
   });
 
-  /// Its lines on the left side, 0-based half-open.
+  /// Its lines on the left side, 0-based half-open: from the left counter at
+  /// its first line to past its largest left number.
   final ({int start, int end}) before;
 
-  /// Its lines on the right side, 0-based half-open.
+  /// Its lines on the right side, counted like [before].
   final ({int start, int end}) after;
 
-  /// The header's source symbol, cut at 80 bytes; null when the file's
-  /// language has no pattern or no symbol precedes the hunk.
+  /// The source-symbol line of the skipped range before the hunk, as the CLI
+  /// prints it after `    ...    `; null for a first hunk without a skipped
+  /// range and for a plain `...`.
   final String? symbol;
 
-  /// The file's sections one of its removed or added lines falls in — the keys
+  /// The file's sections one of its changed lines falls in — the keys
   /// `selectTree` takes. At `-w` / `-b` this can be a whole section the hunk
   /// shows only part of, or empty.
   final List<HunkKey> sections;
 
-  /// Its removed lines.
+  /// The distinct left numbers on its changed lines.
   final int removed;
 
-  /// Its added lines.
+  /// The distinct right numbers on its changed lines.
   final int added;
 
   /// Its lines in order.
@@ -256,7 +272,8 @@ final class Diff {
 /// is refused
 /// (`jj.invalid_input`). [paths] are repo-relative prefixes (empty: every
 /// path), [context] the context lines (`null`: the effective
-/// `diff.git.context`), [whitespace] `-w` / `-b`, [summary] drops the hunks.
+/// `diff.color-words.context`), [whitespace] `-w` / `-b`, [summary] drops the
+/// hunks.
 /// [interdiff] reads [from] / [to] as `jj interdiff` does (Story 10.29); with
 /// [revision] alone it is `show_inter_diff` with no predecessors — `jj op show
 /// --patch`'s created commit: [revision] (exactly one commit) against its
@@ -361,7 +378,11 @@ HunkLine _line(fbs.HunkLine line) {
       fbs.HunkLineKind.Context => HunkLineKind.context,
       fbs.HunkLineKind.Removed => HunkLineKind.removed,
       fbs.HunkLineKind.Added => HunkLineKind.added,
+      fbs.HunkLineKind.Changed => HunkLineKind.changed,
+      fbs.HunkLineKind.ConflictHeader => HunkLineKind.conflictHeader,
     },
+    left: line.leftLine == 0 ? null : line.leftLine,
+    right: line.rightLine == 0 ? null : line.rightLine,
     text: text,
     segments: [
       for (final fbs.Segment segment in segments)

@@ -247,9 +247,26 @@ class _DemoChanges implements OperationChangesSource {
         removed: 1,
         added: 1,
         lines: <HunkLine>[
-          const HunkLine(kind: HunkLineKind.context, text: '// lanes\n'),
-          HunkLine(kind: HunkLineKind.removed, text: old),
-          HunkLine(kind: HunkLineKind.added, text: now),
+          // Story 5.10: color-words lines, with their numbers.
+          const HunkLine(
+            kind: HunkLineKind.context,
+            text: '// lanes\n',
+            left: 3,
+            right: 3,
+            segments: <Segment>[Segment(kind: SegmentKind.equal, text: '// lanes\n')],
+          ),
+          HunkLine(
+            kind: HunkLineKind.removed,
+            text: old,
+            left: 4,
+            segments: <Segment>[Segment(kind: SegmentKind.removed, text: old)],
+          ),
+          HunkLine(
+            kind: HunkLineKind.added,
+            text: now,
+            right: 4,
+            segments: <Segment>[Segment(kind: SegmentKind.added, text: now)],
+          ),
         ],
       ),
     ],

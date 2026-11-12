@@ -860,13 +860,13 @@ diffs are jj-lib's, through `zanshin-jj`, and diffs get no syntax highlighting)*
   `zanshin_graph_topology`: the whole revset's index-only topology per call (Story 4.10),
   scalar vectors + CSR on the wire, laid out in Dart (Story 4.11); still re-derived per
   operation, still no held cache.)*
-- **Word diffs are jj-lib's, on paired lines** (`zanshin_jj::Hunk::segments`; Story 5.9's E2,
-  Ralph 2026-11-12). The line-level hunks stay the CLI's. Inside each changed block,
-  `crates/zanshin-jj/src/line_pairs.rs` pairs removed and added lines by similarity (order kept,
-  above 50 %, one line with a run of up to 8 on the other side) and word-diffs each pair with
-  jj-lib's `ContentDiff::by_word`; a line without a partner is one changed segment, and a block
-  over the pairing cap keeps jj-lib's block-wide tokens (what `jj diff --git` underlines). Word
-  marks are presentation, so they may differ from the CLI's underlines. Don't add a second word
+- **The diff is `jj diff`'s default color-words output** (`zanshin_jj::HunkLine`; Story 5.10,
+  Ralph 2026-11-12): jj-lib's line and word diff with the CLI's inline rule, ported from
+  `cli/src/diff_util.rs` (`show_color_words_diff_hunks` and below) into
+  `crates/zanshin-jj/src/hunks.rs`. Every line's kind, left / right number and segments equal what
+  the pinned `jj diff --color=debug` prints; `diff.color-words.*` come from the effective config.
+  No word-mark rule of Zanshin's own, no `ui.diff-formatter`, no `:git` layout; the parity oracle
+  (`crates/zanshin-parity/tests/oracle/diff_color_words.rs`) checks it. Don't add a second word
   tokenizer or word-diff algorithm (2026-11-12, Story 5.2 rework — the earlier imara-diff word
   diff marked whole lines where jj marks one word).
 - **Don't pre-compute things "in case the UI needs them".** Compute on

@@ -1625,9 +1625,9 @@ final class RepoHandle {
 
   /// `jj diff` as data (Story 5.8): per changed file its kind, flags, the
   /// section keys [selectTree] takes, hunks, counts and fingerprint, pinned to
-  /// the operation and commit(s) it was read at. Every hunk line carries its
-  /// word-level segments (`HunkLine.segments`, Story 5.2): jj-lib's word diff
-  /// over each pair of similar lines of a changed block.
+  /// the operation and commit(s) it was read at. The lines are `jj diff`'s
+  /// default color-words lines (Story 5.10): each carries its kind, its left
+  /// and right line numbers and its segments, as the pinned CLI prints them.
   ///
   /// [revision] is `-r` (`null`: `@`), a revset diffed as one set — the merged
   /// parents of its roots against its merged heads ([Diff.commitIds]); a set
@@ -1639,7 +1639,7 @@ final class RepoHandle {
   /// prefixes (empty: every path; one matching nothing is a
   /// `jj.paths_unmatched` warning on [Diff.warnings]), [context] the context
   /// lines (`null`: the effective
-  /// `diff.git.context`), [whitespace] `-w` / `-b`, [summary] leaves every
+  /// `diff.color-words.context`), [whitespace] `-w` / `-b`, [summary] leaves every
   /// file's hunks empty. [interdiff] (Story 10.29) reads [from] / [to] as
   /// `jj interdiff` does — [from] rebased onto [to]'s parents in memory
   /// against [to], no copy records: the per-commit diff `jj op show --patch`

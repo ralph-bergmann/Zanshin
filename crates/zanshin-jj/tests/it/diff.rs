@@ -11,8 +11,8 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::Repo as _;
 use tempfile::TempDir;
 use zanshin_jj::{
-    Backend, ChangeId, ChangeKind, CommitId, DiffOptions, DiffRevisions, FileDiff, HunkLine, HunksOptions, MutateError,
-    OperationId, Repo, RevisionDiff, SelectedTreeId, WarningKind, Whitespace,
+    Backend, ChangeId, ChangeKind, CommitId, DiffOptions, DiffRevisions, FileDiff, HunkLine, HunkLineKind,
+    HunksOptions, MutateError, OperationId, Repo, RevisionDiff, SegmentKind, SelectedTreeId, WarningKind, Whitespace,
 };
 
 struct Fx {
@@ -109,6 +109,23 @@ fn revset(text: &str) -> DiffOptions {
 
 fn paths(files: &[FileDiff]) -> Vec<&str> {
     files.iter().map(|file| file.path.as_str()).collect()
+}
+
+/// Each line's kind and text.
+fn shown(lines: &[HunkLine]) -> Vec<(HunkLineKind, String)> {
+    lines.iter().map(|line| (line.kind, line.text())).collect()
+}
+
+/// A line's kind and its text on each side (equal runs plus that side's runs).
+fn sides(line: &HunkLine) -> (HunkLineKind, String, String) {
+    let side = |own: SegmentKind| -> String {
+        line.segments
+            .iter()
+            .filter(|segment| segment.kind == SegmentKind::Equal || segment.kind == own)
+            .map(|segment| segment.text.as_str())
+            .collect()
+    };
+    (line.kind, side(SegmentKind::Removed), side(SegmentKind::Added))
 }
 
 /// A plain change diffs like `compute_hunks` over the trees `show` reports, pinned to the head
@@ -241,14 +258,12 @@ fn a_rename_is_one_file_with_its_source() {
     let changed: Vec<_> = file.hunks[0]
         .lines
         .iter()
-        .filter(|line| !matches!(line, HunkLine::Context(_)))
+        .filter(|line| line.kind != HunkLineKind::Context)
+        .map(sides)
         .collect();
     assert_eq!(
         changed,
-        [
-            &HunkLine::Removed("line 5\n".to_owned()),
-            &HunkLine::Added("line five\n".to_owned())
-        ]
+        [(HunkLineKind::Changed, "line 5\n".to_owned(), "line five\n".to_owned())]
     );
     // A filter on the target keeps the record: still the one renamed file.
     let target_only = run(
@@ -390,12 +405,17 @@ fn context_and_whitespace_reach_the_reader() {
         result.files[0].hunks[0]
             .lines
             .iter()
-            .any(|line| matches!(line, HunkLine::Context(_)))
+            .any(|line| line.kind == HunkLineKind::Context)
     };
     assert!(has_context(&run(&mut fx, &revision(&c))));
+    // Two lines appended below three unchanged ones: context 0 skips the unchanged ones.
+    fx.repo.new_change(std::slice::from_ref(&c), &[], &[]).expect("new");
+    write(&fx.root, "f.txt", "a\nB\nc\nd\ne\n");
+    let (e, _) = commit(&mut fx, "E\n");
+    assert!(has_context(&run(&mut fx, &revision(&e))));
     let no_context = DiffOptions {
         context: Some(0),
-        ..revision(&c)
+        ..revision(&e)
     };
     assert!(!has_context(&run(&mut fx, &no_context)));
 
@@ -643,8 +663,12 @@ fn an_interdiff_shows_only_the_rebased_commits_own_change() {
     assert_eq!(inter.from_commit_id, Some(b_old.clone()));
     assert_eq!(paths(&inter.files), ["b.txt"]);
     assert_eq!(
-        inter.files[0].hunks[0].lines,
-        [HunkLine::Removed("b\n".into()), HunkLine::Added("b2\n".into())]
+        inter.files[0].hunks[0]
+            .lines
+            .iter()
+            .map(self::sides)
+            .collect::<Vec<_>>(),
+        [(HunkLineKind::Changed, "b\n".to_owned(), "b2\n".to_owned())]
     );
     let view = fx
         .repo
@@ -749,11 +773,11 @@ fn a_created_commit_diffs_without_copy_records_and_with_its_description() {
     assert!(description.sections.is_empty());
     assert_eq!((description.removed, description.added), (0, 3));
     assert_eq!(
-        description.hunks[0].lines,
+        shown(&description.hunks[0].lines),
         [
-            HunkLine::Added("C\n".into()),
-            HunkLine::Added("\n".into()),
-            HunkLine::Added("body\n".into())
+            (HunkLineKind::Added, "C\n".into()),
+            (HunkLineKind::Added, "\n".into()),
+            (HunkLineKind::Added, "body\n".into())
         ]
     );
     assert_eq!(description.hunks[0].symbol, None);
@@ -801,6 +825,34 @@ fn a_created_commit_without_description_has_no_block() {
     );
 }
 
+/// The description block takes the call's context (context 0 skips unchanged lines the default
+/// shows) and the generic language: the skipped range carries its unindented `Title …` line.
+#[test]
+fn the_description_block_takes_the_context_and_the_generic_symbol() {
+    let (mut fx, _, (c, _)) = plain();
+    let body = "Title of the change\n\n  one\n  two\n  three\n  four\n  five\n  six\n";
+    fx.repo.describe(c.clone(), body).expect("describe");
+    let (_, before) = wc(&fx.root);
+    fx.repo
+        .describe(c.clone(), &format!("{body}  seven\n"))
+        .expect("describe");
+    let (_, after) = wc(&fx.root);
+    let inter = |context: Option<usize>| DiffOptions {
+        revisions: DiffRevisions::Interdiff {
+            from: Some(before.0.clone()),
+            to: Some(after.0.clone()),
+        },
+        context,
+        ..DiffOptions::default()
+    };
+    let wide = run(&mut fx, &inter(None)).description.expect("a description block");
+    let narrow = run(&mut fx, &inter(Some(0))).description.expect("a description block");
+    let shown = |block: &FileDiff| block.hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>();
+    assert!(shown(&narrow) < shown(&wide), "{narrow:?} / {wide:?}");
+    assert_eq!(narrow.hunks[0].symbol.as_deref(), Some("Title of the change"));
+    assert_eq!(wide.hunks[0].symbol.as_deref(), Some("Title of the change"));
+}
+
 /// A body-only describe: no file changes, the description block shows the changed lines; a
 /// rewrite that keeps the description has none.
 #[test]
@@ -819,14 +871,13 @@ fn an_interdiff_shows_a_changed_description() {
     assert!(described.files.is_empty());
     let block = described.description.expect("a description block");
     assert_eq!((block.removed, block.added), (0, 2));
-    assert_eq!(
-        block.hunks[0].lines,
-        [
-            HunkLine::Context("C\n".into()),
-            HunkLine::Added("\n".into()),
-            HunkLine::Added("body\n".into())
-        ]
-    );
+    let expected = [
+        (HunkLineKind::Context, "C\n".to_owned()),
+        (HunkLineKind::Added, "\n".to_owned()),
+        (HunkLineKind::Added, "body\n".to_owned()),
+    ];
+    assert_eq!(shown(&block.hunks[0].lines), expected);
+    // At context 0 the one unchanged line is still shown: it is one line longer than the context.
     let narrow = run(
         &mut fx,
         &DiffOptions {
@@ -835,9 +886,9 @@ fn an_interdiff_shows_a_changed_description() {
         },
     );
     assert_eq!(
-        narrow.description.expect("a description block").hunks[0].lines,
-        [HunkLine::Added("\n".into()), HunkLine::Added("body\n".into())],
-        "the call's context reaches the block"
+        shown(&narrow.description.expect("a description block").hunks[0].lines),
+        expected,
+        "the CLI's context rule reaches the block"
     );
     assert_eq!(run(&mut fx, &inter(&c_new, &c_new)).description, None);
     let from_to = DiffOptions {
