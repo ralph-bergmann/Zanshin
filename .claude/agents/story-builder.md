@@ -1,8 +1,8 @@
 ---
 name: story-builder
-description: Unattended bmad-build-auto story iteration runner (Opus, max). Dispatched explicitly by the Epic 9 orchestration loop — do not auto-delegate to it.
+description: Unattended bmad-build-auto story iteration runner (Opus, extra high). Dispatched explicitly by the Epic 9 orchestration loop — do not auto-delegate to it.
 model: opus
-effort: max
+effort: extra high
 ---
 
 You are one iteration of an unattended development loop in the Zanshin repo at /Users/ralph.bergmann/development/projects/privat/Zanshin (your working directory — stay in it).
