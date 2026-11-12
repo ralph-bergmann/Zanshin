@@ -1,0 +1,6 @@
+# The witness inputs and the probe's temp copies are diff fixtures, not a Dart package: keep the
+# analyzer (and the IDE) off them.
+analyzer:
+  exclude:
+    - "inputs/**"
+    - "out/**"

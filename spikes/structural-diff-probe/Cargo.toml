@@ -1,0 +1,23 @@
+# Standalone spike, intentionally DETACHED from the parent Zanshin workspace (Story 5.9's research).
+# The empty [workspace] table makes this crate its own workspace root, so the parent's `crates/*`
+# glob, `cargo test --workspace`, clippy, deny and the coverage gate never touch it.
+[workspace]
+
+[package]
+name = "structural-diff-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# WHY default-features = false: the probe needs only jj-lib's diff presentation (`unified_diff_hunks`), not the Git backend (gix) its default `git` feature pulls in.
+jj-lib = { version = "=0.47.0", default-features = false }
+serde_json = "1"
+# The grammar setup of the reverted Stories 5.3 / 5.4 (commit e8e8297f), used only by `parse-check`.
+tree-sitter = "=0.27.1"
+tree-sitter-dart = "=0.3.0"
+tree-sitter-md = { version = "=0.5.4", features = ["parser"] }
+tree-sitter-rust = "=0.24.2"
+
+[profile.release]
+debug = false

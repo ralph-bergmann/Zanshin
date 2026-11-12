@@ -5182,7 +5182,7 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 ### Story 5.9: Structural diff, difftastic class — research first [Rust]
 *(Added 2026-11-12, Ralph — console session. Lifts Epic 5's non-goal "AST-level structural diffs (difftastic class)" for planning; whether to build it is decided after the research.)*
 
-**Motivation.** difftastic parses both sides with tree-sitter and diffs the syntax trees. It marks only the changed node, sees moved code and reordered arguments, and ignores pure reformatting. Since 2026-11-12 Zanshin's marks are jj's word diff (5.2). That already handles a moved line break, an inserted line and `spacing8` → `spacing2` on Ralph's examples. What remains — moved code, reordered arguments, changed nesting — is worth a structural diff only if real diffs in the app (10.32) show it.
+**Motivation.** difftastic parses both sides with tree-sitter and diffs the syntax trees. It marks only the changed node, sees moved code and reordered arguments, and ignores pure reformatting. *(Research 2026-11-12: it does not see moves — difftastic 0.72.0 marks moved code and reordered arguments as removed and added, like jj; and only in Rust is a reformat fully quiet, in Dart the commas `dart format` adds stay marked. See the note below.)* Since 2026-11-12 Zanshin's marks are jj's word diff (5.2). That already handles a moved line break, an inserted line and `spacing8` → `spacing2` on Ralph's examples. What remains — moved code, reordered arguments, changed nesting — is worth a structural diff only if real diffs in the app (10.32) show it.
 
 **Scope.**
 1. **Research** (first; its result is Ralph's decision):
@@ -5206,6 +5206,17 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 - Every fallback case gives jj's word marks.
 
 **Related:** 5.2, 10.32; the reverted Stories 5.3 and 5.4.
+
+> **Research delivered (2026-11-12, spec-5-9-structural-diff-difftastic-class-research):** report `_bmad-output/planning-artifacts/research/technical-structural-diff-difftastic-class-research-2026-11-12.md` (German), probe `spikes/structural-diff-probe/` (a detached crate that puts jj-lib 0.47.0's word marks and `difft` 0.72.0's JSON marks on the same hunk lines; its README has the method, the rerun commands and the results).
+> - **Library or program:** a program only. difftastic 0.72.0 has no `[lib]` (PR #231 open since 2022), and its JSON output needs `DFT_UNSTABLE=yes` and may change. diffsitter 0.9.0 has no Dart or Markdown grammar; mergiraf is GPL-3.0.
+> - **Cost per file** (what a user waits for: the inspector and the Undo Timeline read one file's diff at a time): a median of 60–63 ms for `difft` as a process against 0.2–0.3 ms for jj; 66 of 2,536 files take over 1 s. Memory on these real diffs: a median of 20.8 MB, at most 986 MB (every graph-limit fallback took 870–986 MB); synthetic inputs reached 1.1 GB. The graph limit stops the search once it has seen more vertices than the limit, so time and memory until the fallback grow with it; `difft` has no timeout.
+> - **Grammars:** `difft` bundles its own (a 90 MB arm64 binary; Rust and Dart, no Markdown). Its Dart grammar lacks primary constructors. The 5.4 grammars parse every `.rs`, `.dart` and `.md` file of the repository at `5ba5f5d4` without an ERROR node.
+> - **Mapping:** the same wire. A removed or added line takes difft's spans on its side's line, with jj's marks inside comments and strings (the JSON marks their every word, because it drops difftastic's own word marks); a fallback, including a file with conflict markers, keeps jj's segments.
+> - **Witnesses:** Ralph's stepper.dart examples get the same word marks (jj also fills the new indentation, difft does not); `f(a, b)` → `f(b, a)` gets the same word marks as jj, because difftastic does not detect moves; every fallback gives jj's marks.
+> - **Real diffs** (modified `.rs` / `.dart` files of the last 200 commits of this repository, 115,515 changed lines; added, deleted and renamed files not compared): `difft` fell back on 16.6 % of the lines; on the rest a build would draw different strong marks on 11.2 % (whitespace fills counted) or different word marks on 4.9 %. Reformatting is quiet only in Rust.
+> - **Options:** A leave it (Claude's recommendation; keeps the CLI's own marks), B `difft` as an opt-in external program with a time budget, C difftastic's code as a library (fork), D an own diff over tree-sitter. Any build lifts 5.2's rule that the segments are what `jj diff --git` underlines.
+>
+> **Design status stays open:** the build decision is Ralph's (deferred-work.md "Surfaced in Story 5.9").
 
 ---
 
