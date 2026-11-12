@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/line_pairs.rs (MIN_SIMILARITY_PERCENT, group_value)
     severity: medium
+    resolved: >-
+      2026-11-12 — fixed (spec-5-10-the-diff-is-jjs-default-format-color-words, commit ab401783): Ralph decided to go back; line_pairs.rs is removed and the word marks are jj diff's color-words marks.
   - summary: >-
       E2 is not measured on reflowed prose (doc comments, Markdown, commit descriptions), where words move between lines and E2 has no many-to-many groups.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/line_pairs.rs (group_shapes)
     severity: medium (unverified)
+    resolved: >-
+      2026-11-12 — fixed (spec-5-10-the-diff-is-jjs-default-format-color-words, commit ab401783): no longer applies; the line pairing is removed and prose gets the CLI's own marks.
   - summary: >-
       In a block of one removed and one added line, E2 can only lose word marks: jj's block-wide diff cannot scatter there, yet a pair at or below 50 % similarity becomes two whole-line marks (`true,` → `false,` is exactly 50 %).
     evidence: |-
@@ -32,6 +36,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/line_pairs.rs (pair_block, group_value, MIN_SIMILARITY_PERCENT)
     severity: medium
+    resolved: >-
+      2026-11-12 — fixed (spec-5-10-the-diff-is-jjs-default-format-color-words, commit ab401783): with jj's color-words a one-line block is one changed line that marks only `true` / `false`.
 ---
 
 <intent-contract>
