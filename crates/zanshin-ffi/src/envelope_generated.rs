@@ -42688,9 +42688,8 @@ pub mod zanshin {
         /// word diff over its text, words being runs of `A-Z a-z 0-9 _` and non-ASCII bytes and every
         /// other byte a token of its own. A line without a partner is one changed run; a block the file's
         /// pairing budget cannot pay for keeps jj-lib's word diff over the whole block (what
-        /// `jj diff --git` underlines). A `Removed` line has
-        /// `Equal` and `Removed` runs, an `Added` line `Equal` and `Added` runs, a `Context` line one
-        /// `Equal` run.
+        /// `jj diff --git` underlines). A `Removed` line has `Equal` and `Removed` runs, an `Added` line
+        /// `Equal` and `Added` runs, a `Context` line one `Equal` run.
         pub struct HunkLine<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

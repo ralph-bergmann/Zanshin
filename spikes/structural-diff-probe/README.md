@@ -80,7 +80,7 @@ cargo build --release --offline
 | mode | input | output |
 |---|---|---|
 | `witness` | `inputs/witness/<case>/before.*` and `after.*`, plus `edge-cr-tab` built in code (carriage returns and a tab); `widget-test-rename` is Ralph's widget-test hunk, its lines unchanged inside a minimal Dart frame so difft parses it | per changed line jj's, difft's and E2's marks in `[-…-]` / `{+…+}` notation, with both comparisons |
-| `history` | every `.rs` / `.dart` file modified (status `M`, no rename detection) in the newest `--commits` (default 200) non-merge commits of `--rev` that modify one; generated files skipped (by name and by generator header) | class counts in both views for today and for E2, the net change of today's gap to difft under E2 (`(today − E2) / today`: lines E2 brings to difft's marks minus lines it takes away), E2 against today, the files where E2's per-file budget left a block to jj, time per file (jj, E2, difft without `--jobs`), peak memory, per-commit sums, the fallback files, examples; one row per file in `out/history.tsv` (or `--tsv FILE`) |
+| `history` | every `.rs` / `.dart` file modified (status `M`, no rename detection) in the newest `--commits` (default 200) non-merge commits of `--rev` that modify one; generated files skipped (by name and by generator header) | class counts in both views for today and for E2, the net share of today's gap to difft that E2 closes (`(today − E2) / today`: lines E2 brings to difft's marks minus lines it takes away; negative when E2 is further from difft; the outputs below, run before the label was renamed, print it as "net change of today's gap"), E2 against today, the files where E2's per-file budget left a block to jj, time per file (jj, E2, difft without `--jobs`), peak memory, per-commit sums, the fallback files, examples; one row per file in `out/history.tsv` (or `--tsv FILE`) |
 | `limits` | inputs generated into `out/limits/` that trip each difft fallback, with lowered and raised limits, two conflicted files, and three inputs that fill E2's per-file budget (`e2-at-cap`, `e2-reformatted-calls`, `e2-pruned-blocks`) | difft's `language`, wall time and peak memory for difft, jj and E2, and whether E2's budget left a block to jj |
 | `parse-check` | the `.rs`, `.dart`, `.md` files at `--rev` (read with `git show`), two known-bad samples, newer Dart syntax samples | ERROR / MISSING nodes per grammar, parse time |
 
@@ -1477,7 +1477,7 @@ as jj's own diff does. A search that uses the whole budget still takes about 20 
 
 `witness`: E2's marks equal the E2 run's on every case (only the timing lines differ). `history`:
 today's classes are unchanged (4,755 word-mark and 10,812 drawn differences of 96,295 lines); the
-three more fallback files (`layout_engine.dart@2459cc42`, `zanshin_bootstrap_test.dart@fcc1b4d9`,
+three more files where the budget left a block to jj (`layout_engine.dart@2459cc42`, `zanshin_bootstrap_test.dart@fcc1b4d9`,
 `projects_tree.dart@8552a563`) keep today's marks in some block, which moves the E2 rows a little.
 Its E2 parts, verbatim:
 

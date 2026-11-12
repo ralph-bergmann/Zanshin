@@ -472,7 +472,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     };
     println!(
-        "| net change of today's gap | {} | {} |\n",
+        "| net share of today's gap closed | {} | {} |\n",
         net_change(0),
         net_change(1)
     );

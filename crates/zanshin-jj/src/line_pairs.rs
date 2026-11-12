@@ -60,7 +60,7 @@ pub(crate) fn pair_lines<'a>(hunks: &mut [UnifiedDiffHunk<'a>], texts: Diff<&'a 
     pair_lines_within(hunks, texts, MAX_PAIRING_WORK)
 }
 
-/// [`pair_lines`] with `budget` bytes for the word diffs that score the candidates of the file.
+/// [`pair_lines`] with `budget` bytes for the search of the file (see [`MAX_PAIRING_WORK`]).
 fn pair_lines_within<'a>(hunks: &mut [UnifiedDiffHunk<'a>], texts: Diff<&'a [u8]>, mut budget: usize) -> bool {
     let mut line_ranges = None;
     let mut ran_out = false;
@@ -463,16 +463,17 @@ mod tests {
         );
     }
 
-    /// A tie keeps the shorter group: `foo(a) zed` against `foo(a)` alone and against `foo(a)` plus
-    /// `zed p q r` are both worth 350 (4 of 9 and 5 of 13 tokens kept).
+    /// A tie keeps the shorter group: `zed foo(a)` against `foo(a)` alone and against `p q r zed`
+    /// plus `foo(a)` are both worth 350 (4 of 9 and 5 of 13 tokens kept). Both groups end in the
+    /// same cell of the search, so the one-to-one group stays only because it is tried first.
     #[test]
     fn a_tie_keeps_the_shorter_group() {
-        assert_eq!(kept_tokens(b"foo(a) zed\n", b"foo(a)\n"), 4);
-        assert_eq!(kept_tokens(b"foo(a) zed\n", b"foo(a)\nzed p q r\n"), 5);
+        assert_eq!(kept_tokens(b"zed foo(a)\n", b"foo(a)\n"), 4);
+        assert_eq!(kept_tokens(b"zed foo(a)\n", b"p q r zed\nfoo(a)\n"), 5);
         assert_eq!(group_value(4, 9), group_value(5, 13));
         assert_eq!(
-            paired("foo(a) zed\n", "foo(a)\nzed p q r\n"),
-            ["-foo(a)[- zed-]\n", "+foo(a)\n", "+{+zed p q r\n+}"]
+            paired("zed foo(a)\n", "p q r zed\nfoo(a)\n"),
+            ["-[-zed -]foo(a)\n", "+{+p q r zed\n+}", "+foo(a)\n"]
         );
     }
 
@@ -540,14 +541,42 @@ mod tests {
         assert!(ran_out);
     }
 
+    /// The budget is the file's, not a hunk's: with seven unchanged lines between them, the blocks
+    /// of `a_spent_budget_leaves_later_blocks_to_jj_lib` fall into two hunks, and the second hunk's
+    /// block still keeps jj-lib's tokens when the first hunk's search left too little.
+    #[test]
+    fn the_budget_spans_the_hunks_of_a_file() {
+        let unchanged = "k1\nk2\nk3\nk4\nk5\nk6\nk7\n";
+        let (left, right) = (
+            format!("a b c\n{unchanged}x\n"),
+            format!("a b d\na b e\n{unchanged}y\n"),
+        );
+        let texts = Diff::new(left.as_bytes(), right.as_bytes());
+        assert_eq!(
+            unified_diff_hunks(texts.map(Into::into), 3, LineCompareMode::Exact).len(),
+            2
+        );
+        let jj = both(&left, &right).0;
+        let run = |budget| paired_with(&left, &right, LineCompareMode::Exact, budget);
+        let (full, ran_out) = run(58);
+        assert!(!ran_out);
+        assert_ne!(full[6..], jj[6..]);
+        // The first hunk is its block and three context lines.
+        let (short, ran_out) = run(57);
+        assert!(ran_out);
+        assert_eq!((&short[..6], &short[6..]), (&full[..6], &jj[6..]));
+    }
+
     /// A block too big for the budget keeps jj-lib's block-wide tokens; within it the same lines
     /// would be unpaired whole lines.
     #[test]
     fn a_block_over_the_budget_keeps_jj_libs_tokens() {
         // Two-byte lines: the work is `n · 2n + n · 2n`.
         let lines = (MAX_PAIRING_WORK / 4).isqrt() + 1;
-        let (jj, kept) = both(&"x\n".repeat(lines), &"y\n".repeat(lines));
-        assert_eq!(kept, jj);
+        let (left, right) = ("x\n".repeat(lines), "y\n".repeat(lines));
+        let (kept, ran_out) = paired_with(&left, &right, LineCompareMode::Exact, MAX_PAIRING_WORK);
+        assert!(ran_out);
+        assert_eq!(kept, both(&left, &right).0);
         assert_eq!(kept[0], "-[-x-]\n");
         assert_eq!(paired("x\n", "y\n"), ["-[-x\n-]", "+{+y\n+}"]);
     }

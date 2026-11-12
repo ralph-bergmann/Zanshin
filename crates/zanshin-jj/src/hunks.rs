@@ -14,7 +14,8 @@
 //!   (a NUL byte in either side's first 8000 bytes) get none.
 //! - **Word segments** are not the CLI's: jj-lib word-diffs a changed block as one text, so
 //!   unrelated lines share marks. [`crate::line_pairs`] word-diffs the block's lines in pairs
-//!   instead ([`Segment`]); the line-level hunks stay jj-lib's.
+//!   instead ([`Segment`]), except in a block the file's pairing budget cannot pay for; the
+//!   line-level hunks stay jj-lib's.
 //! - **Source symbols** are the CLI's ([`crate::source_symbol`]): the new side's, unless the hunk
 //!   adds no line, cut at 80 bytes.
 //! - **Sections** are [`crate::select_tree::sections`] over the same texts. They are the keys
@@ -249,11 +250,11 @@ pub struct Hunk {
 /// their order: one line with one line, or one line with a run of consecutive lines on the other
 /// side (a call split over lines, lines joined into one). A pair takes jj-lib's own word diff
 /// over its text, so a moved line break is only one more token; a line without a partner (an
-/// inserted line, a rewritten comment) is one changed run. A block the file's pairing budget cannot
-/// pay for keeps jj-lib's word diff over the whole block, which is what `jj diff --git` underlines.
-/// Words are runs of
-/// `A-Z a-z 0-9 _` and non-ASCII bytes; every other byte is a token of its own. A line's segments
-/// concatenate to its text, none is empty, and adjacent segments differ in kind.
+/// inserted line, a rewritten comment) is one changed run. A block the file's pairing budget
+/// cannot pay for keeps jj-lib's word diff over the whole block, which is what `jj diff --git`
+/// underlines. Words are runs of `A-Z a-z 0-9 _` and non-ASCII bytes; every other byte is a token
+/// of its own. A line's segments concatenate to its text, none is empty, and adjacent segments
+/// differ in kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Segment {
     /// The run's text.
