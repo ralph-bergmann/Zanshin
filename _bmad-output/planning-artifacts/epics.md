@@ -12225,6 +12225,14 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 ### Story 10.32: Word marks in the inspector diff — faint line, strong changed words [UI]
 *(Added 2026-11-12, Ralph — console session. Takes over the deferred-work entry "Word-level and syntax marks have no consumer story" and 10.24's non-goal "Word-level and syntax marks".)*
 
+> **Built 2026-11-12 (bmad-build-auto; spec-10-32-word-marks-in-the-inspector-diff). Claude's defaults for the NEEDS DESIGN items, open to Ralph's change:**
+> - **Tokens:** night `--add-word-bg: rgba(74,222,128,.30)`, `--rem-word-bg: rgba(248,113,113,.30)`; paper `rgba(26,127,69,.22)`, `rgba(194,58,58,.20)` — laid over the line's `--add-bg` / `--rem-bg`, data colours that no accent family or appearance delta changes.
+> - **Glyphs on a mark turn `--text`** (5.7–10.1:1). Red or green text cannot keep item 3's 4.5:1 on a stronger tint: night `--rem` on a .30 tint falls to about 3.3:1, and paper `--rem` sits near 4.5:1 on the faint fill alone. The DS already does this for tinted states (readme › Control states, rule 6).
+> - **A mark is the line's full height** and lies under the text, so a selection's highlight paints over it (item 4). Marks are visual only; VoiceOver reads the line's text as before.
+> - **Item 2 as built:** a changed run of spaces is filled; a run that is only a line break is not; a line whose unchanged text is only blanks keeps no marks.
+> - **DS:** `DiffView` / `DiffHunk` draw the marks from `[-old-]` / `{+new+}` in their line strings; the Content card and the UI kit show them.
+> - The Undo Timeline's operation view (10.29) reuses the inspector's diff view, so it shows the marks too.
+
 **Motivation.** 10.24 draws whole lines. Story 5.2 gives every line its word segments, since 2026-11-12 exactly what `jj diff --git` underlines. Ralph wants to see which words changed: the line in a faint red or green, the changed words in a strong one (Ralph's JayJay and difftastic screenshots, 2026-11-12). No syntax colors: they hide the red and green (Ralph, 2026-11-12; Stories 5.3 and 5.4 are deleted).
 
 **Scope.**

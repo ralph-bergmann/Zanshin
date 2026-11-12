@@ -4,7 +4,7 @@
 
 ## Goal
 
-Build Zanshin's main view: a commit graph that owns the window, with commit cards at data-computed positions (several cards per row), routed edges behind them, the gold lineage of @, hover focus paths, and two-axis virtualized scrolling and pan-by-drag over 10k–100k commits. Around it float the graph's controls, an inspector for the selected change (describe, diff, composer), bookmarks, search and its jj log Configurations window, an operation toast, a minimap and drag-and-drop, all driving the shipped `zanshin_core` bridge. Claude builds it (scope exception, later widened to the whole UI); Ralph reviews every story.
+Build Zanshin's main view: a commit graph that owns the window, with cards at data-computed positions (Free by default, Compact as the alternative), lines behind them, the gold lineage of @, hover focus paths, and smooth scrolling and panning over 10k–100k commits. Around it float the design system's controls: top bar, search and its jj log Configurations window, Bookmarks rail, minimap, card menus, an inspector (describe, diff, composer, hunk selection), drag-and-drop, motion and an operation toast with Undo. Every action runs a real jj verb through the shipped `zanshin_core` bridge and behaves like the jj CLI. Claude builds it; Ralph reviews every story.
 
 ## Stories
 
@@ -12,7 +12,7 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Story 10.1: Graph viewport, two-axis virtualized canvas (done)
 - Story 10.2: Canvas and Free's day axis (done)
 - Story 10.3: Commit cards (done)
-- Story 10.4: Graph edges, router B (done)
+- Story 10.4: Graph edges (done)
 - Story 10.5: Graph view model and repository wiring (done)
 - Story 10.6: Selection, hover focus, callout, @ locator, keyboard (done)
 - Story 10.7: Graph controls in the floating top bar (done)
@@ -20,13 +20,13 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Story 10.9: Action runner (done)
 - Story 10.10: Drag-and-drop on the graph (done)
 - Story 10.11: Content paging (done)
-- Story 10.12: Adopt the backend layout, reload button (done)
+- Story 10.12: Adopt the backend layout (done)
 - Story 10.13: Time-layout lab, experiment (done, outcome decided)
 - Story 10.14: Bookmarks in the floating rail (done)
 - Story 10.15: Card action menu and bookmark popover (done)
 - Story 10.16: Minimap (done)
 - Story 10.17: Commit stacks (done)
-- Story 10.18: AI stack titles (declined)
+- Story 10.18: AI titles for commit stacks (declined)
 - Story 10.19: Hidden history (done)
 - Story 10.20: Graph animations (done)
 - Story 10.21: Graph search (done)
@@ -36,57 +36,42 @@ Build Zanshin's main view: a commit graph that owns the window, with commit card
 - Story 10.25: Commit/split composer, file level (done)
 - Story 10.26: Hunk selection through a GUI tree (done)
 - Story 10.27: Drag files and hunks onto a change (backlog)
-- Story 10.28: Raw revset rule in the jj log Configurations window (done)
-- Story 10.29: Operation diff view, Show changes in the Undo Timeline (done)
-- Story 10.30: Review findings 2026-11-02: revset errors, the `$` pill, ID copy, uniform graph ports (done)
-- Story 10.31: Time axis and minimap for long histories: shortened gaps, content-sized minimap, year labels, scrolling minimap (backlog, design round done, ready)
+- Story 10.28: Raw revset rule in the Configurations window (done)
+- Story 10.29: Operation diff view in the Undo Timeline (done)
+- Story 10.30: Review findings 2026-11-02 (done)
+- Story 10.31: Time axis and minimap for long histories (done)
+- Story 10.32: Word marks in the inspector diff (backlog)
 
 ## Requirements & Constraints
 
-- Scale: 10k–100k commits; extents and scrollbars exact before the first card is built; nothing measured from widgets.
-- Layout modes: Free (default; y from compressed commit time, each child at least one pitch above its parents) and Compact (row = longest-path depth). Lane order `compact` by default, greedy as alternative; no `optimized`, no user lane-order control.
-- Intended deviations from the design that stay: crossing bridges always on; go-to-change pulse; a stack toggle never moves a column; runs of mutable ancestors of @ start expanded.
-- Hidden history: marker family "Break" (`//`), no counts anywhere; markers keep 12 px of line to every card; a hidden merge gets one shared marker.
-- Immutable changes: 135° hatch (`--hatch`), no glyph or colour; menus offer only rows that leave the change untouched (exactly the verbs jj refuses are left out).
-- Every jj command shown in UI text exists in the pinned jj (now v0.47.0; the epic was checked against v0.46.0) exactly as written, in full with the change id, shell-quoted. The UI never composes a sequence of commands.
-- Behave like the CLI: parse, resolve and refuse as jj does; show jj's own error text (e.g. `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`) in place. Where the design does not fit jj, resolve it along jj's behaviour in the owning story (Claude's proposal, no question to Ralph).
-- jj errors in a proportional-font UI are one short sentence (kind, column, what jj expected), never jj's pest rendering (`-->`, `^---`); prefer a structured short message from the backend over parsing jj's text in Dart. A text field keeps its focus when its error message appears or disappears.
-- Inspector header IDs: short change ID with a `jj` subscript and short commit ID with a `git` subscript (`--text-faint`); a click copies the full ID ("Click to copy" / "Copied"; a failed clipboard write opens a popover with the full ID as selectable text). Graph cards keep click = select. The search field's `$` pill has no tint.
-- Hunk selection offers everything the CLI's builtin diff editor offers: mode changes get their own row, conflicted files get per-section checkboxes.
-- Long histories (10.31, Free only; Compact keeps its row mapping), design settled (DS sync #22, build to the DS `GraphBreak`, `DayAxis years`, card "Long history", readme › Long histories; prototype `?history=long`). The empty screens come from collapsed stacks keeping their hidden members' time below them, not from commit-free time (Free already damps real gaps). Rule: any stretch with no card in any column taller than 8 pitches shrinks to 1½ pitches card to card and shows a `GraphBreak` (torn strip over the lines, span label like "6 years · Sep 2019 – May 2025"), in layout units; expanding the stack removes it; no "show gap". Canvas, day axis, gap markers, go-to/scroll math and minimap read one shortened y mapping and agree on every node's y. Years: never in a day label; the canvas labels a year where it begins (not inside a break, not for one-year histories); the minimap reads top-down with year section headers and a sticky top header. Minimap width = 58 px labels + ≈ 12 px per column (graph part 60–160 px), minimum density 2 px per pitch, beyond that it scrolls in proportion (band drags it along, VS Code style), measuring the layout's extent. The day pill stays inside the card (the "pill outside" option is dropped). Already done: minimap edges run into the dots, all dotted alike on one grid; the stack list caps at 420 px and scrolls.
-- Refresh: window focus plus an explicit reload button (and View › Reload ⌘R), both coalesced; no timer, no file watcher.
-- Workstreams dropped; Reviews hidden. The app is English but l10n-ready.
-- The design export is inspiration, not a 1:1 template: small gaps get a Claude proposal Ralph can overrule; NEEDS DESIGN questions are only for architecture or scope. A decision recorded in the epic wins over the export, except where Ralph ruled the floating client's explicit change wins. Prototype defects listed in the epic are never copied.
-- Done = `cargo make test` green (flutter test, `dart analyze --fatal-infos`, format, …) plus a Marionette visual check in the Widgetbook catalogue against full-size DS card renders (Marionette cannot hover, so hover-only surfaces need an "open" use case). Coverage is Rust-only; each story's named widget tests are the safety net.
+- **Behave like the jj CLI.** What the view shows and every verb must be CLI-exact; only the layered layout is presentation. Refusals show jj's own text, in the UI as one short sentence (kind, column, what jj expected), never jj's terminal rendering. Where the design does not fit jj, the owning story follows jj (Claude's proposal).
+- **Every command is real.** A jj command in UI text must exist in jj exactly as written (the rule names v0.46.0; the pin is v0.47.0 since 2026-11-04): in full, with the change id, shell-quoted, `exact:` where a pattern needs it. The UI never composes a sequence of commands.
+- **Scale.** The whole revset's geometry comes once per operation; card content loads lazily per visible page. Extents come from data, never from measured widgets. A card-size change never costs a layout request. Refresh happens on window focus and on an explicit reload (⌘R), coalesced; no timer, no file watcher.
+- **Decisions that stay:** crossing bridges always on; the go-to pulse; a stack toggle never moves a column; mutable ancestors of @ start expanded; hidden history as `//` markers with no counts; an immutable change is a 135° hatch with no colour or glyph, and its menus drop exactly the rows jj refuses.
+- VoiceOver semantics for the epic's own surfaces. English only, l10n-ready.
+- **Done** = `cargo make test` green plus a Marionette check in the Widgetbook catalogue or the app against full-size DS card renders (a hover-only surface gets an "open" use case). Coverage is Rust-only, so each story's named witnesses are the safety net.
 
 ## Technical Decisions
 
-- **The view never lays out the graph.** It consumes `GraphLayout` via accessors (node key, column, row in 1/U units, view facts, lazy content, edges with kind/shape, @, counts, op id) and only maps to pixels: `GraphMetrics` for x (no gutter, offX 0), a `VerticalLayout` for y. Router B's pixel geometry comes from `zanshin_core`'s router per card size. A layout is requested once per operation, never on resize.
-- View preferences persist through `GraphPreferences` over `AppSettings.graph`.
-- Viewport: `TwoDimensionalScrollView` with a custom `RenderTwoDimensionalViewport`; designed visuals are a `RenderBox` with text slots, not nested Column/Row.
-- Ports: `GraphSource` (layout), `GraphActions` (runner), `GraphDetails` (inspector: `show` + `changeActions`). Unlanded backends are fakes; 10.10 runs on a fake `drop_actions` port.
-- Scroll precedence: explicit reveal beats re-centre on @ after a revset/layout switch, which beats the anchor. Panels float; reveals centre in the area the chrome leaves free.
-- Backend boundary: the UI never composes jj operations; it pre-fills every API parameter from the effective config and passes it explicitly. Missing CLI parameters are backend gaps. Interactive verbs take a GUI-supplied `TreeId` (`select_tree`). Diff read: `RepoHandle.diff` (`Diff` → `FileDiff` → `Hunk` → `HunkLine`, per-file `fingerprint`); operation contents: `RepoHandle.opShow`. Revset text comes from `zanshin_core`'s builders (join / not), passed verbatim.
-- Code in `app/lib/src/features/graph/`, tests mirrored in `app/test/features/graph/`. The app imports only `package:zanshin_core/zanshin_core.dart`; a `[UI/bridge]` story adds the types it consumes to that library's `show` list. The old POC is removed (read it at `8bd1c34b` if needed).
-- Controls come from the Zs library (`packages/zanshin_ui`), never Material/Yaru; remaining Material types only from `package:material_ui`. Text entry is an undecorated `TextField`.
-- Theme: tokens from the design system (`_bmad-output/implementation-artifacts/design_system/`; tokens and CSS win over its prose). `GraphTheme` (`ThemeExtension`, night/paper) derives from the token layer and falls back to night. Selection, focus, drop targets, pulse and flash use the accent role (`--accent*`, `--focus-ring`); gold = @ and the one primary action; moon as data (`--hunk`, `--status-m`, `--remote`) stays fixed. Each story records "DS synced through #N". `design/` and `design_system/` are now repo sources edited in place: where a story's change departs from the DS or the prototype (e.g. `design/graph-layout.jsx`), it edits that source too, with a dated line in `DESIGN-SYSTEM-SYNC.md`, so no deviation is tracked; republishing the DS artifact is Claude's after the story (skill `design-artifacts`).
-- Graph router ports (from 10.30): top and bottom follow one rule set, by local direction (follow-up 2026-11-02: only the stretch right at a card edge decides, whatever the kind) — a single line in the centre; with several, the line running vertical through the band next to the edge longest takes the centre and the rest fan to the side they turn to (vertical lines innermost); with none vertical the centre stays free; two vertical lines never share an x, also across the card edges of one column (the longer keeps its port); the fan is the entry fan (24 px, 16 px steps, squeezed to 8 px) at both ends. Inner/outer ordering, shared indirect entry slots, gutter routing and the invariant checks stay.
-- Strings go through the ARB (`app/lib/l10n/app_en.arb`, `packages/zanshin_ui/lib/l10n/zs_en.arb`; run `flutter gen-l10n` after an edit and commit the generated files); jj's own words, the product name and symbols are literals marked `// l10n-ignore: <reason>`.
-- Tests: scroll physics under `TargetPlatformVariant.only(TargetPlatform.macOS)`; no golden tests; real-cdylib widget tests wrap worker/watcher I/O in `tester.runAsync`; app tests never call a jj config verb for real; icon-painting tests load the `IconRegistry` in a shared `setUpAll`.
+- **The view never lays out the graph.** It reads `GraphLayout` through accessors and maps columns to x and nodes to y. The engine is in `packages/zanshin_core` (Dart, worker isolate; contract `docs/graph-layout.md`). Since 2026-11-10 each mode picks its own columns by branch (a mode switch re-centres on @, no transition), and lines follow the layout lab's rules instead of router B; a polyline has up to 8 points. In Free, card-free stretches taller than 3 pitches shrink to 1½ pitches; canvas, day axis, gap markers, scroll math and minimap share that one mapping.
+- **Ports:** `GraphSource`, `GraphActions`, `GraphDetails`, `drop_actions`; tests run on fakes. Every verb runs through 10.9's runner (pending state, anchored reload, refusals, warnings, undo guard); outcomes go to 10.23's toast and 10.20's motion; the selection follows `MutationResult`.
+- **Backend boundary (ADR-0003):** the UI never composes jj operations; it pre-fills every parameter from the effective config and passes it explicitly. Partial selections pass a tree id from `select_tree` (9.50), never `-i`; a hunk selection is a set of 9.50 keys, re-mapped after every reload. Revset text comes from `zanshin_core`'s builders, verbatim.
+- **Diff data:** Rust computes, Dart draws. Every `HunkLine` carries `segments` (`Equal` / `Added` / `Removed`), since 2026-11-12 jj-lib's own word diff (what `jj diff --git` underlines). No syntax colours.
+- **Code** in `app/lib/src/features/graph/`, tests mirrored under `app/test/features/graph/`. The app imports only `package:zanshin_core/zanshin_core.dart`; a `[UI/bridge]` story adds what it consumes to its `show` list. No import cycles between feature folders, and nothing under `lib/src/features/` imports `lib/src/app/` (guard test).
+- **Controls** are the Zs library (`packages/zanshin_ui`), never Material or Yaru; text entry is an undecorated `TextField`. Designed visuals are a `RenderBox` with text slots, not nested `Column`/`Row`.
+- **Theme:** tokens from `_bmad-output/implementation-artifacts/design_system/` (tokens and CSS win over prose), via `GraphTheme` (night, paper). Selection, focus, drop targets and the flash use the accent role (`--accent*`, `--focus-ring`; `--accent-live-*` where it must stay lit in an inactive window). Gold = @ and the one primary action. Data colours (`--hunk`, `--hunk-bg`, `--status-m`, `--remote`) stay fixed. A new token goes into DS `tokens/colors.css` and `ZsColors` together; the DS parity test fails the gate until both match.
+- **Design sources** are edited in place (`design/`, `design_system/`) with a numbered entry in `design/DESIGN-SYSTEM-SYNC.md`, so no deviation is tracked (the header's older "re-download only" rule predates this). Claude republishes the DS with the `design-artifacts` skill. Each story records "DS synced through #N".
+- **Strings** go through the ARB files (run `flutter gen-l10n`, commit the output); jj's words, the product name and symbols are literals marked `// l10n-ignore: <reason>`.
+- **Tests:** scroll physics under `TargetPlatformVariant.only(TargetPlatform.macOS)`; no golden tests; real-cdylib tests wrap I/O in `tester.runAsync`; app tests never call a jj config verb for real; icon tests load the `IconRegistry` in a shared `setUpAll`.
 
 ## UX & Interaction Patterns
 
-- Floating chrome on glass islands: top bar (Place · View · Action: project capsule, search field, gap legend, count, View options, Fetch, Push, reload, gold "New change"); rail with Bookmarks and Undo Timeline; @ "Working copy" pill when @ is off-screen; minimap (134 px glass card on the right, dots with day labels, current-day pill, viewport band, click-and-drag); calm scrolling.
-- Cards: detailed (62 px) and compact (40 px), width 160–400; ••• and right-click menu; peek callout after a hover delay, flipping against the unobscured area, suppressed while any menu is open or during pans and drags.
-- Keyboard: one roving focus node, not a tab stop per card; Esc is scoped, never a window-level listener.
-- Motion (FLIP): moved cards glide 460 ms with the anchor still; born change grows from its anchor (540 ms); edges fade back in 260 ms; flash 2.4 s. Reduce motion zeroes movement only; colour/opacity fades keep their tokens.
-- Inspector: 460 px glass island; describe in place; file list; diff (±, Unified / Side by side, Viewed per repository keyed by fingerprint); composer. Selected hunks use `--accent-soft-hi` plus a 2 px `--accent-line` edge; unselected headers stay `--hunk-bg`; hunk checkboxes are the Zs Checkbox with the mixed dash, the hunk is a Tab stop and Space toggles it.
-- Drag-and-drop: menu after a 260 ms rest on a card target, a plain drop runs the default row (its command shown under the ghost), ⌥ makes `rebase -r` the default, only applicable rows listed. A bookmark drag never opens the menu: release runs the move, backwards too, passing `--allow-backwards` exactly when the move is not a fast-forward; over a backwards target the ghost adds a `--warn` line ("Moves the bookmark back. A push drops the later commits from the shared branch."). File/hunk drags (10.27) reuse this engine: targets any mutable card except the source and root, stacks inert, no edge targets, never `-i` in a call.
-- Search: one menu with jj log variants, Go to, Filter by, async capped counts (zero rows dimmed), Recent per repository; the `jj log` built-in is always the effective `revsets.log`, never written by the UI. Configurations window: structured rules plus (10.28) a raw "Revset" rule mixed in via the same builder, errors and "did you mean" candidates shown at the rule's row, the raw text verbatim in the command preview.
-- Operation diff (10.29): Show changes in the Undo Timeline opens `jj op show <id>`'s changed commits with before/after and a per-commit diff reusing 10.24's view, without Viewed marks; Esc returns to the list; refusals show jj's text in place of the diff.
+- Floating glass chrome over the graph: top bar (Place · View · Action), rail (Bookmarks, Undo Timeline), the @ pill, the minimap. The design is inspiration, not a 1:1 template: small gaps get a marked Claude proposal; NEEDS DESIGN is for architecture or scope.
+- Cards: 40 / 62 px at the default density, width 160–400, ••• and right-click menu, a peek callout that stays shut while a menu is open or during pans and drags. One roving focus node; Esc is scoped, never window-level. Motion: FLIP on every operation; reduce motion zeroes movement only.
+- **Inspector diff:** removed and added lines on `--rem-bg` / `--add-bg`; hunk header on `--hunk-bg` / `--hunk`; a selected hunk on `--accent-soft-hi` with a 2 px `--accent-line` edge. Selecting read-only text paints only the highlight. Mode changes and conflict sections are selectable like hunks, as in jj's builtin diff editor.
+- **Drag engine (10.10; 10.27 reuses it):** starts after 5 px; targets are cards only (stacks inert, no edge targets); the drop menu opens after a 260 ms rest and lists only available `drop_actions` rows, its footer naming the highlighted row's command. Previews are debounced and cached per operation; reloads wait until the drag ends; resize edges are inert; Esc cancels with no call. Since 2026-11-03 a change drag released before the menu opens runs nothing; once it is open, release runs the highlighted row (default first; with ⌥ `rebase -r`). A bookmark drag never opens the menu: release moves it, with `--allow-backwards` exactly when the move is not a fast-forward and a `--warn` line on the ghost.
 
 ## Cross-Story Dependencies
 
-- Open stories: 10.27 builds on 10.10, 10.24, 10.23, 10.26 (all done) and needs 9.15, 9.31's `diff` drop source and 9.50 (partial selections pass 9.50's tree id). 10.31 builds on 10.16 (minimap) and 10.3 (cards), both done, and its design round is done; its witnesses include Marionette screenshots on `dart-intellij-third-party` (4674 changes, 2013–2025) compared with the DS cards.
-- Router changes (10.30 and later) must keep router tests, goldens and layout invariants in `packages/zanshin_core` green.
-- Epic 11: 11.11 (Zs controls, Widgetbook) precedes every control user; 11.13 (menu bar) binds this epic's shortcuts and View › Reload; 11.9 owns the Undo Timeline that 10.29 extends.
+- **10.27** builds on 10.10, 10.23, 10.24, 10.26 and backend 9.15, 9.31 (selection payload) and 9.50, all done. Its text (2026-10-14/16) still says a plain drop runs the default row with the command under the ghost; 10.10's 2026-11-03 change for change drags came later, so decide which rule file and hunk drags follow.
+- **10.32** builds on 10.24 and 5.2 (both done) and adds `--add-word-bg` / `--rem-word-bg` to the DS and `ZsColors`. Story 5.9 (a structural diff) waits on 10.32's marks on real diffs.
