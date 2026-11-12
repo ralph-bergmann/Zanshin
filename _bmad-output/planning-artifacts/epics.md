@@ -12232,6 +12232,8 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 > - **Item 2 as built:** a changed run of spaces is filled; a run that is only a line break is not; a line whose unchanged text is only blanks keeps no marks.
 > - **DS:** `DiffView` / `DiffHunk` draw the marks from `[-old-]` / `{+new+}` in their line strings; the Content card and the UI kit show them.
 > - The Undo Timeline's operation view (10.29) reuses the inspector's diff view, so it shows the marks too.
+>
+> **Decided 2026-11-12 (Ralph, after the catalogue screenshots): keep the tokens and the `--text` glyphs; no underline.** Colour stays the only cue for a changed word.
 
 **Motivation.** 10.24 draws whole lines. Story 5.2 gives every line its word segments, since 2026-11-12 exactly what `jj diff --git` underlines. Ralph wants to see which words changed: the line in a faint red or green, the changed words in a strong one (Ralph's JayJay and difftastic screenshots, 2026-11-12). No syntax colors: they hide the red and green (Ralph, 2026-11-12; Stories 5.3 and 5.4 are deleted).
 
@@ -12251,7 +12253,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Depends on.** 10.24 (done), 5.2 (reworked 2026-11-12).
 
-**Design status.** NEEDS DESIGN for the two tokens and the special segments; Claude's defaults adopted.
+**Design status.** FINAL (Ralph, 2026-11-12) for the two tokens and the `--text` glyphs on a mark; no underline. The special segments (item 2) keep Claude's defaults.
 
 **Witnesses** (a fake diff port, then the real cdylib).
 - `child: Text(isLastStep ? s.functionWizard_save : …)` → `… ? saveLabel : …`: the strong fill covers exactly `s.functionWizard_save` and `saveLabel`.
