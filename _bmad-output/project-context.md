@@ -37,11 +37,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Rust `1.99.1` (pinned via `rust-toolchain.toml`)
 
 **Rust workspace (5 lib crates + 1 bin + xtask):** *(2026-10-01, Story 4.12: 4 lib crates —
-the `zanshin-graph` lane crate was removed)*
+the `zanshin-graph` lane crate was removed; 2026-11-12: `zanshin-diff` was removed too — word
+diffs are jj-lib's, through `zanshin-jj`, and diffs get no syntax highlighting)*
 - `jj-lib` `=0.47.0` (pre-1.0 — pin exact; churn absorbed in `zanshin-jj`)
 - `rmcp` `=1.7.0` (pin exact)
-- `imara-diff` `=*` (pin exact — Histogram algorithm)
-- `tree-sitter-highlight`
 - `notify` + `notify-debouncer-full` (50ms window, AD-5)
 - `tracing` + `tracing-appender`
 - `flatbuffers` `=25.12.19` (pin exact — FFI wire transport for composite data, ADR-0001)
@@ -78,7 +77,7 @@ the `zanshin-graph` lane crate was removed)*
   the daemon (jj-lib falls back to a full scan when it is unreachable).
 
 **Version pinning rules:**
-- Load-bearing pre-1.0 crates: `=x.y.z` exact pins (`jj-lib`, `rmcp`, `imara-diff`).
+- Load-bearing pre-1.0 crates: `=x.y.z` exact pins (`jj-lib`, `rmcp`).
 - `flatbuffers` is pinned `=x.y.z` to the installed `flatc` version — generated code and runtime must match.
 - Stable crates: caret (`^x.y.z`).
 - `default-features = false` requires inline `# WHY:` comment.
@@ -426,8 +425,8 @@ the `zanshin-graph` lane crate was removed)*
   test suite runs. CI gates this explicitly.
 
 **Performance assertions — DEFERRED to release phase:**
-- NFR-P-* budgets remain as soft design targets that inform algorithm choice
-  (e.g., `imara-diff` Histogram over `similar`). **No CI perf-gate enforcement
+- NFR-P-* budgets remain as soft design targets that inform algorithm choice.
+  **No CI perf-gate enforcement
   while WIP.**
 - One WIP exception: `zanshin-graph` should have a small algorithmic-correctness
   test on a ~100-commit fixture (correct lane output, not timing). Catches dumb
@@ -555,8 +554,8 @@ the `zanshin-graph` lane crate was removed)*
 **Cargo.toml hygiene:**
 - Shared deps via root `[workspace.dependencies]`. Member crates consume as
   `serde = { workspace = true }`.
-- Exact version pins (`=x.y.z`) for load-bearing pre-1.0 deps: `jj-lib`, `rmcp`,
-  `imara-diff`. Caret pins for stable deps.
+- Exact version pins (`=x.y.z`) for load-bearing pre-1.0 deps: `jj-lib`, `rmcp`.
+  Caret pins for stable deps.
 - `default-features = false` requires an inline `# WHY:` comment.
 - No `[patch.crates-io]` while in 0.x. If a fork is required, file an issue
   documenting when it can be dropped, link the issue from the patch entry.
@@ -861,8 +860,10 @@ the `zanshin-graph` lane crate was removed)*
   `zanshin_graph_topology`: the whole revset's index-only topology per call (Story 4.10),
   scalar vectors + CSR on the wire, laid out in Dart (Story 4.11); still re-derived per
   operation, still no held cache.)*
-- **`imara-diff` Histogram algorithm** is ~30× faster than `similar` for large
-  diffs. Don't substitute `similar` "for consistency" — the perf gap is real.
+- **Word diffs are jj-lib's** (`zanshin_jj::Hunk::segments`: what `jj diff --git`
+  underlines). Don't add a second word-diff algorithm: it drifts from the CLI (2026-11-12,
+  Story 5.2 rework — the earlier imara-diff line pairing marked whole lines where the CLI marks
+  one word).
 - **Don't pre-compute things "in case the UI needs them".** Compute on
   callback dispatch, not speculatively. The UI is out of scope; designing for
   hypothetical UI demands is over-engineering.

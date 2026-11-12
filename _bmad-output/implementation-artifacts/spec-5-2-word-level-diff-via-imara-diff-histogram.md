@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-diff/src/word_diff.rs compute_word_diff; crates/zanshin-jj/src/hunks.rs:709 hunk_line
     severity: low
+    resolved: >-
+      2026-11-12 — fixed (Story 5.2 rework, Ralph: "like the CLI"): zanshin_jj::Hunk::segments keeps jj-lib's tokens, so the segments are what `jj diff --git` underlines; zanshin-diff is removed.
   - summary: >-
       project-context.md's stack list still names imara-diff `=*` and does not list unicode-segmentation.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       _bmad-output/project-context.md:43
     severity: low
+    resolved: >-
+      2026-11-12 — fixed (Story 5.2 rework): imara-diff and unicode-segmentation are no longer used; project-context.md drops them from the stack list and pin rules.
   - summary: >-
       The word diff can hold the worker isolate for seconds on lines made of a few repeated tokens, and nothing bounds one call.
     evidence: |-
@@ -32,7 +36,11 @@ deferred:
     location: >-
       crates/zanshin-diff/src/word_diff.rs:24-26,86; crates/zanshin-ffi/src/diff.rs:206
     severity: medium
+    resolved: >-
+      2026-11-12 — fixed (Story 5.2 rework): there is no second word diff; the segments are the tokens jj-lib's unified_diff_hunks already computes, at the stock CLI's cost.
 ---
+
+> **Reworked 2026-11-12 (Ralph: "like the CLI").** The segments are now jj-lib's own (`zanshin_jj::Hunk::segments`, what `jj diff --git` underlines): no line pairing, jj's words instead of UAX #29, no cap. `crates/zanshin-diff`, imara-diff and unicode-segmentation are removed. The wire shape (`HunkLine.segments`, `SegmentKind`) is unchanged. The text below records the first build.
 
 <intent-contract>
 

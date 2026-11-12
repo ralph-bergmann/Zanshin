@@ -4684,6 +4684,8 @@ So that subsequent stories (word-level diff, syntax highlight, JSON output) buil
 
 ### Story 5.2: Word-level diff via `imara-diff` Histogram
 
+> **Reworked 2026-11-12 (Ralph: "like the CLI"):** the segments are jj-lib's own — `zanshin_jj::Hunk::segments` keeps the tokens `unified_diff_hunks` returns, exactly what `jj diff --git` underlines: each changed region word-diffed as one text (no line pairing, so a moved line break or an inserted line is one more token), words being runs of `A-Z a-z 0-9 _` and non-ASCII bytes. `crates/zanshin-diff`, imara-diff and unicode-segmentation are removed; the wire (`HunkLine.segments`) and Dart are unchanged. This supersedes the AC's imara-diff Histogram, the pairing, the UAX #29 tokens and the 131,072-character cap below (FR-DF-1 in prd.md still names imara-diff).
+>
 > **Reconciled 2026-11-11 (Story 5.2 build, `spec-5-2-word-level-diff-via-imara-diff-histogram.md`):** the AC's location holds: `crates/zanshin-diff/src/word_diff.rs` defines `Segment` / `SegmentKind` and `compute_word_diff` (imara-diff `Algorithm::Histogram` + `postprocess_no_heuristic` over `unicode-segmentation`'s `split_word_bounds` tokens), tested in `crates/zanshin-diff/tests/word_diff.rs`. It adds `line_segments(&[zanshin_jj::HunkLine])`, which applies the pairing below to one hunk and gives EVERY line segments: an unpaired line is one segment of its own kind, a context line one `Equal` segment. `zanshin_ffi::diff::diff_to_envelope` writes them as `HunkLine.segments` (`table Segment { kind: SegmentKind; text: string; }`), and Dart decodes `HunkLine.segments` (`Segment`, `SegmentKind`); `zanshin_jj::HunkLine` stays unchanged. Reconciliations: (1) the AC example's trailing `Equal("")` is dropped — no segment is empty, and a line's `\n` is a token riding on its last segment; (2) "share no words" means no shared token: whitespace or punctuation both lines share stays `Equal`; (3) Story 5.7's perf test is deleted, so the long-line test witnesses completion only. A pair with a line longer than 131,072 characters is not word-diffed (each of its lines is one whole-line segment): a heavily edited ~1 MB minified pair took seconds and held the worker isolate; a ~100k-character pair of any script is still word-diffed (follow-up review: the cap counts characters, not bytes; how far to bound the word diff's work is open in deferred-work.md, "Surfaced in the follow-up review of Story 5.2"). jj word-diffs each changed region as one text, with no line pairing (jj-lib `ContentDiff::by_word`), and marks the AC example differently: `x` and both `i32` on the removed line, `y`, `i32` and `u32` on the added one — a product decision for Ralph (deferred-work.md, "Surfaced in Story 5.2").
 
 As a Rust developer enhancing line-level hunks with word granularity,
@@ -5174,6 +5176,36 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 **And** Dart-side memory consumption is bounded by the parse-into-typed-objects step.
 
 > **Delivered (2026-11-01, spec-5-8-ffi-wrapper-zanshin-ffi-src-diff-rs):** the extern is `zanshin_diff(handle, data, len)` taking a `DiffRequest` request buffer (`revision` / `from` / `to` as lone id strings, `paths`, `context`, `whitespace`, `summary` — Story 5.6's full `jj diff` option set) and answering the `Diff` envelope with the precondition report; `revision` with `from`/`to` is `jj.invalid_input` (the CLI's clap conflict). Dart: `DiffCommand`, `ZanshinWorker.diff`, `RepoHandle.diff` → `Future<Diff>`, `Diff`/`DiffWhitespace`/`FileDiff`/`Hunk`/`HunkLine`/`HunkLineKind` exported. The wire `ShowEntry` gained `parent_tree_labels` / `tree_labels` (Dart `parentTreeLabels` / `treeLabels`). No caching. The ACs above (JSON, `zanshin_diff_compute`, `DiffComputeCommand`) are superseded by this note.
+
+---
+
+### Story 5.9: Structural diff, difftastic class — research first [Rust]
+*(Added 2026-11-12, Ralph — console session. Lifts Epic 5's non-goal "AST-level structural diffs (difftastic class)" for planning; whether to build it is decided after the research.)*
+
+**Motivation.** difftastic parses both sides with tree-sitter and diffs the syntax trees. It marks only the changed node, sees moved code and reordered arguments, and ignores pure reformatting. Since 2026-11-12 Zanshin's marks are jj's word diff (5.2). That already handles a moved line break, an inserted line and `spacing8` → `spacing2` on Ralph's examples. What remains — moved code, reordered arguments, changed nesting — is worth a structural diff only if real diffs in the app (10.32) show it.
+
+**Scope.**
+1. **Research** (first; its result is Ralph's decision):
+   - Can difftastic (`difft`, MIT) be used as a library, or only as a program? Alternatives: diffsitter, or an own tree diff over tree-sitter.
+   - Its cost on large files, and its own fallbacks (`DFT_BYTE_LIMIT`, the graph limit, the parse-error limit).
+   - The grammars it needs. Rust, Dart and Markdown come first; 5.4's grammar setup is in the git history (reverted in `revert(diff): remove syntax highlighting (Stories 5.3, 5.4)`).
+   - How structural marks map onto `HunkLine.segments`: the same wire, structural segments where available, jj's otherwise.
+2. **Build** (after the research, scoped by Ralph): structural marks inside jj's line-level hunks. jj's word marks stay the fallback for an unsupported language, a large file, a parse error and a call over a time budget.
+
+**Non-goals.**
+- Syntax colouring (Ralph, 2026-11-12).
+- Changing jj's line-level hunks: they stay the CLI's.
+
+**Depends on.** 10.32 (the decision is made on real diffs), 5.2.
+
+**Design status.** Open: a product decision for Ralph after the research.
+
+**Witnesses** (for the build part).
+- Ralph's `stepper.dart` examples keep their marks.
+- `f(a, b)` → `f(b, a)` marks the move, not two replacements.
+- Every fallback case gives jj's word marks.
+
+**Related:** 5.2, 10.32; the reverted Stories 5.3 and 5.4.
 
 ---
 
@@ -11893,7 +11925,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Non-goals.**
 - Selection checkboxes (10.25, 10.26) and drags (10.27).
-- Word-level and syntax marks (5.2–5.4, later; deferred-work).
+- Word-level and syntax marks (5.2–5.4, later; deferred-work). *(2026-11-12: word marks are Story 10.32; syntax marks are deleted.)*
 - Line numbers, editing (9.44) and a conflict view (9.17).
 
 **Depends on.** 10.8; Epic 5's line-level path (5.1, 5.5 without segments, 5.6 with its summary mode, 5.8); 11.1 for the tokens.
@@ -12187,6 +12219,41 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 **Witnesses.** A gap above the threshold renders at the fixed height with its marker and length, and the canvas, day axis and minimap agree on every node's y; a layout with N columns widens the minimap up to the maximum; no day label is clipped and a year label sits at each year boundary; a long history scrolls the minimap and the band drag scrolls it; Marionette screenshots on `dart-intellij-third-party` compared with the DS cards.
 
 **Depends on.** 10.16 (done), 10.3 (done).
+
+---
+
+### Story 10.32: Word marks in the inspector diff — faint line, strong changed words [UI]
+*(Added 2026-11-12, Ralph — console session. Takes over the deferred-work entry "Word-level and syntax marks have no consumer story" and 10.24's non-goal "Word-level and syntax marks".)*
+
+**Motivation.** 10.24 draws whole lines. Story 5.2 gives every line its word segments, since 2026-11-12 exactly what `jj diff --git` underlines. Ralph wants to see which words changed: the line in a faint red or green, the changed words in a strong one (Ralph's JayJay and difftastic screenshots, 2026-11-12). No syntax colors: they hide the red and green (Ralph, 2026-11-12; Stories 5.3 and 5.4 are deleted).
+
+**Scope.**
+1. **Lines** (10.24 item 6). A removed or added line keeps its faint fill (`--rem-bg` / `--add-bg`). Its `Removed` / `Added` segments get a strong fill of the same hue; `Equal` segments stay as they are. Context lines do not change. Unified and side by side alike.
+2. **Special segments** — NEEDS DESIGN, Claude's defaults:
+   - A changed run of indentation or spaces is filled like any other run. It shows a moved line break, as difftastic does.
+   - A run that is only a line break has nothing to fill and stays invisible.
+   - A line whose changed runs cover all its visible text (an inserted comment line, a wholly new file) gets only the faint fill. The strong fill would say nothing the line colour does not.
+3. **Tokens** — NEEDS DESIGN, Claude's default. Two new design-system tokens: `--add-word-bg` and `--rem-word-bg`, dark and paper. They go into DS `tokens/colors.css` and `zanshin_ui`'s `ZsColors`; DS `components/content/DiffHunk.prompt.md` documents the marks; the DS is republished with the `design-artifacts` skill. Text on the strong fill keeps 4.5:1.
+4. **Selection** stays as in 10.24 (decision 16.10): it paints only the highlight.
+
+**Non-goals.**
+- Syntax colours (Ralph, 2026-11-12).
+- A structural diff (5.9).
+- Computing or changing segments in Dart: Rust computes, Dart draws (Epic 5).
+
+**Depends on.** 10.24 (done), 5.2 (reworked 2026-11-12).
+
+**Design status.** NEEDS DESIGN for the two tokens and the special segments; Claude's defaults adopted.
+
+**Witnesses** (a fake diff port, then the real cdylib).
+- `child: Text(isLastStep ? s.functionWizard_save : …)` → `… ? saveLabel : …`: the strong fill covers exactly `s.functionWizard_save` and `saveLabel`.
+- A call split over three lines: its removed line has no strong fill; the added lines fill only the new indentation and the comma.
+- An inserted comment line and a context line have no strong fill.
+- Side by side paints the same runs.
+- The tokens hold in dark and paper and under every accent family.
+- Marionette screenshots in the catalogue and the app, compared with the DS card.
+
+**Related:** 10.24, 5.2, 5.9; deferred-work.md, "Word-level and syntax marks have no consumer story".
 
 ---
 
