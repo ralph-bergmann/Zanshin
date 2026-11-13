@@ -5269,6 +5269,7 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 - Word-mark rules of our own, move detection, syntax colours.
 - Underlines or strikethrough (Ralph, 2026-11-12: colours as today).
 - The ignore-whitespace switch (Story 10.33) and a settings UI for jj's `diff.color-words.*` keys.
+  > **Changed 2026-11-13 (Ralph): Story 5.12 adds the settings UI for the three keys.**
 
 **Depends on.** 5.9 (replaced), 10.24, 10.26, 10.32.
 
@@ -5294,6 +5295,8 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 
 ### Story 5.11: A second diff style — whole-word marks by the longest common run (`similar`), switchable in Settings [Rust + UI]
 *(Added 2026-11-12, Ralph — console session, after Stories 5.10 and 10.34. It adds to 5.10; nothing of 5.10 is removed.)*
+
+> **Changed 2026-11-13 (Ralph): Story 5.12 rewords the "Zanshin" hint (it names the `similar` library) and adds Settings rows for jj's three `diff.color-words` keys. The word-mark colours stay as built.**
 
 **Motivation.** jj's color-words marks are hard to read on some real changes. Two of Ralph's examples:
 - **jj `lib/src/git.rs`** (jj commit `671e4eaca`): inline, jj shows `GitResetHeadError::from_git` of old line 2454 as kept text of new line 2459, although the old call was rewritten.
@@ -5363,6 +5366,85 @@ Ralph tried the `similar` crate (its `terminal-inline` example, changed by him):
 - **UI** (catalogue and Marionette, night and paper, compared with the DS card): in the widget-test block the old `testWidgets(` line and new line `23` show their kept text in the line's colour and one mark each; lines `10`–`21` are marked whole.
 
 **Related:** 5.10, 5.9, 10.32, 10.34.
+
+### Story 5.12: Settings rows for jj's three color-words keys; the Zanshin style names `similar` [UI]
+*(Added 2026-11-13, Ralph — console session, after Story 5.11. It lifts Story 5.10's non-goal "a settings UI for jj's `diff.color-words.*` keys" and rewords one hint of Story 5.11.)*
+
+**Motivation.** Ralph looked at both diff styles in night and paper. Two things were missing in Settings › General › Diffs:
+- The hint of the "Zanshin" style does not say that the word marks come from the `similar` library.
+- The "jj" style follows jj's config, but its three keys can only be changed in a config file.
+
+**Decided (Ralph, 2026-11-13).**
+- The Zanshin style's hint names `similar`.
+- The three `diff.color-words` keys get rows in Settings › General. They write jj's **user** config. The Project tab gets no rows; a project that wants its own values uses the Project tab's config-file page.
+- The word-mark colours stay as built (Stories 10.32, 10.34) in all four cases: night and paper, Zanshin and jj.
+
+**Facts** (jj `docs/config.md` and `cli/src/diff_util.rs` @ v0.47.0; `crates/zanshin-jj/src/config.rs::diff_color_words`).
+
+| Key | Default | Meaning | Applies to |
+|---|---|---|---|
+| `diff.color-words.context` | `3` | lines of context around a change; an integer ≥ 0 | both styles |
+| `diff.color-words.conflict` | `"materialize"` | a conflicted side is compared as its marker text, or (`"pair"`) each pair of conflict terms on its own | both styles |
+| `diff.color-words.max-inline-alternation` | `3` | how often a line may switch between removed and added words and still show inline; `0` never inline, `-1` always | the jj style only |
+
+- jj calls `conflict` and `max-inline-alternation` experimental.
+- jj loads its config in layers: built-in, user, repo, workspace, environment, command line. A later layer wins.
+- Settings already maps this (Story 11.7): the General tab reads the user-level stack (`configList` without a workspace) and writes `ConfigScope.user`; the Project tab reads the workspace's stack and writes `ConfigScope.repo`. The Identity rows are the pattern.
+- Every diff call reads the three keys from the effective config. No Rust change is needed to make a new value count; the open diff only has to load again.
+
+**Claude's defaults (open to Ralph's change).**
+- **Rows of the Diffs group, in this order:** Layout, Changed words, Inline changes, Context lines, Conflicts. "Inline changes" shows only while "jj" is the chosen style. The other two always show, because they apply to both styles.
+- **Each new row carries its jj key** (`configKey`, as the Identity rows do). That is what tells a jj row from a Zanshin preference (Layout, Changed words).
+- **Controls** (existing ones only):
+  - **Context lines:** a select with `0`, `1`, `2`, `3`, `5`, `10`, `20`.
+  - **Inline changes:** a select with "Never" (`0`), "Up to 1", "Up to 2", "Up to 3", "Up to 5", "Always" (`-1`).
+  - **Conflicts:** a segmented control with "As markers" (`materialize`) and "In pairs" (`pair`).
+  - An effective number that is not in a select's list (a hand-edited `7`) shows as its own option, in order, chosen.
+- **A choice always writes** (`jj config set --user NAME VALUE`), also when it equals jj's default. No row unsets a key.
+- **Hints** (one line each, plain language):
+  - Changed words, Zanshin: "Marks whole changed words, using the similar library. Removed lines come first." The jj hint stays.
+  - Context lines: "Unchanged lines shown around each change."
+  - Inline changes: "How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj."
+  - Conflicts: "As markers": "A conflicted side is compared as its text with conflict markers. Experimental in jj." "In pairs": "Each pair of conflict sides is compared on its own. Experimental in jj."
+- **Where the value comes from.** A value from jj's defaults or from the user config shows no source note. A value another layer of the user-level stack sets (environment, system) shows the existing "From ‹scope› config" note after the hint.
+- **A project that overrides.** The General rows show and write the user value. When a project is open and its stack takes the key from its repo or workspace config, the row adds "The open project sets its own value." A write to the user config then does not change that project's diffs, and the row says why.
+- **A value jj cannot read** (a hand-edited `context = "many"`): the row does not fail. It shows the raw value in its error line, and a choice overwrites it. (jj refuses every diff until then; that is as today.)
+
+**Scope.**
+1. **View model** (`app/lib/src/features/settings/settings_view_model.dart`):
+   - `SettingsKeys` gains the three keys; the General tab reads them.
+   - The three keys are also read in the open project's stack, only for the "sets its own value" note.
+   - After a write of one of the three keys the open diff loads again at once: the inspector's focused diff and the Undo Timeline's operation view, as a change of "Changed words" already does. The same after the config-file page saved a file (`configFileSaved`).
+2. **General tab** (`app/lib/src/features/settings/general_tab.dart`): the rows, the controls and the reworded hint as above; identifiers `settings-diff-context`, `settings-diff-inline`, `settings-diff-conflict`. A failed write shows in the row's error line (`errors[key]`, as today).
+3. **Strings** (`app/lib/l10n/app_en.arb` and the generated files, where the neighbours' strings live).
+4. **Tests** (`app/test/features/settings/`): the witnesses below, with the fakes the neighbours use.
+5. **Not expected:** changes to Rust, the FFI, `packages/zanshin_core` or `packages/zanshin_settings`. If the run finds that `config_set` cannot write one of the values (`-1`, `0`, `pair`) so that the diff reads it back, it fixes that at its cause, with a test.
+
+**Non-goals.**
+- Rows in the Project tab, or a choice of the layer per row.
+- Unsetting a key from a row.
+- Free number entry (the config-file page takes any value).
+- Other diff keys (`diff.git.context`, `ui.diff-formatter`, `ui.conflict-marker-style`).
+- Changes to the design system or the click-dummy: the rows use existing controls. (The click-dummy's Settings page also lacks the "Changed words" row; both wait for the next design round.)
+- Any change to colours or to the diff itself.
+
+**Depends on.** 5.10, 5.11, 11.7, 11.19 (all done).
+
+**Design status.** DECIDED (Ralph, 2026-11-13): name `similar`, make the three keys configurable in General at user scope. Claude's defaults are listed above; Ralph reviews them in the app.
+
+**Witnesses.**
+- **Fresh config** (no key set): Context lines shows `3`, Conflicts "As markers", and with "jj" chosen Inline changes shows "Up to 3". No source note.
+- **Style switch:** with "Zanshin" chosen the Inline changes row is absent; with "jj" chosen it sits right below Changed words. The Zanshin hint names the similar library.
+- **Writes:** choosing `10` context lines calls `configSet(ConfigScope.user, 'diff.color-words.context', '10')`; "Never" writes `0`, "Always" writes `-1`; "In pairs" writes `pair`. After the write the row shows the new value.
+- **Reload:** after each such write the inspector's focused diff and the open operation view load again, once. Saving the config-file page reloads them too.
+- **A value outside the list:** an effective `context = 7` shows a `7` option, chosen, between `5` and `10`.
+- **A value jj cannot read:** `context = "many"` shows the raw value in the error line; choosing `3` overwrites it and clears the line.
+- **A project that overrides:** with an open project whose repo config sets `diff.color-words.context`, the General row shows the user value and the note "The open project sets its own value." Without an open project, or without such a value, no note.
+- **Another layer:** a value from the environment layer shows "From environment config" after the hint.
+- **A failed write** shows its error in the row; the row keeps the old value.
+- **UI** (Marionette, the real app on a throwaway repo with its own `JJ_CONFIG` file; checked by the loop's main session, never against Ralph's jj config): changing Context lines from `3` to `0` shrinks the open diff's hunks at once; "Never" with the jj style shows the git.rs witness as removed lines then added lines; the file behind `JJ_CONFIG` holds the written values.
+
+**Related:** 5.10, 5.11, 11.7, 11.19.
 
 ---
 
