@@ -244,10 +244,7 @@ class InspectorViewModel extends ChangeNotifier {
     final DiffMarks marks = diffMarksOf(settings.value.general.diffMarks);
     if (marks != _marks) {
       _marks = marks;
-      _previousDiff = _focusedDiff ?? _previousDiff;
-      _focusedDiff = null;
-      _focusError = null;
-      _loadFocus();
+      _reloadFocus();
       changed = true;
     }
     // Another writer (a second window of the repo) may have changed the Viewed marks.
@@ -261,6 +258,19 @@ class InspectorViewModel extends ChangeNotifier {
     if (changed) {
       _notify();
     }
+  }
+
+  /// A jj config write may change `diff.color-words.*`: the focused diff loads again, the old one stays meanwhile.
+  void configChanged() {
+    _reloadFocus();
+    _notify();
+  }
+
+  void _reloadFocus() {
+    _previousDiff = _focusedDiff ?? _previousDiff;
+    _focusedDiff = null;
+    _focusError = null;
+    _loadFocus();
   }
 
   void _loadFocus() {

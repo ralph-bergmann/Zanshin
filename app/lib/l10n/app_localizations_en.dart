@@ -2183,10 +2183,58 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDiffMarksZanshinHint =>
-      'Whole words: the longest common run per changed block, removed lines first.';
+      'Marks whole changed words, using the similar library. Removed lines come first.';
 
   @override
   String get settingsDiffMarksJjHint => 'As jj diff prints them, following your jj config.';
+
+  @override
+  String get settingsDiffInline => 'Inline changes';
+
+  @override
+  String get settingsDiffInlineHint =>
+      'How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj.';
+
+  @override
+  String get settingsDiffInlineNever => 'Never';
+
+  @override
+  String settingsDiffInlineUpTo(int count) {
+    return 'Up to $count';
+  }
+
+  @override
+  String get settingsDiffInlineAlways => 'Always';
+
+  @override
+  String get settingsDiffContext => 'Context lines';
+
+  @override
+  String get settingsDiffContextHint => 'Unchanged lines shown around each change.';
+
+  @override
+  String get settingsDiffConflict => 'Conflicts';
+
+  @override
+  String get settingsDiffConflictMaterialize => 'As markers';
+
+  @override
+  String get settingsDiffConflictPair => 'In pairs';
+
+  @override
+  String get settingsDiffConflictMaterializeHint =>
+      'A conflicted side is compared as its text with conflict markers. Experimental in jj.';
+
+  @override
+  String get settingsDiffConflictPairHint => 'Each pair of conflict sides is compared on its own. Experimental in jj.';
+
+  @override
+  String get settingsProjectSetsOwn => 'The open project sets its own value.';
+
+  @override
+  String settingsJjCantRead(String value) {
+    return 'jj can\'t read $value.';
+  }
 
   @override
   String get settingsIdentity => 'Identity';

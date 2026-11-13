@@ -411,6 +411,7 @@ class ProjectComponent$Subcomponent implements _i13.ProjectComponent {
     final projectComponent$operationChangesSource$Provider =
         _ProjectComponent$OperationChangesSource$Provider(
           _projectComponent$projectRepo$Provider,
+          _parent._projectsEnvironment$Provider,
           projectModule,
         );
     final projectComponent$operationChangesModelFactory$Provider =
@@ -1092,17 +1093,21 @@ class _ProjectComponent$OperationChangesSource$Provider
     implements _i25.Provider<_i41.OperationChangesSource> {
   const _ProjectComponent$OperationChangesSource$Provider(
     this._projectComponent$projectRepo$Provider,
+    this._projectsEnvironment$Provider,
     this._module,
   );
 
   final _ProjectComponent$ProjectRepo$Provider
   _projectComponent$projectRepo$Provider;
 
+  final _ProjectsEnvironment$Provider _projectsEnvironment$Provider;
+
   final _i13.ProjectModule _module;
 
   @override
   _i41.OperationChangesSource get() => _module.operationChangesSource(
     _projectComponent$projectRepo$Provider.get(),
+    _projectsEnvironment$Provider.get(),
   );
 }
 

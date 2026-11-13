@@ -318,6 +318,7 @@ class ProjectComponent$Subcomponent implements _i7.ProjectComponent {
     final projectComponent$operationChangesSource$Provider =
         _ProjectComponent$OperationChangesSource$Provider(
           _projectComponent$projectRepo$Provider,
+          _parent._projectsEnvironment$Provider,
           projectModule,
         );
     final projectComponent$operationChangesModelFactory$Provider =
@@ -999,17 +1000,21 @@ class _ProjectComponent$OperationChangesSource$Provider
     implements _i10.Provider<_i31.OperationChangesSource> {
   const _ProjectComponent$OperationChangesSource$Provider(
     this._projectComponent$projectRepo$Provider,
+    this._projectsEnvironment$Provider,
     this._module,
   );
 
   final _ProjectComponent$ProjectRepo$Provider
   _projectComponent$projectRepo$Provider;
 
+  final _ProjectsEnvironment$Provider _projectsEnvironment$Provider;
+
   final _i7.ProjectModule _module;
 
   @override
   _i31.OperationChangesSource get() => _module.operationChangesSource(
     _projectComponent$projectRepo$Provider.get(),
+    _projectsEnvironment$Provider.get(),
   );
 }
 

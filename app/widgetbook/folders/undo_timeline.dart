@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart' show UndoTimelineActions;
+import 'package:zanshin/src/features/projects/projects_environment.dart' show ConfigWrites;
 import 'package:zanshin/src/features/shell/pinned_panel.dart';
 import 'package:zanshin/src/features/shell/rail_preview.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
@@ -149,6 +150,9 @@ class _DemoChanges implements OperationChangesSource {
   static final String _new = '7c2e91d4'.padRight(40, '3');
   static final String _old = '5b0a77e2'.padRight(40, '9');
   static final String _wcOld = '1f4d6c08'.padRight(40, '0');
+
+  @override
+  final configWrites = ConfigWrites();
 
   @override
   Future<OpShow> opShow(String operation) async => OpShow(

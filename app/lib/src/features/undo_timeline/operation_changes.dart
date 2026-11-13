@@ -46,14 +46,20 @@ abstract interface class OperationChangesSource {
     List<String> paths = const <String>[],
     DiffMarks marks = DiffMarks.jj,
   });
+
+  /// Fires after every jj config write, which may change how [diff] reads (`diff.color-words.*`).
+  Listenable get configWrites;
 }
 
 /// [OperationChangesSource] over an open [ProjectRepo].
 class RepoOperationChangesSource implements OperationChangesSource {
-  /// The reads of [_repo].
-  RepoOperationChangesSource(this._repo);
+  /// The reads of [_repo]; [configWrites] is the environment's.
+  RepoOperationChangesSource(this._repo, {required this.configWrites});
 
   final ProjectRepo _repo;
+
+  @override
+  final Listenable configWrites;
 
   @override
   Future<OpShow> opShow(String operation) => _repo.handle.opShow(operation: operation);
@@ -99,6 +105,7 @@ class OperationChangesModel extends ChangeNotifier {
     : _layout = settings.value.general.diffLayout,
       _marks = diffMarksOf(settings.value.general.diffMarks) {
     settings.addListener(_settingsChanged);
+    _source.configWrites.addListener(_configChanged);
     unawaited(_load());
   }
 
@@ -179,10 +186,17 @@ class OperationChangesModel extends ChangeNotifier {
     final DiffMarks marks = diffMarksOf(settings.value.general.diffMarks);
     if (marks != _marks) {
       _marks = marks;
-      // The summary read carries lines too: the inter-diffs' description block.
-      if (_selected case final int index when !_disposed) {
-        _read(index, keep: _focused);
-      }
+      _rereadSelection();
+    }
+  }
+
+  // A jj config write may change `diff.color-words.*`.
+  void _configChanged() => _rereadSelection();
+
+  void _rereadSelection() {
+    // The summary read carries lines too: the inter-diffs' description block.
+    if (_selected case final int index when !_disposed) {
+      _read(index, keep: _focused);
     }
   }
 
@@ -381,6 +395,7 @@ class OperationChangesModel extends ChangeNotifier {
     // A read still in flight drops its reply and starts no further read.
     _serial++;
     settings.removeListener(_settingsChanged);
+    _source.configWrites.removeListener(_configChanged);
     super.dispose();
   }
 }

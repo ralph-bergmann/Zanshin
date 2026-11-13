@@ -105,8 +105,8 @@ class FakeProjectsEnvironment implements ProjectsEnvironment {
       ...?configEntries[name]?.where((entry) => entry.source != source),
       ConfigEntry(
         name: name,
-        // The fake stores strings quoted, as `jj config list` reads them back.
-        value: value.startsWith('[') ? value : '"${value.replaceAll('"', r'\"')}"',
+        // The fake keeps integers and arrays bare and quotes everything else.
+        value: value.startsWith('[') || int.tryParse(value) != null ? value : '"${value.replaceAll('"', r'\"')}"',
         source: source,
         path: configPaths[scope],
         overridden: false,

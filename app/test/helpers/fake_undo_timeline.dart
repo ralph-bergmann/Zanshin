@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart' show UndoTimelineActions;
+import 'package:zanshin/src/features/projects/projects_environment.dart' show ConfigWrites;
 import 'package:zanshin/src/features/undo_timeline/operation_changes.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin_core/zanshin_core.dart';
@@ -138,6 +139,12 @@ class FakeOperationChangesSource implements OperationChangesSource {
 
   /// Every `diff` call's word-mark style (Story 5.11), in call order; the reply carries it as [Diff.marks].
   final marks = <DiffMarks>[];
+
+  final _configWrites = ConfigWrites();
+
+  /// Fire it to stand for a jj config write.
+  @override
+  ConfigWrites get configWrites => _configWrites;
 
   @override
   Future<OpShow> opShow(String operation) async {

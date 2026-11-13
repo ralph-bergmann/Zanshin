@@ -3458,10 +3458,10 @@ abstract class AppLocalizations {
   /// **'jj'**
   String get settingsDiffMarksJj;
 
-  /// The Changed words row's hint while Zanshin is chosen.
+  /// The Changed words row's hint while Zanshin is chosen. similar is the Rust library's name, lowercase.
   ///
   /// In en, this message translates to:
-  /// **'Whole words: the longest common run per changed block, removed lines first.'**
+  /// **'Marks whole changed words, using the similar library. Removed lines come first.'**
   String get settingsDiffMarksZanshinHint;
 
   /// The Changed words row's hint while jj is chosen.
@@ -3469,6 +3469,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'As jj diff prints them, following your jj config.'**
   String get settingsDiffMarksJjHint;
+
+  /// Settings › General › Diffs row (diff.color-words.max-inline-alternation), shown while jj marks the changed words.
+  ///
+  /// In en, this message translates to:
+  /// **'Inline changes'**
+  String get settingsDiffInline;
+
+  /// The Inline changes row's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj.'**
+  String get settingsDiffInlineHint;
+
+  /// Inline changes choice: 0, every changed line shows as an old and a new line.
+  ///
+  /// In en, this message translates to:
+  /// **'Never'**
+  String get settingsDiffInlineNever;
+
+  /// Inline changes choice: at most count switches inside one line.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to {count}'**
+  String settingsDiffInlineUpTo(int count);
+
+  /// Inline changes choice: -1, no limit.
+  ///
+  /// In en, this message translates to:
+  /// **'Always'**
+  String get settingsDiffInlineAlways;
+
+  /// Settings › General › Diffs row (diff.color-words.context).
+  ///
+  /// In en, this message translates to:
+  /// **'Context lines'**
+  String get settingsDiffContext;
+
+  /// The Context lines row's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Unchanged lines shown around each change.'**
+  String get settingsDiffContextHint;
+
+  /// Settings › General › Diffs row (diff.color-words.conflict).
+  ///
+  /// In en, this message translates to:
+  /// **'Conflicts'**
+  String get settingsDiffConflict;
+
+  /// Conflicts choice: materialize, compared as text with conflict markers.
+  ///
+  /// In en, this message translates to:
+  /// **'As markers'**
+  String get settingsDiffConflictMaterialize;
+
+  /// Conflicts choice: pair, each pair of sides compared on its own.
+  ///
+  /// In en, this message translates to:
+  /// **'In pairs'**
+  String get settingsDiffConflictPair;
+
+  /// The Conflicts row's hint while As markers is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'A conflicted side is compared as its text with conflict markers. Experimental in jj.'**
+  String get settingsDiffConflictMaterializeHint;
+
+  /// The Conflicts row's hint while In pairs is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Each pair of conflict sides is compared on its own. Experimental in jj.'**
+  String get settingsDiffConflictPairHint;
+
+  /// Appended to a General jj row's hint when the open project's repo or workspace config sets the key.
+  ///
+  /// In en, this message translates to:
+  /// **'The open project sets its own value.'**
+  String get settingsProjectSetsOwn;
+
+  /// A jj row's error line when the config holds a value jj cannot read; value is the raw TOML value.
+  ///
+  /// In en, this message translates to:
+  /// **'jj can\'t read {value}.'**
+  String settingsJjCantRead(String value);
 
   /// Settings group heading (General and Project).
   ///

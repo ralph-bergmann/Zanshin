@@ -36,14 +36,32 @@ abstract final class SettingsKeys {
   /// `jj log`'s default revset; a write re-requests the graph too.
   static const revsetsLog = 'revsets.log'; // l10n-ignore: jj's config key
 
+  /// Diffs › Context lines.
+  static const diffContext = 'diff.color-words.context'; // l10n-ignore: jj's config key
+
+  /// Diffs › Conflicts.
+  static const diffConflict = 'diff.color-words.conflict'; // l10n-ignore: jj's config key
+
+  /// Diffs › Inline changes.
+  static const diffInline = 'diff.color-words.max-inline-alternation'; // l10n-ignore: jj's config key
+
   /// The keys whose write re-requests the graph's layout once.
   static const graphKeys = <String>{trunkKey, immutableHeadsKey, revsetsLog};
 
-  /// The keys the Project tab reads.
-  static const project = <String>[gitFetch, gitPush, trunkKey, immutableHeadsKey, userEmail];
+  /// The keys the Project tab reads; the diff keys only for the General rows' override note.
+  static const project = <String>[
+    gitFetch,
+    gitPush,
+    trunkKey,
+    immutableHeadsKey,
+    userEmail,
+    diffContext,
+    diffConflict,
+    diffInline,
+  ];
 
   /// The keys the General tab reads.
-  static const general = <String>[userName, userEmail];
+  static const general = <String>[userName, userEmail, diffContext, diffConflict, diffInline];
 }
 
 /// What Settings reads of the open repository besides the config, and its remote verbs (a port, so tests pass a fake).
@@ -440,6 +458,12 @@ class SettingsViewModel extends ChangeNotifier {
   /// The effective string value of [name], or null when it is unset or no string.
   String? stringValue(String name, {required bool project}) =>
       tomlStringValue(effective(name, project: project)?.value);
+
+  /// Whether the open project's effective [name] comes from its repo or workspace config; false without a project.
+  bool projectSetsOwn(String name) => switch (effective(name, project: true)?.source) {
+    ConfigValueSource.repo || ConfigValueSource.workspace => true,
+    _ => false,
+  };
 
   /// Whether [name] has a value in the repo config file.
   bool hasRepoValue(String name) =>

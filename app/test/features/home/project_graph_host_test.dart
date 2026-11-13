@@ -20,6 +20,7 @@ import 'package:zanshin/src/features/undo_timeline/operation_changes.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 import '../../helpers/fake_projects.dart';
+import '../../helpers/fake_projects_environment.dart';
 import '../../helpers/fake_remote_sync.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
@@ -204,6 +205,39 @@ void main() {
     other.dispose();
   });
 
+  testWidgets('a jj config write reaches the inspector once, until the scope is disposed (Story 5.12)', (tester) async {
+    final source = ScriptedGraphSource()..respond = (_) => keysLayout(<String>['a'], at: 'a');
+    final env = _CountingEnvironment();
+    final TestComponent component = await testComponent(
+      tester,
+      testModule: TestModule(environment: env, graphSources: (_) => source),
+    );
+    final toasts = ShellToasts();
+    addTearDown(toasts.dispose);
+    final repos = FakeProjectRepos();
+    final ProjectScope one = component.projectScopes
+        .create((await tester.runAsync(() => repos.open('/r/one')))!, '/r/one', toasts)
+        .scope;
+    await tester.pump();
+    var notified = 0;
+    void count() => notified++;
+    one.inspector.addListener(count);
+    final int listening = env.writes.listeners;
+
+    env.writes.fire();
+    expect(notified, 1);
+
+    // The operation view listens to the same writes.
+    final OperationChangesModel changes = one.operationChanges(operation: 'an operation');
+    expect(env.writes.listeners, listening + 1);
+    changes.dispose();
+    expect(env.writes.listeners, listening);
+
+    one.inspector.removeListener(count);
+    one.dispose();
+    expect(env.writes.listeners, listening - 2, reason: 'the reasons and the inspector stop listening');
+  });
+
   group('sync wiring (Story 11.8)', () {
     /// The host over an open `/r/zanshin` at [poll], its sync over [remotes].
     Future<(ProjectSession, ActiveGraph)> mount(
@@ -305,4 +339,31 @@ void main() {
       await unmount(tester);
     });
   });
+}
+
+/// Config writes that count their listeners and fire on demand.
+class _CountingWrites extends ChangeNotifier {
+  var listeners = 0;
+
+  @override
+  void addListener(VoidCallback listener) {
+    listeners++;
+    super.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    listeners--;
+    super.removeListener(listener);
+  }
+
+  void fire() => notifyListeners();
+}
+
+/// A [FakeProjectsEnvironment] whose [configWrites] are [writes].
+class _CountingEnvironment extends FakeProjectsEnvironment {
+  final writes = _CountingWrites();
+
+  @override
+  Listenable get configWrites => writes;
 }

@@ -470,4 +470,24 @@ void main() {
     expect((model.files?.marks, model.focusedMarks), (DiffMarks.jj, DiffMarks.jj));
     model.dispose();
   });
+
+  test('a jj config write reads the selection once again, keeping the focused file (Story 5.12)', () async {
+    final FakeOperationChangesSource changes = rewriteSource();
+    final model = OperationChangesModel(changes, operation: opId(1), settings: settings);
+    await pumpEventQueue();
+    model.focus('b.txt');
+    await pumpEventQueue();
+    final int before = changes.diffs.length;
+    changes.configWrites.fire();
+    await pumpEventQueue();
+    expect(changes.diffs.skip(before).map((call) => (call.summary, call.paths.join(','))), <(bool, String)>[
+      (true, ''),
+      (false, 'b.txt'),
+    ]);
+    expect(model.focusedPath, 'b.txt');
+    model.dispose();
+    changes.configWrites.fire();
+    await pumpEventQueue();
+    expect(changes.diffs, hasLength(before + 2), reason: 'a disposed view stops listening');
+  });
 }

@@ -77,7 +77,7 @@ void main() {
       expect(rig.store.value.general.diffMarks, DiffMarksSetting.words);
       expect(find.text('Changed words'), findsOneWidget);
       expect(
-        find.text('Whole words: the longest common run per changed block, removed lines first.'),
+        find.text('Marks whole changed words, using the similar library. Removed lines come first.'),
         findsOneWidget,
       );
       await tester.tap(find.text('jj'));
@@ -213,6 +213,200 @@ void main() {
 
       expect(find.text('Failed to write the config'), findsWidgets);
       expect(tester.widget<EditableText>(rig.field('settings-user-email')).controller.text, 'me@example.com');
+    });
+  });
+
+  group("Diffs: jj's color-words keys (Story 5.12)", () {
+    const context = 'diff.color-words.context';
+    const conflict = 'diff.color-words.conflict';
+    const inline = 'diff.color-words.max-inline-alternation';
+    const contextHint = 'Unchanged lines shown around each change.';
+
+    Future<void> useJjMarks(WidgetTester tester, _Rig rig) async {
+      await tester.tap(find.text('jj'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await rig.settle();
+    }
+
+    // Opens the select [identifier] and picks the row [label].
+    Future<void> pick(WidgetTester tester, _Rig rig, String identifier, String label) async {
+      await rig.tap(identifier);
+      await rig.settle();
+      await tester.tap(find.text(label).last);
+      // The picked row blinks before it applies.
+      await tester.pump(const Duration(seconds: 1));
+      await rig.settle();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      // The list fades out.
+      await tester.pump(const Duration(seconds: 1));
+      await rig.settle();
+    }
+
+    double top(_Rig rig, String identifier) => rig.tester.getRect(rig.id(identifier)).top;
+
+    testWidgets("fresh config: jj's defaults, no source note, each row shows its key", (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump(project: false);
+      expect(find.text('3'), findsOneWidget, reason: 'Context lines');
+      expect(find.text(contextHint), findsOneWidget);
+      expect(
+        find.text('A conflicted side is compared as its text with conflict markers. Experimental in jj.'),
+        findsOneWidget,
+      );
+      expect(find.text(context), findsOneWidget);
+      expect(find.text(conflict), findsOneWidget);
+      expect(rig.id('settings-diff-inline'), findsNothing, reason: 'Zanshin marks the words');
+
+      await useJjMarks(tester, rig);
+      expect(find.text('Up to 3'), findsOneWidget);
+      expect(find.text(inline), findsOneWidget);
+      expect(rig.calls, isEmpty);
+    });
+
+    testWidgets('the rows run Layout, Changed words, Inline changes, Context lines, Conflicts', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump(project: false);
+      expect(
+        find.text('Marks whole changed words, using the similar library. Removed lines come first.'),
+        findsOneWidget,
+      );
+      await useJjMarks(tester, rig);
+      final List<double> tops = <String>[
+        'settings-diff-layout',
+        'settings-diff-marks',
+        'settings-diff-inline',
+        'settings-diff-context',
+        'settings-diff-conflict',
+      ].map((id) => top(rig, id)).toList();
+      expect(tops, List<double>.of(tops)..sort());
+      expect(tops.toSet(), hasLength(5));
+    });
+
+    testWidgets('a choice writes at user scope, defaults too, and the row shows it', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump(project: false);
+      await useJjMarks(tester, rig);
+
+      await pick(tester, rig, 'settings-diff-context', '10');
+      await pick(tester, rig, 'settings-diff-inline', 'Never');
+      await pick(tester, rig, 'settings-diff-inline', 'Always');
+      await tester.tap(find.text('In pairs'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await rig.settle();
+
+      expect(rig.calls, <String>[
+        'set user $context 10',
+        'set user $inline 0',
+        'set user $inline -1',
+        'set user $conflict pair',
+      ]);
+      expect(find.text('10'), findsOneWidget);
+      expect(find.text('Always'), findsOneWidget);
+      expect(find.text('Each pair of conflict sides is compared on its own. Experimental in jj.'), findsOneWidget);
+    });
+
+    testWidgets('an off-list value is its own option, in order, chosen', (tester) async {
+      final rig = _Rig(tester);
+      rig.env.configEntries[context] = <ConfigEntry>[_entry(context, '7', ConfigValueSource.user)];
+      await rig.pump(project: false);
+      expect(find.text('7'), findsOneWidget);
+
+      await rig.tap('settings-diff-context');
+      await rig.settle();
+      final double five = tester.getRect(find.text('5').last).top;
+      final double seven = tester.getRect(find.text('7').last).top;
+      final double ten = tester.getRect(find.text('10').last).top;
+      expect(five < seven && seven < ten, isTrue);
+    });
+
+    testWidgets("a value jj can't read chooses nothing and says so; picking the default writes it", (tester) async {
+      final rig = _Rig(tester);
+      rig.env.configEntries[context] = <ConfigEntry>[_entry(context, '"many"', ConfigValueSource.user)];
+      await rig.pump(project: false);
+      expect(find.text('jj can\'t read "many".'), findsOneWidget);
+      expect(find.text('3'), findsNothing);
+
+      await pick(tester, rig, 'settings-diff-context', '3');
+      expect(rig.calls, <String>['set user $context 3']);
+      expect(find.textContaining("jj can't read"), findsNothing);
+      expect(find.text('3'), findsOneWidget);
+    });
+
+    testWidgets('the open project setting its own value adds a note; the General row shows the user value', (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      rig.env.configEntries[context] = <ConfigEntry>[
+        _entry(context, '5', ConfigValueSource.user),
+        _entry(context, '7', ConfigValueSource.repo),
+      ];
+      await rig.pump(target: SettingsTarget.general);
+      expect(find.text('5'), findsOneWidget);
+      expect(find.text('$contextHint The open project sets its own value.'), findsOneWidget);
+    });
+
+    testWidgets('a value from another layer names it after the hint', (tester) async {
+      final rig = _Rig(tester);
+      rig.env.configEntries[context] = <ConfigEntry>[_entry(context, '3', ConfigValueSource.envBase)];
+      await rig.pump(project: false);
+      expect(find.text('$contextHint From environment config'), findsOneWidget);
+    });
+
+    testWidgets('a failed write shows its error under the row and keeps the value', (tester) async {
+      final rig = _Rig(tester);
+      rig.env.configFailure = const ZanshinFfiException('jj.config_error', 'Failed to write the config');
+      await rig.pump(project: false);
+
+      await pick(tester, rig, 'settings-diff-context', '10');
+      expect(find.text('Failed to write the config'), findsOneWidget);
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('10'), findsNothing);
+    });
+
+    testWidgets("a conflict value jj can't read chooses no segment; In pairs writes pair", (tester) async {
+      final rig = _Rig(tester);
+      rig.env.configEntries[conflict] = <ConfigEntry>[_entry(conflict, '"both"', ConfigValueSource.user)];
+      await rig.pump(project: false);
+      expect(find.text('jj can\'t read "both".'), findsOneWidget);
+      expect(find.textContaining('compared'), findsNothing, reason: 'no segment, no per-value hint');
+
+      await tester.tap(find.text('In pairs'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await rig.settle();
+      expect(rig.calls, <String>['set user $conflict pair']);
+      expect(find.textContaining("jj can't read"), findsNothing);
+    });
+
+    testWidgets('an off-list Inline value sits before Always, which stays last', (tester) async {
+      final rig = _Rig(tester);
+      rig.env.configEntries[inline] = <ConfigEntry>[_entry(inline, '8', ConfigValueSource.user)];
+      await rig.pump(project: false);
+      await useJjMarks(tester, rig);
+      expect(find.text('Up to 8'), findsOneWidget);
+
+      await rig.tap('settings-diff-inline');
+      await rig.settle();
+      final double five = tester.getRect(find.text('Up to 5').last).top;
+      final double eight = tester.getRect(find.text('Up to 8').last).top;
+      final double always = tester.getRect(find.text('Always').last).top;
+      expect(five < eight && eight < always, isTrue);
+    });
+
+    testWidgets("a value from jj's defaults shows no source note", (tester) async {
+      final rig = _Rig(tester);
+      rig.env.configEntries[context] = <ConfigEntry>[_entry(context, '3', ConfigValueSource.defaults)];
+      await rig.pump(project: false);
+      expect(find.text(contextHint), findsOneWidget);
+    });
+
+    testWidgets('the project note also for a workspace value', (tester) async {
+      final rig = _Rig(tester);
+      rig.env.configEntries[context] = <ConfigEntry>[
+        _entry(context, '5', ConfigValueSource.user),
+        _entry(context, '7', ConfigValueSource.workspace),
+      ];
+      await rig.pump(target: SettingsTarget.general);
+      expect(find.text('$contextHint The open project sets its own value.'), findsOneWidget);
     });
   });
 

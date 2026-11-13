@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:zanshin_core/zanshin_core.dart' show ConfigEntry, ConfigScope, ConfigValueSource, WorkingCopyAuthor;
@@ -8,6 +10,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import '../window/window_zoom.dart';
+import 'immutable_heads.dart' show tomlStringValue;
 import 'settings_view_model.dart';
 import 'settings_widgets.dart';
 
@@ -57,7 +60,8 @@ class SettingsAuthorFact extends StatelessWidget {
 }
 
 /// Settings › General (Story 11.7): Appearance (Theme, Density, Accent colour), While you scroll (Hide controls),
-/// Diffs (Layout) and Identity (`user.name`, `user.email` at user scope).
+/// Diffs (Layout, Changed words and jj's `diff.color-words.*` at user scope) and Identity (`user.name`, `user.email`
+/// at user scope).
 class SettingsGeneralTab extends StatelessWidget {
   /// The tab over [vm].
   const SettingsGeneralTab({required this.vm, super.key});
@@ -195,6 +199,34 @@ class SettingsGeneralTab extends StatelessWidget {
                 onChanged: (marks) => vm.updatePreferences((settings) => settings.copyWith.general(diffMarks: marks)),
               ),
             ),
+            if (prefs.general.diffMarks == DiffMarksSetting.jj)
+              _diffNumberRow(
+                s,
+                key: SettingsKeys.diffInline,
+                label: s.settingsDiffInline,
+                hint: s.settingsDiffInlineHint,
+                identifier: 'settings-diff-inline',
+                fallback: 3,
+                min: -1,
+                fixed: const <int>[0, 1, 2, 3, 5],
+                optionLabel: (n) => switch (n) {
+                  0 => s.settingsDiffInlineNever,
+                  -1 => s.settingsDiffInlineAlways,
+                  _ => s.settingsDiffInlineUpTo(n),
+                },
+              ),
+            _diffNumberRow(
+              s,
+              key: SettingsKeys.diffContext,
+              label: s.settingsDiffContext,
+              hint: s.settingsDiffContextHint,
+              identifier: 'settings-diff-context',
+              fallback: 3,
+              min: 0,
+              fixed: const <int>[0, 1, 2, 3, 5, 10, 20],
+              optionLabel: (n) => '$n',
+            ),
+            _diffConflictRow(s),
           ],
         ),
         SettingsGroup(
@@ -225,6 +257,88 @@ class SettingsGeneralTab extends StatelessWidget {
         ),
         SettingsAuthorFact(vm: vm),
       ],
+    );
+  }
+
+  /// [base] plus the source note (none for jj's defaults or the user config) and the open project's override note.
+  String? _diffHint(AppLocalizations s, String key, String? base) {
+    final ConfigEntry? entry = vm.effective(key, project: false);
+    final String? source = entry?.source == ConfigValueSource.defaults
+        ? null
+        : settingsSourceHint(s, entry, ConfigValueSource.user);
+    final String? project = vm.projectSetsOwn(key) ? s.settingsProjectSetsOwn : null;
+    final String hint = <String?>[base, source, project].nonNulls.join(' ');
+    return hint.isEmpty ? null : hint;
+  }
+
+  /// A write error, else "jj can't read …" while the raw value is unreadable.
+  String? _diffError(AppLocalizations s, String key, {required bool unreadable}) =>
+      vm.errors[key] ?? (unreadable ? s.settingsJjCantRead(vm.effective(key, project: false)?.value ?? '') : null);
+
+  /// A `diff.color-words.*` integer row: [fixed] choices (with −1 last when [min] is −1), the effective value added in
+  /// order when off the list; no entry is jj's [fallback], a value jj can't read chooses nothing.
+  Widget _diffNumberRow(
+    AppLocalizations s, {
+    required String key,
+    required String label,
+    required String hint,
+    required String identifier,
+    required int fallback,
+    required int min,
+    required List<int> fixed,
+    required String Function(int n) optionLabel,
+  }) {
+    final String? raw = vm.effective(key, project: false)?.value;
+    // [fallback] mirrors jj-cli's built-in default at v0.47.0 and applies only when no layer lists the key.
+    final int? parsed = raw == null ? fallback : int.tryParse(raw.trim());
+    final int? value = parsed != null && parsed >= min ? parsed : null;
+    final List<int> finite = <int>{...fixed, if (value != null && value >= 0) value}.toList()..sort();
+    final choices = <int>[...finite, if (min < 0) -1];
+    return SettingsRow(
+      label: label,
+      hint: _diffHint(s, key, hint),
+      error: _diffError(s, key, unreadable: value == null),
+      configKey: key,
+      child: ZsSelect<int?>(
+        label: label,
+        identifier: identifier,
+        options: <ZsSelectEntry<int?>>[
+          for (final int n in choices) ZsSelectOption<int?>(value: n, label: optionLabel(n)),
+        ],
+        value: value,
+        onChanged: (n) => unawaited(vm.setConfig(ConfigScope.user, key, '$n')),
+      ),
+    );
+  }
+
+  Widget _diffConflictRow(AppLocalizations s) {
+    const String key = SettingsKeys.diffConflict;
+    final String? raw = vm.effective(key, project: false)?.value;
+    const materialize = 'materialize'; // l10n-ignore: jj's config value
+    const pair = 'pair'; // l10n-ignore: jj's config value
+    // `materialize` mirrors jj-cli's built-in default at v0.47.0 and applies only when no layer lists the key.
+    final String? text = raw == null ? materialize : tomlStringValue(raw);
+    final String? value = text == materialize || text == pair ? text : null;
+    return SettingsRow(
+      label: s.settingsDiffConflict,
+      hint: _diffHint(s, key, switch (value) {
+        materialize => s.settingsDiffConflictMaterializeHint,
+        pair => s.settingsDiffConflictPairHint,
+        _ => null,
+      }),
+      error: _diffError(s, key, unreadable: value == null),
+      configKey: key,
+      child: ZsSegmented<String?>(
+        variant: ZsSegmentedVariant.inset,
+        label: s.settingsDiffConflict,
+        identifier: 'settings-diff-conflict',
+        segments: <ZsSegment<String?>>[
+          ZsSegment<String?>(value: materialize, label: s.settingsDiffConflictMaterialize),
+          ZsSegment<String?>(value: pair, label: s.settingsDiffConflictPair),
+        ],
+        value: value,
+        onChanged: (choice) => unawaited(vm.setConfig(ConfigScope.user, key, choice ?? materialize)),
+      ),
     );
   }
 }

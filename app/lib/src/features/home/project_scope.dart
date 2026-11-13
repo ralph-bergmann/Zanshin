@@ -170,7 +170,8 @@ class ProjectModule {
 
   /// Provides what the Undo Timeline's Show changes reads.
   @provides
-  OperationChangesSource operationChangesSource(ProjectRepo repo) => RepoOperationChangesSource(repo);
+  OperationChangesSource operationChangesSource(ProjectRepo repo, ProjectsEnvironment environment) =>
+      RepoOperationChangesSource(repo, configWrites: environment.configWrites);
 
   /// Provides the view Show changes opens. A provider, because inject.dart finds a generated factory only from a
   /// provider's parameter or a component getter, not from an `@inject` constructor.
@@ -200,6 +201,8 @@ class ProjectScope {
   ) {
     // A config write in Settings changes the alias without an operation: the reasons are read again.
     _environment.configWrites.addListener(reasons.invalidate);
+    // It may change `diff.color-words.*`: the open diff reads again.
+    _environment.configWrites.addListener(inspector.configChanged);
     // Once each time Zanshin becomes the active app.
     _lifecycle = AppLifecycleListener(onResume: () => unawaited(sync.poll()));
   }
@@ -256,6 +259,7 @@ class ProjectScope {
     bookmarks.dispose();
     sync.dispose();
     _environment.configWrites.removeListener(reasons.invalidate);
+    _environment.configWrites.removeListener(inspector.configChanged);
     _toasts.dispose();
     inspector.dispose();
     search.dispose();

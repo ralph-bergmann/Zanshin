@@ -1418,6 +1418,22 @@ void main() {
       await unmount(tester);
     });
 
+    testWidgets('a jj config write reloads the focused diff once, the diff staying meanwhile (Story 5.12)', (
+      tester,
+    ) async {
+      await pump(tester);
+      await settle(tester);
+      expect(details.focusReads, hasLength(1));
+      inspector.configChanged();
+      await tester.pump();
+      expect(find.byType(InspectorDiffView), findsOneWidget, reason: 'the old diff stays while it loads');
+      await tester.pump();
+      expect(details.focusReads, hasLength(2));
+      expect(details.focusReads.last.$2, <String>['src/a.dart'], reason: 'the focused path stays');
+      expect(inspector.focusedDiff, isNotNull);
+      await unmount(tester);
+    });
+
     testWidgets('a refused summary: no ±, no totals, no diff block, no focused read', (tester) async {
       details.refuseSummary = const ZanshinFfiException('jj.internal', 'no');
       await pump(tester);
