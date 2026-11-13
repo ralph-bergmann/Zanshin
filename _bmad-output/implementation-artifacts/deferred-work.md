@@ -3012,3 +3012,9 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - **Ralph plans a larger rebuild of the inspector, later (said 2026-11-12): it is too narrow, and a commit with many files means scrolling up and down between the file list and the diff.** Medium.
   - The resize edge (Story 10.8) stops at 720 points (`ZsMetrics.inspectorWMax`, DS `tokens/spacing.css` `--inspector-w-max`; the graph keeps `graphMinW`); the file list sits above the diff (click-dummy, DS `ui_kits/desktop/inspector.jsx`). The DS Content card (`components/content/content.card.html`, a component showcase) shows the file list left of the diff; Ralph found that arrangement interesting.
   - **Follow-up:** no story yet; Ralph starts it. Begin with a design round (wider limit, file list beside the diff when there is room, pinned number columns), then the story.
+
+## Surfaced in the fix-up run after the story loop 5.11 (bmad-build-auto, 2026-11-13)
+
+- **The coverage gate may count hits from instrumented builds of older source, so a line can read as covered (or uncovered) at the wrong line number.** Medium (unverified).
+  - The unreachable brace in `Walk::resolved_hunks` (`crates/zanshin-jj/src/hunks.rs`, line 1040 at 8ed9991e) already had 0 hits in a clean `cargo llvm-cov -p zanshin-jj` at 8ed9991e, yet Story 5.10's gate reported hunks.rs at 100%. In this run, `cargo llvm-cov` without `clean --workspace` merged a stale zanshin-jj object (old line numbers) and reported 0-hit lines on blank lines. `crates/xtask/src/tasks/lcov_union.rs` takes the per-line maximum and cannot tell a stale input.
+  - **Follow-up:** check whether `cargo make coverage` can pick up stale objects or profiles (cargo half and the FFI cdylib under `.dart_tool/hooks_runner`); if so, clean them first or reject an input whose source revision differs.
