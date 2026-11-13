@@ -1054,24 +1054,22 @@ impl Walk {
         let mut context: Option<Diff<&[u8]>> = None;
         let mut emitted = false;
         for hunk in line_diff.hunks() {
-            // Two inputs always give two sides.
-            if let &[left, right] = &hunk.contents[..] {
-                let hunk_contents = Diff::new(bytes(left), bytes(right));
-                match hunk.kind {
-                    DiffHunkKind::Matching => context = Some(hunk_contents),
-                    DiffHunkKind::Different => {
-                        let num_leading = if emitted { context_size } else { 0 };
-                        line_number = self.context_lines(
-                            language,
-                            context.as_slice(),
-                            line_number,
-                            roles,
-                            (num_leading, context_size),
-                        );
-                        context = None;
-                        emitted = true;
-                        line_number = self.diff_lines(hunk_contents, line_number, roles, false);
-                    }
+            // A line diff of two inputs has exactly two contents per hunk, so the indexing cannot panic.
+            let hunk_contents = Diff::new(bytes(hunk.contents[0]), bytes(hunk.contents[1]));
+            match hunk.kind {
+                DiffHunkKind::Matching => context = Some(hunk_contents),
+                DiffHunkKind::Different => {
+                    let num_leading = if emitted { context_size } else { 0 };
+                    line_number = self.context_lines(
+                        language,
+                        context.as_slice(),
+                        line_number,
+                        roles,
+                        (num_leading, context_size),
+                    );
+                    context = None;
+                    emitted = true;
+                    line_number = self.diff_lines(hunk_contents, line_number, roles, false);
                 }
             }
         }
@@ -2291,6 +2289,30 @@ mod tests {
             .iter()
             .all(|line| line.segments.iter().all(|segment| segment.kind == SegmentKind::Equal)));
         assert_eq!(render(&words("a\nb\n", "a\n", None))[2], "-   2     |b");
+    }
+
+    /// A changed last line without a line break (a file without a final newline) stays one line
+    /// per side in `Words`, marked on the changed word.
+    #[test]
+    fn words_keep_a_last_line_without_a_line_break() {
+        let hunks = words("a\nold word", "a\nnew word", None);
+        assert_eq!(
+            render(&hunks),
+            [
+                "@ -",
+                "    1    1|a",
+                "-   2     |[-old-] word",
+                "+        2|{+new+} word"
+            ]
+        );
+        let last = hunks[0].lines.last().expect("an added line");
+        assert_eq!(last.text(), "new word");
+        let removed = hunks[0]
+            .lines
+            .iter()
+            .find(|line| line.kind == HunkLineKind::Removed)
+            .expect("a removed line");
+        assert_eq!(removed.text(), "old word");
     }
 
     /// The widget-test block in `Words`: the old `testWidgets(` line pairs with new line 23, each
