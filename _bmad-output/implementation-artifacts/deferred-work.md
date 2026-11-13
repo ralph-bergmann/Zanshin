@@ -3018,3 +3018,22 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - **The coverage gate may count hits from instrumented builds of older source, so a line can read as covered (or uncovered) at the wrong line number.** Medium (unverified).
   - The unreachable brace in `Walk::resolved_hunks` (`crates/zanshin-jj/src/hunks.rs`, line 1040 at 8ed9991e) already had 0 hits in a clean `cargo llvm-cov -p zanshin-jj` at 8ed9991e, yet Story 5.10's gate reported hunks.rs at 100%. In this run, `cargo llvm-cov` without `clean --workspace` merged a stale zanshin-jj object (old line numbers) and reported 0-hit lines on blank lines. `crates/xtask/src/tasks/lcov_union.rs` takes the per-line maximum and cannot tell a stale input.
   - **Follow-up:** check whether `cargo make coverage` can pick up stale objects or profiles (cargo half and the FFI cdylib under `.dart_tool/hooks_runner`); if so, clean them first or reject an input whose source revision differs.
+
+## Surfaced after the story loop 5.12 (console session, 2026-11-13)
+
+- **The Zanshin diff style marks a whole call chain when one call of it changes.** Medium. → Story 5.13.
+  - `crates/zanshin-jj/src/hunks.rs` `word_runs`: a token is a run of non-blank characters, and a call chain holds no blank. Ralph's example: jj commit `9346978d`, `lib/src/git.rs`; RustRover marks only the removed `.map_err(GitImportError::from_git)`.
+  - Measured with a throwaway probe (not kept) on that file's 32 changed blocks: today 116 marks over 3,271 non-blank characters; finer tokens with two mark rules 62 over 1,554; tree-sitter leaves as tokens 62 over 1,551.
+  - **Follow-up:** Story 5.13 (decided by Ralph, 2026-11-13: finer tokens, no tree-sitter).
+- **The jj style reads better on that example because it shows the change inside one line.** Medium. → Story 5.13, rule 6.
+  - Ralph asked for the same in the Zanshin style where one line replaces one line. The line kind (`HunkLineKind::Changed`), the wire and the view (`inspector_diff.dart` draws a `changed` line by its kind in both styles) exist from the jj style; fingerprints and counts do not depend on the emitted lines.
+  - Measured with the probe: 13 of the 32 blocks are one old and one new line; 12 become one line at jj's default limit.
+  - Tried and limited to those blocks: words counting twice in the comparison. On `Err(GitResetHeadError::from_git(err))` → `Err(err.into())` it keeps `err` and gives jj's picture. On a block of several lines it pairs `error` of `std::error::Error` with `#[error(transparent)]` three lines below.
+  - Claude's calls, for Ralph to review in the app: a changed indentation or trailing blank keeps the old and the new line; a merged line's segments are exact, so a mark can hold a blank at its edge (`let lock = `). The first proposal ("blanks outside a mark come from the new line") would have broken the rule that each side's text can be rebuilt from the lines (`both_styles_keep_the_lines`).
+  - **Follow-up:** none beyond Story 5.13. Not taken: one line for a block with several lines on a side.
+- **tree-sitter as the tokenizer, checked and not taken.** Low.
+  - Ralph's idea, with code from Google's assistant. That code does not compile (`TextDiff::from_slices` takes text slices, not own tokens; the token list borrows the local tree). It also calls every stretch between two leaves whitespace; in the Dart grammar the text of a comment and the content of a string sit there, so a whole string is one token.
+  - With those faults fixed, tree-sitter gives the same marks as the plain split on Ralph's example. It differs only where a comment or string word equals a code word (the widget test's `phone`).
+  - **Follow-up:** none. Only if the comment limit of Story 5.13 bothers Ralph.
+- **The "Nächster Schritt" list at the top of `sprint-status.yaml` still lists Story 5.9 as open** (E2 was built and then replaced by Story 5.10). Low.
+  - **Follow-up:** Ralph says whether the line goes; this session only added Story 5.13 to the list.

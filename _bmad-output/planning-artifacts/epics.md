@@ -5297,6 +5297,8 @@ pub unsafe extern "C" fn zanshin_diff_compute(repo_handle: *mut c_void, from_id_
 *(Added 2026-11-12, Ralph — console session, after Stories 5.10 and 10.34. It adds to 5.10; nothing of 5.10 is removed.)*
 
 > **Changed 2026-11-13 (Ralph): Story 5.12 rewords the "Zanshin" hint (it names the `similar` library) and adds Settings rows for jj's three `diff.color-words` keys. The word-mark colours stay as built.**
+>
+> **Changed 2026-11-13 (Ralph): Story 5.13 replaces rules 2 and 5 below (finer tokens, so a mark covers only the changed part of a call chain) and the witnesses that pin marks. It also lifts rule 3 for a block of one old and one new line: such a block shows as one `changed` line, within jj's `max-inline-alternation`. Rules 1, 4 and 6, the scope and the two styles stay.**
 
 **Motivation.** jj's color-words marks are hard to read on some real changes. Two of Ralph's examples:
 - **jj `lib/src/git.rs`** (jj commit `671e4eaca`): inline, jj shows `GitResetHeadError::from_git` of old line 2454 as kept text of new line 2459, although the old call was rewritten.
@@ -5369,6 +5371,8 @@ Ralph tried the `similar` crate (its `terminal-inline` example, changed by him):
 
 ### Story 5.12: Settings rows for jj's three color-words keys; the Zanshin style names `similar` [UI]
 *(Added 2026-11-13, Ralph — console session, after Story 5.11. It lifts Story 5.10's non-goal "a settings UI for jj's `diff.color-words.*` keys" and rewords one hint of Story 5.11.)*
+
+> **Changed 2026-11-13 (Ralph): Story 5.13 makes `diff.color-words.max-inline-alternation` count in the Zanshin style too, for a change of one line by one line. So the "Inline changes" row shows in both styles, with a hint per style.**
 
 **Motivation.** Ralph looked at both diff styles in night and paper. Two things were missing in Settings › General › Diffs:
 - The hint of the "Zanshin" style does not say that the word marks come from the `similar` library.
@@ -5445,6 +5449,119 @@ Ralph tried the `similar` crate (its `terminal-inline` example, changed by him):
 - **UI** (Marionette, the real app on a throwaway repo with its own `JJ_CONFIG` file; checked by the loop's main session, never against Ralph's jj config): changing Context lines from `3` to `0` shrinks the open diff's hunks at once; "Never" with the jj style shows the git.rs witness as removed lines then added lines; the file behind `JJ_CONFIG` holds the written values.
 
 **Related:** 5.10, 5.11, 11.7, 11.19.
+
+### Story 5.13: The Zanshin style marks only the changed part of a line, and a one-line change is one line — finer tokens for `similar` [Rust + UI]
+*(Added 2026-11-13, Ralph — console session, after Story 5.12. It replaces rules 2 and 5 of Story 5.11's second style and the witnesses that pin marks, and it lifts rule 3 for a block of one old and one new line. Everything else of 5.11 stays.)*
+
+**Motivation.** The Zanshin style compares words separated by blanks. A call chain holds no blank, so it is one word. When one call of the chain goes away, the whole old chain shows as removed and the whole new chain as added.
+
+Ralph's example: jj commit `9346978d` ("git: simplify propagation of gix errors", change `vsytlqpqownsyuusumyryprmyxutlyxq`), `lib/src/git.rs`. The line `actual.remote_branches().map_err(GitImportError::from_git)?,` became `actual.remote_branches()?,`. Today both lines are marked from `actual` to the comma. RustRover marks only `.map_err(GitImportError::from_git)` on the old line and nothing on the new one. That is what Ralph wants.
+
+The jj style reads better on this example for a second reason: it shows such a change as one line, the old line with `.map_err(GitImportError::from_git)` in red. The Zanshin style shows an old and a new line. Ralph wants the one line there too, where a change is just one line replaced by one line.
+
+**Measured (2026-11-13, a throwaway probe; not kept).**
+
+| Tokens | Marks | Marked non-blank characters |
+|---|---|---|
+| Today: words separated by blanks | 116 | 3,271 |
+| This story's rules 1–5 | 62 | 1,554 |
+| tree-sitter leaves, same mark rules | 62 | 1,551 |
+
+- The numbers are the 32 changed blocks of `lib/src/git.rs` in jj commit `9346978d`.
+- **tree-sitter adds nothing here.** Ralph's first idea was tree-sitter as the tokenizer. It gives the same picture as the plain split below. It helps only where a word of a comment or string equals a word of the code. It costs C dependencies, covers Rust and Dart only, and parses that file (152 KB) in 7–19 ms per side.
+- **RustRover uses no parser either** (IntelliJ `platform/util/diff`, `ByWordRt.kt` and `ChunkOptimizer.kt`). It compares words first, shifts the borders of a change, then compares punctuation next to kept words.
+- **This story does not port RustRover's steps.** A comparison of words alone keeps `GitResetHeadError::from_git` of jj commit `671e4eaca`'s old line 2454 as unchanged text on new line 2459. That is the reading Story 5.11 was made to avoid. The one-pass rule below gives RustRover's marks on Ralph's example and keeps 5.11's example readable.
+- **One line for one line** (rule 6): 13 of the 32 blocks are one old and one new line. At jj's default limit 12 of them become one line; one has five runs of colour and stays two lines. The table's numbers are rules 1–5, before rule 6.
+
+**Decided (Ralph, 2026-11-13).**
+- No tree-sitter. The Zanshin style gets finer tokens and looks like RustRover on his example. `similar` stays the comparison.
+- A block of one old and one new line shows as one line, as the jj style's inline lines do.
+
+**The rule**, per changed block with lines on both sides. It replaces rules 2 and 5 of Story 5.11 and lifts its rule 3 where rule 6 below applies; rules 1, 4 and 6 of 5.11 stay.
+1. **Tokens.** Each side's joined lines are split into three kinds of token: a run of blanks; a run of word characters (`char::is_alphanumeric` or `_`); any other character on its own.
+2. **Comparison.** The two token lists are compared with `similar`'s Myers (`capture_diff_slices` with `Algorithm::Myers`). Two tokens are equal when their text is equal. A token only one side has is *changed*.
+3. **Shift right.** On each side, a run of changed tokens moves right while its first non-blank token equals the token right after the run. That first token becomes unchanged; the token after the run becomes changed. Blank tokens at the start of the run stay as they are. So of two equal tokens around a change, the later one counts as changed: in `…workspace_root)` + line break + `.map_err(GitImportError::from_git)?;` the mark covers `.map_err(GitImportError::from_git)`, not `)` + `.map_err(GitImportError::from_git`.
+4. **Marks.** A changed non-blank token is marked. A run of blanks and unchanged punctuation tokens (tokens without a word character) that holds no line break is marked exactly when the token before the run and the token after it are both marked non-blank tokens. So a run of changed words reads as one mark. Indentation, trailing blanks and line breaks are never marked. Story 5.11's blank rule is the case of a single blank.
+5. **Size limit.** `WORD_MARKS_LIMIT` is measured again, because a block has two to three times as many tokens now. Same method and target as Story 5.11 (the worst shapes stay within about 50 ms on the M4 Pro); the spec records the measurement. No time-based cut-off.
+6. **One line for one line.** A block of exactly one old and one new line:
+   - **Words count twice.** In the comparison of such a block each word token stands twice, so keeping a word beats keeping one punctuation character. (`Err(GitResetHeadError::from_git(err))` → `Err(err.into())` then keeps `err`, as jj does. Only here: in a block of several lines the same weight pairs equal words across lines.)
+   - **The count.** After rule 3, the block's changed parts are counted as jj's `count_diff_alternation` counts them: the runs of one side in line order, kept text between them ignored. One removed part is 1; a removed and an added part are 2; removed, kept, removed is 1.
+   - **Merged** when all three hold: the block is within the size limit; the two lines have equal indentation and equal trailing blanks; and the count is within `diff.color-words.max-inline-alternation` (`-1` always, `0` never, default `3`), the limit the jj style uses.
+   - **The merged line** has the kind `changed` and both line numbers. Its segments stand in line order: kept text once, `Equal`; a removed part `Removed`; an added part `Added`; where both stand at one place, the removed part first. The segments are exact: every token of the old line is `Equal` or `Removed`, every token of the new line `Equal` or `Added`, blanks too. So each side's text can still be rebuilt from the line, and rule 4 does not apply in it.
+   - **Not merged:** the old line, then the new line, marked by rules 3 and 4 from the same comparison.
+   - Under `diff.color-words.conflict = "pair"` the two kinds follow the block's roles, as on the jj style's inline lines.
+
+**Scope.**
+1. **Rust** (`crates/zanshin-jj/src/hunks.rs`):
+   - `word_runs` and `side_runs` implement rules 1–5; `Walk::word_lines` gains rule 6 and pushes the merged line as the jj path pushes its inline lines. The count is the existing `count_diff_alternation`, or one with its result.
+   - The module docs and the docs of `DiffMarks::Words` describe the rule. They no longer say that the style has no `HunkLineKind::Changed` line or that `max-inline-alternation` has no effect.
+   - Story 5.11's tests that pin marks follow the new rule. Their expectations for lines, hunks, numbers, counts and fingerprints stay untouched.
+   - The `similar` entry in the root `Cargo.toml` keeps only the features the code still uses; its WHY comments follow.
+   - Unchanged: jj's lines, hunks, numbers, context, sections, conflicts, counts and fingerprints; one-sided blocks carry no marks; `-w` / `-b` context lines stay on the jj path; the names `DiffMarks::Jj` and `DiffMarks::Words`; the wire; the jj style.
+2. **Wording.** No description of the Zanshin style says "whole words" any more: `schemas/envelope.fbs` (then `cargo make codegen`), `crates/zanshin-ffi/src/diff.rs`, `packages/zanshin_core/lib/src/ffi/diff.dart`, `packages/zanshin_settings/lib/src/model/general_settings.dart`, `docs/ffi-abi.md` where it states the rule, and the `DiffMarks::Words` paragraph of `_bmad-output/project-context.md`.
+3. **App:**
+   - The hint `settingsDiffMarksZanshinHint` (`app/lib/l10n/app_en.arb` and the generated files) reads: "Marks the changed part of each line, using the similar library. Removed lines come first." The description of `settingsDiffMarksZanshin` follows.
+   - **Settings › General** (`app/lib/src/features/settings/general_tab.dart`): the "Inline changes" row shows in both styles (Story 5.12 showed it for jj only). Its hint while "jj" is chosen stays. While "Zanshin" is chosen it reads: "How often a line may switch between removed and added parts before it shows as an old and a new line. Applies where one line replaces one line. Experimental in jj." The settings tests follow. A write of the key already reloads the open diff (Story 5.12).
+   - `app/lib/src/features/graph/inspector_diff.dart` draws segments as they come, and a `changed` line by its kind in both styles. No change is expected there; the run checks a merged line in the Zanshin style in both layouts (unified and side by side) and fixes what it finds. Widget tests that pin segments follow.
+4. **Catalogue** (`app/widgetbook/folders/graph.dart`, "Inspector diff / Word marks"): its blocks show the new marks. It gains Ralph's new example from lines the Rust tests pin: the four single lines, each as one merged line, and one chain split over three lines.
+5. **Design system:** `DiffHunk.prompt.md`, `DiffView.prompt.md`, the readme and the Content card's Zanshin-style hunk describe and show the new rule, a merged line included. Republished with the `design-artifacts` skill; if the run cannot publish, its result says so.
+6. **Parity oracle:** unchanged. It checks the jj style.
+
+**Non-goals.**
+- tree-sitter or any other parser; tokens that know a language (`::` or `=>` as one token).
+- A port of IntelliJ's algorithm.
+- A third style, or a setting for how fine the tokens are.
+- Any change to the jj style, to lines and hunks, to colours.
+- One line for a block with several lines on a side (a chain split over three lines that became one). jj merges those by its own rules; here they stay removed lines, then added lines.
+- A limit of Zanshin's own for rule 6: it reads jj's key.
+
+**Known limits (measured, accepted).**
+- **A merged line is longer** than either of its lines: it holds the old and the new parts.
+- **A mark of a merged line can hold a blank at its edge** (`let lock = ` before `gix::…`), because its segments are exact.
+- **Rewritten comments.** A word of a rewritten comment still pairs with an equal word elsewhere in the block (widget test: `the`, `on a`, `phone`). tree-sitter would stop a comment word from pairing with code. That comes only if Ralph asks for it.
+- **Closing brackets.** A closing bracket can pair with an unrelated one. In jj `9346978d`, `)` + `.map_err(GitResetHeadError::from_git)` became `)?;` + `Ok(lock)`; the last `)` of both sides stays unmarked (2 of the 32 blocks).
+
+**Depends on.** 5.11, 5.12 (both done).
+
+**Design status.** DECIDED (Ralph, 2026-11-13): finer tokens without tree-sitter, RustRover's marks on his example as the target; one line where one line replaces one line, under jj's limit. The rule and its limits are Claude's, measured on the inputs below. Claude's calls inside rule 6: words count twice there, a changed indentation keeps two lines, and the segments of a merged line are exact. Ralph reviews them in the catalogue and the app.
+
+**Witnesses** (fixture text embedded in the tests; the tests never read from `spikes/` or `../jj`). All in the Zanshin style.
+
+The probe took its blocks from `similar`'s line diff, the product takes jj's. For `671e4eaca` the blocks equal Story 5.11's witnesses. If jj cuts another block differently, the rule above decides: the run pins the real output and records the difference in deferred-work.md.
+
+- **jj `9346978d`, `lib/src/git.rs`** (old → new):
+  - `let actual = git_repo.references().map_err(GitImportError::from_git)?;` → `let actual = git_repo.references()?;`: one `changed` line with both numbers. It reads `let actual = git_repo.references()`, then `.map_err(GitImportError::from_git)` as its only mark (`Removed`), then `?;`. The same holds for `actual.local_branches()…?,`, `actual.remote_branches()…?,` and `actual.tags()…?,`. With `max-inline-alternation = 0` each is two lines again: the old line with that one mark, the new line without a mark.
+  - `gix::lock::File::acquire_to_update_resource(` → `let lock = gix::lock::File::acquire_to_update_resource(`: one line; `let lock = ` with its last blank is `Added`.
+  - `let git_repo = git_backend` / `.open_git_repo_at_workdir(workspace_root)` / `.map_err(GitImportError::from_git)?;` → `let git_repo = git_backend.open_git_repo_at_workdir(workspace_root)?;`: marked is only `.map_err(GitImportError::from_git)` on the third old line. `?;`, the other old lines and the new line have no mark (rule 3).
+  - `let file_blob = git_repo` / `.write_blob(` / the string line / `)` / `.map_err(GitResetHeadError::from_git)?;` → three new lines: marked is only `.map_err(GitResetHeadError::from_git)` (rule 3 with a blank at the run's start).
+  - `_ => Err(GitResetHeadError::from_git(err)),` → `_ => Err(err),`: one line; `Removed` are `GitResetHeadError::from_git(` and the second `)` after `err` (count 1).
+  - `Err(err) => Err(GitResetHeadError::from_git(err)),` → `Err(err) => Err(err.into()),`: one line: `Err(`, `GitResetHeadError::from_git(` `Removed`, `err` kept, `.into(` `Added`, `)),` (count 2). This is jj's picture of the line.
+  - `Git(Box<dyn std::error::Error + Send + Sync>),` → `Git(#[from] gix::Error),`, where it is a block of its own: count 5, so two lines at the default limit. The old line marks `Box<dyn std::error` and `+ Send + Sync>`, the new line marks `#[from] gix`. With `max-inline-alternation = -1` it is one line (pinned from the real output).
+  - The closing-bracket limit: `)` / `.map_err(GitResetHeadError::from_git)` → `)?;` / `Ok(lock)`: the old side marks `.map_err(GitResetHeadError::from_git` without its last `)`; the new side marks `?;` and `Ok(lock` without its last `)`.
+- **jj `671e4eaca`, `lib/src/git.rs`** (Story 5.11's example):
+  - removed `2454`: marked are `GitResetHeadError::from_git` and `into_error`; `.map_err(|err|`, `(err.` and `()))?;` are kept.
+  - added `2454`: `{` marked. Added `2455`: `let (source, out) =` and `into_parts();` marked, `err.` kept. Added `2456`–`2458`: marked from the first to the last visible character. Added `2459`: `.map_err(GitResetHeadError::from_git` marked, `)?;` kept.
+  - removed `2456`: only `GitResetHeadError::from_git(` marked. Added `2461` (`.map_err(|err| err.error)`): no mark. Added `2462`: marked whole. Added `2463`: `.map_err(GitResetHeadError::from_git` marked, `)?;` kept.
+- **Widget test** (`spikes/structural-diff-probe/inputs/witness/widget-test-rename`):
+  - removed `10` (the old `testWidgets(` line): no mark.
+  - added `23`: only `on a tablet` marked, as one mark.
+  - added `11`–`21`: marked whole; the blank lines carry no mark. Added `10`: marked except `phone`.
+  - the comment lines and added `9`: pinned from the real output (`the`, `on a` and `phone` stay unmarked).
+- **Stepper** (`…/witness/stepper`):
+  - line 12 is one line: `s.functionWizard_save` `Removed`, then `saveLabel` `Added`; the rest is kept.
+  - the call split over three lines: the old line has no mark; on the new lines only the `,` after `lineColor)` is marked.
+  - `Spacing.spacing8,` → `Spacing.spacing2,`: only `spacing8` and `spacing2` are marked. The inserted comment line is marked whole.
+- **Reformat** (`…/witness/reformat`, one line split into five): only the added `,` after `third_argument` is marked.
+- **Nesting** (`…/witness/nesting`, two statements wrapped in an `if`): the old lines have no mark. New: `if event.is_relevant() {`, the `}` line, `redact(` and one `)` are marked.
+- **Reorder** (`…/witness/reorder-rust`, `…/reorder-dart`): `f(a, b)` → `f(b, a)` is one line: `f(`, `b, ` `Added`, `a` kept, `, b` `Removed`, `);`.
+- **Indentation** (a constructed pair): a line whose indentation changes along with one word stays an old and a new line; only the word is marked, no blank is.
+- **As in Story 5.11:** a block with lines on one side only has no marks; a block over the size limit has no marks; both styles give equal fingerprints, sections, hunk ranges, counts, line numbers and line texts. The line texts are equal with merged lines too (`both_styles_keep_the_lines`).
+- **Settings:** the "Inline changes" row shows with "Zanshin" chosen and with "jj" chosen, each with its hint; choosing "Never" turns the merged lines of the open diff into old and new lines at once.
+- **jj style:** the parity oracle and Story 5.10's tests stay green with their expectations untouched.
+- **Wording:** a search for "whole word" finds no description of the Zanshin style in code docs, the schema, the hint, the design system or project-context.md.
+- **UI** (catalogue and Marionette, night and paper, compared with the DS card; the real app on a throwaway repo with its own `JJ_CONFIG`): in the new example each of the four lines is one line with both numbers and one red mark on `.map_err(GitImportError::from_git)`, in the unified and the side-by-side layout. It looks like the jj style's picture of these lines.
+
+**Related:** 5.9 (its research weighed tree-sitter before), 5.10, 5.11, 5.12 (the "Inline changes" row).
 
 ---
 
