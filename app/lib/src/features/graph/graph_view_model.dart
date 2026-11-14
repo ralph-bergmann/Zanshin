@@ -324,6 +324,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       _expanded.addAll(toggles.expanded);
       _collapsed.addAll(toggles.collapsed);
     }
+    stackStore?.addListener(_stacksChanged);
     _source = source;
     _content = GraphContent(source.content);
     _actions = actions;
@@ -544,7 +545,10 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     final List<int> members = layout!.runMembersOf(run);
     final String oldest = layout.keyOf(members.first);
     final String anchor = graphStackAnchorKey(layout, run);
-    (expand ? _expanded : _collapsed).add(oldest);
+    // A repeated toggle counts as new (Story 10.37): the store keeps the newest.
+    (expand ? _expanded : _collapsed)
+      ..remove(oldest)
+      ..add(oldest);
     (expand ? _collapsed : _expanded).remove(oldest);
     _stackStore?.save(GraphStackToggles(expanded: <String>{..._expanded}, collapsed: <String>{..._collapsed}));
     _anchorHint = anchor;
@@ -562,6 +566,21 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
         _notify();
       }
     }
+    _requestLayout();
+  }
+
+  // Another writer changed the toggles (the cleanup, Settings' reset, or the store's limit): the graph follows at once.
+  void _stacksChanged() {
+    final GraphStackToggles stored = _stackStore!.load();
+    if (stored == GraphStackToggles(expanded: _expanded, collapsed: _collapsed)) {
+      return;
+    }
+    _expanded
+      ..clear()
+      ..addAll(stored.expanded);
+    _collapsed
+      ..clear()
+      ..addAll(stored.collapsed);
     _requestLayout();
   }
 
@@ -1258,6 +1277,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   @override
   void dispose() {
     _disposed = true;
+    _stackStore?.removeListener(_stacksChanged);
     drag.dispose();
     unawaited(_events?.cancel());
     _tick?.cancel();

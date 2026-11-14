@@ -3962,6 +3962,30 @@ abstract class AppLocalizations {
   /// **'History'**
   String get settingsHistory;
 
+  /// Settings › Project group heading: what Zanshin remembers about the project's view (Story 10.37).
+  ///
+  /// In en, this message translates to:
+  /// **'View state'**
+  String get settingsViewState;
+
+  /// Settings › Project › View state row: clears the project's Viewed marks and stack toggles.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset view state'**
+  String get settingsResetViewState;
+
+  /// Hint under the Reset view state row: what the reset clears.
+  ///
+  /// In en, this message translates to:
+  /// **'Clears the files marked Viewed and the stacks you expanded or collapsed.'**
+  String get settingsResetViewStateHint;
+
+  /// The Reset view state row's button.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get settingsResetViewStateButton;
+
   /// Settings › Project › History row (the trunk() alias).
   ///
   /// In en, this message translates to:

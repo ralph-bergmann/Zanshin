@@ -4,6 +4,8 @@
 // imports; see https://github.com/flutter/flutter/issues/30701.
 // ignore_for_file: invalid_use_of_internal_member
 
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/src/foundation/_features.dart';
 import 'package:flutter/src/widgets/_window.dart';
@@ -436,6 +438,29 @@ void main() {
       await rig.settle();
 
       expect(rig.store.value.projects.projects.single.remotePoll, RemotePollSetting.off);
+    });
+
+    testWidgets('Story 10.37: Reset view state clears the open project\'s marks and toggles', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump(target: SettingsTarget.project);
+      final ProjectStateStore state = rig.store.projectStates.of(settingsRigProject)!;
+      unawaited(
+        state.update(
+          (_) => const ProjectState(
+            viewedFiles: <String>['k:ff:a'],
+            expandedStacks: <String>['x'],
+            collapsedStacks: <String>['y'],
+          ),
+        ),
+      );
+      await rig.settle();
+      expect(find.text('Clears the files marked Viewed and the stacks you expanded or collapsed.'), findsOneWidget);
+
+      await tester.ensureVisible(rig.id('settings-reset-view-state'));
+      await rig.tap('settings-reset-view-state');
+
+      expect(state.value, const ProjectState());
+      expect(rig.calls, isEmpty, reason: 'view state, not jj config');
     });
   });
 

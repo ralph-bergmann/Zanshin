@@ -136,13 +136,13 @@ class ProjectRegistry implements ValueListenable<ProjectsSettings> {
   }
 
   /// Takes the project at [path] out of the registry — the folder on disk stays as it is — and renumbers its siblings
-  /// 0..n; it is no longer the open project if it was.
-  Future<void> remove(String path) {
+  /// 0..n; it is no longer the open project if it was. Its view state file is deleted (Story 10.37).
+  Future<void> remove(String path) async {
     final ProjectEntry? removing = entry(path);
     if (removing == null) {
-      return Future<void>.value();
+      return;
     }
-    return _update((registry) {
+    await _update((registry) {
       final List<_Member> siblings = _siblings(registry, removing.group)..remove(_Member.project(path));
       final orders = <_Member, int>{for (final (int i, _Member member) in siblings.indexed) member: i};
       return registry.copyWith(
@@ -156,6 +156,9 @@ class ProjectRegistry implements ValueListenable<ProjectsSettings> {
         openProject: registry.openProject == path ? null : registry.openProject,
       );
     });
+    if (removing.stateId case final String stateId) {
+      await _store.projectStates.delete(stateId);
+    }
   }
 
   /// Adds a group named [name] last among the siblings in [parent] (the top level when null) — one above the highest

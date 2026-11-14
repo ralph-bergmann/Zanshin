@@ -9,14 +9,14 @@
 // ignore_for_file: type=lint, type=warning
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 
-import 'package:flutter/src/foundation/basic_types.dart' as _i39;
+import 'package:flutter/src/foundation/basic_types.dart' as _i41;
 import 'package:flutter/src/foundation/key.dart' as _i20;
-import 'package:flutter/src/widgets/framework.dart' as _i46;
+import 'package:flutter/src/widgets/framework.dart' as _i48;
 import 'package:inject_annotation/inject_annotation.dart' as _i10;
-import 'package:inject_flutter/src/view_model_factory.dart' as _i45;
+import 'package:inject_flutter/src/view_model_factory.dart' as _i47;
 import 'package:zanshin_core/src/ffi/diagnostics.dart' as _i2;
-import 'package:zanshin_core/src/worker/isolate.dart' as _i51;
-import 'package:zanshin_settings/src/settings_store.dart' as _i41;
+import 'package:zanshin_core/src/worker/isolate.dart' as _i53;
+import 'package:zanshin_settings/src/settings_store.dart' as _i43;
 import 'package:zanshin_ui/src/icons/icon_registry.dart' as _i21;
 
 import 'main.dart' as _i1;
@@ -25,7 +25,7 @@ import 'src/app/app_module.dart' as _i5;
 import 'src/app/app_window_coordinator.dart' as _i16;
 import 'src/app/boot/boot_module.dart' as _i3;
 import 'src/app/menu/app_menu.dart' as _i14;
-import 'src/app/zanshin_app.dart' as _i49;
+import 'src/app/zanshin_app.dart' as _i51;
 import 'src/app/zanshin_application.dart' as _i6;
 import 'src/features/bookmarks/bookmark_list_model.dart' as _i23;
 import 'src/features/graph/active_graph.dart' as _i11;
@@ -36,30 +36,32 @@ import 'src/features/graph/graph_search_controller.dart' as _i25;
 import 'src/features/graph/graph_toasts.dart' as _i27;
 import 'src/features/graph/graph_view_model.dart' as _i28;
 import 'src/features/graph/immutable_reasons.dart' as _i29;
-import 'src/features/graph/revset_configs/revset_configs_window.dart' as _i40;
+import 'src/features/graph/inspector_viewed_store.dart' as _i31;
+import 'src/features/graph/revset_configs/revset_configs_window.dart' as _i42;
+import 'src/features/graph/view_state_cleanup.dart' as _i35;
 import 'src/features/home/home_page.dart' as _i19;
 import 'src/features/home/project_scope.dart' as _i7;
-import 'src/features/projects/project_registry.dart' as _i34;
+import 'src/features/projects/project_registry.dart' as _i36;
 import 'src/features/projects/project_repos.dart' as _i8;
-import 'src/features/projects/project_session.dart' as _i35;
-import 'src/features/projects/projects_environment.dart' as _i36;
+import 'src/features/projects/project_session.dart' as _i37;
+import 'src/features/projects/projects_environment.dart' as _i38;
 import 'src/features/projects/projects_module.dart' as _i4;
-import 'src/features/projects/projects_search_focus.dart' as _i37;
-import 'src/features/projects/projects_window.dart' as _i38;
-import 'src/features/settings/settings_view_model.dart' as _i42;
-import 'src/features/settings/settings_window.dart' as _i43;
-import 'src/features/settings/settings_window_state.dart' as _i44;
+import 'src/features/projects/projects_search_focus.dart' as _i39;
+import 'src/features/projects/projects_window.dart' as _i40;
+import 'src/features/settings/settings_view_model.dart' as _i44;
+import 'src/features/settings/settings_window.dart' as _i45;
+import 'src/features/settings/settings_window_state.dart' as _i46;
 import 'src/features/shell/floating_shell_view_model.dart' as _i18;
 import 'src/features/shell/shell_toast.dart' as _i9;
-import 'src/features/sync/sync_model.dart' as _i32;
-import 'src/features/undo_timeline/operation_changes.dart' as _i31;
-import 'src/features/undo_timeline/undo_timeline_model.dart' as _i33;
+import 'src/features/sync/sync_model.dart' as _i33;
+import 'src/features/undo_timeline/operation_changes.dart' as _i32;
+import 'src/features/undo_timeline/undo_timeline_model.dart' as _i34;
 import 'src/features/window/active_window_tracker.dart' as _i12;
 import 'src/features/window/app_window_actions.dart' as _i15;
 import 'src/features/window/app_windows.dart' as _i17;
-import 'src/features/window/window_appearance_sync.dart' as _i48;
-import 'src/features/window/zanshin_app_view_model.dart' as _i47;
-import 'src/features/window/zanshin_window_root.dart' as _i50;
+import 'src/features/window/window_appearance_sync.dart' as _i50;
+import 'src/features/window/zanshin_app_view_model.dart' as _i49;
+import 'src/features/window/zanshin_window_root.dart' as _i52;
 import 'src/links.dart' as _i22;
 
 class MainComponent$Component implements _i1.MainComponent {
@@ -282,6 +284,12 @@ class ProjectComponent$Subcomponent implements _i7.ProjectComponent {
           projectComponent$graphSearchController$Provider,
           projectModule,
         );
+    final projectComponent$graphStackStore$Provider =
+        _ProjectComponent$GraphStackStore$Provider(
+          _parent._settingsStore$Provider,
+          _projectComponent$stringProjectRoot$Provider,
+          projectModule,
+        );
     final projectComponent$graphPreferences$Provider =
         _ProjectComponent$GraphPreferences$Provider(
           projectComponent$graphViewModel$Provider,
@@ -289,7 +297,7 @@ class ProjectComponent$Subcomponent implements _i7.ProjectComponent {
           projectComponent$graphSearchController$Provider,
           _projectComponent$projectRepo$Provider,
           _parent._settingsStore$Provider,
-          _projectComponent$stringProjectRoot$Provider,
+          projectComponent$graphStackStore$Provider,
           projectModule,
         );
     _projectComponent$shellToasts$Provider =
@@ -307,12 +315,18 @@ class ProjectComponent$Subcomponent implements _i7.ProjectComponent {
           _projectComponent$stringProjectRoot$Provider,
           projectModule,
         );
+    final projectComponent$inspectorViewedStore$Provider =
+        _ProjectComponent$InspectorViewedStore$Provider(
+          _parent._settingsStore$Provider,
+          _projectComponent$stringProjectRoot$Provider,
+          projectModule,
+        );
     final projectComponent$inspectorViewModel$Provider =
         _ProjectComponent$InspectorViewModel$Provider(
           projectComponent$graphViewModel$Provider,
           _projectComponent$projectRepo$Provider,
           _parent._settingsStore$Provider,
-          _projectComponent$stringProjectRoot$Provider,
+          projectComponent$inspectorViewedStore$Provider,
           projectModule,
         );
     final projectComponent$operationChangesSource$Provider =
@@ -329,6 +343,14 @@ class ProjectComponent$Subcomponent implements _i7.ProjectComponent {
     final projectComponent$operationChangesOf$Provider =
         _ProjectComponent$OperationChangesOf$Provider(
           projectComponent$operationChangesModelFactory$Provider,
+          projectModule,
+        );
+    final projectComponent$viewStateCleanup$Provider =
+        _ProjectComponent$ViewStateCleanup$Provider(
+          projectComponent$graphViewModel$Provider,
+          projectComponent$graphStackStore$Provider,
+          projectComponent$inspectorViewedStore$Provider,
+          _projectComponent$projectRepo$Provider,
           projectModule,
         );
     final projectComponent$syncModel$Provider =
@@ -350,6 +372,7 @@ class ProjectComponent$Subcomponent implements _i7.ProjectComponent {
         _ProjectComponent$ProjectScope$Provider(
           projectComponent$graphViewModel$Provider,
           projectComponent$graphPreferences$Provider,
+          projectComponent$viewStateCleanup$Provider,
           projectComponent$graphSearchController$Provider,
           projectComponent$inspectorViewModel$Provider,
           projectComponent$immutableReasons$Provider,
@@ -718,7 +741,7 @@ class _ProjectComponent$GraphPreferences$Provider
     this._projectComponent$graphSearchController$Provider,
     this._projectComponent$projectRepo$Provider,
     this._settingsStore$Provider,
-    this._projectComponent$stringProjectRoot$Provider,
+    this._projectComponent$graphStackStore$Provider,
     this._module,
   );
 
@@ -736,8 +759,8 @@ class _ProjectComponent$GraphPreferences$Provider
 
   final _SettingsStore$Provider _settingsStore$Provider;
 
-  final _ProjectComponent$StringProjectRoot$Provider
-  _projectComponent$stringProjectRoot$Provider;
+  final _ProjectComponent$GraphStackStore$Provider
+  _projectComponent$graphStackStore$Provider;
 
   final _i7.ProjectModule _module;
 
@@ -749,7 +772,7 @@ class _ProjectComponent$GraphPreferences$Provider
     _projectComponent$graphSearchController$Provider.get(),
     _projectComponent$projectRepo$Provider.get(),
     _settingsStore$Provider.get(),
-    _projectComponent$stringProjectRoot$Provider.get(),
+    _projectComponent$graphStackStore$Provider.get(),
   );
 
   @override
@@ -825,6 +848,32 @@ class _ProjectComponent$GraphSource$Provider
 
   @override
   _i26.GraphSource get() => _singleton;
+}
+
+class _ProjectComponent$GraphStackStore$Provider
+    implements _i10.Provider<_i26.GraphStackStore> {
+  _ProjectComponent$GraphStackStore$Provider(
+    this._settingsStore$Provider,
+    this._projectComponent$stringProjectRoot$Provider,
+    this._module,
+  );
+
+  final _SettingsStore$Provider _settingsStore$Provider;
+
+  final _ProjectComponent$StringProjectRoot$Provider
+  _projectComponent$stringProjectRoot$Provider;
+
+  final _i7.ProjectModule _module;
+
+  late final _i26.GraphStackStore _singleton = _create();
+
+  _i26.GraphStackStore _create() => _module.stackStore(
+    _settingsStore$Provider.get(),
+    _projectComponent$stringProjectRoot$Provider.get(),
+  );
+
+  @override
+  _i26.GraphStackStore get() => _singleton;
 }
 
 class _ProjectComponent$GraphToasts$Provider
@@ -905,7 +954,7 @@ class _ProjectComponent$InspectorViewModel$Provider
     this._projectComponent$graphViewModel$Provider,
     this._projectComponent$projectRepo$Provider,
     this._settingsStore$Provider,
-    this._projectComponent$stringProjectRoot$Provider,
+    this._projectComponent$inspectorViewedStore$Provider,
     this._module,
   );
 
@@ -917,8 +966,8 @@ class _ProjectComponent$InspectorViewModel$Provider
 
   final _SettingsStore$Provider _settingsStore$Provider;
 
-  final _ProjectComponent$StringProjectRoot$Provider
-  _projectComponent$stringProjectRoot$Provider;
+  final _ProjectComponent$InspectorViewedStore$Provider
+  _projectComponent$inspectorViewedStore$Provider;
 
   final _i7.ProjectModule _module;
 
@@ -928,15 +977,41 @@ class _ProjectComponent$InspectorViewModel$Provider
     _projectComponent$graphViewModel$Provider.get(),
     _projectComponent$projectRepo$Provider.get(),
     _settingsStore$Provider.get(),
-    _projectComponent$stringProjectRoot$Provider.get(),
+    _projectComponent$inspectorViewedStore$Provider.get(),
   );
 
   @override
   _i30.InspectorViewModel get() => _singleton;
 }
 
+class _ProjectComponent$InspectorViewedStore$Provider
+    implements _i10.Provider<_i31.InspectorViewedStore> {
+  _ProjectComponent$InspectorViewedStore$Provider(
+    this._settingsStore$Provider,
+    this._projectComponent$stringProjectRoot$Provider,
+    this._module,
+  );
+
+  final _SettingsStore$Provider _settingsStore$Provider;
+
+  final _ProjectComponent$StringProjectRoot$Provider
+  _projectComponent$stringProjectRoot$Provider;
+
+  final _i7.ProjectModule _module;
+
+  late final _i31.InspectorViewedStore _singleton = _create();
+
+  _i31.InspectorViewedStore _create() => _module.viewedStore(
+    _settingsStore$Provider.get(),
+    _projectComponent$stringProjectRoot$Provider.get(),
+  );
+
+  @override
+  _i31.InspectorViewedStore get() => _singleton;
+}
+
 class _ProjectComponent$OperationChangesModelFactory$Factory
-    implements _i31.OperationChangesModelFactory {
+    implements _i32.OperationChangesModelFactory {
   const _ProjectComponent$OperationChangesModelFactory$Factory(
     this._projectComponent$operationChangesSource$Provider,
     this._settingsStore$Provider,
@@ -948,8 +1023,8 @@ class _ProjectComponent$OperationChangesModelFactory$Factory
   final _SettingsStore$Provider _settingsStore$Provider;
 
   @override
-  _i31.OperationChangesModel create({required String operation}) =>
-      _i31.OperationChangesModel(
+  _i32.OperationChangesModel create({required String operation}) =>
+      _i32.OperationChangesModel(
         _projectComponent$operationChangesSource$Provider.get(),
         operation: operation,
         settings: _settingsStore$Provider.get(),
@@ -957,7 +1032,7 @@ class _ProjectComponent$OperationChangesModelFactory$Factory
 }
 
 class _ProjectComponent$OperationChangesModelFactory$Provider
-    implements _i10.Provider<_i31.OperationChangesModelFactory> {
+    implements _i10.Provider<_i32.OperationChangesModelFactory> {
   _ProjectComponent$OperationChangesModelFactory$Provider(
     this._projectComponent$operationChangesSource$Provider,
     this._settingsStore$Provider,
@@ -968,18 +1043,18 @@ class _ProjectComponent$OperationChangesModelFactory$Provider
 
   final _SettingsStore$Provider _settingsStore$Provider;
 
-  late final _i31.OperationChangesModelFactory _factory =
+  late final _i32.OperationChangesModelFactory _factory =
       _ProjectComponent$OperationChangesModelFactory$Factory(
         _projectComponent$operationChangesSource$Provider,
         _settingsStore$Provider,
       );
 
   @override
-  _i31.OperationChangesModelFactory get() => _factory;
+  _i32.OperationChangesModelFactory get() => _factory;
 }
 
 class _ProjectComponent$OperationChangesOf$Provider
-    implements _i10.Provider<_i31.OperationChangesOf> {
+    implements _i10.Provider<_i32.OperationChangesOf> {
   const _ProjectComponent$OperationChangesOf$Provider(
     this._projectComponent$operationChangesModelFactory$Provider,
     this._module,
@@ -991,13 +1066,13 @@ class _ProjectComponent$OperationChangesOf$Provider
   final _i7.ProjectModule _module;
 
   @override
-  _i31.OperationChangesOf get() => _module.operationChanges(
+  _i32.OperationChangesOf get() => _module.operationChanges(
     _projectComponent$operationChangesModelFactory$Provider.get(),
   );
 }
 
 class _ProjectComponent$OperationChangesSource$Provider
-    implements _i10.Provider<_i31.OperationChangesSource> {
+    implements _i10.Provider<_i32.OperationChangesSource> {
   const _ProjectComponent$OperationChangesSource$Provider(
     this._projectComponent$projectRepo$Provider,
     this._projectsEnvironment$Provider,
@@ -1012,7 +1087,7 @@ class _ProjectComponent$OperationChangesSource$Provider
   final _i7.ProjectModule _module;
 
   @override
-  _i31.OperationChangesSource get() => _module.operationChangesSource(
+  _i32.OperationChangesSource get() => _module.operationChangesSource(
     _projectComponent$projectRepo$Provider.get(),
     _projectsEnvironment$Provider.get(),
   );
@@ -1033,6 +1108,7 @@ class _ProjectComponent$ProjectScope$Provider
   _ProjectComponent$ProjectScope$Provider(
     this._projectComponent$graphViewModel$Provider,
     this._projectComponent$graphPreferences$Provider,
+    this._projectComponent$viewStateCleanup$Provider,
     this._projectComponent$graphSearchController$Provider,
     this._projectComponent$inspectorViewModel$Provider,
     this._projectComponent$immutableReasons$Provider,
@@ -1050,6 +1126,9 @@ class _ProjectComponent$ProjectScope$Provider
 
   final _ProjectComponent$GraphPreferences$Provider
   _projectComponent$graphPreferences$Provider;
+
+  final _ProjectComponent$ViewStateCleanup$Provider
+  _projectComponent$viewStateCleanup$Provider;
 
   final _ProjectComponent$GraphSearchController$Provider
   _projectComponent$graphSearchController$Provider;
@@ -1085,6 +1164,7 @@ class _ProjectComponent$ProjectScope$Provider
   _i7.ProjectScope _create() => _i7.ProjectScope(
     _projectComponent$graphViewModel$Provider.get(),
     _projectComponent$graphPreferences$Provider.get(),
+    _projectComponent$viewStateCleanup$Provider.get(),
     _projectComponent$graphSearchController$Provider.get(),
     _projectComponent$inspectorViewModel$Provider.get(),
     _projectComponent$immutableReasons$Provider.get(),
@@ -1122,7 +1202,7 @@ class _ProjectComponent$StringProjectRoot$Provider
 }
 
 class _ProjectComponent$SyncModel$Provider
-    implements _i10.Provider<_i32.SyncModel> {
+    implements _i10.Provider<_i33.SyncModel> {
   _ProjectComponent$SyncModel$Provider(
     this._projectComponent$graphViewModel$Provider,
     this._remoteSyncOf$Provider,
@@ -1151,9 +1231,9 @@ class _ProjectComponent$SyncModel$Provider
 
   final _i7.ProjectModule _module;
 
-  late final _i32.SyncModel _singleton = _create();
+  late final _i33.SyncModel _singleton = _create();
 
-  _i32.SyncModel _create() => _module.syncModel(
+  _i33.SyncModel _create() => _module.syncModel(
     _projectComponent$graphViewModel$Provider.get(),
     _remoteSyncOf$Provider.get(),
     _projectComponent$projectRepo$Provider.get(),
@@ -1163,11 +1243,11 @@ class _ProjectComponent$SyncModel$Provider
   );
 
   @override
-  _i32.SyncModel get() => _singleton;
+  _i33.SyncModel get() => _singleton;
 }
 
 class _ProjectComponent$UndoTimelineModel$Provider
-    implements _i10.Provider<_i33.UndoTimelineModel> {
+    implements _i10.Provider<_i34.UndoTimelineModel> {
   _ProjectComponent$UndoTimelineModel$Provider(
     this._projectComponent$projectRepo$Provider,
     this._module,
@@ -1178,13 +1258,50 @@ class _ProjectComponent$UndoTimelineModel$Provider
 
   final _i7.ProjectModule _module;
 
-  late final _i33.UndoTimelineModel _singleton = _create();
+  late final _i34.UndoTimelineModel _singleton = _create();
 
-  _i33.UndoTimelineModel _create() =>
+  _i34.UndoTimelineModel _create() =>
       _module.undoTimeline(_projectComponent$projectRepo$Provider.get());
 
   @override
-  _i33.UndoTimelineModel get() => _singleton;
+  _i34.UndoTimelineModel get() => _singleton;
+}
+
+class _ProjectComponent$ViewStateCleanup$Provider
+    implements _i10.Provider<_i35.ViewStateCleanup> {
+  _ProjectComponent$ViewStateCleanup$Provider(
+    this._projectComponent$graphViewModel$Provider,
+    this._projectComponent$graphStackStore$Provider,
+    this._projectComponent$inspectorViewedStore$Provider,
+    this._projectComponent$projectRepo$Provider,
+    this._module,
+  );
+
+  final _ProjectComponent$GraphViewModel$Provider
+  _projectComponent$graphViewModel$Provider;
+
+  final _ProjectComponent$GraphStackStore$Provider
+  _projectComponent$graphStackStore$Provider;
+
+  final _ProjectComponent$InspectorViewedStore$Provider
+  _projectComponent$inspectorViewedStore$Provider;
+
+  final _ProjectComponent$ProjectRepo$Provider
+  _projectComponent$projectRepo$Provider;
+
+  final _i7.ProjectModule _module;
+
+  late final _i35.ViewStateCleanup _singleton = _create();
+
+  _i35.ViewStateCleanup _create() => _module.viewStateCleanup(
+    _projectComponent$graphViewModel$Provider.get(),
+    _projectComponent$graphStackStore$Provider.get(),
+    _projectComponent$inspectorViewedStore$Provider.get(),
+    _projectComponent$projectRepo$Provider.get(),
+  );
+
+  @override
+  _i35.ViewStateCleanup get() => _singleton;
 }
 
 class _ProjectComponentFactory$Provider
@@ -1200,18 +1317,18 @@ class _ProjectComponentFactory$Provider
   _i7.ProjectComponentFactory get() => _factory;
 }
 
-class _ProjectRegistry$Provider implements _i10.Provider<_i34.ProjectRegistry> {
+class _ProjectRegistry$Provider implements _i10.Provider<_i36.ProjectRegistry> {
   _ProjectRegistry$Provider(this._settingsStore$Provider);
 
   final _SettingsStore$Provider _settingsStore$Provider;
 
-  late final _i34.ProjectRegistry _singleton = _create();
+  late final _i36.ProjectRegistry _singleton = _create();
 
-  _i34.ProjectRegistry _create() =>
-      _i34.ProjectRegistry(_settingsStore$Provider.get());
+  _i36.ProjectRegistry _create() =>
+      _i36.ProjectRegistry(_settingsStore$Provider.get());
 
   @override
-  _i34.ProjectRegistry get() => _singleton;
+  _i36.ProjectRegistry get() => _singleton;
 }
 
 class _ProjectRepos$Provider implements _i10.Provider<_i8.ProjectRepos> {
@@ -1230,7 +1347,7 @@ class _ProjectRepos$Provider implements _i10.Provider<_i8.ProjectRepos> {
   _i8.ProjectRepos get() => _singleton;
 }
 
-class _ProjectSession$Provider implements _i10.Provider<_i35.ProjectSession> {
+class _ProjectSession$Provider implements _i10.Provider<_i37.ProjectSession> {
   _ProjectSession$Provider(
     this._projectRegistry$Provider,
     this._projectRepos$Provider,
@@ -1246,20 +1363,20 @@ class _ProjectSession$Provider implements _i10.Provider<_i35.ProjectSession> {
 
   final _i4.ProjectsModule _module;
 
-  late final _i35.ProjectSession _singleton = _create();
+  late final _i37.ProjectSession _singleton = _create();
 
-  _i35.ProjectSession _create() => _module.projectSession(
+  _i37.ProjectSession _create() => _module.projectSession(
     _projectRegistry$Provider.get(),
     _projectRepos$Provider.get(),
     _appWindows$Provider.get(),
   );
 
   @override
-  _i35.ProjectSession get() => _singleton;
+  _i37.ProjectSession get() => _singleton;
 }
 
 class _ProjectsEnvironment$Provider
-    implements _i10.Provider<_i36.ProjectsEnvironment> {
+    implements _i10.Provider<_i38.ProjectsEnvironment> {
   _ProjectsEnvironment$Provider(
     this._zanshinWorker$Provider,
     this._getDiagnostics$Provider,
@@ -1272,30 +1389,30 @@ class _ProjectsEnvironment$Provider
 
   final _i4.ProjectsModule _module;
 
-  late final _i36.ProjectsEnvironment _singleton = _create();
+  late final _i38.ProjectsEnvironment _singleton = _create();
 
-  _i36.ProjectsEnvironment _create() => _module.projectsEnvironment(
+  _i38.ProjectsEnvironment _create() => _module.projectsEnvironment(
     _zanshinWorker$Provider.get(),
     _getDiagnostics$Provider.get(),
   );
 
   @override
-  _i36.ProjectsEnvironment get() => _singleton;
+  _i38.ProjectsEnvironment get() => _singleton;
 }
 
 class _ProjectsSearchFocus$Provider
-    implements _i10.Provider<_i37.ProjectsSearchFocus> {
+    implements _i10.Provider<_i39.ProjectsSearchFocus> {
   _ProjectsSearchFocus$Provider();
 
-  late final _i37.ProjectsSearchFocus _singleton = _create();
+  late final _i39.ProjectsSearchFocus _singleton = _create();
 
-  _i37.ProjectsSearchFocus _create() => _i37.ProjectsSearchFocus();
+  _i39.ProjectsSearchFocus _create() => _i39.ProjectsSearchFocus();
 
   @override
-  _i37.ProjectsSearchFocus get() => _singleton;
+  _i39.ProjectsSearchFocus get() => _singleton;
 }
 
-class _ProjectsWindowFactory$Factory implements _i38.ProjectsWindowFactory {
+class _ProjectsWindowFactory$Factory implements _i40.ProjectsWindowFactory {
   const _ProjectsWindowFactory$Factory(
     this._projectSession$Provider,
     this._projectRegistry$Provider,
@@ -1312,10 +1429,10 @@ class _ProjectsWindowFactory$Factory implements _i38.ProjectsWindowFactory {
   final _ProjectsSearchFocus$Provider _projectsSearchFocus$Provider;
 
   @override
-  _i38.ProjectsWindow create({
-    _i39.ValueChanged<_i35.ProjectOpened>? onOpened,
+  _i40.ProjectsWindow create({
+    _i41.ValueChanged<_i37.ProjectOpened>? onOpened,
     _i20.Key? key,
-  }) => _i38.ProjectsWindow(
+  }) => _i40.ProjectsWindow(
     session: _projectSession$Provider.get(),
     registry: _projectRegistry$Provider.get(),
     environment: _projectsEnvironment$Provider.get(),
@@ -1326,7 +1443,7 @@ class _ProjectsWindowFactory$Factory implements _i38.ProjectsWindowFactory {
 }
 
 class _ProjectsWindowFactory$Provider
-    implements _i10.Provider<_i38.ProjectsWindowFactory> {
+    implements _i10.Provider<_i40.ProjectsWindowFactory> {
   _ProjectsWindowFactory$Provider(
     this._projectSession$Provider,
     this._projectRegistry$Provider,
@@ -1342,7 +1459,7 @@ class _ProjectsWindowFactory$Provider
 
   final _ProjectsSearchFocus$Provider _projectsSearchFocus$Provider;
 
-  late final _i38.ProjectsWindowFactory _factory =
+  late final _i40.ProjectsWindowFactory _factory =
       _ProjectsWindowFactory$Factory(
         _projectSession$Provider,
         _projectRegistry$Provider,
@@ -1351,7 +1468,7 @@ class _ProjectsWindowFactory$Provider
       );
 
   @override
-  _i38.ProjectsWindowFactory get() => _factory;
+  _i40.ProjectsWindowFactory get() => _factory;
 }
 
 class _RemoteSyncOf$Provider implements _i10.Provider<_i7.RemoteSyncOf> {
@@ -1370,7 +1487,7 @@ class _RemoteSyncOf$Provider implements _i10.Provider<_i7.RemoteSyncOf> {
 }
 
 class _RevsetConfigsWindowFactory$Factory
-    implements _i40.RevsetConfigsWindowFactory {
+    implements _i42.RevsetConfigsWindowFactory {
   const _RevsetConfigsWindowFactory$Factory(
     this._settingsStore$Provider,
     this._activeGraph$Provider,
@@ -1387,8 +1504,8 @@ class _RevsetConfigsWindowFactory$Factory
   final _OpenUrl$Provider _openUrl$Provider;
 
   @override
-  _i40.RevsetConfigsWindow create({String? windowKey, _i20.Key? key}) =>
-      _i40.RevsetConfigsWindow(
+  _i42.RevsetConfigsWindow create({String? windowKey, _i20.Key? key}) =>
+      _i42.RevsetConfigsWindow(
         settings: _settingsStore$Provider.get(),
         graph: _activeGraph$Provider.get(),
         windows: _appWindows$Provider.get(),
@@ -1399,7 +1516,7 @@ class _RevsetConfigsWindowFactory$Factory
 }
 
 class _RevsetConfigsWindowFactory$Provider
-    implements _i10.Provider<_i40.RevsetConfigsWindowFactory> {
+    implements _i10.Provider<_i42.RevsetConfigsWindowFactory> {
   _RevsetConfigsWindowFactory$Provider(
     this._settingsStore$Provider,
     this._activeGraph$Provider,
@@ -1415,7 +1532,7 @@ class _RevsetConfigsWindowFactory$Provider
 
   final _OpenUrl$Provider _openUrl$Provider;
 
-  late final _i40.RevsetConfigsWindowFactory _factory =
+  late final _i42.RevsetConfigsWindowFactory _factory =
       _RevsetConfigsWindowFactory$Factory(
         _settingsStore$Provider,
         _activeGraph$Provider,
@@ -1424,24 +1541,24 @@ class _RevsetConfigsWindowFactory$Provider
       );
 
   @override
-  _i40.RevsetConfigsWindowFactory get() => _factory;
+  _i42.RevsetConfigsWindowFactory get() => _factory;
 }
 
-class _SettingsStore$Provider implements _i10.Provider<_i41.SettingsStore> {
+class _SettingsStore$Provider implements _i10.Provider<_i43.SettingsStore> {
   _SettingsStore$Provider(this._module);
 
   final _i3.BootModule _module;
 
-  late final _i41.SettingsStore _singleton = _create();
+  late final _i43.SettingsStore _singleton = _create();
 
-  _i41.SettingsStore _create() => _module.settings();
+  _i43.SettingsStore _create() => _module.settings();
 
   @override
-  _i41.SettingsStore get() => _singleton;
+  _i43.SettingsStore get() => _singleton;
 }
 
 class _SettingsViewModel$Provider
-    implements _i10.Provider<_i42.SettingsViewModel> {
+    implements _i10.Provider<_i44.SettingsViewModel> {
   const _SettingsViewModel$Provider(
     this._settingsStore$Provider,
     this._projectsEnvironment$Provider,
@@ -1461,7 +1578,7 @@ class _SettingsViewModel$Provider
   final _i5.AppModule _module;
 
   @override
-  _i42.SettingsViewModel get() => _module.settingsViewModel(
+  _i44.SettingsViewModel get() => _module.settingsViewModel(
     _settingsStore$Provider.get(),
     _projectsEnvironment$Provider.get(),
     _projectSession$Provider.get(),
@@ -1469,7 +1586,7 @@ class _SettingsViewModel$Provider
   );
 }
 
-class _SettingsWindowFactory$Factory implements _i43.SettingsWindowFactory {
+class _SettingsWindowFactory$Factory implements _i45.SettingsWindowFactory {
   const _SettingsWindowFactory$Factory(
     this._appWindows$Provider,
     this._settingsWindowState$Provider,
@@ -1483,8 +1600,8 @@ class _SettingsWindowFactory$Factory implements _i43.SettingsWindowFactory {
   final _SettingsViewModel$Provider _settingsViewModel$Provider;
 
   @override
-  _i43.SettingsWindow create({String? windowKey, _i20.Key? key}) =>
-      _i43.SettingsWindow(
+  _i45.SettingsWindow create({String? windowKey, _i20.Key? key}) =>
+      _i45.SettingsWindow(
         windows: _appWindows$Provider.get(),
         state: _settingsWindowState$Provider.get(),
         viewModel: _settingsViewModel$Provider.get(),
@@ -1494,7 +1611,7 @@ class _SettingsWindowFactory$Factory implements _i43.SettingsWindowFactory {
 }
 
 class _SettingsWindowFactory$Provider
-    implements _i10.Provider<_i43.SettingsWindowFactory> {
+    implements _i10.Provider<_i45.SettingsWindowFactory> {
   _SettingsWindowFactory$Provider(
     this._appWindows$Provider,
     this._settingsWindowState$Provider,
@@ -1507,7 +1624,7 @@ class _SettingsWindowFactory$Provider
 
   final _SettingsViewModel$Provider _settingsViewModel$Provider;
 
-  late final _i43.SettingsWindowFactory _factory =
+  late final _i45.SettingsWindowFactory _factory =
       _SettingsWindowFactory$Factory(
         _appWindows$Provider,
         _settingsWindowState$Provider,
@@ -1515,24 +1632,24 @@ class _SettingsWindowFactory$Provider
       );
 
   @override
-  _i43.SettingsWindowFactory get() => _factory;
+  _i45.SettingsWindowFactory get() => _factory;
 }
 
 class _SettingsWindowState$Provider
-    implements _i10.Provider<_i44.SettingsWindowState> {
+    implements _i10.Provider<_i46.SettingsWindowState> {
   _SettingsWindowState$Provider();
 
-  late final _i44.SettingsWindowState _singleton = _create();
+  late final _i46.SettingsWindowState _singleton = _create();
 
-  _i44.SettingsWindowState _create() => _i44.SettingsWindowState();
+  _i46.SettingsWindowState _create() => _i46.SettingsWindowState();
 
   @override
-  _i44.SettingsWindowState get() => _singleton;
+  _i46.SettingsWindowState get() => _singleton;
 }
 
 class _ViewModelFactoryOfFloatingShellViewModel$Provider
     implements
-        _i10.Provider<_i45.ViewModelFactory<_i18.FloatingShellViewModel>> {
+        _i10.Provider<_i47.ViewModelFactory<_i18.FloatingShellViewModel>> {
   const _ViewModelFactoryOfFloatingShellViewModel$Provider(
     this._floatingShellViewModel$Provider,
   );
@@ -1540,16 +1657,16 @@ class _ViewModelFactoryOfFloatingShellViewModel$Provider
   final _FloatingShellViewModel$Provider _floatingShellViewModel$Provider;
 
   @override
-  _i45.ViewModelFactory<_i18.FloatingShellViewModel> get() =>
+  _i47.ViewModelFactory<_i18.FloatingShellViewModel> get() =>
       ({
-        required _i45.ViewModelWidgetBuilder<_i18.FloatingShellViewModel>
+        required _i47.ViewModelWidgetBuilder<_i18.FloatingShellViewModel>
         builder,
-        _i46.Widget? child,
-        _i45.ViewModelErrorBuilder? error,
-        _i45.ViewModelInitializer<_i18.FloatingShellViewModel>? init,
+        _i48.Widget? child,
+        _i47.ViewModelErrorBuilder? error,
+        _i47.ViewModelInitializer<_i18.FloatingShellViewModel>? init,
         _i20.Key? key,
-        _i46.Widget? loading,
-      }) => _i45.ViewModelBuilder<_i18.FloatingShellViewModel>(
+        _i48.Widget? loading,
+      }) => _i47.ViewModelBuilder<_i18.FloatingShellViewModel>(
         key: key,
         viewModelProvider: _floatingShellViewModel$Provider,
         init: init,
@@ -1561,7 +1678,7 @@ class _ViewModelFactoryOfFloatingShellViewModel$Provider
 }
 
 class _ViewModelFactoryOfZanshinAppViewModel$Provider
-    implements _i10.Provider<_i45.ViewModelFactory<_i47.ZanshinAppViewModel>> {
+    implements _i10.Provider<_i47.ViewModelFactory<_i49.ZanshinAppViewModel>> {
   const _ViewModelFactoryOfZanshinAppViewModel$Provider(
     this._zanshinAppViewModel$Provider,
   );
@@ -1569,15 +1686,15 @@ class _ViewModelFactoryOfZanshinAppViewModel$Provider
   final _ZanshinAppViewModel$Provider _zanshinAppViewModel$Provider;
 
   @override
-  _i45.ViewModelFactory<_i47.ZanshinAppViewModel> get() =>
+  _i47.ViewModelFactory<_i49.ZanshinAppViewModel> get() =>
       ({
-        required _i45.ViewModelWidgetBuilder<_i47.ZanshinAppViewModel> builder,
-        _i46.Widget? child,
-        _i45.ViewModelErrorBuilder? error,
-        _i45.ViewModelInitializer<_i47.ZanshinAppViewModel>? init,
+        required _i47.ViewModelWidgetBuilder<_i49.ZanshinAppViewModel> builder,
+        _i48.Widget? child,
+        _i47.ViewModelErrorBuilder? error,
+        _i47.ViewModelInitializer<_i49.ZanshinAppViewModel>? init,
         _i20.Key? key,
-        _i46.Widget? loading,
-      }) => _i45.ViewModelBuilder<_i47.ZanshinAppViewModel>(
+        _i48.Widget? loading,
+      }) => _i47.ViewModelBuilder<_i49.ZanshinAppViewModel>(
         key: key,
         viewModelProvider: _zanshinAppViewModel$Provider,
         init: init,
@@ -1589,21 +1706,21 @@ class _ViewModelFactoryOfZanshinAppViewModel$Provider
 }
 
 class _WindowAppearanceSync$Provider
-    implements _i10.Provider<_i48.WindowAppearanceSync> {
+    implements _i10.Provider<_i50.WindowAppearanceSync> {
   _WindowAppearanceSync$Provider(this._settingsStore$Provider);
 
   final _SettingsStore$Provider _settingsStore$Provider;
 
-  late final _i48.WindowAppearanceSync _singleton = _create();
+  late final _i50.WindowAppearanceSync _singleton = _create();
 
-  _i48.WindowAppearanceSync _create() =>
-      _i48.WindowAppearanceSync(_settingsStore$Provider.get());
+  _i50.WindowAppearanceSync _create() =>
+      _i50.WindowAppearanceSync(_settingsStore$Provider.get());
 
   @override
-  _i48.WindowAppearanceSync get() => _singleton;
+  _i50.WindowAppearanceSync get() => _singleton;
 }
 
-class _ZanshinAppFactory$Factory implements _i49.ZanshinAppFactory {
+class _ZanshinAppFactory$Factory implements _i51.ZanshinAppFactory {
   const _ZanshinAppFactory$Factory(
     this._homePageFactory$Provider,
     this._zanshinWindowRootFactory$Provider,
@@ -1614,7 +1731,7 @@ class _ZanshinAppFactory$Factory implements _i49.ZanshinAppFactory {
   final _ZanshinWindowRootFactory$Provider _zanshinWindowRootFactory$Provider;
 
   @override
-  _i49.ZanshinApp create({_i20.Key? key}) => _i49.ZanshinApp(
+  _i51.ZanshinApp create({_i20.Key? key}) => _i51.ZanshinApp(
     homePageFactory: _homePageFactory$Provider.get(),
     rootFactory: _zanshinWindowRootFactory$Provider.get(),
     key: key,
@@ -1622,7 +1739,7 @@ class _ZanshinAppFactory$Factory implements _i49.ZanshinAppFactory {
 }
 
 class _ZanshinAppFactory$Provider
-    implements _i10.Provider<_i49.ZanshinAppFactory> {
+    implements _i10.Provider<_i51.ZanshinAppFactory> {
   _ZanshinAppFactory$Provider(
     this._homePageFactory$Provider,
     this._zanshinWindowRootFactory$Provider,
@@ -1632,24 +1749,24 @@ class _ZanshinAppFactory$Provider
 
   final _ZanshinWindowRootFactory$Provider _zanshinWindowRootFactory$Provider;
 
-  late final _i49.ZanshinAppFactory _factory = _ZanshinAppFactory$Factory(
+  late final _i51.ZanshinAppFactory _factory = _ZanshinAppFactory$Factory(
     _homePageFactory$Provider,
     _zanshinWindowRootFactory$Provider,
   );
 
   @override
-  _i49.ZanshinAppFactory get() => _factory;
+  _i51.ZanshinAppFactory get() => _factory;
 }
 
 class _ZanshinAppViewModel$Provider
-    implements _i10.Provider<_i47.ZanshinAppViewModel> {
+    implements _i10.Provider<_i49.ZanshinAppViewModel> {
   const _ZanshinAppViewModel$Provider(this._settingsStore$Provider);
 
   final _SettingsStore$Provider _settingsStore$Provider;
 
   @override
-  _i47.ZanshinAppViewModel get() =>
-      _i47.ZanshinAppViewModel(_settingsStore$Provider.get());
+  _i49.ZanshinAppViewModel get() =>
+      _i49.ZanshinAppViewModel(_settingsStore$Provider.get());
 }
 
 class _ZanshinApplication$Provider
@@ -1691,7 +1808,7 @@ class _ZanshinApplication$Provider
 }
 
 class _ZanshinWindowRootFactory$Factory
-    implements _i50.ZanshinWindowRootFactory {
+    implements _i52.ZanshinWindowRootFactory {
   const _ZanshinWindowRootFactory$Factory(
     this._viewModelFactoryOfZanshinAppViewModel$Provider,
     this._activeWindowTracker$Provider,
@@ -1706,12 +1823,12 @@ class _ZanshinWindowRootFactory$Factory
   final _IconRegistry$Provider _iconRegistry$Provider;
 
   @override
-  _i50.ZanshinWindowRoot create({
+  _i52.ZanshinWindowRoot create({
     required String windowKey,
-    required _i46.Widget child,
+    required _i48.Widget child,
     bool? sizeToContent,
     _i20.Key? key,
-  }) => _i50.ZanshinWindowRoot(
+  }) => _i52.ZanshinWindowRoot(
     viewModelFactory: _viewModelFactoryOfZanshinAppViewModel$Provider.get(),
     tracker: _activeWindowTracker$Provider.get(),
     icons: _iconRegistry$Provider.get(),
@@ -1723,7 +1840,7 @@ class _ZanshinWindowRootFactory$Factory
 }
 
 class _ZanshinWindowRootFactory$Provider
-    implements _i10.Provider<_i50.ZanshinWindowRootFactory> {
+    implements _i10.Provider<_i52.ZanshinWindowRootFactory> {
   _ZanshinWindowRootFactory$Provider(
     this._viewModelFactoryOfZanshinAppViewModel$Provider,
     this._activeWindowTracker$Provider,
@@ -1737,7 +1854,7 @@ class _ZanshinWindowRootFactory$Provider
 
   final _IconRegistry$Provider _iconRegistry$Provider;
 
-  late final _i50.ZanshinWindowRootFactory _factory =
+  late final _i52.ZanshinWindowRootFactory _factory =
       _ZanshinWindowRootFactory$Factory(
         _viewModelFactoryOfZanshinAppViewModel$Provider,
         _activeWindowTracker$Provider,
@@ -1745,18 +1862,18 @@ class _ZanshinWindowRootFactory$Provider
       );
 
   @override
-  _i50.ZanshinWindowRootFactory get() => _factory;
+  _i52.ZanshinWindowRootFactory get() => _factory;
 }
 
-class _ZanshinWorker$Provider implements _i10.Provider<_i51.ZanshinWorker> {
+class _ZanshinWorker$Provider implements _i10.Provider<_i53.ZanshinWorker> {
   _ZanshinWorker$Provider(this._module);
 
   final _i3.BootModule _module;
 
-  late final _i51.ZanshinWorker _singleton = _create();
+  late final _i53.ZanshinWorker _singleton = _create();
 
-  _i51.ZanshinWorker _create() => _module.worker();
+  _i53.ZanshinWorker _create() => _module.worker();
 
   @override
-  _i51.ZanshinWorker get() => _singleton;
+  _i53.ZanshinWorker get() => _singleton;
 }

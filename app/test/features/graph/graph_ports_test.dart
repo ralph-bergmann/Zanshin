@@ -11,11 +11,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/bookmarks/bookmark_list_model.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart' show GraphCommitContent, GraphLayout;
 import 'package:zanshin/src/features/graph/graph_ports.dart';
+import 'package:zanshin/src/features/graph/graph_stack_store.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
+import 'package:zanshin/src/features/graph/view_state_cleanup.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin/src/features/projects/worker_project_repos.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
 
 /// [RepoGraphSource] recording every layout request.
 class _Counting implements GraphSource {
@@ -642,6 +646,170 @@ void main() {
     );
     final String commit = found.entries.single.commitId;
     expect((await source.content(op, <String>[commit]))[commit]!.subject, 'init');
+  });
+
+  group('Story 10.37: the view state cleanup (real repo)', () {
+    /// A repo where `first` was described (its old commit is hidden), `third` abandoned, and the graph shows only
+    /// `second`; the stores hold a key of each, and one that is no id.
+    Future<
+      ({
+        ProjectRepo repo,
+        GraphViewModel model,
+        ProjectStackStore stacks,
+        ProjectViewedStore viewed,
+        String first,
+        String second,
+      })
+    >
+    setUpCleanup(String name) async {
+      final ProjectRepo repo = await openRepo(name);
+      final String first = (await repo.handle.status()).workingCopyChangeId!;
+      final String oldCommit = (await repo.handle.show(revset: first)).single.change.commitId;
+      final String second = (await repo.handle.newChange(<String>[first])).newChangeIds.single;
+      // Described, so leaving it as @ does not abandon it.
+      await repo.handle.describe(changeId: second, description: 'second');
+      final String third = (await repo.handle.newChange(<String>[first])).newChangeIds.single;
+      await repo.handle.describe(changeId: first, description: 'rewritten');
+      await repo.handle.abandon(<String>[third]);
+      final SettingsStore settings = await SettingsStore.load(File('${temp.path}/$name-settings.json'));
+      final stacks = ProjectStackStore(settings, pathOf(name))
+        ..save(GraphStackToggles(expanded: <String>{third, first}, collapsed: <String>{oldCommit, 'not-an-id'}));
+      final viewed = ProjectViewedStore(settings, pathOf(name))
+        ..save(<String>{'$third:fa:a.txt', '$first:fb:a.txt', '$second:fc:b.txt'});
+      final model = GraphViewModel()..init(RepoGraphSource(repo), revset: second);
+      addTearDown(model.dispose);
+      return (repo: repo, model: model, stacks: stacks, viewed: viewed, first: first, second: second);
+    }
+
+    test(
+      'the abandoned change and the hidden commit go; existing ones hidden by the search and non-ids stay',
+      () async {
+        final (
+          :ProjectRepo repo,
+          :GraphViewModel model,
+          :ProjectStackStore stacks,
+          :ProjectViewedStore viewed,
+          :String first,
+          :String second,
+        ) = await setUpCleanup(
+          'cleanup',
+        );
+        final cleanup = ViewStateCleanup(
+          graph: model,
+          stacks: stacks,
+          viewed: viewed,
+          find: (op, expression, {required limit, required shortPrefixes}) =>
+              repo.handle.findChanges(op, expression, limit: limit, shortPrefixes: shortPrefixes),
+        );
+        addTearDown(cleanup.dispose);
+        await until(() => viewed.load().length == 2);
+        expect(model.layout!.indexOfKey(first), isNull, reason: 'the search hides first');
+        expect(viewed.load(), <String>{'$first:fb:a.txt', '$second:fc:b.txt'});
+        expect(stacks.load(), GraphStackToggles(expanded: <String>{first}, collapsed: const <String>{'not-an-id'}));
+      },
+    );
+
+    test('a failed query drops nothing', () async {
+      final (
+        :ProjectRepo repo,
+        :GraphViewModel model,
+        :ProjectStackStore stacks,
+        :ProjectViewedStore viewed,
+        first: _,
+        second: _,
+      ) = await setUpCleanup(
+        'cleanup-error',
+      );
+      final GraphStackToggles toggles = stacks.load();
+      final Set<String> keys = viewed.load();
+      var asked = false;
+      final cleanup = ViewStateCleanup(
+        graph: model,
+        stacks: stacks,
+        viewed: viewed,
+        find: (op, expression, {required limit, required shortPrefixes}) async {
+          asked = true;
+          throw const ZanshinFfiException('jj.revset_parse_error');
+        },
+      );
+      addTearDown(cleanup.dispose);
+      await until(() => asked);
+      await settle();
+      expect(stacks.load(), toggles);
+      expect(viewed.load(), keys);
+    });
+
+    test('a truncated result drops nothing', () async {
+      final (
+        :ProjectRepo repo,
+        :GraphViewModel model,
+        :ProjectStackStore stacks,
+        :ProjectViewedStore viewed,
+        first: _,
+        second: _,
+      ) = await setUpCleanup(
+        'cleanup-truncated',
+      );
+      final GraphStackToggles toggles = stacks.load();
+      final Set<String> keys = viewed.load();
+      var answered = false;
+      final cleanup = ViewStateCleanup(
+        graph: model,
+        stacks: stacks,
+        viewed: viewed,
+        find: (op, expression, {required limit, required shortPrefixes}) async {
+          final FoundChanges found = await repo.handle.findChanges(
+            op,
+            expression,
+            limit: limit,
+            shortPrefixes: shortPrefixes,
+          );
+          answered = true;
+          return FoundChanges(entries: found.entries.take(1).toList(), truncated: true, warnings: const []);
+        },
+      );
+      addTearDown(cleanup.dispose);
+      await until(() => answered);
+      await settle();
+      expect(stacks.load(), toggles);
+      expect(viewed.load(), keys);
+    });
+
+    test('marks and toggles that land while the query runs stay; the gone ids still go', () async {
+      final (
+        :ProjectRepo repo,
+        :GraphViewModel model,
+        :ProjectStackStore stacks,
+        :ProjectViewedStore viewed,
+        :String first,
+        :String second,
+      ) = await setUpCleanup(
+        'cleanup-race',
+      );
+      const newMark = 'kkkkkkkkkkkk:ff:new.txt';
+      const newToggle = 'zzzzzzzzzzzz';
+      final cleanup = ViewStateCleanup(
+        graph: model,
+        stacks: stacks,
+        viewed: viewed,
+        find: (op, expression, {required limit, required shortPrefixes}) async {
+          viewed.save(<String>{...viewed.load(), newMark});
+          final GraphStackToggles toggles = stacks.load();
+          stacks.save(
+            GraphStackToggles(expanded: <String>{...toggles.expanded, newToggle}, collapsed: toggles.collapsed),
+          );
+          return repo.handle.findChanges(op, expression, limit: limit, shortPrefixes: shortPrefixes);
+        },
+      );
+      addTearDown(cleanup.dispose);
+      // The mark lands first (4 keys), then the abandoned change's goes.
+      await until(() => viewed.load().contains(newMark) && viewed.load().length == 3);
+      expect(viewed.load(), <String>{'$first:fb:a.txt', '$second:fc:b.txt', newMark});
+      expect(
+        stacks.load(),
+        GraphStackToggles(expanded: <String>{first, newToggle}, collapsed: const <String>{'not-an-id'}),
+      );
+    });
   });
 
   group('Story 10.9: each action is one jj v0.46.0 command, its ids POSIX shell-quoted', () {

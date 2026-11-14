@@ -198,6 +198,178 @@ void main() {
     });
   });
 
+  group('project states (Story 10.37)', () {
+    const legacyJson =
+        '{"projects": {"projects": [ '
+        '{"path": "/r/a", "name": "a", "viewedFiles": ["kx:ab:a.txt"], "expandedStacks": ["kx"], '
+        '"collapsedStacks": ["qm", "nq"]}, '
+        '{"path": "/r/b", "name": "b", "viewedFiles": [], "expandedStacks": [], "collapsedStacks": []} '
+        ']}}';
+    const state = ProjectState(viewedFiles: ['kx:ab:a.txt'], expandedStacks: ['kx'], collapsedStacks: ['qm', 'nq']);
+
+    Future<void> flushMicrotasks() => Future<void>.delayed(Duration.zero);
+
+    test('an old settings.json moves the lists into the state file and is written once without them', () async {
+      await file.writeAsString(legacyJson);
+
+      final SettingsStore store = await SettingsStore.load(file);
+
+      final String written = file.readAsStringSync();
+      for (final key in ['viewedFiles', 'expandedStacks', 'collapsedStacks']) {
+        expect(written, isNot(contains(key)));
+      }
+      final String id = store.value.projects.projects.first.stateId!;
+      expect(id, matches(RegExp(r'^[0-9a-f]{16}$')));
+      expect(store.value.projects.projects.last.stateId, isNull, reason: 'b had no view state');
+      final stateFile = File('${dir.path}/projects/$id.json');
+      expect(ProjectState.fromJson(jsonDecode(stateFile.readAsStringSync()) as Map<String, Object?>), state);
+      expect(store.projectStates.of('/r/a')!.value, state);
+      expect(warnings, isEmpty);
+    });
+
+    test('a failed state write keeps the lists in memory and the store falls back to them', () async {
+      await file.writeAsString(legacyJson);
+      // A file in the folder's place makes every state write fail.
+      await File('${dir.path}/projects').writeAsString('');
+
+      final SettingsStore store = await SettingsStore.load(file);
+
+      expect(file.readAsStringSync(), isNot(contains('viewedFiles')));
+      expect(store.projectStates.of('/r/a')!.value, state);
+      expect(warnings, hasLength(1));
+    });
+
+    test('of: a path outside the registry has none; the first call gives the entry its state id', () async {
+      final SettingsStore store = await SettingsStore.load(file);
+      await store.update(
+        (s) => s.copyWith(
+          projects: const ProjectsSettings(
+            projects: [ProjectEntry(path: '/r/a', name: 'a')],
+          ),
+        ),
+      );
+      var notified = 0;
+      store.addListener(() => notified++);
+
+      expect(store.projectStates.of('/r/none'), isNull);
+      final ProjectStateStore? a = store.projectStates.of('/r/a');
+      expect(a!.value, const ProjectState());
+      expect(notified, 0, reason: 'the id is written in a microtask');
+      expect(store.projectStates.of('/r/a'), same(a));
+
+      await flushMicrotasks();
+      await store.settled;
+      final String id = store.value.projects.projects.single.stateId!;
+      expect(a.file.path, '${store.projectStates.directory.path}/$id.json');
+      expect(jsonDecode(file.readAsStringSync()), store.value.toJson());
+      expect(store.projectStates.of('/r/a'), same(a));
+
+      // Removed and added again: the entry gets a new id, and it is written.
+      await store.projectStates.delete(id);
+      await store.update(
+        (s) => s.copyWith(
+          projects: const ProjectsSettings(
+            projects: [ProjectEntry(path: '/r/a', name: 'a')],
+          ),
+        ),
+      );
+      expect(store.projectStates.of('/r/a'), isNot(same(a)));
+      await flushMicrotasks();
+      await store.settled;
+      expect(store.value.projects.projects.single.stateId, allOf(isNotNull, isNot(id)));
+    });
+
+    test('update notifies at once and writes the state file, never settings.json', () async {
+      final SettingsStore store = await SettingsStore.load(file);
+      await store.update(
+        (s) => s.copyWith(
+          projects: const ProjectsSettings(
+            projects: [ProjectEntry(path: '/r/a', name: 'a', stateId: 'a1')],
+          ),
+        ),
+      );
+      final String before = file.readAsStringSync();
+      final ProjectStateStore a = store.projectStates.of('/r/a')!;
+      final List<ProjectState> seen = [];
+      a.addListener(() => seen.add(a.value));
+
+      final Future<void> done = a.update((s) => s.copyWith(expandedStacks: ['kx']));
+
+      expect(seen, [
+        const ProjectState(expandedStacks: ['kx']),
+      ]);
+      await done;
+      expect(jsonDecode(File('${dir.path}/projects/a1.json').readAsStringSync()), {
+        'viewedFiles': <Object?>[],
+        'expandedStacks': ['kx'],
+        'collapsedStacks': <Object?>[],
+      });
+      expect(file.readAsStringSync(), before);
+      expect(File('${dir.path}/projects/a1.json.tmp').existsSync(), isFalse);
+
+      await a.update((s) => s);
+      expect(seen, hasLength(1), reason: 'an unchanged value neither notifies nor writes');
+    });
+
+    test('a failed write is logged and keeps the value', () async {
+      final SettingsStore store = await SettingsStore.load(file);
+      await store.update(
+        (s) => s.copyWith(
+          projects: const ProjectsSettings(
+            projects: [ProjectEntry(path: '/r/a', name: 'a', stateId: 'a1')],
+          ),
+        ),
+      );
+      await Directory('${dir.path}/projects/a1.json').create(recursive: true);
+      final ProjectStateStore a = store.projectStates.of('/r/a')!;
+
+      await a.update((s) => s.copyWith(viewedFiles: ['k']));
+
+      expect(a.value.viewedFiles, ['k']);
+      expect(warnings, isNotEmpty);
+      expect(warnings.last.message, isNot(contains(dir.path)));
+    });
+
+    test('an unreadable state file is logged and starts empty', () async {
+      final SettingsStore store = await SettingsStore.load(file);
+      await store.update(
+        (s) => s.copyWith(
+          projects: const ProjectsSettings(
+            projects: [ProjectEntry(path: '/r/a', name: 'a', stateId: 'a1')],
+          ),
+        ),
+      );
+      await File('${dir.path}/projects/a1.json').create(recursive: true);
+      await File('${dir.path}/projects/a1.json').writeAsString('{"viewedFiles": 5}');
+
+      expect(store.projectStates.of('/r/a')!.value, const ProjectState());
+      expect(warnings, hasLength(1));
+    });
+
+    test('delete removes the file after its pending writes, and the store writes nothing more', () async {
+      final SettingsStore store = await SettingsStore.load(file);
+      await store.update(
+        (s) => s.copyWith(
+          projects: const ProjectsSettings(
+            projects: [ProjectEntry(path: '/r/a', name: 'a', stateId: 'a1')],
+          ),
+        ),
+      );
+      final ProjectStateStore a = store.projectStates.of('/r/a')!;
+      final stateFile = File('${dir.path}/projects/a1.json');
+
+      unawaited(a.update((s) => s.copyWith(viewedFiles: ['k'])));
+      await store.projectStates.delete('a1');
+      expect(stateFile.existsSync(), isFalse);
+
+      await a.update((s) => s.copyWith(viewedFiles: ['j']));
+      expect(stateFile.existsSync(), isFalse);
+
+      await store.projectStates.delete('never-written');
+      expect(warnings, isEmpty);
+    });
+  });
+
   test('open() loads from the application support directory', () async {
     PathProviderPlatform.instance = FakePathProvider(dir.path);
     await file.writeAsString(_darkJson);

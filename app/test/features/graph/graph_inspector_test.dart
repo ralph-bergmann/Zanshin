@@ -1504,7 +1504,7 @@ void main() {
       expect(find.byKey(const ValueKey<String>('inspector-file-viewed')), findsOneWidget);
       expect(find.text('1/2 viewed'), findsOneWidget);
       expect(find.text('Mark all'), findsOneWidget);
-      expect(settings.value.projects.projects.first.viewedFiles, <String>['$_mutable:fa:src/a.dart']);
+      expect(settings.projectStates.of('/r/a')!.value.viewedFiles, <String>['$_mutable:fa:src/a.dart']);
       await tester.tap(find.text('Viewed — diff folded away. Click to show it again.'));
       await tester.pump();
       expect(inspector.isViewed('src/a.dart'), isFalse);
@@ -1526,7 +1526,7 @@ void main() {
       await tester.pump();
       expect(inspector.viewedCount, 0);
       expect(find.text('all viewed'), findsNothing);
-      expect(settings.value.projects.projects.first.viewedFiles, isEmpty);
+      expect(settings.projectStates.of('/r/a')!.value.viewedFiles, isEmpty);
       await unmount(tester);
     });
 
@@ -1553,6 +1553,50 @@ void main() {
       await settle(tester);
       expect(inspector.isViewed('src/new.dart'), isFalse, reason: 'its changed lines reset the mark');
       await unmount(tester);
+    });
+
+    group('Story 10.37: a read drops the change\'s marks it no longer shows', () {
+      const stale = <String>[
+        '$_mutable:fa:src/a.dart',
+        '$_mutable:00:src/a.dart',
+        '$_mutable:fb:src/gone.dart',
+        'kkkkkkkkkkkk:ff:x',
+      ];
+      List<String> stored() => settings.projectStates.of('/r/a')!.value.viewedFiles;
+
+      testWidgets('an old fingerprint and an unlisted file go; other changes and current marks stay', (tester) async {
+        unawaited(settings.projectStates.of('/r/a')!.update((s) => s.copyWith(viewedFiles: stale)));
+        await pump(tester);
+        await settle(tester);
+        expect(stored(), <String>['$_mutable:fa:src/a.dart', 'kkkkkkkkkkkk:ff:x']);
+        expect(inspector.isViewed('src/a.dart'), isTrue);
+        await unmount(tester);
+      });
+
+      testWidgets('a refused summary drops nothing', (tester) async {
+        details.refuseSummary = const ZanshinFfiException('jj.internal', 'no');
+        unawaited(settings.projectStates.of('/r/a')!.update((s) => s.copyWith(viewedFiles: stale)));
+        await pump(tester);
+        await settle(tester);
+        expect(stored(), stale);
+        await unmount(tester);
+      });
+
+      testWidgets('a node keyed by its commit id (hidden, divergent) drops nothing', (tester) async {
+        source.respond = (_) => _layout(
+          'op${ops++}',
+          changeIds: <String>[
+            for (final String key in _keys)
+              if (key == _mutable) 'dddddddddddd' else key,
+          ],
+        );
+        const divergent = <String>['dddddddddddd:00:src/a.dart'];
+        unawaited(settings.projectStates.of('/r/a')!.update((s) => s.copyWith(viewedFiles: divergent)));
+        await pump(tester);
+        await settle(tester);
+        expect(stored(), divergent);
+        await unmount(tester);
+      });
     });
 
     testWidgets('a reload without the focused path focuses the first file', (tester) async {
@@ -1585,7 +1629,7 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('Viewed follows another writer of the repository\'s viewedFiles; other settings notify nothing', (
+    testWidgets('Viewed follows another writer of the repository\'s view state; another one\'s notifies nothing', (
       tester,
     ) async {
       await pump(tester);
@@ -1593,26 +1637,14 @@ void main() {
       var notified = 0;
       void count() => notified++;
       inspector.addListener(count);
-      void writeViewed(String repo, List<String> keys) => unawaited(
-        settings
-            .update(
-              (s) => s.copyWith(
-                projects: s.projects.copyWith(
-                  projects: <ProjectEntry>[
-                    for (final ProjectEntry p in s.projects.projects)
-                      if (p.path == repo) p.copyWith(viewedFiles: keys) else p,
-                  ],
-                ),
-              ),
-            )
-            .onError<FileSystemException>((_, _) {}),
-      );
+      void writeViewed(String repo, List<String> keys) =>
+          unawaited(settings.projectStates.of(repo)!.update((s) => s.copyWith(viewedFiles: keys)));
       writeViewed('/r/a', <String>['$_mutable:fa:src/a.dart']);
       await tester.pump();
       expect(inspector.isViewed('src/a.dart'), isTrue);
       expect(notified, 1);
       expect(find.text('1/2 viewed'), findsOneWidget);
-      // The settings changed, this repository's marks did not: no notification.
+      // Another repository's marks changed, this one's did not: no notification.
       writeViewed('/r/b', <String>['x:ff:y']);
       await tester.pump();
       expect(notified, 1);
@@ -2826,6 +2858,26 @@ void main() {
     expect(stored.load(), hasLength(2000));
     expect(stored.load().first, 'k5', reason: 'the oldest go');
     expect(viewedKey('abc', 'a:b.dart', 'ff'), 'abc:ff:a:b.dart');
+  });
+
+  test('Story 10.37: a Viewed mark writes the project\'s state file, never settings.json', () async {
+    final store = ProjectViewedStore(settings, '/r/a');
+    // The first open gives the entry its state id: that is the one settings write.
+    expect(store.load(), isEmpty);
+    await Future<void>.delayed(Duration.zero);
+    await settings.settled;
+    final file = File('${dir.path}/settings.json');
+    final String before = file.readAsStringSync();
+    final String id = settings.value.projects.projects.first.stateId!;
+    store.save(<String>{'k1', 'k2'});
+    await settings.settled;
+    expect(file.readAsStringSync(), before);
+    expect(
+      ProjectState.fromJson(
+        jsonDecode(File('${dir.path}/projects/$id.json').readAsStringSync()) as Map<String, Object?>,
+      ).viewedFiles,
+      <String>['k1', 'k2'],
+    );
   });
 
   test('draftFrom splits the first line from the rest after the blank line', () {

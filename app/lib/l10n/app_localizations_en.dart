@@ -2481,6 +2481,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsHistory => 'History';
 
   @override
+  String get settingsViewState => 'View state';
+
+  @override
+  String get settingsResetViewState => 'Reset view state';
+
+  @override
+  String get settingsResetViewStateHint => 'Clears the files marked Viewed and the stacks you expanded or collapsed.';
+
+  @override
+  String get settingsResetViewStateButton => 'Reset';
+
+  @override
   String get settingsTrunk => 'Trunk';
 
   @override

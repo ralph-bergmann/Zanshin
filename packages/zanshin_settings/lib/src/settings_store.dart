@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' show CheckedFromJsonException;
@@ -9,10 +11,14 @@ import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'json_file.dart';
 import 'model/app_settings.dart';
+import 'model/project_state.dart';
+import 'model/projects_settings.dart';
+
+part 'project_states.dart';
 
 final _log = Logger('zanshin.settings');
-const _encoder = JsonEncoder.withIndent('  ');
 
 /// In-memory cache of [AppSettings] backed by one JSON file.
 ///
@@ -25,6 +31,9 @@ class SettingsStore implements ValueListenable<AppSettings> {
   /// The file this store persists to.
   final File file;
 
+  /// The projects' view state files in `projects/` beside [file] (Story 10.37).
+  late final projectStates = ProjectStates._(this);
+
   final ValueNotifier<AppSettings> _notifier;
   var _queue = Future<void>.value();
 
@@ -33,7 +42,9 @@ class SettingsStore implements ValueListenable<AppSettings> {
   /// A missing file yields defaults without writing anything. An unreadable or
   /// malformed file is moved aside as `<file>.corrupt` (logged at WARNING) and
   /// defaults are used, so nothing is silently destroyed and a hand-edit typo
-  /// never blocks app start. Never throws for either case.
+  /// never blocks app start. Never throws for either case. A file that still
+  /// holds a project's view state lists has them moved into the state files
+  /// ([ProjectStates]) and is written once without them.
   static Future<SettingsStore> load(File file) async {
     if (!file.existsSync()) {
       return SettingsStore._(file, const AppSettings());
@@ -43,7 +54,9 @@ class SettingsStore implements ValueListenable<AppSettings> {
       if (decoded is! Map<String, Object?>) {
         return await _recover(file, const FormatException('top-level JSON value is not an object'), StackTrace.current);
       }
-      return SettingsStore._(file, AppSettings.fromJson(decoded));
+      final store = SettingsStore._(file, AppSettings.fromJson(decoded));
+      await store.projectStates._migrate(decoded);
+      return store;
     } on FormatException catch (error, stack) {
       return _recover(file, error, stack);
     } on CheckedFromJsonException catch (error, stack) {
@@ -72,7 +85,8 @@ class SettingsStore implements ValueListenable<AppSettings> {
   @override
   void removeListener(VoidCallback listener) => _notifier.removeListener(listener);
 
-  /// Completes when every write queued so far has finished, failed ones included; it never completes with an error.
+  /// Completes when every write queued so far has finished, failed ones and the view state files' included; it never
+  /// completes with an error.
   @visibleForTesting
   Future<void> get settled => _queue;
 
@@ -113,13 +127,8 @@ class SettingsStore implements ValueListenable<AppSettings> {
   }
 
   Future<void> _write(AppSettings settings) async {
-    final tmp = File(p.setExtension(file.path, '.json.tmp'));
     try {
-      await file.parent.create(recursive: true);
-      await tmp.writeAsString('${_encoder.convert(settings.toJson())}\n', flush: true);
-      // WHY: rename is atomic on POSIX — a crash mid-write never leaves a
-      // half-written settings.json behind.
-      await tmp.rename(file.path);
+      await writeJsonFile(file, settings.toJson());
     } on FileSystemException catch (error, stack) {
       _log
         ..warning('could not write ${file.uri.pathSegments.last}')

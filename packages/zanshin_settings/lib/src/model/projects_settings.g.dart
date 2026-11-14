@@ -58,6 +58,7 @@ _ProjectEntry _$ProjectEntryFromJson(Map<String, dynamic> json) =>
           ),
         ),
         bookmark: $checkedConvert('bookmark', (v) => v as String?),
+        stateId: $checkedConvert('stateId', (v) => v as String?),
         expandedStacks: $checkedConvert(
           'expandedStacks',
           (v) =>
@@ -106,11 +107,9 @@ Map<String, dynamic> _$ProjectEntryToJson(_ProjectEntry instance) =>
       'lastOpened': instance.lastOpened?.toIso8601String(),
       'status': _$ProjectStatusEnumMap[instance.status],
       'bookmark': instance.bookmark,
-      'expandedStacks': instance.expandedStacks,
-      'collapsedStacks': instance.collapsedStacks,
+      'stateId': instance.stateId,
       'graphView': instance.graphView,
       'recentSearches': instance.recentSearches,
-      'viewedFiles': instance.viewedFiles,
       'remotePoll': _$RemotePollSettingEnumMap[instance.remotePoll]!,
     };
 

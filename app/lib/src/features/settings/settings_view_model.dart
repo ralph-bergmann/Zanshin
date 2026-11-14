@@ -878,4 +878,12 @@ class SettingsViewModel extends ChangeNotifier {
       unawaited(session.registry.setRemotePoll(path, poll));
     }
   }
+
+  /// Clears the open project's view state (Story 10.37): its Viewed marks and stack toggles; the graph and the
+  /// inspector follow at once.
+  void resetViewState() {
+    if (root case final String path) {
+      unawaited(store.projectStates.of(path)?.update((_) => const ProjectState()));
+    }
+  }
 }

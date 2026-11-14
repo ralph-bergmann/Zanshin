@@ -1,58 +1,60 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
-import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 import 'graph_ports.dart';
 
-/// A repository's stack toggles on its [ProjectEntry] (Story 10.17): `expandedStacks` and `collapsedStacks` of the
-/// registry entry at [path]. A path not in the registry keeps them in memory for the session; a failed write is
-/// swallowed (the store keeps the value), as the View options' are.
+/// A repository's stack toggles in its view state file (Story 10.17; Story 10.37): `expandedStacks` and
+/// `collapsedStacks` of `SettingsStore.projectStates.of(path)`, the newest [limit] of each. A path not in the registry
+/// keeps them in memory for the session; a failed write keeps the value (the state store logs it).
 class ProjectStackStore implements GraphStackStore {
-  /// The toggles of the repository at [path] in [_store].
-  ProjectStackStore(this._store, this.path);
+  /// The toggles of the repository at [path] in [_settings].
+  ProjectStackStore(this._settings, this.path);
 
-  final SettingsStore _store;
+  /// How many toggles each list keeps, the newest.
+  static const limit = 500;
+
+  final SettingsStore _settings;
 
   /// The repository's root, the registry key.
   final String path;
 
-  GraphStackToggles? _memory;
+  final _memory = ValueNotifier<GraphStackToggles>(const GraphStackToggles());
 
-  ProjectEntry? get _entry => _store.value.projects.projects.where((p) => p.path == path).firstOrNull;
+  ProjectStateStore? get _state => _settings.projectStates.of(path);
 
   @override
   GraphStackToggles load() {
-    final ProjectEntry? entry = _entry;
-    if (entry == null) {
-      return _memory ?? const GraphStackToggles();
+    final ProjectState? state = _state?.value;
+    if (state == null) {
+      return _memory.value;
     }
-    return GraphStackToggles(expanded: entry.expandedStacks.toSet(), collapsed: entry.collapsedStacks.toSet());
+    return GraphStackToggles(expanded: state.expandedStacks.toSet(), collapsed: state.collapsedStacks.toSet());
   }
 
   @override
   void save(GraphStackToggles toggles) {
-    if (_entry == null) {
-      _memory = toggles;
+    final List<String> expanded = _newest(toggles.expanded);
+    final List<String> collapsed = _newest(toggles.collapsed);
+    final ProjectStateStore? state = _state;
+    if (state == null) {
+      _memory.value = GraphStackToggles(expanded: expanded.toSet(), collapsed: collapsed.toSet());
       return;
     }
-    final List<String> expanded = toggles.expanded.toList()..sort();
-    final List<String> collapsed = toggles.collapsed.toList()..sort();
-    unawaited(
-      _store
-          .update(
-            (s) => s.copyWith(
-              projects: s.projects.copyWith(
-                projects: <ProjectEntry>[
-                  for (final ProjectEntry p in s.projects.projects)
-                    if (p.path == path) p.copyWith(expandedStacks: expanded, collapsedStacks: collapsed) else p,
-                ],
-              ),
-            ),
-          )
-          .onError<FileSystemException>((_, _) {}),
-    );
+    unawaited(state.update((s) => s.copyWith(expandedStacks: expanded, collapsedStacks: collapsed)));
+  }
+
+  static List<String> _newest(Set<String> keys) => keys.skip(keys.length > limit ? keys.length - limit : 0).toList();
+
+  @override
+  void addListener(VoidCallback listener) => (_state ?? _memory).addListener(listener);
+
+  @override
+  void removeListener(VoidCallback listener) {
+    _state?.removeListener(listener);
+    _memory.removeListener(listener);
   }
 }

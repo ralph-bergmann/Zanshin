@@ -139,6 +139,12 @@ class _Toggles implements GraphStackStore {
 
   @override
   void save(GraphStackToggles toggles) {}
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
 }
 
 /// A store on a missing file in a fresh temp folder, holding [graph]. Loading a missing file reads nothing, and the

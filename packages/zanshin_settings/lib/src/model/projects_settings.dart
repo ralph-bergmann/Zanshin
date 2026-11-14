@@ -59,11 +59,15 @@ abstract class ProjectEntry with _$ProjectEntry {
     /// (design question (b)) — or null when there was none ("—").
     String? bookmark,
 
-    /// The graph's stacks the user expanded, by their run's oldest member key (Story 10.17).
-    @Default(<String>[]) List<String> expandedStacks,
+    /// The name of its view state file, `projects/<stateId>.json` beside `settings.json` (Story 10.37), or null until
+    /// its view state is first opened.
+    String? stateId,
 
-    /// The graph's stacks the user collapsed, by their run's oldest member key (Story 10.17).
-    @Default(<String>[]) List<String> collapsedStacks,
+    /// Read only to move them into the state file (Story 10.37): the stacks the user expanded before 10.37.
+    @JsonKey(includeToJson: false) @Default(<String>[]) List<String> expandedStacks,
+
+    /// Read only to move them into the state file (Story 10.37): the stacks the user collapsed before 10.37.
+    @JsonKey(includeToJson: false) @Default(<String>[]) List<String> collapsedStacks,
 
     /// What the graph shows, as the search's JSON text (Story 10.21), or null for the default search.
     String? graphView,
@@ -71,8 +75,8 @@ abstract class ProjectEntry with _$ProjectEntry {
     /// The graph search's recent go-tos and filters, newest first, each as its JSON text (Story 10.21).
     @Default(<String>[]) List<String> recentSearches,
 
-    /// The inspector's Viewed marks, each `<change id>:<fingerprint>:<path>`, oldest first (Story 10.24).
-    @Default(<String>[]) List<String> viewedFiles,
+    /// Read only to move them into the state file (Story 10.37): the inspector's Viewed marks before 10.37.
+    @JsonKey(includeToJson: false) @Default(<String>[]) List<String> viewedFiles,
 
     /// Settings › Project's "Check for remote changes" (Story 11.7; 11.8's poll reads it); every 15 minutes by
     /// default, and for a value this version does not know.

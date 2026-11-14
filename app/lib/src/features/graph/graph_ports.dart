@@ -113,12 +113,14 @@ class GraphStackToggles {
   int get hashCode => Object.hash(Object.hashAllUnordered(expanded), Object.hashAllUnordered(collapsed));
 }
 
-/// Where one repository's [GraphStackToggles] persist (Story 10.17).
-abstract interface class GraphStackStore {
-  /// The stored toggles.
+/// Where one repository's [GraphStackToggles] persist (Story 10.17); it notifies when they change, by anyone (Story
+/// 10.37: the cleanup and Settings' reset write them too).
+abstract interface class GraphStackStore implements Listenable {
+  /// The stored toggles, each set oldest first.
   GraphStackToggles load();
 
-  /// Stores [toggles]; a failed write keeps them for the session.
+  /// Stores [toggles] (each set oldest first; the store may keep only the newest); a failed write keeps them for the
+  /// session.
   void save(GraphStackToggles toggles);
 }
 

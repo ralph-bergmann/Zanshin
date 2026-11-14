@@ -16,11 +16,9 @@ void main() {
         lastOpened: opened,
         status: ProjectStatus.conflict,
         bookmark: 'main',
-        expandedStacks: <String>['kxwsnptm'],
-        collapsedStacks: <String>['qmsvtlkr', 'nqxwrptl'],
+        stateId: '0123456789abcdef',
         graphView: '{"view":"all"}',
         recentSearches: <String>['{"change":"kxwsnptm"}'],
-        viewedFiles: <String>['kxwsnptm:ab12:lib/a:b.dart'],
       ),
       const ProjectEntry(path: '/r/b', name: 'b'),
     ],
@@ -50,17 +48,32 @@ void main() {
       'lastOpened': '2026-10-18T09:30:15.250Z',
       'status': 'conflict',
       'bookmark': 'main',
-      'expandedStacks': <Object?>['kxwsnptm'],
-      'collapsedStacks': <Object?>['qmsvtlkr', 'nqxwrptl'],
+      'stateId': '0123456789abcdef',
       'graphView': '{"view":"all"}',
       'recentSearches': <Object?>['{"change":"kxwsnptm"}'],
-      'viewedFiles': <Object?>['kxwsnptm:ab12:lib/a:b.dart'],
       'remotePoll': 'fifteenMinutes',
     });
     expect(projects['openProject'], '/r/a');
     final decoded = AppSettings.fromJson(json);
     expect(decoded.projects, registry);
     expect(decoded.projects.projects.first.lastOpened!.isUtc, isTrue);
+  });
+
+  test('Story 10.37: the view state lists are read from an old entry but never written', () {
+    final entry = ProjectEntry.fromJson(<String, Object?>{
+      'path': '/r/a',
+      'name': 'a',
+      'expandedStacks': <Object?>['kxwsnptm'],
+      'collapsedStacks': <Object?>['qmsvtlkr'],
+      'viewedFiles': <Object?>['kxwsnptm:ab12:lib/a:b.dart'],
+    });
+    expect(entry.expandedStacks, <String>['kxwsnptm']);
+    expect(entry.collapsedStacks, <String>['qmsvtlkr']);
+    expect(entry.viewedFiles, <String>['kxwsnptm:ab12:lib/a:b.dart']);
+    expect(
+      entry.toJson().keys,
+      isNot(anyOf(contains('expandedStacks'), contains('collapsedStacks'), contains('viewedFiles'))),
+    );
   });
 
   test('a file written before the registry existed loads with an empty one', () {

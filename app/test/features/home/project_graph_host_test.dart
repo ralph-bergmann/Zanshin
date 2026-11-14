@@ -144,7 +144,16 @@ void main() {
     await tester.pump();
     final GraphMenuBinding first = activeGraph.value!;
 
-    await tester.runAsync(() => session.open('/r/jj'));
+    // Opening the scope gave the entry its view state id in a settings write queued in the fake zone (Story 10.37):
+    // the open's own writes queue behind it, so alternate real time and pumps until it is done.
+    var opened = false;
+    unawaited(session.open('/r/jj').then((_) => opened = true));
+    final openWatch = Stopwatch()..start();
+    while (!opened && openWatch.elapsed < const Duration(seconds: 10)) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+    expect(opened, isTrue);
     await tester.pump();
     final GraphMenuBinding second = activeGraph.value!;
     expect(second, isNot(same(first)), reason: "the new repository's graph");

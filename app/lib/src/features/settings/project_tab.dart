@@ -77,7 +77,8 @@ class ImmutableCount extends StatelessWidget {
 
 /// Settings › Project (Story 11.7): Remotes (the remote list with its verbs, Story 11.18; Fetch from `git.fetch`, Push
 /// to `git.push`, Check for remote changes),
-/// History (Trunk `revset-aliases."trunk()"`, Immutable commits ›) and Identity (a repo-scope `user.email`).
+/// History (Trunk `revset-aliases."trunk()"`, Immutable commits ›), Identity (a repo-scope `user.email`) and View state
+/// (Reset view state, Story 10.37).
 class SettingsProjectTab extends StatefulWidget {
   /// The tab over [vm]; [onImmutableCommits] opens the page.
   const SettingsProjectTab({required this.vm, required this.onImmutableCommits, super.key});
@@ -200,6 +201,20 @@ class _SettingsProjectTabState extends State<SettingsProjectTab> {
           ],
         ),
         SettingsAuthorFact(vm: vm),
+        SettingsGroup(
+          title: s.settingsViewState,
+          children: <Widget>[
+            SettingsRow(
+              label: s.settingsResetViewState,
+              hint: s.settingsResetViewStateHint,
+              child: ZsButton(
+                label: s.settingsResetViewStateButton,
+                onPressed: vm.resetViewState,
+                identifier: 'settings-reset-view-state',
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }

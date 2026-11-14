@@ -86,6 +86,10 @@ extension on SettingsRig {
   }
 }
 
+/// The remote form's Run button.
+ZsButton _run(WidgetTester tester) =>
+    tester.widget<ZsButton>(find.byWidgetPredicate((w) => w is ZsButton && w.identifier == 'settings-remote-run'));
+
 /// Every text on screen, rich text included.
 List<String> _texts(WidgetTester tester) => <String>[
   for (final RichText text in tester.widgetList<RichText>(find.byType(RichText))) text.text.toPlainText(),
@@ -183,7 +187,7 @@ void main() {
 
     await rig.tap('settings-remote-add');
     expect(rig.command, "jj git remote add '<name>' '<url>'");
-    expect(tester.widget<ZsButton>(find.byType(ZsButton).last).onPressed, isNull, reason: 'off until name and URL');
+    expect(_run(tester).onPressed, isNull, reason: 'off until name and URL');
     await rig.type('Name', 'fork');
     await rig.type('URL', 'https://github.com/ralph/x.git');
     await rig.type('Push URL', 'git@github.com:ralph/x.git');
@@ -262,7 +266,7 @@ void main() {
     final EditableText field = tester.widget<EditableText>(find.byType(EditableText).first);
     expect(field.controller.text, 'upstream');
     expect(field.controller.selection, const TextSelection(baseOffset: 0, extentOffset: 8));
-    expect(tester.widget<ZsButton>(find.byType(ZsButton).last).onPressed, isNull);
+    expect(_run(tester).onPressed, isNull);
     expect(rig.command, 'jj git remote rename upstream upstream');
 
     await rig.type('New name', 'fork');
@@ -287,7 +291,7 @@ void main() {
       configure: (rig) => rig.reads.remoteList = <Remote>[...rig.reads.remoteList, _credential],
     );
     await rig.menu('upstream', 'set-url');
-    expect(tester.widget<ZsButton>(find.byType(ZsButton).last).onPressed, isNull, reason: 'nothing changes');
+    expect(_run(tester).onPressed, isNull, reason: 'nothing changes');
     await rig.type('Push URL', 'git@github.com:ralph/x.git');
     expect(rig.command, 'jj git remote set-url upstream --push git@github.com:ralph/x.git');
     await rig.run();

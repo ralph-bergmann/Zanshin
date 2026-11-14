@@ -324,12 +324,14 @@ mixin _$ProjectEntry {
 /// file never breaks an older app's settings).
 @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ProjectStatus? get status;/// Its last known bookmark label — the first by name of the local bookmarks on @'s closest bookmarked ancestor
 /// (design question (b)) — or null when there was none ("—").
- String? get bookmark;/// The graph's stacks the user expanded, by their run's oldest member key (Story 10.17).
- List<String> get expandedStacks;/// The graph's stacks the user collapsed, by their run's oldest member key (Story 10.17).
- List<String> get collapsedStacks;/// What the graph shows, as the search's JSON text (Story 10.21), or null for the default search.
+ String? get bookmark;/// The name of its view state file, `projects/<stateId>.json` beside `settings.json` (Story 10.37), or null until
+/// its view state is first opened.
+ String? get stateId;/// Read only to move them into the state file (Story 10.37): the stacks the user expanded before 10.37.
+@JsonKey(includeToJson: false) List<String> get expandedStacks;/// Read only to move them into the state file (Story 10.37): the stacks the user collapsed before 10.37.
+@JsonKey(includeToJson: false) List<String> get collapsedStacks;/// What the graph shows, as the search's JSON text (Story 10.21), or null for the default search.
  String? get graphView;/// The graph search's recent go-tos and filters, newest first, each as its JSON text (Story 10.21).
- List<String> get recentSearches;/// The inspector's Viewed marks, each `<change id>:<fingerprint>:<path>`, oldest first (Story 10.24).
- List<String> get viewedFiles;/// Settings › Project's "Check for remote changes" (Story 11.7; 11.8's poll reads it); every 15 minutes by
+ List<String> get recentSearches;/// Read only to move them into the state file (Story 10.37): the inspector's Viewed marks before 10.37.
+@JsonKey(includeToJson: false) List<String> get viewedFiles;/// Settings › Project's "Check for remote changes" (Story 11.7; 11.8's poll reads it); every 15 minutes by
 /// default, and for a value this version does not know.
 @JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes) RemotePollSetting get remotePoll;
 /// Create a copy of ProjectEntry
@@ -345,20 +347,20 @@ $ProjectEntryCopyWith<ProjectEntry> get copyWith => _$ProjectEntryCopyWithImpl<P
 @override
 bool operator ==(Object other) {
   final _this = this as ProjectEntry;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ProjectEntry&&(identical(other.path, _this.path) || other.path == _this.path)&&(identical(other.name, _this.name) || other.name == _this.name)&&(identical(other.group, _this.group) || other.group == _this.group)&&(identical(other.order, _this.order) || other.order == _this.order)&&(identical(other.lastOpened, _this.lastOpened) || other.lastOpened == _this.lastOpened)&&(identical(other.status, _this.status) || other.status == _this.status)&&(identical(other.bookmark, _this.bookmark) || other.bookmark == _this.bookmark)&&const DeepCollectionEquality().equals(other.expandedStacks, _this.expandedStacks)&&const DeepCollectionEquality().equals(other.collapsedStacks, _this.collapsedStacks)&&(identical(other.graphView, _this.graphView) || other.graphView == _this.graphView)&&const DeepCollectionEquality().equals(other.recentSearches, _this.recentSearches)&&const DeepCollectionEquality().equals(other.viewedFiles, _this.viewedFiles)&&(identical(other.remotePoll, _this.remotePoll) || other.remotePoll == _this.remotePoll));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ProjectEntry&&(identical(other.path, _this.path) || other.path == _this.path)&&(identical(other.name, _this.name) || other.name == _this.name)&&(identical(other.group, _this.group) || other.group == _this.group)&&(identical(other.order, _this.order) || other.order == _this.order)&&(identical(other.lastOpened, _this.lastOpened) || other.lastOpened == _this.lastOpened)&&(identical(other.status, _this.status) || other.status == _this.status)&&(identical(other.bookmark, _this.bookmark) || other.bookmark == _this.bookmark)&&(identical(other.stateId, _this.stateId) || other.stateId == _this.stateId)&&const DeepCollectionEquality().equals(other.expandedStacks, _this.expandedStacks)&&const DeepCollectionEquality().equals(other.collapsedStacks, _this.collapsedStacks)&&(identical(other.graphView, _this.graphView) || other.graphView == _this.graphView)&&const DeepCollectionEquality().equals(other.recentSearches, _this.recentSearches)&&const DeepCollectionEquality().equals(other.viewedFiles, _this.viewedFiles)&&(identical(other.remotePoll, _this.remotePoll) || other.remotePoll == _this.remotePoll));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as ProjectEntry;
-  return Object.hash(runtimeType,_this.path,_this.name,_this.group,_this.order,_this.lastOpened,_this.status,_this.bookmark,const DeepCollectionEquality().hash(_this.expandedStacks),const DeepCollectionEquality().hash(_this.collapsedStacks),_this.graphView,const DeepCollectionEquality().hash(_this.recentSearches),const DeepCollectionEquality().hash(_this.viewedFiles),_this.remotePoll);
+  return Object.hash(runtimeType,_this.path,_this.name,_this.group,_this.order,_this.lastOpened,_this.status,_this.bookmark,_this.stateId,const DeepCollectionEquality().hash(_this.expandedStacks),const DeepCollectionEquality().hash(_this.collapsedStacks),_this.graphView,const DeepCollectionEquality().hash(_this.recentSearches),const DeepCollectionEquality().hash(_this.viewedFiles),_this.remotePoll);
 }
 
 @override
 String toString() {
   final _this = this as ProjectEntry;
-  return 'ProjectEntry(path: ${_this.path}, name: ${_this.name}, group: ${_this.group}, order: ${_this.order}, lastOpened: ${_this.lastOpened}, status: ${_this.status}, bookmark: ${_this.bookmark}, expandedStacks: ${_this.expandedStacks}, collapsedStacks: ${_this.collapsedStacks}, graphView: ${_this.graphView}, recentSearches: ${_this.recentSearches}, viewedFiles: ${_this.viewedFiles}, remotePoll: ${_this.remotePoll})';
+  return 'ProjectEntry(path: ${_this.path}, name: ${_this.name}, group: ${_this.group}, order: ${_this.order}, lastOpened: ${_this.lastOpened}, status: ${_this.status}, bookmark: ${_this.bookmark}, stateId: ${_this.stateId}, expandedStacks: ${_this.expandedStacks}, collapsedStacks: ${_this.collapsedStacks}, graphView: ${_this.graphView}, recentSearches: ${_this.recentSearches}, viewedFiles: ${_this.viewedFiles}, remotePoll: ${_this.remotePoll})';
 }
 
 
@@ -369,7 +371,7 @@ abstract mixin class $ProjectEntryCopyWith<$Res>  {
   factory $ProjectEntryCopyWith(ProjectEntry value, $Res Function(ProjectEntry) _then) = _$ProjectEntryCopyWithImpl;
 @useResult
 $Res call({
- String path, String name, String? group, int order, DateTime? lastOpened,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ProjectStatus? status, String? bookmark, List<String> expandedStacks, List<String> collapsedStacks, String? graphView, List<String> recentSearches, List<String> viewedFiles,@JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes) RemotePollSetting remotePoll
+ String path, String name, String? group, int order, DateTime? lastOpened,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ProjectStatus? status, String? bookmark, String? stateId,@JsonKey(includeToJson: false) List<String> expandedStacks,@JsonKey(includeToJson: false) List<String> collapsedStacks, String? graphView, List<String> recentSearches,@JsonKey(includeToJson: false) List<String> viewedFiles,@JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes) RemotePollSetting remotePoll
 });
 
 
@@ -386,7 +388,7 @@ class _$ProjectEntryCopyWithImpl<$Res>
 
 /// Create a copy of ProjectEntry
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? path = null,Object? name = null,Object? group = freezed,Object? order = null,Object? lastOpened = freezed,Object? status = freezed,Object? bookmark = freezed,Object? expandedStacks = null,Object? collapsedStacks = null,Object? graphView = freezed,Object? recentSearches = null,Object? viewedFiles = null,Object? remotePoll = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? path = null,Object? name = null,Object? group = freezed,Object? order = null,Object? lastOpened = freezed,Object? status = freezed,Object? bookmark = freezed,Object? stateId = freezed,Object? expandedStacks = null,Object? collapsedStacks = null,Object? graphView = freezed,Object? recentSearches = null,Object? viewedFiles = null,Object? remotePoll = null,}) {
   return _then(ProjectEntry(
 path: null == path ? _self.path : path // ignore: cast_nullable_to_non_nullable
 as String,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
@@ -395,6 +397,7 @@ as String?,order: null == order ? _self.order : order // ignore: cast_nullable_t
 as int,lastOpened: freezed == lastOpened ? _self.lastOpened : lastOpened // ignore: cast_nullable_to_non_nullable
 as DateTime?,status: freezed == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as ProjectStatus?,bookmark: freezed == bookmark ? _self.bookmark : bookmark // ignore: cast_nullable_to_non_nullable
+as String?,stateId: freezed == stateId ? _self.stateId : stateId // ignore: cast_nullable_to_non_nullable
 as String?,expandedStacks: null == expandedStacks ? _self.expandedStacks : expandedStacks // ignore: cast_nullable_to_non_nullable
 as List<String>,collapsedStacks: null == collapsedStacks ? _self.collapsedStacks : collapsedStacks // ignore: cast_nullable_to_non_nullable
 as List<String>,graphView: freezed == graphView ? _self.graphView : graphView // ignore: cast_nullable_to_non_nullable
@@ -486,10 +489,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String path,  String name,  String? group,  int order,  DateTime? lastOpened, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ProjectStatus? status,  String? bookmark,  List<String> expandedStacks,  List<String> collapsedStacks,  String? graphView,  List<String> recentSearches,  List<String> viewedFiles, @JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes)  RemotePollSetting remotePoll)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String path,  String name,  String? group,  int order,  DateTime? lastOpened, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ProjectStatus? status,  String? bookmark,  String? stateId, @JsonKey(includeToJson: false)  List<String> expandedStacks, @JsonKey(includeToJson: false)  List<String> collapsedStacks,  String? graphView,  List<String> recentSearches, @JsonKey(includeToJson: false)  List<String> viewedFiles, @JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes)  RemotePollSetting remotePoll)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ProjectEntry() when $default != null:
-return $default(_that.path,_that.name,_that.group,_that.order,_that.lastOpened,_that.status,_that.bookmark,_that.expandedStacks,_that.collapsedStacks,_that.graphView,_that.recentSearches,_that.viewedFiles,_that.remotePoll);case _:
+return $default(_that.path,_that.name,_that.group,_that.order,_that.lastOpened,_that.status,_that.bookmark,_that.stateId,_that.expandedStacks,_that.collapsedStacks,_that.graphView,_that.recentSearches,_that.viewedFiles,_that.remotePoll);case _:
   return orElse();
 
 }
@@ -507,10 +510,10 @@ return $default(_that.path,_that.name,_that.group,_that.order,_that.lastOpened,_
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String path,  String name,  String? group,  int order,  DateTime? lastOpened, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ProjectStatus? status,  String? bookmark,  List<String> expandedStacks,  List<String> collapsedStacks,  String? graphView,  List<String> recentSearches,  List<String> viewedFiles, @JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes)  RemotePollSetting remotePoll)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String path,  String name,  String? group,  int order,  DateTime? lastOpened, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ProjectStatus? status,  String? bookmark,  String? stateId, @JsonKey(includeToJson: false)  List<String> expandedStacks, @JsonKey(includeToJson: false)  List<String> collapsedStacks,  String? graphView,  List<String> recentSearches, @JsonKey(includeToJson: false)  List<String> viewedFiles, @JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes)  RemotePollSetting remotePoll)  $default,) {final _that = this;
 switch (_that) {
 case _ProjectEntry():
-return $default(_that.path,_that.name,_that.group,_that.order,_that.lastOpened,_that.status,_that.bookmark,_that.expandedStacks,_that.collapsedStacks,_that.graphView,_that.recentSearches,_that.viewedFiles,_that.remotePoll);case _:
+return $default(_that.path,_that.name,_that.group,_that.order,_that.lastOpened,_that.status,_that.bookmark,_that.stateId,_that.expandedStacks,_that.collapsedStacks,_that.graphView,_that.recentSearches,_that.viewedFiles,_that.remotePoll);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -527,10 +530,10 @@ return $default(_that.path,_that.name,_that.group,_that.order,_that.lastOpened,_
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String path,  String name,  String? group,  int order,  DateTime? lastOpened, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ProjectStatus? status,  String? bookmark,  List<String> expandedStacks,  List<String> collapsedStacks,  String? graphView,  List<String> recentSearches,  List<String> viewedFiles, @JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes)  RemotePollSetting remotePoll)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String path,  String name,  String? group,  int order,  DateTime? lastOpened, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ProjectStatus? status,  String? bookmark,  String? stateId, @JsonKey(includeToJson: false)  List<String> expandedStacks, @JsonKey(includeToJson: false)  List<String> collapsedStacks,  String? graphView,  List<String> recentSearches, @JsonKey(includeToJson: false)  List<String> viewedFiles, @JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes)  RemotePollSetting remotePoll)?  $default,) {final _that = this;
 switch (_that) {
 case _ProjectEntry() when $default != null:
-return $default(_that.path,_that.name,_that.group,_that.order,_that.lastOpened,_that.status,_that.bookmark,_that.expandedStacks,_that.collapsedStacks,_that.graphView,_that.recentSearches,_that.viewedFiles,_that.remotePoll);case _:
+return $default(_that.path,_that.name,_that.group,_that.order,_that.lastOpened,_that.status,_that.bookmark,_that.stateId,_that.expandedStacks,_that.collapsedStacks,_that.graphView,_that.recentSearches,_that.viewedFiles,_that.remotePoll);case _:
   return null;
 
 }
@@ -542,7 +545,7 @@ return $default(_that.path,_that.name,_that.group,_that.order,_that.lastOpened,_
 @JsonSerializable()
 
 class _ProjectEntry implements ProjectEntry {
-  const _ProjectEntry({required this.path, required this.name, this.group, this.order = 0, this.lastOpened, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.status, this.bookmark,  List<String> expandedStacks = const <String>[],  List<String> collapsedStacks = const <String>[], this.graphView,  List<String> recentSearches = const <String>[],  List<String> viewedFiles = const <String>[], @JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes) this.remotePoll = RemotePollSetting.fifteenMinutes}): _expandedStacks = expandedStacks,_collapsedStacks = collapsedStacks,_recentSearches = recentSearches,_viewedFiles = viewedFiles;
+  const _ProjectEntry({required this.path, required this.name, this.group, this.order = 0, this.lastOpened, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.status, this.bookmark, this.stateId, @JsonKey(includeToJson: false)  List<String> expandedStacks = const <String>[], @JsonKey(includeToJson: false)  List<String> collapsedStacks = const <String>[], this.graphView,  List<String> recentSearches = const <String>[], @JsonKey(includeToJson: false)  List<String> viewedFiles = const <String>[], @JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes) this.remotePoll = RemotePollSetting.fifteenMinutes}): _expandedStacks = expandedStacks,_collapsedStacks = collapsedStacks,_recentSearches = recentSearches,_viewedFiles = viewedFiles;
   factory _ProjectEntry.fromJson(Map<String, dynamic> json) => _$ProjectEntryFromJson(json);
 
 /// The workspace's root directory, absolute; the registry's key.
@@ -562,19 +565,22 @@ class _ProjectEntry implements ProjectEntry {
 /// Its last known bookmark label — the first by name of the local bookmarks on @'s closest bookmarked ancestor
 /// (design question (b)) — or null when there was none ("—").
 @override final  String? bookmark;
-/// The graph's stacks the user expanded, by their run's oldest member key (Story 10.17).
+/// The name of its view state file, `projects/<stateId>.json` beside `settings.json` (Story 10.37), or null until
+/// its view state is first opened.
+@override final  String? stateId;
+/// Read only to move them into the state file (Story 10.37): the stacks the user expanded before 10.37.
  final  List<String> _expandedStacks;
-/// The graph's stacks the user expanded, by their run's oldest member key (Story 10.17).
-@override@JsonKey() List<String> get expandedStacks {
+/// Read only to move them into the state file (Story 10.37): the stacks the user expanded before 10.37.
+@override@JsonKey(includeToJson: false) List<String> get expandedStacks {
   if (_expandedStacks is EqualUnmodifiableListView) return _expandedStacks;
   // ignore: implicit_dynamic_type
   return EqualUnmodifiableListView(_expandedStacks);
 }
 
-/// The graph's stacks the user collapsed, by their run's oldest member key (Story 10.17).
+/// Read only to move them into the state file (Story 10.37): the stacks the user collapsed before 10.37.
  final  List<String> _collapsedStacks;
-/// The graph's stacks the user collapsed, by their run's oldest member key (Story 10.17).
-@override@JsonKey() List<String> get collapsedStacks {
+/// Read only to move them into the state file (Story 10.37): the stacks the user collapsed before 10.37.
+@override@JsonKey(includeToJson: false) List<String> get collapsedStacks {
   if (_collapsedStacks is EqualUnmodifiableListView) return _collapsedStacks;
   // ignore: implicit_dynamic_type
   return EqualUnmodifiableListView(_collapsedStacks);
@@ -591,10 +597,10 @@ class _ProjectEntry implements ProjectEntry {
   return EqualUnmodifiableListView(_recentSearches);
 }
 
-/// The inspector's Viewed marks, each `<change id>:<fingerprint>:<path>`, oldest first (Story 10.24).
+/// Read only to move them into the state file (Story 10.37): the inspector's Viewed marks before 10.37.
  final  List<String> _viewedFiles;
-/// The inspector's Viewed marks, each `<change id>:<fingerprint>:<path>`, oldest first (Story 10.24).
-@override@JsonKey() List<String> get viewedFiles {
+/// Read only to move them into the state file (Story 10.37): the inspector's Viewed marks before 10.37.
+@override@JsonKey(includeToJson: false) List<String> get viewedFiles {
   if (_viewedFiles is EqualUnmodifiableListView) return _viewedFiles;
   // ignore: implicit_dynamic_type
   return EqualUnmodifiableListView(_viewedFiles);
@@ -617,18 +623,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _ProjectEntry&&(identical(other.path, path) || other.path == path)&&(identical(other.name, name) || other.name == name)&&(identical(other.group, group) || other.group == group)&&(identical(other.order, order) || other.order == order)&&(identical(other.lastOpened, lastOpened) || other.lastOpened == lastOpened)&&(identical(other.status, status) || other.status == status)&&(identical(other.bookmark, bookmark) || other.bookmark == bookmark)&&const DeepCollectionEquality().equals(other.expandedStacks, _expandedStacks)&&const DeepCollectionEquality().equals(other.collapsedStacks, _collapsedStacks)&&(identical(other.graphView, graphView) || other.graphView == graphView)&&const DeepCollectionEquality().equals(other.recentSearches, _recentSearches)&&const DeepCollectionEquality().equals(other.viewedFiles, _viewedFiles)&&(identical(other.remotePoll, remotePoll) || other.remotePoll == remotePoll));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _ProjectEntry&&(identical(other.path, path) || other.path == path)&&(identical(other.name, name) || other.name == name)&&(identical(other.group, group) || other.group == group)&&(identical(other.order, order) || other.order == order)&&(identical(other.lastOpened, lastOpened) || other.lastOpened == lastOpened)&&(identical(other.status, status) || other.status == status)&&(identical(other.bookmark, bookmark) || other.bookmark == bookmark)&&(identical(other.stateId, stateId) || other.stateId == stateId)&&const DeepCollectionEquality().equals(other.expandedStacks, _expandedStacks)&&const DeepCollectionEquality().equals(other.collapsedStacks, _collapsedStacks)&&(identical(other.graphView, graphView) || other.graphView == graphView)&&const DeepCollectionEquality().equals(other.recentSearches, _recentSearches)&&const DeepCollectionEquality().equals(other.viewedFiles, _viewedFiles)&&(identical(other.remotePoll, remotePoll) || other.remotePoll == remotePoll));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,path,name,group,order,lastOpened,status,bookmark,const DeepCollectionEquality().hash(_expandedStacks),const DeepCollectionEquality().hash(_collapsedStacks),graphView,const DeepCollectionEquality().hash(_recentSearches),const DeepCollectionEquality().hash(_viewedFiles),remotePoll);
+    return Object.hash(runtimeType,path,name,group,order,lastOpened,status,bookmark,stateId,const DeepCollectionEquality().hash(_expandedStacks),const DeepCollectionEquality().hash(_collapsedStacks),graphView,const DeepCollectionEquality().hash(_recentSearches),const DeepCollectionEquality().hash(_viewedFiles),remotePoll);
 }
 
 @override
 String toString() {
-    return 'ProjectEntry(path: $path, name: $name, group: $group, order: $order, lastOpened: $lastOpened, status: $status, bookmark: $bookmark, expandedStacks: $expandedStacks, collapsedStacks: $collapsedStacks, graphView: $graphView, recentSearches: $recentSearches, viewedFiles: $viewedFiles, remotePoll: $remotePoll)';
+    return 'ProjectEntry(path: $path, name: $name, group: $group, order: $order, lastOpened: $lastOpened, status: $status, bookmark: $bookmark, stateId: $stateId, expandedStacks: $expandedStacks, collapsedStacks: $collapsedStacks, graphView: $graphView, recentSearches: $recentSearches, viewedFiles: $viewedFiles, remotePoll: $remotePoll)';
 }
 
 
@@ -639,7 +645,7 @@ abstract mixin class _$ProjectEntryCopyWith<$Res> implements $ProjectEntryCopyWi
   factory _$ProjectEntryCopyWith(_ProjectEntry value, $Res Function(_ProjectEntry) _then) = __$ProjectEntryCopyWithImpl;
 @override @useResult
 $Res call({
- String path, String name, String? group, int order, DateTime? lastOpened,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ProjectStatus? status, String? bookmark, List<String> expandedStacks, List<String> collapsedStacks, String? graphView, List<String> recentSearches, List<String> viewedFiles,@JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes) RemotePollSetting remotePoll
+ String path, String name, String? group, int order, DateTime? lastOpened,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ProjectStatus? status, String? bookmark, String? stateId,@JsonKey(includeToJson: false) List<String> expandedStacks,@JsonKey(includeToJson: false) List<String> collapsedStacks, String? graphView, List<String> recentSearches,@JsonKey(includeToJson: false) List<String> viewedFiles,@JsonKey(unknownEnumValue: RemotePollSetting.fifteenMinutes) RemotePollSetting remotePoll
 });
 
 
@@ -656,7 +662,7 @@ class __$ProjectEntryCopyWithImpl<$Res>
 
 /// Create a copy of ProjectEntry
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? path = null,Object? name = null,Object? group = freezed,Object? order = null,Object? lastOpened = freezed,Object? status = freezed,Object? bookmark = freezed,Object? expandedStacks = null,Object? collapsedStacks = null,Object? graphView = freezed,Object? recentSearches = null,Object? viewedFiles = null,Object? remotePoll = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? path = null,Object? name = null,Object? group = freezed,Object? order = null,Object? lastOpened = freezed,Object? status = freezed,Object? bookmark = freezed,Object? stateId = freezed,Object? expandedStacks = null,Object? collapsedStacks = null,Object? graphView = freezed,Object? recentSearches = null,Object? viewedFiles = null,Object? remotePoll = null,}) {
   return _then(_ProjectEntry(
 path: null == path ? _self.path : path // ignore: cast_nullable_to_non_nullable
 as String,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
@@ -665,6 +671,7 @@ as String?,order: null == order ? _self.order : order // ignore: cast_nullable_t
 as int,lastOpened: freezed == lastOpened ? _self.lastOpened : lastOpened // ignore: cast_nullable_to_non_nullable
 as DateTime?,status: freezed == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as ProjectStatus?,bookmark: freezed == bookmark ? _self.bookmark : bookmark // ignore: cast_nullable_to_non_nullable
+as String?,stateId: freezed == stateId ? _self.stateId : stateId // ignore: cast_nullable_to_non_nullable
 as String?,expandedStacks: null == expandedStacks ? _self._expandedStacks : expandedStacks // ignore: cast_nullable_to_non_nullable
 as List<String>,collapsedStacks: null == collapsedStacks ? _self._collapsedStacks : collapsedStacks // ignore: cast_nullable_to_non_nullable
 as List<String>,graphView: freezed == graphView ? _self.graphView : graphView // ignore: cast_nullable_to_non_nullable

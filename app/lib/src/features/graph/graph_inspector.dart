@@ -64,6 +64,7 @@ class InspectorViewModel extends ChangeNotifier {
        _wordMarks = settings.value.general.diffWordMarks {
     graph.addListener(_graphChanged);
     settings.addListener(_settingsChanged);
+    viewed.addListener(_viewedChanged);
     _graphChanged();
   }
 
@@ -245,15 +246,18 @@ class InspectorViewModel extends ChangeNotifier {
       _wordMarks = wordMarks;
       changed = true;
     }
-    // Another writer (a second window of the repo) may have changed the Viewed marks.
+    if (changed) {
+      _notify();
+    }
+  }
+
+  // Another writer (a second window of the repo, the cleanup, Settings' reset, the store's limit) changed the marks.
+  void _viewedChanged() {
     final Set<String> viewed = _viewedStore.load();
     if (!setEquals(viewed, _viewed)) {
       _viewed
         ..clear()
         ..addAll(viewed);
-      changed = true;
-    }
-    if (changed) {
       _notify();
     }
   }
@@ -847,6 +851,10 @@ class InspectorViewModel extends ChangeNotifier {
         _summary = diff == null ? null : <String, FileDiff>{for (final FileDiff file in diff.files) file.path: file};
         _changeId = changeId;
         _commitId = commitId;
+        // A hidden or divergent node is keyed by its commit id: its change's other commits keep their marks.
+        if (diff != null && layout.keyOf(node) == changeId) {
+          _pruneViewed(changeId, diff.files);
+        }
         final List<String> paths = _listed;
         if (_pickedFor != _key) {
           // @ starts with every file checked, another change with none.
@@ -884,6 +892,16 @@ class InspectorViewModel extends ChangeNotifier {
     }
   }
 
+  // Drops [changeId]'s marks of files it no longer lists or whose content changed (Story 10.37).
+  void _pruneViewed(String changeId, List<FileDiff> files) {
+    final current = <String>{for (final FileDiff file in files) viewedKey(changeId, file.path, file.fingerprint)};
+    final int before = _viewed.length;
+    _viewed.removeWhere((key) => key.startsWith('$changeId:') && !current.contains(key));
+    if (_viewed.length != before) {
+      _viewedStore.save(_viewed);
+    }
+  }
+
   /// The previews, or null when they fail (only Squash's reason reads them).
   Future<ChangeActions?> _previews(String changeId) async {
     try {
@@ -905,6 +923,7 @@ class InspectorViewModel extends ChangeNotifier {
     _disposed = true;
     graph.removeListener(_graphChanged);
     settings.removeListener(_settingsChanged);
+    _viewedStore.removeListener(_viewedChanged);
     super.dispose();
   }
 }

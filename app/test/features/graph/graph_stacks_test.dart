@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -504,23 +505,26 @@ void main() {
       late Directory dir;
       late SettingsStore store;
 
+      late File file;
+      late File stateFile;
+
       setUp(() async {
         dir = Directory.systemTemp.createTempSync('zanshin_stacks');
-        final file = File('${dir.path}/settings.json')
+        file = File('${dir.path}/settings.json')
           ..writeAsStringSync(
             jsonEncode(
               const AppSettings(
                 projects: ProjectsSettings(
-                  projects: <ProjectEntry>[
-                    ProjectEntry(
-                      path: '/r/a',
-                      name: 'a',
-                      expandedStacks: <String>['tqwmlnxz'],
-                      collapsedStacks: <String>['gone0000'],
-                    ),
-                  ],
+                  projects: <ProjectEntry>[ProjectEntry(path: '/r/a', name: 'a', stateId: 'a1')],
                 ),
               ).toJson(),
+            ),
+          );
+        stateFile = File('${dir.path}/projects/a1.json')
+          ..createSync(recursive: true)
+          ..writeAsStringSync(
+            jsonEncode(
+              const ProjectState(expandedStacks: <String>['tqwmlnxz'], collapsedStacks: <String>['gone0000']).toJson(),
             ),
           );
         store = await SettingsStore.load(file);
@@ -528,17 +532,22 @@ void main() {
 
       tearDown(() => dir.deleteSync(recursive: true));
 
-      testWidgets("a model for A sends A's toggles first; one for B none; a toggle persists on A's entry", (
+      ProjectState stored() => ProjectState.fromJson(jsonDecode(stateFile.readAsStringSync()) as Map<String, Object?>);
+
+      testWidgets("a model for A sends A's toggles first; one for B none; a toggle writes A's state file only", (
         tester,
       ) async {
         addTearDown(() => settleSettingsWrites(tester, store));
+        final String settingsBefore = file.readAsStringSync();
         await create(tester, store: ProjectStackStore(store, '/r/a'));
         expect(source.requests.first.expandedKeys, <String>{'tqwmlnxz'});
         expect(source.requests.first.collapsedKeys, <String>{'gone0000'});
         final String oldest = model.layout!.keyOf(model.layout!.runMembersOf(1).first);
         model.expandStack(oldest);
         await tester.pump();
-        expect(store.value.projects.projects.single.expandedStacks, (<String>['tqwmlnxz', oldest]..sort()));
+        await settleSettingsWrites(tester, store);
+        expect(stored().expandedStacks, <String>['tqwmlnxz', oldest], reason: 'oldest first, not sorted');
+        expect(file.readAsStringSync(), settingsBefore, reason: 'a toggle never writes settings.json');
 
         final other = ScriptedGraphSource(respond: _respond);
         final b = GraphViewModel()..init(other, stacks: true, stackStore: ProjectStackStore(store, '/r/b'));
@@ -547,6 +556,55 @@ void main() {
         expect(other.requests.first.collapsedKeys, isEmpty);
         b.dispose();
         model.dispose();
+      });
+
+      testWidgets('Story 10.37: a repeated toggle moves to the newest place', (tester) async {
+        addTearDown(() => settleSettingsWrites(tester, store));
+        await create(tester, store: ProjectStackStore(store, '/r/a'));
+        final String oldest = model.layout!.keyOf(model.layout!.runMembersOf(1).first);
+        final ProjectStateStore state = store.projectStates.of('/r/a')!;
+        unawaited(state.update((s) => s.copyWith(expandedStacks: <String>[oldest, 'tqwmlnxz'])));
+        await tester.pump();
+        model.expandStack(oldest);
+        await tester.pump();
+        expect(state.value.expandedStacks, <String>['tqwmlnxz', oldest]);
+        model.dispose();
+      });
+
+      testWidgets('Story 10.37: another writer of the toggles reaches the graph at once (a reset)', (tester) async {
+        addTearDown(() => settleSettingsWrites(tester, store));
+        await create(tester, store: ProjectStackStore(store, '/r/a'));
+        final int requests = source.requests.length;
+        unawaited(store.projectStates.of('/r/a')!.update((_) => const ProjectState()));
+        await tester.pump();
+        expect(source.requests.length, requests + 1);
+        expect(source.requests.last.expandedKeys, isEmpty);
+        expect(source.requests.last.collapsedKeys, isEmpty);
+        final GraphLayout defaults = stackRecording('design-default free default');
+        for (var run = 0; run < model.layout!.runCount; run++) {
+          expect(model.layout!.stackNodeOf(run) == null, defaults.stackNodeOf(run) == null);
+        }
+        model.dispose();
+        final int after = source.requests.length;
+        unawaited(store.projectStates.of('/r/a')!.update((s) => s.copyWith(expandedStacks: <String>['x'])));
+        await tester.pump();
+        expect(source.requests.length, after, reason: 'a disposed model stopped listening');
+      });
+
+      test('Story 10.37: each list keeps the newest 500', () {
+        final stacks = ProjectStackStore(store, '/r/a')
+          ..save(
+            GraphStackToggles(
+              expanded: <String>{for (var i = 0; i < 503; i++) 'e$i'},
+              collapsed: <String>{for (var i = 0; i < 501; i++) 'c$i'},
+            ),
+          );
+        final GraphStackToggles kept = stacks.load();
+        expect(kept.expanded, hasLength(500));
+        expect(kept.expanded.first, 'e3');
+        expect(kept.expanded.last, 'e502');
+        expect(kept.collapsed, hasLength(500));
+        expect(kept.collapsed.first, 'c1');
       });
 
       test('a path outside the registry keeps its toggles in memory', () {

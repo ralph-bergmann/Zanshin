@@ -19,6 +19,7 @@ import '../graph/graph_toasts.dart';
 import '../graph/graph_view_model.dart';
 import '../graph/immutable_reasons.dart';
 import '../graph/inspector_viewed_store.dart';
+import '../graph/view_state_cleanup.dart';
 import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
 import '../projects/projects_environment.dart';
@@ -81,6 +82,17 @@ class ProjectModule {
     settings: settings,
   );
 
+  /// Provides the repository's stack toggles, shared by the graph and the view state cleanup.
+  @provides
+  @singleton
+  GraphStackStore stackStore(SettingsStore settings, @projectRoot String root) => ProjectStackStore(settings, root);
+
+  /// Provides the repository's Viewed marks, shared by the inspector and the view state cleanup.
+  @provides
+  @singleton
+  InspectorViewedStore viewedStore(SettingsStore settings, @projectRoot String root) =>
+      ProjectViewedStore(settings, root);
+
   /// Provides the View preferences and starts [model]: its first request needs the stored layout and the search's
   /// revset.
   @provides
@@ -91,14 +103,14 @@ class ProjectModule {
     GraphSearchController search,
     ProjectRepo repo,
     SettingsStore settings,
-    @projectRoot String root,
+    GraphStackStore stacks,
   ) => GraphPreferences(settings)
     ..init(
       model,
       source,
       actions: RepoGraphActions(repo),
       drops: RepoGraphDrops(repo),
-      stackStore: ProjectStackStore(settings, root),
+      stackStore: stacks,
       revset: search.revset,
     );
 
@@ -109,12 +121,23 @@ class ProjectModule {
     GraphViewModel model,
     ProjectRepo repo,
     SettingsStore settings,
-    @projectRoot String root,
-  ) => InspectorViewModel(
+    InspectorViewedStore viewed,
+  ) => InspectorViewModel(graph: model, details: RepoGraphDetails(repo), viewed: viewed, settings: settings);
+
+  /// Provides the pass that drops the view state of changes gone from the repository, once the first layout lands.
+  @provides
+  @singleton
+  ViewStateCleanup viewStateCleanup(
+    GraphViewModel model,
+    GraphStackStore stacks,
+    InspectorViewedStore viewed,
+    ProjectRepo repo,
+  ) => ViewStateCleanup(
     graph: model,
-    details: RepoGraphDetails(repo),
-    viewed: ProjectViewedStore(settings, root),
-    settings: settings,
+    stacks: stacks,
+    viewed: viewed,
+    find: (operationId, expression, {required limit, required shortPrefixes}) =>
+        repo.handle.findChanges(operationId, expression, limit: limit, shortPrefixes: shortPrefixes),
   );
 
   /// Provides why a change is immutable, for the peek and the inspector.
@@ -188,6 +211,7 @@ class ProjectScope {
   ProjectScope(
     this.model,
     this.preferences,
+    this._cleanup,
     this.search,
     this.inspector,
     this.reasons,
@@ -234,6 +258,7 @@ class ProjectScope {
   /// Builds the Undo Timeline's Show changes view of one operation.
   final OperationChangesOf operationChanges;
 
+  final ViewStateCleanup _cleanup;
   final GraphToasts _toasts;
   final ProjectsEnvironment _environment;
   final ProjectRepo _repo;
@@ -261,6 +286,7 @@ class ProjectScope {
     _environment.configWrites.removeListener(reasons.invalidate);
     _environment.configWrites.removeListener(inspector.configChanged);
     _toasts.dispose();
+    _cleanup.dispose();
     inspector.dispose();
     search.dispose();
     preferences.dispose();

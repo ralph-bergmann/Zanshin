@@ -200,6 +200,24 @@ void main() {
       expect(orders(registry.value, null), <String>['a:0']);
     });
 
+    test('Story 10.37: remove deletes the project\'s view state file; none at all is fine', () async {
+      final SettingsStore store = await SettingsStore.load(file);
+      final registry = ProjectRegistry(store);
+      await registry.add('/r/a');
+      await registry.add('/r/b');
+      await store.projectStates.of('/r/a')!.update((s) => s.copyWith(viewedFiles: <String>['k']));
+      final String id = store.value.projects.projects.first.stateId!;
+      final stateFile = File('${dir.path}/projects/$id.json');
+      expect(stateFile.existsSync(), isTrue);
+
+      await registry.remove('/r/a');
+      expect(stateFile.existsSync(), isFalse);
+      expect(store.projectStates.of('/r/a'), isNull, reason: 'outside the registry it is memory only');
+
+      await registry.remove('/r/b');
+      expect(registry.value.projects, isEmpty);
+    });
+
     test('moveGroup moves a group with what it holds; into itself or a group inside it changes nothing', () async {
       final ProjectRegistry registry = await load();
       final String work = await registry.addGroup('Work');
