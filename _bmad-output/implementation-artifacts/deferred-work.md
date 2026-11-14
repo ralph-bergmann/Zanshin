@@ -3069,3 +3069,15 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **The new "Reset view state" row in Settings › Project was not checked visually through Marionette or against the DS cards.** Low.
   - `app/lib/src/features/settings/project_tab.dart` adds a "View state" group with a `ZsButton` row; only widget tests cover it (`settings_window_test.dart`). The unattended run had no running app or catalogue session.
   - **Follow-up:** open Settings › Project in the catalogue or the app, check the row's look against the DS settings cards, and confirm the reset clears the open graph's stacks at once.
+
+## Surfaced in Story 10.38 (bmad-build-auto, 2026-11-14)
+
+- **The design-system changes of Story 10.38 are in the repo but not published.** Medium.
+  - The Design System artifact (https://claude.ai/artifact/J5iSiy8cS6Q1EXa44g945d) and canvas `6sAzL5mDcVpWXevbTcempu` still show the state before the story: the unattended run's publish (`design-artifacts` skill, step A) was refused by the auto-mode permission check. Repo files: `design_system/` (SplitDivider, DiffHunk parts and pinned numbers, kit inspector split, tokens without `--inspector-w-max` / `--panel-w-max`).
+  - **Follow-up:** in a console session run the skill's steps A (build with `build_ds.py`, one publish) and B (canvas sync).
+- **Both inspector layouts, the divider, the parts and the pinned numbers were not checked through Marionette.** Low.
+  - Widget tests cover the behaviour; the catalogue has Graph › Inspector › Wide / Narrow, Inspector diff › Three parts / Pinned numbers scrolled right, and Controls › Split divider.
+  - **Follow-up:** compare those use cases with `design/Inspector Study.html` and the DS cards through Marionette.
+- **A large file's unified diff may scroll sideways slowly (unverified).** Medium.
+  - `app/lib/src/features/graph/inspector_diff.dart` `_Pinned`: each line's pinned numbers and each hunk header listen to the file's horizontal scroll (one rebuild per line per tick); `_DiffBody` runs `IntrinsicWidth` over the whole file in a non-lazy scroll view.
+  - **Follow-up:** scroll a diff of a few thousand lines in a profile build; if frames drop, paint the pinned column once per body (one listener) or make the lines lazy.
