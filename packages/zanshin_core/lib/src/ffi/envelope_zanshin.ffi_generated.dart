@@ -468,47 +468,6 @@ class _DiffWhitespaceReader extends fb.Reader<DiffWhitespace> {
       DiffWhitespace.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
-///  Which word marks a changed block gets (Story 5.11): `Jj` (0, the default) is `jj diff`'s
-///  color-words marks; `Words` marks the changed part of each line (the `similar` crate, Story
-///  5.13) — one line replaced by one line as one `Changed` line where it fits
-///  `diff.color-words.max-inline-alternation`, any other block its removed lines, then its added
-///  lines; the same numbered line texts as `Jj`. Member order IS the wire value — APPEND only; an
-///  unknown value is `ffi.invalid_argument`.
-enum DiffMarks {
-  Jj(0),
-  Words(1);
-
-  final int value;
-  const DiffMarks(this.value);
-
-  factory DiffMarks.fromValue(int value) {
-    switch (value) {
-      case 0:
-        return DiffMarks.Jj;
-      case 1:
-        return DiffMarks.Words;
-      default:
-        throw StateError('Invalid value $value for bit flag enum');
-    }
-  }
-
-  static DiffMarks? _createOrNull(int? value) => value == null ? null : DiffMarks.fromValue(value);
-
-  static const int minValue = 0;
-  static const int maxValue = 1;
-  static const fb.Reader<DiffMarks> reader = _DiffMarksReader();
-}
-
-class _DiffMarksReader extends fb.Reader<DiffMarks> {
-  const _DiffMarksReader();
-
-  @override
-  int get size => 1;
-
-  @override
-  DiffMarks read(fb.BufferContext bc, int offset) => DiffMarks.fromValue(const fb.Uint8Reader().read(bc, offset));
-}
-
 ///  One of the `jj arrange` TUI's key actions (Story 9.16): swap with the one parent (`J`) / the
 ///  one child (`K`), abandon (`a`), keep (`p`). `Unspecified = 0` is the default of an ABSENT
 ///  `kind` and is always refused (`ffi.invalid_argument`), so a forgotten kind never decodes as a
@@ -3781,7 +3740,6 @@ class DiffContextObjectBuilder extends fb.ObjectBuilder {
 ///                records, `from_commit_id` absent; with `revision` AND `from`/`to` refused as
 ///                above; with none of the three refused ("at least one of `from` or `to` is
 ///                required"). Both inter-diff forms fill `Diff.description`
-///    marks       the word-mark style (Story 5.11); absent → `Jj`, the CLI's
 class DiffRequest {
   DiffRequest._(this._bc, this._bcOffset);
   factory DiffRequest(List<int> bytes) {
@@ -3803,11 +3761,10 @@ class DiffRequest {
   DiffWhitespace get whitespace => DiffWhitespace.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 16, 0));
   bool get summary => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
   bool get interdiff => const fb.BoolReader().vTableGet(_bc, _bcOffset, 20, false);
-  DiffMarks get marks => DiffMarks.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 22, 0));
 
   @override
   String toString() {
-    return 'DiffRequest{kind: ${kind}, revision: ${revision}, from: ${from}, to: ${to}, paths: ${paths}, context: ${context}, whitespace: ${whitespace}, summary: ${summary}, interdiff: ${interdiff}, marks: ${marks}}';
+    return 'DiffRequest{kind: ${kind}, revision: ${revision}, from: ${from}, to: ${to}, paths: ${paths}, context: ${context}, whitespace: ${whitespace}, summary: ${summary}, interdiff: ${interdiff}}';
   }
 }
 
@@ -3824,7 +3781,7 @@ class DiffRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(10);
+    fbBuilder.startTable(9);
   }
 
   int addKind(RequestKind? kind) {
@@ -3872,11 +3829,6 @@ class DiffRequestBuilder {
     return fbBuilder.offset;
   }
 
-  int addMarks(DiffMarks? marks) {
-    fbBuilder.addUint8(9, marks?.value);
-    return fbBuilder.offset;
-  }
-
   int finish() {
     return fbBuilder.endTable();
   }
@@ -3892,7 +3844,6 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
   final DiffWhitespace? _whitespace;
   final bool? _summary;
   final bool? _interdiff;
-  final DiffMarks? _marks;
 
   DiffRequestObjectBuilder({
     RequestKind? kind,
@@ -3904,7 +3855,6 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
     DiffWhitespace? whitespace,
     bool? summary,
     bool? interdiff,
-    DiffMarks? marks,
   }) : _kind = kind,
        _revision = revision,
        _from = from,
@@ -3913,8 +3863,7 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
        _context = context,
        _whitespace = whitespace,
        _summary = summary,
-       _interdiff = interdiff,
-       _marks = marks;
+       _interdiff = interdiff;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -3923,7 +3872,7 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
     final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
     final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(10);
+    fbBuilder.startTable(9);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionOffset);
     fbBuilder.addOffset(2, fromOffset);
@@ -3935,7 +3884,6 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint8(6, _whitespace?.value);
     fbBuilder.addBool(7, _summary);
     fbBuilder.addBool(8, _interdiff);
-    fbBuilder.addUint8(9, _marks?.value);
     return fbBuilder.endTable();
   }
 
@@ -25383,8 +25331,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
 ///  `description`: the inter-diff forms' (`interdiff`) `JJ-COMMIT-DESCRIPTION` block — the from
 ///  description (`""` for a created commit) against the commit's, as a `FileDiff` with that path,
 ///  kind Modified, no sections; never path-filtered, hunks kept in summary mode; ABSENT when the
-///  descriptions are equal and for `jj diff`'s forms. Story 5.11 appends `marks`: the word-mark
-///  style the lines were computed in (the request's).
+///  descriptions are equal and for `jj diff`'s forms.
 class Diff {
   Diff._(this._bc, this._bcOffset);
   factory Diff(List<int> bytes) {
@@ -25402,11 +25349,10 @@ class Diff {
   List<String>? get commitIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   String? get fromCommitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
   FileDiff? get description => FileDiff.reader.vTableGetNullable(_bc, _bcOffset, 12);
-  DiffMarks get marks => DiffMarks.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 14, 0));
 
   @override
   String toString() {
-    return 'Diff{files: ${files}, operationId: ${operationId}, commitIds: ${commitIds}, fromCommitId: ${fromCommitId}, description: ${description}, marks: ${marks}}';
+    return 'Diff{files: ${files}, operationId: ${operationId}, commitIds: ${commitIds}, fromCommitId: ${fromCommitId}, description: ${description}}';
   }
 }
 
@@ -25423,7 +25369,7 @@ class DiffBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(6);
+    fbBuilder.startTable(5);
   }
 
   int addFilesOffset(int? offset) {
@@ -25451,11 +25397,6 @@ class DiffBuilder {
     return fbBuilder.offset;
   }
 
-  int addMarks(DiffMarks? marks) {
-    fbBuilder.addUint8(5, marks?.value);
-    return fbBuilder.offset;
-  }
-
   int finish() {
     return fbBuilder.endTable();
   }
@@ -25467,7 +25408,6 @@ class DiffObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _commitIds;
   final String? _fromCommitId;
   final FileDiffObjectBuilder? _description;
-  final DiffMarks? _marks;
 
   DiffObjectBuilder({
     List<FileDiffObjectBuilder>? files,
@@ -25475,13 +25415,11 @@ class DiffObjectBuilder extends fb.ObjectBuilder {
     List<String>? commitIds,
     String? fromCommitId,
     FileDiffObjectBuilder? description,
-    DiffMarks? marks,
   }) : _files = files,
        _operationId = operationId,
        _commitIds = commitIds,
        _fromCommitId = fromCommitId,
-       _description = description,
-       _marks = marks;
+       _description = description;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -25495,13 +25433,12 @@ class DiffObjectBuilder extends fb.ObjectBuilder {
         : fbBuilder.writeList(_commitIds!.map(fbBuilder.writeString).toList());
     final int? fromCommitIdOffset = _fromCommitId == null ? null : fbBuilder.writeString(_fromCommitId!);
     final int? descriptionOffset = _description?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(6);
+    fbBuilder.startTable(5);
     fbBuilder.addOffset(0, filesOffset);
     fbBuilder.addOffset(1, operationIdOffset);
     fbBuilder.addOffset(2, commitIdsOffset);
     fbBuilder.addOffset(3, fromCommitIdOffset);
     fbBuilder.addOffset(4, descriptionOffset);
-    fbBuilder.addUint8(5, _marks?.value);
     return fbBuilder.endTable();
   }
 

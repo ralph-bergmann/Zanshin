@@ -171,34 +171,6 @@ void main() {
       expect((f.sections.length, f.removed, f.added), (3, 3, 3));
     });
 
-    test('marks_cross_the_buffer_and_come_back', () async {
-      final Diff jj = await repo.diff(revision: at, paths: const ['f.txt']);
-      expect(jj.marks, DiffMarks.jj);
-      final Diff words = await repo.diff(revision: at, paths: const ['f.txt'], marks: DiffMarks.words);
-      expect(words.marks, DiffMarks.words);
-      final (FileDiff jjFile, FileDiff wordsFile) = (fileOf(jj, 'f.txt'), fileOf(words, 'f.txt'));
-      expect(
-        (wordsFile.fingerprint, wordsFile.removed, wordsFile.added, wordsFile.sections.length),
-        (jjFile.fingerprint, jjFile.removed, jjFile.added, jjFile.sections.length),
-      );
-      // Story 5.13: one line replaced by one line is one changed line with
-      // both numbers and its exact segments.
-      final List<HunkLine> lines = [for (final Hunk hunk in wordsFile.hunks) ...hunk.lines];
-      expect(lines.map((l) => l.kind), [
-        HunkLineKind.changed,
-        HunkLineKind.context,
-        HunkLineKind.changed,
-        HunkLineKind.context,
-        HunkLineKind.changed,
-      ]);
-      final HunkLine merged = lines.first;
-      expect((merged.left, merged.right), (1, 1));
-      expect(
-        [for (final Segment s in merged.segments) (s.kind, s.text)],
-        [(SegmentKind.removed, 'a'), (SegmentKind.added, 'A'), (SegmentKind.equal, '\n')],
-      );
-    });
-
     test('an_unmatched_path_is_a_warning', () async {
       final Diff diff = await repo.diff(revision: at, paths: const ['nope']);
       expect(diff.files, isEmpty);

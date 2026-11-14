@@ -215,20 +215,11 @@ class _Details implements GraphDetails {
     );
   }
 
-  /// Every `diff` call's word-mark style (Story 5.11), in call order.
-  final marks = <DiffMarks>[];
-
   @override
-  Future<Diff> diff(
-    String commitId, {
-    List<String> paths = const [],
-    bool summary = false,
-    DiffMarks marks = DiffMarks.jj,
-  }) async {
+  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) async {
     // Keyed by commit id as [show]: `c<key>`.
     final String changeId = commitId.substring(1);
     diffs.add((changeId, paths, summary));
-    this.marks.add(marks);
     if ((summary ? refuseSummary : refuseDiff) case final error?) {
       throw error;
     }
@@ -237,7 +228,7 @@ class _Details implements GraphDetails {
       heldDiffs.add((changeId, paths, completer));
       return completer.future;
     }
-    return diffOf(changeId, paths: paths, summary: summary, marks: marks);
+    return diffOf(changeId, paths: paths, summary: summary);
   }
 
   /// Every `squashPlan` call's change id; [combined] is its answer, [refusePlan] its refusal.
@@ -255,12 +246,7 @@ class _Details implements GraphDetails {
   }
 
   /// What [diff] answers for [changeId].
-  Diff diffOf(
-    String changeId, {
-    List<String> paths = const [],
-    bool summary = false,
-    DiffMarks marks = DiffMarks.jj,
-  }) {
+  Diff diffOf(String changeId, {List<String> paths = const [], bool summary = false}) {
     final List<FileDiff> files = fileDiffs[changeId] ?? const <FileDiff>[];
     return Diff(
       files: <FileDiff>[
@@ -281,7 +267,6 @@ class _Details implements GraphDetails {
       ],
       operationId: 'op',
       commitIds: <String>['c$changeId'],
-      marks: marks,
     );
   }
 }
@@ -1208,10 +1193,6 @@ void main() {
         ),
         details.fileDiffs[_mutable]![1],
       ];
-      // These are jj's color-words lines: load and draw them in the jj style (Story 5.11).
-      await tester.runAsync(
-        () => settings.update((s) => s.copyWith(general: s.general.copyWith(diffMarks: DiffMarksSetting.jj))),
-      );
       await pump(tester);
       await settle(tester);
       expect(inspector.focusedPath, 'src/a.dart');
@@ -1395,26 +1376,60 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('Changed words: the focused diff loads in the setting\'s style, a change reloads it', (tester) async {
+    testWidgets('Changed words: flipping general.diffWordMarks repaints the open diff and calls diff zero times', (
+      tester,
+    ) async {
+      details.fileDiffs[_mutable] = <FileDiff>[
+        fileDiff(
+          'src/a.dart',
+          added: 1,
+          removed: 1,
+          fingerprint: 'fa',
+          hunks: <Hunk>[
+            hunk(
+              before: (start: 0, end: 1),
+              after: (start: 0, end: 1),
+              lines: const <HunkLine>[
+                HunkLine(
+                  kind: HunkLineKind.changed,
+                  text: 'oldnew a\n',
+                  segments: <Segment>[
+                    Segment(kind: SegmentKind.removed, text: 'old'),
+                    Segment(kind: SegmentKind.added, text: 'new'),
+                    Segment(kind: SegmentKind.equal, text: ' a\n'),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+        details.fileDiffs[_mutable]![1],
+      ];
       await pump(tester);
       await settle(tester);
-      // The app default: Zanshin's words; the view draws by the loaded diff's style.
-      expect(details.focusReads, hasLength(1));
-      expect(details.marks.last, DiffMarks.words);
-      expect(inspector.diffMarks, DiffMarks.words);
-      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).marks, DiffMarks.words);
-      unawaited(
-        settings
-            .update((s) => s.copyWith(general: s.general.copyWith(diffMarks: DiffMarksSetting.jj)))
-            .onError<FileSystemException>((_, _) {}),
-      );
-      await tester.pump();
-      await tester.pump();
-      expect(details.focusReads, hasLength(2), reason: 'the open diff reloads');
-      expect(details.focusReads.last.$2, <String>['src/a.dart'], reason: 'the focused path stays');
-      expect(details.marks.last, DiffMarks.jj);
-      expect(inspector.diffMarks, DiffMarks.jj);
-      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).marks, DiffMarks.jj);
+      final int reads = details.diffs.length;
+      expect(inspector.wordMarks, isTrue, reason: 'on by default');
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).wordMarks, isTrue);
+      expect(find.byType(DiffWordMarks), findsOneWidget);
+      Future<void> flip(bool on) async {
+        unawaited(
+          settings
+              .update((s) => s.copyWith(general: s.general.copyWith(diffWordMarks: on)))
+              .onError<FileSystemException>((_, _) {}),
+        );
+        await tester.pump();
+        await tester.pump();
+      }
+
+      await flip(false);
+      expect(inspector.wordMarks, isFalse);
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).wordMarks, isFalse);
+      expect(find.byType(DiffWordMarks), findsNothing, reason: 'repainted without fills');
+      expect(find.text('oldnew a', findRichText: true), findsOneWidget, reason: 'the loaded diff stays');
+      expect(inspector.focusedPath, 'src/a.dart');
+      await flip(true);
+      expect(find.byType(DiffWordMarks), findsOneWidget);
+      expect(details.diffs, hasLength(reads), reason: 'the switch reloads nothing');
       await unmount(tester);
     });
 

@@ -7,16 +7,10 @@ import 'package:flutter/rendering.dart' show RenderParagraph, RenderProxyBox, Se
 import 'package:flutter/widgets.dart';
 import 'package:material_ui/material_ui.dart' show SelectionArea;
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffMarksSetting;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
-
-/// The word-mark style Settings › General's "Changed words" asks the diff loads for (Story 5.11).
-DiffMarks diffMarksOf(DiffMarksSetting setting) => switch (setting) {
-  DiffMarksSetting.words => DiffMarks.words,
-  DiffMarksSetting.jj => DiffMarks.jj,
-};
 
 /// [hunk]'s range in git's notation, `@@ −l,n +r,m @@` with U+2212 for the minus — the color-words format has no
 /// header of its own, so Zanshin labels each hunk this way: a line number is the range's 1-based start, or its 0-based
@@ -124,26 +118,24 @@ typedef DiffWordMark = ({TextRange range, SegmentKind kind});
 /// CLI's coloured tokens) as ranges of its shown text, each cut at that text's end, so a line break is never marked.
 /// A changed line always marks them. Any other line marks none when its equal segments hold no visible character (an
 /// inserted line, a block over the inline limit's own new lines, a new or deleted file): its fill already says it
-/// all. A conflict header line marks none. In [DiffMarks.words] (Story 5.11) that rule does not apply: a mark is drawn
-/// exactly where a segment is not equal — the lines' own rule already leaves one-sided blocks unmarked.
-List<DiffWordMark> diffWordMarks(HunkLine line, {DiffMarks marks = DiffMarks.jj}) {
+/// all. A conflict header line marks none.
+List<DiffWordMark> diffWordMarks(HunkLine line) {
   if (line.kind == HunkLineKind.conflictHeader ||
-      (marks == DiffMarks.jj &&
-          line.kind != HunkLineKind.changed &&
+      (line.kind != HunkLineKind.changed &&
           !line.segments.any((s) => s.kind == SegmentKind.equal && s.text.trim().isNotEmpty))) {
     return const <DiffWordMark>[];
   }
   final int shown = _text(line).length;
-  final ranges = <DiffWordMark>[];
+  final marks = <DiffWordMark>[];
   var start = 0;
   for (final Segment segment in line.segments) {
     final int end = start + segment.text.length;
     if (segment.kind != SegmentKind.equal && start < shown) {
-      ranges.add((range: TextRange(start: start, end: math.min(end, shown)), kind: segment.kind));
+      marks.add((range: TextRange(start: start, end: math.min(end, shown)), kind: segment.kind));
     }
     start = end;
   }
-  return ranges;
+  return marks;
 }
 
 /// A line's look: its fill, its text ink and its left / right number inks.
@@ -229,41 +221,50 @@ Widget _noNewline(ZsColors colors, EdgeInsets padding) => Padding(
 /// [line]'s shown text in [ink], both layouts' one builder: its [diffWordMarks], if any, on the stronger fill of
 /// their side's hue (removed runs `--rem-word-bg`, added runs `--add-word-bg`) with [ZsColors.text] glyphs (coloured
 /// text on a stronger tint falls under 4.5:1, DS states.css). A side-by-side [cell] keeps one line, clipped.
-/// [markStyle] is the word-mark style the line was loaded in.
-Widget _lineText(ZsColors colors, HunkLine line, Color ink, DiffMarks markStyle, {bool cell = false}) {
+/// Without [wordMarks] (Settings › Changed words off, Story 5.14) only a changed line keeps its runs, with no fill and
+/// their side's hue as text colour ([ZsColors.rem] / [ZsColors.add]); every other line, side-by-side cells included, is
+/// its plain text in [ink].
+Widget _lineText(ZsColors colors, HunkLine line, Color ink, {required bool wordMarks, bool cell = false}) {
   final String text = _text(line);
   final TextStyle style = ZsType.code.copyWith(color: ink);
   final int? maxLines = cell ? 1 : null;
   final TextOverflow? overflow = cell ? TextOverflow.clip : null;
-  final List<DiffWordMark> marks = diffWordMarks(line, marks: markStyle);
+  final List<DiffWordMark> marks = wordMarks || line.kind == HunkLineKind.changed
+      ? diffWordMarks(line)
+      : const <DiffWordMark>[];
   if (marks.isEmpty) {
     return Text(text, maxLines: maxLines, softWrap: false, overflow: overflow, style: style);
   }
   final strong = TextStyle(color: colors.text);
   final spans = <TextSpan>[];
   var at = 0;
-  for (final (:TextRange range, kind: _) in marks) {
+  for (final (:TextRange range, :SegmentKind kind) in marks) {
     if (range.start > at) {
       spans.add(TextSpan(text: text.substring(at, range.start)));
     }
-    spans.add(TextSpan(text: range.textInside(text), style: strong));
+    final runStyle = wordMarks ? strong : TextStyle(color: kind == SegmentKind.added ? colors.add : colors.rem);
+    spans.add(TextSpan(text: range.textInside(text), style: runStyle));
     at = range.end;
   }
   if (at < text.length) {
     spans.add(TextSpan(text: text.substring(at)));
+  }
+  final paragraph = Text.rich(
+    TextSpan(children: spans),
+    maxLines: maxLines,
+    softWrap: false,
+    overflow: overflow,
+    style: style,
+  );
+  if (!wordMarks) {
+    return paragraph;
   }
   return DiffWordMarks(
     marks: <PaintedWordMark>[
       for (final (:TextRange range, :SegmentKind kind) in marks)
         (range: range, color: kind == SegmentKind.added ? colors.addWordBg : colors.remWordBg),
     ],
-    child: Text.rich(
-      TextSpan(children: spans),
-      maxLines: maxLines,
-      softWrap: false,
-      overflow: overflow,
-      style: style,
-    ),
+    child: paragraph,
   );
 }
 
@@ -280,7 +281,7 @@ class InspectorDiffView extends StatelessWidget {
     required this.error,
     required this.layout,
     required this.onLayoutChanged,
-    this.marks = DiffMarks.jj,
+    this.wordMarks = true,
     this.viewed = false,
     this.onViewedChanged,
     this.hunkPicked,
@@ -308,8 +309,9 @@ class InspectorDiffView extends StatelessWidget {
   /// Its diff; null while it loads, after a refusal, or when the reply has no entry for it.
   final FileDiff? diff;
 
-  /// The word-mark style [diff] was loaded in (Story 5.11): the loaded `Diff.marks`, never the current setting.
-  final DiffMarks marks;
+  /// Whether changed words inside a line get their fill (Settings › General › Diffs › "Changed words", Story 5.14);
+  /// off, only a changed line still shows them, in their side's hue as text colour.
+  final bool wordMarks;
 
   /// The read's refusal.
   final ZanshinFfiException? error;
@@ -401,7 +403,7 @@ class InspectorDiffView extends StatelessWidget {
                       child: InspectorDiffHunk(
                         hunk: diff.hunks[i],
                         layout: layout,
-                        marks: marks,
+                        wordMarks: wordMarks,
                         selectable: hunkPicked != null && diff.hunks[i].sections.isNotEmpty,
                         picked: hunkPicked == null ? false : hunkPicked(diff.hunks[i]),
                         onToggle: () => onHunkToggled?.call(diff.hunks[i]),
@@ -623,7 +625,7 @@ class InspectorDiffHunk extends StatefulWidget {
   const InspectorDiffHunk({
     required this.hunk,
     required this.layout,
-    this.marks = DiffMarks.jj,
+    this.wordMarks = true,
     this.selectable = false,
     this.picked = false,
     this.onToggle,
@@ -633,8 +635,8 @@ class InspectorDiffHunk extends StatefulWidget {
   /// The hunk.
   final Hunk hunk;
 
-  /// The word-mark style its lines were loaded in (Story 5.11): the loaded `Diff.marks`.
-  final DiffMarks marks;
+  /// Whether changed words inside a line get their fill ([InspectorDiffView.wordMarks]).
+  final bool wordMarks;
 
   /// Unified or side by side.
   final DiffLayoutSetting layout;
@@ -792,7 +794,7 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
                                 _number(line.left, digits, look.left),
                                 _number(line.right, digits, look.right),
                               ],
-                              _lineText(colors, line, look.ink, widget.marks),
+                              _lineText(colors, line, look.ink, wordMarks: widget.wordMarks),
                             ],
                           ),
                         );
@@ -850,7 +852,7 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
               children: <Widget>[
                 if (line.kind != HunkLineKind.conflictHeader)
                   _number(left ? line.left : line.right, digits, left ? look.left : look.right),
-                Expanded(child: _lineText(colors, line, look.ink, widget.marks, cell: true)),
+                Expanded(child: _lineText(colors, line, look.ink, wordMarks: widget.wordMarks, cell: true)),
               ],
             ),
             if (!line.text.endsWith('\n')) _noNewline(colors, EdgeInsets.zero),

@@ -43,8 +43,8 @@ typedef InspectorDraft = ({String summary, String details});
 ///   focused file's diff ([focusedDiff]) — both by the commit id, so a hidden or divergent node reads its own commit.
 ///   The first file starts focused; a reload keeps the focused path while it is
 ///   listed. A file is viewed while `viewedKey(change id, path, its summary fingerprint)` is in the viewed store's set; the
-///   layout is `general.diffLayout` in [settings], followed when another writer changes it. The focused diff loads in
-///   `general.diffMarks`' word-mark style (Story 5.11); a change of it reloads the focused diff.
+///   layout is `general.diffLayout` in [settings], followed when another writer changes it, and so is
+///   `general.diffWordMarks` ([wordMarks], Story 5.14), which only changes how the loaded diff is drawn.
 /// - **Composer** (Story 10.25): the checked files of the selection — @ starts with all, another change with none,
 ///   reset on a selection change, kept to the still-listed paths on a reload — and a composer draft per change key;
 ///   [runComposer] runs [composerAction] (`jj commit` / `jj split -r`). [squash] asks `squashPlan` first and opens the
@@ -60,7 +60,7 @@ class InspectorViewModel extends ChangeNotifier {
   }) : _viewedStore = viewed,
        _viewed = viewed.load(),
        _layout = settings.value.general.diffLayout,
-       _marks = diffMarksOf(settings.value.general.diffMarks) {
+       _wordMarks = settings.value.general.diffWordMarks {
     graph.addListener(_graphChanged);
     settings.addListener(_settingsChanged);
     _graphChanged();
@@ -72,15 +72,13 @@ class InspectorViewModel extends ChangeNotifier {
   /// What the inspector reads.
   final GraphDetails details;
 
-  /// The app settings: the diff layout and word-mark style.
+  /// The app settings: the diff layout and the word-mark switch.
   final SettingsStore settings;
 
   final InspectorViewedStore _viewedStore;
   final Set<String> _viewed;
   DiffLayoutSetting _layout;
-  // The style the next diff load asks for, and the style the shown diff was loaded in.
-  DiffMarks _marks;
-  DiffMarks _loadedMarks = DiffMarks.jj;
+  bool _wordMarks;
 
   Map<String, FileDiff>? _summary;
   String? _changeId;
@@ -159,8 +157,8 @@ class InspectorViewModel extends ChangeNotifier {
   /// The focused diff's refusal.
   ZanshinFfiException? get focusError => _focusError;
 
-  /// The word-mark style the shown diff ([focusedDiff], or [previousDiff] while it loads) was loaded in (Story 5.11).
-  DiffMarks get diffMarks => _loadedMarks;
+  /// Whether the diff fills the words that changed inside a line (Settings › Changed words, Story 5.14).
+  bool get wordMarks => _wordMarks;
 
   /// Shows [path]'s diff (one read); on the focused path after a refusal it reads again.
   void focus(String path) {
@@ -240,11 +238,10 @@ class InspectorViewModel extends ChangeNotifier {
       _layout = layout;
       changed = true;
     }
-    // A new word-mark style reloads the open diff; the summary carries no lines, so it stays.
-    final DiffMarks marks = diffMarksOf(settings.value.general.diffMarks);
-    if (marks != _marks) {
-      _marks = marks;
-      _reloadFocus();
+    // The switch only changes the drawing, so the loaded diff stays.
+    final bool wordMarks = settings.value.general.diffWordMarks;
+    if (wordMarks != _wordMarks) {
+      _wordMarks = wordMarks;
       changed = true;
     }
     // Another writer (a second window of the repo) may have changed the Viewed marks.
@@ -284,10 +281,9 @@ class InspectorViewModel extends ChangeNotifier {
     }
     unawaited(() async {
       try {
-        final Diff diff = await details.diff(commitId, paths: <String>[path], marks: _marks);
+        final Diff diff = await details.diff(commitId, paths: <String>[path]);
         if (serial == _focusSerial) {
           _focusedDiff = diff.files.where((file) => file.path == path).firstOrNull;
-          _loadedMarks = diff.marks;
           _previousDiff = null;
           _focusError = null;
           _notify();
@@ -2295,7 +2291,7 @@ class _ChangesState extends State<_Changes> {
                 child: InspectorDiffView(
                   path: model.previousDiff?.path ?? focused,
                   diff: model.focusedDiff ?? model.previousDiff,
-                  marks: model.diffMarks,
+                  wordMarks: model.wordMarks,
                   error: model.focusError,
                   viewed: model.isViewed(focused),
                   onViewedChanged: (viewed) => model.setViewed(focused, viewed),

@@ -16,7 +16,7 @@ const _light = AppSettings(appearance: AppearanceSettings(themeMode: ThemeMode.l
 const _darkJson =
     '{\n  "appearance": {\n    "themeMode": "dark",\n    "accentSource": "followMacOS",\n    "density": "compact",\n    "zoom": 100\n  },\n'
     '  "layout": {\n    "inspectorWidth": 460.0,\n    "panelWidth": 300.0\n  },\n'
-    '  "general": {\n    "hideControls": true,\n    "diffLayout": "unified",\n    "diffMarks": "words"\n  },\n'
+    '  "general": {\n    "hideControls": true,\n    "diffLayout": "unified",\n    "diffWordMarks": true\n  },\n'
     '  "projects": {\n    "projects": [],\n    "groups": [],\n    "openProject": null\n  },\n'
     '  "graph": {\n    "layout": "free",\n    "detailedCards": true,\n    "groupStacks": true,\n'
     '    "cardWidth": 240.0,\n    "showMinimap": true,\n    "revsetConfigs": [],\n    "revsetDefault": "log"\n  }\n}\n';
@@ -70,6 +70,20 @@ void main() {
 
       expect(store.value, _dark);
       expect(warnings, isEmpty);
+    });
+
+    test('a file with the old diffMarks key loads with the word marks on and a save drops the old key', () async {
+      await file.writeAsString(_darkJson.replaceFirst('"diffWordMarks": true', '"diffMarks": "words"'));
+
+      final SettingsStore store = await SettingsStore.load(file);
+
+      expect(store.value, _dark);
+      expect(store.value.general.diffWordMarks, isTrue);
+      expect(warnings, isEmpty);
+      expect(file.existsSync(), isTrue, reason: 'not moved aside as corrupt');
+      await store.update((s) => s.copyWith.appearance(themeMode: ThemeMode.light));
+      await store.update((s) => s.copyWith.appearance(themeMode: ThemeMode.dark));
+      expect(file.readAsStringSync(), _darkJson);
     });
 
     for (final (String label, String content) in [

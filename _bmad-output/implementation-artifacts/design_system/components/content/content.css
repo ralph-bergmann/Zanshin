@@ -48,6 +48,11 @@
 .zs-diff-line .w,.zs-diff-side .w{display:inline-block;color:var(--text)}
 .zs-diff-line .w.add,.zs-diff-side .w.add{background:var(--add-word-bg)}
 .zs-diff-line .w.rem,.zs-diff-side .w.rem{background:var(--rem-word-bg)}
+/* Settings › Changed words off (.no-word-marks on DiffView or DiffHunk): no tint and the row's ink everywhere; only a changed row keeps its
+   runs, as glyphs in their side's hue — so removed and added rows and every side-by-side cell show only their fill and ink */
+.no-word-marks .w.rem,.no-word-marks .w.add{background:none;color:inherit}
+.no-word-marks .chg .w.rem{color:var(--rem)}
+.no-word-marks .chg .w.add{color:var(--add)}
 .zs-viewed{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:3px 8px 3px 6px;border-radius:var(--radius-tag);border:1px solid var(--border);background:transparent;color:var(--text-muted);font:inherit;font-size:var(--fs-xs);cursor:default;transition:background var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
 .zs-viewed:hover{color:var(--text);border-color:var(--border-strong);background:var(--fl-hover)}
 .zs-viewed:active{background:var(--fl-on)}

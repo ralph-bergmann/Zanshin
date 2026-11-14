@@ -2472,8 +2472,7 @@ call's `CallReport` rides as `warnings` / `precondition` as on every envelope). 
 
 ```
 Diff     { files: [FileDiff], operation_id, commit_ids: [string], from_commit_id, // pins: Story 5.6
-           description: FileDiff,                                          // 10.29 appended
-           marks: DiffMarks (Jj | Words) }                                 // 5.11 appended
+           description: FileDiff }                                         // 10.29 appended
 FileDiff { path, binary, mode_change, sections: [HunkKey], hunks: [Hunk],
            kind: ChangeKind, from_path, removed, added, fingerprint }        // 5.6 appended
 Hunk     { before_start, before_end, after_start, after_end, symbol,
@@ -2507,36 +2506,6 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   `diff.color-words.max-inline-alternation` times (`-1` = always, `0` = never); otherwise it is its
   left lines, then its right lines, with block-wide word marks. `HunkLineKind`'s member order is
   the wire value — append only.
-- **Word-mark style (5.11, 5.13).** `marks` = the style the lines were computed in, the
-  request's. `Jj` is everything above. `Words` changes only each changed block of the line diff
-  with lines on both sides; each side is its joined lines, decoded lossily as UTF-8. It marks the
-  changed part of each line:
-  1. **Tokens.** A run of blanks (`char::is_whitespace`, so a line break belongs to a blank run),
-     a run of word characters (alphanumeric or `_`), or any other character on its own.
-  2. **Comparison.** The `similar` crate's Myers over the two token lists; two tokens are equal
-     when their text is. A token only one side has is changed. In a block of exactly one old and
-     one new line each word token stands twice in both lists and is kept only when both copies
-     pair with the two copies of one token on the other side.
-  3. **Shift right.** On each side a run of changed tokens moves right while its first non-blank
-     token equals the token right after the run; blanks at the run's start stay changed.
-  4. **Marks.** A changed non-blank token is a `Removed` segment on its left line (`Added` on its
-     right line). A run of blanks and unchanged tokens without a word character is marked exactly
-     when it holds no line break and the tokens right before and after it are marked non-blank
-     tokens. Indentation, trailing blanks and line breaks are never marked.
-  5. **Size limit.** A block over 30 000 comparison entries (both sides, doubled word tokens
-     included) carries no marks and is never merged.
-  6. **One line for one line.** A block of one old and one new line within the limit is one
-     `Changed` line with both numbers when both lines have the same indentation and trailing
-     whitespace (line break included) and its changed parts switch sides no more than
-     `max-inline-alternation` times (jj's counting: removed, then added is 2; removed, kept,
-     removed is 1; `-1` = always, `0` = never). Its segments, in line order: each kept token once
-     as `Equal`; between two kept tokens the left side's changed tokens as one `Removed` part, then
-     the right side's as one `Added` part (swapped under `-------`). Rule 4 does not apply in it.
-  Any other block is its left lines (kind `Removed`), then its right lines (kind `Added`), marked
-  by rules 3 and 4. A block with lines on one side only carries no marks. Context lines at
-  `-w` / `-b`, conflicts (roles swapped under `-------`) and summary mode work as in `Jj`. Both
-  styles give the same files, sections, hunk ranges, symbols, counts, fingerprints and numbered
-  line texts, merged lines included. `DiffMarks`' member order is the wire value — append only.
 - **Vectors** are always written (empty, not absent); files, hunks, lines and sections keep
   their input order. `binary` and mode-only files carry no hunks; in summary mode no file does.
   `binary` = either side's content is binary (a NUL byte in its first 8000 bytes), checked before
@@ -2571,14 +2540,13 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   `SegmentKind`'s member order is the wire value — append only.
 
 Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart`) → `Diff`
-(with `operationId` / `commitId` / `fromCommitId`; `marks`, Story 5.11, a `DiffMarks`), `FileDiff` (`kind` as `status.dart`'s
+(with `operationId` / `commitId` / `fromCommitId`), `FileDiff` (`kind` as `status.dart`'s
 `FileChangeKind`, `fromPath`, `removed`, `added`, `fingerprint`), `Hunk` (ranges as
 `({int start, int end})` records), `HunkLine` (`segments`, Story 5.2, an absent vector decoding
 as `[]`; `left` / `right`, Story 5.10, `null` for 0), `HunkLineKind`, `Segment`, `SegmentKind`;
 keys are `select_tree.dart`'s `HunkKey`.
 Exported from `zanshin_core.dart` since Story 5.8 (`Diff`, `DiffWhitespace`, `FileDiff`, `Hunk`,
-`HunkLine`, `HunkLineKind`; `Segment` and `SegmentKind` since Story 5.2; `DiffMarks` since Story
-5.11).
+`HunkLine`, `HunkLineKind`; `Segment` and `SegmentKind` since Story 5.2).
 
 ### `zanshin_diff` (Story 5.8)
 
@@ -2589,7 +2557,7 @@ snapshot and writes no other operation). No caching.
 ```
 DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffContext { value: uint },
               whitespace: DiffWhitespace (Exact | IgnoreAllSpace | IgnoreSpaceChange), summary,
-              interdiff, marks: DiffMarks (Jj | Words) }
+              interdiff }
 ```
 
 - `revision` = `-r` (absent `@`), a set diffed as one: its roots' merged parents against its
@@ -2606,8 +2574,6 @@ DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffCon
   `diff.color-words.*` key (`context`, `max-inline-alternation`, `conflict`) is
   `jj.config_error`, also with an explicit `context`. `whitespace` =
   `-w` / `-b`, a value outside the enum `ffi.invalid_argument`. `summary` drops only the hunks.
-- `marks` (Story 5.11) = the word-mark style (see the `Diff` payload); absent = `Jj`, the CLI's.
-  A value outside the enum is `ffi.invalid_argument`. It comes back as `Diff.marks`.
 - `interdiff` (Story 10.29) reads `from` / `to` as `jj interdiff` does: `from` rebased onto `to`'s
   parents in memory against `to`'s tree, no copy records (`jj op show --patch`'s per-commit diff
   of a rewritten commit). With `revision` alone (Story 10.29 closing run) it is `show_inter_diff`
@@ -2624,7 +2590,7 @@ DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffCon
 
 Dart: `zanshinDiff` (`lib/src/ffi/diff.dart`, interior-NUL guard as `zanshinSelectTree`),
 `DiffCommand`, `ZanshinWorker.diff`, `RepoHandle.diff({revision, from, to, paths, context,
-whitespace, summary, interdiff, marks})` → `Future<Diff>` (`Diff.description`, `Diff.marks`).
+whitespace, summary, interdiff})` → `Future<Diff>` (`Diff.description`).
 
 `ShowEntry` also carries `parent_tree_labels` / `tree_labels` since Story 5.8 (always written; empty
 = unlabeled, else one per id) — Dart `ShowEntry.parentTreeLabels` / `treeLabels`.

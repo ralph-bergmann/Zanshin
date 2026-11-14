@@ -18,13 +18,6 @@
 //!   lines (`unzip_diff_hunks_to_lines`). Zanshin draws colour, so it always takes the CLI's
 //!   coloured path. A conflicted side follows `diff.color-words.conflict`: `materialize` diffs
 //!   the marker text, `pair` diffs each pair of conflict terms under header lines.
-//! - **Two word-mark styles** (Stories 5.11 and 5.13, [`DiffMarks`]): the lines above are the
-//!   [`DiffMarks::Jj`] style, which equals the CLI. [`DiffMarks::Words`] replaces only the step
-//!   that turns one changed block of the line diff into lines and segments: `similar`'s Myers over
-//!   the block's tokens marks the changed part of each line, and a block of one line per side can
-//!   become one [`HunkLineKind::Changed`] line. Context, conflicts, `-w` / `-b` and summary mode
-//!   work the same in both; jj parity holds for the jj style, and for the files, sections, hunk
-//!   ranges, counts, fingerprints and numbered line texts of both.
 //! - **Hunks** are the runs of lines between two skipped ranges (the CLI's `...` lines). A hunk
 //!   after a skipped range carries that range's source-symbol line ([`crate::source_symbol`]).
 //! - **Sections** are [`crate::select_tree::sections`] over the same texts. They are the keys
@@ -95,43 +88,6 @@ pub struct HunksOptions {
     pub context: Option<usize>,
     /// How lines are compared.
     pub whitespace: Whitespace,
-    /// Which word marks a changed block gets (Story 5.11).
-    pub marks: DiffMarks,
-}
-
-/// Which word marks a changed block of the line diff gets (Story 5.11). Both styles give the same
-/// files, sections, hunk ranges, counts, fingerprints and numbered line texts; only the lines of a
-/// changed block and their segments differ.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum DiffMarks {
-    /// `jj diff`'s color-words marks (Story 5.10): jj-lib's word diff, inlined under
-    /// `diff.color-words.max-inline-alternation`.
-    #[default]
-    Jj,
-    /// The changed part of each line (Stories 5.11 and 5.13), by `similar`'s Myers. Per changed
-    /// block with lines on both sides, each side its joined lines:
-    ///
-    /// 1. **Tokens:** a run of blanks (a line break included), a run of word characters
-    ///    (alphanumeric or `_`), or any other character on its own.
-    /// 2. **Comparison:** Myers over the two token lists, equal by text; a token only one side has
-    ///    is changed. In a block of one line per side each word token stands twice in both lists
-    ///    and is kept only when both copies pair with the two copies of one token.
-    /// 3. **Shift right:** a run of changed tokens moves right while its first non-blank token
-    ///    equals the token after it; blanks at its start stay changed.
-    /// 4. **Marks:** a changed non-blank token is marked; a run of blanks and unchanged tokens
-    ///    without a word character is marked when it holds no line break and both tokens around it
-    ///    are marked. Indentation, trailing blanks and line breaks never are.
-    /// 5. **Size limit:** a block over a fixed number of comparison entries (30 000, both sides,
-    ///    doubled words counted twice) gets no marks.
-    /// 6. **One line for one line:** a block of one line per side within the limit, both lines
-    ///    with the same indentation and trailing whitespace, whose changed parts switch sides at
-    ///    most `diff.color-words.max-inline-alternation` times, is one [`HunkLineKind::Changed`]
-    ///    line: each kept token once, between two kept tokens the left side's changed tokens,
-    ///    then the right side's; rule 4 does not apply in it.
-    ///
-    /// Any other block is its left lines, then its right lines. A block with lines on one side
-    /// only gets no marks.
-    Words,
 }
 
 /// How [`crate::Repo::compute_hunks`] compares lines (Story 5.1).
@@ -198,8 +154,6 @@ pub struct DiffOptions {
     pub context: Option<usize>,
     /// How lines are compared.
     pub whitespace: Whitespace,
-    /// Which word marks a changed block gets (Story 5.11).
-    pub marks: DiffMarks,
     /// Leave every file's [`FileDiff::hunks`] empty — kinds, flags, sections, counts and
     /// fingerprints are those of the full diff.
     pub summary: bool,
@@ -269,9 +223,6 @@ pub struct RevisionDiff {
     /// when the descriptions are equal (`show_diff_bytes` skips unchanged contents), and always
     /// for [`DiffRevisions::Revision`] / [`DiffRevisions::FromTo`] (`jj diff` has no such block).
     pub description: Option<FileDiff>,
-    /// The word-mark style the lines were computed in (Story 5.11): the call's
-    /// [`DiffOptions::marks`].
-    pub marks: DiffMarks,
 }
 
 /// The CLI's `DUMMY_DESCRIPTION_PATH` (`show_inter_diff`, `cli/src/diff_util.rs` @ v0.46.0): the
@@ -382,7 +333,7 @@ pub(crate) fn compute_hunks(
     config: &StackedConfig,
     options: &HunksOptions,
 ) -> Result<Vec<FileDiff>, MutateError> {
-    let reader = DiffReader::new(store, config, options.context, options.whitespace, options.marks)?;
+    let reader = DiffReader::new(store, config, options.context, options.whitespace)?;
     let from = SelectedTree::from_tree_id(store, &options.from)?;
     let to = SelectedTree::from_tree_id(store, &options.to)?;
     pollster::block_on(reader.files(
@@ -406,7 +357,7 @@ pub(crate) fn diff(
 ) -> Result<RevisionDiff, MutateError> {
     let matcher = crate::mutate::build_matcher(&options.paths)?;
     let store = workspace.repo_loader().store();
-    let reader = DiffReader::new(store, config, options.context, options.whitespace, options.marks)?;
+    let reader = DiffReader::new(store, config, options.context, options.whitespace)?;
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let prefixes = templates.prefixes();
@@ -511,7 +462,6 @@ pub(crate) fn diff(
             from_commit_id,
             files,
             description,
-            marks: options.marks,
         })
     })
 }
@@ -602,13 +552,11 @@ struct DiffReader<'a> {
     options: WalkOptions,
 }
 
-/// The color-words walk's options: the CLI's `ColorWordsDiffOptions` after `merge_args`, and
-/// the word-mark style.
+/// The color-words walk's options: the CLI's `ColorWordsDiffOptions` after `merge_args`.
 #[derive(Clone, Copy, Debug)]
 struct WalkOptions {
     words: ColorWordsOptions,
     mode: LineCompareMode,
-    marks: DiffMarks,
 }
 
 impl<'a> DiffReader<'a> {
@@ -620,7 +568,6 @@ impl<'a> DiffReader<'a> {
         config: &StackedConfig,
         context: Option<usize>,
         whitespace: Whitespace,
-        marks: DiffMarks,
     ) -> Result<Self, MutateError> {
         let mut words = crate::config::diff_color_words(config).map_err(cfg)?;
         let marker_style = crate::config::conflict_marker_style(config).map_err(cfg)?;
@@ -637,7 +584,6 @@ impl<'a> DiffReader<'a> {
             options: WalkOptions {
                 words,
                 mode: line_compare_mode(whitespace),
-                marks,
             },
         })
     }
@@ -1161,9 +1107,7 @@ impl Walk {
     }
 
     /// `show_color_words_diff_lines` (`cli/src/diff_util.rs:1211-1276` @ v0.47.0) on its coloured
-    /// path. `context` keeps every line's kind [`HunkLineKind::Context`]. A changed block (not
-    /// `context`) of [`DiffMarks::Words`] takes [`Walk::word_lines`] instead; context lines at
-    /// `-w` / `-b` are no changed block of the line diff, so they keep this path in both styles.
+    /// path. `context` keeps every line's kind [`HunkLineKind::Context`].
     fn diff_lines(
         &mut self,
         contents: Diff<&[u8]>,
@@ -1171,9 +1115,6 @@ impl Walk {
         roles: Diff<SegmentKind>,
         context: bool,
     ) -> DiffLineNumber {
-        if !context && self.options.marks == DiffMarks::Words {
-            return self.word_lines(contents, line_number, roles);
-        }
         let word_hunks: Vec<DiffHunk<'_>> = ContentDiff::by_word(contents.into_array()).hunks().collect();
         let can_inline = match self.options.words.max_inline_alternation {
             None => true,
@@ -1240,294 +1181,6 @@ impl Walk {
         }
         line_number
     }
-
-    /// One changed block in [`DiffMarks::Words`]: one [`HunkLineKind::Changed`] line when
-    /// [`merged_runs`] allows it, else its left lines, then its right lines, marked by
-    /// [`side_runs`].
-    fn word_lines(
-        &mut self,
-        contents: Diff<&[u8]>,
-        mut line_number: DiffLineNumber,
-        roles: Diff<SegmentKind>,
-    ) -> DiffLineNumber {
-        let line_kind = |role: SegmentKind| match role {
-            SegmentKind::Added => HunkLineKind::Added,
-            SegmentKind::Removed | SegmentKind::Equal => HunkLineKind::Removed,
-        };
-        let texts = contents.map(|side| String::from_utf8_lossy(side));
-        let texts = texts.as_ref().map(|text| &**text);
-        let one_line =
-            texts.before.split_inclusive('\n').count() == 1 && texts.after.split_inclusive('\n').count() == 1;
-        let runs = match compare_tokens(texts, one_line) {
-            None => texts.map(|text| vec![(SegmentKind::Equal, text)]),
-            Some(mut tokens) => {
-                shift_right(&mut tokens.before);
-                shift_right(&mut tokens.after);
-                let max = self.options.words.max_inline_alternation;
-                if one_line {
-                    if let Some(runs) = merged_runs(texts, tokens.as_ref().map(|side| &side[..]), roles, max) {
-                        let numbers = Diff::new(Some(line_number.left), Some(line_number.right));
-                        let segments = segments(runs.iter().map(|&(kind, run)| (kind, run.as_bytes())));
-                        self.push(line_number, HunkLineKind::Changed, numbers, segments);
-                        line_number.left += 1;
-                        line_number.right += 1;
-                        return line_number;
-                    }
-                }
-                tokens.zip(roles).map(|(tokens, role)| side_runs(&tokens, role))
-            }
-        };
-        for line in run_lines(&runs.before) {
-            let numbers = Diff::new(Some(line_number.left), None);
-            self.push(line_number, line_kind(roles.before), numbers, segments(line));
-            line_number.left += 1;
-        }
-        for line in run_lines(&runs.after) {
-            let numbers = Diff::new(None, Some(line_number.right));
-            self.push(line_number, line_kind(roles.after), numbers, segments(line));
-            line_number.right += 1;
-        }
-        line_number
-    }
-}
-
-/// The most comparison entries (both sides together, a doubled word token counted twice) a
-/// changed block may hold to get [`DiffMarks::Words`] marks or become one line. At this size the
-/// rules take, in a release build on an Apple M4 Pro: two sides from a four-character
-/// punctuation-and-word vocabulary without blanks about 47 ms (doubled about 45-50 ms), two sides
-/// from a two-word vocabulary in different orders up to 48 ms (doubled about 19 ms), two sides
-/// with no common token about 2 ms (Story 5.13's spec, Design Notes). A fixed size, not a time
-/// cut-off, so one block always gets the same marks.
-const WORD_MARKS_LIMIT: usize = 30_000;
-
-/// A token of [`DiffMarks::Words`] with whether it changed.
-type Token<'a> = (&'a str, bool);
-
-/// What a character makes of its token (rule 1 of [`DiffMarks::Words`]).
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum TokenClass {
-    Blank,
-    Word,
-    Other,
-}
-
-fn is_word_char(character: char) -> bool {
-    character.is_alphanumeric() || character == '_'
-}
-
-fn is_blank(token: &str) -> bool {
-    token.chars().all(char::is_whitespace)
-}
-
-fn is_word(token: &str) -> bool {
-    token.chars().next().is_some_and(is_word_char)
-}
-
-/// Rule 1: `text` as a run of blanks (a line break included), a run of word characters, or any
-/// other character on its own, in order.
-fn tokenize(text: &str) -> Vec<&str> {
-    let class = |character: char| {
-        if character.is_whitespace() {
-            TokenClass::Blank
-        } else if is_word_char(character) {
-            TokenClass::Word
-        } else {
-            TokenClass::Other
-        }
-    };
-    let mut tokens = Vec::new();
-    let mut start = 0;
-    let mut last = TokenClass::Other;
-    for (at, character) in text.char_indices() {
-        let next = class(character);
-        if at > start && (next != last || next == TokenClass::Other) {
-            tokens.push(&text[start..at]);
-            start = at;
-        }
-        last = next;
-    }
-    if start < text.len() {
-        tokens.push(&text[start..]);
-    }
-    tokens
-}
-
-/// Rules 1, 2 and 5: each side's tokens and whether each changed, by `similar`'s Myers over the
-/// two token lists. With `doubled` (a block of one line per side) each word token stands twice
-/// in its list and is kept only when both its copies pair with the two copies of one token, so
-/// kept tokens pair one to one, in order. `None` for a side without text and for a block over
-/// [`WORD_MARKS_LIMIT`] entries.
-fn compare_tokens(texts: Diff<&str>, doubled: bool) -> Option<Diff<Vec<Token<'_>>>> {
-    if texts.before.is_empty() || texts.after.is_empty() {
-        return None;
-    }
-    let tokens = texts.map(tokenize);
-    let copies = |token: &str| if doubled && is_word(token) { 2 } else { 1 };
-    // Each comparison entry's token index.
-    let owners = tokens.as_ref().map(|tokens| {
-        tokens
-            .iter()
-            .enumerate()
-            .flat_map(|(index, token)| iter::repeat_n(index, copies(token)))
-            .collect::<Vec<_>>()
-    });
-    if owners.before.len() + owners.after.len() > WORD_MARKS_LIMIT {
-        return None;
-    }
-    let entries = owners
-        .as_ref()
-        .zip(tokens.as_ref())
-        .map(|(owners, tokens)| owners.iter().map(|&index| tokens[index]).collect::<Vec<_>>());
-    let mut pairs = Vec::new();
-    for op in similar::capture_diff_slices(similar::Algorithm::Myers, &entries.before, &entries.after) {
-        if let similar::DiffOp::Equal {
-            old_index,
-            new_index,
-            len,
-        } = op
-        {
-            pairs.extend((0..len).map(|offset| (owners.before[old_index + offset], owners.after[new_index + offset])));
-        }
-    }
-    let mut changed = tokens.as_ref().map(|tokens| vec![true; tokens.len()]);
-    // The pairs run in order on both sides, so all pairs of one token with one partner stand together.
-    for group in pairs.chunk_by(|a, b| a == b) {
-        let (old, new) = group[0];
-        if group.len() == copies(tokens.before[old]) {
-            changed.before[old] = false;
-            changed.after[new] = false;
-        }
-    }
-    Some(
-        tokens
-            .zip(changed)
-            .map(|(tokens, changed)| tokens.into_iter().zip(changed).collect()),
-    )
-}
-
-/// Rule 3 on one side: each maximal run of changed tokens moves right while its first non-blank
-/// token equals the token right after the run — that token becomes unchanged, the one after the
-/// run changed, and the run takes the changed tokens that now touch it. Blanks at the run's start
-/// stay changed.
-fn shift_right(tokens: &mut [Token<'_>]) {
-    let run_end = |tokens: &[Token<'_>], from: usize| from + tokens[from..].iter().take_while(|token| token.1).count();
-    let mut at = 0;
-    while at < tokens.len() {
-        if !tokens[at].1 {
-            at += 1;
-            continue;
-        }
-        let mut start = at;
-        let mut end = run_end(tokens, at);
-        while let Some(first) = (start..end).find(|&index| !is_blank(tokens[index].0)) {
-            if tokens.get(end).is_none_or(|&(token, _)| token != tokens[first].0) {
-                break;
-            }
-            tokens[first].1 = false;
-            tokens[end].1 = true;
-            start = first + 1;
-            end = run_end(tokens, end);
-        }
-        at = end;
-    }
-}
-
-/// Rule 4 on one side, as runs of `role` and [`SegmentKind::Equal`]: a changed non-blank token is
-/// `role`; a maximal run of blanks and unchanged tokens without a word character is `role` exactly
-/// when it holds no line break and both tokens around it are changed non-blank tokens. So
-/// indentation, trailing blanks and line breaks never are.
-fn side_runs<'a>(tokens: &[Token<'a>], role: SegmentKind) -> Vec<(SegmentKind, &'a str)> {
-    let filler = |&(token, changed): &Token<'_>| is_blank(token) || !(changed || token.chars().any(is_word_char));
-    let marked = |index: usize| {
-        tokens
-            .get(index)
-            .is_some_and(|&(token, changed)| changed && !is_blank(token))
-    };
-    let mut runs = Vec::with_capacity(tokens.len());
-    let mut at = 0;
-    while let Some(&(token, changed)) = tokens.get(at) {
-        let end = at + tokens[at..].iter().take_while(|token| filler(token)).count();
-        if end == at {
-            runs.push((if changed { role } else { SegmentKind::Equal }, token));
-            at += 1;
-            continue;
-        }
-        let between = at.checked_sub(1).is_some_and(marked)
-            && marked(end)
-            && !tokens[at..end].iter().any(|(token, _)| token.contains('\n'));
-        let kind = if between { role } else { SegmentKind::Equal };
-        runs.extend(tokens[at..end].iter().map(|&(token, _)| (kind, token)));
-        at = end;
-    }
-    runs
-}
-
-/// A line's leading and trailing whitespace, its line break included.
-fn line_edges(line: &str) -> (&str, &str) {
-    (
-        &line[..line.len() - line.trim_start().len()],
-        &line[line.trim_end().len()..],
-    )
-}
-
-/// Rule 6: a block of one line per side as one line's runs — each kept token once as
-/// [`SegmentKind::Equal`], between two kept tokens the left side's changed tokens as
-/// `roles.before`, then the right side's as `roles.after`. `None` unless both lines have the
-/// same indentation and trailing whitespace and the runs switch sides at most `max` times
-/// (`diff.color-words.max-inline-alternation`, `None` = always), counted as jj's
-/// [`count_diff_alternation`] counts.
-fn merged_runs<'a>(
-    texts: Diff<&str>,
-    tokens: Diff<&[Token<'a>]>,
-    roles: Diff<SegmentKind>,
-    max: Option<usize>,
-) -> Option<Vec<(SegmentKind, &'a str)>> {
-    if line_edges(texts.before) != line_edges(texts.after) {
-        return None;
-    }
-    let mut runs = Vec::new();
-    let mut rest = tokens;
-    loop {
-        for (side, role) in [(&mut rest.before, roles.before), (&mut rest.after, roles.after)] {
-            let changed = side.iter().take_while(|token| token.1).count();
-            runs.extend(side[..changed].iter().map(|&(token, _)| (role, token)));
-            *side = &side[changed..];
-        }
-        let (Some((&(token, _), before)), Some((_, after))) = (rest.before.split_first(), rest.after.split_first())
-        else {
-            break;
-        };
-        runs.push((SegmentKind::Equal, token));
-        rest = Diff::new(before, after);
-    }
-    let mut count = 0;
-    let mut last = SegmentKind::Equal;
-    for &(kind, _) in &runs {
-        if kind != SegmentKind::Equal && kind != last {
-            count += 1;
-            last = kind;
-        }
-    }
-    // A changed block has a changed token, so `count` is at least 1 and a limit of 0 never fits.
-    max.is_none_or(|max| count <= max).then_some(runs)
-}
-
-/// `runs` cut into lines at each `\n` (kept with its line).
-fn run_lines<'a>(runs: &[(SegmentKind, &'a str)]) -> Vec<Vec<(SegmentKind, &'a [u8])>> {
-    let mut lines = Vec::new();
-    let mut line = Vec::new();
-    for &(kind, run) in runs {
-        for piece in run.split_inclusive('\n') {
-            line.push((kind, piece.as_bytes()));
-            if piece.ends_with('\n') {
-                lines.push(std::mem::take(&mut line));
-            }
-        }
-    }
-    if !line.is_empty() {
-        lines.push(line);
-    }
-    lines
 }
 
 impl Draft {
@@ -1721,8 +1374,8 @@ mod tests {
     use jj_lib::merge::{Diff, Merge, SameChange};
 
     use super::{
-        fingerprint, hunks_of, section_keys, totals, ColorWordsOptions, ConflictDiffMethod, ConflictTerms, DiffMarks,
-        Hunk, HunkKey, HunkLine, HunkLineKind, SegmentKind, WalkOptions, WORD_MARKS_LIMIT,
+        fingerprint, hunks_of, section_keys, totals, ColorWordsOptions, ConflictDiffMethod, ConflictTerms, Hunk,
+        HunkKey, HunkLine, HunkLineKind, SegmentKind, WalkOptions,
     };
     use crate::source_symbol::SourceLanguage;
 
@@ -1812,15 +1465,7 @@ mod tests {
                 conflict: ConflictDiffMethod::Materialize,
             },
             mode,
-            marks: DiffMarks::Jj,
         }
-    }
-
-    /// The `Words` style at context 3, exact lines.
-    fn words(left: &str, right: &str, language: Option<SourceLanguage>) -> Vec<Hunk> {
-        let mut options = options(3, Some(3), LineCompareMode::Exact);
-        options.marks = DiffMarks::Words;
-        diff_with(left, right, language, options)
     }
 
     fn diff(left: &str, right: &str, language: Option<SourceLanguage>, context: usize) -> Vec<Hunk> {
@@ -2039,34 +1684,6 @@ mod tests {
         assert_eq!((hunks[0].removed, hunks[0].added), (2, 2));
     }
 
-    /// At `-w` / `-b` the `Words` style keeps a whitespace-variant context line on jj's path: one
-    /// Context line with both numbers, equal to the jj style's.
-    #[test]
-    fn words_keep_a_whitespace_context_line_on_the_jj_path() {
-        let left = "fn f() {\n    let a = 1;\n  let b = 2;\n    let c = 3;\n}\n";
-        let right = "fn f() {\n    let a = 10;\n    let b = 2;\n    let c = 30;\n}\n";
-        for mode in [LineCompareMode::IgnoreAllSpace, LineCompareMode::IgnoreSpaceChange] {
-            let jj = diff_with(left, right, None, options(3, Some(3), mode));
-            let mut words_options = options(3, Some(3), mode);
-            words_options.marks = DiffMarks::Words;
-            let words = diff_with(left, right, None, words_options);
-            let context_line = |hunks: &[Hunk]| {
-                let lines: Vec<HunkLine> = hunks[0]
-                    .lines
-                    .iter()
-                    .filter(|line| line.left == Some(3))
-                    .cloned()
-                    .collect();
-                assert_eq!(lines.len(), 1, "{mode:?}: {lines:?}");
-                lines[0].clone()
-            };
-            let line = context_line(&words);
-            assert_eq!(line.kind, HunkLineKind::Context, "{mode:?}");
-            assert_eq!((line.left, line.right), (Some(3), Some(3)), "{mode:?}");
-            assert_eq!(line, context_line(&jj), "{mode:?}");
-        }
-    }
-
     /// An added 1000-line text is one hunk of 1000 added lines.
     #[test]
     fn an_added_thousand_line_text_is_one_hunk_of_a_thousand_lines() {
@@ -2263,19 +1880,9 @@ mod tests {
 
     /// `diff.color-words.conflict = "pair"` over two sides, each its text or its conflict terms.
     fn pair_diff(left: &(&str, Option<ConflictTerms>), right: &(&str, Option<ConflictTerms>)) -> Vec<String> {
-        pair_diff_in(left, right, DiffMarks::Jj)
-    }
-
-    /// [`pair_diff`] in the word-mark style `marks`.
-    fn pair_diff_in(
-        left: &(&str, Option<ConflictTerms>),
-        right: &(&str, Option<ConflictTerms>),
-        marks: DiffMarks,
-    ) -> Vec<String> {
         let texts = Diff::new(left.0.as_bytes(), right.0.as_bytes());
         let mut options = options(3, Some(3), LineCompareMode::Exact);
         options.words.conflict = ConflictDiffMethod::Pair;
-        options.marks = marks;
         let merge = MergeOptions {
             hunk_level: FileMergeHunkLevel::Line,
             same_change: SameChange::Accept,
@@ -2401,670 +2008,5 @@ mod tests {
             ]
         );
         assert_eq!(hunks.len(), 3);
-    }
-
-    /// The header line Ralph's witness files carry, so line numbers are the witnesses'.
-    const WITNESS_HEADER: &str = "// Ralph's example, framed.\n";
-
-    /// The widget-test block with the witness header: old lines 8-10, new 8-23.
-    fn widget_witness() -> (String, String) {
-        let (left, right) = widget_test();
-        (format!("{WITNESS_HEADER}{left}"), format!("{WITNESS_HEADER}{right}"))
-    }
-
-    /// The stepper edits with the witness header.
-    fn stepper_witness() -> (String, String) {
-        let right = STEPPER
-            .replace("s.functionWizard_save :", "saveLabel :")
-            .replace(
-                "Expanded(child: _Line(color: isFirst ? null : lineColor)),",
-                "Expanded(\n      child: _Line(color: isFirst ? null : lineColor),\n    ),",
-            )
-            .replace(
-                "  padding: Spacing.spacing8,",
-                "  // Small side padding.\n  padding: Spacing.spacing2,",
-            );
-        (format!("{WITNESS_HEADER}{STEPPER}"), format!("{WITNESS_HEADER}{right}"))
-    }
-
-    /// Text both sides share.
-    fn same(text: &str) -> (&str, &str) {
-        (text, text)
-    }
-
-    /// Ralph's jj commit `9346978d` (`lib/src/git.rs`): eleven of its changed blocks as (old, new),
-    /// each with a few of the file's unchanged lines around it.
-    fn error_cleanup() -> (String, String) {
-        let refs =
-            "        &mut known_git_refs,\n        &mut changed_git_refs,\n        &mut failed_ref_names,\n        \
-             &git_ref_filter,\n    )?;\n";
-        let collect = "    collect_changed_git_refs_to_import(\n";
-        let parts = [
-            same("    let mut changed_git_refs = Vec::new();\n    let mut failed_ref_names = Vec::new();\n"),
-            (
-                "    let actual = git_repo.references().map_err(GitImportError::from_git)?;\n",
-                "    let actual = git_repo.references()?;\n",
-            ),
-            same(collect),
-            (
-                "        actual.local_branches().map_err(GitImportError::from_git)?,\n",
-                "        actual.local_branches()?,\n",
-            ),
-            same(refs),
-            same(collect),
-            (
-                "        actual.remote_branches().map_err(GitImportError::from_git)?,\n",
-                "        actual.remote_branches()?,\n",
-            ),
-            same(refs),
-            same(collect),
-            (
-                "        actual.tags().map_err(GitImportError::from_git)?,\n",
-                "        actual.tags()?,\n",
-            ),
-            same(refs),
-            same("    let store = mut_repo.store();\n    let git_backend = get_git_backend(store)?;\n"),
-            (
-                "    let git_repo = git_backend\n        .open_git_repo_at_workdir(workspace_root)\n        \
-                 .map_err(GitImportError::from_git)?;\n",
-                "    let git_repo = git_backend.open_git_repo_at_workdir(workspace_root)?;\n",
-            ),
-            same("\n    let old_git_head = mut_repo.view().git_head(workspace_name);\n"),
-            same("pub enum GitExportError {\n    /// Error from the Git repo.\n    #[error(transparent)]\n"),
-            (
-                "    Git(Box<dyn std::error::Error + Send + Sync>),\n",
-                "    Git(#[from] gix::Error),\n",
-            ),
-            same("    /// The repo is not backed by a [`GitBackend`].\n    #[error(transparent)]\n"),
-            same(
-                "    let handle_err = |err: PathError| match err.source.kind() {\n        \
-                 std::io::ErrorKind::NotFound => Ok(()),\n",
-            ),
-            (
-                "        _ => Err(GitResetHeadError::from_git(err)),\n",
-                "        _ => Err(err),\n",
-            ),
-            same("    };\n    for file_name in STATE_FILE_NAMES {\n"),
-            same("            .is_err()\n    {\n"),
-            (
-                concat!(
-                    "        let file_blob = git_repo\n            .write_blob(\n",
-                    r#"                b"The working copy commit contains conflicts which cannot be resolved using Git.\n","#,
-                    "\n            )\n            .map_err(GitResetHeadError::from_git)?;\n",
-                ),
-                concat!(
-                    "        let file_blob = git_repo.write_blob(\n",
-                    r#"            b"The working copy commit contains conflicts which cannot be resolved using Git.\n","#,
-                    "\n        )?;\n",
-                ),
-            ),
-            same("        index.dangerously_push_entry(\n            gix::index::entry::Stat::default(),\n"),
-            same("fn lock_index(git_repo: &gix::Repository) -> Result<gix::lock::File, GitResetHeadError> {\n"),
-            (
-                "    gix::lock::File::acquire_to_update_resource(\n",
-                "    let lock = gix::lock::File::acquire_to_update_resource(\n",
-            ),
-            same(
-                "        git_repo.index_path(),\n        \
-                 gix::lock::acquire::Fail::AfterDurationWithBackoff(INDEX_LOCK_TIMEOUT),\n        None,\n        0,\n",
-            ),
-            (
-                "    )\n    .map_err(GitResetHeadError::from_git)\n",
-                "    )?;\n    Ok(lock)\n",
-            ),
-            same("}\n\n"),
-            same("                git_repo.index_path(),\n            ))\n        }\n"),
-            (
-                "        Err(err) => Err(GitResetHeadError::from_git(err)),\n",
-                "        Err(err) => Err(err.into()),\n",
-            ),
-            same("    }\n}\n"),
-        ];
-        (
-            parts.iter().map(|part| part.0).collect(),
-            parts.iter().map(|part| part.1).collect(),
-        )
-    }
-
-    /// The `Words` style at context 3 with an inline limit of `max`.
-    fn words_with(left: &str, right: &str, max: Option<usize>) -> Vec<String> {
-        let mut options = options(3, max, LineCompareMode::Exact);
-        options.marks = DiffMarks::Words;
-        render(&diff_with(left, right, None, options))
-    }
-
-    /// The changed lines of a rendering: no hunk headers, no context.
-    fn changed(rendered: &[String]) -> Vec<&str> {
-        rendered
-            .iter()
-            .map(String::as_str)
-            .filter(|line| line.starts_with(['-', '+', '~']))
-            .collect()
-    }
-
-    /// The 5.9 probe's reformat witness: one call split over five lines.
-    const REFORMAT: (&str, &str) = (
-        "fn main() {\n    let result = compute(first_argument, second_argument, third_argument);\n}\n",
-        "fn main() {\n    let result = compute(\n        first_argument,\n        second_argument,\n        \
-         third_argument,\n    );\n}\n",
-    );
-
-    /// The 5.9 probe's nesting witness: two statements wrapped in an `if`.
-    const NESTING: (&str, &str) = (
-        "fn update(state: &mut State, event: Event) {\n    state.apply(event);\n    state.save();\n    \
-         log(state.summary());\n}\n",
-        "fn update(state: &mut State, event: Event) {\n    if event.is_relevant() {\n        state.apply(event);\n        \
-         state.save();\n    }\n    log(redact(state.summary()));\n}\n",
-    );
-
-    /// The 5.9 probe's reorder witnesses, Rust and Dart: `f(a, b)` becomes `f(b, a)`.
-    const REORDER: [(&str, &str); 2] = [
-        (
-            "fn main() {\n    let total = f(a, b);\n    println!(\"{total}\");\n}\n",
-            "fn main() {\n    let total = f(b, a);\n    println!(\"{total}\");\n}\n",
-        ),
-        (
-            "void main() {\n  final total = f(a, b);\n  print(total);\n}\n",
-            "void main() {\n  final total = f(b, a);\n  print(total);\n}\n",
-        ),
-    ];
-
-    /// Ralph's error cleanup in `Words`: a one-line change is one changed line marking only what
-    /// changed; other blocks are their old lines, then their new ones.
-    #[test]
-    fn words_mark_the_changed_part_of_the_error_cleanup() {
-        let (old, new) = error_cleanup();
-        assert_eq!(
-            changed(&words_with(&old, &new, Some(3))),
-            [
-                "~   3    3|    let actual = git_repo.references()[-.map_err(GitImportError::from_git)-]?;",
-                "~   5    5|        actual.local_branches()[-.map_err(GitImportError::from_git)-]?,",
-                "~  12   12|        actual.remote_branches()[-.map_err(GitImportError::from_git)-]?,",
-                "~  19   19|        actual.tags()[-.map_err(GitImportError::from_git)-]?,",
-                "-  27     |    let git_repo = git_backend",
-                "-  28     |        .open_git_repo_at_workdir(workspace_root)",
-                "-  29     |        [-.map_err(GitImportError::from_git)-]?;",
-                "+       27|    let git_repo = git_backend.open_git_repo_at_workdir(workspace_root)?;",
-                "-  35     |    Git([-Box<dyn std::error-]::Error [-+ Send + Sync>-]),",
-                "+       33|    Git({+#[from] gix+}::Error),",
-                "~  40   38|        _ => Err([-GitResetHeadError::from_git(-]err)[-)-],",
-                "-  45     |        let file_blob = git_repo",
-                "-  46     |            .write_blob(",
-                "-  47     |                b\"The working copy commit contains conflicts which cannot be resolved using Git.\\n\",",
-                "-  48     |            )",
-                "-  49     |            [-.map_err(GitResetHeadError::from_git)-]?;",
-                "+       43|        let file_blob = git_repo.write_blob(",
-                "+       44|            b\"The working copy commit contains conflicts which cannot be resolved using Git.\\n\",",
-                "+       45|        )?;",
-                "~  53   49|    {+let lock = +}gix::lock::File::acquire_to_update_resource(",
-                "-  58     |    )",
-                "-  59     |    [-.map_err(GitResetHeadError::from_git-])",
-                "+       54|    ){+?;+}",
-                "+       55|    {+Ok(lock+})",
-                "~  65   61|        Err(err) => Err([-GitResetHeadError::from_git(-]err{+.into(+})),",
-            ]
-        );
-        // `max-inline-alternation = 0` never merges: the old line, then the new one, unmarked
-        // where nothing was added.
-        let never = words_with(&old, &new, Some(0));
-        let never = changed(&never);
-        assert_eq!(
-            never[..4],
-            [
-                "-   3     |    let actual = git_repo.references()[-.map_err(GitImportError::from_git)-]?;",
-                "+        3|    let actual = git_repo.references()?;",
-                "-   5     |        actual.local_branches()[-.map_err(GitImportError::from_git)-]?,",
-                "+        5|        actual.local_branches()?,",
-            ]
-        );
-        assert!(never.iter().all(|line| !line.starts_with('~')), "{never:?}");
-        assert!(never.contains(&"-  65     |        Err(err) => Err([-GitResetHeadError::from_git(-]err)),"));
-        assert!(never.contains(&"+       61|        Err(err) => Err(err{+.into(+})),"));
-    }
-
-    /// A one-line block merges exactly when its changed parts switch sides no more often than the
-    /// limit allows (`-1` always): removed parts around a kept word count once, a removed then an
-    /// added part twice, `Git(Box…)` five times.
-    #[test]
-    fn words_merge_a_one_line_block_by_its_alternation_count() {
-        let wrap = |line: &str| format!("fn f() {{\n{line}\n}}\n");
-        let removed = (
-            wrap("        _ => Err(GitResetHeadError::from_git(err)),"),
-            wrap("        _ => Err(err),"),
-        );
-        let both = (
-            wrap("        Err(err) => Err(GitResetHeadError::from_git(err)),"),
-            wrap("        Err(err) => Err(err.into()),"),
-        );
-        let git = (
-            wrap("    Git(Box<dyn std::error::Error + Send + Sync>),"),
-            wrap("    Git(#[from] gix::Error),"),
-        );
-        let merged = |(old, new): &(String, String), max: Option<usize>| {
-            let rendered = words_with(old, new, max);
-            let lines = changed(&rendered);
-            assert!(matches!(lines.len(), 1 | 2), "{lines:?}");
-            (lines.len() == 1).then(|| lines[0].to_owned())
-        };
-        for (block, count) in [(&removed, 1), (&both, 2), (&git, 5)] {
-            assert_eq!(merged(block, Some(count - 1)), None, "{block:?}");
-            assert!(merged(block, Some(count)).is_some(), "{block:?}");
-        }
-        assert_eq!(
-            merged(&git, None).as_deref(),
-            Some("~   2    2|    Git([-Box<dyn-]{+#[from]+} [-std::error-]{+gix+}::Error[- + Send + Sync>-]),")
-        );
-    }
-
-    /// The 5.9 probe's witnesses in `Words`: a reformat marks only its new comma, a nesting its
-    /// new lines and calls, a reorder stays one line.
-    #[test]
-    fn words_mark_a_reformat_a_nesting_and_a_reorder() {
-        assert_eq!(
-            changed(&words_with(REFORMAT.0, REFORMAT.1, Some(3))),
-            [
-                "-   2     |    let result = compute(first_argument, second_argument, third_argument);",
-                "+        2|    let result = compute(",
-                "+        3|        first_argument,",
-                "+        4|        second_argument,",
-                "+        5|        third_argument{+,+}",
-                "+        6|    );",
-            ]
-        );
-        assert_eq!(
-            changed(&words_with(NESTING.0, NESTING.1, Some(3))),
-            [
-                "-   2     |    state.apply(event);",
-                "-   3     |    state.save();",
-                "-   4     |    log(state.summary());",
-                "+        2|    {+if event.is_relevant() {+}",
-                "+        3|        state.apply(event);",
-                "+        4|        state.save();",
-                "+        5|    {+}+}",
-                "+        6|    log({+redact(+}state.summary()){+)+};",
-            ]
-        );
-        assert_eq!(
-            changed(&words_with(REORDER[0].0, REORDER[0].1, Some(3))),
-            ["~   2    2|    let total = f({+b, +}a[-, b-]);"]
-        );
-        assert_eq!(
-            changed(&words_with(REORDER[1].0, REORDER[1].1, Some(3))),
-            ["~   2    2|  final total = f({+b, +}a[-, b-]);"]
-        );
-    }
-
-    /// A one-line block whose lines differ in indentation or in their line break stays two lines.
-    #[test]
-    fn words_keep_two_lines_when_the_edges_differ() {
-        assert_eq!(
-            changed(&words_with("    let a = old;\n", "        let a = new;\n", Some(3))),
-            ["-   1     |    let a = [-old-];", "+        1|        let a = {+new+};"]
-        );
-        assert_eq!(
-            changed(&words_with("a\nold", "a\nnew\n", None)),
-            ["-   2     |[-old-]", "+        2|{+new+}"]
-        );
-        assert_eq!(
-            changed(&words_with("a\n  x  \n", "a\n  y \n", None)),
-            ["-   2     |  [-x-]  ", "+        2|  {+y+} "]
-        );
-    }
-
-    /// The jj example in `Words`: the old lines, then the new ones, only the changed parts marked;
-    /// a new line holding no old token is marked from its first to its last visible character.
-    #[test]
-    fn words_mark_the_changed_part_of_the_jj_example() {
-        let (left, right) = jj_example();
-        let hunks = words(&left, &right, Some(SourceLanguage::Rust));
-        assert_eq!(
-            render(&hunks),
-            [
-                "@ fn write_locked_index(",
-                " 2451 2451|        .map_err(GitResetHeadError::from_git)?;",
-                " 2452 2452|    let lock = out",
-                " 2453 2453|        .into_inner()",
-                "-2454     |        .map_err(|err| [-GitResetHeadError::from_git-](err.[-into_error-]()))?;",
-                "+     2454|        .map_err(|err| {+{+}",
-                "+     2455|            {+let (source, out) =+} err.{+into_parts();+}",
-                "+     2456|            {+let path = out.get_ref().lock_path().to_owned();+}",
-                "+     2457|            {+PathError { path, source }+}",
-                "+     2458|        {+})+}",
-                "+     2459|        {+.map_err(GitResetHeadError::from_git+})?;",
-                " 2455 2460|    lock.commit()",
-                "-2456     |        .map_err(|err| [-GitResetHeadError::from_git(-]err.error))?;",
-                "+     2461|        .map_err(|err| err.error)",
-                "+     2462|        {+.context(index.path())+}",
-                "+     2463|        {+.map_err(GitResetHeadError::from_git+})?;",
-                " 2457 2464|    Ok(())",
-                " 2458 2465|}",
-                " 2459 2466|",
-            ]
-        );
-        assert!(hunks[0].lines.iter().all(|line| line.kind != HunkLineKind::Changed));
-        assert_eq!((hunks[0].removed, hunks[0].added), (2, 9));
-    }
-
-    /// A block with lines on one side only — the jj commit's added `impl GitFetchError` — carries
-    /// no word marks.
-    #[test]
-    fn words_leave_a_one_sided_block_unmarked() {
-        let left = "struct GitFetchError;\n\nfn fetch() {}\n";
-        let right =
-            "struct GitFetchError;\n\nimpl GitFetchError {\n    fn new() -> Self { Self }\n}\n\nfn fetch() {}\n";
-        let hunks = words(left, right, Some(SourceLanguage::Rust));
-        let added: Vec<_> = hunks[0]
-            .lines
-            .iter()
-            .filter(|line| line.kind == HunkLineKind::Added)
-            .collect();
-        assert_eq!(added.len(), 4);
-        assert!(added
-            .iter()
-            .all(|line| line.segments.iter().all(|segment| segment.kind == SegmentKind::Equal)));
-        assert_eq!(render(&words("a\nb\n", "a\n", None))[2], "-   2     |b");
-    }
-
-    /// A changed last line without a line break on both sides (a file without a final newline)
-    /// is one changed line in `Words` that keeps that state; at a limit of 0 it is one line per
-    /// side.
-    #[test]
-    fn words_keep_a_last_line_without_a_line_break() {
-        let hunks = words("a\nold word", "a\nnew word", None);
-        assert_eq!(
-            render(&hunks),
-            ["@ -", "    1    1|a", "~   2    2|[-old-]{+new+} word"]
-        );
-        assert_eq!(hunks[0].lines[1].text(), "oldnew word");
-        assert_eq!(side_texts(&hunks[0], true)[&2], "old word");
-        assert_eq!(side_texts(&hunks[0], false)[&2], "new word");
-        assert_eq!(
-            changed(&words_with("a\nold word", "a\nnew word", Some(0))),
-            ["-   2     |[-old-] word", "+        2|{+new+} word"]
-        );
-    }
-
-    /// The widget-test block in `Words`: the old `testWidgets(` line is new line 23 with
-    /// `on a tablet` added, unmarked itself; the new body is marked from first to last visible
-    /// character, blank lines and indentation unmarked.
-    #[test]
-    fn words_mark_the_widget_test_block() {
-        let (left, right) = widget_witness();
-        let hunks = words(&left, &right, Some(SourceLanguage::Generic));
-        assert_eq!(
-            render(&hunks)[4..],
-            [
-                "-   8     |  // [-Tablet only:-] the [-wide test font overflows-] the [-compact app bar, which holds-] \
-                 the [-buttons-] on a phone[-.-]",
-                "-   9     |  [-// The-] phone [-layout is checked on a device-].",
-                "-  10     |  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {",
-                "+        8|  // {+The tablet shows+} the {+long label. The phone app bar has little room and shows+} \
-                 the {+short one.+}",
-                "+        9|  {+testWidgets('shows Speichern instead of Weiter on+} the {+last step+} on a phone\
-                 {+', (tester) async {+}",
-                "+       10|    {+await openWizard(tester, size:+} phone{+);+}",
-                "+       11|    {+await fillGeneralStep(tester);+}",
-                "+       12|",
-                "+       13|    {+for (var i = 0; i < 3; i++) {+}",
-                "+       14|      {+await tester.tap(withIdentifier(SemanticsIdentifiers.functionWizard_next));+}",
-                "+       15|      {+await tester.pumpAndSettle();+}",
-                "+       16|    {+}+}",
-                "+       17|",
-                "+       18|    {+expect(find.text('Speichern'), findsWidgets);+}",
-                "+       19|    {+expect(find.text('Funktion speichern'), findsNothing);+}",
-                "+       20|    {+expect(find.text('Weiter'), findsNothing);+}",
-                "+       21|  {+});+}",
-                "+       22|",
-                "+       23|  testWidgets('shows Funktion speichern instead of Weiter on the last step {+on a tablet+}', \
-                 (tester) async {",
-                "   11   24|    await openWizard(tester, size: tablet);",
-                "   12   25|    await fillGeneralStep(tester);",
-                "   13   26|  });",
-                "   14   27|}",
-            ][..]
-        );
-        let line_23 = &hunks[0].lines[21];
-        assert_eq!(line_23.right, Some(23));
-        let marks: Vec<_> = line_23
-            .segments
-            .iter()
-            .filter(|segment| segment.kind != SegmentKind::Equal)
-            .map(|segment| segment.text.as_str())
-            .collect();
-        assert_eq!(marks, ["on a tablet"]);
-        assert_eq!((hunks[0].removed, hunks[0].added), (3, 16));
-        // The jj style of the same block, as the catalogue's "Word marks" use case shows it beside.
-        assert_eq!(
-            render(&diff(&left, &right, Some(SourceLanguage::Generic), 3))[4..26],
-            [
-                "-   8     |  // [-Tablet-] [-only: the wide test font overflows-] [-the-] [-compact-] app bar[-,-] \
-                 [-which-] [-holds-] [-the-] [-buttons-] on a phone[-.-]",
-                "-   9     |  [-// The-] phone [-layout-] [-is-] [-checked-] on a [-device.-]",
-                "-  10     |[-  testWidgets('shows Funktion speichern instead of Weiter on the last step-]', \
-                 (tester) async {",
-                "+        8|  // {+The+} {+tablet shows the long label.+} {+The+} {+phone+} app bar\
-                 {+ has little room and shows the short one.+}",
-                "+        9|{+  testWidgets('shows Speichern instead of Weiter+} {+on+} {+the+} {+last+} {+step+} \
-                 on a phone{+', (tester) async {+}",
-                "+       10|  {+  await openWizard(tester, size:+} phone{+);+}",
-                "+       11|{+    await fillGeneralStep(tester);+}",
-                "+       12|",
-                "+       13|{+    for (var i = 0; i < 3; i++) {+}",
-                "+       14|{+      await tester.tap(withIdentifier(SemanticsIdentifiers.functionWizard_next));+}",
-                "+       15|{+      await tester.pumpAndSettle();+}",
-                "+       16|{+    }+}",
-                "+       17|",
-                "+       18|{+    expect(find.text('Speichern'), findsWidgets);+}",
-                "+       19|{+    expect(find.text('Funktion speichern'), findsNothing);+}",
-                "+       20|{+    expect(find.text('Weiter'), findsNothing);+}",
-                "+       21|{+  });+}",
-                "+       22|",
-                "+       23|{+  testWidgets('shows Funktion speichern instead of Weiter on+} {+the+} {+last+} {+step+} \
-                 on a {+tablet+}', (tester) async {",
-                "   11   24|    await openWizard(tester, size: tablet);",
-                "   12   25|    await fillGeneralStep(tester);",
-                "   13   26|  });",
-            ][..]
-        );
-    }
-
-    /// The stepper edits in `Words`: the changed line is one line with both words, the split call
-    /// marks only its new comma, the inserted comment is marked whole.
-    #[test]
-    fn words_mark_the_stepper_edits() {
-        let (left, right) = stepper_witness();
-        let rendered = render(&words(&left, &right, Some(SourceLanguage::Generic)));
-        let from = |prefix: &str| rendered.iter().position(|line| line.starts_with(prefix)).expect(prefix);
-        assert_eq!(
-            rendered[from("~  12")],
-            "~  12   12|    child: Text(isLastStep ? [-s.functionWizard_save-]{+saveLabel+} : s.functionWizard_next),"
-        );
-        let at = from("-  24");
-        assert_eq!(
-            rendered[at..at + 4],
-            [
-                "-  24     |    Expanded(child: _Line(color: isFirst ? null : lineColor)),",
-                "+       24|    Expanded(",
-                "+       25|      child: _Line(color: isFirst ? null : lineColor){+,+}",
-                "+       26|    ),",
-            ]
-        );
-        let at = from("-  42");
-        assert_eq!(
-            rendered[at..at + 3],
-            [
-                "-  42     |  padding: Spacing.[-spacing8-],",
-                "+       44|  {+// Small side padding.+}",
-                "+       45|  padding: Spacing.{+spacing2+},",
-            ]
-        );
-    }
-
-    /// A block over the size limit keeps its lines, all unmarked, and one line per side stays
-    /// two lines.
-    #[test]
-    fn words_leave_a_block_over_the_limit_unmarked() {
-        let unmarked = |hunks: &[Hunk]| {
-            hunks[0]
-                .lines
-                .iter()
-                .all(|line| line.segments.len() == 1 && line.segments[0].kind == SegmentKind::Equal)
-        };
-        // One line per side: two entries per word and one per blank, so just over the limit
-        // together.
-        let line_of = |word: &str| format!("{word} ").repeat(WORD_MARKS_LIMIT / 6 + 1) + "\n";
-        let (left, right) = (line_of("a"), line_of("b"));
-        let hunks = words(&left, &right, None);
-        let kinds: Vec<_> = hunks[0].lines.iter().map(|line| line.kind).collect();
-        assert_eq!(kinds, [HunkLineKind::Removed, HunkLineKind::Added]);
-        assert!(unmarked(&hunks));
-        assert_eq!(hunks[0].lines[0].text(), left);
-        // Two lines per side: one entry per word and blank.
-        let two_lines = |word: &str| format!("{word} ").repeat(WORD_MARKS_LIMIT / 4) + "\n" + word + "\n";
-        let hunks = words(&two_lines("a"), &two_lines("b"), None);
-        assert_eq!(hunks[0].lines.len(), 4);
-        assert!(unmarked(&hunks));
-        // A small block of the same shape is marked; its four switches keep it two lines.
-        let small = words("a0 a1\n", "b0 b1\n", None);
-        assert_eq!(render(&small)[1..], ["-   1     |[-a0 a1-]", "+        1|{+b0 b1+}"]);
-    }
-
-    /// A blank run is marked only between two marked words of its line: never indentation,
-    /// trailing blanks, line breaks or a blank next to an unchanged word.
-    #[test]
-    fn words_mark_blanks_only_between_marked_words() {
-        let mut tokens = super::compare_tokens(Diff::new("  keep old  gone\n  x\n", "  keep new  fresh\n  x\n"), false)
-            .expect("within the limit");
-        super::shift_right(&mut tokens.before);
-        super::shift_right(&mut tokens.after);
-        let runs = tokens
-            .zip(super::ROLES)
-            .map(|(tokens, role)| super::side_runs(&tokens, role));
-        let marked = |runs: &[(SegmentKind, &str)]| -> Vec<String> {
-            runs.iter()
-                .filter(|(kind, _)| *kind != SegmentKind::Equal)
-                .map(|(_, text)| (*text).to_owned())
-                .collect()
-        };
-        assert_eq!(marked(&runs.before), ["old", "  ", "gone"]);
-        assert_eq!(marked(&runs.after), ["new", "  ", "fresh"]);
-        // Four switches between the sides: two lines.
-        let rendered = render(&words("  keep old  gone  \n", "  keep new  fresh  \n", None));
-        assert_eq!(
-            rendered[1..],
-            [
-                "-   1     |  keep [-old  gone-]  ",
-                "+        1|  keep {+new  fresh+}  "
-            ]
-        );
-        // Lossy UTF-8, emoji and a NUL byte keep their texts and the segment invariants; an
-        // accented letter is a word character, an emoji a token of its own.
-        let hunks = words("a \u{e9}\u{1F600} \0\n", "a \u{e8}\u{1F600} \0\n", None);
-        assert_eq!(render(&hunks)[1..], ["~   1    1|a [-\u{e9}-]{+\u{e8}+}\u{1F600} \0"]);
-        let invalid = Diff::new(&b"a \xff b\n"[..], &b"a c b\n"[..]);
-        let merge = MergeOptions {
-            hunk_level: FileMergeHunkLevel::Line,
-            same_change: SameChange::Accept,
-        };
-        let mut options = options(3, Some(3), LineCompareMode::Exact);
-        options.marks = DiffMarks::Words;
-        let hunks = hunks_of(invalid, Diff::new(None, None), None, options, &merge, &[]);
-        assert_eq!(render(&hunks)[1..], ["~   1    1|a [-\u{fffd}-]{+c+} b"]);
-    }
-
-    /// Under `pair`, the `Words` style swaps segment roles under a `-------` term too, in a merged
-    /// line as in the jj style.
-    #[test]
-    fn words_swap_roles_under_a_base_term() {
-        let left = terms(["x\n", "b\n", "y\n"], &[]);
-        assert_eq!(
-            pair_diff_in(&("", Some(left)), &("z\n", None), DiffMarks::Words),
-            [
-                "@ -",
-                "#         |<<<<<<< Resolved conflict",
-                "#         |+++++++ left side #1 to right",
-                "~   1    1|[-x-]{+z+}",
-                "#         |------- left base #1 to right",
-                "~   1    1|{+b+}[-z-]",
-                "#         |+++++++ left side #2 to right",
-                "~   1    1|[-y-]{+z+}",
-                "#         |>>>>>>> Conflict ends",
-            ]
-        );
-        // Not merged, the lines keep the swapped kinds.
-        let left = terms(["x x\n", "b b\n", "y y\n"], &[]);
-        let rendered = pair_diff_in(&("", Some(left)), &("z z\n", None), DiffMarks::Words);
-        assert_eq!(rendered[6..8], ["+   1     |{+b b+}", "-        1|[-z z-]"]);
-    }
-
-    /// Each side's text per line number: a context line whole, a changed line's equal runs and
-    /// that side's runs, joined over the lines that repeat the number.
-    fn side_texts(hunk: &Hunk, left: bool) -> std::collections::BTreeMap<u32, String> {
-        let mut texts = std::collections::BTreeMap::<u32, String>::new();
-        for line in &hunk.lines {
-            let Some(number) = (if left { line.left } else { line.right }) else {
-                continue;
-            };
-            let own = if left { SegmentKind::Removed } else { SegmentKind::Added };
-            let text = texts.entry(number).or_default();
-            for segment in &line.segments {
-                if line.kind == HunkLineKind::Context || segment.kind == SegmentKind::Equal || segment.kind == own {
-                    text.push_str(&segment.text);
-                }
-            }
-        }
-        texts
-    }
-
-    /// Both styles give the same hunks but for their lines' marks and merged lines: ranges,
-    /// symbols, sections, counts and each side's numbered line texts, on every witness.
-    #[test]
-    fn both_styles_keep_the_lines() {
-        let (jj_left, jj_right) = jj_example();
-        let (widget_left, widget_right) = widget_witness();
-        let (stepper_left, stepper_right) = stepper_witness();
-        let (cleanup_left, cleanup_right) = error_cleanup();
-        for (left, right, max) in [
-            (jj_left.as_str(), jj_right.as_str(), Some(3)),
-            (&widget_left, &widget_right, Some(3)),
-            (&widget_left, &widget_right, None),
-            (&stepper_left, &stepper_right, Some(3)),
-            (&cleanup_left, &cleanup_right, Some(3)),
-            (&cleanup_left, &cleanup_right, Some(0)),
-            (&cleanup_left, &cleanup_right, None),
-            (REFORMAT.0, REFORMAT.1, Some(3)),
-            (NESTING.0, NESTING.1, Some(3)),
-            (REORDER[0].0, REORDER[0].1, Some(3)),
-            (REORDER[1].0, REORDER[1].1, Some(3)),
-            ("    let a = old;\n", "        let a = new;\n", Some(3)),
-            ("a\nold", "a\nnew\n", Some(3)),
-            ("a\nold word", "a\nnew word", None),
-        ] {
-            let language = Some(SourceLanguage::Generic);
-            let jj = diff_with(left, right, language, options(3, max, LineCompareMode::Exact));
-            let mut words_options = options(3, max, LineCompareMode::Exact);
-            words_options.marks = DiffMarks::Words;
-            let words = diff_with(left, right, language, words_options);
-            assert_eq!(jj.len(), words.len());
-            for (jj, words) in jj.iter().zip(&words) {
-                assert_eq!(jj.before_range, words.before_range);
-                assert_eq!(jj.after_range, words.after_range);
-                assert_eq!(jj.symbol, words.symbol);
-                assert_eq!(jj.sections, words.sections);
-                assert_eq!((jj.removed, jj.added), (words.removed, words.added));
-                assert_eq!(side_texts(jj, true), side_texts(words, true));
-                assert_eq!(side_texts(jj, false), side_texts(words, false));
-                for line in &words.lines {
-                    assert!(line.segments.iter().all(|segment| !segment.text.is_empty()), "{line:?}");
-                    assert!(
-                        line.segments.windows(2).all(|pair| pair[0].kind != pair[1].kind),
-                        "{line:?}"
-                    );
-                    let joined: String = line.segments.iter().map(|segment| segment.text.as_str()).collect();
-                    assert_eq!(joined, line.text());
-                    assert!(!joined.is_empty(), "{line:?}");
-                }
-            }
-        }
     }
 }

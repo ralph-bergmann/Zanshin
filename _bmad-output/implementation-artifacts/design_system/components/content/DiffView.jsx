@@ -10,9 +10,8 @@ import { Checkbox } from "../forms/Checkbox.jsx";
 // run, "{+…+}" around a right-side one, on any line. They become runs ([text, "rem" | "add" | null]); a removed or
 // added line whose unchanged text is only blanks keeps none (its fill says it all); a changed line always keeps them.
 // Older git strings ("+…", "-…", " …", "@@…") still parse, without numbers. A string has no escape: code holding "[-",
-// "-]", "{+" or "+}" goes in the object form. marks "words" (Zanshin's style, Stories 5.11 and 5.13: the changed part
-// of each line, one line replaced by one line as one "~" row): every marked run stays — no fill-only rule.
-export function zsDiffLine(l, marks = "jj") {
+// "-]", "{+" or "+}" goes in the object form.
+export function zsDiffLine(l) {
   if (typeof l !== "string") {
     // The object form of before Story 5.10 had boolean runs: true is the line's own side.
     return l.runs ? { ...l, runs: l.runs.map(([s, k]) => [s, k === true ? l.t : k || null]) } : l;
@@ -34,12 +33,13 @@ export function zsDiffLine(l, marks = "jj") {
     if (cw[2]) line.l = Number(cw[2]);
     if (cw[3]) line.r = Number(cw[3]);
   }
-  const marked = runs.some(([, k]) => k) && (marks === "words" || t === "chg" || runs.some(([x, k]) => !k && x.trim()));
+  const marked = runs.some(([, k]) => k) && (t === "chg" || runs.some(([x, k]) => !k && x.trim()));
   return marked ? { ...line, runs } : line;
 }
 
 // A line's text: each changed run a .w mark — the stronger tint of its side's hue (.w.rem / .w.add), the line's full
-// height, --text glyphs. Without runs (or with an empty list) it is the plain text.
+// height, --text glyphs; under .no-word-marks (Settings › Changed words off) no tint, the row's ink, and only a changed
+// row keeps glyphs in the side's hue. Without runs (or with an empty list) it is the plain text.
 export function zsDiffText(l) {
   return l.runs && l.runs.length ? l.runs.map(([s, k], i) => (k ? <span key={i} className={"w " + k}>{s}</span> : s)) : l.s;
 }
@@ -60,16 +60,16 @@ export function zsDiffDigits(ls) {
   return Math.max(1, ...ls.map((l) => String(Math.max(l.l || 0, l.r || 0)).length));
 }
 
-export function DiffView({ file, tools, lines = [], marks = "jj", maxHeight, viewed, onViewedChange, children, className = "" }) {
+export function DiffView({ file, tools, lines = [], wordMarks = true, maxHeight, viewed, onViewedChange, children, className = "" }) {
   const toggle = onViewedChange && (
     <button type="button" role="checkbox" aria-checked={!!viewed} className={"zs-viewed" + (viewed ? " is-on" : "")} onClick={() => onViewedChange(!viewed)} title={viewed ? "Mark as not viewed" : "Mark as viewed"}>
       <Checkbox presentational size="sm" tone="add" checked={!!viewed} />
       <span>Viewed</span>
     </button>
   );
-  const ls = lines.map((l) => zsDiffLine(l, marks));
+  const ls = lines.map(zsDiffLine);
   return (
-    <div className={["zs-diff", viewed && "is-viewed", className].filter(Boolean).join(" ")}>
+    <div className={["zs-diff", viewed && "is-viewed", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")}>
       {(file || tools || toggle) && (
         <div className="zs-diff-bar">
           <span className="zs-diff-file" title={file}>{file}</span>

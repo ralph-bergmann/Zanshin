@@ -31,8 +31,7 @@ export 'src/ffi/config.dart'
         MissingRepoConfig,
         WorkingCopyAuthor;
 export 'src/ffi/diagnostics.dart' show Diagnostics, GetDiagnostics, ZanshinDiagnosticsModule;
-export 'src/ffi/diff.dart'
-    show Diff, DiffMarks, DiffWhitespace, FileDiff, Hunk, HunkLine, HunkLineKind, Segment, SegmentKind;
+export 'src/ffi/diff.dart' show Diff, DiffWhitespace, FileDiff, Hunk, HunkLine, HunkLineKind, Segment, SegmentKind;
 export 'src/ffi/drop_actions.dart'
     show
         ActionOutcome,

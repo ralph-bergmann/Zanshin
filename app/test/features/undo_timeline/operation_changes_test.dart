@@ -15,7 +15,7 @@ import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_view.dart';
 import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffMarksSetting, SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_undo_timeline.dart';
@@ -149,7 +149,7 @@ void main() {
       expect(view.diff, isNotNull);
       expect(view.onViewedChanged, isNull);
       expect(view.layout, settings.value.general.diffLayout);
-      expect(view.marks, DiffMarks.words, reason: 'the default setting, drawn by the loaded Diff.marks');
+      expect(view.wordMarks, isTrue, reason: 'the default setting');
       expect(_id('inspector-viewed'), findsNothing, reason: 'no Viewed');
       expect(find.byType(InspectorDiffHunk), findsOneWidget);
 
@@ -303,7 +303,35 @@ void main() {
         find.descendant(of: block, matching: find.byType(InspectorDiffView)),
       );
       expect(view.path, 'JJ-COMMIT-DESCRIPTION');
-      expect(view.marks, DiffMarks.words, reason: 'the summary read\'s Diff.marks');
+      expect(view.wordMarks, isTrue, reason: 'the description block follows the switch too');
+    });
+  });
+
+  testWidgets('Changed words off reaches the description block and the focused file (Story 5.14)', (tester) async {
+    final changes = FakeOperationChangesSource(
+      testOpShow(testOperation(1, now: _now), <OpChangedCommit>[
+        OpChangedCommit(commitId: _x, abandoned: false, addedCommitIds: <String>[_x], removedCommitIds: const []),
+      ]),
+      diff: (call) => testDiff(const <String>['new.txt'], description: true),
+    );
+    await withView(tester, changes, () async {
+      final int reads = changes.diffs.length;
+      unawaited(
+        settings
+            .update((s) => s.copyWith(general: s.general.copyWith(diffWordMarks: false)))
+            .onError<FileSystemException>((_, _) {}),
+      );
+      await tester.pump();
+      final Finder block = find.byKey(const ValueKey<String>('operation-changes-description'));
+      final InspectorDiffView description = tester.widget(
+        find.descendant(of: block, matching: find.byType(InspectorDiffView)),
+      );
+      expect(description.wordMarks, isFalse);
+      final InspectorDiffView focused = tester.widget(
+        find.byWidgetPredicate((w) => w is InspectorDiffView && w.path == 'new.txt'),
+      );
+      expect(focused.wordMarks, isFalse);
+      expect(changes.diffs, hasLength(reads), reason: 'the switch reloads nothing');
     });
   });
 
@@ -454,20 +482,27 @@ void main() {
     model.dispose();
   });
 
-  test('the diffs load in general.diffMarks; a change reads them again, keeping the focused file', () async {
+  test('flipping general.diffWordMarks notifies and calls diff zero times, keeping the focused file', () async {
     final FakeOperationChangesSource changes = rewriteSource();
     final model = OperationChangesModel(changes, operation: opId(1), settings: settings);
     await pumpEventQueue();
-    expect(changes.marks, <DiffMarks>[DiffMarks.words, DiffMarks.words], reason: 'the summary and the focused file');
-    expect((model.files?.marks, model.focusedMarks), (DiffMarks.words, DiffMarks.words));
     model.focus('b.txt');
     await pumpEventQueue();
-    await settings.update((s) => s.copyWith(general: s.general.copyWith(diffMarks: DiffMarksSetting.jj)));
+    expect(model.wordMarks, isTrue, reason: 'on by default');
+    final int before = changes.diffs.length;
+    var notified = 0;
+    model.addListener(() => notified++);
+    await settings.update((s) => s.copyWith(general: s.general.copyWith(diffWordMarks: false)));
     await pumpEventQueue();
-    expect(changes.marks.skip(3), <DiffMarks>[DiffMarks.jj, DiffMarks.jj]);
-    expect(changes.diffs.last.paths, <String>['b.txt'], reason: 'the focused file stays');
+    expect(model.wordMarks, isFalse);
+    expect(notified, 1);
+    await settings.update((s) => s.copyWith(general: s.general.copyWith(diffWordMarks: true)));
+    await pumpEventQueue();
+    expect(model.wordMarks, isTrue);
+    expect(notified, 2);
+    expect(changes.diffs, hasLength(before), reason: 'the switch reloads nothing');
     expect(model.focusedPath, 'b.txt');
-    expect((model.files?.marks, model.focusedMarks), (DiffMarks.jj, DiffMarks.jj));
+    expect(model.focusedDiff, isNotNull, reason: 'the loaded diff stays');
     model.dispose();
   });
 

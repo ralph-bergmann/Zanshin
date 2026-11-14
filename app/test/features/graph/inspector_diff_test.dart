@@ -203,29 +203,6 @@ void main() {
       );
     });
 
-    test('Words (Story 5.11): a mark exactly where a segment is not equal, the fill-only rule off', () {
-      List<(String, SegmentKind)> words(String spec) {
-        final HunkLine line = _line(spec);
-        return <(String, SegmentKind)>[
-          for (final m in diffWordMarks(line, marks: DiffMarks.words)) (m.range.textInside(line.text), m.kind),
-        ];
-      }
-
-      // An added line with only indentation unchanged: marked, not fill-only.
-      expect(words('+       10|    {+await openWizard(tester, size: phone);+}'), <(String, SegmentKind)>[
-        ('await openWizard(tester, size: phone);', SegmentKind.added),
-      ]);
-      expect(marks('+       10|    {+await openWizard(tester, size: phone);+}'), isEmpty, reason: 'jj: fill only');
-      expect(words("-  10     |  testWidgets('a step', (tester) async {"), isEmpty);
-      expect(words('-   9     |  [-// The phone layout is checked on a device.-]'), <(String, SegmentKind)>[
-        ('// The phone layout is checked on a device.', SegmentKind.removed),
-      ]);
-      // A blank line, and a line whose only unchanged text is blank, keep exactly their segments' marks.
-      expect(words('+       12|'), isEmpty);
-      expect(words('+        1|  {+x+}  '), <(String, SegmentKind)>[('x', SegmentKind.added)]);
-      expect(words('#         |<<<<<<< Created conflict'), isEmpty);
-    });
-
     test('CRLF: the mark stops before \\r and \\n; trailing blanks are marked like any run', () {
       final HunkLine crlf = _line('+        1|a{+b\r+}');
       expect(diffWordMarks(crlf).single.range, const TextRange(start: 1, end: 2));
@@ -238,14 +215,14 @@ void main() {
     DiffLayoutSetting layout = DiffLayoutSetting.unified,
     ZsAppearance appearance = const ZsAppearance(),
     bool? Function(Hunk hunk)? hunkPicked,
-    DiffMarks marks = DiffMarks.jj,
+    bool wordMarks = true,
   }) => shellHost(
     SizedBox(
       width: 420,
       child: InspectorDiffView(
         path: 'src/main.rs',
         diff: diff,
-        marks: marks,
+        wordMarks: wordMarks,
         error: null,
         onViewedChanged: (_) {},
         layout: layout,
@@ -318,78 +295,78 @@ void main() {
     });
   }
 
-  testWidgets('Words (Stories 5.11, 5.13): the widget-test block marks only what changed, no underline', (
-    tester,
-  ) async {
-    const block = <String>[
-      "-  10     |  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {",
-      '+       10|    {+await openWizard(tester, size:+} phone{+);+}',
-      '+       12|',
-      '+       13|    {+for (var i = 0; i < 3; i++) {+}',
-      ("+       23|  testWidgets('shows Funktion speichern instead of Weiter on the last step {+on a tablet+}', (tester) "
-          'async {'),
-    ];
-    final FileDiff file = _file(
-      hunks: <Hunk>[
-        _hunk(<HunkLine>[for (final s in block) _line(s)]),
-      ],
-    );
-    final marked = <String, List<String>>{
-      '    await openWizard(tester, size: phone);': <String>['+await openWizard(tester, size:', '+);'],
-      '    for (var i = 0; i < 3; i++) {': <String>['+for (var i = 0; i < 3; i++) {'],
-      "  testWidgets('shows Funktion speichern instead of Weiter on the last step on a tablet', (tester) async {":
-          <String>['+on a tablet'],
-    };
-    await tester.pumpWidget(view(file, marks: DiffMarks.words));
-    expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())), marked);
-    for (final RichText text in tester.widgetList<RichText>(find.byType(RichText))) {
-      expect(text.text.toStringDeep(), isNot(contains('underline')));
+  group('Changed words off (Story 5.14)', () {
+    // The shown [text]'s glyph colours, as runs of one colour each.
+    List<(String, Color)> inks(WidgetTester tester, String text) {
+      final RenderParagraph paragraph = tester.renderObject(
+        find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText() == text),
+      );
+      final Color ink = paragraph.text.style!.color!;
+      final runs = <(String, Color)>[];
+      for (var at = 0; at < text.length; at++) {
+        final span = paragraph.text.getSpanForPosition(TextPosition(offset: at))! as TextSpan;
+        final Color color = span.style?.color ?? ink;
+        if (runs.isNotEmpty && runs.last.$2 == color) {
+          runs.last = (runs.last.$1 + text[at], color);
+        } else {
+          runs.add((text[at], color));
+        }
+      }
+      return runs;
     }
-    // Side by side draws the same marks from the same lines.
-    await tester.pumpWidget(view(file, marks: DiffMarks.words, layout: DiffLayoutSetting.sideBySide));
-    expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())), marked);
-    // The jj style draws the added lines without unchanged text fill-only.
-    await tester.pumpWidget(view(file));
-    expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())).keys, hasLength(2));
-  });
 
-  testWidgets('Words (Story 5.13): a merged line draws by its kind with both marks, unified and side by side', (
-    tester,
-  ) async {
-    final FileDiff file = _file(
-      hunks: <Hunk>[
-        _hunk(<HunkLine>[
-          _line('   64   60|        }'),
-          _line('~  65   61|        Err(err) => Err([-GitResetHeadError::from_git(-]err{+.into(+})),'),
-          _line('   66   62|    }'),
-        ]),
-      ],
-    );
-    final colors = ZsColors.resolve(const ZsAppearance());
-    await tester.pumpWidget(view(file, marks: DiffMarks.words));
-    // The merged text holds both sides' changed parts: `from_git(` removed, `.into(` added.
-    const merged = '        Err(err) => Err(GitResetHeadError::from_git(err.into()),';
-    expect(paintedWordMarks(tester, colors), <String, List<String>>{
-      merged: <String>['-GitResetHeadError::from_git(', '+.into('],
+    const changed = '        .map_err(GitResetHeadError::from_git(err.into_error()))?;';
+    const removed = '  // The phone layout on a device.';
+
+    testWidgets('unified: no fill; a changed line keeps its runs in their hue, a removed line is all its ink', (
+      tester,
+    ) async {
+      final colors = ZsColors.resolve(const ZsAppearance());
+      await tester.pumpWidget(view(matrix()));
+      expect(find.byType(DiffWordMarks), findsWidgets, reason: 'on: the fills');
+      await tester.pumpWidget(view(matrix(), wordMarks: false));
+      expect(find.byType(DiffWordMarks), findsNothing);
+      expect(inks(tester, changed), <(String, Color)>[
+        ('        .map_err(', colors.add),
+        ('GitResetHeadError::from_git', colors.text),
+        ('(err.into_error())', colors.rem),
+        (')?;', colors.text),
+      ]);
+      expect(inks(tester, '        .map_err(|err| {'), <(String, Color)>[
+        ('        .map_err(|err| ', colors.text),
+        ('{', colors.add),
+      ]);
+      expect(inks(tester, removed), <(String, Color)>[(removed, colors.rem)]);
     });
-    // A changed line: no fill, both numbers in their hue.
-    final Container line = tester.widget<Container>(
-      find
-          .ancestor(
-            of: find.text(merged, findRichText: true),
-            matching: find.byType(Container),
-          )
-          .first,
-    );
-    expect((line.color ?? const Color(0x00000000)).a, 0);
-    expect(tester.widget<Text>(find.text('65')).style!.color, colors.rem);
-    expect(tester.widget<Text>(find.text('61')).style!.color, colors.add);
 
-    // Side by side: the old text on the left, the new on the right, each with its own mark.
-    await tester.pumpWidget(view(file, marks: DiffMarks.words, layout: DiffLayoutSetting.sideBySide));
-    expect(paintedWordMarks(tester, colors), <String, List<String>>{
-      '        Err(err) => Err(GitResetHeadError::from_git(err)),': <String>['-GitResetHeadError::from_git('],
-      '        Err(err) => Err(err.into()),': <String>['+.into('],
+    testWidgets('side by side: no fill; each cell is all its line ink', (tester) async {
+      final colors = ZsColors.resolve(const ZsAppearance());
+      await tester.pumpWidget(view(matrix(), layout: DiffLayoutSetting.sideBySide, wordMarks: false));
+      expect(find.byType(DiffWordMarks), findsNothing);
+      const left = '        .map_err(|err| GitResetHeadError::from_git(err.into_error()))?;';
+      const right = '        .map_err(GitResetHeadError::from_git)?;';
+      expect(inks(tester, left), <(String, Color)>[(left, colors.rem)]);
+      expect(inks(tester, right), <(String, Color)>[(right, colors.add)]);
+      expect(inks(tester, removed), <(String, Color)>[(removed, colors.rem)]);
+    });
+
+    testWidgets('side by side under a ------- term: each cell is all its ink, though it keeps the other side\'s runs', (
+      tester,
+    ) async {
+      final colors = ZsColors.resolve(const ZsAppearance());
+      final FileDiff file = _file(
+        hunks: <Hunk>[
+          _hunk(<HunkLine>[
+            _line('#         |------- left base #1 to right'),
+            _line('~   1    1|x {+b+}[-z-]'),
+            _line('#         |>>>>>>> Conflict ends'),
+          ]),
+        ],
+      );
+      await tester.pumpWidget(view(file, layout: DiffLayoutSetting.sideBySide, wordMarks: false));
+      expect(find.byType(DiffWordMarks), findsNothing);
+      expect(inks(tester, 'x b'), <(String, Color)>[('x b', colors.rem)], reason: 'the left cell holds the added run');
+      expect(inks(tester, 'x z'), <(String, Color)>[('x z', colors.add)]);
     });
   });
 

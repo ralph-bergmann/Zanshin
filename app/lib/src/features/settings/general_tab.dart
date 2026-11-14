@@ -10,7 +10,6 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import '../window/window_zoom.dart';
-import 'immutable_heads.dart' show tomlStringValue;
 import 'settings_view_model.dart';
 import 'settings_widgets.dart';
 
@@ -60,8 +59,8 @@ class SettingsAuthorFact extends StatelessWidget {
 }
 
 /// Settings › General (Story 11.7): Appearance (Theme, Density, Accent colour), While you scroll (Hide controls),
-/// Diffs (Layout, Changed words and jj's `diff.color-words.*` at user scope) and Identity (`user.name`, `user.email`
-/// at user scope).
+/// Diffs (Layout, the Changed words switch, and jj's `diff.color-words.max-inline-alternation` and `.context` at user
+/// scope) and Identity (`user.name`, `user.email` at user scope).
 class SettingsGeneralTab extends StatelessWidget {
   /// The tab over [vm].
   const SettingsGeneralTab({required this.vm, super.key});
@@ -182,31 +181,20 @@ class SettingsGeneralTab extends StatelessWidget {
               ),
             ),
             SettingsRow(
-              label: s.settingsDiffMarks,
-              hint: switch (prefs.general.diffMarks) {
-                DiffMarksSetting.words => s.settingsDiffMarksZanshinHint,
-                DiffMarksSetting.jj => s.settingsDiffMarksJjHint,
-              },
-              child: ZsSegmented<DiffMarksSetting>(
-                variant: ZsSegmentedVariant.inset,
-                label: s.settingsDiffMarksLabel,
+              label: s.settingsDiffWordMarks,
+              hint: s.settingsDiffWordMarksHint,
+              child: ZsSwitch(
+                label: s.settingsDiffWordMarksSwitch,
                 identifier: 'settings-diff-marks',
-                segments: <ZsSegment<DiffMarksSetting>>[
-                  ZsSegment<DiffMarksSetting>(value: DiffMarksSetting.words, label: s.settingsDiffMarksZanshin),
-                  ZsSegment<DiffMarksSetting>(value: DiffMarksSetting.jj, label: s.settingsDiffMarksJj),
-                ],
-                value: prefs.general.diffMarks,
-                onChanged: (marks) => vm.updatePreferences((settings) => settings.copyWith.general(diffMarks: marks)),
+                value: prefs.general.diffWordMarks,
+                onChanged: (on) => vm.updatePreferences((settings) => settings.copyWith.general(diffWordMarks: on)),
               ),
             ),
             _diffNumberRow(
               s,
               key: SettingsKeys.diffInline,
               label: s.settingsDiffInline,
-              hint: switch (prefs.general.diffMarks) {
-                DiffMarksSetting.words => s.settingsDiffInlineZanshinHint,
-                DiffMarksSetting.jj => s.settingsDiffInlineHint,
-              },
+              hint: s.settingsDiffInlineHint,
               identifier: 'settings-diff-inline',
               fallback: 3,
               min: -1,
@@ -228,7 +216,6 @@ class SettingsGeneralTab extends StatelessWidget {
               fixed: const <int>[0, 1, 2, 3, 5, 10, 20],
               optionLabel: (n) => '$n',
             ),
-            _diffConflictRow(s),
           ],
         ),
         SettingsGroup(
@@ -309,37 +296,6 @@ class SettingsGeneralTab extends StatelessWidget {
         ],
         value: value,
         onChanged: (n) => unawaited(vm.setConfig(ConfigScope.user, key, '$n')),
-      ),
-    );
-  }
-
-  Widget _diffConflictRow(AppLocalizations s) {
-    const String key = SettingsKeys.diffConflict;
-    final String? raw = vm.effective(key, project: false)?.value;
-    const materialize = 'materialize'; // l10n-ignore: jj's config value
-    const pair = 'pair'; // l10n-ignore: jj's config value
-    // `materialize` mirrors jj-cli's built-in default at v0.47.0 and applies only when no layer lists the key.
-    final String? text = raw == null ? materialize : tomlStringValue(raw);
-    final String? value = text == materialize || text == pair ? text : null;
-    return SettingsRow(
-      label: s.settingsDiffConflict,
-      hint: _diffHint(s, key, switch (value) {
-        materialize => s.settingsDiffConflictMaterializeHint,
-        pair => s.settingsDiffConflictPairHint,
-        _ => null,
-      }),
-      error: _diffError(s, key, unreadable: value == null),
-      configKey: key,
-      child: ZsSegmented<String?>(
-        variant: ZsSegmentedVariant.inset,
-        label: s.settingsDiffConflict,
-        identifier: 'settings-diff-conflict',
-        segments: <ZsSegment<String?>>[
-          ZsSegment<String?>(value: materialize, label: s.settingsDiffConflictMaterialize),
-          ZsSegment<String?>(value: pair, label: s.settingsDiffConflictPair),
-        ],
-        value: value,
-        onChanged: (choice) => unawaited(vm.setConfig(ConfigScope.user, key, choice ?? materialize)),
       ),
     );
   }

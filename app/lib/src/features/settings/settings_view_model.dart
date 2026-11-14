@@ -39,9 +39,6 @@ abstract final class SettingsKeys {
   /// Diffs › Context lines.
   static const diffContext = 'diff.color-words.context'; // l10n-ignore: jj's config key
 
-  /// Diffs › Conflicts.
-  static const diffConflict = 'diff.color-words.conflict'; // l10n-ignore: jj's config key
-
   /// Diffs › Inline changes.
   static const diffInline = 'diff.color-words.max-inline-alternation'; // l10n-ignore: jj's config key
 
@@ -56,12 +53,11 @@ abstract final class SettingsKeys {
     immutableHeadsKey,
     userEmail,
     diffContext,
-    diffConflict,
     diffInline,
   ];
 
   /// The keys the General tab reads.
-  static const general = <String>[userName, userEmail, diffContext, diffConflict, diffInline];
+  static const general = <String>[userName, userEmail, diffContext, diffInline];
 }
 
 /// What Settings reads of the open repository besides the config, and its remote verbs (a port, so tests pass a fake).

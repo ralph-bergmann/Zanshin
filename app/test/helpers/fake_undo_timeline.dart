@@ -137,9 +137,6 @@ class FakeOperationChangesSource implements OperationChangesSource {
   /// Every `diff` call.
   final diffs = <DiffCall>[];
 
-  /// Every `diff` call's word-mark style (Story 5.11), in call order; the reply carries it as [Diff.marks].
-  final marks = <DiffMarks>[];
-
   final _configWrites = ConfigWrites();
 
   /// Fire it to stand for a jj config write.
@@ -172,7 +169,6 @@ class FakeOperationChangesSource implements OperationChangesSource {
     bool interdiff = false,
     bool summary = false,
     List<String> paths = const <String>[],
-    DiffMarks marks = DiffMarks.jj,
   }) async {
     final DiffCall call = (
       revision: revision,
@@ -183,21 +179,11 @@ class FakeOperationChangesSource implements OperationChangesSource {
       paths: paths,
     );
     diffs.add(call);
-    this.marks.add(marks);
     await diffGate?.future;
     if (refuseDiff case final error?) {
       throw error;
     }
-    final Diff reply = diffReply(call);
-    return Diff(
-      files: reply.files,
-      operationId: reply.operationId,
-      commitIds: reply.commitIds,
-      fromCommitId: reply.fromCommitId,
-      description: reply.description,
-      marks: marks,
-      warnings: reply.warnings,
-    );
+    return diffReply(call);
   }
 }
 

@@ -11,7 +11,7 @@
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, VerifierOptions, WIPOffset};
 use tracing::debug;
 use zanshin_jj::{
-    DiffMarks, DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, HunkLineKind, MutateError, RevisionDiff,
+    DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, HunkLineKind, MutateError, RevisionDiff,
     SegmentKind, Whitespace,
 };
 
@@ -37,7 +37,7 @@ use crate::status::change_kind_offset;
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `DiffRequest` buffer, its `kind` is not
-///   `Diff`, or its `whitespace` or `marks` is outside the enum.
+///   `Diff`, or its `whitespace` is outside the enum.
 /// - `jj.invalid_input` — `revision` together with `from` or `to` (the CLI's `-r` vs
 ///   `--from`/`--to` conflict), with or without `interdiff`. `revision` with `interdiff` alone is
 ///   [`DiffRevisions::Created`] (Story 10.29 closing run).
@@ -65,34 +65,8 @@ fn read_diff_request(data: *const u8, len: usize) -> Result<DiffOptions, FfiErro
         paths: strings(req.paths()),
         context: req.context().map(|c| c.value() as usize),
         whitespace: diff_whitespace(req.whitespace())?,
-        marks: diff_marks(req.marks())?,
         summary: req.summary(),
     })
-}
-
-/// A wire `DiffMarks` (Story 5.11).
-///
-/// # Errors
-/// - `ffi.invalid_argument` — a value outside the enum (a newer writer).
-fn diff_marks(marks: fbs::DiffMarks) -> Result<DiffMarks, FfiErrorObj> {
-    match marks {
-        fbs::DiffMarks::Jj => Ok(DiffMarks::Jj),
-        fbs::DiffMarks::Words => Ok(DiffMarks::Words),
-        other => Err(FfiErrorObj {
-            report: None,
-            hints: Vec::new(),
-            code: FFI_INVALID_ARGUMENT.to_owned(),
-            context: Some(format!("unknown diff marks: {other:?}")),
-        }),
-    }
-}
-
-/// [`DiffMarks`] on the wire.
-fn wire_marks(marks: DiffMarks) -> fbs::DiffMarks {
-    match marks {
-        DiffMarks::Jj => fbs::DiffMarks::Jj,
-        DiffMarks::Words => fbs::DiffMarks::Words,
-    }
 }
 
 /// A wire `DiffWhitespace`.
@@ -130,10 +104,7 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// onto `to`'s parents in memory against `to`, no copy records; `interdiff` with `revision` alone
 /// (Story 10.29 closing run) is `show_inter_diff` with no predecessors — the revision's parent
 /// tree against its tree, no copy records. Both fill `Diff.description`, the CLI's
-/// `JJ-COMMIT-DESCRIPTION` block (absent when the descriptions are equal). `marks` (Story 5.11)
-/// picks the word-mark style — absent: `Jj`, the CLI's; `Words`: the changed part of each line, one
-/// line replaced by one line as one changed line (Story 5.13), the same numbered line texts — and
-/// comes back as `Diff.marks`. No caching. Writes NO operation
+/// `JJ-COMMIT-DESCRIPTION` block (absent when the descriptions are equal). No caching. Writes NO operation
 /// beyond the pre-verb snapshot's (Story 9.26).
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Diff` payload on success.
@@ -142,7 +113,7 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `DiffRequest` buffer, its `kind` is not
-///   `Diff`, or its `whitespace` or `marks` is outside the enum.
+///   `Diff`, or its `whitespace` is outside the enum.
 /// - `jj.invalid_input` — `revision` together with `from` or `to`, or `interdiff` with none of
 ///   `revision`, `from` and `to` (both before the snapshot: nothing written, no
 ///   `precondition`), or a `paths` entry that is not a valid repo path or leaves the
@@ -200,7 +171,6 @@ pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
             commit_ids: Some(commit_ids),
             from_commit_id,
             description,
-            marks: wire_marks(diff.marks),
         },
     );
     finish_envelope(b, fbs::Payload::Diff, Some(diff.as_union_value()), report)
@@ -323,8 +293,8 @@ mod tests {
 
     use flatbuffers::VerifierOptions;
     use zanshin_jj::{
-        ChangeKind, CommitId, DiffMarks, FileDiff, Hunk, HunkKey, HunkLine, HunkLineKind, OperationId, RevisionDiff,
-        Segment, SegmentKind,
+        ChangeKind, CommitId, FileDiff, Hunk, HunkKey, HunkLine, HunkLineKind, OperationId, RevisionDiff, Segment,
+        SegmentKind,
     };
 
     use super::diff_to_envelope;
@@ -447,13 +417,6 @@ mod tests {
             from_commit_id: diff.from_commit_id().map(|id| CommitId(id.to_owned())),
             files,
             description: diff.description().map(file_from_wire),
-            marks: match diff.marks() {
-                fbs::DiffMarks::Jj => DiffMarks::Jj,
-                other => {
-                    assert_eq!(other, fbs::DiffMarks::Words);
-                    DiffMarks::Words
-                }
-            },
         }
     }
 
@@ -464,7 +427,6 @@ mod tests {
             from_commit_id: None,
             files,
             description: None,
-            marks: DiffMarks::Jj,
         }
     }
 
@@ -606,18 +568,6 @@ mod tests {
             diff_from_wire(&diff_to_envelope(&described, &CallReport::default())),
             described
         );
-        // Story 5.11: the word-mark style rides the payload.
-        assert_eq!(env.data_as_diff().expect("Diff payload").marks(), fbs::DiffMarks::Jj);
-        let words = RevisionDiff {
-            marks: DiffMarks::Words,
-            ..sample()
-        };
-        let bytes = diff_to_envelope(&words, &CallReport::default());
-        assert_eq!(
-            verified_envelope(&bytes).data_as_diff().expect("Diff payload").marks(),
-            fbs::DiffMarks::Words
-        );
-        assert_eq!(diff_from_wire(&bytes), words);
     }
 
     #[test]
@@ -765,7 +715,7 @@ mod tests {
     }
 
     /// One `DiffRequest`: `kind`, `revision`, `from`, `to`, `paths`, `context`, `whitespace`,
-    /// `summary`, `interdiff`, `marks`.
+    /// `summary`, `interdiff`.
     struct Request<'a> {
         kind: fbs::RequestKind,
         revision: Option<&'a str>,
@@ -776,7 +726,6 @@ mod tests {
         whitespace: fbs::DiffWhitespace,
         summary: bool,
         interdiff: bool,
-        marks: fbs::DiffMarks,
     }
 
     impl Default for Request<'_> {
@@ -791,7 +740,6 @@ mod tests {
                 whitespace: fbs::DiffWhitespace::Exact,
                 summary: false,
                 interdiff: false,
-                marks: fbs::DiffMarks::Jj,
             }
         }
     }
@@ -818,7 +766,6 @@ mod tests {
                 whitespace: r.whitespace,
                 summary: r.summary,
                 interdiff: r.interdiff,
-                marks: r.marks,
             },
         );
         b.finish(req, None);
@@ -841,7 +788,6 @@ mod tests {
             context: Some(0),
             whitespace: fbs::DiffWhitespace::IgnoreAllSpace,
             summary: true,
-            marks: fbs::DiffMarks::Words,
             ..Request::default()
         })
         .expect("valid");
@@ -852,7 +798,6 @@ mod tests {
                 paths: vec!["a".into(), "b/c".into()],
                 context: Some(0),
                 whitespace: Whitespace::IgnoreAllSpace,
-                marks: DiffMarks::Words,
                 summary: true,
             }
         );
@@ -973,13 +918,5 @@ mod tests {
         })
         .expect_err("unknown whitespace");
         assert_eq!(err.code, FFI_INVALID_ARGUMENT);
-        // Story 5.11: an unknown word-mark style.
-        let err = read(&Request {
-            marks: fbs::DiffMarks(200),
-            ..Request::default()
-        })
-        .expect_err("unknown marks");
-        assert_eq!(err.code, FFI_INVALID_ARGUMENT);
-        assert_eq!(err.context.as_deref(), Some("unknown diff marks: <UNKNOWN 200>"));
     }
 }

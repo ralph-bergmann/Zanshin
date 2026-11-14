@@ -19,8 +19,9 @@ mixin _$GeneralSettings {
 /// "While you scroll: Hide controls" — the floating controls step aside while the graph scrolls (epics.md Story
 /// 11.3 item 8); on by default.
  bool get hideControls;/// The inspector's diff layout (Story 10.24); [DiffLayoutSetting.unified] by default.
-@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) DiffLayoutSetting get diffLayout;/// The diff's word-mark style (Story 5.11); [DiffMarksSetting.words] by default and for an unknown value.
-@JsonKey(unknownEnumValue: DiffMarksSetting.words) DiffMarksSetting get diffMarks;
+@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) DiffLayoutSetting get diffLayout;/// Settings › General › Diffs › "Changed words" (Story 5.14): whether the diff marks the words that changed
+/// inside a line. It changes only how a loaded diff is drawn; on by default.
+ bool get diffWordMarks;
 /// Create a copy of GeneralSettings
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -34,20 +35,20 @@ $GeneralSettingsCopyWith<GeneralSettings> get copyWith => _$GeneralSettingsCopyW
 @override
 bool operator ==(Object other) {
   final _this = this as GeneralSettings;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is GeneralSettings&&(identical(other.hideControls, _this.hideControls) || other.hideControls == _this.hideControls)&&(identical(other.diffLayout, _this.diffLayout) || other.diffLayout == _this.diffLayout)&&(identical(other.diffMarks, _this.diffMarks) || other.diffMarks == _this.diffMarks));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is GeneralSettings&&(identical(other.hideControls, _this.hideControls) || other.hideControls == _this.hideControls)&&(identical(other.diffLayout, _this.diffLayout) || other.diffLayout == _this.diffLayout)&&(identical(other.diffWordMarks, _this.diffWordMarks) || other.diffWordMarks == _this.diffWordMarks));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as GeneralSettings;
-  return Object.hash(runtimeType,_this.hideControls,_this.diffLayout,_this.diffMarks);
+  return Object.hash(runtimeType,_this.hideControls,_this.diffLayout,_this.diffWordMarks);
 }
 
 @override
 String toString() {
   final _this = this as GeneralSettings;
-  return 'GeneralSettings(hideControls: ${_this.hideControls}, diffLayout: ${_this.diffLayout}, diffMarks: ${_this.diffMarks})';
+  return 'GeneralSettings(hideControls: ${_this.hideControls}, diffLayout: ${_this.diffLayout}, diffWordMarks: ${_this.diffWordMarks})';
 }
 
 
@@ -58,7 +59,7 @@ abstract mixin class $GeneralSettingsCopyWith<$Res>  {
   factory $GeneralSettingsCopyWith(GeneralSettings value, $Res Function(GeneralSettings) _then) = _$GeneralSettingsCopyWithImpl;
 @useResult
 $Res call({
- bool hideControls,@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) DiffLayoutSetting diffLayout,@JsonKey(unknownEnumValue: DiffMarksSetting.words) DiffMarksSetting diffMarks
+ bool hideControls,@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) DiffLayoutSetting diffLayout, bool diffWordMarks
 });
 
 
@@ -75,12 +76,12 @@ class _$GeneralSettingsCopyWithImpl<$Res>
 
 /// Create a copy of GeneralSettings
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? hideControls = null,Object? diffLayout = null,Object? diffMarks = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? hideControls = null,Object? diffLayout = null,Object? diffWordMarks = null,}) {
   return _then(GeneralSettings(
 hideControls: null == hideControls ? _self.hideControls : hideControls // ignore: cast_nullable_to_non_nullable
 as bool,diffLayout: null == diffLayout ? _self.diffLayout : diffLayout // ignore: cast_nullable_to_non_nullable
-as DiffLayoutSetting,diffMarks: null == diffMarks ? _self.diffMarks : diffMarks // ignore: cast_nullable_to_non_nullable
-as DiffMarksSetting,
+as DiffLayoutSetting,diffWordMarks: null == diffWordMarks ? _self.diffWordMarks : diffWordMarks // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -165,10 +166,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout, @JsonKey(unknownEnumValue: DiffMarksSetting.words)  DiffMarksSetting diffMarks)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout,  bool diffWordMarks)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _GeneralSettings() when $default != null:
-return $default(_that.hideControls,_that.diffLayout,_that.diffMarks);case _:
+return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks);case _:
   return orElse();
 
 }
@@ -186,10 +187,10 @@ return $default(_that.hideControls,_that.diffLayout,_that.diffMarks);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout, @JsonKey(unknownEnumValue: DiffMarksSetting.words)  DiffMarksSetting diffMarks)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout,  bool diffWordMarks)  $default,) {final _that = this;
 switch (_that) {
 case _GeneralSettings():
-return $default(_that.hideControls,_that.diffLayout,_that.diffMarks);case _:
+return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -206,10 +207,10 @@ return $default(_that.hideControls,_that.diffLayout,_that.diffMarks);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout, @JsonKey(unknownEnumValue: DiffMarksSetting.words)  DiffMarksSetting diffMarks)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout,  bool diffWordMarks)?  $default,) {final _that = this;
 switch (_that) {
 case _GeneralSettings() when $default != null:
-return $default(_that.hideControls,_that.diffLayout,_that.diffMarks);case _:
+return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks);case _:
   return null;
 
 }
@@ -221,7 +222,7 @@ return $default(_that.hideControls,_that.diffLayout,_that.diffMarks);case _:
 @JsonSerializable()
 
 class _GeneralSettings implements GeneralSettings {
-  const _GeneralSettings({this.hideControls = true, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified) this.diffLayout = DiffLayoutSetting.unified, @JsonKey(unknownEnumValue: DiffMarksSetting.words) this.diffMarks = DiffMarksSetting.words});
+  const _GeneralSettings({this.hideControls = true, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified) this.diffLayout = DiffLayoutSetting.unified, this.diffWordMarks = true});
   factory _GeneralSettings.fromJson(Map<String, dynamic> json) => _$GeneralSettingsFromJson(json);
 
 /// "While you scroll: Hide controls" — the floating controls step aside while the graph scrolls (epics.md Story
@@ -229,8 +230,9 @@ class _GeneralSettings implements GeneralSettings {
 @override@JsonKey() final  bool hideControls;
 /// The inspector's diff layout (Story 10.24); [DiffLayoutSetting.unified] by default.
 @override@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) final  DiffLayoutSetting diffLayout;
-/// The diff's word-mark style (Story 5.11); [DiffMarksSetting.words] by default and for an unknown value.
-@override@JsonKey(unknownEnumValue: DiffMarksSetting.words) final  DiffMarksSetting diffMarks;
+/// Settings › General › Diffs › "Changed words" (Story 5.14): whether the diff marks the words that changed
+/// inside a line. It changes only how a loaded diff is drawn; on by default.
+@override@JsonKey() final  bool diffWordMarks;
 
 /// Create a copy of GeneralSettings
 /// with the given fields replaced by the non-null parameter values.
@@ -245,18 +247,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _GeneralSettings&&(identical(other.hideControls, hideControls) || other.hideControls == hideControls)&&(identical(other.diffLayout, diffLayout) || other.diffLayout == diffLayout)&&(identical(other.diffMarks, diffMarks) || other.diffMarks == diffMarks));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _GeneralSettings&&(identical(other.hideControls, hideControls) || other.hideControls == hideControls)&&(identical(other.diffLayout, diffLayout) || other.diffLayout == diffLayout)&&(identical(other.diffWordMarks, diffWordMarks) || other.diffWordMarks == diffWordMarks));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,hideControls,diffLayout,diffMarks);
+    return Object.hash(runtimeType,hideControls,diffLayout,diffWordMarks);
 }
 
 @override
 String toString() {
-    return 'GeneralSettings(hideControls: $hideControls, diffLayout: $diffLayout, diffMarks: $diffMarks)';
+    return 'GeneralSettings(hideControls: $hideControls, diffLayout: $diffLayout, diffWordMarks: $diffWordMarks)';
 }
 
 
@@ -267,7 +269,7 @@ abstract mixin class _$GeneralSettingsCopyWith<$Res> implements $GeneralSettings
   factory _$GeneralSettingsCopyWith(_GeneralSettings value, $Res Function(_GeneralSettings) _then) = __$GeneralSettingsCopyWithImpl;
 @override @useResult
 $Res call({
- bool hideControls,@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) DiffLayoutSetting diffLayout,@JsonKey(unknownEnumValue: DiffMarksSetting.words) DiffMarksSetting diffMarks
+ bool hideControls,@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) DiffLayoutSetting diffLayout, bool diffWordMarks
 });
 
 
@@ -284,12 +286,12 @@ class __$GeneralSettingsCopyWithImpl<$Res>
 
 /// Create a copy of GeneralSettings
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? hideControls = null,Object? diffLayout = null,Object? diffMarks = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? hideControls = null,Object? diffLayout = null,Object? diffWordMarks = null,}) {
   return _then(_GeneralSettings(
 hideControls: null == hideControls ? _self.hideControls : hideControls // ignore: cast_nullable_to_non_nullable
 as bool,diffLayout: null == diffLayout ? _self.diffLayout : diffLayout // ignore: cast_nullable_to_non_nullable
-as DiffLayoutSetting,diffMarks: null == diffMarks ? _self.diffMarks : diffMarks // ignore: cast_nullable_to_non_nullable
-as DiffMarksSetting,
+as DiffLayoutSetting,diffWordMarks: null == diffWordMarks ? _self.diffWordMarks : diffWordMarks // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

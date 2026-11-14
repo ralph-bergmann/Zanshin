@@ -18,7 +18,7 @@ import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
-import 'package:zanshin_ui/zanshin_ui.dart' show ZsAppearance, ZsDensity, ZsNamiMark, ZsRoot;
+import 'package:zanshin_ui/zanshin_ui.dart' show ZsAppearance, ZsDensity, ZsNamiMark, ZsRoot, ZsSwitch;
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/settings_rig.dart';
@@ -57,8 +57,7 @@ void main() {
       expect(rig.store.value.appearance.themeMode, ThemeMode.dark);
 
       await tester.tap(find.text('Comfy'));
-      // The accent's Zanshin; the Changed words row below has one too.
-      await tester.tap(find.text('Zanshin').first);
+      await tester.tap(find.text('Zanshin'));
       await tester.tap(find.text('Side by side'));
       await rig.tap('settings-hide-controls');
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
@@ -69,22 +68,22 @@ void main() {
       expect(rig.calls, isEmpty, reason: 'app preferences are not jj config');
     });
 
-    testWidgets('Changed words: Zanshin by default, jj writes general.diffMarks; the hint follows (Story 5.11)', (
+    testWidgets('Changed words: a switch, on by default, writes general.diffWordMarks and no jj config (Story 5.14)', (
       tester,
     ) async {
       final rig = _Rig(tester);
       await rig.pump(project: false);
-      expect(rig.store.value.general.diffMarks, DiffMarksSetting.words);
+      expect(rig.store.value.general.diffWordMarks, isTrue);
       expect(find.text('Changed words'), findsOneWidget);
-      expect(
-        find.text('Marks the changed part of each line, using the similar library. Removed lines come first.'),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('jj'));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-      await rig.settle();
-      expect(rig.store.value.general.diffMarks, DiffMarksSetting.jj);
-      expect(find.text('As jj diff prints them, following your jj config.'), findsOneWidget);
+      expect(find.text('Marks the words that changed inside a line, where jj diff underlines them.'), findsOneWidget);
+      final Finder marks = find.byWidgetPredicate((w) => w is ZsSwitch && w.identifier == 'settings-diff-marks');
+      expect(tester.widget<ZsSwitch>(marks).value, isTrue);
+      for (final on in <bool>[false, true]) {
+        await rig.tap('settings-diff-marks');
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await rig.settle();
+        expect(rig.store.value.general.diffWordMarks, on);
+      }
       expect(rig.calls, isEmpty, reason: 'an app preference, not jj config');
     });
 
@@ -221,18 +220,9 @@ void main() {
     const conflict = 'diff.color-words.conflict';
     const inline = 'diff.color-words.max-inline-alternation';
     const contextHint = 'Unchanged lines shown around each change.';
-    const inlineZanshinHint =
-        'How often a line may switch between removed and added parts before it shows as an old and a new line. '
-        'Applies where one line replaces one line. Experimental in jj.';
-    const inlineJjHint =
+    const inlineHint =
         'How often a line may switch between removed and added words before it shows as an old and a new line. '
         'Experimental in jj.';
-
-    Future<void> useJjMarks(WidgetTester tester, _Rig rig) async {
-      await tester.tap(find.text('jj'));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-      await rig.settle();
-    }
 
     // Opens the select [identifier] and picks the row [label].
     Future<void> pick(WidgetTester tester, _Rig rig, String identifier, String label) async {
@@ -250,74 +240,52 @@ void main() {
 
     double top(_Rig rig, String identifier) => rig.tester.getRect(rig.id(identifier)).top;
 
-    testWidgets("fresh config: jj's defaults, no source note, each row shows its key", (tester) async {
-      final rig = _Rig(tester);
-      await rig.pump(project: false);
-      expect(find.text('3'), findsOneWidget, reason: 'Context lines');
-      expect(find.text(contextHint), findsOneWidget);
-      expect(
-        find.text('A conflicted side is compared as its text with conflict markers. Experimental in jj.'),
-        findsOneWidget,
-      );
-      expect(find.text(context), findsOneWidget);
-      expect(find.text(conflict), findsOneWidget);
-      // Story 5.13: Inline changes shows in both styles, its hint per style.
-      expect(find.text('Up to 3'), findsOneWidget);
-      expect(find.text(inline), findsOneWidget);
-      expect(find.text(inlineZanshinHint), findsOneWidget);
-
-      await useJjMarks(tester, rig);
-      expect(find.text('Up to 3'), findsOneWidget);
-      expect(find.text(inline), findsOneWidget);
-      expect(find.text(inlineJjHint), findsOneWidget);
-      expect(find.text(inlineZanshinHint), findsNothing);
-      expect(rig.calls, isEmpty);
-    });
-
-    testWidgets('the rows run Layout, Changed words, Inline changes, Context lines, Conflicts in both styles', (
+    testWidgets("fresh config: jj's defaults, no source note, each row shows its key; no Conflicts row", (
       tester,
     ) async {
       final rig = _Rig(tester);
       await rig.pump(project: false);
-      List<double> tops() => <String>[
+      expect(find.text('3'), findsOneWidget, reason: 'Context lines');
+      expect(find.text(contextHint), findsOneWidget);
+      expect(find.text(context), findsOneWidget);
+      expect(find.text('Up to 3'), findsOneWidget);
+      expect(find.text(inline), findsOneWidget);
+      expect(find.text(inlineHint), findsOneWidget);
+      // Story 5.14: the diff still reads `diff.color-words.conflict`, but no row writes it.
+      expect(find.text('Conflicts'), findsNothing);
+      expect(find.text(conflict), findsNothing);
+      expect(rig.id('settings-diff-conflict'), findsNothing);
+      expect(rig.calls, isEmpty);
+    });
+
+    testWidgets('the rows run Layout, Changed words, Inline changes, Context lines', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump(project: false);
+      final List<double> rows = <String>[
         'settings-diff-layout',
         'settings-diff-marks',
         'settings-diff-inline',
         'settings-diff-context',
-        'settings-diff-conflict',
       ].map((id) => top(rig, id)).toList();
-      for (final jj in <bool>[false, true]) {
-        if (jj) {
-          await useJjMarks(tester, rig);
-        }
-        final List<double> rows = tops();
-        expect(rows, List<double>.of(rows)..sort(), reason: jj ? 'jj' : 'Zanshin');
-        expect(rows.toSet(), hasLength(5), reason: jj ? 'jj' : 'Zanshin');
-      }
+      expect(rows, List<double>.of(rows)..sort());
+      expect(rows.toSet(), hasLength(4));
     });
 
     testWidgets('a choice writes at user scope, defaults too, and the row shows it', (tester) async {
       final rig = _Rig(tester);
       await rig.pump(project: false);
-      // Zanshin's style (the default) reads Inline changes too (Story 5.13).
-      expect(rig.store.value.general.diffMarks, DiffMarksSetting.words);
 
       await pick(tester, rig, 'settings-diff-context', '10');
       await pick(tester, rig, 'settings-diff-inline', 'Never');
       await pick(tester, rig, 'settings-diff-inline', 'Always');
-      await tester.tap(find.text('In pairs'));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-      await rig.settle();
 
       expect(rig.calls, <String>[
         'set user $context 10',
         'set user $inline 0',
         'set user $inline -1',
-        'set user $conflict pair',
       ]);
       expect(find.text('10'), findsOneWidget);
       expect(find.text('Always'), findsOneWidget);
-      expect(find.text('Each pair of conflict sides is compared on its own. Experimental in jj.'), findsOneWidget);
     });
 
     testWidgets('an off-list value is its own option, in order, chosen', (tester) async {
@@ -376,20 +344,6 @@ void main() {
       expect(find.text('Failed to write the config'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
       expect(find.text('10'), findsNothing);
-    });
-
-    testWidgets("a conflict value jj can't read chooses no segment; In pairs writes pair", (tester) async {
-      final rig = _Rig(tester);
-      rig.env.configEntries[conflict] = <ConfigEntry>[_entry(conflict, '"both"', ConfigValueSource.user)];
-      await rig.pump(project: false);
-      expect(find.text('jj can\'t read "both".'), findsOneWidget);
-      expect(find.textContaining('compared'), findsNothing, reason: 'no segment, no per-value hint');
-
-      await tester.tap(find.text('In pairs'));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-      await rig.settle();
-      expect(rig.calls, <String>['set user $conflict pair']);
-      expect(find.textContaining("jj can't read"), findsNothing);
     });
 
     testWidgets('an off-list Inline value sits before Always, which stays last', (tester) async {

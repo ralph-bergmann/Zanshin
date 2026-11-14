@@ -3434,59 +3434,35 @@ abstract class AppLocalizations {
   /// **'Side by side'**
   String get settingsDiffSideBySide;
 
-  /// Settings › General › Diffs row: which word marks a changed block gets.
+  /// Settings › General › Diffs row: whether the diff marks the words that changed inside a line.
   ///
   /// In en, this message translates to:
   /// **'Changed words'**
-  String get settingsDiffMarks;
+  String get settingsDiffWordMarks;
 
-  /// VoiceOver name of the changed-words choice.
+  /// The Changed words row's hint. jj diff is the command's name, lowercase.
   ///
   /// In en, this message translates to:
-  /// **'Changed words'**
-  String get settingsDiffMarksLabel;
+  /// **'Marks the words that changed inside a line, where jj diff underlines them.'**
+  String get settingsDiffWordMarksHint;
 
-  /// Changed-words choice: Zanshin's marks of the changed part of each line.
+  /// VoiceOver name of the Changed words switch.
   ///
   /// In en, this message translates to:
-  /// **'Zanshin'**
-  String get settingsDiffMarksZanshin;
+  /// **'Mark changed words'**
+  String get settingsDiffWordMarksSwitch;
 
-  /// Changed-words choice: jj diff's own marks. jj is the tool's name, lowercase.
-  ///
-  /// In en, this message translates to:
-  /// **'jj'**
-  String get settingsDiffMarksJj;
-
-  /// The Changed words row's hint while Zanshin is chosen. similar is the Rust library's name, lowercase.
-  ///
-  /// In en, this message translates to:
-  /// **'Marks the changed part of each line, using the similar library. Removed lines come first.'**
-  String get settingsDiffMarksZanshinHint;
-
-  /// The Changed words row's hint while jj is chosen.
-  ///
-  /// In en, this message translates to:
-  /// **'As jj diff prints them, following your jj config.'**
-  String get settingsDiffMarksJjHint;
-
-  /// Settings › General › Diffs row (diff.color-words.max-inline-alternation), shown in both Changed words styles.
+  /// Settings › General › Diffs row (diff.color-words.max-inline-alternation).
   ///
   /// In en, this message translates to:
   /// **'Inline changes'**
   String get settingsDiffInline;
 
-  /// The Inline changes row's hint while jj is chosen in Changed words.
+  /// The Inline changes row's hint.
   ///
   /// In en, this message translates to:
   /// **'How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj.'**
   String get settingsDiffInlineHint;
-
-  /// The Inline changes row's hint while Zanshin is chosen in Changed words.
-  ///
-  /// In en, this message translates to:
-  /// **'How often a line may switch between removed and added parts before it shows as an old and a new line. Applies where one line replaces one line. Experimental in jj.'**
-  String get settingsDiffInlineZanshinHint;
 
   /// Inline changes choice: 0, every changed line shows as an old and a new line.
   ///
@@ -3517,36 +3493,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unchanged lines shown around each change.'**
   String get settingsDiffContextHint;
-
-  /// Settings › General › Diffs row (diff.color-words.conflict).
-  ///
-  /// In en, this message translates to:
-  /// **'Conflicts'**
-  String get settingsDiffConflict;
-
-  /// Conflicts choice: materialize, compared as text with conflict markers.
-  ///
-  /// In en, this message translates to:
-  /// **'As markers'**
-  String get settingsDiffConflictMaterialize;
-
-  /// Conflicts choice: pair, each pair of sides compared on its own.
-  ///
-  /// In en, this message translates to:
-  /// **'In pairs'**
-  String get settingsDiffConflictPair;
-
-  /// The Conflicts row's hint while As markers is chosen.
-  ///
-  /// In en, this message translates to:
-  /// **'A conflicted side is compared as its text with conflict markers. Experimental in jj.'**
-  String get settingsDiffConflictMaterializeHint;
-
-  /// The Conflicts row's hint while In pairs is chosen.
-  ///
-  /// In en, this message translates to:
-  /// **'Each pair of conflict sides is compared on its own. Experimental in jj.'**
-  String get settingsDiffConflictPairHint;
 
   /// Appended to a General jj row's hint when the open project's repo or workspace config sets the key.
   ///

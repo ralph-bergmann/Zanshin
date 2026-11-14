@@ -4416,10 +4416,7 @@ impl Repo {
     /// against the revision's own) with the labels `show` reports, and both calls see the same
     /// effective `ui.conflict-marker-style` — each resolves config for its own CLI command, so a
     /// `--when.commands` scope can differ. `context: None` is the effective `diff.color-words.context`; `whitespace`
-    /// is the CLI's `-w` / `-b`. `marks` picks the word marks of a changed block (Story 5.11):
-    /// [`crate::DiffMarks::Jj`] is the CLI's, [`crate::DiffMarks::Words`] the second style, which
-    /// marks the changed part of each line and shows one line replaced by one line as one line
-    /// (Story 5.13), with the same numbered line texts. The call resolves its config for the CLI command `diff`
+    /// is the CLI's `-w` / `-b`. The call resolves its config for the CLI command `diff`
     /// (Story 9.41). Equal trees give an empty result.
     ///
     /// Writes NO operation beyond the pre-verb snapshot's (Story 9.26).
@@ -4466,8 +4463,7 @@ impl Repo {
     /// selects it only whole. The root's diff and `from == to` are empty. `paths` are
     /// repo-relative prefixes (empty = all); each one that matches nothing in either tree is a
     /// `jj.paths_unmatched` warning (`print_unmatched_explicit_paths`). `summary` keeps every
-    /// field but the hunks. `marks` picks the word-mark style (Story 5.11, default the CLI's) and
-    /// comes back as [`crate::RevisionDiff::marks`]. A present `--from` / `--to` is revset text that must resolve to
+    /// field but the hunks. A present `--from` / `--to` is revset text that must resolve to
     /// exactly one commit, as `resolve_single_rev` does — a commit id reaches a hidden commit.
     /// Parse diagnostics land on the call's warnings. Revisions resolve through the call's `revsets.short-prefixes`;
     /// config resolves for the CLI command `diff`; everything is read from one head-resolved repo.

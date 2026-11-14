@@ -47,7 +47,6 @@ import 'package:zanshin_core/zanshin_core.dart'
         ChangeActions,
         ConflictState,
         Diff,
-        DiffMarks,
         FileChange,
         FileChangeKind,
         FileDiff,
@@ -276,7 +275,18 @@ final graphFolder = WidgetbookFolder(
       name: 'Inspector diff',
       useCases: <WidgetbookUseCase>[
         WidgetbookUseCase(name: 'Hunk selection', builder: (context) => const _HunkSelection()),
-        WidgetbookUseCase(name: 'Word marks', builder: (context) => const _WordMarks()),
+        WidgetbookUseCase(
+          name: 'Word marks',
+          builder: (context) => _WordMarks(
+            wordMarks: context.knobs.boolean(label: 'word marks', initialValue: true),
+            layout: context.knobs.object.dropdown(
+              label: 'layout',
+              options: DiffLayoutSetting.values,
+              initialOption: DiffLayoutSetting.unified,
+              labelBuilder: (value) => value.name,
+            ),
+          ),
+        ),
       ],
     ),
     WidgetbookComponent(
@@ -1044,13 +1054,7 @@ class _DemoDetails implements GraphDetails {
   /// Story 10.24: a modified file gets four hunks (in Rust under `fn main()`), the first three with word marks (Story
   /// 10.32), an added or removed one a single hunk of its lines, a `.png` is binary.
   @override
-  Future<Diff> diff(
-    String commitId, {
-    List<String> paths = const [],
-    bool summary = false,
-    // The demo's lines are jj's color-words lines whatever the setting asks; the "Word marks" use case shows both.
-    DiffMarks marks = DiffMarks.jj,
-  }) async {
+  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) async {
     final ShowEntry entry = await show(commitId);
     return Diff(
       files: <FileDiff>[
@@ -1733,12 +1737,15 @@ class _HunkSelection extends StatelessWidget {
   }
 }
 
-/// Stories 5.11 and 5.13: the two word-mark styles side by side — Ralph's jj example block and the widget-test block,
-/// each as jj prints it ([DiffMarks.jj]) and in Zanshin's style ([DiffMarks.words]), which marks the changed part of
-/// each line; then Ralph's error cleanup (jj commit 9346978d) in Zanshin's style, its one-line changes as one changed
-/// line each. The lines are the ones `hunks.rs`' tests pin.
+/// Story 5.14: Ralph's jj example block and the widget-test block as `jj diff` prints them (the lines `hunks.rs`' tests
+/// pin), with the Settings › Changed words switch as the [wordMarks] knob — off, no fill, only changed lines keep their
+/// parts in their hue — and the diff [layout] as a knob.
 class _WordMarks extends StatelessWidget {
-  const _WordMarks();
+  const _WordMarks({required this.wordMarks, required this.layout});
+
+  final bool wordMarks;
+
+  final DiffLayoutSetting layout;
 
   static const _jjExample = <String>[
     ' 2453 2453|        .into_inner()',
@@ -1753,57 +1760,6 @@ class _WordMarks extends StatelessWidget {
     '+     2462|{+        .context(index.path())+}',
     '~2456 2463|{+        .map_err(+}GitResetHeadError::from_git[-(err.error)-])?;',
     ' 2457 2464|    Ok(())',
-  ];
-
-  static const _wordsExample = <String>[
-    ' 2453 2453|        .into_inner()',
-    '-2454     |        .map_err(|err| [-GitResetHeadError::from_git-](err.[-into_error-]()))?;',
-    '+     2454|        .map_err(|err| {+{+}',
-    '+     2455|            {+let (source, out) =+} err.{+into_parts();+}',
-    '+     2456|            {+let path = out.get_ref().lock_path().to_owned();+}',
-    '+     2457|            {+PathError { path, source }+}',
-    '+     2458|        {+})+}',
-    '+     2459|        {+.map_err(GitResetHeadError::from_git+})?;',
-    ' 2455 2460|    lock.commit()',
-    '-2456     |        .map_err(|err| [-GitResetHeadError::from_git(-]err.error))?;',
-    '+     2461|        .map_err(|err| err.error)',
-    '+     2462|        {+.context(index.path())+}',
-    '+     2463|        {+.map_err(GitResetHeadError::from_git+})?;',
-    ' 2457 2464|    Ok(())',
-  ];
-
-  static const _wordsCleanup = <String>[
-    '    1    1|    let mut changed_git_refs = Vec::new();',
-    '    2    2|    let mut failed_ref_names = Vec::new();',
-    '~   3    3|    let actual = git_repo.references()[-.map_err(GitImportError::from_git)-]?;',
-    '    4    4|    collect_changed_git_refs_to_import(',
-    '~   5    5|        actual.local_branches()[-.map_err(GitImportError::from_git)-]?,',
-    '    6    6|        &mut known_git_refs,',
-    '    7    7|        &mut changed_git_refs,',
-    '    8    8|        &mut failed_ref_names,',
-    '    9    9|        &git_ref_filter,',
-    '   10   10|    )?;',
-    '   11   11|    collect_changed_git_refs_to_import(',
-    '~  12   12|        actual.remote_branches()[-.map_err(GitImportError::from_git)-]?,',
-    '   13   13|        &mut known_git_refs,',
-    '   14   14|        &mut changed_git_refs,',
-    '   15   15|        &mut failed_ref_names,',
-    '   16   16|        &git_ref_filter,',
-    '   17   17|    )?;',
-    '   18   18|    collect_changed_git_refs_to_import(',
-    '~  19   19|        actual.tags()[-.map_err(GitImportError::from_git)-]?,',
-    '   20   20|        &mut known_git_refs,',
-    '   21   21|        &mut changed_git_refs,',
-    '   22   22|        &mut failed_ref_names,',
-    '   23   23|        &git_ref_filter,',
-    '   24   24|    )?;',
-    '   25   25|    let store = mut_repo.store();',
-    '   26   26|    let git_backend = get_git_backend(store)?;',
-    '-  27     |    let git_repo = git_backend',
-    '-  28     |        .open_git_repo_at_workdir(workspace_root)',
-    '-  29     |        [-.map_err(GitImportError::from_git)-]?;',
-    '+       27|    let git_repo = git_backend.open_git_repo_at_workdir(workspace_root)?;',
-    '   30   28|',
   ];
 
   static const _jjWidget = <String>[
@@ -1834,36 +1790,10 @@ class _WordMarks extends StatelessWidget {
     '   11   24|    await openWizard(tester, size: tablet);',
   ];
 
-  static const _wordsWidget = <String>[
-    '    7    7|',
-    ('-   8     |  // [-Tablet only:-] the [-wide test font overflows-] the [-compact app bar, which holds-] '
-        'the [-buttons-] on a phone[-.-]'),
-    '-   9     |  [-// The-] phone [-layout is checked on a device-].',
-    "-  10     |  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {",
-    ('+        8|  // {+The tablet shows+} the {+long label. The phone app bar has little room and shows+} '
-        'the {+short one.+}'),
-    "+        9|  {+testWidgets('shows Speichern instead of Weiter on+} the {+last step+} on a phone{+', (tester) async {+}",
-    '+       10|    {+await openWizard(tester, size:+} phone{+);+}',
-    '+       11|    {+await fillGeneralStep(tester);+}',
-    '+       12|',
-    '+       13|    {+for (var i = 0; i < 3; i++) {+}',
-    '+       14|      {+await tester.tap(withIdentifier(SemanticsIdentifiers.functionWizard_next));+}',
-    '+       15|      {+await tester.pumpAndSettle();+}',
-    '+       16|    {+}+}',
-    '+       17|',
-    "+       18|    {+expect(find.text('Speichern'), findsWidgets);+}",
-    "+       19|    {+expect(find.text('Funktion speichern'), findsNothing);+}",
-    "+       20|    {+expect(find.text('Weiter'), findsNothing);+}",
-    '+       21|  {+});+}',
-    '+       22|',
-    "+       23|  testWidgets('shows Funktion speichern instead of Weiter on the last step {+on a tablet+}', (tester) async {",
-    '   11   24|    await openWizard(tester, size: tablet);',
-  ];
-
-  static Widget _view(String path, List<String> specs, String? symbol, DiffMarks marks) {
+  Widget _view(String path, List<String> specs, String? symbol) {
     final Hunk hunk = _DemoDetails._hunk(specs, symbol: symbol);
     return InspectorDiffView(
-      path: '$path · ${marks == DiffMarks.jj ? 'jj' : 'Zanshin'}', // l10n-ignore: catalogue label
+      path: path,
       diff: FileDiff(
         path: path,
         kind: FileChangeKind.modified,
@@ -1876,9 +1806,9 @@ class _WordMarks extends StatelessWidget {
         added: hunk.added,
         fingerprint: 'f',
       ),
-      marks: marks,
+      wordMarks: wordMarks,
       error: null,
-      layout: DiffLayoutSetting.unified,
+      layout: layout,
       onLayoutChanged: (_) {},
     );
   }
@@ -1898,11 +1828,8 @@ class _WordMarks extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               spacing: 16,
               children: <Widget>[
-                _view('lib/src/git.rs', _jjExample, 'fn write_locked_index(', DiffMarks.jj),
-                _view('lib/src/git.rs', _wordsExample, 'fn write_locked_index(', DiffMarks.words),
-                _view('test/function_wizard_test.dart', _jjWidget, 'void main() {', DiffMarks.jj),
-                _view('test/function_wizard_test.dart', _wordsWidget, 'void main() {', DiffMarks.words),
-                _view('lib/src/git.rs', _wordsCleanup, 'fn diff_refs_to_import(', DiffMarks.words),
+                _view('lib/src/git.rs', _jjExample, 'fn write_locked_index('),
+                _view('test/function_wizard_test.dart', _jjWidget, 'void main() {'),
               ],
             ),
           ),

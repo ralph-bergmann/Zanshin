@@ -7,8 +7,8 @@ import { zsDiffLine, zsDiffText, zsDiffRow, zsDiffDigits } from "./DiffView.jsx"
 // equal and removed runs with its left number, right cell its equal and added runs with its right number); a run of
 // removed, added and changed lines gives one left cell per distinct left number and one right cell per distinct right
 // number, paired row by row; a header is one full-width row. Under a "-------" conflict term the left side keeps the
-// added runs. marks "words": a cell keeps every marked run (no fill-only rule).
-export function zsDiffSides(ls, marks = "jj") {
+// added runs.
+export function zsDiffSides(ls) {
   const rows = [];
   let swapped = false;
   const cell = (group, t, left, n) => {
@@ -22,8 +22,7 @@ export function zsDiffSides(ls, marks = "jj") {
       }
     }
     const s = runs.map(([x]) => x).join("");
-    const keep = marks === "words" ? runs.some(([, k]) => k) : runs.some(([x, k]) => !k && x.trim());
-    return { t, n, s, runs: keep ? runs : undefined };
+    return { t, n, s, runs: runs.some(([x, k]) => !k && x.trim()) ? runs : undefined };
   };
   const cells = (run, left) => {
     const groups = new Map();
@@ -63,8 +62,9 @@ function zsNumbered(ls, oldStart, newStart) {
 // (a left and a right number column, then the text) or side by side (whole lines per side, each cell with its number).
 // Selected hunks get the moon header and a 2px moon edge; they are what Commit / Split take. Mutable hunks can be dragged
 // onto another change. Changed words are marked as in DiffView, in both layouts; a side-by-side cell clips its marks.
-export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [], marks = "jj", mode = "unified", selectable = false, selected = false, lifted = false, onToggle, onGrab, className = "" }) {
-  const ls = zsNumbered(lines.map((l) => zsDiffLine(l, marks)).filter((l) => l.t !== "hunk"), oldStart, newStart);
+// wordMarks={false} (or a DiffView around it with wordMarks={false}) draws them without their tint.
+export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [], wordMarks = true, mode = "unified", selectable = false, selected = false, lifted = false, onToggle, onGrab, className = "" }) {
+  const ls = zsNumbered(lines.map(zsDiffLine).filter((l) => l.t !== "hunk"), oldStart, newStart);
   const changed = ls.filter((l) => l.t !== "ctx" && l.t !== "hdr");
   const a = new Set(changed.map((l) => l.r).filter((n) => n != null)).size;
   const r = new Set(changed.map((l) => l.l).filter((n) => n != null)).size;
@@ -76,7 +76,7 @@ export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [
   const head = range || "@@ −" + ol + "," + oc + " +" + nl + "," + nc + " @@";
   const body = mode !== "split"
     ? ls.map(zsDiffRow)
-    : zsDiffSides(ls, marks).map((row, k) => (
+    : zsDiffSides(ls).map((row, k) => (
         <div key={k} className={"zs-diff-row" + (row.length === 1 ? " hdr" : "")}>
           {row.map((c, j) => (
             <div key={j} className={"zs-diff-side " + (c ? c.t : "empty")}>
@@ -87,7 +87,7 @@ export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [
         </div>
       ));
   return (
-    <div className={["zs-hunk", selected && "is-sel", lifted && "is-lifted", className].filter(Boolean).join(" ")}>
+    <div className={["zs-hunk", selected && "is-sel", lifted && "is-lifted", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")}>
       <div className={"zs-hunk-hd" + (onGrab ? " is-grab" : "")} onPointerDown={onGrab} title={onGrab ? "Drag onto a change to move this hunk there" : undefined}>
         {selectable && <Checkbox checked={selected} onChange={onToggle} label={selected ? "Deselect hunk" : "Select hunk"} />}
         <code className="zs-hunk-range">{head}</code>

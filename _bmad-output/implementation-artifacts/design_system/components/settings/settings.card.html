@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x560" name="Settings" subtitle="SettingsGroup + SettingsRow — General and Project scopes in one window" -->
+<!-- @dsCard group="Components" viewport="700x800" name="Settings" subtitle="SettingsGroup + SettingsRow — General and Project scopes in one window" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -21,6 +21,10 @@
     const [den, setDen] = React.useState("compact");
     const [zoom, setZoom] = React.useState("100");
     const [hide, setHide] = React.useState(true);
+    const [layout, setLayout] = React.useState("unified");
+    const [words, setWords] = React.useState(true);
+    const [inline, setInline] = React.useState("3");
+    const [context, setContext] = React.useState("3");
     return (
       <div className="win">
         <div className="hd"><Segmented variant="tabs" label="Scope" value={tab} onChange={setTab} options={[{ value: "general", label: "General", icon: "settings" }, { value: "project", label: "MyApp", icon: <NamiMark size={14}/> }]}/></div>
@@ -33,6 +37,12 @@
           </SettingsGroup>
           <SettingsGroup title="While you scroll">
             <SettingsRow label="Hide controls" hint="Toolbars and panels step aside while you scroll the graph. The minimap stays."><Switch label="Hide controls while scrolling" checked={hide} onChange={setHide}/></SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup title="Diffs">
+            <SettingsRow label="Layout"><Segmented variant="inset" label="Diff layout" value={layout} onChange={setLayout} options={[{ value: "unified", label: "Unified" }, { value: "split", label: "Side by side" }]}/></SettingsRow>
+            <SettingsRow label="Changed words" hint="Marks the words that changed inside a line, where jj diff underlines them."><Switch label="Mark changed words" checked={words} onChange={setWords}/></SettingsRow>
+            <SettingsRow label="Inline changes" configKey="diff.color-words.max-inline-alternation" hint="How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj."><Select label="Inline changes" value={inline} onChange={setInline} options={[["0", "Never"], ["1", "Up to 1"], ["2", "Up to 2"], ["3", "Up to 3"], ["5", "Up to 5"], ["-1", "Always"]].map(([value, label]) => ({ value, label }))}/></SettingsRow>
+            <SettingsRow label="Context lines" configKey="diff.color-words.context" hint="Unchanged lines shown around each change."><Select label="Context lines" value={context} onChange={setContext} options={["0", "1", "2", "3", "5", "10", "20"].map((n) => ({ value: n, label: n }))}/></SettingsRow>
           </SettingsGroup>
           <SettingsGroup title="Identity">
             <SettingsRow label="Email" configKey="user.email"><TextField defaultValue="ralph@dasralph.de" aria-label="Email"/></SettingsRow>

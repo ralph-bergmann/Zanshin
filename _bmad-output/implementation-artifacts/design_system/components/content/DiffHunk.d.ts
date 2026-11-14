@@ -12,8 +12,8 @@ export interface DiffHunkProps {
   context?: string;
   /** color-words lines as in DiffView ("~13:13|  onEnd({+d+})", "+:14|  _commit();"), or git-sigil lines numbered from oldStart / newStart */
   lines: DiffLine[];
-  /** the word-mark style the lines were loaded in, as DiffView's `marks` */
-  marks?: "jj" | "words";
+  /** as DiffView's `wordMarks` (default true); a DiffView with wordMarks={false} turns them off for its hunks too */
+  wordMarks?: boolean;
   mode?: "unified" | "split";
   /** show the selection checkbox (mutable changes) */
   selectable?: boolean;

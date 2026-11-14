@@ -219,7 +219,6 @@ class _DemoChanges implements OperationChangesSource {
     bool interdiff = false,
     bool summary = false,
     List<String> paths = const <String>[],
-    DiffMarks marks = DiffMarks.jj,
   }) async {
     final files = <FileDiff>[
       _file('src/graph/lanes.dart', 'final lanes = <Lane>[];\n', 'final lanes = <Lane>[...seed];\n'),

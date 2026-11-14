@@ -797,100 +797,6 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_DIFF_MARKS: u8 = 0;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        pub const ENUM_MAX_DIFF_MARKS: u8 = 1;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_DIFF_MARKS: [DiffMarks; 2] = [DiffMarks::Jj, DiffMarks::Words];
-
-        /// Which word marks a changed block gets (Story 5.11): `Jj` (0, the default) is `jj diff`'s
-        /// color-words marks; `Words` marks the changed part of each line (the `similar` crate, Story
-        /// 5.13) — one line replaced by one line as one `Changed` line where it fits
-        /// `diff.color-words.max-inline-alternation`, any other block its removed lines, then its added
-        /// lines; the same numbered line texts as `Jj`. Member order IS the wire value — APPEND only; an
-        /// unknown value is `ffi.invalid_argument`.
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-        #[repr(transparent)]
-        pub struct DiffMarks(pub u8);
-        #[allow(non_upper_case_globals)]
-        impl DiffMarks {
-            pub const Jj: Self = Self(0);
-            pub const Words: Self = Self(1);
-
-            pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 1;
-            pub const ENUM_VALUES: &'static [Self] = &[Self::Jj, Self::Words];
-            /// Returns the variant's name or "" if unknown.
-            pub fn variant_name(self) -> Option<&'static str> {
-                match self {
-                    Self::Jj => Some("Jj"),
-                    Self::Words => Some("Words"),
-                    _ => None,
-                }
-            }
-        }
-        impl ::core::fmt::Debug for DiffMarks {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                if let Some(name) = self.variant_name() {
-                    f.write_str(name)
-                } else {
-                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-                }
-            }
-        }
-        impl<'a> ::flatbuffers::Follow<'a> for DiffMarks {
-            type Inner = Self;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
-                Self(b)
-            }
-        }
-
-        impl ::flatbuffers::Push for DiffMarks {
-            type Output = DiffMarks;
-            #[inline]
-            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
-            }
-        }
-
-        impl ::flatbuffers::EndianScalar for DiffMarks {
-            type Scalar = u8;
-            #[inline]
-            fn to_little_endian(self) -> u8 {
-                self.0.to_le()
-            }
-            #[inline]
-            #[allow(clippy::wrong_self_convention)]
-            fn from_little_endian(v: u8) -> Self {
-                let b = u8::from_le(v);
-                Self(b)
-            }
-        }
-
-        impl<'a> ::flatbuffers::Verifiable for DiffMarks {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                u8::run_verifier(v, pos)
-            }
-        }
-
-        impl ::flatbuffers::SimpleToVerifyInSlice for DiffMarks {}
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
         pub const ENUM_MIN_ARRANGE_ACTION_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -7392,7 +7298,6 @@ pub mod zanshin {
         ///               records, `from_commit_id` absent; with `revision` AND `from`/`to` refused as
         ///               above; with none of the three refused ("at least one of `from` or `to` is
         ///               required"). Both inter-diff forms fill `Diff.description`
-        ///   marks       the word-mark style (Story 5.11); absent → `Jj`, the CLI's
         pub struct DiffRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -7417,7 +7322,6 @@ pub mod zanshin {
             pub const VT_WHITESPACE: ::flatbuffers::VOffsetT = 16;
             pub const VT_SUMMARY: ::flatbuffers::VOffsetT = 18;
             pub const VT_INTERDIFF: ::flatbuffers::VOffsetT = 20;
-            pub const VT_MARKS: ::flatbuffers::VOffsetT = 22;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -7444,7 +7348,6 @@ pub mod zanshin {
                 if let Some(x) = args.revision {
                     builder.add_revision(x);
                 }
-                builder.add_marks(args.marks);
                 builder.add_interdiff(args.interdiff);
                 builder.add_summary(args.summary);
                 builder.add_whitespace(args.whitespace);
@@ -7536,17 +7439,6 @@ pub mod zanshin {
                 // which contains a valid value in this slot
                 unsafe { self._tab.get::<bool>(DiffRequest::VT_INTERDIFF, Some(false)).unwrap() }
             }
-            #[inline]
-            pub fn marks(&self) -> DiffMarks {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<DiffMarks>(DiffRequest::VT_MARKS, Some(DiffMarks::Jj))
-                        .unwrap()
-                }
-            }
         }
 
         impl ::flatbuffers::Verifiable for DiffRequest<'_> {
@@ -7565,7 +7457,6 @@ pub mod zanshin {
      .visit_field::<DiffWhitespace>("whitespace", Self::VT_WHITESPACE, false)?
      .visit_field::<bool>("summary", Self::VT_SUMMARY, false)?
      .visit_field::<bool>("interdiff", Self::VT_INTERDIFF, false)?
-     .visit_field::<DiffMarks>("marks", Self::VT_MARKS, false)?
      .finish();
                 Ok(())
             }
@@ -7581,7 +7472,6 @@ pub mod zanshin {
             pub whitespace: DiffWhitespace,
             pub summary: bool,
             pub interdiff: bool,
-            pub marks: DiffMarks,
         }
         impl<'a> Default for DiffRequestArgs<'a> {
             #[inline]
@@ -7596,7 +7486,6 @@ pub mod zanshin {
                     whitespace: DiffWhitespace::Exact,
                     summary: false,
                     interdiff: false,
-                    marks: DiffMarks::Jj,
                 }
             }
         }
@@ -7653,11 +7542,6 @@ pub mod zanshin {
                 self.fbb_.push_slot::<bool>(DiffRequest::VT_INTERDIFF, interdiff, false);
             }
             #[inline]
-            pub fn add_marks(&mut self, marks: DiffMarks) {
-                self.fbb_
-                    .push_slot::<DiffMarks>(DiffRequest::VT_MARKS, marks, DiffMarks::Jj);
-            }
-            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiffRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 DiffRequestBuilder {
@@ -7684,7 +7568,6 @@ pub mod zanshin {
                 ds.field("whitespace", &self.whitespace());
                 ds.field("summary", &self.summary());
                 ds.field("interdiff", &self.interdiff());
-                ds.field("marks", &self.marks());
                 ds.finish()
             }
         }
@@ -43623,8 +43506,7 @@ pub mod zanshin {
         /// `description`: the inter-diff forms' (`interdiff`) `JJ-COMMIT-DESCRIPTION` block — the from
         /// description (`""` for a created commit) against the commit's, as a `FileDiff` with that path,
         /// kind Modified, no sections; never path-filtered, hunks kept in summary mode; ABSENT when the
-        /// descriptions are equal and for `jj diff`'s forms. Story 5.11 appends `marks`: the word-mark
-        /// style the lines were computed in (the request's).
+        /// descriptions are equal and for `jj diff`'s forms.
         pub struct Diff<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -43645,7 +43527,6 @@ pub mod zanshin {
             pub const VT_COMMIT_IDS: ::flatbuffers::VOffsetT = 8;
             pub const VT_FROM_COMMIT_ID: ::flatbuffers::VOffsetT = 10;
             pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 12;
-            pub const VT_MARKS: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -43672,7 +43553,6 @@ pub mod zanshin {
                 if let Some(x) = args.files {
                     builder.add_files(x);
                 }
-                builder.add_marks(args.marks);
                 builder.finish()
             }
 
@@ -43728,13 +43608,6 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<FileDiff>>(Diff::VT_DESCRIPTION, None)
                 }
             }
-            #[inline]
-            pub fn marks(&self) -> DiffMarks {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe { self._tab.get::<DiffMarks>(Diff::VT_MARKS, Some(DiffMarks::Jj)).unwrap() }
-            }
         }
 
         impl ::flatbuffers::Verifiable for Diff<'_> {
@@ -43749,7 +43622,6 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("commit_ids", Self::VT_COMMIT_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from_commit_id", Self::VT_FROM_COMMIT_ID, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<FileDiff>>("description", Self::VT_DESCRIPTION, false)?
-     .visit_field::<DiffMarks>("marks", Self::VT_MARKS, false)?
      .finish();
                 Ok(())
             }
@@ -43763,7 +43635,6 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub from_commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub description: Option<::flatbuffers::WIPOffset<FileDiff<'a>>>,
-            pub marks: DiffMarks,
         }
         impl<'a> Default for DiffArgs<'a> {
             #[inline]
@@ -43774,7 +43645,6 @@ pub mod zanshin {
                     commit_ids: None,
                     from_commit_id: None,
                     description: None,
-                    marks: DiffMarks::Jj,
                 }
             }
         }
@@ -43820,10 +43690,6 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<FileDiff>>(Diff::VT_DESCRIPTION, description);
             }
             #[inline]
-            pub fn add_marks(&mut self, marks: DiffMarks) {
-                self.fbb_.push_slot::<DiffMarks>(Diff::VT_MARKS, marks, DiffMarks::Jj);
-            }
-            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiffBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 DiffBuilder {
@@ -43846,7 +43712,6 @@ pub mod zanshin {
                 ds.field("commit_ids", &self.commit_ids());
                 ds.field("from_commit_id", &self.from_commit_id());
                 ds.field("description", &self.description());
-                ds.field("marks", &self.marks());
                 ds.finish()
             }
         }

@@ -14,21 +14,11 @@ enum DiffLayoutSetting {
   sideBySide,
 }
 
-/// Which word marks the diff draws in a changed block (Story 5.11; Settings › Diffs "Changed words").
-enum DiffMarksSetting {
-  /// Zanshin's style: the changed part of each line, one line replaced by one line as one line, else removed lines
-  /// first (the default).
-  words,
-
-  /// `jj diff`'s color-words marks, following the user's jj config.
-  jj,
-}
-
 /// Settings › General (Story 11.7 builds the tab). The key `general` is Claude's proposal (Story 11.3).
 @freezed
 abstract class GeneralSettings with _$GeneralSettings {
   /// Creates general settings; an omitted [hideControls] is on, an omitted [diffLayout] unified, an omitted
-  /// [diffMarks] Zanshin's words.
+  /// [diffWordMarks] on.
   const factory GeneralSettings({
     /// "While you scroll: Hide controls" — the floating controls step aside while the graph scrolls (epics.md Story
     /// 11.3 item 8); on by default.
@@ -39,8 +29,9 @@ abstract class GeneralSettings with _$GeneralSettings {
     @Default(DiffLayoutSetting.unified)
     DiffLayoutSetting diffLayout,
 
-    /// The diff's word-mark style (Story 5.11); [DiffMarksSetting.words] by default and for an unknown value.
-    @JsonKey(unknownEnumValue: DiffMarksSetting.words) @Default(DiffMarksSetting.words) DiffMarksSetting diffMarks,
+    /// Settings › General › Diffs › "Changed words" (Story 5.14): whether the diff marks the words that changed
+    /// inside a line. It changes only how a loaded diff is drawn; on by default.
+    @Default(true) bool diffWordMarks,
   }) = _GeneralSettings;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

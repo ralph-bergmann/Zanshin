@@ -2170,23 +2170,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDiffSideBySide => 'Side by side';
 
   @override
-  String get settingsDiffMarks => 'Changed words';
+  String get settingsDiffWordMarks => 'Changed words';
 
   @override
-  String get settingsDiffMarksLabel => 'Changed words';
+  String get settingsDiffWordMarksHint => 'Marks the words that changed inside a line, where jj diff underlines them.';
 
   @override
-  String get settingsDiffMarksZanshin => 'Zanshin';
-
-  @override
-  String get settingsDiffMarksJj => 'jj';
-
-  @override
-  String get settingsDiffMarksZanshinHint =>
-      'Marks the changed part of each line, using the similar library. Removed lines come first.';
-
-  @override
-  String get settingsDiffMarksJjHint => 'As jj diff prints them, following your jj config.';
+  String get settingsDiffWordMarksSwitch => 'Mark changed words';
 
   @override
   String get settingsDiffInline => 'Inline changes';
@@ -2194,10 +2184,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsDiffInlineHint =>
       'How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj.';
-
-  @override
-  String get settingsDiffInlineZanshinHint =>
-      'How often a line may switch between removed and added parts before it shows as an old and a new line. Applies where one line replaces one line. Experimental in jj.';
 
   @override
   String get settingsDiffInlineNever => 'Never';
@@ -2215,22 +2201,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDiffContextHint => 'Unchanged lines shown around each change.';
-
-  @override
-  String get settingsDiffConflict => 'Conflicts';
-
-  @override
-  String get settingsDiffConflictMaterialize => 'As markers';
-
-  @override
-  String get settingsDiffConflictPair => 'In pairs';
-
-  @override
-  String get settingsDiffConflictMaterializeHint =>
-      'A conflicted side is compared as its text with conflict markers. Experimental in jj.';
-
-  @override
-  String get settingsDiffConflictPairHint => 'Each pair of conflict sides is compared on its own. Experimental in jj.';
 
   @override
   String get settingsProjectSetsOwn => 'The open project sets its own value.';

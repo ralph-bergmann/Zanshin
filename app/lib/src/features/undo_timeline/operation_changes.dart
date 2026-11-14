@@ -36,7 +36,7 @@ abstract interface class OperationChangesSource {
   Future<List<ShowEntry>> show(String revset);
 
   /// `jj diff -r <revision>`, or `--from` / `--to` read as `jj interdiff` when [interdiff]; [revision] with
-  /// [interdiff] is a created commit's inter-diff (no predecessors). [marks] picks the word-mark style (Story 5.11).
+  /// [interdiff] is a created commit's inter-diff (no predecessors).
   Future<Diff> diff({
     String? revision,
     String? from,
@@ -44,7 +44,6 @@ abstract interface class OperationChangesSource {
     bool interdiff = false,
     bool summary = false,
     List<String> paths = const <String>[],
-    DiffMarks marks = DiffMarks.jj,
   });
 
   /// Fires after every jj config write, which may change how [diff] reads (`diff.color-words.*`).
@@ -75,7 +74,6 @@ class RepoOperationChangesSource implements OperationChangesSource {
     bool interdiff = false,
     bool summary = false,
     List<String> paths = const <String>[],
-    DiffMarks marks = DiffMarks.jj,
   }) => _repo.handle.diff(
     revision: revision,
     from: from,
@@ -83,7 +81,6 @@ class RepoOperationChangesSource implements OperationChangesSource {
     interdiff: interdiff,
     summary: summary,
     paths: paths,
-    marks: marks,
   );
 }
 
@@ -96,14 +93,14 @@ typedef OperationChangeLine = ({bool added, String text});
 /// `jj op show --patch` diffs it (`show_change_diff`): an abandoned commit against its parents, a created one as an
 /// interdiff from no predecessor, a rewritten one from its first predecessor — the inter-diffs with their description
 /// block ([Diff.description] of [files]). Refusals are kept per read. The layout is `general.diffLayout` in
-/// [settings], written and followed. The diffs load in `general.diffMarks`' word-mark style (Story 5.11); a change of it
-/// reads the selection's diffs again, keeping the focused path.
+/// [settings], written and followed; `general.diffWordMarks` ([wordMarks], Story 5.14) is followed and only changes
+/// how the loaded diffs are drawn.
 class OperationChangesModel extends ChangeNotifier {
   /// The view of [operation] (an id), reading through [_source].
   @assistedInject
   OperationChangesModel(this._source, {@assisted required this.operation, required this.settings})
     : _layout = settings.value.general.diffLayout,
-      _marks = diffMarksOf(settings.value.general.diffMarks) {
+      _wordMarks = settings.value.general.diffWordMarks {
     settings.addListener(_settingsChanged);
     _source.configWrites.addListener(_configChanged);
     unawaited(_load());
@@ -114,12 +111,11 @@ class OperationChangesModel extends ChangeNotifier {
   /// The operation's id.
   final String operation;
 
-  /// The app settings: the diff layout.
+  /// The app settings: the diff layout and the word-mark switch.
   final SettingsStore settings;
 
   DiffLayoutSetting _layout;
-  DiffMarks _marks;
-  DiffMarks _focusedMarks = DiffMarks.jj;
+  bool _wordMarks;
   OpShow? _show;
   ZanshinFfiException? _error;
   var _summaries = const <String, ShowEntry>{};
@@ -159,8 +155,8 @@ class OperationChangesModel extends ChangeNotifier {
   /// The focused diff's refusal.
   ZanshinFfiException? get focusError => _focusError;
 
-  /// The word-mark style [focusedDiff] was loaded in (Story 5.11); [files] carries its own as [Diff.marks].
-  DiffMarks get focusedMarks => _focusedMarks;
+  /// Whether the diffs fill the words that changed inside a line (Settings › Changed words, Story 5.14).
+  bool get wordMarks => _wordMarks;
 
   /// Unified or side by side.
   DiffLayoutSetting get layout => _layout;
@@ -183,10 +179,10 @@ class OperationChangesModel extends ChangeNotifier {
       _layout = layout;
       _notify();
     }
-    final DiffMarks marks = diffMarksOf(settings.value.general.diffMarks);
-    if (marks != _marks) {
-      _marks = marks;
-      _rereadSelection();
+    final bool wordMarks = settings.value.general.diffWordMarks;
+    if (wordMarks != _wordMarks) {
+      _wordMarks = wordMarks;
+      _notify();
     }
   }
 
@@ -299,19 +295,12 @@ class OperationChangesModel extends ChangeNotifier {
   /// its first predecessor or from none (no copy records, with the description block).
   Future<Diff> _diffOf(OpChangedCommit change, {bool summary = false, List<String> paths = const <String>[]}) {
     if (change.abandoned) {
-      return _source.diff(revision: change.commitId, summary: summary, paths: paths, marks: _marks);
+      return _source.diff(revision: change.commitId, summary: summary, paths: paths);
     }
     final String? predecessor = change.removedCommitIds.firstOrNull;
     return predecessor == null
-        ? _source.diff(revision: change.commitId, interdiff: true, summary: summary, paths: paths, marks: _marks)
-        : _source.diff(
-            from: predecessor,
-            to: change.commitId,
-            interdiff: true,
-            summary: summary,
-            paths: paths,
-            marks: _marks,
-          );
+        ? _source.diff(revision: change.commitId, interdiff: true, summary: summary, paths: paths)
+        : _source.diff(from: predecessor, to: change.commitId, interdiff: true, summary: summary, paths: paths);
   }
 
   /// Selects [changes]' entry [index]: reads its files and focuses the first.
@@ -369,7 +358,6 @@ class OperationChangesModel extends ChangeNotifier {
         final Diff diff = await _diffOf(change, paths: <String>[path]);
         if (serial == _serial && path == _focused) {
           _focusedDiff = diff.files.where((file) => file.path == path).firstOrNull;
-          _focusedMarks = diff.marks;
           _notify();
         }
       } on ZanshinFfiException catch (error) {
@@ -719,7 +707,7 @@ class _Files extends StatelessWidget {
           child: InspectorDiffView(
             path: description.path,
             diff: description,
-            marks: diff.marks,
+            wordMarks: model.wordMarks,
             error: null,
             layout: model.layout,
             onLayoutChanged: model.setLayout,
@@ -745,7 +733,7 @@ class _Files extends StatelessWidget {
                     child: InspectorDiffView(
                       path: focused,
                       diff: model.focusedDiff,
-                      marks: model.focusedMarks,
+                      wordMarks: model.wordMarks,
                       error: model.focusError,
                       layout: model.layout,
                       onLayoutChanged: model.setLayout,
