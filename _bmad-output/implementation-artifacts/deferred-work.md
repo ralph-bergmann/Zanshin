@@ -3040,7 +3040,7 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 
 ## Surfaced in Story 5.14 (bmad-build-auto, 2026-11-14)
 
-- **The design system artifact and the app design canvas still show the two diff styles of Stories 5.11 and 5.13, because the run could not republish them.** Medium.
+- ~~**The design system artifact and the app design canvas still show the two diff styles of Stories 5.11 and 5.13, because the run could not republish them.**~~ — RESOLVED 2026-11-14 (console session, Ralph's OK): DS artifact republished as version 36 (1794655075-65cb), canvas 6sAzL5mDcVpWXevbTcempu updated to it (version 54). Medium.
   - The permission classifier refused the implementation run's publish to the DS artifact J5iSiy8cS6Q1EXa44g945d. The repo files under `_bmad-output/implementation-artifacts/design_system/` are updated: DiffView, DiffHunk, `content.css`, the Content and Settings cards, `_ds_bundle.js` and the readme.
   - **Follow-up:** publish with `.claude/skills/design-artifacts/SKILL.md` A (the DS artifact), then B (canvas 6sAzL5mDcVpWXevbTcempu), from a session allowed to publish.
 - **The DS UI kit's Settings dialog and the click dummy's Settings page still show the Diffs group with Layout only.** Low.
