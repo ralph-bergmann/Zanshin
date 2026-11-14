@@ -16515,9 +16515,17 @@ class MutationResult {
   ///  skipped checkout files) ride `Envelope.warnings` only (Story 9.32).
   FinishFacts? get finish => FinishFacts.reader.vTableGetNullable(_bc, _bcOffset, 12);
 
+  ///  Whether this call's own transaction committed an operation — the CLI's `tx.finish` path,
+  ///  not its "Nothing changed." path. A snapshot or Git import operation the same call wrote
+  ///  before the verb does not count. `new_op_id` alone cannot say it: the caller's earlier
+  ///  head read is a separate call, and a foreign operation may land in between. The flag
+  ///  describes the operation of the result it sits in, so a nested precondition `git_refs`
+  ///  result reports its own import or export operation.
+  bool get committed => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+
   @override
   String toString() {
-    return 'MutationResult{newOpId: ${newOpId}, newChangeIds: ${newChangeIds}, abandonedChangeIds: ${abandonedChangeIds}, workingCopyChangeId: ${workingCopyChangeId}, finish: ${finish}}';
+    return 'MutationResult{newOpId: ${newOpId}, newChangeIds: ${newChangeIds}, abandonedChangeIds: ${abandonedChangeIds}, workingCopyChangeId: ${workingCopyChangeId}, finish: ${finish}, committed: ${committed}}';
   }
 }
 
@@ -16534,7 +16542,7 @@ class MutationResultBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
   }
 
   int addNewOpIdOffset(int? offset) {
@@ -16562,6 +16570,11 @@ class MutationResultBuilder {
     return fbBuilder.offset;
   }
 
+  int addCommitted(bool? committed) {
+    fbBuilder.addBool(5, committed);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -16573,6 +16586,7 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _abandonedChangeIds;
   final String? _workingCopyChangeId;
   final FinishFactsObjectBuilder? _finish;
+  final bool? _committed;
 
   MutationResultObjectBuilder({
     String? newOpId,
@@ -16580,11 +16594,13 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
     List<String>? abandonedChangeIds,
     String? workingCopyChangeId,
     FinishFactsObjectBuilder? finish,
+    bool? committed,
   }) : _newOpId = newOpId,
        _newChangeIds = newChangeIds,
        _abandonedChangeIds = abandonedChangeIds,
        _workingCopyChangeId = workingCopyChangeId,
-       _finish = finish;
+       _finish = finish,
+       _committed = committed;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -16600,12 +16616,13 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
         ? null
         : fbBuilder.writeString(_workingCopyChangeId!);
     final int? finishOffset = _finish?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
     fbBuilder.addOffset(0, newOpIdOffset);
     fbBuilder.addOffset(1, newChangeIdsOffset);
     fbBuilder.addOffset(2, abandonedChangeIdsOffset);
     fbBuilder.addOffset(3, workingCopyChangeIdOffset);
     fbBuilder.addOffset(4, finishOffset);
+    fbBuilder.addBool(5, _committed);
     return fbBuilder.endTable();
   }
 

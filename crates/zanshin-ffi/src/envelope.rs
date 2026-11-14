@@ -866,6 +866,7 @@ pub(crate) fn build_mutation_result<'a>(
             abandoned_change_ids: Some(abandoned_vec),
             working_copy_change_id: working_copy_change_id_off,
             finish: finish_off,
+            committed: r.committed,
         },
     )
 }
@@ -1710,6 +1711,7 @@ mod tests {
         let r = zanshin_jj::MutationResult {
             finish: None,
             new_op_id: zanshin_jj::OperationId("abc123".to_owned()),
+            committed: true,
             new_change_ids: vec![zanshin_jj::ChangeId("qpvuntsm".to_owned())],
             abandoned_change_ids: vec![
                 zanshin_jj::ChangeId("rlvkpnrz".to_owned()),
@@ -1726,6 +1728,7 @@ mod tests {
             .data_as_mutation_result()
             .expect("MutationResult payload must be present");
         assert_eq!(mr.new_op_id(), Some("abc123"));
+        assert!(mr.committed());
         assert_eq!(
             mr.new_change_ids().map(|v| v.iter().collect::<Vec<_>>()),
             Some(vec!["qpvuntsm"])
@@ -1738,9 +1741,11 @@ mod tests {
         assert!(mr.finish().is_none(), "None must be ABSENT on the wire");
         assert!(env.warnings().is_none(), "no warnings: the field is ABSENT");
 
-        // No working-copy commit afterwards (a restore to the root operation, Story 9.12).
+        // No working-copy commit afterwards (a restore to the root operation, Story 9.12), and a
+        // call that wrote nothing.
         let r = zanshin_jj::MutationResult {
             working_copy_change_id: None,
+            committed: false,
             ..r
         };
         let buf = ok_mutation_result(&r, &CallReport::default());
@@ -1748,6 +1753,7 @@ mod tests {
             .data_as_mutation_result()
             .expect("MutationResult");
         assert_eq!(mr.working_copy_change_id(), None, "None must be ABSENT on the wire");
+        assert!(!mr.committed());
     }
 
     fn warning(kind: zanshin_jj::WarningKind, message: &str) -> zanshin_jj::Warning {
@@ -2009,6 +2015,7 @@ mod tests {
         zanshin_jj::MutationResult {
             finish: None,
             new_op_id: zanshin_jj::OperationId("op99".to_owned()),
+            committed: true,
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: Some(zanshin_jj::ChangeId("qpvuntsm".to_owned())),
@@ -2039,6 +2046,7 @@ mod tests {
             .expect("AbsorbResult payload must be present");
         let nested = ar.mutation().expect("the nested MutationResult must be present");
         assert_eq!(nested.new_op_id(), Some("op99"));
+        assert!(nested.committed());
         assert_eq!(nested.working_copy_change_id(), Some("qpvuntsm"));
         assert_eq!(
             ar.rewritten_change_ids().map(|v| v.iter().collect::<Vec<_>>()),

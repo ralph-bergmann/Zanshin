@@ -220,6 +220,7 @@ fn rename_renames_view_store_and_working_copy() {
     assert_eq!(load(&fx.root).0.workspace_name().as_str(), "new");
     assert_eq!(descriptions(&fx.root)[0], "Renamed workspace 'default' to 'new'");
     assert_eq!(result.new_op_id.0, head_op(&fx.root));
+    assert!(result.committed, "the raw commit counts as written");
     assert!(result.working_copy_change_id.is_some());
     assert!(result.finish.is_none());
     assert!(repo.take_warnings().is_empty(), "no finish, no identity warning");
@@ -234,7 +235,9 @@ fn rename_renames_view_store_and_working_copy() {
 fn rename_to_the_same_a_taken_or_an_empty_name() {
     let (fx, mut repo) = two_workspaces(false, "");
     let before = head_op(&fx.root);
-    assert_eq!(repo.workspace_rename("default").expect("same").new_op_id.0, before);
+    let same = repo.workspace_rename("default").expect("same");
+    assert_eq!(same.new_op_id.0, before);
+    assert!(!same.committed);
     let err = repo.workspace_rename("ws2").expect_err("taken");
     assert!(
         matches!(&err, MutateError::WorkspaceExists { name } if name == "ws2"),

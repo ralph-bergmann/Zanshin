@@ -184,6 +184,7 @@ Uint8List zanshinAbsorb(
 final class MutationResult {
   const MutationResult({
     required this.newOpId,
+    required this.committed,
     required this.newChangeIds,
     required this.abandonedChangeIds,
     required this.workingCopyChangeId,
@@ -191,8 +192,18 @@ final class MutationResult {
     this.warnings = const [],
   });
 
-  /// Id of the operation this mutation committed.
+  /// The op-log head after this mutation: the operation it committed, or the
+  /// head it found when it wrote nothing.
   final String newOpId;
+
+  /// Whether this call's own transaction committed an operation — the CLI's
+  /// `tx.finish` path, not its "Nothing changed." path. A snapshot or Git
+  /// import operation the same call wrote before the verb does not count.
+  /// Read this rather than comparing [newOpId] with a head read earlier: a
+  /// foreign operation may land in between. The flag describes the operation
+  /// of the result it sits in, so a nested precondition `gitRefs` result
+  /// reports its own import or export operation.
+  final bool committed;
 
   /// Change ids of genuinely new changes minted by this mutation. Empty for a
   /// rewrite ([MutationResult] of `describe`) or a pointer move (`edit`); empty
@@ -243,6 +254,7 @@ MutationResult decodeMutationResultInternal(
   List<ZanshinWarning> warnings = const [],
 }) => MutationResult(
   newOpId: m?.newOpId ?? '',
+  committed: m?.committed ?? false,
   newChangeIds: m?.newChangeIds?.toList() ?? const [],
   abandonedChangeIds: m?.abandonedChangeIds?.toList() ?? const [],
   workingCopyChangeId: m?.workingCopyChangeId,

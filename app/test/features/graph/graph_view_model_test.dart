@@ -1132,6 +1132,24 @@ void main() {
       });
     });
 
+    test('a foreign operation before a verb that writes nothing: not undoable, the own undo kept', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions);
+        run(async, model, const GraphEdit('b'));
+        final GraphOutcome? own = model.undoable;
+        expect(own, isNotNull);
+        actions
+          ..noOp = true
+          ..foreign = 'foreign';
+        final GraphActionResult? result = run(async, model, const GraphAbsorb('b'));
+        final GraphOutcome outcome = (result! as GraphActionDone).outcome;
+        expect(outcome.undoable, isFalse, reason: 'the head moved, but not by this call');
+        expect(outcome.flash, isEmpty);
+        expect(model.undoable, same(own));
+        model.dispose();
+      });
+    });
+
     test('updateStale drops the undo', () {
       fakeAsync((async) {
         final GraphViewModel model = start(async, actions: actions);
@@ -1627,11 +1645,13 @@ void main() {
 
 MutationResult _result(
   String op, {
+  bool committed = true,
   List<String> born = const <String>[],
   List<String> abandoned = const <String>[],
   List<ZanshinWarning> warnings = const <ZanshinWarning>[],
 }) => MutationResult(
   newOpId: op,
+  committed: committed,
   newChangeIds: born,
   abandonedChangeIds: abandoned,
   workingCopyChangeId: null,
@@ -1640,7 +1660,7 @@ MutationResult _result(
 );
 
 /// A fake port: each run writes operation `op<n>` (the head follows) with [born], [abandoned] and [warnings], or
-/// nothing ([noOp]), or throws [refuse], or waits on [gate].
+/// nothing ([noOp]), or throws [refuse], or waits on [gate]; [foreign] lands first.
 class _Actions implements GraphActions {
   final ran = <GraphAction>[];
   var head = 'op0';
@@ -1649,6 +1669,9 @@ class _Actions implements GraphActions {
   Object? crash;
   Completer<MutationResult>? gate;
   var noOp = false;
+
+  /// A foreign operation that lands after any head read and before the verb runs.
+  String? foreign;
   var born = const <String>[];
   var abandoned = const <String>[];
   var warnings = const <ZanshinWarning>[];
@@ -1662,6 +1685,10 @@ class _Actions implements GraphActions {
   @override
   Future<MutationResult> run(GraphAction action) async {
     ran.add(action);
+    if (foreign case final op?) {
+      head = op;
+      foreign = null;
+    }
     if (refuse case final error?) {
       throw error;
     }
@@ -1674,7 +1701,7 @@ class _Actions implements GraphActions {
     if (!noOp) {
       head = 'op${ran.length}';
     }
-    return _result(head, born: born, abandoned: abandoned, warnings: warnings);
+    return _result(head, committed: !noOp, born: born, abandoned: abandoned, warnings: warnings);
   }
 
   /// The changes an absorb's hunks went into (none when [noOp]); whether jj abandoned the emptied source.
@@ -1686,7 +1713,7 @@ class _Actions implements GraphActions {
     final MutationResult mutation = await run(GraphAbsorb(from));
     final List<String> into = noOp ? const <String>[] : absorbedInto;
     return AbsorbResult(
-      mutation: _result(mutation.newOpId),
+      mutation: _result(mutation.newOpId, committed: mutation.committed),
       rewrittenChangeIds: into,
       sourceChangeId: into.isNotEmpty && sourceAbandoned ? null : from,
       numRebased: 0,

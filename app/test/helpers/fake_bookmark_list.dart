@@ -155,6 +155,7 @@ class RecordingGraphActions implements GraphActions {
     ran.add(action);
     return const MutationResult(
       newOpId: 'op2',
+      committed: true,
       newChangeIds: <String>[],
       abandonedChangeIds: <String>[],
       workingCopyChangeId: null,

@@ -282,7 +282,8 @@ whose failure it skips silently. Its envelope, ok or error, carries
 on success, the thrown `ZanshinFfiException.precondition` on error (Story 9.35).
 
 Every mutation whose CLI verb ends in `tx.finish` (all but `zanshin_file_track` /
-`_untrack`, which the CLI commits through the locked working copy) likewise runs the
+`_untrack` and `zanshin_workspace_rename`, which the CLI commits through the locked working
+copy) likewise runs the
 CLI's `finish_transaction`: in a
 colocated workspace it resets Git HEAD to `@`'s parent and exports the refs, and
 if `@` became immutable it creates a new `@` on top. The refs the export could not
@@ -293,6 +294,15 @@ CLI's `tx.finish` ("Nothing changed."; Story 9.40): no operation is written (a `
 the unchanged text, a fetch that brought nothing, an `undo` restoring an equal view, …),
 `MutationResult.new_op_id` is the pre-call head op id, `finish` is absent and no finish warning
 is raised.
+
+`MutationResult.committed` says whether the call's own transaction wrote an operation: `true` on
+the `tx.finish` path and for the raw commits (`zanshin_file_track` / `_untrack`,
+`zanshin_workspace_rename`), `false` on the "Nothing changed." path. A snapshot or Git import
+operation the same call wrote before the verb does not count. The flag describes the operation of
+the result it sits in, so a nested precondition `git_refs` result reports its own import or export
+operation. A caller must read this flag, not
+compare `new_op_id` against a head it read in an earlier call: a foreign operation may land
+between the two, and a no-op verb then returns that foreign head.
 
 `Payload` has **53** members (Story 9.21 appends `OpShow`, `OpDiffResult` and `OpAbandonResult`; Story 9.12 `OpIntegrateResult`). Two of them — `WatcherEvent` and `Progress` — are
 returned by no exported symbol: they arrive asynchronously through the

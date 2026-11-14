@@ -121,6 +121,7 @@ class _Actions implements GraphActions {
     }
     return MutationResult(
       newOpId: 'op${ran.length}',
+      committed: true,
       newChangeIds: const <String>[],
       abandonedChangeIds: const <String>[],
       workingCopyChangeId: null,
@@ -741,6 +742,7 @@ void main() {
       actions.gate!.complete(
         const MutationResult(
           newOpId: 'op9',
+          committed: true,
           newChangeIds: <String>[],
           abandonedChangeIds: <String>['r100'],
           workingCopyChangeId: null,
@@ -780,6 +782,7 @@ void main() {
       actions.gate!.complete(
         const MutationResult(
           newOpId: 'op9',
+          committed: true,
           newChangeIds: <String>[],
           abandonedChangeIds: <String>[],
           workingCopyChangeId: null,
@@ -1027,6 +1030,7 @@ void main() {
         actions.gate!.complete(
           const MutationResult(
             newOpId: 'op9',
+            committed: true,
             newChangeIds: <String>[],
             abandonedChangeIds: <String>[],
             workingCopyChangeId: null,

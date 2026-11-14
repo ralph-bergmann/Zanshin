@@ -59,6 +59,7 @@ class _Actions implements GraphActions {
     }
     return MutationResult(
       newOpId: 'op${ran.length}',
+      committed: true,
       newChangeIds: const <String>['born'],
       abandonedChangeIds: const <String>[],
       workingCopyChangeId: null,
@@ -832,6 +833,7 @@ void main() {
       rig.actions.gate!.complete(
         const MutationResult(
           newOpId: 'op1',
+          committed: true,
           newChangeIds: <String>[],
           abandonedChangeIds: <String>[],
           workingCopyChangeId: null,

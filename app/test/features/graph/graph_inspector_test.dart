@@ -348,6 +348,7 @@ class _Actions implements GraphActions {
     }
     return MutationResult(
       newOpId: 'op${ran.length}',
+      committed: true,
       newChangeIds: born,
       abandonedChangeIds: const <String>[],
       workingCopyChangeId: null,

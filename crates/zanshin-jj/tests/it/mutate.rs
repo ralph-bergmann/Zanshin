@@ -97,6 +97,7 @@ fn describe_happy_path_rewrites_description_and_records_op_log() {
         .describe(ChangeId(layout.commit1_change_id.clone()), "New description")
         .unwrap();
 
+    assert!(result.committed, "the verb wrote an operation");
     assert!(result.new_change_ids.is_empty());
     assert!(result.abandoned_change_ids.is_empty());
     // Commit 1 is unrelated to `@` (a separate branch off root) — describing it must
@@ -150,6 +151,7 @@ fn describe_with_the_unchanged_text_writes_no_operation() {
         .unwrap();
 
     assert_eq!(result.new_op_id, before, "the result is the pre-call head");
+    assert!(!result.committed, "the verb wrote no operation");
     assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "no operation is written");
     assert_eq!(
         result.working_copy_change_id.as_ref().expect("@").0,

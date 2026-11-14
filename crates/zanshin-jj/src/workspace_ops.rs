@@ -193,7 +193,9 @@ pub(crate) fn rename(workspace: &mut Workspace, new_name: &str) -> Result<Mutati
     .map_err(be)?;
     pollster::block_on(locked_ws.finish(new_repo.op_id().clone())).map_err(be)?;
     // The raw commit's result shape: the new op, `@` under the NEW name, no finish facts.
-    mutate::no_op_result(new_name, &new_repo)
+    let mut mutation = mutate::no_op_result(new_name, &new_repo)?;
+    mutation.committed = true;
+    Ok(mutation)
 }
 
 /// The CLI's `map_workspace_load_error` (`cli/src/cli_util.rs:2906-2940` @ v0.46.0) for a

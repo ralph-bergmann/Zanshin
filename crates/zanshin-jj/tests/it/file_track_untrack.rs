@@ -254,6 +254,7 @@ fn track_untracked_file_writes_one_track_op_and_records_it_in_the_wc_state() {
     assert_eq!(op_count(&mut repo), before + 1, "exactly one new operation");
     assert_eq!(head_op_description(&mut repo), "track paths");
     assert_eq!(result.mutation.new_op_id.0, head_op_id(&mut repo));
+    assert!(result.mutation.committed, "the raw commit counts as written");
     assert_eq!(result.num_rebased, 0);
     assert_eq!(result.snapshot_stats, SnapshotStats::default());
     assert!(result.mutation.new_change_ids.is_empty());

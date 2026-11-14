@@ -746,6 +746,7 @@ mod tests {
         MutationResult {
             finish: None,
             new_op_id: OperationId("op99".to_owned()),
+            committed: true,
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: Some(ChangeId("qpvuntsm".to_owned())),

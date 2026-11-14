@@ -99,6 +99,7 @@ class _GraphActions implements GraphActions {
     head = 'op${ran.length}';
     return MutationResult(
       newOpId: head,
+      committed: true,
       newChangeIds: const <String>[],
       abandonedChangeIds: const <String>[],
       workingCopyChangeId: null,

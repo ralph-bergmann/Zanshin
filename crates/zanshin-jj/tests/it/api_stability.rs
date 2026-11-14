@@ -182,6 +182,7 @@ fn sample_commit_meta() -> zanshin_jj::CommitMeta {
 fn sample_mutation_result() -> zanshin_jj::MutationResult {
     zanshin_jj::MutationResult {
         new_op_id: zanshin_jj::OperationId(String::new()),
+        committed: true,
         new_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         abandoned_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         working_copy_change_id: Some(zanshin_jj::ChangeId(String::new())),
@@ -1183,6 +1184,7 @@ fn workspace_add_update_stale_surface_resolves() {
     let result = zanshin_jj::WorkspaceAddResult {
         mutation: zanshin_jj::MutationResult {
             new_op_id: zanshin_jj::OperationId("o".to_owned()),
+            committed: true,
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: Some(zanshin_jj::ChangeId("w".to_owned())),
@@ -1349,6 +1351,7 @@ fn squash_split_surface_resolves() {
     let result = zanshin_jj::SplitResult {
         mutation: zanshin_jj::MutationResult {
             new_op_id: zanshin_jj::OperationId("o".to_owned()),
+            committed: true,
             new_change_ids: vec![id("n")],
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: Some(id("w")),
@@ -1449,6 +1452,7 @@ fn simplify_parents_surface_resolves() {
     let result = zanshin_jj::SimplifyParentsResult {
         mutation: zanshin_jj::MutationResult {
             new_op_id: zanshin_jj::OperationId("op".to_owned()),
+            committed: true,
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: None,
@@ -1523,6 +1527,7 @@ fn metaedit_duplicate_fix_surface_resolves() {
     let result = zanshin_jj::FixResult {
         mutation: zanshin_jj::MutationResult {
             new_op_id: zanshin_jj::OperationId(String::new()),
+            committed: true,
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: Some(id("w")),

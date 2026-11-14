@@ -992,6 +992,7 @@ class RepoGraphActions implements GraphActions {
     final MutationResult m = split.mutation;
     return MutationResult(
       newOpId: m.newOpId,
+      committed: m.committed,
       newChangeIds: m.newChangeIds,
       abandonedChangeIds: m.abandonedChangeIds,
       workingCopyChangeId: m.workingCopyChangeId,

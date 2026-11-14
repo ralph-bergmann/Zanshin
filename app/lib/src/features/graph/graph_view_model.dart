@@ -767,7 +767,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       ? GraphDisabledReason.busy
       : null;
 
-  /// One action: the head before it (an undo or redo needs [expectHead] there), the verb, then the outcome.
+  /// One action: the head check (an undo or redo needs [expectHead] there), the verb, then the outcome.
   Future<GraphActionResult> _execute(GraphAction action, {String? expectHead}) async {
     final GraphActions? actions = _actions;
     if (actions == null) {
@@ -783,8 +783,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     _anchorHint = plan.anchor;
     _notify();
     try {
-      final String head = await actions.headOpId();
-      if (expectHead != null && head != expectHead) {
+      if (expectHead != null && await actions.headOpId() != expectHead) {
         _undoable = _redoable = null;
         _finish();
         return const GraphActionDisabled(GraphDisabledReason.foreignOperation);
@@ -795,7 +794,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       final GraphOutcome outcome = _succeeded(
         action,
         result,
-        wrote: result.newOpId != head,
+        wrote: result.committed,
         plan: plan,
         absorbed: absorbed,
       );
@@ -828,6 +827,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     final MutationResult m = absorbed.mutation;
     return MutationResult(
       newOpId: m.newOpId,
+      committed: m.committed,
       newChangeIds: m.newChangeIds,
       abandonedChangeIds: m.abandonedChangeIds,
       workingCopyChangeId: m.workingCopyChangeId,

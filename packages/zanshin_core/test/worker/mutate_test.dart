@@ -52,8 +52,23 @@ void main() {
       );
 
       expect(result.newOpId, isNotEmpty);
+      expect(result.committed, isTrue, reason: 'a new text writes an operation');
       expect(result.newChangeIds, isEmpty, reason: 'describe never mints a new change');
       expect(result.abandonedChangeIds, isEmpty, reason: 'describe never abandons a change');
+
+      await handle.close();
+    });
+
+    test('describe_with_the_unchanged_text_commits_nothing', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final String wc = (await handle.status()).workingCopyChangeId!;
+      final MutationResult first = await handle.describe(changeId: wc, description: 'same');
+
+      final MutationResult again = await handle.describe(changeId: wc, description: 'same');
+
+      expect(first.committed, isTrue);
+      expect(again.committed, isFalse, reason: 'jj says "Nothing changed."');
+      expect(again.newOpId, first.newOpId, reason: 'the head the call found');
 
       await handle.close();
     });
@@ -350,6 +365,7 @@ void main() {
       expect(result.numRebased, equals(0));
       expect(result.skippedPaths, isEmpty);
       expect(result.mutation.newOpId, isNotEmpty, reason: 'the PRE-CALL op-log head');
+      expect(result.mutation.committed, isFalse);
 
       await handle.close();
     });

@@ -180,6 +180,7 @@ class _Actions implements GraphActions {
     ran.add(action);
     return MutationResult(
       newOpId: 'op${ran.length}',
+      committed: true,
       newChangeIds: const <String>[],
       abandonedChangeIds: const <String>[],
       workingCopyChangeId: null,

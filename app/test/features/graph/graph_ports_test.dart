@@ -338,6 +338,8 @@ void main() {
         GraphSplit(second, message: const <String>['Part'], paths: const <String>['b.txt']),
       );
       final String rest = (result as GraphActionDone).outcome.born.single;
+      expect(result.outcome.undoable, isTrue, reason: 'the split copy carries committed');
+      expect(model.undoable?.action, isA<GraphSplit>());
       final ShowEntry selected = (await repo.handle.show(revset: second)).single;
       expect(selected.change.description, 'Part\n');
       expect(filesOf(selected), <String>['b.txt']);

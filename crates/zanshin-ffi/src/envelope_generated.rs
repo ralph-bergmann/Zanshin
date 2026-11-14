@@ -28871,6 +28871,7 @@ pub mod zanshin {
             pub const VT_ABANDONED_CHANGE_IDS: ::flatbuffers::VOffsetT = 8;
             pub const VT_WORKING_COPY_CHANGE_ID: ::flatbuffers::VOffsetT = 10;
             pub const VT_FINISH: ::flatbuffers::VOffsetT = 12;
+            pub const VT_COMMITTED: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -28897,6 +28898,7 @@ pub mod zanshin {
                 if let Some(x) = args.new_op_id {
                     builder.add_new_op_id(x);
                 }
+                builder.add_committed(args.committed);
                 builder.finish()
             }
 
@@ -28962,6 +28964,23 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<FinishFacts>>(MutationResult::VT_FINISH, None)
                 }
             }
+            /// Whether this call's own transaction committed an operation — the CLI's `tx.finish` path,
+            /// not its "Nothing changed." path. A snapshot or Git import operation the same call wrote
+            /// before the verb does not count. `new_op_id` alone cannot say it: the caller's earlier
+            /// head read is a separate call, and a foreign operation may land in between. The flag
+            /// describes the operation of the result it sits in, so a nested precondition `git_refs`
+            /// result reports its own import or export operation.
+            #[inline]
+            pub fn committed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(MutationResult::VT_COMMITTED, Some(false))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for MutationResult<'_> {
@@ -28976,6 +28995,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("abandoned_change_ids", Self::VT_ABANDONED_CHANGE_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("working_copy_change_id", Self::VT_WORKING_COPY_CHANGE_ID, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<FinishFacts>>("finish", Self::VT_FINISH, false)?
+     .visit_field::<bool>("committed", Self::VT_COMMITTED, false)?
      .finish();
                 Ok(())
             }
@@ -28988,6 +29008,7 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub working_copy_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub finish: Option<::flatbuffers::WIPOffset<FinishFacts<'a>>>,
+            pub committed: bool,
         }
         impl<'a> Default for MutationResultArgs<'a> {
             #[inline]
@@ -28998,6 +29019,7 @@ pub mod zanshin {
                     abandoned_change_ids: None,
                     working_copy_change_id: None,
                     finish: None,
+                    committed: false,
                 }
             }
         }
@@ -29047,6 +29069,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<FinishFacts>>(MutationResult::VT_FINISH, finish);
             }
             #[inline]
+            pub fn add_committed(&mut self, committed: bool) {
+                self.fbb_
+                    .push_slot::<bool>(MutationResult::VT_COMMITTED, committed, false);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MutationResultBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 MutationResultBuilder {
@@ -29069,6 +29096,7 @@ pub mod zanshin {
                 ds.field("abandoned_change_ids", &self.abandoned_change_ids());
                 ds.field("working_copy_change_id", &self.working_copy_change_id());
                 ds.field("finish", &self.finish());
+                ds.field("committed", &self.committed());
                 ds.finish()
             }
         }

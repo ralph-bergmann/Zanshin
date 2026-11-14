@@ -133,6 +133,7 @@ GitFetchResult fetchResult({
 }) => GitFetchResult(
   mutation: const MutationResult(
     newOpId: 'op',
+    committed: true,
     newChangeIds: <String>[],
     abandonedChangeIds: <String>[],
     workingCopyChangeId: null,

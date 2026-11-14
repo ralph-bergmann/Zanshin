@@ -54,6 +54,7 @@ class _Actions implements GraphActions {
     }
     return MutationResult(
       newOpId: head,
+      committed: !noOp,
       newChangeIds: born,
       abandonedChangeIds: abandoned,
       workingCopyChangeId: at,
@@ -72,6 +73,7 @@ class _Actions implements GraphActions {
     return AbsorbResult(
       mutation: MutationResult(
         newOpId: mutation.newOpId,
+        committed: mutation.committed,
         newChangeIds: mutation.newChangeIds,
         abandonedChangeIds: mutation.abandonedChangeIds,
         workingCopyChangeId: mutation.workingCopyChangeId,

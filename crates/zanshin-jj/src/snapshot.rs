@@ -915,12 +915,14 @@ fn import_export_git_refs(
     sink.extend(warning::git_import_failed(&stats));
     if !tx.repo().has_changes() {
         mutate::export_refs_into(tx.repo_mut(), facts, sink)?;
-        let repo = if tx.repo().has_changes() {
+        let exported = tx.repo().has_changes();
+        let repo = if exported {
             pollster::block_on(tx.commit("export git refs")).map_err(|e| backend(&e))?
         } else {
             repo
         };
-        let mutation = mutate::no_op_result(&workspace_name, &repo)?;
+        let mut mutation = mutate::no_op_result(&workspace_name, &repo)?;
+        mutation.committed = exported;
         report.git_refs = Some(crate::git::project_import(&stats, &repo, false, mutation));
         return Ok(repo);
     }

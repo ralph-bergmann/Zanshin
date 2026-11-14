@@ -629,11 +629,13 @@ fn an_unexported_bookmark_is_exported_by_the_refs_step() {
     let (_, jj_head) = load(&root);
     let refs = report.git_refs.expect("the refs step ran");
     assert_eq!(refs.mutation.new_op_id.0, jj_head.op_id().hex());
+    assert!(refs.mutation.committed, "the export wrote its operation");
     assert!(report.finish.is_none(), "every ref exported");
 
     let before = descriptions(&root).len();
-    repo.snapshot().expect("second snapshot");
+    let second = repo.snapshot().expect("second snapshot");
     assert!(new_descriptions(&root, before).is_empty(), "nothing left to export");
+    assert!(!second.git_refs.expect("the refs step ran").mutation.committed);
 }
 
 /// `git.write-change-id-header` is one of the keys `GitSettings::from_settings` type-checks

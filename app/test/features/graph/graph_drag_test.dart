@@ -1184,6 +1184,7 @@ class _Actions implements GraphActions {
     await gate?.future;
     return MutationResult(
       newOpId: 'op${ran.length}',
+      committed: true,
       newChangeIds: born,
       abandonedChangeIds: <String>[],
       workingCopyChangeId: null,

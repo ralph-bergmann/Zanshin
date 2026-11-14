@@ -1901,6 +1901,7 @@ mod tests {
         let outcome = GitFetchOutcome {
             mutation: zanshin_jj::MutationResult {
                 new_op_id: zanshin_jj::OperationId("op".to_owned()),
+                committed: true,
                 new_change_ids: Vec::new(),
                 abandoned_change_ids: vec![ChangeId("zz".to_owned())],
                 working_copy_change_id: Some(ChangeId("wc".to_owned())),

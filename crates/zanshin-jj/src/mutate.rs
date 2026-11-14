@@ -58,15 +58,21 @@ use crate::ChangeId;
 /// Outcome of a successful mutation (FR-JJ-10a).
 #[derive(Debug)]
 pub struct MutationResult {
-    /// Id of the operation this mutation committed — `jj op log`'s most-recent entry
-    /// immediately afterward (NFR-R-2).
+    /// The op-log head after this call: the operation it committed, or the head it started from
+    /// when it wrote nothing — `jj op log`'s most-recent entry immediately afterward (NFR-R-2).
     ///
     /// Every verb that finishes through [`finish_verb`] writes NOTHING when its transaction
     /// changed nothing (Story 9.40 — e.g. [`restore`] with an already identical tree, [`absorb`]
     /// with nothing absorbable, [`describe`] with the unchanged text); this is then the head op
-    /// id the verb started from — the op log is unchanged, which is exactly the signal jj itself
-    /// gives, and there is deliberately no separate `no_op` flag.
+    /// id the verb started from. Whether the call wrote is [`MutationResult::committed`]: a
+    /// caller cannot tell it from this id alone, since the head it compares against is read in a
+    /// separate call and a foreign operation may land between the two.
     pub new_op_id: crate::OperationId,
+    /// Whether this call's own transaction committed an operation — the CLI's `tx.finish` path,
+    /// not its "Nothing changed." path. A snapshot or Git import operation the same call wrote
+    /// before the verb does not count. The flag describes the operation of the result it sits in,
+    /// so a nested precondition `git_refs` result reports its own import or export operation.
+    pub committed: bool,
     /// Change ids of genuinely NEW changes minted by this mutation: [`new_change`]'s
     /// created commit, or the replacement `@` jj-lib auto-creates when [`abandon`] — or
     /// [`crate::Repo::squash`], [`crate::Repo::rebase`] or [`crate::Repo::arrange`] (Story 9.16)
@@ -1022,6 +1028,7 @@ pub(crate) fn mutation_result(
 ) -> MutationResult {
     MutationResult {
         new_op_id: crate::OperationId(finish.repo.op_id().hex()),
+        committed: finish.committed,
         new_change_ids,
         abandoned_change_ids,
         working_copy_change_id: finish
@@ -1560,6 +1567,7 @@ pub(crate) fn no_op_result(
         .map_err(be)?;
     Ok(MutationResult {
         new_op_id: crate::OperationId(readonly.op_id().hex()),
+        committed: false,
         new_change_ids: Vec::new(),
         abandoned_change_ids: Vec::new(),
         working_copy_change_id: wc.map(|commit| ChangeId(commit.change_id().reverse_hex())),
@@ -1779,6 +1787,7 @@ where
         value,
         MutationResult {
             new_op_id: crate::OperationId(new_repo.op_id().hex()),
+            committed: true,
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: Some(ChangeId(new_wc.change_id().reverse_hex())),

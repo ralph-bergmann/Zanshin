@@ -925,6 +925,7 @@ class _DemoActions implements GraphActions {
     }
     return MutationResult(
       newOpId: 'op${++_ops}',
+      committed: true,
       newChangeIds: <String>[if (action is GraphNew || action is GraphRevert) 'born$_ops'],
       abandonedChangeIds: const <String>[],
       workingCopyChangeId: null,
@@ -937,6 +938,7 @@ class _DemoActions implements GraphActions {
   Future<AbsorbResult> absorb(String from) async => AbsorbResult(
     mutation: MutationResult(
       newOpId: 'op$_ops',
+      committed: false,
       newChangeIds: const <String>[],
       abandonedChangeIds: const <String>[],
       workingCopyChangeId: null,

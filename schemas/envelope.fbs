@@ -2149,6 +2149,13 @@ table MutationResult {
   /// facts (an empty identity, a `@` that became immutable, a Git HEAD that could not be reset,
   /// skipped checkout files) ride `Envelope.warnings` only (Story 9.32).
   finish: FinishFacts;
+  /// Whether this call's own transaction committed an operation — the CLI's `tx.finish` path,
+  /// not its "Nothing changed." path. A snapshot or Git import operation the same call wrote
+  /// before the verb does not count. `new_op_id` alone cannot say it: the caller's earlier
+  /// head read is a separate call, and a foreign operation may land in between. The flag
+  /// describes the operation of the result it sits in, so a nested precondition `git_refs`
+  /// result reports its own import or export operation.
+  committed: bool;
 }
 
 /// The refs the colocated Git export could not write while the CLI finished a transaction
