@@ -69,7 +69,7 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 - **Visuals** are `RenderBox`es with text slots, not nested `Column`/`Row` trees.
 - **Theme:** every colour and size comes from the design-system token layer; `GraphTheme` derives the graph roles from it and falls back to night. Selection, focus, drop targets, the go-to pulse and the flash use the accent role (`--accent*`, `--focus-ring`); gold is only @ and the one primary action. Immutable changes carry the hatch, not a glyph.
 - **Motion** is the FLIP model: moved cards glide 460 ms, births grow from their anchor, changed cards flash 2.4 s. Under reduce motion, movement goes to 0 but colour and opacity fades stay.
-- **Settings vs state:** global preferences (diff layout, whitespace mode, file list tree/flat, split ratios per layout, editor) live in the settings package; context lines write jj's own `diff.color-words.context` at user scope. Per-project view state (Viewed marks, stack toggles) moves to a state file per project in Application Support (10.37), never into the repo or `.jj/`.
+- **Settings vs state:** global preferences (diff layout, whitespace mode, file list tree/flat, split ratios per layout, editor) live in the settings package; context lines write jj's own `diff.color-words.context` at user scope. Per-project view state (Viewed marks, stack toggles) lives in a state file per project, `projects/<stateId>.json` beside `settings.json` (`SettingsStore.projectStates`, 10.37), never in the repo or `.jj/`.
 - **Diff and hunk selection:** whole files pass paths; partial selections pass the `TreeId` from the `select_tree` call, never `-i`. A hunk's parts are jj's builtin diff-editor sections (`Hunk.sections`); the smallest pick is a part, never single lines. Rust computes word segments; Dart only draws them.
 
 ## UX & Interaction Patterns
@@ -83,7 +83,7 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 
 ## Cross-Story Dependencies
 
-- Done: every story except 10.27, 10.33 and 10.36–10.39 (open) and 10.18 (declined).
+- Done: every story except 10.27, 10.33, 10.38 and 10.39 (open) and 10.18 (declined).
 - 10.38 comes before 10.39 and before 10.33, which also runs after 10.36. 10.33 reuses 10.36's menu button and its grouped, checked menu, and picks whole parts from 10.38.
 - 10.36 needs a backend absorb preview (`ChangeActions.absorb`) built on `plan_absorb`. The other open stories are UI-only, apart from 10.37's optional small existence query.
 - 10.27 builds on 10.10's drag engine, 10.24–10.26, 10.23, and backend 9.15, 9.31 (diff source) and 9.50.

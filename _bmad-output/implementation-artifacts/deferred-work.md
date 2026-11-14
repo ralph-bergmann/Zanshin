@@ -3063,3 +3063,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - ~~**A foreign operation that lands between the runner's head read and a verb that wrote nothing makes the runner count the verb as written.**~~ — RESOLVED 2026-11-14 (spec-10-36-closing-the-backend-says-whether-a-call-wrote, commit cfe09d51): the backend reports `MutationResult.committed`; the runner uses it. Low.
   - `app/lib/src/features/graph/graph_view_model.dart:786-797` reads `headOpId()` first and sets `wrote = result.newOpId != head`; a no-op verb returns the pre-call head, here the foreign operation. The toast then reads as a success (absorb: "Absorbed X into 0 changes") with an Undo pinned to the foreign operation. Pre-existing for every verb that can write nothing; needs a concurrent jj in the same repo within one call.
   - **Follow-up:** have the backend say whether the call wrote (or compare against the head read inside the same call) instead of the runner's earlier head read.
+
+## Surfaced in Story 10.37 (bmad-build-auto, 2026-11-14)
+
+- **The new "Reset view state" row in Settings › Project was not checked visually through Marionette or against the DS cards.** Low.
+  - `app/lib/src/features/settings/project_tab.dart` adds a "View state" group with a `ZsButton` row; only widget tests cover it (`settings_window_test.dart`). The unattended run had no running app or catalogue session.
+  - **Follow-up:** open Settings › Project in the catalogue or the app, check the row's look against the DS settings cards, and confirm the reset clears the open graph's stacks at once.
