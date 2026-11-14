@@ -3095,3 +3095,15 @@ Ralph and Claude went through the inspector point by point; each point was check
   - The unattended run had no catalogue session; widget tests cover the behaviour. The catalogue has Graph › Inspector diff › Whitespace ignored and the MenuButton icon-only rows (`app/widgetbook/folders/graph.dart`, `controls.dart`).
   - One look to settle: the unified fold row's hatch stops at the number columns, as the mock-up's `.isd-foldrow .isd-nums` background does, while the DS Content card hatches the full row.
   - **Follow-up:** compare those use cases with `design/Inspector Study.html` and the DS cards through Marionette.
+
+## Surfaced in Story 10.39 (bmad-build-auto, 2026-11-14)
+
+- **The two IntelliJ checks of Story 10.39 are not done: Go to File (⇧⌘O) with an absolute `path:line`, and whether `idea --line` opens in the running IntelliJ.** Low.
+  - Both need Ralph's IntelliJ; the unattended run may not start a real editor. Open in Editor runs `idea --line <n> <absolute path>` (`app/lib/src/features/graph/project_files.dart` `editorCommand`; tested with a fake launcher).
+  - **Follow-up:** Ralph sets Settings › General › Editor to IntelliJ IDEA, opens a diff line in a project that is open in IntelliJ, and checks that the running IntelliJ jumps to the line.
+- **The file rows, folder rows, tree/flat switch, menus and copyable diff path were not checked through Marionette against the mock-up and the DS cards.** Low.
+  - The unattended run had no catalogue session; widget tests cover the behaviour. The catalogue has Graph › Inspector › Tree, Long path (460), File menu and Line menu (`app/widgetbook/folders/graph.dart`).
+  - **Follow-up:** compare those use cases with `design/Inspector Study.html` and the DS cards through Marionette.
+- **No test shows that a successful login-shell adoption stores the environment that editor detection and launching use.** Low.
+  - `_adopted ??= variables` in `adoptLoginShellEnvironment` (`packages/zanshin_core/lib/src/environment/login_shell.dart`) is untested: a real adoption installs a process-global Rust environment that would leak into other test files.
+  - **Follow-up:** none, unless a test can adopt in a process of its own.

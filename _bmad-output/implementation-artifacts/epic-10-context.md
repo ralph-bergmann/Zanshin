@@ -83,7 +83,7 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 
 ## Cross-Story Dependencies
 
-- Done: every story except 10.27 and 10.39 (open) and 10.18 (declined).
+- Done: every story except 10.27 (open) and 10.18 (declined).
 - 10.38 comes before 10.39 and before 10.33, which also runs after 10.36. 10.33 reuses 10.36's menu button and its grouped, checked menu, and picks whole parts from 10.38.
 - 10.36 needs a backend absorb preview (`ChangeActions.absorb`) built on `plan_absorb`. The other open stories are UI-only, apart from 10.37's optional small existence query.
 - 10.27 builds on 10.10's drag engine, 10.24–10.26, 10.23, and backend 9.15, 9.31 (diff source) and 9.50.
