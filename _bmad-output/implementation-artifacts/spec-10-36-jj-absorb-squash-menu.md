@@ -17,6 +17,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_view_model.dart:786-797
     severity: low
+    resolved: >-
+      2026-11-14 — fixed (spec-10-36-closing-the-backend-says-whether-a-call-wrote, commit cfe09d51): MutationResult.committed says whether the call's own transaction wrote; the runner uses it instead of an earlier head read.
 ---
 
 <intent-contract>
