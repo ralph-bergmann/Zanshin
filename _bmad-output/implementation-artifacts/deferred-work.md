@@ -3021,11 +3021,11 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 
 ## Surfaced after the story loop 5.12 (console session, 2026-11-13)
 
-- **The Zanshin diff style marks a whole call chain when one call of it changes.** Medium. → Story 5.13.
+- ~~**The Zanshin diff style marks a whole call chain when one call of it changes.**~~ — RESOLVED 2026-11-14 (spec-5-13-finer-tokens-for-the-zanshin-diff-style, commit 7629ab56): finer tokens with shift right and gap marks; 9346978d's single lines mark only `.map_err(GitImportError::from_git)`, as RustRover does. Medium.
   - `crates/zanshin-jj/src/hunks.rs` `word_runs`: a token is a run of non-blank characters, and a call chain holds no blank. Ralph's example: jj commit `9346978d`, `lib/src/git.rs`; RustRover marks only the removed `.map_err(GitImportError::from_git)`.
   - Measured with a throwaway probe (not kept) on that file's 32 changed blocks: today 116 marks over 3,271 non-blank characters; finer tokens with two mark rules 62 over 1,554; tree-sitter leaves as tokens 62 over 1,551.
   - **Follow-up:** Story 5.13 (decided by Ralph, 2026-11-13: finer tokens, no tree-sitter).
-- **The jj style reads better on that example because it shows the change inside one line.** Medium. → Story 5.13, rule 6.
+- ~~**The jj style reads better on that example because it shows the change inside one line.**~~ — RESOLVED 2026-11-14 (spec-5-13-finer-tokens-for-the-zanshin-diff-style, commit 7629ab56): rule 6 built with the calls below; 12 of 9346978d's 13 one-line blocks become one line at jj's default limit. Ralph's in-app review of those calls is still open. Medium.
   - Ralph asked for the same in the Zanshin style where one line replaces one line. The line kind (`HunkLineKind::Changed`), the wire and the view (`inspector_diff.dart` draws a `changed` line by its kind in both styles) exist from the jj style; fingerprints and counts do not depend on the emitted lines.
   - Measured with the probe: 13 of the 32 blocks are one old and one new line; 12 become one line at jj's default limit.
   - Tried and limited to those blocks: words counting twice in the comparison. On `Err(GitResetHeadError::from_git(err))` → `Err(err.into())` it keeps `err` and gives jj's picture. On a block of several lines it pairs `error` of `std::error::Error` with `#[error(transparent)]` three lines below.
