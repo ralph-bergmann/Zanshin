@@ -5563,6 +5563,46 @@ The probe took its blocks from `similar`'s line diff, the product takes jj's. Fo
 
 **Related:** 5.9 (its research weighed tree-sitter before), 5.10, 5.11, 5.12 (the "Inline changes" row).
 
+### Story 5.14: One diff style, jj's — a switch for the word marks, no Conflicts row [Rust + UI]
+*(Added 2026-11-14, Ralph — console session, after Story 5.13. It removes Story 5.11's second style (and Story 5.13 with it) and Story 5.12's Conflicts row.)*
+
+**Motivation.** The Zanshin style does not convince Ralph, even after Story 5.13. The diff shows jj's style only. Ralph also wants to choose whether the changed words inside a line are marked: what `jj diff` underlines on the console. The Conflicts row of Story 5.12 seemed to do nothing. It is wired (a jj config write reloads the open diff, and `hunks.rs` reads `diff.color-words.conflict`), but it changes only the diff of a file with a conflict on one side.
+
+**Decided (Ralph, 2026-11-14).**
+- Only jj's style. The Zanshin style goes, with everything added for it: the `similar` crate, `DiffMarks` in Rust, on the wire and in Dart, its setting, strings, catalogue and design-system parts.
+- A switch turns the word marks on or off. On is the default.
+- The Conflicts row goes. The diff still follows `diff.color-words.conflict` from the jj config, as the CLI does.
+
+**Scope.**
+1. **Rust** (`crates/zanshin-jj/src/hunks.rs`): `DiffMarks` and the `Words` path go (`word_runs`, `side_runs`, rule 6, `WORD_MARKS_LIMIT`, their tests and docs). Every diff takes the jj path. The options and reply types lose `marks`. `similar` leaves the root and the `zanshin-jj` `Cargo.toml` and `Cargo.lock`. The jj path's lines, hunks, numbers, counts, fingerprints, conflict handling and tests stay untouched.
+2. **Wire:** `schemas/envelope.fbs` loses the `DiffMarks` enum and its fields, then `cargo make codegen`. `crates/zanshin-ffi/src/diff.rs` and its tests follow, and so does `docs/ffi-abi.md`. Schema changes follow `_bmad-output/project-context.md`.
+3. **Dart bridge** (`packages/zanshin_core`): `DiffMarks` and every `marks` parameter and field go (`ffi/diff.dart`, the worker handle, commands, isolate), with their tests.
+4. **Settings model** (`packages/zanshin_settings`): `DiffMarksSetting` and `diffMarks` go. A new `bool` setting holds the switch, default `true`. A settings file that still holds `diffMarks` loads; the old key is ignored.
+5. **App:**
+   - **Settings › General › Diffs:** the "Changed words" row holds a switch for the new setting, with a hint that says it marks the words that changed inside a line, where `jj diff` underlines them. The "Inline changes" row keeps only its jj hint. The Conflicts row goes, with its strings and with `SettingsKeys.diffConflict` where only the row used it.
+   - **Inspector and the operation view** (`inspector_diff.dart`, `graph_inspector.dart`, `operation_changes.dart`): a diff loads without a style. The switch acts at once and reloads nothing. On: the marks as the jj style draws them today. Off: no word-mark fill on any line. On a `changed` line the removed parts keep the removed hue as their text colour and the added parts the added hue, as `jj diff` colours them without the underline; kept parts keep the line's ink. Removed and added lines show only their line fill and ink.
+   - **l10n:** the strings of the Zanshin style and of the Conflicts row go (`app/lib/l10n/app_en.arb` and the generated files).
+6. **Catalogue:** "Inspector diff / Word marks" shows the jj style with a knob for the switch; the Zanshin-style blocks go. The Settings window use case follows.
+7. **Design system:** the DiffHunk and DiffView prompts, the readme, the Content card (its Zanshin-style hunks go; a hunk with the marks off appears) and the Settings page card (a switch row, no Conflicts row). Republished with the `design-artifacts` skill; if the run cannot publish, its result says so.
+8. **Docs:** the `DiffMarks::Words` paragraph of `_bmad-output/project-context.md` goes; `docs/` follows.
+9. **Parity oracle:** unchanged.
+
+**Non-goals.**
+- A third style, or bringing the Zanshin style back behind a flag.
+- A setting for jj's colours (`colors."diff token"`), or a quick toggle in the diff bar.
+- Any change to jj's lines, hunks, colours or to the engine's support of `diff.color-words.conflict`.
+
+**Witnesses.**
+- No crate of the workspace depends on `similar`; `Cargo.lock` has no `similar`. A search for `DiffMarks` and `DiffMarksSetting` finds nothing in code, schema or generated files.
+- The jj style's tests (Story 5.10, the conflict test with `pair`) and the parity oracle stay green with their expectations untouched.
+- Settings: the switch row shows under "Changed words", no Conflicts row. A settings file with `"diffMarks": "words"` loads with the switch on.
+- Inspector, both layouts: the switch on draws the marks as today; off draws no mark fill, and a `changed` line keeps both hues as text colour. Flipping it reads no diff again.
+- UI in the catalogue and with Marionette, night and paper, compared with the DS cards.
+
+**Depends on.** 5.10–5.13 (all done).
+
+**Related:** 5.11 and 5.13 (the removed style; their specs stay as history), 5.12 (the Conflicts row).
+
 ---
 
 ## Epic 6: Write Path & `extern "C"` Mutation Exposure

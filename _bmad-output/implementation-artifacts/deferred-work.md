@@ -3035,5 +3035,5 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
   - Ralph's idea, with code from Google's assistant. That code does not compile (`TextDiff::from_slices` takes text slices, not own tokens; the token list borrows the local tree). It also calls every stretch between two leaves whitespace; in the Dart grammar the text of a comment and the content of a string sit there, so a whole string is one token.
   - With those faults fixed, tree-sitter gives the same marks as the plain split on Ralph's example. It differs only where a comment or string word equals a code word (the widget test's `phone`).
   - **Follow-up:** none. Only if the comment limit of Story 5.13 bothers Ralph.
-- **The "Nächster Schritt" list at the top of `sprint-status.yaml` still lists Story 5.9 as open** (E2 was built and then replaced by Story 5.10). Low.
+- ~~**The "Nächster Schritt" list at the top of `sprint-status.yaml` still lists Story 5.9 as open**~~ — RESOLVED 2026-11-14 (commit ff7e2b55): the list no longer names Story 5.9. (E2 was built and then replaced by Story 5.10.) Low.
   - **Follow-up:** Ralph says whether the line goes; this session only added Story 5.13 to the list.
