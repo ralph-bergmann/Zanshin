@@ -160,7 +160,30 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:defa
 .isd-line.kr{background:var(--rem-bg)}
 .isd-line.kr .isd-nums{background:linear-gradient(var(--rem-bg),var(--rem-bg)),var(--isd-code);color:var(--rem)}
 .isd-line.kr .isd-txt,.isd-line.kr .isd-sig{color:var(--rem)}
-.isd-hunk.is-sel .isd-line{box-shadow:inset 2px 0 0 var(--accent)}
+.isd-hunk.is-sel .isd-line,.isd-line.is-pick,.isd-srow.is-pick{box-shadow:inset 2px 0 0 var(--accent)}
+.isd-hunk.is-some .isd-hhd{background:linear-gradient(color-mix(in oklch,var(--accent) 12%,transparent),color-mix(in oklch,var(--accent) 12%,transparent)),var(--isd-code)}
+.isd-nsec{flex-shrink:0;padding:1px 7px;border-radius:999px;background:var(--fl-hover);font-size:10.5px;color:var(--text-dim)}
+/* a section's checkbox: in a gutter before the numbers, on its first changed line */
+.isd-gut{display:grid;place-items:center;flex:0 0 22px;width:22px;height:20px;background:inherit}
+.isd-gut .gck{width:13px;height:13px;border-radius:4px}
+.isd-srow>.isd-gut{background:var(--isd-code)}
+.gck.is-off{opacity:.35;cursor:not-allowed}
+/* whitespace ignored: a picked (or opened) part shows its whitespace-only lines, dimmed and tagged */
+.isd-line.is-ws .isd-txt,.isd-line.is-ws .isd-sig,.isd-side.is-ws .isd-txt{opacity:.62}
+.isd-wstag{flex-shrink:0;align-self:center;margin-right:12px;padding:0 6px;border-radius:999px;font:10.5px/16px var(--font-sans);color:var(--text-dim);background:var(--fl-hover);white-space:nowrap}
+button.isd-wstag:hover{color:var(--text);background:var(--fl-on)}
+/* a part made only of whitespace changes, folded to one row */
+.isd-foldrow{display:flex;align-items:center;width:max-content;min-width:100%;font:11.5px/22px var(--font-mono);background:repeating-linear-gradient(135deg,transparent 0 5px,var(--fl-hover) 5px 6px)}
+.isd-foldrow .isd-nums{background:var(--isd-code)}
+.isd-foldrow.is-side .isd-nums span:not(.isd-gut){display:none}
+.isd-foldtxt{padding:0 12px 0 18px;font:11.5px var(--font-sans);color:var(--text-dim);white-space:nowrap;text-align:left}
+.isd-foldtxt:hover{color:var(--text)}
+/* the diff options button — last in the diff header; tinted while a value differs from the default */
+.isd-optbtn{display:inline-flex;align-items:center;gap:2px;height:26px;padding:0 5px 0 6px;border-radius:7px;color:var(--text-dim);flex-shrink:0}
+.isd-optbtn:hover{background:var(--fl-hover);color:var(--text)}
+.isd-optbtn.on{color:var(--accent)}
+.isd-menu-head{padding:6px 10px 3px;font-size:11px;font-weight:600;color:var(--text-dim)}
+.isd-menu-ck{display:grid;place-items:center;width:12px;margin-right:-8px;flex-shrink:0}
 .isd-srow{display:flex}
 .isd-side{flex:1 1 0;min-width:0;display:flex;font:11.5px/20px var(--font-mono);border-right:1px solid var(--fl-border)}
 .isd-side:last-child{border-right:0}

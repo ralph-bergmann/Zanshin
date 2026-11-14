@@ -12666,6 +12666,14 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 ### Story 10.33: Ignore whitespace in the inspector diff [UI]
 *(Added 2026-11-12, Ralph — console session. Sourcetree can ignore whitespace in its diff, and Ralph wants the same.)*
 
+> **Design update 2026-11-14 (Ralph, the inspector design round; `design/DESIGN-SYSTEM-SYNC.md` #26, mock-up `design/Inspector Study.html`):** this supersedes items 1–3 and the "To check" item on word marks' picks below.
+> - **Where:** a diff options menu, the last control in the diff header (sliders glyph + chevron, no text; the glyph in `--accent` while whitespace or context lines differ from the default). It reuses Story 10.36's `MenuButton` and the menu style with group heads and checks; 10.38's diff header is where it sits, so this story runs after 10.38.
+> - **Whitespace (DECIDED):** three modes like the CLI — Show all whitespace (`jj diff`), Ignore changes in amount (`-b`), Ignore all whitespace (`-w`). Global, an app setting for every diff (inspector and operation view), remembered like the layout; also offered in Settings › General › Diffs.
+> - **Context lines (DECIDED):** the same menu offers 0, 1, 2, 3 ("jj's default"), 5, 10, 20 — the values of the Settings row (Story 5.12), writing the same jj key, `diff.color-words.context`, at user scope (so `jj diff` follows it too); a write reloads the open diff as today.
+> - **Picks while whitespace is ignored (DECIDED):** allowed. A part (10.38) is picked whole, so a picked part shows the lines `-b` / `-w` hide, in place, as − and + dimmed and the + line tagged "whitespace only". A part made only of such lines folds into one row "⋯ N lines changed whitespace only · Show" with its own checkbox; Show opens it for reading, a pick opens it too. Rejected: no picks while ignoring; a hint like "+3 whitespace lines not shown". Not possible: picking only a part's visible lines.
+> - **Depends on** adds 10.36 and 10.38. **Design status:** FINAL.
+> - **Witnesses (added):** with `-w`, picking a part that re-indents a line shows that line and commits it; a whitespace-only part folds to its row, picks from it, and its lines land in the commit; the menu's context value equals the Settings row's and `jj config get diff.color-words.context`.
+
 **Motivation.** Flutter UI work re-indents a lot: wrapping a widget in `Padding` shifts its whole subtree, and every shifted line shows as changed. jj can ignore that: `jj diff -b` (`--ignore-space-change`) and `-w` (`--ignore-all-space`). With either, lines that changed only in whitespace drop out of the diff.
 
 **Backend: done, CLI parity.** `zanshin-jj`'s `Whitespace` (`crates/zanshin-jj/src/hunks.rs`) passes `-w` / `-b` to jj-lib's `LineCompareMode`. The FFI and `zanshin_core` carry it: `zanshinDiff`'s `whitespace` parameter takes a `DiffWhitespace` (`packages/zanshin_core/lib/src/ffi/diff.dart`), default `exact`. The app never sets it. No Rust work.
@@ -12840,6 +12848,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 3. **The description is clamped** in the top part to a few lines, with "Show more" / "Show less" (DECIDED, Ralph).
 4. **No fixed maximum width.** The inspector and the pinned panel lose 720 and 440 (`ZsMetrics.inspectorWMax`, `panelWMax`, DS `--inspector-w-max`); the rule that 320 points of graph remain stays (`app/lib/src/features/shell/shell_layout.dart`). The minimums stay.
 5. **Finder keys in the file list.** ↑ ↓ select a file and show its diff at once (`_onKey`, `graph_inspector.dart:2105`); while a key repeats, the diff loads after a short pause (proposal ~80 ms; stale replies are already dropped by `_focusSerial`). Space toggles the file's pick on a mutable change; `V` toggles Viewed (DECIDED, Ralph: both in this story). ↩ does no harm.
+6. **Parts of a hunk** (added in the design round, `design/DESIGN-SYSTEM-SYNC.md` #26). At context 3 one hunk can hold several runs of changes; each is one of jj's builtin diff editor sections (`Hunk.sections`, the keys `selectTree` takes — the backend has them, the UI picks whole hunks only). A hunk with more than one part says "N parts" in its header; each part gets a checkbox in a gutter before the line numbers, on its first changed line; the hunk's checkbox turns three-state; a picked part's lines carry the accent edge. The smallest pick is a part, never single lines (DECIDED, Ralph: lines can break the code). Both layouts.
 
 **Non-goals.** The file rows' content and menus (10.39); a full-screen inspector.
 
@@ -12852,6 +12861,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 - A change with 40 files: the diff stays in view while ↑ ↓ walk the list.
 - The inspector can be dragged until 320 points of graph remain, also past 720.
 - Space and `V` change the pick and the Viewed mark of the selected file.
+- A hunk with three parts: picking the second commits only its lines (a real repo through the composer); the hunk's checkbox shows mixed.
 - Marionette screenshots of both layouts in the catalogue, compared with the mock-up.
 
 **Related:** 10.8, 10.24, 10.39, 11.3.

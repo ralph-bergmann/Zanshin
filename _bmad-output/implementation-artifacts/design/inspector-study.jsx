@@ -27,6 +27,8 @@ const P = {
   unified: <g stroke="currentColor" strokeWidth="1.3" fill="none"><rect x="2" y="3" width="12" height="10" rx="1.2"/><path d="M2 8h12"/></g>,
   side: <g stroke="currentColor" strokeWidth="1.3" fill="none"><rect x="2" y="3" width="12" height="10" rx="1.2"/><path d="M8 3v10"/></g>,
   bookmark: <path d="M4.5 2.5h7v11L8 11l-3.5 2.5v-11z" fill="currentColor"/>,
+  tune: <g stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round"><path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/><circle cx="10" cy="4.5" r="1.6"/><circle cx="6" cy="11.5" r="1.6"/></g>,
+  ws: <g stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round"><path d="M2.5 11.5v1.5h11v-1.5"/><circle cx="5" cy="6.5" r=".9" fill="currentColor" stroke="none"/><circle cx="8" cy="6.5" r=".9" fill="currentColor" stroke="none"/><circle cx="11" cy="6.5" r=".9" fill="currentColor" stroke="none"/></g>,
   pen: <path d="M3 13l.6-2.6L10.5 3.5l2 2-6.9 6.9L3 13zM9.3 4.7l2 2" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinejoin="round"/>,
 };
 const Ic = ({ n, s = 14, c }) => <svg className={c} width={s} height={s} viewBox="0 0 16 16" aria-hidden="true">{P[n]}</svg>;
@@ -91,26 +93,77 @@ const CODE = [
   (n) => `  const ${n.replace(/[^a-z]/gi, "")}({super.key});`,
 ];
 const hash = (s) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
+// A hunk holds one or more sections (jj's builtin diff editor sections: the changed runs between unchanged lines);
+// context 3 joins runs that are at most 6 lines apart into one hunk. A section is what can be picked.
+const HUNKS = new Map();
 const hunksOf = (f) => {
+  if (HUNKS.has(f.path)) return HUNKS.get(f.path);
   let seed = hash(f.path);
   const rnd = () => (seed = Math.imul(seed ^ (seed >>> 15), 2246822507) >>> 0) / 4294967296;
   const line = () => CODE[Math.floor(rnd() * CODE.length)](fname(f.path).replace(/\.\w+$/, ""));
-  const A = Math.min(f.a, 30), R = Math.min(f.r, 14);
-  if (!A && !R) return [];
-  if (f.status === "A") return [{ id: f.path + "#0", oldStart: 0, newStart: 1, ctx: "", lines: Array.from({ length: A }, () => ({ k: "+", s: line() })) }];
-  const n = A + R > 12 ? 2 : 1, hs = [];
-  let o = 12 + Math.floor(rnd() * 20);
+  const A = Math.min(f.a, 30), R = Math.min(f.r, 14), hs = [];
+  if (!A && !R) { HUNKS.set(f.path, hs); return hs; }
+  if (f.status === "A") {
+    const id = f.path + "#0";
+    hs.push({ id, oldStart: 0, newStart: 1, ctx: "", sections: [id + "/0"], lines: Array.from({ length: A }, () => ({ k: "+", s: line(), sec: id + "/0" })) });
+    HUNKS.set(f.path, hs); return hs;
+  }
+  const n = A + R > 12 ? 2 : 1;
+  let o = 12 + Math.floor(rnd() * 20), d = 0;
   for (let h = 0; h < n; h++) {
     const a = h === n - 1 ? A - Math.floor(A / n) * (n - 1) : Math.floor(A / n), r = h === n - 1 ? R - Math.floor(R / n) * (n - 1) : Math.floor(R / n);
-    const lines = [];
+    const id = f.path + "#" + h, lines = [], sections = [];
+    const groups = Math.max(1, Math.min(3, Math.floor((a + r) / 3)));
     for (let i = 0; i < 3; i++) lines.push({ k: " ", s: line() });
-    for (let i = 0; i < r; i++) lines.push({ k: "-", s: line() });
-    for (let i = 0; i < a; i++) lines.push({ k: "+", s: line() });
-    for (let i = 0; i < 3; i++) lines.push({ k: " ", s: line() });
-    hs.push({ id: f.path + "#" + h, oldStart: o, newStart: o + hs.reduce((d, x) => d + x.lines.filter(l => l.k === "+").length - x.lines.filter(l => l.k === "-").length, 0), ctx: h ? "class _AutomationOverviewState" : "abstract final class SemanticsIdentifiers {", lines });
+    for (let g = 0; g < groups; g++) {
+      const sec = id + "/" + g;
+      sections.push(sec);
+      const gr = g === groups - 1 ? r - Math.floor(r / groups) * (groups - 1) : Math.floor(r / groups);
+      const ga = g === groups - 1 ? a - Math.floor(a / groups) * (groups - 1) : Math.floor(a / groups);
+      for (let i = 0; i < gr; i++) lines.push({ k: "-", s: line(), sec });
+      for (let i = 0; i < ga; i++) lines.push({ k: "+", s: line(), sec });
+      if (g === 0 && h === 0 && r > 0) {
+        // a section that changes code and also re-indents a line
+        const s = line().trim();
+        lines.push({ k: "-", s: "    " + s, sec, ws: true }, { k: "+", s: "        " + s, sec, ws: true });
+      }
+      for (let i = 0, gap = g === groups - 1 ? 3 : 2 + Math.floor(rnd() * 4); i < gap; i++) lines.push({ k: " ", s: line() });
+      if (g === 0 && h === 0 && r > 0) {
+        // a line that only changed its indentation: its own section, gone while whitespace is ignored
+        const sec2 = id + "/ws", s = line().trim();
+        sections.push(sec2);
+        lines.push({ k: "-", s: "  " + s, sec: sec2, ws: true }, { k: "+", s: "      " + s, sec: sec2, ws: true });
+        for (let i = 0; i < 2; i++) lines.push({ k: " ", s: line() });
+      }
+    }
+    hs.push({ id, oldStart: o, newStart: o + d, ctx: h ? "class _AutomationOverviewState" : "abstract final class SemanticsIdentifiers {", sections, lines });
+    d += lines.filter(l => l.k === "+").length - lines.filter(l => l.k === "-").length;
     o += 40 + Math.floor(rnd() * 60);
   }
+  HUNKS.set(f.path, hs);
   return hs;
+};
+const sectionsOf = (fs) => fs.flatMap(f => hunksOf(f).flatMap(h => h.sections));
+// What a hunk shows. With whitespace ignored, an indentation-only line reads as unchanged — unless its section is
+// picked (or opened): then it shows, dimmed, so a pick never takes a line you did not see. A section made only of
+// such lines folds into one row with its own checkbox.
+const shown = (h, ws, picks, open) => {
+  if (ws === "show") return h;
+  const out = [];
+  const wsOnly = new Set(h.sections.filter(s => h.lines.filter(l => l.sec === s).every(l => l.ws)));
+  for (let i = 0; i < h.lines.length; i++) {
+    const l = h.lines[i];
+    if (!l.ws) { out.push(l); continue; }
+    if (picks.has(l.sec) || open.has(l.sec)) { out.push({ ...l, reveal: true }); continue; }
+    if (wsOnly.has(l.sec)) {
+      if (out.length && out[out.length - 1].k === "fold" && out[out.length - 1].sec === l.sec) {
+        const f = out[out.length - 1]; if (l.k === "-") f.ro++; else f.rn++;
+      } else out.push({ k: "fold", sec: l.sec, ro: l.k === "-" ? 1 : 0, rn: l.k === "+" ? 1 : 0 });
+      continue;
+    }
+    if (l.k === "+") out.push({ k: " ", s: l.s });
+  }
+  return { ...h, lines: out };
 };
 
 // ------------------------------------------------------------ tree
@@ -144,10 +197,11 @@ const visibleRows = (root, closed) => {
 };
 
 // ------------------------------------------------------------ small parts
-function Check({ state, onToggle, label }) {
+function Check({ state, onToggle, label, disabled }) {
   return (
-    <button className={"gck" + (state === "all" ? " on" : state === "some" ? " mixed" : "")} role="checkbox" aria-checked={state === "all" ? true : state === "some" ? "mixed" : false}
-      aria-label={label} title={label} tabIndex={-1} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onToggle(); }}>
+    <button className={"gck" + (state === "all" ? " on" : state === "some" ? " mixed" : "") + (disabled ? " is-off" : "")} role="checkbox" aria-checked={state === "all" ? true : state === "some" ? "mixed" : false}
+      aria-disabled={!!disabled} aria-label={label} title={disabled || label} tabIndex={-1} onPointerDown={e => e.stopPropagation()}
+      onClick={e => { e.stopPropagation(); if (!disabled) onToggle(); }}>
       {state === "all" && <Ic n="check" s={10}/>}{state === "some" && <Ic n="dash" s={10}/>}
     </button>
   );
@@ -185,8 +239,10 @@ function Menu({ at, rows, onClose }) {
     <div ref={ref} className="isd-menu" role="menu" style={{ left: pos.left, top: pos.top, visibility: pos.vis ? "visible" : "hidden" }}>
       {rows.map((r, i) => r === "-" ? <div key={i} className="isd-menu-sep"/>
         : r.note ? <div key={i} className="isd-menu-note">{r.note}</div>
+        : r.head ? <div key={i} className="isd-menu-head">{r.head}</div>
         : <button key={i} role="menuitem" className="isd-menu-row" disabled={r.disabled} title={r.disabled ? r.why : r.hint}
             onClick={() => { onClose(); r.onClick && r.onClick(); }}>
+            {r.checked !== undefined && <span className="isd-menu-ck">{r.checked && <Ic n="check" s={11}/>}</span>}
             <span className="isd-menu-l">{r.label}</span>{r.hint && <span className="isd-menu-h">{r.hint}</span>}
           </button>)}
     </div>, document.body);
@@ -196,17 +252,54 @@ function Menu({ at, rows, onClose }) {
 const numbered = (h) => {
   let o = h.oldStart, n = h.newStart;
   return h.lines.map((l) => {
+    if (l.k === "fold") { const row = { ...l, at: n }; o += l.ro; n += l.rn; return row; }
     const row = { ...l, o: l.k === "+" ? null : o, n: l.k === "-" ? null : n, at: n };
     if (l.k !== "+") o++; if (l.k !== "-") n++;
     return row;
   });
 };
-function DiffPane({ change, file, mode, setMode, viewed, setViewed, picks, togglePicks, pinned, onMenu, onCopy }) {
-  const hunks = useMemo(() => (file ? hunksOf(file) : []), [file]);
+const WS = {
+  show: { label: "Show all whitespace", hint: "jj diff" },
+  amount: { label: "Ignore changes in amount", hint: "jj diff -b", short: "−b" },
+  all: { label: "Ignore all whitespace", hint: "jj diff -w", short: "−w" },
+};
+function DiffPane({ change, file, mode, setMode, viewed, setViewed, picks, togglePicks, pinned, ws, setWs, context, setContext, onMenu, onOpenMenu, onCopy }) {
+  const [open, setOpen] = useState(() => new Set());
+  useEffect(() => setOpen(new Set()), [file, ws]);
+  const toggleOpen = (sec) => setOpen(o => { const n = new Set(o); n.has(sec) ? n.delete(sec) : n.add(sec); return n; });
+  const hunks = file ? hunksOf(file).map(h => shown(h, ws, picks, open)).filter(h => h.lines.some(l => l.k !== " ")) : [];
   const [copied, setCopied] = useState(false);
   if (!file) return <div className="isd-diff isd-empty">No file</div>;
   const abs = REPO + file.path;
   const copyPath = () => { onCopy(abs); setCopied(true); setTimeout(() => setCopied(false), 1300); };
+  const noPick = null;
+  const nLines = (n) => n + (n === 1 ? " line" : " lines");
+  const tag = (l) => l.reveal && l.k === "+" && (
+    open.has(l.sec) && !picks.has(l.sec)
+      ? <button className="isd-wstag" onClick={() => toggleOpen(l.sec)} title="Hide the whitespace-only lines again">whitespace only · Hide</button>
+      : <span className="isd-wstag" title="Shown because its part is picked: a pick takes every line of its part">whitespace only</span>);
+  const fold = (h, l, key, side) => (
+    <div key={key} className={"isd-foldrow" + (side ? " is-side" : "")}>
+      <span className="isd-nums">{change.mutable && <span className="isd-gut"><Check state={picks.has(l.sec) ? "all" : "none"} onToggle={() => togglePicks([l.sec])} label="Pick these whitespace-only lines"/></span>}<span/><span/></span>
+      <button className="isd-foldtxt" onClick={() => toggleOpen(l.sec)} title="Show these lines">⋯ {nLines(Math.max(l.ro, l.rn))} changed whitespace only · Show</button>
+    </div>
+  );
+  const st = (secs) => { const k = secs.filter(s => picks.has(s)).length; return !k ? "none" : k === secs.length ? "all" : "some"; };
+  // diff options: whitespace (an app setting) and context lines (jj's diff.color-words.context, user config, as in Settings)
+  const optionsMenu = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    onOpenMenu({ x: r.right - 260, y: r.bottom + 4 }, [
+      { head: "Whitespace" },
+      ...Object.entries(WS).map(([k, v]) => ({ label: v.label, hint: v.hint, checked: ws === k, onClick: () => setWs(k) })),
+      "-", { head: "Context lines" },
+      ...[0, 1, 2, 3, 5, 10, 20].map(n => ({ label: String(n), hint: n === 3 ? "jj's default" : undefined, checked: context === n, onClick: () => setContext(n) })),
+      "-", { note: "Every diff follows these. Context lines is jj's diff.color-words.context in your user config, as in Settings › General › Diffs. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn't see." },
+    ]);
+  };
+  // the section checkbox sits on a section's first changed line, only when the hunk holds more than one
+  const gutter = (h, l, first) => change.mutable && h.sections.length > 1
+    ? <span className="isd-gut">{first && <Check state={picks.has(l.sec) ? "all" : "none"} onToggle={() => togglePicks([l.sec])} label={picks.has(l.sec) ? "Unpick these lines" : "Pick these lines"} disabled={noPick}/>}</span>
+    : change.mutable ? <span className="isd-gut"/> : null;
   return (
     <div className={"isd-diff" + (pinned ? " is-pinned" : "")}>
       <div className="isd-dbar">
@@ -221,35 +314,46 @@ function DiffPane({ change, file, mode, setMode, viewed, setViewed, picks, toggl
         <button className={"isd-viewed" + (viewed ? " on" : "")} onClick={() => setViewed(!viewed)} title={(viewed ? "Mark as not viewed" : "Mark as viewed") + " (V)"}>
           <span className="isd-vbox">{viewed && <Ic n="check" s={10}/>}</span>Viewed
         </button>
+        <button className={"isd-optbtn" + (ws !== "show" || context !== 3 ? " on" : "")} onClick={optionsMenu} aria-haspopup="menu"
+          title={`Diff options — ${WS[ws].label}, ${context} context lines`}>
+          <Ic n="tune" s={14}/><Ic n="chevronDown" s={11}/>
+        </button>
       </div>
       <div className="isd-dbody">
         {viewed ? <button className="isd-folded" onClick={() => setViewed(false)}><Ic n="check" s={11}/>Viewed — diff folded away. Click to show it again.</button>
         : !hunks.length ? <div className="isd-binary">Binary file — no text diff.</div>
         : hunks.map(h => {
-          const rows = numbered(h), sel = picks.has(h.id);
+          const rows = numbered(h), hs = st(h.sections), seen = new Set();
+          const first = (l) => l.sec && !seen.has(l.sec) && seen.add(l.sec);
           const oc = h.lines.filter(l => l.k !== "+").length, nc = h.lines.filter(l => l.k !== "-").length;
           return (
-            <div key={h.id} className={"isd-hunk" + (sel ? " is-sel" : "")}>
+            <div key={h.id} className={"isd-hunk" + (hs === "all" ? " is-sel" : hs === "some" ? " is-some" : "")}>
               <div className="isd-hhd">
-                {change.mutable && <Check state={sel ? "all" : "none"} onToggle={() => togglePicks([h.id])} label={sel ? "Unpick hunk" : "Pick hunk"}/>}
+                {change.mutable && <Check state={hs} onToggle={() => togglePicks(h.sections)} label={hs === "all" ? "Unpick hunk" : "Pick hunk"} disabled={noPick}/>}
                 <code>@@ −{h.oldStart},{oc} +{h.newStart},{nc} @@</code>{h.ctx && <span className="isd-hctx">{h.ctx}</span>}
+                {h.sections.length > 1 && <span className="isd-nsec" title="Parts you can pick on their own">{h.sections.length} parts</span>}
                 <Stat a={rows.filter(l => l.k === "+").length} r={rows.filter(l => l.k === "-").length}/>
               </div>
-              {mode !== "side" ? rows.map((l, i) => (
-                <div key={i} className={"isd-line k" + (l.k === "+" ? "a" : l.k === "-" ? "r" : "c")} onContextMenu={e => onMenu(e, { kind: "line", file, line: l.at })}>
-                  <span className="isd-nums"><span>{l.o ?? ""}</span><span>{l.n ?? ""}</span></span>
-                  <span className="isd-sig">{l.k === "+" ? "+" : l.k === "-" ? "−" : ""}</span><span className="isd-txt">{l.s}</span>
+              {mode !== "side" ? rows.map((l, i) => l.k === "fold" ? fold(h, l, i) : (
+                <div key={i} className={"isd-line k" + (l.k === "+" ? "a" : l.k === "-" ? "r" : "c") + (l.sec && picks.has(l.sec) ? " is-pick" : "") + (l.reveal ? " is-ws" : "")} onContextMenu={e => onMenu(e, { kind: "line", file, line: l.at })}>
+                  <span className="isd-nums">{gutter(h, l, first(l))}<span>{l.o ?? ""}</span><span>{l.n ?? ""}</span></span>
+                  <span className="isd-sig">{l.k === "+" ? "+" : l.k === "-" ? "−" : ""}</span><span className="isd-txt">{l.s}</span>{tag(l)}
                 </div>
-              )) : sidePairs(rows).map(([a, b], i) => (
-                <div key={i} className="isd-srow">
-                  {[a, b].map((x, j) => (
-                    <div key={j} className={"isd-side" + (!x ? " is-blank" : x.k === "+" ? " ka" : x.k === "-" ? " kr" : " kc")}
-                      onContextMenu={x ? e => onMenu(e, { kind: "line", file, line: x.at }) : undefined}>
-                      <span className="isd-num">{x ? (j ? x.n : x.o) ?? "" : ""}</span><span className="isd-txt">{x ? x.s : ""}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
+              )) : sidePairs(rows).map(([a, b], i) => {
+                if (a === "fold") return fold(h, b, i, true);
+                const sec = (a && a.sec) || (b && b.sec), lead = sec ? first(a && a.sec ? a : b) : false;
+                return (
+                  <div key={i} className={"isd-srow" + (sec && picks.has(sec) ? " is-pick" : "")}>
+                    {gutter(h, { sec }, lead)}
+                    {[a, b].map((x, j) => (
+                      <div key={j} className={"isd-side" + (!x ? " is-blank" : x.k === "+" ? " ka" : x.k === "-" ? " kr" : " kc") + (x && x.reveal ? " is-ws" : "")}
+                        onContextMenu={x ? e => onMenu(e, { kind: "line", file, line: x.at }) : undefined}>
+                        <span className="isd-num">{x ? (j ? x.n : x.o) ?? "" : ""}</span><span className="isd-txt">{x ? x.s : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           );
         })}
@@ -260,6 +364,7 @@ function DiffPane({ change, file, mode, setMode, viewed, setViewed, picks, toggl
 const sidePairs = (rows) => {
   const out = []; let i = 0;
   while (i < rows.length) {
+    if (rows[i].k === "fold") { out.push(["fold", rows[i]]); i++; continue; }
     if (rows[i].k === " ") { out.push([rows[i], rows[i]]); i++; continue; }
     const rem = [], add = [];
     while (i < rows.length && rows[i].k === "-") rem.push(rows[i++]);
@@ -270,7 +375,7 @@ const sidePairs = (rows) => {
 };
 
 // ------------------------------------------------------------ files
-function FilesPane({ change, files, view, setView, focus, setFocus, picks, togglePicks, viewed, setViewed, onMenu, onCopy }) {
+function FilesPane({ change, files, view, setView, focus, setFocus, picks, togglePicks, viewed, setViewed, noPick, onMenu, onCopy }) {
   const tree = useMemo(() => buildTree(files), [files]);
   const [closed, setClosed] = useState(() => new Set());
   const rows = useMemo(() => (view === "tree" ? visibleRows(tree, closed)
@@ -280,7 +385,7 @@ function FilesPane({ change, files, view, setView, focus, setFocus, picks, toggl
   useEffect(() => { if (!rows.some(r => r.key === cur) && focus) setCur("f:" + focus); }, [rows, cur, focus]);
   useEffect(() => { const el = listRef.current && listRef.current.querySelector(".is-cur"); if (el) el.scrollIntoView({ block: "nearest" }); }, [cur]);
 
-  const hunkIds = (fs) => fs.flatMap(f => hunksOf(f).map(h => h.id));
+  const hunkIds = sectionsOf;
   const pickState = (fs) => { const ids = hunkIds(fs); const k = ids.filter(id => picks.has(id)).length; return !ids.length || !k ? "none" : k === ids.length ? "all" : "some"; };
   const tot = files.reduce((s, f) => ({ a: s.a + f.a, r: s.r + f.r }), { a: 0, r: 0 });
   const vN = files.filter(f => viewed[f.path]).length;
@@ -300,7 +405,7 @@ function FilesPane({ change, files, view, setView, focus, setFocus, picks, toggl
       return;
     }
     if (e.key === "ArrowRight" && view === "tree" && r.kind === "dir") { e.preventDefault(); return r.open ? go(i + 1) : toggleDir(r.path, true); }
-    if (e.key === " " && change.mutable) { e.preventDefault(); return togglePicks(hunkIds(r.kind === "dir" ? r.files : [r.file])); }
+    if (e.key === " " && change.mutable && !noPick) { e.preventDefault(); return togglePicks(hunkIds(r.kind === "dir" ? r.files : [r.file])); }
     if ((e.key === "v" || e.key === "V") && !e.metaKey) { e.preventDefault(); const fs = r.kind === "dir" ? r.files : [r.file]; const on = !fs.every(f => viewed[f.path]); return setViewed(fs.map(f => f.path), on); }
     if (e.key === "c" && e.metaKey) { e.preventDefault(); return onCopy(REPO + r.path); }
     if (e.key === "Enter" && r.kind === "dir") { e.preventDefault(); return toggleDir(r.path); }
@@ -309,7 +414,7 @@ function FilesPane({ change, files, view, setView, focus, setFocus, picks, toggl
   return (
     <div className="isd-files">
       <div className="isd-fhd">
-        {change.mutable && <Check state={pickState(files)} onToggle={() => togglePicks(hunkIds(files))} label="Pick all"/>}
+        {change.mutable && <Check state={pickState(files)} onToggle={() => togglePicks(hunkIds(files))} label="Pick all" disabled={noPick}/>}
         <span className="isd-ftitle">Changes</span>
         <span className="isd-fmeta">{files.length} {files.length === 1 ? "file" : "files"} <Stat a={tot.a} r={tot.r}/></span>
         {vN > 0 && <span className="isd-fviewed">{vN === files.length ? <><Ic n="check" s={10}/> all viewed</> : `${vN}/${files.length} viewed`}
@@ -329,7 +434,7 @@ function FilesPane({ change, files, view, setView, focus, setFocus, picks, toggl
                 onClick={() => { select(r); toggleDir(r.path); }} onContextMenu={e => { select(r); onMenu(e, { kind: "dir", path: r.path }); }}
                 title={r.path}>
                 <span className="isd-chev"><Ic n={r.open ? "chevronDown" : "chevronRight"} s={12}/></span>
-                {change.mutable && <Check state={pickState(r.files)} onToggle={() => togglePicks(hunkIds(r.files))} label={"Pick " + r.name}/>}
+                {change.mutable && <Check state={pickState(r.files)} onToggle={() => togglePicks(hunkIds(r.files))} label={"Pick " + r.name} disabled={noPick}/>}
                 <span className="isd-fold"><Ic n="folder" s={13}/></span>
                 <span className="isd-dirname">{r.name}</span>
                 <span className="isd-count">{r.files.length}</span>
@@ -342,7 +447,7 @@ function FilesPane({ change, files, view, setView, focus, setFocus, picks, toggl
             <div key={r.key} role="treeitem" className={"isd-row" + (isCur ? " is-cur" : "") + (focus === f.path ? " is-focus" : "") + (viewed[f.path] ? " is-viewed" : "")}
               style={view === "tree" ? { paddingLeft: 8 + r.depth * 14 + 18 } : undefined}
               onClick={() => select(r)} onContextMenu={e => { select(r); onMenu(e, { kind: "file", file: f }); }} title={f.path}>
-              {change.mutable && <Check state={pickState([f])} onToggle={() => togglePicks(hunkIds([f]))} label={"Pick " + fname(f.path)}/>}
+              {change.mutable && <Check state={pickState([f])} onToggle={() => togglePicks(hunkIds([f]))} label={"Pick " + fname(f.path)} disabled={noPick}/>}
               <span className={"isd-st st-" + f.status}>{f.status}</span>
               <span className="isd-name">{fname(f.path)}</span>
               {view !== "tree" && dir && <span className="isd-dir"><span className="h">{cut < 0 ? "" : dir.slice(0, cut + 1)}</span><span className="t">{cut < 0 ? dir : dir.slice(cut + 1)}</span></span>}
@@ -359,7 +464,7 @@ function FilesPane({ change, files, view, setView, focus, setFocus, picks, toggl
 // ------------------------------------------------------------ composer — the command cut in its message, never in its paths
 function Composer({ change, files, picks, clear }) {
   const [s, setS] = useState(""), [b, setB] = useState("");
-  const all = files.flatMap(f => hunksOf(f).map(h => h.id));
+  const all = sectionsOf(files);
   const everything = all.length > 0 && all.every(id => picks.has(id));
   const paths = files.filter(f => hunksOf(f).some(h => picks.has(h.id))).map(f => f.path);
   const verb = change.wc ? "jj commit" : `jj split -r ${short(change.id, change.prefix)}`;
@@ -385,13 +490,13 @@ function Composer({ change, files, picks, clear }) {
 }
 
 // ------------------------------------------------------------ inspector
-function Inspector({ change, width, wide, ratio, setRatio, view, setView, mode, setMode, pinned, editor, onSelect, onCopy, toast, onClose }) {
+function Inspector({ change, width, wide, ratio, setRatio, view, setView, mode, setMode, pinned, ws, setWs, context, setContext, editor, onSelect, onCopy, toast, onClose }) {
   const files = change.files;
   const [focus, setFocus] = useState(files[0] && files[0].path);
   useEffect(() => { setFocus(files[0] && files[0].path); }, [change]);
   const file = files.find(f => f.path === focus) || files[0];
   const [picks, setPicks] = useState(() => new Set());
-  useEffect(() => { setPicks(new Set(change.wc ? files.flatMap(f => hunksOf(f).map(h => h.id)) : [])); }, [change]);
+  useEffect(() => { setPicks(new Set(change.wc ? sectionsOf(files) : [])); }, [change]);
   const togglePicks = (ids) => setPicks(p => { const n = new Set(p); const on = ids.every(id => n.has(id)); ids.forEach(id => on ? n.delete(id) : n.add(id)); return n; });
   const [viewedAll, setViewedAll] = useStored("viewed", {});
   const viewed = viewedAll[change.id] || {};
@@ -489,10 +594,10 @@ function Inspector({ change, width, wide, ratio, setRatio, view, setView, mode, 
       </div>
       <div className="isd-split" ref={splitRef} style={{ "--files": (ratio * 100).toFixed(2) + "%" }}>
         <FilesPane change={change} files={files} view={view} setView={setView} focus={focus} setFocus={setFocus} picks={picks} togglePicks={togglePicks}
-          viewed={viewed} setViewed={setViewed} onMenu={showMenu} onCopy={onCopy}/>
+          viewed={viewed} setViewed={setViewed} noPick={null} onMenu={showMenu} onCopy={onCopy}/>
         <div className="isd-divider" onPointerDown={drag} onDoubleClick={() => setRatio(wide ? 0.34 : 0.38)} role="separator" aria-orientation={wide ? "vertical" : "horizontal"} title="Drag to resize · double-click to reset"/>
         <DiffPane change={change} file={file} mode={mode} setMode={setMode} viewed={!!(file && viewed[file.path])} setViewed={(on) => file && setViewed([file.path], on)}
-          picks={picks} togglePicks={togglePicks} pinned={pinned} onMenu={showMenu} onCopy={onCopy}/>
+          picks={picks} togglePicks={togglePicks} pinned={pinned} ws={ws} setWs={setWs} context={context} setContext={setContext} onMenu={showMenu} onOpenMenu={(at, rows) => setMenu({ at, rows })} onCopy={onCopy}/>
       </div>
       {composing && <Composer change={change} files={files} picks={picks} clear={() => setPicks(new Set())}/>}
       {menu && <Menu at={menu.at} rows={menu.rows} onClose={() => setMenu(null)}/>}
@@ -511,6 +616,8 @@ function App() {
   const [pinned, setPinned] = useStored("pinned", true);
   const [editor, setEditor] = useStored("editor", "idea");
   const [sel, setSel] = useStored("sel", "rqxsqwnr");
+  const [ws, setWs] = useStored("ws", "show");
+  const [context, setContext] = useStored("context", 3);
   const [winW, setWinW] = useState(innerWidth);
   const [msg, setMsg] = useState(null);
   const wideRef = useRef(width >= WIDE_IN);
@@ -559,7 +666,7 @@ function App() {
         <div className="isd-slot" style={{ width: w }}>
           <Inspector key={sel} change={change} width={w} wide={wide} ratio={wide ? ratios.wide : ratios.narrow}
             setRatio={(r) => setRatios(x => ({ ...x, [wide ? "wide" : "narrow"]: r }))}
-            view={view} setView={setView} mode={mode} setMode={setMode} pinned={pinned} editor={editor}
+            view={view} setView={setView} mode={mode} setMode={setMode} pinned={pinned} ws={ws} setWs={setWs} context={context} setContext={setContext} editor={editor}
             onSelect={setSel} onCopy={onCopy} toast={toast} onClose={() => setSel(null)}/>
         </div>
       </>}
