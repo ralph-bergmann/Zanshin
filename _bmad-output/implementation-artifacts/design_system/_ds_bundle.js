@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"7da19c0e8cb9","components/brand/Icon.jsx":"4511a1bc5979","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"4f37217e7ffc","components/content/DiffView.jsx":"aadf43ac39ab","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"cb9ce51e065b","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"7e3ccde5113a","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"8592fcd7fe25","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"21bad2528886","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"7f612c862585","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"7da19c0e8cb9","components/brand/Icon.jsx":"4511a1bc5979","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"481c7b59cdf4","components/content/DiffView.jsx":"30cebc906a80","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"cb9ce51e065b","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"ac0ef89fe9cf","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"7c2c1e506ebd","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -1453,8 +1453,13 @@ function DiffView({
     name: "check",
     size: "sm"
   }), /*#__PURE__*/React.createElement("span", null, "Viewed \u2014 diff folded away. Click to show it again.")) : children ? /*#__PURE__*/React.createElement("div", {
-    className: "zs-diff-hunks"
-  }, children) : /*#__PURE__*/React.createElement("div", {
+    className: "zs-diff-hunks",
+    style: {
+      maxHeight
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-diff-wide"
+  }, children)) : /*#__PURE__*/React.createElement("div", {
     className: "zs-diff-body",
     style: {
       maxHeight,
@@ -1547,6 +1552,11 @@ function zsNumbered(ls, oldStart, newStart) {
 // Selected hunks get the moon header and a 2px moon edge; they are what Commit / Split take. Mutable hunks can be dragged
 // onto another change. Changed words are marked as in DiffView, in both layouts; a side-by-side cell clips its marks.
 // wordMarks={false} (or a DiffView around it with wordMarks={false}) draws them without their tint.
+// Parts (2026-11-14, Story 10.38, sync #26): `parts` gives each line its part (jj's diff-editor section; null for context). A
+// selectable hunk of more than one part shows "N parts" in its header and a 22px gutter before the numbers (side by side: leading the
+// row) with a checkbox on each part's first line; `picked` lists the picked parts — some of them: the header on --accent at 12 % and the
+// hunk checkbox mixed; a picked part's lines carry the 2px edge. Unified, the gutter and numbers stay pinned at the visible left edge
+// while the text scrolls under them (a DiffView around the hunks scrolls them as one unit).
 function DiffHunk({
   range,
   oldStart = 1,
@@ -1560,9 +1570,30 @@ function DiffHunk({
   lifted = false,
   onToggle,
   onGrab,
+  parts,
+  picked: pickedIn = [],
+  onTogglePart,
   className = ""
 }) {
   const ls = zsNumbered(lines.map(__ds_scope.zsDiffLine).filter(l => l.t !== "hunk"), oldStart, newStart);
+  const partOf = parts ? lines.filter(l => !(typeof l === "string" && l.startsWith("@@"))).map((_, i) => parts[i] ?? null) : [];
+  const allParts = [...new Set(partOf.filter(p => p != null))];
+  const count = allParts.length;
+  const showParts = selectable && count > 1;
+  // A selected hunk without its own part picks has every part picked.
+  const picked = showParts && selected && !pickedIn.length ? allParts : pickedIn;
+  const some = showParts && picked.length > 0 && picked.length < count;
+  const all = selected || showParts && picked.length === count;
+  const seen = new Set();
+  const gutter = p => showParts && /*#__PURE__*/React.createElement("span", {
+    className: "zs-diff-gut"
+  }, p != null && !seen.has(p) && seen.add(p) && /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
+    size: "sm",
+    checked: picked.includes(p),
+    onChange: () => onTogglePart && onTogglePart(p),
+    label: picked.includes(p) ? "Unpick these lines" : "Pick these lines"
+  }));
+  const pick = p => (showParts ? p != null && picked.includes(p) : all) ? " is-pick" : "";
   const changed = ls.filter(l => l.t !== "ctx" && l.t !== "hdr");
   const a = new Set(changed.map(l => l.r).filter(n => n != null)).size;
   const r = new Set(changed.map(l => l.l).filter(n => n != null)).size;
@@ -1573,30 +1604,56 @@ function DiffHunk({
   const [ol, oc] = span("l", oldStart),
     [nl, nc] = span("r", newStart);
   const head = range || "@@ −" + ol + "," + oc + " +" + nl + "," + nc + " @@";
-  const body = mode !== "split" ? ls.map(__ds_scope.zsDiffRow) : zsDiffSides(ls).map((row, k) => /*#__PURE__*/React.createElement("div", {
-    key: k,
-    className: "zs-diff-row" + (row.length === 1 ? " hdr" : "")
-  }, row.map((c, j) => /*#__PURE__*/React.createElement("div", {
-    key: j,
-    className: "zs-diff-side " + (c ? c.t : "empty")
-  }, c && c.t !== "hdr" && /*#__PURE__*/React.createElement("span", {
-    className: "ln"
-  }, c.n), /*#__PURE__*/React.createElement("span", {
+  const body = mode !== "split" ? ls.map((l, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "zs-diff-line " + l.t + pick(partOf[i])
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-diff-pin"
+  }, gutter(partOf[i]), /*#__PURE__*/React.createElement("span", {
+    className: "ln l"
+  }, l.t !== "hdr" ? l.l ?? "" : ""), /*#__PURE__*/React.createElement("span", {
+    className: "ln r"
+  }, l.t !== "hdr" ? l.r ?? "" : "")), /*#__PURE__*/React.createElement("span", {
     className: "tx"
-  }, c ? __ds_scope.zsDiffText(c) : "")))));
+  }, __ds_scope.zsDiffText(l)))) : zsDiffSides(ls).map((row, k) => {
+    // a row's part: the part of the first changed line holding one of its numbers
+    const p = row.length === 1 ? null : (() => {
+      for (const c of row) {
+        if (!c || c.t === "ctx") continue;
+        const i = ls.findIndex(l => l.t !== "ctx" && (c.t === "rem" ? l.l === c.n : l.r === c.n));
+        if (i >= 0 && partOf[i] != null) return partOf[i];
+      }
+      return null;
+    })();
+    return /*#__PURE__*/React.createElement("div", {
+      key: k,
+      className: "zs-diff-row" + (row.length === 1 ? " hdr" : "") + (showParts ? " has-gut" + pick(p) : "")
+    }, gutter(p), row.map((c, j) => /*#__PURE__*/React.createElement("div", {
+      key: j,
+      className: "zs-diff-side " + (c ? c.t : "empty")
+    }, c && c.t !== "hdr" && /*#__PURE__*/React.createElement("span", {
+      className: "ln"
+    }, c.n), /*#__PURE__*/React.createElement("span", {
+      className: "tx"
+    }, c ? __ds_scope.zsDiffText(c) : ""))));
+  });
   return /*#__PURE__*/React.createElement("div", {
-    className: ["zs-hunk", selected && "is-sel", lifted && "is-lifted", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")
+    className: ["zs-hunk", all && "is-sel", some && "is-some", lifted && "is-lifted", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")
   }, /*#__PURE__*/React.createElement("div", {
     className: "zs-hunk-hd" + (onGrab ? " is-grab" : ""),
     onPointerDown: onGrab,
     title: onGrab ? "Drag onto a change to move this hunk there" : undefined
   }, selectable && /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
-    checked: selected,
+    checked: all,
+    mixed: some,
     onChange: onToggle,
-    label: selected ? "Deselect hunk" : "Select hunk"
+    label: all ? "Deselect hunk" : "Select hunk"
   }), /*#__PURE__*/React.createElement("code", {
     className: "zs-hunk-range"
-  }, head), context && /*#__PURE__*/React.createElement("span", {
+  }, head), showParts && /*#__PURE__*/React.createElement("span", {
+    className: "zs-hunk-parts",
+    title: "Parts you can pick on their own"
+  }, count, " parts"), context && /*#__PURE__*/React.createElement("span", {
     className: "zs-hunk-ctx"
   }, context), /*#__PURE__*/React.createElement("span", {
     className: "zs-hunk-stat"
@@ -6089,7 +6146,8 @@ try { (() => {
 // in the 12px gap, 3 on the island — and runs along the straight part only (the --radius-panel corners left out).
 // Hover: the resize cursor at once; after --delay-resize a 2px --edge-hov line fades in on the island's edge; dragging keeps it. At the
 // minimum or maximum the cursor shows the one direction left (w-resize / e-resize = AppKit's resizeLeft / resizeRight).
-// Drag: live, clamped to min … min(max, limit) — limit keeps --graph-min-w (320) of graph visible. Double-click: back to defaultValue.
+// Drag: live, clamped to min … min(max, limit) — limit keeps --graph-min-w (320) of graph visible; no max by default (2026-11-14,
+// Story 10.38: the islands have no maximum width). Double-click: back to defaultValue.
 // Keyboard (a Tab stop): ← → 10pt (⇧ 50), Home / End = min / max, ↩ = default. role separator with aria-valuenow / -min / -max.
 function ResizeEdge({
   side = "left",
@@ -6098,7 +6156,7 @@ function ResizeEdge({
   bottom = 0,
   value,
   min,
-  max,
+  max = Infinity,
   defaultValue,
   limit,
   step = 10,
@@ -6181,6 +6239,95 @@ function ResizeEdge({
 }
 Object.assign(__ds_scope, { ResizeEdge });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/surfaces/ResizeEdge.jsx", error: String((e && e.message) || e) }); }
+
+// components/surfaces/SplitDivider.jsx
+try { (() => {
+// SplitDivider — the band between two panes of a split that sets the leading pane's length (2026-11-14, Story 10.38, sync #25): the
+// inspector's divider between its file list and its diff. axis "x": the panes side by side (a vertical band, col-resize); "y": stacked
+// (a horizontal band, row-resize). 12px band; at rest a 4px grip in --fl-border, centred, 10 % of the band's length; on hover and while
+// dragging a full-length 2px --accent line. The drag follows the pointer, clamped to min … max (when both cannot hold, max wins: the
+// other pane keeps its minimum); double-click and ↩ reset to defaultValue. Keys (a Tab stop): ← → (x) or ↑ ↓ (y) 10px, ⇧ 50px.
+// role separator; VoiceOver reads an adjustable slider, its value the leading pane's share of `total` in percent.
+function SplitDivider({
+  axis = "x",
+  value,
+  min = 0,
+  max = Infinity,
+  defaultValue,
+  total,
+  label = "Files and diff",
+  onChange,
+  onChangeEnd,
+  className = "",
+  style
+}) {
+  const [drag, setDrag] = React.useState(false);
+  const clamp = v => Math.round(Math.max(0, Math.min(max, Math.max(min, v))));
+  const x = axis === "x";
+  const down = e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const p0 = x ? e.clientX : e.clientY,
+      v0 = value,
+      el = e.currentTarget;
+    let last = v0;
+    if (el.setPointerCapture) el.setPointerCapture(e.pointerId);
+    setDrag(true);
+    const mv = ev => {
+      last = clamp(v0 + (x ? ev.clientX : ev.clientY) - p0);
+      if (onChange) onChange(last);
+    };
+    const up = () => {
+      setDrag(false);
+      el.removeEventListener("pointermove", mv);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      if (last !== v0 && onChangeEnd) onChangeEnd(last);
+    };
+    el.addEventListener("pointermove", mv);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
+  const settle = v => {
+    const n = clamp(v);
+    if (onChange) onChange(n);
+    if (onChangeEnd) onChangeEnd(n);
+  };
+  const onKey = e => {
+    const d = e.shiftKey ? 50 : 10;
+    const less = x ? "ArrowLeft" : "ArrowUp",
+      more = x ? "ArrowRight" : "ArrowDown";
+    if (e.key === less) {
+      e.preventDefault();
+      settle(value - d);
+    } else if (e.key === more) {
+      e.preventDefault();
+      settle(value + d);
+    } else if (e.key === "Enter" && defaultValue != null) {
+      e.preventDefault();
+      settle(defaultValue);
+    }
+  };
+  const share = total ? Math.round(value / total * 100) : 0;
+  return /*#__PURE__*/React.createElement("div", {
+    role: "separator",
+    "aria-orientation": x ? "vertical" : "horizontal",
+    "aria-label": label,
+    "aria-valuenow": share,
+    "aria-valuemin": 0,
+    "aria-valuemax": 100,
+    "aria-valuetext": share + "%",
+    tabIndex: 0,
+    title: "Drag to resize \xB7 double-click to reset",
+    className: ["zs-split", "is-" + axis, drag && "is-drag", className].filter(Boolean).join(" "),
+    style: style,
+    onPointerDown: down,
+    onDoubleClick: () => defaultValue != null && settle(defaultValue),
+    onKeyDown: onKey
+  });
+}
+Object.assign(__ds_scope, { SplitDivider });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/surfaces/SplitDivider.jsx", error: String((e && e.message) || e) }); }
 
 // components/window/TrafficLights.jsx
 try { (() => {
@@ -8373,7 +8520,6 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       bottom: EDGE,
       value: panW,
       min: 240,
-      max: 440,
       defaultValue: PANEL_W,
       limit: vw - RAIL_R - EDGE - 320 - (selected ? insW + EDGE * 2 : MINI + EDGE),
       label: "Panel width",
@@ -8385,7 +8531,6 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       bottom: EDGE,
       value: insW,
       min: 380,
-      max: 720,
       defaultValue: DETAIL_W,
       limit: vw - (pinned ? RAIL_R + panW + EDGE : RAIL_R) - EDGE * 2 - 320,
       label: "Inspector width",
@@ -9272,10 +9417,13 @@ try { (() => {
     }, {
       path: "lib/features/onboarding/onboarding_page.dart",
       status: "M",
-      hunks: [{
+      hunks: [
+      // two parts (jj's diff-editor sections) in one hunk, each with its own checkbox (Story 10.38)
+      {
         oldStart: 22,
         newStart: 22,
         ctx: "Widget build(BuildContext context)",
+        parts: [null, 0, 0, 0, null, 1, 1],
         lines: ["     return GestureDetector(", "-      onTap: _next,", "+      onHorizontalDragUpdate: _swipe.onUpdate,", "+      onHorizontalDragEnd: _swipe.onEnd,", "       child: PageView(", "-        physics: const NeverScrollableScrollPhysics(),", "+        controller: _swipe.pages,"]
       }]
     }, {
@@ -11356,7 +11504,8 @@ try { (() => {
     Checkbox,
     TextField,
     BookmarkChip,
-    HatchSwatch
+    HatchSwatch,
+    SplitDivider
   } = window.ZanshinDesignSystem_a33847;
   const Swatch = HatchSwatch || (() => null);
   const first = s => (s || "").split("\n")[0].trim();
@@ -11555,6 +11704,41 @@ try { (() => {
       className: "zk-comp-hint"
     }, "Every change is picked \u2014 Split needs something left behind. To describe this change, click its title."));
   }
+
+  // The description under the subject: 3 lines, then "Show more" while it is cut; open \u2192 "Show less". A new selection starts closed
+  // (the inspector keys it by the change). Story 10.38.
+  function ZKDesc({
+    text
+  }) {
+    const [open, setOpen] = React.useState(false),
+      [cut, setCut] = React.useState(false),
+      ref = React.useRef(null);
+    React.useLayoutEffect(() => {
+      const el = ref.current;
+      if (el && !open) setCut(el.scrollHeight > el.clientHeight + 1);
+    }, [text, open]);
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+      ref: ref,
+      className: "zk-ins-desc" + (open ? "" : " is-clamped")
+    }, text), (cut || open) && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      className: "zk-ins-more",
+      onClick: e => {
+        e.stopPropagation();
+        setOpen(!open);
+      },
+      onKeyDown: e => e.stopPropagation()
+    }, open ? "Show less" : "Show more"));
+  }
+
+  // The files' share of the split per layout, app-wide (x: side by side, y: stacked); written when a drag ends or on reset.
+  const SPLIT_DEFAULT = Object.freeze({
+    x: .34,
+    y: .38
+  });
+  const SPLIT = {
+    ...SPLIT_DEFAULT
+  };
   function ZKInspector({
     c,
     isWC,
@@ -11596,8 +11780,41 @@ try { (() => {
     const viewedN = files.filter(f => viewed[f.path]).length;
     const tot = window.zkCount(files);
     const parents = [...c.parents, ...c.gapParents];
-    const composing = mutable && (isWC ? files.length > 0 : sel.size > 0);
+    // Picks by part (Story 10.38): a hunk of several parts keeps its picked parts here while only some are picked; all → the hunk's id
+    // in `sel`, none → neither. The composer takes a partly picked hunk as picked.
+    const [partSel, setPartSel] = React.useState({});
+    const picked = React.useMemo(() => new Set([...sel, ...Object.keys(partSel).filter(id => allIds.includes(id) && partSel[id].length)]), [sel, partSel, allIds]);
+    const composing = mutable && (isWC ? files.length > 0 : picked.size > 0);
     const liftSet = lift ? new Set(lift) : null;
+
+    // The split: side by side from 780 wide, stacked below 740, the last layout between; the files' share per layout.
+    const mainRef = React.useRef(null),
+      splitRef = React.useRef(null);
+    const [wide, setWide] = React.useState(null),
+      [size, setSize] = React.useState({
+        w: 0,
+        h: 0
+      }),
+      [share, setShare] = React.useState(SPLIT);
+    React.useLayoutEffect(() => {
+      const ro = new ResizeObserver(() => {
+        const w = mainRef.current ? mainRef.current.clientWidth : 0;
+        setWide(was => was === true ? w >= 740 : w >= 780);
+        const s = splitRef.current; // the split's padding: 12 16 14
+        if (s) setSize({
+          w: s.clientWidth - 32,
+          h: s.clientHeight - 26
+        });
+      });
+      if (mainRef.current) ro.observe(mainRef.current);
+      if (splitRef.current) ro.observe(splitRef.current);
+      return () => ro.disconnect();
+    }, [files.length]);
+    const axis = wide ? "x" : "y",
+      room = Math.max(0, (wide ? size.w : size.h) - 12);
+    const minF = wide ? 220 : 110,
+      maxF = room - (wide ? 320 : 140);
+    const filesPx = Math.max(0, Math.min(maxF, Math.max(minF, share[axis] * room)));
     React.useEffect(() => {
       // Esc clears a split selection before it closes the panel
       if (isWC || !sel.size || editing) return;
@@ -11610,17 +11827,42 @@ try { (() => {
       window.addEventListener("keydown", k, true);
       return () => window.removeEventListener("keydown", k, true);
     }, [isWC, sel.size, editing]);
-    const toggle = ids => setSel(s => {
-      const n = new Set([...s].filter(id => allIds.includes(id)));
-      const on = ids.every(id => n.has(id));
-      ids.forEach(id => on ? n.delete(id) : n.add(id));
-      return n;
-    });
-    const fileState = f => {
-      const k = f.hunks.filter(h => sel.has(h.id)).length;
-      return k === 0 ? "none" : k === f.hunks.length ? "all" : "some";
+    const toggle = ids => {
+      setSel(s => {
+        const n = new Set([...s].filter(id => allIds.includes(id)));
+        const on = ids.every(id => n.has(id));
+        ids.forEach(id => on ? n.delete(id) : n.add(id));
+        return n;
+      });
+      setPartSel(o => {
+        const n = {
+          ...o
+        };
+        ids.forEach(id => delete n[id]);
+        return n;
+      });
     };
-    const allState = sel.size === 0 ? "none" : sel.size === allIds.length ? "all" : "some";
+    const partsOf = h => new Set((h.parts || []).filter(p => p != null)).size;
+    const togglePart = (h, p) => {
+      const was = sel.has(h.id) ? [...Array(partsOf(h)).keys()] : partSel[h.id] || [];
+      const next = was.includes(p) ? was.filter(x => x !== p) : [...was, p];
+      const whole = next.length === partsOf(h);
+      setSel(s => {
+        const n = new Set(s);
+        whole ? n.add(h.id) : n.delete(h.id);
+        return n;
+      });
+      setPartSel(o => ({
+        ...o,
+        [h.id]: whole ? [] : next
+      }));
+    };
+    const fileState = f => {
+      const k = f.hunks.filter(h => sel.has(h.id)).length,
+        some = f.hunks.some(h => (partSel[h.id] || []).length);
+      return k === 0 && !some ? "none" : k === f.hunks.length ? "all" : "some";
+    };
+    const allState = picked.size === 0 ? "none" : sel.size === allIds.length ? "all" : "some";
     const payload = ids => {
       const set = new Set(ids),
         fs = files.map(f => ({
@@ -11725,7 +11967,10 @@ try { (() => {
       title: "Close (Esc)",
       onClick: onClose
     })), /*#__PURE__*/React.createElement("div", {
-      className: "zk-ins-scroll"
+      className: "zk-ins-main",
+      ref: mainRef
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "zk-ins-top"
     }, editing && mutable ? /*#__PURE__*/React.createElement(ZKDescribe, {
       c: c,
       onSave: (s, b) => {
@@ -11751,9 +11996,10 @@ try { (() => {
       name: "describe",
       size: "sm",
       className: "zk-ins-pen"
-    })), c.description && /*#__PURE__*/React.createElement("p", {
-      className: "zk-ins-desc"
-    }, c.description)), /*#__PURE__*/React.createElement("div", {
+    })), c.description && /*#__PURE__*/React.createElement(ZKDesc, {
+      key: c.id,
+      text: c.description
+    })), /*#__PURE__*/React.createElement("div", {
       className: "zk-ins-meta"
     }, c.author && /*#__PURE__*/React.createElement("span", null, c.author), c.date && /*#__PURE__*/React.createElement("span", null, c.date === "now" ? "just now" : c.date), parents.length > 0 && /*#__PURE__*/React.createElement("span", {
       className: "zk-ins-parents"
@@ -11797,16 +12043,27 @@ try { (() => {
       });
     })), !editing && /*#__PURE__*/React.createElement("div", {
       className: "zk-ins-act"
-    }, actions), /*#__PURE__*/React.createElement("div", {
+    }, actions)), files.length === 0 ? /*#__PURE__*/React.createElement("div", {
       className: "zk-ins-body"
-    }, files.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "zk-ch-empty"
-    }, isWC ? "No changes yet — whatever you edit in your editor lands here." : c.merge ? "A merge — no changes of its own." : "This change has no file changes.") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, isWC ? "No changes yet — whatever you edit in your editor lands here." : c.merge ? "A merge — no changes of its own." : "This change has no file changes.")) : /*#__PURE__*/React.createElement("div", {
+      ref: splitRef,
+      className: "zk-ins-split" + (wide ? " is-wide" : " is-narrow")
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "zk-ins-files",
+      style: {
+        flex: "0 0 " + filesPx + "px"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
       className: "zk-ch-hd"
     }, mutable && /*#__PURE__*/React.createElement(Checkbox, {
       checked: allState === "all",
       mixed: allState === "some",
-      onChange: () => setSel(allState === "all" ? new Set() : new Set(allIds)),
+      onChange: () => {
+        setSel(allState === "all" ? new Set() : new Set(allIds));
+        setPartSel({});
+      },
       label: allState === "all" ? "Deselect all" : "Select all"
     }), /*#__PURE__*/React.createElement("span", {
       className: "zk-ch-title"
@@ -11849,7 +12106,23 @@ try { (() => {
         onPointerDown: mutable ? e => dragFile(e, f) : undefined,
         title: mutable ? f.path + " — drag onto a change to move it there" : f.path
       });
-    })), ff && /*#__PURE__*/React.createElement(DiffView, {
+    }))), SplitDivider && /*#__PURE__*/React.createElement(SplitDivider, {
+      axis: axis,
+      value: filesPx,
+      min: minF,
+      max: maxF,
+      total: room,
+      defaultValue: SPLIT_DEFAULT[axis] * room,
+      onChange: v => setShare(s => ({
+        ...s,
+        [axis]: room ? v / room : s[axis]
+      })),
+      onChangeEnd: v => {
+        if (room) SPLIT[axis] = v / room;
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "zk-ins-diff"
+    }, ff && /*#__PURE__*/React.createElement(DiffView, {
       file: ff.path,
       viewed: !!viewed[ff.path],
       onViewedChange: v => setViewed(ff.path, v),
@@ -11879,18 +12152,25 @@ try { (() => {
       selected: sel.has(h.id),
       lifted: !!(liftSet && liftSet.has(h.id)),
       onToggle: () => toggle([h.id]),
+      parts: h.parts,
+      picked: sel.has(h.id) ? [...Array(partsOf(h)).keys()] : partSel[h.id] || [],
+      onTogglePart: p => togglePart(h, p),
       onGrab: mutable ? e => dragHunk(e, h) : undefined
     })))))), composing && /*#__PURE__*/React.createElement(ZKComposer, {
       key: c.id + (isWC ? "w" : "s"),
       c: c,
       isWC: isWC,
       files: files,
-      sel: sel,
+      sel: picked,
       onRun: (ids, msg) => {
         (isWC ? onCommit : onSplit)(ids, msg);
         setSel(new Set());
+        setPartSel({});
       },
-      onClear: () => setSel(new Set())
+      onClear: () => {
+        setSel(new Set());
+        setPartSel({});
+      }
     }));
   }
   Object.assign(window, {
@@ -13440,6 +13720,8 @@ __ds_ns.OptionRow = __ds_scope.OptionRow;
 __ds_ns.OptionLink = __ds_scope.OptionLink;
 
 __ds_ns.ResizeEdge = __ds_scope.ResizeEdge;
+
+__ds_ns.SplitDivider = __ds_scope.SplitDivider;
 
 __ds_ns.TrafficLights = __ds_scope.TrafficLights;
 

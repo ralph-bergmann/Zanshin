@@ -359,7 +359,9 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('the pinned Undo Timeline takes the shared panel width: 240–440, the same as Bookmarks', (tester) async {
+  testWidgets('the pinned Undo Timeline takes the shared panel width: at least 240, the same as Bookmarks', (
+    tester,
+  ) async {
     useShellWindow(tester);
     final model = UndoTimelineModel(FakeTimelineSource(_log(3)), clock: () => _now);
     final controller = ShellController()..panelWidth = 350;
@@ -389,7 +391,7 @@ void main() {
     final TestGesture drag = await tester.startGesture(tester.getCenter(edge), kind: PointerDeviceKind.mouse);
     await drag.moveBy(const Offset(400, 0));
     await tester.pump();
-    expect(panel().width, 440);
+    expect(panel().width, 750, reason: 'no maximum: only 320 of graph must remain');
     await drag.moveBy(const Offset(-800, 0));
     await tester.pump();
     expect(panel().width, 240);

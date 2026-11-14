@@ -22,7 +22,8 @@ import 'shell_layout.dart';
 /// controls; inert during item drags.
 ///
 /// **Flyout** (Claude's proposal; decision 16.23). While the pinned panel has no room, the controller can show it as
-/// the rail's temporary flyout: the same panel at the remembered width clamped to 240–440, beside the rail, over the
+/// the rail's temporary flyout: the same panel at the remembered width (at least 240, at most what leaves 320 of the
+/// window beside the rail, its gap and the inset), beside the rail, over the
 /// graph, with no edge, in a backdrop group of its own (it may overlap the inspector) and a [TapRegion] in
 /// [railGroup], so a tap outside it and the rail closes it.
 class ShellPanels extends StatefulWidget {
@@ -139,7 +140,7 @@ class _ShellPanelsState extends State<ShellPanels> {
               left: metrics.chromeLeft,
               top: metrics.chromeTop,
               bottom: metrics.chromeInset,
-              // The layout's panel width: the remembered width clamped to 240–440 while the panel is collapsed.
+              // The layout's panel width: while collapsed, the remembered width that leaves 320 of the window.
               width: layout.panelWidth,
               child: ZsPresence(
                 open: flyoutShown,

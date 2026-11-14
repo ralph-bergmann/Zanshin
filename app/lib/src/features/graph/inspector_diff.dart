@@ -268,11 +268,81 @@ Widget _lineText(ZsColors colors, HunkLine line, Color ink, {required bool wordM
   );
 }
 
+/// The part of a hunk [line] belongs to (Story 10.38, DESIGN-SYSTEM-SYNC #26): the index of the first of [sections]
+/// (jj's builtin diff-editor sections, 0-based starts) whose left range holds the line's left number − 1 or whose
+/// right range holds its right number − 1; null for a context line, a conflict header and a line in no section.
+int? hunkPartOf(List<HunkKey> sections, HunkLine line) {
+  if (line.kind == HunkLineKind.context || line.kind == HunkLineKind.conflictHeader) {
+    return null;
+  }
+  bool inside(int? number, int start, int count) => number != null && number - 1 >= start && number - 1 < start + count;
+  for (var i = 0; i < sections.length; i++) {
+    final HunkKey s = sections[i];
+    if (inside(line.left, s.oldStart, s.oldCount) || inside(line.right, s.newStart, s.newCount)) {
+      return i;
+    }
+  }
+  return null;
+}
+
+/// [hunk]'s lines' parts ([hunkPartOf]), in line order.
+List<int?> hunkLineParts(Hunk hunk) => <int?>[for (final HunkLine line in hunk.lines) hunkPartOf(hunk.sections, line)];
+
+/// What a unified hunk needs to keep its numbers in view (Story 10.38, deferred-work I1): the file's horizontal
+/// scroll, the visible width, and the number columns' digits and width (the file's largest number).
+@immutable
+class DiffPin {
+  /// The pin of one file's unified lines.
+  const DiffPin({required this.horizontal, required this.viewport, required this.digits, required this.numberWidth});
+
+  /// The file's horizontal scroll; null when the lines do not scroll (nothing moves).
+  final ScrollController? horizontal;
+
+  /// The visible width: the hunk header's width.
+  final double viewport;
+
+  /// A number column's width in digits.
+  final int digits;
+
+  /// A number column's width in points.
+  final double numberWidth;
+}
+
+/// Moves [child] right by [controller]'s offset, so it stays at the visible left edge of a horizontal scroll.
+class _Pinned extends StatelessWidget {
+  const _Pinned({required this.controller, required this.child});
+
+  final ScrollController? controller;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final ScrollController? controller = this.controller;
+    if (controller == null) {
+      return child;
+    }
+    return AnimatedBuilder(
+      animation: controller,
+      child: child,
+      builder: (context, child) => Transform.translate(
+        offset: Offset(controller.hasClients ? math.max(0, controller.offset) : 0, 0),
+        child: child,
+      ),
+    );
+  }
+}
+
 /// The focused file's diff block (Story 10.24; DS components/content/DiffView, content.css:22-46): the code well with
 /// a bar (the path, the layout toggle, Viewed) over its hunks, the refusal text or a one-line placeholder; a viewed
 /// file folds into one green row whose click unfolds it and clears Viewed. Without [onViewedChanged] there is no Viewed
 /// toggle and nothing folds (Story 10.29's operation view). With [hunkPicked] each hunk with sections gets a checkbox,
-/// with [modePicked] the mode-change note does (Story 10.26); without them there is none.
+/// with [modePicked] the mode-change note does (Story 10.26); without them there is none. With [partPicked] a hunk of
+/// more than one part gets a checkbox per part (Story 10.38).
+///
+/// **Scrolling** (Story 10.38). The unified lines of the whole file scroll sideways as one unit, every line as wide as
+/// the widest; the number columns and the hunk headers stay in view ([DiffPin]). With a bounded height (the inspector)
+/// the body fills it and scrolls both ways in one [ZsScrollArea]; with an unbounded one (the Undo Timeline's operation
+/// view, the catalogue) it keeps the height of its content and scrolls only sideways.
 class InspectorDiffView extends StatelessWidget {
   /// The block of [path].
   const InspectorDiffView({
@@ -286,6 +356,8 @@ class InspectorDiffView extends StatelessWidget {
     this.onViewedChanged,
     this.hunkPicked,
     this.onHunkToggled,
+    this.partPicked,
+    this.onPartToggled,
     this.modePicked,
     this.onModeToggled,
     super.key,
@@ -296,6 +368,12 @@ class InspectorDiffView extends StatelessWidget {
 
   /// Toggles a hunk's pick.
   final ValueChanged<Hunk>? onHunkToggled;
+
+  /// Whether a part (a section) is picked; null: no part checkboxes.
+  final bool Function(HunkKey part)? partPicked;
+
+  /// Toggles a part's pick.
+  final ValueChanged<HunkKey>? onPartToggled;
 
   /// Whether the mode change is picked; null: no mode checkbox.
   final bool? modePicked;
@@ -329,7 +407,10 @@ class InspectorDiffView extends StatelessWidget {
   final ValueChanged<DiffLayoutSetting> onLayoutChanged;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      LayoutBuilder(builder: (context, constraints) => _build(context, bounded: constraints.hasBoundedHeight));
+
+  Widget _build(BuildContext context, {required bool bounded}) {
     final AppLocalizations strings = context.l10n;
     final ZsColors colors = ZsColors.of(context);
     final metrics = ZsMetrics.of(context);
@@ -390,31 +471,24 @@ class InspectorDiffView extends StatelessWidget {
             )
           : diff.hunks.isEmpty
           ? (diff.modeChange ? mode : _note(context, strings.inspectorDiffNoLines))
-          : SelectionArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  if (diff.modeChange) mode,
-                  for (var i = 0; i < diff.hunks.length; i++)
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: i == 0 ? null : Border(top: BorderSide(color: colors.flBorder)),
-                      ),
-                      child: InspectorDiffHunk(
-                        hunk: diff.hunks[i],
-                        layout: layout,
-                        wordMarks: wordMarks,
-                        selectable: hunkPicked != null && diff.hunks[i].sections.isNotEmpty,
-                        picked: hunkPicked == null ? false : hunkPicked(diff.hunks[i]),
-                        onToggle: () => onHunkToggled?.call(diff.hunks[i]),
-                      ),
-                    ),
-                ],
-              ),
+          : _DiffBody(
+              // A new file starts at the top and the left.
+              key: ValueKey<String>(path),
+              diff: diff,
+              mode: diff.modeChange ? mode : null,
+              layout: layout,
+              wordMarks: wordMarks,
+              bounded: bounded,
+              hunkPicked: hunkPicked,
+              onHunkToggled: onHunkToggled,
+              partPicked: partPicked,
+              onPartToggled: onPartToggled,
             );
     } else {
       body = const SizedBox.shrink();
     }
+    // The notes and the folded row sit at the top of a bounded body; the lines scroll there themselves.
+    final scrolls = body is _DiffBody;
     return Container(
       key: const ValueKey<String>('inspector-diff'),
       clipBehavior: Clip.antiAlias,
@@ -424,6 +498,7 @@ class InspectorDiffView extends StatelessWidget {
         borderRadius: BorderRadius.circular(metrics.radiusWell),
       ),
       child: Column(
+        mainAxisSize: bounded ? MainAxisSize.max : MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Container(
@@ -469,7 +544,12 @@ class InspectorDiffView extends StatelessWidget {
               ],
             ),
           ),
-          body,
+          if (!bounded)
+            body
+          else if (scrolls)
+            Expanded(child: body)
+          else
+            Expanded(child: SingleChildScrollView(child: body)),
         ],
       ),
     );
@@ -612,23 +692,161 @@ class InspectorTextButton extends StatelessWidget {
   }
 }
 
+/// The lines of one file's hunks with their scrolling (see [InspectorDiffView]): keyed by the path, so a new file
+/// starts at the top and the left.
+class _DiffBody extends StatefulWidget {
+  const _DiffBody({
+    required this.diff,
+    required this.mode,
+    required this.layout,
+    required this.wordMarks,
+    required this.bounded,
+    required this.hunkPicked,
+    required this.onHunkToggled,
+    required this.partPicked,
+    required this.onPartToggled,
+    super.key,
+  });
+
+  final FileDiff diff;
+  final Widget? mode;
+  final DiffLayoutSetting layout;
+  final bool wordMarks;
+  final bool bounded;
+  final bool? Function(Hunk hunk)? hunkPicked;
+  final ValueChanged<Hunk>? onHunkToggled;
+  final bool Function(HunkKey part)? partPicked;
+  final ValueChanged<HunkKey>? onPartToggled;
+
+  @override
+  State<_DiffBody> createState() => _DiffBodyState();
+}
+
+class _DiffBodyState extends State<_DiffBody> {
+  // Unbounded, the vertical controller stays unattached: the body scrolls only sideways, its host scrolls it down.
+  final _vertical = ScrollController();
+  final _horizontal = ScrollController();
+
+  @override
+  void dispose() {
+    _vertical.dispose();
+    _horizontal.dispose();
+    super.dispose();
+  }
+
+  /// The number columns' width in digits: the file's largest number's, so every hunk's numbers line up.
+  int get _digits {
+    var largest = 0;
+    for (final Hunk hunk in widget.diff.hunks) {
+      for (final HunkLine line in hunk.lines) {
+        largest = math.max(largest, math.max(line.left ?? 0, line.right ?? 0));
+      }
+    }
+    return '$largest'.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ZsColors colors = ZsColors.of(context);
+    final unified = widget.layout == DiffLayoutSetting.unified;
+    final List<Hunk> hunks = widget.diff.hunks;
+    final bool? Function(Hunk hunk)? hunkPicked = widget.hunkPicked;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final int digits = _digits;
+        final painter = TextPainter(
+          text: TextSpan(text: '0' * digits, style: ZsType.code),
+          textDirection: TextDirection.ltr,
+          textScaler: MediaQuery.maybeTextScalerOf(context) ?? TextScaler.noScaling,
+        )..layout();
+        final double numberWidth = painter.width.ceilToDouble();
+        painter.dispose();
+        final pin = DiffPin(
+          horizontal: unified ? _horizontal : null,
+          viewport: constraints.maxWidth,
+          digits: digits,
+          numberWidth: numberWidth,
+        );
+        final Widget all = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            for (var i = 0; i < hunks.length; i++)
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  border: i == 0 ? null : Border(top: BorderSide(color: colors.flBorder)),
+                ),
+                child: InspectorDiffHunk(
+                  hunk: hunks[i],
+                  layout: widget.layout,
+                  pin: pin,
+                  wordMarks: widget.wordMarks,
+                  selectable: hunkPicked != null && hunks[i].sections.isNotEmpty,
+                  picked: hunkPicked == null ? false : hunkPicked(hunks[i]),
+                  onToggle: () => widget.onHunkToggled?.call(hunks[i]),
+                  partPicked: widget.partPicked,
+                  onPartToggled: widget.onPartToggled,
+                ),
+              ),
+          ],
+        );
+        // Unified: one horizontal unit for the whole file, every line as wide as the widest.
+        final Widget lines = unified
+            ? SingleChildScrollView(
+                controller: _horizontal,
+                scrollDirection: Axis.horizontal,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                  child: IntrinsicWidth(child: all),
+                ),
+              )
+            : all;
+        final Widget? mode = widget.mode;
+        Widget content = mode == null
+            ? lines
+            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: <Widget>[mode, lines]);
+        if (widget.bounded) {
+          content = ZsScrollArea(
+            controller: _vertical,
+            horizontalController: unified ? _horizontal : null,
+            identifier: 'inspector-diff-body',
+            child: SingleChildScrollView(controller: _vertical, child: content),
+          );
+        } else if (unified) {
+          content = ZsScrollArea(controller: _vertical, horizontalController: _horizontal, child: content);
+        }
+        return SelectionArea(child: content);
+      },
+    );
+  }
+}
+
 /// One hunk (DS components/content/DiffHunk, content.css:48-55): the header band (`--hunk-bg`: the range in
 /// `--hunk`, the symbol, +added / −removed) over its color-words lines (Story 5.10), unified (a left and a right
-/// line-number column, scrolling horizontally on its own) or side by side (two clipped cells per row, each with its
-/// number, whole lines rebuilt by [pairSideBySide]). The unified lines sit in a [ZsScrollArea]: its bar along the bottom
-/// shows a cut line while scrolling or hovered, ←/→ scroll it when focused. Story 10.26 (DS DiffHunk.prompt.md:8-11,
-/// content.css:58-59): a [selectable] hunk leads its header with a tristate checkbox (its Tab stop, Space toggles);
-/// a picked one (all or mixed) has its header on `--accent-soft-hi` with `--text` and a 2 px `--accent-line` edge
-/// along its lines. Story 10.32: a line's changed words carry [DiffWordMarks] in both layouts.
-class InspectorDiffHunk extends StatefulWidget {
+/// line-number column) or side by side (two clipped cells per row, each with its number, whole lines rebuilt by
+/// [pairSideBySide]). Unified, the lines scroll sideways with the whole file ([pin]): the numbers (and the part gutter)
+/// stay at the visible left edge, painted over the text on an opaque backing (the well colour plus the line's fill),
+/// and the header is as wide as the visible area and stays in view (Story 10.38, deferred-work I1).
+///
+/// Story 10.26 (DS DiffHunk.prompt.md:8-11, content.css:58-59): a [selectable] hunk leads its header with a tristate
+/// checkbox (its Tab stop, Space toggles); all picked puts the header on `--accent-soft-hi` with `--text`, some on
+/// `--accent` at 12 %; a picked hunk's lines carry a 2 px `--accent-line` edge. Story 10.32: a line's changed words
+/// carry [DiffWordMarks] in both layouts.
+///
+/// Story 10.38 (DESIGN-SYSTEM-SYNC #26): with [partPicked], a selectable hunk of more than one part ([hunkPartOf])
+/// shows "N parts" in its header and a 22 px gutter before its numbers (side by side: leading the row) with a 13 px
+/// checkbox on each part's first line; then only a picked part's lines carry the edge.
+class InspectorDiffHunk extends StatelessWidget {
   /// [hunk] in [layout].
   const InspectorDiffHunk({
     required this.hunk,
     required this.layout,
+    required this.pin,
     this.wordMarks = true,
     this.selectable = false,
     this.picked = false,
     this.onToggle,
+    this.partPicked,
+    this.onPartToggled,
     super.key,
   });
 
@@ -641,6 +859,9 @@ class InspectorDiffHunk extends StatefulWidget {
   /// Unified or side by side.
   final DiffLayoutSetting layout;
 
+  /// The file's number columns and, unified, its horizontal scroll.
+  final DiffPin pin;
+
   /// Whether the header has a checkbox.
   final bool selectable;
 
@@ -650,86 +871,130 @@ class InspectorDiffHunk extends StatefulWidget {
   /// Toggles [picked].
   final VoidCallback? onToggle;
 
-  @override
-  State<InspectorDiffHunk> createState() => _InspectorDiffHunkState();
-}
+  /// Whether a part is picked; null: no part checkboxes.
+  final bool Function(HunkKey part)? partPicked;
 
-class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
-  // The area's vertical controller stays unattached: the hunk scrolls only sideways, the inspector scrolls it down.
-  final _vertical = ScrollController();
-  final _horizontal = ScrollController();
+  /// Toggles a part's pick.
+  final ValueChanged<HunkKey>? onPartToggled;
 
-  Hunk get hunk => widget.hunk;
+  /// The part gutter's width (design inspector-study.css:170).
+  static const double _gutter = 22;
 
-  DiffLayoutSetting get layout => widget.layout;
-
-  @override
-  void dispose() {
-    _vertical.dispose();
-    _horizontal.dispose();
-    super.dispose();
-  }
+  /// Whether the hunk shows its parts.
+  bool get _parts => selectable && partPicked != null && hunk.sections.length > 1;
 
   @override
   Widget build(BuildContext context) {
     final ZsColors colors = ZsColors.of(context);
+    final AppLocalizations strings = context.l10n;
     final TextStyle head = ZsType.id.copyWith(fontSize: ZsType.fsSm);
     final String? symbol = hunk.symbol;
-    final bool chosen = widget.picked ?? true;
-    final Widget lines = layout == DiffLayoutSetting.unified ? _unified(colors) : _sideBySide(colors);
+    final bool chosen = picked ?? true;
+    final bool parts = _parts;
+    final unified = layout == DiffLayoutSetting.unified;
+    Widget header = Container(
+      key: const ValueKey<String>('inspector-hunk-header'),
+      constraints: const BoxConstraints(minHeight: 30),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      color: switch (picked) {
+        true => colors.accentSoftHi,
+        null => Color.alphaBlend(colors.accent.withValues(alpha: .12), colors.codeBg),
+        false => colors.hunkBg,
+      },
+      child: Row(
+        spacing: 8,
+        children: <Widget>[
+          if (selectable)
+            ZsCheckbox(
+              value: picked,
+              tristate: true,
+              onChanged: (_) => onToggle?.call(),
+              label: strings.inspectorHunkCheck(hunkHeader(hunk)),
+              size: ZsCheckboxSize.sm,
+              identifier: 'inspector-hunk-check',
+            ),
+          Text(hunkHeader(hunk), style: head.copyWith(color: chosen ? colors.text : colors.hunk)),
+          if (parts)
+            Container(
+              key: const ValueKey<String>('inspector-hunk-parts'),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+              decoration: BoxDecoration(color: colors.flHover, borderRadius: BorderRadius.circular(999)),
+              child: Text(
+                strings.inspectorHunkParts(hunk.sections.length),
+                style: ZsType.secondary.copyWith(fontSize: 10.5, color: colors.textDim),
+              ),
+            ),
+          Expanded(
+            child: symbol == null
+                ? const SizedBox.shrink()
+                : Text(
+                    symbol,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: head.copyWith(color: colors.textMuted),
+                  ),
+          ),
+          if (hunk.added > 0) Text('+${hunk.added}', style: head.copyWith(color: colors.add)), // l10n-ignore: a count
+          if (hunk.removed > 0)
+            Text('−${hunk.removed}', style: head.copyWith(color: colors.rem)), // l10n-ignore: a count
+        ],
+      ),
+    );
+    if (unified) {
+      header = Align(
+        alignment: Alignment.centerLeft,
+        child: _Pinned(
+          controller: pin.horizontal,
+          child: SizedBox(width: pin.viewport, child: header),
+        ),
+      );
+    }
+    final Widget lines = unified ? _unified(context, colors) : _sideBySide(context, colors);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Container(
-          key: const ValueKey<String>('inspector-hunk-header'),
-          constraints: const BoxConstraints(minHeight: 30),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          color: chosen ? colors.accentSoftHi : colors.hunkBg,
-          child: Row(
-            spacing: 8,
-            children: <Widget>[
-              if (widget.selectable)
-                ZsCheckbox(
-                  value: widget.picked,
-                  tristate: true,
-                  onChanged: (_) => widget.onToggle?.call(),
-                  label: context.l10n.inspectorHunkCheck(hunkHeader(hunk)),
-                  size: ZsCheckboxSize.sm,
-                  identifier: 'inspector-hunk-check',
-                ),
-              Text(hunkHeader(hunk), style: head.copyWith(color: chosen ? colors.text : colors.hunk)),
-              Expanded(
-                child: symbol == null
-                    ? const SizedBox.shrink()
-                    : Text(
-                        symbol,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: head.copyWith(color: colors.textMuted),
-                      ),
-              ),
-              if (hunk.added > 0)
-                Text('+${hunk.added}', style: head.copyWith(color: colors.add)), // l10n-ignore: a count
-              if (hunk.removed > 0)
-                Text('−${hunk.removed}', style: head.copyWith(color: colors.rem)), // l10n-ignore: a count
-            ],
-          ),
-        ),
+        header,
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          // Always there (no edge: none drawn), so a toggle keeps the lines' scroll position.
-          child: DecoratedBox(
-            key: const ValueKey<String>('inspector-hunk-edge'),
-            position: DecorationPosition.foreground,
-            decoration: BoxDecoration(
-              border: chosen ? Border(left: BorderSide(color: colors.accentLine, width: 2)) : null,
-            ),
-            child: lines,
-          ),
+          // Unified lines and parts draw their edge per line; side by side the whole hunk's.
+          child: unified || parts
+              ? lines
+              : DecoratedBox(
+                  key: const ValueKey<String>('inspector-hunk-edge'),
+                  position: DecorationPosition.foreground,
+                  decoration: BoxDecoration(
+                    border: chosen ? Border(left: BorderSide(color: colors.accentLine, width: 2)) : null,
+                  ),
+                  child: lines,
+                ),
         ),
       ],
     );
   }
+
+  /// [part]'s checkbox.
+  Widget _partBox(BuildContext context, int part) {
+    final AppLocalizations strings = context.l10n;
+    final HunkKey key = hunk.sections[part];
+    final bool on = partPicked!(key);
+    // The part's 1-based lines on the new side; a pure deletion has none there, so its old side.
+    final (int start, int count) = key.newCount > 0 ? (key.newStart, key.newCount) : (key.oldStart, key.oldCount);
+    final int end = start + count;
+    return Center(
+      child: ZsCheckbox(
+        value: on,
+        onChanged: (_) => onPartToggled?.call(key),
+        label: on
+            ? strings.inspectorPartUnpick(count, start + 1, end)
+            : strings.inspectorPartPick(count, start + 1, end),
+        size: ZsCheckboxSize.sm,
+        identifier: 'inspector-part-check',
+      ),
+    );
+  }
+
+  /// Whether a line of [part] carries the edge: with parts, a picked part's lines; else every line of a picked hunk.
+  bool _edged(int? part) => _parts ? part != null && partPicked!(hunk.sections[part]) : (picked ?? true);
 
   /// A line's look (Story 5.10): its fill, its text ink and its left / right number inks. Context: faint numbers,
   /// muted text. Removed / added: the side's hue for its number and text on the side's fill. Changed: both numbers
@@ -745,86 +1010,115 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
     };
   }
 
-  /// A line number right-aligned in [digits] columns of the mono face, outside the selection; blank for none.
-  Widget _number(int? number, int digits, Color ink) => SelectionContainer.disabled(
-    child: Text(
-      '${number ?? ''}'.padLeft(digits),
-      softWrap: false,
-      style: ZsType.code.copyWith(color: ink),
+  /// A line number right-aligned in the file's number column, outside the selection; blank for none.
+  Widget _number(int? number, Color ink) => SizedBox(
+    width: pin.numberWidth,
+    child: SelectionContainer.disabled(
+      child: Text(
+        '${number ?? ''}'.padLeft(pin.digits),
+        softWrap: false,
+        textAlign: TextAlign.right,
+        overflow: TextOverflow.clip,
+        style: ZsType.code.copyWith(color: ink),
+      ),
     ),
   );
 
-  /// The number columns' width in digits: the hunk's largest number's.
-  int get _digits {
-    var largest = 0;
-    for (final HunkLine line in hunk.lines) {
-      largest = math.max(largest, math.max(line.left ?? 0, line.right ?? 0));
-    }
-    return '$largest'.length;
-  }
-
-  Widget _unified(ZsColors colors) {
-    final int digits = _digits;
-    return LayoutBuilder(
-      builder: (context, constraints) => ZsScrollArea(
-        controller: _vertical,
-        horizontalController: _horizontal,
-        child: SingleChildScrollView(
-          controller: _horizontal,
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: IntrinsicWidth(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget _unified(BuildContext context, ZsColors colors) {
+    final bool parts = _parts;
+    final List<int?> lineParts = parts ? hunkLineParts(hunk) : const <int?>[];
+    final shown = <int>{};
+    // The pinned group: 10 padding, the gutter, the two number columns 8 apart, 8 before the text.
+    final double pinWidth = 10 + (parts ? _gutter : 0) + pin.numberWidth * 2 + 16;
+    final Color none = colors.textMuted.withValues(alpha: 0);
+    // The text runs under the pinned group, which paints after it on the well colour plus the line's fill.
+    Widget row({
+      required Color fill,
+      required Widget text,
+      required bool edge,
+      int? left,
+      int? right,
+      Color? leftInk,
+      Color? rightInk,
+      Widget? gutter,
+    }) => Stack(
+      fit: StackFit.passthrough,
+      children: <Widget>[
+        Container(
+          color: fill,
+          padding: EdgeInsets.only(left: pinWidth, right: 10),
+          child: text,
+        ),
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: pinWidth,
+          child: _Pinned(
+            controller: pin.horizontal,
+            child: Container(
+              key: const ValueKey<String>('inspector-line-pin'),
+              padding: const EdgeInsets.only(left: 10),
+              color: Color.alphaBlend(fill, colors.codeBg),
+              // Always a decoration, so a toggle keeps the subtree (and a focused part checkbox) in place.
+              foregroundDecoration: BoxDecoration(
+                border: edge ? Border(left: BorderSide(color: colors.accentLine, width: 2)) : null,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  for (final HunkLine line in hunk.lines) ...<Widget>[
-                    Builder(
-                      builder: (context) {
-                        final _Look look = _look(colors, line.kind);
-                        final header = line.kind == HunkLineKind.conflictHeader;
-                        return Container(
-                          color: look.fill,
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            spacing: 8,
-                            children: <Widget>[
-                              if (!header) ...<Widget>[
-                                _number(line.left, digits, look.left),
-                                _number(line.right, digits, look.right),
-                              ],
-                              _lineText(colors, line, look.ink, wordMarks: widget.wordMarks),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                    // Blank number columns put the marker where the line's text starts.
-                    if (!line.text.endsWith('\n'))
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: Row(
-                          spacing: 8,
-                          children: <Widget>[
-                            _number(null, digits, colors.textFaint),
-                            _number(null, digits, colors.textFaint),
-                            _noNewline(colors, EdgeInsets.zero),
-                          ],
-                        ),
-                      ),
-                  ],
+                  if (parts) SizedBox(width: _gutter, child: gutter),
+                  _number(left, leftInk ?? none),
+                  const SizedBox(width: 8),
+                  _number(right, rightInk ?? none),
                 ],
               ),
             ),
           ),
         ),
-      ),
+      ],
     );
+    final rows = <Widget>[];
+    for (var i = 0; i < hunk.lines.length; i++) {
+      final HunkLine line = hunk.lines[i];
+      final _Look look = _look(colors, line.kind);
+      final int? part = parts ? lineParts[i] : null;
+      final bool edge = _edged(part);
+      if (line.kind == HunkLineKind.conflictHeader) {
+        // A dim full-width row without number columns, its text at 10.
+        rows.add(
+          Container(
+            color: look.fill,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: _lineText(colors, line, look.ink, wordMarks: wordMarks),
+          ),
+        );
+        continue;
+      }
+      rows.add(
+        row(
+          fill: look.fill,
+          text: _lineText(colors, line, look.ink, wordMarks: wordMarks),
+          edge: edge,
+          left: line.left,
+          right: line.right,
+          leftInk: look.left,
+          rightInk: look.right,
+          gutter: part != null && shown.add(part) ? _partBox(context, part) : null,
+        ),
+      );
+      // Blank number columns put the marker where the line's text starts.
+      if (!line.text.endsWith('\n')) {
+        rows.add(row(fill: none, text: _noNewline(colors, EdgeInsets.zero), edge: edge));
+      }
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
   }
 
-  Widget _sideBySide(ZsColors colors) {
-    final int digits = _digits;
+  Widget _sideBySide(BuildContext context, ZsColors colors) {
+    final bool parts = _parts;
+    final shown = <int>{};
+    int? partOf(HunkLine? line) => line == null ? null : hunkPartOf(hunk.sections, line);
     Widget cell(HunkLine? line, {required bool left}) {
       final BorderSide edge = left ? BorderSide(color: colors.flBorder) : BorderSide.none;
       if (line == null) {
@@ -851,8 +1145,8 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
               spacing: 8,
               children: <Widget>[
                 if (line.kind != HunkLineKind.conflictHeader)
-                  _number(left ? line.left : line.right, digits, left ? look.left : look.right),
-                Expanded(child: _lineText(colors, line, look.ink, wordMarks: widget.wordMarks, cell: true)),
+                  _number(left ? line.left : line.right, left ? look.left : look.right),
+                Expanded(child: _lineText(colors, line, look.ink, wordMarks: wordMarks, cell: true)),
               ],
             ),
             if (!line.text.endsWith('\n')) _noNewline(colors, EdgeInsets.zero),
@@ -867,15 +1161,41 @@ class _InspectorDiffHunkState extends State<InspectorDiffHunk> {
       children: <Widget>[
         for (final (HunkLine? left, HunkLine? right) in pairSideBySide(hunk.lines))
           IntrinsicHeight(
-            child: left != null && left.kind == HunkLineKind.conflictHeader
-                ? cell(left, left: false)
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      Expanded(child: cell(left, left: true)),
-                      Expanded(child: cell(right, left: false)),
-                    ],
+            child: () {
+              final bool header = left != null && left.kind == HunkLineKind.conflictHeader;
+              Widget content = header
+                  ? cell(left, left: false)
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Expanded(child: cell(left, left: true)),
+                        Expanded(child: cell(right, left: false)),
+                      ],
+                    );
+              if (!parts) {
+                return content;
+              }
+              final int? part = header ? null : partOf(left) ?? partOf(right);
+              content = Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Container(
+                    width: _gutter,
+                    color: colors.codeBg,
+                    child: part != null && shown.add(part) ? _partBox(context, part) : null,
                   ),
+                  Expanded(child: content),
+                ],
+              );
+              // Always a decoration, so a toggle keeps the subtree (and a focused part checkbox) in place.
+              return DecoratedBox(
+                position: DecorationPosition.foreground,
+                decoration: BoxDecoration(
+                  border: _edged(part) ? Border(left: BorderSide(color: colors.accentLine, width: 2)) : null,
+                ),
+                child: content,
+              );
+            }(),
           ),
       ],
     );

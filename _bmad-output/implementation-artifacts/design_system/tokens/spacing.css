@@ -39,7 +39,7 @@
   --chrome-top:calc(var(--tl-mid-y) + var(--chrome-h) / 2 + var(--chrome-inset)); /* 60: bar bottom + 12 */
   --chrome-left:76px;    /* 12 + 52 + 12 */
   --window-hd-h:52px;    /* Settings / Projects: the header shares its row with the traffic lights; controls centre on --tl-mid-y */
-  --inspector-w:460px;--inspector-w-min:380px;--inspector-w-max:720px;--panel-w:300px;--panel-w-min:240px;--panel-w-max:440px;/* defaults · resizable at the edge toward the graph (ResizeEdge), remembered app-wide */
+  --inspector-w:460px;--inspector-w-min:380px;--panel-w:300px;--panel-w-min:240px;/* defaults · resizable at the edge toward the graph (ResizeEdge), remembered app-wide; no maximum — the edge stops where --graph-min-w of graph remains */
   --graph-min-w:320px;/* graph that always stays visible: a resize stops here, a narrowing window shrinks the islands first */
   --resize-hit:10px;--resize-hit-out:7px;/* the grab zone on an island's edge: 7 of its 10 in the 12px gap */
   --minimap-w:134px;

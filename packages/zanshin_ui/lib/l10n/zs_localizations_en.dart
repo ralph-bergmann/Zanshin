@@ -70,4 +70,12 @@ class ZsLocalizationsEn extends ZsLocalizations {
 
     return '$numberString points';
   }
+
+  @override
+  String splitShare(double share) {
+    final intl.NumberFormat shareNumberFormat = intl.NumberFormat.percentPattern(localeName);
+    final String shareString = shareNumberFormat.format(share);
+
+    return '$shareString';
+  }
 }

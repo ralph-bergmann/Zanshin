@@ -104,17 +104,26 @@ void main() {
     expect(pinned.panelWidth, 1000 - 88 - 224 - 320);
   });
 
-  test('remembered widths outside their ranges are used clamped', () {
+  test('remembered widths clamp only to their minimums (Story 10.38: no maximum)', () {
     final ShellLayout layout = _layout(2000, panel: 900, inspectorWidth: 100);
-    expect(layout.panelWidth, 440);
+    expect(layout.panelWidth, 900);
     expect(layout.inspectorWidth, 380);
+    expect(_layout(2000, pinned: false, inspectorWidth: 1000).inspectorWidth, 1000, reason: 'above the old 720');
   });
 
-  test('the drag limits keep 320 of graph and stay inside the ranges', () {
+  test('a collapsed panel\'s flyout leaves 320 of the window beside the rail, its gap and the inset', () {
+    final ShellLayout layout = _layout(1000, panel: 900);
+    expect(layout.collapsed, isTrue);
+    expect(layout.panelWidth, 1000 - 88 - 12 - 320);
+    expect(_layout(1000, panel: 300).panelWidth, 300);
+  });
+
+  test('the drag limits keep 320 of graph and stop only at the minimums', () {
     expect(_layout(1192).panelMax, 300);
-    expect(_layout(2000).panelMax, 440);
+    expect(_layout(2000).panelMax, 2000 - 88 - 484 - 320);
     expect(_layout(1000, pinned: false).panelMax, 240);
-    expect(_layout(1440, pinned: false).inspectorMax, 720);
+    expect(_layout(1440, pinned: false).inspectorMax, 1440 - 76 - 24 - 320);
+    expect(_layout(2000, pinned: false).inspectorMax, 2000 - 76 - 24 - 320, reason: 'beyond 720');
     expect(_layout(1192).inspectorMax, 1192 - 388 - 24 - 320);
     expect(_layout(800, pinned: false).inspectorMax, 380);
   });

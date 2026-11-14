@@ -11,9 +11,10 @@ export interface ResizeEdgeProps {
   bottom?: number;
   /** the current width (px = pt) */
   value: number;
-  /** --inspector-w-min / --panel-w-min … --inspector-w-max / --panel-w-max */
+  /** --inspector-w-min / --panel-w-min */
   min: number;
-  max: number;
+  /** a hard maximum; none by default — the islands have no maximum width, `limit` stops the drag */
+  max?: number;
   /** --inspector-w (460) / --panel-w (300): double-click and ↩ */
   defaultValue?: number;
   /** what the window allows right now — keeps --graph-min-w (320) of graph visible; a drag stops there */

@@ -13,6 +13,7 @@ import 'package:zanshin/src/features/graph/graph_layout.dart' show GraphCommitCo
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_stack_store.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin/src/features/graph/inspector_diff.dart' show hunkLineParts;
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/view_state_cleanup.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
@@ -417,6 +418,55 @@ void main() {
       expect(await addedLines(repo, at), <String>['one\n', 'three\n']);
       expect(await addedLines(repo, born), <String>['two\n'], reason: 'hunk 2 stays in the new @');
     });
+
+    test(
+      'Story 10.38: one hunk of three parts at context 3; committing the second part leaves the other two',
+      () async {
+        final (ProjectRepo repo, GraphViewModel model, _, String second) = await setUpRepo('commit-part');
+        final file = File('${pathOf('commit-part')}/x.txt');
+        final lines = <String>[for (var i = 1; i <= 14; i++) 'line $i\n'];
+        file.writeAsStringSync(lines.join());
+        await repo.handle.show(revset: second);
+        final String at = (await repo.handle.newChange(<String>[second])).newChangeIds.single;
+        // Three unchanged lines between the changes: context 3 joins them into one hunk.
+        lines
+          ..[1] = 'one\n'
+          ..[5] = 'two\n'
+          ..[9] = 'three\n';
+        file.writeAsStringSync(lines.join());
+        final ShowEntry entry = (await repo.handle.show(revset: at)).single;
+        final FileDiff diff = (await repo.handle.diff(revision: at)).files.single;
+        final Hunk hunk = diff.hunks.single;
+        expect(hunk.sections, hasLength(3));
+        // The part of each changed line, by its new text.
+        final List<int?> parts = hunkLineParts(hunk);
+        final partOf = <String, int?>{
+          for (var i = 0; i < hunk.lines.length; i++)
+            if (hunk.lines[i].kind != HunkLineKind.context)
+              hunk.lines[i].segments.where((s) => s.kind != SegmentKind.removed).map((s) => s.text).join(): parts[i],
+        };
+        expect(partOf['one\n'], 0);
+        expect(partOf['two\n'], 1);
+        expect(partOf['three\n'], 2);
+
+        final GraphActionResult result = await model.run(
+          GraphCommit(
+            at,
+            message: const <String>['Part'],
+            hunks: HunkChoice(
+              left: entry.parentTreeIds,
+              files: <FileSelection>[
+                FileSelection.hunks('x.txt', <HunkKey>[hunk.sections[1]]),
+              ],
+            ),
+          ),
+        );
+        expect(result, isA<GraphActionDone>(), reason: result is GraphActionRefused ? '${result.error}' : null);
+        final String born = (result as GraphActionDone).outcome.born.single;
+        expect(await addedLines(repo, at), <String>['two\n']);
+        expect(await addedLines(repo, born), <String>['one\n', 'three\n'], reason: 'the other two parts stay');
+      },
+    );
 
     test('Story 10.26: split -i through the runner keeps the hunk on the change, the rest on its child', () async {
       final (ProjectRepo repo, GraphViewModel model, String at, List<HunkKey> sections, List<String> left) =

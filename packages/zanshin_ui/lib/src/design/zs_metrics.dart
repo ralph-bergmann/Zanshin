@@ -84,10 +84,8 @@ class ZsMetrics {
     required this.windowHdH,
     required this.inspectorW,
     required this.inspectorWMin,
-    required this.inspectorWMax,
     required this.panelW,
     required this.panelWMin,
-    required this.panelWMax,
     required this.graphMinW,
     required this.resizeHit,
     required this.resizeHitOut,
@@ -211,10 +209,8 @@ class ZsMetrics {
     windowHdH: 52,
     inspectorW: 460,
     inspectorWMin: 380,
-    inspectorWMax: 720,
     panelW: 300,
     panelWMin: 240,
-    panelWMax: 440,
     graphMinW: 320,
     resizeHit: 10,
     resizeHitOut: 7,
@@ -390,17 +386,11 @@ class ZsMetrics {
   /// `--inspector-w-min` (DS tokens/spacing.css:42).
   final double inspectorWMin;
 
-  /// `--inspector-w-max` (DS tokens/spacing.css:42).
-  final double inspectorWMax;
-
   /// `--panel-w` (DS tokens/spacing.css:42).
   final double panelW;
 
   /// `--panel-w-min` (DS tokens/spacing.css:42).
   final double panelWMin;
-
-  /// `--panel-w-max` (DS tokens/spacing.css:42).
-  final double panelWMax;
 
   /// `--graph-min-w` (DS tokens/spacing.css:43).
   final double graphMinW;
@@ -551,10 +541,8 @@ class ZsMetrics {
     double? windowHdH,
     double? inspectorW,
     double? inspectorWMin,
-    double? inspectorWMax,
     double? panelW,
     double? panelWMin,
-    double? panelWMax,
     double? graphMinW,
     double? resizeHit,
     double? resizeHitOut,
@@ -632,10 +620,8 @@ class ZsMetrics {
     windowHdH: windowHdH ?? this.windowHdH,
     inspectorW: inspectorW ?? this.inspectorW,
     inspectorWMin: inspectorWMin ?? this.inspectorWMin,
-    inspectorWMax: inspectorWMax ?? this.inspectorWMax,
     panelW: panelW ?? this.panelW,
     panelWMin: panelWMin ?? this.panelWMin,
-    panelWMax: panelWMax ?? this.panelWMax,
     graphMinW: graphMinW ?? this.graphMinW,
     resizeHit: resizeHit ?? this.resizeHit,
     resizeHitOut: resizeHitOut ?? this.resizeHitOut,
@@ -727,10 +713,8 @@ class ZsMetrics {
     '--window-hd-h': windowHdH,
     '--inspector-w': inspectorW,
     '--inspector-w-min': inspectorWMin,
-    '--inspector-w-max': inspectorWMax,
     '--panel-w': panelW,
     '--panel-w-min': panelWMin,
-    '--panel-w-max': panelWMax,
     '--graph-min-w': graphMinW,
     '--resize-hit': resizeHit,
     '--resize-hit-out': resizeHitOut,
@@ -813,10 +797,8 @@ class ZsMetrics {
           other.windowHdH == windowHdH &&
           other.inspectorW == inspectorW &&
           other.inspectorWMin == inspectorWMin &&
-          other.inspectorWMax == inspectorWMax &&
           other.panelW == panelW &&
           other.panelWMin == panelWMin &&
-          other.panelWMax == panelWMax &&
           other.graphMinW == graphMinW &&
           other.resizeHit == resizeHit &&
           other.resizeHitOut == resizeHitOut &&
@@ -896,10 +878,8 @@ class ZsMetrics {
     windowHdH,
     inspectorW,
     inspectorWMin,
-    inspectorWMax,
     panelW,
     panelWMin,
-    panelWMax,
     graphMinW,
     resizeHit,
     resizeHitOut,

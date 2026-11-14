@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x600" name="Content" subtitle="FileRow, DiffView + DiffHunk (word marks on and off), ProjectRow (incl. moving rows), Kbd" -->
+<!-- @dsCard group="Components" viewport="700x600" name="Content" subtitle="FileRow, DiffView + DiffHunk (word marks on and off, parts with their checkboxes, pinned numbers), ProjectRow (incl. moving rows), Kbd" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -20,6 +20,7 @@
     const [mode, setMode] = React.useState("unified");
     const [hs, setHs] = React.useState({ a: true, b: false });
     const [viewed, setViewed] = React.useState(false);
+    const [parts, setParts] = React.useState([1]);
     const files = [["M", "lib/onboarding/swipe_controller.dart", 42, 7], ["A", "lib/onboarding/widgets/swipe_hint.dart", 88, 0], ["D", "lib/legacy/onboarding_pager.dart", 0, 131], ["M", "test/onboarding/swipe_controller_test.dart", 19, 2]];
     return (
       <div className="g">
@@ -64,6 +65,19 @@
             "+:48|{+    await openWizard(tester, size: phone);+}",
             "+:49|{+  });+}",
             " 43:50|  });",
+          ]}/>
+          {/* Story 10.38: one hunk of three parts (jj's diff-editor sections) — a checkbox per part, the second picked; the numbers stay
+              pinned when the hunks scroll sideways. */}
+          <DiffHunk context="fn run()" mode={mode} selectable parts={[null, 0, null, null, 1, 1, null, null, 2]} picked={parts} onTogglePart={(p) => setParts(parts.includes(p) ? parts.filter((x) => x !== p) : [...parts, p])} lines={[
+            " 60:60|  let a = 1;",
+            "~61:61|  let b = [-2-]{+3+};",
+            " 62:62|  let c = 4;",
+            " 64:64|  let d = 5;",
+            "-65:|[-  log(\"x\");-]",
+            "+:65|{+  log(\"a line long enough to scroll the well sideways, so the numbers stay pinned at its left edge\");+}",
+            " 66:66|  let e = 6;",
+            " 68:68|  let f = 7;",
+            "~69:69|  exit([-0-]{+1+});",
           ]}/>
           {/* Settings › Changed words off (Story 5.14): no tint; a changed line keeps its runs in their hue, a removed or
               added line shows only its fill and ink. */}

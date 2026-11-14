@@ -738,6 +738,37 @@
     "description": "VoiceOver name and tooltip of a hunk's checkbox: whether Commit / Split takes the hunk.",
     "placeholders": {"range": {"type": "String", "description": "The hunk's header as jj prints it, e.g. @@ −2,2 +2,4 @@."}}
   },
+  "inspectorHunkParts": "{count, plural, =1{1 part} other{{count} parts}}",
+  "@inspectorHunkParts": {
+    "description": "The pill in a hunk's header when the hunk has more than one part (jj's diff-editor sections), each with its own checkbox.",
+    "placeholders": {"count": {"type": "int", "example": "3"}}
+  },
+  "inspectorPartPick": "{count, plural, =1{Pick line {start}} other{Pick lines {start}–{end}}}",
+  "@inspectorPartPick": {
+    "description": "VoiceOver name and tooltip of an unchecked part checkbox in a hunk: Commit / Split takes this part's lines. The 1-based line range on the new side (the old side for a pure deletion).",
+    "placeholders": {
+      "count": {"type": "int", "example": "3"},
+      "start": {"type": "int", "example": "12"},
+      "end": {"type": "int", "example": "14"}
+    }
+  },
+  "inspectorPartUnpick": "{count, plural, =1{Unpick line {start}} other{Unpick lines {start}–{end}}}",
+  "@inspectorPartUnpick": {
+    "description": "VoiceOver name and tooltip of a checked part checkbox in a hunk: Commit / Split leaves this part's lines. The 1-based line range on the new side (the old side for a pure deletion).",
+    "placeholders": {
+      "count": {"type": "int", "example": "3"},
+      "start": {"type": "int", "example": "12"},
+      "end": {"type": "int", "example": "14"}
+    }
+  },
+  "inspectorShowMore": "Show more",
+  "@inspectorShowMore": {"description": "Under a change's description cut to three lines in the inspector: shows the whole description."},
+  "inspectorShowLess": "Show less",
+  "@inspectorShowLess": {"description": "Under a change's opened description in the inspector: cuts it back to three lines."},
+  "inspectorSplitLabel": "Files and diff",
+  "@inspectorSplitLabel": {"description": "VoiceOver name of the divider between the inspector's file list and its diff: an adjustable value, the file list's share."},
+  "inspectorSplitTooltip": "Drag to resize · double-click to reset",
+  "@inspectorSplitTooltip": {"description": "Tooltip of the divider between the inspector's file list and its diff."},
   "inspectorModeCheck": "Select the executable bit change",
   "@inspectorModeCheck": {"description": "VoiceOver name and tooltip of the mode-change row's checkbox: whether Commit / Split takes the file's new executable bit."},
   "inspectorDiffNoLines": "No line changes",

@@ -1,7 +1,7 @@
 // Inspector — reading and shaping one change. The title is the describe field; checkboxes pick hunks; the composer turns a selection
 // into a commit (@: jj commit) or a split (jj split -r). Files, hunks and bookmarks can be dragged onto another change.
 (() => {
-const { Island, IconButton, Button, MenuButton, Flag, AtBadge, Icon, FileRow, DiffView, DiffHunk, Segmented, Checkbox, TextField, BookmarkChip, HatchSwatch } = window.ZanshinDesignSystem_a33847;
+const { Island, IconButton, Button, MenuButton, Flag, AtBadge, Icon, FileRow, DiffView, DiffHunk, Segmented, Checkbox, TextField, BookmarkChip, HatchSwatch, SplitDivider } = window.ZanshinDesignSystem_a33847;
 const Swatch = HatchSwatch || (() => null);
 const first = (s) => (s || "").split("\n")[0].trim();
 const joinMsg = (s, b) => (s.trim() + (b.trim() ? "\n\n" + b.trim() : "")).trim();
@@ -106,6 +106,21 @@ function ZKCopyId({ id = "", prefix = 0, sub }) {
   );
 }
 
+// The description under the subject: 3 lines, then "Show more" while it is cut; open → "Show less". A new selection starts closed
+// (the inspector keys it by the change). Story 10.38.
+function ZKDesc({ text }) {
+  const [open, setOpen] = React.useState(false), [cut, setCut] = React.useState(false), ref = React.useRef(null);
+  React.useLayoutEffect(() => { const el = ref.current; if (el && !open) setCut(el.scrollHeight > el.clientHeight + 1); }, [text, open]);
+  return <>
+    <p ref={ref} className={"zk-ins-desc" + (open ? "" : " is-clamped")}>{text}</p>
+    {(cut || open) && <button type="button" className="zk-ins-more" onClick={(e) => { e.stopPropagation(); setOpen(!open); }} onKeyDown={(e) => e.stopPropagation()}>{open ? "Show less" : "Show more"}</button>}
+  </>;
+}
+
+// The files' share of the split per layout, app-wide (x: side by side, y: stacked); written when a drag ends or on reset.
+const SPLIT_DEFAULT = Object.freeze({ x: .34, y: .38 });
+const SPLIT = { ...SPLIT_DEFAULT };
+
 function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEditing, lift, onClose, onEdit, onNew, onDescribe, onSquash, onAbandon, onCommit, onSplit, beginDrag, parentShown, onSelectParent }) {
   const mutable = !c.immutable;
   const undescribed = !c.subject;
@@ -120,8 +135,30 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
   const viewedN = files.filter((f) => viewed[f.path]).length;
   const tot = window.zkCount(files);
   const parents = [...c.parents, ...c.gapParents];
-  const composing = mutable && (isWC ? files.length > 0 : sel.size > 0);
+  // Picks by part (Story 10.38): a hunk of several parts keeps its picked parts here while only some are picked; all → the hunk's id
+  // in `sel`, none → neither. The composer takes a partly picked hunk as picked.
+  const [partSel, setPartSel] = React.useState({});
+  const picked = React.useMemo(() => new Set([...sel, ...Object.keys(partSel).filter((id) => allIds.includes(id) && partSel[id].length)]), [sel, partSel, allIds]);
+  const composing = mutable && (isWC ? files.length > 0 : picked.size > 0);
   const liftSet = lift ? new Set(lift) : null;
+
+  // The split: side by side from 780 wide, stacked below 740, the last layout between; the files' share per layout.
+  const mainRef = React.useRef(null), splitRef = React.useRef(null);
+  const [wide, setWide] = React.useState(null), [size, setSize] = React.useState({ w: 0, h: 0 }), [share, setShare] = React.useState(SPLIT);
+  React.useLayoutEffect(() => {
+    const ro = new ResizeObserver(() => {
+      const w = mainRef.current ? mainRef.current.clientWidth : 0;
+      setWide((was) => was === true ? w >= 740 : w >= 780);
+      const s = splitRef.current; // the split's padding: 12 16 14
+      if (s) setSize({ w: s.clientWidth - 32, h: s.clientHeight - 26 });
+    });
+    if (mainRef.current) ro.observe(mainRef.current);
+    if (splitRef.current) ro.observe(splitRef.current);
+    return () => ro.disconnect();
+  }, [files.length]);
+  const axis = wide ? "x" : "y", room = Math.max(0, (wide ? size.w : size.h) - 12);
+  const minF = wide ? 220 : 110, maxF = room - (wide ? 320 : 140);
+  const filesPx = Math.max(0, Math.min(maxF, Math.max(minF, share[axis] * room)));
 
   React.useEffect(() => { // Esc clears a split selection before it closes the panel
     if (isWC || !sel.size || editing) return;
@@ -130,9 +167,20 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
     return () => window.removeEventListener("keydown", k, true);
   }, [isWC, sel.size, editing]);
 
-  const toggle = (ids) => setSel((s) => { const n = new Set([...s].filter((id) => allIds.includes(id))); const on = ids.every((id) => n.has(id)); ids.forEach((id) => on ? n.delete(id) : n.add(id)); return n; });
-  const fileState = (f) => { const k = f.hunks.filter((h) => sel.has(h.id)).length; return k === 0 ? "none" : k === f.hunks.length ? "all" : "some"; };
-  const allState = sel.size === 0 ? "none" : sel.size === allIds.length ? "all" : "some";
+  const toggle = (ids) => {
+    setSel((s) => { const n = new Set([...s].filter((id) => allIds.includes(id))); const on = ids.every((id) => n.has(id)); ids.forEach((id) => on ? n.delete(id) : n.add(id)); return n; });
+    setPartSel((o) => { const n = { ...o }; ids.forEach((id) => delete n[id]); return n; });
+  };
+  const partsOf = (h) => new Set((h.parts || []).filter((p) => p != null)).size;
+  const togglePart = (h, p) => {
+    const was = sel.has(h.id) ? [...Array(partsOf(h)).keys()] : partSel[h.id] || [];
+    const next = was.includes(p) ? was.filter((x) => x !== p) : [...was, p];
+    const whole = next.length === partsOf(h);
+    setSel((s) => { const n = new Set(s); whole ? n.add(h.id) : n.delete(h.id); return n; });
+    setPartSel((o) => ({ ...o, [h.id]: whole ? [] : next }));
+  };
+  const fileState = (f) => { const k = f.hunks.filter((h) => sel.has(h.id)).length, some = f.hunks.some((h) => (partSel[h.id] || []).length); return k === 0 && !some ? "none" : k === f.hunks.length ? "all" : "some"; };
+  const allState = picked.size === 0 ? "none" : sel.size === allIds.length ? "all" : "some";
   const payload = (ids) => {
     const set = new Set(ids), fs = files.map((f) => ({ f, hs: f.hunks.filter((h) => set.has(h.id)) })).filter((x) => x.hs.length);
     const st = window.zkCount(fs.map((x) => ({ hunks: x.hs }))), whole = fs.every((x) => x.hs.length === x.f.hunks.length);
@@ -171,7 +219,9 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
         </span>
         <IconButton icon="close" iconSize="sm" size="sm" label="Close" title="Close (Esc)" onClick={onClose}/>
       </header>
-      <div className="zk-ins-scroll">
+      <div className="zk-ins-main" ref={mainRef}>
+      {/* the top part: its natural height up to 48 %, then it scrolls (Story 10.38) */}
+      <div className="zk-ins-top">
         {editing && mutable ? (
           <ZKDescribe c={c} onSave={(s, b) => { onDescribe(s, b); setEditing(false); }} onCancel={() => setEditing(false)}/>
         ) : (
@@ -179,7 +229,7 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
             onKeyDown={mutable ? (e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true); } } : undefined}
             role={mutable ? "button" : undefined} tabIndex={mutable ? 0 : undefined} title={mutable ? "Edit description — jj describe" : undefined}>
             <h2 className={"zk-ins-subj" + (undescribed ? " is-dim" : "")}>{undescribed ? (mutable ? "Describe this change…" : "(no description set)") : c.subject}{mutable && <Icon name="describe" size="sm" className="zk-ins-pen"/>}</h2>
-            {c.description && <p className="zk-ins-desc">{c.description}</p>}
+            {c.description && <ZKDesc key={c.id} text={c.description}/>}
           </div>
         )}
         <div className="zk-ins-meta">
@@ -207,12 +257,14 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
           </div>
         )}
         {!editing && <div className="zk-ins-act">{actions}</div>}
-        <div className="zk-ins-body">
+      </div>
           {files.length === 0 ? (
-            <div className="zk-ch-empty">{isWC ? "No changes yet — whatever you edit in your editor lands here." : c.merge ? "A merge — no changes of its own." : "This change has no file changes."}</div>
-          ) : <>
+            <div className="zk-ins-body"><div className="zk-ch-empty">{isWC ? "No changes yet — whatever you edit in your editor lands here." : c.merge ? "A merge — no changes of its own." : "This change has no file changes."}</div></div>
+          ) : (
+          <div ref={splitRef} className={"zk-ins-split" + (wide ? " is-wide" : " is-narrow")}>
+            <div className="zk-ins-files" style={{ flex: "0 0 " + filesPx + "px" }}>
             <div className="zk-ch-hd">
-              {mutable && <Checkbox checked={allState === "all"} mixed={allState === "some"} onChange={() => setSel(allState === "all" ? new Set() : new Set(allIds))} label={allState === "all" ? "Deselect all" : "Select all"}/>}
+              {mutable && <Checkbox checked={allState === "all"} mixed={allState === "some"} onChange={() => { setSel(allState === "all" ? new Set() : new Set(allIds)); setPartSel({}); }} label={allState === "all" ? "Deselect all" : "Select all"}/>}
               <span className="zk-ch-title">Changes</span>
               <span className="zk-ch-meta">{files.length} {files.length === 1 ? "file" : "files"}<span className="a">+{tot.a}</span><span className="r">−{tot.r}</span></span>
               {viewedN > 0 && (
@@ -231,21 +283,28 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
                   title={mutable ? f.path + " — drag onto a change to move it there" : f.path}/>;
               })}
             </div>
+            </div>
+            {SplitDivider && <SplitDivider axis={axis} value={filesPx} min={minF} max={maxF} total={room} defaultValue={SPLIT_DEFAULT[axis] * room}
+              onChange={(v) => setShare((s) => ({ ...s, [axis]: room ? v / room : s[axis] }))}
+              onChangeEnd={(v) => { if (room) SPLIT[axis] = v / room; }}/>}
+            <div className="zk-ins-diff">
             {ff && (
               <DiffView file={ff.path} viewed={!!viewed[ff.path]} onViewedChange={(v) => setViewed(ff.path, v)}
                 tools={<Segmented size="sm" label="Diff layout" value={diffMode} onChange={setDiffMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>}>
                 {ff.hunks.map((h) => (
                   <DiffHunk key={h.id} oldStart={h.oldStart} newStart={h.newStart} context={h.ctx} lines={h.lines} mode={diffMode}
                     selectable={mutable} selected={sel.has(h.id)} lifted={!!(liftSet && liftSet.has(h.id))} onToggle={() => toggle([h.id])}
+                    parts={h.parts} picked={sel.has(h.id) ? [...Array(partsOf(h)).keys()] : partSel[h.id] || []} onTogglePart={(p) => togglePart(h, p)}
                     onGrab={mutable ? (e) => dragHunk(e, h) : undefined}/>
                 ))}
               </DiffView>
             )}
-          </>}
-        </div>
+            </div>
+          </div>
+          )}
       </div>
-      {composing && <ZKComposer key={c.id + (isWC ? "w" : "s")} c={c} isWC={isWC} files={files} sel={sel}
-        onRun={(ids, msg) => { (isWC ? onCommit : onSplit)(ids, msg); setSel(new Set()); }} onClear={() => setSel(new Set())}/>}
+      {composing && <ZKComposer key={c.id + (isWC ? "w" : "s")} c={c} isWC={isWC} files={files} sel={picked}
+        onRun={(ids, msg) => { (isWC ? onCommit : onSplit)(ids, msg); setSel(new Set()); setPartSel({}); }} onClear={() => { setSel(new Set()); setPartSel({}); }}/>}
     </Island>
   );
 }

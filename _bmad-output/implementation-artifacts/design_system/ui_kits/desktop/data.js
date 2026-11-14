@@ -19,7 +19,8 @@
           { oldStart: 40, newStart: 46, ctx: "class SwipeController", lines: ["-  static const _kSettle = [-220-];", "+  static const _kSettle = {+260+};", "   static const _kCurve = Curves.easeOutCubic;"] },
         ] },
         { path: "lib/features/onboarding/onboarding_page.dart", status: "M", hunks: [
-          { oldStart: 22, newStart: 22, ctx: "Widget build(BuildContext context)", lines: ["     return GestureDetector(", "-      onTap: _next,", "+      onHorizontalDragUpdate: _swipe.onUpdate,", "+      onHorizontalDragEnd: _swipe.onEnd,", "       child: PageView(", "-        physics: const NeverScrollableScrollPhysics(),", "+        controller: _swipe.pages,"] },
+          // two parts (jj's diff-editor sections) in one hunk, each with its own checkbox (Story 10.38)
+          { oldStart: 22, newStart: 22, ctx: "Widget build(BuildContext context)", parts: [null, 0, 0, 0, null, 1, 1], lines: ["     return GestureDetector(", "-      onTap: _next,", "+      onHorizontalDragUpdate: _swipe.onUpdate,", "+      onHorizontalDragEnd: _swipe.onEnd,", "       child: PageView(", "-        physics: const NeverScrollableScrollPhysics(),", "+        controller: _swipe.pages,"] },
         ] },
         { path: "lib/platform/haptics.dart", status: "A", hunks: [
           { oldStart: 0, newStart: 1, ctx: "", lines: ["+import 'package:flutter/services.dart';", "+", "+/// Light feedback for page changes. Silent when the user reduced haptics.", "+abstract final class Haptics {", "+  static bool enabled = true;", "+  static Future<void> light() async {", "+    if (!enabled) return;", "+    await HapticFeedback.lightImpact();", "+  }", "+}"] },

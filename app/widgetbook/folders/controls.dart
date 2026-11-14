@@ -19,6 +19,7 @@ final controlsFolder = WidgetbookFolder(
     _family('Segmented', _segmentedMatrix, _segmentedInteractive),
     _family('Slider', _sliderMatrix, _sliderInteractive),
     _family('Resize edge', _resizeEdgeMatrix, _resizeEdgeInteractive),
+    _family('Split divider', _splitDividerMatrix, _splitDividerInteractive),
     _family('TextField', _textFieldMatrix, _textFieldInteractive),
     _family('SearchField', _searchFieldMatrix, _searchFieldInteractive),
     _family('Select', _selectMatrix, _selectInteractive),
@@ -747,6 +748,106 @@ Widget _resizeEdgeInteractive(BuildContext context) {
             ),
           ),
           Text('${value.round()} points', style: ZsType.meta),
+        ],
+      ),
+    ),
+  );
+}
+
+// ---- Split divider ----
+
+/// Two panes along [axis] with [divider] between them, the leading one [value] long (Story 10.38: the inspector's
+/// files and diff; DS components/surfaces/SplitDivider.prompt.md).
+class _SplitSample extends StatelessWidget {
+  const _SplitSample({required this.axis, required this.value, required this.divider, this.length = 260});
+
+  final Axis axis;
+  final double value;
+  final double length;
+  final Widget divider;
+
+  @override
+  Widget build(BuildContext context) {
+    final ZsColors colors = ZsColors.of(context);
+    final wide = axis == Axis.horizontal;
+    return SizedBox(
+      width: wide ? length : 160,
+      height: wide ? 120 : length,
+      child: Flex(
+        direction: axis,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          SizedBox(
+            width: wide ? value : null,
+            height: wide ? null : value,
+            child: ColoredBox(color: colors.flHover),
+          ),
+          divider,
+          Expanded(child: ColoredBox(color: colors.codeBg)),
+        ],
+      ),
+    );
+  }
+}
+
+Widget _splitDividerMatrix(BuildContext context) => StateMatrix(<MatrixRow>[
+  for (final (Axis axis, String spec) in const <(Axis, String)>[
+    (Axis.horizontal, 'side by side · files beside the diff'),
+    (Axis.vertical, 'stacked · files above the diff'),
+  ])
+    MatrixRow(
+      'SplitDivider',
+      spec,
+      _interaction,
+      (cell) => _SplitSample(
+        axis: axis,
+        value: 90,
+        divider: ZsSplitDivider(
+          axis: axis,
+          value: 90,
+          min: 40,
+          max: 200,
+          defaultValue: 90,
+          total: 248,
+          label: 'Files and diff',
+          onChanged: (_) {},
+          statesController: cell.states,
+        ),
+      ),
+    ),
+]);
+
+Widget _splitDividerInteractive(BuildContext context) {
+  final bool stacked = context.knobs.boolean(label: 'stacked (files above the diff)');
+  final Axis axis = stacked ? Axis.vertical : Axis.horizontal;
+  const length = 420.0;
+  const double room = length - ZsSplitDivider.band;
+  return _live(
+    _Stateful<double>(
+      key: ValueKey<Axis>(axis),
+      initial: room * (stacked ? .38 : .34),
+      build: (value, set) => Column(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 12,
+        children: <Widget>[
+          _SplitSample(
+            axis: axis,
+            value: value,
+            length: length,
+            divider: ZsSplitDivider(
+              axis: axis,
+              value: value,
+              min: stacked ? 110 : 220,
+              max: room - (stacked ? 140 : 320),
+              defaultValue: room * (stacked ? .38 : .34),
+              total: room,
+              label: 'Files and diff',
+              tooltip: 'Drag to resize · double-click to reset',
+              identifier: 'split-divider',
+              onChanged: set,
+            ),
+          ),
+          Text('${(value / room * 100).round()} %', style: ZsType.meta),
         ],
       ),
     ),

@@ -37,6 +37,7 @@ export 'src/controls/zs_select.dart'
 export 'src/controls/zs_skeleton.dart' show ZsSkeleton, ZsSkeletonKind, paintZsSkeletonBar;
 export 'src/controls/zs_slider.dart' show ZsSlider;
 export 'src/controls/zs_spinner.dart' show ZsSpinner;
+export 'src/controls/zs_split_divider.dart' show ZsSplitDivider;
 export 'src/controls/zs_switch.dart' show ZsSwitch;
 export 'src/controls/zs_text_field.dart'
     show ZsSearchField, ZsTextEditingController, ZsTextField, ZsTextFieldSize, zsTextContextMenu;

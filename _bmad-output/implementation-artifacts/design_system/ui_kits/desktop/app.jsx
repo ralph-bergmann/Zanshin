@@ -514,9 +514,9 @@ function ZKApp() {
           revset={revset} setRevset={setRevset} home={home} configs={configs} changes={repo.changes} visible={visibleSet} onGoTo={goTo} onEditConfigs={openConfigs}
           shown={visibleChanges.length} total={repo.changes.length} gaps={gaps} opts={opts} setOpt={setOpt} onNew={() => newChange(repo.wc)}/>
         <window.ZKRail pinned={pinned} setPinned={setPinned} changes={repo.changes} visible={visibleSet} ops={repo.ops} opCount={repo.opCount} onPick={(id) => { setSel(id); scrollTo(id); }}/>
-        {pinned && ResizeEdge && <ResizeEdge side="right" at={RAIL_R + panW} top={TOP} bottom={EDGE} value={panW} min={240} max={440} defaultValue={PANEL_W}
+        {pinned && ResizeEdge && <ResizeEdge side="right" at={RAIL_R + panW} top={TOP} bottom={EDGE} value={panW} min={240} defaultValue={PANEL_W}
           limit={vw - RAIL_R - EDGE - 320 - (selected ? insW + EDGE * 2 : MINI + EDGE)} label="Panel width" onChange={setPanW}/>}
-        {selected && ResizeEdge && <ResizeEdge side="left" at={EDGE + insW} top={TOP} bottom={EDGE} value={insW} min={380} max={720} defaultValue={DETAIL_W}
+        {selected && ResizeEdge && <ResizeEdge side="left" at={EDGE + insW} top={TOP} bottom={EDGE} value={insW} min={380} defaultValue={DETAIL_W}
           limit={vw - (pinned ? RAIL_R + panW + EDGE : RAIL_R) - EDGE * 2 - 320} label="Inspector width" onChange={setInsW}/>}
         {selected && (
           <window.ZKInspector key={selected.id + ":" + (selected.id === repo.wc)} c={selected} isWC={selected.id === repo.wc} canSquash={canSquash(selected)}

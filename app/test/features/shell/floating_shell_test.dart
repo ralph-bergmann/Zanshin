@@ -704,7 +704,8 @@ void main() {
       expect(tester.widget<ZsResizeEdge>(_edge('inspector-edge')).side, ZsResizeSide.left);
     });
 
-    testWidgets('a drag on its edge sets the width between 380 and 720, commits on release; double-click is 460', (
+    testWidgets('a drag on its edge sets the width from 380 to where 320 of graph remain (no 720 maximum), commits on '
+        'release; double-click is 460', (
       tester,
     ) async {
       final _Rig rig = await _pump(tester, _Rig(minimap: false));
@@ -721,7 +722,7 @@ void main() {
       expect(island(tester).width, 520);
       await drag.moveBy(const Offset(-900, 0));
       await tester.pump();
-      expect(rig.controller.inspectorWidth, 720);
+      expect(rig.controller.inspectorWidth, 1440 - 76 - 24 - 320);
       await drag.moveBy(const Offset(2000, 0));
       await tester.pump();
       expect(rig.controller.inspectorWidth, 380);
@@ -755,7 +756,7 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('keys on the edge: ← 10 wider, ⇧← 50, Home 380, End 720, ↩ 460', (tester) async {
+    testWidgets('keys on the edge: ← 10 wider, ⇧← 50, Home 380, End the graph limit, ↩ 460', (tester) async {
       final _Rig rig = await _pump(tester, _Rig(minimap: false));
       await tester.pumpAndSettle();
       final Element inner = tester.element(
@@ -776,7 +777,7 @@ void main() {
       expect(rig.controller.inspectorWidth, 380);
       await tester.sendKeyEvent(LogicalKeyboardKey.end);
       await tester.pump();
-      expect(rig.controller.inspectorWidth, 720);
+      expect(rig.controller.inspectorWidth, 1440 - 76 - 24 - 320);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
       expect(rig.controller.inspectorWidth, 460);

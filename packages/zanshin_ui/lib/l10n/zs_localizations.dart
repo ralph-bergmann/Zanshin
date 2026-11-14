@@ -193,6 +193,12 @@ abstract class ZsLocalizations {
   /// In en, this message translates to:
   /// **'{number} points'**
   String resizePoints(double number);
+
+  /// VoiceOver value of a split divider: the leading pane's share of the split, as a percentage.
+  ///
+  /// In en, this message translates to:
+  /// **'{share}'**
+  String splitShare(double share);
 }
 
 class _ZsLocalizationsDelegate extends LocalizationsDelegate<ZsLocalizations> {

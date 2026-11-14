@@ -64,6 +64,7 @@ const _covered = <String, String>{
   'OptionRow': 'controls/popover/interactive',
   'OptionLink': 'controls/popover/state-matrix',
   'ResizeEdge': 'controls/resize-edge/state-matrix',
+  'SplitDivider': 'controls/split-divider/state-matrix',
   'Window': 'windows/floating-shell/floating-shell',
   'ImmutablePage': 'windows/settings-window/settings-window',
   'SettingsGroup': 'windows/settings-window/settings-window',

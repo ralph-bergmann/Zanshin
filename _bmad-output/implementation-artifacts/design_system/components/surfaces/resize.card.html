@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="1240x640" name="Resizable inspector and panels" subtitle="ResizeEdge — the grab zone on the edge toward the graph: 10px (7 in the gap), the line after a beat, min / max as tokens, 320 of graph always visible, double-click resets" -->
+<!-- @dsCard group="Components" viewport="1240x640" name="Resizable inspector and panels" subtitle="ResizeEdge — the grab zone on the edge toward the graph: 10px (7 in the gap), the line after a beat, the minimum as a token and no maximum, 320 of graph always visible, double-click resets" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -36,16 +36,16 @@ code{font:11px var(--font-mono);color:var(--text)}
         <div className="stage" style={{ width: W }}>
           <Island shape="panel" className="rail" aria-hidden="true"></Island>
           <Island shape="panel" className="panel" style={{ width: pan }}><div className="hd">Bookmarks <span className="num">{pan} pt</span></div></Island>
-          <ResizeEdge className="st-hover" side="right" at={RAIL_R + pan} top={60} bottom={12} value={pan} min={240} max={440} defaultValue={300}
+          <ResizeEdge className="st-hover" side="right" at={RAIL_R + pan} top={60} bottom={12} value={pan} min={240} defaultValue={300}
             limit={W - RAIL_R - EDGE - GRAPH_MIN - gr} label="Panel width" onChange={setPan}/>
           <div className="graph" style={{ left: gl, right: gr }}>graph · {W - gl - gr} pt (≥ 320)</div>
           <Island shape="panel" className="ins" style={{ width: ins }}><div className="hd">Change details <span className="num">{ins} pt</span></div></Island>
-          <ResizeEdge side="left" at={EDGE + ins} top={60} bottom={12} value={ins} min={380} max={720} defaultValue={460}
+          <ResizeEdge side="left" at={EDGE + ins} top={60} bottom={12} value={ins} min={380} defaultValue={460}
             limit={W - gl - EDGE * 2 - GRAPH_MIN} label="Inspector width" onChange={setIns}/>
         </div>
         <div className="notes">
           <p className="p"><b>Grab zone</b> — 10pt on the edge toward the graph, 7 of it in the 12pt gap, the 16pt corners left out. The panel’s edge shows its <b>hover line</b> (2pt <code>--edge-hov</code>, after <code>--delay-resize</code> 150); the inspector’s is at rest — hover or drag it.</p>
-          <p className="p"><b>Widths</b> — inspector <code>--inspector-w</code> 460 (380 – 720), panels <code>--panel-w</code> 300 (240 – 440), one width each, remembered app-wide. Double-click resets. At a limit the cursor shows the one way left.</p>
+          <p className="p"><b>Widths</b> — inspector <code>--inspector-w</code> 460 (at least 380), panels <code>--panel-w</code> 300 (at least 240), no maximum, one width each, remembered app-wide. Double-click resets. At a limit the cursor shows the one way left.</p>
           <p className="p"><b>The window</b> — at least <code>--graph-min-w</code> 320 of graph: a drag stops there; a narrower window shrinks the islands to their minimum first, then the panel detaches. Keys: ← → 10 (⇧ 50), Home / End, ↩ default.</p>
         </div>
       </div>

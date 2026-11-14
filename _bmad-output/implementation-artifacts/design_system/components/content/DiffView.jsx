@@ -80,7 +80,8 @@ export function DiffView({ file, tools, lines = [], wordMarks = true, maxHeight,
       {viewed && onViewedChange ? (
         <button type="button" className="zs-diff-collapsed" onClick={() => onViewedChange(false)}><Icon name="check" size="sm" /><span>Viewed — diff folded away. Click to show it again.</span></button>
       ) : children ? (
-        <div className="zs-diff-hunks">{children}</div>
+        // the hunks scroll sideways as one unit, every line as wide as the widest (Story 10.38)
+        <div className="zs-diff-hunks" style={{ maxHeight }}><div className="zs-diff-wide">{children}</div></div>
       ) : (
         <div className="zs-diff-body" style={{ maxHeight, "--ln": zsDiffDigits(ls) + "ch" }}>
           {ls.map((l, i) => (l.t === "hunk" ? <div key={i} className="zs-diff-hunk">{l.s}</div> : zsDiffRow(l, i)))}

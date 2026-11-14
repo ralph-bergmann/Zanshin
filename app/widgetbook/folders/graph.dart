@@ -278,6 +278,18 @@ final graphFolder = WidgetbookFolder(
       useCases: <WidgetbookUseCase>[
         WidgetbookUseCase(name: 'Hunk selection', builder: (context) => const _HunkSelection()),
         WidgetbookUseCase(
+          name: 'Three parts',
+          builder: (context) => _ThreeParts(
+            layout: context.knobs.object.dropdown(
+              label: 'layout',
+              options: DiffLayoutSetting.values,
+              initialOption: DiffLayoutSetting.unified,
+              labelBuilder: (value) => value.name,
+            ),
+          ),
+        ),
+        WidgetbookUseCase(name: 'Pinned numbers scrolled right', builder: (context) => const _PinnedNumbers()),
+        WidgetbookUseCase(
           name: 'Word marks',
           builder: (context) => _WordMarks(
             wordMarks: context.knobs.boolean(label: 'word marks', initialValue: true),
@@ -289,6 +301,14 @@ final graphFolder = WidgetbookFolder(
             ),
           ),
         ),
+      ],
+    ),
+    WidgetbookComponent(
+      name: 'Inspector',
+      useCases: <WidgetbookUseCase>[
+        // Story 10.38: the files beside the diff from 780 points, above it below 740.
+        WidgetbookUseCase(name: 'Wide', builder: (context) => const _InspectorAt(width: 900)),
+        WidgetbookUseCase(name: 'Narrow', builder: (context) => const _InspectorAt(width: 460)),
       ],
     ),
     WidgetbookComponent(
@@ -1759,6 +1779,274 @@ class _HunkSelection extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Story 10.38: one hunk of three parts (jj's diff-editor sections), the second picked: the "3 parts" pill, a checkbox
+/// per part in the gutter, the mixed hunk header and the edge on the second part's lines.
+class _ThreeParts extends StatelessWidget {
+  const _ThreeParts({required this.layout});
+
+  final DiffLayoutSetting layout;
+
+  static const _sections = <HunkKey>[
+    HunkKey(oldStart: 1, oldCount: 1, newStart: 1, newCount: 1),
+    HunkKey(oldStart: 5, oldCount: 1, newStart: 5, newCount: 2),
+    HunkKey(oldStart: 9, oldCount: 1, newStart: 10, newCount: 1),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = <HunkLine>[
+      _colorWords('    1    1|fn main() {'),
+      _colorWords('~   2    2|    let a = [-1-]{+2+};'),
+      _colorWords('    3    3|    let b = 3;'),
+      _colorWords('    4    4|    let c = 4;'),
+      _colorWords('    5    5|    let d = 5;'),
+      _colorWords('-   6     |[-    log("x");-]'),
+      _colorWords('+        6|{+    log("y");+}'),
+      _colorWords('+        7|{+    log("z");+}'),
+      _colorWords('    7    8|    let e = 7;'),
+      _colorWords('    8    9|    let f = 8;'),
+      _colorWords('    9   10|    let g = 9;'),
+      _colorWords('~  10   11|    exit([-0-]{+1+})'),
+      _colorWords('   11   12|}'),
+    ];
+    final hunk = Hunk(
+      before: (start: 0, end: 11),
+      after: (start: 0, end: 12),
+      symbol: 'main',
+      sections: _sections,
+      removed: 3,
+      added: 4,
+      lines: lines,
+    );
+    final diff = FileDiff(
+      path: 'src/main.rs',
+      kind: FileChangeKind.modified,
+      fromPath: null,
+      binary: false,
+      modeChange: false,
+      sections: _sections,
+      hunks: <Hunk>[hunk],
+      removed: 3,
+      added: 4,
+      fingerprint: 'f',
+    );
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ZsCanvas(),
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: InspectorDiffView(
+                path: diff.path,
+                diff: diff,
+                error: null,
+                layout: layout,
+                onLayoutChanged: (_) {},
+                hunkPicked: (_) => null,
+                onHunkToggled: (_) {},
+                partPicked: (part) => part == _sections[1],
+                onPartToggled: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Story 10.38 (deferred-work I1): a unified diff with a short line under a long one, in a bounded well scrolled fully
+/// right — the numbers and the part checkboxes stay at the left edge, the hunk header stays in view.
+class _PinnedNumbers extends StatefulWidget {
+  const _PinnedNumbers();
+
+  @override
+  State<_PinnedNumbers> createState() => _PinnedNumbersState();
+}
+
+class _PinnedNumbersState extends State<_PinnedNumbers> {
+  final GlobalKey _view = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _view.currentContext?.visitChildElements(_scrollRight));
+  }
+
+  /// Scrolls every horizontal scrollable below [element] to its end.
+  static void _scrollRight(Element element) {
+    if (element is StatefulElement && element.state is ScrollableState) {
+      final state = element.state as ScrollableState;
+      if (state.axisDirection == AxisDirection.right) {
+        state.position.jumpTo(state.position.maxScrollExtent);
+      }
+    }
+    element.visitChildElements(_scrollRight);
+  }
+
+  static const _sections = <HunkKey>[
+    HunkKey(oldStart: 0, oldCount: 1, newStart: 0, newCount: 1),
+    HunkKey(oldStart: 3, oldCount: 1, newStart: 3, newCount: 1),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = <HunkLine>[
+      _colorWords(
+        '~   1    1|    let message = [-"a short note"-]{+"a line long enough to leave the well on its right edge"+};',
+      ),
+      _colorWords('    2    2|    let b = 2;'),
+      _colorWords('    3    3|    let c = 3;'),
+      _colorWords('~   4    4|    x([-0-]{+1+});'),
+    ];
+    final diff = FileDiff(
+      path: 'src/main.rs',
+      kind: FileChangeKind.modified,
+      fromPath: null,
+      binary: false,
+      modeChange: false,
+      sections: _sections,
+      hunks: <Hunk>[
+        Hunk(
+          before: (start: 0, end: 4),
+          after: (start: 0, end: 4),
+          symbol: 'main',
+          sections: _sections,
+          removed: 2,
+          added: 2,
+          lines: lines,
+        ),
+      ],
+      removed: 2,
+      added: 2,
+      fingerprint: 'f',
+    );
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ZsCanvas(),
+        Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: SizedBox(
+              width: 420,
+              height: 260,
+              child: InspectorDiffView(
+                key: _view,
+                path: diff.path,
+                diff: diff,
+                error: null,
+                layout: DiffLayoutSetting.unified,
+                onLayoutChanged: (_) {},
+                hunkPicked: (_) => null,
+                onHunkToggled: (_) {},
+                partPicked: (part) => part == _sections[1],
+                onPartToggled: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Story 10.38: the inspector at a fixed [width] on the demo's first mutable change — 900 puts the files beside the
+/// diff, 460 above it.
+class _InspectorAt extends StatefulWidget {
+  const _InspectorAt({required this.width});
+
+  final double width;
+
+  @override
+  State<_InspectorAt> createState() => _InspectorAtState();
+}
+
+class _InspectorAtState extends State<_InspectorAt> {
+  final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_inspector');
+  final _source = FakeGraphSource((request) => requestedLayout('design-default', request))..parentsLayout = _allParents;
+  final _model = GraphViewModel();
+  final _descriptions = <String, String>{};
+  InspectorViewModel? _inspector;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final SettingsStore store = await SettingsStore.load(File('${_dir.path}/settings.json'));
+    if (!mounted) {
+      return;
+    }
+    final int now = recordedNowMs('design-default');
+    _model
+      ..addListener(_selectFirst)
+      ..init(_source, actions: _DemoActions(_descriptions), clock: () => DateTime.fromMillisecondsSinceEpoch(now));
+    setState(() {
+      _inspector = InspectorViewModel(
+        graph: _model,
+        details: _DemoDetails(_model, _descriptions),
+        viewed: ProjectViewedStore(store, '/demo'),
+        settings: store,
+      );
+    });
+  }
+
+  /// Selects the first mutable change other than @ that has files.
+  void _selectFirst() {
+    final GraphLayout? layout = _model.layout;
+    if (layout == null) {
+      return;
+    }
+    _model.removeListener(_selectFirst);
+    for (var node = 0; node < layout.nodeCount; node++) {
+      final bool files = layout.parentCountOf(node) < 2 && layout.commitIdOf(node).hashCode % 5 >= 3;
+      if (node != layout.workingCopyIndex && node != layout.rootIndex && !layout.isImmutable(node) && files) {
+        _model.select(layout.keyOf(node));
+        return;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _model.removeListener(_selectFirst);
+    _inspector?.dispose();
+    _model.dispose();
+    _dir.deleteSync(recursive: true);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final InspectorViewModel? inspector = _inspector;
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ZsCanvas(),
+        if (inspector != null)
+          Align(
+            alignment: Alignment.topRight,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SizedBox(
+                width: widget.width,
+                height: 760,
+                child: GraphInspector(model: inspector),
+              ),
+            ),
+          ),
       ],
     );
   }

@@ -1221,6 +1221,51 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String inspectorHunkParts(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count parts',
+      one: '1 part',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String inspectorPartPick(int count, int start, int end) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Pick lines $start–$end',
+      one: 'Pick line $start',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String inspectorPartUnpick(int count, int start, int end) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Unpick lines $start–$end',
+      one: 'Unpick line $start',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get inspectorShowMore => 'Show more';
+
+  @override
+  String get inspectorShowLess => 'Show less';
+
+  @override
+  String get inspectorSplitLabel => 'Files and diff';
+
+  @override
+  String get inspectorSplitTooltip => 'Drag to resize · double-click to reset';
+
+  @override
   String get inspectorModeCheck => 'Select the executable bit change';
 
   @override

@@ -7,9 +7,10 @@ import React from "react";
 // in the 12px gap, 3 on the island — and runs along the straight part only (the --radius-panel corners left out).
 // Hover: the resize cursor at once; after --delay-resize a 2px --edge-hov line fades in on the island's edge; dragging keeps it. At the
 // minimum or maximum the cursor shows the one direction left (w-resize / e-resize = AppKit's resizeLeft / resizeRight).
-// Drag: live, clamped to min … min(max, limit) — limit keeps --graph-min-w (320) of graph visible. Double-click: back to defaultValue.
+// Drag: live, clamped to min … min(max, limit) — limit keeps --graph-min-w (320) of graph visible; no max by default (2026-11-14,
+// Story 10.38: the islands have no maximum width). Double-click: back to defaultValue.
 // Keyboard (a Tab stop): ← → 10pt (⇧ 50), Home / End = min / max, ↩ = default. role separator with aria-valuenow / -min / -max.
-export function ResizeEdge({ side = "left", at = 0, top = 0, bottom = 0, value, min, max, defaultValue, limit, step = 10, label = "Width", onChange, onReset, className = "", style }) {
+export function ResizeEdge({ side = "left", at = 0, top = 0, bottom = 0, value, min, max = Infinity, defaultValue, limit, step = 10, label = "Width", onChange, onReset, className = "", style }) {
   const [drag, setDrag] = React.useState(false);
   const hi = Math.max(min, Math.min(max, limit != null ? limit : max));
   const clamp = (v) => Math.round(Math.max(min, Math.min(hi, v)));

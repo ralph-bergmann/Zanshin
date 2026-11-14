@@ -19,7 +19,12 @@ void main() {
     const settings = AppSettings(appearance: AppearanceSettings(themeMode: ThemeMode.dark));
     expect(settings.toJson(), {
       'appearance': {'themeMode': 'dark', 'accentSource': 'followMacOS', 'density': 'compact', 'zoom': 100},
-      'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
+      'layout': {
+        'inspectorWidth': 460.0,
+        'panelWidth': 300.0,
+        'inspectorFilesNarrow': 0.38,
+        'inspectorFilesWide': 0.34,
+      },
       'general': {'hideControls': true, 'diffLayout': 'unified', 'diffWordMarks': true},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
@@ -62,7 +67,12 @@ void main() {
     const settings = AppSettings(appearance: AppearanceSettings(accentSource: AccentSource.zanshin));
     expect(settings.toJson(), {
       'appearance': {'themeMode': 'system', 'accentSource': 'zanshin', 'density': 'compact', 'zoom': 100},
-      'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
+      'layout': {
+        'inspectorWidth': 460.0,
+        'panelWidth': 300.0,
+        'inspectorFilesNarrow': 0.38,
+        'inspectorFilesWide': 0.34,
+      },
       'general': {'hideControls': true, 'diffLayout': 'unified', 'diffWordMarks': true},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
@@ -101,9 +111,22 @@ void main() {
       layout: LayoutSettings(inspectorWidth: 512, panelWidth: 255.5),
       general: GeneralSettings(hideControls: false),
     );
-    expect(settings.toJson()['layout'], {'inspectorWidth': 512.0, 'panelWidth': 255.5});
+    expect(settings.toJson()['layout'], {
+      'inspectorWidth': 512.0,
+      'panelWidth': 255.5,
+      'inspectorFilesNarrow': 0.38,
+      'inspectorFilesWide': 0.34,
+    });
     expect(settings.toJson()['general'], {'hideControls': false, 'diffLayout': 'unified', 'diffWordMarks': true});
     expect(AppSettings.fromJson(settings.toJson()), settings);
+  });
+
+  test('the split shares default to 0.38 narrow and 0.34 wide and survive a JSON round trip', () {
+    expect(const LayoutSettings().inspectorFilesNarrow, 0.38);
+    expect(const LayoutSettings().inspectorFilesWide, 0.34);
+    expect(LayoutSettings.fromJson(const <String, Object?>{}).inspectorFilesWide, 0.34);
+    const changed = LayoutSettings(inspectorFilesNarrow: 0.5, inspectorFilesWide: 0.25);
+    expect(LayoutSettings.fromJson(changed.toJson()), changed);
   });
 
   test('the diff layout defaults to unified and Side by side survives a JSON round trip', () {

@@ -101,7 +101,7 @@ void main() {
     final int Function() writes = countWrites(settings);
     final vm = FloatingShellViewModel(settings);
     addTearDown(vm.dispose);
-    expect(vm.shell.panelWidth, 900, reason: 'the shell clamps it to 440 where it lays out');
+    expect(vm.shell.panelWidth, 900, reason: 'the shell clamps it to the window where it lays out');
     await pastDebounce();
     expect(writes(), 0);
     expect(settings.value.layout.panelWidth, 900);

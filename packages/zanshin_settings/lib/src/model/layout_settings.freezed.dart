@@ -16,9 +16,11 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$LayoutSettings {
 
-/// The inspector's remembered width, `--inspector-w` 460 by default (380–720).
- double get inspectorWidth;/// The left panels' remembered width, `--panel-w` 300 by default (240–440).
- double get panelWidth;
+/// The inspector's remembered width, `--inspector-w` 460 by default (at least 380, no maximum).
+ double get inspectorWidth;/// The left panels' remembered width, `--panel-w` 300 by default (at least 240, no maximum).
+ double get panelWidth;/// The files' share of the inspector's split while the files sit above the diff, 0.38 by default.
+ double get inspectorFilesNarrow;/// The files' share of the inspector's split while the files sit beside the diff, 0.34 by default.
+ double get inspectorFilesWide;
 /// Create a copy of LayoutSettings
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -32,20 +34,20 @@ $LayoutSettingsCopyWith<LayoutSettings> get copyWith => _$LayoutSettingsCopyWith
 @override
 bool operator ==(Object other) {
   final _this = this as LayoutSettings;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LayoutSettings&&(identical(other.inspectorWidth, _this.inspectorWidth) || other.inspectorWidth == _this.inspectorWidth)&&(identical(other.panelWidth, _this.panelWidth) || other.panelWidth == _this.panelWidth));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LayoutSettings&&(identical(other.inspectorWidth, _this.inspectorWidth) || other.inspectorWidth == _this.inspectorWidth)&&(identical(other.panelWidth, _this.panelWidth) || other.panelWidth == _this.panelWidth)&&(identical(other.inspectorFilesNarrow, _this.inspectorFilesNarrow) || other.inspectorFilesNarrow == _this.inspectorFilesNarrow)&&(identical(other.inspectorFilesWide, _this.inspectorFilesWide) || other.inspectorFilesWide == _this.inspectorFilesWide));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as LayoutSettings;
-  return Object.hash(runtimeType,_this.inspectorWidth,_this.panelWidth);
+  return Object.hash(runtimeType,_this.inspectorWidth,_this.panelWidth,_this.inspectorFilesNarrow,_this.inspectorFilesWide);
 }
 
 @override
 String toString() {
   final _this = this as LayoutSettings;
-  return 'LayoutSettings(inspectorWidth: ${_this.inspectorWidth}, panelWidth: ${_this.panelWidth})';
+  return 'LayoutSettings(inspectorWidth: ${_this.inspectorWidth}, panelWidth: ${_this.panelWidth}, inspectorFilesNarrow: ${_this.inspectorFilesNarrow}, inspectorFilesWide: ${_this.inspectorFilesWide})';
 }
 
 
@@ -56,7 +58,7 @@ abstract mixin class $LayoutSettingsCopyWith<$Res>  {
   factory $LayoutSettingsCopyWith(LayoutSettings value, $Res Function(LayoutSettings) _then) = _$LayoutSettingsCopyWithImpl;
 @useResult
 $Res call({
- double inspectorWidth, double panelWidth
+ double inspectorWidth, double panelWidth, double inspectorFilesNarrow, double inspectorFilesWide
 });
 
 
@@ -73,10 +75,12 @@ class _$LayoutSettingsCopyWithImpl<$Res>
 
 /// Create a copy of LayoutSettings
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? inspectorWidth = null,Object? panelWidth = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? inspectorWidth = null,Object? panelWidth = null,Object? inspectorFilesNarrow = null,Object? inspectorFilesWide = null,}) {
   return _then(LayoutSettings(
 inspectorWidth: null == inspectorWidth ? _self.inspectorWidth : inspectorWidth // ignore: cast_nullable_to_non_nullable
 as double,panelWidth: null == panelWidth ? _self.panelWidth : panelWidth // ignore: cast_nullable_to_non_nullable
+as double,inspectorFilesNarrow: null == inspectorFilesNarrow ? _self.inspectorFilesNarrow : inspectorFilesNarrow // ignore: cast_nullable_to_non_nullable
+as double,inspectorFilesWide: null == inspectorFilesWide ? _self.inspectorFilesWide : inspectorFilesWide // ignore: cast_nullable_to_non_nullable
 as double,
   ));
 }
@@ -162,10 +166,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( double inspectorWidth,  double panelWidth)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( double inspectorWidth,  double panelWidth,  double inspectorFilesNarrow,  double inspectorFilesWide)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _LayoutSettings() when $default != null:
-return $default(_that.inspectorWidth,_that.panelWidth);case _:
+return $default(_that.inspectorWidth,_that.panelWidth,_that.inspectorFilesNarrow,_that.inspectorFilesWide);case _:
   return orElse();
 
 }
@@ -183,10 +187,10 @@ return $default(_that.inspectorWidth,_that.panelWidth);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( double inspectorWidth,  double panelWidth)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( double inspectorWidth,  double panelWidth,  double inspectorFilesNarrow,  double inspectorFilesWide)  $default,) {final _that = this;
 switch (_that) {
 case _LayoutSettings():
-return $default(_that.inspectorWidth,_that.panelWidth);case _:
+return $default(_that.inspectorWidth,_that.panelWidth,_that.inspectorFilesNarrow,_that.inspectorFilesWide);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -203,10 +207,10 @@ return $default(_that.inspectorWidth,_that.panelWidth);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( double inspectorWidth,  double panelWidth)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( double inspectorWidth,  double panelWidth,  double inspectorFilesNarrow,  double inspectorFilesWide)?  $default,) {final _that = this;
 switch (_that) {
 case _LayoutSettings() when $default != null:
-return $default(_that.inspectorWidth,_that.panelWidth);case _:
+return $default(_that.inspectorWidth,_that.panelWidth,_that.inspectorFilesNarrow,_that.inspectorFilesWide);case _:
   return null;
 
 }
@@ -218,13 +222,17 @@ return $default(_that.inspectorWidth,_that.panelWidth);case _:
 @JsonSerializable()
 
 class _LayoutSettings implements LayoutSettings {
-  const _LayoutSettings({this.inspectorWidth = 460, this.panelWidth = 300});
+  const _LayoutSettings({this.inspectorWidth = 460, this.panelWidth = 300, this.inspectorFilesNarrow = 0.38, this.inspectorFilesWide = 0.34});
   factory _LayoutSettings.fromJson(Map<String, dynamic> json) => _$LayoutSettingsFromJson(json);
 
-/// The inspector's remembered width, `--inspector-w` 460 by default (380–720).
+/// The inspector's remembered width, `--inspector-w` 460 by default (at least 380, no maximum).
 @override@JsonKey() final  double inspectorWidth;
-/// The left panels' remembered width, `--panel-w` 300 by default (240–440).
+/// The left panels' remembered width, `--panel-w` 300 by default (at least 240, no maximum).
 @override@JsonKey() final  double panelWidth;
+/// The files' share of the inspector's split while the files sit above the diff, 0.38 by default.
+@override@JsonKey() final  double inspectorFilesNarrow;
+/// The files' share of the inspector's split while the files sit beside the diff, 0.34 by default.
+@override@JsonKey() final  double inspectorFilesWide;
 
 /// Create a copy of LayoutSettings
 /// with the given fields replaced by the non-null parameter values.
@@ -239,18 +247,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _LayoutSettings&&(identical(other.inspectorWidth, inspectorWidth) || other.inspectorWidth == inspectorWidth)&&(identical(other.panelWidth, panelWidth) || other.panelWidth == panelWidth));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _LayoutSettings&&(identical(other.inspectorWidth, inspectorWidth) || other.inspectorWidth == inspectorWidth)&&(identical(other.panelWidth, panelWidth) || other.panelWidth == panelWidth)&&(identical(other.inspectorFilesNarrow, inspectorFilesNarrow) || other.inspectorFilesNarrow == inspectorFilesNarrow)&&(identical(other.inspectorFilesWide, inspectorFilesWide) || other.inspectorFilesWide == inspectorFilesWide));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,inspectorWidth,panelWidth);
+    return Object.hash(runtimeType,inspectorWidth,panelWidth,inspectorFilesNarrow,inspectorFilesWide);
 }
 
 @override
 String toString() {
-    return 'LayoutSettings(inspectorWidth: $inspectorWidth, panelWidth: $panelWidth)';
+    return 'LayoutSettings(inspectorWidth: $inspectorWidth, panelWidth: $panelWidth, inspectorFilesNarrow: $inspectorFilesNarrow, inspectorFilesWide: $inspectorFilesWide)';
 }
 
 
@@ -261,7 +269,7 @@ abstract mixin class _$LayoutSettingsCopyWith<$Res> implements $LayoutSettingsCo
   factory _$LayoutSettingsCopyWith(_LayoutSettings value, $Res Function(_LayoutSettings) _then) = __$LayoutSettingsCopyWithImpl;
 @override @useResult
 $Res call({
- double inspectorWidth, double panelWidth
+ double inspectorWidth, double panelWidth, double inspectorFilesNarrow, double inspectorFilesWide
 });
 
 
@@ -278,10 +286,12 @@ class __$LayoutSettingsCopyWithImpl<$Res>
 
 /// Create a copy of LayoutSettings
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? inspectorWidth = null,Object? panelWidth = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? inspectorWidth = null,Object? panelWidth = null,Object? inspectorFilesNarrow = null,Object? inspectorFilesWide = null,}) {
   return _then(_LayoutSettings(
 inspectorWidth: null == inspectorWidth ? _self.inspectorWidth : inspectorWidth // ignore: cast_nullable_to_non_nullable
 as double,panelWidth: null == panelWidth ? _self.panelWidth : panelWidth // ignore: cast_nullable_to_non_nullable
+as double,inspectorFilesNarrow: null == inspectorFilesNarrow ? _self.inspectorFilesNarrow : inspectorFilesNarrow // ignore: cast_nullable_to_non_nullable
+as double,inspectorFilesWide: null == inspectorFilesWide ? _self.inspectorFilesWide : inspectorFilesWide // ignore: cast_nullable_to_non_nullable
 as double,
   ));
 }

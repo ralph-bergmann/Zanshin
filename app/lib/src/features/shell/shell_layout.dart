@@ -11,8 +11,8 @@ import 'graph_insets.dart';
 /// the window width and the remembered widths, the effective widths of the pinned panel and the inspector, whether
 /// the pinned panel collapses, the [GraphInsets] and the limits of the two resize edges.
 ///
-/// **Remembered and effective.** The user's remembered widths (clamped to their token ranges, inspector 380–720,
-/// panel 240–440) are what the user dragged; the effective widths are what the window allows. A narrow window never
+/// **Remembered and effective.** The user's remembered widths (clamped only to their minimums, inspector 380,
+/// panel 240; there is no maximum) are what the user dragged; the effective widths are what the window allows. A narrow window never
 /// changes the remembered ones.
 ///
 /// **The collapse rule.** With r the right side (the effective inspector + 24 while the inspector is open, else the
@@ -25,8 +25,8 @@ import 'graph_insets.dart';
 /// With 300 / 460, pinned, the inspector open: 1192 both fit; down to 1112 the inspector shrinks to 380; down to 1052
 /// the panel shrinks to 240; below 1052 the panel collapses; widening, it returns at 1112.
 ///
-/// **Limits.** A drag stops where 320 px of graph would remain: the panel at max(240, min(440, W − 88 − r − 320)),
-/// the inspector at max(380, min(720, W − left inset − 24 − 320)) (DS components/surfaces/ResizeEdge.prompt.md:5;
+/// **Limits.** A drag stops where 320 px of graph would remain: the panel at max(240, W − 88 − r − 320), the
+/// inspector at max(380, W − left inset − 24 − 320) (DS components/surfaces/ResizeEdge.prompt.md:5;
 /// the panel's limit is Claude's proposal, r5out resize).
 @immutable
 class ShellLayout {
@@ -57,8 +57,8 @@ class ShellLayout {
     required bool wasCollapsed,
   }) {
     final w = windowWidth;
-    final double rp = rememberedPanel.clamp(metrics.panelWMin, metrics.panelWMax);
-    final double ri = rememberedInspector.clamp(metrics.inspectorWMin, metrics.inspectorWMax);
+    final double rp = math.max(rememberedPanel, metrics.panelWMin);
+    final double ri = math.max(rememberedInspector, metrics.inspectorWMin);
     // The rail column and its gap: 76 + 12 (DS tokens/spacing.css:32, :40).
     final double railSide = metrics.chromeLeft + metrics.chromeInset;
     final double graph = metrics.graphMinW;
@@ -74,7 +74,11 @@ class ShellLayout {
     if (pinned) {
       final double minRight = inspectorOpen ? metrics.inspectorWMin + _inspectorGap : withoutInspector;
       collapsed = wasCollapsed ? need(rp, minRight) > w : need(metrics.panelWMin, minRight) > w;
-      if (!collapsed) {
+      if (collapsed) {
+        // The flyout covers the graph: without a maximum width it leaves 320 of the window beside the rail, its gap
+        // and the inset (an open inspector is not subtracted).
+        panel = math.max(metrics.panelWMin, math.min(rp, w - railSide - metrics.chromeInset - graph));
+      } else {
         if (!inspectorOpen) {
           panel = math.min(rp, w - railSide - withoutInspector - graph);
           inspector = ri;
@@ -106,11 +110,8 @@ class ShellLayout {
         inspectorWidth: inspectorOpen ? inspector : 0,
         minimapWidth: math.max(0, minimapWidth),
       ),
-      panelMax: math.max(metrics.panelWMin, math.min(metrics.panelWMax, w - railSide - right - graph)),
-      inspectorMax: math.max(
-        metrics.inspectorWMin,
-        math.min(metrics.inspectorWMax, w - left - _inspectorGap - graph),
-      ),
+      panelMax: math.max(metrics.panelWMin, w - railSide - right - graph),
+      inspectorMax: math.max(metrics.inspectorWMin, w - left - _inspectorGap - graph),
     );
   }
 

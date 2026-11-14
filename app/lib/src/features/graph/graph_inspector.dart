@@ -12,7 +12,7 @@ import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart' show SelectionArea;
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, LayoutSettings, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -45,7 +45,8 @@ typedef InspectorDraft = ({String summary, String details});
 ///   The first file starts focused; a reload keeps the focused path while it is
 ///   listed. A file is viewed while `viewedKey(change id, path, its summary fingerprint)` is in the viewed store's set; the
 ///   layout is `general.diffLayout` in [settings], followed when another writer changes it, and so is
-///   `general.diffWordMarks` ([wordMarks], Story 5.14), which only changes how the loaded diff is drawn.
+///   `general.diffWordMarks` ([wordMarks], Story 5.14), which only changes how the loaded diff is drawn. The split
+///   between files and diff takes its share per layout from `layout` in [settings] ([filesShare], Story 10.38).
 /// - **Composer** (Story 10.25): the checked files of the selection — @ starts with all, another change with none,
 ///   reset on a selection change, kept to the still-listed paths on a reload — and a composer draft per change key;
 ///   [runComposer] runs [composerAction] (`jj commit` / `jj split -r`). [squash] asks `squashPlan` first and opens the
@@ -61,7 +62,11 @@ class InspectorViewModel extends ChangeNotifier {
   }) : _viewedStore = viewed,
        _viewed = viewed.load(),
        _layout = settings.value.general.diffLayout,
-       _wordMarks = settings.value.general.diffWordMarks {
+       _wordMarks = settings.value.general.diffWordMarks,
+       _shares = (
+         narrow: settings.value.layout.inspectorFilesNarrow,
+         wide: settings.value.layout.inspectorFilesWide,
+       ) {
     graph.addListener(_graphChanged);
     settings.addListener(_settingsChanged);
     viewed.addListener(_viewedChanged);
@@ -81,6 +86,7 @@ class InspectorViewModel extends ChangeNotifier {
   final Set<String> _viewed;
   DiffLayoutSetting _layout;
   bool _wordMarks;
+  ({double narrow, double wide}) _shares;
 
   Map<String, FileDiff>? _summary;
   String? _changeId;
@@ -233,11 +239,41 @@ class InspectorViewModel extends ChangeNotifier {
     );
   }
 
+  /// The files' share of the split between the file list and the diff, per layout (Story 10.38; app-wide, in
+  /// `layout` of [settings]).
+  double filesShare({required bool wide}) =>
+      wide ? settings.value.layout.inspectorFilesWide : settings.value.layout.inspectorFilesNarrow;
+
+  /// Writes the files' share of [wide]'s split — once a divider drag ends or on reset, never per move (a failed write
+  /// is swallowed; the store keeps the value).
+  void setFilesShare({required bool wide, required double share}) {
+    unawaited(
+      settings
+          .update(
+            (s) => s.copyWith(
+              layout: wide
+                  ? s.layout.copyWith(inspectorFilesWide: share)
+                  : s.layout.copyWith(inspectorFilesNarrow: share),
+            ),
+          )
+          .onError<FileSystemException>((_, _) {}),
+    );
+  }
+
   void _settingsChanged() {
     var changed = false;
     final DiffLayoutSetting layout = settings.value.general.diffLayout;
     if (layout != _layout) {
       _layout = layout;
+      changed = true;
+    }
+    // Another window (or a reset) moved a split.
+    final ({double narrow, double wide}) shares = (
+      narrow: settings.value.layout.inspectorFilesNarrow,
+      wide: settings.value.layout.inspectorFilesWide,
+    );
+    if (shares != _shares) {
+      _shares = shares;
       changed = true;
     }
     // The switch only changes the drawing, so the loaded diff stays.
@@ -495,6 +531,23 @@ class InspectorViewModel extends ChangeNotifier {
     } else {
       // The shown diff may predate a reload: only keys of the file's current sections.
       pick.keys.addAll(hunk.sections.where(_summary![path]!.sections.contains));
+    }
+    _setPartial(path, pick);
+  }
+
+  /// Whether [part] (one of a hunk's sections) of [path] is picked: the file whole, or the section in its partial.
+  bool partPicked(String path, HunkKey part) =>
+      _picked.contains(path) || (_partial[path]?.keys.contains(part) ?? false);
+
+  /// Toggles one part of a hunk in [path] (Story 10.38): the smallest pick, a section, never a line. Like a hunk, only
+  /// a key still in the file's current sections; a full partial becomes a whole pick.
+  void togglePart(String path, HunkKey part) {
+    if (!hunkable(path) || !_summary![path]!.sections.contains(part)) {
+      return;
+    }
+    final ({Set<HunkKey> keys, bool mode}) pick = _partialOf(path);
+    if (!pick.keys.remove(part)) {
+      pick.keys.add(part);
     }
     _setPartial(path, pick);
   }
@@ -929,11 +982,15 @@ class InspectorViewModel extends ChangeNotifier {
 }
 
 /// The inspector (Story 10.8; DS ui_kits/desktop/inspector.jsx, kit.css:90-128): the selected change on the panel
-/// island, a fixed header over a scrolling body.
+/// island. Story 10.38 (design `Inspector Study.html`, DESIGN-SYSTEM-SYNC #25): a fixed header, a top part at its
+/// natural height up to 48 % of the space below the header (then it scrolls: the title or a form, meta, chips,
+/// actions), and the split of files and diff filling the rest; the composer at the bottom. The split puts the files
+/// beside the diff once the inspector is 780 points wide and above it below 740; between the two the last layout stays.
 ///
 /// - **Header:** the full change id, jj's unique prefix bold (one `Text.rich`, the commit id as its tooltip); the
 ///   flags "@ Working copy" (gold), Immutable (the hatch swatch; not on the root), Empty, Merge, Conflict; Close (Esc).
-/// - **Title = describe:** the subject in `--type-inspector-title` and the rest of the description; on a mutable
+/// - **Title = describe:** the subject in `--type-inspector-title` and the rest of the description (at most 3 lines,
+///   then "Show more" / "Show less"); on a mutable
 ///   change it is a control that opens the describe form (the pen on hover or focus), an undescribed one reading
 ///   "Describe this change…". The form replaces it in place: Summary and Details, ↩ in Summary or ⌘↩ save, the
 ///   command, Cancel and the gold Save.
@@ -943,9 +1000,11 @@ class InspectorViewModel extends ChangeNotifier {
 ///   10.36) opens "Squash into parent" and "Absorb into ancestors", each row's command its hint and its tooltip the
 ///   reason it is off, else the command: Squash is disabled only with jj's refusal and opens the squash form when jj
 ///   would ask for a combined description (Story 10.25); Absorb with jj's refusal, or when no hunk is absorbable.
-/// - **Changes:** the file count with the summary's totals, the viewed counter with Mark all / Reset, one row per file
-///   with its ± and ✓ (one Tab stop, ↑ ↓ move the highlight, a click or ↩ focuses), and the focused file's diff block
-///   (Story 10.24); or the empty, stale or refusal text. On a mutable change each row and the header have a checkbox.
+/// - **Changes:** the files pane — the file count with the summary's totals, the viewed counter with Mark all / Reset,
+///   one row per file with its ± and ✓ in a scroll of its own (one Tab stop with Finder's keys: ↑ ↓ show the next
+///   file, Space picks, V marks Viewed) — and the focused file's diff block (Story 10.24) with a divider between them
+///   whose share is remembered per layout; or the empty, stale or refusal text. On a mutable change each row and the
+///   header have a checkbox, and a hunk of several parts a checkbox per part.
 /// - **Composer** (Story 10.25; DS inspector.jsx:40-79, kit.css:129-144): at the island's bottom while composing.
 /// - **Esc:** the squash form closes; in a composer field with a draft it leaves the field; in a field with a changed
 ///   describe draft it leaves the field; else it closes the form, else on another change than @ it clears the picks
@@ -968,6 +1027,15 @@ class _GraphInspectorState extends State<GraphInspector> {
 
   /// The last panel built, shown while the shell plays the exit after the selection went.
   Widget? _last;
+
+  /// Whether the files sit beside the diff; null until the first build.
+  bool? _wide;
+
+  /// The layout of the split at [width] (Story 10.38): beside from 780 points, above below 740, the last one between.
+  bool _wideAt(double width) => _wide = switch (_wide) {
+    true => width >= 740,
+    false || null => width >= 780,
+  };
 
   @override
   void dispose() {
@@ -1071,84 +1139,103 @@ class _GraphInspectorState extends State<GraphInspector> {
       child: Focus(
         focusNode: _root,
         onKeyEvent: _onKey,
-        child: ZsIsland(
-          shape: ZsIslandShape.panel,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              _Header(data: data, layout: layout, node: node, entry: entry, onClose: () => graph.select(null)),
-              Expanded(
-                child: ZsScrollArea(
-                  controller: _scroll,
-                  label: strings.inspectorLabel,
-                  identifier: 'inspector-body',
-                  child: SingleChildScrollView(
-                    controller: _scroll,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        if (squashing != null)
-                          _DescribeForm(
-                            key: ValueKey<String>('squash ${data.key}'),
-                            model: _model,
-                            changeKey: data.key,
-                            initial: squashing,
-                            blocked: graphBlockedReason(strings, graph),
-                            squashCommand: GraphSquash(revision: graphShortId(layout, node)).command,
-                            onClosed: refocus,
-                          )
-                        else if (editing != null)
-                          _DescribeForm(
-                            key: ValueKey<String>(data.key),
-                            model: _model,
-                            changeKey: data.key,
-                            initial:
-                                _model.draftOf(data.key) ?? InspectorViewModel.draftFrom(editing.change.description),
-                            blocked: graphBlockedReason(strings, graph),
-                            onClosed: refocus,
-                          )
-                        else
-                          _Title(model: _model, data: data, entry: entry),
-                        _Meta(
-                          data: data,
-                          layout: layout,
-                          node: node,
-                          entry: entry,
-                          nowMs: graph.now.value,
-                          onJump: graph.goTo,
-                        ),
-                        if (data.refs.isNotEmpty)
-                          _Chips(refs: data.refs, drag: graph.actionsEnabled ? graph.drag : null),
-                        if (editing == null && squashing == null)
-                          _Actions(model: _model, data: data, layout: layout, node: node),
-                        _Changes(model: _model, data: data),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              ZsPresence(
-                key: ValueKey<String>('composer ${data.key}'),
-                open: _model.composing,
-                exit: motion.durExitLg,
-                builder: (context, closing) => _ComposerMotion(
-                  closing: closing,
-                  child: ExcludeFocus(
-                    excluding: closing,
-                    child: Focus(
-                      focusNode: _composerFocus,
-                      child: _Composer(
-                        model: _model,
-                        data: data,
-                        shortId: graphShortId(layout, node),
-                        blocked: graphBlockedReason(strings, graph),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool wide = _wideAt(constraints.maxWidth);
+            return ZsIsland(
+              shape: ZsIslandShape.panel,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _Header(data: data, layout: layout, node: node, entry: entry, onClose: () => graph.select(null)),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, body) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          // The top part keeps its natural height up to 48 % of the body, then scrolls.
+                          ConstrainedBox(
+                            constraints: BoxConstraints(maxHeight: body.maxHeight * .48),
+                            child: ZsScrollArea(
+                              controller: _scroll,
+                              label: strings.inspectorLabel,
+                              identifier: 'inspector-body',
+                              child: SingleChildScrollView(
+                                controller: _scroll,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: <Widget>[
+                                    if (squashing != null)
+                                      _DescribeForm(
+                                        key: ValueKey<String>('squash ${data.key}'),
+                                        model: _model,
+                                        changeKey: data.key,
+                                        initial: squashing,
+                                        blocked: graphBlockedReason(strings, graph),
+                                        squashCommand: GraphSquash(revision: graphShortId(layout, node)).command,
+                                        onClosed: refocus,
+                                      )
+                                    else if (editing != null)
+                                      _DescribeForm(
+                                        key: ValueKey<String>(data.key),
+                                        model: _model,
+                                        changeKey: data.key,
+                                        initial:
+                                            _model.draftOf(data.key) ??
+                                            InspectorViewModel.draftFrom(editing.change.description),
+                                        blocked: graphBlockedReason(strings, graph),
+                                        onClosed: refocus,
+                                      )
+                                    else
+                                      _Title(model: _model, data: data, entry: entry),
+                                    _Meta(
+                                      data: data,
+                                      layout: layout,
+                                      node: node,
+                                      entry: entry,
+                                      nowMs: graph.now.value,
+                                      onJump: graph.goTo,
+                                    ),
+                                    if (data.refs.isNotEmpty)
+                                      _Chips(refs: data.refs, drag: graph.actionsEnabled ? graph.drag : null),
+                                    if (editing == null && squashing == null)
+                                      _Actions(model: _model, data: data, layout: layout, node: node),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: _Changes(model: _model, data: data, wide: wide),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ),
+                  ZsPresence(
+                    key: ValueKey<String>('composer ${data.key}'),
+                    open: _model.composing,
+                    exit: motion.durExitLg,
+                    builder: (context, closing) => _ComposerMotion(
+                      closing: closing,
+                      child: ExcludeFocus(
+                        excluding: closing,
+                        child: Focus(
+                          focusNode: _composerFocus,
+                          child: _Composer(
+                            model: _model,
+                            data: data,
+                            shortId: graphShortId(layout, node),
+                            blocked: graphBlockedReason(strings, graph),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -1597,7 +1684,12 @@ class _Title extends StatelessWidget {
         if (texts != null && texts.body.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text(texts.body, style: ZsType.body.copyWith(color: colors.textMuted)),
+            // Keyed by the change: another selection starts closed.
+            child: _Description(
+              key: ValueKey<String>(data.key),
+              text: texts.body,
+              style: ZsType.body.copyWith(color: colors.textMuted),
+            ),
           ),
       ],
     );
@@ -1640,6 +1732,77 @@ class _Title extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// The description body under the subject (Story 10.38; design inspector-study.css:60-63): at most 3 lines, then
+/// "Show more" (12 px, weight 500, `--accent`) under it while it is cut; open, all of it and "Show less". The button
+/// is its own control, so it never opens the describe form around it.
+class _Description extends StatefulWidget {
+  const _Description({required this.text, required this.style, super.key});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  State<_Description> createState() => _DescriptionState();
+}
+
+class _DescriptionState extends State<_Description> {
+  static const _lines = 3;
+
+  var _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations strings = context.l10n;
+    final ZsColors colors = ZsColors.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: widget.text, style: DefaultTextStyle.of(context).style.merge(widget.style)),
+          maxLines: _lines,
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.maybeTextScalerOf(context) ?? TextScaler.noScaling,
+        )..layout(maxWidth: constraints.maxWidth);
+        final bool cut = painter.didExceedMaxLines;
+        painter.dispose();
+        final String label = _open ? strings.inspectorShowLess : strings.inspectorShowMore;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              widget.text,
+              maxLines: _open ? null : _lines,
+              overflow: _open ? null : TextOverflow.ellipsis,
+              style: widget.style,
+            ),
+            if (cut)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: ZsControlCore(
+                  identifier: 'inspector-description-more',
+                  onActivate: () => setState(() => _open = !_open),
+                  ring: ZsRingPlacement.inside,
+                  ringRadius: 5,
+                  semantics: SemanticsProperties(button: true, label: label),
+                  builder: (context, status) => Text(
+                    label,
+                    style: ZsType.secondary.copyWith(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      fontVariations: const <FontVariation>[FontVariation.weight(500)],
+                      color: colors.accent,
+                      decoration: status.hovered ? TextDecoration.underline : TextDecoration.none,
+                      decorationColor: colors.accent,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -2228,15 +2391,52 @@ class _Actions extends StatelessWidget {
   }
 }
 
-/// The Changes section (DS kit.css:114-124): padding 16 20 20; the header "Changes" 12.5 600 and the file count; the
-/// rows (DS components/content/FileRow, content.css:2-14) padding 6 8, gap 8, `--radius-md`, the status letter on its
-/// 14 px badge and the path mono `--fs-id`; the highlighted row `--fl-on` while the list has focus. Or the text that
-/// takes its place: the stale state, a refusal, an empty change.
+/// The lengths of the inspector's split of files and diff [extent] long, the divider's band included (Story 10.38):
+/// the files keep 220 (wide) or 110 (narrow), the diff 320 or 140; when both cannot fit the diff's minimum wins, and
+/// the files never go below 0.
+@immutable
+class InspectorSplit {
+  /// The split of [extent] in the [wide] or the narrow layout.
+  const InspectorSplit({required this.wide, required this.extent});
+
+  /// Whether the files sit beside the diff.
+  final bool wide;
+
+  /// The split's length along its axis.
+  final double extent;
+
+  /// What the two panes share: [extent] less the band.
+  double get room => math.max(0, extent - ZsSplitDivider.band);
+
+  /// The files' minimum.
+  double get minFiles => wide ? 220 : 110;
+
+  /// The files' maximum: what leaves the diff its minimum.
+  double get maxFiles => room - (wide ? 320 : 140);
+
+  /// The files' length at [share] of [room], clamped.
+  double files(double share) => math.max(0, math.min(maxFiles, math.max(minFiles, share * room)));
+}
+
+/// The split of the files and the diff (Story 10.38; design `Inspector Study.html`, DESIGN-SYSTEM-SYNC #25; DS
+/// kit.css:114-124): padding 12 16 14; [wide] puts the files left of the diff, else above it, with a [ZsSplitDivider]
+/// between them ("Files and diff"). The files' share comes from the settings per layout (0.34 wide, 0.38 narrow by
+/// default) and is written when a drag ends or on reset; the files keep 220 / 110 and the diff 320 / 140 (wide /
+/// narrow), and when both cannot fit the diff's minimum wins.
+///
+/// The files pane: the header "Changes" 12.5 600 and the file count, then the rows in a scroll of their own (DS
+/// components/content/FileRow, content.css:2-14). The list is one Tab stop with Finder's keys: ↑ ↓ move the current
+/// row and show its diff at once — while a key repeats the row moves at once and the diff loads after an 80 ms pause
+/// without further repeats; Space toggles the current file's pick on a mutable change; V toggles its Viewed mark; ↩
+/// shows its diff. The current row is the focused file's (`--fl-on`), with a 1.5 px `--accent` ring while the list has
+/// focus, and is scrolled into view. Or the text that takes the split's place: the stale state, a refusal, an empty
+/// change.
 class _Changes extends StatefulWidget {
-  const _Changes({required this.model, required this.data});
+  const _Changes({required this.model, required this.data, required this.wide});
 
   final InspectorViewModel model;
   final GraphCardData data;
+  final bool wide;
 
   @override
   State<_Changes> createState() => _ChangesState();
@@ -2244,7 +2444,19 @@ class _Changes extends StatefulWidget {
 
 class _ChangesState extends State<_Changes> {
   final _focus = FocusNode(debugLabel: 'inspector files');
-  var _highlight = 0;
+  final _files = ScrollController();
+  final GlobalKey _current = GlobalKey(debugLabel: 'inspector current file');
+
+  /// The path a held arrow key moved to (a path, so a reload meanwhile keeps the file); its diff loads once the key
+  /// pauses.
+  String? _pending;
+  Timer? _repeat;
+
+  /// The files' share while the divider is dragged; the settings get it once the drag ends.
+  double? _dragShare;
+
+  /// The pause after a key repeat before the current row's diff loads.
+  static const _repeatPause = Duration(milliseconds: 80);
 
   @override
   void initState() {
@@ -2256,32 +2468,94 @@ class _ChangesState extends State<_Changes> {
   void didUpdateWidget(_Changes oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.data.key != widget.data.key) {
-      _highlight = 0;
+      _repeat?.cancel();
+      _pending = null;
+      // Another change's list starts at its top.
+      if (_files.hasClients) {
+        _files.jumpTo(0);
+      }
     }
   }
 
   @override
   void dispose() {
+    _repeat?.cancel();
     _focus.dispose();
+    _files.dispose();
     super.dispose();
   }
 
   void _focusChanged() => setState(() {});
 
+  /// The current row: the one a held key moved to, else the focused file's.
+  int _currentOf(List<FileChange> files) {
+    final String? current = _pending ?? widget.model.focusedPath;
+    return math.max(0, files.indexWhere((file) => file.path == current));
+  }
+
+  /// Shows [path]'s diff now, ending a key repeat's wait.
+  void _show(String path) {
+    _repeat?.cancel();
+    _pending = null;
+    widget.model.focus(path);
+  }
+
+  void _settle() {
+    final String? pending = _pending;
+    final List<FileChange> files = widget.model.entry?.fileChanges ?? const <FileChange>[];
+    if (pending != null && files.any((file) => file.path == pending)) {
+      setState(() => _show(pending));
+    } else if (pending != null) {
+      // The file went in a reload: the row falls back to the focused file's.
+      setState(() => _pending = null);
+    }
+  }
+
+  /// Scrolls the current row into view after the frame that moved it.
+  void _reveal({required bool down}) => WidgetsBinding.instance.addPostFrameCallback((_) {
+    final BuildContext? row = _current.currentContext;
+    if (row != null && row.mounted) {
+      Scrollable.ensureVisible(
+        row,
+        alignmentPolicy: down
+            ? ScrollPositionAlignmentPolicy.keepVisibleAtEnd
+            : ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+      );
+    }
+  });
+
   KeyEventResult _onKey(FocusNode node, KeyEvent event, List<FileChange> files) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
-    final int count = files.length;
+    final InspectorViewModel model = widget.model;
+    final int current = _currentOf(files).clamp(0, files.length - 1);
+    final String path = files[current].path;
     final HardwareKeyboard keyboard = HardwareKeyboard.instance;
     final bool modified =
         keyboard.isMetaPressed || keyboard.isShiftPressed || keyboard.isAltPressed || keyboard.isControlPressed;
-    if (!modified &&
-        (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter)) {
-      widget.model.focus(files[_highlight.clamp(0, count - 1)].path);
+    final LogicalKeyboardKey key = event.logicalKey;
+    final down = event is KeyDownEvent;
+    if (!modified && (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter)) {
+      setState(() => _show(path));
       return KeyEventResult.handled;
     }
-    final int step = switch (event.logicalKey) {
+    if (!modified && key == LogicalKeyboardKey.space) {
+      if (!model.selectable) {
+        return KeyEventResult.ignored;
+      }
+      if (down) {
+        model.togglePick(path);
+      }
+      return KeyEventResult.handled;
+    }
+    if (!modified && key == LogicalKeyboardKey.keyV) {
+      if (down) {
+        model.setViewed(path, !model.isViewed(path));
+      }
+      return KeyEventResult.handled;
+    }
+    final int step = switch (key) {
       LogicalKeyboardKey.arrowDown => 1,
       LogicalKeyboardKey.arrowUp => -1,
       _ => 0,
@@ -2289,7 +2563,16 @@ class _ChangesState extends State<_Changes> {
     if (step == 0) {
       return KeyEventResult.ignored;
     }
-    setState(() => _highlight = (_highlight + step).clamp(0, count - 1));
+    final int next = (current + step).clamp(0, files.length - 1);
+    if (down) {
+      setState(() => _show(files[next].path));
+    } else {
+      // A held key: the row follows at once, the diff once the repeats pause.
+      setState(() => _pending = files[next].path);
+      _repeat?.cancel();
+      _repeat = Timer(_repeatPause, _settle);
+    }
+    _reveal(down: step > 0);
     return KeyEventResult.handled;
   }
 
@@ -2306,6 +2589,7 @@ class _ChangesState extends State<_Changes> {
       padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 2),
       child: Text(value, key: const ValueKey<String>('inspector-files-note'), style: note),
     );
+    const padding = EdgeInsets.fromLTRB(16, 12, 16, 14);
     final Widget body;
     if (model.graph.stale != null) {
       body = text(strings.staleTitle);
@@ -2325,13 +2609,13 @@ class _ChangesState extends State<_Changes> {
       );
     } else {
       final List<FileChange> files = entry.fileChanges;
-      final int highlight = _highlight.clamp(0, files.length - 1);
+      final int current = _currentOf(files).clamp(0, files.length - 1);
       final ({int added, int removed})? totals = model.totals;
       final int viewed = model.viewedCount;
       final TextStyle stat = ZsType.id.copyWith(fontSize: ZsType.fsSm);
       final String? focused = model.focusedPath;
       final bool pickHunks = focused != null && model.previousDiff == null && model.hunkable(focused);
-      body = Column(
+      final Widget filesPane = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Padding(
@@ -2413,73 +2697,144 @@ class _ChangesState extends State<_Changes> {
               ],
             ),
           ),
-          Focus(
-            focusNode: _focus,
-            onKeyEvent: (node, event) => _onKey(node, event, files),
-            child: Semantics(
-              container: true,
-              label: strings.inspectorChanges,
-              child: Column(
-                key: const ValueKey<String>('inspector-files'),
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                spacing: 1,
-                children: <Widget>[
-                  for (var i = 0; i < files.length; i++)
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        _focus.requestFocus();
-                        setState(() => _highlight = i);
-                        model.focus(files[i].path);
-                      },
-                      child: InspectorFileRow(
-                        file: files[i],
-                        summary: model.summaryOf(files[i].path),
-                        focused: files[i].path == focused,
-                        highlighted: _focus.hasFocus && i == highlight,
-                        viewed: model.isViewed(files[i].path),
-                        pickable: model.selectable,
-                        picked: model.fileState(files[i].path),
-                        onPick: () => model.togglePick(files[i].path),
-                      ),
+          Expanded(
+            child: Focus(
+              focusNode: _focus,
+              onKeyEvent: (node, event) => _onKey(node, event, files),
+              child: Semantics(
+                container: true,
+                label: strings.inspectorChanges,
+                child: ZsScrollArea(
+                  controller: _files,
+                  identifier: 'inspector-files-list',
+                  child: SingleChildScrollView(
+                    controller: _files,
+                    child: Column(
+                      key: const ValueKey<String>('inspector-files'),
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      spacing: 1,
+                      children: <Widget>[
+                        for (var i = 0; i < files.length; i++)
+                          GestureDetector(
+                            key: i == current ? _current : null,
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              _focus.requestFocus();
+                              setState(() => _show(files[i].path));
+                            },
+                            child: InspectorFileRow(
+                              file: files[i],
+                              summary: model.summaryOf(files[i].path),
+                              focused: i == current,
+                              highlighted: false,
+                              ring: _focus.hasFocus && i == current,
+                              viewed: model.isViewed(files[i].path),
+                              pickable: model.selectable,
+                              picked: model.fileState(files[i].path),
+                              onPick: () => model.togglePick(files[i].path),
+                            ),
+                          ),
+                      ],
                     ),
-                ],
-              ),
-            ),
-          ),
-          if (focused != null && model.hasSummary)
-            Padding(
-              padding: const EdgeInsets.only(top: 14),
-              // While another file's diff loads the previous one stays, dimmed: the body keeps its height, so the
-              // scroll offset does not snap to the top.
-              child: Opacity(
-                opacity: model.previousDiff != null ? ZsMetrics.of(context).disabledOpacity : 1,
-                child: InspectorDiffView(
-                  path: model.previousDiff?.path ?? focused,
-                  diff: model.focusedDiff ?? model.previousDiff,
-                  wordMarks: model.wordMarks,
-                  error: model.focusError,
-                  viewed: model.isViewed(focused),
-                  onViewedChanged: (viewed) => model.setViewed(focused, viewed),
-                  layout: model.layout,
-                  onLayoutChanged: model.setLayout,
-                  // The dimmed previous file's diff takes no picks: they would land on the focused path.
-                  hunkPicked: pickHunks ? (hunk) => model.hunkState(focused, hunk) : null,
-                  onHunkToggled: (hunk) => model.toggleHunk(focused, hunk),
-                  modePicked: pickHunks ? model.modePicked(focused) : null,
-                  onModeToggled: () => model.toggleMode(focused),
+                  ),
                 ),
               ),
             ),
+          ),
         ],
       );
+      final Widget diffPane = focused != null && model.hasSummary
+          // While another file's diff loads the previous one stays, dimmed.
+          ? Opacity(
+              opacity: model.previousDiff != null ? ZsMetrics.of(context).disabledOpacity : 1,
+              child: InspectorDiffView(
+                // Keyed by the change too: another change's diff of the same path starts at the top and the left.
+                key: ValueKey<String>(widget.data.key),
+                path: model.previousDiff?.path ?? focused,
+                diff: model.focusedDiff ?? model.previousDiff,
+                wordMarks: model.wordMarks,
+                error: model.focusError,
+                viewed: model.isViewed(focused),
+                onViewedChanged: (viewed) => model.setViewed(focused, viewed),
+                layout: model.layout,
+                onLayoutChanged: model.setLayout,
+                // The dimmed previous file's diff takes no picks: they would land on the focused path.
+                hunkPicked: pickHunks ? (hunk) => model.hunkState(focused, hunk) : null,
+                onHunkToggled: (hunk) => model.toggleHunk(focused, hunk),
+                partPicked: pickHunks ? (part) => model.partPicked(focused, part) : null,
+                onPartToggled: (part) => model.togglePart(focused, part),
+                modePicked: pickHunks ? model.modePicked(focused) : null,
+                onModeToggled: () => model.toggleMode(focused),
+              ),
+            )
+          : const SizedBox.shrink();
+      return Padding(
+        padding: padding,
+        child: LayoutBuilder(builder: (context, constraints) => _split(context, constraints, filesPane, diffPane)),
+      );
     }
-    return Padding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 20), child: body);
+    return Padding(
+      padding: padding,
+      child: Align(alignment: Alignment.topLeft, child: body),
+    );
+  }
+
+  /// The two panes and the divider between them in [constraints].
+  Widget _split(BuildContext context, BoxConstraints constraints, Widget filesPane, Widget diffPane) {
+    final InspectorViewModel model = widget.model;
+    final bool wide = widget.wide;
+    final split = InspectorSplit(
+      wide: wide,
+      extent: wide ? constraints.maxWidth : constraints.maxHeight,
+    );
+    final double room = split.room;
+    final double minFiles = split.minFiles;
+    final double maxFiles = split.maxFiles;
+    final double files = split.files(_dragShare ?? model.filesShare(wide: wide));
+    const defaults = LayoutSettings();
+    final double defaultShare = wide ? defaults.inspectorFilesWide : defaults.inspectorFilesNarrow;
+    // A pane too short for its header and a row clips instead of overflowing.
+    final double paneHeight = wide ? constraints.maxHeight : files;
+    final Widget pane = ClipRect(
+      child: OverflowBox(
+        alignment: Alignment.topCenter,
+        minHeight: 0,
+        maxHeight: math.max(paneHeight, 72),
+        child: filesPane,
+      ),
+    );
+    final AppLocalizations strings = context.l10n;
+    return Flex(
+      direction: wide ? Axis.horizontal : Axis.vertical,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        SizedBox(width: wide ? files : null, height: wide ? null : files, child: pane),
+        ZsSplitDivider(
+          axis: wide ? Axis.horizontal : Axis.vertical,
+          value: files,
+          min: minFiles,
+          max: maxFiles,
+          defaultValue: defaultShare * room,
+          total: room,
+          label: strings.inspectorSplitLabel,
+          tooltip: strings.inspectorSplitTooltip,
+          identifier: 'inspector-split',
+          onChanged: (value) => setState(() => _dragShare = room > 0 ? value / room : null),
+          onChangeEnd: (value) {
+            if (room > 0) {
+              model.setFilesShare(wide: wide, share: value / room);
+            }
+            setState(() => _dragShare = null);
+          },
+        ),
+        Expanded(child: diffPane),
+      ],
+    );
   }
 }
 
-/// One file (DS components/content/FileRow; content.css:2-18): the focused row (its diff shows) on `--fl-on`, the
-/// keyboard highlight on `--fl-hover`; a viewed file's ✓ and its path at .55; the summary's ± when read. Story 10.29's
+/// One file (DS components/content/FileRow; content.css:2-18): the focused row (its diff shows) on `--fl-on` (in the
+/// inspector with the current row's [ring] while the list has focus), a highlight on `--fl-hover`; a viewed file's ✓ and its path at .55; the summary's ± when read. Story 10.29's
 /// operation view reuses it without Viewed and checkboxes.
 class InspectorFileRow extends StatelessWidget {
   /// The row of [file].
@@ -2488,6 +2843,7 @@ class InspectorFileRow extends StatelessWidget {
     required this.summary,
     required this.focused,
     required this.highlighted,
+    this.ring = false,
     this.viewed = false,
     this.pickable = false,
     this.picked = false,
@@ -2504,8 +2860,11 @@ class InspectorFileRow extends StatelessWidget {
   /// Whether its diff shows.
   final bool focused;
 
-  /// Whether the keyboard highlight is on it.
+  /// Whether the pointer or a keyboard highlight is on it (`--fl-hover`).
   final bool highlighted;
+
+  /// Whether it carries the current row's 1.5 px `--accent` ring (the inspector's list has focus, Story 10.38).
+  final bool ring;
 
   /// Whether it is marked Viewed.
   final bool viewed;
@@ -2542,6 +2901,11 @@ class InspectorFileRow extends StatelessWidget {
             : highlighted
             ? colors.flHover
             : colors.flOn.withValues(alpha: 0),
+        borderRadius: BorderRadius.circular(metrics.radiusMd),
+      ),
+      // Always a decoration, so the ring coming and going keeps the row's checkbox (and its focus) in place.
+      foregroundDecoration: BoxDecoration(
+        border: ring ? Border.all(color: colors.accent, width: 1.5) : null,
         borderRadius: BorderRadius.circular(metrics.radiusMd),
       ),
       child: Row(

@@ -1,7 +1,7 @@
 import * as React from "react";
 import type { DiffLine } from "./DiffView";
 
-/** One hunk of a file's color-words diff, selectable for commit / split and draggable onto another change. States: rest · selected (header --accent-soft-hi, 2px accent edge on every line) · focus-visible (inside) · grab (grip on hover) · lifted (.38, dashed) · rows: context, removed, added, changed (both numbers in their hue, no fill) · side by side (each old and new line once, whole, with its number) · word marks (as DiffView, in both modes). */
+/** One hunk of a file's color-words diff, selectable for commit / split (whole or by part) and draggable onto another change. Unified, its numbers stay pinned at the visible left edge while the text scrolls. States: rest · selected (header --accent-soft-hi, 2px accent edge on every line) · some parts picked (header --accent at 12 %, the edge on their lines) · focus-visible (inside) · grab (grip on hover) · lifted (.38, dashed) · rows: context, removed, added, changed (both numbers in their hue, no fill) · side by side (each old and new line once, whole, with its number) · word marks (as DiffView, in both modes). */
 export interface DiffHunkProps {
   /** header text; default built from the lines' numbers: "@@ −12,6 +12,9 @@" */
   range?: string;
@@ -23,6 +23,11 @@ export interface DiffHunkProps {
   onToggle?: (next: boolean) => void;
   /** makes the header a drag handle (shows the grip on hover) */
   onGrab?: (e: React.PointerEvent) => void;
+  /** each line's part — jj's diff-editor section, 0-based; null for context. A selectable hunk with more than one part shows "N parts" and a checkbox per part */
+  parts?: (number | null)[];
+  /** the picked parts; some of them → the header on --accent at 12 % and the hunk checkbox mixed */
+  picked?: number[];
+  onTogglePart?: (part: number) => void;
   className?: string;
 }
 export declare function DiffHunk(props: DiffHunkProps): JSX.Element;

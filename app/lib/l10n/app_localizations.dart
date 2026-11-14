@@ -1886,6 +1886,48 @@ abstract class AppLocalizations {
   /// **'Select hunk {range}'**
   String inspectorHunkCheck(String range);
 
+  /// The pill in a hunk's header when the hunk has more than one part (jj's diff-editor sections), each with its own checkbox.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 part} other{{count} parts}}'**
+  String inspectorHunkParts(int count);
+
+  /// VoiceOver name and tooltip of an unchecked part checkbox in a hunk: Commit / Split takes this part's lines. The 1-based line range on the new side (the old side for a pure deletion).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Pick line {start}} other{Pick lines {start}–{end}}}'**
+  String inspectorPartPick(int count, int start, int end);
+
+  /// VoiceOver name and tooltip of a checked part checkbox in a hunk: Commit / Split leaves this part's lines. The 1-based line range on the new side (the old side for a pure deletion).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Unpick line {start}} other{Unpick lines {start}–{end}}}'**
+  String inspectorPartUnpick(int count, int start, int end);
+
+  /// Under a change's description cut to three lines in the inspector: shows the whole description.
+  ///
+  /// In en, this message translates to:
+  /// **'Show more'**
+  String get inspectorShowMore;
+
+  /// Under a change's opened description in the inspector: cuts it back to three lines.
+  ///
+  /// In en, this message translates to:
+  /// **'Show less'**
+  String get inspectorShowLess;
+
+  /// VoiceOver name of the divider between the inspector's file list and its diff: an adjustable value, the file list's share.
+  ///
+  /// In en, this message translates to:
+  /// **'Files and diff'**
+  String get inspectorSplitLabel;
+
+  /// Tooltip of the divider between the inspector's file list and its diff.
+  ///
+  /// In en, this message translates to:
+  /// **'Drag to resize · double-click to reset'**
+  String get inspectorSplitTooltip;
+
   /// VoiceOver name and tooltip of the mode-change row's checkbox: whether Commit / Split takes the file's new executable bit.
   ///
   /// In en, this message translates to:

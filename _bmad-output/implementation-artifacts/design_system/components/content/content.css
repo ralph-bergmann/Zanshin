@@ -72,7 +72,25 @@
 .zs-hunk-grip{flex-shrink:0;color:var(--text-faint);opacity:0;transition:opacity var(--dur-hover) var(--ease-state)}
 .zs-hunk-hd.is-grab:hover .zs-hunk-grip{opacity:1}
 .zs-hunk.is-sel .zs-hunk-hd{background:var(--accent-soft-hi);color:var(--text)}
-.zs-hunk.is-sel .zs-diff-line,.zs-hunk.is-sel .zs-diff-row{box-shadow:inset 2px 0 0 var(--accent-line)}
+.zs-hunk.is-some .zs-hunk-hd{background:linear-gradient(color-mix(in oklch,var(--accent) 12%,transparent),color-mix(in oklch,var(--accent) 12%,transparent)),var(--code-bg);color:var(--text)}
+/* the edge: on a picked hunk's lines, or (with parts) on a picked part's — on the pinned numbers, so it stays when the text scrolls */
+.zs-diff-line.is-pick .zs-diff-pin,.zs-diff-row.is-pick{box-shadow:inset 2px 0 0 var(--accent-line)}
+/* parts (Story 10.38, sync #26): "N parts" in the header; a 22px gutter before the numbers holds a 13px checkbox on a part's first line */
+.zs-hunk-parts{flex-shrink:0;padding:1px 7px;border-radius:999px;background:var(--fl-hover);font:10.5px var(--font-sans);color:var(--text-dim)}
+.zs-diff-gut{display:grid;place-items:center;flex:0 0 22px;width:22px}
+.zs-diff-row.has-gut{grid-template-columns:22px 1fr 1fr}
+.zs-diff-row.has-gut.hdr{grid-template-columns:22px 1fr}
+.zs-diff-row.has-gut>.zs-diff-gut{background:var(--code-bg)}
+/* pinned numbers (deferred-work I1): the hunks of a DiffView scroll sideways as one unit, every line as wide as the widest; the gutter
+   and numbers stay at the visible left edge on an opaque backing (the well plus the line's fill), the header as wide as the visible area */
+.zs-diff-hunks{overflow:auto;container-type:inline-size}
+.zs-diff-wide{width:max-content;min-width:100%}
+.zs-diff-hunks .zs-hunk .zs-diff-body{overflow:visible}
+.zs-diff-hunks .zs-hunk-hd{position:sticky;left:0;width:100cqw;box-sizing:border-box}
+.zs-hunk .zs-diff-line{padding-left:0}
+.zs-diff-pin{display:flex;flex-shrink:0;position:sticky;left:0;z-index:1;padding-left:10px;background:var(--code-bg)}
+.zs-diff-line.add .zs-diff-pin{background:linear-gradient(var(--add-bg),var(--add-bg)),var(--code-bg)}
+.zs-diff-line.rem .zs-diff-pin{background:linear-gradient(var(--rem-bg),var(--rem-bg)),var(--code-bg)}
 .zs-hunk.is-lifted{opacity:.38;outline:1.5px dashed var(--accent-line);outline-offset:-1.5px}
 
 /* Kbd */

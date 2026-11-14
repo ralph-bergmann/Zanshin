@@ -144,7 +144,8 @@ void main() {
   });
 
   testWidgets(
-    'the edge: the width follows the drag live with the left inset, stops at 440, is stored once on release',
+    'the edge: the width follows the drag live with the left inset, stops where 320 of graph remain, is stored once on '
+    'release',
     (tester) async {
       final _Rig rig = await _pump(tester);
       rig.controller.activate('bookmarks');
@@ -157,15 +158,18 @@ void main() {
       expect(_panel(tester).width, 325);
       expect(rig.insets.last.left, 76 + 325 + 12, reason: 'the inset follows in the same frame');
       expect(RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1), SystemMouseCursors.resizeColumn);
-      await drag.moveBy(const Offset(500, 0));
+      // Past the limit, still inside the window.
+      await drag.moveBy(const Offset(800, 0));
       await tester.pump();
-      expect(_panel(tester).width, 440);
+      // No maximum (Story 10.38): the limit keeps 320 of graph.
+      final double limit = 1440 - 88 - rig.insets.last.right - 320;
+      expect(_panel(tester).width, limit);
       expect(RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1), SystemMouseCursors.resizeLeft);
       expect(rig.commits, isEmpty, reason: 'nothing is stored during the drag');
       await drag.up();
       await tester.pump(const Duration(milliseconds: 500));
-      expect(rig.commits, <double>[440]);
-      expect(rig.controller.panelWidth, 440);
+      expect(rig.commits, <double>[limit]);
+      expect(rig.controller.panelWidth, limit);
     },
   );
 
@@ -290,9 +294,15 @@ void main() {
     },
   );
 
-  testWidgets('the flyout takes the remembered width clamped to 240–440', (tester) async {
+  testWidgets('the flyout takes the remembered width, at least 240, at most what leaves 320 of the window', (
+    tester,
+  ) async {
     final _Rig rig = await _pump(tester, window: const Size(1000, 900), inspector: true);
-    for (final (double remembered, double shown) in const <(double, double)>[(900, 440), (100, 240)]) {
+    for (final (double remembered, double shown) in const <(double, double)>[
+      (900, 1000 - 88 - 12 - 320),
+      (500, 500),
+      (100, 240),
+    ]) {
       rig.controller
         ..panelWidth = remembered
         ..activate('undo');

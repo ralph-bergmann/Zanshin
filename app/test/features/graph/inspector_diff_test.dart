@@ -285,7 +285,7 @@ void main() {
       expect(ink('2457'), colors.add);
       // A removed line of the block: the red fill, its number red.
       expect(fill('  // The phone layout on a device.'), colors.remBg);
-      expect(ink(' 9'), colors.rem, reason: 'two columns: the hunk\'s largest number is 10');
+      expect(ink('   9'), colors.rem, reason: 'four columns: the file\'s largest number is 2459');
       // A context line: faint numbers, muted text.
       expect(ink('2453'), colors.textFaint);
       expect(tester.widget<Text>(find.text('        .into_inner()')).style!.color, colors.textMuted);
@@ -414,6 +414,13 @@ void main() {
         ),
       );
       expect(tester.widget<Text>(find.text('<<<<<<< Created conflict')).style!.color, ZsColors.night.textDim);
+      if (layout == DiffLayoutSetting.unified) {
+        expect(
+          tester.getTopLeft(find.text('<<<<<<< Created conflict')).dx,
+          tester.getTopLeft(find.byType(InspectorDiffView)).dx + 1 + 10,
+          reason: 'no number columns: the text starts at 10 inside the well\'s 1 px border',
+        );
+      }
     }
   });
 
@@ -641,6 +648,207 @@ void main() {
       expect(find.text(text), findsOneWidget);
     });
   }
+
+  group('Story 10.38: parts and pinned numbers', () {
+    const s1 = HunkKey(oldStart: 1, oldCount: 1, newStart: 1, newCount: 1);
+    const s2 = HunkKey(oldStart: 5, oldCount: 1, newStart: 5, newCount: 2);
+    const s3 = HunkKey(oldStart: 9, oldCount: 0, newStart: 10, newCount: 1);
+    Hunk parts(List<HunkKey> sections) => Hunk(
+      before: (start: 0, end: 11),
+      after: (start: 0, end: 12),
+      symbol: null,
+      sections: sections,
+      removed: 2,
+      added: 4,
+      lines: <HunkLine>[
+        _line('    1    1|c1'),
+        _line('-   2     |[-old 2-]'),
+        _line('+        2|{+new 2+}'),
+        _line('    3    3|c3'),
+        _line('-   6     |[-old 6-]'),
+        _line('+        6|{+new 6a+}'),
+        _line('+        7|{+new 6b+}'),
+        _line('   10   10|c10'),
+        _line('+       11|{+new 11+}'),
+      ],
+    );
+
+    test('a line belongs to the section whose range holds its number − 1; context to none', () {
+      expect(hunkLineParts(parts(const <HunkKey>[s1, s2, s3])), <int?>[null, 0, 0, null, 1, 1, 1, null, 2]);
+      expect(hunkLineParts(parts(const <HunkKey>[s1])), <int?>[null, 0, 0, null, null, null, null, null, null]);
+    });
+
+    Widget picks(
+      List<HunkKey> sections, {
+      Set<HunkKey> picked = const <HunkKey>{},
+      DiffLayoutSetting layout = DiffLayoutSetting.unified,
+      ValueChanged<HunkKey>? onPart,
+    }) => shellHost(
+      SizedBox(
+        width: 420,
+        child: InspectorDiffView(
+          path: 'src/main.rs',
+          diff: _file(hunks: <Hunk>[parts(sections)]),
+          error: null,
+          layout: layout,
+          onLayoutChanged: (_) {},
+          hunkPicked: (_) => picked.isEmpty ? false : (picked.length == sections.length ? true : null),
+          onHunkToggled: (_) {},
+          partPicked: picked.contains,
+          onPartToggled: onPart ?? (_) {},
+        ),
+      ),
+    );
+    Finder partBoxes() => find.bySemanticsIdentifier('inspector-part-check');
+
+    testWidgets('three parts: the pill, one checkbox per part, the mixed header and the edge on the picked part', (
+      tester,
+    ) async {
+      final toggled = <HunkKey>[];
+      await tester.pumpWidget(picks(const <HunkKey>[s1, s2, s3], picked: <HunkKey>{s2}, onPart: toggled.add));
+      expect(find.text('3 parts'), findsOneWidget);
+      expect(partBoxes(), findsNWidgets(3));
+      const ZsColors colors = ZsColors.night;
+      final Container header = tester.widget(find.byKey(const ValueKey<String>('inspector-hunk-header')));
+      expect(header.color, Color.alphaBlend(colors.accent.withValues(alpha: .12), colors.codeBg), reason: 'some');
+      bool edged(String text) =>
+          (tester
+                      .widget<Container>(
+                        find
+                            .descendant(
+                              of: find.ancestor(of: find.text(text), matching: find.byType(Stack)).first,
+                              matching: find.byKey(const ValueKey<String>('inspector-line-pin')),
+                            )
+                            .first,
+                      )
+                      .foregroundDecoration!
+                  as BoxDecoration)
+              .border !=
+          null;
+      expect(
+        <bool>[
+          for (final t in <String>['c1', 'old 2', 'old 6', 'new 6b', 'c10', 'new 11']) edged(t),
+        ],
+        <bool>[
+          false,
+          false,
+          true,
+          true,
+          false,
+          false,
+        ],
+      );
+      await tester.tap(partBoxes().at(2));
+      await tester.pump();
+      expect(toggled, <HunkKey>[s3]);
+
+      await tester.pumpWidget(
+        picks(const <HunkKey>[s1, s2, s3], picked: <HunkKey>{s2}, layout: DiffLayoutSetting.sideBySide),
+      );
+      expect(partBoxes(), findsNWidgets(3), reason: 'side by side: the gutter leads the row');
+      expect(find.text('3 parts'), findsOneWidget);
+    });
+
+    testWidgets('one part: no pill, no gutter, the hunk checkbox as before', (tester) async {
+      await tester.pumpWidget(picks(const <HunkKey>[s1]));
+      expect(find.byKey(const ValueKey<String>('inspector-hunk-parts')), findsNothing);
+      expect(partBoxes(), findsNothing);
+      expect(find.bySemanticsIdentifier('inspector-hunk-check'), findsOneWidget);
+    });
+
+    testWidgets('scrolled fully right, a short line keeps its numbers and part checkbox at the left edge; the header '
+        'stays in view', (tester) async {
+      final FileDiff file = _file(
+        hunks: <Hunk>[
+          Hunk(
+            before: (start: 0, end: 2),
+            after: (start: 0, end: 2),
+            symbol: null,
+            sections: const <HunkKey>[
+              HunkKey(oldStart: 0, oldCount: 1, newStart: 0, newCount: 1),
+              HunkKey(oldStart: 1, oldCount: 1, newStart: 1, newCount: 1),
+            ],
+            removed: 0,
+            added: 2,
+            lines: <HunkLine>[
+              _line('+        1|{+let message = "a line long enough to leave the inspector on its right edge, far";+}'),
+              _line('+        2|{+short+}'),
+            ],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        shellHost(
+          SizedBox(
+            width: 420,
+            height: 300,
+            child: InspectorDiffView(
+              path: 'src/main.rs',
+              diff: file,
+              error: null,
+              layout: DiffLayoutSetting.unified,
+              onLayoutChanged: (_) {},
+              hunkPicked: (_) => false,
+              onHunkToggled: (_) {},
+              partPicked: (_) => false,
+              onPartToggled: (_) {},
+            ),
+          ),
+        ),
+      );
+      final ScrollController horizontal = tester.widget<ZsScrollArea>(find.byType(ZsScrollArea)).horizontalController!;
+      expect(horizontal.position.maxScrollExtent, greaterThan(0));
+      final double left = tester.getTopLeft(find.byType(InspectorDiffView)).dx;
+      final double numberAt = tester.getTopLeft(find.text('2')).dx;
+      final double boxAt = tester.getTopLeft(partBoxes().at(1)).dx;
+      horizontal.jumpTo(horizontal.position.maxScrollExtent);
+      await tester.pump();
+      expect(tester.getTopLeft(find.text('2')).dx, numberAt, reason: 'the number stays put');
+      expect(tester.getTopLeft(partBoxes().at(1)).dx, boxAt, reason: 'the part checkbox too');
+      expect(tester.getTopLeft(find.text('short')).dx, lessThan(numberAt), reason: 'the text scrolled under it');
+      final Rect header = tester.getRect(find.byKey(const ValueKey<String>('inspector-hunk-header')));
+      expect(header.left, closeTo(left + 1, 1), reason: 'the header stays in view');
+      expect(
+        header.width,
+        closeTo(tester.getSize(find.byType(InspectorDiffView)).width - 2, 1),
+        reason: 'as wide as the visible area (the well less its 1 px border on each side)',
+      );
+    });
+
+    testWidgets('in an unbounded column (the operation view) the view keeps its content height and scrolls sideways', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        shellHost(
+          SingleChildScrollView(
+            child: SizedBox(
+              width: 420,
+              child: InspectorDiffView(
+                path: 'src/main.rs',
+                diff: _file(
+                  hunks: <Hunk>[
+                    _hunk(<HunkLine>[
+                      _line(
+                        '+        1|{+let message = "a line long enough to leave the inspector on its right edge";+}',
+                      ),
+                    ]),
+                  ],
+                ),
+                error: null,
+                layout: DiffLayoutSetting.unified,
+                onLayoutChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      final ZsScrollArea area = tester.widget(find.byType(ZsScrollArea));
+      expect(area.controller.hasClients, isFalse, reason: 'no vertical scroll of its own');
+      expect(area.horizontalController!.position.maxScrollExtent, greaterThan(0));
+      expect(tester.getSize(find.byType(InspectorDiffView)).height, lessThan(200), reason: 'its content height');
+    });
+  });
 
   testWidgets('without onViewedChanged there is no Viewed toggle and a viewed file does not fold (Story 10.29)', (
     tester,

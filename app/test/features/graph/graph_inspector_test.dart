@@ -18,7 +18,8 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/immutable_reasons.dart';
-import 'package:zanshin/src/features/graph/inspector_diff.dart' show DiffWordMarks, InspectorDiffView;
+import 'package:zanshin/src/features/graph/inspector_diff.dart'
+    show DiffWordMarks, InspectorDiffHunk, InspectorDiffView;
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
@@ -1064,7 +1065,7 @@ void main() {
     await unmount(tester);
   });
 
-  testWidgets('the chips and the files: ✓ / local / remote, the count, a rename, ↑ ↓ move the highlight', (
+  testWidgets('the chips and the files: ✓ / local / remote, the count, a rename, ↑ ↓ show the next file', (
     tester,
   ) async {
     await pump(tester);
@@ -1085,16 +1086,19 @@ void main() {
     expect(ink('src/a.dart'), colors.text, reason: 'the clicked row is focused');
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
-    expect(ink('src/old.dart → src/new.dart'), colors.text, reason: 'highlighted');
-    expect(inspector.focusedPath, 'src/a.dart', reason: '↓ only moves the highlight');
+    await tester.pump();
+    expect(ink('src/old.dart → src/new.dart'), colors.text, reason: 'the current row');
+    expect(inspector.focusedPath, 'src/new.dart', reason: '↓ shows the next file at once (Finder)');
+    expect(details.focusReads.last.$2, <String>['src/new.dart']);
+    final int reads = details.focusReads.length;
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
-    await tester.pump();
-    expect(inspector.focusedPath, 'src/new.dart', reason: '↩ focuses the highlighted row');
-    expect(details.focusReads.last.$2, <String>['src/new.dart']);
+    expect(inspector.focusedPath, 'src/new.dart', reason: '↩ keeps the current row');
+    expect(details.focusReads.length, reads, reason: 'no harm: nothing new to read');
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump();
     expect(ink('src/a.dart'), colors.text);
+    expect(inspector.focusedPath, 'src/a.dart');
     await unmount(tester);
   });
 
@@ -2411,7 +2415,9 @@ void main() {
     }
 
     Future<void> focusFile(WidgetTester tester, String path) async {
-      // The row's text (the diff bar names the focused path too).
+      // The row's text (the diff bar names the focused path too); the list scrolls on its own.
+      await tester.ensureVisible(find.text(path).first);
+      await tester.pump();
       await tester.tap(find.text(path).first);
       await settle(tester);
     }
@@ -2424,10 +2430,20 @@ void main() {
 
     Color headerColor(WidgetTester tester, int i) =>
         tester.widget<Container>(find.byKey(const ValueKey<String>('inspector-hunk-header')).at(i)).color!;
+    // The unified lines draw the edge on their pinned numbers (Story 10.38): the hunk's first line's.
     Border? edgeOf(WidgetTester tester, int i) =>
-        (tester.widget<DecoratedBox>(find.byKey(const ValueKey<String>('inspector-hunk-edge')).at(i)).decoration
-                    as BoxDecoration)
-                .border
+        (tester
+                        .widget<Container>(
+                          find
+                              .descendant(
+                                of: find.byType(InspectorDiffHunk).at(i),
+                                matching: find.byKey(const ValueKey<String>('inspector-line-pin')),
+                              )
+                              .first,
+                        )
+                        .foregroundDecoration
+                    as BoxDecoration?)
+                ?.border
             as Border?;
 
     String filesOf(HunkChoice? hunks) => <String>[
@@ -2820,6 +2836,411 @@ void main() {
       expect(actions.ran, hasLength(2));
       expect(details.plans, <String>[_mutable, _mutable]);
       await tester.pump();
+      await unmount(tester);
+    });
+  });
+
+  group('Story 10.38: the split, Finder keys, the description, parts', () {
+    Finder divider() => find.byType(ZsSplitDivider);
+    Axis axis(WidgetTester tester) => tester.widget<ZsSplitDivider>(divider()).axis;
+
+    /// Pumps the same tree as `pump` at [width], so the inspector keeps its state.
+    Future<void> resize(WidgetTester tester, double width) async {
+      await tester.pumpWidget(
+        shellHost(
+          ImmutableReasonScope(
+            reasons: null,
+            child: Align(
+              alignment: Alignment.topRight,
+              child: SizedBox(
+                width: width,
+                height: 840,
+                child: GraphInspector(model: inspector),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+    }
+
+    test('the split clamps the files: wide 600 → 220 … 268; a narrow 200 keeps the diff 140, the files 48', () {
+      const wide = InspectorSplit(wide: true, extent: 600);
+      expect(wide.files(50 / 588), 220, reason: 'the files\' minimum');
+      expect(wide.files(1), 600 - 12 - 320, reason: 'the diff keeps 320');
+      expect(const InspectorSplit(wide: true, extent: 900).files(.34), closeTo(.34 * 888, 1e-9));
+      const tiny = InspectorSplit(wide: false, extent: 200);
+      expect(tiny.files(.38), 200 - 12 - 140, reason: 'the diff\'s minimum wins');
+      expect(const InspectorSplit(wide: false, extent: 100).files(.38), 0, reason: 'never below 0');
+    });
+
+    testWidgets('the layout follows the width with hysteresis: 760 narrow, 790 wide, 760 wide, 730 narrow', (
+      tester,
+    ) async {
+      await pump(tester, width: 760);
+      await settle(tester);
+      expect(axis(tester), Axis.vertical, reason: 'the first build: wide only from 780');
+      await resize(tester, 790);
+      expect(axis(tester), Axis.horizontal);
+      await resize(tester, 760);
+      expect(axis(tester), Axis.horizontal, reason: 'between 740 and 780 the last layout stays');
+      await resize(tester, 730);
+      expect(axis(tester), Axis.vertical);
+      await unmount(tester);
+    });
+
+    testWidgets('a dragged divider writes its layout\'s share once, on release; a restart reads it back', (
+      tester,
+    ) async {
+      await pump(tester, width: 900);
+      await settle(tester);
+      expect(axis(tester), Axis.horizontal);
+      final ZsSplitDivider before = tester.widget(divider());
+      expect(before.min, 220);
+      expect(before.max, before.total - 320);
+      final AppSettings stored = settings.value;
+      final TestGesture drag = await tester.startGesture(tester.getCenter(divider()), kind: PointerDeviceKind.mouse);
+      await drag.moveBy(const Offset(40, 0));
+      await tester.pump();
+      final double dragged = (before.value + 40).roundToDouble();
+      expect(tester.widget<ZsSplitDivider>(divider()).value, dragged, reason: 'it follows the pointer');
+      expect(settings.value, stored, reason: 'nothing is written per move');
+      await drag.up();
+      await tester.pump(const Duration(milliseconds: 500));
+      final double share = dragged / before.total;
+      expect(settings.value.layout.inspectorFilesWide, closeTo(share, 1e-9));
+      expect(settings.value.layout.inspectorFilesNarrow, 0.38, reason: 'the other layout keeps its share');
+      await unmount(tester);
+      await settleSettingsWrites(tester, settings);
+      final SettingsStore restarted = (await tester.runAsync(
+        () => SettingsStore.load(File('${dir.path}/settings.json')),
+      ))!;
+      final second = InspectorViewModel(
+        graph: GraphViewModel(),
+        details: _Details(),
+        viewed: ProjectViewedStore(restarted, '/r/a'),
+        settings: restarted,
+      );
+      expect(second.filesShare(wide: true), closeTo(share, 1e-9));
+      expect(second.filesShare(wide: false), 0.38);
+      second
+        ..graph.dispose()
+        ..dispose();
+    });
+
+    testWidgets('the split follows another settings writer', (tester) async {
+      await pump(tester, width: 900);
+      await settle(tester);
+      final double total = tester.widget<ZsSplitDivider>(divider()).total;
+      // The value changes at once; the write itself settles at teardown (it cannot finish in the fake zone).
+      unawaited(settings.update((s) => s.copyWith(layout: s.layout.copyWith(inspectorFilesWide: .5))));
+      await settle(tester);
+      expect(tester.widget<ZsSplitDivider>(divider()).value, closeTo(.5 * total, 1e-9));
+      await unmount(tester);
+    });
+
+    testWidgets('a double-click on the divider writes the layout\'s default share: .34 wide, .38 narrow', (
+      tester,
+    ) async {
+      for (final (double width, bool wide, double share) in const <(double, bool, double)>[
+        (900, true, .34),
+        (460, false, .38),
+      ]) {
+        unawaited(
+          settings.update(
+            (s) => s.copyWith(layout: s.layout.copyWith(inspectorFilesWide: .5, inspectorFilesNarrow: .5)),
+          ),
+        );
+        await pump(tester, width: width);
+        await settle(tester);
+        expect(axis(tester), wide ? Axis.horizontal : Axis.vertical);
+        await tester.tap(divider());
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(divider());
+        await settle(tester);
+        final LayoutSettings layout = settings.value.layout;
+        expect(wide ? layout.inspectorFilesWide : layout.inspectorFilesNarrow, closeTo(share, 1e-9));
+        expect(wide ? layout.inspectorFilesNarrow : layout.inspectorFilesWide, .5, reason: 'the other layout stays');
+        await tester.pump(const Duration(milliseconds: 500));
+        await unmount(tester);
+      }
+    });
+
+    testWidgets(
+      'a long description shows 3 lines and Show more; open shows all and Show less; a new selection closes it',
+      (
+        tester,
+      ) async {
+        final String body = <String>[for (var i = 1; i <= 10; i++) 'line $i'].join('\n');
+        details.descriptions[_mutable] = 'Subject\n\n$body\n';
+        details.descriptions[_left] = 'Other\n\n$body\n';
+        await pump(tester);
+        await settle(tester);
+        Text text() => tester.widget<Text>(find.text(body));
+        expect(text().maxLines, 3);
+        expect(find.text('Show more'), findsOneWidget);
+        await tester.tap(find.text('Show more'));
+        await tester.pump();
+        expect(text().maxLines, isNull);
+        expect(find.text('Show less'), findsOneWidget);
+        expect(inspector.isOpen(_mutable), isFalse, reason: 'the button does not open the describe form');
+        graph.select(_left);
+        await settle(tester);
+        expect(text().maxLines, 3, reason: 'another selection starts closed');
+        expect(find.text('Show more'), findsOneWidget);
+        details.descriptions[_mutable] = 'Subject\n\nshort\n';
+        graph.select(_mutable);
+        await settle(tester);
+        expect(find.text('short'), findsOneWidget);
+        expect(find.text('Show more'), findsNothing, reason: 'a short body has no button');
+        await unmount(tester);
+      },
+    );
+
+    /// 40 files f0.txt … f39.txt on the mutable change.
+    void fortyFiles() {
+      details
+        ..files[_mutable] = <FileChange>[
+          for (var i = 0; i < 40; i++) FileChange(path: 'f$i.txt', kind: FileChangeKind.modified),
+        ]
+        ..fileDiffs[_mutable] = <FileDiff>[
+          for (var i = 0; i < 40; i++)
+            fileDiff(
+              'f$i.txt',
+              added: 1,
+              fingerprint: 'f$i',
+              hunks: <Hunk>[
+                hunk(
+                  before: (start: 0, end: 0),
+                  after: (start: 0, end: 1),
+                  lines: <HunkLine>[HunkLine(kind: HunkLineKind.added, text: 'body $i\n', right: 1)],
+                ),
+              ],
+            ),
+        ];
+    }
+
+    Future<void> focusList(WidgetTester tester) async {
+      await tester.tap(find.text('f0.txt').first);
+      await settle(tester);
+    }
+
+    testWidgets('↓ ×20 in a 40-file list: row 21 is current, in view, and its diff shows', (tester) async {
+      fortyFiles();
+      await pump(tester);
+      await settle(tester);
+      await focusList(tester);
+      for (var i = 0; i < 20; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump();
+      }
+      await settle(tester);
+      expect(inspector.focusedPath, 'f20.txt');
+      expect(find.text('body 20'), findsOneWidget, reason: 'its diff shows');
+      final Finder row = find.text('f20.txt').first;
+      final Rect list = tester.getRect(find.ancestor(of: row, matching: find.byType(Scrollable)).first);
+      final Rect rect = tester.getRect(row);
+      expect(rect.top >= list.top - 0.5 && rect.bottom <= list.bottom + 0.5, isTrue, reason: '$rect in $list');
+      expect(tester.getRect(find.byKey(const ValueKey<String>('inspector-diff'))).top, lessThan(840));
+      await unmount(tester);
+    });
+
+    testWidgets('a held ↓: the row moves at once, one diff read for the last row after an 80 ms pause', (
+      tester,
+    ) async {
+      fortyFiles();
+      await pump(tester);
+      await settle(tester);
+      await focusList(tester);
+      final int reads = details.focusReads.length;
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowDown);
+      for (var i = 0; i < 5; i++) {
+        await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      final ZsColors colors = ZsColors.of(tester.element(find.text('f0.txt').first));
+      expect(tester.widget<Text>(find.text('f6.txt').first).style!.color, colors.text, reason: 'the current row');
+      expect(details.focusReads.length, reads + 1, reason: 'the key down read f1 only');
+      expect(inspector.focusedPath, 'f1.txt');
+      await tester.pump(const Duration(milliseconds: 100));
+      await settle(tester);
+      expect(inspector.focusedPath, 'f6.txt');
+      expect(details.focusReads.length, reads + 2);
+      expect(details.focusReads.last.$2, <String>['f6.txt']);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowDown);
+      await unmount(tester);
+    });
+
+    testWidgets('Space flips the current file\'s pick, V its Viewed mark; on an immutable change Space does nothing', (
+      tester,
+    ) async {
+      await pump(tester);
+      await settle(tester);
+      await tester.tap(find.text('src/a.dart').first);
+      await settle(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await settle(tester);
+      expect(inspector.focusedPath, 'src/new.dart');
+      expect(inspector.fileState('src/new.dart'), isFalse);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(inspector.fileState('src/new.dart'), isTrue);
+      expect(inspector.isViewed('src/new.dart'), isFalse);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+      await tester.pump();
+      expect(inspector.isViewed('src/new.dart'), isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+      await tester.pump();
+      expect(inspector.isViewed('src/new.dart'), isFalse);
+      await unmount(tester);
+
+      details
+        ..files[_left] = const <FileChange>[FileChange(path: 'l.txt', kind: FileChangeKind.modified)]
+        ..fileDiffs[_left] = <FileDiff>[fileDiff('l.txt', fingerprint: 'fl')];
+      await pump(tester, select: _left);
+      await settle(tester);
+      await tester.tap(find.text('l.txt').first);
+      await settle(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(inspector.hasPick('l.txt'), isFalse);
+      await unmount(tester);
+    });
+
+    const s1 = HunkKey(oldStart: 1, oldCount: 1, newStart: 1, newCount: 1);
+    const s2 = HunkKey(oldStart: 5, oldCount: 1, newStart: 5, newCount: 1);
+    const s3 = HunkKey(oldStart: 9, oldCount: 1, newStart: 9, newCount: 1);
+    Finder partBox(int i) =>
+        find.byWidgetPredicate((w) => w is ZsCheckbox && w.identifier == 'inspector-part-check').at(i);
+    final Finder hunkBox = find.byWidgetPredicate((w) => w is ZsCheckbox && w.identifier == 'inspector-hunk-check');
+
+    /// The mutable change's one file `p.txt`: one hunk of three parts (sections s1, s2, s3).
+    void threeParts() {
+      HunkLine line(HunkLineKind kind, String text, {int? left, int? right}) =>
+          HunkLine(kind: kind, text: '$text\n', left: left, right: right);
+      details
+        ..files[_mutable] = const <FileChange>[FileChange(path: 'p.txt', kind: FileChangeKind.modified)]
+        ..fileDiffs[_mutable] = <FileDiff>[
+          fileDiff(
+            'p.txt',
+            added: 3,
+            removed: 3,
+            fingerprint: 'fp',
+            sections: const <HunkKey>[s1, s2, s3],
+            hunks: <Hunk>[
+              hunk(
+                before: (start: 0, end: 11),
+                after: (start: 0, end: 11),
+                sections: const <HunkKey>[s1, s2, s3],
+                lines: <HunkLine>[
+                  line(HunkLineKind.context, 'c1', left: 1, right: 1),
+                  line(HunkLineKind.removed, 'old 2', left: 2),
+                  line(HunkLineKind.added, 'new 2', right: 2),
+                  line(HunkLineKind.context, 'c3', left: 3, right: 3),
+                  line(HunkLineKind.removed, 'old 6', left: 6),
+                  line(HunkLineKind.added, 'new 6', right: 6),
+                  line(HunkLineKind.context, 'c7', left: 7, right: 7),
+                  line(HunkLineKind.removed, 'old 10', left: 10),
+                  line(HunkLineKind.added, 'new 10', right: 10),
+                ],
+              ),
+            ],
+          ),
+        ];
+    }
+
+    testWidgets(
+      'a file picked whole shows every part checked; toggling one leaves the others checked, the hunk mixed',
+      (
+        tester,
+      ) async {
+        threeParts();
+        await pump(tester, width: 1000);
+        await settle(tester);
+        inspector.togglePick('p.txt');
+        await settle(tester);
+        expect(
+          <bool?>[for (var i = 0; i < 3; i++) tester.widget<ZsCheckbox>(partBox(i)).value],
+          <bool?>[
+            true,
+            true,
+            true,
+          ],
+        );
+        expect(tester.widget<ZsCheckbox>(hunkBox).value, isTrue);
+        await tester.ensureVisible(partBox(0));
+        await tester.pump();
+        await tester.tap(partBox(0));
+        await settle(tester);
+        expect(
+          <bool?>[for (var i = 0; i < 3; i++) tester.widget<ZsCheckbox>(partBox(i)).value],
+          <bool?>[
+            false,
+            true,
+            true,
+          ],
+        );
+        expect(tester.widget<ZsCheckbox>(hunkBox).value, isNull, reason: 'mixed');
+        expect(tester.widget<ZsCheckbox>(partBox(0)).label, 'Pick line 2', reason: 'the part names its lines');
+        await unmount(tester);
+      },
+    );
+
+    testWidgets('a hunk of three parts: the second part alone selects only its section; the hunk shows mixed', (
+      tester,
+    ) async {
+      threeParts();
+      await pump(tester, width: 1000);
+      await settle(tester);
+      expect(
+        find.byWidgetPredicate((w) => w is ZsCheckbox && w.identifier == 'inspector-part-check'),
+        findsNWidgets(3),
+      );
+      expect(find.text('3 parts'), findsOneWidget);
+      await tester.ensureVisible(partBox(1));
+      await tester.pump();
+      await tester.tap(partBox(1));
+      await settle(tester);
+      expect(tester.widget<ZsCheckbox>(partBox(1)).value, isTrue);
+      expect(tester.widget<ZsCheckbox>(partBox(0)).value, isFalse);
+      expect(tester.widget<ZsCheckbox>(hunkBox).value, isNull, reason: 'mixed');
+      final split = inspector.composerAction! as GraphSplit;
+      expect(split.hunks!.files.single.hunks, <HunkKey>[s2]);
+      // The edge marks only the second part's lines.
+      bool edged(String text) =>
+          (tester
+                      .widget<Container>(
+                        find
+                            .descendant(
+                              of: find.ancestor(of: find.text(text), matching: find.byType(Stack)).first,
+                              matching: find.byKey(const ValueKey<String>('inspector-line-pin')),
+                            )
+                            .first,
+                      )
+                      .foregroundDecoration!
+                  as BoxDecoration)
+              .border !=
+          null;
+      expect(
+        <bool>[
+          for (final t in <String>['old 2', 'new 2', 'c3', 'old 6', 'new 6', 'c7', 'old 10']) edged(t),
+        ],
+        <bool>[
+          false,
+          false,
+          false,
+          true,
+          true,
+          false,
+          false,
+        ],
+      );
       await unmount(tester);
     });
   });

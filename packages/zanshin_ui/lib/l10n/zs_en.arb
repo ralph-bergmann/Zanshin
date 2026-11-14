@@ -42,5 +42,10 @@
   "@resizePoints": {
     "description": "VoiceOver value of a panel resize edge: the panel width in points.",
     "placeholders": {"number": {"type": "double", "format": "decimalPattern", "example": "300"}}
+  },
+  "splitShare": "{share}",
+  "@splitShare": {
+    "description": "VoiceOver value of a split divider: the leading pane's share of the split, as a percentage.",
+    "placeholders": {"share": {"type": "double", "format": "percentPattern", "example": "34%"}}
   }
 }
