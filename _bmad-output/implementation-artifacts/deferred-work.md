@@ -3082,3 +3082,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **A large file's unified diff may scroll sideways slowly (unverified).** Medium.
   - `app/lib/src/features/graph/inspector_diff.dart` `_Pinned`: each line's pinned numbers and each hunk header listen to the file's horizontal scroll (one rebuild per line per tick); `_DiffBody` runs `IntrinsicWidth` over the whole file in a non-lazy scroll view.
   - **Follow-up:** scroll a diff of a few thousand lines in a profile build; if frames drop, paint the pinned column once per body (one listener) or make the lines lazy.
+
+## Surfaced in the follow-up review of Story 10.38 (bmad-build-auto, 2026-11-14)
+
+- **Dragging the split divider or the inspector's edge over a large diff may stutter (unverified).** Medium.
+  - In the wide layout each drag frame changes the diff pane's width; `_DiffBody`'s `LayoutBuilder` (`app/lib/src/features/graph/inspector_diff.dart`) then measures the number digits again and runs `IntrinsicWidth` over every line of the non-lazy file.
+  - **Follow-up:** measure it together with the sideways-scroll item above: in a profile build drag the divider and the inspector edge with a diff of a few thousand lines open and watch the frame times.

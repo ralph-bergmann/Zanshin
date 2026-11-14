@@ -5,7 +5,7 @@ created: '2026-11-14'
 status: 'done'
 baseline_revision: 'a475f18685dc7e437057d02bbf6a6a968832a4a1'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/.claude/skills/design-artifacts/SKILL.md'
@@ -31,6 +31,13 @@ deferred:
       Unverified (no measurement). inspector_diff.dart `_Pinned` wraps each line's pinned numbers and each hunk header in an AnimatedBuilder on the file's horizontal controller, so a scroll tick rebuilds one Transform per line; `_DiffBody` lays out all hunks in one IntrinsicWidth inside a non-lazy scroll view. Settle it by scrolling a diff of a few thousand lines in the real app (profile build) and watching the frame times.
     location: >-
       app/lib/src/features/graph/inspector_diff.dart (_DiffBody, _Pinned)
+    severity: medium (unverified)
+  - summary: >-
+      Dragging the split divider or the inspector's edge over a large diff may stutter: every frame that changes the diff pane's width lays out the whole file again.
+    evidence: |-
+      Unverified (no measurement). In the wide layout a divider or edge drag changes the diff pane's width each frame; `_DiffBody`'s LayoutBuilder then measures the number digits again and runs IntrinsicWidth over every line of the non-lazy file. Settle it with the sideways-scroll item above: in a profile build, drag the divider and the inspector edge with a diff of a few thousand lines open and watch the frame times.
+    location: >-
+      app/lib/src/features/graph/inspector_diff.dart (_DiffBody)
     severity: medium (unverified)
 ---
 
@@ -165,6 +172,53 @@ deferred:
   - `[low]` `[patch]` (edge) another change with the same focused path keeps the old diff scroll — the inspector keys its diff view by the change.
   - `[low]` `[patch]` (edge) conflict header indented behind blank number columns — grouped with the verification row above.
 
+### 2026-11-14 — Review pass (follow-up)
+- verdicts: 43 findings — high 0, medium 1, low 37, false 2, maybe-false 3
+- findings:
+  - `[false]` `[reject]` (intent) a held ↓ reads two diffs (key down + after the pause), not one — the rule "↑ ↓ show its diff at once" covers the key down; the matrix's "one diff read … after the pause" is the one read the repeats add. Both hold.
+  - `[low]` `[reject]` (intent) divider key steps and VoiceOver steps each write the share — the intent forbids writes per pointer move only; each step is a finished change, and the writes are queued in order by `SettingsStore` (grouped with the blind row on a held arrow key).
+  - `[low]` `[reject]` (intent) the 48 % base is the space between the header and the composer, not the header and the island's bottom — the composer is not shown until something is picked; while it shows, the top part giving way to it is the sensible reading.
+  - `[low]` `[reject]` (intent) carried — the collapsed flyout's new cap is not in the epic; the cap keeps the old protection and is documented.
+  - `[low]` `[reject]` (intent) a reset whose clamped default equals the current length writes nothing — grouped with the blind row on the reset in a small inspector.
+  - `[low]` `[reject]` (intent) divider minimums and the tiny split are tested on `InspectorSplit` only — the divider's `min`/`max` come straight from it (checked at 900 wide in the drag test); a widget drag to each limit adds nothing.
+  - `[low]` `[reject]` (intent) no settings reload of an inspector width above 720 — no clamp to 720 is left anywhere (`ShellLayout` uses a remembered 1000 as is, the settings model has no maximum).
+  - `[low]` `[reject]` (intent) the write-failure path of `setFilesShare` is untested — the same `onError<FileSystemException>` as `setLayout`.
+  - `[low]` `[reject]` (intent) the divider's keys and VoiceOver are tested on `ZsSplitDivider` alone, not inside the inspector — the inspector passes the same callbacks the drag and reset tests exercise.
+  - `[low]` `[reject]` (intent) the `resizeColumn`/`resizeRow` cursors are not asserted — a constant per axis; cosmetic.
+  - `[low]` `[patch]` (intent) the 1.5 px ring on the current row is not asserted — grouped with the verification row on the ring below.
+  - `[low]` `[reject]` (intent) the arrow walk only checks that the diff's top is above 840 — the split keeps the diff pane in view by construction; the row's visibility is what moved.
+  - `[low]` `[reject]` (intent) carried — the real-repo three-parts test builds the commit by hand; the widget test proves the composer emits only `sections[1]`.
+  - `[low]` `[reject]` (intent) the pinned short line is tested on `InspectorDiffView` alone, not inside the split — the split only sizes the view; the pinning lives in the view.
+  - `[low]` `[reject]` (intent) the operation view is tested in a synthetic unbounded host — the unbounded height is the only property the operation view adds.
+  - `[low]` `[defer]` (intent) carried — no Marionette comparison of both layouts.
+  - `[medium]` `[defer]` (intent) carried — the DS republish and canvas sync are not done.
+  - `[low]` `[patch]` (verification) no test that a new file starts its diff at the top left and another change its list at the top — added in graph_inspector_test.dart (both diff scrolls and the list read 0 after ↓ and after another change with the same path).
+  - `[low]` `[patch]` (verification) no test for a held key's file that goes in a reload during the pause — added: the gone file is neither focused nor read, the row falls back.
+  - `[low]` `[patch]` (verification) no test that a held Space or V flips once — the Space/V test now holds each with two repeats.
+  - `[low]` `[patch]` (verification) no test of the current row's 1.5 px accent ring — the ↓ ×20 test asserts it on the current row only, and gone once the list loses focus.
+  - `[low]` `[patch]` (verification) no test of the top part's 48 % cap — added: an 80-line description opened takes at most 48 % and scrolls; the divider stays in view.
+  - `[low]` `[patch]` (verification) side by side's per-part edge and part taps are untested — the three-parts test now checks each row's edge (an added-only row takes its right line's part), taps parts 2 and 3, and the whole-hunk edge without parts on and off.
+  - `[low]` `[reject]` (blind) a reset in a small inspector stores the clamped share, or nothing when it is already there — only in a narrow split under about 290 points; the share heals at the next reset in a larger window, where the default no longer clamps; a fix needs a reset signal on the divider.
+  - `[low]` `[reject]` (blind) carried — a `_dragShare` left over when the divider leaves the tree mid-drag; needs a reload during a divider drag.
+  - `[low]` `[reject]` (blind) a held arrow key on the divider writes `settings.json` per repeat — `SettingsStore.update` queues the writes in order, so the last value wins; a few small writes per second while a key is held do no harm.
+  - `[low]` `[reject]` (blind) a collapsed panel with a large remembered width returns only once its full width fits — that is the window rule the intent keeps ("rules stay otherwise as they are"); the flyout has its resize edge, and dragging it narrower lowers the threshold.
+  - `[low]` `[reject]` (blind) carried — the flyout's cap does not subtract the open inspector; the docs were reworded in the first pass.
+  - `[low]` `[patch]` (blind) no test taps a part checkbox while the diff is scrolled sideways — the pinned-numbers test now taps the pinned box after scrolling fully right and gets its section.
+  - `[maybe-false]` `[defer]` (blind) the deferred performance note misses divider and edge drags, which lay out the whole file each frame — settle by dragging both over a few-thousand-line diff in a profile build (deferred as medium, unverified; mirrored in deferred-work.md).
+  - `[low]` `[reject]` (blind) the DS `ResizeEdge`'s End goes to `Infinity` without `limit` — every consumer (the kit's two edges) passes `limit`; a guard adds a branch to a demo component.
+  - `[low]` `[reject]` (blind) the DS has no ring or Finder keys on `FileRow`, and its part labels lack the line range — the DS kit is a demo; the ring and keys would add kit behaviour, the range labels need line numbers in the DS props.
+  - `[low]` `[patch]` (blind) the DS readme's "Synced through #26" names only 10.33's open row — it now also names #25's file rows waiting for Story 10.39.
+  - `[false]` `[reject]` (blind) the "Inspector" VoiceOver label now covers only the top part — the whole inspector is a `Semantics` container labelled `inspectorLabel` (graph_inspector.dart, `_GraphInspectorState.build`); the file list has its own "Changes" label.
+  - `[low]` `[reject]` (blind) `setFilesShare` catches only `FileSystemException` — the same as `setLayout`; a failed write is a `FileSystemException`.
+  - `[low]` `[patch]` (edge) a divider drag that ends back at its start leaves `_dragShare` set, so later setting changes and a layout switch show a stale share — `ZsSplitDivider` now reports the end of any drag that moved it; test added in zs_split_divider_test.dart.
+  - `[low]` `[patch]` (edge) the one `GlobalKey` that follows the current row carries a row's element (and its checkbox state) to another file — every row now has its own key per path; test: both rows keep their elements across ↓.
+  - `[low]` `[reject]` (edge) a reset where the default is outside min … max — grouped with the blind row on the reset in a small inspector.
+  - `[maybe-false]` `[reject]` (edge) a section with no non-context line in its hunk gets no checkbox though the pill counts it — needs a jj section whose changed lines fall outside its own ranges, which jj's line diff does not produce; if real only low (the part is still picked through the hunk checkbox).
+  - `[maybe-false]` `[reject]` (edge) a side-by-side row can pair a left line of one section with a right line of another — rows pair only within one contiguous run of changes, which is one jj section; if real only low (the right side's part keeps its unified checkbox).
+  - `[low]` `[reject]` (edge) a picked hunk's edge has a gap at a conflict header row — the first pass took conflict headers out of the per-line edge on purpose; a header is not a picked line.
+  - `[low]` `[reject]` (edge) the DS `ResizeEdge` End can reach `Infinity` — grouped with the blind row above.
+  - `[low]` `[reject]` (edge, claim) the DS `ResizeEdge` prompt still promises End = maximum while `max` is optional — grouped with the blind row above.
+
 ## Design Notes
 
 - **Why one horizontal unit per file:** the mock-up scrolls the whole diff body both ways (`.isd-dbody{overflow:auto}`); one bar per file, and "every line as wide as the file's widest line" is then literal. Pinning in Flutter: the number cells move by the horizontal offset (listen to the controller) and must paint after the text — e.g. a `Stack` per row with the pinned cells last, or a small `RenderBox` that paints them on top. The hunk header sits outside the row content, sized to the viewport width and moved by the same offset.
@@ -200,6 +254,14 @@ deferred:
 - Not run: `cargo make test` / `test-full` / `coverage` (the loop's gate rule); no Rust changed, so no cargo checks. A full-app `flutter test` outside `cargo make test-app` fails 6 tests in `worker_project_repos_test.dart` and `remote_sync_test.dart` (they need the environment `cargo make test-app` pins; unrelated to this change).
 - Not done: DS publish and canvas sync (refused by the permission check) and the Marionette check — both deferred.
 
+**Verification notes (2026-11-14, follow-up review pass; gate rule of the story loop: no full gate):**
+- `cargo make test-app test/features/graph test/features/shell test/features/undo_timeline test/widgetbook` -- 1573 passed (after the patches).
+- `cargo make test-app test/features/graph/graph_inspector_test.dart test/features/graph/inspector_diff_test.dart` -- first run: 1 failure in the new row-key test (it looked up the renamed row by its path; fixed to the row's shown text); after the fix and after formatting, 156 passed.
+- `flutter test` in `packages/zanshin_ui` -- 471 passed.
+- `dart analyze app packages/zanshin_ui` -- one `omit_obvious_local_variable_types` hint in a new test, fixed; then No issues found.
+- `dart format --set-exit-if-changed -o none` on `app/lib`, `app/test`, `app/widgetbook`, `packages/zanshin_ui/lib`, `packages/zanshin_ui/test` -- 2 files reformatted, then 0 changed.
+- Not run: `cargo make test` / `test-full` / `coverage` (the loop's gate rule); no Rust, FFI, settings model or l10n changed in this pass, so no cargo checks, codegen, build_runner or gen-l10n. DS publish and the Marionette check stay deferred.
+
 ## Auto Run Result
 
 Status: done
@@ -232,3 +294,23 @@ Status: done
 - Large diffs may scroll sideways slowly (deferred, unverified).
 - Not checked visually through Marionette (deferred); the kit fixes from review were not re-opened in a browser.
 - The settings-writer tests do not await the settings write (the value applies at once; the file write settles at teardown).
+
+### Follow-up review pass (2026-11-14)
+
+**Summary.** A fresh four-layer review of the whole change since `a475f18685dc7e437057d02bbf6a6a968832a4a1`. Two code fixes: a divider drag that ends back at its start now reports its end, so the inspector drops its drag-time share (before, a later layout switch or another settings writer showed a stale share); and each file row has its own key per path, so moving the current row no longer carries one row's element and checkbox state to another file. Missing tests added for the earlier patches and rules: scroll reset per file and per change, a held key's file gone in a reload, held Space / V, the current row's ring, the top part's 48 % cap, side by side's per-part edge and taps, and a tap on a pinned part checkbox while scrolled right. The DS readme's sync line now names #25's file rows as waiting for Story 10.39.
+
+**Files changed.**
+- `packages/zanshin_ui/lib/src/controls/zs_split_divider.dart` -- `_moved`: `onChangeEnd` runs after any drag that moved the value, also back at its start.
+- `packages/zanshin_ui/test/controls/zs_split_divider_test.dart` -- test for a drag that ends at its start.
+- `app/lib/src/features/graph/graph_inspector.dart` -- `_rows` / `_rowKey`: one `GlobalKey` per file path; `_reveal` takes the path.
+- `app/test/features/graph/graph_inspector_test.dart` -- ring, row keys, scroll reset, gone pending file, 48 % cap, held Space / V.
+- `app/test/features/graph/inspector_diff_test.dart` -- side-by-side edges and part taps, the whole-hunk edge, a tap on the pinned part checkbox.
+- `_bmad-output/implementation-artifacts/design_system/readme.md` -- sync line names 10.39's open part of #25.
+
+**Review findings.** 43 findings: 11 patch rows in 10 entries (all low), 1 new deferred item (divider / edge drags relayout a large diff — medium, unverified), 2 carried deferrals (DS publish, Marionette), 27 rejected rows (low, maybe-false or carried) with reasons in the triage log, 2 false.
+
+**Follow-up review recommendation: false.** Patched this pass: high 0, medium 0, low 10 entries. A follow-up pass recommends another only after a high patch; none.
+
+**Residual risks.** Unchanged from above: DS not republished, the Marionette check not done, large-diff scrolling and resizing unmeasured. Not re-checked in a browser: nothing in the DS changed except the readme line.
+
+**Commits.** `16c11245ce725ce1baa2b67366ecd328d48049fe` (code, tests, DS readme); the docs commit (this spec, deferred work) follows it.
