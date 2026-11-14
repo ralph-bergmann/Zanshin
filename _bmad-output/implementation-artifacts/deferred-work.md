@@ -3037,3 +3037,12 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
   - **Follow-up:** none. Only if the comment limit of Story 5.13 bothers Ralph.
 - ~~**The "Nächster Schritt" list at the top of `sprint-status.yaml` still lists Story 5.9 as open**~~ — RESOLVED 2026-11-14 (commit ff7e2b55): the list no longer names Story 5.9. (E2 was built and then replaced by Story 5.10.) Low.
   - **Follow-up:** Ralph says whether the line goes; this session only added Story 5.13 to the list.
+
+## Surfaced in Story 5.14 (bmad-build-auto, 2026-11-14)
+
+- **The design system artifact and the app design canvas still show the two diff styles of Stories 5.11 and 5.13, because the run could not republish them.** Medium.
+  - The permission classifier refused the implementation run's publish to the DS artifact J5iSiy8cS6Q1EXa44g945d. The repo files under `_bmad-output/implementation-artifacts/design_system/` are updated: DiffView, DiffHunk, `content.css`, the Content and Settings cards, `_ds_bundle.js` and the readme.
+  - **Follow-up:** publish with `.claude/skills/design-artifacts/SKILL.md` A (the DS artifact), then B (canvas 6sAzL5mDcVpWXevbTcempu), from a session allowed to publish.
+- **The DS UI kit's Settings dialog and the click dummy's Settings page still show the Diffs group with Layout only.** Low.
+  - `design_system/ui_kits/desktop/dialogs.jsx:273-275` and `design/settings.jsx` (Diffs group) have no Changed words switch, Inline changes or Context lines. These have been missing since Story 5.11; Story 5.12 left the click dummy for the next design round. The Settings card (`components/settings/settings.card.html`) now shows all four rows.
+  - **Follow-up:** add the three rows to both at the next design round, then republish (A, B).
