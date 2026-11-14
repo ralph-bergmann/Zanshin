@@ -523,7 +523,8 @@ function ZKApp() {
             diffMode={prefs.diffMode} setDiffMode={(v) => setPref("diffMode", v)} editing={editing} setEditing={setEditing} lift={lift} beginDrag={beginDrag}
             onClose={() => setSel(null)} onEdit={() => edit(selected.id)} onNew={(id) => newChange(id)} onDescribe={(s, b) => describe(selected.id, s, b)}
             onSquash={() => squashInto(selected.id, selected.parents[0])} onAbandon={() => abandon(selected.id)}
-            onCommit={(ids, msg) => commitWc(ids, msg)} onSplit={(ids, msg) => split(selected.id, ids, msg)}/>
+            onCommit={(ids, msg) => commitWc(ids, msg)} onSplit={(ids, msg) => split(selected.id, ids, msg)}
+            parentShown={(id) => visibleSet.has(id)} onSelectParent={(id) => { setSel(id); scrollTo(id); }}/>
         )}
         <div className={"zk-at" + (wcDir && !toast ? " is-on" : "")} style={{ left: (insets.left + view.w - atR) / 2 }}>
           <AtPill direction={wcDir || "down"} onClick={() => scrollTo(repo.wc)} tabIndex={wcDir ? 0 : -1} aria-hidden={!wcDir}/>

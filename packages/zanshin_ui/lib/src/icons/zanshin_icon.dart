@@ -188,6 +188,7 @@ abstract final class ZI {
   static const moveOnly = 'move-only';
   static const moveOnto = 'move-onto';
   static const newOnTop = 'new-on-top';
+  static const parent = 'parent';
   static const plus = 'plus';
   static const pull = 'pull';
   static const push = 'push';
@@ -250,6 +251,7 @@ abstract final class ZI {
     moveOnly,
     moveOnto,
     newOnTop,
+    parent,
     plus,
     pull,
     push,

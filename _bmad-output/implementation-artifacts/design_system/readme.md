@@ -53,6 +53,8 @@ The app project keeps a numbered change log, `DESIGN-SYSTEM-SYNC.md` (project Za
 
 - 2026-11-14 (Ralph, from the app) — night `--rem-word-bg` is a clearer red, `rgba(220,38,38,.44)` instead of `.24` of `--rem`'s hue: on a changed line, which has no line fill, the old mark hardly showed. It stays darker than `--add-word-bg` (ΔL* 13.1, the token test asks ≥ 12); `--text` on it 9.5:1. Paper is unchanged.
 
+- 2026-11-14 (from the inspector study, sync #25, Story 10.35) — parent ids and a jump to the parent. In the inspector's meta line each parent id shows jj's unique prefix bold in `--text`, as the header's ids (`ZKCopyId`), followed by a 20px jump button `.zk-ins-jump` (radius 6, the new glyph `parent` at sm in `--text-faint`; hover `--fl-hover` / `--text`; the accent focus ring; disabled at `--disabled-opacity` when the parent is not in the shown graph, the reason "Parent <id> is not in the shown graph" as its title). Its name and tooltip read "Select parent <id>"; a click selects the parent and brings it into view. New glyph `parent` — an arrow onto a dot (`M8 2.5v7M5 6.8L8 9.8l3-3`, circle 8/13 r1.6); 60 glyphs (`assets/icons/ui/parent.svg`, `glyphs.json`, `Icon.jsx`, its block in `_ds_bundle.js` by hand). The kit's composer: Split with everything picked stays disabled ("Every change is picked. To describe this change, click its title.") and the hint reads "Every change is picked — Split needs something left behind. To describe this change, click its title."; its command is cut inside the message, never in its paths. `ui_kits/desktop/inspector.jsx`, `app.jsx` and `kit.css` follow.
+
 ## Products / surfaces
 
 | Surface | Where |
@@ -395,7 +397,7 @@ One pass over everything — tokens, component CSS, cards, assets, this readme �
 | `components/` | React primitives by concern — see below; each has `.jsx`, `.d.ts`, `.prompt.md`; `*.card.html` specimens per folder |
 | `guidelines/` | Foundation specimen cards (Colors, Type, Spacing, Brand, Motion) |
 | `ui_kits/desktop/` | Click-through recreation of the floating client — see its `README.md` |
-| `assets/` | `fonts/` (Inter, JetBrains Mono, Shippori Mincho subset) · `icons/ui/` (59 SVG sources — what the app renders) · `icons/glyphs.json` (names + aliases) · `app-icon/` (Nami SVG + Xcode 26 `.icon` bundle) · `motion/` (Lottie loaders) · wordmarks, waves, splash SVGs |
+| `assets/` | `fonts/` (Inter, JetBrains Mono, Shippori Mincho subset) · `icons/ui/` (60 SVG sources — what the app renders) · `icons/glyphs.json` (names + aliases) · `app-icon/` (Nami SVG + Xcode 26 `.icon` bundle) · `motion/` (Lottie loaders) · wordmarks, waves, splash SVGs |
 | `SKILL.md` | Agent-skill entry point |
 
 ### Components

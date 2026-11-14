@@ -1556,6 +1556,18 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{parent} other{parents}}'**
   String inspectorParents(int count);
 
+  /// Inspector meta line: the tooltip and name of the button after a parent's id that selects that parent in the graph.
+  ///
+  /// In en, this message translates to:
+  /// **'Select parent {id}'**
+  String inspectorParentJump(String id);
+
+  /// Inspector meta line: why the select-parent button is disabled — the parent is outside the graph's revset.
+  ///
+  /// In en, this message translates to:
+  /// **'Parent {id} is not in the shown graph'**
+  String inspectorParentAbsent(String id);
+
   /// Inspector action on an immutable change: jj new on it.
   ///
   /// In en, this message translates to:
@@ -1609,6 +1621,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Split'**
   String get inspectorSplit;
+
+  /// Composer on another change: why Split is disabled while every file is picked (the split would leave an empty change).
+  ///
+  /// In en, this message translates to:
+  /// **'Every change is picked. To describe this change, click its title.'**
+  String get inspectorSplitAllReason;
+
+  /// Composer on another change: the note under the buttons while every file is picked.
+  ///
+  /// In en, this message translates to:
+  /// **'Every change is picked — Split needs something left behind. To describe this change, click its title.'**
+  String get inspectorSplitAllHint;
 
   /// Composer on the working copy: the placeholder of the new commit's first line.
   ///

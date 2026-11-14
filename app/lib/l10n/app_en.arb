@@ -601,6 +601,16 @@
     "description": "Inspector meta line: the word before the parents' short ids.",
     "placeholders": {"count": {"type": "int"}}
   },
+  "inspectorParentJump": "Select parent {id}",
+  "@inspectorParentJump": {
+    "description": "Inspector meta line: the tooltip and name of the button after a parent's id that selects that parent in the graph.",
+    "placeholders": {"id": {"type": "String", "example": "uyoxptom"}}
+  },
+  "inspectorParentAbsent": "Parent {id} is not in the shown graph",
+  "@inspectorParentAbsent": {
+    "description": "Inspector meta line: why the select-parent button is disabled — the parent is outside the graph's revset.",
+    "placeholders": {"id": {"type": "String", "example": "uyoxptom"}}
+  },
   "inspectorNewOnTop": "New change on top",
   "@inspectorNewOnTop": {"description": "Inspector action on an immutable change: jj new on it."},
   "inspectorEdit": "Edit",
@@ -619,6 +629,10 @@
   "@inspectorCommit": {"description": "Composer on the working copy: runs jj commit with the checked files."},
   "inspectorSplit": "Split",
   "@inspectorSplit": {"description": "Composer on another change: runs jj split with the checked files."},
+  "inspectorSplitAllReason": "Every change is picked. To describe this change, click its title.",
+  "@inspectorSplitAllReason": {"description": "Composer on another change: why Split is disabled while every file is picked (the split would leave an empty change)."},
+  "inspectorSplitAllHint": "Every change is picked — Split needs something left behind. To describe this change, click its title.",
+  "@inspectorSplitAllHint": {"description": "Composer on another change: the note under the buttons while every file is picked."},
   "inspectorComposerSummaryAt": "Summary of what you did",
   "@inspectorComposerSummaryAt": {"description": "Composer on the working copy: the placeholder of the new commit's first line."},
   "inspectorComposerSummarySplit": "Summary of the selected changes",

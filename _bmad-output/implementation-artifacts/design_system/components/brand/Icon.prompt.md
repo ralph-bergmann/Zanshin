@@ -1,4 +1,4 @@
-Zanshin's own line icons: **59 glyphs**, one file each in `assets/icons/ui/` (the source; `assets/icons/glyphs.json` lists the names and the retired aliases). `Icon` is generated from those files.
+Zanshin's own line icons: **60 glyphs**, one file each in `assets/icons/ui/` (the source; `assets/icons/glyphs.json` lists the names and the retired aliases). `Icon` is generated from those files.
 
 ~~~jsx
 <Icon name="squash" size="md" />          {/* menu row, button */}

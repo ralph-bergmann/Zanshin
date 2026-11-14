@@ -36,9 +36,10 @@ typedef InspectorDraft = ({String summary, String details});
 /// - **Fetch.** On every change of the selected key or the layout's operation it reads `show` (the commit id) and,
 ///   for a mutable change, `changeActions`; a reply for an older key or operation is dropped. A refusal is kept as
 ///   [error]. While the working copy is stale nothing is read (jj refuses).
-/// - **Drafts** live per change key for the session; the form's open state too, so a draft survives a selection
-///   change and comes back open. [save] joins the fields as the CLI's `-m` paragraphs and runs `jj describe` through
-///   the graph's runner — nothing when the text equals the current description.
+/// - **Drafts** live per change key for the session; the form's open state too while the draft differs from the
+///   description, so a draft survives a selection change and comes back open — an untouched form closes. [save]
+///   joins the fields as the CLI's `-m` paragraphs and runs `jj describe` through the graph's runner — nothing when
+///   the text equals the current description.
 /// - **Diff** (Story 10.24): with `show` it reads the summary diff ([summaryOf]: ± and fingerprints per file); then the
 ///   focused file's diff ([focusedDiff]) — both by the commit id, so a hidden or divergent node reads its own commit.
 ///   The first file starts focused; a reload keeps the focused path while it is
@@ -636,13 +637,29 @@ class InspectorViewModel extends ChangeNotifier {
   /// other buttons show theirs; null without an action.
   String? get composerCommand => _composer(short: true)?.command;
 
-  GraphAction? _composer({required bool short}) {
+  /// [composerCommand] with each `-m` paragraph longer than [keep] characters cut to its first [keep] and "…": the
+  /// command line shortens the message, never the change id or the paths.
+  String? composerCommandCut(int keep) => _composer(short: true, keep: keep)?.command;
+
+  /// Whether the split would take every file of a change other than @ and leave it empty: Split stays disabled.
+  bool get splitsEverything {
+    final ({GraphLayout layout, int node})? at = _mutableNode;
+    return at != null && at.layout.workingCopyIndex != at.node && allPicked;
+  }
+
+  GraphAction? _composer({required bool short, int? keep}) {
     final ({GraphLayout layout, int node})? at = _mutableNode;
     final String? key = _key;
     if (at == null || key == null || !composing || pickedCount == 0) {
       return null;
     }
-    final List<String> paragraphs = paragraphsOf(composerFields);
+    final paragraphs = <String>[
+      for (final String paragraph in paragraphsOf(composerFields))
+        if (keep != null && paragraph.characters.length > keep)
+          '${paragraph.characters.take(keep)}…' // l10n-ignore: the ellipsis of a cut message
+        else
+          paragraph,
+    ];
     final isAt = at.layout.workingCopyIndex == at.node;
     final String id = isAt || !short ? key : graphShortId(at.layout, at.node);
     final List<FileChange> files = _entry?.fileChanges ?? const <FileChange>[];
@@ -684,11 +701,11 @@ class InspectorViewModel extends ChangeNotifier {
 
   /// Runs [composerAction] through the runner: done clears the key's drafts (the composer's and the title's — the
   /// change was described) and checks; a refusal stays in
-  /// [composerError], the draft and checks with it.
+  /// [composerError], the draft and checks with it. Nothing runs while [splitsEverything].
   Future<GraphActionResult?> runComposer() async {
     final GraphAction? action = composerAction;
     final String? key = _key;
-    if (action == null || key == null) {
+    if (action == null || key == null || splitsEverything) {
       return null;
     }
     _composerError = null;
@@ -769,6 +786,10 @@ class InspectorViewModel extends ChangeNotifier {
       return;
     }
     if (key != _key) {
+      // Leaving a change keeps its form open only for a draft that differs; `dirty` reads the old key's entry.
+      if (_key case final String left when !dirty(left)) {
+        _open.remove(left);
+      }
       _entry = null;
       _actions = null;
       _clearDiff();
@@ -1067,7 +1088,14 @@ class _GraphInspectorState extends State<GraphInspector> {
                           )
                         else
                           _Title(model: _model, data: data, entry: entry),
-                        _Meta(data: data, layout: layout, node: node, entry: entry, nowMs: graph.now.value),
+                        _Meta(
+                          data: data,
+                          layout: layout,
+                          node: node,
+                          entry: entry,
+                          nowMs: graph.now.value,
+                          onJump: graph.goTo,
+                        ),
                         if (data.refs.isNotEmpty)
                           _Chips(refs: data.refs, drag: graph.actionsEnabled ? graph.drag : null),
                         if (editing == null && squashing == null)
@@ -1775,9 +1803,17 @@ class _DescribeFormState extends State<_DescribeForm> {
 }
 
 /// The meta line (DS kit.css:106-109): padding 4 20 0, 12.5 `--text-dim`, the parts joined by a faint "·"; the
-/// parents' short ids mono in `--text-muted`.
+/// parents' short ids mono in `--text-muted`, jj's unique prefix bold in `--text` as the header's, each followed by
+/// its jump (Story 10.35).
 class _Meta extends StatelessWidget {
-  const _Meta({required this.data, required this.layout, required this.node, required this.entry, required this.nowMs});
+  const _Meta({
+    required this.data,
+    required this.layout,
+    required this.node,
+    required this.entry,
+    required this.nowMs,
+    required this.onJump,
+  });
 
   final GraphCardData data;
   final GraphLayout layout;
@@ -1785,24 +1821,39 @@ class _Meta extends StatelessWidget {
   final ShowEntry? entry;
   final int nowMs;
 
-  /// The parents' short ids with the full id each copies: `show`'s parents, else the layout's direct parents (the
-  /// stale state). A layout node's full id is its key, the id its short one is cut from.
-  List<({String short, String full})> _parents() {
+  /// Selects a parent by its layout key.
+  final ValueChanged<String> onJump;
+
+  /// A parent's short id, the full id it copies, its bold prefix and its layout key (null outside the layout).
+  ({String short, String full, int prefix, String? key}) _inLayout(int parent) {
+    final String key = layout.keyOf(parent);
+    return (
+      short: graphShortId(layout, parent),
+      full: key,
+      prefix: key == layout.changeIdOf(parent)
+          ? layout.changeIdPrefixLengthOf(parent)
+          : layout.commitIdPrefixLengthOf(parent),
+      key: key,
+    );
+  }
+
+  /// The parents: `show`'s, else the layout's direct parents (the stale state). A layout node's full id is its key,
+  /// the id its short one is cut from.
+  List<({String short, String full, int prefix, String? key})> _parents() {
     final List<String>? shown = entry?.change.parents;
     if (shown != null) {
-      return <({String short, String full})>[
+      return <({String short, String full, int prefix, String? key})>[
         for (final String id in shown)
           switch (layout.indexOfKey(id)) {
-            final int parent => (short: graphShortId(layout, parent), full: layout.keyOf(parent)),
-            null => (short: id.substring(0, math.min(8, id.length)), full: id),
+            final int parent => _inLayout(parent),
+            null => (short: id.substring(0, math.min(8, id.length)), full: id, prefix: 0, key: null),
           },
       ];
     }
     final ({int start, int end}) edges = layout.parentEdges(node);
-    return <({String short, String full})>[
+    return <({String short, String full, int prefix, String? key})>[
       for (var e = edges.start; e < edges.end; e++)
-        if (layout.kindOf(e) == GraphEdgeKind.direct)
-          (short: graphShortId(layout, layout.parentOf(e)), full: layout.keyOf(layout.parentOf(e))),
+        if (layout.kindOf(e) == GraphEdgeKind.direct) _inLayout(layout.parentOf(e)),
     ];
   }
 
@@ -1822,8 +1873,8 @@ class _Meta extends StatelessWidget {
             : data.content!.authorEmail.trim(),
     };
     final int? ts = data.timestampMs;
-    final List<({String short, String full})> parents = data.isRoot
-        ? const <({String short, String full})>[]
+    final List<({String short, String full, int prefix, String? key})> parents = data.isRoot
+        ? const <({String short, String full, int prefix, String? key})>[]
         : _parents();
     final parts = <InlineSpan>[
       if (name.isNotEmpty) TextSpan(text: name),
@@ -1843,8 +1894,24 @@ class _Meta extends StatelessWidget {
                 child: _CopyId(
                   full: parents[i].full,
                   shown: parents[i].short.length,
+                  prefix: parents[i].prefix,
                   style: ZsType.id.copyWith(color: colors.textMuted),
+                  bold: colors.text,
                   identifier: 'inspector-parent-$i',
+                ),
+              ),
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 2),
+                  child: _ParentJump(
+                    short: parents[i].short,
+                    onJump: switch (parents[i].key) {
+                      final String key => () => onJump(key),
+                      null => null,
+                    },
+                    identifier: 'inspector-parent-jump-$i',
+                  ),
                 ),
               ),
             ],
@@ -1873,6 +1940,51 @@ class _Meta extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// The jump after a parent's id (Story 10.35; DS ui_kits/desktop/kit.css `.zk-ins-jump`): 20 px, radius 6, the `parent` glyph in
+/// `--text-faint`, hover `--fl-hover` / `--text`, the accent ring; "Select parent `id`" as name and tooltip. Without
+/// [onJump] — the parent is not in the shown graph — it is disabled with that reason.
+class _ParentJump extends StatelessWidget {
+  const _ParentJump({required this.short, required this.onJump, required this.identifier});
+
+  final String short;
+  final VoidCallback? onJump;
+  final String identifier;
+
+  static const double _side = 20;
+  static const double _radius = 6;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations strings = context.l10n;
+    final String name = strings.inspectorParentJump(short);
+    final Widget button = ZsControlCore(
+      identifier: identifier,
+      onActivate: onJump,
+      enabled: onJump != null,
+      disabledReason: onJump == null ? strings.inspectorParentAbsent(short) : null,
+      cursor: SystemMouseCursors.click,
+      ring: ZsRingPlacement.outside,
+      ringRadius: _radius,
+      semantics: SemanticsProperties(button: true, label: name),
+      builder: (context, status) {
+        final ZsColors colors = ZsColors.of(context);
+        final bool lit = status.hovered || status.pressed;
+        return Container(
+          width: _side,
+          height: _side,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: lit ? colors.flHover : null,
+            borderRadius: BorderRadius.circular(_radius),
+          ),
+          child: ZanshinIcon(ZI.parent, size: ZsIconSize.sm, color: lit ? colors.text : colors.textFaint),
+        );
+      },
+    );
+    return onJump == null ? button : ZsTooltip(message: name, child: button);
   }
 }
 
@@ -2524,8 +2636,8 @@ class _SheenPainter extends CustomPainter {
 /// The composer (Story 10.25; DS inspector.jsx:40-79, kit.css:129-144): the island's bottom section, padding 14 16,
 /// gap 10, a top `--fl-border` over `--fl-sheen`. Summary and Details (md; ↩ in Summary or ⌘↩ run), the result preview
 /// (the rest — on @ the new working copy — above the selected part), the command [InspectorViewModel.composerAction]
-/// runs, Cancel (split only) and the gold Commit / Split; jj's hint when a split selects everything, and a refusal
-/// in the warn colour.
+/// runs (cut inside its message when it does not fit), Cancel (split only) and the gold Commit / Split; Split is
+/// disabled with a hint when it would take everything, and a refusal shows in the warn colour.
 class _Composer extends StatefulWidget {
   const _Composer({required this.model, required this.data, required this.shortId, required this.blocked});
 
@@ -2557,7 +2669,52 @@ class _ComposerState extends State<_Composer> {
     setState(() {});
   }
 
-  bool get _ready => widget.blocked == null && widget.model.graph.hasActions && widget.model.composerAction != null;
+  bool get _ready =>
+      widget.blocked == null &&
+      widget.model.graph.hasActions &&
+      widget.model.composerAction != null &&
+      !widget.model.splitsEverything;
+
+  /// The command line: [full] when it fits [width], else the command with every `-m` paragraph cut to the most
+  /// characters that fit (an end ellipsis only when even "…" alone overflows).
+  String _fitted(String full, double width, TextStyle style) {
+    if (full.isEmpty) {
+      return full;
+    }
+    final TextScaler scaler = MediaQuery.textScalerOf(context);
+    final TextDirection direction = Directionality.of(context);
+    bool fits(String text) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final bool fit = painter.width <= width;
+      painter.dispose();
+      return fit;
+    }
+
+    if (fits(full)) {
+      return full;
+    }
+    final InspectorViewModel model = widget.model;
+    final int longest = InspectorViewModel.paragraphsOf(
+      model.composerFields,
+    ).fold(0, (most, paragraph) => math.max(most, paragraph.characters.length));
+    // The largest k below the longest paragraph whose cut fits; k = 0 when none does.
+    var low = 0;
+    int high = longest - 1;
+    while (low < high) {
+      final int mid = (low + high + 1) ~/ 2;
+      if (fits(model.composerCommandCut(mid) ?? '')) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return model.composerCommandCut(low) ?? full;
+  }
 
   void _run() {
     if (!_ready) {
@@ -2705,13 +2862,17 @@ class _ComposerState extends State<_Composer> {
 
     final bool ready = _ready;
     final String run = isAt ? strings.inspectorCommit : strings.inspectorSplit;
+    final String? reason = blocked ?? (model.splitsEverything ? strings.inspectorSplitAllReason : null);
     final runButton = ZsButton(
       label: run,
       variant: ZsButtonVariant.primary,
       onPressed: ready ? _run : null,
-      disabledReason: blocked,
+      disabledReason: reason,
       identifier: 'inspector-composer-run',
     );
+    final TextStyle commandStyle = DefaultTextStyle.of(
+      context,
+    ).style.merge(ZsType.command.copyWith(fontSize: ZsType.fsSm, color: colors.textFaint));
     return CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
         const SingleActivator(LogicalKeyboardKey.enter, meta: true): _run,
@@ -2761,12 +2922,14 @@ class _ComposerState extends State<_Composer> {
                   spacing: 6,
                   children: <Widget>[
                     Expanded(
-                      child: Text(
-                        command,
-                        key: const ValueKey<String>('inspector-composer-command'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: ZsType.command.copyWith(fontSize: ZsType.fsSm, color: colors.textFaint),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) => Text(
+                          _fitted(command, constraints.maxWidth, commandStyle),
+                          key: const ValueKey<String>('inspector-composer-command'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: commandStyle,
+                        ),
                       ),
                     ),
                     if (!isAt)
@@ -2775,19 +2938,19 @@ class _ComposerState extends State<_Composer> {
                         onPressed: model.clearPicks,
                         identifier: 'inspector-composer-cancel',
                       ),
-                    if (blocked ?? (command.isEmpty ? null : command) case final String tip)
+                    if (reason ?? (command.isEmpty ? null : command) case final String tip)
                       ZsTooltip(
                         message: tip,
-                        cmd: blocked == null || command.isEmpty ? null : command,
+                        cmd: reason == null || command.isEmpty ? null : command,
                         child: runButton,
                       )
                     else
                       runButton,
                   ],
                 ),
-                if (!isAt && model.allPicked)
+                if (model.splitsEverything)
                   Text(
-                    'All changes have been selected, so the original revision will become empty.', // l10n-ignore: jj's hint
+                    strings.inspectorSplitAllHint,
                     key: const ValueKey<String>('inspector-composer-hint'),
                     style: note,
                   ),

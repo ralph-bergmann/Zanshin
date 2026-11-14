@@ -44,10 +44,12 @@ function ZKComposer({ c, isWC, files, sel, onRun, onClear }) {
   const restF = files.map((f) => ({ f, hs: f.hunks.filter((h) => !sel.has(h.id)) })).filter((x) => x.hs.length);
   const s = window.zkCount(selF.map((x) => ({ hunks: x.hs }))), r = window.zkCount(restF.map((x) => ({ hunks: x.hs })));
   const partial = selF.some((x) => x.hs.length < x.f.hunks.length), everything = !restF.length;
-  const m = msg ? ' -m "' + first(msg) + (msg.includes("\n") ? "…" : "") + '"' : "";
+  const m = msg ? first(msg) + (msg.includes("\n") ? "…" : "") : "";
   const paths = partial ? " -i" : isWC && everything ? "" : " " + selF.map((x) => x.f.path).join(" ");
-  const cmd = isWC ? "jj commit" + m + paths : "jj split -r " + id8 + m + paths;
+  const verb = isWC ? "jj commit" : "jj split -r " + id8;
+  const cmd = verb + (m ? ' -m "' + m + '"' : "") + paths;
   const valid = sel.size > 0 && (isWC || !everything);
+  const splitsAll = !isWC && everything;
   const nf = (n) => n + (n === 1 ? " file" : " files");
   const stat = (x) => <span className="zk-comp-stat">{x.a > 0 && <span className="a">+{x.a}</span>}{x.r > 0 && <span className="r">−{x.r}</span>}</span>;
   const go = () => { if (valid) { onRun([...sel], msg); setSubj(""); setBody(""); } };
@@ -69,11 +71,12 @@ function ZKComposer({ c, isWC, files, sel, onRun, onClear }) {
         </div>
       </div>
       <div className="zk-comp-ft">
-        <code className="zk-comp-cmd" title={cmd}>{cmd}</code>
+        {/* The command is cut inside its message, never in the change id or the paths. */}
+        <code className="zk-comp-cmd" title={cmd}><span className="v">{verb}{m && ' -m "'}</span>{m && <span className="m">{m}</span>}<span className="v">{m && '"'}</span><span className="p">{paths}</span></code>
         {!isWC && <Button onClick={onClear}>Cancel</Button>}
-        <Button variant="primary" disabled={!valid} onClick={go} title="⌘↩">{isWC ? "Commit" : "Split"}</Button>
+        <Button variant="primary" disabled={!valid} onClick={go} title={splitsAll ? "Every change is picked. To describe this change, click its title." : "⌘↩"}>{isWC ? "Commit" : "Split"}</Button>
       </div>
-      {!isWC && everything && <div className="zk-comp-hint">Everything is selected — leave something behind to split it in two.</div>}
+      {splitsAll && <div className="zk-comp-hint">Every change is picked — Split needs something left behind. To describe this change, click its title.</div>}
     </div>
   );
 }
@@ -103,7 +106,7 @@ function ZKCopyId({ id = "", prefix = 0, sub }) {
   );
 }
 
-function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEditing, lift, onClose, onEdit, onNew, onDescribe, onSquash, onAbandon, onCommit, onSplit, beginDrag }) {
+function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEditing, lift, onClose, onEdit, onNew, onDescribe, onSquash, onAbandon, onCommit, onSplit, beginDrag, parentShown, onSelectParent }) {
   const mutable = !c.immutable;
   const undescribed = !c.subject;
   const files = c.files;
@@ -178,7 +181,16 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
         <div className="zk-ins-meta">
           {c.author && <span>{c.author}</span>}
           {c.date && <span>{c.date === "now" ? "just now" : c.date}</span>}
-          {parents.length > 0 && <span>{parents.length > 1 ? "parents" : "parent"}&nbsp;{parents.map((p, i) => <React.Fragment key={p}>{i > 0 && " + "}<code>{p.slice(0, 8)}</code></React.Fragment>)}</span>}
+          {parents.length > 0 && <span className="zk-ins-parents">{parents.length > 1 ? "parents" : "parent"}&nbsp;{parents.map((p, i) => {
+            // Each parent: its id with jj's prefix bold, then a jump that selects it — disabled outside the shown graph.
+            const shown = !!(onSelectParent && parentShown && parentShown(p)), id8 = p.slice(0, 8);
+            return (
+              <React.Fragment key={p}>{i > 0 && " + "}<ZKCopyId id={p} prefix={2}/>
+                <button type="button" className="zk-ins-jump" disabled={!shown} onClick={() => onSelectParent(p)}
+                  title={shown ? "Select parent " + id8 : "Parent " + id8 + " is not in the shown graph"} aria-label={"Select parent " + id8}><Icon name="parent" size="sm"/></button>
+              </React.Fragment>
+            );
+          })}</span>}
         </div>
         {c.bookmarks.length > 0 && (
           <div className="zk-ins-bms">

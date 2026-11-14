@@ -41,6 +41,7 @@
   "move-only",
   "move-onto",
   "new-on-top",
+  "parent",
   "plus",
   "pull",
   "push",

@@ -1031,6 +1031,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String inspectorParentJump(String id) {
+    return 'Select parent $id';
+  }
+
+  @override
+  String inspectorParentAbsent(String id) {
+    return 'Parent $id is not in the shown graph';
+  }
+
+  @override
   String get inspectorNewOnTop => 'New change on top';
 
   @override
@@ -1056,6 +1066,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inspectorSplit => 'Split';
+
+  @override
+  String get inspectorSplitAllReason => 'Every change is picked. To describe this change, click its title.';
+
+  @override
+  String get inspectorSplitAllHint =>
+      'Every change is picked — Split needs something left behind. To describe this change, click its title.';
 
   @override
   String get inspectorComposerSummaryAt => 'Summary of what you did';

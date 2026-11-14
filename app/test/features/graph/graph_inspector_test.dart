@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -408,6 +409,8 @@ void main() {
     String repo = '/r/a',
     ZsAppearance appearance = const ZsAppearance(),
     ImmutableReasons? reasons,
+    // The test font draws every glyph 1 em wide: a full command needs a wider inspector than the app's.
+    double width = 460,
   }) async {
     // The group's tearDown deletes the folder after postTest; the writes must be done before then.
     addTearDown(() => settleSettingsWrites(tester, settings));
@@ -425,7 +428,11 @@ void main() {
           reasons: reasons,
           child: Align(
             alignment: Alignment.topRight,
-            child: SizedBox(width: 460, height: 840, child: GraphInspector(model: inspector)),
+            child: SizedBox(
+              width: width,
+              height: 840,
+              child: GraphInspector(model: inspector),
+            ),
           ),
         ),
         appearance: appearance,
@@ -788,14 +795,114 @@ void main() {
         .widget<Text>(find.byKey(const ValueKey<String>('inspector-meta')))
         .textSpan!
         .toPlainText();
-    expect(meta, contains('parents \u{FFFC} + \u{FFFC}'), reason: 'each parent is a copyable id (Story 10.30)');
+    expect(
+      meta,
+      contains('parents \u{FFFC}\u{FFFC} + \u{FFFC}\u{FFFC}'),
+      reason: 'each parent is a copyable id (Story 10.30) and its jump (Story 10.35)',
+    );
     final Finder metaFinder = find.byKey(const ValueKey<String>('inspector-meta'));
     expect(find.descendant(of: metaFinder, matching: find.text('pppppppp')), findsOneWidget);
     expect(find.descendant(of: metaFinder, matching: find.text('qqqqqqqq')), findsOneWidget);
+    // Story 10.35: jj's prefix bold in --text, as the header's change id.
+    final ZsColors colors = ZsColors.of(tester.element(metaFinder));
+    for (final i in <int>[0, 1]) {
+      final prefix =
+          (tester
+                          .widget<Text>(
+                            find.descendant(of: _id('inspector-parent-$i'), matching: find.byType(Text)).first,
+                          )
+                          .textSpan!
+                      as TextSpan)
+                  .children!
+                  .first
+              as TextSpan;
+      expect(
+        (prefix.text, prefix.style!.fontWeight, prefix.style!.color),
+        (i == 0 ? 'pp' : 'qq', FontWeight.w600, colors.text),
+      );
+      expect(tester.widget<ZsControlCore>(_id('inspector-parent-jump-$i')).disabledReason, isNull);
+    }
     expect(meta, contains('Ada Lovelace'));
     expect(meta, contains('1h'), reason: "the card's relative date");
     expect(find.text('A merge — no changes of its own.'), findsOneWidget);
     await unmount(tester);
+  });
+
+  group("Story 10.35: a parent's jump", () {
+    String tooltipOf(WidgetTester tester, String identifier) =>
+        tester.widget<ZsTooltip>(find.ancestor(of: _id(identifier), matching: find.byType(ZsTooltip)).first).message;
+
+    testWidgets('selects the parent and reveals it (goTo)', (tester) async {
+      await pump(tester);
+      expect(tester.widget<ZsControlCore>(_id('inspector-parent-jump-0')).disabledReason, isNull);
+      expect(tooltipOf(tester, 'inspector-parent-jump-0'), 'Select parent gggggggg');
+      expect(
+        tester.getSemantics(_id('inspector-parent-jump-0')),
+        isSemantics(label: 'Select parent gggggggg', isButton: true, isEnabled: true),
+      );
+      await tester.tap(_id('inspector-parent-jump-0'));
+      await tester.pump();
+      await tester.pump();
+      expect(graph.selected, _merge);
+      expect(graph.reveal?.key, _merge);
+      expect(graph.layout!.placeOfKey(_merge), isNotNull);
+      await unmount(tester);
+    });
+
+    testWidgets('a parent outside the layout: a plain id, the jump disabled with the reason', (tester) async {
+      details.parents[_mutable] = <String>['zzzzzzzzzzzzzzzz'];
+      await pump(tester);
+      final ZsControlCore jump = tester.widget<ZsControlCore>(_id('inspector-parent-jump-0'));
+      expect(jump.disabledReason, 'Parent zzzzzzzz is not in the shown graph');
+      expect(jump.onActivate, isNull);
+      final List<InlineSpan> spans =
+          (tester
+                      .widget<Text>(find.descendant(of: _id('inspector-parent-0'), matching: find.byType(Text)).first)
+                      .textSpan!
+                  as TextSpan)
+              .children!;
+      expect(spans.whereType<TextSpan>().map((s) => s.style?.fontWeight), isNot(contains(FontWeight.w600)));
+      await unmount(tester);
+    });
+
+    testWidgets("a parent keyed by its commit id takes the commit id's prefix, not the change id's", (tester) async {
+      source.respond = (_) => _layout(
+        'op0',
+        changeIds: <String>[
+          for (final String key in _keys)
+            if (key == _merge) 'dddddddddddd' else key,
+        ],
+      );
+      await pump(tester);
+      final List<InlineSpan> spans =
+          (tester
+                      .widget<Text>(find.descendant(of: _id('inspector-parent-0'), matching: find.byType(Text)).first)
+                      .textSpan!
+                  as TextSpan)
+              .children!;
+      // The recorded layout has no commit prefixes, so nothing is bold; the change id's would bold 2 characters.
+      expect(spans.whereType<TextSpan>().map((s) => s.style?.fontWeight), isNot(contains(FontWeight.w600)));
+      expect(tester.widget<ZsControlCore>(_id('inspector-parent-jump-0')).disabledReason, isNull);
+      await unmount(tester);
+    });
+
+    testWidgets('a parent folded into a stack: the jump is enabled and asks the graph to open the stack', (
+      tester,
+    ) async {
+      source.respond = (_) => hugeStackLayout(4);
+      // The harness reads `show` by the key's tail; hugeStackLayout's commit ids are its keys.
+      details.descriptions['ead'] = 'head\n';
+      details.parents['ead'] = <String>['m2'];
+      details.descriptions['2'] = 'm2\n';
+      details.parents['2'] = <String>['m1'];
+      await pump(tester, select: 'head');
+      expect(tester.widget<ZsControlCore>(_id('inspector-parent-jump-0')).disabledReason, isNull);
+      await tester.tap(_id('inspector-parent-jump-0'));
+      await tester.pump();
+      expect(graph.selected, 'm2');
+      expect(source.requests.last.keepOpenKeys, contains('m2'));
+      await unmount(tester);
+    });
   });
 
   testWidgets('Story 10.10: a local chip drags its bookmark; a remote chip does not', (tester) async {
@@ -938,6 +1045,39 @@ void main() {
     );
     expect(summary.controller.text, 'draft');
     await unmount(tester);
+  });
+
+  group('Story 10.35: a form the selection leaves stays open only with a changed draft', () {
+    Future<void> leaveAndReturn(WidgetTester tester, String? other) async {
+      graph.select(other);
+      await tester.pump();
+      await tester.pump();
+      graph.select(_mutable);
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('untouched, then the selection clears: the title label comes back', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+      expect(_id('inspector-summary'), findsOneWidget);
+      await leaveAndReturn(tester, null);
+      expect(_id('inspector-summary'), findsNothing);
+      expect(_id('inspector-title'), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('typed and reverted to the description: the title label comes back', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+      final Finder summary = find.descendant(of: _id('inspector-summary'), matching: find.byType(EditableText));
+      await tester.enterText(summary, 'about ${_mutable}x');
+      await tester.enterText(summary, 'about $_mutable');
+      await leaveAndReturn(tester, _at);
+      expect(_id('inspector-summary'), findsNothing);
+      expect(_id('inspector-title'), findsOneWidget);
+      await unmount(tester);
+    });
   });
 
   testWidgets('Story 11.23: a stale untouched draft is dropped; a typed one stays with the "changed meanwhile" note', (
@@ -1743,7 +1883,7 @@ void main() {
     testWidgets('another change: none checked, no composer; one checked shows Split; it runs it by the full id', (
       tester,
     ) async {
-      await pump(tester);
+      await pump(tester, width: 1000);
       await tester.pump(const Duration(milliseconds: 300));
       expect(checked(tester, 'src/a.dart'), isFalse);
       expect(checked(tester, 'src/new.dart'), isFalse);
@@ -1789,19 +1929,76 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets("split with everything checked shows jj's hint and runs", (tester) async {
+    testWidgets('Story 10.35: split with everything picked is disabled with the reason and the hint, and runs nothing; '
+        'one file less enables it', (tester) async {
       await pump(tester);
       await tap(tester, box('Select all'));
+      expect(inspector.splitsEverything, isTrue);
       expect(
-        find.text('All changes have been selected, so the original revision will become empty.'),
+        find.text(
+          'Every change is picked — Split needs something left behind. To describe this change, click its title.',
+        ),
         findsOneWidget,
       );
-      await runIt(tester);
+      expect(find.textContaining('will become empty'), findsNothing, reason: "the hint replaces jj's note");
+      final ZsButton run = tester.widget<ZsButton>(_button('inspector-composer-run'));
+      expect(run.onPressed, isNull);
+      expect(run.disabledReason, 'Every change is picked. To describe this change, click its title.');
+      expect(await inspector.runComposer(), isNull);
+      expect(actions.ran, isEmpty);
       expect(
-        (actions.ran.single as GraphSplit).paths,
+        (inspector.composerAction! as GraphSplit).paths,
         <String>['src/a.dart', 'src/new.dart', 'src/old.dart'],
         reason: "a rename picked whole takes its source's removal (deferred I1)",
       );
+
+      await tap(tester, box('src/a.dart'));
+      expect(inspector.splitsEverything, isFalse);
+      expect(tester.widget<ZsButton>(_button('inspector-composer-run')).onPressed, isNotNull);
+      expect(find.byKey(const ValueKey<String>('inspector-composer-hint')), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.35: a long message is cut inside its quotes; the change id and both paths stay', (
+      tester,
+    ) async {
+      await pump(tester, width: 1000);
+      await tap(tester, box('src/new.dart'));
+      await type(tester, 'inspector-composer-summary', 'x' * 200);
+      final String full = inspector.composerCommand!;
+      expect(full, "jj split -r mmmmmmmm -m ${'x' * 200} root:src/new.dart root:src/old.dart");
+      final String line = shown(tester);
+      expect(line, startsWith("jj split -r mmmmmmmm -m 'x"));
+      expect(line, endsWith("…' root:src/new.dart root:src/old.dart"));
+      expect(line.length, lessThan(full.length));
+      final RenderParagraph paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('inspector-composer-command')),
+          matching: find.byType(RichText),
+        ),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse, reason: 'the cut line fits without an end ellipsis');
+      expect(_tooltipOf(tester, 'inspector-composer-run'), full, reason: 'the tooltip keeps the full command');
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.35: an untouched title form on @ closes after a commit once the selection leaves', (
+      tester,
+    ) async {
+      await pump(tester, select: _at);
+      await openForm(tester);
+      expect(_id('inspector-summary'), findsOneWidget);
+      await type(tester, 'inspector-composer-summary', 'Fix');
+      details.descriptions[_at] = 'Fix\n';
+      await runIt(tester);
+      graph.select(_mutable);
+      await tester.pump();
+      await tester.pump();
+      graph.select(_at);
+      await tester.pump();
+      await tester.pump();
+      expect(_id('inspector-summary'), findsNothing);
+      expect(_id('inspector-title'), findsOneWidget);
       await unmount(tester);
     });
 
@@ -1848,7 +2045,7 @@ void main() {
 
     testWidgets("a described @ with untouched fields commits its description's paragraphs", (tester) async {
       details.descriptions[_at] = 'Fix it\n\nBecause.\n';
-      await pump(tester, select: _at);
+      await pump(tester, select: _at, width: 1000);
       expect(tester.widget<EditableText>(field('inspector-composer-summary')).controller.text, 'Fix it');
       expect(shown(tester), "jj commit -m 'Fix it' -m Because.");
       await runIt(tester);
@@ -2246,7 +2443,7 @@ void main() {
     });
 
     testWidgets('another change: one hunk checked shows Split with `-i`; it runs with the tree', (tester) async {
-      await pump(tester);
+      await pump(tester, width: 1000);
       await settle(tester);
       expect(composer, findsNothing);
       expect(state(tester, hunkBox(0)), isFalse);
