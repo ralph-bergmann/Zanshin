@@ -3054,7 +3054,7 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **The backend plans an absorb row for every drop target, which the app never shows.** Low.
   - `crates/zanshin-jj/src/drop_actions.rs:433-439` runs `plan_absorb` for each drop; `app/lib/src/features/graph/graph_drag.dart:255-262` maps no `DropVerb.absorb`. Ralph decided on 2026-11-14 that absorb is not offered by drag and drop (Story 10.36).
   - **Follow-up:** none required; remove the row from the drop actions if drag latency ever matters.
-- **The DS and `zanshin_ui` have no button that opens a menu.** Medium.
+- ~~**The DS and `zanshin_ui` have no button that opens a menu.**~~ — RESOLVED 2026-11-14 (spec-10-36-jj-absorb-squash-menu, commit 8ccf895c): the DS gained `components/actions/MenuButton.*`, `zanshin_ui` gained `ZsMenuButton`, and the inspector's Squash menu uses it. Medium.
   - Story 10.36 (the Squash menu) needs one; the DS has `Menu` and `DropMenu`, `zanshin_ui` has `ZsMenu` and `ZsSelect`.
   - **Follow-up:** add it through the `design-artifacts` skill. Covered by Story 10.36.
 
