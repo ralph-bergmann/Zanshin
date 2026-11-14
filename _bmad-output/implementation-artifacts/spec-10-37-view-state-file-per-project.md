@@ -5,7 +5,7 @@ created: '2026-11-14'
 status: 'done'
 baseline_revision: 'caefd6bf24d970f002088decf474eae8fe50aab9'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: ['oversized']
@@ -138,6 +138,43 @@ deferred:
   - `[low]` `[defer]` (intent) No Marionette or catalogue check of the new Reset row — the epic's done rule asks for one; this unattended run had no running app session. Deferred.
   - `[false]` `[reject]` (intent) The open-trigger wiring has no test — `project_graph_host_test.dart` opens real `ProjectScope`s through the generated component, which builds the cleanup; the cleanup logic itself is tested against a real repo.
 
+### 2026-11-14 — Review pass (follow-up)
+- verdicts: 33 findings — high 0, medium 0, low 25, false 8, maybe-false 0
+- findings:
+  - `[low]` `[reject]` (intent) The first open of a project writes `settings.json` once to store the `stateId` — carried: same claim as the first pass's intent row; toggles never write it.
+  - `[low]` `[reject]` (intent) A failed state write at migration keeps the lists for the session only — carried: same claim as the first pass's migration rows.
+  - `[low]` `[reject]` (intent) The limits live in the app's stores only, so a migrated file can stay over 500 toggles until the next save of that list — harmless (the next save trims it); capping in the settings package adds a second copy of the limits.
+  - `[false]` `[reject]` (intent) "A truncated result drops nothing" is not in the intent — the intent keeps every key whose id cannot be checked; ids a truncated result leaves out were not checked.
+  - `[false]` `[reject]` (intent) The cleanup's wiring at project open has no test — carried: same claim as the first pass's open-trigger row.
+  - `[low]` `[reject]` (intent) No test runs Reset from the Settings button through to a live graph and inspector — each link is tested on the same `ProjectStateStore` notifier (`settings_window_test.dart`, the reset test in `graph_stacks_test.dart`, the "another writer" test in `graph_inspector_test.dart`); a joined window test is a large fixture for little gain.
+  - `[low]` `[reject]` (intent) The stores pick their notifier once, at `addListener` — carried: same claim as the first pass's listener rows.
+  - `[low]` `[reject]` (verification-gap) No test disposes the cleanup while its query runs — carried: same claim as the first pass's "dispose before reply" test row.
+  - `[low]` `[reject]` (verification-gap) The migration loses the lists after a failed state write and a restart — carried: same claim as the first pass's migration rows.
+  - `[low]` `[reject]` (verification-gap) Migrated stack toggles keep the old sorted order, so the 500 limit trims them alphabetically — needs more than 500 toggles in one list of an old `settings.json`; no insertion order exists to recover.
+  - `[false]` `[reject]` (blind) The cleanup drops the view state of a hidden commit a search shows — the intent asks for existence at `visible()`; a hidden commit is not visible, so dropping it is the specified behavior ("never by what the graph shows" is about the search).
+  - `[low]` `[reject]` (blind) A failed migration loses the lists for good after a restart — carried: same claim as the first pass's migration rows.
+  - `[false]` `[reject]` (blind) The legacy lists stay on the in-memory entry and come back if the state file goes missing — carried: same claim as the first pass's resurrect row.
+  - `[low]` `[reject]` (blind) Nothing sweeps orphaned `projects/*.json` files — carried: same claim as the first pass's orphan rows.
+  - `[low]` `[reject]` (blind) An unreadable state file starts empty and is overwritten without a `.corrupt` copy — carried: same claim as the first pass's edge row.
+  - `[low]` `[reject]` (blind) Reading a project's state writes `settings.json` (lazy `stateId`) — carried: same claim as the first pass's lazy-id row.
+  - `[low]` `[reject]` (blind) Listeners bind to the notifier present at subscribe; `removeListener` can miss the old one — carried: same claim as the first pass's listener rows.
+  - `[false]` `[reject]` (blind) One ambiguous id term fails the whole query on every launch — `change_id`/`commit_id` error only on a non-unique prefix (jj v0.47.0 `docs/revsets.md:283-288`), and the keys are full ids (first pass's short-prefix row), so no term is ambiguous; the `4 ×` limit is explained in Design Notes.
+  - `[low]` `[patch]` (blind) The `on Object` branch logs only the error's type, so a programming error leaves no trace — patched: `view_state_cleanup.dart` logs the error and its stack trace with the warning.
+  - `[low]` `[patch]` (blind) Missing cleanup tests: dispose mid-query, no queryable ids, the closed-handle `StateError`, a never-existing id, a divergent change — patched: the failed-query test in `graph_ports_test.dart` now runs with a `ZanshinFfiException` and a `StateError`; dispose mid-query and divergent ids are carried rejects; a never-existing id behaves like the abandoned one already tested; the empty-terms return is a one-line guard.
+  - `[false]` `[reject]` (blind) `_pruneViewed` drops marks of files a partial summary leaves out — `Diff.files` has no cap or truncation (`packages/zanshin_core/lib/src/ffi/diff.dart:228-239`); an undo that restores the fingerprint without the mark is the matrix's "new fingerprint → old key dropped".
+  - `[false]` `[reject]` (blind) The prune's save notifies mid-load, before `_summary` is set — `_summary` is set at `graph_inspector.dart:851` before `_pruneViewed` (856), and a prune only removes keys, so `_viewedChanged` sees equal sets and does not notify.
+  - `[low]` `[reject]` (blind) Hitting the 500-toggle limit requests the layout twice — carried: same claim as the first pass's `_stacksChanged` rows.
+  - `[low]` `[reject]` (blind) The limit test hard-codes 503/501/500, and the 2000 Viewed limit is tested on the memory path only — the trim is computed before the branch (`inspector_viewed_store.dart:49`), so both paths share it; cosmetic.
+  - `[low]` `[reject]` (blind) Reset view state has no confirmation or undo and stays active when nothing is stored — the spec's recorded choice (view state only, cheap to rebuild); the intent names no confirmation.
+  - `[low]` `[reject]` (edge) Listener kept on the old `ProjectStateStore` — carried: same claim as the first pass's listener rows.
+  - `[low]` `[reject]` (edge) An unreadable state file is overwritten instead of moved aside — carried: same claim as the first pass's `.corrupt` row.
+  - `[low]` `[reject]` (edge) Migration rewrites `settings.json` after a failed state write — carried: same claim as the first pass's migration rows.
+  - `[low]` `[patch]` (edge) A user's `[revset-aliases]` can redefine `visible()`, and the cleanup would then drop existing changes — verified: zanshin-jj loads the user's revset aliases (`crates/zanshin-jj/src/revset.rs:37,392`) and `visible()` is a CLI alias (jj v0.47.0 `cli/src/config/revsets.toml:50`); patched: the query uses its builtin definition, `::visible_heads()`.
+  - `[false]` `[reject]` (edge) A 3,000-term flat union overflows the native stack — a throwaway debug-build test ran 3,000 terms (2,000 `change_id`, 1,000 `commit_id`) through `find_changes` on a 2 MB thread: it passed in 2.8 s (removed afterwards).
+  - `[low]` `[reject]` (edge) The query at the first layout's operation drops keys another window wrote for newer changes — needs two live scopes of one repository at different operations; the app has one project window with one `ProjectScope` per repository (`project_scope.dart:205`); a fix needs operation tracking.
+  - `[low]` `[reject]` (edge) The inspector prunes a mark another window made at a newer operation — same premise as the row above; rejected for the same reason.
+  - `[low]` `[reject]` (edge) `remove()` while the id is pending leaves an orphan file — carried: same claim as the first pass's pending-id row.
+
 ## Design Notes
 
 - **Why the settings package owns the files:** `SettingsStore.file.parent` is already the Application Support folder, tests already point it at temp dirs, and `ProjectViewedStore(settings, path)` / `ProjectStackStore(settings, path)` keep their signatures, so no DI edge changes for them.
@@ -162,6 +199,13 @@ deferred:
 - `cargo make test-app test/features/graph test/features/settings test/features/projects test/features/home` -- 1339 passed after review patches (one earlier run failed in `project_graph_host_test.dart` only while it ran in parallel with the implementer's own test run; the sequential re-run passed).
 - Implementation run also ran `test/app`, bookmarks, sync, undo_timeline, widgetbook, helpers, shell, window, l10n, architecture and `process_spawn_guard_test.dart` through `cargo make test-app` -- all passed (before the review patches, which touch only `project_states.dart`, `view_state_cleanup.dart` and `graph_ports_test.dart`).
 - No Rust changed (the 10k measurement test was throwaway and removed), so no cargo test, clippy, codegen or parity oracle run.
+
+**Verification notes (follow-up review, 2026-11-14, same gate rule):**
+- `cargo test -p zanshin-jj --test it revset_search::throwaway_deep_union_3000_terms` (throwaway, debug build, 2 MB thread, 3,000 terms with `& ::visible_heads()`) -- passed in 2.8 s; the test was removed again, no Rust change remains.
+- `dart format --set-exit-if-changed` on `view_state_cleanup.dart` and `graph_ports_test.dart` -- 0 changed.
+- `dart analyze app packages/zanshin_settings` -- No issues found.
+- `cargo make test-app test/features/graph/graph_ports_test.dart` -- 40 passed, including the five cleanup tests against a real repo (the query now uses `::visible_heads()`; the failed-query test runs with a `ZanshinFfiException` and a `StateError`).
+- No generated code, l10n or settings package file changed, so no build_runner, `flutter gen-l10n` or `zanshin_settings` test run.
 
 ## Auto Run Result
 
@@ -193,3 +237,19 @@ Status: done
 - The existence pass holds the worker for up to about 0.9 s at the limits, once per project open.
 - The first open of a project without a `stateId` writes `settings.json` once to store the id; widget tests that open a real `ProjectScope` in fake async need the real-time/pump loop used in `project_graph_host_test.dart`.
 - Not checked visually through Marionette (deferred).
+
+### Follow-up review pass (2026-11-14)
+
+Status: done
+
+**Summary.** A fresh four-layer review of the whole story diff. Three low findings patched in `ViewStateCleanup`; nothing new deferred.
+
+**Files changed.**
+- `app/lib/src/features/graph/view_state_cleanup.dart` -- the query uses `::visible_heads()` instead of the user-overridable `visible()` alias; the catch-all branch logs the error and its stack trace.
+- `app/test/features/graph/graph_ports_test.dart` -- the failed-query test also runs with a `StateError` (a closed handle), the risk the first pass named.
+
+**Review findings.** 33 findings: 3 patched (all low: the `visible()` alias, the catch-all log line, the `StateError` test), 0 deferred, 22 rejected low (17 of them carried from the first pass; the other 5 -- limits applied only by the app stores, no end-to-end Reset test, sorted migrated toggles, hard-coded limit numbers, no Reset confirmation -- with reasons in the triage log), 8 false (among them the stack-overflow claim, disproved by a debug-build run of 3,000 terms).
+
+**Follow-up review recommendation: false.** A follow-up pass that patched no high has converged. Patched this pass: high 0, medium 0, low 3.
+
+**Residual risks.** Unchanged from the first pass: migration loses the old lists after a failed state write and a restart; the existence pass holds the worker up to about 0.9 s per open at the limits; the Reset row is not checked through Marionette (deferred).

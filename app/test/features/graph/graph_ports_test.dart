@@ -709,35 +709,41 @@ void main() {
       },
     );
 
-    test('a failed query drops nothing', () async {
-      final (
-        :ProjectRepo repo,
-        :GraphViewModel model,
-        :ProjectStackStore stacks,
-        :ProjectViewedStore viewed,
-        first: _,
-        second: _,
-      ) = await setUpCleanup(
-        'cleanup-error',
-      );
-      final GraphStackToggles toggles = stacks.load();
-      final Set<String> keys = viewed.load();
-      var asked = false;
-      final cleanup = ViewStateCleanup(
-        graph: model,
-        stacks: stacks,
-        viewed: viewed,
-        find: (op, expression, {required limit, required shortPrefixes}) async {
-          asked = true;
-          throw const ZanshinFfiException('jj.revset_parse_error');
-        },
-      );
-      addTearDown(cleanup.dispose);
-      await until(() => asked);
-      await settle();
-      expect(stacks.load(), toggles);
-      expect(viewed.load(), keys);
-    });
+    // A refused query, and a closed handle (the project closed mid-query).
+    for (final (String name, Object error) in <(String, Object)>[
+      ('cleanup-error', const ZanshinFfiException('jj.revset_parse_error')),
+      ('cleanup-closed', StateError('the handle is closed')),
+    ]) {
+      test('a failed query drops nothing: ${error.runtimeType}', () async {
+        final (
+          :ProjectRepo repo,
+          :GraphViewModel model,
+          :ProjectStackStore stacks,
+          :ProjectViewedStore viewed,
+          first: _,
+          second: _,
+        ) = await setUpCleanup(
+          name,
+        );
+        final GraphStackToggles toggles = stacks.load();
+        final Set<String> keys = viewed.load();
+        var asked = false;
+        final cleanup = ViewStateCleanup(
+          graph: model,
+          stacks: stacks,
+          viewed: viewed,
+          find: (op, expression, {required limit, required shortPrefixes}) async {
+            asked = true;
+            throw error;
+          },
+        );
+        addTearDown(cleanup.dispose);
+        await until(() => asked);
+        await settle();
+        expect(stacks.load(), toggles);
+        expect(viewed.load(), keys);
+      });
+    }
 
     test('a truncated result drops nothing', () async {
       final (

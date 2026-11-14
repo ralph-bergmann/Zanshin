@@ -24,7 +24,7 @@ final _changeId = RegExp(r'^[k-z]+$');
 final _commitId = RegExp(r'^[0-9a-f]+$');
 
 /// Drops the view state of changes that are gone (Story 10.37): once [graph]'s first layout lands, one [find] of
-/// `(change_id(a) | commit_id(b) | …) & visible()` at its operation over the ids of [viewed]'s keys and [stacks]'
+/// `(change_id(a) | commit_id(b) | …) & ::visible_heads()` at its operation over the ids of [viewed]'s keys and [stacks]'
 /// toggles; the queried ids it does not find are dropped from both. It goes by existence in the repository, never by
 /// what the graph shows. A key whose id is neither a change nor a commit id stays, and a truncated result or a failed
 /// query drops nothing.
@@ -86,16 +86,17 @@ class ViewStateCleanup {
     try {
       found = await find(
         operationId,
-        '(${terms.join(' | ')}) & visible()',
+        // `visible()` is a user-overridable alias; its builtin definition is not.
+        '(${terms.join(' | ')}) & ::visible_heads()',
         limit: 4 * terms.length,
         shortPrefixes: '',
       );
     } on ZanshinFfiException catch (error) {
       _log.warning('the view state cleanup query failed: ${error.code}');
       return;
-    } on Object catch (error) {
+    } on Object catch (error, stack) {
       // A closed handle (the project closed mid-query) throws a StateError: nothing is dropped either way.
-      _log.warning('the view state cleanup query failed: ${error.runtimeType}');
+      _log.warning('the view state cleanup query failed: ${error.runtimeType}', error, stack);
       return;
     }
     if (_disposed || found.truncated) {
