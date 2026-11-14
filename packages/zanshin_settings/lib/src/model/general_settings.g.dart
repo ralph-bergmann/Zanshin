@@ -33,6 +33,17 @@ _GeneralSettings _$GeneralSettingsFromJson(
           ) ??
           DiffWhitespaceSetting.showAll,
     ),
+    diffFileList: $checkedConvert(
+      'diffFileList',
+      (v) =>
+          $enumDecodeNullable(
+            _$DiffFileListSettingEnumMap,
+            v,
+            unknownValue: DiffFileListSetting.flat,
+          ) ??
+          DiffFileListSetting.flat,
+    ),
+    editor: $checkedConvert('editor', (v) => v as String?),
   );
   return val;
 });
@@ -44,6 +55,8 @@ Map<String, dynamic> _$GeneralSettingsToJson(
   'diffLayout': _$DiffLayoutSettingEnumMap[instance.diffLayout]!,
   'diffWordMarks': instance.diffWordMarks,
   'diffWhitespace': _$DiffWhitespaceSettingEnumMap[instance.diffWhitespace]!,
+  'diffFileList': _$DiffFileListSettingEnumMap[instance.diffFileList]!,
+  'editor': instance.editor,
 };
 
 const _$DiffLayoutSettingEnumMap = {
@@ -55,4 +68,9 @@ const _$DiffWhitespaceSettingEnumMap = {
   DiffWhitespaceSetting.showAll: 'showAll',
   DiffWhitespaceSetting.ignoreChangesInAmount: 'ignoreChangesInAmount',
   DiffWhitespaceSetting.ignoreAll: 'ignoreAll',
+};
+
+const _$DiffFileListSettingEnumMap = {
+  DiffFileListSetting.flat: 'flat',
+  DiffFileListSetting.tree: 'tree',
 };

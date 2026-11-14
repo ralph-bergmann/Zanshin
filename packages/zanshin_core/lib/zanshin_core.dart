@@ -6,7 +6,8 @@
 /// rather than reaching into `src/` directly. Internal files stay under `src/`.
 library;
 
-export 'src/environment/login_shell.dart' show LoginShellEnvironmentResult, adoptLoginShellEnvironment;
+export 'src/environment/login_shell.dart'
+    show LoginShellEnvironmentResult, adoptLoginShellEnvironment, adoptedLoginShellEnvironment;
 export 'src/ffi/bookmarks.dart'
     show Bookmark, BookmarkKind, BookmarkSortKey, LocalBookmark, RefDistance, RemoteBookmark;
 export 'src/ffi/change.dart' show Change, ConflictState, Signature;

@@ -25,7 +25,14 @@ void main() {
         'inspectorFilesNarrow': 0.38,
         'inspectorFilesWide': 0.34,
       },
-      'general': {'hideControls': true, 'diffLayout': 'unified', 'diffWordMarks': true, 'diffWhitespace': 'showAll'},
+      'general': {
+        'hideControls': true,
+        'diffLayout': 'unified',
+        'diffWordMarks': true,
+        'diffWhitespace': 'showAll',
+        'diffFileList': 'flat',
+        'editor': null,
+      },
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
         'layout': 'free',
@@ -73,7 +80,14 @@ void main() {
         'inspectorFilesNarrow': 0.38,
         'inspectorFilesWide': 0.34,
       },
-      'general': {'hideControls': true, 'diffLayout': 'unified', 'diffWordMarks': true, 'diffWhitespace': 'showAll'},
+      'general': {
+        'hideControls': true,
+        'diffLayout': 'unified',
+        'diffWordMarks': true,
+        'diffWhitespace': 'showAll',
+        'diffFileList': 'flat',
+        'editor': null,
+      },
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
         'layout': 'free',
@@ -122,6 +136,8 @@ void main() {
       'diffLayout': 'unified',
       'diffWordMarks': true,
       'diffWhitespace': 'showAll',
+      'diffFileList': 'flat',
+      'editor': null,
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
@@ -144,6 +160,8 @@ void main() {
       'diffLayout': 'sideBySide',
       'diffWordMarks': true,
       'diffWhitespace': 'showAll',
+      'diffFileList': 'flat',
+      'editor': null,
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
@@ -157,6 +175,8 @@ void main() {
       'diffLayout': 'unified',
       'diffWordMarks': false,
       'diffWhitespace': 'showAll',
+      'diffFileList': 'flat',
+      'editor': null,
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
     for (final style in ['words', 'jj']) {
@@ -179,12 +199,34 @@ void main() {
         'diffLayout': 'unified',
         'diffWordMarks': true,
         'diffWhitespace': 'ignoreAll',
+        'diffFileList': 'flat',
+        'editor': null,
       });
       expect(AppSettings.fromJson(settings.toJson()), settings);
       const amount = GeneralSettings(diffWhitespace: DiffWhitespaceSetting.ignoreChangesInAmount);
       expect(GeneralSettings.fromJson(amount.toJson()), amount);
     },
   );
+
+  test('the file list defaults to flat, tree survives a JSON round trip, an unknown value reads as flat', () {
+    expect(const GeneralSettings().diffFileList, DiffFileListSetting.flat);
+    expect(GeneralSettings.fromJson({'hideControls': false}).diffFileList, DiffFileListSetting.flat);
+    expect(GeneralSettings.fromJson({'diffFileList': 'columns'}).diffFileList, DiffFileListSetting.flat);
+    const tree = GeneralSettings(diffFileList: DiffFileListSetting.tree);
+    expect(tree.toJson()['diffFileList'], 'tree');
+    expect(GeneralSettings.fromJson(tree.toJson()), tree);
+  });
+
+  test('the editor defaults to none; a launcher and a custom command survive a JSON round trip', () {
+    expect(const GeneralSettings().editor, isNull);
+    expect(GeneralSettings.fromJson({'hideControls': false}).editor, isNull);
+    for (final editor in ['idea', 'subl {file}:{line}']) {
+      final settings = GeneralSettings(editor: editor);
+      expect(settings.toJson()['editor'], editor);
+      expect(GeneralSettings.fromJson(settings.toJson()), settings);
+    }
+    expect(() => GeneralSettings.fromJson({'editor': 3}), throwsA(isA<CheckedFromJsonException>()));
+  });
 
   test('an out-of-range width is kept as stored; the shell clamps it where it uses it', () {
     expect(LayoutSettings.fromJson({'panelWidth': 900}).panelWidth, 900);

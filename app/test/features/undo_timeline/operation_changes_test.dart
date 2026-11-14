@@ -179,6 +179,28 @@ void main() {
     });
   });
 
+  testWidgets('Story 10.39: with the workspace root the diff header copies the absolute path', (tester) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copied.add((call.arguments as Map<Object?, Object?>)['text']! as String);
+      }
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    final changes = FakeOperationChangesSource(
+      testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_abandonedChange()]),
+      diff: (call) => testDiff(const <String>['gone.txt']),
+    )..root = '/r/repo';
+    await withView(tester, changes, () async {
+      await tester.tap(_id('inspector-diff-path'));
+      await tester.pump();
+      expect(copied, <String>['/r/repo/gone.txt']);
+      expect(find.byKey(const ValueKey<String>('inspector-diff-path-copied')), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+    });
+  });
+
   testWidgets('selecting another commit reads its files', (tester) async {
     final changes = FakeOperationChangesSource(
       testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_rewritten(), _abandonedChange()]),

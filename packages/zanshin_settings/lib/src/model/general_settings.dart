@@ -26,11 +26,21 @@ enum DiffWhitespaceSetting {
   ignoreAll,
 }
 
+/// How the inspector lists a change's files (Story 10.39; the Changes header and Settings › Diffs bind it).
+enum DiffFileListSetting {
+  /// One row per file in jj's order, the name first (the default).
+  flat,
+
+  /// Folders with their files, sorted by name.
+  tree,
+}
+
 /// Settings › General (Story 11.7 builds the tab). The key `general` is Claude's proposal (Story 11.3).
 @freezed
 abstract class GeneralSettings with _$GeneralSettings {
   /// Creates general settings; an omitted [hideControls] is on, an omitted [diffLayout] unified, an omitted
-  /// [diffWordMarks] on, an omitted [diffWhitespace] show all.
+  /// [diffWordMarks] on, an omitted [diffWhitespace] show all, an omitted [diffFileList] flat, an omitted [editor]
+  /// none.
   const factory GeneralSettings({
     /// "While you scroll: Hide controls" — the floating controls step aside while the graph scrolls (epics.md Story
     /// 11.3 item 8); on by default.
@@ -49,6 +59,15 @@ abstract class GeneralSettings with _$GeneralSettings {
     @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll)
     @Default(DiffWhitespaceSetting.showAll)
     DiffWhitespaceSetting diffWhitespace,
+
+    /// The inspector's file list (Story 10.39); [DiffFileListSetting.flat] by default.
+    @JsonKey(unknownEnumValue: DiffFileListSetting.flat)
+    @Default(DiffFileListSetting.flat)
+    DiffFileListSetting diffFileList,
+
+    /// Settings › General › Editor (Story 10.39): what Open in Editor starts — null for none, `idea`, `code` or
+    /// `zed` for that launcher, any other value a command line that holds `{file}` (and maybe `{line}`).
+    String? editor,
   }) = _GeneralSettings;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

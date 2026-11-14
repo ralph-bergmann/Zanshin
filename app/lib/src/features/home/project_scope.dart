@@ -19,6 +19,7 @@ import '../graph/graph_toasts.dart';
 import '../graph/graph_view_model.dart';
 import '../graph/immutable_reasons.dart';
 import '../graph/inspector_viewed_store.dart';
+import '../graph/project_files.dart';
 import '../graph/view_state_cleanup.dart';
 import '../projects/project_repos.dart' show ProjectRepo;
 import '../projects/project_session.dart';
@@ -114,6 +115,12 @@ class ProjectModule {
       revset: search.revset,
     );
 
+  /// Provides the repository's files on disk: copy, Open in Editor, Reveal in Finder.
+  @provides
+  @singleton
+  ProjectFiles projectFiles(@projectRoot String root, SettingsStore settings, ShellToasts toasts) =>
+      ProjectFiles(root: root, settings: settings, toasts: toasts);
+
   /// Provides the inspector of the graph's selection.
   @provides
   @singleton
@@ -123,11 +130,13 @@ class ProjectModule {
     SettingsStore settings,
     InspectorViewedStore viewed,
     ProjectsEnvironment environment,
+    ProjectFiles files,
   ) => InspectorViewModel(
     graph: model,
     details: RepoGraphDetails(repo, environment),
     viewed: viewed,
     settings: settings,
+    files: files,
   );
 
   /// Provides the pass that drops the view state of changes gone from the repository, once the first layout lands.
@@ -199,8 +208,11 @@ class ProjectModule {
 
   /// Provides what the Undo Timeline's Show changes reads.
   @provides
-  OperationChangesSource operationChangesSource(ProjectRepo repo, ProjectsEnvironment environment) =>
-      RepoOperationChangesSource(repo, environment: environment);
+  OperationChangesSource operationChangesSource(
+    ProjectRepo repo,
+    ProjectsEnvironment environment,
+    @projectRoot String root,
+  ) => RepoOperationChangesSource(repo, environment: environment, root: root);
 
   /// Provides the view Show changes opens. A provider, because inject.dart finds a generated factory only from a
   /// provider's parameter or a component getter, not from an `@inject` constructor.

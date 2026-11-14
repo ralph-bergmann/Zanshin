@@ -56,15 +56,21 @@ abstract interface class OperationChangesSource {
 
   /// `jj config set --user diff.color-words.context [lines]` ([writeDiffContext]); fires [configWrites].
   Future<void> setDiffContext(int lines);
+
+  /// The workspace root the diff header's path copy starts from (Story 10.39); null: the path is plain text.
+  String? get root;
 }
 
-/// [OperationChangesSource] over an open [ProjectRepo], the config through [_environment].
+/// [OperationChangesSource] over an open [ProjectRepo] at [root], the config through [_environment].
 class RepoOperationChangesSource implements OperationChangesSource {
   /// The reads of [_repo]; its config writes are [_environment]'s.
-  RepoOperationChangesSource(this._repo, {required this._environment});
+  RepoOperationChangesSource(this._repo, {required this._environment, required this.root});
 
   final ProjectRepo _repo;
   final ProjectsEnvironment _environment;
+
+  @override
+  final String root;
 
   @override
   Listenable get configWrites => _environment.configWrites;
@@ -131,6 +137,12 @@ class OperationChangesModel extends ChangeNotifier {
 
   /// The operation's id.
   final String operation;
+
+  /// [path] (a repo path) as the absolute path the diff header copies; null without a workspace root (Story 10.39).
+  String? absolutePath(String path) => switch (_source.root) {
+    final String root => '$root/$path',
+    null => null,
+  };
 
   /// The app settings: the diff layout and the word-mark switch.
   final SettingsStore settings;
@@ -850,6 +862,7 @@ class _Files extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 8),
                     child: InspectorDiffView(
                       path: focused,
+                      copyPath: model.absolutePath(focused),
                       diff: model.focusedDiff,
                       ignored: model.focusedIgnored,
                       whitespace: model.whitespace,

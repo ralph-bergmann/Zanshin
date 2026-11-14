@@ -1333,4 +1333,26 @@ void main() {
     expect(node('inspector-diff-folded'), findsNothing);
     expect(find.text('x'), findsOneWidget);
   });
+
+  test('Story 10.39: a line\'s new-side number; a removed line takes where it stood', () {
+    Hunk of(List<HunkLine> lines) => Hunk(
+      before: (start: 39, end: 42),
+      after: (start: 39, end: 41),
+      symbol: null,
+      sections: const <HunkKey>[],
+      removed: 0,
+      added: 0,
+      lines: lines,
+    );
+    const context = HunkLine(kind: HunkLineKind.context, text: 'a\n', left: 40, right: 40);
+    const removed = HunkLine(kind: HunkLineKind.removed, text: 'b\n', left: 41);
+    const next = HunkLine(kind: HunkLineKind.context, text: 'c\n', left: 42, right: 41);
+    expect(diffNewLineAt(of(const <HunkLine>[context, removed, next]), 1), 41, reason: 'the next line\'s');
+    expect(diffNewLineAt(of(const <HunkLine>[context, removed]), 1), 41, reason: 'after the last: last new + 1');
+    expect(diffNewLineAt(of(const <HunkLine>[removed]), 0), 40, reason: "no new line: the hunk's new start");
+    expect(diffNewLineAt(of(const <HunkLine>[context, removed, next]), 0), 40);
+    // A rebuilt side-by-side cell finds its line by its left number.
+    const cell = HunkLine(kind: HunkLineKind.removed, text: 'b', left: 41);
+    expect(diffNewLineOf(of(const <HunkLine>[context, removed, next]), cell), 41);
+  });
 }

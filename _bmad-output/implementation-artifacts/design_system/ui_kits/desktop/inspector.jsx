@@ -1,7 +1,34 @@
 // Inspector — reading and shaping one change. The title is the describe field; checkboxes pick hunks; the composer turns a selection
 // into a commit (@: jj commit) or a split (jj split -r). Files, hunks and bookmarks can be dragged onto another change.
 (() => {
-const { Island, IconButton, Button, MenuButton, Flag, AtBadge, Icon, FileRow, DiffView, DiffHunk, Segmented, Checkbox, TextField, BookmarkChip, HatchSwatch, SplitDivider } = window.ZanshinDesignSystem_a33847;
+const { Island, IconButton, Button, MenuButton, Menu, Flag, AtBadge, Icon, FileRow, DiffView, DiffHunk, Segmented, Checkbox, TextField, BookmarkChip, HatchSwatch, SplitDivider } = window.ZanshinDesignSystem_a33847;
+// Story 10.39: the kit's workspace root, so copied paths are absolute as in the app.
+const ZK_ROOT = "/Users/you/code/zanshin/";
+// The tree (Story 10.39): folders by name, then files by name; a folder holding only one folder joins with it; closed folders hide their rows.
+function zkTreeRows(files, closed) {
+  const root = { name: "", path: "", dirs: new Map(), files: [] };
+  for (const f of files) {
+    const seg = f.path.split("/"); let node = root;
+    for (let i = 0; i < seg.length - 1; i++) {
+      if (!node.dirs.has(seg[i])) node.dirs.set(seg[i], { name: seg[i], path: seg.slice(0, i + 1).join("/"), dirs: new Map(), files: [] });
+      node = node.dirs.get(seg[i]);
+    }
+    node.files.push(f);
+  }
+  const join = (d) => { while (!d.files.length && d.dirs.size === 1) { const k = [...d.dirs.values()][0]; d = { ...k, name: d.name + "/" + k.name }; } return d; };
+  const under = (d) => [...d.files, ...[...d.dirs.values()].flatMap(under)];
+  const out = [];
+  const walk = (d, depth) => {
+    for (const k of [...d.dirs.values()].map(join).sort((a, b) => a.name.localeCompare(b.name))) {
+      const open = !closed.has(k.path);
+      out.push({ dir: true, path: k.path, name: k.name, depth, files: under(k), open });
+      if (open) walk(k, depth + 1);
+    }
+    for (const f of [...d.files].sort((a, b) => fname(a.path).localeCompare(fname(b.path)))) out.push({ dir: false, path: f.path, file: f, depth });
+  };
+  walk(root, 0);
+  return out;
+}
 const Swatch = HatchSwatch || (() => null);
 const first = (s) => (s || "").split("\n")[0].trim();
 const joinMsg = (s, b) => (s.trim() + (b.trim() ? "\n\n" + b.trim() : "")).trim();
@@ -141,6 +168,28 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
   const picked = React.useMemo(() => new Set([...sel, ...Object.keys(partSel).filter((id) => allIds.includes(id) && partSel[id].length)]), [sel, partSel, allIds]);
   const composing = mutable && (isWC ? files.length > 0 : picked.size > 0);
   const liftSet = lift ? new Set(lift) : null;
+  // Story 10.39: flat or tree (an app setting in the app), the tree's closed folders for the session, the row and line menus.
+  const [view, setView] = React.useState("flat"), [closed, setClosed] = React.useState(() => new Set()), [menu, setMenu] = React.useState(null);
+  const rows = view === "tree" ? zkTreeRows(files, closed) : files.map((f) => ({ dir: false, path: f.path, file: f, depth: 0 }));
+  const toggleDir = (p) => setClosed((s) => { const n = new Set(s); n.has(p) ? n.delete(p) : n.add(p); return n; });
+  const copyText = (t) => { if (navigator.clipboard) navigator.clipboard.writeText(t); };
+  const onDisk = isWC ? [] : ["sep", { note: "Opens the file on disk — @'s version; a later change may have moved its lines." }];
+  React.useEffect(() => {
+    if (!menu) return;
+    const away = (e) => { if (!e.target.closest(".zk-menu")) setMenu(null); };
+    window.addEventListener("pointerdown", away, true);
+    return () => window.removeEventListener("pointerdown", away, true);
+  }, [menu]);
+  const openMenu = (e, row) => {
+    e.preventDefault();
+    if (!row.dir) setFocus(row.path);
+    const abs = ZK_ROOT + row.path;
+    const items = row.dir
+      ? [{ id: "reveal", label: "Reveal in Finder", cmd: "open -R" }, "sep", { id: "copy:" + abs, label: "Copy path", shortcut: "⌘C" }, { id: "copy:" + row.path, label: "Copy relative path" }]
+      : [{ id: "open", label: "Open in IntelliJ IDEA", cmd: "idea" }, { id: "reveal", label: "Reveal in Finder", cmd: "open -R" }, "sep",
+        { id: "copy:" + abs, label: "Copy path", shortcut: "⌘C" }, { id: "copy:" + row.path, label: "Copy relative path" }, ...onDisk];
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  };
 
   // The split: side by side from 780 wide, stacked below 740, the last layout between; the files' share per layout.
   const mainRef = React.useRef(null), splitRef = React.useRef(null);
@@ -273,13 +322,21 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
                   <button type="button" onClick={() => files.forEach((f) => setViewed(f.path, viewedN !== files.length))}>{viewedN === files.length ? "Reset" : "Mark all"}</button>
                 </span>
               )}
+              <Segmented size="sm" label="File list" value={view} onChange={setView} className="zk-ch-view"
+                options={[{ value: "flat", icon: "list-flat", title: "Flat list" }, { value: "tree", icon: "list-tree", title: "Tree" }]}/>
             </div>
-            <div className="zk-ch-files" role="list">
-              {files.map((f) => {
-                const st = window.zkCount([f]), state = fileState(f), lifted = liftSet && f.hunks.every((h) => liftSet.has(h.id));
-                return <FileRow key={f.path} status={f.status} path={f.path} added={st.a} removed={st.r} selected={ff && ff.path === f.path} viewed={!!viewed[f.path]} lifted={!!lifted}
+            <div className="zk-ch-files" role={view === "tree" ? "tree" : "list"}>
+              {rows.map((r) => {
+                if (r.dir) {
+                  const st = window.zkCount(r.files), ids = r.files.flatMap((f) => f.hunks.map((h) => h.id)), k = ids.filter((id) => sel.has(id)).length;
+                  return <FileRow key={"d:" + r.path} open={r.open} name={r.name} path={r.path} depth={r.depth} count={r.files.length} added={st.a} removed={st.r}
+                    selectable={mutable} checked={k > 0 && k === ids.length} mixed={k > 0 && k < ids.length} onCheck={() => toggle(ids)}
+                    onClick={() => toggleDir(r.path)} onContextMenu={(e) => openMenu(e, r)}/>;
+                }
+                const f = r.file, st = window.zkCount([f]), state = fileState(f), lifted = liftSet && f.hunks.every((h) => liftSet.has(h.id));
+                return <FileRow key={f.path} status={f.status} path={f.path} tree={view === "tree"} depth={r.depth} added={st.a} removed={st.r} selected={ff && ff.path === f.path} viewed={!!viewed[f.path]} lifted={!!lifted}
                   selectable={mutable} checked={state === "all"} mixed={state === "some"} onCheck={() => toggle(f.hunks.map((h) => h.id))}
-                  onClick={() => setFocus(f.path)} onPointerDown={mutable ? (e) => dragFile(e, f) : undefined}
+                  onClick={() => setFocus(f.path)} onPointerDown={mutable ? (e) => dragFile(e, f) : undefined} onContextMenu={(e) => openMenu(e, r)}
                   title={mutable ? f.path + " — drag onto a change to move it there" : f.path}/>;
               })}
             </div>
@@ -289,7 +346,7 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
               onChangeEnd={(v) => { if (room) SPLIT[axis] = v / room; }}/>}
             <div className="zk-ins-diff">
             {ff && (
-              <DiffView file={ff.path} viewed={!!viewed[ff.path]} onViewedChange={(v) => setViewed(ff.path, v)}
+              <DiffView file={ff.path} copyPath={ZK_ROOT + ff.path} viewed={!!viewed[ff.path]} onViewedChange={(v) => setViewed(ff.path, v)}
                 tools={<Segmented size="sm" label="Diff layout" value={diffMode} onChange={setDiffMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>}>
                 {ff.hunks.map((h) => (
                   <DiffHunk key={h.id} oldStart={h.oldStart} newStart={h.newStart} context={h.ctx} lines={h.lines} mode={diffMode}
@@ -305,6 +362,12 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
       </div>
       {composing && <ZKComposer key={c.id + (isWC ? "w" : "s")} c={c} isWC={isWC} files={files} sel={picked}
         onRun={(ids, msg) => { (isWC ? onCommit : onSplit)(ids, msg); setSel(new Set()); setPartSel({}); }} onClear={() => { setSel(new Set()); setPartSel({}); }}/>}
+      {menu && Menu && ReactDOM.createPortal(
+        // a portal: the island's backdrop-filter would be the containing block of a fixed menu
+        <div className="zk-menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
+          <Menu autoFocus items={menu.items} onClose={() => setMenu(null)}
+            onSelect={(id) => { if (id && id.startsWith("copy:")) copyText(id.slice(5)); setMenu(null); }}/>
+        </div>, document.body)}
     </Island>
   );
 }

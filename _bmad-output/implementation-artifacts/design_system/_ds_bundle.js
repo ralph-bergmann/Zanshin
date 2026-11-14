@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"92ef1616f015","components/brand/Icon.jsx":"4511a1bc5979","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"c0a447df5a0b","components/content/DiffView.jsx":"7e238ddfac14","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"cb9ce51e065b","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"ac0ef89fe9cf","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"7c2c1e506ebd","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"92ef1616f015","components/brand/Icon.jsx":"3f1c816c4911","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"c0a447df5a0b","components/content/DiffView.jsx":"45122550dc95","components/content/FileRow.jsx":"806cf81230d6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"cb9ce51e065b","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"ac0ef89fe9cf","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"d96f0daea897","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -47,7 +47,9 @@ const ZS_ICON_SET = {
   "home": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.5 7.5L8 2.5l5.5 5M4 7v6.5h8V7\"></path></g>",
   "insert-after": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3.5 2h9M8 4.5V8M6.25 6.25h3.5\"></path><rect x=\"2.5\" y=\"10.5\" width=\"11\" height=\"3.5\" rx=\"1.5\"></rect></g>",
   "insert-before": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2.5\" y=\"2\" width=\"11\" height=\"3.5\" rx=\"1.5\"></rect><path d=\"M8 8v3.5M6.25 9.75h3.5M3.5 14h9\"></path></g>",
-  "merge": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"3.5\" r=\"1.75\"></circle><circle cx=\"4.5\" cy=\"12.5\" r=\"1.75\"></circle><circle cx=\"11.5\" cy=\"12.5\" r=\"1.75\"></circle><path d=\"M4.5 10.75V10c0-1.75 3.5-2.25 3.5-4.75M11.5 10.75V10c0-1.75-3.5-2.25-3.5-4.75\"></path></g>",
+  "list-flat": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 4.5h10M3 8h10M3 11.5h10\"></path></g>",
+  "list-tree": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 3.5h5M5.5 7.5H13M5.5 11.5H13M3.5 3.5v8h2M3.5 7.5h2\"></path></g>",
+  "merge":"<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"3.5\" r=\"1.75\"></circle><circle cx=\"4.5\" cy=\"12.5\" r=\"1.75\"></circle><circle cx=\"11.5\" cy=\"12.5\" r=\"1.75\"></circle><path d=\"M4.5 10.75V10c0-1.75 3.5-2.25 3.5-4.75M11.5 10.75V10c0-1.75-3.5-2.25-3.5-4.75\"></path></g>",
   "merge-new": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"4.5\" cy=\"12.5\" r=\"1.75\"></circle><circle cx=\"11.5\" cy=\"12.5\" r=\"1.75\"></circle><path d=\"M8 1.75v3.5M6.25 3.5h3.5M4.5 10.75V10c0-1.75 3.5-2.25 3.5-4.75M11.5 10.75V10c0-1.75-3.5-2.25-3.5-4.75\"></path></g>",
   "minus": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 8h10\"></path></g>",
   "moon": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M13.4 8.47A5.4 5.4 0 1 1 7.33 2.6 4.2 4.2 0 0 0 13.4 8.47z\"></path></g>",
@@ -1440,8 +1442,43 @@ function zsDiffOptionItems({
     note: "Every diff follows these. Context lines is jj's diff.color-words.context in your user config, as in Settings › General › Diffs. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn't see."
   }];
 }
+// The bar's path, name first (Story 10.39): the name (500) then the folder dimmed, cut like a FileRow's. With copyPath a flat button that
+// copies it and shows "Copied" in --add for 1.3 s; without, plain text.
+function ZsDiffPath({
+  file,
+  copyPath
+}) {
+  const [copied, setCopied] = React.useState(false);
+  const name = file.split("/").pop();
+  const dir = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : "";
+  const parts = [/*#__PURE__*/React.createElement("span", {
+    key: "n",
+    className: "n"
+  }, name), dir && /*#__PURE__*/React.createElement("span", {
+    key: "d",
+    className: "d"
+  }, dir)];
+  if (!copyPath) return /*#__PURE__*/React.createElement("span", {
+    className: "zs-diff-file",
+    title: file
+  }, parts);
+  const copy = () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(copyPath);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1300);
+  };
+  return /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-diff-file is-copy",
+    onClick: copy,
+    title: "Click to copy " + copyPath
+  }, parts, copied && /*#__PURE__*/React.createElement("span", {
+    className: "c"
+  }, "Copied"));
+}
 function DiffView({
   file,
+  copyPath,
   tools,
   lines = [],
   wordMarks = true,
@@ -1490,10 +1527,12 @@ function DiffView({
     className: ["zs-diff", viewed && "is-viewed", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")
   }, (file || tools || toggle || menu) && /*#__PURE__*/React.createElement("div", {
     className: "zs-diff-bar"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-diff-file",
-    title: file
-  }, file), tools, toggle, menu), viewed && onViewedChange ? /*#__PURE__*/React.createElement("button", {
+  }, file ? /*#__PURE__*/React.createElement(ZsDiffPath, {
+    file: file,
+    copyPath: copyPath
+  }) : /*#__PURE__*/React.createElement("span", {
+    className: "zs-diff-file"
+  }), tools, toggle, menu), viewed && onViewedChange ? /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "zs-diff-collapsed",
     onClick: () => onViewedChange(false)
@@ -1789,11 +1828,20 @@ Object.assign(__ds_scope, { zsDiffSides, DiffHunk });
 // components/content/FileRow.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// FileRow — one changed file in the inspector's Changes list. Status M/A/D, path truncates from the left (the filename stays visible), +/− counts.
-// selectable adds a Checkbox (pick files for commit / split); viewed shows a green check and dims the path; lifted = being dragged elsewhere.
+// FileRow — one changed file in the inspector's Changes list (Story 10.39): the name first, then (flat) its folder dimmed and cut in its
+// middle — the head gives way first, then the last folder, then the name. Status M/R moon, A/C green, D red; +/− counts.
+// selectable adds a Checkbox (pick files for commit / split); viewed shows a green check and dims name and folder; lifted = being dragged.
+// tree: the name only, indented 8 + 14 × depth + 18. A folder row of the tree: pass open (and count) — chevron, three-state Checkbox,
+// folder glyph, name (a joined chain reads "a/b/c"), the count pill and the summed counts; indented 8 + 14 × depth.
 function FileRow({
   status = "M",
   path = "",
+  name,
+  folder,
+  tree = false,
+  depth = 0,
+  open,
+  count,
   added,
   removed,
   selected = false,
@@ -1807,11 +1855,19 @@ function FileRow({
   className = "",
   ...rest
 }) {
-  const name = path.split("/").pop();
+  const isDir = open !== undefined;
+  const file = name ?? path.split("/").pop();
+  const dir = folder ?? (path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "");
+  const cut = dir.lastIndexOf("/", dir.length - 2);
+  const pad = tree || isDir ? {
+    paddingLeft: 8 + depth * 14 + (isDir ? 0 : 18)
+  } : undefined;
   return /*#__PURE__*/React.createElement("div", _extends({
-    role: "listitem",
+    role: tree || isDir ? "treeitem" : "listitem",
+    "aria-expanded": isDir ? open : undefined,
     tabIndex: 0,
-    className: ["zs-file", selected && "is-sel", viewed && "is-viewed", lifted && "is-lifted", className].filter(Boolean).join(" "),
+    style: pad,
+    className: ["zs-file", isDir && "is-dir", selected && "is-sel", viewed && "is-viewed", lifted && "is-lifted", className].filter(Boolean).join(" "),
     onClick: onClick,
     onKeyDown: e => {
       if (onClick && (e.key === "Enter" || e.key === " ")) {
@@ -1819,17 +1875,35 @@ function FileRow({
         onClick(e);
       }
     },
-    title: path
-  }, rest), selectable && /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
+    title: path || file
+  }, rest), isDir && /*#__PURE__*/React.createElement("span", {
+    className: "zs-file-chev"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: open ? "chevron-down" : "chevron-right",
+    size: "xs"
+  })), selectable && /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
     checked: checked,
     mixed: mixed,
     onChange: onCheck,
-    label: "Select " + name
-  }), /*#__PURE__*/React.createElement("span", {
+    label: "Select " + file
+  }), isDir ? /*#__PURE__*/React.createElement("span", {
+    className: "zs-file-fold"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "folder",
+    size: "sm"
+  })) : /*#__PURE__*/React.createElement("span", {
     className: "zs-file-status s-" + status
   }, status), /*#__PURE__*/React.createElement("span", {
-    className: "zs-file-path"
-  }, /*#__PURE__*/React.createElement("span", null, path)), viewed && /*#__PURE__*/React.createElement("span", {
+    className: "zs-file-name"
+  }, file), !tree && !isDir && dir && /*#__PURE__*/React.createElement("span", {
+    className: "zs-file-dir"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "h"
+  }, dir.slice(0, cut + 1)), /*#__PURE__*/React.createElement("span", {
+    className: "t"
+  }, dir.slice(cut + 1))), isDir && count !== undefined && /*#__PURE__*/React.createElement("span", {
+    className: "zs-file-count"
+  }, count), viewed && /*#__PURE__*/React.createElement("span", {
     className: "zs-file-vw",
     title: "Viewed"
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
@@ -11612,6 +11686,7 @@ try { (() => {
     IconButton,
     Button,
     MenuButton,
+    Menu,
     Flag,
     AtBadge,
     Icon,
@@ -11625,6 +11700,65 @@ try { (() => {
     HatchSwatch,
     SplitDivider
   } = window.ZanshinDesignSystem_a33847;
+  // Story 10.39: the kit's workspace root, so copied paths are absolute as in the app.
+  const ZK_ROOT = "/Users/you/code/zanshin/";
+  // The tree (Story 10.39): folders by name, then files by name; a folder holding only one folder joins with it; closed folders hide their rows.
+  function zkTreeRows(files, closed) {
+    const root = {
+      name: "",
+      path: "",
+      dirs: new Map(),
+      files: []
+    };
+    for (const f of files) {
+      const seg = f.path.split("/");
+      let node = root;
+      for (let i = 0; i < seg.length - 1; i++) {
+        if (!node.dirs.has(seg[i])) node.dirs.set(seg[i], {
+          name: seg[i],
+          path: seg.slice(0, i + 1).join("/"),
+          dirs: new Map(),
+          files: []
+        });
+        node = node.dirs.get(seg[i]);
+      }
+      node.files.push(f);
+    }
+    const join = d => {
+      while (!d.files.length && d.dirs.size === 1) {
+        const k = [...d.dirs.values()][0];
+        d = {
+          ...k,
+          name: d.name + "/" + k.name
+        };
+      }
+      return d;
+    };
+    const under = d => [...d.files, ...[...d.dirs.values()].flatMap(under)];
+    const out = [];
+    const walk = (d, depth) => {
+      for (const k of [...d.dirs.values()].map(join).sort((a, b) => a.name.localeCompare(b.name))) {
+        const open = !closed.has(k.path);
+        out.push({
+          dir: true,
+          path: k.path,
+          name: k.name,
+          depth,
+          files: under(k),
+          open
+        });
+        if (open) walk(k, depth + 1);
+      }
+      for (const f of [...d.files].sort((a, b) => fname(a.path).localeCompare(fname(b.path)))) out.push({
+        dir: false,
+        path: f.path,
+        file: f,
+        depth
+      });
+    };
+    walk(root, 0);
+    return out;
+  }
   const Swatch = HatchSwatch || (() => null);
   const first = s => (s || "").split("\n")[0].trim();
   const joinMsg = (s, b) => (s.trim() + (b.trim() ? "\n\n" + b.trim() : "")).trim();
@@ -11904,6 +12038,72 @@ try { (() => {
     const picked = React.useMemo(() => new Set([...sel, ...Object.keys(partSel).filter(id => allIds.includes(id) && partSel[id].length)]), [sel, partSel, allIds]);
     const composing = mutable && (isWC ? files.length > 0 : picked.size > 0);
     const liftSet = lift ? new Set(lift) : null;
+    // Story 10.39: flat or tree (an app setting in the app), the tree's closed folders for the session, the row and line menus.
+    const [view, setView] = React.useState("flat"),
+      [closed, setClosed] = React.useState(() => new Set()),
+      [menu, setMenu] = React.useState(null);
+    const rows = view === "tree" ? zkTreeRows(files, closed) : files.map(f => ({
+      dir: false,
+      path: f.path,
+      file: f,
+      depth: 0
+    }));
+    const toggleDir = p => setClosed(s => {
+      const n = new Set(s);
+      n.has(p) ? n.delete(p) : n.add(p);
+      return n;
+    });
+    const copyText = t => {
+      if (navigator.clipboard) navigator.clipboard.writeText(t);
+    };
+    const onDisk = isWC ? [] : ["sep", {
+      note: "Opens the file on disk — @'s version; a later change may have moved its lines."
+    }];
+    React.useEffect(() => {
+      if (!menu) return;
+      const away = e => {
+        if (!e.target.closest(".zk-menu")) setMenu(null);
+      };
+      window.addEventListener("pointerdown", away, true);
+      return () => window.removeEventListener("pointerdown", away, true);
+    }, [menu]);
+    const openMenu = (e, row) => {
+      e.preventDefault();
+      if (!row.dir) setFocus(row.path);
+      const abs = ZK_ROOT + row.path;
+      const items = row.dir ? [{
+        id: "reveal",
+        label: "Reveal in Finder",
+        cmd: "open -R"
+      }, "sep", {
+        id: "copy:" + abs,
+        label: "Copy path",
+        shortcut: "⌘C"
+      }, {
+        id: "copy:" + row.path,
+        label: "Copy relative path"
+      }] : [{
+        id: "open",
+        label: "Open in IntelliJ IDEA",
+        cmd: "idea"
+      }, {
+        id: "reveal",
+        label: "Reveal in Finder",
+        cmd: "open -R"
+      }, "sep", {
+        id: "copy:" + abs,
+        label: "Copy path",
+        shortcut: "⌘C"
+      }, {
+        id: "copy:" + row.path,
+        label: "Copy relative path"
+      }, ...onDisk];
+      setMenu({
+        x: e.clientX,
+        y: e.clientY,
+        items
+      });
+    };
 
     // The split: side by side from 780 wide, stacked below 740, the last layout between; the files' share per layout.
     const mainRef = React.useRef(null),
@@ -12200,17 +12400,56 @@ try { (() => {
     }), "all viewed") : /*#__PURE__*/React.createElement(React.Fragment, null, viewedN, "/", files.length, " viewed"), /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: () => files.forEach(f => setViewed(f.path, viewedN !== files.length))
-    }, viewedN === files.length ? "Reset" : "Mark all"))), /*#__PURE__*/React.createElement("div", {
+    }, viewedN === files.length ? "Reset" : "Mark all")), /*#__PURE__*/React.createElement(Segmented, {
+      size: "sm",
+      label: "File list",
+      value: view,
+      onChange: setView,
+      className: "zk-ch-view",
+      options: [{
+        value: "flat",
+        icon: "list-flat",
+        title: "Flat list"
+      }, {
+        value: "tree",
+        icon: "list-tree",
+        title: "Tree"
+      }]
+    })), /*#__PURE__*/React.createElement("div", {
       className: "zk-ch-files",
-      role: "list"
-    }, files.map(f => {
-      const st = window.zkCount([f]),
+      role: view === "tree" ? "tree" : "list"
+    }, rows.map(r => {
+      if (r.dir) {
+        const st = window.zkCount(r.files),
+          ids = r.files.flatMap(f => f.hunks.map(h => h.id)),
+          k = ids.filter(id => sel.has(id)).length;
+        return /*#__PURE__*/React.createElement(FileRow, {
+          key: "d:" + r.path,
+          open: r.open,
+          name: r.name,
+          path: r.path,
+          depth: r.depth,
+          count: r.files.length,
+          added: st.a,
+          removed: st.r,
+          selectable: mutable,
+          checked: k > 0 && k === ids.length,
+          mixed: k > 0 && k < ids.length,
+          onCheck: () => toggle(ids),
+          onClick: () => toggleDir(r.path),
+          onContextMenu: e => openMenu(e, r)
+        });
+      }
+      const f = r.file,
+        st = window.zkCount([f]),
         state = fileState(f),
         lifted = liftSet && f.hunks.every(h => liftSet.has(h.id));
       return /*#__PURE__*/React.createElement(FileRow, {
         key: f.path,
         status: f.status,
         path: f.path,
+        tree: view === "tree",
+        depth: r.depth,
         added: st.a,
         removed: st.r,
         selected: ff && ff.path === f.path,
@@ -12222,6 +12461,7 @@ try { (() => {
         onCheck: () => toggle(f.hunks.map(h => h.id)),
         onClick: () => setFocus(f.path),
         onPointerDown: mutable ? e => dragFile(e, f) : undefined,
+        onContextMenu: e => openMenu(e, r),
         title: mutable ? f.path + " — drag onto a change to move it there" : f.path
       });
     }))), SplitDivider && /*#__PURE__*/React.createElement(SplitDivider, {
@@ -12242,6 +12482,7 @@ try { (() => {
       className: "zk-ins-diff"
     }, ff && /*#__PURE__*/React.createElement(DiffView, {
       file: ff.path,
+      copyPath: ZK_ROOT + ff.path,
       viewed: !!viewed[ff.path],
       onViewedChange: v => setViewed(ff.path, v),
       tools: /*#__PURE__*/React.createElement(Segmented, {
@@ -12289,7 +12530,26 @@ try { (() => {
         setSel(new Set());
         setPartSel({});
       }
-    }));
+    }), menu && Menu && ReactDOM.createPortal(
+    /*#__PURE__*/
+    // a portal: the island's backdrop-filter would be the containing block of a fixed menu
+    React.createElement("div", {
+      className: "zk-menu",
+      style: {
+        left: menu.x,
+        top: menu.y
+      },
+      onClick: e => e.stopPropagation(),
+      onContextMenu: e => e.preventDefault()
+    }, /*#__PURE__*/React.createElement(Menu, {
+      autoFocus: true,
+      items: menu.items,
+      onClose: () => setMenu(null),
+      onSelect: id => {
+        if (id && id.startsWith("copy:")) copyText(id.slice(5));
+        setMenu(null);
+      }
+    })), document.body));
   }
   Object.assign(window, {
     ZKInspector

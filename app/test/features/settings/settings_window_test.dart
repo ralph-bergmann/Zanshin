@@ -12,6 +12,7 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
+import 'package:zanshin/src/features/settings/general_tab.dart';
 import 'package:zanshin/src/features/settings/immutable_heads.dart';
 import 'package:zanshin/src/features/settings/settings_view_model.dart';
 import 'package:zanshin/src/features/settings/settings_widgets.dart' show SettingsRow;
@@ -24,6 +25,7 @@ import 'package:zanshin_ui/zanshin_ui.dart' show ZsAppearance, ZsDensity, ZsNami
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/settings_rig.dart';
+import '../../helpers/shell_host.dart';
 
 TopologyRef _ref(String name, {TopologyRefKind kind = TopologyRefKind.bookmark, String? remote, bool synced = false}) =>
     // A synced remote entry is tracked (synced = tracked AND agrees).
@@ -242,6 +244,23 @@ void main() {
 
     double top(_Rig rig, String identifier) => rig.tester.getRect(rig.id(identifier)).top;
 
+    // The General tab of [rig]'s window alone, its editors detected by [editors] (Story 10.39).
+    Future<void> pumpGeneral(WidgetTester tester, _Rig rig, List<String> Function() editors) async {
+      final SettingsViewModel vm = tester.widget<SettingsGeneralTab>(find.byType(SettingsGeneralTab)).vm;
+      await tester.pumpWidget(
+        shellHost(
+          ListenableBuilder(
+            // As the window does: the tab follows the view model and the store.
+            listenable: Listenable.merge(<Listenable>[vm, rig.store]),
+            builder: (context, _) => SingleChildScrollView(
+              child: SettingsGeneralTab(vm: vm, editors: editors),
+            ),
+          ),
+        ),
+      );
+      await rig.settle();
+    }
+
     testWidgets("fresh config: jj's defaults, no source note, each row shows its key; no Conflicts row", (
       tester,
     ) async {
@@ -284,6 +303,59 @@ void main() {
       expect(find.text('Ignore all whitespace'), findsOneWidget);
       expect(rig.calls, isEmpty);
     });
+
+    testWidgets('Story 10.39: File list writes general.diffFileList; no jj config', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump(project: false);
+      expect(rig.store.value.general.diffFileList, DiffFileListSetting.flat);
+      await tester.tap(find.text('Tree').last);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await rig.settle();
+      expect(rig.store.value.general.diffFileList, DiffFileListSetting.tree);
+      expect(rig.calls, isEmpty);
+    });
+
+    testWidgets(
+      'Story 10.39: Editor offers None, the stored launcher and Custom; a command without {file} is refused',
+      (
+        tester,
+      ) async {
+        final rig = _Rig(tester);
+        await rig.pump(project: false);
+        // The tab again with a detection of its own, so nothing reads the host's PATH.
+        await pumpGeneral(tester, rig, () => const <String>['idea']);
+        expect(find.text('Open files in'), findsOneWidget);
+        expect(find.text('None'), findsOneWidget, reason: 'no editor by default');
+        expect(rig.id('settings-editor-command'), findsNothing);
+
+        // A detected launcher is offered and written by its program.
+        await pick(tester, rig, 'settings-editor', 'IntelliJ IDEA — idea');
+        expect(rig.store.value.general.editor, 'idea');
+
+        // A stored launcher shows even when it is not detected. The store has the value at once; the write queued behind
+        // the last one ends in the rig's teardown.
+        unawaited(rig.store.update((s) => s.copyWith.general(editor: 'zed')));
+        await rig.settle();
+        expect(find.text('Zed — zed'), findsOneWidget);
+
+        await pick(tester, rig, 'settings-editor', 'Custom command');
+        expect(rig.store.value.general.editor, 'zed', reason: 'Custom writes nothing until a command is committed');
+        expect(find.text('{file} and {line} are replaced; IntelliJ: idea --line {line} {file}'), findsOneWidget);
+        await rig.submit('settings-editor-command', 'subl');
+        expect(find.text('The command must hold {file}.'), findsOneWidget);
+        expect(rig.store.value.general.editor, 'zed');
+        await rig.submit('settings-editor-command', 'subl {file}:{line}');
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await rig.settle();
+        expect(rig.store.value.general.editor, 'subl {file}:{line}');
+        expect(find.text('Custom command'), findsOneWidget);
+
+        await pick(tester, rig, 'settings-editor', 'None');
+        expect(rig.store.value.general.editor, isNull);
+        expect(rig.id('settings-editor-command'), findsNothing);
+        expect(rig.calls, isEmpty, reason: 'an app preference, not jj config');
+      },
+    );
 
     testWidgets('Story 10.33: the user config\'s context 5 shows in the Context lines row', (tester) async {
       final rig = _Rig(tester);

@@ -180,6 +180,8 @@ abstract final class ZI {
   static const home = 'home';
   static const insertAfter = 'insert-after';
   static const insertBefore = 'insert-before';
+  static const listFlat = 'list-flat';
+  static const listTree = 'list-tree';
   static const merge = 'merge';
   static const mergeNew = 'merge-new';
   static const minus = 'minus';
@@ -243,6 +245,8 @@ abstract final class ZI {
     home,
     insertAfter,
     insertBefore,
+    listFlat,
+    listTree,
     merge,
     mergeNew,
     minus,

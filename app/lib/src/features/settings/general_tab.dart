@@ -10,6 +10,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import '../graph/inspector_diff.dart' show diffContextChoices, diffWhitespaceLabel;
+import '../graph/project_files.dart' show detectedEditors, editorLaunchers;
 import '../window/window_zoom.dart';
 import 'settings_view_model.dart';
 import 'settings_widgets.dart';
@@ -60,14 +61,18 @@ class SettingsAuthorFact extends StatelessWidget {
 }
 
 /// Settings › General (Story 11.7): Appearance (Theme, Density, Accent colour), While you scroll (Hide controls),
-/// Diffs (Layout, the Changed words switch, and jj's `diff.color-words.max-inline-alternation` and `.context` at user
-/// scope) and Identity (`user.name`, `user.email` at user scope).
+/// Diffs (Layout, the Changed words switch, jj's `diff.color-words.max-inline-alternation` and `.context` at user
+/// scope, and the inspector's File list, Story 10.39), Editor (Story 10.39) and Identity (`user.name`, `user.email` at
+/// user scope).
 class SettingsGeneralTab extends StatelessWidget {
-  /// The tab over [vm].
-  const SettingsGeneralTab({required this.vm, super.key});
+  /// The tab over [vm]; [editors] answers the launchers on the login shell's `PATH`.
+  const SettingsGeneralTab({required this.vm, this.editors = detectedEditors, super.key});
 
   /// The view model.
   final SettingsViewModel vm;
+
+  /// The editor launchers found on the login shell's `PATH` ([detectedEditors] in the app).
+  final List<String> Function() editors;
 
   @override
   Widget build(BuildContext context) {
@@ -231,8 +236,23 @@ class SettingsGeneralTab extends StatelessWidget {
               fixed: diffContextChoices,
               optionLabel: (n) => '$n',
             ),
+            SettingsRow(
+              label: s.settingsDiffFileList,
+              child: ZsSegmented<DiffFileListSetting>(
+                variant: ZsSegmentedVariant.inset,
+                label: s.settingsDiffFileList,
+                identifier: 'settings-diff-file-list',
+                segments: <ZsSegment<DiffFileListSetting>>[
+                  ZsSegment<DiffFileListSetting>(value: DiffFileListSetting.flat, label: s.settingsDiffFileListFlat),
+                  ZsSegment<DiffFileListSetting>(value: DiffFileListSetting.tree, label: s.settingsDiffFileListTree),
+                ],
+                value: prefs.general.diffFileList,
+                onChanged: (list) => vm.updatePreferences((settings) => settings.copyWith.general(diffFileList: list)),
+              ),
+            ),
           ],
         ),
+        _EditorGroup(vm: vm, editor: prefs.general.editor, detect: editors),
         SettingsGroup(
           title: s.settingsIdentity,
           children: <Widget>[
@@ -312,6 +332,100 @@ class SettingsGeneralTab extends StatelessWidget {
         value: value,
         onChanged: (n) => unawaited(vm.setConfig(ConfigScope.user, key, '$n')),
       ),
+    );
+  }
+}
+
+/// Settings › General › Editor (Story 10.39; Claude's proposal in the style of the rows): "Open files in" chooses
+/// None, a launcher found on the login shell's `PATH` (the stored one even when not found) or "Custom command"; with
+/// Custom a "Command" row takes the command line, refused without `{file}`. Choosing Custom writes nothing until a
+/// command is committed.
+class _EditorGroup extends StatefulWidget {
+  const _EditorGroup({required this.vm, required this.editor, required this.detect});
+
+  final SettingsViewModel vm;
+  final String? editor;
+  final List<String> Function() detect;
+
+  @override
+  State<_EditorGroup> createState() => _EditorGroupState();
+}
+
+class _EditorGroupState extends State<_EditorGroup> {
+  late final List<String> _found = widget.detect();
+
+  /// Custom was chosen and no command is stored yet.
+  var _custom = false;
+
+  static const _none = 'none';
+  static const _customChoice = 'custom';
+  static const _file = '{file}'; // l10n-ignore: the marker a command holds
+  static const _line = '{line}'; // l10n-ignore: the marker a command holds
+
+  static String _appOf(String launcher) => switch (launcher) {
+    'idea' => 'IntelliJ IDEA', // l10n-ignore: a product name
+    'code' => 'VS Code', // l10n-ignore: a product name
+    _ => 'Zed', // l10n-ignore: a product name
+  };
+
+  void _write(String? editor) => widget.vm.updatePreferences((settings) => settings.copyWith.general(editor: editor));
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations s = context.l10n;
+    final String? editor = widget.editor;
+    final bool launcher = editorLaunchers.contains(editor);
+    final bool custom = _custom || (editor != null && !launcher);
+    final launchers = <String>[
+      for (final String each in editorLaunchers)
+        if (_found.contains(each) || each == editor) each,
+    ];
+    return SettingsGroup(
+      title: s.settingsEditor,
+      children: <Widget>[
+        SettingsRow(
+          label: s.settingsEditorOpenIn,
+          child: ZsSelect<String>(
+            label: s.settingsEditorOpenIn,
+            identifier: 'settings-editor',
+            options: <ZsSelectEntry<String>>[
+              ZsSelectOption<String>(value: _none, label: s.settingsEditorNone),
+              for (final String each in launchers)
+                ZsSelectOption<String>(value: each, label: s.settingsEditorLauncher(_appOf(each), each)),
+              ZsSelectOption<String>(value: _customChoice, label: s.settingsEditorCustom),
+            ],
+            value: custom ? _customChoice : (editor ?? _none),
+            onChanged: (choice) {
+              setState(() => _custom = choice == _customChoice);
+              // Custom writes once its command is committed; until then the stored editor stays.
+              if (choice != _customChoice) {
+                _write(choice == _none ? null : choice);
+              }
+            },
+          ),
+        ),
+        if (custom)
+          SettingsRow(
+            label: s.settingsEditorCommand,
+            hint: s.settingsEditorCommandHint(_file, _line),
+            child: SizedBox(
+              width: 240,
+              child: SettingsTextField(
+                value: launcher ? '' : editor,
+                label: s.settingsEditorCommand,
+                identifier: 'settings-editor-command',
+                mono: true,
+                register: widget.vm.registerFlush,
+                unregister: widget.vm.unregisterFlush,
+                validate: (text) async => text.contains(_file) ? null : s.settingsEditorCommandNoFile(_file),
+                onCommit: (text) async {
+                  _write(text);
+                  return true;
+                },
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

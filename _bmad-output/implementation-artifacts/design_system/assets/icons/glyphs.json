@@ -33,6 +33,8 @@
   "home",
   "insert-after",
   "insert-before",
+  "list-flat",
+  "list-tree",
   "merge",
   "merge-new",
   "minus",

@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x760" name="Content" subtitle="FileRow, DiffView + DiffHunk (the diff options menu, whitespace ignored with a dimmed line and a folded part, word marks on and off, parts with their checkboxes, pinned numbers), ProjectRow (incl. moving rows), Kbd" -->
+<!-- @dsCard group="Components" viewport="700x760" name="Content" subtitle="FileRow (name first, the tree), DiffView (copyable path) + DiffHunk (the diff options menu, whitespace ignored with a dimmed line and a folded part, word marks on and off, parts with their checkboxes, pinned numbers), ProjectRow (incl. moving rows), Kbd" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -49,6 +49,13 @@
         <div>
           <div className="h"><Checkbox mixed label="Select all"/><b>Changes</b><span>4 files</span><span className="a">+149</span><span className="r">−140</span></div>
           <div className="list" role="list">{files.map(([s, p, a, r], i) => <FileRow key={p} status={s} path={p} added={a} removed={r} selected={sel === i} viewed={i === 3} selectable checked={i === 1} mixed={i === 0} onClick={() => setSel(i)}/>)}</div>
+          {/* Story 10.39: the tree — a joined folder row (mixed), a closed one, files by name under their folder */}
+          <div className="list" role="tree" aria-label="Tree">
+            <FileRow open name="lib/onboarding" path="lib/onboarding" count={2} selectable mixed added={130} removed={7}/>
+            <FileRow tree depth={1} status="M" path="lib/onboarding/swipe_controller.dart" added={42} removed={7} selectable checked/>
+            <FileRow open={false} depth={1} name="widgets" path="lib/onboarding/widgets" count={1} selectable added={88}/>
+            <FileRow tree status="R" path="README.md" added={3} removed={1} selectable/>
+          </div>
           <div className="tree" role="tree">
             <ProjectRow kind="group" name="Mobile" expanded count={3}/>
             <ProjectRow depth={1} name="MyApp" path="~/code/work/mobile/myapp" branch="feature/new-ui" status="dirty" ahead={6} lastOpened="now" open selected/>
@@ -64,7 +71,7 @@
           <div className="keys"><span>Moving: into a group · between rows · in hand · naming a new group</span></div>
           <div className="keys"><Kbd>⌘</Kbd><Kbd>,</Kbd><span>Settings</span><span style={{ width: 10 }}></span><Kbd>⌘</Kbd><Kbd>↩</Kbd><span>Commit / Split</span></div>
         </div>
-        <DiffView file={files[sel][1]} viewed={viewed} onViewedChange={setViewed}
+        <DiffView file={files[sel][1]} copyPath={"/Users/you/code/app/" + files[sel][1]} viewed={viewed} onViewedChange={setViewed}
           options={{ whitespace: ws, context: ctx }} onOption={(id) => (id.startsWith("ws:") ? setWs(id.slice(3)) : setCtx(Number(id.slice(4))))}
           tools={<Segmented size="sm" label="Diff layout" value={mode} onChange={setMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>}>
           {/* Story 10.33: whitespace ignored — the picked first part shows its re-indented line dimmed with "whitespace only"; the second part,

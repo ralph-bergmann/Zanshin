@@ -100,9 +100,28 @@ Future<LoginShellEnvironmentResult> adoptLoginShellEnvironment({
       return LoginShellEnvironmentResult(warnings: [warning]);
     case LoginShellVariables(:final List<EnvironmentVariable> variables):
       decodeEnvironmentAdoptEnvelopeInternal(zanshinEnvironmentAdopt(variables));
+      // Rust keeps the first adopted environment; the Dart mirror keeps the same one.
+      _adopted ??= variables;
       return const LoginShellEnvironmentResult();
   }
 }
+
+List<EnvironmentVariable>? _adopted;
+
+/// The login shell's environment as [adoptLoginShellEnvironment] adopted it — the first one, which Rust keeps too —
+/// decoded with [decodeEnvironmentInternal]; null while none was adopted. Programs Zanshin starts itself (an editor,
+/// Story 10.39) are found on its `PATH` and started with it, as jj's `git` is.
+Map<String, String>? adoptedLoginShellEnvironment() {
+  final List<EnvironmentVariable>? adopted = _adopted;
+  return adopted == null ? null : decodeEnvironmentInternal(adopted);
+}
+
+/// [variables] as a map of strings: names and values decoded as UTF-8, a malformed byte as U+FFFD; a later variable
+/// of the same name wins.
+Map<String, String> decodeEnvironmentInternal(List<EnvironmentVariable> variables) => <String, String>{
+  for (final EnvironmentVariable variable in variables)
+    utf8.decode(variable.name, allowMalformed: true): utf8.decode(variable.value, allowMalformed: true),
+};
 
 /// Reads the login shell's environment (Story 9.36): runs `<shell> -l -i -c`
 /// ([shell] null or empty: the process's `$SHELL`) with the inherited

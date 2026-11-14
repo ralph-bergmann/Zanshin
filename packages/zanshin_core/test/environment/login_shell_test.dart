@@ -198,4 +198,21 @@ exec /bin/sh -c "$4"''');
     expect(variables['RAW'], [0xff]);
     expect(variables['EMPTY'], isEmpty);
   });
+
+  test('the adopted environment decodes as lossy UTF-8, a later name winning', () {
+    Uint8List bytes(List<int> units) => Uint8List.fromList(units);
+    final Map<String, String> decoded = decodeEnvironmentInternal([
+      (name: bytes('PATH'.codeUnits), value: bytes('/a:/b'.codeUnits)),
+      (name: bytes('RAW'.codeUnits), value: bytes([0x61, 0xff])),
+      (name: bytes('UMLAUT'.codeUnits), value: bytes([0xc3, 0xbc])),
+      (name: bytes('PATH'.codeUnits), value: bytes('/c'.codeUnits)),
+    ]);
+
+    expect(decoded, {'PATH': '/c', 'RAW': 'a\uFFFD', 'UMLAUT': 'ü'});
+  });
+
+  test('nothing is adopted while no adoption succeeded', () {
+    // This file never adopts for real (see the head): the mirror stays empty.
+    expect(adoptedLoginShellEnvironment(), isNull);
+  });
 }

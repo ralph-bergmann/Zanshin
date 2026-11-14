@@ -18,7 +18,7 @@ const _darkJson =
     '  "layout": {\n    "inspectorWidth": 460.0,\n    "panelWidth": 300.0,\n'
     '    "inspectorFilesNarrow": 0.38,\n    "inspectorFilesWide": 0.34\n  },\n'
     '  "general": {\n    "hideControls": true,\n    "diffLayout": "unified",\n    "diffWordMarks": true,\n'
-    '    "diffWhitespace": "showAll"\n  },\n'
+    '    "diffWhitespace": "showAll",\n    "diffFileList": "flat",\n    "editor": null\n  },\n'
     '  "projects": {\n    "projects": [],\n    "groups": [],\n    "openProject": null\n  },\n'
     '  "graph": {\n    "layout": "free",\n    "detailedCards": true,\n    "groupStacks": true,\n'
     '    "cardWidth": 240.0,\n    "showMinimap": true,\n    "revsetConfigs": [],\n    "revsetDefault": "log"\n  }\n}\n';
@@ -173,6 +173,16 @@ void main() {
       await Directory(file.path).delete();
       await store.update((s) => s.copyWith.appearance(themeMode: ThemeMode.light));
       expect(jsonDecode(file.readAsStringSync()), _light.toJson());
+    });
+
+    test('the tree file list and an editor come back in a new store on the same file', () async {
+      final SettingsStore store = await SettingsStore.load(file);
+
+      await store.update((s) => s.copyWith.general(diffFileList: DiffFileListSetting.tree, editor: 'idea'));
+
+      final SettingsStore restarted = await SettingsStore.load(file);
+      expect(restarted.value.general.diffFileList, DiffFileListSetting.tree);
+      expect(restarted.value.general.editor, 'idea');
     });
 
     test('settled completes after every queued write', () async {

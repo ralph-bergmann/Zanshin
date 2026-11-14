@@ -33,6 +33,7 @@ import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/inspector_diff.dart';
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/layout_invariants.dart';
+import 'package:zanshin/src/features/graph/project_files.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/stale_notice.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
@@ -64,7 +65,8 @@ import 'package:zanshin_core/zanshin_core.dart'
         SkippedPath,
         SquashPlan,
         ZanshinWarning;
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffWhitespaceSetting, SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart'
+    show DiffFileListSetting, DiffLayoutSetting, DiffWhitespaceSetting, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../graph/fake_content.dart';
@@ -321,6 +323,13 @@ final graphFolder = WidgetbookFolder(
         // Story 10.38: the files beside the diff from 780 points, above it below 740.
         WidgetbookUseCase(name: 'Wide', builder: (context) => const _InspectorAt(width: 900)),
         WidgetbookUseCase(name: 'Narrow', builder: (context) => const _InspectorAt(width: 460)),
+        WidgetbookUseCase(
+          name: 'Tree',
+          builder: (context) => const _InspectorAt(width: 460, tree: true, longPaths: true),
+        ),
+        WidgetbookUseCase(name: 'Long path', builder: (context) => const _InspectorAt(width: 460, longPaths: true)),
+        WidgetbookUseCase(name: 'File menu', builder: (context) => const _FileMenu()),
+        WidgetbookUseCase(name: 'Line menu', builder: (context) => const _FileMenu(line: 12)),
       ],
     ),
     WidgetbookComponent(
@@ -1028,12 +1037,21 @@ HunkLine _colorWords(String spec) {
 /// body on every third change, the layout's direct parents, and up to four files whose kinds cycle (a rename among
 /// them); a merge and the root change no files. Every verb preview is available.
 class _DemoDetails implements GraphDetails {
-  _DemoDetails(this._model, this._descriptions);
+  _DemoDetails(this._model, this._descriptions, {bool longPaths = false}) : _paths = longPaths ? _long : _short;
 
   final GraphViewModel _model;
   final Map<String, String> _descriptions;
+  final List<String> _paths;
 
-  static const _paths = <String>['lib/auth/session.dart', 'lib/ui/onboarding.dart', 'assets/logo.png', 'src/main.rs'];
+  static const _short = <String>['lib/auth/session.dart', 'lib/ui/onboarding.dart', 'assets/logo.png', 'src/main.rs'];
+
+  // Story 10.39: deep paths whose names must stay whole at 460 points.
+  static const _long = <String>[
+    'packages/logic_designer/lib/src/presentation/widgets/automation_overview_page.dart',
+    'packages/logic_designer/lib/src/presentation/widgets/automation_tile.dart',
+    'packages/logic_designer/assets/automation_banner.png',
+    'packages/logic_designer/lib/src/data/automation_repository.dart',
+  ];
 
   static const _kinds = <FileChangeKind>[
     FileChangeKind.modified,
@@ -2127,11 +2145,13 @@ class _PinnedNumbersState extends State<_PinnedNumbers> {
 }
 
 /// Story 10.38: the inspector at a fixed [width] on the demo's first mutable change — 900 puts the files beside the
-/// diff, 460 above it.
+/// diff, 460 above it. Story 10.39: [tree] lists the files as a tree, [longPaths] gives them deep paths.
 class _InspectorAt extends StatefulWidget {
-  const _InspectorAt({required this.width});
+  const _InspectorAt({required this.width, this.tree = false, this.longPaths = false});
 
   final double width;
+  final bool tree;
+  final bool longPaths;
 
   @override
   State<_InspectorAt> createState() => _InspectorAtState();
@@ -2152,6 +2172,9 @@ class _InspectorAtState extends State<_InspectorAt> {
 
   Future<void> _load() async {
     final SettingsStore store = await SettingsStore.load(File('${_dir.path}/settings.json'));
+    if (widget.tree) {
+      await store.update((s) => s.copyWith.general(diffFileList: DiffFileListSetting.tree));
+    }
     if (!mounted) {
       return;
     }
@@ -2159,7 +2182,7 @@ class _InspectorAtState extends State<_InspectorAt> {
     _model
       ..addListener(_selectFirst)
       ..init(_source, actions: _DemoActions(_descriptions), clock: () => DateTime.fromMillisecondsSinceEpoch(now));
-    final details = _DemoDetails(_model, _descriptions);
+    final details = _DemoDetails(_model, _descriptions, longPaths: widget.longPaths);
     final inspector = InspectorViewModel(
       graph: _model,
       details: details,
@@ -2213,6 +2236,82 @@ class _InspectorAtState extends State<_InspectorAt> {
                 child: GraphInspector(model: inspector),
               ),
             ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Story 10.39: an inspector context menu shown open (Marionette cannot right-click), on a change other than @ with
+/// IntelliJ chosen: a file row's, or a diff line's at [line]. The path is in a temp folder; nothing starts.
+class _FileMenu extends StatefulWidget {
+  const _FileMenu({this.line});
+
+  final int? line;
+
+  @override
+  State<_FileMenu> createState() => _FileMenuState();
+}
+
+class _FileMenuState extends State<_FileMenu> {
+  final Directory _dir = Directory.systemTemp.createTempSync('zanshin_catalogue_files');
+  final _toasts = ShellToasts();
+  final _menu = ZsMenuController();
+  ProjectFiles? _files;
+
+  @override
+  void initState() {
+    super.initState();
+    Directory('${_dir.path}/repo/src').createSync(recursive: true);
+    File('${_dir.path}/repo/src/automation_overview_page.dart').writeAsStringSync('');
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final SettingsStore store = await SettingsStore.load(File('${_dir.path}/settings.json'));
+    await store.update((s) => s.copyWith.general(editor: 'idea'));
+    if (!mounted) {
+      return;
+    }
+    setState(
+      () => _files = ProjectFiles(
+        root: '${_dir.path}/repo',
+        settings: store,
+        toasts: _toasts,
+        start: (_, _, _) async {},
+      ),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _menu.open(position: const Offset(24, 24)));
+  }
+
+  @override
+  void dispose() {
+    _toasts.dispose();
+    _dir.deleteSync(recursive: true);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ProjectFiles? files = _files;
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ZsCanvas(),
+        if (files != null)
+          ZsMenuAnchor(
+            controller: _menu,
+            maxWidth: inspectorMenuMaxWidth,
+            cmdMaxWidth: inspectorMenuHintMaxWidth,
+            entries: inspectorPathMenu(
+              context,
+              files,
+              path: 'src/automation_overview_page.dart',
+              onDisk: true,
+              workingCopy: false,
+              line: widget.line,
+            ),
+            builder: (context, _) => const SizedBox.expand(),
           ),
       ],
     );

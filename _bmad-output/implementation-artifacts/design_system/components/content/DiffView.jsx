@@ -74,7 +74,23 @@ export function zsDiffOptionItems({ whitespace = "show", context = 3 }) {
   ];
 }
 
-export function DiffView({ file, tools, lines = [], wordMarks = true, maxHeight, viewed, onViewedChange, options, onOption, onlyWhitespace = false, children, className = "" }) {
+// The bar's path, name first (Story 10.39): the name (500) then the folder dimmed, cut like a FileRow's. With copyPath a flat button that
+// copies it and shows "Copied" in --add for 1.3 s; without, plain text.
+function ZsDiffPath({ file, copyPath }) {
+  const [copied, setCopied] = React.useState(false);
+  const name = file.split("/").pop();
+  const dir = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : "";
+  const parts = [<span key="n" className="n">{name}</span>, dir && <span key="d" className="d">{dir}</span>];
+  if (!copyPath) return <span className="zs-diff-file" title={file}>{parts}</span>;
+  const copy = () => { if (navigator.clipboard) navigator.clipboard.writeText(copyPath); setCopied(true); setTimeout(() => setCopied(false), 1300); };
+  return (
+    <button type="button" className="zs-diff-file is-copy" onClick={copy} title={"Click to copy " + copyPath}>
+      {parts}{copied && <span className="c">Copied</span>}
+    </button>
+  );
+}
+
+export function DiffView({ file, copyPath, tools, lines = [], wordMarks = true, maxHeight, viewed, onViewedChange, options, onOption, onlyWhitespace = false, children, className = "" }) {
   const toggle = onViewedChange && (
     <button type="button" role="checkbox" aria-checked={!!viewed} className={"zs-viewed" + (viewed ? " is-on" : "")} onClick={() => onViewedChange(!viewed)} title={viewed ? "Mark as not viewed" : "Mark as viewed"}>
       <Checkbox presentational size="sm" tone="add" checked={!!viewed} />
@@ -93,7 +109,7 @@ export function DiffView({ file, tools, lines = [], wordMarks = true, maxHeight,
     <div className={["zs-diff", viewed && "is-viewed", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")}>
       {(file || tools || toggle || menu) && (
         <div className="zs-diff-bar">
-          <span className="zs-diff-file" title={file}>{file}</span>
+          {file ? <ZsDiffPath file={file} copyPath={copyPath} /> : <span className="zs-diff-file" />}
           {tools}
           {toggle}
           {menu}

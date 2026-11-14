@@ -118,6 +118,9 @@ class FakeOperationChangesSource implements OperationChangesSource {
   /// The `opShow` reply.
   OpShow opShowReply;
 
+  @override
+  String? root;
+
   /// The `show` reply.
   List<ShowEntry> entries;
 

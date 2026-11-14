@@ -153,6 +153,10 @@ class _DemoChanges implements OperationChangesSource {
 
   final _writes = ConfigWrites();
 
+  // A stand-in has no workspace: the diff header's path stays plain text.
+  @override
+  String? get root => null;
+
   @override
   Listenable get configWrites => _writes;
 

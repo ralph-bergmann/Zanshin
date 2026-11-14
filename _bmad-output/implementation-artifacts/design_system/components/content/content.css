@@ -1,20 +1,26 @@
 /* FileRow — Changes list in the inspector. Neutral: hover --fl-hover · pressed --fl-on · on (its diff shows) --fl-on → hover --fl-on-hover → pressed --fl-press */
-.zs-file{display:flex;align-items:center;gap:8px;width:100%;min-width:0;padding:6px 8px;border:0;border-radius:var(--radius-md);background:transparent;color:var(--text);text-align:left;cursor:default;outline:none;transition:background var(--dur-hover) var(--ease-state),opacity var(--dur-hover) var(--ease-state)}
+.zs-file{display:flex;align-items:center;gap:8px;width:100%;min-width:0;min-height:28px;padding:0 8px;border:0;border-radius:var(--radius-md);background:transparent;color:var(--text);text-align:left;cursor:default;outline:none;transition:background var(--dur-hover) var(--ease-state),opacity var(--dur-hover) var(--ease-state)}
 .zs-file:hover,.zs-file.st-hover{background:var(--fl-hover)}
 .zs-file:active,.zs-file.st-press{background:var(--fl-on)}
 .zs-file.is-sel{background:var(--fl-on)}
 .zs-file.is-sel:hover,.zs-file.is-sel.st-hover{background:var(--fl-on-hover)}
 .zs-file.is-sel:active,.zs-file.is-sel.st-press{background:var(--fl-press)}
-.zs-file-status{display:grid;place-items:center;flex-shrink:0;width:14px;height:14px;border-radius:var(--radius-kbd);font:700 var(--fs-2xs) var(--font-mono)}
-.zs-file-status.s-M{background:var(--status-m-bg);color:var(--status-m)}
-.zs-file-status.s-A{background:var(--add-bg);color:var(--add)}
+.zs-file-status{display:grid;place-items:center;flex-shrink:0;width:17px;height:17px;border-radius:4px;font:700 10px var(--font-mono)}
+.zs-file-status.s-M,.zs-file-status.s-R{background:var(--accent-soft);color:var(--accent)}
+.zs-file-status.s-A,.zs-file-status.s-C{background:var(--add-bg);color:var(--add)}
 .zs-file-status.s-D{background:var(--rem-bg);color:var(--rem)}
-.zs-file-path{flex:1;min-width:0;font:var(--fs-id) var(--font-mono);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
-.zs-file-path span{direction:ltr;unicode-bidi:bidi-override}
-.zs-file.is-sel .zs-file-path{color:var(--text)}
-.zs-file.is-viewed .zs-file-path{opacity:.55}
+/* Story 10.39: the name first — it gives way last; the folder gives way first, cut in its middle (head, then its last folder) */
+.zs-file-name{flex:0 1 auto;min-width:0;font:var(--fs-id) var(--font-mono);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zs-file-dir{flex:0 1000 auto;min-width:0;display:flex;font:var(--fs-id) var(--font-mono);color:var(--text-faint);white-space:nowrap}
+.zs-file-dir .h{flex:0 1000 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.zs-file-dir .t{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.zs-file.is-viewed .zs-file-name,.zs-file.is-viewed .zs-file-dir{opacity:.55}
 .zs-file-vw{display:grid;color:var(--add);flex-shrink:0}
-.zs-file-stat{display:flex;gap:6px;flex-shrink:0;font:var(--fs-sm) var(--font-mono)}
+/* the tree's folder row: chevron, check, folder glyph, name, count pill */
+.zs-file-chev{display:grid;place-items:center;width:12px;flex-shrink:0;color:var(--text-faint)}
+.zs-file-fold{display:grid;flex-shrink:0;color:var(--text-faint)}
+.zs-file-count{flex-shrink:0;padding:0 6px;border-radius:var(--radius-pill);background:var(--fl-hover);font:10px var(--font-sans);color:var(--text-dim)}
+.zs-file-stat{display:flex;gap:6px;flex-shrink:0;margin-left:auto;padding-left:6px;font:var(--fs-sm) var(--font-mono)}
 .zs-file-stat .a{color:var(--add)}.zs-file-stat .r{color:var(--rem)}
 .zs-file.is-lifted{opacity:.38;outline:1.5px dashed var(--accent-line);outline-offset:-1.5px}
 
@@ -22,7 +28,13 @@
 .zs-diff{overflow:hidden;border-radius:var(--radius-well);background:var(--code-bg);border:1px solid var(--fl-border)}
 .zs-diff.is-viewed{border-color:var(--add-edge)}
 .zs-diff-bar{display:flex;align-items:center;gap:8px;padding:7px 8px 7px 12px;border-bottom:1px solid var(--fl-border)}
-.zs-diff-file{flex:1;min-width:0;font:var(--fs-xs) var(--font-mono);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left;unicode-bidi:plaintext}
+/* the bar's path, name first (Story 10.39): the name 500 in --text, the folder --text-faint giving way first; a copy button with "Copied" */
+.zs-diff-file{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;font:var(--fs-xs) var(--font-mono);color:var(--text);white-space:nowrap;text-align:left}
+.zs-diff-file .n{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.zs-diff-file .d{flex:0 1000 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--text-faint)}
+.zs-diff-file .c{flex-shrink:0;font:11px var(--font-sans);color:var(--add)}
+.zs-diff-file.is-copy{flex:0 1 auto;padding:3px 6px;margin-left:-6px;border:0;border-radius:6px;background:transparent;cursor:pointer}
+.zs-diff-file.is-copy:hover{background:var(--fl-hover)}
 .zs-diff-body{padding:4px 0 6px;font:var(--type-code);overflow:auto}
 /* color-words rows (Story 5.10): left number, right number, text. Numbers right-aligned in --ln columns (the largest number's digits),
    outside the selection; context faint numbers + muted text; removed / added the hue's number + text on its fill; changed both numbers

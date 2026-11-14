@@ -1850,6 +1850,120 @@ abstract class AppLocalizations {
   /// **'Viewed — diff folded away. Click to show it again.'**
   String get inspectorViewedFolded;
 
+  /// Story 10.39: accessible name of the Changes header's flat / tree switch.
+  ///
+  /// In en, this message translates to:
+  /// **'File list'**
+  String get inspectorFileList;
+
+  /// Story 10.39: tooltip of the file list switch's flat segment.
+  ///
+  /// In en, this message translates to:
+  /// **'Flat list'**
+  String get inspectorFileListFlat;
+
+  /// Story 10.39: tooltip of the file list switch's tree segment.
+  ///
+  /// In en, this message translates to:
+  /// **'Tree'**
+  String get inspectorFileListTree;
+
+  /// Story 10.39: tooltip of the diff header's path; a click copies the absolute path.
+  ///
+  /// In en, this message translates to:
+  /// **'Click to copy {path}'**
+  String inspectorCopyPath(String path);
+
+  /// Story 10.39: accessibility hint of the diff header's path button.
+  ///
+  /// In en, this message translates to:
+  /// **'Copies the absolute path'**
+  String get inspectorCopyPathHint;
+
+  /// Story 10.39: the bookmark chip's context menu row; copies the name as the chip shows it.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy name'**
+  String get inspectorCopyName;
+
+  /// Story 10.39: the Open row of a file or line menu while no editor is chosen; opens Settings › General.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose editor…'**
+  String get filesChooseEditor;
+
+  /// Story 10.39: the right column of the Choose editor… row: where the editor is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings › General › Editor'**
+  String get filesChooseEditorHint;
+
+  /// Story 10.39: the Open row of a file's context menu; editor is a product name or 'Editor'.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in {editor}'**
+  String filesOpenIn(String editor);
+
+  /// Story 10.39: the Open row of a diff line's context menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in {editor} at line {line}'**
+  String filesOpenInAtLine(String editor, int line);
+
+  /// Story 10.39: the name in 'Open in Editor' when the editor is a custom command.
+  ///
+  /// In en, this message translates to:
+  /// **'Editor'**
+  String get filesEditorCustom;
+
+  /// Story 10.39: context menu row of a file or folder; shows it selected in Finder.
+  ///
+  /// In en, this message translates to:
+  /// **'Reveal in Finder'**
+  String get filesReveal;
+
+  /// Story 10.39: context menu row; copies the absolute path.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy path'**
+  String get filesCopyPath;
+
+  /// Story 10.39: context menu row; copies the path inside the repository.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy relative path'**
+  String get filesCopyRelativePath;
+
+  /// Story 10.39: a diff line's context menu row; copies the absolute path, a colon and the line number.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy path:line'**
+  String get filesCopyPathLine;
+
+  /// Story 10.39: note ending a file's or line's menu on a change other than the working copy (@ is jj's symbol).
+  ///
+  /// In en, this message translates to:
+  /// **'Opens the file on disk — @\'s version; a later change may have moved its lines.'**
+  String get filesOnDiskNote;
+
+  /// Story 10.39: why Open and Reveal are disabled: the path does not exist on disk.
+  ///
+  /// In en, this message translates to:
+  /// **'{path} is not in the working copy.'**
+  String filesNotOnDisk(String path);
+
+  /// Story 10.39: error toast when an editor or Finder could not be started.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not start {program}: {reason}'**
+  String filesStartFailed(String program, String reason);
+
+  /// Story 10.39: the reason in 'Could not start …' when the program is not on PATH.
+  ///
+  /// In en, this message translates to:
+  /// **'not found on the login shell\'s PATH'**
+  String get filesStartNotFound;
+
   /// Accessible name of the diff's layout toggle.
   ///
   /// In en, this message translates to:
@@ -3721,6 +3835,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unchanged lines shown around each change.'**
   String get settingsDiffContextHint;
+
+  /// Story 10.39: Settings › General › Diffs row: the inspector's file list.
+  ///
+  /// In en, this message translates to:
+  /// **'File list'**
+  String get settingsDiffFileList;
+
+  /// Story 10.39: File list choice: one row per file.
+  ///
+  /// In en, this message translates to:
+  /// **'Flat'**
+  String get settingsDiffFileListFlat;
+
+  /// Story 10.39: File list choice: folders with their files.
+  ///
+  /// In en, this message translates to:
+  /// **'Tree'**
+  String get settingsDiffFileListTree;
+
+  /// Story 10.39: Settings › General group heading: the editor Open in Editor starts.
+  ///
+  /// In en, this message translates to:
+  /// **'Editor'**
+  String get settingsEditor;
+
+  /// Story 10.39: Settings › General › Editor row choosing the editor.
+  ///
+  /// In en, this message translates to:
+  /// **'Open files in'**
+  String get settingsEditorOpenIn;
+
+  /// Story 10.39: Open files in choice: no editor.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get settingsEditorNone;
+
+  /// Story 10.39: Open files in choice of a launcher: the product name and its command.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} — {program}'**
+  String settingsEditorLauncher(String app, String program);
+
+  /// Story 10.39: Open files in choice: a command line of the user's own.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom command'**
+  String get settingsEditorCustom;
+
+  /// Story 10.39: Settings › General › Editor row: the custom command line.
+  ///
+  /// In en, this message translates to:
+  /// **'Command'**
+  String get settingsEditorCommand;
+
+  /// Story 10.39: hint of the Command row; file and line are the literal markers the user types, passed in as text.
+  ///
+  /// In en, this message translates to:
+  /// **'{file} and {line} are replaced; IntelliJ: idea --line {line} {file}'**
+  String settingsEditorCommandHint(String file, String line);
+
+  /// Story 10.39: error of the Command row when the command lacks the file marker; file is that literal marker.
+  ///
+  /// In en, this message translates to:
+  /// **'The command must hold {file}.'**
+  String settingsEditorCommandNoFile(String file);
 
   /// Appended to a General jj row's hint when the open project's repo or workspace config sets the key.
   ///

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/rendering.dart' show RenderParagraph, RenderProxyBox, SemanticsProperties, TextSelection;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:material_ui/material_ui.dart' show SelectionArea;
 import 'package:zanshin_core/zanshin_core.dart';
@@ -12,6 +14,8 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import 'hatch_swatch.dart';
+import 'inspector_path_label.dart';
+import 'project_files.dart' show announceCopied;
 
 /// [hunk]'s range in git's notation, `@@ −l,n +r,m @@` with U+2212 for the minus — the color-words format has no
 /// header of its own, so Zanshin labels each hunk this way: a line number is the range's 1-based start, or its 0-based
@@ -21,6 +25,148 @@ String hunkHeader(Hunk hunk) {
   final ({int start, int end}) l = hunk.before;
   final ({int start, int end}) r = hunk.after;
   return '@@ −${line(l)},${l.end - l.start} +${line(r)},${r.end - r.start} @@'; // l10n-ignore: jj's hunk header
+}
+
+/// The widest the inspector's context menus grow (design inspector-study.css:202 `max-width:380px`).
+const double inspectorMenuMaxWidth = 380;
+
+/// The widest a context menu row's hint grows before it ends in an ellipsis: the label keeps its room.
+const double inspectorMenuHintMaxWidth = 190;
+
+/// The new-side line number of [hunk]'s line at [index] (Story 10.39): its right number; a line without one (removed)
+/// takes the next line's, the place where it stood; after the hunk's last such line the last one + 1, or the hunk's
+/// new start without any.
+int diffNewLineAt(Hunk hunk, int index) {
+  final List<HunkLine> lines = hunk.lines;
+  for (var i = index; i < lines.length; i++) {
+    if (lines[i].right case final int right) {
+      return right;
+    }
+  }
+  for (int i = index - 1; i >= 0; i--) {
+    if (lines[i].right case final int right) {
+      return right + 1;
+    }
+  }
+  return hunk.after.start + 1;
+}
+
+/// [diffNewLineAt] of [line], found in [hunk] by identity, else (a rebuilt cell) by its left number.
+int diffNewLineOf(Hunk hunk, HunkLine line) {
+  if (line.right case final int right) {
+    return right;
+  }
+  int index = hunk.lines.indexOf(line);
+  if (index < 0) {
+    index = hunk.lines.indexWhere((l) => l.left != null && l.left == line.left);
+  }
+  return diffNewLineAt(hunk, math.max(0, index));
+}
+
+/// The diff header's path (Story 10.39; design inspector-study.css:190-194): the name (500) then the folder dimmed,
+/// cut as a file row's. With [copyPath] a flat button — "Click to copy …" its tooltip — that copies it and shows
+/// "Copied" in `--add` for 1.3 s; without, plain text.
+class _DiffPath extends StatefulWidget {
+  const _DiffPath({required this.path, required this.copyPath});
+
+  final String path;
+  final String? copyPath;
+
+  @override
+  State<_DiffPath> createState() => _DiffPathState();
+}
+
+class _DiffPathState extends State<_DiffPath> {
+  Timer? _timer;
+  var _copied = false;
+
+  @override
+  void didUpdateWidget(_DiffPath oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.path != widget.path) {
+      _timer?.cancel();
+      _copied = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _copy(String text) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+    } on PlatformException {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    announceCopied(context);
+    _timer?.cancel();
+    setState(() => _copied = true);
+    _timer = Timer(const Duration(milliseconds: 1300), () {
+      if (mounted) {
+        setState(() => _copied = false);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ZsColors colors = ZsColors.of(context);
+    final ({String name, String head, String tail}) parts = inspectorPathParts(widget.path);
+    final TextStyle style = ZsType.id.copyWith(fontSize: ZsType.fsXs);
+    final Widget label = InspectorPathLabel(
+      name: parts.name,
+      head: parts.head,
+      tail: parts.tail,
+      nameStyle: style.copyWith(
+        color: colors.text,
+        fontWeight: FontWeight.w500,
+        fontVariations: const <FontVariation>[FontVariation.weight(500)],
+      ),
+      folderStyle: style.copyWith(color: colors.textFaint),
+    );
+    final String? copyPath = widget.copyPath;
+    if (copyPath == null) {
+      return label;
+    }
+    final AppLocalizations strings = context.l10n;
+    return ZsTooltip(
+      message: strings.inspectorCopyPath(copyPath),
+      child: ZsControlCore(
+        identifier: 'inspector-diff-path',
+        onActivate: () => unawaited(_copy(copyPath)),
+        cursor: SystemMouseCursors.click,
+        ring: ZsRingPlacement.inside,
+        ringRadius: 6,
+        semantics: SemanticsProperties(button: true, label: widget.path, hint: strings.inspectorCopyPathHint),
+        builder: (context, status) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: status.hovered ? colors.flHover : colors.flHover.withValues(alpha: 0),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 8,
+            children: <Widget>[
+              Flexible(child: label),
+              if (_copied)
+                Text(
+                  strings.inspectorIdCopied,
+                  key: const ValueKey<String>('inspector-diff-path-copied'),
+                  style: ZsType.secondary.copyWith(fontSize: 11, color: colors.add),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// The side-by-side rows of [lines] (Story 5.10), rebuilt from the color-words lines so each side shows whole lines:
@@ -519,6 +665,9 @@ class _Pinned extends StatelessWidget {
 /// options menu (Story 10.33): whitespace and context lines; with [ignored] the hunks show [whitespaceRows], and a file
 /// left with none reads "Only whitespace changed in this file."
 ///
+/// Story 10.39: the bar's path shows the name first and its folder dimmed; with [copyPath] a click copies the absolute
+/// path. With [lineMenu] a right-click on a line (either layout) opens its context menu in place of the selection's.
+///
 /// **Scrolling** (Story 10.38). The unified lines of the whole file scroll sideways as one unit, every line as wide as
 /// the widest; the number columns and the hunk headers stay in view ([DiffPin]). With a bounded height (the inspector)
 /// the body fills it and scrolls both ways in one [ZsScrollArea]; with an unbounded one (the Undo Timeline's operation
@@ -545,8 +694,18 @@ class InspectorDiffView extends StatelessWidget {
     this.ignored,
     this.contextLines,
     this.onContextLinesChanged,
+    this.copyPath,
+    this.lineMenu,
     super.key,
   });
+
+  /// [path] as an absolute path (Story 10.39): the header's path becomes a button that copies it; null shows plain
+  /// text (no workspace root).
+  final String? copyPath;
+
+  /// The context menu of a line (Story 10.39), built when it opens for the line's new-side number ([diffNewLineOf]);
+  /// null: no menu.
+  final List<ZsMenuEntry> Function(BuildContext context, int line)? lineMenu;
 
   /// The whitespace mode the menu checks (Story 10.33).
   final DiffWhitespaceSetting whitespace;
@@ -684,6 +843,7 @@ class InspectorDiffView extends StatelessWidget {
               onHunkToggled: onHunkToggled,
               partPicked: partPicked,
               onPartToggled: onPartToggled,
+              lineMenu: lineMenu,
             );
     } else {
       body = const SizedBox.shrink();
@@ -711,11 +871,9 @@ class InspectorDiffView extends StatelessWidget {
               spacing: 8,
               children: <Widget>[
                 Expanded(
-                  child: Text(
-                    path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ZsType.id.copyWith(fontSize: ZsType.fsXs, color: colors.text),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _DiffPath(path: path, copyPath: copyPath),
                   ),
                 ),
                 ZsSegmented<DiffLayoutSetting>(
@@ -944,6 +1102,7 @@ class _DiffBody extends StatefulWidget {
     required this.onHunkToggled,
     required this.partPicked,
     required this.onPartToggled,
+    required this.lineMenu,
     super.key,
   });
 
@@ -957,6 +1116,7 @@ class _DiffBody extends StatefulWidget {
   final ValueChanged<Hunk>? onHunkToggled;
   final bool Function(HunkKey part)? partPicked;
   final ValueChanged<HunkKey>? onPartToggled;
+  final List<ZsMenuEntry> Function(BuildContext context, int line)? lineMenu;
 
   @override
   State<_DiffBody> createState() => _DiffBodyState();
@@ -966,6 +1126,20 @@ class _DiffBodyState extends State<_DiffBody> {
   // Unbounded, the vertical controller stays unattached: the body scrolls only sideways, its host scrolls it down.
   final _vertical = ScrollController();
   final _horizontal = ScrollController();
+
+  // The line menu (Story 10.39): its rows are built for the line it opens on, when it opens.
+  final _menu = ZsMenuController();
+  var _menuEntries = const <ZsMenuEntry>[];
+
+  void _openLineMenu(int line, Offset global) {
+    final List<ZsMenuEntry> Function(BuildContext context, int line)? build = widget.lineMenu;
+    final box = context.findRenderObject() as RenderBox?;
+    if (build == null || box == null) {
+      return;
+    }
+    setState(() => _menuEntries = build(context, line));
+    _menu.open(position: box.globalToLocal(global));
+  }
 
   // The whitespace-only parts the user opened (Story 10.33); the key resets them with the file and the mode.
   final _opened = <HunkKey>{};
@@ -1062,6 +1236,7 @@ class _DiffBodyState extends State<_DiffBody> {
                   onToggle: () => widget.onHunkToggled?.call(hunks[i]),
                   partPicked: widget.partPicked,
                   onPartToggled: widget.onPartToggled,
+                  onLineMenu: widget.lineMenu == null ? null : _openLineMenu,
                 ),
               ),
           ],
@@ -1091,7 +1266,18 @@ class _DiffBodyState extends State<_DiffBody> {
         } else if (unified) {
           content = ZsScrollArea(controller: _vertical, horizontalController: _horizontal, child: content);
         }
-        return SelectionArea(child: content);
+        if (widget.lineMenu == null) {
+          return SelectionArea(child: content);
+        }
+        // The line menu replaces the selection's own right-click menu.
+        return ZsMenuAnchor(
+          controller: _menu,
+          entries: _menuEntries,
+          identifier: 'inspector-line-menu',
+          maxWidth: inspectorMenuMaxWidth,
+          cmdMaxWidth: inspectorMenuHintMaxWidth,
+          builder: (context, _) => SelectionArea(contextMenuBuilder: null, child: content),
+        );
       },
     );
   }
@@ -1132,8 +1318,24 @@ class InspectorDiffHunk extends StatelessWidget {
     this.onToggle,
     this.partPicked,
     this.onPartToggled,
+    this.onLineMenu,
     super.key,
   });
+
+  /// A right-click on a line (Story 10.39): its new-side number ([diffNewLineOf]) and the pointer; null: none.
+  final void Function(int line, Offset global)? onLineMenu;
+
+  /// [child] answering a right-click as [line]'s, when there is a line menu.
+  Widget _menuOn(HunkLine line, Widget child) {
+    final void Function(int line, Offset global)? onLineMenu = this.onLineMenu;
+    return onLineMenu == null
+        ? child
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onSecondaryTapUp: (details) => onLineMenu(diffNewLineOf(hunk, line), details.globalPosition),
+            child: child,
+          );
+  }
 
   /// The hunk.
   final Hunk hunk;
@@ -1505,20 +1707,23 @@ class InspectorDiffHunk extends StatelessWidget {
       final Widget text = _dimmed(_lineText(colors, line, look.ink, wordMarks: wordMarks), dim: whitespaceOnly);
       final int? own = entry.part;
       rows.add(
-        row(
-          fill: look.fill,
-          text: whitespaceOnly && own != null && line.right != null
-              ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[text, _tag(context, hunk.sections[own])],
-                )
-              : text,
-          edge: edge,
-          left: line.left,
-          right: line.right,
-          leftInk: look.left,
-          rightInk: look.right,
-          gutter: part != null && shown.add(part) ? _partBox(context, part) : null,
+        _menuOn(
+          line,
+          row(
+            fill: look.fill,
+            text: whitespaceOnly && own != null && line.right != null
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[text, _tag(context, hunk.sections[own])],
+                  )
+                : text,
+            edge: edge,
+            left: line.left,
+            right: line.right,
+            leftInk: look.left,
+            rightInk: look.right,
+            gutter: part != null && shown.add(part) ? _partBox(context, part) : null,
+          ),
         ),
       );
       // Blank number columns put the marker where the line's text starts.
@@ -1555,33 +1760,40 @@ class InspectorDiffHunk extends StatelessWidget {
         );
       }
       final _Look look = _look(colors, line.kind);
-      return Container(
-        constraints: const BoxConstraints(minHeight: 17),
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          color: look.fill,
-          border: Border(right: edge),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              spacing: 8,
-              children: <Widget>[
-                if (line.kind != HunkLineKind.conflictHeader)
-                  _number(left ? line.left : line.right, left ? look.left : look.right),
-                Expanded(
-                  child: _dimmed(
-                    _lineText(colors, line, look.ink, wordMarks: wordMarks, cell: true),
-                    dim:
-                        line.kind != HunkLineKind.context &&
-                        (left ? dimLeft : dimRight).contains(left ? line.left : line.right),
+      // A cell is rebuilt (pairSideBySide): its side's number finds its line in the hunk.
+      final HunkLine source = left
+          ? hunk.lines.firstWhere((l) => l.left != null && l.left == line.left, orElse: () => line)
+          : line;
+      return _menuOn(
+        source,
+        Container(
+          constraints: const BoxConstraints(minHeight: 17),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: look.fill,
+            border: Border(right: edge),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                spacing: 8,
+                children: <Widget>[
+                  if (line.kind != HunkLineKind.conflictHeader)
+                    _number(left ? line.left : line.right, left ? look.left : look.right),
+                  Expanded(
+                    child: _dimmed(
+                      _lineText(colors, line, look.ink, wordMarks: wordMarks, cell: true),
+                      dim:
+                          line.kind != HunkLineKind.context &&
+                          (left ? dimLeft : dimRight).contains(left ? line.left : line.right),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            if (!line.text.endsWith('\n')) _noNewline(colors, EdgeInsets.zero),
-          ],
+                ],
+              ),
+              if (!line.text.endsWith('\n')) _noNewline(colors, EdgeInsets.zero),
+            ],
+          ),
         ),
       );
     }

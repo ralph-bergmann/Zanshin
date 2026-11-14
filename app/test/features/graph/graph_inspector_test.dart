@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -19,13 +19,17 @@ import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/immutable_reasons.dart';
 import 'package:zanshin/src/features/graph/inspector_diff.dart'
-    show DiffWordMarks, IgnoredLines, InspectorDiffHunk, InspectorDiffView;
+    show DiffWordMarks, IgnoredLines, InspectorDiffHunk, InspectorDiffView, diffNewLineAt;
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
+import 'package:zanshin/src/features/graph/project_files.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
+import 'package:zanshin/src/features/shell/shell_toast.dart';
+import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../helpers/fake_window_actions.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
 import '../../helpers/settle_settings.dart';
@@ -427,6 +431,9 @@ Finder _id(String identifier) => find.byWidgetPredicate(
   },
 );
 
+/// The inspector's row of the file at [path] (Story 10.39: the row shows the name first, not the path).
+Finder _fileRow(String path) => find.byKey(ValueKey<String>('inspector-file $path'));
+
 Finder _button(String identifier) =>
     find.byWidgetPredicate((widget) => widget is ZsButton && widget.identifier == identifier);
 
@@ -498,6 +505,8 @@ void main() {
     ImmutableReasons? reasons,
     // The test font draws every glyph 1 em wide: a full command needs a wider inspector than the app's.
     double width = 460,
+    ProjectFiles? files,
+    AppWindowActions? windowActions,
   }) async {
     // The group's tearDown deletes the folder after postTest; the writes must be done before then.
     addTearDown(() => settleSettingsWrites(tester, settings));
@@ -508,6 +517,7 @@ void main() {
       details: details,
       viewed: ProjectViewedStore(settings, repo),
       settings: settings,
+      files: files,
     );
     await tester.pumpWidget(
       shellHost(
@@ -518,7 +528,12 @@ void main() {
             child: SizedBox(
               width: width,
               height: 840,
-              child: GraphInspector(model: inspector),
+              child: windowActions == null
+                  ? GraphInspector(model: inspector)
+                  : AppWindowActionsScope(
+                      actions: windowActions,
+                      child: GraphInspector(model: inspector),
+                    ),
             ),
           ),
         ),
@@ -1128,18 +1143,35 @@ void main() {
     expect(find.text('remote'), findsOneWidget);
     expect(find.text('Changes'), findsOneWidget);
     expect(find.textContaining('2 files', findRichText: true), findsOneWidget);
-    expect(find.text('src/old.dart → src/new.dart'), findsOneWidget);
-    // The row comes before the diff bar's path.
-    final ZsColors colors = ZsColors.of(tester.element(find.text('src/a.dart').first));
-    Color? ink(String path) => tester.widget<Text>(find.text(path).first).style!.color;
-    expect(ink('src/old.dart → src/new.dart'), colors.textMuted);
-    await tester.tap(find.text('src/a.dart').first);
+    // Story 10.39: a rename shows its new name first, its folder after it, `old → new` as the tooltip.
+    expect(find.descendant(of: _fileRow('src/new.dart'), matching: find.text('new.dart')), findsOneWidget);
+    expect(find.descendant(of: _fileRow('src/new.dart'), matching: find.text('src/')), findsOneWidget);
+    expect(
+      tester
+          .widget<ZsTooltip>(find.descendant(of: _fileRow('src/new.dart'), matching: find.byType(ZsTooltip)).first)
+          .message,
+      'src/old.dart → src/new.dart',
+    );
+    final ZsColors colors = ZsColors.of(tester.element(_fileRow('src/a.dart')));
+    expect(
+      tester.widget<Text>(find.descendant(of: _fileRow('src/new.dart'), matching: find.text('new.dart'))).style!.color,
+      colors.text,
+      reason: 'the name in --text',
+    );
+    expect(
+      tester.widget<Text>(find.descendant(of: _fileRow('src/new.dart'), matching: find.text('src/'))).style!.color,
+      colors.textFaint,
+      reason: 'the folder in --text-faint',
+    );
+    bool current(String path) => tester.widget<InspectorFileRow>(_fileRow(path)).focused;
+    expect(current('src/new.dart'), isFalse);
+    await tester.tap(_fileRow('src/a.dart'));
     await tester.pump();
-    expect(ink('src/a.dart'), colors.text, reason: 'the clicked row is focused');
+    expect(current('src/a.dart'), isTrue, reason: 'the clicked row is focused');
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
     await tester.pump();
-    expect(ink('src/old.dart → src/new.dart'), colors.text, reason: 'the current row');
+    expect(current('src/new.dart'), isTrue, reason: 'the current row');
     expect(inspector.focusedPath, 'src/new.dart', reason: '↓ shows the next file at once (Finder)');
     expect(details.focusReads.last.$2, <String>['src/new.dart']);
     final int reads = details.focusReads.length;
@@ -1149,7 +1181,7 @@ void main() {
     expect(details.focusReads.length, reads, reason: 'no harm: nothing new to read');
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump();
-    expect(ink('src/a.dart'), colors.text);
+    expect(current('src/a.dart'), isTrue);
     expect(inspector.focusedPath, 'src/a.dart');
     await unmount(tester);
   });
@@ -1535,7 +1567,7 @@ void main() {
     testWidgets('a click on another file reads only that file', (tester) async {
       await pump(tester);
       await settle(tester);
-      await tester.tap(find.text('src/old.dart → src/new.dart'));
+      await tester.tap(_fileRow('src/new.dart'));
       await settle(tester);
       expect(details.focusReads.map((d) => d.$2), <List<String>>[
         <String>['src/a.dart'],
@@ -1591,7 +1623,7 @@ void main() {
     ) async {
       await pump(tester);
       await settle(tester);
-      await tester.tap(find.text('src/old.dart → src/new.dart'));
+      await tester.tap(_fileRow('src/new.dart'));
       await settle(tester);
       inspector.setViewed('src/new.dart', true);
       await reload(tester);
@@ -1658,7 +1690,7 @@ void main() {
     testWidgets('a reload without the focused path focuses the first file', (tester) async {
       await pump(tester);
       await settle(tester);
-      await tester.tap(find.text('src/old.dart → src/new.dart'));
+      await tester.tap(_fileRow('src/new.dart'));
       await settle(tester);
       details.files[_mutable] = const <FileChange>[FileChange(path: 'src/a.dart', kind: FileChangeKind.modified)];
       await reload(tester);
@@ -2001,7 +2033,7 @@ void main() {
       details.holdDiff = true;
       await pump(tester);
       await settle(tester);
-      await tester.tap(find.text('src/old.dart → src/new.dart'));
+      await tester.tap(_fileRow('src/new.dart'));
       await settle(tester);
       expect(details.heldDiffs.map((h) => h.$2.single), <String>['src/a.dart', 'src/new.dart']);
       details.heldDiffs[1].$3.complete(details.diffOf(_mutable, paths: <String>['src/new.dart']));
@@ -2024,7 +2056,7 @@ void main() {
       double opacityOf(String text) =>
           tester.widget<Opacity>(find.ancestor(of: find.text(text), matching: find.byType(Opacity)).first).opacity;
       expect(opacityOf('old a'), 1);
-      await tester.tap(find.text('src/old.dart → src/new.dart'));
+      await tester.tap(_fileRow('src/new.dart'));
       await settle(tester);
       expect(inspector.focusedPath, 'src/new.dart');
       expect(find.text('old a'), findsOneWidget, reason: 'the previous diff stays while the new one loads');
@@ -2626,10 +2658,10 @@ void main() {
     }
 
     Future<void> focusFile(WidgetTester tester, String path) async {
-      // The row's text (the diff bar names the focused path too); the list scrolls on its own.
-      await tester.ensureVisible(find.text(path).first);
+      // The row (the diff bar names the focused path too); the list scrolls on its own.
+      await tester.ensureVisible(_fileRow(path));
       await tester.pump();
-      await tester.tap(find.text(path).first);
+      await tester.tap(_fileRow(path));
       await settle(tester);
     }
 
@@ -2797,7 +2829,7 @@ void main() {
       ];
       await pump(tester, select: _at);
       await settle(tester);
-      await focusFile(tester, 'old.txt → new.txt');
+      await focusFile(tester, 'new.txt');
       expect(inspector.focusedPath, 'new.txt');
       expect(inspector.hunkable('new.txt'), isFalse);
       expect(checkbox('inspector-mode-check'), findsNothing);
@@ -3284,12 +3316,11 @@ void main() {
     ) async {
       await pump(tester);
       await settle(tester);
-      Element rowOf(String path) =>
-          tester.element(find.ancestor(of: find.text(path).first, matching: find.byType(InspectorFileRow)));
-      await tester.tap(find.text('src/a.dart').first);
+      Element rowOf(String path) => tester.element(_fileRow(path));
+      await tester.tap(_fileRow('src/a.dart'));
       await settle(tester);
       final Element a = rowOf('src/a.dart');
-      const renamed = 'src/old.dart → src/new.dart';
+      const renamed = 'src/new.dart';
       final Element next = rowOf(renamed);
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await settle(tester);
@@ -3453,7 +3484,7 @@ void main() {
     ) async {
       await pump(tester);
       await settle(tester);
-      await tester.tap(find.text('src/a.dart').first);
+      await tester.tap(_fileRow('src/a.dart'));
       await settle(tester);
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await settle(tester);
@@ -3703,6 +3734,421 @@ void main() {
       ).viewedFiles,
       <String>['k1', 'k2'],
     );
+  });
+
+  group('Story 10.39: name-first rows, tree or flat, copy, Reveal, Open in Editor', () {
+    late Directory work;
+    late String root;
+    late String bin;
+    late ShellToasts toasts;
+    // Each start as the program followed by its arguments.
+    late List<List<String>> started;
+    late List<String> copied;
+
+    setUp(() {
+      work = Directory.systemTemp.createTempSync('zanshin_files');
+      root = '${work.path}/repo';
+      bin = '${work.path}/bin';
+      Directory('$root/src').createSync(recursive: true);
+      File('$root/src/a.dart').writeAsStringSync('a');
+      Directory(bin).createSync();
+      final idea = File('$bin/idea')..writeAsStringSync('#!/bin/sh\nexit 1\n');
+      Process.runSync('chmod', <String>['+x', idea.path]);
+      toasts = ShellToasts();
+      started = <List<String>>[];
+      copied = <String>[];
+    });
+
+    tearDown(() {
+      toasts.dispose();
+      work.deleteSync(recursive: true);
+    });
+
+    ProjectFiles files() => ProjectFiles(
+      root: root,
+      settings: settings,
+      toasts: toasts,
+      environment: () => <String, String>{'PATH': bin},
+      start: (executable, arguments, environment) async => started.add(<String>[executable, ...arguments]),
+    );
+
+    /// Records clipboard writes in [copied] until the test ends.
+    void recordClipboard(WidgetTester tester) {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map<Object?, Object?>)['text']! as String);
+        }
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    }
+
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    /// Right-clicks [finder] and lets the menu come in.
+    Future<void> rightClick(WidgetTester tester, Finder finder) async {
+      await tester.tap(finder, buttons: kSecondaryButton);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    /// Chooses the open menu's row labelled [label]; it runs after the row's blink.
+    Future<void> choose(WidgetTester tester, String label) async {
+      await tester.tap(find.text(label));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    ZsMenuItem item(WidgetTester tester, String identifier) => tester
+        .widgetList<ZsMenuAnchor>(find.byType(ZsMenuAnchor))
+        .expand((anchor) => anchor.entries)
+        .whereType<ZsMenuItem>()
+        .firstWhere((item) => item.identifier == identifier);
+
+    testWidgets('a long path at 460 points keeps the whole name; the folder is cut in its head', (tester) async {
+      const long = 'packages/logic_designer/lib/src/presentation/widgets/automation_overview_page.dart';
+      details.files[_left] = const <FileChange>[FileChange(path: long, kind: FileChangeKind.modified)];
+      await pump(tester, select: _left);
+      await settle(tester);
+      RenderParagraph paragraph(String text) =>
+          tester.renderObject<RenderParagraph>(find.descendant(of: _fileRow(long), matching: find.text(text)));
+      final RenderParagraph name = paragraph('automation_overview_page.dart');
+      expect(name.size.width, name.getMaxIntrinsicWidth(double.infinity), reason: 'the name whole');
+      expect(name.didExceedMaxLines, isFalse);
+      final RenderParagraph head = paragraph('packages/logic_designer/lib/src/presentation/');
+      expect(head.size.width, lessThan(head.getMaxIntrinsicWidth(double.infinity)), reason: 'the head gives way');
+      await unmount(tester);
+    });
+
+    testWidgets('the Changes header switches to the tree; after a restart the list is a tree of the same files', (
+      tester,
+    ) async {
+      details.files[_mutable] = const <FileChange>[
+        FileChange(path: 'src/a.dart', kind: FileChangeKind.modified),
+        FileChange(path: 'src/new.dart', kind: FileChangeKind.renamed, fromPath: 'src/old.dart'),
+        FileChange(path: 'top.txt', kind: FileChangeKind.added),
+      ];
+      await pump(tester);
+      await settle(tester);
+      expect(find.byKey(const ValueKey<String>('inspector-folder src')), findsNothing, reason: 'flat by default');
+      await tester.tap(find.bySemanticsLabel('Tree'));
+      await settle(tester);
+      expect(settings.value.general.diffFileList, DiffFileListSetting.tree);
+      expect(find.byKey(const ValueKey<String>('inspector-folder src')), findsOneWidget);
+      await unmount(tester);
+      await settleSettingsWrites(tester, settings);
+
+      // A new store on the same file: the app's restart.
+      settings = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
+      await pump(tester);
+      await settle(tester);
+      expect(inspector.fileList, DiffFileListSetting.tree);
+      expect(find.byKey(const ValueKey<String>('inspector-folder src')), findsOneWidget);
+      for (final path in <String>['src/a.dart', 'src/new.dart', 'top.txt']) {
+        expect(_fileRow(path), findsOneWidget, reason: path);
+        expect(tester.widget<InspectorFileRow>(_fileRow(path)).tree, isTrue);
+      }
+      await unmount(tester);
+    });
+
+    testWidgets('tree keys: ← goes to the folder, ← again collapses, → expands; a folder picks its files', (
+      tester,
+    ) async {
+      unawaited(settings.update((s) => s.copyWith.general(diffFileList: DiffFileListSetting.tree)));
+      details.files[_mutable] = const <FileChange>[
+        FileChange(path: 'src/a.dart', kind: FileChangeKind.modified),
+        FileChange(path: 'src/b.dart', kind: FileChangeKind.modified),
+        FileChange(path: 'src/c.dart', kind: FileChangeKind.modified),
+      ];
+      // Viewed needs each file's summary fingerprint.
+      details.fileDiffs[_mutable] = <FileDiff>[
+        for (final String name in <String>['a', 'b', 'c']) fileDiff('src/$name.dart', added: 1, fingerprint: 'f$name'),
+      ];
+      await pump(tester);
+      await settle(tester);
+      final Finder folder = find.byKey(const ValueKey<String>('inspector-folder src'));
+      expect(tester.widget<InspectorFolderRow>(folder).added, 3, reason: "the files' summed ±");
+      InspectorFolderRow row() => tester.widget<InspectorFolderRow>(folder);
+      expect(row().folder.files, hasLength(3));
+      // Mixed with one of three picked; a click picks all, the next none.
+      inspector.togglePick('src/b.dart');
+      await tester.pump();
+      expect(row().picked, isNull);
+      await tester.tap(find.descendant(of: folder, matching: find.byType(ZsCheckbox)));
+      await tester.pump();
+      expect(
+        <bool?>[
+          for (final p in <String>['src/a.dart', 'src/b.dart', 'src/c.dart']) inspector.fileState(p),
+        ],
+        <bool?>[
+          true,
+          true,
+          true,
+        ],
+      );
+      await tester.tap(find.descendant(of: folder, matching: find.byType(ZsCheckbox)));
+      await tester.pump();
+      expect(row().picked, isFalse);
+
+      await tester.tap(_fileRow('src/b.dart'));
+      await settle(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await settle(tester);
+      expect(row().current, isTrue, reason: '← on a file: its folder is current');
+      expect(inspector.focusedPath, 'src/b.dart', reason: 'a folder only becomes current');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await settle(tester);
+      expect(inspector.collapsed, <String>{'src'});
+      expect(_fileRow('src/a.dart'), findsNothing);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await settle(tester);
+      expect(inspector.collapsed, isEmpty);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await settle(tester);
+      expect(inspector.focusedPath, 'src/a.dart', reason: '→ on an open folder: its first child');
+      // Space on the folder picks all of it; V marks all Viewed; ↩ toggles it.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await settle(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(inspector.picksState(<String>['src/a.dart', 'src/b.dart', 'src/c.dart']), isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+      await tester.pump();
+      expect(inspector.viewedCount, 3);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await settle(tester);
+      expect(inspector.collapsed, <String>{'src'});
+      await unmount(tester);
+    });
+
+    testWidgets('⌘C and the row menu copy paths; Open in IntelliJ IDEA and Reveal run on the absolute path', (
+      tester,
+    ) async {
+      recordClipboard(tester);
+      unawaited(settings.update((s) => s.copyWith.general(editor: 'idea')));
+      await pump(tester, files: files());
+      await settle(tester);
+      await tester.tap(_fileRow('src/a.dart'));
+      await settle(tester);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+      expect(copied, <String>['$root/src/a.dart']);
+
+      await rightClick(tester, _fileRow('src/a.dart'));
+      expect(item(tester, 'files-open').label, 'Open in IntelliJ IDEA');
+      expect(item(tester, 'files-open').cmd, 'idea');
+      expect(item(tester, 'files-copy-path').shortcut, '⌘C');
+      expect(
+        find.text("Opens the file on disk — @'s version; a later change may have moved its lines."),
+        findsOneWidget,
+      );
+      await choose(tester, 'Copy relative path');
+      expect(copied.last, 'src/a.dart');
+      await rightClick(tester, _fileRow('src/a.dart'));
+      await choose(tester, 'Copy path');
+      expect(copied.last, '$root/src/a.dart');
+      await rightClick(tester, _fileRow('src/a.dart'));
+      await choose(tester, 'Open in IntelliJ IDEA');
+      expect(started.last, <String>['$bin/idea', '$root/src/a.dart']);
+      await rightClick(tester, _fileRow('src/a.dart'));
+      await choose(tester, 'Reveal in Finder');
+      expect(started.last, <String>['/usr/bin/open', '-R', '$root/src/a.dart']);
+
+      // The renamed file is not on disk: Open and Reveal are disabled with the reason.
+      await rightClick(tester, _fileRow('src/new.dart'));
+      expect(item(tester, 'files-open').enabled, isFalse);
+      expect(item(tester, 'files-reveal').tooltip, 'src/new.dart is not in the working copy.');
+      expect(inspector.focusedPath, 'src/new.dart', reason: 'a right-click makes the row current');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await settle(tester);
+      await unmount(tester);
+    });
+
+    testWidgets('without an editor the first row reads Choose editor…, disabled outside a window; @ has no note', (
+      tester,
+    ) async {
+      details.files[_at] = const <FileChange>[FileChange(path: 'src/a.dart', kind: FileChangeKind.modified)];
+      await pump(tester, select: _at, files: files());
+      await settle(tester);
+      await rightClick(tester, _fileRow('src/a.dart'));
+      final ZsMenuItem open = item(tester, 'files-open');
+      expect((open.label, open.cmd, open.enabled), ('Choose editor…', 'Settings › General › Editor', false));
+      expect(find.textContaining("@'s version"), findsNothing);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await settle(tester);
+      await unmount(tester);
+    });
+
+    testWidgets('a diff line opens at its new line; a removed line copies the next new line', (tester) async {
+      recordClipboard(tester);
+      unawaited(settings.update((s) => s.copyWith.general(editor: 'idea')));
+      details.fileDiffs[_mutable] = <FileDiff>[
+        fileDiff(
+          'src/a.dart',
+          removed: 1,
+          fingerprint: 'fa',
+          hunks: <Hunk>[
+            hunk(
+              before: (start: 10, end: 14),
+              after: (start: 10, end: 13),
+              lines: const <HunkLine>[
+                HunkLine(kind: HunkLineKind.context, text: 'eleven\n', left: 11, right: 11),
+                HunkLine(kind: HunkLineKind.context, text: 'twelve\n', left: 12, right: 12),
+                HunkLine(kind: HunkLineKind.removed, text: 'gone\n', left: 13),
+                HunkLine(kind: HunkLineKind.context, text: 'next\n', left: 14, right: 13),
+              ],
+            ),
+          ],
+        ),
+      ];
+      await pump(tester, files: files());
+      await settle(tester);
+      await rightClick(tester, find.textContaining('twelve', findRichText: true));
+      await choose(tester, 'Open in IntelliJ IDEA at line 12');
+      expect(started.last, <String>['$bin/idea', '--line', '12', '$root/src/a.dart']);
+      await rightClick(tester, find.textContaining('gone', findRichText: true));
+      expect(find.textContaining("@'s version"), findsOneWidget, reason: 'not @');
+      await choose(tester, 'Copy path:line');
+      expect(copied.last, '$root/src/a.dart:13');
+      expect(diffNewLineAt(details.fileDiffs[_mutable]!.single.hunks.single, 2), 13);
+      await unmount(tester);
+    });
+
+    testWidgets('side by side: a removed left cell copies the next new line, a right cell its own', (tester) async {
+      recordClipboard(tester);
+      unawaited(settings.update((s) => s.copyWith.general(diffLayout: DiffLayoutSetting.sideBySide)));
+      details.fileDiffs[_mutable] = <FileDiff>[
+        fileDiff(
+          'src/a.dart',
+          removed: 1,
+          fingerprint: 'fa',
+          hunks: <Hunk>[
+            hunk(
+              before: (start: 10, end: 14),
+              after: (start: 10, end: 13),
+              // Side by side rebuilds each cell from the line's runs.
+              lines: const <HunkLine>[
+                HunkLine(
+                  kind: HunkLineKind.context,
+                  text: 'eleven\n',
+                  segments: <Segment>[Segment(kind: SegmentKind.equal, text: 'eleven\n')],
+                  left: 11,
+                  right: 11,
+                ),
+                HunkLine(
+                  kind: HunkLineKind.context,
+                  text: 'twelve\n',
+                  segments: <Segment>[Segment(kind: SegmentKind.equal, text: 'twelve\n')],
+                  left: 12,
+                  right: 12,
+                ),
+                HunkLine(
+                  kind: HunkLineKind.removed,
+                  text: 'gone\n',
+                  segments: <Segment>[Segment(kind: SegmentKind.removed, text: 'gone\n')],
+                  left: 13,
+                ),
+                HunkLine(
+                  kind: HunkLineKind.context,
+                  text: 'next\n',
+                  segments: <Segment>[Segment(kind: SegmentKind.equal, text: 'next\n')],
+                  left: 14,
+                  right: 13,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ];
+      await pump(tester, files: files());
+      await settle(tester);
+      expect(find.byKey(const ValueKey<String>('inspector-diff-split')), findsOneWidget);
+      await rightClick(tester, find.textContaining('gone', findRichText: true));
+      await choose(tester, 'Copy path:line');
+      expect(copied.last, '$root/src/a.dart:13', reason: 'where the removed line stood');
+      // A context line shows in both cells; the right one is the second.
+      await rightClick(tester, find.textContaining('twelve', findRichText: true).last);
+      await choose(tester, 'Copy path:line');
+      expect(copied.last, '$root/src/a.dart:12');
+      await unmount(tester);
+    });
+
+    testWidgets('a folder menu has no Open row and no note; Reveal and ⌘C take the folder', (tester) async {
+      recordClipboard(tester);
+      unawaited(settings.update((s) => s.copyWith.general(diffFileList: DiffFileListSetting.tree, editor: 'idea')));
+      details.files[_mutable] = const <FileChange>[FileChange(path: 'src/a.dart', kind: FileChangeKind.modified)];
+      await pump(tester, files: files());
+      await settle(tester);
+      final Finder folder = find.byKey(const ValueKey<String>('inspector-folder src'));
+      await rightClick(tester, folder);
+      expect(find.text('Open in IntelliJ IDEA'), findsNothing);
+      expect(find.textContaining("@'s version"), findsNothing, reason: 'the note is a file\'s');
+      await choose(tester, 'Reveal in Finder');
+      expect(started.last, <String>['/usr/bin/open', '-R', '$root/src']);
+      expect(tester.widget<InspectorFolderRow>(folder).current, isTrue, reason: 'the right-click made it current');
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+      expect(copied.last, '$root/src');
+      await unmount(tester);
+    });
+
+    testWidgets('Choose editor… opens Settings on the General tab', (tester) async {
+      final windows = FakeWindowActions();
+      await pump(tester, files: files(), windowActions: windows);
+      await settle(tester);
+      await rightClick(tester, _fileRow('src/a.dart'));
+      expect(item(tester, 'files-open').enabled, isTrue);
+      await choose(tester, 'Choose editor…');
+      expect(windows.settings, <SettingsTarget?>[SettingsTarget.general]);
+      await unmount(tester);
+    });
+
+    testWidgets('a click on the diff header copies the absolute path and shows Copied', (tester) async {
+      recordClipboard(tester);
+      await pump(tester, files: files());
+      await settle(tester);
+      final Finder path = _id('inspector-diff-path');
+      expect(
+        tester.widget<ZsTooltip>(find.ancestor(of: path, matching: find.byType(ZsTooltip)).first).message,
+        'Click to copy $root/src/a.dart',
+      );
+      await tester.tap(path);
+      await tester.pump();
+      expect(copied, <String>['$root/src/a.dart']);
+      expect(find.byKey(const ValueKey<String>('inspector-diff-path-copied')), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1400));
+      expect(find.byKey(const ValueKey<String>('inspector-diff-path-copied')), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('without files the header path is plain text and rows have no menu', (tester) async {
+      await pump(tester);
+      await settle(tester);
+      expect(_id('inspector-diff-path'), findsNothing);
+      await rightClick(tester, _fileRow('src/a.dart'));
+      expect(find.text('Copy path'), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('a bookmark chip copies its name as shown', (tester) async {
+      recordClipboard(tester);
+      await pump(tester);
+      await settle(tester);
+      await rightClick(tester, find.text('main@origin'));
+      await choose(tester, 'Copy name');
+      expect(copied, <String>['main@origin']);
+      await unmount(tester);
+    });
   });
 
   test('draftFrom splits the first line from the rest after the blank line', () {

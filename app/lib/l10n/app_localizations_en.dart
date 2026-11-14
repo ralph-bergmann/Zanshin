@@ -1201,6 +1201,73 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorViewedFolded => 'Viewed — diff folded away. Click to show it again.';
 
   @override
+  String get inspectorFileList => 'File list';
+
+  @override
+  String get inspectorFileListFlat => 'Flat list';
+
+  @override
+  String get inspectorFileListTree => 'Tree';
+
+  @override
+  String inspectorCopyPath(String path) {
+    return 'Click to copy $path';
+  }
+
+  @override
+  String get inspectorCopyPathHint => 'Copies the absolute path';
+
+  @override
+  String get inspectorCopyName => 'Copy name';
+
+  @override
+  String get filesChooseEditor => 'Choose editor…';
+
+  @override
+  String get filesChooseEditorHint => 'Settings › General › Editor';
+
+  @override
+  String filesOpenIn(String editor) {
+    return 'Open in $editor';
+  }
+
+  @override
+  String filesOpenInAtLine(String editor, int line) {
+    return 'Open in $editor at line $line';
+  }
+
+  @override
+  String get filesEditorCustom => 'Editor';
+
+  @override
+  String get filesReveal => 'Reveal in Finder';
+
+  @override
+  String get filesCopyPath => 'Copy path';
+
+  @override
+  String get filesCopyRelativePath => 'Copy relative path';
+
+  @override
+  String get filesCopyPathLine => 'Copy path:line';
+
+  @override
+  String get filesOnDiskNote => 'Opens the file on disk — @\'s version; a later change may have moved its lines.';
+
+  @override
+  String filesNotOnDisk(String path) {
+    return '$path is not in the working copy.';
+  }
+
+  @override
+  String filesStartFailed(String program, String reason) {
+    return 'Could not start $program: $reason';
+  }
+
+  @override
+  String get filesStartNotFound => 'not found on the login shell\'s PATH';
+
+  @override
   String get inspectorDiffLayout => 'Diff layout';
 
   @override
@@ -2375,6 +2442,45 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDiffContextHint => 'Unchanged lines shown around each change.';
+
+  @override
+  String get settingsDiffFileList => 'File list';
+
+  @override
+  String get settingsDiffFileListFlat => 'Flat';
+
+  @override
+  String get settingsDiffFileListTree => 'Tree';
+
+  @override
+  String get settingsEditor => 'Editor';
+
+  @override
+  String get settingsEditorOpenIn => 'Open files in';
+
+  @override
+  String get settingsEditorNone => 'None';
+
+  @override
+  String settingsEditorLauncher(String app, String program) {
+    return '$app — $program';
+  }
+
+  @override
+  String get settingsEditorCustom => 'Custom command';
+
+  @override
+  String get settingsEditorCommand => 'Command';
+
+  @override
+  String settingsEditorCommandHint(String file, String line) {
+    return '$file and $line are replaced; IntelliJ: idea --line $line $file';
+  }
+
+  @override
+  String settingsEditorCommandNoFile(String file) {
+    return 'The command must hold $file.';
+  }
 
   @override
   String get settingsProjectSetsOwn => 'The open project sets its own value.';
