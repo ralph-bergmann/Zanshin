@@ -68,7 +68,7 @@
   --proj-clean:#9ca3af;--proj-dirty:#facc15;--proj-ahead:#4ade80;--proj-behind:#60a5fa;--proj-diverged:#fb923c;--proj-conflict:#f87171;--proj-missing:#71717a;--proj-syncing:#a78bfa;--proj-stale:#22d3ee;/* oklch(79.7% .134 211.5) — working copy is stale: ΔE ≥ .11 to every status, data colour and accent (dirty .30) */
 
   /* ---- semantic ---- */
-  --add:#4ade80;--add-bg:rgba(74,222,128,.13);--rem:#f87171;--rem-bg:rgba(248,113,113,.13);--add-word-bg:rgba(74,222,128,.38);--rem-word-bg:rgba(248,113,113,.24);/* changed words: a stronger tint, glyphs in --text; removed darker, added lighter (ΔL* 15 on a changed line) so they differ without hue — on --code-bg over --fl-bg-solid: 5.9:1 (add) · 10.2:1 (rem); plus the line fill: 4.8:1 · 8.3:1 */
+  --add:#4ade80;--add-bg:rgba(74,222,128,.13);--rem:#f87171;--rem-bg:rgba(248,113,113,.13);--add-word-bg:rgba(74,222,128,.38);--rem-word-bg:rgba(220,38,38,.44);/* changed words: a stronger tint, glyphs in --text; removed darker, added lighter (ΔL* 13.1 on a changed line) so they differ without hue; the removed fill is a deeper red than --rem, or it hardly shows on the dark well — on --code-bg over --fl-bg-solid: 5.9:1 (add) · 9.5:1 (rem); plus the line fill: 4.8:1 · 8.1:1 */
   --add-bg-hi:rgba(74,222,128,.18);--add-edge:rgba(74,222,128,.24);--add-ring:rgba(74,222,128,.35);/* viewed: folded-diff hover · diff border · chip border */
   --conflict:#fbbf24;--warn:#f7c243;/* oklch(84.0% .150 85.2) */--warn-bg:rgba(234,181,50,.16);/* #eab532 oklch(80.1% .150 84.9) / .16 */
 

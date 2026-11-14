@@ -421,7 +421,7 @@ class ZsColors extends ThemeExtension<ZsColors> {
     addEdge: Color.fromRGBO(74, 222, 128, .24),
     addRing: Color.fromRGBO(74, 222, 128, .35),
     addWordBg: Color.fromRGBO(74, 222, 128, .38),
-    remWordBg: Color.fromRGBO(248, 113, 113, .24),
+    remWordBg: Color.fromRGBO(220, 38, 38, .44),
     conflict: Color(0xFFFBBF24),
     warn: Color(0xFFF7C243),
     warnBg: Color.fromRGBO(234, 181, 50, .16),
