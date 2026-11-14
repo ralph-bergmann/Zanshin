@@ -3008,10 +3008,10 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 
 - **In the unified layout the line numbers scroll away with the text when a hunk is scrolled sideways.** Low.
   - `app/lib/src/features/graph/inspector_diff.dart` `_unified`: the number cells sit inside the horizontal `ZsScrollArea`. On a changed line the coloured numbers are the only line-level cue (no fill), so it is lost while scrolled. Seen in the catalogue ("Floating shell / Controls") and in the real app on a throwaway repo; the `+` / `−` column behaved the same before Story 5.10.
-  - **Follow-up:** a decision for Ralph: keep it, or pin the two number columns while the text scrolls. Part of the inspector rebuild below. Covered by Story 10.38 (decided in its design round).
+  - **Follow-up:** a decision for Ralph: keep it, or pin the two number columns while the text scrolls. Part of the inspector rebuild below. Covered by Story 10.38 — decided in its design round on 2026-11-14 (Ralph approved the mock-up, `design/DESIGN-SYSTEM-SYNC.md` #25): pin the number columns.
 - **Ralph plans a larger rebuild of the inspector, later (said 2026-11-12): it is too narrow, and a commit with many files means scrolling up and down between the file list and the diff.** Medium.
   - The resize edge (Story 10.8) stops at 720 points (`ZsMetrics.inspectorWMax`, DS `tokens/spacing.css` `--inspector-w-max`; the graph keeps `graphMinW`); the file list sits above the diff (click-dummy, DS `ui_kits/desktop/inspector.jsx`). The DS Content card (`components/content/content.card.html`, a component showcase) shows the file list left of the diff; Ralph found that arrangement interesting.
-  - **Follow-up:** no story yet; Ralph starts it. Begin with a design round (wider limit, file list beside the diff when there is room, pinned number columns), then the story. Covered by Story 10.38 and 10.39 (added 2026-11-14; a design round comes first).
+  - **Follow-up:** no story yet; Ralph starts it. Begin with a design round (wider limit, file list beside the diff when there is room, pinned number columns), then the story. Covered by Story 10.38 and 10.39 (added 2026-11-14; design round done the same day, `design/DESIGN-SYSTEM-SYNC.md` #25).
 
 ## Surfaced in the fix-up run after the story loop 5.11 (bmad-build-auto, 2026-11-13)
 

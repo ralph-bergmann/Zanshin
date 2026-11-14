@@ -12754,7 +12754,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Depends on.** 10.8, 10.25, 10.26, 10.30, 11.23 (all done).
 
-**Design status.** DECIDED (Ralph, 2026-11-14) for items 1, 4 and 5 and for having items 2 and 3. The jump button's glyph and place are Claude's proposal; a DS change goes through the `design-artifacts` skill.
+**Design status.** DECIDED (Ralph, 2026-11-14) for items 1, 4 and 5 and for having items 2 and 3. The jump button's glyph and place follow the mock-up Ralph approved on 2026-11-14 (`design/Inspector Study.html`, `design/DESIGN-SYSTEM-SYNC.md` #25); a DS change goes through the `design-artifacts` skill.
 
 **Witnesses.**
 - Both repros of item 1 end with the title as a label; a typed, changed draft still comes back open after a selection change (the existing test "a draft survives a selection change and comes back open" stays green).
@@ -12785,7 +12785,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Depends on.** 9.3, 10.15, 10.25 (all done).
 
-**Design status.** DECIDED (Ralph, 2026-11-14): a menu in place of the Squash button, absorb in the card and Change menus, not in drag and drop. The menu button's look and the row label are Claude's proposal.
+**Design status.** DECIDED (Ralph, 2026-11-14): a menu in place of the Squash button, absorb in the card and Change menus, not in drag and drop. The menu button ("Squash" + chevron) and its rows follow the mock-up Ralph approved on 2026-11-14 (`design/Inspector Study.html`, `design/DESIGN-SYSTEM-SYNC.md` #25); the new DS `MenuButton` is this story's.
 
 **Witnesses.**
 - A change whose hunks belong to two ancestors: Absorb moves each hunk to its ancestor; `jj op show -p` equals the CLI's for the same repo (parity oracle).
@@ -12832,7 +12832,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Motivation.** With many files the file list sits above the diff, so Ralph scrolls up and down all the time. The inspector stops at 720 points, the pinned panel at 440. Arrow keys only move a highlight; ↩ then loads the diff.
 
-**Before the story: a design round** (console session with Ralph, `design-artifacts` skill), shared with 10.39: the narrow and the wide layout, the divider, the clamped description, and the open decision whether the unified diff pins its line-number columns while the text scrolls sideways (deferred-work.md, "Surfaced after the story loop 5.10"). The story runs after Ralph approved the mock-up.
+**Design round: done.** Ralph approved the mock-up on 2026-11-14: `_bmad-output/implementation-artifacts/design/Inspector Study.html` (preview `design-preview`), described in `design/DESIGN-SYSTEM-SYNC.md` #25 — threshold 780 / 740, divider look and minimums, defaults 0.38 / 0.34, 3-line clamp, and the unified diff's line numbers **pinned** while the text scrolls sideways (settles the open item in deferred-work.md, "Surfaced after the story loop 5.10"). The DS parts listed in #25 for 10.38 are this story's, through the `design-artifacts` skill.
 
 **Scope.**
 1. **The layout follows the inspector's width.** Narrow: files above, diff below. Wide: files left, diff right. One threshold with hysteresis, so dragging around it does not flicker (proposal: ~760 points). The top part (header, title, meta, chips, actions) keeps its natural height; the split fills the rest, each side scrolls on its own; the composer stays at the bottom. Today the whole body is one scroll view (`graph_inspector.dart:1043`).
@@ -12843,9 +12843,9 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Non-goals.** The file rows' content and menus (10.39); a full-screen inspector.
 
-**Depends on.** 10.8, 10.24, 10.25, 10.26, 11.3 (done); the design round.
+**Depends on.** 10.8, 10.24, 10.25, 10.26, 11.3 (done).
 
-**Design status.** NEEDS DESIGN round (see above). Decided by Ralph: the two layouts by width, the divider in both, no fixed maximum width, the clamped description, Finder keys with Space and `V`. The threshold, the ratios' defaults and the clamp's line count are Claude's proposal.
+**Design status.** FINAL: the mock-up Ralph approved on 2026-11-14 (see "Design round" above). Decided by Ralph: the two layouts by width, the divider in both, no fixed maximum width, the clamped description, Finder keys with Space and `V`, pinned line numbers.
 
 **Witnesses.**
 - Dragging the inspector across the threshold switches the layout once; the divider's ratio of each layout survives a restart.
@@ -12859,7 +12859,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 ### Story 10.39: Inspector rebuild, part 2 — file names first, tree or flat, copy, Reveal in Finder, Open in Editor [UI]
 *(Added 2026-11-14, Ralph — console session. Ralph's use case: he changed code in IntelliJ, reviews it in Zanshin before the push, finds a mistake and wants to jump to that place in IntelliJ.)*
 
-**Before the story:** the design round of 10.38 covers this story's rows, switch, menus and Editor setting.
+**Design round: done** (with 10.38): the approved mock-up `design/Inspector Study.html`, `design/DESIGN-SYSTEM-SYNC.md` #25 — file rows, tree rows, the switch, the menus and their rows and note. The Editor setting's row follows the existing Settings rows. The DS parts listed in #25 for 10.39 are this story's.
 
 **Scope.**
 1. **The file name first.** A file row shows the name, never cut, then the folder, dimmed and cut in the middle. The tooltip holds the full path. A rename shows the new name; its tooltip `old → new`. Today the row is one path cut at its end (`graph_inspector.dart:2412`), which hides the name.
@@ -12888,9 +12888,9 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Non-goals.** Opening the change's own version of a file; an editor per project; the layout (10.38).
 
-**Depends on.** 10.38; 9.36, 10.24, 10.30 (done); the design round.
+**Depends on.** 10.38; 9.36, 10.24, 10.30 (done).
 
-**Design status.** NEEDS DESIGN round (with 10.38). Decided by Ralph: name first, tree or flat with a setting and folder checkboxes, copy as above, Open in Editor with a chosen editor, Reveal in Finder, `path:line`. The row layout, the menus' order and the Editor setting's look are Claude's proposal.
+**Design status.** FINAL: the mock-up Ralph approved on 2026-11-14 (see "Design round" above). Decided by Ralph: name first, tree or flat with a setting and folder checkboxes, copy as above, Open in Editor with a chosen editor, Reveal in Finder, `path:line`. The Editor setting's row is Claude's proposal in the style of the existing Settings rows.
 
 **Witnesses.**
 - `packages/logic_designer/lib/src/presentation/widgets/automation_overview_page.dart` in a 460-point inspector shows `automation_overview_page.dart` whole.
