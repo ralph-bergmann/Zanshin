@@ -3048,6 +3048,166 @@ void main() {
       final Rect rect = tester.getRect(row);
       expect(rect.top >= list.top - 0.5 && rect.bottom <= list.bottom + 0.5, isTrue, reason: '$rect in $list');
       expect(tester.getRect(find.byKey(const ValueKey<String>('inspector-diff'))).top, lessThan(840));
+      // The current row carries the 1.5 px accent ring while the list has focus, and only then.
+      Border? ringOf(String path) {
+        final Finder container = find
+            .descendant(
+              of: find.ancestor(of: find.text(path).first, matching: find.byType(InspectorFileRow)),
+              matching: find.byType(Container),
+            )
+            .first;
+        return (tester.widget<Container>(container).foregroundDecoration! as BoxDecoration).border as Border?;
+      }
+
+      final ZsColors colors = ZsColors.of(tester.element(row));
+      expect(ringOf('f20.txt'), Border.all(color: colors.accent, width: 1.5));
+      expect(ringOf('f19.txt'), isNull);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await settle(tester);
+      expect(ringOf('f20.txt'), isNull, reason: 'no ring once the list loses focus');
+      await unmount(tester);
+    });
+
+    testWidgets('a row keeps its own state when the current row moves (one key per file, not per current row)', (
+      tester,
+    ) async {
+      await pump(tester);
+      await settle(tester);
+      Element rowOf(String path) =>
+          tester.element(find.ancestor(of: find.text(path).first, matching: find.byType(InspectorFileRow)));
+      await tester.tap(find.text('src/a.dart').first);
+      await settle(tester);
+      final Element a = rowOf('src/a.dart');
+      const renamed = 'src/old.dart → src/new.dart';
+      final Element next = rowOf(renamed);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await settle(tester);
+      expect(inspector.focusedPath, 'src/new.dart');
+      expect(identical(rowOf('src/a.dart'), a), isTrue, reason: 'the old current row keeps its element');
+      expect(identical(rowOf(renamed), next), isTrue, reason: 'the new current row keeps its element');
+      await unmount(tester);
+    });
+
+    testWidgets('a new file starts its diff at the top and the left; another change starts its list at the top', (
+      tester,
+    ) async {
+      FileDiff long(String path) => fileDiff(
+        path,
+        added: 80,
+        fingerprint: path,
+        hunks: <Hunk>[
+          hunk(
+            before: (start: 0, end: 0),
+            after: (start: 0, end: 80),
+            lines: <HunkLine>[
+              for (var i = 0; i < 80; i++)
+                HunkLine(kind: HunkLineKind.added, text: '${'x' * 160} $path $i\n', right: i + 1),
+            ],
+          ),
+        ],
+      );
+      details
+        ..files[_mutable] = <FileChange>[
+          for (var i = 0; i < 40; i++) FileChange(path: 'f$i.txt', kind: FileChangeKind.modified),
+        ]
+        ..fileDiffs[_mutable] = <FileDiff>[for (var i = 0; i < 40; i++) long('f$i.txt')]
+        ..files[_left] = const <FileChange>[FileChange(path: 'f1.txt', kind: FileChangeKind.modified)]
+        ..fileDiffs[_left] = <FileDiff>[long('f1.txt')];
+      await pump(tester, width: 1000);
+      await settle(tester);
+      await tester.tap(find.text('f1.txt').first);
+      await settle(tester);
+      List<ScrollPosition> diffScrolls() => tester
+          .stateList<ScrollableState>(
+            find.descendant(of: find.byType(InspectorDiffView), matching: find.byType(Scrollable)),
+          )
+          .map((s) => s.position)
+          .toList();
+      Future<void> scrollDiff() async {
+        for (final ScrollPosition p in diffScrolls()) {
+          p.jumpTo(p.maxScrollExtent);
+        }
+        await tester.pump();
+        expect(diffScrolls().where((p) => p.pixels > 0), hasLength(2), reason: 'down and right');
+      }
+
+      await scrollDiff();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await settle(tester);
+      expect(inspector.focusedPath, 'f2.txt');
+      expect(diffScrolls().map((p) => p.pixels), everyElement(0), reason: 'another file starts at the top left');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await settle(tester);
+      expect(inspector.focusedPath, 'f1.txt');
+      await scrollDiff();
+      final ScrollPosition list = tester
+          .state<ScrollableState>(
+            find.ancestor(of: find.text('f0.txt').first, matching: find.byType(Scrollable)).first,
+          )
+          .position;
+      list.jumpTo(list.maxScrollExtent);
+      await tester.pump();
+      expect(list.pixels, greaterThan(0));
+      graph.select(_left);
+      await settle(tester);
+      expect(inspector.focusedPath, 'f1.txt', reason: 'the same path on another change');
+      expect(diffScrolls().map((p) => p.pixels), everyElement(0), reason: 'another change starts at the top left');
+      expect(
+        tester
+            .state<ScrollableState>(
+              find.ancestor(of: find.text('f1.txt').first, matching: find.byType(Scrollable)).first,
+            )
+            .position
+            .pixels,
+        0,
+        reason: 'another change\'s list starts at its top',
+      );
+      await unmount(tester);
+    });
+
+    testWidgets('a held key\'s file that goes in a reload during the pause is not read; the row falls back', (
+      tester,
+    ) async {
+      fortyFiles();
+      await pump(tester);
+      await settle(tester);
+      await focusList(tester);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump(const Duration(milliseconds: 10));
+      expect(inspector.focusedPath, 'f1.txt');
+      details
+        ..files[_mutable] = details.files[_mutable]!.where((f) => f.path != 'f3.txt').toList()
+        ..fileDiffs[_mutable] = details.fileDiffs[_mutable]!.where((f) => f.path != 'f3.txt').toList();
+      await reload(tester);
+      final int reads = details.focusReads.length;
+      await tester.pump(const Duration(milliseconds: 100));
+      await settle(tester);
+      expect(inspector.focusedPath, 'f1.txt', reason: 'the gone file is not focused');
+      expect(details.focusReads.length, reads, reason: 'and not read');
+      final ZsColors colors = ZsColors.of(tester.element(find.text('f1.txt').first));
+      expect(tester.widget<Text>(find.text('f1.txt').first).style!.color, colors.text, reason: 'the current row');
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowDown);
+      await unmount(tester);
+    });
+
+    testWidgets('the top part takes at most 48 % of the body and scrolls; the split keeps the rest', (tester) async {
+      final String body = <String>[for (var i = 1; i <= 80; i++) 'line $i'].join('\n');
+      details.descriptions[_mutable] = 'Subject\n\n$body\n';
+      await pump(tester);
+      await settle(tester);
+      await tester.tap(find.text('Show more'));
+      await settle(tester);
+      final Finder top = find.byWidgetPredicate((w) => w is ZsScrollArea && w.identifier == 'inspector-body');
+      final Rect area = tester.getRect(top);
+      final double bottom = tester.getRect(find.byType(GraphInspector)).bottom;
+      expect(area.height, lessThanOrEqualTo((bottom - area.top) * .48 + .5));
+      final ScrollPosition scroll = tester
+          .state<ScrollableState>(find.descendant(of: top, matching: find.byType(Scrollable)).first)
+          .position;
+      expect(scroll.maxScrollExtent, greaterThan(0), reason: 'the top part scrolls');
+      expect(tester.getRect(find.byType(ZsSplitDivider)).bottom, lessThan(bottom), reason: 'the split stays in view');
       await unmount(tester);
     });
 
@@ -3098,6 +3258,16 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
       await tester.pump();
       expect(inspector.isViewed('src/new.dart'), isFalse);
+      // A held Space or V flips once, not per repeat.
+      for (final key in <LogicalKeyboardKey>[LogicalKeyboardKey.space, LogicalKeyboardKey.keyV]) {
+        await tester.sendKeyDownEvent(key);
+        await tester.sendKeyRepeatEvent(key);
+        await tester.sendKeyRepeatEvent(key);
+        await tester.sendKeyUpEvent(key);
+        await tester.pump();
+      }
+      expect(inspector.fileState('src/new.dart'), isFalse);
+      expect(inspector.isViewed('src/new.dart'), isTrue);
       await unmount(tester);
 
       details

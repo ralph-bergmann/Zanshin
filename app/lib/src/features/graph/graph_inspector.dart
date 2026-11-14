@@ -2445,7 +2445,11 @@ class _Changes extends StatefulWidget {
 class _ChangesState extends State<_Changes> {
   final _focus = FocusNode(debugLabel: 'inspector files');
   final _files = ScrollController();
-  final GlobalKey _current = GlobalKey(debugLabel: 'inspector current file');
+
+  /// One key per path: a key that moved with the current row would carry its row's state to another file.
+  final _rows = <String, GlobalKey>{};
+
+  GlobalKey _rowKey(String path) => _rows.putIfAbsent(path, () => GlobalKey(debugLabel: 'inspector file $path'));
 
   /// The path a held arrow key moved to (a path, so a reload meanwhile keeps the file); its diff loads once the key
   /// pauses.
@@ -2470,6 +2474,7 @@ class _ChangesState extends State<_Changes> {
     if (oldWidget.data.key != widget.data.key) {
       _repeat?.cancel();
       _pending = null;
+      _rows.clear();
       // Another change's list starts at its top.
       if (_files.hasClients) {
         _files.jumpTo(0);
@@ -2511,9 +2516,9 @@ class _ChangesState extends State<_Changes> {
     }
   }
 
-  /// Scrolls the current row into view after the frame that moved it.
-  void _reveal({required bool down}) => WidgetsBinding.instance.addPostFrameCallback((_) {
-    final BuildContext? row = _current.currentContext;
+  /// Scrolls [path]'s row into view after the frame that moved the current row there.
+  void _reveal(String path, {required bool down}) => WidgetsBinding.instance.addPostFrameCallback((_) {
+    final BuildContext? row = _rows[path]?.currentContext;
     if (row != null && row.mounted) {
       Scrollable.ensureVisible(
         row,
@@ -2572,7 +2577,7 @@ class _ChangesState extends State<_Changes> {
       _repeat?.cancel();
       _repeat = Timer(_repeatPause, _settle);
     }
-    _reveal(down: step > 0);
+    _reveal(files[next].path, down: step > 0);
     return KeyEventResult.handled;
   }
 
@@ -2716,7 +2721,7 @@ class _ChangesState extends State<_Changes> {
                       children: <Widget>[
                         for (var i = 0; i < files.length; i++)
                           GestureDetector(
-                            key: i == current ? _current : null,
+                            key: _rowKey(files[i].path),
                             behavior: HitTestBehavior.opaque,
                             onTap: () {
                               _focus.requestFocus();

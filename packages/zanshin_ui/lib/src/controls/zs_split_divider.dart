@@ -29,7 +29,8 @@ import 'zs_tooltip.dart';
 /// through an `OverlayPortal` (skipped without an `Overlay`), as `ZsResizeEdge` does.
 ///
 /// **Drag.** [value] (the leading pane's length) follows the pointer, rounded to whole points and clamped to [min] …
-/// [max]; [onChanged] runs per move and [onChangeEnd] once on release when the value changed. A double-click resets to
+/// [max]; [onChanged] runs per move and [onChangeEnd] once on release when the drag moved it (also when it ends back
+/// at its start). A double-click resets to
 /// [defaultValue] at once.
 ///
 /// **Keys** (a Tab stop with the focus ring inside the band): ← → (side by side) or ↑ ↓ (stacked) by 10, with ⇧ by
@@ -109,6 +110,10 @@ class _ZsSplitDividerState extends State<ZsSplitDivider> {
   Offset _dragStart = Offset.zero;
   var _dragValue = 0.0;
 
+  /// Whether this drag reported a move; its end is then reported even back at the start, so the host's drag state
+  /// ends with it.
+  var _moved = false;
+
   /// The last value this divider reported, which the parent may not have passed back yet.
   double? _reported;
 
@@ -155,6 +160,7 @@ class _ZsSplitDividerState extends State<ZsSplitDivider> {
   void _start(DragStartDetails details) {
     _dragStart = details.globalPosition;
     _dragValue = _value;
+    _moved = false;
     if (Overlay.maybeOf(context) != null) {
       _portal.show();
     }
@@ -168,7 +174,9 @@ class _ZsSplitDividerState extends State<ZsSplitDivider> {
     // Both points through the current transform, so the divider's own movement cancels out.
     final box = context.findRenderObject()! as RenderBox;
     final Offset travel = box.globalToLocal(details.globalPosition) - box.globalToLocal(_dragStart);
-    _report(_clamp((_dragValue + (_sideBySide ? travel.dx : travel.dy)).roundToDouble()));
+    final double next = _clamp((_dragValue + (_sideBySide ? travel.dx : travel.dy)).roundToDouble());
+    _moved = _moved || next != _value;
+    _report(next);
   }
 
   void _end([Object? _]) {
@@ -179,7 +187,7 @@ class _ZsSplitDividerState extends State<ZsSplitDivider> {
       _portal.hide();
     }
     setState(() => _dragging = false);
-    if (_value != _dragValue) {
+    if (_moved) {
       widget.onChangeEnd?.call(_value);
     }
   }

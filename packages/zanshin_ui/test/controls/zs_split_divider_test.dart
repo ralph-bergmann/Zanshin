@@ -104,6 +104,21 @@ void main() {
     await _settleTaps(tester);
   });
 
+  testWidgets('a drag that ends back at its start still reports its end', (tester) async {
+    final log = _Log();
+    await tester.pumpWidget(_divider(log));
+    final TestGesture drag = await tester.startGesture(tester.getCenter(_band), kind: PointerDeviceKind.mouse);
+    await drag.moveBy(const Offset(40, 0));
+    await tester.pump();
+    await drag.moveBy(const Offset(-40, 0));
+    await tester.pump();
+    await drag.up();
+    await tester.pump();
+    expect(log.changes, isNotEmpty);
+    expect(log.ends, <double>[log.changes.last], reason: 'the host ends its drag state');
+    await _settleTaps(tester);
+  });
+
   testWidgets('when the maximum is below the minimum, the maximum wins (the other pane keeps its room)', (
     tester,
   ) async {

@@ -19,7 +19,7 @@ All material comes from one Claude Design project (the reader may not have acces
 
 The app project keeps a numbered change log, `DESIGN-SYSTEM-SYNC.md` (project Zanshin, `019e2585-34e0-736e-add9-dee89d97fbbd`). Each sync works through the entries after the one named here and checks each against the floating client's code.
 
-**Synced through #26** (2026-11-14; #25 and #26 for Story 10.38 below — #26's folded whitespace row waits for Story 10.33).
+**Synced through #26** (2026-11-14; #25 and #26 for Story 10.38 below — #25's file rows (name first, folder, tree / flat, the row menus, copy, Open / Reveal) wait for Story 10.39, #26's folded whitespace row for Story 10.33).
 
 - #1 Baseline — built from the floating client as archived in `archive/v8 Drop Menu & Composer/`, plus the calendar-day minimap labels and the arrow cursor.
 - #2 The client self-hosts its fonts — `fonts.css` loads the same Inter and JetBrains Mono woff2 files as `assets/fonts/` (checked: same files, weights 400–700, unicode ranges). The Ubuntu note was dropped from Type.

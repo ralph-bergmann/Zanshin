@@ -742,11 +742,55 @@ void main() {
       await tester.pump();
       expect(toggled, <HunkKey>[s3]);
 
+      toggled.clear();
       await tester.pumpWidget(
-        picks(const <HunkKey>[s1, s2, s3], picked: <HunkKey>{s2}, layout: DiffLayoutSetting.sideBySide),
+        picks(
+          const <HunkKey>[s1, s2, s3],
+          picked: <HunkKey>{s2},
+          layout: DiffLayoutSetting.sideBySide,
+          onPart: toggled.add,
+        ),
       );
       expect(partBoxes(), findsNWidgets(3), reason: 'side by side: the gutter leads the row');
       expect(find.text('3 parts'), findsOneWidget);
+      // Side by side the edge sits on each row; a row whose left cell is empty takes its right line's part.
+      bool rowEdged(String text) =>
+          (tester
+                      .widget<DecoratedBox>(
+                        find
+                            .ancestor(
+                              of: find.text(text),
+                              matching: find.byWidgetPredicate(
+                                (w) => w is DecoratedBox && w.position == DecorationPosition.foreground,
+                              ),
+                            )
+                            .first,
+                      )
+                      .decoration
+                  as BoxDecoration)
+              .border !=
+          null;
+      expect(
+        <bool>[
+          for (final t in <String>['c1', 'old 2', 'old 6', 'new 6b', 'c10', 'new 11']) rowEdged(t),
+        ],
+        <bool>[false, false, true, true, false, false],
+      );
+      await tester.tap(partBoxes().at(1));
+      await tester.pump();
+      await tester.tap(partBoxes().at(2));
+      await tester.pump();
+      expect(toggled, <HunkKey>[s2, s3]);
+
+      // Without parts, side by side keeps one edge for the whole hunk, on when picked.
+      for (final (Set<HunkKey> picked, bool on) in <(Set<HunkKey>, bool)>[
+        (<HunkKey>{s1}, true),
+        (<HunkKey>{}, false),
+      ]) {
+        await tester.pumpWidget(picks(const <HunkKey>[s1], picked: picked, layout: DiffLayoutSetting.sideBySide));
+        final DecoratedBox edge = tester.widget(find.byKey(const ValueKey<String>('inspector-hunk-edge')));
+        expect((edge.decoration as BoxDecoration).border != null, on);
+      }
     });
 
     testWidgets('one part: no pill, no gutter, the hunk checkbox as before', (tester) async {
@@ -758,6 +802,7 @@ void main() {
 
     testWidgets('scrolled fully right, a short line keeps its numbers and part checkbox at the left edge; the header '
         'stays in view', (tester) async {
+      final toggled = <HunkKey>[];
       final FileDiff file = _file(
         hunks: <Hunk>[
           Hunk(
@@ -791,7 +836,7 @@ void main() {
               hunkPicked: (_) => false,
               onHunkToggled: (_) {},
               partPicked: (_) => false,
-              onPartToggled: (_) {},
+              onPartToggled: toggled.add,
             ),
           ),
         ),
@@ -812,6 +857,15 @@ void main() {
         header.width,
         closeTo(tester.getSize(find.byType(InspectorDiffView)).width - 2, 1),
         reason: 'as wide as the visible area (the well less its 1 px border on each side)',
+      );
+      await tester.tap(partBoxes().at(1));
+      await tester.pump();
+      expect(
+        toggled,
+        <HunkKey>[const HunkKey(oldStart: 1, oldCount: 1, newStart: 1, newCount: 1)],
+        reason:
+            'the pinned '
+            'checkbox takes taps where it shows',
       );
     });
 
