@@ -25,7 +25,7 @@ void main() {
         'inspectorFilesNarrow': 0.38,
         'inspectorFilesWide': 0.34,
       },
-      'general': {'hideControls': true, 'diffLayout': 'unified', 'diffWordMarks': true},
+      'general': {'hideControls': true, 'diffLayout': 'unified', 'diffWordMarks': true, 'diffWhitespace': 'showAll'},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
         'layout': 'free',
@@ -73,7 +73,7 @@ void main() {
         'inspectorFilesNarrow': 0.38,
         'inspectorFilesWide': 0.34,
       },
-      'general': {'hideControls': true, 'diffLayout': 'unified', 'diffWordMarks': true},
+      'general': {'hideControls': true, 'diffLayout': 'unified', 'diffWordMarks': true, 'diffWhitespace': 'showAll'},
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
         'layout': 'free',
@@ -117,7 +117,12 @@ void main() {
       'inspectorFilesNarrow': 0.38,
       'inspectorFilesWide': 0.34,
     });
-    expect(settings.toJson()['general'], {'hideControls': false, 'diffLayout': 'unified', 'diffWordMarks': true});
+    expect(settings.toJson()['general'], {
+      'hideControls': false,
+      'diffLayout': 'unified',
+      'diffWordMarks': true,
+      'diffWhitespace': 'showAll',
+    });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
 
@@ -134,7 +139,12 @@ void main() {
     expect(GeneralSettings.fromJson({'hideControls': false}).diffLayout, DiffLayoutSetting.unified);
     expect(GeneralSettings.fromJson({'diffLayout': 'stacked'}).diffLayout, DiffLayoutSetting.unified);
     const settings = AppSettings(general: GeneralSettings(diffLayout: DiffLayoutSetting.sideBySide));
-    expect(settings.toJson()['general'], {'hideControls': true, 'diffLayout': 'sideBySide', 'diffWordMarks': true});
+    expect(settings.toJson()['general'], {
+      'hideControls': true,
+      'diffLayout': 'sideBySide',
+      'diffWordMarks': true,
+      'diffWhitespace': 'showAll',
+    });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
 
@@ -142,7 +152,12 @@ void main() {
     expect(const GeneralSettings().diffWordMarks, isTrue);
     expect(GeneralSettings.fromJson({'hideControls': false}).diffWordMarks, isTrue);
     const settings = AppSettings(general: GeneralSettings(diffWordMarks: false));
-    expect(settings.toJson()['general'], {'hideControls': true, 'diffLayout': 'unified', 'diffWordMarks': false});
+    expect(settings.toJson()['general'], {
+      'hideControls': true,
+      'diffLayout': 'unified',
+      'diffWordMarks': false,
+      'diffWhitespace': 'showAll',
+    });
     expect(AppSettings.fromJson(settings.toJson()), settings);
     for (final style in ['words', 'jj']) {
       final old = GeneralSettings.fromJson({'diffMarks': style});
@@ -151,6 +166,25 @@ void main() {
     }
     expect(() => GeneralSettings.fromJson({'diffWordMarks': 'off'}), throwsA(isA<CheckedFromJsonException>()));
   });
+
+  test(
+    'the whitespace mode defaults to show all, -w survives a JSON round trip, an unknown value reads as show all',
+    () {
+      expect(const GeneralSettings().diffWhitespace, DiffWhitespaceSetting.showAll);
+      expect(GeneralSettings.fromJson({'hideControls': false}).diffWhitespace, DiffWhitespaceSetting.showAll);
+      expect(GeneralSettings.fromJson({'diffWhitespace': 'ignoreTabs'}).diffWhitespace, DiffWhitespaceSetting.showAll);
+      const settings = AppSettings(general: GeneralSettings(diffWhitespace: DiffWhitespaceSetting.ignoreAll));
+      expect(settings.toJson()['general'], {
+        'hideControls': true,
+        'diffLayout': 'unified',
+        'diffWordMarks': true,
+        'diffWhitespace': 'ignoreAll',
+      });
+      expect(AppSettings.fromJson(settings.toJson()), settings);
+      const amount = GeneralSettings(diffWhitespace: DiffWhitespaceSetting.ignoreChangesInAmount);
+      expect(GeneralSettings.fromJson(amount.toJson()), amount);
+    },
+  );
 
   test('an out-of-range width is kept as stored; the shell clamps it where it uses it', () {
     expect(LayoutSettings.fromJson({'panelWidth': 900}).panelWidth, 900);

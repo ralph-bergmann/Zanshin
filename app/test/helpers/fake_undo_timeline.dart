@@ -98,7 +98,15 @@ class FakeTimelineSource implements UndoTimelineSource {
 }
 
 /// One [FakeOperationChangesSource.diff] call.
-typedef DiffCall = ({String? revision, String? from, String? to, bool interdiff, bool summary, List<String> paths});
+typedef DiffCall = ({
+  String? revision,
+  String? from,
+  String? to,
+  bool interdiff,
+  bool summary,
+  List<String> paths,
+  DiffWhitespace whitespace,
+});
 
 /// An [OperationChangesSource] answering [opShowReply], [entries] and [diffReply], recording every call; a set
 /// [refuseOpShow] / [refuseShow] / [refuseDiff] is thrown instead.
@@ -143,6 +151,22 @@ class FakeOperationChangesSource implements OperationChangesSource {
   @override
   ConfigWrites get configWrites => _configWrites;
 
+  /// What `diffContext` answers; `setDiffContext` records in [contextWrites], sets it and fires [configWrites].
+  int? context = 3;
+
+  /// Every `setDiffContext` value.
+  final contextWrites = <int>[];
+
+  @override
+  Future<int?> diffContext() async => context;
+
+  @override
+  Future<void> setDiffContext(int lines) async {
+    contextWrites.add(lines);
+    context = lines;
+    _configWrites.fire();
+  }
+
   @override
   Future<OpShow> opShow(String operation) async {
     opShows.add(operation);
@@ -169,6 +193,7 @@ class FakeOperationChangesSource implements OperationChangesSource {
     bool interdiff = false,
     bool summary = false,
     List<String> paths = const <String>[],
+    DiffWhitespace whitespace = DiffWhitespace.exact,
   }) async {
     final DiffCall call = (
       revision: revision,
@@ -177,6 +202,7 @@ class FakeOperationChangesSource implements OperationChangesSource {
       interdiff: interdiff,
       summary: summary,
       paths: paths,
+      whitespace: whitespace,
     );
     diffs.add(call);
     await diffGate?.future;

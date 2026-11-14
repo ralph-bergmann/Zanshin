@@ -23,18 +23,36 @@ _GeneralSettings _$GeneralSettingsFromJson(
           DiffLayoutSetting.unified,
     ),
     diffWordMarks: $checkedConvert('diffWordMarks', (v) => v as bool? ?? true),
+    diffWhitespace: $checkedConvert(
+      'diffWhitespace',
+      (v) =>
+          $enumDecodeNullable(
+            _$DiffWhitespaceSettingEnumMap,
+            v,
+            unknownValue: DiffWhitespaceSetting.showAll,
+          ) ??
+          DiffWhitespaceSetting.showAll,
+    ),
   );
   return val;
 });
 
-Map<String, dynamic> _$GeneralSettingsToJson(_GeneralSettings instance) =>
-    <String, dynamic>{
-      'hideControls': instance.hideControls,
-      'diffLayout': _$DiffLayoutSettingEnumMap[instance.diffLayout]!,
-      'diffWordMarks': instance.diffWordMarks,
-    };
+Map<String, dynamic> _$GeneralSettingsToJson(
+  _GeneralSettings instance,
+) => <String, dynamic>{
+  'hideControls': instance.hideControls,
+  'diffLayout': _$DiffLayoutSettingEnumMap[instance.diffLayout]!,
+  'diffWordMarks': instance.diffWordMarks,
+  'diffWhitespace': _$DiffWhitespaceSettingEnumMap[instance.diffWhitespace]!,
+};
 
 const _$DiffLayoutSettingEnumMap = {
   DiffLayoutSetting.unified: 'unified',
   DiffLayoutSetting.sideBySide: 'sideBySide',
+};
+
+const _$DiffWhitespaceSettingEnumMap = {
+  DiffWhitespaceSetting.showAll: 'showAll',
+  DiffWhitespaceSetting.ignoreChangesInAmount: 'ignoreChangesInAmount',
+  DiffWhitespaceSetting.ignoreAll: 'ignoreAll',
 };

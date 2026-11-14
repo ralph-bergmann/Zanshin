@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
 import '../projects/project_repos.dart';
+import '../projects/projects_environment.dart';
 import 'backend_graph_layout.dart';
 import 'graph_layout.dart';
 
@@ -1040,19 +1041,38 @@ abstract interface class GraphDetails {
   Future<ChangeActions> changeActions(String changeId);
 
   /// `jj diff -r <commitId>` as data (Story 10.24): [paths] limits it to those prefixes (empty: every path), [summary]
-  /// drops the hunks but keeps the counts and fingerprints. A commit id reaches a hidden or divergent commit too.
-  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false});
+  /// drops the hunks but keeps the counts and fingerprints, [whitespace] is `-b` / `-w` (Story 10.33). A commit id
+  /// reaches a hidden or divergent commit too.
+  Future<Diff> diff(
+    String commitId, {
+    List<String> paths = const [],
+    bool summary = false,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  });
 
   /// What `jj squash -r <changeId>` would ask its editor for (Story 9.15): the combined description, or null.
   Future<SquashPlan> squashPlan(String changeId);
+
+  /// `diff.color-words.context` as Settings reads it ([readDiffContext]); null when jj cannot read it.
+  Future<int?> diffContext();
+
+  /// `jj config set --user diff.color-words.context [lines]` ([writeDiffContext]); the config write reloads the diff.
+  Future<void> setDiffContext(int lines);
 }
 
-/// [GraphDetails] over an open [ProjectRepo]'s handle.
+/// [GraphDetails] over an open [ProjectRepo]'s handle, the config through [_environment].
 class RepoGraphDetails implements GraphDetails {
   /// The details of [_repo].
-  RepoGraphDetails(this._repo);
+  RepoGraphDetails(this._repo, this._environment);
 
   final ProjectRepo _repo;
+  final ProjectsEnvironment _environment;
+
+  @override
+  Future<int?> diffContext() => readDiffContext(_environment);
+
+  @override
+  Future<void> setDiffContext(int lines) => writeDiffContext(_environment, lines);
 
   @override
   Future<ShowEntry> show(String commitId) async => (await _repo.handle.show(revset: commitId)).single;
@@ -1061,8 +1081,12 @@ class RepoGraphDetails implements GraphDetails {
   Future<ChangeActions> changeActions(String changeId) => _repo.handle.changeActions(changeId);
 
   @override
-  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) =>
-      _repo.handle.diff(revision: commitId, paths: paths, summary: summary);
+  Future<Diff> diff(
+    String commitId, {
+    List<String> paths = const [],
+    bool summary = false,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) => _repo.handle.diff(revision: commitId, paths: paths, summary: summary, whitespace: whitespace);
 
   @override
   Future<SquashPlan> squashPlan(String changeId) => _repo.handle.squashPlan(revision: changeId);

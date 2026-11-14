@@ -60,6 +60,7 @@
 .zs-viewed.is-on:hover{background:var(--add-bg-hi)}
 .zs-diff-collapsed{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px 12px;background:var(--add-bg);border:0;color:var(--add);font:inherit;font-size:var(--fs-sm);cursor:default;transition:background var(--dur-hover) var(--ease-state)}
 .zs-diff-collapsed:hover{background:var(--add-bg-hi)}
+.zs-diff-note{padding:6px 10px 8px;font:var(--type-code);color:var(--text-dim)}
 
 /* DiffHunk */
 .zs-hunk+.zs-hunk{border-top:1px solid var(--fl-border)}
@@ -92,6 +93,17 @@
 .zs-diff-line.add .zs-diff-pin{background:linear-gradient(var(--add-bg),var(--add-bg)),var(--code-bg)}
 .zs-diff-line.rem .zs-diff-pin{background:linear-gradient(var(--rem-bg),var(--rem-bg)),var(--code-bg)}
 .zs-hunk.is-lifted{opacity:.38;outline:1.5px dashed var(--accent-line);outline-offset:-1.5px}
+/* whitespace ignored (2026-11-14, Story 10.33, sync #26): a picked or opened part's whitespace-only lines show their text at .62, unified a
+   line with a right number carries the pill "whitespace only" (a button "· Hide" while the part is only opened); a part made only of
+   whitespace changes folds into one hatched row ("⋯ N lines changed whitespace only · Show"), full width, its checkbox in the gutter */
+.zs-diff-line.is-ws>.tx,.zs-diff-side.is-ws>.tx{opacity:.62}
+.zs-ws-tag{flex-shrink:0;align-self:center;margin-left:12px;padding:0 6px;border:0;border-radius:999px;font:10.5px/16px var(--font-sans);color:var(--text-dim);background:var(--fl-hover);white-space:nowrap}
+button.zs-ws-tag:hover{color:var(--text);background:var(--fl-on)}
+.zs-diff-fold{display:flex;align-items:center;min-height:22px;background:repeating-linear-gradient(135deg,transparent 0 5px,var(--fl-hover) 5px 6px)}
+.zs-diff-fold.is-side>.zs-diff-gut{background:var(--code-bg);align-self:stretch}
+.zs-diff-fold .ln{visibility:hidden}
+.zs-fold-tx{padding:0 12px 0 18px;border:0;background:none;font:11.5px var(--font-sans);color:var(--text-dim);white-space:nowrap;text-align:left;cursor:default}
+.zs-fold-tx:hover{color:var(--text)}
 
 /* Kbd */
 .zs-kbd{display:inline-block;font:var(--fs-xs) var(--font-mono);line-height:1.4;background:var(--bg-card-2);border:1px solid var(--border);padding:1px 5px;border-radius:var(--radius-kbd);color:var(--text-muted)}

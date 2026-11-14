@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x600" name="Content" subtitle="FileRow, DiffView + DiffHunk (word marks on and off, parts with their checkboxes, pinned numbers), ProjectRow (incl. moving rows), Kbd" -->
+<!-- @dsCard group="Components" viewport="700x760" name="Content" subtitle="FileRow, DiffView + DiffHunk (the diff options menu, whitespace ignored with a dimmed line and a folded part, word marks on and off, parts with their checkboxes, pinned numbers), ProjectRow (incl. moving rows), Kbd" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -21,6 +21,28 @@
     const [hs, setHs] = React.useState({ a: true, b: false });
     const [viewed, setViewed] = React.useState(false);
     const [parts, setParts] = React.useState([1]);
+    // Story 10.33: the diff options (whitespace, context lines) and a hunk whose first part re-indents a line, whose second only re-indents
+    const [ws, setWs] = React.useState("all");
+    const [ctx, setCtx] = React.useState(3);
+    const [wsPicked, setWsPicked] = React.useState([0]);
+    const [wsOpen, setWsOpen] = React.useState([]);
+    const flip = (xs, p) => (xs.includes(p) ? xs.filter((x) => x !== p) : [...xs, p]);
+    const ignoring = ws !== "show";
+    const reveal = (p) => (!ignoring ? undefined : wsPicked.includes(p) ? "picked" : wsOpen.includes(p) ? "opened" : null);
+    const indent = (l, r, text, p) => ({ t: "chg", l, r, s: "  " + text, runs: [["  ", "add"], [text, null]], ws: reveal(p) || undefined });
+    const p1 = reveal(1);
+    const wsLines = [
+      " 1:1|class A {",
+      "-2:|[-  build() => Text('a');-]",
+      "+:2|{+  build() => Padding(+}",
+      ignoring && !reveal(0) ? " 3:3|    child: Text('b')," : indent(3, 3, "  child: Text('b'),", 0),
+      "+:4|{+  );+}",
+      " 4:5|  int x = 1;",
+      " 5:6|  int y = 2;",
+      ...(ignoring && !p1 ? [{ t: "fold", n: 2 }] : [indent(6, 7, "  return x;", 1), indent(7, 8, "  return y;", 1)]),
+      " 8:9|}",
+    ];
+    const wsParts = [null, 0, 0, ignoring && !reveal(0) ? null : 0, 0, null, null, ...(ignoring && !p1 ? [1] : [1, 1]), null];
     const files = [["M", "lib/onboarding/swipe_controller.dart", 42, 7], ["A", "lib/onboarding/widgets/swipe_hint.dart", 88, 0], ["D", "lib/legacy/onboarding_pager.dart", 0, 131], ["M", "test/onboarding/swipe_controller_test.dart", 19, 2]];
     return (
       <div className="g">
@@ -43,7 +65,12 @@
           <div className="keys"><Kbd>⌘</Kbd><Kbd>,</Kbd><span>Settings</span><span style={{ width: 10 }}></span><Kbd>⌘</Kbd><Kbd>↩</Kbd><span>Commit / Split</span></div>
         </div>
         <DiffView file={files[sel][1]} viewed={viewed} onViewedChange={setViewed}
+          options={{ whitespace: ws, context: ctx }} onOption={(id) => (id.startsWith("ws:") ? setWs(id.slice(3)) : setCtx(Number(id.slice(4))))}
           tools={<Segmented size="sm" label="Diff layout" value={mode} onChange={setMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>}>
+          {/* Story 10.33: whitespace ignored — the picked first part shows its re-indented line dimmed with "whitespace only"; the second part,
+              only re-indents, folds into one hatched row with its checkbox and Show. */}
+          <DiffHunk context="class A" mode={mode} selectable parts={wsParts} picked={wsPicked} onTogglePart={(p) => setWsPicked(flip(wsPicked, p))}
+            onShow={(p) => setWsOpen(flip(wsOpen, p))} onHide={(p) => setWsOpen(flip(wsOpen, p))} lines={wsLines}/>
           <DiffHunk context="class SwipeController" mode={mode} selectable selected={hs.a} onToggle={(v) => setHs({ ...hs, a: v })} onGrab={() => {}} lines={[
             " 12:12|  final double threshold;",
             "~13:13|  void onEnd({+DragEndDetails d+}) {",

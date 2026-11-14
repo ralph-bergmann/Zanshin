@@ -10,8 +10,14 @@ export interface MenuButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLBut
   variant?: "default" | "primary" | "ghost" | "danger" | "destructive";
   /** as Button */
   size?: "sm" | "md" | "lg";
-  /** an Icon name or node before the label */
+  /** an Icon name or node before the label; with `iconOnly` the Icon name shown alone */
   icon?: string | React.ReactNode;
+  /** the icon and the chevron, no text, 26px high (the diff header's options) */
+  iconOnly?: boolean;
+  /** with `iconOnly`: the glyph in --accent (a value off its default) */
+  active?: boolean;
+  /** with `iconOnly`: the button's name and tooltip */
+  label?: string;
   /** with `title`: the reason, shown by the wrapper */
   disabled?: boolean;
   /** the tooltip (enabled) or the reason (disabled) */

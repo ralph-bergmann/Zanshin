@@ -17,7 +17,8 @@ const _darkJson =
     '{\n  "appearance": {\n    "themeMode": "dark",\n    "accentSource": "followMacOS",\n    "density": "compact",\n    "zoom": 100\n  },\n'
     '  "layout": {\n    "inspectorWidth": 460.0,\n    "panelWidth": 300.0,\n'
     '    "inspectorFilesNarrow": 0.38,\n    "inspectorFilesWide": 0.34\n  },\n'
-    '  "general": {\n    "hideControls": true,\n    "diffLayout": "unified",\n    "diffWordMarks": true\n  },\n'
+    '  "general": {\n    "hideControls": true,\n    "diffLayout": "unified",\n    "diffWordMarks": true,\n'
+    '    "diffWhitespace": "showAll"\n  },\n'
     '  "projects": {\n    "projects": [],\n    "groups": [],\n    "openProject": null\n  },\n'
     '  "graph": {\n    "layout": "free",\n    "detailedCards": true,\n    "groupStacks": true,\n'
     '    "cardWidth": 240.0,\n    "showMinimap": true,\n    "revsetConfigs": [],\n    "revsetDefault": "log"\n  }\n}\n';

@@ -40,6 +40,11 @@
 .zs-menubtn .zs-menubtn-chev{opacity:.75}
 .zs-menubtn-pop{position:absolute;top:calc(100% + 4px);left:0;z-index:var(--z-menu)}
 .zs-menubtn-pop>.zs-menu{width:max-content}
+/* icon-only (2026-11-14, Story 10.33 — the diff header's options): the glyph at 14 and the chevron 2px apart, no text; 26 high
+   (--control-sm), padding 0 5 0 6; active (a value off its default) puts the glyph in --accent */
+.zs-btn.zs-menubtn.is-icon{height:var(--control-sm);padding:0 5px 0 6px}
+.zs-menubtn.is-icon>span{gap:2px}
+.zs-menubtn.is-active .zs-menubtn-glyph{color:var(--accent)}
 
 /* IconButton — 30 (sm, --control-md: panel close, the height of the row it sits in) · 36 (md, --control-lg: inside islands) · 40 (lg, rail: 52 − 2 × 6). on = toggled/open. Badge sits on the top-right corner. */
 .zs-ib{position:relative;display:grid;place-items:center;width:var(--control-lg);height:var(--control-lg);padding:0;border:0;border-radius:var(--radius-card);background:transparent;color:var(--text-muted);cursor:default;flex-shrink:0;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}

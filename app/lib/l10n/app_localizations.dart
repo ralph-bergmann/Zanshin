@@ -1940,6 +1940,108 @@ abstract class AppLocalizations {
   /// **'No line changes'**
   String get inspectorDiffNoLines;
 
+  /// The diff of a file whose changes all read as unchanged while the diff ignores whitespace (the diff options menu).
+  ///
+  /// In en, this message translates to:
+  /// **'Only whitespace changed in this file.'**
+  String get inspectorDiffOnlyWhitespace;
+
+  /// VoiceOver name and tooltip of the diff options menu button, the last control of the diff header: the whitespace choice's label and jj's diff.color-words.context.
+  ///
+  /// In en, this message translates to:
+  /// **'Diff options — {whitespace}, {count, plural, =1{1 context line} other{{count} context lines}}'**
+  String inspectorDiffOptions(String whitespace, int count);
+
+  /// VoiceOver name and tooltip of the diff options menu button while jj cannot read diff.color-words.context.
+  ///
+  /// In en, this message translates to:
+  /// **'Diff options — {whitespace}, context lines unreadable'**
+  String inspectorDiffOptionsUnreadable(String whitespace);
+
+  /// Heading of the whitespace choices in the diff options menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Whitespace'**
+  String get diffWhitespaceHead;
+
+  /// Whitespace choice (diff options menu, Settings › Diffs): every whitespace change shows, as jj diff.
+  ///
+  /// In en, this message translates to:
+  /// **'Show all whitespace'**
+  String get diffWhitespaceShowAll;
+
+  /// Whitespace choice (diff options menu, Settings › Diffs): changes in the amount of whitespace read as unchanged, as jj diff -b.
+  ///
+  /// In en, this message translates to:
+  /// **'Ignore changes in amount'**
+  String get diffWhitespaceIgnoreAmount;
+
+  /// Whitespace choice (diff options menu, Settings › Diffs): all whitespace is ignored, as jj diff -w.
+  ///
+  /// In en, this message translates to:
+  /// **'Ignore all whitespace'**
+  String get diffWhitespaceIgnoreAll;
+
+  /// Heading of the context-line choices in the diff options menu (jj's diff.color-words.context).
+  ///
+  /// In en, this message translates to:
+  /// **'Context lines'**
+  String get diffContextHead;
+
+  /// Hint beside the context-line choice 3 in the diff options menu.
+  ///
+  /// In en, this message translates to:
+  /// **'jj\'s default'**
+  String get diffContextDefault;
+
+  /// The note at the end of the diff options menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Every diff follows these. Context lines is jj\'s diff.color-words.context in your user config, as in Settings › General › Diffs. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn\'t see.'**
+  String get diffOptionsNote;
+
+  /// Pill on a line that changed only in whitespace, shown dimmed because its part is picked while the diff ignores whitespace.
+  ///
+  /// In en, this message translates to:
+  /// **'whitespace only'**
+  String get inspectorWhitespaceOnly;
+
+  /// Tooltip of the whitespace only pill on a picked part's line.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown because its part is picked: a pick takes every line of its part'**
+  String get inspectorWhitespaceOnlyTooltip;
+
+  /// Button on a line that changed only in whitespace, shown because the user opened its folded part: folds it again.
+  ///
+  /// In en, this message translates to:
+  /// **'whitespace only · Hide'**
+  String get inspectorWhitespaceOnlyHide;
+
+  /// Tooltip of the whitespace only · Hide button.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide the whitespace-only lines again'**
+  String get inspectorWhitespaceHideTooltip;
+
+  /// The row a part made only of whitespace changes folds into while the diff ignores whitespace; a click shows its lines.
+  ///
+  /// In en, this message translates to:
+  /// **'⋯ {count, plural, =1{1 line} other{{count} lines}} changed whitespace only · Show'**
+  String inspectorFoldText(int count);
+
+  /// Tooltip of a folded whitespace-only row.
+  ///
+  /// In en, this message translates to:
+  /// **'Show these lines'**
+  String get inspectorFoldShowTooltip;
+
+  /// VoiceOver name and tooltip of an unchecked folded row's checkbox: Commit / Split takes the part's lines, and the row opens.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick these whitespace-only lines'**
+  String get inspectorFoldPick;
+
   /// Operation toast after jj abandon; changes is a list of change ids.
   ///
   /// In en, this message translates to:
@@ -3553,6 +3655,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Side by side'**
   String get settingsDiffSideBySide;
+
+  /// Settings › General › Diffs row and VoiceOver name of its choice: how every diff treats whitespace (the same setting as the diff options menu).
+  ///
+  /// In en, this message translates to:
+  /// **'Whitespace'**
+  String get settingsDiffWhitespace;
 
   /// Settings › General › Diffs row: whether the diff marks the words that changed inside a line.
   ///

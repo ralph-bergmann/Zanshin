@@ -151,8 +151,22 @@ class _DemoChanges implements OperationChangesSource {
   static final String _old = '5b0a77e2'.padRight(40, '9');
   static final String _wcOld = '1f4d6c08'.padRight(40, '0');
 
+  final _writes = ConfigWrites();
+
   @override
-  final configWrites = ConfigWrites();
+  Listenable get configWrites => _writes;
+
+  // The demo's `diff.color-words.context`: the menu writes it here, never to a real config.
+  var _context = 3;
+
+  @override
+  Future<int?> diffContext() async => _context;
+
+  @override
+  Future<void> setDiffContext(int lines) async {
+    _context = lines;
+    _writes.fire();
+  }
 
   @override
   Future<OpShow> opShow(String operation) async => OpShow(
@@ -219,6 +233,7 @@ class _DemoChanges implements OperationChangesSource {
     bool interdiff = false,
     bool summary = false,
     List<String> paths = const <String>[],
+    DiffWhitespace whitespace = DiffWhitespace.exact,
   }) async {
     final files = <FileDiff>[
       _file('src/graph/lanes.dart', 'final lanes = <Lane>[];\n', 'final lanes = <Lane>[...seed];\n'),

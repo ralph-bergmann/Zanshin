@@ -13,14 +13,18 @@ import 'package:zanshin/src/features/graph/graph_layout.dart' show GraphCommitCo
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_stack_store.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
-import 'package:zanshin/src/features/graph/inspector_diff.dart' show hunkLineParts;
+import 'package:zanshin/src/features/graph/inspector_diff.dart'
+    show DiffFoldRow, DiffLineRow, DiffRow, IgnoredLines, hunkLineParts, whitespaceRows;
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/view_state_cleanup.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
+import 'package:zanshin/src/features/projects/projects_environment.dart' show diffContextKey;
 import 'package:zanshin/src/features/projects/worker_project_repos.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
+
+import '../../helpers/fake_projects_environment.dart';
 
 /// [RepoGraphSource] recording every layout request.
 class _Counting implements GraphSource {
@@ -59,6 +63,9 @@ Future<void> until(bool Function() done) async {
   }
   expect(done(), isTrue);
 }
+
+/// What whitespace-ignoring rows show (Story 10.33): the changed rows' new texts, the dimmed ones', the folds.
+typedef _RowSummary = ({List<String> changed, List<String> dimmed, int folds});
 
 /// Lets the watcher's debounced events of what just ran arrive.
 Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 600));
@@ -159,11 +166,41 @@ void main() {
     expect(entry.change.parents, contains(layout.keyOf(layout.indexOfKey(first)!)));
   });
 
+  test(
+    'Story 10.33: diffContext reads the user-level value as Settings does; setDiffContext writes it at user scope',
+    () async {
+      final ProjectRepo repo = await openRepo('context');
+      final env = FakeProjectsEnvironment();
+      final details = RepoGraphDetails(repo, env);
+      expect(await details.diffContext(), 3, reason: "no entry: jj's default");
+      ConfigEntry entry(String value, ConfigValueSource source) =>
+          ConfigEntry(name: diffContextKey, value: value, source: source, path: null, overridden: false);
+      for (final (String value, int? lines) in <(String, int?)>[('5', 5), ('"many"', null), ('-1', null)]) {
+        env.configEntries[diffContextKey] = <ConfigEntry>[entry(value, ConfigValueSource.user)];
+        expect(await details.diffContext(), lines, reason: value);
+      }
+      // A repo layer is the project's: the read without a workspace root does not see it, as the Settings row.
+      env.configEntries[diffContextKey] = <ConfigEntry>[
+        entry('5', ConfigValueSource.user),
+        entry('7', ConfigValueSource.repo),
+      ];
+      expect(await details.diffContext(), 5);
+      var writes = 0;
+      void count() => writes++;
+      env.configWrites.addListener(count);
+      await details.setDiffContext(10);
+      env.configWrites.removeListener(count);
+      expect(env.configCalls, <String>['set user diff.color-words.context 10']);
+      expect(writes, 1, reason: 'the open diff reloads on it');
+      expect(await details.diffContext(), 10);
+    },
+  );
+
   test("Story 10.24: RepoGraphDetails.diff reads the summary and a focused file's hunks", () async {
     final ProjectRepo repo = await openRepo('diff');
     File('${pathOf('diff')}/a.txt').writeAsStringSync('one\ntwo\n');
     File('${pathOf('diff')}/b.txt').writeAsStringSync('x\n');
-    final details = RepoGraphDetails(repo);
+    final details = RepoGraphDetails(repo, FakeProjectsEnvironment());
     // A commit id, as the inspector passes it (`show` snapshots the new files first).
     final String commitId = (await details.show('@')).change.commitId;
     final Diff summary = await details.diff(commitId, summary: true);
@@ -468,6 +505,185 @@ void main() {
       },
     );
 
+    /// Story 10.33: a repo whose @ rewrites `x.txt` from [before] to [after]; @'s change id and `show` entry.
+    Future<(ProjectRepo, GraphViewModel, String, ShowEntry)> rewriteRepo(
+      String name,
+      String before,
+      String after,
+    ) async {
+      final (ProjectRepo repo, GraphViewModel model, _, String second) = await setUpRepo(name);
+      final file = File('${pathOf(name)}/x.txt')..writeAsStringSync(before);
+      await repo.handle.show(revset: second);
+      final String at = (await repo.handle.newChange(<String>[second])).newChangeIds.single;
+      file.writeAsStringSync(after);
+      return (repo, model, at, (await repo.handle.show(revset: at)).single);
+    }
+
+    /// What the inspector shows of `x.txt` at [commitId] with [mode] ignored: the exact read's hunks through
+    /// [whitespaceRows] over the read at [mode] — the inspector's two reads, through [RepoGraphDetails].
+    Future<({FileDiff exact, List<DiffRow> rows})> shown(
+      ProjectRepo repo,
+      String commitId,
+      DiffWhitespace mode, {
+      Set<HunkKey> revealed = const <HunkKey>{},
+    }) async {
+      final details = RepoGraphDetails(repo, FakeProjectsEnvironment());
+      final FileDiff exact = (await details.diff(commitId, paths: const <String>['x.txt'])).files.single;
+      final Diff ignoring = await details.diff(commitId, paths: const <String>['x.txt'], whitespace: mode);
+      final ignored = IgnoredLines.of(ignoring.files.where((file) => file.path == 'x.txt').firstOrNull);
+      return (
+        exact: exact,
+        rows: <DiffRow>[for (final Hunk hunk in exact.hunks) ...?whitespaceRows(hunk, ignored, revealed: revealed)],
+      );
+    }
+
+    String newText(HunkLine line) =>
+        line.segments.where((s) => s.kind != SegmentKind.removed).map((s) => s.text).join();
+
+    /// The new texts (trimmed) of the changed rows, and of the dimmed ones apart.
+    _RowSummary summaryOf(List<DiffRow> rows) => (
+      changed: <String>[
+        for (final DiffRow row in rows)
+          if (row case DiffLineRow(:final HunkLine line, whitespaceOnly: false) when line.kind != HunkLineKind.context)
+            newText(line).trim(),
+      ],
+      dimmed: <String>[
+        for (final DiffRow row in rows)
+          if (row case DiffLineRow(:final HunkLine line, whitespaceOnly: true)) newText(line).trim(),
+      ],
+      folds: rows.whereType<DiffFoldRow>().length,
+    );
+
+    test(
+      'Story 10.33: a Padding wrap at -b: only the new lines stay changed, the re-indented ones read as context',
+      () async {
+        final (ProjectRepo repo, _, _, ShowEntry entry) = await rewriteRepo(
+          'padding-b',
+          'build(\n  child: Foo(\n    a: 1,\n  ),\n)\n',
+          'build(\n  child: Padding(\n    padding: p,\n    child: Foo(\n      a: 1,\n    ),\n  ),\n)\n',
+        );
+        final (:FileDiff exact, :List<DiffRow> rows) = await shown(
+          repo,
+          entry.change.commitId,
+          DiffWhitespace.ignoreSpaceChange,
+        );
+        expect(exact.hunks, isNotEmpty);
+        final List<String> changed = summaryOf(rows).changed;
+        expect(changed, containsAll(<String>['child: Padding(', 'padding: p,']));
+        expect(changed.toSet().difference(<String>{'child: Padding(', 'padding: p,', '),'}), isEmpty);
+        final context = <String>[
+          for (final DiffRow row in rows)
+            if (row case DiffLineRow(:final HunkLine line) when line.kind == HunkLineKind.context) newText(line).trim(),
+        ];
+        expect(context, containsAll(<String>['child: Foo(', 'a: 1,']), reason: 'the re-indented lines');
+      },
+    );
+
+    test('Story 10.33: a b → a  b folds under -b and -w; a b → ab folds under -w, stays changed under -b', () async {
+      const lines = 'one\ntwo\na b\nfour\nfive\n';
+      final (ProjectRepo amount, _, _, ShowEntry amountEntry) = await rewriteRepo(
+        'space-amount',
+        lines,
+        lines.replaceFirst('a b', 'a  b'),
+      );
+      for (final mode in <DiffWhitespace>[
+        DiffWhitespace.ignoreSpaceChange,
+        DiffWhitespace.ignoreAllSpace,
+      ]) {
+        final _RowSummary summary = summaryOf((await shown(amount, amountEntry.change.commitId, mode)).rows);
+        expect(summary.changed, isEmpty, reason: '$mode');
+        expect(summary.folds, 1, reason: '$mode');
+      }
+      final (ProjectRepo removed, _, _, ShowEntry removedEntry) = await rewriteRepo(
+        'space-removed',
+        lines,
+        lines.replaceFirst('a b', 'ab'),
+      );
+      final _RowSummary w = summaryOf(
+        (await shown(removed, removedEntry.change.commitId, DiffWhitespace.ignoreAllSpace)).rows,
+      );
+      expect(w.changed, isEmpty);
+      expect(w.folds, 1);
+      final _RowSummary b = summaryOf(
+        (await shown(removed, removedEntry.change.commitId, DiffWhitespace.ignoreSpaceChange)).rows,
+      );
+      expect(b.folds, 0);
+      expect(b.changed, contains('ab'));
+    });
+
+    test(
+      'Story 10.33: under -w a picked part shows its re-indented line dimmed, and committing the part takes it',
+      () async {
+        final (ProjectRepo repo, GraphViewModel model, String at, ShowEntry entry) = await rewriteRepo(
+          'pick-reindent',
+          'a\nold\nkeep\nb\nc\nd\ne\nf\ng\nh\n',
+          'a\nnew\n  keep\nb\nc\nd\ne\nf\ng\nh\n',
+        );
+        final String commitId = entry.change.commitId;
+        final (:FileDiff exact, :List<DiffRow> rows) = await shown(repo, commitId, DiffWhitespace.ignoreAllSpace);
+        final HunkKey part = exact.hunks.single.sections.single;
+        expect(summaryOf(rows).changed, contains('new'));
+        expect(summaryOf(rows).changed, isNot(contains('keep')), reason: 'not picked: it reads as context');
+        final _RowSummary picked = summaryOf(
+          (await shown(repo, commitId, DiffWhitespace.ignoreAllSpace, revealed: <HunkKey>{part})).rows,
+        );
+        expect(picked.dimmed, contains('keep'));
+
+        final GraphActionResult result = await model.run(
+          GraphCommit(
+            at,
+            message: const <String>['Part'],
+            hunks: HunkChoice(
+              left: entry.parentTreeIds,
+              files: <FileSelection>[
+                FileSelection.hunks('x.txt', <HunkKey>[part]),
+              ],
+            ),
+          ),
+        );
+        expect(result, isA<GraphActionDone>(), reason: result is GraphActionRefused ? '${result.error}' : null);
+        expect(await addedLines(repo, at), containsAll(<String>['new\n', '  keep\n']));
+      },
+    );
+
+    test('Story 10.33: under -w a whitespace-only part folds; picking its row commits its lines', () async {
+      final lines = <String>[for (var i = 1; i <= 30; i++) 'line $i\n'];
+      final after = List<String>.of(lines)
+        ..[1] = '    line 2\n'
+        ..[27] = 'three\n';
+      final (ProjectRepo repo, GraphViewModel model, String at, ShowEntry entry) = await rewriteRepo(
+        'pick-fold',
+        lines.join(),
+        after.join(),
+      );
+      final (:FileDiff exact, :List<DiffRow> rows) = await shown(
+        repo,
+        entry.change.commitId,
+        DiffWhitespace.ignoreAllSpace,
+      );
+      final _RowSummary summary = summaryOf(rows);
+      expect(summary.folds, 1);
+      expect(summary.changed, <String>['three']);
+      final HunkKey part = exact.hunks.first.sections[(rows.whereType<DiffFoldRow>().single).part];
+
+      final GraphActionResult result = await model.run(
+        GraphCommit(
+          at,
+          message: const <String>['Indent'],
+          hunks: HunkChoice(
+            left: entry.parentTreeIds,
+            files: <FileSelection>[
+              FileSelection.hunks('x.txt', <HunkKey>[part]),
+            ],
+          ),
+        ),
+      );
+      expect(result, isA<GraphActionDone>(), reason: result is GraphActionRefused ? '${result.error}' : null);
+      final String born = (result as GraphActionDone).outcome.born.single;
+      expect(await addedLines(repo, at), <String>['    line 2\n'], reason: 'the commit holds the folded lines');
+      expect(await addedLines(repo, born), <String>['three\n']);
+    });
+
     test('Story 10.26: split -i through the runner keeps the hunk on the change, the rest on its child', () async {
       final (ProjectRepo repo, GraphViewModel model, String at, List<HunkKey> sections, List<String> left) =
           await threeHunkRepo('split-hunks');
@@ -576,7 +792,7 @@ void main() {
       final (ProjectRepo repo, _, String first, String second) = await setUpRepo('squash-plan');
       File('${pathOf('squash-plan')}/b.txt').writeAsStringSync('b\n');
       await repo.handle.describe(changeId: first, description: 'parent text\n');
-      final details = RepoGraphDetails(repo);
+      final details = RepoGraphDetails(repo, FakeProjectsEnvironment());
       expect((await details.squashPlan(second)).combinedDescription, isNull);
       await repo.handle.describe(changeId: second, description: 'child text\n');
       final String? combined = (await details.squashPlan(second)).combinedDescription;

@@ -70,6 +70,34 @@ abstract interface class ProjectsEnvironment {
   String get home;
 }
 
+/// The effective value among [entries] (`jj config list NAME --include-overridden`, lowest layer first): the last
+/// entry no higher layer overrides, or null when there is none.
+ConfigEntry? effectiveConfigEntry(List<ConfigEntry> entries) {
+  for (int i = entries.length - 1; i >= 0; i--) {
+    if (!entries[i].overridden) {
+      return entries[i];
+    }
+  }
+  return null;
+}
+
+/// `diff.color-words.context` (Story 10.33): the diff options menu and Settings › General › Diffs write it.
+const diffContextKey = 'diff.color-words.context'; // l10n-ignore: jj's config key
+
+/// `diff.color-words.context` as Settings reads it (Story 10.33): the user-level effective value through
+/// [environment]; no entry is jj's default 3, a value that is no integer or negative is null (jj cannot read it).
+Future<int?> readDiffContext(ProjectsEnvironment environment) async {
+  final String? raw = effectiveConfigEntry(await environment.configList(name: diffContextKey))?.value;
+  // 3 mirrors jj-cli's built-in default at v0.47.0 and applies only when no layer lists the key.
+  final int? parsed = raw == null ? 3 : int.tryParse(raw.trim());
+  return parsed != null && parsed >= 0 ? parsed : null;
+}
+
+/// `jj config set --user diff.color-words.context [lines]` through [environment], which fires its config writes.
+Future<void> writeDiffContext(ProjectsEnvironment environment, int lines) async {
+  await environment.configSet(ConfigScope.user, diffContextKey, '$lines');
+}
+
 /// [ProjectsEnvironment.configWrites]: a notifier its environment fires after each write.
 class ConfigWrites extends ChangeNotifier {
   /// Tells the listeners that a config write landed.

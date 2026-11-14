@@ -260,17 +260,36 @@ void main() {
       expect(rig.calls, isEmpty);
     });
 
-    testWidgets('the rows run Layout, Changed words, Inline changes, Context lines', (tester) async {
+    testWidgets('the rows run Layout, Whitespace, Changed words, Inline changes, Context lines', (tester) async {
       final rig = _Rig(tester);
       await rig.pump(project: false);
       final List<double> rows = <String>[
         'settings-diff-layout',
+        'settings-diff-whitespace',
         'settings-diff-marks',
         'settings-diff-inline',
         'settings-diff-context',
       ].map((id) => top(rig, id)).toList();
       expect(rows, List<double>.of(rows)..sort());
-      expect(rows.toSet(), hasLength(4));
+      expect(rows.toSet(), hasLength(5));
+    });
+
+    testWidgets('Story 10.33: Whitespace shows the app setting and writes it; no jj config', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump(project: false);
+      expect(find.text('Show all whitespace'), findsOneWidget);
+
+      await pick(tester, rig, 'settings-diff-whitespace', 'Ignore all whitespace');
+      expect(rig.store.value.general.diffWhitespace, DiffWhitespaceSetting.ignoreAll);
+      expect(find.text('Ignore all whitespace'), findsOneWidget);
+      expect(rig.calls, isEmpty);
+    });
+
+    testWidgets('Story 10.33: the user config\'s context 5 shows in the Context lines row', (tester) async {
+      final rig = _Rig(tester);
+      rig.env.configEntries[context] = <ConfigEntry>[_entry(context, '5', ConfigValueSource.user)];
+      await rig.pump(project: false);
+      expect(find.text('5'), findsOneWidget);
     });
 
     testWidgets('a choice writes at user scope, defaults too, and the row shows it', (tester) async {

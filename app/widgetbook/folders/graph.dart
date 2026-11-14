@@ -48,6 +48,7 @@ import 'package:zanshin_core/zanshin_core.dart'
         ChangeActions,
         ConflictState,
         Diff,
+        DiffWhitespace,
         FileChange,
         FileChangeKind,
         FileDiff,
@@ -63,7 +64,7 @@ import 'package:zanshin_core/zanshin_core.dart'
         SkippedPath,
         SquashPlan,
         ZanshinWarning;
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffWhitespaceSetting, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../graph/fake_content.dart';
@@ -280,6 +281,17 @@ final graphFolder = WidgetbookFolder(
         WidgetbookUseCase(
           name: 'Three parts',
           builder: (context) => _ThreeParts(
+            layout: context.knobs.object.dropdown(
+              label: 'layout',
+              options: DiffLayoutSetting.values,
+              initialOption: DiffLayoutSetting.unified,
+              labelBuilder: (value) => value.name,
+            ),
+          ),
+        ),
+        WidgetbookUseCase(
+          name: 'Whitespace ignored',
+          builder: (context) => _WhitespaceIgnored(
             layout: context.knobs.object.dropdown(
               label: 'layout',
               options: DiffLayoutSetting.values,
@@ -853,15 +865,18 @@ class _ShellControlsDemoState extends State<_ShellControlsDemo> {
         revset: _search.revset,
       );
     _model.addListener(_selectFirst);
+    final details = _DemoDetails(_model, _descriptions);
+    final inspector = InspectorViewModel(
+      graph: _model,
+      details: details,
+      // A path outside the registry: the Viewed marks live in memory for the demo (Story 10.24).
+      viewed: ProjectViewedStore(store, '/demo'),
+      settings: store,
+    );
+    details.afterWrite = inspector.configChanged;
     setState(() {
       _preferences = preferences;
-      _inspector = InspectorViewModel(
-        graph: _model,
-        details: _DemoDetails(_model, _descriptions),
-        // A path outside the registry: the Viewed marks live in memory for the demo (Story 10.24).
-        viewed: ProjectViewedStore(store, '/demo'),
-        settings: store,
-      );
+      _inspector = inspector;
     });
   }
 
@@ -1098,10 +1113,31 @@ class _DemoDetails implements GraphDetails {
     ),
   );
 
-  /// Story 10.24: a modified file gets four hunks (in Rust under `fn main()`), the first three with word marks (Story
-  /// 10.32), an added or removed one a single hunk of its lines, a `.png` is binary.
+  /// The demo's `diff.color-words.context`: the menu writes it here, never to a real config.
+  var _context = 3;
+
+  /// Runs after a write, as the environment's config writes do in the app.
+  VoidCallback? afterWrite;
+
   @override
-  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) async {
+  Future<int?> diffContext() async => _context;
+
+  @override
+  Future<void> setDiffContext(int lines) async {
+    _context = lines;
+    afterWrite?.call();
+  }
+
+  /// Story 10.24: a modified file gets four hunks (in Rust under `fn main()`), the first three with word marks (Story
+  /// 10.32), an added or removed one a single hunk of its lines, a `.png` is binary. The demo's lines change in more
+  /// than whitespace, so a read at `-b` / `-w` (Story 10.33) answers the same lines.
+  @override
+  Future<Diff> diff(
+    String commitId, {
+    List<String> paths = const [],
+    bool summary = false,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) async {
     final ShowEntry entry = await show(commitId);
     return Diff(
       files: <FileDiff>[
@@ -1863,6 +1899,136 @@ class _ThreeParts extends StatelessWidget {
   }
 }
 
+/// Story 10.33: whitespace ignored (`jj diff -w`) in a hunk of two parts. The first, picked, changes code and
+/// re-indents a line: that line shows dimmed with "whitespace only". The second only re-indents: it folds into one
+/// hatched row with its checkbox and Show. The menu, the checkboxes and Show work on the use case's own state.
+class _WhitespaceIgnored extends StatefulWidget {
+  const _WhitespaceIgnored({required this.layout});
+
+  final DiffLayoutSetting layout;
+
+  @override
+  State<_WhitespaceIgnored> createState() => _WhitespaceIgnoredState();
+}
+
+class _WhitespaceIgnoredState extends State<_WhitespaceIgnored> {
+  static const _sections = <HunkKey>[
+    HunkKey(oldStart: 1, oldCount: 2, newStart: 1, newCount: 3),
+    HunkKey(oldStart: 5, oldCount: 2, newStart: 6, newCount: 2),
+  ];
+
+  static final _hunk = Hunk(
+    before: (start: 0, end: 8),
+    after: (start: 0, end: 9),
+    symbol: 'class A',
+    sections: _sections,
+    removed: 4,
+    added: 5,
+    lines: <HunkLine>[
+      _colorWords('    1    1|class A {'),
+      _colorWords("-   2     |[-  build() => Text('a');-]"),
+      _colorWords('+        2|{+  build() => Padding(+}'),
+      _colorWords("~   3    3|{+  +}  child: Text('b'),"),
+      _colorWords('+        4|{+  );+}'),
+      _colorWords('    4    5|  int x = 1;'),
+      _colorWords('    5    6|  int y = 2;'),
+      _colorWords('~   6    7|{+  +}  return x;'),
+      _colorWords('~   7    8|{+  +}  return y;'),
+      _colorWords('    8    9|}'),
+    ],
+  );
+
+  // What the read at -w says: line 3 and lines 7-8 are context there.
+  static final _ignored = IgnoredLines.of(
+    FileDiff(
+      path: 'lib/a.dart',
+      kind: FileChangeKind.modified,
+      fromPath: null,
+      binary: false,
+      modeChange: false,
+      sections: const <HunkKey>[],
+      hunks: <Hunk>[
+        Hunk(
+          before: (start: 0, end: 8),
+          after: (start: 0, end: 9),
+          symbol: null,
+          sections: const <HunkKey>[],
+          removed: 1,
+          added: 2,
+          lines: <HunkLine>[
+            _colorWords("-   2     |[-  build() => Text('a');-]"),
+            _colorWords('+        2|{+  build() => Padding(+}'),
+            _colorWords("    3    3|    child: Text('b'),"),
+            _colorWords('+        4|{+  );+}'),
+            _colorWords('    6    7|    return x;'),
+            _colorWords('    7    8|    return y;'),
+          ],
+        ),
+      ],
+      removed: 1,
+      added: 2,
+      fingerprint: 'w',
+    ),
+  );
+
+  final _picked = <HunkKey>{_sections[0]};
+  DiffWhitespaceSetting _whitespace = DiffWhitespaceSetting.ignoreAll;
+  int? _context = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final diff = FileDiff(
+      path: 'lib/a.dart',
+      kind: FileChangeKind.modified,
+      fromPath: null,
+      binary: false,
+      modeChange: false,
+      sections: _sections,
+      hunks: <Hunk>[_hunk],
+      removed: 4,
+      added: 5,
+      fingerprint: 'f',
+    );
+    bool? hunkPicked(Hunk hunk) => _picked.isEmpty ? false : (_picked.length == _sections.length ? true : null);
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ZsCanvas(),
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: InspectorDiffView(
+                path: diff.path,
+                diff: diff,
+                error: null,
+                layout: widget.layout,
+                onLayoutChanged: (_) {},
+                hunkPicked: hunkPicked,
+                onHunkToggled: (_) => setState(() {
+                  if (hunkPicked(_hunk) ?? false) {
+                    _picked.clear();
+                  } else {
+                    _picked.addAll(_sections);
+                  }
+                }),
+                partPicked: _picked.contains,
+                onPartToggled: (part) => setState(() => _picked.remove(part) || _picked.add(part)),
+                whitespace: _whitespace,
+                onWhitespaceChanged: (whitespace) => setState(() => _whitespace = whitespace),
+                ignored: _whitespace == DiffWhitespaceSetting.showAll ? null : _ignored,
+                contextLines: _context,
+                onContextLinesChanged: (lines) => setState(() => _context = lines),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Story 10.38 (deferred-work I1): a unified diff with a short line under a long one, in a bounded well scrolled fully
 /// right — the numbers and the part checkboxes stay at the left edge, the hunk header stays in view.
 class _PinnedNumbers extends StatefulWidget {
@@ -1993,14 +2159,15 @@ class _InspectorAtState extends State<_InspectorAt> {
     _model
       ..addListener(_selectFirst)
       ..init(_source, actions: _DemoActions(_descriptions), clock: () => DateTime.fromMillisecondsSinceEpoch(now));
-    setState(() {
-      _inspector = InspectorViewModel(
-        graph: _model,
-        details: _DemoDetails(_model, _descriptions),
-        viewed: ProjectViewedStore(store, '/demo'),
-        settings: store,
-      );
-    });
+    final details = _DemoDetails(_model, _descriptions);
+    final inspector = InspectorViewModel(
+      graph: _model,
+      details: details,
+      viewed: ProjectViewedStore(store, '/demo'),
+      settings: store,
+    );
+    details.afterWrite = inspector.configChanged;
+    setState(() => _inspector = inspector);
   }
 
   /// Selects the first mutable change other than @ that has files.

@@ -327,6 +327,7 @@ class ProjectComponent$Subcomponent implements _i7.ProjectComponent {
           _projectComponent$projectRepo$Provider,
           _parent._settingsStore$Provider,
           projectComponent$inspectorViewedStore$Provider,
+          _parent._projectsEnvironment$Provider,
           projectModule,
         );
     final projectComponent$operationChangesSource$Provider =
@@ -955,6 +956,7 @@ class _ProjectComponent$InspectorViewModel$Provider
     this._projectComponent$projectRepo$Provider,
     this._settingsStore$Provider,
     this._projectComponent$inspectorViewedStore$Provider,
+    this._projectsEnvironment$Provider,
     this._module,
   );
 
@@ -969,6 +971,8 @@ class _ProjectComponent$InspectorViewModel$Provider
   final _ProjectComponent$InspectorViewedStore$Provider
   _projectComponent$inspectorViewedStore$Provider;
 
+  final _ProjectsEnvironment$Provider _projectsEnvironment$Provider;
+
   final _i7.ProjectModule _module;
 
   late final _i30.InspectorViewModel _singleton = _create();
@@ -978,6 +982,7 @@ class _ProjectComponent$InspectorViewModel$Provider
     _projectComponent$projectRepo$Provider.get(),
     _settingsStore$Provider.get(),
     _projectComponent$inspectorViewedStore$Provider.get(),
+    _projectsEnvironment$Provider.get(),
   );
 
   @override

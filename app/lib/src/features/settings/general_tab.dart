@@ -9,6 +9,7 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../graph/inspector_diff.dart' show diffContextChoices, diffWhitespaceLabel;
 import '../window/window_zoom.dart';
 import 'settings_view_model.dart';
 import 'settings_widgets.dart';
@@ -181,6 +182,20 @@ class SettingsGeneralTab extends StatelessWidget {
               ),
             ),
             SettingsRow(
+              label: s.settingsDiffWhitespace,
+              child: ZsSelect<DiffWhitespaceSetting>(
+                label: s.settingsDiffWhitespace,
+                identifier: 'settings-diff-whitespace',
+                options: <ZsSelectEntry<DiffWhitespaceSetting>>[
+                  for (final DiffWhitespaceSetting setting in DiffWhitespaceSetting.values)
+                    ZsSelectOption<DiffWhitespaceSetting>(value: setting, label: diffWhitespaceLabel(s, setting)),
+                ],
+                value: prefs.general.diffWhitespace,
+                onChanged: (whitespace) =>
+                    vm.updatePreferences((settings) => settings.copyWith.general(diffWhitespace: whitespace)),
+              ),
+            ),
+            SettingsRow(
               label: s.settingsDiffWordMarks,
               hint: s.settingsDiffWordMarksHint,
               child: ZsSwitch(
@@ -213,7 +228,7 @@ class SettingsGeneralTab extends StatelessWidget {
               identifier: 'settings-diff-context',
               fallback: 3,
               min: 0,
-              fixed: const <int>[0, 1, 2, 3, 5, 10, 20],
+              fixed: diffContextChoices,
               optionLabel: (n) => '$n',
             ),
           ],

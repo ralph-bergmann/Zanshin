@@ -122,7 +122,13 @@ class ProjectModule {
     ProjectRepo repo,
     SettingsStore settings,
     InspectorViewedStore viewed,
-  ) => InspectorViewModel(graph: model, details: RepoGraphDetails(repo), viewed: viewed, settings: settings);
+    ProjectsEnvironment environment,
+  ) => InspectorViewModel(
+    graph: model,
+    details: RepoGraphDetails(repo, environment),
+    viewed: viewed,
+    settings: settings,
+  );
 
   /// Provides the pass that drops the view state of changes gone from the repository, once the first layout lands.
   @provides
@@ -194,7 +200,7 @@ class ProjectModule {
   /// Provides what the Undo Timeline's Show changes reads.
   @provides
   OperationChangesSource operationChangesSource(ProjectRepo repo, ProjectsEnvironment environment) =>
-      RepoOperationChangesSource(repo, configWrites: environment.configWrites);
+      RepoOperationChangesSource(repo, environment: environment);
 
   /// Provides the view Show changes opens. A provider, because inject.dart finds a generated factory only from a
   /// provider's parameter or a component getter, not from an `@inject` constructor.

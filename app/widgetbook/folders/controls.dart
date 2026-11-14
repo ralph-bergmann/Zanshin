@@ -1111,6 +1111,23 @@ Widget _menuButtonMatrix(BuildContext context) => StateMatrix(<MatrixRow>[
         statesController: cell.states,
       ),
     ),
+  // Story 10.33: the diff header's options, icon-only; active while a value is off its default.
+  for (final (String spec, bool active) in const <(String, bool)>[('icon-only', false), ('icon-only active', true)])
+    MatrixRow(
+      'MenuButton',
+      spec,
+      const <MatrixState>[..._interaction, MatrixState.disabled],
+      (cell) => ZsMenuButton(
+        label: 'Diff options — Ignore all whitespace, 3 context lines',
+        icon: ZI.viewOptions,
+        iconOnly: true,
+        active: active,
+        variant: ZsButtonVariant.ghost,
+        entries: _squashMenu,
+        disabledReason: cell.state == MatrixState.disabled ? 'Another action is running' : null,
+        statesController: cell.states,
+      ),
+    ),
 ]);
 
 Widget _menuButtonInteractive(BuildContext context) {
@@ -1121,10 +1138,15 @@ Widget _menuButtonInteractive(BuildContext context) {
     labelBuilder: (value) => value.name,
   );
   final String? reason = context.knobs.stringOrNull(label: 'disabled reason');
+  final bool iconOnly = context.knobs.boolean(label: 'icon only');
+  final bool active = context.knobs.boolean(label: 'active (icon only)');
   return _live(
     ZsMenuButton(
       label: label,
       variant: variant,
+      icon: iconOnly ? ZI.viewOptions : null,
+      iconOnly: iconOnly,
+      active: active,
       entries: _squashMenu,
       disabledReason: reason,
       identifier: 'menu-button',

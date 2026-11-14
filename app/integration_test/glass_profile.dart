@@ -30,6 +30,7 @@ import 'package:zanshin_core/zanshin_core.dart'
         ChangeActions,
         ConflictState,
         Diff,
+        DiffWhitespace,
         FileChange,
         ShowEntry,
         Signature,
@@ -288,8 +289,18 @@ class _Details implements GraphDetails {
   );
 
   @override
-  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) async =>
-      Diff(files: const [], operationId: 'op', commitIds: <String>[commitId]);
+  Future<Diff> diff(
+    String commitId, {
+    List<String> paths = const [],
+    bool summary = false,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) async => Diff(files: const [], operationId: 'op', commitIds: <String>[commitId]);
+
+  @override
+  Future<int?> diffContext() async => 3;
+
+  @override
+  Future<void> setDiffContext(int lines) async {}
 
   @override
   Future<SquashPlan> squashPlan(String changeId) async => const SquashPlan(combinedDescription: null);

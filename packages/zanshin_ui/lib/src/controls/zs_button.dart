@@ -136,21 +136,23 @@ class ZsButton extends StatelessWidget implements ZsControl {
     this.identifier,
     super.key,
   }) : assert(!iconOnly || icon != null, 'An icon-only button needs an icon.'),
-       _chevron = false;
+       _chevron = false,
+       _active = false;
 
-  /// [ZsMenuButton]'s button: the label followed by the menu's chevron.
+  /// [ZsMenuButton]'s button: the label (or, [iconOnly], the icon) followed by the menu's chevron.
   const ZsButton._withChevron({
     required this.label,
     required this.onPressed,
     required this.variant,
     required this.size,
     required this.icon,
+    required this.iconOnly,
+    required this._active,
     required this.disabledReason,
     required this.focusNode,
     required this.statesController,
     required this.identifier,
-  }) : iconOnly = false,
-       busy = false,
+  }) : busy = false,
        _chevron = true;
 
   /// The verb, in sentence case; the name and tooltip of an icon-only button.
@@ -188,6 +190,9 @@ class ZsButton extends StatelessWidget implements ZsControl {
 
   /// Whether a `chevron-down` follows the label ([ZsMenuButton]).
   final bool _chevron;
+
+  /// Whether an icon-only menu button's glyph is `--accent` ([ZsMenuButton.active]).
+  final bool _active;
 
   bool get _large => size == ZsButtonSize.lg;
 
@@ -271,7 +276,33 @@ class ZsButton extends StatelessWidget implements ZsControl {
         // The menu's chevron sits 5 after the label and 4 nearer the edge (DS actions.css `.zs-menubtn>span{gap:5px}`,
         // `.zs-btn.zs-menubtn{padding-right:8px}`).
         final double chevronPull = _chevron ? 4 : 0;
-        final Widget content = iconOnly
+        final Widget chevron = ZanshinIcon(
+          ZI.chevronDown,
+          size: ZsIconSize.sm,
+          color: look.text.withValues(alpha: look.text.a * .75),
+        );
+        final Widget content = iconOnly && _chevron
+            // The icon-only menu button: 26 high, padding 0 5 0 6, the glyph and the chevron 2 apart (DS
+            // components/actions/actions.css `.zs-menubtn.is-icon`).
+            ? SizedBox(
+                height: metrics.controlSm,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 0, 5, 0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 2,
+                    children: <Widget>[
+                      ZanshinIcon(
+                        icon!,
+                        size: ZsIconSize.md,
+                        color: _active && onPressed != null ? colors.accent : look.icon,
+                      ),
+                      chevron,
+                    ],
+                  ),
+                ),
+              )
+            : iconOnly
             ? SizedBox.square(
                 dimension: height,
                 child: Center(child: mark),
@@ -295,14 +326,7 @@ class ZsButton extends StatelessWidget implements ZsControl {
                         ),
                         softWrap: false,
                       ),
-                      if (_chevron) ...<Widget>[
-                        const SizedBox(width: 5),
-                        ZanshinIcon(
-                          ZI.chevronDown,
-                          size: ZsIconSize.sm,
-                          color: look.text.withValues(alpha: look.text.a * .75),
-                        ),
-                      ],
+                      if (_chevron) ...<Widget>[const SizedBox(width: 5), chevron],
                     ],
                   ),
                 ),

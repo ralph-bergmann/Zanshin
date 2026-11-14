@@ -773,6 +773,52 @@
   "@inspectorModeCheck": {"description": "VoiceOver name and tooltip of the mode-change row's checkbox: whether Commit / Split takes the file's new executable bit."},
   "inspectorDiffNoLines": "No line changes",
   "@inspectorDiffNoLines": {"description": "The diff of a file with no hunks otherwise (a pure rename, an empty file)."},
+  "inspectorDiffOnlyWhitespace": "Only whitespace changed in this file.",
+  "@inspectorDiffOnlyWhitespace": {"description": "The diff of a file whose changes all read as unchanged while the diff ignores whitespace (the diff options menu)."},
+  "inspectorDiffOptions": "Diff options — {whitespace}, {count, plural, =1{1 context line} other{{count} context lines}}",
+  "@inspectorDiffOptions": {
+    "description": "VoiceOver name and tooltip of the diff options menu button, the last control of the diff header: the whitespace choice's label and jj's diff.color-words.context.",
+    "placeholders": {
+      "whitespace": {"type": "String", "example": "Ignore all whitespace"},
+      "count": {"type": "int", "example": "3"}
+    }
+  },
+  "inspectorDiffOptionsUnreadable": "Diff options — {whitespace}, context lines unreadable",
+  "@inspectorDiffOptionsUnreadable": {
+    "description": "VoiceOver name and tooltip of the diff options menu button while jj cannot read diff.color-words.context.",
+    "placeholders": {"whitespace": {"type": "String", "example": "Show all whitespace"}}
+  },
+  "diffWhitespaceHead": "Whitespace",
+  "@diffWhitespaceHead": {"description": "Heading of the whitespace choices in the diff options menu."},
+  "diffWhitespaceShowAll": "Show all whitespace",
+  "@diffWhitespaceShowAll": {"description": "Whitespace choice (diff options menu, Settings › Diffs): every whitespace change shows, as jj diff."},
+  "diffWhitespaceIgnoreAmount": "Ignore changes in amount",
+  "@diffWhitespaceIgnoreAmount": {"description": "Whitespace choice (diff options menu, Settings › Diffs): changes in the amount of whitespace read as unchanged, as jj diff -b."},
+  "diffWhitespaceIgnoreAll": "Ignore all whitespace",
+  "@diffWhitespaceIgnoreAll": {"description": "Whitespace choice (diff options menu, Settings › Diffs): all whitespace is ignored, as jj diff -w."},
+  "diffContextHead": "Context lines",
+  "@diffContextHead": {"description": "Heading of the context-line choices in the diff options menu (jj's diff.color-words.context)."},
+  "diffContextDefault": "jj's default",
+  "@diffContextDefault": {"description": "Hint beside the context-line choice 3 in the diff options menu."},
+  "diffOptionsNote": "Every diff follows these. Context lines is jj's diff.color-words.context in your user config, as in Settings › General › Diffs. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn't see.",
+  "@diffOptionsNote": {"description": "The note at the end of the diff options menu."},
+  "inspectorWhitespaceOnly": "whitespace only",
+  "@inspectorWhitespaceOnly": {"description": "Pill on a line that changed only in whitespace, shown dimmed because its part is picked while the diff ignores whitespace."},
+  "inspectorWhitespaceOnlyTooltip": "Shown because its part is picked: a pick takes every line of its part",
+  "@inspectorWhitespaceOnlyTooltip": {"description": "Tooltip of the whitespace only pill on a picked part's line."},
+  "inspectorWhitespaceOnlyHide": "whitespace only · Hide",
+  "@inspectorWhitespaceOnlyHide": {"description": "Button on a line that changed only in whitespace, shown because the user opened its folded part: folds it again."},
+  "inspectorWhitespaceHideTooltip": "Hide the whitespace-only lines again",
+  "@inspectorWhitespaceHideTooltip": {"description": "Tooltip of the whitespace only · Hide button."},
+  "inspectorFoldText": "⋯ {count, plural, =1{1 line} other{{count} lines}} changed whitespace only · Show",
+  "@inspectorFoldText": {
+    "description": "The row a part made only of whitespace changes folds into while the diff ignores whitespace; a click shows its lines.",
+    "placeholders": {"count": {"type": "int", "example": "4"}}
+  },
+  "inspectorFoldShowTooltip": "Show these lines",
+  "@inspectorFoldShowTooltip": {"description": "Tooltip of a folded whitespace-only row."},
+  "inspectorFoldPick": "Pick these whitespace-only lines",
+  "@inspectorFoldPick": {"description": "VoiceOver name and tooltip of an unchecked folded row's checkbox: Commit / Split takes the part's lines, and the row opens."},
 
   "toastAbandoned": "Abandoned {changes}",
   "@toastAbandoned": {
@@ -1540,6 +1586,8 @@
   "@settingsDiffUnified": {"description": "Diff layout choice: one column."},
   "settingsDiffSideBySide": "Side by side",
   "@settingsDiffSideBySide": {"description": "Diff layout choice: two columns."},
+  "settingsDiffWhitespace": "Whitespace",
+  "@settingsDiffWhitespace": {"description": "Settings › General › Diffs row and VoiceOver name of its choice: how every diff treats whitespace (the same setting as the diff options menu)."},
   "settingsDiffWordMarks": "Changed words",
   "@settingsDiffWordMarks": {"description": "Settings › General › Diffs row: whether the diff marks the words that changed inside a line."},
   "settingsDiffWordMarksHint": "Marks the words that changed inside a line, where jj diff underlines them.",

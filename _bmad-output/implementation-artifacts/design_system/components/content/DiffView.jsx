@@ -1,6 +1,7 @@
 import React from "react";
 import { Icon } from "../brand/Icon.jsx";
 import { Checkbox } from "../forms/Checkbox.jsx";
+import { MenuButton } from "../actions/MenuButton.jsx";
 
 // DiffView — the diff block on the quiet code surface: a toolbar (path, layout toggle, Viewed) over hunks or plain lines.
 // The lines are jj diff's default color-words lines: each row shows its left and right line number, then its text.
@@ -60,25 +61,48 @@ export function zsDiffDigits(ls) {
   return Math.max(1, ...ls.map((l) => String(Math.max(l.l || 0, l.r || 0)).length));
 }
 
-export function DiffView({ file, tools, lines = [], wordMarks = true, maxHeight, viewed, onViewedChange, children, className = "" }) {
+// The diff options menu (2026-11-14, Story 10.33): whitespace (an app setting) and context lines (jj's diff.color-words.context, user config).
+const ZS_WS = [["show", "Show all whitespace", "jj diff"], ["amount", "Ignore changes in amount", "jj diff -b"], ["all", "Ignore all whitespace", "jj diff -w"]];
+export function zsDiffOptionItems({ whitespace = "show", context = 3 }) {
+  const ns = [...new Set([0, 1, 2, 3, 5, 10, 20, ...(context == null ? [] : [context])])].sort((a, b) => a - b);
+  return [
+    { header: "Whitespace" },
+    ...ZS_WS.map(([id, label, cmd]) => ({ id: "ws:" + id, label, cmd, checked: whitespace === id, radio: true })),
+    "sep", { header: "Context lines" },
+    ...ns.map((n) => ({ id: "ctx:" + n, label: String(n), shortcut: n === 3 ? "jj's default" : undefined, checked: context === n, radio: true })),
+    "sep", { note: "Every diff follows these. Context lines is jj's diff.color-words.context in your user config, as in Settings › General › Diffs. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn't see." },
+  ];
+}
+
+export function DiffView({ file, tools, lines = [], wordMarks = true, maxHeight, viewed, onViewedChange, options, onOption, onlyWhitespace = false, children, className = "" }) {
   const toggle = onViewedChange && (
     <button type="button" role="checkbox" aria-checked={!!viewed} className={"zs-viewed" + (viewed ? " is-on" : "")} onClick={() => onViewedChange(!viewed)} title={viewed ? "Mark as not viewed" : "Mark as viewed"}>
       <Checkbox presentational size="sm" tone="add" checked={!!viewed} />
       <span>Viewed</span>
     </button>
   );
+  // the diff options menu: the last control; its glyph --accent while a value is off its default
+  const menu = options && (() => {
+    const { whitespace = "show", context = 3 } = options;
+    const ws = (ZS_WS.find(([id]) => id === whitespace) || ZS_WS[0])[1];
+    const label = "Diff options — " + ws + ", " + (context == null ? "context lines unreadable" : context + (context === 1 ? " context line" : " context lines"));
+    return <MenuButton iconOnly icon="view-options" variant="ghost" active={whitespace !== "show" || context !== 3} label={label} items={zsDiffOptionItems(options)} onSelect={onOption} />;
+  })();
   const ls = lines.map(zsDiffLine);
   return (
     <div className={["zs-diff", viewed && "is-viewed", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")}>
-      {(file || tools || toggle) && (
+      {(file || tools || toggle || menu) && (
         <div className="zs-diff-bar">
           <span className="zs-diff-file" title={file}>{file}</span>
           {tools}
           {toggle}
+          {menu}
         </div>
       )}
       {viewed && onViewedChange ? (
         <button type="button" className="zs-diff-collapsed" onClick={() => onViewedChange(false)}><Icon name="check" size="sm" /><span>Viewed — diff folded away. Click to show it again.</span></button>
+      ) : onlyWhitespace ? (
+        <div className="zs-diff-note">Only whitespace changed in this file.</div>
       ) : children ? (
         // the hunks scroll sideways as one unit, every line as wide as the widest (Story 10.38)
         <div className="zs-diff-hunks" style={{ maxHeight }}><div className="zs-diff-wide">{children}</div></div>

@@ -19,7 +19,7 @@ import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/immutable_reasons.dart';
 import 'package:zanshin/src/features/graph/inspector_diff.dart'
-    show DiffWordMarks, InspectorDiffHunk, InspectorDiffView;
+    show DiffWordMarks, IgnoredLines, InspectorDiffHunk, InspectorDiffView;
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin_core/zanshin_core.dart';
@@ -219,10 +219,62 @@ class _Details implements GraphDetails {
     );
   }
 
+  /// Every `diff` call's whitespace mode, in call order.
+  final modes = <DiffWhitespace>[];
+
+  /// The reads at `-b` / `-w` per key; a key without an entry answers its exact files.
+  final ignoredDiffs = <String, List<FileDiff>>{};
+
+  /// The refusal of the reads at `-b` / `-w`.
+  ZanshinFfiException? refuseIgnored;
+
+  /// What `diffContext` answers; [refuseContextWrite] refuses `setDiffContext`, which records in [contextWrites] and
+  /// then runs [afterContextWrite] (the environment's config write).
+  int? context = 3;
+  ZanshinFfiException? refuseContextWrite;
+  final contextWrites = <int>[];
+  void Function()? afterContextWrite;
+
   @override
-  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) async {
+  Future<int?> diffContext() async => context;
+
+  @override
+  Future<void> setDiffContext(int lines) async {
+    if (refuseContextWrite case final error?) {
+      throw error;
+    }
+    contextWrites.add(lines);
+    context = lines;
+    afterContextWrite?.call();
+  }
+
+  @override
+  Future<Diff> diff(
+    String commitId, {
+    List<String> paths = const [],
+    bool summary = false,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) async {
     // Keyed by commit id as [show]: `c<key>`.
     final String changeId = commitId.substring(1);
+    modes.add(whitespace);
+    if (whitespace != DiffWhitespace.exact) {
+      if (refuseIgnored case final error?) {
+        throw error;
+      }
+      final Diff exact = diffOf(changeId, paths: paths);
+      final List<FileDiff>? ignored = ignoredDiffs[changeId];
+      return ignored == null
+          ? exact
+          : Diff(
+              files: <FileDiff>[
+                for (final FileDiff file in ignored)
+                  if (paths.isEmpty || paths.contains(file.path)) file,
+              ],
+              operationId: exact.operationId,
+              commitIds: exact.commitIds,
+            );
+    }
     diffs.add((changeId, paths, summary));
     if ((summary ? refuseSummary : refuseDiff) case final error?) {
       throw error;
@@ -1751,6 +1803,165 @@ void main() {
       expect(details.focusReads, hasLength(2));
       expect(details.focusReads.last.$2, <String>['src/a.dart'], reason: 'the focused path stays');
       expect(inspector.focusedDiff, isNotNull);
+      await unmount(tester);
+    });
+
+    // Story 10.33: the diff options menu.
+    Finder optionsMenu() =>
+        find.byWidgetPredicate((widget) => widget is ZsMenuButton && widget.identifier == 'inspector-diff-options');
+    ZsMenuItem optionsRow(WidgetTester tester, String identifier) => tester
+        .widget<ZsMenuButton>(optionsMenu())
+        .entries
+        .whereType<ZsMenuItem>()
+        .singleWhere((item) => item.identifier == identifier);
+
+    testWidgets('Story 10.33: Ignore all whitespace reloads the focused file exact and at -w, the summary stays exact, '
+        'the glyph turns accent', (tester) async {
+      await pump(tester);
+      await settle(tester);
+      expect(tester.widget<ZsMenuButton>(optionsMenu()).active, isFalse);
+      expect(optionsRow(tester, 'diff-options-whitespace-showAll').checked, isTrue);
+      final int reads = details.modes.length;
+      final int summaries = details.diffs.where((d) => d.$3).length;
+      optionsRow(tester, 'diff-options-whitespace-ignoreAll').onSelected!();
+      await settle(tester);
+      expect(settings.value.general.diffWhitespace, DiffWhitespaceSetting.ignoreAll);
+      expect(inspector.whitespace, DiffWhitespaceSetting.ignoreAll);
+      expect(
+        details.modes.skip(reads),
+        unorderedEquals(<DiffWhitespace>[DiffWhitespace.exact, DiffWhitespace.ignoreAllSpace]),
+      );
+      expect(details.diffs.where((d) => d.$3), hasLength(summaries), reason: 'the summary is not read again');
+      expect(inspector.focusedIgnored, isNotNull);
+      final InspectorDiffView view = tester.widget(find.byType(InspectorDiffView));
+      expect(view.whitespace, DiffWhitespaceSetting.ignoreAll);
+      expect(view.ignored, same(inspector.focusedIgnored));
+      expect(tester.widget<ZsMenuButton>(optionsMenu()).active, isTrue);
+      expect(optionsRow(tester, 'diff-options-whitespace-ignoreAll').checked, isTrue);
+
+      // Back to show all: one exact read, no ignoring side.
+      final int again = details.modes.length;
+      inspector.setWhitespace(DiffWhitespaceSetting.showAll);
+      await settle(tester);
+      expect(details.modes.skip(again), <DiffWhitespace>[DiffWhitespace.exact]);
+      expect(inspector.focusedIgnored, isNull);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.33: a stored -b reads at -b from the first load', (tester) async {
+      await tester.runAsync(
+        () => settings.update(
+          (s) => s.copyWith(general: s.general.copyWith(diffWhitespace: DiffWhitespaceSetting.ignoreChangesInAmount)),
+        ),
+      );
+      await pump(tester);
+      await settle(tester);
+      expect(details.modes, contains(DiffWhitespace.ignoreSpaceChange));
+      expect(optionsRow(tester, 'diff-options-whitespace-ignoreChangesInAmount').checked, isTrue);
+      await unmount(tester);
+    });
+
+    testWidgets(
+      'Story 10.33: a file picked whole without part picks shows its exact lines while whitespace is ignored',
+      (
+        tester,
+      ) async {
+        await tester.runAsync(
+          () => settings.update(
+            (s) => s.copyWith(general: s.general.copyWith(diffWhitespace: DiffWhitespaceSetting.ignoreAll)),
+          ),
+        );
+        await pump(tester);
+        await settle(tester);
+        expect(inspector.hunkable('src/a.dart'), isFalse, reason: 'no sections: it takes no part picks');
+        // The ignoring read reports nothing changed: every line reads as whitespace only.
+        expect(find.text('Only whitespace changed in this file.'), findsOneWidget);
+        inspector.togglePick('src/a.dart');
+        await settle(tester);
+        expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).ignored, isNull);
+        expect(find.text('new a'), findsOneWidget, reason: 'the whole pick takes every line, so every line shows');
+        await unmount(tester);
+      },
+    );
+
+    testWidgets('Story 10.33: while a reload is held, the view keeps the previous read\'s ignoring side', (
+      tester,
+    ) async {
+      await tester.runAsync(
+        () => settings.update(
+          (s) => s.copyWith(general: s.general.copyWith(diffWhitespace: DiffWhitespaceSetting.ignoreAll)),
+        ),
+      );
+      await pump(tester);
+      await settle(tester);
+      final IgnoredLines? before = tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).ignored;
+      expect(before, isNotNull);
+      details.holdDiff = true;
+      inspector.configChanged();
+      await settle(tester);
+      expect(details.heldDiffs, hasLength(1));
+      expect(inspector.focusedDiff, isNull);
+      expect(inspector.previousDiff, isNotNull);
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).ignored, same(before));
+      final (String key, List<String> paths, Completer<Diff> held) = details.heldDiffs.single;
+      held.complete(details.diffOf(key, paths: paths));
+      await settle(tester);
+      expect(inspector.focusedIgnored, isNotNull);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.33: a refusal of the read at -w is the diff\'s refusal', (tester) async {
+      await tester.runAsync(
+        () => settings.update(
+          (s) => s.copyWith(general: s.general.copyWith(diffWhitespace: DiffWhitespaceSetting.ignoreAll)),
+        ),
+      );
+      details.refuseIgnored = const ZanshinFfiException('jj.jj_lib_error', 'no -w');
+      await pump(tester);
+      await settle(tester);
+      expect(inspector.focusError?.code, 'jj.jj_lib_error');
+      expect(inspector.focusedDiff, isNull);
+      expect(find.text('no -w'), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.33: the menu checks the user config\'s context; a pick writes it and the diff reloads; a '
+        'refused write keeps the value', (tester) async {
+      details.context = 5;
+      await pump(tester);
+      await settle(tester);
+      expect(inspector.contextLines, 5);
+      expect(optionsRow(tester, 'diff-options-context-5').checked, isTrue);
+      expect(tester.widget<ZsMenuButton>(optionsMenu()).label, 'Diff options — Show all whitespace, 5 context lines');
+      details.afterContextWrite = inspector.configChanged;
+      final int reads = details.focusReads.length;
+      optionsRow(tester, 'diff-options-context-10').onSelected!();
+      await settle(tester);
+      expect(details.contextWrites, <int>[10]);
+      expect(inspector.contextLines, 10);
+      expect(details.focusReads, hasLength(reads + 1), reason: 'the config write reloads the diff');
+
+      details.refuseContextWrite = const ZanshinFfiException('jj.config_error', 'read-only');
+      optionsRow(tester, 'diff-options-context-20').onSelected!();
+      await settle(tester);
+      expect(inspector.contextLines, 10, reason: 'the value kept');
+      expect(details.contextWrites, <int>[10]);
+
+      // An off-list value shows in order; an unreadable one checks nothing.
+      details.context = 7;
+      inspector.configChanged();
+      await settle(tester);
+      expect(
+        tester.widget<ZsMenuButton>(optionsMenu()).entries.whereType<ZsMenuItem>().skip(3).map((item) => item.label),
+        <String>['0', '1', '2', '3', '5', '7', '10', '20'],
+      );
+      details.context = null;
+      inspector.configChanged();
+      await settle(tester);
+      expect(
+        tester.widget<ZsMenuButton>(optionsMenu()).entries.whereType<ZsMenuItem>().skip(3).where((i) => i.checked!),
+        isEmpty,
+      );
       await unmount(tester);
     });
 
@@ -3433,6 +3644,29 @@ void main() {
       settings: restarted,
     );
     expect(second.layout, DiffLayoutSetting.sideBySide);
+    first.dispose();
+    second.dispose();
+    model.dispose();
+  });
+
+  test('Story 10.33: the whitespace mode persists in the settings file and opens from it after a restart', () async {
+    final model = GraphViewModel();
+    final first = InspectorViewModel(
+      graph: model,
+      details: _Details(),
+      viewed: ProjectViewedStore(settings, '/r/a'),
+      settings: settings,
+    )..setWhitespace(DiffWhitespaceSetting.ignoreAll);
+    // Writes run in order: awaiting a later one awaits the mode's.
+    await settings.update((s) => s.copyWith(general: s.general.copyWith(hideControls: false)));
+    final SettingsStore restarted = await SettingsStore.load(File('${dir.path}/settings.json'));
+    final second = InspectorViewModel(
+      graph: model,
+      details: _Details(),
+      viewed: ProjectViewedStore(restarted, '/r/a'),
+      settings: restarted,
+    );
+    expect(second.whitespace, DiffWhitespaceSetting.ignoreAll);
     first.dispose();
     second.dispose();
     model.dispose();

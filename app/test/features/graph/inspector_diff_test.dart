@@ -5,9 +5,22 @@ import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/inspector_diff.dart';
+import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting;
-import 'package:zanshin_ui/zanshin_ui.dart' show ZsAppearance, ZsColors, ZsScrollArea, ZsTheme;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffWhitespaceSetting;
+import 'package:zanshin_ui/zanshin_ui.dart'
+    show
+        ZI,
+        ZanshinIcon,
+        ZsAppearance,
+        ZsColors,
+        ZsMenuButton,
+        ZsMenuEntry,
+        ZsMenuHeader,
+        ZsMenuItem,
+        ZsMenuNote,
+        ZsScrollArea,
+        ZsTheme;
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/shell_host.dart';
@@ -901,6 +914,393 @@ void main() {
       expect(area.controller.hasClients, isFalse, reason: 'no vertical scroll of its own');
       expect(area.horizontalController!.position.maxScrollExtent, greaterThan(0));
       expect(tester.getSize(find.byType(InspectorDiffView)).height, lessThan(200), reason: 'its content height');
+    });
+  });
+
+  group('Story 10.33: whitespace ignored', () {
+    // The ignoring read's lines of one file, as `IgnoredLines.of` reads them.
+    IgnoredLines ignoring(List<String> specs) => IgnoredLines.of(
+      _file(
+        hunks: <Hunk>[
+          _hunk(<HunkLine>[for (final String spec in specs) _line(spec)]),
+        ],
+      ),
+    );
+    Hunk sectioned(List<String> specs, List<HunkKey> sections) => Hunk(
+      before: (start: 0, end: 10),
+      after: (start: 0, end: 10),
+      symbol: null,
+      sections: sections,
+      removed: 0,
+      added: 0,
+      lines: <HunkLine>[for (final String spec in specs) _line(spec)],
+    );
+    // A row as `kind left right [dim]`, a fold as `fold part count`.
+    List<String> shape(List<DiffRow>? rows) => <String>[
+      for (final DiffRow row in rows ?? const <DiffRow>[])
+        switch (row) {
+          DiffLineRow(:final HunkLine line, :final bool whitespaceOnly) =>
+            '${line.kind.name} ${line.left} ${line.right}${whitespaceOnly ? ' dim' : ''}',
+          DiffFoldRow(:final int part, :final int count) => 'fold $part $count',
+        },
+    ];
+
+    test('the modes map to the reads: show all exact, amount -b, all -w', () {
+      expect(diffWhitespaceOf(DiffWhitespaceSetting.showAll), DiffWhitespace.exact);
+      expect(diffWhitespaceOf(DiffWhitespaceSetting.ignoreChangesInAmount), DiffWhitespace.ignoreSpaceChange);
+      expect(diffWhitespaceOf(DiffWhitespaceSetting.ignoreAll), DiffWhitespace.ignoreAllSpace);
+    });
+
+    test('Padding wrap at -b: the re-indented lines give way to the ignoring read\'s context lines', () {
+      final Hunk hunk = _hunk(<HunkLine>[
+        _line('    4    4|build('),
+        _line('-   5     |[-  child: Foo(-]'),
+        _line('-   6     |[-    a: 1,-]'),
+        _line('+        5|{+  child: Padding(+}'),
+        _line('+        6|{+    padding: p,+}'),
+        _line('+        7|{+    child: Foo(+}'),
+        _line('+        8|{+      a: 1,+}'),
+        _line('    7    9|  ),'),
+      ]);
+      final IgnoredLines b = ignoring(<String>[
+        '+        5|{+  child: Padding(+}',
+        '+        6|{+    padding: p,+}',
+        '    5    7|    child: Foo(',
+        '    6    8|      a: 1,',
+      ]);
+      expect(shape(whitespaceRows(hunk, b)), <String>[
+        'context 4 4',
+        'added null 5',
+        'added null 6',
+        'context 5 7',
+        'context 6 8',
+        'context 7 9',
+      ]);
+      expect(shape(whitespaceRows(hunk, null)), hasLength(8), reason: 'without the ignoring read every line shows');
+    });
+
+    const s = HunkKey(oldStart: 1, oldCount: 1, newStart: 1, newCount: 1);
+    final Hunk amount = sectioned(<String>['    1    1|x', '~   2    2|a{+ +} b', '    3    3|y'], const <HunkKey>[s]);
+
+    test('a b → a  b reads as unchanged under -b and -w: a whitespace-only part folds, picked or opened it shows '
+        'dimmed', () {
+      final IgnoredLines none = ignoring(<String>['    2    2|a  b']);
+      expect(shape(whitespaceRows(amount, none)), <String>['context 1 1', 'fold 0 1', 'context 3 3']);
+      expect(shape(whitespaceRows(amount, none, revealed: <HunkKey>{s})), <String>[
+        'context 1 1',
+        'changed 2 2 dim',
+        'context 3 3',
+      ]);
+    });
+
+    test('a b → ab: whitespace-only (folded) under -w, a real change under -b', () {
+      final Hunk removed = sectioned(<String>['    1    1|x', '~   2    2|a[- -]b'], const <HunkKey>[s]);
+      expect(shape(whitespaceRows(removed, ignoring(<String>['    2    2|ab']))), <String>['context 1 1', 'fold 0 1']);
+      expect(shape(whitespaceRows(removed, ignoring(<String>['~   2    2|a[- -]b']))), <String>[
+        'context 1 1',
+        'changed 2 2',
+      ]);
+    });
+
+    test('a mixed part: its re-indented line gives way to the context line unless the part is picked or opened', () {
+      const part = HunkKey(oldStart: 1, oldCount: 2, newStart: 1, newCount: 2);
+      final Hunk hunk = sectioned(
+        <String>[
+          '    1    1|x',
+          '-   2     |[-old();-]',
+          '+        2|{+new();+}',
+          '~   3    3|{+  +}keep();',
+        ],
+        const <HunkKey>[part],
+      );
+      final IgnoredLines w = ignoring(<String>[
+        '-   2     |[-old();-]',
+        '+        2|{+new();+}',
+        '    3    3|  keep();',
+      ]);
+      expect(shape(whitespaceRows(hunk, w)), <String>['context 1 1', 'removed 2 null', 'added null 2', 'context 3 3']);
+      expect(shape(whitespaceRows(hunk, w, revealed: <HunkKey>{part})), <String>[
+        'context 1 1',
+        'removed 2 null',
+        'added null 2',
+        'changed 3 3 dim',
+      ]);
+    });
+
+    test('a hunk left with context lines only goes; a line of no part without a context line shows nothing', () {
+      final Hunk hunk = _hunk(<HunkLine>[
+        _line('    1    1|x'),
+        _line('-   2     |[-  y-]'),
+        _line('+        2|{+y+}'),
+      ]);
+      expect(whitespaceRows(hunk, ignoring(<String>['    2    2|y'])), isNull);
+      expect(whitespaceRows(hunk, ignoring(const <String>[])), isNull);
+    });
+
+    test('a fold counts the larger of its distinct left and right numbers', () {
+      const part = HunkKey(oldStart: 0, oldCount: 2, newStart: 0, newCount: 3);
+      final Hunk hunk = sectioned(
+        <String>[
+          '-   1     |[-a-]',
+          '-   2     |[-b-]',
+          '+        1|{+ a+}',
+          '+        2|{+ b+}',
+          '+        3|{+ +}',
+        ],
+        const <HunkKey>[part],
+      );
+      expect(shape(whitespaceRows(hunk, ignoring(const <String>[]))), <String>['fold 0 3']);
+    });
+
+    test('the options menu: whitespace rows with jj\'s commands, the context choices with an off-list value in order, '
+        'none checked while unreadable, then the note', () {
+      final AppLocalizations strings = platformStrings();
+      final changed = <Object>[];
+      List<ZsMenuEntry> entries(int? context) => diffOptionsEntries(
+        strings,
+        whitespace: DiffWhitespaceSetting.ignoreChangesInAmount,
+        onWhitespaceChanged: changed.add,
+        contextLines: context,
+        onContextLinesChanged: changed.add,
+      );
+      final List<ZsMenuItem> items = entries(7).whereType<ZsMenuItem>().toList();
+      expect(
+        <String?>[for (final ZsMenuItem item in items.take(3)) item.cmd],
+        <String>[
+          'jj diff',
+          'jj diff -b',
+          'jj diff -w',
+        ],
+      );
+      expect(<bool?>[for (final ZsMenuItem item in items.take(3)) item.checked], <bool>[false, true, false]);
+      expect(
+        <String>[for (final ZsMenuItem item in items.skip(3)) item.label],
+        <String>[
+          '0',
+          '1',
+          '2',
+          '3',
+          '5',
+          '7',
+          '10',
+          '20',
+        ],
+      );
+      expect(items.firstWhere((item) => item.label == '7').checked, isTrue);
+      expect(items.firstWhere((item) => item.label == '3').shortcut, "jj's default");
+      expect(entries(7).last, isA<ZsMenuNote>());
+      expect(entries(7).whereType<ZsMenuHeader>().map((h) => h.label), <String>['Whitespace', 'Context lines']);
+      final List<ZsMenuItem> unreadable = entries(null).whereType<ZsMenuItem>().skip(3).toList();
+      expect(unreadable.map((item) => item.label), <String>['0', '1', '2', '3', '5', '10', '20']);
+      expect(unreadable.where((item) => item.checked ?? false), isEmpty);
+      items[2].onSelected!();
+      items.firstWhere((item) => item.label == '10').onSelected!();
+      expect(changed, <Object>[DiffWhitespaceSetting.ignoreAll, 10]);
+    });
+
+    Widget wsView({
+      required Hunk hunk,
+      IgnoredLines? ignored,
+      Set<HunkKey> picked = const <HunkKey>{},
+      ValueChanged<HunkKey>? onPart,
+      DiffLayoutSetting layout = DiffLayoutSetting.unified,
+      DiffWhitespaceSetting whitespace = DiffWhitespaceSetting.ignoreAll,
+      int? context = 3,
+      ValueChanged<DiffWhitespaceSetting>? onWhitespace,
+      ValueChanged<int>? onContext,
+      bool picks = true,
+    }) => shellHost(
+      SizedBox(
+        width: 520,
+        child: InspectorDiffView(
+          path: 'src/main.rs',
+          diff: FileDiff(
+            path: 'src/main.rs',
+            kind: FileChangeKind.modified,
+            fromPath: null,
+            binary: false,
+            modeChange: false,
+            sections: hunk.sections,
+            hunks: <Hunk>[hunk],
+            removed: 1,
+            added: 1,
+            fingerprint: 'f',
+          ),
+          error: null,
+          layout: layout,
+          onLayoutChanged: (_) {},
+          hunkPicked: picks ? (_) => picked.isNotEmpty : null,
+          onHunkToggled: (_) {},
+          partPicked: picks ? picked.contains : null,
+          onPartToggled: onPart ?? (_) {},
+          whitespace: whitespace,
+          onWhitespaceChanged: onWhitespace ?? (_) {},
+          ignored: ignored,
+          contextLines: context,
+          onContextLinesChanged: onContext ?? (_) {},
+        ),
+      ),
+    );
+    final unchanged = IgnoredLines.of(null);
+    // Whether [text]'s line shows at .62.
+    bool dimmed(String text) => find
+        .ancestor(of: find.text(text), matching: find.byType(Opacity))
+        .evaluate()
+        .any((element) => (element.widget as Opacity).opacity == .62);
+
+    testWidgets('a folded part: one hatched row with its checkbox; Show opens it, Hide folds it again', (tester) async {
+      final toggled = <HunkKey>[];
+      await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, onPart: toggled.add));
+      expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
+      expect(find.text('a  b'), findsNothing);
+      expect(find.bySemanticsIdentifier('inspector-fold-check'), findsOneWidget);
+      await tester.tap(find.bySemanticsIdentifier('inspector-fold-check'));
+      await tester.pump();
+      expect(toggled, <HunkKey>[s]);
+
+      await tester.tap(find.bySemanticsIdentifier('inspector-fold-show'));
+      await tester.pump();
+      expect(find.text('a  b'), findsOneWidget);
+      expect(dimmed('a  b'), isTrue);
+      expect(find.text('whitespace only · Hide'), findsOneWidget);
+      await tester.tap(find.bySemanticsIdentifier('inspector-whitespace-hide'));
+      await tester.pump();
+      expect(find.text('a  b'), findsNothing);
+      expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
+
+      // Without picks the row has no checkbox; side by side it is a full-width row too.
+      await tester.pumpWidget(
+        wsView(hunk: amount, ignored: unchanged, picks: false, layout: DiffLayoutSetting.sideBySide),
+      );
+      expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-fold-check'), findsNothing);
+    });
+
+    testWidgets('a picked part shows its whitespace-only line dimmed with the pill "whitespace only"', (tester) async {
+      await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, picked: <HunkKey>{s}));
+      expect(find.text('a  b'), findsOneWidget);
+      expect(find.text('whitespace only'), findsOneWidget);
+      expect(find.text('⋯ 1 line changed whitespace only · Show'), findsNothing);
+      // Side by side: the cells dimmed, no pill.
+      await tester.pumpWidget(
+        wsView(hunk: amount, ignored: unchanged, picked: <HunkKey>{s}, layout: DiffLayoutSetting.sideBySide),
+      );
+      expect(find.text('whitespace only'), findsNothing);
+      expect(dimmed('a  b'), isTrue);
+    });
+
+    testWidgets('a file left with no hunk reads "Only whitespace changed in this file."', (tester) async {
+      final Hunk hunk = _hunk(<HunkLine>[_line('-   2     |[-  y-]'), _line('+        2|{+y+}')]);
+      await tester.pumpWidget(wsView(hunk: hunk, ignored: unchanged, picks: false));
+      expect(find.text('Only whitespace changed in this file.'), findsOneWidget);
+      await tester.pumpWidget(wsView(hunk: hunk, picks: false, whitespace: DiffWhitespaceSetting.showAll));
+      expect(find.text('Only whitespace changed in this file.'), findsNothing);
+      expect(find.text('  y'), findsOneWidget);
+      expect(find.text('y'), findsOneWidget);
+    });
+
+    testWidgets('the options button: last in the bar, named by the mode and context, accent off the defaults; its '
+        'rows call back', (tester) async {
+      final whitespaces = <DiffWhitespaceSetting>[];
+      final contexts = <int>[];
+      Finder button() => find.bySemanticsIdentifier('inspector-diff-options');
+      Color glyph() => tester
+          .widget<ZanshinIcon>(
+            find.descendant(
+              of: find.byType(ZsMenuButton),
+              matching: find.byWidgetPredicate((w) => w is ZanshinIcon && w.name == ZI.viewOptions),
+            ),
+          )
+          .color!;
+      await tester.pumpWidget(
+        wsView(
+          hunk: amount,
+          whitespace: DiffWhitespaceSetting.showAll,
+          onWhitespace: whitespaces.add,
+          onContext: contexts.add,
+        ),
+      );
+      expect(find.bySemanticsLabel('Diff options — Show all whitespace, 3 context lines'), findsOneWidget);
+      expect(
+        tester.getRect(button()).right,
+        greaterThan(tester.getRect(find.bySemanticsIdentifier('inspector-diff-layout')).right),
+        reason: 'the last control',
+      );
+      final Color rest = glyph();
+      expect(rest, isNot(ZsColors.night.accent));
+      // The menu's entrance, a row's activation blink and its exit run on timers.
+      Future<void> settle() async {
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+      }
+
+      await tester.tap(button());
+      await settle();
+      expect(find.text('jj diff -w'), findsOneWidget);
+      await tester.tap(find.text('Ignore all whitespace'));
+      await settle();
+      expect(whitespaces, <DiffWhitespaceSetting>[DiffWhitespaceSetting.ignoreAll]);
+      await tester.tap(button());
+      await settle();
+      await tester.tap(find.text('10'));
+      await settle();
+      expect(contexts, <int>[10]);
+
+      await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, context: 5));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Diff options — Ignore all whitespace, 5 context lines'), findsOneWidget);
+      expect(glyph(), ZsColors.night.accent);
+      await tester.pumpWidget(wsView(hunk: amount, whitespace: DiffWhitespaceSetting.showAll, context: null));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Diff options — Show all whitespace, context lines unreadable'), findsOneWidget);
+    });
+
+    testWidgets('side by side with picks, a folded part carries its checkbox; a tap toggles its part', (tester) async {
+      final toggled = <HunkKey>[];
+      await tester.pumpWidget(
+        wsView(hunk: amount, ignored: unchanged, onPart: toggled.add, layout: DiffLayoutSetting.sideBySide),
+      );
+      expect(find.bySemanticsIdentifier('inspector-fold-check'), findsOneWidget);
+      await tester.tap(find.bySemanticsIdentifier('inspector-fold-check'));
+      await tester.pump();
+      expect(toggled, <HunkKey>[s]);
+    });
+
+    testWidgets('the options glyph is accent at show all with 5 context lines', (tester) async {
+      await tester.pumpWidget(wsView(hunk: amount, whitespace: DiffWhitespaceSetting.showAll, context: 5));
+      await tester.pumpAndSettle();
+      final ZanshinIcon glyph = tester.widget(
+        find.descendant(
+          of: find.byType(ZsMenuButton),
+          matching: find.byWidgetPredicate((w) => w is ZanshinIcon && w.name == ZI.viewOptions),
+        ),
+      );
+      expect(glyph.color, ZsColors.night.accent);
+    });
+
+    testWidgets('an opened fold folds again when the mode changes', (tester) async {
+      await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, picks: false));
+      await tester.tap(find.bySemanticsIdentifier('inspector-fold-show'));
+      await tester.pump();
+      expect(find.text('a  b'), findsOneWidget);
+      await tester.pumpWidget(
+        wsView(
+          hunk: amount,
+          ignored: unchanged,
+          picks: false,
+          whitespace: DiffWhitespaceSetting.ignoreChangesInAmount,
+        ),
+      );
+      await tester.pump();
+      expect(find.text('a  b'), findsNothing);
+      expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
+    });
+
+    testWidgets('without onWhitespaceChanged there is no options menu', (tester) async {
+      await tester.pumpWidget(view(_file(hunks: <Hunk>[amount])));
+      expect(find.bySemanticsIdentifier('inspector-diff-options'), findsNothing);
     });
   });
 

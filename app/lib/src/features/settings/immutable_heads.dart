@@ -1,24 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter/foundation.dart';
-import 'package:zanshin_core/zanshin_core.dart' show ConfigEntry, TopologyRef, TopologyRefKind;
+import 'package:zanshin_core/zanshin_core.dart' show TopologyRef, TopologyRefKind;
 
 import '../graph/immutable_reasons.dart' show builtinImmutableHeads, immutableBuiltins, splitRevsetUnion;
 
-/// The effective value among [entries] (`jj config list NAME --include-overridden`, lowest layer first): the last
-/// entry no higher layer overrides, or null when there is none.
-ConfigEntry? effectiveConfigEntry(List<ConfigEntry> entries) => entries.lastWhereOrNull((entry) => !entry.overridden);
-
-extension<E> on List<E> {
-  E? lastWhereOrNull(bool Function(E element) test) {
-    for (int i = length - 1; i >= 0; i--) {
-      if (test(this[i])) {
-        return this[i];
-      }
-    }
-    return null;
-  }
-}
+export '../projects/projects_environment.dart' show effectiveConfigEntry;
 
 /// The config key the Immutable commits page writes.
 const immutableHeadsKey = 'revset-aliases."immutable_heads()"'; // l10n-ignore: jj's config key

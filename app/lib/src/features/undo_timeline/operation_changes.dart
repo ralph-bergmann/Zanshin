@@ -9,7 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffWhitespaceSetting, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -17,6 +17,7 @@ import '../graph/graph_inspector.dart' show InspectorFileRow;
 import '../graph/graph_ports.dart' show jjOpShowCommand;
 import '../graph/inspector_diff.dart';
 import '../projects/project_repos.dart';
+import '../projects/projects_environment.dart';
 import 'undo_timeline_model.dart' show shortOperationId;
 
 part 'operation_changes.factory.dart';
@@ -44,21 +45,35 @@ abstract interface class OperationChangesSource {
     bool interdiff = false,
     bool summary = false,
     List<String> paths = const <String>[],
+    DiffWhitespace whitespace = DiffWhitespace.exact,
   });
 
   /// Fires after every jj config write, which may change how [diff] reads (`diff.color-words.*`).
   Listenable get configWrites;
+
+  /// `diff.color-words.context` as Settings reads it ([readDiffContext]); null when jj cannot read it.
+  Future<int?> diffContext();
+
+  /// `jj config set --user diff.color-words.context [lines]` ([writeDiffContext]); fires [configWrites].
+  Future<void> setDiffContext(int lines);
 }
 
-/// [OperationChangesSource] over an open [ProjectRepo].
+/// [OperationChangesSource] over an open [ProjectRepo], the config through [_environment].
 class RepoOperationChangesSource implements OperationChangesSource {
-  /// The reads of [_repo]; [configWrites] is the environment's.
-  RepoOperationChangesSource(this._repo, {required this.configWrites});
+  /// The reads of [_repo]; its config writes are [_environment]'s.
+  RepoOperationChangesSource(this._repo, {required this._environment});
 
   final ProjectRepo _repo;
+  final ProjectsEnvironment _environment;
 
   @override
-  final Listenable configWrites;
+  Listenable get configWrites => _environment.configWrites;
+
+  @override
+  Future<int?> diffContext() => readDiffContext(_environment);
+
+  @override
+  Future<void> setDiffContext(int lines) => writeDiffContext(_environment, lines);
 
   @override
   Future<OpShow> opShow(String operation) => _repo.handle.opShow(operation: operation);
@@ -74,6 +89,7 @@ class RepoOperationChangesSource implements OperationChangesSource {
     bool interdiff = false,
     bool summary = false,
     List<String> paths = const <String>[],
+    DiffWhitespace whitespace = DiffWhitespace.exact,
   }) => _repo.handle.diff(
     revision: revision,
     from: from,
@@ -81,6 +97,7 @@ class RepoOperationChangesSource implements OperationChangesSource {
     interdiff: interdiff,
     summary: summary,
     paths: paths,
+    whitespace: whitespace,
   );
 }
 
@@ -94,16 +111,20 @@ typedef OperationChangeLine = ({bool added, String text});
 /// interdiff from no predecessor, a rewritten one from its first predecessor — the inter-diffs with their description
 /// block ([Diff.description] of [files]). Refusals are kept per read. The layout is `general.diffLayout` in
 /// [settings], written and followed; `general.diffWordMarks` ([wordMarks], Story 5.14) is followed and only changes
-/// how the loaded diffs are drawn.
+/// how the loaded diffs are drawn. Story 10.33: `general.diffWhitespace` ([whitespace]) is written and followed — while
+/// it ignores whitespace the focused file is also read at `-b` / `-w` ([focusedIgnored]); the summary stays exact — and
+/// the diff options menu writes `diff.color-words.context` ([contextLines]) through the source.
 class OperationChangesModel extends ChangeNotifier {
   /// The view of [operation] (an id), reading through [_source].
   @assistedInject
   OperationChangesModel(this._source, {@assisted required this.operation, required this.settings})
     : _layout = settings.value.general.diffLayout,
-      _wordMarks = settings.value.general.diffWordMarks {
+      _wordMarks = settings.value.general.diffWordMarks,
+      _whitespace = settings.value.general.diffWhitespace {
     settings.addListener(_settingsChanged);
     _source.configWrites.addListener(_configChanged);
     unawaited(_load());
+    unawaited(_readContext());
   }
 
   final OperationChangesSource _source;
@@ -116,6 +137,10 @@ class OperationChangesModel extends ChangeNotifier {
 
   DiffLayoutSetting _layout;
   bool _wordMarks;
+  DiffWhitespaceSetting _whitespace;
+  int? _contextLines = 3;
+  var _contextSerial = 0;
+  IgnoredLines? _focusedIgnored;
   OpShow? _show;
   ZanshinFfiException? _error;
   var _summaries = const <String, ShowEntry>{};
@@ -126,6 +151,7 @@ class OperationChangesModel extends ChangeNotifier {
   FileDiff? _focusedDiff;
   ZanshinFfiException? _focusError;
   var _serial = 0;
+  var _focusSerial = 0;
   var _disposed = false;
 
   /// What `opShow` returned; null while it loads and after a refusal.
@@ -161,6 +187,53 @@ class OperationChangesModel extends ChangeNotifier {
   /// Unified or side by side.
   DiffLayoutSetting get layout => _layout;
 
+  /// How the focused diff treats whitespace: `general.diffWhitespace` in [settings] (Story 10.33).
+  DiffWhitespaceSetting get whitespace => _whitespace;
+
+  /// What the read at [whitespace] says about [focusedDiff]'s file; null while whitespace shows.
+  IgnoredLines? get focusedIgnored => _focusedIgnored;
+
+  /// `diff.color-words.context` as Settings reads it; null when jj cannot read it.
+  int? get contextLines => _contextLines;
+
+  /// Writes the whitespace mode (a failed write is swallowed; the store keeps the value); the diff reloads once the
+  /// store has it.
+  void setWhitespace(DiffWhitespaceSetting whitespace) {
+    if (whitespace == _whitespace) {
+      return;
+    }
+    unawaited(
+      settings
+          .update((s) => s.copyWith(general: s.general.copyWith(diffWhitespace: whitespace)))
+          .onError<FileSystemException>((_, _) {}),
+    );
+  }
+
+  /// Writes `diff.color-words.context` at user scope; the config write reloads the diff. A refused write is logged
+  /// and the value kept.
+  Future<void> setContextLines(int lines) async {
+    try {
+      await _source.setDiffContext(lines);
+    } on ZanshinFfiException catch (error) {
+      _log.warning('writing diff.color-words.context refused: ${error.code}');
+    }
+  }
+
+  Future<void> _readContext() async {
+    final int serial = ++_contextSerial;
+    int? lines;
+    try {
+      lines = await _source.diffContext();
+    } on ZanshinFfiException catch (error) {
+      _log.warning('reading diff.color-words.context refused: ${error.code}');
+      lines = null;
+    }
+    if (serial == _contextSerial && lines != _contextLines) {
+      _contextLines = lines;
+      _notify();
+    }
+  }
+
   /// Writes the layout preference (a failed write is swallowed; the store keeps the value).
   void setLayout(DiffLayoutSetting layout) {
     if (layout == _layout) {
@@ -184,10 +257,26 @@ class OperationChangesModel extends ChangeNotifier {
       _wordMarks = wordMarks;
       _notify();
     }
+    final DiffWhitespaceSetting whitespace = settings.value.general.diffWhitespace;
+    if (whitespace != _whitespace) {
+      _whitespace = whitespace;
+      _refocus();
+    }
   }
 
   // A jj config write may change `diff.color-words.*`.
-  void _configChanged() => _rereadSelection();
+  void _configChanged() {
+    _rereadSelection();
+    unawaited(_readContext());
+  }
+
+  /// Reads the focused file's diff again (the whitespace mode changed); the summary stays exact.
+  void _refocus() {
+    if (_focused case final String path when !_disposed) {
+      _focused = null;
+      focus(path);
+    }
+  }
 
   void _rereadSelection() {
     // The summary read carries lines too: the inter-diffs' description block.
@@ -293,14 +382,32 @@ class OperationChangesModel extends ChangeNotifier {
   /// `jj op show --patch`'s diff of [change] (`show_change_diff`, cli/src/commands/operation/diff.rs:845 @ v0.46.0):
   /// an abandoned commit as `show_patch` (with copy records), a rewritten or created one as `show_inter_diff` from
   /// its first predecessor or from none (no copy records, with the description block).
-  Future<Diff> _diffOf(OpChangedCommit change, {bool summary = false, List<String> paths = const <String>[]}) {
+  Future<Diff> _diffOf(
+    OpChangedCommit change, {
+    bool summary = false,
+    List<String> paths = const <String>[],
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) {
     if (change.abandoned) {
-      return _source.diff(revision: change.commitId, summary: summary, paths: paths);
+      return _source.diff(revision: change.commitId, summary: summary, paths: paths, whitespace: whitespace);
     }
     final String? predecessor = change.removedCommitIds.firstOrNull;
     return predecessor == null
-        ? _source.diff(revision: change.commitId, interdiff: true, summary: summary, paths: paths)
-        : _source.diff(from: predecessor, to: change.commitId, interdiff: true, summary: summary, paths: paths);
+        ? _source.diff(
+            revision: change.commitId,
+            interdiff: true,
+            summary: summary,
+            paths: paths,
+            whitespace: whitespace,
+          )
+        : _source.diff(
+            from: predecessor,
+            to: change.commitId,
+            interdiff: true,
+            summary: summary,
+            paths: paths,
+            whitespace: whitespace,
+          );
   }
 
   /// Selects [changes]' entry [index]: reads its files and focuses the first.
@@ -318,6 +425,7 @@ class OperationChangesModel extends ChangeNotifier {
     _filesError = null;
     _focused = null;
     _focusedDiff = null;
+    _focusedIgnored = null;
     _focusError = null;
     final int serial = ++_serial;
     final OpChangedCommit change = changes[index];
@@ -350,19 +458,29 @@ class OperationChangesModel extends ChangeNotifier {
     }
     _focused = path;
     _focusedDiff = null;
+    _focusedIgnored = null;
     _focusError = null;
     final int serial = _serial;
+    final int focusSerial = ++_focusSerial;
     final OpChangedCommit change = changes[selected];
+    final DiffWhitespace mode = diffWhitespaceOf(_whitespace);
+    bool current() => serial == _serial && focusSerial == _focusSerial && path == _focused;
     unawaited(() async {
       try {
-        final Diff diff = await _diffOf(change, paths: <String>[path]);
-        if (serial == _serial && path == _focused) {
-          _focusedDiff = diff.files.where((file) => file.path == path).firstOrNull;
+        // Exact, and while whitespace is ignored at the mode too, in parallel (Story 10.33).
+        final List<Diff> diffs = await Future.wait<Diff>(<Future<Diff>>[
+          _diffOf(change, paths: <String>[path]),
+          if (mode != DiffWhitespace.exact) _diffOf(change, paths: <String>[path], whitespace: mode),
+        ]);
+        FileDiff? fileOf(Diff diff) => diff.files.where((file) => file.path == path).firstOrNull;
+        if (current()) {
+          _focusedDiff = fileOf(diffs.first);
+          _focusedIgnored = diffs.length > 1 ? IgnoredLines.of(fileOf(diffs.last)) : null;
           _notify();
         }
       } on ZanshinFfiException catch (error) {
         _log.warning('file diff refused: ${error.code}');
-        if (serial == _serial && path == _focused) {
+        if (current()) {
           _focusError = error;
           _notify();
         }
@@ -733,6 +851,11 @@ class _Files extends StatelessWidget {
                     child: InspectorDiffView(
                       path: focused,
                       diff: model.focusedDiff,
+                      ignored: model.focusedIgnored,
+                      whitespace: model.whitespace,
+                      onWhitespaceChanged: model.setWhitespace,
+                      contextLines: model.contextLines,
+                      onContextLinesChanged: (lines) => unawaited(model.setContextLines(lines)),
                       wordMarks: model.wordMarks,
                       error: model.focusError,
                       layout: model.layout,

@@ -3,7 +3,7 @@ import * as React from "react";
 /** One color-words line (jj diff's default format): "<kind><left>:<right>|<text>" — kind " " context, "-" removed (left only), "+" added (right only), "~" changed (an inlined line holding both sides' words), e.g. " 12:12|  final x;", "~13:13|  onEnd({+d+})", "+:14|  _commit();", "-14:|  _reset();"; "#|<<<<<<< Created conflict" a conflict header. Changed words: "[-…-]" around a left-side run, "{+…+}" around a right-side one, on any line. Older git strings ("+…", "-…", " …") still parse, without numbers. Or the parsed form: `runs` are [text, side] pairs, side "rem" | "add" | null. A string has no escape: code holding "[-", "-]", "{+" or "+}" goes in the parsed form. */
 export type DiffLine =
   | string
-  | { t: "ctx" | "rem" | "add" | "chg"; l?: number; r?: number; s: string; runs?: Array<[string, "rem" | "add" | null]> }
+  | { t: "ctx" | "rem" | "add" | "chg"; l?: number; r?: number; s: string; runs?: Array<[string, "rem" | "add" | null]>; ws?: "picked" | "opened" }
   | { t: "hunk" | "hdr"; s: string };
 /** Diff block: toolbar (path · tools · Viewed) over hunks or plain color-words lines (left and right number columns, then the text). States: unified · split · viewed (folded, green edge; the folded row has hover and focus) · removed / added / changed / context rows · word marks (a run on --rem-word-bg / --add-word-bg by its side, --text glyphs). */
 export interface DiffViewProps {
@@ -20,6 +20,12 @@ export interface DiffViewProps {
   viewed?: boolean;
   /** shows the Viewed toggle in the toolbar */
   onViewedChange?: (next: boolean) => void;
+  /** shows the diff options menu, the toolbar's last control (Story 10.33): whitespace "show" (jj diff) · "amount" (-b) · "all" (-w), an app setting; context = jj's diff.color-words.context (null: jj cannot read it, nothing checked). The icon-only MenuButton's glyph turns --accent while whitespace ≠ "show" or context ≠ 3; its name says both values. */
+  options?: { whitespace?: "show" | "amount" | "all"; context?: number | null };
+  /** a menu row was picked: "ws:<show|amount|all>" or "ctx:<n>" */
+  onOption?: (id: string) => void;
+  /** whitespace is ignored and no hunk is left: the note "Only whitespace changed in this file." instead of the hunks */
+  onlyWhitespace?: boolean;
   className?: string;
   /** DiffHunk elements */
   children?: React.ReactNode;

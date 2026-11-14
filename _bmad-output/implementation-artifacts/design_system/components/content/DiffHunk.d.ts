@@ -10,8 +10,8 @@ export interface DiffHunkProps {
   newStart?: number;
   /** enclosing scope, e.g. "class SwipeController" */
   context?: string;
-  /** color-words lines as in DiffView ("~13:13|  onEnd({+d+})", "+:14|  _commit();"), or git-sigil lines numbered from oldStart / newStart */
-  lines: DiffLine[];
+  /** color-words lines as in DiffView ("~13:13|  onEnd({+d+})", "+:14|  _commit();"), or git-sigil lines numbered from oldStart / newStart. Whitespace ignored (Story 10.33): a line object with `ws: "picked" | "opened"` changed only in whitespace (dimmed, tagged); `{ t: "fold", n }` folds a whitespace-only part of n lines into one row */
+  lines: Array<DiffLine | { t: "fold"; n: number }>;
   /** as DiffView's `wordMarks` (default true); a DiffView with wordMarks={false} turns them off for its hunks too */
   wordMarks?: boolean;
   mode?: "unified" | "split";
@@ -28,6 +28,10 @@ export interface DiffHunkProps {
   /** the picked parts; some of them → the header on --accent at 12 % and the hunk checkbox mixed */
   picked?: number[];
   onTogglePart?: (part: number) => void;
+  /** whitespace ignored (Story 10.33): a fold row `{ t: "fold", n }` (its part from `parts`) was clicked — open it */
+  onShow?: (part: number) => void;
+  /** whitespace ignored: an opened part's "whitespace only · Hide" was clicked — fold it again */
+  onHide?: (part: number) => void;
   className?: string;
 }
 export declare function DiffHunk(props: DiffHunkProps): JSX.Element;

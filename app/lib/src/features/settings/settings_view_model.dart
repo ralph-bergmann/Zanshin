@@ -37,7 +37,7 @@ abstract final class SettingsKeys {
   static const revsetsLog = 'revsets.log'; // l10n-ignore: jj's config key
 
   /// Diffs › Context lines.
-  static const diffContext = 'diff.color-words.context'; // l10n-ignore: jj's config key
+  static const String diffContext = diffContextKey;
 
   /// Diffs › Inline changes.
   static const diffInline = 'diff.color-words.max-inline-alternation'; // l10n-ignore: jj's config key

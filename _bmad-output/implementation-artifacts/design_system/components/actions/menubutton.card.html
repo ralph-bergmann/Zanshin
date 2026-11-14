@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x300" name="MenuButton" subtitle="The inspector's Squash: a Button with a chevron that opens a Menu 4px below its left edge — every state, and open" -->
+<!-- @dsCard group="Components" viewport="700x360" name="MenuButton" subtitle="The inspector's Squash: a Button with a chevron that opens a Menu 4px below its left edge — every state, open, and the diff header's icon-only form" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -28,6 +28,12 @@
           <div key={l} className="st"><span className="lbl">{l}</span><MenuButton items={ITEMS} title={TIP} className={cls}>Squash</MenuButton></div>
         ))}
         <div className="st"><span className="lbl">Disabled</span><MenuButton items={ITEMS} disabled title="Another action is running">Squash</MenuButton></div>
+      </div>
+      <div className="row">
+        {STATES.map(([l, cls]) => (
+          <div key={l} className="st"><span className="lbl">Icon-only · {l}</span><MenuButton iconOnly icon="view-options" variant="ghost" items={ITEMS} label="Diff options — Show all whitespace, 3 context lines" className={cls} /></div>
+        ))}
+        <div className="st"><span className="lbl">Icon-only · active</span><MenuButton iconOnly active icon="view-options" variant="ghost" items={ITEMS} label="Diff options — Ignore all whitespace, 3 context lines" /></div>
       </div>
       <div className="row">
         <div className="st"><span className="lbl">Open — the inspector's action row</span>

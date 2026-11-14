@@ -1272,6 +1272,76 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorDiffNoLines => 'No line changes';
 
   @override
+  String get inspectorDiffOnlyWhitespace => 'Only whitespace changed in this file.';
+
+  @override
+  String inspectorDiffOptions(String whitespace, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count context lines',
+      one: '1 context line',
+    );
+    return 'Diff options — $whitespace, $_temp0';
+  }
+
+  @override
+  String inspectorDiffOptionsUnreadable(String whitespace) {
+    return 'Diff options — $whitespace, context lines unreadable';
+  }
+
+  @override
+  String get diffWhitespaceHead => 'Whitespace';
+
+  @override
+  String get diffWhitespaceShowAll => 'Show all whitespace';
+
+  @override
+  String get diffWhitespaceIgnoreAmount => 'Ignore changes in amount';
+
+  @override
+  String get diffWhitespaceIgnoreAll => 'Ignore all whitespace';
+
+  @override
+  String get diffContextHead => 'Context lines';
+
+  @override
+  String get diffContextDefault => 'jj\'s default';
+
+  @override
+  String get diffOptionsNote =>
+      'Every diff follows these. Context lines is jj\'s diff.color-words.context in your user config, as in Settings › General › Diffs. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn\'t see.';
+
+  @override
+  String get inspectorWhitespaceOnly => 'whitespace only';
+
+  @override
+  String get inspectorWhitespaceOnlyTooltip => 'Shown because its part is picked: a pick takes every line of its part';
+
+  @override
+  String get inspectorWhitespaceOnlyHide => 'whitespace only · Hide';
+
+  @override
+  String get inspectorWhitespaceHideTooltip => 'Hide the whitespace-only lines again';
+
+  @override
+  String inspectorFoldText(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return '⋯ $_temp0 changed whitespace only · Show';
+  }
+
+  @override
+  String get inspectorFoldShowTooltip => 'Show these lines';
+
+  @override
+  String get inspectorFoldPick => 'Pick these whitespace-only lines';
+
+  @override
   String toastAbandoned(String changes) {
     return 'Abandoned $changes';
   }
@@ -2269,6 +2339,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDiffSideBySide => 'Side by side';
+
+  @override
+  String get settingsDiffWhitespace => 'Whitespace';
 
   @override
   String get settingsDiffWordMarks => 'Changed words';

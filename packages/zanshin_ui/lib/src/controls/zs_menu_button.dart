@@ -7,6 +7,10 @@ part of 'zs_button.dart';
 /// and 8 before the right edge. Click, Space and ↩ open a [ZsMenuAnchor] of [entries] 4 below the button's left edge;
 /// the menu's keys, activation and focus return are the anchor's.
 ///
+/// [iconOnly] (Story 10.33, a diff header's options) shows the [icon] at 14 and the chevron 2 apart, no text, 26 high
+/// with padding 0 5 0 6; [label] is its name and tooltip; [active] puts the glyph in `--accent` (a value off its
+/// default).
+///
 /// A [disabledReason] disables it and is its tooltip. VoiceOver: a button with [label].
 class ZsMenuButton extends StatelessWidget implements ZsControl {
   /// A button labelled [label] that opens [entries].
@@ -16,13 +20,21 @@ class ZsMenuButton extends StatelessWidget implements ZsControl {
     this.variant = ZsButtonVariant.quiet,
     this.size = ZsButtonSize.sm,
     this.icon,
+    this.iconOnly = false,
+    this.active = false,
     this.disabledReason,
     this.maxWidth = 360,
     this.focusNode,
     this.statesController,
     this.identifier,
     super.key,
-  });
+  }) : assert(!iconOnly || icon != null, 'An icon-only menu button needs an icon.');
+
+  /// Whether the button shows only its [icon] and the chevron.
+  final bool iconOnly;
+
+  /// Whether the icon-only glyph is `--accent`.
+  final bool active;
 
   /// The button's label, in sentence case.
   final String label;
@@ -65,6 +77,8 @@ class ZsMenuButton extends StatelessWidget implements ZsControl {
       variant: variant,
       size: size,
       icon: icon,
+      iconOnly: iconOnly,
+      active: active,
       disabledReason: disabledReason,
       focusNode: focusNode,
       statesController: statesController,

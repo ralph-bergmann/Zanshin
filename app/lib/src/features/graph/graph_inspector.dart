@@ -12,7 +12,8 @@ import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart' show SelectionArea;
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, LayoutSettings, SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart'
+    show DiffLayoutSetting, DiffWhitespaceSetting, LayoutSettings, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
@@ -47,6 +48,9 @@ typedef InspectorDraft = ({String summary, String details});
 ///   layout is `general.diffLayout` in [settings], followed when another writer changes it, and so is
 ///   `general.diffWordMarks` ([wordMarks], Story 5.14), which only changes how the loaded diff is drawn. The split
 ///   between files and diff takes its share per layout from `layout` in [settings] ([filesShare], Story 10.38).
+///   Story 10.33: `general.diffWhitespace` ([whitespace]) is followed too; while it ignores whitespace the focused file
+///   is also read at `-b` / `-w` ([focusedIgnored]), and the diff options menu writes `diff.color-words.context`
+///   ([contextLines]) through [details]. The summary and the Viewed fingerprints stay exact.
 /// - **Composer** (Story 10.25): the checked files of the selection — @ starts with all, another change with none,
 ///   reset on a selection change, kept to the still-listed paths on a reload — and a composer draft per change key;
 ///   [runComposer] runs [composerAction] (`jj commit` / `jj split -r`). [squash] asks `squashPlan` first and opens the
@@ -63,6 +67,7 @@ class InspectorViewModel extends ChangeNotifier {
        _viewed = viewed.load(),
        _layout = settings.value.general.diffLayout,
        _wordMarks = settings.value.general.diffWordMarks,
+       _whitespace = settings.value.general.diffWhitespace,
        _shares = (
          narrow: settings.value.layout.inspectorFilesNarrow,
          wide: settings.value.layout.inspectorFilesWide,
@@ -71,6 +76,7 @@ class InspectorViewModel extends ChangeNotifier {
     settings.addListener(_settingsChanged);
     viewed.addListener(_viewedChanged);
     _graphChanged();
+    unawaited(_readContext());
   }
 
   /// The graph whose selection it shows; its runner runs the actions.
@@ -86,6 +92,9 @@ class InspectorViewModel extends ChangeNotifier {
   final Set<String> _viewed;
   DiffLayoutSetting _layout;
   bool _wordMarks;
+  DiffWhitespaceSetting _whitespace;
+  int? _contextLines = 3;
+  var _contextSerial = 0;
   ({double narrow, double wide}) _shares;
 
   Map<String, FileDiff>? _summary;
@@ -94,6 +103,8 @@ class InspectorViewModel extends ChangeNotifier {
   String? _focused;
   FileDiff? _focusedDiff;
   FileDiff? _previousDiff;
+  IgnoredLines? _focusedIgnored;
+  IgnoredLines? _previousIgnored;
   ZanshinFfiException? _focusError;
   var _focusSerial = 0;
 
@@ -162,20 +173,80 @@ class InspectorViewModel extends ChangeNotifier {
   /// its scroll offset); null once the new diff or a refusal arrives.
   FileDiff? get previousDiff => _previousDiff;
 
+  /// What the read at [whitespace] says about [focusedDiff]'s file; null while whitespace shows (Story 10.33).
+  IgnoredLines? get focusedIgnored => _focusedIgnored;
+
+  /// [focusedIgnored] of [previousDiff].
+  IgnoredLines? get previousIgnored => _previousIgnored;
+
   /// The focused diff's refusal.
   ZanshinFfiException? get focusError => _focusError;
 
   /// Whether the diff fills the words that changed inside a line (Settings › Changed words, Story 5.14).
   bool get wordMarks => _wordMarks;
 
-  /// Shows [path]'s diff (one read); on the focused path after a refusal it reads again.
+  /// How the diff treats whitespace: `general.diffWhitespace` in [settings] (Story 10.33).
+  DiffWhitespaceSetting get whitespace => _whitespace;
+
+  /// Writes the whitespace mode (a failed write is swallowed; the store keeps the value); the diff reloads once the
+  /// store has it.
+  void setWhitespace(DiffWhitespaceSetting whitespace) {
+    if (whitespace == _whitespace) {
+      return;
+    }
+    unawaited(
+      settings
+          .update((s) => s.copyWith(general: s.general.copyWith(diffWhitespace: whitespace)))
+          .onError<FileSystemException>((_, _) {}),
+    );
+  }
+
+  /// `diff.color-words.context` as Settings reads it; null when jj cannot read it.
+  int? get contextLines => _contextLines;
+
+  /// Writes `diff.color-words.context` at user scope; the config write reloads the diff and reads the value again. A
+  /// refused write is logged and the value kept.
+  Future<void> setContextLines(int lines) async {
+    try {
+      await details.setDiffContext(lines);
+    } on ZanshinFfiException catch (error) {
+      _log.warning('writing diff.color-words.context refused: ${error.code}');
+    }
+  }
+
+  Future<void> _readContext() async {
+    final int serial = ++_contextSerial;
+    int? lines;
+    try {
+      lines = await details.diffContext();
+    } on ZanshinFfiException catch (error) {
+      _log.warning('reading diff.color-words.context refused: ${error.code}');
+      lines = null;
+    }
+    if (serial == _contextSerial && lines != _contextLines) {
+      _contextLines = lines;
+      _notify();
+    }
+  }
+
+  /// Keeps the shown diff (and what the ignoring read said about it) as the previous one while another loads.
+  void _keepPrevious() {
+    if (_focusedDiff != null) {
+      _previousDiff = _focusedDiff;
+      _previousIgnored = _focusedIgnored;
+    }
+    _focusedDiff = null;
+    _focusedIgnored = null;
+  }
+
+  /// Shows [path]'s diff (one read, two while whitespace is ignored); on the focused path after a refusal it reads
+  /// again.
   void focus(String path) {
     if (path == _focused && _focusError == null) {
       return;
     }
     _focused = path;
-    _previousDiff = _focusedDiff ?? _previousDiff;
-    _focusedDiff = null;
+    _keepPrevious();
     _focusError = null;
     _loadFocus();
     _notify();
@@ -282,6 +353,13 @@ class InspectorViewModel extends ChangeNotifier {
       _wordMarks = wordMarks;
       changed = true;
     }
+    // The mode changes the reads: the focused diff loads again, the old one stays meanwhile.
+    final DiffWhitespaceSetting whitespace = settings.value.general.diffWhitespace;
+    if (whitespace != _whitespace) {
+      _whitespace = whitespace;
+      _reloadFocus();
+      changed = true;
+    }
     if (changed) {
       _notify();
     }
@@ -298,34 +376,45 @@ class InspectorViewModel extends ChangeNotifier {
     }
   }
 
-  /// A jj config write may change `diff.color-words.*`: the focused diff loads again, the old one stays meanwhile.
+  /// A jj config write may change `diff.color-words.*`: the focused diff loads again, the old one stays meanwhile, and
+  /// the context lines are read again.
   void configChanged() {
     _reloadFocus();
+    unawaited(_readContext());
     _notify();
   }
 
   void _reloadFocus() {
-    _previousDiff = _focusedDiff ?? _previousDiff;
-    _focusedDiff = null;
+    _keepPrevious();
     _focusError = null;
     _loadFocus();
   }
 
+  /// Reads the focused file: exact (parts, picks, header, counts) and, while whitespace is ignored, at the mode too, in
+  /// parallel; it shows once both arrived, and a refusal of either is the diff's refusal (Story 10.33).
   void _loadFocus() {
     final int serial = ++_focusSerial;
     final String? path = _focused;
     final String? commitId = _commitId;
     if (path == null || commitId == null || _summary == null) {
       _focusedDiff = null;
+      _focusedIgnored = null;
       _focusError = null;
       return;
     }
+    final DiffWhitespace mode = diffWhitespaceOf(_whitespace);
     unawaited(() async {
       try {
-        final Diff diff = await details.diff(commitId, paths: <String>[path]);
+        final List<Diff> diffs = await Future.wait<Diff>(<Future<Diff>>[
+          details.diff(commitId, paths: <String>[path]),
+          if (mode != DiffWhitespace.exact) details.diff(commitId, paths: <String>[path], whitespace: mode),
+        ]);
+        FileDiff? fileOf(Diff diff) => diff.files.where((file) => file.path == path).firstOrNull;
         if (serial == _focusSerial) {
-          _focusedDiff = diff.files.where((file) => file.path == path).firstOrNull;
+          _focusedDiff = fileOf(diffs.first);
+          _focusedIgnored = diffs.length > 1 ? IgnoredLines.of(fileOf(diffs.last)) : null;
           _previousDiff = null;
+          _previousIgnored = null;
           _focusError = null;
           _notify();
         }
@@ -333,7 +422,9 @@ class InspectorViewModel extends ChangeNotifier {
         _log.warning('diff refused: ${error.code}');
         if (serial == _focusSerial) {
           _focusedDiff = null;
+          _focusedIgnored = null;
           _previousDiff = null;
+          _previousIgnored = null;
           _focusError = error;
           _notify();
         }
@@ -882,6 +973,8 @@ class InspectorViewModel extends ChangeNotifier {
     _focused = null;
     _focusedDiff = null;
     _previousDiff = null;
+    _focusedIgnored = null;
+    _previousIgnored = null;
     _focusError = null;
     _focusSerial++;
   }
@@ -924,6 +1017,8 @@ class InspectorViewModel extends ChangeNotifier {
         if (focused != _focused) {
           _focusedDiff = null;
           _previousDiff = null;
+          _focusedIgnored = null;
+          _previousIgnored = null;
           _focusError = null;
         }
         _focused = focused;
@@ -2757,6 +2852,14 @@ class _ChangesState extends State<_Changes> {
                 key: ValueKey<String>(widget.data.key),
                 path: model.previousDiff?.path ?? focused,
                 diff: model.focusedDiff ?? model.previousDiff,
+                // A file picked whole without part picks (a rename or copy) shows every line: the commit takes them all.
+                ignored: !pickHunks && model.isPicked(focused)
+                    ? null
+                    : (model.focusedDiff != null ? model.focusedIgnored : model.previousIgnored),
+                whitespace: model.whitespace,
+                onWhitespaceChanged: model.setWhitespace,
+                contextLines: model.contextLines,
+                onContextLinesChanged: (lines) => unawaited(model.setContextLines(lines)),
                 wordMarks: model.wordMarks,
                 error: model.focusError,
                 viewed: model.isViewed(focused),

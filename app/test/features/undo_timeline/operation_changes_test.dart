@@ -15,7 +15,7 @@ import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_view.dart';
 import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffWhitespaceSetting, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_undo_timeline.dart';
@@ -332,6 +332,56 @@ void main() {
       );
       expect(focused.wordMarks, isFalse);
       expect(changes.diffs, hasLength(reads), reason: 'the switch reloads nothing');
+    });
+  });
+
+  testWidgets('Story 10.33: the focused file has the diff options menu, the description block none; the whitespace '
+      'mode reloads the file exact and at -w; a context pick writes the config and reloads', (tester) async {
+    final changes = FakeOperationChangesSource(
+      testOpShow(testOperation(1, now: _now), <OpChangedCommit>[
+        OpChangedCommit(commitId: _x, abandoned: false, addedCommitIds: <String>[_x], removedCommitIds: const []),
+      ]),
+      diff: (call) => testDiff(const <String>['new.txt'], description: true),
+    );
+    await withView(tester, changes, () async {
+      final Finder menus = find.byWidgetPredicate(
+        (w) => w is ZsMenuButton && w.identifier == 'inspector-diff-options',
+      );
+      expect(menus, findsOneWidget, reason: 'the focused file only');
+      final Finder block = find.byKey(const ValueKey<String>('operation-changes-description'));
+      expect(find.descendant(of: block, matching: menus), findsNothing);
+      ZsMenuItem row(String identifier) => tester
+          .widget<ZsMenuButton>(menus)
+          .entries
+          .whereType<ZsMenuItem>()
+          .singleWhere((i) => i.identifier == identifier);
+
+      final int reads = changes.diffs.length;
+      row('diff-options-whitespace-ignoreAll').onSelected!();
+      await tester.pump();
+      await tester.pump();
+      expect(
+        changes.diffs.skip(reads).map((call) => (call.summary, call.paths.join(','), call.whitespace)),
+        unorderedEquals(<(bool, String, DiffWhitespace)>[
+          (false, 'new.txt', DiffWhitespace.exact),
+          (false, 'new.txt', DiffWhitespace.ignoreAllSpace),
+        ]),
+        reason: 'the focused file twice, the summary not again',
+      );
+      final InspectorDiffView focused = tester.widget(
+        find.byWidgetPredicate((w) => w is InspectorDiffView && w.path == 'new.txt'),
+      );
+      expect(focused.whitespace, DiffWhitespaceSetting.ignoreAll);
+      expect(focused.ignored, isNotNull);
+      expect(row('diff-options-whitespace-ignoreAll').checked, isTrue);
+
+      final int before = changes.diffs.length;
+      row('diff-options-context-5').onSelected!();
+      await tester.pump();
+      await tester.pump();
+      expect(changes.contextWrites, <int>[5]);
+      expect(row('diff-options-context-5').checked, isTrue);
+      expect(changes.diffs.length, greaterThan(before), reason: 'the config write reloads');
     });
   });
 

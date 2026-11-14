@@ -23,6 +23,7 @@ import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../helpers/fake_projects_environment.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/shell_host.dart';
 import '../../helpers/word_marks.dart';
@@ -162,7 +163,7 @@ void main() {
       );
       write('comment.dart', '  // Small side padding.\n  padding: Spacing.spacing2,\n  child: label,\n');
       write('fresh.dart', '// A new file.\nconst fresh = true;\n');
-      final details = RepoGraphDetails(repo);
+      final details = RepoGraphDetails(repo, FakeProjectsEnvironment());
       // A commit id, as the inspector passes it (`show` snapshots the rewrite first).
       final String commitId = (await details.show('@')).change.commitId;
       return <String, FileDiff>{for (final FileDiff file in (await details.diff(commitId)).files) file.path: file};

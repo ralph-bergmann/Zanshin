@@ -7,10 +7,11 @@ import 'package:flutter/rendering.dart' show RenderParagraph, RenderProxyBox, Se
 import 'package:flutter/widgets.dart';
 import 'package:material_ui/material_ui.dart' show SelectionArea;
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffWhitespaceSetting;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import 'hatch_swatch.dart';
 
 /// [hunk]'s range in git's notation, `@@ −l,n +r,m @@` with U+2212 for the minus — the color-words format has no
 /// header of its own, so Zanshin labels each hunk this way: a line number is the range's 1-based start, or its 0-based
@@ -288,6 +289,183 @@ int? hunkPartOf(List<HunkKey> sections, HunkLine line) {
 /// [hunk]'s lines' parts ([hunkPartOf]), in line order.
 List<int?> hunkLineParts(Hunk hunk) => <int?>[for (final HunkLine line in hunk.lines) hunkPartOf(hunk.sections, line)];
 
+/// The diff read's whitespace mode for [setting] (Story 10.33).
+DiffWhitespace diffWhitespaceOf(DiffWhitespaceSetting setting) => switch (setting) {
+  DiffWhitespaceSetting.showAll => DiffWhitespace.exact,
+  DiffWhitespaceSetting.ignoreChangesInAmount => DiffWhitespace.ignoreSpaceChange,
+  DiffWhitespaceSetting.ignoreAll => DiffWhitespace.ignoreAllSpace,
+};
+
+bool _isChange(HunkLine line) =>
+    line.kind == HunkLineKind.removed || line.kind == HunkLineKind.added || line.kind == HunkLineKind.changed;
+
+/// What the read at `-b` / `-w` says about one file (Story 10.33): the left and right numbers of its changed lines and
+/// its context lines by right number. Only numbers are matched; Rust stays the only place that compares lines.
+@immutable
+class IgnoredLines {
+  /// The lines of [diff], the file as the ignoring read lists it; none when it does not list the file.
+  factory IgnoredLines.of(FileDiff? diff) {
+    final left = <int>{};
+    final right = <int>{};
+    final context = <int, HunkLine>{};
+    for (final Hunk hunk in diff?.hunks ?? const <Hunk>[]) {
+      for (final HunkLine line in hunk.lines) {
+        if (_isChange(line)) {
+          left.addAll(<int>[?line.left]);
+          right.addAll(<int>[?line.right]);
+        } else if (line.kind == HunkLineKind.context && line.right != null) {
+          context[line.right!] = line;
+        }
+      }
+    }
+    return IgnoredLines._(left, right, context);
+  }
+
+  const IgnoredLines._(this.left, this.right, this.context);
+
+  /// The left numbers of the changed lines.
+  final Set<int> left;
+
+  /// The right numbers of the changed lines.
+  final Set<int> right;
+
+  /// The context lines, by right number.
+  final Map<int, HunkLine> context;
+
+  /// Whether the changed [line] of the exact read changed only in whitespace: neither of its numbers changed here.
+  bool whitespaceOnly(HunkLine line) => !left.contains(line.left) && !right.contains(line.right);
+}
+
+/// One row a hunk shows (Story 10.33): a line, or a part folded into one row.
+sealed class DiffRow {
+  const DiffRow();
+}
+
+/// A line of a hunk: its [part] ([hunkPartOf]) and whether it changed only in whitespace and shows because its part
+/// is picked or opened ([whitespaceOnly]: dimmed).
+final class DiffLineRow extends DiffRow {
+  /// A row showing [line].
+  const DiffLineRow(this.line, {this.part, this.whitespaceOnly = false});
+
+  /// The line.
+  final HunkLine line;
+
+  /// The index of its part in the hunk's sections; null for none.
+  final int? part;
+
+  /// Whether it changed only in whitespace.
+  final bool whitespaceOnly;
+}
+
+/// A part made only of whitespace changes, neither picked nor opened, folded into one row.
+final class DiffFoldRow extends DiffRow {
+  /// The fold of [part]'s [lines].
+  const DiffFoldRow(this.part, this.lines);
+
+  /// The index of the part in the hunk's sections.
+  final int part;
+
+  /// The folded lines.
+  final List<HunkLine> lines;
+
+  /// The larger of the lines' distinct left and right numbers' counts.
+  int get count => math.max(
+    <int>{for (final HunkLine line in lines) ?line.left}.length,
+    <int>{for (final HunkLine line in lines) ?line.right}.length,
+  );
+}
+
+/// The rows [hunk] (the exact read's) shows (Story 10.33). Without [ignored] every line as it is. With it, a changed
+/// line [IgnoredLines.whitespaceOnly] shows dimmed when its part is in [revealed] (picked or opened); a part of only
+/// such lines folds into one [DiffFoldRow]; any other such line gives way to the ignoring read's context line with its
+/// right number (once), else to nothing — what `jj diff -w` shows there. Null when only context lines are left: the
+/// hunk goes.
+List<DiffRow>? whitespaceRows(Hunk hunk, IgnoredLines? ignored, {Set<HunkKey> revealed = const <HunkKey>{}}) {
+  final List<int?> parts = hunkLineParts(hunk);
+  if (ignored == null) {
+    return <DiffRow>[for (var i = 0; i < hunk.lines.length; i++) DiffLineRow(hunk.lines[i], part: parts[i])];
+  }
+  bool whitespaceOnly(HunkLine line) => _isChange(line) && ignored.whitespaceOnly(line);
+  // The parts with a real change: their whitespace-only lines never fold.
+  final mixed = <int>{
+    for (var i = 0; i < hunk.lines.length; i++)
+      if (parts[i] case final int part when _isChange(hunk.lines[i]) && !whitespaceOnly(hunk.lines[i])) part,
+  };
+  final rows = <DiffRow>[];
+  final substituted = <int>{};
+  for (var i = 0; i < hunk.lines.length; i++) {
+    final HunkLine line = hunk.lines[i];
+    final int? part = parts[i];
+    if (!whitespaceOnly(line)) {
+      rows.add(DiffLineRow(line, part: part));
+    } else if (part != null && revealed.contains(hunk.sections[part])) {
+      rows.add(DiffLineRow(line, part: part, whitespaceOnly: true));
+    } else if (part != null && !mixed.contains(part)) {
+      if (rows.lastOrNull case DiffFoldRow(part: final int last, :final List<HunkLine> lines) when last == part) {
+        lines.add(line);
+      } else {
+        rows.add(DiffFoldRow(part, <HunkLine>[line]));
+      }
+    } else if (ignored.context[line.right] case final HunkLine context when substituted.add(line.right!)) {
+      rows.add(DiffLineRow(context));
+    }
+  }
+  final bool changes = rows.any((row) => row is DiffFoldRow || (row is DiffLineRow && _isChange(row.line)));
+  return changes ? rows : null;
+}
+
+/// The diff options menu's rows (Story 10.33, design `inspector-study.jsx`): Whitespace — show all (`jj diff`),
+/// ignore changes in amount (`-b`), ignore all (`-w`); Context lines — 0, 1, 2, 3 ("jj's default"), 5, 10, 20 plus
+/// [contextLines] in order when it is off that list, none checked when null (jj cannot read it); then the note.
+List<ZsMenuEntry> diffOptionsEntries(
+  AppLocalizations strings, {
+  required DiffWhitespaceSetting whitespace,
+  required ValueChanged<DiffWhitespaceSetting> onWhitespaceChanged,
+  required int? contextLines,
+  required ValueChanged<int>? onContextLinesChanged,
+}) {
+  final List<int> choices = <int>{...diffContextChoices, ?contextLines}.toList()..sort();
+  return <ZsMenuEntry>[
+    ZsMenuHeader(strings.diffWhitespaceHead),
+    for (final DiffWhitespaceSetting setting in DiffWhitespaceSetting.values)
+      ZsMenuItem(
+        label: diffWhitespaceLabel(strings, setting),
+        cmd: switch (setting) {
+          DiffWhitespaceSetting.showAll => 'jj diff', // l10n-ignore: jj's command
+          DiffWhitespaceSetting.ignoreChangesInAmount => 'jj diff -b', // l10n-ignore: jj's command
+          DiffWhitespaceSetting.ignoreAll => 'jj diff -w', // l10n-ignore: jj's command
+        },
+        checked: setting == whitespace,
+        radio: true,
+        identifier: 'diff-options-whitespace-${setting.name}',
+        onSelected: () => onWhitespaceChanged(setting),
+      ),
+    const ZsMenuSeparator(),
+    ZsMenuHeader(strings.diffContextHead),
+    for (final int n in choices)
+      ZsMenuItem(
+        label: '$n',
+        shortcut: n == 3 ? strings.diffContextDefault : null,
+        checked: n == contextLines,
+        radio: true,
+        identifier: 'diff-options-context-$n',
+        onSelected: onContextLinesChanged == null ? null : () => onContextLinesChanged(n),
+      ),
+    const ZsMenuSeparator(),
+    ZsMenuNote(strings.diffOptionsNote),
+  ];
+}
+
+/// The context-line choices of the diff options menu and Settings › General › Diffs.
+const diffContextChoices = <int>[0, 1, 2, 3, 5, 10, 20];
+
+/// [setting]'s label in the diff options menu and Settings.
+String diffWhitespaceLabel(AppLocalizations strings, DiffWhitespaceSetting setting) => switch (setting) {
+  DiffWhitespaceSetting.showAll => strings.diffWhitespaceShowAll,
+  DiffWhitespaceSetting.ignoreChangesInAmount => strings.diffWhitespaceIgnoreAmount,
+  DiffWhitespaceSetting.ignoreAll => strings.diffWhitespaceIgnoreAll,
+};
+
 /// What a unified hunk needs to keep its numbers in view (Story 10.38, deferred-work I1): the file's horizontal
 /// scroll, the visible width, and the number columns' digits and width (the file's largest number).
 @immutable
@@ -337,7 +515,9 @@ class _Pinned extends StatelessWidget {
 /// file folds into one green row whose click unfolds it and clears Viewed. Without [onViewedChanged] there is no Viewed
 /// toggle and nothing folds (Story 10.29's operation view). With [hunkPicked] each hunk with sections gets a checkbox,
 /// with [modePicked] the mode-change note does (Story 10.26); without them there is none. With [partPicked] a hunk of
-/// more than one part gets a checkbox per part (Story 10.38).
+/// more than one part gets a checkbox per part (Story 10.38). With [onWhitespaceChanged] the bar ends in the diff
+/// options menu (Story 10.33): whitespace and context lines; with [ignored] the hunks show [whitespaceRows], and a file
+/// left with none reads "Only whitespace changed in this file."
 ///
 /// **Scrolling** (Story 10.38). The unified lines of the whole file scroll sideways as one unit, every line as wide as
 /// the widest; the number columns and the hunk headers stay in view ([DiffPin]). With a bounded height (the inspector)
@@ -360,8 +540,28 @@ class InspectorDiffView extends StatelessWidget {
     this.onPartToggled,
     this.modePicked,
     this.onModeToggled,
+    this.whitespace = DiffWhitespaceSetting.showAll,
+    this.onWhitespaceChanged,
+    this.ignored,
+    this.contextLines,
+    this.onContextLinesChanged,
     super.key,
   });
+
+  /// The whitespace mode the menu checks (Story 10.33).
+  final DiffWhitespaceSetting whitespace;
+
+  /// Changes the whitespace mode; null: no diff options menu.
+  final ValueChanged<DiffWhitespaceSetting>? onWhitespaceChanged;
+
+  /// What the read at the whitespace mode says about the file; null shows the exact lines ([whitespaceRows]).
+  final IgnoredLines? ignored;
+
+  /// `diff.color-words.context`, which the menu checks; null when jj cannot read it.
+  final int? contextLines;
+
+  /// Writes `diff.color-words.context` at user scope.
+  final ValueChanged<int>? onContextLinesChanged;
 
   /// A hunk's pick state (all, none, null for mixed); null: no hunk checkboxes.
   final bool? Function(Hunk hunk)? hunkPicked;
@@ -472,9 +672,10 @@ class InspectorDiffView extends StatelessWidget {
           : diff.hunks.isEmpty
           ? (diff.modeChange ? mode : _note(context, strings.inspectorDiffNoLines))
           : _DiffBody(
-              // A new file starts at the top and the left.
-              key: ValueKey<String>(path),
+              // A new file starts at the top and the left; its opened parts reset with the file and the mode.
+              key: ValueKey<(String, DiffWhitespaceSetting)>((path, whitespace)),
               diff: diff,
+              ignored: ignored,
               mode: diff.modeChange ? mode : null,
               layout: layout,
               wordMarks: wordMarks,
@@ -541,6 +742,8 @@ class InspectorDiffView extends StatelessWidget {
                     padding: const EdgeInsets.only(left: 8),
                     child: _ViewedToggle(viewed: viewed, onChanged: onViewedChanged),
                   ),
+                if (onWhitespaceChanged case final ValueChanged<DiffWhitespaceSetting> onWhitespaceChanged)
+                  _optionsMenu(strings, onWhitespaceChanged),
               ],
             ),
           ),
@@ -555,6 +758,27 @@ class InspectorDiffView extends StatelessWidget {
     );
   }
 
+  /// The diff options menu (Story 10.33): the last control, its glyph `--accent` while a value is off its default.
+  Widget _optionsMenu(AppLocalizations strings, ValueChanged<DiffWhitespaceSetting> onWhitespaceChanged) {
+    final String mode = diffWhitespaceLabel(strings, whitespace);
+    final int? lines = contextLines;
+    return ZsMenuButton(
+      label: lines == null ? strings.inspectorDiffOptionsUnreadable(mode) : strings.inspectorDiffOptions(mode, lines),
+      icon: ZI.viewOptions,
+      iconOnly: true,
+      active: whitespace != DiffWhitespaceSetting.showAll || lines != 3,
+      variant: ZsButtonVariant.ghost,
+      identifier: 'inspector-diff-options',
+      entries: diffOptionsEntries(
+        strings,
+        whitespace: whitespace,
+        onWhitespaceChanged: onWhitespaceChanged,
+        contextLines: lines,
+        onContextLinesChanged: onContextLinesChanged,
+      ),
+    );
+  }
+
   static Widget _note(BuildContext context, String text) => Padding(
     padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
     child: Text(
@@ -563,6 +787,20 @@ class InspectorDiffView extends StatelessWidget {
       style: ZsType.code.copyWith(color: ZsColors.of(context).textDim),
     ),
   );
+}
+
+/// A folded whitespace-only row's hatch (design inspector-study.css `.isd-foldrow`): `paintGraphHatch` every 6 px.
+class _FoldHatchPainter extends CustomPainter {
+  const _FoldHatchPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintGraphHatch(canvas, RRect.fromRectXY(Offset.zero & size, 0, 0), period: 6, color: color);
+
+  @override
+  bool shouldRepaint(_FoldHatchPainter oldDelegate) => oldDelegate.color != color;
 }
 
 /// The Viewed toggle (DS content.css:40-44): a checkbox role around a presentational add-tone [ZsCheckbox] and
@@ -697,6 +935,7 @@ class InspectorTextButton extends StatelessWidget {
 class _DiffBody extends StatefulWidget {
   const _DiffBody({
     required this.diff,
+    required this.ignored,
     required this.mode,
     required this.layout,
     required this.wordMarks,
@@ -709,6 +948,7 @@ class _DiffBody extends StatefulWidget {
   });
 
   final FileDiff diff;
+  final IgnoredLines? ignored;
   final Widget? mode;
   final DiffLayoutSetting layout;
   final bool wordMarks;
@@ -726,6 +966,11 @@ class _DiffBodyState extends State<_DiffBody> {
   // Unbounded, the vertical controller stays unattached: the body scrolls only sideways, its host scrolls it down.
   final _vertical = ScrollController();
   final _horizontal = ScrollController();
+
+  // The whitespace-only parts the user opened (Story 10.33); the key resets them with the file and the mode.
+  final _opened = <HunkKey>{};
+
+  void _toggleOpened(HunkKey part) => setState(() => _opened.remove(part) || _opened.add(part));
 
   @override
   void dispose() {
@@ -749,8 +994,37 @@ class _DiffBodyState extends State<_DiffBody> {
   Widget build(BuildContext context) {
     final ZsColors colors = ZsColors.of(context);
     final unified = widget.layout == DiffLayoutSetting.unified;
-    final List<Hunk> hunks = widget.diff.hunks;
     final bool? Function(Hunk hunk)? hunkPicked = widget.hunkPicked;
+    final bool Function(HunkKey part)? partPicked = widget.partPicked;
+    final hunks = <Hunk>[];
+    final shown = <List<DiffRow>>[];
+    for (final Hunk hunk in widget.diff.hunks) {
+      final List<DiffRow>? rows = whitespaceRows(
+        hunk,
+        widget.ignored,
+        revealed: <HunkKey>{
+          for (final HunkKey part in hunk.sections)
+            if (_opened.contains(part) || (partPicked?.call(part) ?? false)) part,
+        },
+      );
+      if (rows != null) {
+        hunks.add(hunk);
+        shown.add(rows);
+      }
+    }
+    if (hunks.isEmpty) {
+      return Align(
+        alignment: Alignment.topLeft,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ?widget.mode,
+            InspectorDiffView._note(context, context.l10n.inspectorDiffOnlyWhitespace),
+          ],
+        ),
+      );
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final int digits = _digits;
@@ -777,6 +1051,9 @@ class _DiffBodyState extends State<_DiffBody> {
                 ),
                 child: InspectorDiffHunk(
                   hunk: hunks[i],
+                  rows: shown[i],
+                  opened: _opened,
+                  onOpenToggled: _toggleOpened,
                   layout: widget.layout,
                   pin: pin,
                   wordMarks: widget.wordMarks,
@@ -835,12 +1112,20 @@ class _DiffBodyState extends State<_DiffBody> {
 /// Story 10.38 (DESIGN-SYSTEM-SYNC #26): with [partPicked], a selectable hunk of more than one part ([hunkPartOf])
 /// shows "N parts" in its header and a 22 px gutter before its numbers (side by side: leading the row) with a 13 px
 /// checkbox on each part's first line; then only a picked part's lines carry the edge.
+///
+/// Story 10.33 (DESIGN-SYSTEM-SYNC #26): it shows [rows] ([whitespaceRows]). A whitespace-only line shows its text at
+/// .62; unified, one with a right number carries the pill "whitespace only" — a button "whitespace only · Hide" while
+/// its part is only opened. A folded part is one hatched row, "⋯ N lines changed whitespace only · Show", full width,
+/// with the part's checkbox in the gutter while picks are possible.
 class InspectorDiffHunk extends StatelessWidget {
   /// [hunk] in [layout].
   const InspectorDiffHunk({
     required this.hunk,
     required this.layout,
     required this.pin,
+    this.rows,
+    this.opened = const <HunkKey>{},
+    this.onOpenToggled,
     this.wordMarks = true,
     this.selectable = false,
     this.picked = false,
@@ -852,6 +1137,23 @@ class InspectorDiffHunk extends StatelessWidget {
 
   /// The hunk.
   final Hunk hunk;
+
+  /// What it shows; null: every line as it is.
+  final List<DiffRow>? rows;
+
+  /// The whitespace-only parts the user opened.
+  final Set<HunkKey> opened;
+
+  /// Opens or folds a whitespace-only part.
+  final ValueChanged<HunkKey>? onOpenToggled;
+
+  List<DiffRow> get _rows => rows ?? whitespaceRows(hunk, null)!;
+
+  /// Whether rows lead with the part gutter: the hunk shows its parts, or a folded part takes a pick.
+  bool _hasGutter(List<DiffRow> rows) => _parts || (_foldPicks && rows.any((row) => row is DiffFoldRow));
+
+  /// Whether a folded row carries its part's checkbox.
+  bool get _foldPicks => selectable && partPicked != null;
 
   /// Whether changed words inside a line get their fill ([InspectorDiffView.wordMarks]).
   final bool wordMarks;
@@ -956,8 +1258,8 @@ class InspectorDiffHunk extends StatelessWidget {
         header,
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          // Unified lines and parts draw their edge per line; side by side the whole hunk's.
-          child: unified || parts
+          // Unified lines and rows with a gutter draw their edge per line; side by side the whole hunk's.
+          child: unified || _hasGutter(_rows)
               ? lines
               : DecoratedBox(
                   key: const ValueKey<String>('inspector-hunk-edge'),
@@ -1024,12 +1326,102 @@ class InspectorDiffHunk extends StatelessWidget {
     ),
   );
 
+  /// [part]'s checkbox on its folded row; a picked part never folds, so it is always unchecked and a pick opens the row.
+  Widget _foldBox(BuildContext context, int part) {
+    final HunkKey key = hunk.sections[part];
+    return Center(
+      child: ZsCheckbox(
+        value: false,
+        onChanged: (_) => onPartToggled?.call(key),
+        label: context.l10n.inspectorFoldPick,
+        size: ZsCheckboxSize.sm,
+        identifier: 'inspector-fold-check',
+      ),
+    );
+  }
+
+  /// A folded part's row content: its text button, which opens it (design inspector-study.css `.isd-foldtxt`).
+  Widget _foldText(BuildContext context, DiffFoldRow fold) {
+    final AppLocalizations strings = context.l10n;
+    final ZsColors colors = ZsColors.of(context);
+    final String text = strings.inspectorFoldText(fold.count);
+    return ZsTooltip(
+      message: strings.inspectorFoldShowTooltip,
+      child: SelectionContainer.disabled(
+        child: _FlatButton(
+          identifier: 'inspector-fold-show',
+          label: text,
+          onPressed: () => onOpenToggled?.call(hunk.sections[fold.part]),
+          builder: (status) => Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 12, 0),
+            child: Text(
+              text,
+              softWrap: false,
+              style: ZsType.secondary.copyWith(
+                fontSize: 11.5,
+                height: 22 / 11.5,
+                color: status.hovered ? colors.text : colors.textDim,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The hatch behind a folded row: 135° lines every 6 px in `--fl-hover`.
+  Widget _hatched(ZsColors colors, Widget child) =>
+      CustomPaint(painter: _FoldHatchPainter(colors.flHover), child: child);
+
+  /// A whitespace-only line's text at .62.
+  static Widget _dimmed(Widget text, {required bool dim}) => dim ? Opacity(opacity: .62, child: text) : text;
+
+  /// The pill after a whitespace-only line with a right number (unified only): "whitespace only" while its part is
+  /// picked, else the button "whitespace only · Hide" that folds the opened part again.
+  Widget _tag(BuildContext context, HunkKey part) {
+    final AppLocalizations strings = context.l10n;
+    final ZsColors colors = ZsColors.of(context);
+    Widget pill(String text, {bool hovered = false}) => Container(
+      margin: const EdgeInsets.only(left: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        color: hovered ? colors.flOn : colors.flHover,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        softWrap: false,
+        style: ZsType.secondary.copyWith(
+          fontSize: 10.5,
+          height: 16 / 10.5,
+          color: hovered ? colors.text : colors.textDim,
+        ),
+      ),
+    );
+    final Widget tag = (partPicked?.call(part) ?? false)
+        ? ZsTooltip(
+            message: strings.inspectorWhitespaceOnlyTooltip,
+            child: pill(strings.inspectorWhitespaceOnly),
+          )
+        : ZsTooltip(
+            message: strings.inspectorWhitespaceHideTooltip,
+            child: _FlatButton(
+              identifier: 'inspector-whitespace-hide',
+              label: strings.inspectorWhitespaceOnlyHide,
+              radius: 999,
+              onPressed: () => onOpenToggled?.call(part),
+              builder: (status) => pill(strings.inspectorWhitespaceOnlyHide, hovered: status.hovered),
+            ),
+          );
+    return SelectionContainer.disabled(child: tag);
+  }
+
   Widget _unified(BuildContext context, ZsColors colors) {
-    final bool parts = _parts;
-    final List<int?> lineParts = parts ? hunkLineParts(hunk) : const <int?>[];
+    final List<DiffRow> lines = _rows;
+    final bool gutters = _hasGutter(lines);
     final shown = <int>{};
     // The pinned group: 10 padding, the gutter, the two number columns 8 apart, 8 before the text.
-    final double pinWidth = 10 + (parts ? _gutter : 0) + pin.numberWidth * 2 + 16;
+    final double pinWidth = 10 + (gutters ? _gutter : 0) + pin.numberWidth * 2 + 16;
     final Color none = colors.textMuted.withValues(alpha: 0);
     // The text runs under the pinned group, which paints after it on the well colour plus the line's fill.
     Widget row({
@@ -1067,7 +1459,7 @@ class InspectorDiffHunk extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  if (parts) SizedBox(width: _gutter, child: gutter),
+                  if (gutters) SizedBox(width: _gutter, child: gutter),
                   _number(left, leftInk ?? none),
                   const SizedBox(width: 8),
                   _number(right, rightInk ?? none),
@@ -1079,10 +1471,25 @@ class InspectorDiffHunk extends StatelessWidget {
       ],
     );
     final rows = <Widget>[];
-    for (var i = 0; i < hunk.lines.length; i++) {
-      final HunkLine line = hunk.lines[i];
+    for (final entry in lines) {
+      if (entry is DiffFoldRow) {
+        shown.add(entry.part);
+        rows.add(
+          _hatched(
+            colors,
+            row(
+              fill: none,
+              text: Align(alignment: Alignment.centerLeft, child: _foldText(context, entry)),
+              edge: _edged(entry.part),
+              gutter: _foldPicks ? _foldBox(context, entry.part) : null,
+            ),
+          ),
+        );
+        continue;
+      }
+      final DiffLineRow(:HunkLine line, :bool whitespaceOnly) = entry as DiffLineRow;
       final _Look look = _look(colors, line.kind);
-      final int? part = parts ? lineParts[i] : null;
+      final int? part = _parts ? entry.part : null;
       final bool edge = _edged(part);
       if (line.kind == HunkLineKind.conflictHeader) {
         // A dim full-width row without number columns, its text at 10.
@@ -1095,10 +1502,17 @@ class InspectorDiffHunk extends StatelessWidget {
         );
         continue;
       }
+      final Widget text = _dimmed(_lineText(colors, line, look.ink, wordMarks: wordMarks), dim: whitespaceOnly);
+      final int? own = entry.part;
       rows.add(
         row(
           fill: look.fill,
-          text: _lineText(colors, line, look.ink, wordMarks: wordMarks),
+          text: whitespaceOnly && own != null && line.right != null
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[text, _tag(context, hunk.sections[own])],
+                )
+              : text,
           edge: edge,
           left: line.left,
           right: line.right,
@@ -1116,8 +1530,18 @@ class InspectorDiffHunk extends StatelessWidget {
   }
 
   Widget _sideBySide(BuildContext context, ZsColors colors) {
-    final bool parts = _parts;
+    final List<DiffRow> entries = _rows;
+    final bool gutters = _hasGutter(entries);
     final shown = <int>{};
+    // The whitespace-only lines' numbers: their cells show dimmed.
+    final dimLeft = <int>{};
+    final dimRight = <int>{};
+    for (final entry in entries) {
+      if (entry case DiffLineRow(whitespaceOnly: true, :final HunkLine line)) {
+        dimLeft.addAll(<int>[?line.left]);
+        dimRight.addAll(<int>[?line.right]);
+      }
+    }
     int? partOf(HunkLine? line) => line == null ? null : hunkPartOf(hunk.sections, line);
     Widget cell(HunkLine? line, {required bool left}) {
       final BorderSide edge = left ? BorderSide(color: colors.flBorder) : BorderSide.none;
@@ -1146,7 +1570,14 @@ class InspectorDiffHunk extends StatelessWidget {
               children: <Widget>[
                 if (line.kind != HunkLineKind.conflictHeader)
                   _number(left ? line.left : line.right, left ? look.left : look.right),
-                Expanded(child: _lineText(colors, line, look.ink, wordMarks: wordMarks, cell: true)),
+                Expanded(
+                  child: _dimmed(
+                    _lineText(colors, line, look.ink, wordMarks: wordMarks, cell: true),
+                    dim:
+                        line.kind != HunkLineKind.context &&
+                        (left ? dimLeft : dimRight).contains(left ? line.left : line.right),
+                  ),
+                ),
               ],
             ),
             if (!line.text.endsWith('\n')) _noNewline(colors, EdgeInsets.zero),
@@ -1155,49 +1586,72 @@ class InspectorDiffHunk extends StatelessWidget {
       );
     }
 
+    // The gutter leading [content]: [box] in it; the edge when [part]'s lines carry it.
+    Widget lead(Widget content, int? part, Widget? box) {
+      if (!gutters) {
+        return content;
+      }
+      // Always a decoration, so a toggle keeps the subtree (and a focused part checkbox) in place.
+      return DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          border: _edged(part) ? Border(left: BorderSide(color: colors.accentLine, width: 2)) : null,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Container(width: _gutter, color: colors.codeBg, child: box),
+            Expanded(child: content),
+          ],
+        ),
+      );
+    }
+
+    final rows = <Widget>[];
+    var run = <HunkLine>[];
+    void flush() {
+      for (final (HunkLine? left, HunkLine? right) in pairSideBySide(run)) {
+        final bool header = left != null && left.kind == HunkLineKind.conflictHeader;
+        final Widget content = header
+            ? cell(left, left: false)
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Expanded(child: cell(left, left: true)),
+                  Expanded(child: cell(right, left: false)),
+                ],
+              );
+        final int? part = !_parts || header ? null : partOf(left) ?? partOf(right);
+        rows.add(
+          IntrinsicHeight(child: lead(content, part, part != null && shown.add(part) ? _partBox(context, part) : null)),
+        );
+      }
+      run = <HunkLine>[];
+    }
+
+    for (final entry in entries) {
+      switch (entry) {
+        case DiffLineRow(:final HunkLine line):
+          run.add(line);
+        case DiffFoldRow(:final int part):
+          flush();
+          shown.add(part);
+          rows.add(
+            IntrinsicHeight(
+              child: lead(
+                _hatched(colors, Align(alignment: Alignment.centerLeft, child: _foldText(context, entry))),
+                part,
+                _foldPicks ? _foldBox(context, part) : null,
+              ),
+            ),
+          );
+      }
+    }
+    flush();
     return Column(
       key: const ValueKey<String>('inspector-diff-split'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        for (final (HunkLine? left, HunkLine? right) in pairSideBySide(hunk.lines))
-          IntrinsicHeight(
-            child: () {
-              final bool header = left != null && left.kind == HunkLineKind.conflictHeader;
-              Widget content = header
-                  ? cell(left, left: false)
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        Expanded(child: cell(left, left: true)),
-                        Expanded(child: cell(right, left: false)),
-                      ],
-                    );
-              if (!parts) {
-                return content;
-              }
-              final int? part = header ? null : partOf(left) ?? partOf(right);
-              content = Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Container(
-                    width: _gutter,
-                    color: colors.codeBg,
-                    child: part != null && shown.add(part) ? _partBox(context, part) : null,
-                  ),
-                  Expanded(child: content),
-                ],
-              );
-              // Always a decoration, so a toggle keeps the subtree (and a focused part checkbox) in place.
-              return DecoratedBox(
-                position: DecorationPosition.foreground,
-                decoration: BoxDecoration(
-                  border: _edged(part) ? Border(left: BorderSide(color: colors.accentLine, width: 2)) : null,
-                ),
-                child: content,
-              );
-            }(),
-          ),
-      ],
+      children: rows,
     );
   }
 }

@@ -207,7 +207,18 @@ class _Details implements GraphDetails {
   Future<ChangeActions> changeActions(String changeId) => Completer<ChangeActions>().future;
 
   @override
-  Future<Diff> diff(String commitId, {List<String> paths = const [], bool summary = false}) => Completer<Diff>().future;
+  Future<Diff> diff(
+    String commitId, {
+    List<String> paths = const [],
+    bool summary = false,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) => Completer<Diff>().future;
+
+  @override
+  Future<int?> diffContext() async => 3;
+
+  @override
+  Future<void> setDiffContext(int lines) async {}
 
   /// Every plan asked for, by change id; none combines a description, so the squash runs at once.
   final plans = <String>[];
