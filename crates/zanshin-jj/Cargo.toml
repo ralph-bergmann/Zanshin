@@ -27,7 +27,7 @@ pollster = { workspace = true }
 rand_chacha = { workspace = true }  # WHY: one call site — `config.rs::SecureLayer::create_path` hands `SecureConfig::load_config` the `ChaCha20Rng` it takes by concrete type
 regex = { workspace = true }  # WHY: three ports — `metaedit.rs`'s `parse_author`, `fix.rs`'s `$variable` interpolation and `source_symbol.rs`'s hunk-header patterns, the CLI's own expressions
 serde = { workspace = true }  # WHY: two call sites — `fix.rs` deserializes `fix.tools.<name>` into the CLI's `RawToolConfig`, `config.rs` `diff.color-words.conflict` into the CLI's `ConflictDiffMethod`
-similar = { workspace = true }  # WHY: one call site — `hunks.rs`'s second word-mark style (`DiffMarks::Words`)
+similar = { workspace = true }  # WHY: one call site — `hunks.rs`'s second word-mark style (`DiffMarks::Words`) compares a changed block's tokens with `capture_diff_slices`
 shlex = { workspace = true }  # WHY: one call site — `fix.rs`'s port of `CommandNameAndArgs::split_name_and_args`
 tempfile = { workspace = true }  # WHY: one call site — `wc_ops.rs::file_edit`'s temporary sparse working copy, as in `cmd_file_edit`
 thiserror = { workspace = true }

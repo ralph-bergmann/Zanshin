@@ -197,8 +197,8 @@ fn summary_mode_drops_only_the_hunks() {
 }
 
 /// Story 5.11: the `Words` style reports itself and keeps everything but the lines' marks — the
-/// same fingerprints, sections and counts as the jj style; a changed line becomes its old line,
-/// then its new one.
+/// same fingerprints, sections and counts as the jj style; one line replaced by one line is one
+/// changed line (Story 5.13).
 #[test]
 fn the_words_style_keeps_the_files_and_reports_itself() {
     let (mut fx, _, (c, _)) = plain();
@@ -230,13 +230,13 @@ fn the_words_style_keeps_the_files_and_reports_itself() {
         lines.iter().map(sides).collect::<Vec<_>>(),
         [
             (HunkLineKind::Context, "a\n".to_owned(), "a\n".to_owned()),
-            (HunkLineKind::Removed, "b\n".to_owned(), "\n".to_owned()),
-            (HunkLineKind::Added, "\n".to_owned(), "B\n".to_owned()),
+            (HunkLineKind::Changed, "b\n".to_owned(), "B\n".to_owned()),
             (HunkLineKind::Context, "c\n".to_owned(), "c\n".to_owned()),
         ]
     );
-    assert_eq!(lines[1].segments[0].kind, SegmentKind::Removed);
-    assert_eq!(lines[2].segments[0].kind, SegmentKind::Added);
+    let kinds: Vec<_> = lines[1].segments.iter().map(|segment| segment.kind).collect();
+    assert_eq!(kinds, [SegmentKind::Removed, SegmentKind::Added, SegmentKind::Equal]);
+    assert_eq!((lines[1].left, lines[1].right), (Some(2), Some(2)));
 }
 
 /// A merge diffs against its merged parents: only what it adds itself.

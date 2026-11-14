@@ -50,10 +50,11 @@ enum DiffMarks {
   /// `jj diff`'s color-words marks — the CLI's.
   jj,
 
-  /// Whole words by the longest common run (the `similar` crate): each
-  /// changed block is its removed lines, then its added lines (never a
-  /// [HunkLineKind.changed] line), a mark exactly where a segment is not
-  /// [SegmentKind.equal].
+  /// The changed part of each line (the `similar` crate, Story 5.13): one
+  /// line replaced by one line is one [HunkLineKind.changed] line where it
+  /// fits `diff.color-words.max-inline-alternation`, any other changed block
+  /// its removed lines, then its added lines; a mark exactly where a segment
+  /// is not [SegmentKind.equal].
   words;
 
   /// The value this crosses the wire as.

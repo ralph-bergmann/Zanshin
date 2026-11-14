@@ -131,8 +131,9 @@ fn diff_whitespace(whitespace: fbs::DiffWhitespace) -> Result<Whitespace, FfiErr
 /// (Story 10.29 closing run) is `show_inter_diff` with no predecessors — the revision's parent
 /// tree against its tree, no copy records. Both fill `Diff.description`, the CLI's
 /// `JJ-COMMIT-DESCRIPTION` block (absent when the descriptions are equal). `marks` (Story 5.11)
-/// picks the word-mark style — absent: `Jj`, the CLI's; `Words`: whole words by the longest common
-/// run, the same lines — and comes back as `Diff.marks`. No caching. Writes NO operation
+/// picks the word-mark style — absent: `Jj`, the CLI's; `Words`: the changed part of each line, one
+/// line replaced by one line as one changed line (Story 5.13), the same numbered line texts — and
+/// comes back as `Diff.marks`. No caching. Writes NO operation
 /// beyond the pre-verb snapshot's (Story 9.26).
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Diff` payload on success.

@@ -16,7 +16,8 @@ enum DiffLayoutSetting {
 
 /// Which word marks the diff draws in a changed block (Story 5.11; Settings › Diffs "Changed words").
 enum DiffMarksSetting {
-  /// Zanshin's style: whole words by the longest common run, removed lines first (the default).
+  /// Zanshin's style: the changed part of each line, one line replaced by one line as one line, else removed lines
+  /// first (the default).
   words,
 
   /// `jj diff`'s color-words marks, following the user's jj config.

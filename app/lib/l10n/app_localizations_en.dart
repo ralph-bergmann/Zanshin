@@ -2183,7 +2183,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDiffMarksZanshinHint =>
-      'Marks whole changed words, using the similar library. Removed lines come first.';
+      'Marks the changed part of each line, using the similar library. Removed lines come first.';
 
   @override
   String get settingsDiffMarksJjHint => 'As jj diff prints them, following your jj config.';
@@ -2194,6 +2194,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsDiffInlineHint =>
       'How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj.';
+
+  @override
+  String get settingsDiffInlineZanshinHint =>
+      'How often a line may switch between removed and added parts before it shows as an old and a new line. Applies where one line replaces one line. Experimental in jj.';
 
   @override
   String get settingsDiffInlineNever => 'Never';

@@ -2507,18 +2507,36 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   `diff.color-words.max-inline-alternation` times (`-1` = always, `0` = never); otherwise it is its
   left lines, then its right lines, with block-wide word marks. `HunkLineKind`'s member order is
   the wire value — append only.
-- **Word-mark style (5.11).** `marks` = the style the lines were computed in, the request's.
-  `Jj` is everything above. `Words` changes only each changed block of the line diff: its left
-  lines (kind `Removed`), then its right lines (kind `Added`) — never `Changed`, whatever
-  `max-inline-alternation` says — marked by the `similar` crate's word diff (Myers) over the
-  block's joined left and right texts. A token is a run of non-blanks or a run of blanks; a
-  deleted token is a `Removed` segment on its left line, an inserted token an `Added` segment on
-  its right line; a blank run is marked exactly between two marked tokens of its own line
-  (never indentation, trailing blanks or line breaks). A block with lines on one side only, and a
-  block over 100 000 tokens, carries no marks. Context lines at `-w` / `-b`, conflicts (roles
-  swapped under `-------`) and summary mode work as in `Jj`. Both styles give the same files,
-  sections, hunk ranges, symbols, counts, fingerprints and numbered line texts. `DiffMarks`'
-  member order is the wire value — append only.
+- **Word-mark style (5.11, 5.13).** `marks` = the style the lines were computed in, the
+  request's. `Jj` is everything above. `Words` changes only each changed block of the line diff
+  with lines on both sides; each side is its joined lines, decoded lossily as UTF-8. It marks the
+  changed part of each line:
+  1. **Tokens.** A run of blanks (`char::is_whitespace`, so a line break belongs to a blank run),
+     a run of word characters (alphanumeric or `_`), or any other character on its own.
+  2. **Comparison.** The `similar` crate's Myers over the two token lists; two tokens are equal
+     when their text is. A token only one side has is changed. In a block of exactly one old and
+     one new line each word token stands twice in both lists and is kept only when both copies
+     pair with the two copies of one token on the other side.
+  3. **Shift right.** On each side a run of changed tokens moves right while its first non-blank
+     token equals the token right after the run; blanks at the run's start stay changed.
+  4. **Marks.** A changed non-blank token is a `Removed` segment on its left line (`Added` on its
+     right line). A run of blanks and unchanged tokens without a word character is marked exactly
+     when it holds no line break and the tokens right before and after it are marked non-blank
+     tokens. Indentation, trailing blanks and line breaks are never marked.
+  5. **Size limit.** A block over 30 000 comparison entries (both sides, doubled word tokens
+     included) carries no marks and is never merged.
+  6. **One line for one line.** A block of one old and one new line within the limit is one
+     `Changed` line with both numbers when both lines have the same indentation and trailing
+     whitespace (line break included) and its changed parts switch sides no more than
+     `max-inline-alternation` times (jj's counting: removed, then added is 2; removed, kept,
+     removed is 1; `-1` = always, `0` = never). Its segments, in line order: each kept token once
+     as `Equal`; between two kept tokens the left side's changed tokens as one `Removed` part, then
+     the right side's as one `Added` part (swapped under `-------`). Rule 4 does not apply in it.
+  Any other block is its left lines (kind `Removed`), then its right lines (kind `Added`), marked
+  by rules 3 and 4. A block with lines on one side only carries no marks. Context lines at
+  `-w` / `-b`, conflicts (roles swapped under `-------`) and summary mode work as in `Jj`. Both
+  styles give the same files, sections, hunk ranges, symbols, counts, fingerprints and numbered
+  line texts, merged lines included. `DiffMarks`' member order is the wire value — append only.
 - **Vectors** are always written (empty, not absent); files, hunks, lines and sections keep
   their input order. `binary` and mode-only files carry no hunks; in summary mode no file does.
   `binary` = either side's content is binary (a NUL byte in its first 8000 bytes), checked before

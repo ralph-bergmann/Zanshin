@@ -869,13 +869,20 @@ diffs are jj-lib's, through `zanshin-jj`, and diffs get no syntax highlighting)*
   (`crates/zanshin-parity/tests/oracle/diff_color_words.rs`) checks it. Don't add a second word
   tokenizer or word-diff algorithm (2026-11-12, Story 5.2 rework — the earlier imara-diff word
   diff marked whole lines where jj marks one word). **The one sanctioned exception** is the
-  second, switchable style `DiffMarks::Words` (Story 5.11, Ralph 2026-11-12): per changed block of
-  jj's line diff, `similar`'s `TextDiff::from_words` (its own tokenizer, Myers) marks whole words,
-  removed lines then added lines; everything else (lines, numbers, context, conflicts, `-w` / `-b`,
-  sections, fingerprints) stays jj's. `DiffMarks::Jj` is the Rust and FFI default and the only
-  style the parity oracle checks; jj parity holds for the jj style and for the lines of both. The
-  app's default (`GeneralSettings.diffMarks`) is the second style; the view draws by the loaded
-  `Diff.marks`. Don't add a third style or own rules inside either.
+  second, switchable style `DiffMarks::Words` (Stories 5.11 and 5.13, Ralph 2026-11-12/14): per
+  changed block of jj's line diff with lines on both sides, `similar`'s `capture_diff_slices`
+  (Myers) over Zanshin's own tokens (a run of blanks, a run of word characters, any other
+  character) marks the changed part of each line — runs shifted right, never indentation,
+  trailing blanks or line breaks, a fixed size limit (`WORD_MARKS_LIMIT`) — and one line replaced
+  by one line becomes one `Changed` line when both have the same indentation and trailing
+  whitespace and its alternation count fits `diff.color-words.max-inline-alternation`; any other
+  block is its removed lines, then its added lines. The rules are `hunks.rs`' `DiffMarks::Words`
+  doc. Everything else (lines, numbers, context, conflicts, `-w` / `-b`, sections, fingerprints)
+  stays jj's. `DiffMarks::Jj` is the Rust and FFI default and the only style the parity oracle
+  checks; jj parity holds for the jj style and for both styles' numbered line texts. The app's
+  default (`GeneralSettings.diffMarks`) is the second style; the view draws by the loaded
+  `Diff.marks`. Don't add a third style, a parser, language-aware tokens or rules beyond `hunks.rs`'
+  rules 1–6.
 - **Don't pre-compute things "in case the UI needs them".** Compute on
   callback dispatch, not speculatively. The UI is out of scope; designing for
   hypothetical UI demands is over-engineering.

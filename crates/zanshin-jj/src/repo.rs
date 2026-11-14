@@ -4417,8 +4417,9 @@ impl Repo {
     /// effective `ui.conflict-marker-style` — each resolves config for its own CLI command, so a
     /// `--when.commands` scope can differ. `context: None` is the effective `diff.color-words.context`; `whitespace`
     /// is the CLI's `-w` / `-b`. `marks` picks the word marks of a changed block (Story 5.11):
-    /// [`crate::DiffMarks::Jj`] is the CLI's, [`crate::DiffMarks::Words`] the second style with the
-    /// same lines. The call resolves its config for the CLI command `diff`
+    /// [`crate::DiffMarks::Jj`] is the CLI's, [`crate::DiffMarks::Words`] the second style, which
+    /// marks the changed part of each line and shows one line replaced by one line as one line
+    /// (Story 5.13), with the same numbered line texts. The call resolves its config for the CLI command `diff`
     /// (Story 9.41). Equal trees give an empty result.
     ///
     /// Writes NO operation beyond the pre-verb snapshot's (Story 9.26).

@@ -811,9 +811,11 @@ pub mod zanshin {
         pub const ENUM_VALUES_DIFF_MARKS: [DiffMarks; 2] = [DiffMarks::Jj, DiffMarks::Words];
 
         /// Which word marks a changed block gets (Story 5.11): `Jj` (0, the default) is `jj diff`'s
-        /// color-words marks; `Words` marks whole words by the longest common run (the `similar` crate) —
-        /// the block's removed lines, then its added lines, the same lines and numbers as `Jj`. Member
-        /// order IS the wire value — APPEND only; an unknown value is `ffi.invalid_argument`.
+        /// color-words marks; `Words` marks the changed part of each line (the `similar` crate, Story
+        /// 5.13) — one line replaced by one line as one `Changed` line where it fits
+        /// `diff.color-words.max-inline-alternation`, any other block its removed lines, then its added
+        /// lines; the same numbered line texts as `Jj`. Member order IS the wire value — APPEND only; an
+        /// unknown value is `ffi.invalid_argument`.
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct DiffMarks(pub u8);

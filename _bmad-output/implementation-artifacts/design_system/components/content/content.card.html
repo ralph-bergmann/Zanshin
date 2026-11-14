@@ -65,15 +65,23 @@
             "+:49|{+  });+}",
             " 43:50|  });",
           ]}/>
-          {/* Zanshin's whole-word style (Story 5.11): removed lines, then added lines, a mark exactly where a run says so. */}
+          {/* Zanshin's style (Stories 5.11 and 5.13): the changed part of each line, a mark exactly where a run says so;
+              one line replaced by one line is one changed row, any other block its removed lines, then its added lines. */}
           <DiffHunk context="fn write_locked_index(" mode={mode} marks="words" lines={[
             " 2453:2453|        .into_inner()",
-            "-2454:|        .map_err(|err| [-GitResetHeadError::from_git(err.into_error()))?;-]",
+            "-2454:|        .map_err(|err| [-GitResetHeadError::from_git-](err.[-into_error-]()))?;",
             "+:2454|        .map_err(|err| {+{+}",
-            "+:2455|            {+let (source, out) = err.into_parts();+}",
+            "+:2455|            {+let (source, out) =+} err.{+into_parts();+}",
             "+:2456|        {+})+}",
-            "+:2457|        {+.map_err(GitResetHeadError::from_git)?;+}",
+            "+:2457|        {+.map_err(GitResetHeadError::from_git+})?;",
             " 2455:2458|    lock.commit()",
+          ]}/>
+          <DiffHunk context="fn diff_refs_to_import(" mode={mode} marks="words" lines={[
+            " 961:959|    let mut failed_ref_names = Vec::new();",
+            "~962:960|    let actual = git_repo.references()[-.map_err(GitImportError::from_git)-]?;",
+            " 963:961|    collect_changed_git_refs_to_import(",
+            "~964:962|        actual.local_branches()[-.map_err(GitImportError::from_git)-]?,",
+            " 965:963|        &mut known_git_refs,",
           ]}/>
         </DiffView>
       </div>

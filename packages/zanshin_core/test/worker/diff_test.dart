@@ -181,10 +181,22 @@ void main() {
         (wordsFile.fingerprint, wordsFile.removed, wordsFile.added, wordsFile.sections.length),
         (jjFile.fingerprint, jjFile.removed, jjFile.added, jjFile.sections.length),
       );
+      // Story 5.13: one line replaced by one line is one changed line with
+      // both numbers and its exact segments.
       final List<HunkLine> lines = [for (final Hunk hunk in wordsFile.hunks) ...hunk.lines];
-      expect(lines.map((l) => l.kind), isNot(contains(HunkLineKind.changed)));
-      final HunkLine removed = lines.firstWhere((l) => l.kind == HunkLineKind.removed);
-      expect(removed.segments.map((s) => s.kind), contains(SegmentKind.removed));
+      expect(lines.map((l) => l.kind), [
+        HunkLineKind.changed,
+        HunkLineKind.context,
+        HunkLineKind.changed,
+        HunkLineKind.context,
+        HunkLineKind.changed,
+      ]);
+      final HunkLine merged = lines.first;
+      expect((merged.left, merged.right), (1, 1));
+      expect(
+        [for (final Segment s in merged.segments) (s.kind, s.text)],
+        [(SegmentKind.removed, 'a'), (SegmentKind.added, 'A'), (SegmentKind.equal, '\n')],
+      );
     });
 
     test('an_unmatched_path_is_a_warning', () async {

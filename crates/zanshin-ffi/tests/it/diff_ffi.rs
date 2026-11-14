@@ -585,7 +585,8 @@ fn paths_context_whitespace_and_summary_reach_the_diff() {
 }
 
 /// Story 5.11: `marks` reaches the diff and comes back on the payload; the `Words` style keeps
-/// the files' fingerprints, sections and counts.
+/// the files' fingerprints, sections and counts, and a one-line change crosses as one changed
+/// line with both numbers and its exact segments (Story 5.13).
 #[test]
 fn marks_reach_the_diff_and_come_back() {
     let fx = fixture();
@@ -618,7 +619,32 @@ fn marks_reach_the_diff_and_come_back() {
         );
     }
     let f = words.files.iter().find(|f| f.path == "f.txt").expect("f.txt");
-    assert!(f.hunks[0].lines.iter().all(|line| line.kind != HunkLineKind::Changed));
+    let kinds: Vec<_> = f.hunks[0].lines.iter().map(|line| line.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            HunkLineKind::Changed,
+            HunkLineKind::Context,
+            HunkLineKind::Changed,
+            HunkLineKind::Context,
+            HunkLineKind::Changed,
+        ]
+    );
+    let first = &f.hunks[0].lines[0];
+    assert_eq!((first.left, first.right), (Some(1), Some(1)));
+    let segments: Vec<_> = first
+        .segments
+        .iter()
+        .map(|segment| (segment.kind, segment.text.as_str()))
+        .collect();
+    assert_eq!(
+        segments,
+        [
+            (SegmentKind::Removed, "a"),
+            (SegmentKind::Added, "A"),
+            (SegmentKind::Equal, "\n"),
+        ]
+    );
     let bytes = call(
         fx.handle,
         Req {

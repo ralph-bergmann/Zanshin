@@ -77,7 +77,7 @@ void main() {
       expect(rig.store.value.general.diffMarks, DiffMarksSetting.words);
       expect(find.text('Changed words'), findsOneWidget);
       expect(
-        find.text('Marks whole changed words, using the similar library. Removed lines come first.'),
+        find.text('Marks the changed part of each line, using the similar library. Removed lines come first.'),
         findsOneWidget,
       );
       await tester.tap(find.text('jj'));
@@ -221,6 +221,12 @@ void main() {
     const conflict = 'diff.color-words.conflict';
     const inline = 'diff.color-words.max-inline-alternation';
     const contextHint = 'Unchanged lines shown around each change.';
+    const inlineZanshinHint =
+        'How often a line may switch between removed and added parts before it shows as an old and a new line. '
+        'Applies where one line replaces one line. Experimental in jj.';
+    const inlineJjHint =
+        'How often a line may switch between removed and added words before it shows as an old and a new line. '
+        'Experimental in jj.';
 
     Future<void> useJjMarks(WidgetTester tester, _Rig rig) async {
       await tester.tap(find.text('jj'));
@@ -255,37 +261,46 @@ void main() {
       );
       expect(find.text(context), findsOneWidget);
       expect(find.text(conflict), findsOneWidget);
-      expect(rig.id('settings-diff-inline'), findsNothing, reason: 'Zanshin marks the words');
+      // Story 5.13: Inline changes shows in both styles, its hint per style.
+      expect(find.text('Up to 3'), findsOneWidget);
+      expect(find.text(inline), findsOneWidget);
+      expect(find.text(inlineZanshinHint), findsOneWidget);
 
       await useJjMarks(tester, rig);
       expect(find.text('Up to 3'), findsOneWidget);
       expect(find.text(inline), findsOneWidget);
+      expect(find.text(inlineJjHint), findsOneWidget);
+      expect(find.text(inlineZanshinHint), findsNothing);
       expect(rig.calls, isEmpty);
     });
 
-    testWidgets('the rows run Layout, Changed words, Inline changes, Context lines, Conflicts', (tester) async {
+    testWidgets('the rows run Layout, Changed words, Inline changes, Context lines, Conflicts in both styles', (
+      tester,
+    ) async {
       final rig = _Rig(tester);
       await rig.pump(project: false);
-      expect(
-        find.text('Marks whole changed words, using the similar library. Removed lines come first.'),
-        findsOneWidget,
-      );
-      await useJjMarks(tester, rig);
-      final List<double> tops = <String>[
+      List<double> tops() => <String>[
         'settings-diff-layout',
         'settings-diff-marks',
         'settings-diff-inline',
         'settings-diff-context',
         'settings-diff-conflict',
       ].map((id) => top(rig, id)).toList();
-      expect(tops, List<double>.of(tops)..sort());
-      expect(tops.toSet(), hasLength(5));
+      for (final jj in <bool>[false, true]) {
+        if (jj) {
+          await useJjMarks(tester, rig);
+        }
+        final List<double> rows = tops();
+        expect(rows, List<double>.of(rows)..sort(), reason: jj ? 'jj' : 'Zanshin');
+        expect(rows.toSet(), hasLength(5), reason: jj ? 'jj' : 'Zanshin');
+      }
     });
 
     testWidgets('a choice writes at user scope, defaults too, and the row shows it', (tester) async {
       final rig = _Rig(tester);
       await rig.pump(project: false);
-      await useJjMarks(tester, rig);
+      // Zanshin's style (the default) reads Inline changes too (Story 5.13).
+      expect(rig.store.value.general.diffMarks, DiffMarksSetting.words);
 
       await pick(tester, rig, 'settings-diff-context', '10');
       await pick(tester, rig, 'settings-diff-inline', 'Never');
@@ -381,7 +396,6 @@ void main() {
       final rig = _Rig(tester);
       rig.env.configEntries[inline] = <ConfigEntry>[_entry(inline, '8', ConfigValueSource.user)];
       await rig.pump(project: false);
-      await useJjMarks(tester, rig);
       expect(find.text('Up to 8'), findsOneWidget);
 
       await rig.tap('settings-diff-inline');

@@ -199,22 +199,24 @@ class SettingsGeneralTab extends StatelessWidget {
                 onChanged: (marks) => vm.updatePreferences((settings) => settings.copyWith.general(diffMarks: marks)),
               ),
             ),
-            if (prefs.general.diffMarks == DiffMarksSetting.jj)
-              _diffNumberRow(
-                s,
-                key: SettingsKeys.diffInline,
-                label: s.settingsDiffInline,
-                hint: s.settingsDiffInlineHint,
-                identifier: 'settings-diff-inline',
-                fallback: 3,
-                min: -1,
-                fixed: const <int>[0, 1, 2, 3, 5],
-                optionLabel: (n) => switch (n) {
-                  0 => s.settingsDiffInlineNever,
-                  -1 => s.settingsDiffInlineAlways,
-                  _ => s.settingsDiffInlineUpTo(n),
-                },
-              ),
+            _diffNumberRow(
+              s,
+              key: SettingsKeys.diffInline,
+              label: s.settingsDiffInline,
+              hint: switch (prefs.general.diffMarks) {
+                DiffMarksSetting.words => s.settingsDiffInlineZanshinHint,
+                DiffMarksSetting.jj => s.settingsDiffInlineHint,
+              },
+              identifier: 'settings-diff-inline',
+              fallback: 3,
+              min: -1,
+              fixed: const <int>[0, 1, 2, 3, 5],
+              optionLabel: (n) => switch (n) {
+                0 => s.settingsDiffInlineNever,
+                -1 => s.settingsDiffInlineAlways,
+                _ => s.settingsDiffInlineUpTo(n),
+              },
+            ),
             _diffNumberRow(
               s,
               key: SettingsKeys.diffContext,

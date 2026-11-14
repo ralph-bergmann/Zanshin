@@ -10,8 +10,8 @@ import { Checkbox } from "../forms/Checkbox.jsx";
 // run, "{+…+}" around a right-side one, on any line. They become runs ([text, "rem" | "add" | null]); a removed or
 // added line whose unchanged text is only blanks keeps none (its fill says it all); a changed line always keeps them.
 // Older git strings ("+…", "-…", " …", "@@…") still parse, without numbers. A string has no escape: code holding "[-",
-// "-]", "{+" or "+}" goes in the object form. marks "words" (Zanshin's whole-word style, Story 5.11): every marked run
-// stays — no fill-only rule; the lines have no "~" rows there.
+// "-]", "{+" or "+}" goes in the object form. marks "words" (Zanshin's style, Stories 5.11 and 5.13: the changed part
+// of each line, one line replaced by one line as one "~" row): every marked run stays — no fill-only rule.
 export function zsDiffLine(l, marks = "jj") {
   if (typeof l !== "string") {
     // The object form of before Story 5.10 had boolean runs: true is the line's own side.

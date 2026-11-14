@@ -318,14 +318,15 @@ void main() {
     });
   }
 
-  testWidgets('Words (Story 5.11): the widget-test block draws one mark on the old and new testWidgets lines, whole '
-      'new lines, no underline', (tester) async {
+  testWidgets('Words (Stories 5.11, 5.13): the widget-test block marks only what changed, no underline', (
+    tester,
+  ) async {
     const block = <String>[
-      "-  10     |  testWidgets('shows Funktion speichern instead of Weiter on the last [-step',-] (tester) async {",
-      '+       10|    {+await openWizard(tester, size: phone);+}',
+      "-  10     |  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {",
+      '+       10|    {+await openWizard(tester, size:+} phone{+);+}',
       '+       12|',
       '+       13|    {+for (var i = 0; i < 3; i++) {+}',
-      ("+       23|  testWidgets('shows Funktion speichern instead of Weiter on the last {+step on a tablet',+} (tester) "
+      ("+       23|  testWidgets('shows Funktion speichern instead of Weiter on the last step {+on a tablet+}', (tester) "
           'async {'),
     ];
     final FileDiff file = _file(
@@ -333,33 +334,63 @@ void main() {
         _hunk(<HunkLine>[for (final s in block) _line(s)]),
       ],
     );
-    await tester.pumpWidget(view(file, marks: DiffMarks.words));
-    expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())), <String, List<String>>{
-      "  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {": <String>[
-        "-step',",
-      ],
-      '    await openWizard(tester, size: phone);': <String>['+await openWizard(tester, size: phone);'],
+    final marked = <String, List<String>>{
+      '    await openWizard(tester, size: phone);': <String>['+await openWizard(tester, size:', '+);'],
       '    for (var i = 0; i < 3; i++) {': <String>['+for (var i = 0; i < 3; i++) {'],
       "  testWidgets('shows Funktion speichern instead of Weiter on the last step on a tablet', (tester) async {":
-          <String>["+step on a tablet',"],
-    });
+          <String>['+on a tablet'],
+    };
+    await tester.pumpWidget(view(file, marks: DiffMarks.words));
+    expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())), marked);
     for (final RichText text in tester.widgetList<RichText>(find.byType(RichText))) {
       expect(text.text.toStringDeep(), isNot(contains('underline')));
     }
     // Side by side draws the same marks from the same lines.
     await tester.pumpWidget(view(file, marks: DiffMarks.words, layout: DiffLayoutSetting.sideBySide));
-    expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())), <String, List<String>>{
-      "  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {": <String>[
-        "-step',",
-      ],
-      '    await openWizard(tester, size: phone);': <String>['+await openWizard(tester, size: phone);'],
-      '    for (var i = 0; i < 3; i++) {': <String>['+for (var i = 0; i < 3; i++) {'],
-      "  testWidgets('shows Funktion speichern instead of Weiter on the last step on a tablet', (tester) async {":
-          <String>["+step on a tablet',"],
-    });
-    // The jj style draws the same added lines fill-only.
+    expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())), marked);
+    // The jj style draws the added lines without unchanged text fill-only.
     await tester.pumpWidget(view(file));
     expect(paintedWordMarks(tester, ZsColors.resolve(const ZsAppearance())).keys, hasLength(2));
+  });
+
+  testWidgets('Words (Story 5.13): a merged line draws by its kind with both marks, unified and side by side', (
+    tester,
+  ) async {
+    final FileDiff file = _file(
+      hunks: <Hunk>[
+        _hunk(<HunkLine>[
+          _line('   64   60|        }'),
+          _line('~  65   61|        Err(err) => Err([-GitResetHeadError::from_git(-]err{+.into(+})),'),
+          _line('   66   62|    }'),
+        ]),
+      ],
+    );
+    final colors = ZsColors.resolve(const ZsAppearance());
+    await tester.pumpWidget(view(file, marks: DiffMarks.words));
+    // The merged text holds both sides' changed parts: `from_git(` removed, `.into(` added.
+    const merged = '        Err(err) => Err(GitResetHeadError::from_git(err.into()),';
+    expect(paintedWordMarks(tester, colors), <String, List<String>>{
+      merged: <String>['-GitResetHeadError::from_git(', '+.into('],
+    });
+    // A changed line: no fill, both numbers in their hue.
+    final Container line = tester.widget<Container>(
+      find
+          .ancestor(
+            of: find.text(merged, findRichText: true),
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    expect((line.color ?? const Color(0x00000000)).a, 0);
+    expect(tester.widget<Text>(find.text('65')).style!.color, colors.rem);
+    expect(tester.widget<Text>(find.text('61')).style!.color, colors.add);
+
+    // Side by side: the old text on the left, the new on the right, each with its own mark.
+    await tester.pumpWidget(view(file, marks: DiffMarks.words, layout: DiffLayoutSetting.sideBySide));
+    expect(paintedWordMarks(tester, colors), <String, List<String>>{
+      '        Err(err) => Err(GitResetHeadError::from_git(err)),': <String>['-GitResetHeadError::from_git('],
+      '        Err(err) => Err(err.into()),': <String>['+.into('],
+    });
   });
 
   testWidgets('a number column is as wide as the hunk\'s largest number', (tester) async {

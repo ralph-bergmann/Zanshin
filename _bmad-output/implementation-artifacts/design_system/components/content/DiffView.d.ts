@@ -13,7 +13,7 @@ export interface DiffViewProps {
   tools?: React.ReactNode;
   /** plain color-words lines (ignored when children are given) */
   lines?: DiffLine[];
-  /** the word-mark style the lines were loaded in: "jj" (default, jj diff's color-words) or "words" (Zanshin's whole words: removed lines then added lines, a mark exactly where a run says so) */
+  /** the word-mark style the lines were loaded in: "jj" (default, jj diff's color-words) or "words" (Zanshin's: the changed part of each line, one line replaced by one line as one changed row, else removed lines then added lines; a mark exactly where a run says so) */
   marks?: "jj" | "words";
   maxHeight?: number;
   /** marked as viewed: the body folds into one green line */

@@ -1733,8 +1733,10 @@ class _HunkSelection extends StatelessWidget {
   }
 }
 
-/// Story 5.11: the two word-mark styles side by side — Ralph's jj example block and the widget-test block, each as jj
-/// prints it ([DiffMarks.jj]) and in Zanshin's whole-word style ([DiffMarks.words]), the lines `hunks.rs`' tests pin.
+/// Stories 5.11 and 5.13: the two word-mark styles side by side — Ralph's jj example block and the widget-test block,
+/// each as jj prints it ([DiffMarks.jj]) and in Zanshin's style ([DiffMarks.words]), which marks the changed part of
+/// each line; then Ralph's error cleanup (jj commit 9346978d) in Zanshin's style, its one-line changes as one changed
+/// line each. The lines are the ones `hunks.rs`' tests pin.
 class _WordMarks extends StatelessWidget {
   const _WordMarks();
 
@@ -1755,19 +1757,53 @@ class _WordMarks extends StatelessWidget {
 
   static const _wordsExample = <String>[
     ' 2453 2453|        .into_inner()',
-    '-2454     |        .map_err(|err| [-GitResetHeadError::from_git(err.into_error()))?;-]',
+    '-2454     |        .map_err(|err| [-GitResetHeadError::from_git-](err.[-into_error-]()))?;',
     '+     2454|        .map_err(|err| {+{+}',
-    '+     2455|            {+let (source, out) = err.into_parts();+}',
+    '+     2455|            {+let (source, out) =+} err.{+into_parts();+}',
     '+     2456|            {+let path = out.get_ref().lock_path().to_owned();+}',
     '+     2457|            {+PathError { path, source }+}',
     '+     2458|        {+})+}',
-    '+     2459|        {+.map_err(GitResetHeadError::from_git)?;+}',
+    '+     2459|        {+.map_err(GitResetHeadError::from_git+})?;',
     ' 2455 2460|    lock.commit()',
-    '-2456     |        .map_err(|err| [-GitResetHeadError::from_git(err.error))?;-]',
-    '+     2461|        .map_err(|err| {+err.error)+}',
+    '-2456     |        .map_err(|err| [-GitResetHeadError::from_git(-]err.error))?;',
+    '+     2461|        .map_err(|err| err.error)',
     '+     2462|        {+.context(index.path())+}',
-    '+     2463|        {+.map_err(GitResetHeadError::from_git)?;+}',
+    '+     2463|        {+.map_err(GitResetHeadError::from_git+})?;',
     ' 2457 2464|    Ok(())',
+  ];
+
+  static const _wordsCleanup = <String>[
+    '    1    1|    let mut changed_git_refs = Vec::new();',
+    '    2    2|    let mut failed_ref_names = Vec::new();',
+    '~   3    3|    let actual = git_repo.references()[-.map_err(GitImportError::from_git)-]?;',
+    '    4    4|    collect_changed_git_refs_to_import(',
+    '~   5    5|        actual.local_branches()[-.map_err(GitImportError::from_git)-]?,',
+    '    6    6|        &mut known_git_refs,',
+    '    7    7|        &mut changed_git_refs,',
+    '    8    8|        &mut failed_ref_names,',
+    '    9    9|        &git_ref_filter,',
+    '   10   10|    )?;',
+    '   11   11|    collect_changed_git_refs_to_import(',
+    '~  12   12|        actual.remote_branches()[-.map_err(GitImportError::from_git)-]?,',
+    '   13   13|        &mut known_git_refs,',
+    '   14   14|        &mut changed_git_refs,',
+    '   15   15|        &mut failed_ref_names,',
+    '   16   16|        &git_ref_filter,',
+    '   17   17|    )?;',
+    '   18   18|    collect_changed_git_refs_to_import(',
+    '~  19   19|        actual.tags()[-.map_err(GitImportError::from_git)-]?,',
+    '   20   20|        &mut known_git_refs,',
+    '   21   21|        &mut changed_git_refs,',
+    '   22   22|        &mut failed_ref_names,',
+    '   23   23|        &git_ref_filter,',
+    '   24   24|    )?;',
+    '   25   25|    let store = mut_repo.store();',
+    '   26   26|    let git_backend = get_git_backend(store)?;',
+    '-  27     |    let git_repo = git_backend',
+    '-  28     |        .open_git_repo_at_workdir(workspace_root)',
+    '-  29     |        [-.map_err(GitImportError::from_git)-]?;',
+    '+       27|    let git_repo = git_backend.open_git_repo_at_workdir(workspace_root)?;',
+    '   30   28|',
   ];
 
   static const _jjWidget = <String>[
@@ -1801,13 +1837,13 @@ class _WordMarks extends StatelessWidget {
   static const _wordsWidget = <String>[
     '    7    7|',
     ('-   8     |  // [-Tablet only:-] the [-wide test font overflows-] the [-compact app bar, which holds-] '
-        'the [-buttons-] on a [-phone.-]'),
-    '-   9     |  [-// The phone layout is checked on a device.-]',
-    "-  10     |  testWidgets('shows Funktion speichern instead of Weiter on the last [-step',-] (tester) async {",
+        'the [-buttons-] on a phone[-.-]'),
+    '-   9     |  [-// The-] phone [-layout is checked on a device-].',
+    "-  10     |  testWidgets('shows Funktion speichern instead of Weiter on the last step', (tester) async {",
     ('+        8|  // {+The tablet shows+} the {+long label. The phone app bar has little room and shows+} '
         'the {+short one.+}'),
-    "+        9|  {+testWidgets('shows Speichern instead of Weiter on+} the {+last step+} on a {+phone', (tester) async {+}",
-    '+       10|    {+await openWizard(tester, size: phone);+}',
+    "+        9|  {+testWidgets('shows Speichern instead of Weiter on+} the {+last step+} on a phone{+', (tester) async {+}",
+    '+       10|    {+await openWizard(tester, size:+} phone{+);+}',
     '+       11|    {+await fillGeneralStep(tester);+}',
     '+       12|',
     '+       13|    {+for (var i = 0; i < 3; i++) {+}',
@@ -1820,7 +1856,7 @@ class _WordMarks extends StatelessWidget {
     "+       20|    {+expect(find.text('Weiter'), findsNothing);+}",
     '+       21|  {+});+}',
     '+       22|',
-    "+       23|  testWidgets('shows Funktion speichern instead of Weiter on the last {+step on a tablet',+} (tester) async {",
+    "+       23|  testWidgets('shows Funktion speichern instead of Weiter on the last step {+on a tablet+}', (tester) async {",
     '   11   24|    await openWizard(tester, size: tablet);',
   ];
 
@@ -1866,6 +1902,7 @@ class _WordMarks extends StatelessWidget {
                 _view('lib/src/git.rs', _wordsExample, 'fn write_locked_index(', DiffMarks.words),
                 _view('test/function_wizard_test.dart', _jjWidget, 'void main() {', DiffMarks.jj),
                 _view('test/function_wizard_test.dart', _wordsWidget, 'void main() {', DiffMarks.words),
+                _view('lib/src/git.rs', _wordsCleanup, 'fn diff_refs_to_import(', DiffMarks.words),
               ],
             ),
           ),

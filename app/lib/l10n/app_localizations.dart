@@ -3446,7 +3446,7 @@ abstract class AppLocalizations {
   /// **'Changed words'**
   String get settingsDiffMarksLabel;
 
-  /// Changed-words choice: Zanshin's whole-word marks.
+  /// Changed-words choice: Zanshin's marks of the changed part of each line.
   ///
   /// In en, this message translates to:
   /// **'Zanshin'**
@@ -3461,7 +3461,7 @@ abstract class AppLocalizations {
   /// The Changed words row's hint while Zanshin is chosen. similar is the Rust library's name, lowercase.
   ///
   /// In en, this message translates to:
-  /// **'Marks whole changed words, using the similar library. Removed lines come first.'**
+  /// **'Marks the changed part of each line, using the similar library. Removed lines come first.'**
   String get settingsDiffMarksZanshinHint;
 
   /// The Changed words row's hint while jj is chosen.
@@ -3470,17 +3470,23 @@ abstract class AppLocalizations {
   /// **'As jj diff prints them, following your jj config.'**
   String get settingsDiffMarksJjHint;
 
-  /// Settings › General › Diffs row (diff.color-words.max-inline-alternation), shown while jj marks the changed words.
+  /// Settings › General › Diffs row (diff.color-words.max-inline-alternation), shown in both Changed words styles.
   ///
   /// In en, this message translates to:
   /// **'Inline changes'**
   String get settingsDiffInline;
 
-  /// The Inline changes row's hint.
+  /// The Inline changes row's hint while jj is chosen in Changed words.
   ///
   /// In en, this message translates to:
   /// **'How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj.'**
   String get settingsDiffInlineHint;
+
+  /// The Inline changes row's hint while Zanshin is chosen in Changed words.
+  ///
+  /// In en, this message translates to:
+  /// **'How often a line may switch between removed and added parts before it shows as an old and a new line. Applies where one line replaces one line. Experimental in jj.'**
+  String get settingsDiffInlineZanshinHint;
 
   /// Inline changes choice: 0, every changed line shows as an old and a new line.
   ///
