@@ -12733,6 +12733,174 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Related:** 10.32, 5.10; deferred-work.md, "Surfaced in Story 5.10".
 
+### Story 10.35: Inspector fixes — the title form forgets an untouched edit, parent ids like the change id, a jump to the parent, Split only for part of a change [UI]
+*(Added 2026-11-14, Ralph — console session. Every item was checked against the code in that session.)*
+
+**Scope.**
+1. **The title form forgets an untouched edit.** Today `InspectorViewModel._open` (`app/lib/src/features/graph/graph_inspector.dart:102`) keeps each change's describe form open for the whole session. Only Cancel, Esc and a successful Save remove a key; `runComposer` drops the title draft but not the open state. Ralph's two repros, both with the title form opened by a click and nothing typed:
+   - close the inspector and open it again on the same change → the title is still a text field;
+   - click Commit in the composer, then select the original change again → the title is still a text field, prefilled with the new description.
+
+   DECIDED (Ralph): when the selection leaves a change — another change is selected, or the inspector closes (`graph.select(null)`) — that change's form stays open only while its draft is dirty, by the rule Esc already uses (`dirty` / `_unchanged`). A click without typing makes no draft (`updateDraft` runs on a text change), so the title shows again. A draft typed and changed back is not dirty, so the title shows again. A typed draft that differs keeps the form open, as today. `dirty` compares with the current description, so the check must run in `_graphChanged` before `_entry` and `_key` change.
+2. **Parent ids like the change id.** The meta line's parent ids (`_Meta`, `_CopyId` with `prefix: 0`, `graph_inspector.dart:1843`) show jj's unique prefix bold in `--text`, as the header's change id does (`prefix: layout.changeIdPrefixLengthOf(parent)`, `bold: colors.text`). No `jj` subscript. A parent outside the loaded graph keeps today's look (its prefix is unknown). The click still copies the full id (Story 10.30).
+3. **A jump to the parent.** An icon button after each parent id. Its tooltip reads "Select parent <short id>"; a click selects the parent (selecting reveals the card, `graph_canvas.dart:1105`). A parent that is not in the shown graph disables the button, with the reason in the tooltip. To check in the story: a parent inside a collapsed stack (`indexOfKey`). The icon comes from the DS (NEEDS DESIGN: which glyph).
+4. **No Split of the whole change.** On a change other than `@`, with every file and every hunk picked, the composer's Split button is disabled. Its tooltip says to describe the change with its title instead. The note "All changes have been selected, so the original revision will become empty." goes, as that case can no longer run. On `@` nothing changes (`jj commit`). DECIDED (Ralph): `jj commit` has no `-r` (`cli/src/commands/commit.rs` @ v0.47.0), describing a change is the title's job, and a Split of everything only leaves an empty change behind.
+5. **The composer's command keeps its paths visible.** The command line ends with an ellipsis today (`graph_inspector.dart:2764-2770`), so with a long message the paths — the part that follows the picks — never show. The cut moves into the middle of the `-m '…'` message (each message paragraph when there are several); `jj split -r <id>`, the quotes and the paths stay. The button's tooltip keeps the full command.
+
+**Non-goals.**
+- Remembering the title form's open state any other way.
+- A Describe button in the composer.
+- Changes to `jj commit` on `@`.
+
+**Depends on.** 10.8, 10.25, 10.26, 10.30, 11.23 (all done).
+
+**Design status.** DECIDED (Ralph, 2026-11-14) for items 1, 4 and 5 and for having items 2 and 3. The jump button's glyph and place are Claude's proposal; a DS change goes through the `design-artifacts` skill.
+
+**Witnesses.**
+- Both repros of item 1 end with the title as a label; a typed, changed draft still comes back open after a selection change (the existing test "a draft survives a selection change and comes back open" stays green).
+- The meta line shows the parent's prefix bold; a merge shows two buttons; the button selects and reveals the parent.
+- A change other than `@` with everything picked: Split disabled with the tooltip; one file unpicked: Split enabled. `@` with everything picked: Commit enabled.
+- A message of 200 characters and two picked paths: both paths show in the command line.
+- Marionette screenshots in the catalogue, compared with the DS cards.
+
+**Related:** 10.8, 10.25, 10.30, 11.23.
+
+### Story 10.36: jj absorb — a Squash menu in the inspector, a row in the card menu and the Change menu [Rust + UI]
+*(Added 2026-11-14, Ralph — console session. Ralph found that absorb was forgotten in the card menu.)*
+
+**Motivation.** `jj absorb` moves each hunk of a change into the nearest mutable ancestor that last changed those lines (`cli/src/commands/absorb.rs` @ v0.47.0). The app offers it nowhere.
+
+**Backend: mostly done, CLI parity.** `zanshin-jj` has `absorb` and `plan_absorb` (`crates/zanshin-jj/src/mutate.rs`); the FFI has `zanshin_absorb`; `zanshin_core` has `ZanshinRepo.absorb(from:, into:, paths:)` (`packages/zanshin_core/lib/src/worker/handle.dart:982`). Missing: a preview. `ChangeActions` (Rust, FFI, `packages/zanshin_core/lib/src/ffi/drop_actions.dart:281`) has `squashIntoParent` but no `absorb`.
+
+**Scope.**
+1. **Preview.** `ChangeActions` gains `absorb`: `jj absorb --from X` with jj's defaults (`--into mutable()`, all paths). It is refused with jj's reason, or it says nothing would move (the CLI then prints "Nothing changed."), or it runs. Built on `plan_absorb`. Schema, codegen, `docs/ffi-abi.md`, `zanshin_core` follow.
+2. **A `GraphAbsorb` action** in the app: command `jj absorb --from <id>`, run through the graph's runner, with the undo toast and the flash like the other verbs. The toast says how many changes took hunks (`AbsorbResult`). When everything moved and the change has no description, jj abandons it; the selection then follows what the reload leaves, as after Abandon.
+3. **Inspector.** "Squash into parent" becomes a menu button with two rows: "Squash into parent" (today's action, with its squash form) and "Absorb into ancestors". Each row shows its full command as its tooltip and is disabled with its preview's reason. The DS has no button that opens a menu (only `Menu` / `DropMenu`, and `ZsMenu` / `ZsSelect` in `zanshin_ui`): NEEDS DESIGN, a new DS component through the `design-artifacts` skill.
+4. **Card menu.** A row "Absorb into ancestors" after "Squash into parent" (`app/lib/src/features/graph/graph_card_menu.dart:216`).
+5. **Change menu** in the menu bar: an entry after Squash (`app/lib/src/app/menu/app_menu.dart:525`).
+
+**Non-goals.**
+- Absorb by drag and drop (DECIDED, Ralph: a drop names one target, absorb spreads over several). The backend's drop actions still plan an absorb row the app ignores; removing it is not part of this story.
+- `--into`, paths, `--interactive`.
+
+**Depends on.** 9.3, 10.15, 10.25 (all done).
+
+**Design status.** DECIDED (Ralph, 2026-11-14): a menu in place of the Squash button, absorb in the card and Change menus, not in drag and drop. The menu button's look and the row label are Claude's proposal.
+
+**Witnesses.**
+- A change whose hunks belong to two ancestors: Absorb moves each hunk to its ancestor; `jj op show -p` equals the CLI's for the same repo (parity oracle).
+- Nothing absorbable: the row is disabled with the reason; no operation is written.
+- An undescribed change absorbed whole is abandoned; the inspector closes or follows the reload as after Abandon.
+- The card menu and the Change menu show the row with the same state.
+
+**Related:** 9.3, 10.15, 10.25.
+
+### Story 10.37: View state in a file per project — limits, cleanup, a reset [UI/bridge]
+*(Added 2026-11-14, Ralph — console session.)*
+
+**Today.** The Viewed marks (`ProjectEntry.viewedFiles`, keys `changeId:fingerprint:path`, at most 2000, `app/lib/src/features/graph/inspector_viewed_store.dart`) and the stack toggles (`expandedStacks` / `collapsedStacks`, keyed by a stack's oldest member, no limit, never pruned, `graph_stack_store.dart`, `graph_view_model.dart:547-549`) live in `settings.json` (`~/Library/Application Support/de.dasralph.zanshin/`), rewritten on every toggle. A repository outside the project list keeps them in memory only. Removing a project from the list removes them (`project_registry.dart:140`).
+
+**DECIDED (Ralph, 2026-11-14).**
+1. **A state file per project**, under the app's Application Support folder, not in the repository. Reasons: jj keeps a repo's own config outside the repo too (`~/.config/jj/repos/<id>/`, `cli/src/config.rs` @ v0.47.0); VS Code and JetBrains do the same; jj never writes such files into `.jj/`. `settings.json` keeps settings only. Proposal: `projects/<id>.json`, the id kept on `ProjectEntry`. Removing the project from the list deletes its file. An existing `settings.json` moves its lists into the files on first load and drops them on the next save.
+2. **A limit for each**: Viewed (2000 today) and stack toggles (new; proposal 500). The newest entries stay.
+3. **Cleanup**, by whether a change still exists in the repository, never by whether it shows in the graph (the graph shows a search, `graphView`):
+   - When the inspector reads a change, it drops that change's Viewed keys whose path or fingerprint no longer matches.
+   - When a project opens, a background pass drops keys whose change no longer exists (abandoned, hidden). Proposal: `revsetCounts` (`graph_ports.dart:1144`) or one small FFI query for many ids; measure it on a repository with thousands of keys.
+   - The limit catches the rest, e.g. a stack whose oldest member changed.
+4. **"Reset view state"** in Settings › Project (`app/lib/src/features/settings/project_tab.dart`): clears the Viewed marks and the stack toggles of that project.
+
+**Non-goals.**
+- Files in the repository or in `.jj/`.
+- One reset for all projects; syncing between machines.
+
+**Depends on.** 10.17, 10.24 (done).
+
+**Design status.** DECIDED (Ralph, 2026-11-14) for items 1-4. The file name, the id, the stack limit and the reset row's look (and whether it asks first) are Claude's proposal.
+
+**Witnesses.**
+- After a toggle, the project's state file changes and `settings.json` does not.
+- An old `settings.json` with the three lists loads them into the state file; after a save `settings.json` has none.
+- Removing the project deletes its state file.
+- An abandoned change's Viewed keys and stack toggles are gone after the next open; a change hidden by the search keeps them.
+- A file changed in its change loses its Viewed key when the inspector reads that change.
+- Reset clears both; the graph shows the default stack state at once.
+
+**Related:** 10.17, 10.24, 11.7.
+
+### Story 10.38: Inspector rebuild, part 1 — files beside or above the diff, a draggable split, a wider inspector, Finder keys [UI]
+*(Added 2026-11-14, Ralph — console session. The rebuild Ralph planned on 2026-11-12, deferred-work.md "Surfaced after the story loop 5.10".)*
+
+**Motivation.** With many files the file list sits above the diff, so Ralph scrolls up and down all the time. The inspector stops at 720 points, the pinned panel at 440. Arrow keys only move a highlight; ↩ then loads the diff.
+
+**Before the story: a design round** (console session with Ralph, `design-artifacts` skill), shared with 10.39: the narrow and the wide layout, the divider, the clamped description, and the open decision whether the unified diff pins its line-number columns while the text scrolls sideways (deferred-work.md, "Surfaced after the story loop 5.10"). The story runs after Ralph approved the mock-up.
+
+**Scope.**
+1. **The layout follows the inspector's width.** Narrow: files above, diff below. Wide: files left, diff right. One threshold with hysteresis, so dragging around it does not flicker (proposal: ~760 points). The top part (header, title, meta, chips, actions) keeps its natural height; the split fills the rest, each side scrolls on its own; the composer stays at the bottom. Today the whole body is one scroll view (`graph_inspector.dart:1043`).
+2. **A draggable divider** between files and diff in both layouts (`ZsResizeEdge`), each side with a minimum. The ratio is remembered per layout, as a setting for all projects.
+3. **The description is clamped** in the top part to a few lines, with "Show more" / "Show less" (DECIDED, Ralph).
+4. **No fixed maximum width.** The inspector and the pinned panel lose 720 and 440 (`ZsMetrics.inspectorWMax`, `panelWMax`, DS `--inspector-w-max`); the rule that 320 points of graph remain stays (`app/lib/src/features/shell/shell_layout.dart`). The minimums stay.
+5. **Finder keys in the file list.** ↑ ↓ select a file and show its diff at once (`_onKey`, `graph_inspector.dart:2105`); while a key repeats, the diff loads after a short pause (proposal ~80 ms; stale replies are already dropped by `_focusSerial`). Space toggles the file's pick on a mutable change; `V` toggles Viewed (DECIDED, Ralph: both in this story). ↩ does no harm.
+
+**Non-goals.** The file rows' content and menus (10.39); a full-screen inspector.
+
+**Depends on.** 10.8, 10.24, 10.25, 10.26, 11.3 (done); the design round.
+
+**Design status.** NEEDS DESIGN round (see above). Decided by Ralph: the two layouts by width, the divider in both, no fixed maximum width, the clamped description, Finder keys with Space and `V`. The threshold, the ratios' defaults and the clamp's line count are Claude's proposal.
+
+**Witnesses.**
+- Dragging the inspector across the threshold switches the layout once; the divider's ratio of each layout survives a restart.
+- A change with 40 files: the diff stays in view while ↑ ↓ walk the list.
+- The inspector can be dragged until 320 points of graph remain, also past 720.
+- Space and `V` change the pick and the Viewed mark of the selected file.
+- Marionette screenshots of both layouts in the catalogue, compared with the mock-up.
+
+**Related:** 10.8, 10.24, 10.39, 11.3.
+
+### Story 10.39: Inspector rebuild, part 2 — file names first, tree or flat, copy, Reveal in Finder, Open in Editor [UI]
+*(Added 2026-11-14, Ralph — console session. Ralph's use case: he changed code in IntelliJ, reviews it in Zanshin before the push, finds a mistake and wants to jump to that place in IntelliJ.)*
+
+**Before the story:** the design round of 10.38 covers this story's rows, switch, menus and Editor setting.
+
+**Scope.**
+1. **The file name first.** A file row shows the name, never cut, then the folder, dimmed and cut in the middle. The tooltip holds the full path. A rename shows the new name; its tooltip `old → new`. Today the row is one path cut at its end (`graph_inspector.dart:2412`), which hides the name.
+2. **Tree or flat.** A two-icon switch in the Changes header (like Unified / Side by side), its default in Settings › Diffs (`GeneralSettings`). Tree: folder chains with one child join into one row (`packages/logic_designer/lib/src`); folders collapse and expand for the session only (not stored); ← → collapse and expand, ↑ ↓ walk the visible rows. On a mutable change a folder has a three-state checkbox that picks all its files (DECIDED, Ralph).
+3. **Copy.**
+   - The path in the diff header copies the absolute path on a click, like the ids (`_CopyId`, Story 10.30); the operation view's diff header too.
+   - ⌘C on the selected file row copies its absolute path.
+   - DECIDED (Ralph): "Copy path" means the absolute path, as in Sourcetree.
+4. **Context menus.**
+
+   | Where | Rows |
+   |---|---|
+   | File row | Open in Editor · Reveal in Finder · Copy path (⌘C) · Copy relative path |
+   | Folder (tree) | Reveal in Finder · Copy path · Copy relative path |
+   | Diff line | Open in Editor at line · Copy path:line · Copy path |
+   | Bookmark chip | Copy name |
+
+   The line number is the new file's; a removed line takes the place where it stood (the next new line).
+5. **Open in Editor.** A setting in Settings › General › Editor: a detected launcher (IntelliJ `idea`, VS Code `code`, Zed `zed`, found on the login shell's `PATH`, Story 9.36) or a custom command with `{file}` and `{line}`; IntelliJ's is `idea --line {line} {file}`. Without a setting the row reads "Choose editor…" and opens the setting; the app never starts the macOS default app for the file. A failed start shows a toast with the reason. DECIDED (Ralph): Open in Editor only with a chosen editor, because the default would open the wrong one or a new IntelliJ.
+6. **Reveal in Finder:** `open -R <absolute path>`.
+7. **Files on disk.** Open, Reveal and the copied paths name the file in the working copy. For a change other than `@` that file holds `@`'s version, and a line number can be off when a later change edited the file; the tooltip says so. A file that does not exist on disk disables Open and Reveal with the reason.
+
+**To check in the story.**
+- Whether IntelliJ's Go to File (⇧⌘O) takes an absolute `path:line`.
+- That `idea --line` opens in the running IntelliJ when the project is open there.
+
+**Non-goals.** Opening the change's own version of a file; an editor per project; the layout (10.38).
+
+**Depends on.** 10.38; 9.36, 10.24, 10.30 (done); the design round.
+
+**Design status.** NEEDS DESIGN round (with 10.38). Decided by Ralph: name first, tree or flat with a setting and folder checkboxes, copy as above, Open in Editor with a chosen editor, Reveal in Finder, `path:line`. The row layout, the menus' order and the Editor setting's look are Claude's proposal.
+
+**Witnesses.**
+- `packages/logic_designer/lib/src/presentation/widgets/automation_overview_page.dart` in a 460-point inspector shows `automation_overview_page.dart` whole.
+- Tree and flat show the same files; the default survives a restart; a folder checkbox picks and unpicks its files.
+- Copy path, Copy relative path, Copy path:line and ⌘C put the expected text on the clipboard.
+- With the IntelliJ launcher set, Open in Editor at line runs `idea --line <n> <absolute path>` (a test runs a fake launcher).
+- Reveal in Finder runs `open -R <absolute path>`.
+
+**Related:** 9.36, 10.24, 10.30, 10.38.
+
 ---
 
 ## Epic 11: Floating app shell (Flutter UI)
