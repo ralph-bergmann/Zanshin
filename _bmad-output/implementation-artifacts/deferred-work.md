@@ -3088,3 +3088,10 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **Dragging the split divider or the inspector's edge over a large diff may stutter (unverified).** Medium.
   - In the wide layout each drag frame changes the diff pane's width; `_DiffBody`'s `LayoutBuilder` (`app/lib/src/features/graph/inspector_diff.dart`) then measures the number digits again and runs `IntrinsicWidth` over every line of the non-lazy file.
   - **Follow-up:** measure it together with the sideways-scroll item above: in a profile build drag the divider and the inspector edge with a diff of a few thousand lines open and watch the frame times.
+
+## Surfaced in Story 10.33 (bmad-build-auto, 2026-11-14)
+
+- **The diff options menu, the folded whitespace rows and the dimmed, tagged lines were not checked through Marionette against the mock-up and the DS cards.** Low.
+  - The unattended run had no catalogue session; widget tests cover the behaviour. The catalogue has Graph › Inspector diff › Whitespace ignored and the MenuButton icon-only rows (`app/widgetbook/folders/graph.dart`, `controls.dart`).
+  - One look to settle: the unified fold row's hatch stops at the number columns, as the mock-up's `.isd-foldrow .isd-nums` background does, while the DS Content card hatches the full row.
+  - **Follow-up:** compare those use cases with `design/Inspector Study.html` and the DS cards through Marionette.
