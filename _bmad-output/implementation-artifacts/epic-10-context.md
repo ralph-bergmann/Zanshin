@@ -41,7 +41,7 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 - Story 10.30: Review findings 2026-11-02
 - Story 10.31: Time axis and minimap for long histories
 - Story 10.32: Word marks in the inspector diff
-- Story 10.33: Ignore whitespace in the inspector diff
+- Story 10.33: Ignore whitespace in the inspector diff (diff options menu)
 - Story 10.34: Word marks differ in lightness
 - Story 10.35: Inspector fixes — title form, parent ids, jump to parent, Split
 - Story 10.36: jj absorb — Squash menu, card menu and Change menu rows
@@ -62,30 +62,30 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 ## Technical Decisions
 
 - **Code** lives in `app/lib/src/features/graph/`, tests mirror it in `app/test/features/graph/`. Shared controls are the Zs library in `packages/zanshin_ui`; no visible control is Material or Yaru. Remaining Material types (`MaterialApp`, `ThemeData`) come only from `package:material_ui`.
-- **Bridge:** the app imports only `package:zanshin_core/zanshin_core.dart`; a `[UI/bridge]` story adds the types it consumes to that library's exports.
+- **Bridge:** the app imports only `package:zanshin_core/zanshin_core.dart`; a `[UI/bridge]` story adds the types it consumes to that library's exports. A new backend preview (e.g. `ChangeActions.absorb`) goes Rust → FFI schema → codegen → `docs/ffi-abi.md` → `zanshin_core`.
 - **Ports:** the view model declares `GraphSource` (layout) and `GraphActions` (verbs). Every affordance runs through the one action runner: pending state, anchored reload, refusals, warnings, undo, the operation toast and the flash.
 - **Layout** comes from the engine on `zanshin_core`'s worker isolate. Free and Compact each choose their own columns, and lines follow the graph-layout lab's rules (`docs/graph-layout.md`). A mode switch may move cards sideways and re-centres on @.
 - **Scroll precedence:** an explicit reveal (go-to, bookmark pick, locate @) beats the re-centre on @ after a revset or layout switch, which beats the anchor. Floating panels never resize the viewport; reveals centre in the area the chrome leaves free.
 - **Visuals** are `RenderBox`es with text slots, not nested `Column`/`Row` trees.
 - **Theme:** every colour and size comes from the design-system token layer; `GraphTheme` derives the graph roles from it and falls back to night. Selection, focus, drop targets, the go-to pulse and the flash use the accent role (`--accent*`, `--focus-ring`); gold is only @ and the one primary action. Immutable changes carry the hatch, not a glyph.
 - **Motion** is the FLIP model: moved cards glide 460 ms, births grow from their anchor, changed cards flash 2.4 s. Under reduce motion, movement goes to 0 but colour and opacity fades stay.
-- **Settings vs state:** global preferences (diff layout, whitespace mode, list mode, split ratios, editor) live in the settings package; per-project view state (Viewed marks, stack toggles) moves to a state file per project in Application Support (10.37), never into the repo or `.jj/`.
-- **Diff and hunk selection:** whole files pass paths; partial selections pass the `TreeId` from the `select_tree` call, never `-i`. A hunk's parts are jj's builtin diff-editor sections; single lines are never pickable.
+- **Settings vs state:** global preferences (diff layout, whitespace mode, file list tree/flat, split ratios per layout, editor) live in the settings package; context lines write jj's own `diff.color-words.context` at user scope. Per-project view state (Viewed marks, stack toggles) moves to a state file per project in Application Support (10.37), never into the repo or `.jj/`.
+- **Diff and hunk selection:** whole files pass paths; partial selections pass the `TreeId` from the `select_tree` call, never `-i`. A hunk's parts are jj's builtin diff-editor sections (`Hunk.sections`); the smallest pick is a part, never single lines. Rust computes word segments; Dart only draws them.
 
 ## UX & Interaction Patterns
 
 - The design export (`design/`, `JJ Desktop Client Floating.html`, `Inspector Study.html`) and the design system (`design_system/`) are the reference, as inspiration, not a 1:1 template. Tokens and CSS win over DS prose. A decision recorded in the epic wins over the export. Small gaps get a marked Claude proposal; NEEDS DESIGN questions are for architecture or scope only.
 - Where the design does not fit jj, build along jj's behaviour; that is not a question for Ralph.
-- Each story records the DS sync it was built against ("DS synced through #N"; #26 is current). A re-download with a higher N: the next visual story reads the new sync entries, adds dated notes and updates the token layer in the same change. Nothing under `design/` or `design_system/` is edited by hand; DS changes go through the `design-artifacts` skill.
-- The inspector is a floating glass panel. After 10.38 it has no fixed maximum width; at least 320 px of graph must stay visible.
+- Each story records the DS sync it was built against ("DS synced through #N"; #26 is current). A re-download with a higher N: the next visual story reads the new sync entries, adds dated notes and updates the token layer in the same change. Nothing under `design/` or `design_system/` is edited by hand; DS changes (e.g. a new `MenuButton`) go through the `design-artifacts` skill.
+- The inspector is a floating glass panel. After 10.38 it has no fixed maximum width; at least 320 points of graph must stay visible. Its layout switches by width (files above vs beside the diff, with hysteresis), and the unified diff's line numbers stay pinned at the left edge while text scrolls sideways.
 - Esc, ⌘F and `/` are scoped to their surface, never window-global. Keyboard focus is one roving node, not a tab stop per card. Shortcuts are bound in the menu bar (11.13).
 - Hover-only surfaces need a catalogue use case that shows them open, because Marionette cannot hover.
 
 ## Cross-Story Dependencies
 
-- Done: every story except 10.27, 10.33 and 10.35–10.39 (open) and 10.18 (declined).
-- 10.38 comes before 10.39 and before 10.33, which also runs after 10.36. 10.33 reuses 10.36's menu button and its grouped, checked menu.
-- 10.36 needs a backend absorb preview (`ChangeActions.absorb`: Rust, FFI schema, codegen, `docs/ffi-abi.md`, `zanshin_core`). The other open stories are UI-only, apart from 10.37's optional small query.
+- Done: every story except 10.27, 10.33 and 10.36–10.39 (open) and 10.18 (declined).
+- 10.38 comes before 10.39 and before 10.33, which also runs after 10.36. 10.33 reuses 10.36's menu button and its grouped, checked menu, and picks whole parts from 10.38.
+- 10.36 needs a backend absorb preview (`ChangeActions.absorb`) built on `plan_absorb`. The other open stories are UI-only, apart from 10.37's optional small existence query.
 - 10.27 builds on 10.10's drag engine, 10.24–10.26, 10.23, and backend 9.15, 9.31 (diff source) and 9.50.
 - 10.39's editor detection reuses 9.36's login-shell PATH; 10.37 touches the project registry and Settings › Project (Epic 11).
-- Undo Timeline's operation view (10.29) reuses the inspector diff widget, so diff-header changes (10.33, 10.39's path copy) appear there too.
+- The Undo Timeline's operation view (10.29) reuses the inspector diff widget, so diff-header changes (10.33's options menu, 10.39's path copy) appear there too.
